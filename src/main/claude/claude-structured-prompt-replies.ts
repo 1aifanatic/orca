@@ -3,7 +3,7 @@ import type {
   AgentSessionPromptResponse,
   AgentSessionQuestionAnswer
 } from '../../shared/agent-session-question-answer'
-import type { AgentSessionPromptRoute } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
+import type { StructuredAgentSessionAdapterStop } from '../native-chat/agent-session-wire/structured-agent-session-adapter-stop'
 import {
   claudePromptQuestions,
   isClaudePromptRecord,
@@ -19,22 +19,23 @@ export {
   type ClaudePromptSettle
 } from './claude-prompt-registry'
 
+/** `cancel` is the dismissal a card's own Cancel sends; no card offers it, and an older card's
+ *  "Stop" option still answers with it. */
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
 export type ClaudeApprovalDecision = (typeof CLAUDE_APPROVAL_DECISIONS)[number]
 
-/** A card's own Cancel denies an approval as its Deny option does, and ends a question the way the
- *  chat's Stop does; an approval's Stop option is the chat's Stop. Nothing on a card interrupts the
- *  turn and leaves the child running. */
-export function claudePromptRoute(
-  _sessionId: string,
-  kind: 'approval' | 'question',
-  optionId?: string
-): AgentSessionPromptRoute | undefined {
-  if (optionId === undefined) {
-    return kind === 'approval' ? { kind: 'option', optionId: 'deny' } : { kind: 'stop' }
-  }
-  return kind === 'approval' && optionId === 'cancel' ? { kind: 'stop' } : undefined
-}
+const PLAN_DISMISSED =
+  'The user dismissed this plan without approving it. End your turn and wait for them to say what to change.'
+
+/** A card's own Cancel: a tool approval is denied as its Deny option denies it, a plan is dismissed
+ *  so Claude waits for the user, and a question ends the way the chat's Stop does. Nothing on a
+ *  card interrupts the turn and leaves the child running. */
+export const claudePromptCancelRoute: NonNullable<
+  StructuredAgentSessionAdapterStop['routePromptCancel']
+> = ({ prompt }) =>
+  prompt.kind === 'question'
+    ? { kind: 'stop' }
+    : { kind: 'option', optionId: prompt.subject?.kind === 'plan' ? 'cancel' : 'deny' }
 
 function isClaudeApprovalDecision(optionId: string): optionId is ClaudeApprovalDecision {
   return CLAUDE_APPROVAL_DECISIONS.some((decision) => decision === optionId)
@@ -108,13 +109,14 @@ function approvalResponse(prompt: ClaudePendingPrompt, optionId: string): Permis
       toolUseID: prompt.toolUseId
     }
   }
-  // `cancel` is the chat's Stop (`claudePromptRoute`), so it never reaches Claude as a reply.
+  const plan = prompt.subject?.kind === 'plan'
   return {
     behavior: 'deny',
-    message:
-      prompt.subject?.kind === 'plan'
-        ? 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.'
-        : 'User denied this action.',
+    message: !plan
+      ? 'User denied this action.'
+      : decision === 'cancel'
+        ? PLAN_DISMISSED
+        : 'The user asked you to keep planning. Revise the plan and call ExitPlanMode again.',
     toolUseID: prompt.toolUseId
   }
 }

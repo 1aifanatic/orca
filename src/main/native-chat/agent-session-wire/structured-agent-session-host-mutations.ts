@@ -39,11 +39,8 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import {
-  answerStructuredAgentSessionPromptOrStop,
-  cancelStructuredAgentSessionPrompt
-} from './structured-agent-session-prompt-cancel'
-import { structuredAgentSessionChatStop } from './structured-agent-session-chat-stop'
+import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
+import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -161,27 +158,16 @@ export function cancelStructuredAgentSessionTurn(
     )
   }
   const plan = cancelPlan(params)
-  const stop = structuredAgentSessionChatStop(context, params.envelope, params.turnId)
   const { prompt } = params
-  const stopped = mutateStructuredAgentSession(
-    context,
-    caller,
-    params.envelope,
-    {
-      ...plan,
-      run: (ctx) =>
-        prompt
-          ? cancelStructuredAgentSessionPrompt(
-              ctx,
-              { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
-              { stop: () => stop.run(ctx), interrupt: () => plan.run(ctx) }
-            )
-          : stop.run(ctx)
-    },
-    openForWrite(context, params.envelope)
+  return mutateWithChatStop(context, caller, params, plan, (ctx, stop) =>
+    prompt
+      ? cancelStructuredAgentSessionPrompt(
+          ctx,
+          { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
+          { stop, interrupt: () => plan.run(ctx) }
+        )
+      : stop()
   )
-  stop.queueChildEnd()
-  return stopped
 }
 
 export function respondToStructuredAgentSessionPrompt(
@@ -189,24 +175,13 @@ export function respondToStructuredAgentSessionPrompt(
   caller: StructuredAgentSessionCaller,
   params: AgentSessionPromptRequest & { envelope: AgentSessionMutationEnvelope }
 ): Promise<AgentSessionMutationResult<AgentSessionPromptResult>> {
-  const plan = promptPlan(params)
-  const stop = structuredAgentSessionChatStop(context, params.envelope)
-  const answered = mutateStructuredAgentSession(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
-    {
-      ...plan,
-      run: (ctx) =>
-        answerStructuredAgentSessionPromptOrStop(ctx, params, {
-          stop: () => stop.run(ctx),
-          answer: () => plan.run(ctx)
-        })
-    },
+    promptPlan(params),
     openForWrite(context, params.envelope)
   )
-  stop.queueChildEnd()
-  return answered
 }
 
 export async function setStructuredAgentSessionOption(

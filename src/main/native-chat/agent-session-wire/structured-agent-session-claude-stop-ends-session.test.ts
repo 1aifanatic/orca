@@ -124,7 +124,7 @@ function eventually<T>(assertion: () => T | Promise<T>): Promise<T> {
 }
 
 function envelope(
-  method: 'agentSession.send' | 'agentSession.cancel' | 'agentSession.respondTo:approval',
+  method: 'agentSession.send' | 'agentSession.cancel',
   fields: Record<string, unknown>,
   fence = store.getRecord(SESSION)!.lease.runtimeFence
 ) {
@@ -647,43 +647,31 @@ it("ends a question card's Cancel the way the chat's Stop does, and the next sen
   })
 })
 
-it("ends an approval card's Stop option the way the chat's Stop does, from any client", async () => {
+it('dismisses a plan card on its Cancel: Claude is told to wait for the user, and keeps running', async () => {
   const connection = claude.connections[0]!
-  await openTurn(connection)
-  const { answered, card } = await ask(connection, 'Bash', { command: 'rm -rf build' })
-  const followUp = await send('And then this.')
-  await eventually(() => expect(wrote(connection, 'And then this.')).toBe(true))
-  queued.push(String(connection.sent.at(-1)!.uuid))
-
-  // Exactly what a client of any version sends for the card's Stop option.
-  const fields = {
-    itemId: card.itemId,
-    expectedRevision: card.expectedRevision,
-    optionId: 'cancel'
-  }
-  await expect(
-    host.respondToPrompt(CALLER, {
-      envelope: envelope('agentSession.respondTo:approval', fields),
-      kind: 'approval',
-      ...fields
-    })
-  ).resolves.toMatchObject({ ok: true, value: { itemId: card.itemId } })
-
-  // The Stop button's order: the queued follow-up withdrawn, the interrupt, and the child still
-  // up until Claude ends the turn.
-  expect(await dispatch(followUp)).toEqual({
-    state: 'rejected',
-    reason: DISPATCH_REJECTED_CANCELLED
+  const turnId = await openTurn(connection)
+  const { answered, card } = await ask(connection, 'ExitPlanMode', {
+    plan: '# Release\n\n- Tag it'
   })
-  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
-  expect(connection.closed).toBe(false)
-  frame(connection, INTERRUPTED_RESULT)
+
+  await expect(cancelCard(turnId, card)).resolves.toMatchObject({
+    ok: true,
+    value: { turnId, cancelled: true }
+  })
   await laneDrained()
 
-  expect(connection.closed).toBe(true)
-  expect(await turnOutcome()).toBe('cancellation')
-  expect(await cardResolution(card.itemId)).not.toMatchObject({ state: 'pending' })
-  // Claude is never answered with a deny that interrupts and keeps it running.
-  expect(await answered.promise).not.toMatchObject({ interrupt: true })
-  expect(await statusTexts()).toEqual(['Cancellation requested.'])
+  const reply = await answered.promise
+  expect(reply).toMatchObject({ behavior: 'deny' })
+  expect(reply).not.toHaveProperty('interrupt')
+  // Not "keep planning": nothing asks Claude to revise and show another plan.
+  expect(JSON.stringify(reply)).toMatch(/wait for them/)
+  expect(JSON.stringify(reply)).not.toMatch(/keep planning|ExitPlanMode again/i)
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
+  expect(connection.closed).toBe(false)
+  const cards = (await host.journalSnapshot(SESSION)).items.filter(
+    (item) => item.body.kind === 'approval'
+  )
+  expect(cards).toHaveLength(1)
+  expect(await cardResolution(card.itemId)).toMatchObject({ state: 'resolved' })
+  expect(await statusTexts()).toEqual([])
 })

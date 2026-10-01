@@ -1,9 +1,15 @@
-// How a provider's Stop, and a prompt card's own controls, end what they end. Every member is
-// optional: a provider that declares none keeps its child after a Stop, its card's Cancel interrupts
-// the turn holding the card, and a card's option goes to it as picked.
+// How a provider's Stop, and a prompt card's own Cancel, end what they end. Every member is
+// optional: a provider that declares none keeps its child after a Stop, and its card's Cancel
+// interrupts the turn holding the card.
 
-/** Where a card's control goes: one of the approval's own options, or the chat's Stop. */
-export type AgentSessionPromptRoute = { kind: 'option'; optionId: string } | { kind: 'stop' }
+import type {
+  AgentJournalApprovalItem,
+  AgentJournalQuestionItem
+} from '../../../shared/agent-session-journal-types'
+
+/** Where a card's Cancel goes: an approval answer, sent as if the user picked it, or the chat's
+ *  Stop. The answer may be one the card does not offer, such as a dismissal. */
+export type AgentSessionPromptCancelRoute = { kind: 'option'; optionId: string } | { kind: 'stop' }
 
 export type StructuredAgentSessionAdapterStop = {
   /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
@@ -14,11 +20,9 @@ export type StructuredAgentSessionAdapterStop = {
    *  `turnId` is not the provider's open turn, else when it ends or the provider's grace, counted
    *  from `stoppedAt` (when the interrupt went out), runs out. */
   awaitStoppedTurnEnd?(sessionId: string, turnId: string, stoppedAt: number): Promise<void>
-  /** Where a card's own Cancel (no `optionId`), or one of its options, goes. Undefined: the Cancel
-   *  goes to `cancelTurn` with the prompt, and the option to `answerPrompt`. */
-  routePromptAnswer?(
-    sessionId: string,
-    kind: 'approval' | 'question',
-    optionId?: string
-  ): AgentSessionPromptRoute | undefined
+  /** Where the pending card's own Cancel goes. Undefined: `cancelTurn` with the prompt. */
+  routePromptCancel?(input: {
+    sessionId: string
+    prompt: AgentJournalApprovalItem | AgentJournalQuestionItem
+  }): AgentSessionPromptCancelRoute | undefined
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalQuestionItem,
+  AgentSessionJournalIdentity
+} from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionAcquisition,
   StructuredAgentSessionAdapter
@@ -167,6 +170,13 @@ describe('StructuredAgentSessionAdapterRouter optional lifecycle methods', () =>
   )
 })
 
+const QUESTION: AgentJournalQuestionItem = {
+  kind: 'question',
+  question: 'Which branch?',
+  options: [{ id: 'main', label: 'main' }],
+  resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+}
+
 describe('StructuredAgentSessionAdapterRouter.stopEndsSession', () => {
   it("answers for the session's live owner, and keeps the child with none", async () => {
     const claude = adapterOf(vi.fn(async () => true))
@@ -194,13 +204,15 @@ describe('StructuredAgentSessionAdapterRouter.stopEndsSession', () => {
 
   it("answers a card's Cancel as the session's live owner does, and leaves it to cancelTurn with none", async () => {
     const claude = adapterOf(vi.fn(async () => true))
-    claude.routePromptAnswer = () => ({ kind: 'stop' })
+    claude.routePromptCancel = () => ({ kind: 'stop' })
     const codex = adapterOf(vi.fn(async () => false))
     const router = new StructuredAgentSessionAdapterRouter({ claude, codex }, async () => {})
 
-    expect(router.routePromptAnswer('session-1', 'question')).toBeUndefined()
+    expect(router.routePromptCancel({ sessionId: 'session-1', prompt: QUESTION })).toBeUndefined()
     await router.acquire({ identity: claudeIdentity('session-1'), fence: 1, spawnToken: 'spawn-1' })
-    expect(router.routePromptAnswer('session-1', 'question')).toEqual({ kind: 'stop' })
+    expect(router.routePromptCancel({ sessionId: 'session-1', prompt: QUESTION })).toEqual({
+      kind: 'stop'
+    })
   })
 })
 

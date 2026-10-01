@@ -59,7 +59,7 @@ function cancelClaudeConversation(
   )
 }
 
-/** A Stop's interrupt. A card's own Cancel never comes here: `claudePromptCancelAnswer` answers it. */
+/** A Stop's interrupt. A card's own Cancel never comes here: `claudePromptCancelRoute` routes it. */
 export async function cancelClaudeStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, ClaudeSession>

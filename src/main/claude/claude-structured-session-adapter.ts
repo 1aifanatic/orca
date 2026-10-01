@@ -42,7 +42,7 @@ import {
   answerClaudeStructuredPrompt,
   cancelClaudeStructuredTurn
 } from './claude-structured-prompt-ownership'
-import { claudePromptRoute } from './claude-structured-prompt-replies'
+import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 export type {
@@ -203,7 +203,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   // CLI running, and a refused one leaves the turn running.
   stopEndsSession = (): boolean => true
   awaitStoppedTurnEnd = claudeStoppedTurnEndWait(this.sessions)
-  routePromptAnswer = claudePromptRoute
+  routePromptCancel = claudePromptCancelRoute
   stopBackgroundTasks: StructuredAgentSessionAdapter['stopBackgroundTasks'] = (input) => {
     const session = this.session(input.sessionId)
     const acquisitionGeneration = session.acquisitionGeneration
