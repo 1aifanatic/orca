@@ -28,6 +28,8 @@ type OutstandingPing = { startedAt: number; deadline: number; cpuSecondsAtStart:
 
 export function createRendererGpuStallWatchdog(deps: RendererGpuStallWatchdogDeps): {
   tick: () => void
+  /** Drops the outstanding ping; call when the renderer reloads or dies. */
+  reset: () => void
 } {
   const now = deps.now ?? Date.now
   let outstanding: OutstandingPing | null = null
@@ -43,6 +45,21 @@ export function createRendererGpuStallWatchdog(deps: RendererGpuStallWatchdogDep
     return share > BUSY_RENDERER_CPU_SHARE
   }
 
+  const sendPing = (at: number): void => {
+    const ping: OutstandingPing = {
+      startedAt: at,
+      deadline: at + RENDERER_GPU_STALL_TIMEOUT_MS,
+      cpuSecondsAtStart: deps.readRendererCpuSeconds()
+    }
+    outstanding = ping
+    const settle = (): void => {
+      if (outstanding === ping) {
+        outstanding = null
+      }
+    }
+    deps.pingRenderer().then(settle, settle)
+  }
+
   const tick = (): void => {
     const at = now()
     // Why: a tick gap means OS sleep froze both sides; an old ping proves nothing.
@@ -53,18 +70,7 @@ export function createRendererGpuStallWatchdog(deps: RendererGpuStallWatchdogDep
       return
     }
     if (!outstanding) {
-      const ping: OutstandingPing = {
-        startedAt: at,
-        deadline: at + RENDERER_GPU_STALL_TIMEOUT_MS,
-        cpuSecondsAtStart: deps.readRendererCpuSeconds()
-      }
-      outstanding = ping
-      const settle = (): void => {
-        if (outstanding === ping) {
-          outstanding = null
-        }
-      }
-      deps.pingRenderer().then(settle, settle)
+      sendPing(at)
       return
     }
     if (at < outstanding.deadline || kills >= RENDERER_GPU_STALL_MAX_KILLS) {
@@ -75,11 +81,11 @@ export function createRendererGpuStallWatchdog(deps: RendererGpuStallWatchdogDep
       return
     }
     const gpuPids = deps.readGpuPids()
-    // Why re-arm: the replacement GPU process can wedge too (field shape).
-    outstanding.deadline = at + RENDERER_GPU_STALL_TIMEOUT_MS
     if (gpuPids.length === 0) {
+      sendPing(at)
       return
     }
+    const stalledMs = at - outstanding.startedAt
     kills += 1
     for (const pid of gpuPids) {
       try {
@@ -88,10 +94,17 @@ export function createRendererGpuStallWatchdog(deps: RendererGpuStallWatchdogDep
         // Already gone: Chromium relaunches the GPU process either way.
       }
     }
-    deps.onGpuKilled({ stalledMs: at - outstanding.startedAt, gpuPids, kills })
+    deps.onGpuKilled({ stalledMs, gpuPids, kills })
+    // Why a fresh ping: a wedged replacement GPU stalls it too, while a ping
+    // that can never settle cannot keep re-triggering kills.
+    sendPing(at)
   }
 
-  return { tick }
+  const reset = (): void => {
+    outstanding = null
+  }
+
+  return { tick, reset }
 }
 
 export function installRendererGpuStallWatchdog(mainWindow: BrowserWindow): () => void {
@@ -123,7 +136,16 @@ export function installRendererGpuStallWatchdog(mainWindow: BrowserWindow): () =
       })
     }
   })
+  // Why: executeJavaScript never settles once its renderer reloads or crashes.
+  webContents.on('did-start-loading', watchdog.reset)
+  webContents.on('render-process-gone', watchdog.reset)
   const timer = setInterval(watchdog.tick, RENDERER_GPU_STALL_PING_INTERVAL_MS)
   timer.unref?.()
-  return () => clearInterval(timer)
+  return () => {
+    clearInterval(timer)
+    if (!webContents.isDestroyed()) {
+      webContents.off('did-start-loading', watchdog.reset)
+      webContents.off('render-process-gone', watchdog.reset)
+    }
+  }
 }

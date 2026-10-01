@@ -31,11 +31,26 @@ function createHarness(canPing: () => boolean = () => true) {
       watchdog.tick()
     }
   }
+  const advanceAnswering = async (ms: number): Promise<void> => {
+    for (let elapsed = 0; elapsed < ms; elapsed += RENDERER_GPU_STALL_PING_INTERVAL_MS) {
+      clock += RENDERER_GPU_STALL_PING_INTERVAL_MS
+      watchdog.tick()
+      await Promise.resolve()
+    }
+  }
   const sleep = (ms: number): void => {
     clock += ms
     watchdog.tick()
   }
-  return { deps, watchdog, advance, sleep, now: () => clock, answer: () => answer?.() }
+  return {
+    deps,
+    watchdog,
+    advance,
+    advanceAnswering,
+    sleep,
+    now: () => clock,
+    answer: () => answer?.()
+  }
 }
 
 describe('renderer GPU stall watchdog', () => {
@@ -88,5 +103,23 @@ describe('renderer GPU stall watchdog', () => {
     pingable = true
     advance(RENDERER_GPU_STALL_TIMEOUT_MS)
     expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+  it('drops a ping lost to a renderer reload instead of killing a healthy GPU', async () => {
+    const { deps, watchdog, advance, advanceAnswering } = createHarness()
+    advance(RENDERER_GPU_STALL_PING_INTERVAL_MS)
+    // The reload orphans the pending ping; it never settles.
+    watchdog.reset()
+    deps.pingRenderer.mockImplementation(() => Promise.resolve())
+    await advanceAnswering(RENDERER_GPU_STALL_TIMEOUT_MS * 4)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+
+  it('sends a fresh ping after a kill instead of re-arming the lost one', async () => {
+    const { deps, advance, advanceAnswering } = createHarness()
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS)
+    // The first ping is lost for good; the recovered renderer answers new ones.
+    deps.pingRenderer.mockImplementation(() => Promise.resolve())
+    await advanceAnswering(RENDERER_GPU_STALL_TIMEOUT_MS * 4)
+    expect(deps.killProcess).toHaveBeenCalledTimes(1)
   })
 })
