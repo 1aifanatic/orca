@@ -50,7 +50,7 @@ import { STRUCTURED_AGENT_SESSION_THREAD_GOAL_METHODS } from './structured-agent
 import { STRUCTURED_AGENT_SESSION_CONVERSATION_OUTLINE_METHODS } from './structured-agent-session-conversation-outline'
 import { STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS } from './structured-agent-session-options-read'
 import {
-  AttachParams,
+  type AttachParams,
   CancelParams,
   ConversationCommandParams,
   CreateParams,

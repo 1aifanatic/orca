@@ -503,6 +503,7 @@ describe('cross-version structured agent sessions', () => {
         now: () => NOW
       })
       setStructuredAgentSessionHost(host)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attachParams builds the wire shape the suite feeds every build; the host takes its typed form.
       const attached = await host.create({ callerKey: 'test' }, attachParams(null) as never)
       expect(attached.ok).toBe(true)
       createMobileSessionTerminal = vi.fn()

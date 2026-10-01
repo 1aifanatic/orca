@@ -49,6 +49,7 @@ function hostStub(): StructuredAgentSessionHost {
     cursor: { epoch: 'epoch-a', sequence: 0 },
     value: { sessionId: SESSION, fence: 1, page: {}, unconfirmedClientMessageIds: [] }
   }))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the create route reaches only `create` on the host it is handed.
   return { create: hostCreate } as unknown as StructuredAgentSessionHost
 }
 

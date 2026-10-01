@@ -1,12 +1,7 @@
 // The method-to-gate classification from `structured-agent-session-gate.ts`, as a table the
 // suites iterate. Adding an `agentSession.*` method means adding it to exactly one of these.
 
-import {
-  attachParams,
-  envelope,
-  sendParams,
-  SESSION
-} from './structured-agent-session-rpc.test-fixture'
+import { envelope, sendParams, SESSION } from './structured-agent-session-rpc.test-fixture'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 
 /** Stops or retires work the caller already owns, so admission may already have been revoked. */

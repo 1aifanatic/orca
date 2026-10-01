@@ -198,6 +198,7 @@ function attachContext(
   } as unknown as StructuredAgentSessionAttachContext
 }
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the attach fails before reading anything past the envelope.
 const attachParams = {
   envelope: { sessionId: SESSION, clientOperationId: 'op-1' }
 } as unknown as Parameters<typeof attachStructuredAgentSessionUnderSerialize>[2]
