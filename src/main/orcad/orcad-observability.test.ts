@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,40 +49,74 @@ describe('orcad trace file', () => {
     rmSync(dataRoot, { recursive: true, force: true })
   })
 
-  it('writes a structured chat failure under the data root, flushed by quit', () => {
-    const quitHandlers: (() => void)[] = []
-    installOrcadObservability((handler) => quitHandlers.push(handler))
+  const traceRecords = (): { name: string; attributes: Record<string, unknown> }[] =>
+    readFileSync(join(dataRoot, 'logs', 'orcad.trace.ndjson'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
 
+  const reportLateSettlement = (): void =>
     createStructuredAgentSessionLogger().warn('settling a late dispatch failed', {
       scope: 'late-settlement',
       sessionId: 'session-1',
       error: new Error('disk full')
     })
-    for (const handler of quitHandlers) {
-      handler()
-    }
 
-    const records = readFileSync(join(dataRoot, 'logs', 'main.trace.ndjson'), 'utf8')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line))
-    expect(records).toContainEqual(
+  it('writes a structured chat failure to its own file under the data root, flushed by close', () => {
+    const close = installOrcadObservability()
+
+    reportLateSettlement()
+    close()
+
+    expect(traceRecords()).toContainEqual(
       expect.objectContaining({
         name: 'agentSession.late-settlement',
         attributes: expect.objectContaining({ sessionId: 'session-1' }),
         exit: expect.objectContaining({ _tag: 'Failure' })
       })
     )
+    expect(existsSync(join(dataRoot, 'logs', 'main.trace.ndjson'))).toBe(false)
+  })
+
+  it('flushes what is buffered when the process exits with no cleanup', () => {
+    const before = new Set(process.listeners('exit'))
+    const close = installOrcadObservability()
+    const onExit = process.listeners('exit').filter((listener) => !before.has(listener))
+    expect(onExit).toHaveLength(1)
+
+    reportLateSettlement()
+    onExit[0]?.call(process, 1)
+
+    expect(traceRecords().map((record) => record.name)).toContain('agentSession.late-settlement')
+    close()
+    expect(process.listeners('exit')).toHaveLength(before.size)
+  })
+
+  it('still starts when the logs folder cannot be opened, with tracing off', () => {
+    // A regular file where the folder belongs fails the open as a read-only mount or EACCES does.
+    writeFileSync(join(dataRoot, 'logs'), 'not a folder')
+    const warn = vi.mocked(console.warn)
+
+    const close = installOrcadObservability()
+    reportLateSettlement()
+    close()
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[observability] tracing is off'),
+      expect.any(Error)
+    )
+    expect(readFileSync(join(dataRoot, 'logs'), 'utf8')).toBe('not a folder')
   })
 })
 
 // Booting orcad here would need its whole runtime; the wiring is pinned the way the agent-status
 // store's is, by the entry point's own text.
-it('orcad installs the trace file before its runtime', () => {
+it('orcad installs the trace file before its runtime and closes it after every quit handler', () => {
   const entry = readFileSync(join(import.meta.dirname, 'orcad-entry.ts'), 'utf8')
-  const install = entry.indexOf(
-    'installOrcadObservability((handler) => getAppEnvironment().onWillQuit(handler))'
-  )
+  const install = entry.indexOf('closeOrcadObservability = installOrcadObservability()')
   expect(install).toBeGreaterThan(-1)
   expect(install).toBeLessThan(entry.indexOf('new OrcaRuntimeService('))
+  const quit = entry.indexOf('      runOrcadQuitHandlers()\n')
+  expect(quit).toBeGreaterThan(-1)
+  expect(entry.indexOf('      closeOrcadObservability()\n', quit)).toBeGreaterThan(quit)
 })

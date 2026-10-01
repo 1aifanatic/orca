@@ -2,10 +2,11 @@
 //
 // One required dependency rather than a callback per failure: a host built without it does not
 // compile, so no failure path can quietly drop what went wrong. The default writes each entry to
-// the app's local trace file (`<userData>/logs/main.trace.ndjson`, collected by the diagnostic
-// bundle) and to the console, which is stderr under a supervised headless host.
+// the host's local trace file (the desktop's `<userData>/logs/main.trace.ndjson`, collected by the
+// diagnostic bundle; orcad's `<data-root>/logs/orcad.trace.ndjson`) and to the console.
 
 import { startSpan } from '../../observability/tracer'
+import { createStructuredAgentSessionLogRepeats } from './structured-agent-session-log-repeats'
 
 export type StructuredAgentSessionLogFields = {
   /** The step that failed; a stable name a log search can find. */
@@ -66,24 +67,75 @@ export function deferredStructuredAgentSessionLogger(
   }
 }
 
-/** The production logger: a failed span in the local trace file, plus the console. */
-export function createStructuredAgentSessionLogger(): StructuredAgentSessionLogger {
+/** The production logger: a failed span in the local trace file, plus the console. A repeat of
+ *  the same entry is written at most once per window, carrying how many were swallowed. */
+export function createStructuredAgentSessionLogger(options?: {
+  now?: () => number
+}): StructuredAgentSessionLogger {
+  const repeats = createStructuredAgentSessionLogRepeats({ now: options?.now })
   const write =
     (level: LogLevel) =>
     (message: string, fields: StructuredAgentSessionLogFields): void => {
-      const { scope, error, ...rest } = fields
+      // The error's own text is in the key: a failure that changes is news, as the read door's is.
+      const { error: keyError } = fields
+      const errorText = keyError instanceof Error ? keyError.message : String(keyError)
+      const suppressed = repeats.admit(
+        JSON.stringify([level, fields.scope, fields.sessionId ?? null, message, errorText])
+      )
+      if (suppressed === null) {
+        return
+      }
+      const entry = suppressed > 0 ? { ...fields, suppressed } : fields
+      const { scope, error, ...rest } = entry
       const span = startSpan(`agentSession.${scope}`, {
-        attributes: {
-          level,
-          message,
-          ...rest,
-          // An Error's own fields do not enumerate; the span's failure cause carries its stack.
-          ...(error !== undefined && !(error instanceof Error) ? { error } : {})
-        }
+        attributes: { level, message, ...rest, ...errorAttributes(error) }
       })
       span.fail(error instanceof Error ? error : message)
       const print = level === 'error' ? console.error : console.warn
-      print(`[agent-session] ${scope}: ${message}`, fields)
+      print(`[agent-session] ${scope}: ${message}`, entry)
     }
   return neverThrowingStructuredAgentSessionLogger({ warn: write('warn'), error: write('error') })
+}
+
+const MAX_LOGGED_CAUSES = 3
+
+/** The span's failure carries an Error's name, message and stack; its code and causes ride here.
+ *  A value that is not an Error is written whole, as it would serialize. */
+function errorAttributes(error: unknown): Record<string, unknown> {
+  if (error === undefined) {
+    return {}
+  }
+  if (!(error instanceof Error)) {
+    return { error }
+  }
+  const causes: string[] = []
+  let cause: unknown = error.cause
+  // Name and message only: a cause's own fields can carry what the failing step was handling.
+  while (cause !== undefined && causes.length < MAX_LOGGED_CAUSES) {
+    if (cause instanceof Error) {
+      causes.push(`${cause.name}: ${cause.message}${codeSuffix(cause)}`)
+      cause = cause.cause
+    } else {
+      causes.push(typeof cause === 'object' && cause !== null ? '[non-error cause]' : String(cause))
+      cause = undefined
+    }
+  }
+  const code = errorCode(error)
+  // node:sqlite's `code` is one generic value; `errcode` tells SQLITE_BUSY from SQLITE_FULL.
+  const sqliteCode = errorCode(error, 'errcode')
+  return {
+    ...(code !== undefined ? { errorCode: code } : {}),
+    ...(sqliteCode !== undefined ? { errorErrcode: sqliteCode } : {}),
+    ...(causes.length > 0 ? { errorCause: causes } : {})
+  }
+}
+
+function errorCode(error: Error, key: 'code' | 'errcode' = 'code'): string | number | undefined {
+  const value: unknown = Reflect.get(error, key)
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined
+}
+
+function codeSuffix(error: Error): string {
+  const code = errorCode(error)
+  return code !== undefined && !error.message.includes(String(code)) ? ` [${code}]` : ''
 }

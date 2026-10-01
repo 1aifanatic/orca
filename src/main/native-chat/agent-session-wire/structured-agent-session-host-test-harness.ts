@@ -29,7 +29,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
-import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const journals = createTrackedJournalOpener()
 
@@ -63,6 +63,7 @@ let root: string
 let recoveryCapsule: TrackedTestRecoveryCapsule
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
+let log: ReturnType<typeof recordingProductionStructuredAgentSessionLogger>
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let releaseAcquisition: Mock<NonNullable<StructuredAgentSessionAdapter['releaseAcquisition']>>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
@@ -153,8 +154,9 @@ beforeEach(async () => {
   setOption = vi.fn(async () => undefined)
   store = await openTestAgentSessionRecordStore(root)
   recoveryCapsule = new TrackedTestRecoveryCapsule(root)
+  log = recordingProductionStructuredAgentSessionLogger()
   host = new StructuredAgentSessionHost({
-    logger: createStructuredAgentSessionLogger(),
+    logger: log.logger,
     store,
     adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(root),
@@ -202,6 +204,8 @@ export function hostTestState() {
     root,
     store,
     host,
+    /** Every entry the beforeEach host logged; a host a test builds itself logs elsewhere. */
+    log,
     acquire,
     releaseAcquisition,
     dispatch,

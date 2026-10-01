@@ -503,8 +503,8 @@ describe('a chat tab over records a newer Orca wrote', () => {
 
     expect((await snapshot()).activeTabId).toBe(`agent-session:${HOST_TEST_SESSION}`)
     expect(warn).toHaveBeenCalledWith(
-      '[structured-agent-session] recording an opened chat tab failed',
-      expect.anything()
+      '[agent-session] tab-visibility-open: recording an opened chat tab failed',
+      expect.objectContaining({ scope: 'tab-visibility-open', sessionId: HOST_TEST_SESSION })
     )
   })
 })
@@ -522,8 +522,8 @@ describe('a chat tab whose restore index cannot be written', () => {
     expect(created.ok ? created.value.tabId : null).toBeUndefined()
     expect((await snapshot()).activeTabId).toBe(`agent-session:${HOST_TEST_SESSION}`)
     expect(warn).toHaveBeenCalledWith(
-      '[structured-agent-session] recording an opened chat tab failed',
-      failure
+      '[agent-session] tab-visibility-open: recording an opened chat tab failed',
+      { scope: 'tab-visibility-open', sessionId: HOST_TEST_SESSION, error: failure }
     )
     expect(store.getSessionTabId(HOST_TEST_SESSION)).toBeNull()
   })

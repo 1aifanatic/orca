@@ -54,7 +54,7 @@ it('publishes continuation attribution to the subscribed chat without another pr
 })
 
 it('reports a failed attribution note without an installed error sink or private details', async () => {
-  const { host } = await interruptedRestart()
+  const { host, log } = await interruptedRestart()
   const append = AgentSessionJournal.prototype.appendItem
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const write = vi.spyOn(AgentSessionJournal.prototype, 'appendItem').mockImplementation(function (
@@ -73,6 +73,8 @@ it('reports a failed attribution note without an installed error sink or private
       '[agent-session] restart-continuation-note: writing a restart continuation note failed',
       { scope: 'restart-continuation-note', sessionId: SESSION }
     )
+    expect(log.scopes()).toContain('restart-continuation-note')
+    expect(inspect(log.entries, { depth: 8 })).not.toContain('/private/account')
   } finally {
     write.mockRestore()
     warning.mockRestore()
@@ -320,7 +322,7 @@ it('keeps concurrent recovery reads independent and non-destructive', async () =
 })
 
 it('fails closed on corrupt recovery storage while an ordinary send still works', async () => {
-  const { host, root, dispatch } = await interruptedRestart()
+  const { host, root, dispatch, log } = await interruptedRestart()
   await writeFile(join(root, AGENT_SESSION_RECOVERY_CAPSULE_FILE), '{')
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
   expect(await host.restartResume.list()).toEqual([])
@@ -337,14 +339,15 @@ it('fails closed on corrupt recovery storage while an ordinary send still works'
   await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
   // list; the action's read of offers and of failures; the post-action refresh of both. The send
   // cannot withdraw an offer it cannot read either, and says so.
-  const withdrawing = '[agent-session] restart-offer-withdraw: withdrawing a restart offer failed'
   await vi.waitFor(() =>
-    expect(warning).toHaveBeenLastCalledWith(withdrawing, {
-      scope: 'restart-offer-withdraw',
-      sessionId: SESSION
+    expect(log.entries.at(-1)).toEqual({
+      level: 'warn',
+      message: 'withdrawing a restart offer failed',
+      fields: { scope: 'restart-offer-withdraw', sessionId: SESSION }
     })
   )
-  expect(warning.mock.calls.filter(([message]) => message !== withdrawing)).toHaveLength(5)
+  // Counted before the console's repeat suppression, which prints each repeated read only once.
+  expect(log.scopes().filter((scope) => scope !== 'restart-offer-withdraw')).toHaveLength(5)
   warning.mockRestore()
 })
 
@@ -462,6 +465,8 @@ it('logs teardown capsule publication failure and still releases the provider', 
     { scope: 'teardown-recovery-capsule' }
   )
   expect(inspect(warning.mock.calls, { depth: 8 })).not.toContain(previous.root)
+  expect(previous.log.scopes()).toContain('teardown-recovery-capsule')
+  expect(inspect(previous.log.entries, { depth: 8 })).not.toContain(previous.root)
   expect(previous.store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
   warning.mockRestore()
   await rm(capsulePath, { recursive: true })

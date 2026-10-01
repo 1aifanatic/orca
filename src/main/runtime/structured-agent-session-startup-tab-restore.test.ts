@@ -413,8 +413,7 @@ describe('restoring the chat tabs open at quit', () => {
     it('still lists the chats when that write fails, and leaves the index absent', async () => {
       const records = legacyChats()
       await seedProfile(records)
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      const { runtime, published } = startupRuntime({ profileChats: [CHAT_A, CHAT_B] })
+      const { runtime, published, log } = startupRuntime({ profileChats: [CHAT_A, CHAT_B] })
       await runtime.prepareStructuredAgentSessionStartupRestoration()
       writes.failing = true
 
@@ -422,13 +421,15 @@ describe('restoring the chat tabs open at quit', () => {
 
       expect(published()).toHaveLength(2)
       await expectHistory(CHAT_A)
-      expect(warn).toHaveBeenCalledWith(
-        '[structured-agent-session] recording restored chat tabs failed',
-        {
+      expect(log.entries).toContainEqual({
+        level: 'warn',
+        message: 'recording restored chat tabs failed',
+        fields: {
+          scope: 'tab-index-seed',
           sessionIds: [CHAT_A, CHAT_B],
           error: expect.objectContaining({ message: 'disk I/O error' })
         }
-      )
+      })
       expect(await tabIndexOnDisk()).toBeUndefined()
     })
   })

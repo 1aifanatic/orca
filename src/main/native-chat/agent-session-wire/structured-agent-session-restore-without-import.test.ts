@@ -230,11 +230,12 @@ async function restore(sessionIds: readonly string[]) {
     getRecord: (sessionId: string) => recordFor(sessionId),
     listRecords: () => sessionIds.map(recordFor)
   } as unknown as AgentSessionRecordStore
+  const log = recordingStructuredAgentSessionLogger()
   const deps = {
     store,
     adapter: {},
     journalDatabase: openTestJournalHostDatabase(root),
-    logger: recordingStructuredAgentSessionLogger().logger
+    logger: log.logger
   }
   await restoreStructuredAgentSessionsOnRestart({
     openDeps: deps,
@@ -261,7 +262,7 @@ async function restore(sessionIds: readonly string[]) {
       readChildWork: () => undefined
     })
   const lifetime = lifetimeOver(sessions, async (sessionId) => sessions.get(sessionId) ?? null)
-  return { sessions, lifetime, lifetimeOver }
+  return { sessions, lifetime, lifetimeOver, log }
 }
 
 function texts(items: readonly { body: unknown }[]): string {
@@ -434,12 +435,11 @@ describe('startup restore of chats still in their per-chat files', () => {
     'refuses a read of the chat restore %s when its copy meets damage, never with the storage text',
     async (reach) => {
       await seedLegacyChat('chat-a')
-      const { sessions, lifetime, lifetimeOver } = await restore(['chat-a'])
+      const { sessions, lifetime, lifetimeOver, log } = await restore(['chat-a'])
       const restored = sessions.get('chat-a')!
       await rm(legacyDirFor('chat-a'), { recursive: true, force: true })
       await mkdir(legacyDirFor('chat-a'), { recursive: true })
       await writeFile(legacyFile('chat-a'), 'not a database, and never was one')
-      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const reader =
         reach === 'listed' ? lifetime : lifetimeOver(conversations(), async () => restored)
 
@@ -450,6 +450,12 @@ describe('startup restore of chats still in their per-chat files', () => {
         message: 'agent_session_journal_unreadable',
         refusal: { details: { reason: 'journalCorrupt' } }
       })
+      // The storage text the reader never sees goes to the host's log.
+      expect(log.entries.filter((entry) => entry.fields.scope === 'open-for-read')).toEqual([
+        expect.objectContaining({
+          fields: { scope: 'open-for-read', sessionId: 'chat-a', error: expect.any(Error) }
+        })
+      ])
     }
   )
 

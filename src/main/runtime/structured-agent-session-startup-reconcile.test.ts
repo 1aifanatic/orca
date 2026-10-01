@@ -127,11 +127,11 @@ it('finishes startup when the reconcile cannot write, and reports it', async () 
 // close is reported and goes on, since bookkeeping never keeps a tab open.
 it('closes a chat tab over records a newer Orca wrote, reporting the index it cannot write', async () => {
   const { sessionId } = await seedChat({ newer: true })
-  const runtime = startupRuntime()
+  const log = recordingStructuredAgentSessionLogger()
+  const runtime = startupRuntime(log)
   await runtime.prepareStructuredAgentSessionStartupRestoration()
   const host = getStructuredAgentSessionHost()
   const close = vi.spyOn(host!, 'close')
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime's own protected close path, reached with the one field it reads.
   const internal = runtime as unknown as {
     closeStructuredAgentSessionTab(tab: { sessionId: string }, cause: 'user-close'): Promise<void>
@@ -141,11 +141,16 @@ it('closes a chat tab over records a newer Orca wrote, reporting the index it ca
     internal.closeStructuredAgentSessionTab({ sessionId }, 'user-close')
   ).resolves.toBeUndefined()
 
-  expect(warn).toHaveBeenCalledWith(
-    '[structured-agent-session] recording a closed chat tab failed',
-    expect.objectContaining({
-      refusal: expect.objectContaining({ details: { reason: 'journalWrittenByNewerOrca' } })
-    })
-  )
+  expect(log.entries).toContainEqual({
+    level: 'warn',
+    message: 'recording a closed chat tab failed',
+    fields: {
+      scope: 'tab-visibility-close',
+      sessionId,
+      error: expect.objectContaining({
+        refusal: expect.objectContaining({ details: { reason: 'journalWrittenByNewerOrca' } })
+      })
+    }
+  })
   expect(close).toHaveBeenCalledWith(sessionId, 'user-close')
 })

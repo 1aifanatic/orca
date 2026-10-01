@@ -1,6 +1,7 @@
-import type {
-  StructuredAgentSessionLogFields,
-  StructuredAgentSessionLogger
+import {
+  createStructuredAgentSessionLogger,
+  type StructuredAgentSessionLogFields,
+  type StructuredAgentSessionLogger
 } from './structured-agent-session-logger'
 
 export type RecordedStructuredAgentSessionLog = {
@@ -23,6 +24,28 @@ export function recordingStructuredAgentSessionLogger(): {
     },
     entries,
     scopes: () => entries.map((entry) => entry.fields.scope)
+  }
+}
+
+/** A recording logger that also prints as production does, for a harness whose tests read either:
+ *  the entries hold every level and every field, whatever the console mirror keeps. */
+export function recordingProductionStructuredAgentSessionLogger(): ReturnType<
+  typeof recordingStructuredAgentSessionLogger
+> {
+  const recording = recordingStructuredAgentSessionLogger()
+  const production = createStructuredAgentSessionLogger()
+  return {
+    ...recording,
+    logger: {
+      warn: (message, fields) => {
+        recording.logger.warn(message, fields)
+        production.warn(message, fields)
+      },
+      error: (message, fields) => {
+        recording.logger.error(message, fields)
+        production.error(message, fields)
+      }
+    }
   }
 }
 

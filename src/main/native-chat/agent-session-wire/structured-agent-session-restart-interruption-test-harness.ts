@@ -34,7 +34,7 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
-import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 /** Starts the agent explicitly — the attach a client's ensure makes — for a test that needs a
  *  running child before its next step. Nothing else starts one ahead of a send. */
@@ -125,8 +125,9 @@ export async function interruptedRestart(
   const closeSession = vi.fn(async () => true)
   // The relaunch comes after the quit that recorded the offer.
   const clock = { now: NOW + 1 }
+  const log = recordingProductionStructuredAgentSessionLogger()
   const host = new StructuredAgentSessionHost({
-    logger: createStructuredAgentSessionLogger(),
+    logger: log.logger,
     store,
     adapter: {
       ...adapter(),
@@ -156,7 +157,7 @@ export async function interruptedRestart(
     await readFile(join(previous.root, AGENT_SESSION_RECOVERY_CAPSULE_FILE), 'utf8')
   )
   const marker = parseAgentSessionResumeMarker(capsule.entries[0]?.marker)
-  return { ...hostTestState(), host, store, closeSession, marker, clock }
+  return { ...hostTestState(), host, store, log, closeSession, marker, clock }
 }
 
 export async function statusNotes(host: StructuredAgentSessionHost) {
