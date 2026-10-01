@@ -239,14 +239,13 @@ describe('a saved terminal-agent chat draft on relaunch', () => {
     await saveTerminalDraft([], 'ship it')
 
     const { cache, hook } = await relaunch()
+    const loading: { phase: 'loading' | 'ready'; seen: NativeChatMessage[] } = {
+      phase: 'loading',
+      seen: []
+    }
     const view = renderHook(
       ({ phase, seen }) => hook.useNativeChatPaneDraftTranscript(PANE_CHAT, phase, seen),
-      {
-        initialProps: {
-          phase: 'loading' as 'loading' | 'ready',
-          seen: [] as NativeChatMessage[]
-        }
-      }
+      { initialProps: loading }
     )
     expect(cache.readNativeChatDraftCache(PANE_CHAT)).toBe('')
     view.rerender({ phase: 'ready', seen: [turn('u1', 'ship it')] })
