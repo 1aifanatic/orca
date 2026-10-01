@@ -14,6 +14,8 @@ import {
   testState
 } from './runtime-home-service-test-harness'
 import { RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
+import type { CodexRuntimeHomeService } from './runtime-home-service'
+import type { GlobalSettings } from '../../shared/global-settings-types'
 
 vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -40,19 +42,21 @@ function getMarkerPath(): string {
   return join(testState.userDataDir, 'codex-runtime-home', RETIRED_MIRROR_CARRY_MARKER)
 }
 
+async function createService(settings: GlobalSettings): Promise<CodexRuntimeHomeService> {
+  const { CodexRuntimeHomeService } = await import('./runtime-home-service')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only getSettings/updateSettings, which the harness store implements.
+  return new CodexRuntimeHomeService(createStore(settings) as never)
+}
+
 async function upgradeToRealHome(platform: NodeJS.Platform): Promise<string | null> {
   Object.defineProperty(process, 'platform', { configurable: true, value: platform })
   setRealHomeRoutableForTest(true)
-  const { CodexRuntimeHomeService } = await import('./runtime-home-service')
-  const service = new CodexRuntimeHomeService(
-    createStore(createSettings({ realHomeRoutable: true })) as never
-  )
+  const service = await createService(createSettings({ realHomeRoutable: true }))
   return service.prepareForCodexLaunch()
 }
 
 async function startOnMirror(): Promise<void> {
-  const { CodexRuntimeHomeService } = await import('./runtime-home-service')
-  new CodexRuntimeHomeService(createStore(createSettings()) as never)
+  await createService(createSettings())
 }
 
 describe('retiring the Windows system-default mirror', () => {
