@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
-import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
+import { buildBody, LEAF_1, PANE, postHookEvent } from './server.test-fixtures'
+import { makePaneKey } from '../../shared/stable-pane-id'
 
 let dir: string
 let server: AgentHookServer
@@ -178,7 +179,7 @@ describe('process-lifetime status', () => {
     }
   )
 
-  it('keeps the Done when the clock steps back between the run start and its retirement', () => {
+  it('keeps the Done of a retired run whatever the wall clock reads at retirement', () => {
     const commandStartedAt = Date.now()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(commandStartedAt)
     processLifetime('working', commandStartedAt)
@@ -231,6 +232,28 @@ describe('process-lifetime status', () => {
     processLifetime('working', secondStartedAt)
     expect(paneState()).toBe('working')
     // The newer run's row is dismissed, so its retirement captures nothing of its own.
+    server.dropStatusEntry(PANE, { preserveResumeIdentity: false })
+    server.retirePaneAuthority(PANE)
+
+    processLifetime('done', secondStartedAt)
+    expect(paneState()).toBe('missing')
+  })
+
+  // Why: moving the pane to another tab and back lifts its retirement without a new-turn restart.
+  it('does not carry a run over from a retirement the pane has since left', async () => {
+    const firstStartedAt = Date.now()
+    processLifetime('working', firstStartedAt)
+    server.retirePaneAuthority(PANE)
+    const otherTabPane = makePaneKey('tab-2', LEAF_1)
+    server.transferPaneAuthority(PANE, otherTabPane, 'pty-1')
+    server.transferPaneAuthority(otherTabPane, PANE, 'pty-1')
+    await nextMillisecond()
+
+    // The next run is hook-owned (OpenCode 1 style); its row is dismissed before its command end.
+    const secondStartedAt = Date.now()
+    processLifetime('working', secondStartedAt)
+    await openCodeHook('SessionBusy')
+    expect(paneState()).toBe('working')
     server.dropStatusEntry(PANE, { preserveResumeIdentity: false })
     server.retirePaneAuthority(PANE)
 

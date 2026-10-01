@@ -12,6 +12,10 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
   retirePaneAuthority(paneKey: string, retirementId?: string): void {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
     const previousFence = this.retiredPaneFencesByKey.get(ownerPaneKey)
+    // Why: before the closed marks are re-added; a pane that left retirement has no run to carry over.
+    const previousRun = this.closedAgentStatusPaneKeys.has(ownerPaneKey)
+      ? previousFence?.retiredRun
+      : undefined
     const paneKeys = new Set([paneKey, ownerPaneKey])
     for (const key of previousFence?.paneKeys ?? []) {
       if (
@@ -48,13 +52,12 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.isClosedAgentStatusTabForPaneKey(ownerPaneKey) ? undefined : retirementId,
       liveRow
         ? {
-            agentType: liveRow.payload.agentType,
             state: liveRow.payload.state,
             origin: liveRow.observation?.origin,
             receivedAt: liveRow.receivedAt
           }
-        : // Why: a command end retires each of the pane's keys; the later calls find the rows gone.
-          previousFence?.retiredRun
+        : // Why: an earlier retirement of this pane (another of its keys, or a mid-run one) deleted the row.
+          previousRun
     )
     const authorityChanged = this.revokeHydratedAuthorityForPaneKeys(paneKeys)
     const hadStatus = retiredRows.length > 0

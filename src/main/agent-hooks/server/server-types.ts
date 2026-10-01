@@ -2,8 +2,7 @@ import type { ClaudeStatusLineRateLimits } from '../../../shared/claude-statusli
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import type {
   AgentStatusClearIpcPayload,
-  AgentStatusState,
-  AgentType
+  AgentStatusState
 } from '../../../shared/agent-status-types'
 import type {
   AgentStatusObservation,
@@ -132,7 +131,6 @@ export type RetiredPaneFence = {
 
 /** Which run a pane showed when it retired, and who reported it. */
 export type RetiredPaneRun = {
-  agentType?: AgentType
   state: AgentStatusState
   origin?: AgentStatusObservationOrigin
   receivedAt: number

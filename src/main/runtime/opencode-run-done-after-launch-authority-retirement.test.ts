@@ -153,7 +153,7 @@ describe('OpenCode run Done after its command retires launch authority', () => {
     expect(paneState()).toBe('done')
   })
 
-  it('keeps the Done when the wall clock steps back during the run', async () => {
+  it('keeps the Done of a visible pane whatever the wall clock reads at its command end', async () => {
     const runtime = createRuntime()
     await runtime.listTerminals()
     await startOpenCodeRun(runtime)
