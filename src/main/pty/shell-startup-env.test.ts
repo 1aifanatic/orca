@@ -14,7 +14,6 @@ vi.mock('fs', () => ({
 
 import {
   __resetShellStartupEnvCache,
-  isShellStartupEnvProbeSupported,
   readSessionShellStartupEnvVar,
   readShellStartupEnvVar,
   SHELL_STARTUP_ENV_CACHE_MAX_ENTRIES
@@ -105,22 +104,7 @@ describe('readShellStartupEnvVar', () => {
   it('returns undefined on Windows', () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     mockStartupFiles({ '.zshrc': 'export OPENCODE_CONFIG_DIR=/win\n' })
-    expect(isShellStartupEnvProbeSupported()).toBe(false)
     expect(readShellStartupEnvVar('OPENCODE_CONFIG_DIR', '/home/alice')).toBeUndefined()
-  })
-
-  it('reports startup-env probing as supported on macOS and Linux', () => {
-    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
-    try {
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
-      expect(isShellStartupEnvProbeSupported()).toBe(true)
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
-      expect(isShellStartupEnvProbeSupported()).toBe(true)
-    } finally {
-      if (originalPlatform) {
-        Object.defineProperty(process, 'platform', originalPlatform)
-      }
-    }
   })
 
   it('returns undefined when no startup file matches', () => {

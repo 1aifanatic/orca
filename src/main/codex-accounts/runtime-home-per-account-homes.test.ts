@@ -49,7 +49,7 @@ describe('CodexRuntimeHomeService', () => {
     )
     const store = createStore(
       createSettings({
-        shellStartupEnvProbeSupported: true,
+        realHomeRoutable: true,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -96,7 +96,7 @@ describe('CodexRuntimeHomeService', () => {
       const home1 = createManagedAuth(testState.userDataDir, 'account-1', account1Auth)
       const home2 = createManagedAuth(testState.userDataDir, 'account-2', account2Auth)
       const settings = createSettings({
-        shellStartupEnvProbeSupported: true,
+        realHomeRoutable: true,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -169,7 +169,7 @@ describe('CodexRuntimeHomeService', () => {
     )
     const store = createStore(
       createSettings({
-        shellStartupEnvProbeSupported: true,
+        realHomeRoutable: true,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -203,7 +203,7 @@ describe('CodexRuntimeHomeService', () => {
     const home1 = createManagedAuth(testState.userDataDir, 'account-1', '{"account":"managed"}\n')
     const store = createStore(
       createSettings({
-        shellStartupEnvProbeSupported: true,
+        realHomeRoutable: true,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -234,7 +234,7 @@ describe('CodexRuntimeHomeService', () => {
     mkdirSync(brokenHome, { recursive: true })
     writeFileSync(join(brokenHome, '.orca-managed-home'), 'account-1\n', 'utf-8')
     const settings = createSettings({
-      shellStartupEnvProbeSupported: true,
+      realHomeRoutable: true,
       codexManagedAccounts: [
         {
           id: 'account-1',
@@ -280,7 +280,7 @@ describe('CodexRuntimeHomeService', () => {
     )
     const store = createStore(
       createSettings({
-        shellStartupEnvProbeSupported: true,
+        realHomeRoutable: true,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -350,7 +350,7 @@ describe('CodexRuntimeHomeService', () => {
     writeFileSync(join(rolloutDir, 'rollout-e-era.jsonl'), '{"record":"e-era"}\n', 'utf-8')
     const store = createStore(
       createSettings({
-        shellStartupEnvProbeSupported: false,
+        realHomeRoutable: false,
         codexManagedAccounts: [
           {
             id: 'account-1',
@@ -388,7 +388,7 @@ describe('CodexRuntimeHomeService', () => {
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
     const managedHomePath = createManagedAuth(testState.userDataDir, 'account-1', managedAuth)
     const settings = createSettings({
-      shellStartupEnvProbeSupported: true,
+      realHomeRoutable: true,
       codexManagedAccounts: [
         {
           id: 'account-1',
@@ -442,7 +442,7 @@ describe('CodexRuntimeHomeService', () => {
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
     const managedHomePath = createManagedAuth(testState.userDataDir, 'account-1', managedAuth)
     const settings = createSettings({
-      shellStartupEnvProbeSupported: true,
+      realHomeRoutable: true,
       codexManagedAccounts: [
         {
           id: 'account-1',

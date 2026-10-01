@@ -1,5 +1,5 @@
 /* oxlint-disable anti-slop/no-module-mocking -- Vitest support module for the 17 runtime-home specs, not shipped code, and it falls outside the *.test / *.spec / tests glob set.
-   setupRuntimeHomeTest() overrides one probe predicate in ../pty/shell-startup-env; the production
+   setupRuntimeHomeTest() overrides one custom-home predicate in ../codex/codex-real-home-path; the production
    readers import it directly across several main-process modules, so an injected seam would have to
    be threaded through all of them. Inlining the stub into each of the 17 specs would duplicate it 17
    times and push the largest past the max-lines ratchet. */
@@ -17,17 +17,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
-import type * as ShellStartupEnv from '../pty/shell-startup-env'
+import type * as CodexRealHomePath from '../codex/codex-real-home-path'
 
 export const testState = {
   userDataDir: '',
   fakeHomeDir: '',
   previousUserDataPath: undefined as string | undefined,
-  shellStartupEnvProbeSupported: true
+  realHomeRoutable: true
 }
 
-export function setShellStartupEnvProbeSupportedForTest(enabled: boolean): void {
-  testState.shellStartupEnvProbeSupported = enabled
+export function setRealHomeRoutableForTest(enabled: boolean): void {
+  testState.realHomeRoutable = enabled
 }
 
 export function getSystemCodexHomePath(): string {
@@ -163,11 +163,16 @@ export function createCodexAuthJson(
 export function setupRuntimeHomeTest(): void {
   vi.resetModules()
   vi.clearAllMocks()
-  testState.shellStartupEnvProbeSupported = true
-  vi.doMock('../pty/shell-startup-env', async () => ({
-    ...(await vi.importActual<typeof ShellStartupEnv>('../pty/shell-startup-env')),
-    isShellStartupEnvProbeSupported: () => testState.shellStartupEnvProbeSupported
-  }))
+  testState.realHomeRoutable = true
+  vi.doMock('../codex/codex-real-home-path', async () => {
+    const actual = await vi.importActual<typeof CodexRealHomePath>('../codex/codex-real-home-path')
+    return {
+      ...actual,
+      // Why: a custom CODEX_HOME is the production route onto the mirror lane.
+      hasCustomCodexHomeOverrideForLaunch: (launchEnv?: NodeJS.ProcessEnv) =>
+        !testState.realHomeRoutable || actual.hasCustomCodexHomeOverrideForLaunch(launchEnv)
+    }
+  })
   testState.userDataDir = mkdtempSync(join(tmpdir(), 'orca-runtime-home-'))
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-codex-home-'))
   testState.previousUserDataPath = process.env.ORCA_USER_DATA_PATH

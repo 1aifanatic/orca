@@ -25,10 +25,6 @@ type ShellStartupFiles = {
   syntax: StartupFileSyntax
 }
 
-export function isShellStartupEnvProbeSupported(): boolean {
-  return process.platform !== 'win32'
-}
-
 function parseAssignedValue(
   content: string,
   name: string,
@@ -215,7 +211,8 @@ const cache = new Map<string, string | undefined>()
  *   nothing. LAST matching assignment wins.
  * - fish universal variables (`set -Ux` stored in fish_variables) are only
  *   seen when the assignment is also written in a config file.
- * - Windows is unsupported (PowerShell profile parsing is out of scope).
+ * - Windows is unsupported here; PowerShell profiles are read by
+ *   powershell-profile-env.ts.
  *
  * Results are memoized per (name, home, shell, configHome); a bounded recent
  * window keeps SSH/WSL home churn from retaining every historical key.
@@ -226,7 +223,7 @@ export function readShellStartupEnvVar(
   shell = process.env.SHELL,
   configHome = process.env.XDG_CONFIG_HOME
 ): string | undefined {
-  if (!home || !isShellStartupEnvProbeSupported()) {
+  if (!home || process.platform === 'win32') {
     return undefined
   }
   // Why: the regex above is fixed; rejecting unsafe names is cheap defense

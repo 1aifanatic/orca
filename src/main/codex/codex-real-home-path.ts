@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { readShellStartupEnvVar } from '../pty/shell-startup-env'
+import { readPowerShellProfileEnvAssignments } from '../pty/powershell-profile-env'
 
 export type CodexShellStartupHomeOverride = {
   home: string
@@ -54,12 +55,13 @@ export function getCustomCodexHomeOverrideForLaunch(
       context: { codexHome: effectiveEnv.CODEX_HOME!.trim() }
     }
   }
-  const home = launchEnv ? getLaunchEnvValue(launchEnv, 'HOME') : process.env.HOME
-  const shell = launchEnv ? getLaunchEnvValue(launchEnv, 'SHELL') : process.env.SHELL
-  const configHome = launchEnv
-    ? getLaunchEnvValue(launchEnv, 'XDG_CONFIG_HOME')
-    : process.env.XDG_CONFIG_HOME
-  const shellCodexHome = readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)
+  const readLaunchEnv = (key: LaunchEnvKey): string | undefined =>
+    launchEnv ? getLaunchEnvValue(launchEnv, key) : process.env[key]
+  // Why USERPROFILE: Windows has no HOME, and PowerShell profiles hang off it.
+  const home = readLaunchEnv(process.platform === 'win32' ? 'USERPROFILE' : 'HOME')
+  const shell = readLaunchEnv('SHELL')
+  const configHome = readLaunchEnv('XDG_CONFIG_HOME')
+  const shellCodexHome = readShellStartupCodexHome(home, shell, configHome)
   if (!home || !shellCodexHome || !hasCustomCodexHomeOverride({ CODEX_HOME: shellCodexHome })) {
     return null
   }
@@ -88,8 +90,7 @@ export function shellStartupCodexHomeOverrideMatches(
   if (!shellStartupCodexHomeOverrideContextsEqual(context, currentContext)) {
     return false
   }
-  const currentCodexHome = readShellStartupEnvVar(
-    'CODEX_HOME',
+  const currentCodexHome = readShellStartupCodexHome(
     currentContext.home,
     currentContext.shell,
     currentContext.configHome
@@ -113,10 +114,34 @@ export function shellStartupCodexHomeOverrideContextsEqual(
   )
 }
 
-function getLaunchEnvValue(
-  launchEnv: NodeJS.ProcessEnv,
-  key: 'CODEX_HOME' | 'ORCA_CODEX_HOME' | 'HOME' | 'SHELL' | 'XDG_CONFIG_HOME'
+/**
+ * The CODEX_HOME the pane's shell startup would set. Windows panes may run
+ * either PowerShell edition, so any profile pointing elsewhere counts.
+ */
+function readShellStartupCodexHome(
+  home: string | undefined,
+  shell: string | undefined,
+  configHome: string | undefined
 ): string | undefined {
+  if (process.platform !== 'win32') {
+    return readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)
+  }
+  return home
+    ? readPowerShellProfileEnvAssignments('CODEX_HOME', home).find((codexHome) =>
+        hasCustomCodexHomeOverride({ CODEX_HOME: codexHome })
+      )
+    : undefined
+}
+
+type LaunchEnvKey =
+  | 'CODEX_HOME'
+  | 'ORCA_CODEX_HOME'
+  | 'HOME'
+  | 'USERPROFILE'
+  | 'SHELL'
+  | 'XDG_CONFIG_HOME'
+
+function getLaunchEnvValue(launchEnv: NodeJS.ProcessEnv, key: LaunchEnvKey): string | undefined {
   return Object.hasOwn(launchEnv, key) ? launchEnv[key] : process.env[key]
 }
 
