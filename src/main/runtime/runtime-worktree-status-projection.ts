@@ -104,6 +104,25 @@ export function getLeafDisplayRecord<T extends LeafStatusRecord>(
   }
 }
 
+/**
+ * Whether display shows `clear`: dated as the record's display projection dates it, it outranks
+ * `others`. Presence reads it as a veto only, so a retired working title proves nothing.
+ */
+export function showsTitleDisplayClear(
+  record: { lastOscTitleAt: number | null },
+  clear: TitleDisplayClear | null,
+  ...others: TitleCandidate[]
+): boolean {
+  if (!clear) {
+    return false
+  }
+  const shown = {
+    title: clear.title,
+    updatedAt: Math.max(record.lastOscTitleAt ?? 0, clear.observedAt)
+  }
+  return getLatestAgentCandidate(...others, shown) === shown
+}
+
 export function getLeafWorktreeStatus(
   leaf: LeafStatusRecord,
   tabTitle: string | null
@@ -191,7 +210,15 @@ export function terminalTitleBlocksExplicitAgentStatus(title: string | null): bo
 }
 
 export function getLatestAgentCandidateTitle(...titles: TitleCandidate[]): string | null {
-  return getLatestAgentCandidate(...titles)?.title?.trim() ?? null
+  return getLatestAgentCandidateTitleInfo(...titles)?.title ?? null
+}
+
+export function getLatestAgentCandidateTitleInfo(
+  ...titles: TitleCandidate[]
+): { title: string; updatedAt: number } | null {
+  const latest = getLatestAgentCandidate(...titles)
+  const title = latest?.title?.trim()
+  return latest && title ? { title, updatedAt: latest.updatedAt ?? 0 } : null
 }
 
 /** The newest non-blank candidate itself, so a caller can tell which source won. */

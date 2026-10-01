@@ -124,7 +124,8 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       this.resolvePtyTuiIdleWaiters(current, ptyId)
     }
     for (const leaf of this.getLeavesForPty(ptyId)) {
-      if (leaf.lastAgentStatus !== null) {
+      // Why the clear too: a stale-working clear leaves the native status, not the neutral one.
+      if (leaf.lastAgentStatus !== null && !current.titleDisplayClear) {
         continue
       }
       // Why: the live agent disproved the neutral title's exit signal; keep runtime delivery state aligned with the restored tracker.

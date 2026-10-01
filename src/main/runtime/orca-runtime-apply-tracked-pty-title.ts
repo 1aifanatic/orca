@@ -13,21 +13,12 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
     normalizedTitle: string,
     meta?: TerminalTitleFactMeta
   ): boolean {
-    const trackerEntry = this.ptyTitleTrackersByPtyId.get(ptyId)
-    // Why: the timer only guesses the agent may have exited, so its cleared title is display
-    // (getPtyDisplayRecord) and must not overwrite what readiness and delivery read as the
-    // agent's own evidence. The next genuine title retires the clear.
     if (meta?.staleWorkingTitleClear) {
-      if (trackerEntry) {
-        trackerEntry.displayClear = {
-          observedAt: this.nextTitleObservationSequence(),
-          observedAtEpochMs: Date.now()
-        }
-      }
-      return true
+      return this.applyStaleWorkingTitleClear(ptyId, rawTitle, normalizedTitle)
     }
-    if (trackerEntry) {
-      trackerEntry.displayClear = null
+    const livePty = this.ptysById.get(ptyId)
+    if (livePty) {
+      livePty.titleDisplayClear = null
     }
     // Why: status is detected from the RAW title (mirrors the renderer tracker),
     // so working/idle transitions are unaffected by normalization; the records
@@ -168,6 +159,41 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
     return ptyRecordChanged
   }
 
+  /**
+   * The stale-working timer's clear: it only guesses that the agent may have exited behind a
+   * working title. Of what a genuine title does, it skips the title/status evidence that
+   * readiness and delivery read (records, waiters, mailbox, delivery), and still re-derives the
+   * process evidence that guess is about: the foreground agent and the exit/completion check.
+   * Display takes the cleared title from `titleDisplayClear`; the caller publishes it.
+   */
+  private applyStaleWorkingTitleClear(
+    ptyId: string,
+    rawTitle: string,
+    normalizedTitle: string
+  ): boolean {
+    const pty = this.ptysById.get(ptyId)
+    if (!pty) {
+      return false
+    }
+    const nativeStatus = pty.lastAgentStatus
+    const clearedStatus = detectAgentStatusFromTitle(rawTitle)
+    const observedAt = this.nextTitleObservationSequence()
+    const previousTitle = pty.titleDisplayClear?.title ?? pty.lastOscTitle
+    pty.titleDisplayClear = { title: normalizedTitle, observedAt, observedAtEpochMs: Date.now() }
+    if (nativeStatus === 'working' && clearedStatus === null) {
+      this.confirmPtyAgentExit(ptyId, true)
+    }
+    if (nativeStatus === clearedStatus) {
+      return previousTitle !== normalizedTitle
+    }
+    const foregroundRefresh = this.ptyForegroundAgent.refresh(ptyId, observedAt)
+    if (this.shouldDelayPtyBackedMobileSnapshotForForegroundAgent(pty, normalizedTitle)) {
+      this.delayPtyBackedMobileSnapshotForForegroundAgent(ptyId, observedAt, foregroundRefresh)
+      return false
+    }
+    return true
+  }
+
   /** Cancel the per-PTY title tracker (stale-title timer included) on PTY
    *  teardown so it cannot fire into pruned records. */
   protected disposePtyTitleTracker(ptyId: string): void {
@@ -195,6 +221,7 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
       pty.lastOscTitle = null
       pty.lastOscTitleAt = null
       pty.lastOscTitleEpochMs = null
+      pty.titleDisplayClear = null
       pty.lastAgentStatus = null
       // Why: the prior process's first-party status would otherwise veto idle for its
       // replacement — a stale `working` keeps tui-idle unresolved on the new generation.

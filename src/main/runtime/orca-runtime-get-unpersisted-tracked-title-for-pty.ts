@@ -49,7 +49,10 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
     // app relaunch the PTY/leaf records can already hold a persisted title; a
     // cold tracker would miss the parked working→idle completion and never
     // arm the stale-title timer for a persisted 'working' title.
-    let initialTitle = this.ptysById.get(ptyId)?.lastOscTitle ?? null
+    // Why the display clear first: a tracker recreated after a relay drop must not re-arm on the
+    // working title the timer already retired.
+    const pty = this.ptysById.get(ptyId)
+    let initialTitle = pty?.titleDisplayClear?.title ?? pty?.lastOscTitle ?? null
     if (initialTitle === null) {
       for (const leaf of this.getLeavesForPty(ptyId)) {
         if (leaf.lastOscTitle) {
@@ -176,7 +179,6 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
       chunkTouchedSessionTabs: false,
       pendingFacts: [],
       afterFacts: [],
-      displayClear: null,
       // Why: command-code facts exist only for the pty:sideEffect channel —
       // headless serve skips the per-chunk scrape entirely. The detector
       // self-arms on the Command Code banner; the spawn command (when main

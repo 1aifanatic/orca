@@ -26,7 +26,7 @@ function presence(isLiveStructuredAgent: (handle: string) => boolean) {
       getTrackedPty: () => null,
       getTabTitle: () => null,
       getForegroundProcess: () => null,
-      hasTitleDisplayClear: () => false
+      getTitleDisplayClear: () => null
     })
   }
 }

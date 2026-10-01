@@ -203,13 +203,10 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
     )
   }
 
-  /** The tracker's display-only clear of this PTY's native title, while it stands. */
+  /** The stale-working timer's display-only clear of this PTY's native title, while it stands. */
   protected getPtyTitleDisplayClear(ptyId: string | null | undefined): TitleDisplayClear | null {
-    const entry = ptyId ? this.ptyTitleTrackersByPtyId.get(ptyId) : undefined
-    const title = entry?.displayClear ? entry.tracker.getLastNormalizedTitle() : null
-    return entry?.displayClear && title
-      ? { title, status: detectAgentStatusFromTitle(title), ...entry.displayClear }
-      : null
+    const clear = ptyId ? this.ptysById.get(ptyId)?.titleDisplayClear : null
+    return clear ? { ...clear, status: detectAgentStatusFromTitle(clear.title) } : null
   }
 
   protected getPtyDisplayRecord(pty: RuntimePtyWorktreeRecord): RuntimePtyWorktreeRecord {

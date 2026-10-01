@@ -1,6 +1,7 @@
 import {
   detectAgentStatusFromTitle,
   isOpenCodeNativeTitle,
+  isQuarterCircleSpinnerOnlyAgentTitle,
   isShellProcess,
   type AgentStatus
 } from '../../shared/agent-detection'
@@ -10,8 +11,9 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   terminalTitleBlocksExplicitAgentStatus,
-  agentTitleProvesAgentPresence,
-  getLatestAgentCandidate
+  getLatestAgentCandidateTitleInfo,
+  showsTitleDisplayClear,
+  type TitleDisplayClear
 } from './runtime-worktree-status-projection'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { getTerminalState } from './terminal-wait-results'
@@ -40,7 +42,7 @@ type Dependencies = {
     ptyId: string
   ): { status: AgentStatus | null; updatedAt: number } | null | undefined
   isRunning(handle: string): Promise<boolean>
-  hasTitleDisplayClear(ptyId: string): boolean
+  getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
 }
 
 export class RuntimeTerminalAgentStatusQuery {
@@ -110,11 +112,13 @@ export class RuntimeTerminalAgentStatusQuery {
       }
     }
     if (terminal.titleStatus) {
-      // Activity-only titles need the same identity check as the presence query, and so does a
+      // Why: an OpenCode marker and a lone quarter-circle spinner (STA-4028) are activity,
+      // not identity, so resolve both through the identity/foreground evidence path. So is a
       // title the stale-working timer retired: the agent may have exited behind it.
       if (
-        terminal.titleRetiredForDisplay ||
-        !agentTitleProvesAgentPresence(terminal.title, 'agent')
+        isOpenCodeNativeTitle(terminal.title) ||
+        isQuarterCircleSpinnerOnlyAgentTitle(terminal.title) ||
+        terminal.titleRetiredForDisplay
       ) {
         const isRunningAgent = await this.deps.isRunning(handle)
         this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
@@ -166,17 +170,19 @@ export class RuntimeTerminalAgentStatusQuery {
         throw new Error('terminal_not_writable')
       }
       const leaf = this.deps.getPrimaryLeaf(pty.pty.ptyId)
-      const leafOsc = { title: leaf?.lastOscTitle, updatedAt: leaf?.lastOscTitleAt }
-      const ptyOsc = { title: pty.pty.lastOscTitle, updatedAt: pty.pty.lastOscTitleAt }
-      const latest =
-        (leaf
-          ? getLatestAgentCandidate(
-              { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
-              leafOsc
-            )
-          : null) ??
-        getLatestAgentCandidate({ title: pty.pty.title, updatedAt: pty.pty.titleUpdatedAt }, ptyOsc)
-      const titleText = latest?.title?.trim() ?? null
+      const leafTitle = leaf
+        ? getLatestAgentCandidateTitleInfo(
+            { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
+            { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt }
+          )
+        : null
+      const ptyTitle =
+        leafTitle ??
+        getLatestAgentCandidateTitleInfo(
+          { title: pty.pty.title, updatedAt: pty.pty.titleUpdatedAt },
+          { title: pty.pty.lastOscTitle, updatedAt: pty.pty.lastOscTitleAt }
+        )
+      const clear = this.deps.getTitleDisplayClear(pty.pty.ptyId)
       const waitText = buildTerminalWaitText(
         pty.pty.tailBuffer,
         pty.pty.tailPartialLine,
@@ -185,11 +191,20 @@ export class RuntimeTerminalAgentStatusQuery {
       return {
         waitText,
         waitBlockedAt: pty.pty.waitBlockedAt,
-        title: titleText,
-        titleStatus: titleText ? detectAgentStatusFromTitle(titleText) : pty.pty.lastAgentStatus,
-        titleStatusIsLive: titleText !== null,
-        titleRetiredForDisplay:
-          (latest === leafOsc || latest === ptyOsc) && this.deps.hasTitleDisplayClear(pty.pty.ptyId)
+        title: ptyTitle?.title ?? null,
+        titleStatus: ptyTitle
+          ? detectAgentStatusFromTitle(ptyTitle.title)
+          : pty.pty.lastAgentStatus,
+        titleStatusIsLive: ptyTitle !== null,
+        titleRetiredForDisplay: leaf
+          ? showsTitleDisplayClear(leaf, clear, {
+              title: leaf.paneTitle,
+              updatedAt: leaf.paneTitleUpdatedAt
+            })
+          : showsTitleDisplayClear(pty.pty, clear, {
+              title: pty.pty.title,
+              updatedAt: pty.pty.titleUpdatedAt
+            })
       }
     }
 
@@ -203,20 +218,25 @@ export class RuntimeTerminalAgentStatusQuery {
     if (leaf.ptyId !== expectedPtyId) {
       throw new Error('terminal_not_writable')
     }
-    const leafOsc = { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt }
-    const title = getLatestAgentCandidate(
-      { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt },
-      leafOsc,
-      { title: this.deps.getTabTitle(leaf.tabId), updatedAt: 0 }
+    const paneTitle = { title: leaf.paneTitle, updatedAt: leaf.paneTitleUpdatedAt }
+    const tabTitle = { title: this.deps.getTabTitle(leaf.tabId), updatedAt: 0 }
+    const title = getLatestAgentCandidateTitleInfo(
+      paneTitle,
+      { title: leaf.lastOscTitle, updatedAt: leaf.lastOscTitleAt },
+      tabTitle
     )
-    const titleText = title?.title?.trim() ?? null
     return {
       waitText: buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
       waitBlockedAt: leaf.waitBlockedAt,
-      title: titleText,
-      titleStatus: titleText ? detectAgentStatusFromTitle(titleText) : leaf.lastAgentStatus,
+      title: title?.title ?? null,
+      titleStatus: title ? detectAgentStatusFromTitle(title.title) : leaf.lastAgentStatus,
       titleStatusIsLive: (title?.updatedAt ?? 0) > 0,
-      titleRetiredForDisplay: title === leafOsc && this.deps.hasTitleDisplayClear(leaf.ptyId)
+      titleRetiredForDisplay: showsTitleDisplayClear(
+        leaf,
+        this.deps.getTitleDisplayClear(leaf.ptyId),
+        paneTitle,
+        tabTitle
+      )
     }
   }
 
