@@ -124,11 +124,11 @@ export class ClaudeChildWorkDecoder {
     }
   }
 
-  /** Orca ended the session on purpose (a Stop, a rest, a quit): what still runs ends with it, as
-   *  stopped. A session that died on its own is left to `clear`, which says nothing of how. */
+  /** Orca ended the session and proved its process tree gone: what still ran is stopped. The
+   *  ending is Orca's, not the child's, so a frame of the child's own still replaces it. */
   stopLive(): void {
     for (const id of this.live.keys()) {
-      this.end(id, 'stopped', {})
+      this.end(id, 'stopped', { basis: 'stop-acknowledged' })
     }
   }
 

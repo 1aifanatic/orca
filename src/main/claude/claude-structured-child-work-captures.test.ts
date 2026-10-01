@@ -104,6 +104,23 @@ describe('Claude child work from captured frame orders', () => {
     ])
   })
 
+  it('leaves how they ended unknown when the close sees a descendant survive', async () => {
+    const run = await producer(hostWithParent())
+    const [running] = until(MOVED_TO_BACKGROUND, 51_275)
+    run.replay(running)
+    // The root exited, but Orca's own tree check saw a process of the session's still running.
+    const connection = run.claude.connections[0]!
+    connection.exitVerdict = { root: 'exited', tree: 'live' }
+    connection.close = async () => false
+    await expect(run.adapter.closeSession('session-1', 'user-stop')).rejects.toMatchObject({
+      name: 'AgentSessionAcquisitionRootExitObservedError'
+    })
+    expect(run.records().map(({ membership, outcome }) => ({ membership, outcome }))).toEqual([
+      { membership: 'settled', outcome: 'unknown' },
+      { membership: 'settled', outcome: 'unknown' }
+    ])
+  })
+
   it('leaves how they ended unknown when the session dies on its own', async () => {
     const run = await producer(hostWithParent())
     const [running] = until(MOVED_TO_BACKGROUND, 51_275)
