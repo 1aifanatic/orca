@@ -42,6 +42,7 @@ import {
   resetProviderFaults,
   type FakeConnection
 } from './structured-chat-coordinator-fake-codex-fixture'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const COORDINATOR = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 const PEER_CHAT = '7e3b9d15-2c4a-4f86-a0b1-5c9e2d7f3b64'
@@ -255,6 +256,7 @@ beforeEach(async () => {
   db = new OrchestrationDb(':memory:')
   runtime = startRuntime()
   host = await ensureStructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     stateDirectory: root,
     hostId: 'local',
     claimKeyId: 'key-1',
@@ -823,10 +825,10 @@ describe('a /clear keeps the chat its orchestration address', () => {
     await expect(
       call(
         'orchestration.send',
-        { to: `session:${PEER_CHAT}`, subject: 'hi' },
+        { to: `orca_session_id:${PEER_CHAT}`, subject: 'hi' },
         { sessionId: successor }
       )
-    ).resolves.toMatchObject({ message: { from_handle: `session:${COORDINATOR}` } })
+    ).resolves.toMatchObject({ message: { from_handle: `orca_session_id:${COORDINATOR}` } })
   })
 
   it("binds a Run a cleared chat creates or uses to the conversation's root, at the Run's current generation", async () => {
@@ -869,10 +871,10 @@ describe('a /clear keeps the chat its orchestration address', () => {
     for (const [index, spelling] of [PEER_CHAT, middle, successor].entries()) {
       const sent = await call('orchestration.send', {
         from: 'term_worker',
-        to: `session:${spelling}`,
+        to: `orca_session_id:${spelling}`,
         subject: `ping ${index}`
       })
-      expect(sent).toMatchObject({ message: { to_handle: `session:${PEER_CHAT}` } })
+      expect(sent).toMatchObject({ message: { to_handle: `orca_session_id:${PEER_CHAT}` } })
       await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(index + 1), WAIT)
       await settleTurn(successor, index)
     }
@@ -883,19 +885,19 @@ describe('a /clear keeps the chat its orchestration address', () => {
 })
 
 describe('any live session is addressable by its id', () => {
-  it('lands mail sent to `session:<id>` as a turn in that chat, which a flagless check reads', async () => {
+  it('lands mail sent to `orca_session_id:<id>` as a turn in that chat, which a flagless check reads', async () => {
     const peer = await openChat(PEER_CHAT)
 
     const sent = await call('orchestration.send', {
       from: 'term_worker',
-      to: `session:${PEER_CHAT}`,
+      to: `orca_session_id:${PEER_CHAT}`,
       subject: 'ping'
     })
-    expect(sent).toMatchObject({ message: { to_handle: `session:${PEER_CHAT}` } })
+    expect(sent).toMatchObject({ message: { to_handle: `orca_session_id:${PEER_CHAT}` } })
 
     await vi.waitFor(() => expect(peer.turns).toHaveLength(1), WAIT)
     // Direct mail is not in a Run, so the pointer names no `--run`.
-    expect(turnText(peer.turns[0]!)).toBe(ptyPointer(`session:${PEER_CHAT}`))
+    expect(turnText(peer.turns[0]!)).toBe(ptyPointer(`orca_session_id:${PEER_CHAT}`))
     await settleTurn(PEER_CHAT, 0)
     const checked = await call('orchestration.check', {}, { sessionId: PEER_CHAT })
     expect(checked).toMatchObject({ count: 1, messages: [{ subject: 'ping' }] })
@@ -907,7 +909,7 @@ describe('any live session is addressable by its id', () => {
     const response = await dispatcher.dispatch(
       request('orchestration.send', {
         from: 'term_worker',
-        to: `session:${PEER_CHAT}`,
+        to: `orca_session_id:${PEER_CHAT}`,
         subject: 'ping'
       })
     )
