@@ -57,7 +57,7 @@ beforeEach(async () => {
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
   awaitStarted = vi.fn(async () => undefined)
   closeSession = vi.fn(async () => true)
-  acknowledgeSessionRelease = vi.fn(async () => undefined)
+  acknowledgeSessionRelease = vi.fn()
   stopEndsSession = false
   onEventSinkError = vi.fn()
   store = await openTestAgentSessionRecordStore(root)
@@ -296,7 +296,9 @@ describe('a Stop that names no turn', () => {
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
     cancelTurn.mockRejectedValueOnce(new Error('codex app-server turn/interrupt exceeded 30000ms'))
-    acknowledgeSessionRelease.mockRejectedValueOnce(new Error('route release failed'))
+    acknowledgeSessionRelease.mockImplementationOnce(() => {
+      throw new Error('route release failed')
+    })
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
