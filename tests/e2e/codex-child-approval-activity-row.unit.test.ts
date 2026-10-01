@@ -2,9 +2,10 @@
 
 // A Codex parent settles, its subagent asks for approval, and the user answers. Every hop is the
 // real one: provider translator, deferred sink, durable journal and host status feed, then the
-// renderer's status bridge, agent-status store and Activity pipeline. The ask is the subagent's
-// own wait, carried by its child record, so the session's own status never leaves its turn's end:
-// the row reads done throughout, and nothing the user had already read comes back unread.
+// renderer's status bridge, agent-status store and Activity pipeline. The ask is the subagent's,
+// so the session's own status stays at its turn's end while the row waits on the user: from the
+// session's `awaitsUser` alone, or with the child's own record waiting too. Answering it returns the
+// row to done, and nothing the user had already read comes back unread.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,6 +21,8 @@ import type { AgentJournalItemBody } from '../../src/shared/agent-session-journa
 import { parseAgentJournalItemKey } from '../../src/shared/agent-session-journal-item-key'
 import type { Tab } from '../../src/shared/tab-types'
 import type { AppState } from '../../src/renderer/src/store/types'
+import { AgentHookServer } from '../../src/main/agent-hooks/server'
+import { CodexBackgroundTaskTracker } from '../../src/main/codex/codex-background-task-tracker'
 import { createCodexJournalTranslator } from '../../src/main/codex/codex-structured-journal-translation'
 import { CODEX_COMMAND_APPROVAL_METHOD } from '../../src/main/codex/codex-structured-prompt-replies'
 import { createTrackedJournalOpener } from '../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
@@ -127,8 +130,9 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** The host half: journal, feed and the real Codex translator over one advancing clock. */
-async function openHost() {
+/** The host half: journal, feed and the real Codex translator over one advancing clock. With
+ *  `childRecords`, the real Codex child-work producer also feeds the host's child records. */
+async function openHost(childRecords: boolean) {
   let clock = 10_000
   const tick = (): number => (clock += 1_000)
   const journal = await journals.open({
@@ -142,12 +146,21 @@ async function openHost() {
     now: tick,
     stateDirectory: join(root, SESSION)
   })
+  const statusStore = new AgentHookServer()
   const feed = new StructuredAgentSessionStatusFeed({
     sessions: new Map([
       [SESSION, indexedStatusFeedSession({ journal, child: { phase: 'ready' } })]
     ]),
     getRecord: () => null,
-    now: () => 1
+    now: () => 1,
+    // The host's own agent-status store, wired as the app wires it: it holds the child records.
+    statusSink: () => ({
+      publish: (summary, subject) => statusStore.ingestStructuredStatus(summary, subject),
+      forget: (subject) => statusStore.dropStructuredStatus(subject),
+      publishChildWork: (subject, evidence, provider) =>
+        statusStore.ingestStructuredChildWork(subject, evidence, provider),
+      readChildWork: (subject) => statusStore.getStructuredChildWorkViews(subject)
+    })
   })
   const events: AgentSessionStatusEvent[] = []
   feed.subscribe({ id: 'renderer', emit: (event) => events.push(event) })
@@ -166,7 +179,13 @@ async function openHost() {
       return () => {}
     }
   })
-  const on = (threadId: string, method: string, params: Record<string, unknown> = {}) =>
+  const tracker = childRecords
+    ? new CodexBackgroundTaskTracker(CODEX_THREAD, undefined, {
+        deliver: (evidence) => feed.publishChildWork(SESSION, evidence),
+        now: tick
+      })
+    : null
+  const on = (threadId: string, method: string, params: Record<string, unknown> = {}) => {
     translator.handle({
       type: 'notification',
       sessionId: SESSION,
@@ -175,6 +194,10 @@ async function openHost() {
       params: { threadId, ...params },
       observedAt: tick()
     })
+    // As the adapter orders it: the journal has the frame before the host admits its evidence.
+    tracker?.observe({ method, threadId, params: { threadId, ...params } })
+    tracker?.publishChildWork()
+  }
   const drain = async (): Promise<void> => {
     expect(await deferred.drained()).toEqual({ ok: true })
   }
@@ -202,93 +225,124 @@ async function openHost() {
 }
 
 describe("a Codex subagent's answered approval on the settled parent's Activity row", () => {
-  it('stays done on the parent, and leaves the answer read', async () => {
-    const host = await openHost()
-    render(createElement(StructuredAgentSessionStatusBridge))
-    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    const toRenderer: (event: AgentSessionStatusEvent) => void =
-      mocks.subscribeStatus.mock.calls[0]?.[1]
-    let forwarded = 0
-    const deliver = (): AgentSessionStatusSummary => {
-      act(() => {
-        for (const event of host.events.slice(forwarded)) {
-          toRenderer(event)
+  it.each([
+    ['with no child record for it', false],
+    ["with the child's own record waiting", true]
+  ] as const)(
+    'waits on the parent %s, then reads done and leaves the answer read',
+    async (_label, childRecords) => {
+      const host = await openHost(childRecords)
+      render(createElement(StructuredAgentSessionStatusBridge))
+      await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+      const toRenderer: (event: AgentSessionStatusEvent) => void =
+        mocks.subscribeStatus.mock.calls[0]?.[1]
+      let forwarded = 0
+      const deliver = (): AgentSessionStatusSummary => {
+        act(() => {
+          for (const event of host.events.slice(forwarded)) {
+            toRenderer(event)
+          }
+        })
+        forwarded = host.events.length
+        const latest = host.events.findLast((event) => event.type === 'status')
+        if (latest?.type !== 'status') {
+          throw new Error('status publication missing')
         }
-      })
-      forwarded = host.events.length
-      const latest = host.events.findLast((event) => event.type === 'status')
-      if (latest?.type !== 'status') {
-        throw new Error('status publication missing')
+        return latest.session
       }
-      return latest.session
-    }
-    const paneKey = (): string => Object.keys(store().getState().agentStatusByPaneKey)[0] ?? ''
+      const paneKey = (): string => Object.keys(store().getState().agentStatusByPaneKey)[0] ?? ''
+      const threads = () =>
+        renderHook(() =>
+          useAgentPaneThreads({
+            query: '',
+            readFilter: 'all',
+            groupBy: 'none',
+            selectedPaneKey: null,
+            showChildAgents: true
+          })
+        ).result.current.allThreads
 
-    await host.journal.appendItem(
-      { provider: 'orca', clientMessageId: 'prompt-1' },
-      { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
-      { fence: 1 }
-    )
-    host.on(CODEX_THREAD, 'turn/started', { turn: { id: 'parent-turn' } })
-    const spawn = {
-      type: 'subAgentActivity',
-      id: 'spawn-child',
-      kind: 'started',
-      agentThreadId: CODEX_CHILD,
-      agentPath: '/root/review'
-    }
-    host.on(CODEX_THREAD, 'item/started', { turnId: 'parent-turn', item: spawn })
-    host.on(CODEX_THREAD, 'item/completed', { turnId: 'parent-turn', item: spawn })
-    host.on(CODEX_CHILD, 'turn/started', { turn: { id: 'child-turn' } })
-    host.on(CODEX_THREAD, 'turn/completed', { turn: { id: 'parent-turn', status: 'completed' } })
-    await host.drain()
-    const settled = deliver()
-    expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
-    store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
+      await host.journal.appendItem(
+        { provider: 'orca', clientMessageId: 'prompt-1' },
+        { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fan out' }] },
+        { fence: 1 }
+      )
+      host.on(CODEX_THREAD, 'turn/started', { turn: { id: 'parent-turn' } })
+      const spawn = {
+        type: 'subAgentActivity',
+        id: 'spawn-child',
+        kind: 'started',
+        agentThreadId: CODEX_CHILD,
+        agentPath: '/root/review'
+      }
+      host.on(CODEX_THREAD, 'item/started', { turnId: 'parent-turn', item: spawn })
+      host.on(CODEX_THREAD, 'item/completed', { turnId: 'parent-turn', item: spawn })
+      host.on(CODEX_CHILD, 'turn/started', { turn: { id: 'child-turn' } })
+      host.on(CODEX_THREAD, 'turn/completed', { turn: { id: 'parent-turn', status: 'completed' } })
+      await host.drain()
+      const settled = deliver()
+      expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
+      store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
 
-    host.translator.handle({
-      type: 'prompt',
-      sessionId: SESSION,
-      threadId: CODEX_CHILD,
-      method: CODEX_COMMAND_APPROVAL_METHOD,
-      params: { command: 'pnpm test', availableDecisions: ['accept', 'decline'] },
-      codexItemId: 'child-exec',
-      promptKey: 'child-approval'
-    })
-    await host.drain()
-    // The journal stamps the child's prompt with its thread, so it is not the session's own ask.
-    const asked = deliver()
-    expect(asked).toMatchObject({ status: 'idle', statusStartedAt: settled.statusStartedAt })
-    // The user reads the ask, then answers it.
-    store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
-    const [approval] = host.prompts
-    await host.answer(approval ?? '')
-    host.on(CODEX_CHILD, 'turn/completed', { turn: { id: 'child-turn', status: 'completed' } })
-    await host.drain()
-    const answered = deliver()
-    // The host rule under test elsewhere: the answer never re-dates the session's done.
-    expect(answered).toMatchObject({ status: 'idle', statusStartedAt: settled.statusStartedAt })
-
-    const activity = renderHook(() =>
-      useAgentPaneThreads({
-        query: '',
-        readFilter: 'all',
-        groupBy: 'none',
-        selectedPaneKey: null,
-        showChildAgents: true
+      host.translator.handle({
+        type: 'prompt',
+        sessionId: SESSION,
+        threadId: CODEX_CHILD,
+        method: CODEX_COMMAND_APPROVAL_METHOD,
+        params: { command: 'pnpm test', availableDecisions: ['accept', 'decline'] },
+        codexItemId: 'child-exec',
+        promptKey: 'child-approval'
       })
-    )
-    const [row, ...others] = activity.result.current.allThreads
-    expect(others).toHaveLength(0)
-    if (!row) {
-      throw new Error('activity thread missing')
+      if (childRecords) {
+        host.on(CODEX_CHILD, 'thread/status/changed', {
+          status: { type: 'active', activeFlags: ['waitingOnApproval'] }
+        })
+      }
+      await host.drain()
+      // The journal stamps the child's prompt with its thread, so it is not the session's own ask,
+      // but someone in the session must answer it.
+      const asked = deliver()
+      expect(asked).toMatchObject({
+        status: 'idle',
+        awaitsUser: true,
+        statusStartedAt: settled.statusStartedAt
+      })
+      // Only the producer under test writes a child record; without it the session's fact is all.
+      expect(asked.children?.map((child) => child.state) ?? []).toEqual(
+        childRecords ? ['waiting'] : []
+      )
+      const waiting = threads()[0]
+      expect(waiting && activityThreadStatusId(waiting)).toBe('waiting')
+      expect(waiting && activityThreadRowCopy(waiting).needsAttention).toBe(true)
+      // The user reads the ask, then answers it.
+      store().setState({ acknowledgedAgentsByPaneKey: { [paneKey()]: host.tick() } })
+      const [approval] = host.prompts
+      await host.answer(approval ?? '')
+      if (childRecords) {
+        host.on(CODEX_CHILD, 'thread/status/changed', {
+          status: { type: 'active', activeFlags: [] }
+        })
+      }
+      host.on(CODEX_CHILD, 'turn/completed', { turn: { id: 'child-turn', status: 'completed' } })
+      await host.drain()
+      const answered = deliver()
+      // The host rule under test elsewhere: the answer never re-dates the session's done.
+      expect(answered).toMatchObject({ status: 'idle', statusStartedAt: settled.statusStartedAt })
+      expect(answered).not.toHaveProperty('awaitsUser')
+      expect(answered.updatedAt).toBeGreaterThan(asked.updatedAt)
+
+      const [row, ...others] = threads()
+      expect(others).toHaveLength(0)
+      if (!row) {
+        throw new Error('activity thread missing')
+      }
+      expect(activityThreadStatusId(row)).toBe('done')
+      expect(activityThreadRowCopy(row).needsAttention).toBe(false)
+      expect(row.events.map((event) => event.state)).toEqual(['done', 'waiting', 'done'])
+      expect(row.events.map((event) => event.unread)).toEqual([false, false, false])
+      expect(countActivityUnread(store().getState())).toBe(0)
+      host.translator.dispose()
+      host.close()
     }
-    expect(activityThreadStatusId(row)).toBe('done')
-    expect(activityThreadRowCopy(row).needsAttention).toBe(false)
-    expect(row.events.map((event) => event.state)).toEqual(['done'])
-    expect(row.events.map((event) => event.unread)).toEqual([false])
-    expect(countActivityUnread(store().getState())).toBe(0)
-    host.translator.dispose()
-    host.close()
-  })
+  )
 })
