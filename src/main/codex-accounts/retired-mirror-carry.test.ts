@@ -161,7 +161,7 @@ describe('carryRetiredSystemDefaultMirror', () => {
     expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(mirrorConfig)
   })
 
-  it('keeps a mirror MCP table that ~/.codex extends with more keys', () => {
+  it('drops a mirror MCP table ~/.codex redefines, so removing it there sticks', () => {
     mkdirSync(systemHomePath, { recursive: true })
     const mirrorConfig = '[mcp_servers.docs]\ncommand = "server"\n'
     writeFileSync(
@@ -172,7 +172,13 @@ describe('carryRetiredSystemDefaultMirror', () => {
 
     expect(carry()).toBe(true)
 
-    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(mirrorConfig)
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).not.toContain(
+      '[mcp_servers.docs]'
+    )
+
+    writeFileSync(join(systemHomePath, 'config.toml'), '')
+    expect(carry()).toBe(true)
+    expect(readSystem('config.toml')).not.toContain('[mcp_servers.docs]')
   })
 
   it("leaves a managed account's MCP credentials out of ~/.codex", () => {
