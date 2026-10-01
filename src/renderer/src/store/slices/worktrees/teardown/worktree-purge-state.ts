@@ -22,7 +22,11 @@ import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-sessi
 /** Builds a bulk cleanup patch and clears auxiliary warning records without requiring individual terminal teardown. */
 export function buildWorktreePurgeState(
   s: AppState,
-  worktreeTargets: WorktreePurgeTargets
+  worktreeTargets: WorktreePurgeTargets,
+  options: {
+    /** The worktrees' host binding went away, not their chats, which may come back with it. */
+    keepChatDrafts?: boolean
+  } = {}
 ): Partial<AppState> {
   const normalizedTargets: WorktreePurgeTarget[] = worktreeTargets.map((target) =>
     typeof target === 'string' ? { id: target } : target
@@ -77,7 +81,9 @@ export function buildWorktreePurgeState(
   forgetAmbiguousOwnerWarnings(worktreeIdSet)
 
   const doomed = collectWorktreePurgeDoomedIds(s, worktreeIdSet)
-  discardNativeChatDrafts({ sessionIds: endedSessionIds, terminalTabIds: doomed.doomedTabIds })
+  if (!options.keepChatDrafts) {
+    discardNativeChatDrafts({ sessionIds: endedSessionIds, terminalTabIds: doomed.doomedTabIds })
+  }
   const {
     omitByWorktree,
     omitWorkspaceLineageByWorktree,
