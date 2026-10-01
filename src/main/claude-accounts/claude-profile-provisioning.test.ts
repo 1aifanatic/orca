@@ -118,6 +118,59 @@ describe('dormant Claude profile provisioning', () => {
     expect((await provision(f)).surfaces['settings.json']).toBe('user-owned')
     expect(f.read(elsewhere)).toEqual({ mine: true })
   })
+  it('removes a key the default dropped unless the profile changed it, and only keys Orca shared', async () => {
+    const f = fixture()
+    const settings = join(f.source, 'settings.json')
+    f.json(settings, { model: 'a', theme: 'x', apiKeyHelper: 'source-secret' })
+    await provision(f)
+    f.json(join(f.profileHome, 'settings.json'), {
+      ...f.read(join(f.profileHome, 'settings.json')),
+      theme: 'mine',
+      local: true,
+      apiKeyHelper: 'profile-helper'
+    })
+    f.json(settings, { apiKeyHelper: 'source-secret' })
+    expect((await provision(f)).surfaces['settings.json']).toBe('merged')
+    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({
+      theme: 'mine',
+      local: true,
+      apiKeyHelper: 'profile-helper'
+    })
+    expect((await provision(f)).surfaces['settings.json']).toBe('unchanged')
+    f.json(settings, { model: 'b' })
+    await provision(f)
+    fs.rmSync(settings)
+    await provision(f)
+    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({
+      theme: 'mine',
+      local: true,
+      apiKeyHelper: 'profile-helper'
+    })
+    const ledger = f.read(join(f.profileHome, '.orca-profile.json'))
+    expect(JSON.stringify(ledger)).not.toContain('apiKeyHelper')
+  })
+  it('removes nothing while the default settings or state are unreadable', async () => {
+    const f = fixture()
+    f.json(join(f.source, 'settings.json'), { model: 'a' })
+    f.json(join(f.userHome, '.claude.json'), { mcpServers: { a: {} }, theme: 'dark' })
+    f.json(join(f.profileHome, '.claude.json'), { userID: 'p' })
+    await provision(f)
+    fs.writeFileSync(join(f.source, 'settings.json'), '{bad')
+    fs.writeFileSync(join(f.userHome, '.claude.json'), '{bad')
+    await provision(f)
+    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'a' })
+    expect(f.read(join(f.profileHome, '.claude.json'))).toMatchObject({
+      mcpServers: { a: {} },
+      theme: 'dark'
+    })
+    f.json(join(f.userHome, '.claude.json'), { theme: 'dark' })
+    await provision(f)
+    expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({
+      userID: 'p',
+      theme: 'dark',
+      hasCompletedOnboarding: true
+    })
+  })
   it('keeps Orca managed statusLine out of the merge but shares a user statusLine over it', async () => {
     const f = fixture()
     f.json(join(f.source, 'settings.json'), { statusLine: MANAGED_STATUS_LINE, model: 'a' })

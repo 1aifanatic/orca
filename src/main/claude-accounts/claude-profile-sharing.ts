@@ -167,3 +167,28 @@ export function mergeClaudeProfileKeys(
   }
   return changed
 }
+
+/**
+ * A key the default home dropped leaves the profile when the profile still holds what Orca last
+ * shared; a value changed inside the profile stays. Callers skip this when the source was unreadable.
+ */
+export function dropClaudeProfileKeys(
+  target: Record<string, unknown>,
+  desired: Record<string, unknown>,
+  written: Record<string, string>
+): string[] {
+  const dropped: string[] = []
+  for (const key of Object.keys(written)) {
+    if (key in desired) {
+      continue
+    }
+    if (!(key in target)) {
+      delete written[key]
+    } else if (JSON.stringify(target[key]) === written[key]) {
+      delete target[key]
+      delete written[key]
+      dropped.push(key)
+    }
+  }
+  return dropped
+}

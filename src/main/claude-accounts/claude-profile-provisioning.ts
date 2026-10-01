@@ -23,6 +23,7 @@ import {
   type ClaudeProfileSurfaceOutcome
 } from './claude-profile-report'
 import {
+  dropClaudeProfileKeys,
   linkClaudeProfileDirectory,
   mergeClaudeProfileKeys,
   readClaudeProfileLedger,
@@ -131,24 +132,25 @@ function mergeSettings(
     // Why: Orca-only hooks that sharing never recorded are the installer's, not a user edit.
     delete current.hooks
   }
-  const changed = mergeClaudeProfileKeys(current, desired, written)
-  // Why: a statusLine Orca shared and the profile never edited follows the default when it goes away.
-  if (
-    !('statusLine' in desired) &&
-    'statusLine' in current &&
-    written.statusLine === JSON.stringify(current.statusLine)
-  ) {
-    delete current.statusLine
-    delete written.statusLine
-    changed.push('statusLine')
-  }
+  const changed = [
+    ...mergeClaudeProfileKeys(current, desired, written),
+    ...dropClaudeProfileKeys(current, desired, written)
+  ]
   const overOrcaLine = changed.includes('statusLine') && isManagedStatusLine(config.statusLine)
   for (const key of changed) {
-    if (!(key in current)) {
-      delete config[key]
+    if (key === 'hooks') {
+      // Why: Orca's own entries belong to the installer and outlive the user's shared hooks.
+      const hooks = withProfileOrcaHooks(current.hooks ?? {}, config.hooks)
+      const empty = typeof hooks === 'object' && hooks !== null && Object.keys(hooks).length === 0
+      if (empty && !('hooks' in current)) {
+        delete config.hooks
+      } else {
+        config.hooks = hooks
+      }
+    } else if (key in current) {
+      config[key] = current[key]
     } else {
-      config[key] =
-        key === 'hooks' ? withProfileOrcaHooks(current.hooks, config.hooks) : current[key]
+      delete config[key]
     }
   }
   if (changed.length > 0) {
@@ -189,6 +191,12 @@ async function mergeState(args: {
     const config = { ...current }
     written = { ...args.ledger.keys['.claude.json'] }
     let changed = mergeClaudeProfileKeys(config, desired, written).length > 0
+    if (
+      input.kind !== 'unavailable' &&
+      dropClaudeProfileKeys(config, desired, written).length > 0
+    ) {
+      changed = true
+    }
     // Why: otherwise first launch opens the onboarding wizard, where a stray Enter starts a login that rebinds the profile.
     if (config.hasCompletedOnboarding !== true) {
       config.hasCompletedOnboarding = true
