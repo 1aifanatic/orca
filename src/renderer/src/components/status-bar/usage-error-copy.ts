@@ -96,7 +96,12 @@ export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
           'auto.components.status.bar.tooltip.0d8d7cfe15',
           'Waiting for Claude session'
         )
+      // Why: Orca never refreshes a Claude login; only an older host that still does reports the other kinds.
       case 'stale-token':
+        return translate(
+          'auto.components.status.bar.tooltip.claude.expired.label',
+          'Sign-in expired'
+        )
       case 'refreshable-credentials-without-token':
       case 'delegated-refresh-required':
         return translate('auto.components.status.bar.tooltip.1804cd8c3f', 'Refreshing sign-in')
@@ -177,6 +182,10 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
           'Claude usage will refresh after the live Claude terminal rotates its credentials.'
         )
       case 'stale-token':
+        return translate(
+          'auto.components.status.bar.tooltip.claude.expired.message',
+          'Claude usage has expired. Start Claude in this account to refresh it.'
+        )
       case 'refreshable-credentials-without-token':
       case 'delegated-refresh-required':
         return translate(

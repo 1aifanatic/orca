@@ -255,6 +255,18 @@ describe('provider usage error copy', () => {
       }
     })
 
+    expect(getProviderUsageStatusLabel(p)).toBe('Sign-in expired')
+    expect(getProviderUsageErrorMessage(p)).toBe(
+      'Claude usage has expired. Start Claude in this account to refresh it.'
+    )
+  })
+
+  it('keeps refresh copy for failure kinds only a refreshing older host reports', () => {
+    const p = provider({
+      error: 'Claude OAuth access token unavailable',
+      usageMetadata: { failureKind: 'refreshable-credentials-without-token' }
+    })
+
     expect(getProviderUsageStatusLabel(p)).toBe('Refreshing sign-in')
     expect(getProviderUsageErrorMessage(p)).toBe(
       'Claude sign-in is being refreshed. Agent sessions may still be signed in.'

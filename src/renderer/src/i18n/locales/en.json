@@ -4041,6 +4041,12 @@
                 "message": "Run cursor-agent login in a terminal on the computer running Orca, then retry usage."
               },
               "plan": "Plan"
+            },
+            "claude": {
+              "expired": {
+                "label": "Sign-in expired",
+                "message": "Claude usage has expired. Start Claude in this account to refresh it."
+              }
             }
           },
           "SshTargetStatusRow": {
