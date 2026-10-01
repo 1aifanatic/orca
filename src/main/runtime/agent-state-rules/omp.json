@@ -1,18 +1,11 @@
 {
   "id": "omp",
   "engineVersion": 1,
-  "anchors": [
-    {
-      "id": "idle_title",
-      "why": "OMP titles its pane `π - <session>` at rest (`π ⠋ <session>` while working).",
-      "when": { "region": "title", "status": "idle", "match": { "regex": "^π - " } },
-      "answer": { "state": "idle" }
-    }
-  ],
+  "anchors": [],
   "rules": [
     {
       "id": "idle_title",
-      "why": "Orca writes an explicit `OMP ready` title at rest, while a shell auto-title names OMP from launch, mid-turn too, so a bare name counts only once quiet (#6011).",
+      "why": "Its `π - <session>` rest title is Pi's title anchor (pi.json), which every pane reads. Orca writes an explicit `OMP ready` title at rest, while a shell auto-title names OMP from launch, mid-turn too, so a bare name counts only once quiet (#6011).",
       "priority": 100,
       "when": { "region": "title", "status": "idle" },
       "answer": { "state": "idle", "strength": "weak", "requiresQuiet": true }
