@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { observeAgentStateFile } from '../codex/codex-path-observation'
 import { promoteCodexRuntimeSettingsToSystem } from '../codex/config-settings-promotion'
@@ -32,7 +32,7 @@ type RetiredMirrorHomes = {
 }
 
 /**
- * Carries the settings only the system-default mirror holds into ~/.codex when
+ * Carries the config only the system-default mirror holds into ~/.codex when
  * that lane retires. Promotion salvages settings only inside a mirror pass, and
  * the mirror keeps project trust and its own MCP servers to itself, so without
  * this the first real-home launch would drop them.
@@ -40,29 +40,16 @@ type RetiredMirrorHomes = {
  * Additive: never replaces anything ~/.codex already has. Every step runs even
  * when another fails, and the result says whether all of them landed.
  */
-export function carryRetiredMirrorSettings(
-  homes: RetiredMirrorHomes,
-  options: { mirrorOwnedBySystemDefault: boolean }
-): boolean {
+export function carryRetiredMirrorConfig(homes: RetiredMirrorHomes): boolean {
   // Why first: a fresh user may have no ~/.codex until Codex first runs there.
   mkdirSync(homes.systemHomePath, { recursive: true, mode: 0o700 })
-  const steps = [
+  return [
     () => promoteCodexRuntimeSettingsToSystem(homes) !== null,
     () => promoteCodexRuntimeHookApprovalsToSystem(homes.runtimeHomePath),
-    () => carryMirrorOnlyConfig(homes),
-    () => {
-      // Why: MCP OAuth tokens live beside auth.json, so a sign-in done inside an
-      // Orca pane exists only in the mirror.
-      if (options.mirrorOwnedBySystemDefault) {
-        copyIfAbsent(
-          join(homes.runtimeHomePath, '.credentials.json'),
-          join(homes.systemHomePath, '.credentials.json')
-        )
-      }
-      return true
-    }
+    () => carryMirrorOnlyTables(homes)
   ]
-  return steps.map(runStep).every(Boolean)
+    .map(runStep)
+    .every(Boolean)
 }
 
 function runStep(step: () => boolean): boolean {
@@ -74,10 +61,9 @@ function runStep(step: () => boolean): boolean {
   }
 }
 
-/** False when either config changed underneath, so the carry retries. */
-function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirrorHomes): boolean {
-  const runtimeConfigPath = join(runtimeHomePath, 'config.toml')
-  const runtimeObservation = observeAgentStateFile(runtimeConfigPath)
+/** False when ~/.codex changed underneath, so the carry retries. */
+function carryMirrorOnlyTables({ runtimeHomePath, systemHomePath }: RetiredMirrorHomes): boolean {
+  const runtimeObservation = observeAgentStateFile(join(runtimeHomePath, 'config.toml'))
   if (runtimeObservation.kind === 'indeterminate') {
     throw runtimeObservation.error
   }
@@ -99,7 +85,8 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
   const baseOwns = readTableOwnership(baseConfig)
   const baseline = readCodexSettingsBaseline(runtimeHomePath)
   // Why: an MCP server the mirror copied from ~/.codex and the user since
-  // removed there stays gone.
+  // removed there stays gone. Projects have no such record, so one deleted
+  // from ~/.codex but still trusted in the mirror's panes carries back.
   const removedFromSystem = (header: string): boolean => {
     const mcpServerName = getMcpServerTomlSectionName(header)
     return (
@@ -113,33 +100,11 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
     )
     .map((section) => section.block)
   const nextConfig = joinTomlBlocks([baseConfig, ...tables])
-  if (
-    nextConfig !== joinTomlBlocks([systemConfig ?? '']) &&
-    !writeFileAtomicallyIfUnchanged(writeTarget.path, systemConfig, nextConfig, {
+  return (
+    nextConfig === joinTomlBlocks([systemConfig ?? '']) ||
+    writeFileAtomicallyIfUnchanged(writeTarget.path, systemConfig, nextConfig, {
       mode: writeTarget.mode
     })
-  ) {
-    return false
-  }
-  // Why move, not copy: once ~/.codex holds a table, a later mirror pass takes it
-  // from there and a removal the user makes there sticks; pruning everything it
-  // holds keeps an interrupted move retryable. A project it names differently
-  // stays, so a retained pane keeps its own revocation; an MCP server it names
-  // goes, since the mirror merge already prefers ~/.codex's version.
-  const heldBlocks = new Set(getTomlSections(nextConfig).map(({ block }) => block.trim()))
-  const nextOwns = readTableOwnership(nextConfig)
-  const owned = getTomlSections(runtimeConfig).filter(({ header, block }) =>
-    isRuntimeProjectTomlSection(header)
-      ? heldBlocks.has(block.trim())
-      : getMcpServerTomlSectionName(header) !== null && nextOwns(header)
-  )
-  return (
-    owned.length === 0 ||
-    writeFileAtomicallyIfUnchanged(
-      runtimeConfigPath,
-      runtimeConfig,
-      owned.reduce((config, section) => config.replace(section.block, ''), runtimeConfig)
-    )
   )
 }
 
@@ -172,13 +137,4 @@ function projectLookupKeys(projectPath: string): string[] {
     normalizeCodexProjectPathForLookup(projectPath),
     `revocation:${normalizeCodexProjectPathForRevocationLookup(projectPath)}`
   ]
-}
-
-function copyIfAbsent(sourcePath: string, targetPath: string): void {
-  if (existsSync(sourcePath)) {
-    // Why no overwrite: a sign-in Codex wrote to ~/.codex meanwhile is newer.
-    writeFileAtomicallyIfUnchanged(targetPath, null, readFileSync(sourcePath, 'utf-8'), {
-      mode: 0o600
-    })
-  }
 }

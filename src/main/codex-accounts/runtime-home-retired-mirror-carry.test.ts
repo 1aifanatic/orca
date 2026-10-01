@@ -6,8 +6,10 @@ import {
   createCodexAuthJson,
   createStore,
   getRuntimeCodexAuthPath,
+  getRuntimeCodexHomePath,
   getSharedRuntimeAuthProvenancePath,
   getSystemCodexAuthPath,
+  getSystemCodexHomePath,
   setRealHomeRoutableForTest,
   setupRuntimeHomeTest,
   teardownRuntimeHomeTest,
@@ -48,15 +50,18 @@ async function createService(settings: GlobalSettings): Promise<CodexRuntimeHome
   return new CodexRuntimeHomeService(createStore(settings) as never)
 }
 
-async function upgradeToRealHome(platform: NodeJS.Platform): Promise<string | null> {
+async function upgradeToRealHome(
+  platform: NodeJS.Platform = 'win32'
+): Promise<CodexRuntimeHomeService> {
   Object.defineProperty(process, 'platform', { configurable: true, value: platform })
-  setRealHomeRoutableForTest(true)
   const service = await createService(createSettings({ realHomeRoutable: true }))
-  return service.prepareForCodexLaunch()
+  expect(service.prepareForCodexLaunch()).toBeNull()
+  return service
 }
 
-async function startOnMirror(): Promise<void> {
-  await createService(createSettings())
+async function launchOnMirror(): Promise<void> {
+  const service = await createService(createSettings())
+  expect(service.prepareForCodexLaunch()).not.toBeNull()
 }
 
 describe('retiring the Windows system-default mirror', () => {
@@ -71,14 +76,18 @@ describe('retiring the Windows system-default mirror', () => {
     teardownRuntimeHomeTest()
   })
 
-  it('carries a login made inside an Orca pane into ~/.codex, once', async () => {
-    await startOnMirror()
+  it('carries a login and MCP credentials made inside an Orca pane into ~/.codex', async () => {
+    await launchOnMirror()
     const paneLogin = createCodexAuthJson('me@example.com', 'acct-me', 'pane-login')
     writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'mcp-oauth', 'utf-8')
 
-    expect(await upgradeToRealHome('win32')).toBeNull()
+    await upgradeToRealHome()
 
     expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(paneLogin)
+    expect(readFileSync(join(getSystemCodexHomePath(), '.credentials.json'), 'utf-8')).toBe(
+      'mcp-oauth'
+    )
     expect(JSON.parse(readFileSync(getSharedRuntimeAuthProvenancePath(), 'utf-8'))).toEqual({
       owner: 'system-default',
       authJson: paneLogin
@@ -86,21 +95,39 @@ describe('retiring the Windows system-default mirror', () => {
     expect(existsSync(getMarkerPath())).toBe(true)
   })
 
-  it('carries a login made in a pane that opened while the hook approval ran', async () => {
-    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    const service = await createService(createSettings({ realHomeRoutable: true }))
-    expect(service.prepareForCodexLaunch()).toBeNull()
-    expect(existsSync(getMarkerPath())).toBe(true)
+  it('carries a token the mirror refreshed for the account ~/.codex holds', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    const refreshed = createCodexAuthJson('me@example.com', 'acct-me', 'refreshed')
+    writeFileSync(getRuntimeCodexAuthPath(), refreshed, 'utf-8')
 
-    let approving = true
-    service.setRealHomeLaneGate(() => !approving)
-    expect(service.prepareForCodexLaunch()).not.toBeNull()
-    const paneLogin = createCodexAuthJson('me@example.com', 'acct-me', 'approval-window')
-    writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
-    approving = false
+    await upgradeToRealHome()
 
-    expect(service.prepareForCodexLaunch()).toBeNull()
-    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(paneLogin)
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(refreshed)
+  })
+
+  it('keeps a login ~/.codex gained after seeding the mirror', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'mirror-refresh'),
+      'utf-8'
+    )
+    const newerLogin = createCodexAuthJson('me@example.com', 'acct-me', 'newer-in-codex-home')
+    writeFileSync(getSystemCodexAuthPath(), newerLogin, 'utf-8')
+
+    await upgradeToRealHome()
+
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(newerLogin)
   })
 
   it('does not undo a logout from ~/.codex', async () => {
@@ -109,17 +136,51 @@ describe('retiring the Windows system-default mirror', () => {
       createCodexAuthJson('me@example.com', 'acct-me', 'system'),
       'utf-8'
     )
-    await startOnMirror()
+    await launchOnMirror()
     rmSync(getSystemCodexAuthPath())
 
-    await upgradeToRealHome('win32')
+    await upgradeToRealHome()
 
     expect(existsSync(getSystemCodexAuthPath())).toBe(false)
     expect(existsSync(getMarkerPath())).toBe(true)
   })
 
+  it('leaves credentials it cannot attribute to the system default in the mirror', async () => {
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('managed@example.com', 'acct-managed', 'managed'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'managed-mcp', 'utf-8')
+    writeFileSync(getSharedRuntimeAuthProvenancePath(), '{"owner":"pending"}\n')
+
+    await upgradeToRealHome()
+
+    expect(existsSync(getSystemCodexAuthPath())).toBe(false)
+    expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
+  })
+
+  it('runs once: a later mirror-lane launch does not reopen the migration', async () => {
+    await launchOnMirror()
+    const service = await upgradeToRealHome()
+    expect(existsSync(getMarkerPath())).toBe(true)
+
+    setRealHomeRoutableForTest(false)
+    expect(service.prepareForCodexLaunch()).not.toBeNull()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'later-pane-login'),
+      'utf-8'
+    )
+    setRealHomeRoutableForTest(true)
+    expect(service.prepareForCodexLaunch()).toBeNull()
+
+    expect(existsSync(getSystemCodexAuthPath())).toBe(false)
+  })
+
   it('leaves macOS and Linux homes alone; they retired the mirror long ago', async () => {
-    await startOnMirror()
+    await launchOnMirror()
     writeFileSync(
       getRuntimeCodexAuthPath(),
       createCodexAuthJson('me@example.com', 'acct-me', 'stale'),

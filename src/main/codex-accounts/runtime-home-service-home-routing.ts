@@ -20,6 +20,7 @@ import {
   type CodexPaneHomeRoute
 } from '../codex/codex-pane-account-registry'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
+import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type { CodexRateLimitHomeResolution } from './runtime-home-service-types'
 import { CodexRuntimeHomeManagedHome } from './runtime-home-service-managed-home'
@@ -160,6 +161,18 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
   // selection ignored rather than cleared.
   protected wouldSystemDefaultRouteToRealHome(launchEnv?: NodeJS.ProcessEnv): boolean {
     return !hasCustomCodexHomeOverrideForLaunch(launchEnv) && this.realHomeLaneGate()
+  }
+
+  reconcileLegacySharedHomeForRetainedPanes(): void {
+    if (!this.isHostSystemDefaultRealHome()) {
+      return
+    }
+    this.carryRetiredWindowsMirror()
+    if (!hasRecordedLegacySharedCodexPane()) {
+      return
+    }
+    this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
+    syncLegacySharedCodexConfigForRetainedPanes()
   }
 
   /** Preserve refreshed auth from retained legacy WSL panes before restart. */
