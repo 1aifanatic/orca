@@ -1,39 +1,91 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
-  onStructuredAgentSessionHostInstalled,
-  setStructuredAgentSessionHost
+  getStructuredAgentSessionHost,
+  onStructuredAgentSessionsHeldChanged,
+  setStructuredAgentSessionHost,
+  structuredAgentSessionsHeld
 } from './structured-agent-session-registry'
 
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry only holds the reference.
-const HOST = {} as StructuredAgentSessionHost
+function fakeHost(initiallyHeld: boolean): {
+  host: StructuredAgentSessionHost
+  recordFirstChat: () => void
+} {
+  let holds = initiallyHeld
+  const watchers = new Set<() => void>()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry reads only these two members.
+  const host = {
+    holdsSessions: () => holds,
+    onSessionsHeld: (listener: () => void) => {
+      watchers.add(listener)
+      return () => watchers.delete(listener)
+    }
+  } as unknown as StructuredAgentSessionHost
+  return {
+    host,
+    recordFirstChat: () => {
+      holds = true
+      watchers.forEach((watcher) => watcher())
+    }
+  }
+}
 
 afterEach(() => {
   setStructuredAgentSessionHost(null)
+  vi.restoreAllMocks()
 })
 
-// The renderer mirrors this machine's chats once the host exists, e.g. when a paired client
-// creates the first chat here while the chat setting is off.
-describe('the structured host install signal', () => {
-  it('fires once when a host is installed where there was none', () => {
+// The renderer mirrors this machine's chats once one exists, e.g. when a paired client creates the
+// first chat here while the chat setting is off. Building the host is not holding a chat.
+describe("the structured host's held-chats signal", () => {
+  it('stays false when a host is built over a profile with no chat', () => {
     const listener = vi.fn()
-    const stop = onStructuredAgentSessionHostInstalled(listener)
+    const stop = onStructuredAgentSessionsHeldChanged(listener)
 
-    setStructuredAgentSessionHost(HOST)
-    setStructuredAgentSessionHost(HOST)
+    setStructuredAgentSessionHost(fakeHost(false).host)
 
-    expect(listener).toHaveBeenCalledOnce()
+    expect(structuredAgentSessionsHeld()).toBe(false)
+    expect(listener).not.toHaveBeenCalled()
     stop()
   })
 
-  it('does not fire when the host is torn down', () => {
-    setStructuredAgentSessionHost(HOST)
+  it('turns true once, when the first chat is recorded', () => {
     const listener = vi.fn()
-    const stop = onStructuredAgentSessionHostInstalled(listener)
+    const stop = onStructuredAgentSessionsHeldChanged(listener)
+    const { host, recordFirstChat } = fakeHost(false)
+    setStructuredAgentSessionHost(host)
 
-    setStructuredAgentSessionHost(null)
+    recordFirstChat()
+    recordFirstChat()
 
-    expect(listener).not.toHaveBeenCalled()
+    expect(structuredAgentSessionsHeld()).toBe(true)
+    expect(listener.mock.calls).toEqual([[true]])
     stop()
+  })
+
+  it('is true as soon as a host restores saved chats', () => {
+    const listener = vi.fn()
+    const stop = onStructuredAgentSessionsHeldChanged(listener)
+
+    setStructuredAgentSessionHost(fakeHost(true).host)
+
+    expect(listener.mock.calls).toEqual([[true]])
+    stop()
+  })
+
+  it('never fails the install when a listener throws', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const stopThrowing = onStructuredAgentSessionsHeldChanged(() => {
+      throw new Error('webContents destroyed')
+    })
+    const later = vi.fn()
+    const stopLater = onStructuredAgentSessionsHeldChanged(later)
+    const { host } = fakeHost(true)
+
+    expect(() => setStructuredAgentSessionHost(host)).not.toThrow()
+    expect(getStructuredAgentSessionHost()).toBe(host)
+    expect(later).toHaveBeenCalledWith(true)
+    stopThrowing()
+    stopLater()
   })
 })

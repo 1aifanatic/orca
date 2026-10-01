@@ -4,10 +4,10 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  start: vi.fn(async () => undefined),
-  hostInstalled: false,
+  start: vi.fn(async (_sync: { isDisposed: () => boolean }) => undefined),
+  held: false,
   isWebClient: false,
-  installedListeners: new Array<() => void>()
+  heldListeners: new Array<(held: boolean) => void>()
 }))
 
 vi.mock('./local-structured-session-tabs-sync/subscription', () => ({
@@ -35,17 +35,17 @@ async function mountSync(): Promise<void> {
 
 beforeEach(() => {
   mocks.start.mockClear()
-  mocks.hostInstalled = false
+  mocks.held = false
   mocks.isWebClient = false
-  mocks.installedListeners.splice(0)
+  mocks.heldListeners.splice(0)
   resetLocalStructuredChatsForTests()
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: {
       app: {
-        hasStructuredAgentSessionHost: vi.fn(async () => mocks.hostInstalled),
-        onStructuredAgentSessionHostInstalled: vi.fn((listener: () => void) => {
-          mocks.installedListeners.push(listener)
+        holdsStructuredAgentSessions: vi.fn(async () => mocks.held),
+        onStructuredAgentSessionsHeldChanged: vi.fn((listener: (held: boolean) => void) => {
+          mocks.heldListeners.push(listener)
           return () => undefined
         })
       }
@@ -72,7 +72,7 @@ describe("this machine's structured chat mirror", () => {
   // The setting picks what new agents open as; chats that already exist keep showing.
   it('mirrors the chats this machine holds with the setting off', async () => {
     setStructuredChat(false)
-    mocks.hostInstalled = true
+    mocks.held = true
 
     await mountSync()
 
@@ -84,14 +84,44 @@ describe("this machine's structured chat mirror", () => {
     await mountSync()
     expect(mocks.start).not.toHaveBeenCalled()
 
-    act(() => mocks.installedListeners.forEach((listener) => listener()))
+    act(() => mocks.heldListeners.forEach((listener) => listener(true)))
 
     expect(mocks.start).toHaveBeenCalledOnce()
   })
 
+  // Session history and phone launches build the host; only a chat answers true.
+  it('stays off when the host is built for a machine that holds no chat', async () => {
+    setStructuredChat(false)
+    await mountSync()
+
+    act(() => mocks.heldListeners.forEach((listener) => listener(false)))
+
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
+
+  it('keeps a change pushed while its first query was still in flight', async () => {
+    setStructuredChat(false)
+    let answer: (held: boolean) => void = () => undefined
+    window.api.app.holdsStructuredAgentSessions = () =>
+      new Promise<boolean>((resolve) => {
+        answer = resolve
+      })
+    renderHook(() => useLocalStructuredSessionTabsSync())
+
+    act(() => mocks.heldListeners.forEach((listener) => listener(true)))
+    await act(async () => {
+      answer(false)
+      await Promise.resolve()
+    })
+
+    expect(mocks.start).toHaveBeenCalledOnce()
+    const [{ isDisposed }] = mocks.start.mock.calls[0]
+    expect(isDisposed()).toBe(false)
+  })
+
   it('stays mirrored when the setting is turned off over chats this machine holds', async () => {
     setStructuredChat(true)
-    mocks.hostInstalled = true
+    mocks.held = true
     await mountSync()
 
     act(() => setStructuredChat(false))
@@ -102,7 +132,7 @@ describe("this machine's structured chat mirror", () => {
   it('never runs in the browser client, which has no runtime of its own', async () => {
     mocks.isWebClient = true
     setStructuredChat(true)
-    mocks.hostInstalled = true
+    mocks.held = true
 
     await mountSync()
 

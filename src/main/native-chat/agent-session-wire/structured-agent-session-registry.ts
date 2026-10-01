@@ -8,22 +8,59 @@
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 
 let host: StructuredAgentSessionHost | null = null
-const installedListeners = new Set<() => void>()
+let held = false
+let stopWatchingHost: (() => void) | null = null
+const heldListeners = new Set<(held: boolean) => void>()
 
-export function setStructuredAgentSessionHost(next: StructuredAgentSessionHost | null): void {
-  const installed = next !== null && host === null
-  host = next
-  if (installed) {
-    for (const listener of installedListeners) {
-      listener()
+// Why typeof: tests install partial hosts.
+function hostHoldsSessions(candidate: StructuredAgentSessionHost | null): boolean {
+  return typeof candidate?.holdsSessions === 'function' && candidate.holdsSessions()
+}
+
+// A notification must never fail the install that triggered it: a retry would build a second host.
+function publishHeld(): void {
+  try {
+    const next = hostHoldsSessions(host)
+    if (next === held) {
+      return
     }
+    held = next
+    for (const listener of heldListeners) {
+      try {
+        listener(next)
+      } catch (error) {
+        console.warn('[structured-agent-session] a held-chats listener threw', error)
+      }
+    }
+  } catch (error) {
+    console.warn('[structured-agent-session] reading whether chats are held failed', error)
   }
 }
 
-/** Called each time a host is installed where there was none: this runtime now holds chats. */
-export function onStructuredAgentSessionHostInstalled(listener: () => void): () => void {
-  installedListeners.add(listener)
-  return () => installedListeners.delete(listener)
+export function setStructuredAgentSessionHost(next: StructuredAgentSessionHost | null): void {
+  stopWatchingHost?.()
+  stopWatchingHost = null
+  host = next
+  try {
+    stopWatchingHost =
+      typeof next?.onSessionsHeld === 'function' ? next.onSessionsHeld(publishHeld) : null
+  } catch (error) {
+    console.warn('[structured-agent-session] watching for held chats failed', error)
+  }
+  publishHeld()
+}
+
+/** Whether this runtime holds a structured chat, saved or live; building the host alone is not one. */
+export function structuredAgentSessionsHeld(): boolean {
+  return hostHoldsSessions(host)
+}
+
+/** Called each time that answer changes, e.g. when the first chat here is restored or created. */
+export function onStructuredAgentSessionsHeldChanged(
+  listener: (held: boolean) => void
+): () => void {
+  heldListeners.add(listener)
+  return () => heldListeners.delete(listener)
 }
 
 export function getStructuredAgentSessionHost(): StructuredAgentSessionHost | null {
