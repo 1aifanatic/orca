@@ -43,7 +43,10 @@ export async function closeRelayWatchesAndWait(
   // Setup refusal is expected after fencing; retained teardown failures remain authoritative.
   await Promise.allSettled([...pendingSetups.values()].map((setup) => setup.promise))
   const results = await closures
-  const remaining = await Promise.allSettled(tracker.rootPaths().map((root) => tracker.join(root)))
+  // Why the fallback: join answers undefined for a root with nothing left in flight.
+  const remaining = await Promise.allSettled(
+    tracker.rootPaths().map((root) => tracker.join(root) ?? Promise.resolve())
+  )
   const failures = [...results, ...remaining].filter((result) => result.status === 'rejected')
   if (failures.length > 0) {
     throw new AggregateError(
