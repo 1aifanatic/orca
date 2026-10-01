@@ -132,4 +132,28 @@ describe('Claude accounts section', () => {
     )
     expect(markup).not.toContain('stays separate')
   })
+
+  it('lets an unchecked WSL account be selected (which starts its distro) and names the real problem', () => {
+    const markup = render({
+      accounts: [
+        account('wsl', 'w@example.test', {
+          managedAuthRuntime: 'wsl',
+          wslDistro: 'Ubuntu',
+          profileReadiness: 'unverified'
+        }),
+        account('native', 'n@example.test', { profileReadiness: 'unavailable' })
+      ]
+    })
+    expect(markup).toContain(
+      'Ubuntu is not running, so this account has not been checked yet. Selecting it starts Ubuntu.'
+    )
+    expect(markup).toContain(
+      'This account&#x27;s files could not be read. Try again, or sign in again.'
+    )
+    expect(markup).not.toContain('host is reachable')
+    const selects = [
+      ...markup.matchAll(/<button type="button"[^>]*class="flex min-w-0 flex-1[^"]*"[^>]*>/g)
+    ]
+    expect(selects.map(([button]) => button.includes('disabled=""'))).toEqual([false, true])
+  })
 })

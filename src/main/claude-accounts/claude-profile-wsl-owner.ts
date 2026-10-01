@@ -218,7 +218,10 @@ export function createWslClaudeProfileOwner(
       const inspection = account?.wslDistro
         ? inspections.get(account.wslDistro.toLowerCase())
         : undefined
-      return inspection?.result.readiness?.[accountId] ?? 'unavailable'
+      if (!inspection) {
+        return 'unverified'
+      }
+      return inspection.result.readiness?.[accountId] ?? 'unavailable'
     },
     identity: (accountId) => {
       const account = settings().claudeManagedAccounts.find((entry) => entry.id === accountId)
@@ -293,7 +296,11 @@ export function createWslClaudeProfileOwner(
     withdraw: async (target, access) => {
       const distro = distroFor(target)
       guests.delete(distro.toLowerCase())
-      inspections.delete(distro.toLowerCase())
+      // Why keep a not-ready inspection: it cannot verify a launch, but it still tells the
+      // account rows why (e.g. an upgraded account needs sign-in) instead of "not checked".
+      if (inspections.get(distro.toLowerCase())?.result.ready !== false) {
+        inspections.delete(distro.toLowerCase())
+      }
       await withdrawPointer(distro, access)
     }
   }

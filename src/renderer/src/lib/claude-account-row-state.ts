@@ -33,16 +33,34 @@ export function getClaudeAccountRowState(
           )
         : readiness === 'sign-in-required'
           ? translate('accounts.claude.signInRequired', 'Sign in again to use this account')
-          : readiness === 'unavailable'
+          : readiness === 'unverified'
             ? translate(
-                'accounts.claude.unavailable',
-                'Account unavailable. Try again when its host is reachable.'
+                'accounts.claude.wslNotRunning',
+                '{{value0}} is not running, so this account has not been checked yet. Selecting it starts {{value0}}.',
+                { value0: account.wslDistro || 'WSL' }
               )
-            : null
+            : readiness === 'unavailable'
+              ? account.managedAuthRuntime === 'wsl'
+                ? translate(
+                    'accounts.claude.wslUnavailable',
+                    'Orca could not check this account in {{value0}}. Select it to try again, or sign in again.',
+                    { value0: account.wslDistro || 'WSL' }
+                  )
+                : translate(
+                    'accounts.claude.profileUnreadable',
+                    "This account's files could not be read. Try again, or sign in again."
+                  )
+              : null
   return {
     label,
     problem,
-    // Why undefined passes: an older host reports no readiness and still serves every row.
-    selectable: (readiness === undefined || readiness === 'ready') && !account.profileIdentityIssue
+    // Why these pass: an older host reports no readiness, and selecting a WSL account starts its
+    // distro and checks it, refusing with its own reason if it still cannot be used.
+    selectable:
+      (readiness === undefined ||
+        readiness === 'ready' ||
+        (account.managedAuthRuntime === 'wsl' &&
+          (readiness === 'unverified' || readiness === 'unavailable'))) &&
+      !account.profileIdentityIssue
   }
 }

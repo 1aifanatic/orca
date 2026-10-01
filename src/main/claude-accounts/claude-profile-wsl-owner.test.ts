@@ -341,7 +341,8 @@ it('reports readiness for every owned WSL profile, not only the selected one', a
     Ubuntu: 'ready',
     second: 'ready',
     unowned: 'sign-in-required',
-    Debian: 'unavailable'
+    // Not checked this session: background work never starts a stopped distro.
+    Debian: 'unverified'
   })
 })
 it('sets a WSL profile up at launch only while the guest reports it unprovisioned', async () => {
@@ -418,4 +419,28 @@ it('publishes System Default in a routed distro without the managed guest runtim
   expect(
     routing.describeAccounts({ accounts: [], activeAccountId: null }).profileRoutingIssue ?? ''
   ).not.toContain('Ubuntu')
+})
+
+it('shows an upgraded WSL account as needing sign-in once selecting it has checked the distro', async () => {
+  const f = fixture()
+  const debian = { runtime: 'wsl' as const, wslDistro: 'Debian' }
+  const readinessOf = () =>
+    f.routing
+      .describeAccounts({
+        accounts: f.settings.claudeManagedAccounts.map((account) => ({ ...account })),
+        activeAccountId: null
+      })
+      .accounts.find((account) => account.id === 'Debian')?.profileReadiness
+  expect(readinessOf()).toBe('unverified')
+  const respond = f.respond.getMockImplementation()!
+  f.respond.mockImplementation(async (request) => {
+    const result = await respond(request)
+    return request.distro === 'Debian'
+      ? { ...result, ready: false, readiness: { Debian: 'sign-in-required' as const } }
+      : result
+  })
+  await expect(f.routing.publish(debian, 'always', 'boot')).rejects.toThrow(
+    'Selected WSL Claude account needs a fresh sign-in'
+  )
+  expect(readinessOf()).toBe('sign-in-required')
 })

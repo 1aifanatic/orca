@@ -89,7 +89,13 @@ export type ClaudeManagedAccountSummary = {
   profileIdentityIssue?: 'mismatch' | 'duplicate'
 }
 
-export type ClaudeProfileReadiness = 'ready' | 'sign-in-required' | 'unsupported' | 'unavailable'
+/** `unverified`: a WSL distro not checked this session (background work never starts one). */
+export type ClaudeProfileReadiness =
+  | 'ready'
+  | 'sign-in-required'
+  | 'unsupported'
+  | 'unavailable'
+  | 'unverified'
 
 export type ClaudeRateLimitAccountsState = {
   accounts: ClaudeManagedAccountSummary[]
