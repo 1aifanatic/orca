@@ -76,9 +76,71 @@ function persistencePrimitives(text: string): string[] {
   return [...found]
 }
 
+const WRITE_CALL =
+  /\b(?:write\w*|append\w*|copy\w*|cp(?:Sync)?|rename\w*|link\w*|symlink\w*|createWriteStream)\s*\(/g
+// The one runner that takes `security` argv from its callers; each caller must spell the verb.
+const SECURITY_RUNNER = 'main/macos-keychain/generic-password.ts'
+
+/** Names bound, directly or through another such name, to the credentials file's path. */
+function credentialFileNames(text: string): Set<string> {
+  const declarations: { name: string; init: string }[] = []
+  const lines = text.split('\n')
+  lines.forEach((line, index) => {
+    const declared = /^(\s*)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)/.exec(line)
+    if (!declared) {
+      return
+    }
+    const indent = declared[1].length
+    let end = index + 1
+    while (end < lines.length && /^\s*$|^\s+/.test(lines[end])) {
+      const lead = /^\s*/.exec(lines[end])?.[0].length ?? 0
+      if (lines[end].trim() && lead <= indent && !/^\s*[)\]}]/.test(lines[end])) {
+        break
+      }
+      end += 1
+    }
+    declarations.push({ name: declared[2], init: lines.slice(index, end).join('\n') })
+  })
+  const names = new Set<string>()
+  for (let changed = true; changed;) {
+    changed = false
+    for (const { name, init } of declarations) {
+      const tainted =
+        init.includes('.credentials.json') ||
+        [...names].some((other) => new RegExp(`\\b${other}\\b`).test(init.replace(name, '')))
+      if (tainted && !names.has(name)) {
+        names.add(name)
+        changed = true
+      }
+    }
+  }
+  return names
+}
+
 /** Credential writes refused everywhere scanned, whatever form the call takes. */
-function credentialMutations(text: string): string[] {
+function credentialMutations(text: string, file = ''): string[] {
   const found: string[] = []
+  // A `security` launch whose verb is not spelled out could be a write, so only the runner may
+  // forward argv, and its callers must spell the verb.
+  if (
+    (file !== SECURITY_RUNNER &&
+      /\b(?:exec(?:File)?(?:Sync|Async)?|spawn(?:Sync)?|runProcess|spawnProcess)\s*\(\s*['"`]security['"`]\s*,\s*(?!\[\s*['"])/.test(
+        text
+      )) ||
+    /\bprogram\s*:\s*['"`]security['"`]\s*,\s*args\s*:\s*(?!\[\s*['"])/.test(text) ||
+    /(?<!function\s)\bexecSecurityCommand\s*\(\s*(?!\[\s*['"])/.test(text)
+  ) {
+    found.push('keychain command with a computed verb')
+  }
+  // A name bound to the credentials file that reaches a write, anywhere in the same file.
+  const names = credentialFileNames(text)
+  for (const call of text.matchAll(WRITE_CALL)) {
+    const args = text.slice(call.index + call[0].length, call.index + call[0].length + 300)
+    if ([...names].some((name) => new RegExp(`\\b${name}\\b`).test(args))) {
+      found.push('credentials file write through a name')
+      break
+    }
+  }
   // Argv (`['add-generic-password', …]`) and shell (`security add-generic-password`) forms.
   if (/(?:add|delete)-generic-password/.test(text)) {
     found.push('keychain write')
@@ -130,9 +192,10 @@ it('keeps every Claude credential writer removed, in every form and on every lau
       return only ? found.filter((file) => only.test(file)) : found
     })
     .flatMap((file) =>
-      credentialMutations(stripComments(readFileSync(file, 'utf8'))).map(
-        (kind) => `${relative(src, file)}: ${kind}`
-      )
+      credentialMutations(
+        stripComments(readFileSync(file, 'utf8')),
+        relative(src, file).replaceAll('\\', '/')
+      ).map((kind) => `${relative(src, file)}: ${kind}`)
     )
   expect(violations).toEqual([])
 })
@@ -181,14 +244,21 @@ it.each([
   "const script = 'cp source .credentials.json'",
   'const script = `printf %s "$token" > "$HOME/.claude/.credentials.json"`',
   "fetch('https://api.anthropic.com/v1/oauth/token')",
-  "body: JSON.stringify({ grant_type: 'refresh_token' })"
+  "body: JSON.stringify({ grant_type: 'refresh_token' })",
+  "execFile('security', [['add', 'generic', 'password'].join('-'), '-s', service])",
+  "spawn('security', verbArgs)",
+  'execSecurityCommand(args)',
+  "const CREDENTIALS_FILE = '.credentials.json'\n\ncopyFileSync(join(from, CREDENTIALS_FILE), join(to, CREDENTIALS_FILE))",
+  "const name = '.credentials.json'\nfunction save(dir) {\n  const target = join(dir, name)\n\n  writeFileSync(target, token)\n}"
 ])('mutation control: the credential check rejects %s', (source) => {
   expect(credentialMutations(source).length).toBeGreaterThan(0)
 })
 
 it.each([
   "const file = await readFile(join(home, '.credentials.json'), 'utf8')",
-  "readKeychainPassword('Claude Code-credentials', user)"
+  "readKeychainPassword('Claude Code-credentials', user)",
+  "execSecurityCommand(['find-generic-password', '-s', service, '-w'])",
+  "const file = join(home, '.credentials.json')\nconst raw = await readFile(file, 'utf8')"
 ])('the credential check leaves a read alone: %s', (source) => {
   expect(credentialMutations(source)).toEqual([])
 })
