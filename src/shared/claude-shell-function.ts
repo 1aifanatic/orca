@@ -57,8 +57,9 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
     if not test -f "$ORCA_CLAUDE_PROFILE_POINTER"; or not test -r "$ORCA_CLAUDE_PROFILE_POINTER"
       echo 'Claude account selection is unreadable; choose an account again.' >&2; return 1
     end
-    set -l profile (cat -- "$ORCA_CLAUDE_PROFILE_POINTER" | string collect --allow-empty --no-trim-newlines)
-    if test $pipestatus[1] -ne 0
+    # Why read -z: it keeps newlines for the check below and exists before fish 3.4's collect flags.
+    set -l profile ''
+    if test -s "$ORCA_CLAUDE_PROFILE_POINTER"; and not read -lz profile < "$ORCA_CLAUDE_PROFILE_POINTER"
       echo 'Claude account selection is unreadable.' >&2; return 1
     end
     if string match -qr '[\\r\\n]' -- "$profile"

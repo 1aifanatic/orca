@@ -36,8 +36,14 @@ function fixture() {
   chmodSync(join(bin, 'claude'), 0o700)
   const pointer = join(root, 'selected')
   writeFileSync(pointer, a)
-  const run = (shell: string, text: string, env: string[] = []) =>
-    spawnSync(
+  const fake = join(bin, 'claude')
+  const run = (shell: string, text: string, env: string[] = []) => {
+    const fish = shell.endsWith('fish')
+    // Why: a shell that reads system config can put a real claude ahead of the fake; abort first.
+    const guard = fish
+      ? `test (command -s claude) = '${fake}'; or exit 97`
+      : `[ "$(command -v claude)" = '${fake}' ] || exit 97`
+    const result = spawnSync(
       '/usr/bin/env',
       [
         '-i',
@@ -47,12 +53,17 @@ function fixture() {
         'ANTHROPIC_API_KEY=fake',
         ...env,
         shell,
-        ...(shell.endsWith('zsh') ? ['-f'] : []),
+        ...(fish ? ['--no-config'] : shell.endsWith('zsh') ? ['-f'] : ['--noprofile', '--norc']),
         '-c',
-        text
+        `${guard}\n${text}`
       ],
       { encoding: 'utf8', cwd: root }
     )
+    if (result.status === 97) {
+      throw new Error(`${shell} did not resolve claude to the fake binary`)
+    }
+    return result
+  }
   return { root, a, b, pointer, run }
 }
 describe('Claude invocation account selection', () => {
@@ -146,11 +157,19 @@ describe('Claude invocation account selection', () => {
     mkdirSync(join(f.root, 'C:\\profile'))
     writeFileSync(f.pointer, 'C:\\profile')
     expect(f.run(FISH, `${fn}\nclaude x`).stdout).toContain('HOME=C:\\profile KEY=none')
-    writeFileSync(f.pointer, '\n')
-    expect(f.run(FISH, `${fn}\nclaude test`).stdout).toBe('')
+    writeFileSync(f.pointer, '')
+    expect(f.run(FISH, `${fn}\nclaude x`).stdout).toBe('HOME=default KEY=fake ARG=x TWIN=none\n')
+    for (const value of ['\n', `${f.a}\n`]) {
+      writeFileSync(f.pointer, value)
+      expect(f.run(FISH, `${fn}\nclaude test`).stdout).toBe('')
+    }
     expect(f.run(FISH, `set -e ORCA_CLAUDE_PROFILE_POINTER\n${fn}\nclaude x`).stdout).toContain(
       'HOME=default KEY=fake'
     )
+  })
+  it('uses no fish syntax newer than the 3.x releases Orca supports', () => {
+    // `string collect --allow-empty` arrived in fish 3.4; older fish refused every launch.
+    expect(getFishClaudeShellFunction()).not.toMatch(/string collect|--allow-empty/)
   })
   it('emits a guarded PowerShell per-invocation read, override rule and finally restoration', () => {
     const script = getPowerShellClaudeShellFunction()

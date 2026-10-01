@@ -84,10 +84,11 @@ it.skipIf(!existsSync(FISH))(
           FISH,
           '--no-config',
           '-c',
-          `${init}\nfunctions -q claude; and echo CLAUDE-FN\nfunctions -q __orca_shell_ready_marker; and echo READY-HOOK`
+          `test (command -s claude) = '${join(root, 'bin', 'claude')}'; or exit 97\n${init}\nfunctions -q claude; and echo CLAUDE-FN\nfunctions -q __orca_shell_ready_marker; and echo READY-HOOK`
         ],
         { encoding: 'utf8' }
       )
+      expect(result.status).not.toBe(97)
       expect(result.stderr).toBe('')
       expect(result.stdout).toContain('CLAUDE-FN')
       expect(result.stdout).toContain('READY-HOOK')
