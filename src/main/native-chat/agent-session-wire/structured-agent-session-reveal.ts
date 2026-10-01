@@ -10,6 +10,8 @@
 // a send does. And a journal it cannot open is not a refusal — the chat shows that failure with a
 // Retry, so the tab is worth publishing either way.
 
+import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
@@ -17,6 +19,7 @@ import { StructuredAgentSessionReadableRestorer } from './structured-agent-sessi
 import { StructuredAgentSessionRestartRestoreGate } from './structured-agent-session-restart-restore-gate'
 import {
   createReaderReconcile,
+  createRestartReconciler,
   reportEachFailureOnce
 } from './structured-agent-session-restart-reconcile'
 import type {
@@ -57,21 +60,30 @@ export async function revealStructuredAgentSession(
 }
 
 /** The host's startup readable-restore sweep: reconcile, resolve, then open each chat's journal.
- *  Its lease bookkeeping is a reader's, which never fails a read or startup; startup shares it. */
+ *  Its lease bookkeeping is a reader's, which never fails a read or startup; startup shares it.
+ *  `reconcileLeases` is the one restart reconciler, which attach and start await strictly. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
     'openDeps' | 'supportsRecord' | 'reconcile' | 'resolveRecovery'
   > & {
-    reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+    probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
+    now: () => number
     resolveRecovery: (sessionId: string) => Promise<unknown>
   }
 ): {
+  reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
   reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
 } {
-  const { reconcileLeases, resolveRecovery, ...rest } = wiring
+  const { probe, now, resolveRecovery, ...rest } = wiring
+  const reconcileLeases = createRestartReconciler({
+    store: deps.store,
+    probe,
+    ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
+    now
+  })
   const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const restorer = new StructuredAgentSessionReadableRestorer({
@@ -91,6 +103,7 @@ export function createStructuredAgentSessionHostRestore(
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
+    reconcileLeases,
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },

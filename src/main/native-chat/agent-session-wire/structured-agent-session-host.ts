@@ -10,7 +10,6 @@ import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
@@ -88,9 +87,6 @@ export class StructuredAgentSessionHost {
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
-  private readonly reconcileLeases: (
-    sessionId: string
-  ) => Promise<SessionWire.AgentSessionWireRefusal | null>
   private readonly restore: ReturnType<typeof createStructuredAgentSessionHostRestore>
   private readonly lifetime: StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: ReturnType<
@@ -113,12 +109,6 @@ export class StructuredAgentSessionHost {
     this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, (sessionId, error) =>
       this.eventRecovery.recoverAfterSinkFailure(sessionId, error)
     )
-    this.reconcileLeases = createRestartReconciler({
-      store: deps.store,
-      probe: (record) => this.runtimeState.probeRecord(record),
-      ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      now: () => this.now()
-    })
     this.conversationDelivery = createStructuredAgentSessionConversationDelivery({
       deps,
       sessions: this.sessions,
@@ -138,7 +128,8 @@ export class StructuredAgentSessionHost {
       flushStreamedEvents: (sessionId) => this.flushStreamedEvents(sessionId)
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, {
-      reconcileLeases: this.reconcileLeases,
+      probe: (record) => this.runtimeState.probeRecord(record),
+      now: () => this.now(),
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       hasSession: this.hasSession,
@@ -207,7 +198,7 @@ export class StructuredAgentSessionHost {
       ...this.lifetimeContext(),
       subscribers: this.subscribers,
       tasks: this.tasks,
-      reconcileLeases: (sessionId) => this.reconcileLeases(sessionId),
+      reconcileLeases: (sessionId) => this.restore.reconcileLeases(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       openConversation: this.conversationDelivery.open
     }
@@ -257,7 +248,8 @@ export class StructuredAgentSessionHost {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
   }
 
-  flushStreamedEvents = (sessionId: string) => this.runtimeState.flushEventSink(sessionId)
+  flushStreamedEvents = (sessionId: string): Promise<void> =>
+    this.runtimeState.flushEventSink(sessionId)
 
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
@@ -330,7 +322,8 @@ export class StructuredAgentSessionHost {
   journalSnapshot = async (sessionId: string): Promise<AgentJournalSnapshot> =>
     (await this.lifetime.conversation(sessionId)).journal.snapshot()
 
-  subscribe = (input: AgentSessionSubscribeInput) => this.backgroundTasks.subscribe(input)
+  subscribe = (input: AgentSessionSubscribeInput): Promise<() => void> =>
+    this.backgroundTasks.subscribe(input)
 
   settleLateDispatch = (input: Parameters<typeof settleStructuredAgentSessionLateDispatch>[1]) =>
     settleStructuredAgentSessionLateDispatch(this.mutationContext(), input)
