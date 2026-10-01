@@ -14,6 +14,7 @@ import {
   readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
 import Database from '../../sqlite/sync-database'
+import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
 import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
 import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
 import { editPersistedTestAgentSessionStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -50,6 +51,22 @@ function db(rig: RestTestRig) {
 async function crashMidSend(rig: RestTestRig, sessionId: string, listed = true): Promise<void> {
   rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
   await restTestChat(rig, sessionId, { message: `asked ${sessionId}`, listed })
+}
+
+/** A chat whose turn is running when Orca dies: startup selects it to settle. */
+async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> {
+  await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+  const [{ providerIdentity }] = await Promise.all(
+    rig.adapter.dispatch.mock.results.slice(-1).map((result) => result.value)
+  )
+  await rig.host
+    .collaboratorsForTests()
+    .sessions.get(sessionId)!
+    .journal.appendItem(
+      { ...providerIdentity, ordinal: 0 },
+      { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+      { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence, turnScope: { kind: 'thread' } }
+    )
 }
 
 /** What startup runs, in order, on the ids the tab list names. */
@@ -456,10 +473,9 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const rig = await newRig()
     for (const sessionId of ['session-a', 'session-b']) {
-      await crashMidSend(rig, sessionId)
+      await crashMidTurn(rig, sessionId)
     }
     await restTestChat(rig, 'session-healthy', { message: 'fine' })
-    await rig.host.flushAllStreamedEvents()
     await rig.crash()
     const gate = new StructuredAgentSessionStartupGate(CEILING_MS)
     gate.hold()
@@ -467,16 +483,17 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     const listed = listedIds(rig)
     await rig.host.reconcileRestartLeases()
     rig.host.seedStoredStatuses(listed)
+    expect(readUnsettledJournalSessionIds(db(rig)).toSorted()).toEqual(['session-a', 'session-b'])
     const started = Date.now()
     const elapsed = () => Date.now() - started
 
     // Before the settle: a send to a crashed chat, and the option read a chat pane fires on mount.
     const sendBefore = sendRestTestMessage(rig, 'session-a', 'during startup').then(elapsed)
-    const optionsBefore = rig.host.readOptions('session-a').then(elapsed, elapsed)
+    const optionsBefore = rig.host.readOptions('session-a').then(elapsed)
     const settled = rig.host.settleOwedSessions(listed)
     gate.openWhen(settled)
     // During the settle: the second crashed chat, which the settle has not reached yet.
-    const optionsDuring = rig.host.readOptions('session-b').then(elapsed, elapsed)
+    const optionsDuring = rig.host.readOptions('session-b').then(elapsed)
     const healthyRead = rig.host.journalSnapshot('session-healthy').then(elapsed)
     const settleEnded = await settled.then(elapsed)
 
