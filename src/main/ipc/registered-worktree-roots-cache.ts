@@ -2,13 +2,14 @@ import { resolve } from 'node:path'
 import type { Repo } from '../../shared/repo-types'
 import type { Store } from '../persistence'
 import {
-  findOwnersListedThroughAnotherGit,
   listWorktreeRootsWithConcurrency,
-  pruneCreatedWorktreeRoots,
-  resolveWorktreeRootListingDistros
+  pruneCreatedWorktreeRoots
 } from './registered-worktree-root-probes'
 import { isDescendantOrEqual, normalizeExistingPath } from './filesystem-path-containment'
-import { shouldRelistOwner } from './registered-worktree-root-relist-policy'
+import {
+  findOwnersListedThroughAnotherGit,
+  shouldRelistOwner
+} from './registered-worktree-root-relist-policy'
 import {
   createRegisteredOwner,
   getLocalWorktreeRootOwners,
@@ -34,20 +35,18 @@ function advanceOwner(owner: RegisteredOwner): void {
   registeredWorktreeRootsRevisionByRepo.set(owner.repoId, owner.revision)
 }
 
-function resolveOwnerForRepo(
-  store: Store,
-  repo: Repo | string
-): { owner: RegisteredOwner; row: Repo } | undefined {
-  const key = resolveWorktreeRootOwner(synchronizeOwners(store), repo, currentOwners)
-  const owner = key === undefined ? undefined : registeredOwners.get(key)
-  const row = key === undefined ? undefined : currentOwners.get(key)
-  return owner && row ? { owner, row } : undefined
+function resolveOwnerForRepo(store: Store, repo: Repo | string): RegisteredOwner | undefined {
+  const repos = synchronizeOwners(store)
+  const key = resolveWorktreeRootOwner(repos, repo, currentOwners)
+  return key === undefined ? undefined : registeredOwners.get(key)
 }
 
-function relistOwner(owner: RegisteredOwner): void {
-  owner.listed = null
-  owner.dirty = true
-  advanceOwner(owner)
+function relistOwners(owners: Iterable<RegisteredOwner>): void {
+  for (const owner of owners) {
+    owner.listed = null
+    owner.dirty = true
+    advanceOwner(owner)
+  }
   refreshRegisteredWorktreeRoots()
   registeredWorktreeRootsDirty = true
 }
@@ -84,13 +83,7 @@ function synchronizeOwners(store: Store): Repo[] {
 
 export function invalidateAuthorizedRootsCache(): void {
   invalidationGeneration++
-  for (const owner of registeredOwners.values()) {
-    owner.listed = null
-    owner.dirty = true
-    advanceOwner(owner)
-  }
-  refreshRegisteredWorktreeRoots()
-  registeredWorktreeRootsDirty = true
+  relistOwners(registeredOwners.values())
   baseRevision = ++revisionSequence
   registeredWorktreeRootsRevisionByRepo.clear()
 }
@@ -155,26 +148,27 @@ export async function rebuildAuthorizedRootsCache(store: Store, onlyDirty = fals
  * untouched repos. `advanceOwner` still records this repo's new revision.
  */
 export function markAuthorizedRootsOwnerDirty(store: Store, repo: Repo | string): boolean {
-  const owner = resolveOwnerForRepo(store, repo)?.owner
+  const owner = resolveOwnerForRepo(store, repo)
   if (!owner) {
     return false
   }
-  relistOwner(owner)
+  relistOwners([owner])
   return true
 }
 
+/** `listing.wslDistro` is the distro whose Git produced `worktreeRoots`; omitted is host Git. */
 export function registerWorktreeRootsForRepo(
   store: Store,
   repo: Repo | string,
-  worktreeRoots: string[]
+  worktreeRoots: string[],
+  listing: { wslDistro?: string } = {}
 ): void {
-  const { owner, row } = resolveOwnerForRepo(store, repo) ?? {}
-  if (!owner || !row) {
+  const owner = resolveOwnerForRepo(store, repo)
+  if (!owner) {
     return
   }
   owner.listed = new Set(worktreeRoots.map((root) => resolve(root)))
-  // Why the current runtime: both callers list through it and discard a scan it has since moved off.
-  owner.listedWslDistro = resolveWorktreeRootListingDistros(store, [row]).get(row.id)
+  owner.listedWslDistro = listing.wslDistro
   owner.dirty = false
   advanceOwner(owner)
   refreshRegisteredWorktreeRoots()
@@ -187,7 +181,7 @@ export function registerCreatedWorktreeRoot(
   repo: Repo | string,
   worktreeRoot: string
 ): void {
-  const owner = resolveOwnerForRepo(store, repo)?.owner
+  const owner = resolveOwnerForRepo(store, repo)
   if (!owner) {
     return
   }
@@ -219,12 +213,17 @@ export function getRegisteredWorktreeRootsRevision(repoId: string): number {
 
 export async function ensureAuthorizedRootsCache(store: Store): Promise<void> {
   synchronizeOwners(store)
-  // Why re-derived on a miss: nothing invalidates this cache when a project's runtime changes.
-  for (const owner of findOwnersListedThroughAnotherGit(store, currentOwners, registeredOwners)) {
-    relistOwner(owner)
-  }
   // Follow one superseded refresh; continuous catalog churn must not pin authorization forever.
-  for (let attempt = 0; registeredWorktreeRootsDirty && attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Why re-derived each attempt: nothing invalidates this cache when a project's runtime changes,
+    // and a refresh that began before the change commits a listing from the old Git.
+    const drifted = findOwnersListedThroughAnotherGit(store, currentOwners, registeredOwners)
+    if (drifted.length > 0) {
+      relistOwners(drifted)
+    }
+    if (!registeredWorktreeRootsDirty) {
+      break
+    }
     if (!registeredWorktreeRootsRefresh) {
       registeredWorktreeRootsRefresh = rebuildAuthorizedRootsCache(store, true).finally(() => {
         registeredWorktreeRootsRefresh = null

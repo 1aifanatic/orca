@@ -34,6 +34,8 @@ const repo: Repo = {
 // every other consumer sends, and host Git reading that `/mnt/c` metadata as a different path.
 const worktree = resolve('/wsl-drive/workspaces/feature-extra')
 const hostGitSpelling = resolve('/mnt/c/wsl-drive/workspaces/feature-extra')
+const hostRepo: Repo = { ...repo, id: 'host-repo', path: resolve('/host-drive/repo') }
+const hostRepoWorktree = resolve('/host-drive/workspaces/feature')
 
 const wslRuntime: ProjectExecutionRuntimeResolution = {
   status: 'resolved',
@@ -67,10 +69,10 @@ const repairRuntime: ProjectExecutionRuntimeResolution = {
   }
 }
 
-function fixture(): Store {
+function fixture(repos: Repo[] = [repo]): Store {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these store methods; listing and runtime resolution are mocked.
   return {
-    getRepos: () => [repo],
+    getRepos: () => repos,
     getProjectGroups: () => [],
     getFolderWorkspaces: () => [],
     getSettings: () => ({})
@@ -79,7 +81,8 @@ function fixture(): Store {
 
 function useRuntime(runtime: ProjectExecutionRuntimeResolution): void {
   mocks.runtimes.mockImplementation(
-    (_store: Store, repos: readonly Repo[]) => new Map(repos.map((entry) => [entry.id, runtime]))
+    (_store: Store, repos: readonly Repo[]) =>
+      new Map(repos.map((entry) => [entry.id, entry.id === hostRepo.id ? hostRuntime : runtime]))
   )
 }
 
@@ -88,8 +91,15 @@ beforeEach(() => {
   __resetCreatedWorktreeRootsForTests()
   vi.resetAllMocks()
   mocks.realpath.mockImplementation(async (path: string) => path)
-  mocks.graph.mockImplementation(async (_repo: Repo, options?: { wslDistro?: string }) => [
-    { path: options?.wslDistro === DISTRO ? worktree : hostGitSpelling }
+  mocks.graph.mockImplementation(async (listed: Repo, options?: { wslDistro?: string }) => [
+    {
+      path:
+        listed.id === hostRepo.id
+          ? hostRepoWorktree
+          : options?.wslDistro === DISTRO
+            ? worktree
+            : hostGitSpelling
+    }
   ])
   useRuntime(wslRuntime)
 })
@@ -129,9 +139,9 @@ describe('authorized worktree roots for a drive repo whose project runtime is WS
     )
   })
 
-  it('keeps a catalog registration made through the project runtime without re-listing', async () => {
+  it('keeps a registration WSL Git produced without re-listing', async () => {
     const store = fixture()
-    registerWorktreeRootsForRepo(store, repo.id, [repo.path, worktree])
+    registerWorktreeRootsForRepo(store, repo.id, [repo.path, worktree], { wslDistro: DISTRO })
     await expect(resolveAuthorizedPath(resolve('/wsl-drive/outside'), store)).rejects.toThrow(
       PATH_ACCESS_DENIED_MESSAGE
     )
@@ -141,11 +151,69 @@ describe('authorized worktree roots for a drive repo whose project runtime is WS
     )
   })
 
+  it('re-lists a registration host Git produced for a WSL project on the next miss', async () => {
+    const store = fixture()
+    registerWorktreeRootsForRepo(store, repo.id, [repo.path, hostGitSpelling])
+    await expect(resolveAuthorizedPath(join(worktree, 'file'), store)).resolves.toBe(
+      join(worktree, 'file')
+    )
+    expect(mocks.graph).toHaveBeenCalledWith(repo, { wslDistro: DISTRO })
+  })
+
   it('lists with host Git while the runtime awaits repair, as before routing', async () => {
     useRuntime(repairRuntime)
-    await expect(
-      resolveAuthorizedPath(join(hostGitSpelling, 'file'), fixture())
-    ).resolves.toBeDefined()
+    await expect(resolveAuthorizedPath(join(hostGitSpelling, 'file'), fixture())).resolves.toBe(
+      join(hostGitSpelling, 'file')
+    )
     expect(mocks.graph).toHaveBeenCalledWith(repo, {})
+  })
+
+  it('keeps the WSL listing when a resolved runtime starts awaiting repair', async () => {
+    const store = fixture()
+    await expect(resolveAuthorizedPath(join(worktree, 'file'), store)).resolves.toBe(
+      join(worktree, 'file')
+    )
+
+    useRuntime(repairRuntime)
+    await expect(resolveAuthorizedPath(resolve('/wsl-drive/outside'), store)).rejects.toThrow(
+      PATH_ACCESS_DENIED_MESSAGE
+    )
+    expect(mocks.graph).toHaveBeenCalledTimes(1)
+    await expect(resolveAuthorizedPath(join(worktree, 'file'), store)).resolves.toBe(
+      join(worktree, 'file')
+    )
+  })
+
+  it('re-lists in the same request when the runtime changes during an in-flight rebuild', async () => {
+    useRuntime(hostRuntime)
+    const store = fixture()
+    let releaseHostListing = (): void => {}
+    mocks.graph.mockImplementationOnce(
+      (_repo: Repo) =>
+        new Promise((resolveListing) => {
+          releaseHostListing = () => resolveListing([{ path: hostGitSpelling }])
+        })
+    )
+    const earlier = resolveAuthorizedPath(resolve('/wsl-drive/outside'), store)
+    await vi.waitFor(() => expect(mocks.graph).toHaveBeenCalledTimes(1))
+
+    useRuntime(wslRuntime)
+    const afterSwitch = resolveAuthorizedPath(join(worktree, 'file'), store)
+    releaseHostListing()
+    await expect(earlier).rejects.toThrow(PATH_ACCESS_DENIED_MESSAGE)
+    await expect(afterSwitch).resolves.toBe(join(worktree, 'file'))
+  })
+
+  it('keeps a host-runtime repo in the same cache on host Git', async () => {
+    const store = fixture([repo, hostRepo])
+    await expect(resolveAuthorizedPath(join(hostRepoWorktree, 'file'), store)).resolves.toBe(
+      join(hostRepoWorktree, 'file')
+    )
+    await expect(resolveAuthorizedPath(join(worktree, 'file'), store)).resolves.toBe(
+      join(worktree, 'file')
+    )
+    expect(mocks.graph).toHaveBeenCalledWith(hostRepo, {})
+    expect(mocks.graph).toHaveBeenCalledWith(repo, { wslDistro: DISTRO })
+    expect(mocks.graph).toHaveBeenCalledTimes(2)
   })
 })
