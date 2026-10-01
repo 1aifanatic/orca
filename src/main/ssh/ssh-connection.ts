@@ -2,7 +2,10 @@
 import * as net from 'node:net'
 import { Client as SshClient } from 'ssh2'
 import { sshProxyRouteDigest, type SshConnectionDestination } from './ssh-connection-destination'
-import { SshConnectionWorkLedger } from './ssh-connection-work-ledger'
+import {
+  SshConnectionWorkLedger,
+  type SshConnectionWorkChannel
+} from './ssh-connection-work-ledger'
 import { SshTransportCloseLedger } from './ssh-transport-close-ledger'
 import { SshTransportClosureSubscribers } from './ssh-connection-transport-closure'
 import { disconnectAndAwaitSshTransportClose } from './ssh-connection-close-drain'
@@ -293,7 +296,11 @@ export class SshConnection {
   openForwardSocket<T extends NodeJS.EventEmitter>(open: () => T): T {
     return openTrackedSshSocket(this.workLedger, open, this.reportUnhandledChannelError('socket'))
   }
-  forwardOut(client: SshClient, localSocket: object, ...args: Parameters<SshClient['forwardOut']>) {
+  forwardOut(
+    client: SshClient,
+    localSocket: SshConnectionWorkChannel,
+    ...args: Parameters<SshClient['forwardOut']>
+  ): void {
     assertSshForwardClient(this.client, client)
     const report = this.reportUnhandledChannelError('forward')
     forwardTrackedSshChannel(this.workLedger, client, localSocket, report, ...args)

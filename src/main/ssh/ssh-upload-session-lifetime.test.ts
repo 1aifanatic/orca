@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { expect, it, vi } from 'vitest'
 import type { FileUploadSession } from '../providers/filesystem-provider-contract'
 import { SshConnectionWorkLedger } from './ssh-connection-work-ledger'
@@ -76,7 +77,7 @@ it('retains pending factory admission across the fence and independently tracks 
     await release.promise
     await ledger.run(async () => {
       channel = ledger.beginChannelOpen()
-      channel.bind({})
+      channel.bind(new EventEmitter())
     })
     return makeSession()
   })

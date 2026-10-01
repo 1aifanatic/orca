@@ -7,6 +7,7 @@ import { forwardTrackedSshChannel } from './ssh-forward-channel-lifetime'
 function fixture() {
   const ledger = new SshConnectionWorkLedger()
   const local = new EventEmitter()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ledger only needs the channel's EventEmitter surface.
   const remote = new EventEmitter() as ClientChannel
   let opened!: NonNullable<Parameters<Client['forwardOut']>[4]>
   const client = {
@@ -18,6 +19,7 @@ function fixture() {
   const start = () =>
     forwardTrackedSshChannel(
       ledger,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub implements only the forwardOut the helper calls.
       client as unknown as Client,
       local,
       undefined,
@@ -67,6 +69,7 @@ it('retains open failures during reset rather than claiming successful drain', a
   f.start()
   const fence = f.ledger.fenceForReset()
   const failure = new Error('forward failed')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ssh2 passes no channel on a refused open; the callback type omits that case.
   f.opened()(failure, undefined as never)
   f.local.emit('close')
   await expect(fence.drain(new AbortController().signal)).rejects.toBe(failure)

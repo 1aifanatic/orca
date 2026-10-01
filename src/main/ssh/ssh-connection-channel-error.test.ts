@@ -49,6 +49,7 @@ it('does not log a forwarded channel error its owner handles', async () => {
   const client = conn.getClient()!
   const channel = new EventEmitter()
   client.openssh_forwardOutStreamLocal = vi.fn((_path, callback) => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
     callback(undefined, channel as never)
     return client
   })

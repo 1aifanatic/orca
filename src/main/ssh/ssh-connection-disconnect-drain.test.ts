@@ -44,6 +44,7 @@ async function fixture(conn = new SshConnection(createTarget(), createCallbacks(
   const forward = () => {
     const channel = new EventEmitter()
     client.openssh_forwardOutStreamLocal = vi.fn((_path, callback) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
       callback(undefined, channel as never)
       return client
     })
@@ -190,6 +191,7 @@ it('aborts unresolved channel drain even after the physical client closes', asyn
 it('cleans owned overlapping clients but refuses unproven drain', async () => {
   const f = await fixture()
   const pending = { end: vi.fn(), destroy: vi.fn() }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reads SshConnection's own private pending-client set.
   const clients = (f.conn as unknown as { pendingSsh2Clients: Set<unknown> }).pendingSsh2Clients
   clients.add(pending)
   await expect(f.run()).rejects.toThrow()
@@ -202,6 +204,7 @@ it('cleans owned overlapping clients but refuses unproven drain', async () => {
 it('waits for the owned proxy close as well as client close', async () => {
   const f = await fixture()
   const proxy = Object.assign(new EventEmitter(), { kill: vi.fn() })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: installs a stub proxy process into SshConnection's private field.
   ;(f.conn as unknown as { proxyProcess: typeof proxy }).proxyProcess = proxy
   const done = vi.fn()
   const draining = f.run().then(done)

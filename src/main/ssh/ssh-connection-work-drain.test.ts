@@ -76,6 +76,7 @@ it('routes actual connection forwarding through admission and rejects a replaced
   const channel = new EventEmitter()
   const socket = new EventEmitter()
   client.forwardOut = vi.fn((_a, _b, _c, _d, callback) => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
     callback?.(undefined, channel as never)
     return client
   })
@@ -85,6 +86,7 @@ it('routes actual connection forwarding through admission and rejects a replaced
     conn.forwardOut(client, new EventEmitter(), '127.0.0.1', 0, 'remote', 443, vi.fn())
   ).toThrow('admission_closed')
   expect(() =>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in for a different ssh2 client; only its identity is compared.
     conn.forwardOut({} as never, new EventEmitter(), '127.0.0.1', 0, 'remote', 443, vi.fn())
   ).toThrow('client_changed')
   channel.emit('close')
@@ -113,6 +115,7 @@ it('tracks exact remote socket forwarding through a late open and physical close
   expect(() => fence.assertDrained()).toThrow('not_drained')
   expect(() => conn.forwardStreamLocal(client, '/other.sock', vi.fn())).toThrow('admission_closed')
   const channel = new EventEmitter()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
   accept!(undefined, channel as never)
   expect(received).toHaveBeenCalledWith(undefined, channel)
   expect(() => fence.assertDrained()).toThrow('not_drained')
@@ -126,6 +129,7 @@ it('rejects stale clients and non-Unix endpoints before remote socket forwarding
   await conn.connect()
   const client = conn.getClient()!
   client.openssh_forwardOutStreamLocal = vi.fn()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in for a different ssh2 client; only its identity is compared.
   expect(() => conn.forwardStreamLocal({} as never, '/saved.sock', vi.fn())).toThrow(
     'client_changed'
   )
@@ -160,6 +164,7 @@ it('surfaces remote socket extension refusal without a fallback', async () => {
   conn.forwardStreamLocal(client, '/saved.sock', received)
   const fence = fenceSshConnectionWork(conn)
   const refused = new Error('extension unsupported')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ssh2 passes no channel on a refused open; the callback type omits that case.
   accept!(refused, undefined as never)
   expect(received).toHaveBeenCalledWith(refused, undefined)
   await expect(fence.drain(new AbortController().signal)).rejects.toThrow('extension unsupported')
@@ -172,6 +177,7 @@ it('retains remote socket channel errors through physical close', async () => {
   const client = conn.getClient()!
   const channel = new EventEmitter()
   client.openssh_forwardOutStreamLocal = vi.fn((_path, callback) => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
     callback(undefined, channel as never)
     return client
   })

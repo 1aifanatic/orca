@@ -268,10 +268,10 @@ describe('SshConnection', () => {
       )
       await connectWithFakeTimers(conn)
       const connectedGeneration = conn.getTransportGeneration()
-      const dnsFailure = new Error(
-        'getaddrinfo EAI_AGAIN temporary failure in name resolution'
-      ) as NodeJS.ErrnoException
-      dnsFailure.code = 'EAI_AGAIN'
+      const dnsFailure = Object.assign(
+        new Error('getaddrinfo EAI_AGAIN temporary failure in name resolution'),
+        { code: 'EAI_AGAIN' }
+      )
       ssh2Mock.connectSequence = [dnsFailure, 'ready']
 
       emitSshEvent('close')

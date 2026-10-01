@@ -66,6 +66,7 @@ it('holds notification through tracked work and both forwarded resources', async
   const socket = new EventEmitter()
   const channel = new EventEmitter()
   f.client.forwardOut = vi.fn((_a, _b, _c, _d, callback) => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
     callback?.(undefined, channel as never)
     return f.client
   })
@@ -84,6 +85,7 @@ it('holds notification through tracked work and both forwarded resources', async
 it('waits for every allocated proxy even after its active pointer is cleared', async () => {
   const f = await fixture()
   const proxy = new EventEmitter()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reads SshConnection's own private transport close ledger.
   const ledger = (f.conn as unknown as { transportCloseLedger: SshTransportCloseLedger })
     .transportCloseLedger
   ledger.track(proxy)
@@ -151,6 +153,7 @@ it.each(['initial', 'reconnect', 'system'] as const)(
 
 it('retains failed ledger drainage rather than signaling successful closure', async () => {
   const f = await fixture()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reads SshConnection's own private work ledger.
   const work = (f.conn as unknown as { workLedger: SshConnectionWorkLedger }).workLedger
   const opening = work.beginChannelOpen()
   work.fenceForReset()

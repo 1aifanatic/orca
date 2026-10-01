@@ -3,7 +3,10 @@ import {
   trackSshConnectionChannelLifetime,
   type SshChannelErrorReporter
 } from './ssh-connection-channel-lifetime'
-import type { SshConnectionWorkLedger } from './ssh-connection-work-ledger'
+import type {
+  SshConnectionWorkChannel,
+  SshConnectionWorkLedger
+} from './ssh-connection-work-ledger'
 
 /** A forward must ride the connection's current client, never one a reconnect replaced. */
 export function assertSshForwardClient(current: Client | null, requested: Client): void {
@@ -52,7 +55,7 @@ export function forwardTrackedSshStreamLocalChannel(
 export function forwardTrackedSshChannel(
   ledger: SshConnectionWorkLedger,
   client: Client,
-  localSocket: object,
+  localSocket: SshConnectionWorkChannel,
   onUnhandledError: SshChannelErrorReporter | undefined,
   ...args: Parameters<Client['forwardOut']>
 ): void {
