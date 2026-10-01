@@ -8,18 +8,13 @@ describe('preserveAgentAuthBeforeRestart', () => {
     vi.restoreAllMocks()
   })
 
-  it('syncs Codex and flushes the store without touching Claude credentials', async () => {
+  it('syncs Codex and flushes the store', async () => {
     const calls: string[] = []
 
     await preserveAgentAuthBeforeRestart({
       codexRuntimeHome: {
         syncForCurrentSelection: vi.fn(() => {
           calls.push('codex')
-        })
-      },
-      claudeRuntimeAuth: {
-        syncForCurrentSelection: vi.fn(async () => {
-          calls.push('claude')
         })
       },
       store: {
@@ -106,25 +101,6 @@ describe('preserveAgentAuthBeforeRestart', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain('token-secret')
   })
 
-  it('does not start Claude after host Codex exhausts the lifecycle budget', async () => {
-    vi.useFakeTimers()
-    const startedAt = Date.now()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const syncClaude = vi.fn(async () => {})
-
-    await preserveAgentAuthBeforeRestart({
-      codexRuntimeHome: {
-        syncForCurrentSelection: vi.fn(() => {
-          vi.setSystemTime(startedAt + 2_000)
-        })
-      },
-      claudeRuntimeAuth: { syncForCurrentSelection: syncClaude }
-    })
-
-    expect(syncClaude).not.toHaveBeenCalled()
-    expect(warn).not.toHaveBeenCalled()
-  })
-
   it('checkpoints admitted state without waiting for ongoing edits when auth services are missing', async () => {
     const flushPendingOrThrowAsync = vi.fn()
 
@@ -146,11 +122,6 @@ describe('preserveAgentAuthBeforeRestart', () => {
             throw new Error('codex-token-secret')
           })
         },
-        claudeRuntimeAuth: {
-          syncForCurrentSelection: vi.fn(async () => {
-            throw new Error('claude-token-secret')
-          })
-        },
         store: { flushPendingOrThrowAsync }
       })
     ).resolves.toBeUndefined()
@@ -158,32 +129,6 @@ describe('preserveAgentAuthBeforeRestart', () => {
     expect(flushPendingOrThrowAsync).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(warn.mock.calls)).not.toContain('token-secret')
-  })
-
-  it('shares the original lifecycle timeout between Claude and store preservation', async () => {
-    vi.useFakeTimers()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let settled = false
-
-    const preservation = preserveAgentAuthBeforeRestart({
-      claudeRuntimeAuth: {
-        syncForCurrentSelection: vi.fn(() => new Promise<void>(() => {}))
-      },
-      store: {
-        flushPendingOrThrowAsync: vi.fn(() => new Promise<void>(() => {}))
-      }
-    }).then(() => {
-      settled = true
-    })
-
-    await vi.advanceTimersByTimeAsync(2_000)
-    await vi.runOnlyPendingTimersAsync()
-    await preservation
-
-    expect(settled).toBe(true)
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-auth-restart] Store persistence exceeded 2000ms; continuing restart/update'
-    )
   })
 
   it('bounds a store flush that never settles', async () => {

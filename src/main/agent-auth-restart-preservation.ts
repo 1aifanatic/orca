@@ -1,4 +1,3 @@
-import type { ClaudeRuntimeAuthService } from './claude-accounts/runtime-auth-service'
 import type { CodexRuntimeHomeService } from './codex-accounts/runtime-home-service'
 import type { Store } from './persistence'
 
@@ -6,17 +5,12 @@ const AUTH_PRESERVATION_TIMEOUT_MS = 2_000
 
 type CodexRuntimeAuthSync = Pick<CodexRuntimeHomeService, 'syncForCurrentSelection'> &
   Partial<Pick<CodexRuntimeHomeService, 'syncActiveWslSelectionsBeforeRestart'>>
-type ClaudeRuntimeAuthSync = Pick<ClaudeRuntimeAuthService, 'syncForCurrentSelection'>
 type ShutdownStore = Pick<Store, 'flushPendingOrThrowAsync'>
 
-type AuthPreservationStep =
-  | 'Codex auth preservation'
-  | 'Claude auth preservation'
-  | 'Store persistence'
+type AuthPreservationStep = 'Codex auth preservation' | 'Store persistence'
 
 export type AgentAuthRestartPreservationOptions = {
   codexRuntimeHome?: CodexRuntimeAuthSync | null
-  claudeRuntimeAuth?: ClaudeRuntimeAuthSync | null
   store?: ShutdownStore | null
 }
 

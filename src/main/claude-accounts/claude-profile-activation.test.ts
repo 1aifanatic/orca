@@ -15,12 +15,6 @@ import { provisionClaudeAccountProfile } from './claude-profile-setup'
 vi.mock('../macos-keychain/generic-password', () => ({
   readKeychainPassword: () => {
     throw new Error('Lifecycle must not read the Keychain')
-  },
-  writeKeychainPassword: () => {
-    throw new Error('Credential write')
-  },
-  deleteKeychainPassword: () => {
-    throw new Error('Credential delete')
   }
 }))
 const roots: string[] = []

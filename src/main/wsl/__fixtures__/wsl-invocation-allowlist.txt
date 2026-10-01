@@ -4,8 +4,8 @@
 # MIGRATION -- its length is the W3 goalpost.
 #
 # It may grow when the scanner learns to see a spawn it was blind to. That has
-# happened once: pty-subprocess.ts, local-pty-provider.ts and claude-pty.ts
-# bind 'wsl.exe' to a variable and spawn it later, which the old neighbourhood
+# happened once: pty-subprocess.ts, local-pty-provider.ts and the since-deleted
+# claude-pty.ts bind 'wsl.exe' to a variable and spawn it later, which the old neighbourhood
 # scan could not follow. They were recorded in a prose comment instead, so the
 # count was wrong by three in the direction that hides offenders. Adding them
 # is the guard getting honest, not the boundary regressing.
