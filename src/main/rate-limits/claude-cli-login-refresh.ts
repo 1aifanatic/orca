@@ -1,5 +1,6 @@
+import { isAbsolute } from 'node:path'
 import { buildConfiguredProxyEnv, type NetworkProxySettings } from '../../shared/network-proxy'
-import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
+import { isRunnableCommand, withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
 import {
   isClaudeAuthSwitchInProgress,
@@ -25,7 +26,7 @@ export type ClaudeCliLoginRefreshOutcome =
   | { kind: 'failed'; message: string }
   /** Orca never started Claude, so the stored login cannot have changed because of it. */
   | { kind: 'not-started'; message: string }
-  /** The binary could not be launched (missing or not executable); no Claude ever ran. */
+  /** No runnable Claude binary was found (missing or not executable), so nothing was started. */
   | { kind: 'not-launched'; message: string }
 
 type ConnectClaude = typeof openClaudeStreamJsonConnection
@@ -67,6 +68,12 @@ export async function refreshClaudeLoginViaCli(input: {
     return { kind: 'not-started', message: 'the selected Claude account changed' }
   }
   const command = (input.resolveCommand ?? resolveClaudeCommand)()
+  // Why: on POSIX the spawn goes through a supervisor that always starts, so a missing binary
+  // only shows up as the supervisor's exit; check before launching instead. The resolver
+  // returns the bare name when it found no runnable file.
+  if (!isAbsolute(command) || !isRunnableCommand(process.platform, command)) {
+    return { kind: 'not-launched', message: `no runnable Claude CLI at ${command}` }
+  }
   const launch: ClaudeStreamJsonLaunch = {
     pathToClaudeCodeExecutable: command,
     // No user message is ever sent, so nothing reaches the model; these keep the session-less
@@ -117,11 +124,6 @@ export async function refreshClaudeLoginViaCli(input: {
     return { kind: 'answered' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    // Spawn errors arrive asynchronously after connect resolves; close() settles the verdict.
-    await connection.close()
-    if (connection.exitVerdict.root === 'processless') {
-      return { kind: 'not-launched', message: fault.first?.message ?? message }
-    }
     if (isUnsupportedSubtype(message)) {
       return { kind: 'unsupported', message }
     }
