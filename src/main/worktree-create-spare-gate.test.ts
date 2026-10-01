@@ -246,7 +246,8 @@ describe('which request a spare follows', () => {
     await vi.advanceTimersByTimeAsync(SPARE_REQUEST_DEBOUNCE_MS)
     await _whenSpareRequestsSettledForTests()
 
-    expect(gitCommands(script, isSpareAdd)).toHaveLength(0)
+    // A started spare is registered synchronously by the request that started it.
+    expect(findSpare(KEY)).toBeUndefined()
   })
 
   it('follows the last pick even when an earlier pick’s fetch ends last', async () => {
