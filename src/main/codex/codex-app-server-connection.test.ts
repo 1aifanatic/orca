@@ -526,7 +526,7 @@ describe('openCodexAppServerConnection', () => {
     await expect(connection.close()).resolves.toBe(true)
   })
 
-  it('reports an exit seen after a close gave up, and not one a running close sees', async () => {
+  it('reports an exit seen after a close gave up, and not one a running or proven close sees', async () => {
     vi.useFakeTimers()
     const late = stubChild({ exitOnStdinEnd: false })
     answerInitialize(late.child)
@@ -559,6 +559,8 @@ describe('openCodexAppServerConnection', () => {
     const closing = runningConnection.close()
     running.child.emit('exit', 0, null)
     await expect(closing).resolves.toBe(true)
+    // Stdio 'close' can land after the proof settled; the close still proved the exit.
+    running.child.emit('close', 0, null)
     expect(seen).toEqual([])
   })
 

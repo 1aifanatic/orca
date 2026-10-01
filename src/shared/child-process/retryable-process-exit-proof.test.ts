@@ -13,6 +13,7 @@ describe('RetryableProcessExitProof', () => {
     await expect(Promise.all([first, concurrent])).resolves.toEqual([true, true])
     await expect(proof.run(proveExit)).resolves.toBe(true)
     expect(proveExit).toHaveBeenCalledOnce()
+    expect(proof.holdsAttempt).toBe(true)
   })
 
   it('permits another attempt after exit was not proven', async () => {
@@ -20,6 +21,7 @@ describe('RetryableProcessExitProof', () => {
     const proveExit = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
 
     await expect(proof.run(proveExit)).resolves.toBe(false)
+    expect(proof.holdsAttempt).toBe(false)
     await expect(proof.run(proveExit)).resolves.toBe(true)
     expect(proveExit).toHaveBeenCalledTimes(2)
   })

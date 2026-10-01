@@ -1,6 +1,11 @@
 export class RetryableProcessExitProof {
   private inFlight: Promise<boolean> | null = null
 
+  /** False before any attempt and after one gave up; a proven attempt stays held. */
+  get holdsAttempt(): boolean {
+    return this.inFlight !== null
+  }
+
   run(proveExit: () => Promise<boolean>): Promise<boolean> {
     if (this.inFlight) {
       return this.inFlight
