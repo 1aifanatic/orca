@@ -70,7 +70,7 @@ export class ClaudeAccountSelection {
       return this.snapshot()
     } catch (error) {
       this.restoreSettings(settings)
-      await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback()
+      await this.rollBackRuntimeAuth(target)
       throw error
     }
   }
@@ -112,8 +112,17 @@ export class ClaudeAccountSelection {
       return this.snapshot()
     } catch (error) {
       this.restoreSettings(previousSettings)
-      await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback()
+      await this.rollBackRuntimeAuth(effectiveTarget ?? { runtime: 'host' })
       throw error
+    }
+  }
+
+  // Why caught: a rollback failure must not replace the error that caused the rollback.
+  private async rollBackRuntimeAuth(target: ClaudeAccountSelectionTarget): Promise<void> {
+    try {
+      await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback(target)
+    } catch (rollbackError) {
+      console.warn('[claude-accounts] Rollback rematerialization failed:', rollbackError)
     }
   }
 

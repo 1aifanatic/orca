@@ -417,4 +417,56 @@ describe('ClaudeAccountService credential capture', () => {
     })
     expect(settings.claudeManagedAccounts[0].email).toBe('new@example.com')
   })
+
+  it('keeps the selection error when the rollback republish fails, and republishes only that target', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const account = (id: string, wslDistro?: string) => ({
+      id,
+      email: `${id}@example.com`,
+      managedAuthPath: `/unused/${id}`,
+      ...(wslDistro ? { managedAuthRuntime: 'wsl', wslDistro } : {}),
+      authMethod: 'subscription-oauth',
+      createdAt: 1,
+      updatedAt: 1,
+      lastAuthenticatedAt: 1
+    })
+    let settings = {
+      claudeManagedAccounts: [account('host-a'), account('wsl-b', 'Ubuntu')],
+      activeClaudeManagedAccountId: null
+    }
+    const store = {
+      getSettings: vi.fn(() => settings),
+      updateSettings: vi.fn((updates: Partial<typeof settings>) => {
+        settings = { ...settings, ...updates }
+        return settings
+      })
+    }
+    const runtimeAuth = {
+      forceMaterializeCurrentSelectionForRollback: vi.fn(async () => {
+        throw new Error('WSL distro Debian is not running')
+      }),
+      syncForCurrentSelection: vi.fn(async () => {
+        throw new Error('select failed')
+      })
+    }
+    const rateLimits = { evictInactiveClaudeCache: vi.fn(), refreshForClaudeAccountChange: vi.fn() }
+    const { ClaudeAccountService } = await import('./service')
+    const service = new ClaudeAccountService(
+      store as never,
+      rateLimits as never,
+      runtimeAuth as never
+    )
+
+    await expect(service.selectAccount('host-a')).rejects.toThrow('select failed')
+    await expect(service.selectAccount('wsl-b')).rejects.toThrow('select failed')
+
+    expect(runtimeAuth.forceMaterializeCurrentSelectionForRollback.mock.calls).toEqual([
+      [{ runtime: 'host' }],
+      [{ runtime: 'wsl', wslDistro: 'Ubuntu' }]
+    ])
+    expect(warn).toHaveBeenCalledWith(
+      '[claude-accounts] Rollback rematerialization failed:',
+      expect.objectContaining({ message: 'WSL distro Debian is not running' })
+    )
+  })
 })

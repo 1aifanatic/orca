@@ -78,11 +78,14 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     })
   }
 
-  async forceMaterializeCurrentSelectionForRollback(): Promise<void> {
+  /** With profiles, `target` limits the republish to the target whose change failed. */
+  async forceMaterializeCurrentSelectionForRollback(
+    target?: ClaudeAccountSelectionTarget
+  ): Promise<void> {
     await this.serializeMutation(async () => {
       const profiles = getClaudeProfileRoutingAuthority()
       if (profiles) {
-        await profiles.startup()
+        await (target ? profiles.publish(target) : profiles.startup())
         return
       }
       const settings = this.store.getSettings()
