@@ -54,20 +54,20 @@ function openingSubmission(
     : undefined
 }
 
-/** Whether the latest send the agent accepted has opened no turn the journal holds: its turn's row
- *  may still be on its way. */
+/** Whether the latest send the agent accepted to open a turn has opened none the journal holds: its
+ *  turn's row may still be on its way. A send delivered into a running turn (a steer, a fold)
+ *  opens none, and its item carries that turn's scope (`placeHandedOverMessage`). */
 export function latestAcceptedSendUnopened(state: TurnEndState): boolean {
   let latest: { submission: AgentJournalSubmission; sequence: number } | undefined
   for (const submission of state.submissions.values()) {
-    const sequence = state.items.get(
-      agentJournalSubmissionKey(submission.clientMessageId)
-    )?.sequence
+    const item = state.items.get(agentJournalSubmissionKey(submission.clientMessageId))
     if (
       submission.dispatchState === 'accepted' &&
-      sequence !== undefined &&
-      sequence >= (latest?.sequence ?? -1)
+      item !== undefined &&
+      item.turnScope?.kind !== 'turn' &&
+      item.sequence >= (latest?.sequence ?? -1)
     ) {
-      latest = { submission, sequence }
+      latest = { submission, sequence: item.sequence }
     }
   }
   if (!latest) {
