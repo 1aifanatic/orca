@@ -31,10 +31,19 @@ import {
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   appendOpenSettlement,
-  openSettlementPlanIsEmpty,
   planOpenSettlement,
+  type OpenSettlementPlan,
   type OpenSettlementRecordFacts
 } from './structured-agent-session-open-settlement'
+
+function openSettlementPlanIsEmpty(plan: OpenSettlementPlan): boolean {
+  return (
+    plan.recoveredDispatches.length === 0 &&
+    plan.leftoverQueued.length === 0 &&
+    (plan.goneGeneration?.mutations.length ?? 0) === 0 &&
+    plan.rosters.length === 0
+  )
+}
 
 const journals = createTrackedJournalOpener()
 let root: string

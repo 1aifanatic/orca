@@ -103,7 +103,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      * drop it after.
      */
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
-      // Startup's settle first: no command acts on a chat a gone process left mid-turn.
+      // Startup's settle first, before this chat's lock, which the settle takes too. No caller
+      // holds a chat's lock here.
       const startup = deps().commandsReady?.()
       if (startup) {
         await startup

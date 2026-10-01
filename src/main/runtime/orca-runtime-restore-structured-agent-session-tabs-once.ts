@@ -89,8 +89,9 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     for (const session of restored) {
       this.projectStructuredAgentSessionTab({ ...session, ...quiet })
     }
-    // Startup already seeded every settled chat's row and is settling the ones that owe work; this
-    // opens only what stored state could not answer (a stale row, a per-chat file not yet copied).
+    // Startup already seeded every settled chat's row and is settling the ones a gone process left
+    // with work; this opens only what stored status could not answer (no row yet, a row this build
+    // cannot read, a per-chat file not yet copied).
     // Whoever answers with this list starts it, once that answer is out.
     const background = this.structuredAgentSessionBackgroundRestoreIds ?? listedIds
     this.owedStructuredAgentSessionHistoryRestore = host

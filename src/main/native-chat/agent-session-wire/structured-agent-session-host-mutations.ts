@@ -88,21 +88,26 @@ export function mutateStructuredAgentSession<TValue>(
   plan: MutationPlan<TValue>,
   prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
 ): Promise<AgentSessionMutationResult<TValue>> {
-  return context.serialize(envelope.sessionId, () =>
-    admitAndRunAgentSessionMutation({
-      store: context.deps.store,
-      adapter: context.deps.adapter,
-      callerKey: caller.callerKey,
-      envelope,
-      plan,
-      journal: () => context.sessions.get(envelope.sessionId)?.journal,
-      prepareSession,
-      publish: (journal) => context.publish(envelope.sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
-      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
-      now: () => context.now()
-    })
-  )
+  const run = () =>
+    context.serialize(envelope.sessionId, () =>
+      admitAndRunAgentSessionMutation({
+        store: context.deps.store,
+        adapter: context.deps.adapter,
+        callerKey: caller.callerKey,
+        envelope,
+        plan,
+        journal: () => context.sessions.get(envelope.sessionId)?.journal,
+        prepareSession,
+        publish: (journal) => context.publish(envelope.sessionId, journal),
+        flushStreamedEvents: context.flushStreamedEvents,
+        providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
+        now: () => context.now()
+      })
+    )
+  // Startup's settle first, before the chat's lock: the settle takes that lock too. Queued at once
+  // when startup is done, so commands keep the order they arrived in.
+  const startup = context.deps.commandsReady?.()
+  return startup ? startup.then(run) : run()
 }
 
 export function sendStructuredAgentSessionTurn(

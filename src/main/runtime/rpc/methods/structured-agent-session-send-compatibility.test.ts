@@ -1,7 +1,7 @@
 // Which clients get a send answered at acceptance, and which have their reply held until the
 // message is handed over: a client that cannot show a rejection after `pending` must not see one.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
@@ -63,6 +63,22 @@ describe('agentSession.send reply timing', () => {
       })
     }
     expect(hostCalls.waitForSendSettlement).not.toHaveBeenCalled()
+  })
+})
+
+describe('a send that arrives before the host is built', () => {
+  it('builds the host and is answered by it, rather than refused', async () => {
+    clearStructuredHostStub()
+    hostCalls.send?.mockReset()
+    const ensureStructuredAgentSessionHost = vi.fn(async () => installStructuredHostStub())
+
+    const response = await call('agentSession.send', sendParams(), STRUCTURED_CLIENT, {
+      ensureStructuredAgentSessionHost
+    })
+
+    expect(ensureStructuredAgentSessionHost).toHaveBeenCalledOnce()
+    expect(response).not.toMatchObject({ ok: false })
+    expect(hostCalls.send).toHaveBeenCalledOnce()
   })
 })
 

@@ -1,10 +1,13 @@
 // Holds every structured chat command until host startup has settled the chats a gone process left
-// with work, so no command acts on a chat whose crashed turn still reads as running. Commands wait;
-// none is refused. It always opens: when the settle ends, however it ends, or at a ceiling, so a
-// startup fault never strands a command.
+// with work. Every open settles its own chat too, so what the hold adds is order: each crashed turn
+// gets its verdict from the death evidence startup records first, never "Couldn't confirm" from an
+// open that ran before it. Commands wait at their entry, before any chat's lock (the settle takes
+// those locks); none is refused. It always opens: when the settle ends, however it ends, or at a
+// ceiling, so a startup fault never strands a command.
 
-// Far past any measured settle; only a hung step reaches it.
-const STARTUP_GATE_CEILING_MS = 120_000
+// Under the shortest client request timeout (15 s): a held command lets go before its caller gives
+// up, and an open settles its own chat, so letting go early is safe.
+const STARTUP_GATE_CEILING_MS = 10_000
 
 export class StructuredAgentSessionStartupGate {
   private pending: Promise<void> | null = null

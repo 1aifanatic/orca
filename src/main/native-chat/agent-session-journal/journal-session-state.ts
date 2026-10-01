@@ -8,7 +8,8 @@
 // and seeds every other chat's status from them.
 //
 // The table arrives with schema version 5, so a build older than that opens the database read-only
-// and never writes a journal row without its status.
+// and never writes a journal row without its status. Rows carry no rules version: a change to what
+// the derivation or the selection reads needs a migration that recreates the table.
 
 import type Database from '../../sqlite/sync-database'
 import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'

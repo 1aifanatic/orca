@@ -1,8 +1,9 @@
 // Everything a non-acquisition open writes because an earlier host process is gone, as one plan.
 //
-// Built from the per-entity rules in journal-open-settlement-plan.ts, which the stored "owes work"
-// flag reads too, so a chat's flag says it owes work exactly when this plan is non-empty. The open
-// appends exactly this plan, and each entry revises its entity out of the state that selected it.
+// Built from the per-entity rules in journal-open-settlement-plan.ts, which each chat's stored
+// status counts with too, so startup selects a chat when this plan has work beyond revising an
+// earlier verdict. The open appends exactly this plan, and each entry revises its entity out of
+// the state that selected it.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
@@ -100,15 +101,6 @@ export function planOpenSettlement(
         }),
     rosters: options.settlesRosters ? staleSubagentRosterRevisions(items) : []
   }
-}
-
-export function openSettlementPlanIsEmpty(plan: OpenSettlementPlan): boolean {
-  return (
-    plan.recoveredDispatches.length === 0 &&
-    plan.leftoverQueued.length === 0 &&
-    (plan.goneGeneration?.mutations.length ?? 0) === 0 &&
-    plan.rosters.length === 0
-  )
 }
 
 /**

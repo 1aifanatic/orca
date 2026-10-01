@@ -7,9 +7,9 @@
 //
 // The last projection is kept after the session's provider child is evicted: an idle session is
 // still idle without a process, and a renderer that reloads must not lose every settled row until
-// each chat is reopened. At startup, a settled chat's row is seeded from the state stored beside its
-// journal (journal-session-state.ts) without opening it; a chat that owes work is settled by its
-// open, which publishes as any open does.
+// each chat is reopened. At startup, a settled chat's row is seeded from the status stored beside
+// its journal (journal-session-state.ts) without opening it; a chat a gone process left with work
+// is settled by its open, which publishes as any open does.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {

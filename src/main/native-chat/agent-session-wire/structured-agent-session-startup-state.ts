@@ -17,6 +17,7 @@ import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
+  deleteJournalSessionStatus,
   isUnsettledJournalSessionStatus,
   readJournalSessionStatuses,
   readUnsettledJournalSessionIds
@@ -136,6 +137,7 @@ async function settleOwedSessions(
     for (const sessionId of readUnsettledJournalSessionIds(database.db)) {
       const record = deps.openDeps.store.getRecord(sessionId)
       if (!record || !deps.supportsRecord(record)) {
+        dropUnreachableStatus(database, sessionId, record)
         continue
       }
       if (listedOrder.has(sessionId)) {
@@ -168,6 +170,29 @@ async function settleOwedSessions(
     }
   } catch (error) {
     console.warn('[structured-agent-session] settling chats at startup failed', error)
+  }
+}
+
+/**
+ * A row no settle here can clear: its chat's record is gone, or this host does not serve its
+ * provider. Dropped, so it is not selected every boot; an open writes it again if the chat is ever
+ * opened here. Kept while the records import is owed, which may still bring the record.
+ */
+function dropUnreachableStatus(
+  database: StructuredAgentSessionStartupStateDeps['openDeps']['journalDatabase'],
+  sessionId: string,
+  record: AgentSessionRecord | null
+): void {
+  if (!record && database.legacyRecordImportOwed) {
+    return
+  }
+  try {
+    deleteJournalSessionStatus(database.db, sessionId)
+  } catch (error) {
+    console.warn('[structured-agent-session] dropping an unreachable chat status failed', {
+      sessionId,
+      error
+    })
   }
 }
 

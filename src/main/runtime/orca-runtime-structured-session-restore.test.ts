@@ -18,7 +18,11 @@ describe('structured session cold restoration', () => {
     internal.hasPersistedStructuredAgentSessionStore = () => false
     internal.refreshMobileSessionPtyRecords = refresh
     internal.ensureStructuredAgentSessionHost = ensureHost
-    setStructuredAgentSessionHost({ reconcileRestartLeases } as never)
+    setStructuredAgentSessionHost({
+      reconcileRestartLeases,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined
+    } as never)
 
     await runtime.prepareStructuredAgentSessionStartupRestoration()
 
@@ -41,7 +45,12 @@ describe('structured session cold restoration', () => {
     internal.hasPersistedStructuredAgentSessionStore = () => true
     internal.refreshMobileSessionPtyRecords = refresh
     internal.ensureStructuredAgentSessionHost = ensureHost
-    setStructuredAgentSessionHost({ reconcileRestartLeases, restoreReadableSessions } as never)
+    setStructuredAgentSessionHost({
+      reconcileRestartLeases,
+      restoreReadableSessions,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined
+    } as never)
 
     await runtime.prepareStructuredAgentSessionStartupRestoration()
 
@@ -75,6 +84,8 @@ describe('structured session cold restoration', () => {
     internal.ensureStructuredAgentSessionHost = ensureHost
     setStructuredAgentSessionHost({
       reconcileRestartLeases,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined,
       restoreReadableSessions,
       listSessionTabs: () => []
     } as never)
@@ -142,6 +153,8 @@ describe('structured session cold restoration', () => {
     internal.ensureStructuredAgentSessionHost = async () => undefined
     setStructuredAgentSessionHost({
       reconcileRestartLeases: async () => undefined,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined,
       getPersistedVisibleSessionTabIndex: () => ({
         present: true,
         sessionIds: ['session-survives-rollback']
@@ -202,6 +215,8 @@ describe('structured session cold restoration', () => {
     internal.ensureStructuredAgentSessionHost = async () => undefined
     setStructuredAgentSessionHost({
       reconcileRestartLeases: async () => undefined,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined,
       getPersistedVisibleSessionTabIndex: () => ({ present: true, sessionIds: [] }),
       restoreReadableSessions,
       listSessionTabs: () => []
@@ -236,6 +251,8 @@ describe('structured session cold restoration', () => {
     internal.ensureStructuredAgentSessionHost = async () => undefined
     setStructuredAgentSessionHost({
       reconcileRestartLeases: async () => undefined,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined,
       restoreReadableSessions: async () => undefined,
       close: closeStructuredSession,
       setSessionTabVisibility,
@@ -351,6 +368,8 @@ describe('structured session cold restoration', () => {
     internal.ensureStructuredAgentSessionHost = async () => undefined
     setStructuredAgentSessionHost({
       reconcileRestartLeases: async () => undefined,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined,
       restoreReadableSessions: async () => undefined,
       listSessionTabs: () => [
         {
