@@ -16,7 +16,10 @@ import {
   type DragTempCopyEnvironment
 } from './dragged-temp-file-copy'
 import { getDarwinUserTempDir } from './darwin-user-temp-dir'
-import { getNativeChatAttachmentRoot } from './native-chat-attachment-store'
+import {
+  ensureNativeChatAttachmentRoot,
+  getNativeChatAttachmentRoot
+} from './native-chat-attachment-store'
 
 // Why: copies run one at a time, so a hung copy must not hold every later copy forever.
 const DRAG_TEMP_COPY_TIMEOUT_MS = 2 * 60 * 1000
@@ -53,11 +56,14 @@ export function registerFileDropRelay(mainWindow: BrowserWindow): void {
     getCopyEnvironment: async (target) => ({
       platform: process.platform,
       sourceTempRoot: await getDarwinUserTempDir(),
-      // Why: a chat draft can hold a dropped image across a reboot, so it is kept with pastes.
-      copyRoot:
-        target === NATIVE_FILE_DROP_TARGET.composer
-          ? getNativeChatAttachmentRoot()
-          : getDragTempCopyRoot(app.getPath('temp'))
+      // Why: a chat draft can hold a dropped image across a reboot, so it is kept with pastes,
+      // under the same folder rule.
+      ...(target === NATIVE_FILE_DROP_TARGET.composer
+        ? {
+            copyRoot: getNativeChatAttachmentRoot(),
+            prepareCopyRoot: ensureNativeChatAttachmentRoot
+          }
+        : { copyRoot: getDragTempCopyRoot(app.getPath('temp')) })
     }),
     watchRenderer: () => abortWhenRendererGone(mainWebContents)
   })

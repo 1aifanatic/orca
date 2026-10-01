@@ -1,5 +1,6 @@
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
@@ -7,15 +8,18 @@ import {
   realpath,
   rm,
   symlink,
-  utimes
+  utimes,
+  writeFile
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
+import { materializeDragTempPaths } from './dragged-temp-file-copy'
 import type { Store } from '../persistence'
 import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
 import {
+  ensureNativeChatAttachmentRoot,
   getNativeChatAttachmentRoot,
   NATIVE_CHAT_ATTACHMENT_TTL_MS,
   saveNativeChatAttachmentFile,
@@ -67,6 +71,32 @@ describe('native chat attachment storage', () => {
     ).rejects.toThrow()
     await rm(elsewhere, { recursive: true, force: true })
   })
+
+  // A paste usually creates the folder first; a composer drop must still copy into it.
+  it.skipIf(process.platform === 'win32')(
+    'creates the folder owner-only, and a composer drop copies into it after a paste',
+    async () => {
+      await saveNativeChatAttachmentFile('orca-paste-1.png', Buffer.from([7]))
+      expect((await lstat(getNativeChatAttachmentRoot())).mode & 0o777).toBe(0o700)
+      await chmod(getNativeChatAttachmentRoot(), 0o755)
+      const sourceTempRoot = join(userData, 'T')
+      const dragged = join(sourceTempRoot, 'TemporaryItems', 'NSIRD_screencaptureui_1', 'Shot.png')
+      await mkdir(dirname(dragged), { recursive: true })
+      await writeFile(dragged, Buffer.from([9]))
+
+      const [result] = await materializeDragTempPaths([dragged], {
+        platform: 'darwin',
+        sourceTempRoot,
+        copyRoot: getNativeChatAttachmentRoot(),
+        prepareCopyRoot: ensureNativeChatAttachmentRoot
+      })
+
+      expect(result).toMatchObject({ status: 'imported' })
+      expect(result?.status === 'imported' && dirname(dirname(result.destPath))).toBe(
+        getNativeChatAttachmentRoot()
+      )
+    }
+  )
 
   it('sweeps pastes and drag copies past the age limit, and keeps younger ones', async () => {
     const old = await saveNativeChatAttachmentFile('orca-paste-old.png', Buffer.from([1]))

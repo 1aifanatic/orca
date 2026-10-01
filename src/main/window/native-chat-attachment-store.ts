@@ -24,8 +24,7 @@ export async function saveNativeChatAttachmentFile(
   contents: Buffer
 ): Promise<string> {
   const root = getNativeChatAttachmentRoot()
-  await mkdir(root, { recursive: true })
-  if (!(await isRealDirectory(root))) {
+  if (!(await ensureNativeChatAttachmentRoot(root))) {
     throw new Error('Chat attachment storage is not a directory')
   }
   const filePath = join(await mkdtemp(join(root, ATTACHMENT_DIR_PREFIX)), fileName)
@@ -38,8 +37,19 @@ export function getNativeChatAttachmentAllowedRoots(): string[] {
   return hasAppEnvironment() ? [resolve(getNativeChatAttachmentRoot())] : []
 }
 
+/**
+ * The one rule for this folder, for pastes and composer drops alike: Orca creates it owner-only,
+ * and an existing one only has to be a real directory, not a symlink.
+ */
+export async function ensureNativeChatAttachmentRoot(
+  root = getNativeChatAttachmentRoot()
+): Promise<boolean> {
+  await mkdir(root, { recursive: true, mode: 0o700 })
+  return isRealDirectory(root)
+}
+
 // Why not the shared-temp ownership check: user data is already per user, and its modes may not
-// survive a restore or a filesystem without them; a symlink is still refused.
+// survive a restore or a filesystem without them.
 async function isRealDirectory(path: string): Promise<boolean> {
   try {
     return (await lstat(path)).isDirectory()

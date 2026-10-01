@@ -36,6 +36,8 @@ export type DragTempCopyEnvironment = {
   sourceTempRoot: string
   /** Orca-owned directory that holds one `orca-drop-*` directory per copy. */
   copyRoot: string
+  /** Creates or accepts `copyRoot`; the default demands a private root, as a shared temp dir needs. */
+  prepareCopyRoot?: (copyRoot: string) => Promise<boolean>
 }
 
 export type DragTempCopyItemResult =
@@ -158,7 +160,7 @@ export async function materializeDragTempPath(
       }
       signal?.throwIfAborted()
 
-      copyDir = await createCopyDirectory(env.copyRoot)
+      copyDir = await createCopyDirectory(env)
       const destPath = join(copyDir, basename(canonicalSource))
       // Why: stream from the checked handle, capped at the inspected size, so a
       // swapped or growing source cannot slip through; unlike cp, ditto or
@@ -293,12 +295,12 @@ function isPathWithin(root: string, candidate: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
-async function createCopyDirectory(copyRoot: string): Promise<string> {
+async function createCopyDirectory(env: DragTempCopyEnvironment): Promise<string> {
   try {
-    if (!(await ensureOwnedTempStagingRoot(copyRoot))) {
+    if (!(await (env.prepareCopyRoot ?? ensureOwnedTempStagingRoot)(env.copyRoot))) {
       throw new DropCopyError('storage-not-private')
     }
-    return await mkdtemp(join(copyRoot, COPY_DIR_PREFIX))
+    return await mkdtemp(join(env.copyRoot, COPY_DIR_PREFIX))
   } catch (error) {
     if (error instanceof DropCopyError) {
       throw error

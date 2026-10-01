@@ -37,7 +37,8 @@ vi.mock('./darwin-user-temp-dir', () => ({
 }))
 
 vi.mock('./native-chat-attachment-store', () => ({
-  getNativeChatAttachmentRoot: () => '/user-data/native-chat-attachments'
+  getNativeChatAttachmentRoot: () => '/user-data/native-chat-attachments',
+  ensureNativeChatAttachmentRoot: vi.fn()
 }))
 
 import {
@@ -494,6 +495,12 @@ describe('registerFileDropRelay', () => {
       expect(materializeMock.mock.calls.map((call) => call[1].copyRoot)).toEqual([
         '/user-data/native-chat-attachments',
         expect.stringContaining('orca-drops')
+      ])
+      // The chat folder has one rule for pastes and drops; the shared temp root keeps its own.
+      const { ensureNativeChatAttachmentRoot } = await import('./native-chat-attachment-store')
+      expect(materializeMock.mock.calls.map((call) => call[1].prepareCopyRoot)).toEqual([
+        ensureNativeChatAttachmentRoot,
+        undefined
       ])
     }
   )
