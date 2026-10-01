@@ -1,3 +1,4 @@
+import { createWslClaudeProfileOwner } from './claude-profile-wsl-owner'
 import { homedir } from 'node:os'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -28,6 +29,10 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
       installClaudeProfileRoutingAuthority(
         createNativeClaudeProfileRouting({
           store,
+          wsl:
+            process.platform === 'win32'
+              ? createWslClaudeProfileOwner(() => store.getSettings())
+              : undefined,
           dataRoot: getAppEnvironment().getPath('userData'),
           userHome: homedir(),
           defaultHome: () => systemDefaultClaudeHome(process.env, homedir()),

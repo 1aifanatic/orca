@@ -179,6 +179,18 @@ async function buildRelayBundles(outDir) {
     define: { 'process.env.NODE_ENV': '"production"' }
   })
 
+  await build({
+    entryPoints: [join(ROOT, 'src/main/claude-accounts/claude-profile-wsl-entry.ts')],
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'cjs',
+    outfile: join(outDir, 'claude-profile-wsl.cjs'),
+    external: ['electron'],
+    minify: true,
+    define: { 'process.env.NODE_ENV': '"production"' }
+  })
+
   // Why beside the service: the spawn resolves this child next to its own
   // bundle, and a relay host has no desktop out/main to fall back to.
   await build({

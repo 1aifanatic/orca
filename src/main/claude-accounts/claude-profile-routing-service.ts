@@ -26,25 +26,31 @@ export type ClaudeProfileLaunchDescriptor = {
 
 export type ClaudeProfileRoutingOwner = {
   resolve: (target?: ClaudeAccountSelectionTarget) => ClaudeProfileLaunchDescriptor
-  pointerPath: () => string
+  refresh?: (target?: ClaudeAccountSelectionTarget) => Promise<void>
+  pointerPath: (target?: ClaudeAccountSelectionTarget) => string
   targets: () => ClaudeAccountSelectionTarget[]
   /** All known owned profiles, including unselected profiles with private/retained history. */
-  readHomes: (target?: ClaudeAccountSelectionTarget) => string[]
+  readHomes: (
+    target?: ClaudeAccountSelectionTarget,
+    surface?: 'projects' | 'transcripts'
+  ) => string[]
   capabilities: (target: ClaudeAccountSelectionTarget) => readonly string[]
   /** Derived from step-1 setup's own output, so no flag records that setup ran. */
   isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
   readiness: (accountId: string) => ClaudeProfileReadiness
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
   prepare: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<ClaudeProfileSetupReport>
+  trust?: (descriptor: ClaudeProfileLaunchDescriptor, workspace: string) => Promise<void>
   publish: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<void>
   /** Removes the pointer so the shell refuses visibly; never throws. */
-  withdraw: () => void
+  withdraw: (target?: ClaudeAccountSelectionTarget) => void | Promise<void>
 }
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
-  private publishIssue: string | null = null
-  private hostPublishes = 0
+  private readonly publishIssues = new Map<string, string>()
+  private readonly publishes = new Map<string, number>()
+  private readonly pointerWrites = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
@@ -63,10 +69,14 @@ export class ClaudeProfileRoutingService {
     target?: ClaudeAccountSelectionTarget,
     provisioning: 'always' | 'if-missing' = 'always'
   ): Promise<ClaudeProfileLaunchDescriptor> {
-    const onHost = target?.runtime !== 'wsl'
-    const generation = onHost ? ++this.hostPublishes : this.hostPublishes
+    const key = target?.runtime === 'wsl' ? `wsl:${target.wslDistro?.toLowerCase()}` : 'host'
+    const generation = (this.publishes.get(key) ?? 0) + 1
+    this.publishes.set(key, generation)
     let descriptor: ClaudeProfileLaunchDescriptor | undefined
     try {
+      if (this.owner.refresh) {
+        await this.owner.refresh(target)
+      }
       descriptor = this.resolve(target)
       if (
         descriptor.profile &&
@@ -77,19 +87,55 @@ export class ClaudeProfileRoutingService {
       if (this.resolve(target).configHome !== descriptor.configHome) {
         throw new Error('Claude account changed while preparing its profile; retry')
       }
-      await this.owner.publish(descriptor)
-      if (onHost && generation === this.hostPublishes) {
-        this.publishIssue = null
+      const captured = descriptor
+      const published = await this.mutatePointer(key, generation, () =>
+        this.owner.publish(captured)
+      )
+      if (!published) {
+        throw new Error('Claude account publication was superseded; retry')
+      }
+      if (generation === this.publishes.get(key)) {
+        this.publishIssues.delete(key)
       }
       return descriptor
     } catch (error) {
       // Why: a pointer left naming the previous account would launch it silently. Only the newest
-      // host publish, still naming the current selection, speaks for the pointer.
-      if (onHost && generation === this.hostPublishes && !this.isOvertaken(descriptor)) {
-        this.publishIssue = error instanceof Error ? error.message : String(error)
-        this.owner.withdraw()
+      // target publish, still naming the current selection, speaks for the pointer.
+      if (generation === this.publishes.get(key) && !this.isOvertaken(descriptor)) {
+        this.publishIssues.set(key, error instanceof Error ? error.message : String(error))
+        try {
+          await this.mutatePointer(key, generation, async () => {
+            await this.owner.withdraw(target)
+          })
+        } catch (withdrawError) {
+          console.warn('[claude-profile] Pointer withdrawal failed:', withdrawError)
+        }
       }
       throw error
+    }
+  }
+  private async mutatePointer(
+    key: string,
+    generation: number,
+    operation: () => Promise<void>
+  ): Promise<boolean> {
+    const previous = this.pointerWrites.get(key) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        if (generation !== this.publishes.get(key)) {
+          return false
+        }
+        await operation()
+        return true
+      })
+    this.pointerWrites.set(key, next)
+    try {
+      return await next
+    } finally {
+      if (this.pointerWrites.get(key) === next) {
+        this.pointerWrites.delete(key)
+      }
     }
   }
   private isOvertaken(descriptor: ClaudeProfileLaunchDescriptor | undefined): boolean {
@@ -109,7 +155,7 @@ export class ClaudeProfileRoutingService {
     try {
       report = await this.owner.prepare(descriptor)
     } catch (error) {
-      if (!provisioned) {
+      if (!provisioned || descriptor.target.runtime === 'wsl') {
         throw error
       }
       console.warn('[claude-profile] Setup failed; launching the already prepared profile:', error)
@@ -119,12 +165,23 @@ export class ClaudeProfileRoutingService {
       throw new Error('Selected Claude profile could not be prepared')
     }
   }
-  pointerPath(): string {
-    return this.owner.pointerPath()
+  trust(descriptor: ClaudeProfileLaunchDescriptor, workspace: string): Promise<void> {
+    return this.owner.trust?.(descriptor, workspace) ?? Promise.resolve()
+  }
+  pointerPath(target?: ClaudeAccountSelectionTarget): string {
+    return this.owner.pointerPath(target)
   }
   async startup(): Promise<void> {
+    let firstError: unknown
     for (const target of this.owner.targets()) {
-      await this.publish(target)
+      try {
+        await this.publish(target)
+      } catch (error) {
+        firstError ??= error
+      }
+    }
+    if (firstError) {
+      throw firstError
     }
   }
   async prepare(target?: ClaudeAccountSelectionTarget): Promise<ClaudeRuntimeAuthPreparation> {
@@ -150,7 +207,7 @@ export class ClaudeProfileRoutingService {
     try {
       return this.envPatch(this.resolve(target))
     } catch {
-      return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath() }
+      return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
     }
   }
   // Why no CLAUDE_CONFIG_DIR for System Default: the user's inherited value must pass through.
@@ -168,7 +225,13 @@ export class ClaudeProfileRoutingService {
       profileReadiness: this.owner.readiness(account.id)
     }))
     if (this.pointerIsCurrent()) {
-      return { ...state, accounts }
+      return {
+        ...state,
+        accounts,
+        ...(this.publishIssues.size
+          ? { profileRoutingIssue: [...this.publishIssues.values()].join('; ') }
+          : {})
+      }
     }
     this.repair ??= this.publish(undefined, 'if-missing')
       .catch(() => {})
@@ -178,7 +241,8 @@ export class ClaudeProfileRoutingService {
     return {
       ...state,
       accounts,
-      profileRoutingIssue: this.publishIssue ?? 'Claude account selection is being published'
+      profileRoutingIssue:
+        [...this.publishIssues.values()].join('; ') || 'Claude account selection is being published'
     }
   }
   private pointerIsCurrent(): boolean {
@@ -192,16 +256,16 @@ export class ClaudeProfileRoutingService {
   /** Never throws: skill roots for every provider read this, and only Claude launches may refuse
    *  an unresolvable account; WSL keeps the legacy home until guest profiles exist. */
   configDirOr(target: ClaudeAccountSelectionTarget | undefined, legacy: () => string): string {
-    if (target?.runtime === 'wsl') {
-      return legacy()
-    }
     try {
       return this.resolve(target).readHome
     } catch {
       return legacy()
     }
   }
-  historyRoots(target?: ClaudeAccountSelectionTarget): string[] {
-    return [...new Set(this.owner.readHomes(target))]
+  historyRoots(
+    target?: ClaudeAccountSelectionTarget,
+    surface?: 'projects' | 'transcripts'
+  ): string[] {
+    return [...new Set(this.owner.readHomes(target, surface))]
   }
 }

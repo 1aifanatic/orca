@@ -51,6 +51,7 @@ export const RELAY_OPENCODE_SQLITE_READER_FILENAME = 'opencode-sqlite-reader.cjs
 
 export const RELAY_ARTIFACTS: readonly RelayArtifact[] = [
   { filename: 'relay.js' },
+  { filename: 'claude-profile-wsl.cjs' },
   { filename: 'relay-watcher.js', daemonServiceChild: true },
   { filename: 'relay-ai-vault-service.js', daemonServiceChild: true },
   { filename: RELAY_OPENCODE_SQLITE_READER_FILENAME },

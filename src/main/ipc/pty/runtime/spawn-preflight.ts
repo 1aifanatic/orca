@@ -146,8 +146,12 @@ export async function prepareRuntimePtySpawn(
   // Why: the drop still applies here, but this controller's result has no field for
   // notifyResumeUnavailable — runtime/relay panes start fresh without the notice.
   ctx.launchCommand = codexResumeLaunch.command
-  if (!args.connectionId && ctx.codexSelectionTarget.runtime !== 'wsl') {
-    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv()
+  if (!args.connectionId) {
+    const profiles = getClaudeProfileRoutingAuthority()
+    const profileEnv =
+      profiles && ctx.codexSelectionTarget.runtime === 'wsl'
+        ? (await profiles.prepare(ctx.codexSelectionTarget)).envPatch
+        : profiles?.terminalEnv()
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }
