@@ -2,9 +2,14 @@
 // by the turn's id whether it still runs or has ended, and keyed by it, so a repeated Stop rewrites
 // the one row instead of adding one.
 
-import type { AgentJournalTurnScope } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemBody,
+  AgentJournalItemIdentity,
+  AgentJournalTurnScope
+} from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { structuredAgentSessionStopNoteIdentity } from './structured-agent-session-command-turn'
 
 export const STOP_NOTE_CANCELLATION_REQUESTED = 'Cancellation requested.'
 
@@ -33,4 +38,36 @@ export function structuredAgentSessionNamedTurnScope(
     .snapshot()
     .items.findLast((item) => readAgentJournalTurn(item.body)?.turnId === turnId)
   return turn ? { kind: 'turn', turnItemId: turn.itemId } : null
+}
+
+/**
+ * The turn a person's Stop records on its event, and so keys its note by: the one it named, unless
+ * the Stop ends the provider's session (then whatever runs), else the one running. Null: none ran.
+ */
+export function structuredAgentSessionStopEventTurnId(
+  journal: Pick<AgentSessionJournal, 'activeTurnId'>,
+  stop: { namedTurnId?: string; endsSession: boolean }
+): string | null {
+  return structuredAgentSessionStoppedTurnId(
+    journal,
+    stop.endsSession ? undefined : stop.namedTurnId
+  )
+}
+
+/** The one key of a Stop's note, for its writer and every reader: the turn its event records
+ *  (`structuredAgentSessionStopEventTurnId`), else, with no turn, the Stop's own operation. */
+export function structuredAgentSessionStopNoteKey(
+  eventTurnId: string | null | undefined,
+  clientOperationId: string
+): AgentJournalItemIdentity {
+  return structuredAgentSessionStopNoteIdentity(eventTurnId ?? clientOperationId)
+}
+
+/** A Stop's note saying it did not take: the agent refused it, or it went unconfirmed. */
+export function stopNoteTookNoEffect(body: AgentJournalItemBody | null | undefined): boolean {
+  if (body?.kind !== 'status' || !('failure' in body)) {
+    return false
+  }
+  const kind = body.failure?.kind
+  return kind === 'stopRefused' || kind === 'cancelUnconfirmed'
 }

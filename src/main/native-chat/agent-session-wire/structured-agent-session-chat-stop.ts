@@ -25,9 +25,11 @@ import {
 } from './structured-agent-session-send-preparation'
 import {
   endStoppedStructuredAgentSession,
-  isMainAgentWorkingOnceFlushed,
-  performCancel,
   type StructuredAgentSessionStopWindDown
+} from './structured-agent-session-stop-wind-down'
+import {
+  isMainAgentWorkingOnceFlushed,
+  performCancel
 } from './structured-agent-session-turns-cancel'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
@@ -135,7 +137,6 @@ export function mutateWithChatStop<TValue>(
       await endStoppedStructuredAgentSession(
         { ...ctx, adapter: context.deps.adapter },
         owed,
-        envelope.clientOperationId,
         stopChild,
         (error) =>
           context.deps.logger.warn("ending a stopped chat's provider session failed", {

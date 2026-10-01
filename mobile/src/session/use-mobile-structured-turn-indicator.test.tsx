@@ -260,6 +260,7 @@ describe("useMobileStructuredAgentSession and the host's Stopping", () => {
         promptCancel: false,
         questionAnswers: false,
         queuedMessages: false,
+        quietRepeatedStop: false,
         statusFeed
       },
       agent: 'codex',

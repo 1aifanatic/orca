@@ -3,27 +3,29 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalStatusItem,
-  type AgentJournalTurnScope
+import type {
+  AgentJournalItemIdentity,
+  AgentJournalStatusItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
 import type { AgentSessionCancelOutcome } from './structured-agent-session-adapter'
 import {
   isStructuredAgentSessionCommandTurnId,
-  structuredAgentSessionCommandWasStopped,
-  structuredAgentSessionStopNoteIdentity
+  structuredAgentSessionCommandWasStopped
 } from './structured-agent-session-command-turn'
+import type { StructuredAgentSessionStopWindDown } from './structured-agent-session-stop-wind-down'
 import {
   answerCancelOfSettledPrompt,
   validatePendingPrompt
 } from './structured-agent-session-prompt-state'
 import {
   STOP_NOTE_CANCELLATION_REQUESTED,
+  stopNoteTookNoEffect,
   structuredAgentSessionNamedTurnScope,
+  structuredAgentSessionStopEventTurnId,
   structuredAgentSessionStopNamesTurnNotLive,
+  structuredAgentSessionStopNoteKey,
   structuredAgentSessionStoppedTurnId
 } from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
@@ -77,68 +79,6 @@ function stopRefusedNote(
   }
 }
 
-/** What a Stop that ends the provider's session leaves its next serialized step: whether the
- *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
- *  out. No turn id: that step runs right behind the Stop, so no later turn can slip in between. */
-export type StructuredAgentSessionStopWindDown = { waitsForProvider: boolean; stoppedAt: number }
-
-/**
- * A session-ending Stop's second step, queued behind its first in the same tick so nothing sent
- * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported, and while
- * the work runs on its note is revised to say the Stop went unconfirmed. The next operation that
- * reaches the agent retries the wind-down it leaves owed, and so does the idle sweep's next tick.
- */
-export async function endStoppedStructuredAgentSession(
-  ctx: Pick<
-    AgentSessionTurnContext,
-    'sessionId' | 'adapter' | 'journal' | 'fence' | 'flushStreamedEvents'
-  >,
-  windDown: StructuredAgentSessionStopWindDown,
-  clientOperationId: string,
-  stopChild: () => Promise<void>,
-  onError: (error: unknown) => void
-): Promise<void> {
-  try {
-    if (windDown.waitsForProvider) {
-      await ctx.adapter.awaitStoppedRequestEnd?.(ctx.sessionId, windDown.stoppedAt)
-    }
-    await stopChild()
-  } catch (error) {
-    onError(error)
-    await reviseStopNoteUnconfirmed(ctx, clientOperationId).catch(onError)
-  }
-}
-
-/** While the work it stopped runs on, the Stop's own note, if it wrote one, says what a lost
- *  interrupt's says. Work that ended took the Stop, whatever became of the child. */
-async function reviseStopNoteUnconfirmed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
-  clientOperationId: string
-): Promise<void> {
-  if (!(await isMainAgentWorkingOnceFlushed(ctx))) {
-    return
-  }
-  const identity = structuredAgentSessionStopNoteIdentity(clientOperationId)
-  const itemId = agentJournalItemKey(identity)
-  let written: { turnScope?: AgentJournalTurnScope } | undefined
-  ctx.journal.visitItemsWithLinkage((id, _sequence, _body, linkage) => {
-    if (id === itemId) {
-      written = linkage
-    }
-  })
-  if (written === undefined) {
-    return
-  }
-  await ctx.journal.appendItem(
-    identity,
-    {
-      kind: 'status',
-      ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
-    },
-    { fence: ctx.fence, turnScope: written.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE }
-  )
-}
-
 export async function performCancel(
   ctx: AgentSessionTurnContext,
   input: {
@@ -176,10 +116,19 @@ export async function performCancel(
     kind: 'status',
     text: STOP_NOTE_CANCELLATION_REQUESTED
   }
-  // The turn the Stop names, read before the cancel settles it: the note reports on that turn.
+  // Read while the child is live: a provider whose Stop is a session boundary loses it next.
+  const endsSession =
+    input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
+  // The turn the Stop's event records, read before the cancel settles it: the note sits on that
+  // turn and is keyed by it, as every reader of the Stop's answer looks it up.
+  const eventTurnId = structuredAgentSessionStopEventTurnId(ctx.journal, {
+    ...(input.turnId !== undefined ? { namedTurnId: input.turnId } : {}),
+    endsSession
+  })
+  const noteIdentity = structuredAgentSessionStopNoteKey(eventTurnId, input.clientOperationId)
   const turnScope =
-    (input.turnId !== undefined && !input.scope
-      ? structuredAgentSessionNamedTurnScope(ctx.journal, input.turnId)
+    (eventTurnId !== null && !input.scope
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, eventTurnId)
       : null) ?? ctx.journal.liveTurnScope()
   // Only the provider's end or the child's ends a command. A command the provider has not opened a
   // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
@@ -195,9 +144,6 @@ export async function performCancel(
     !namesTurnNotLive
   const stoppedBefore =
     runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, liveTurnId)
-  // Read while the child is live: a provider whose Stop is a session boundary loses it next.
-  const endsSession =
-    input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
   const stoppedAt = Date.now()
   // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
   let taken: boolean | undefined
@@ -259,7 +205,7 @@ export async function performCancel(
   if (endsSession && (!namesTurnNotLive || taken !== false)) {
     // An interrupt the provider took is worth waiting on, turn row or not: a Stop before the echo
     // has none, and the echo still opens the turn the Stop interrupted.
-    input.endSession?.({ waitsForProvider: taken === true, stoppedAt })
+    input.endSession?.({ waitsForProvider: taken === true, stoppedAt, stopNote: noteIdentity })
     cancelled = true
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {
@@ -301,14 +247,21 @@ export async function performCancel(
     await ctx.flushStreamedEvents()
   }
   const value = { ...(input.turnId !== undefined ? { turnId: input.turnId } : {}), cancelled }
-  if (input.scope || note === null) {
+  if (input.scope || note === null || noteKeepsTakenAnswer(ctx.journal, noteIdentity, note)) {
     return { ok: true, value }
   }
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
-  await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId),
-    note,
-    { fence: ctx.fence, turnScope }
-  )
+  await ctx.journal.appendItem(noteIdentity, note, { fence: ctx.fence, turnScope })
   return { ok: true, value }
+}
+
+/** A Stop that took keeps its row: a later press's no-effect answer never overwrites it. Only a
+ *  wind-down that failed while the work runs on downgrades it (`endStoppedStructuredAgentSession`). */
+function noteKeepsTakenAnswer(
+  journal: Pick<AgentSessionTurnContext['journal'], 'itemBody'>,
+  identity: AgentJournalItemIdentity,
+  note: AgentJournalStatusItem
+): boolean {
+  const written = journal.itemBody(agentJournalItemKey(identity))
+  return stopNoteTookNoEffect(note) && written !== null && !stopNoteTookNoEffect(written)
 }

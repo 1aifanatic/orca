@@ -10,6 +10,7 @@ import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wi
 import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 
 const SESSION = 'status-session'
@@ -45,6 +46,7 @@ describe("the status feed's Stopping", () => {
       child: { phase: 'ready', generation: 'child-1', fence }
     })
     const feed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([[SESSION, session]]),
       statusSink: () => ({ publish: (summary) => published.push(summary), forget: () => {} }),
       getRecord: () => agentSessionRecordFixture(),
@@ -82,6 +84,7 @@ describe("the status feed's Stopping", () => {
     const fence = agentSessionRecordFixture().lease.runtimeFence
     const published: AgentSessionStatusSummary[] = []
     const feed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([[SESSION, indexedStatusFeedSession({ journal })]]),
       statusSink: () => ({ publish: (summary) => published.push(summary), forget: () => {} }),
       getRecord: () => agentSessionRecordFixture(),
@@ -126,6 +129,7 @@ describe("the status feed's Stopping", () => {
     const fence = agentSessionRecordFixture().lease.runtimeFence
     const published: AgentSessionStatusSummary[] = []
     const feed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([[SESSION, indexedStatusFeedSession({ journal })]]),
       statusSink: () => ({ publish: (summary) => published.push(summary), forget: () => {} }),
       getRecord: () => agentSessionRecordFixture(),

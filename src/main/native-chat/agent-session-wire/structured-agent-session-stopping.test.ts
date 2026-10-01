@@ -143,12 +143,36 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
     async (_, naming, cancel) => {
       const { status } = await runningTurn()
       rig.cancelTurn.mockImplementationOnce(cancel)
+      if (cancel === unconfirmed) {
+        // A failed interrupt ends the agent's process; this one cannot be ended either.
+        rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+      }
 
       const stopped = naming === 'names the turn' ? namedStop('turn-1') : rig.stop()
       expect(await stopped).toMatchObject({ ok: true })
 
       await eventually(() => expect(journal().stopMarks.latest()).not.toBeNull())
       await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+      expect(status()).not.toHaveProperty('stopping')
+    }
+  )
+
+  it.each([
+    [
+      'refuses',
+      async (): Promise<AgentSessionCancelOutcome> => ({ cancelled: false, refusal: {} })
+    ],
+    ['never answers', unconfirmed]
+  ])(
+    'ends the agent when it %s a Stop naming the running turn, so Stopping ends with the turn',
+    async (_, cancel) => {
+      const { status } = await runningTurn()
+      rig.cancelTurn.mockImplementationOnce(cancel)
+
+      expect(await namedStop('turn-1')).toMatchObject({ ok: true })
+
+      await eventually(() => expect(rig.closeSession).toHaveBeenCalled())
+      await eventually(() => expect(status()?.status).not.toBe('working'))
       expect(status()).not.toHaveProperty('stopping')
     }
   )
@@ -183,7 +207,9 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
     expect(await first).toMatchObject({ ok: true })
     expect(await repeat).toMatchObject({ ok: true })
 
-    await eventually(() => expect(stopAnswers()).toEqual(['took', 'stopRefused']))
+    // One row per turn: the refusal never overwrites the answer that took.
+    await eventually(() => expect(rig.cancelTurn).toHaveBeenCalledTimes(2))
+    expect(stopAnswers()).toEqual(['took'])
     expect(status()).toMatchObject({ status: 'working', stopping: true })
   })
 
@@ -291,6 +317,24 @@ describe('a Stop pressed before its send opened a turn', () => {
 })
 
 describe('a Stop whose provider ends its session', () => {
+  it("revises the note a Stop pressed before its turn showed wrote, once that turn opened and the child's end failed", async () => {
+    rig = await createQueuedMessageTestRig({ stopEndsSession: true })
+    const sent = await rig.workingSend()
+    const status = watchStatus()
+    const kill = Promise.withResolvers<boolean>()
+    rig.closeSession.mockImplementationOnce(() => kill.promise)
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(rig.closeSession).toHaveBeenCalled())
+
+    await rig.settleAccepted(sent, 'sent')
+    await turn('turn-1', sent, 'running')
+    kill.reject(new Error('the kill timed out'))
+
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+    await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+    expect(status()).not.toHaveProperty('stopping')
+  })
+
   it("reads Working once the child's end fails, and Stopping again when the next Stop retries it", async () => {
     const { status } = await runningTurn({ stopEndsSession: true })
     rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
@@ -306,7 +350,7 @@ describe('a Stop whose provider ends its session', () => {
     rig.closeSession.mockImplementationOnce(() => retried.promise)
     expect(await rig.stop()).toMatchObject({ ok: true })
     await eventually(() => expect(rig.closeSession).toHaveBeenCalledTimes(2))
-    expect(stopAnswers()).toEqual(['cancelUnconfirmed', 'took'])
+    expect(stopAnswers()).toEqual(['took'])
     expect(status()).toMatchObject({ status: 'working', stopping: true })
     retried.resolve(true)
   })

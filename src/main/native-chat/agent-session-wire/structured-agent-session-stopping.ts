@@ -3,26 +3,39 @@
 // Stop's event, the live turn and the Stop's own answer — so nothing is stored, and it clears when
 // the turn ends or the Stop answers that it stopped nothing. Clients only present it.
 
-import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalTurnLifecycle
+} from '../../../shared/agent-session-journal-types'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { newestStructuredAgentSessionTurn } from '../../../shared/structured-agent-session-live-turn'
-import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
+import {
+  isStructuredAgentSessionStopNote,
+  structuredAgentSessionStopNoteIdentity
+} from './structured-agent-session-command-turn'
+import { stopNoteTookNoEffect } from './structured-agent-session-turn-stop-notes'
 
-/** A Stop's note saying it did not take: the agent refused it, or it went unconfirmed. */
-function noteSaysStopTookNoEffect(item: AgentJournalRenderItem): boolean {
-  const { body } = item
-  if (body.kind !== 'status' || !('failure' in body)) {
-    return false
+/** The newest turn record and its item, read backward off a position-ordered snapshot. */
+function newestTurnItem(
+  items: readonly AgentJournalRenderItem[]
+): { item: AgentJournalRenderItem; turn: AgentJournalTurnLifecycle } | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    const turn = item ? readAgentJournalTurn(item.body) : null
+    if (item && turn) {
+      return { item, turn }
+    }
   }
-  const kind = body.failure?.kind
-  return kind === 'stopRefused' || kind === 'cancelUnconfirmed'
+  return null
 }
 
 /**
  * Whether the latest person's Stop is still ending the work it stopped: the live turn it named, or
- * with none, the sends it stopped (`personStopDecidesTurn`), unless every Stop answer since then
- * says it stopped nothing. A repeat press writes no event, only its answer, so one press that took
- * keeps it whichever order the answers came in.
+ * with none, the sends it stopped (`personStopDecidesTurn`), unless every answer to it says it
+ * stopped nothing. Its answer is the note keyed by the turn its event records, revised in place by
+ * each press, plus the notes of Stops pressed before any turn showed (keyed by their operation).
+ * A press that took is never overwritten by a later no-effect one, so one that took keeps it.
  */
 export function structuredAgentSessionStopping(
   journal: Pick<AgentSessionJournal, 'stopMarks'>,
@@ -33,21 +46,31 @@ export function structuredAgentSessionStopping(
     return false
   }
   // Read off the snapshot's tail with its opener, so no commit walks the whole journal for it.
-  const newest = newestStructuredAgentSessionTurn(items)
-  const live = newest?.state === 'running' ? newest : null
-  if (stop.event.turnId !== undefined && stop.event.turnId !== live?.turnId) {
+  const newest = newestTurnItem(items)
+  const live = newest?.turn.state === 'running' ? newest : null
+  if (stop.event.turnId !== undefined && stop.event.turnId !== live?.turn.turnId) {
     return false
   }
   const decides = live
-    ? journal.stopMarks.personStopDecidesOpenedTurn(live.turnId, live.userItemId)
+    ? journal.stopMarks.personStopDecidesOpenedTurn(live.turn.turnId, live.turn.userItemId)
     : journal.stopMarks.personStopDecides(null)
   if (!decides) {
     return false
   }
+  const answerTurnId = stop.event.turnId ?? live?.turn.turnId
+  const turnAnswer =
+    answerTurnId === undefined
+      ? null
+      : agentJournalItemKey(structuredAgentSessionStopNoteIdentity(answerTurnId))
   let answered = false
   for (const item of items) {
-    if (item.sequence > stop.sequence && isStructuredAgentSessionStopNote(item.itemId)) {
-      if (!noteSaysStopTookNoEffect(item)) {
+    const answers =
+      item.itemId === turnAnswer ||
+      (item.sequence > stop.sequence &&
+        isStructuredAgentSessionStopNote(item.itemId) &&
+        (item.turnScope?.kind !== 'turn' || item.turnScope.turnItemId === live?.item.itemId))
+    if (answers) {
+      if (!stopNoteTookNoEffect(item.body)) {
         return true
       }
       answered = true
