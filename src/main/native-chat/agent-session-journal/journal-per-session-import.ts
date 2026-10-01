@@ -19,7 +19,7 @@
 // an empty chat founded here would take a new epoch the next open's import could not reconcile.
 
 import { createHash } from 'node:crypto'
-import { deleteJournalSessionState } from './journal-session-state'
+import { writeJournalSessionStatusFromDisk } from './journal-session-state'
 import { existsSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
@@ -225,8 +225,7 @@ async function copyLegacyJournal(
       )
     }
     writePerSessionImportMarker(db, sessionId, legacy)
-    // Whatever was stored described the rows this copy replaced; the next open re-derives it.
-    deleteJournalSessionState(db, sessionId)
+    writeJournalSessionStatusFromDisk(db, sessionId)
   })
 }
 

@@ -5,9 +5,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   closeTestJournalHostDatabases,
-  openTestJournalHostDatabase
+  readTestJournalSessionStatus
 } from '../native-chat/agent-session-journal/journal-host-database-test-support'
-import { readJournalSessionState } from '../native-chat/agent-session-journal/journal-session-state'
+import { isUnsettledJournalSessionStatus } from '../native-chat/agent-session-journal/journal-session-state'
 import { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
@@ -18,8 +18,10 @@ import {
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
 import { OrcaRuntimeService } from './orca-runtime'
+import type { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
 
 type PrepareInternals = {
+  structuredAgentSessionStartupGate: StructuredAgentSessionStartupGate
   store: { getWorkspaceSession: () => unknown }
   hasPersistedStructuredAgentSessionStore(): boolean
   refreshMobileSessionPtyRecords(): Promise<Set<string> | null>
@@ -39,11 +41,15 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+function internals(runtime: OrcaRuntimeService): PrepareInternals {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these members exist on the runtime; they are protected, not absent.
+  return runtime as unknown as PrepareInternals
+}
+
 /** A restarted runtime over the rig's host, with nothing but `prepare` ever called on it. */
 function restartedRuntime(): OrcaRuntimeService {
   const runtime = new OrcaRuntimeService()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these members exist on the runtime; they are protected, not absent.
-  const internal = runtime as unknown as PrepareInternals
+  const internal = internals(runtime)
   internal.store = { getWorkspaceSession: () => null }
   internal.hasPersistedStructuredAgentSessionStore = () => true
   internal.refreshMobileSessionPtyRecords = async () => new Set()
@@ -59,8 +65,40 @@ async function crashMidSend(sessionId: string, listed = true): Promise<void> {
 }
 
 function owes(sessionId: string): boolean | undefined {
-  return readJournalSessionState(openTestJournalHostDatabase(rig.root).db, sessionId)?.owesWork
+  const stored = readTestJournalSessionStatus(rig.root, sessionId)
+  return stored ? isUnsettledJournalSessionStatus(stored) : undefined
 }
+
+it('holds chat commands until the startup settle ends, and then lets them through', async () => {
+  await crashMidSend('session-crashed')
+  await rig.crash()
+  await rig.boot()
+  const runtime = restartedRuntime()
+  const gate = internals(runtime).structuredAgentSessionStartupGate
+  runtime.holdStructuredAgentSessionCommandsForStartup()
+  expect(gate.ready()).not.toBeNull()
+
+  await runtime.prepareStructuredAgentSessionStartupRestoration()
+  await vi.waitFor(() => expect(owes('session-crashed')).toBe(false))
+
+  await vi.waitFor(() => expect(gate.ready()).toBeNull())
+})
+
+it('opens the gate when the startup step fails, never stranding a command', async () => {
+  await rig.crash()
+  await rig.boot()
+  const runtime = restartedRuntime()
+  const gate = internals(runtime).structuredAgentSessionStartupGate
+  internals(runtime).ensureStructuredAgentSessionHost = async () => {
+    throw new Error('host refused')
+  }
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  runtime.holdStructuredAgentSessionCommandsForStartup()
+
+  await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
+
+  expect(gate.ready()).toBeNull()
+})
 
 it('seeds and settles on a host no client ever lists (T8)', async () => {
   await restTestChat(rig, 'session-settled', { message: 'done' })

@@ -8,20 +8,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
 import {
   closeTestJournalHostDatabases,
-  insertTestJournalRow,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
-import { readJournalSessionState } from '../agent-session-journal/journal-session-state'
 import Database from '../../sqlite/sync-database'
+import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
+import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
 import {
   createRestTestRig,
   latestRestTestStatus,
   restTestChat,
   restTestOpens,
+  sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
 
@@ -252,50 +252,13 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     }
     await crashMidSend(rig, 'session-crashed')
     await crashMidSend(rig, 'session-crashed-closed', false)
-    await crashMidSend(rig, 'session-crashed-state-lost', false)
-    for (const sessionId of [
-      'session-stale',
-      'session-repaired',
-      'session-draft',
-      'session-uncopied'
-    ]) {
+    for (const sessionId of ['session-rowless', 'session-draft', 'session-uncopied']) {
       await restTestChat(rig, sessionId, { message: sessionId })
     }
     await rig.crash()
 
-    const live = (sessionId: string) =>
-      String(
-        db(rig).prepare('SELECT epoch FROM journal_sessions WHERE session_id = ?').get(sessionId)
-          ?.epoch
-      )
-    const tip = (sessionId: string) => readJournalSessionState(db(rig), sessionId)!
-    const appendPastState = (sessionId: string) =>
-      insertTestJournalRow(db(rig), sessionId, {
-        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-        kind: 'item',
-        itemId: agentJournalItemKey({ provider: 'orca', clientMessageId: 'unstored-note' }),
-        revision: 1,
-        body: { kind: 'status', text: 'no state stored beside it' },
-        epoch: live(sessionId),
-        seq: tip(sessionId).seq + 1,
-        fence: 1,
-        ts: 9_000
-      })
-    // An older build appended past the stored state.
-    appendPastState('session-stale')
-    // A kill between a commit and its state write: the row is one behind, still owing.
-    appendPastState('session-crashed-state-lost')
-    // An older build repaired the chat after its state was stored, and wrote back to that sequence.
-    db(rig)
-      .prepare(
-        'INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at) VALUES (?, ?, ?, ?)'
-      )
-      .run(
-        'session-repaired',
-        live('session-repaired'),
-        tip('session-repaired').seq,
-        tip('session-repaired').writtenAt + 1
-      )
+    // Last written before its status table existed: it has a journal and no status.
+    db(rig).prepare('DELETE FROM journal_session_state WHERE session_id = ?').run('session-rowless')
     // A draft an earlier process queued: paused by the restart, so an open would send nothing.
     db(rig)
       .prepare(
@@ -322,25 +285,18 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     expect(listed).not.toContain('session-crashed-closed')
     const background = await startup(rig, listed)
 
-    const unlisted = ['session-crashed-closed', 'session-crashed-state-lost']
+    const unlisted = ['session-crashed-closed']
     expect(opened(rig, [...listed, ...unlisted]).toSorted()).toEqual(
-      [
-        'session-crashed',
-        ...unlisted,
-        'session-repaired',
-        'session-stale',
-        'session-uncopied'
-      ].toSorted()
+      ['session-crashed', ...unlisted, 'session-rowless', 'session-uncopied'].toSorted()
     )
-    expect(background.toSorted()).toEqual(
-      ['session-repaired', 'session-stale', 'session-uncopied'].toSorted()
-    )
+    expect(background.toSorted()).toEqual(['session-rowless', 'session-uncopied'].toSorted())
     expect(latestRestTestStatus(rig, 'session-draft')).toMatchObject({ status: 'idle' })
     // Settled with no user action; the listed one is open and never showed its pre-crash work.
     for (const sessionId of ['session-crashed', ...unlisted]) {
       // The unanswered send is now recovered doubt, which projects as no running request.
-      expect(readJournalSessionState(db(rig), sessionId)).toMatchObject({
-        owesWork: false,
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({
+        status: 'idle',
+        handedOverSends: 0,
         summary: { status: null }
       })
     }
@@ -356,11 +312,138 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
       expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ status: 'idle' })
     }
 
-    // The next boot finds nothing owed and nothing stale (T4b).
+    // Its open wrote the missing status back.
+    expect(readTestJournalSessionStatus(rig.root, 'session-rowless')).not.toBeNull()
+
+    // The next boot finds nothing to settle and nothing without a status (T4b).
     await rig.crash()
     await rig.boot()
     const again = await startup(rig, listedIds(rig))
     expect(again).toEqual([])
     expect(opened(rig, [...listedIds(rig), ...unlisted])).toEqual([])
+  })
+})
+
+describe('a provider process that outlived the crash (R1T-2)', () => {
+  it('is stopped at startup for a listed and an unlisted chat, and none is left on the next boot', async () => {
+    const rig = await newRig()
+    // Attached, then sent to: its provider process is live when Orca dies.
+    for (const [id, listed] of [
+      ['session-idle-listed', true],
+      ['session-idle-closed', false]
+    ] as const) {
+      await restTestChat(rig, id, { listed })
+      await restTestChat(rig, id, { message: 'done', listed })
+    }
+    const ids = ['session-idle-listed', 'session-idle-closed']
+    // Each chat's provider process was still up when Orca died: its lease names it, live.
+    const leases = ids.map((id) => rig.store.getRecord(id)!.lease)
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    for (const lease of leases) {
+      await writeOlderBuildLease(rig.root, lease.sessionId, { ...lease })
+    }
+    // The rig's chats share one recorded process; stopping it ends both.
+    let alive = true
+    const stopOwnerProcess = vi.fn(() => {
+      alive = false
+    })
+    rig.probeOwner.mockImplementation(async () =>
+      alive
+        ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+        : { outcome: 'pid-absent' }
+    )
+
+    await rig.boot({ stopOwnerProcess })
+    await startup(rig, listedIds(rig))
+
+    expect(stopOwnerProcess).toHaveBeenCalled()
+    expect(alive).toBe(false)
+    for (const id of ids) {
+      expect(rig.store.getRecord(id)!.lease).toMatchObject({
+        handoffStage: null,
+        ownerProcess: null,
+        deathEvidence: { kind: 'pid-absent' }
+      })
+    }
+    // The listed chat was seeded, not opened, and still had its process stopped.
+    expect(opened(rig, ids)).toEqual([])
+
+    await rig.crash()
+    stopOwnerProcess.mockClear()
+    await rig.boot({ stopOwnerProcess })
+    await startup(rig, listedIds(rig))
+    expect(stopOwnerProcess).not.toHaveBeenCalled()
+  })
+})
+
+describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', () => {
+  it('settles a listed chat the listed worker skips because its tab closed', async () => {
+    const rig = await newRig()
+    await crashMidSend(rig, 'session-closing')
+    await rig.crash()
+    await rig.boot()
+    const listed = listedIds(rig)
+    expect(listed).toContain('session-closing')
+    await rig.host.reconcileRestartLeases()
+    rig.host.seedStoredStatuses(listed)
+    // The tab closes after the listing named it, before its settle runs.
+    await rig.store.setSessionTabVisibility('session-closing', false)
+
+    await rig.host.settleOwedSessions(listed)
+
+    expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
+      status: 'idle',
+      handedOverSends: 0
+    })
+    expect(rig.host.hasSession('session-closing')).toBe(false)
+  })
+})
+
+describe('the startup gate holds chat commands and never refuses them', () => {
+  async function bootGated(gate: StructuredAgentSessionStartupGate): Promise<RestTestRig> {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-1', { message: 'first' })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    gate.hold()
+    await rig.boot({ commandsReady: gate.ready })
+    return rig
+  }
+
+  it('holds a send until the settle ends, then delivers it; listing and status answer meanwhile', async () => {
+    const gate = new StructuredAgentSessionStartupGate()
+    const rig = await bootGated(gate)
+    // The tab list and the seeded status answer while the gate is closed.
+    expect(listedIds(rig)).toContain('session-1')
+    rig.host.seedStoredStatuses(['session-1'])
+    expect(latestRestTestStatus(rig, 'session-1')).toMatchObject({ status: 'idle' })
+    const dispatched = rig.adapter.dispatch.mock.calls.length
+    let answered = false
+    const sent = sendRestTestMessage(rig, 'session-1', 'during startup').then((result) => {
+      answered = true
+      return result
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(answered).toBe(false)
+    expect(rig.adapter.dispatch.mock.calls.length).toBe(dispatched)
+
+    gate.openWhen(Promise.reject(new Error('settle failed')))
+
+    expect(await sent).toMatchObject({ ok: true })
+    await vi.waitFor(() =>
+      expect(rig.adapter.dispatch.mock.calls.length).toBeGreaterThan(dispatched)
+    )
+  })
+
+  it('lets held commands through at its ceiling if the settle never ends', async () => {
+    const gate = new StructuredAgentSessionStartupGate(30)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const rig = await bootGated(gate)
+
+    expect(await sendRestTestMessage(rig, 'session-1', 'after the ceiling')).toMatchObject({
+      ok: true
+    })
+    expect(gate.ready()).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 // The structured-chat step of host startup, before any client lists a tab: the restart lease check,
-// then each listed chat's status seeded from its stored state, and every chat that owes work
-// settled.
+// then each listed chat's status seeded from its stored status, and every chat a gone process left
+// with work settled. Chat commands wait for that settle; the tab list and paint do not.
 
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
@@ -27,7 +27,9 @@ type StructuredAgentSessionListingHost = Partial<
  */
 export async function runStructuredAgentSessionStartupStep(
   host: StructuredAgentSessionStartupHost,
-  savedSession: WorkspaceSessionState | null
+  savedSession: WorkspaceSessionState | null,
+  /** The settle, which chat commands wait for; it never rejects. */
+  onSettling: (settled: Promise<void>) => void
 ): Promise<string[]> {
   let leaseFailure: { error: unknown } | null = null
   try {
@@ -37,8 +39,8 @@ export async function runStructuredAgentSessionStartupStep(
   }
   const listedIds = listedStructuredAgentSessionIds(host, savedSession)
   const background = host.seedStoredStatuses?.(listedIds) ?? listedIds
-  // Un-awaited: nothing waits on a crashed chat's settle, and it never rejects.
-  void host.settleOwedSessions?.(listedIds)
+  // Not awaited here: the tab list and paint never wait on it; chat commands do.
+  onSettling(host.settleOwedSessions?.(listedIds) ?? Promise.resolve())
   if (leaseFailure) {
     throw leaseFailure.error
   }

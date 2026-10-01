@@ -28,12 +28,6 @@ export class JournalStatusProjection {
     return tip && tip.fence === fence ? tip.state : this.project(fence)
   }
 
-  /** Whatever fence it was projected under: a chat that owes nothing projects the same summary
-   *  under every fence (nothing unanswered is left for the fence to judge). */
-  summaryAtTip(fence: number | undefined): JournalStatusProjectionState['summary'] {
-    return (this.atTip()?.state ?? this.project(fence)).summary
-  }
-
   private atTip(): Cached | null {
     const fold = this.fold()
     const cached = this.cached

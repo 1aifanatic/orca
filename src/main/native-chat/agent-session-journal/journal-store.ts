@@ -25,16 +25,14 @@ import {
   newestStructuredAgentSessionTurnBySequence
 } from '../../../shared/structured-agent-session-live-turn'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
-import { readJournalSince } from './journal-cursor'
 import type { JournalHostDatabase } from './journal-host-database'
-import { readJournalRowsAfterCursor, type JournalLoad } from './journal-open'
+import { replayJournal, type JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
   rejectJournalQueuedSubmissions
 } from './journal-pending-submission-recovery'
 import {
-  applyJournalRow,
   createJournalReducerState,
   renderJournalState,
   resolveJournalItemId,
@@ -79,7 +77,9 @@ export class AgentSessionJournal {
   private readonly now: () => number
   private readonly mintEpoch: () => string
 
-  private state: JournalReducerState
+  private fold: JournalReducerState
+  /** A failed append's re-read from disk failed too: the fold may hold a row that never committed. */
+  private foldStale = false
   private readOnly = false
   private malformedRows = 0
   /** A fresh replay would report the history corrupt: it is still owed a rebuild. */
@@ -92,9 +92,10 @@ export class AgentSessionJournal {
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly restore: () => Promise<void>
-  /** Rewrites the chat's stored state if it does not describe this fold. Bookkeeping: never
+  /** Writes the chat's status if it has none (an older build last wrote it). Bookkeeping: never
    *  fails the open that calls it. */
-  readonly ensureSessionState: () => void
+  readonly backfillSessionStatus: () => void
+  readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
   private readonly statusProjection: JournalStatusProjection
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
@@ -104,7 +105,7 @@ export class AgentSessionJournal {
     this.database = options.database
     this.now = options.now ?? (() => Date.now())
     this.mintEpoch = options.mintEpoch ?? randomUUID
-    this.state = createJournalReducerState(options.identity.sessionId, '')
+    this.fold = createJournalReducerState(options.identity.sessionId, '')
     // Serializes sequence assignment with the durable write behind it.
     this.queue = new JournalWriteQueue(options.identity.sessionId)
     const collaborators = createJournalStoreCollaborators({
@@ -126,9 +127,11 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      commit: (row) => {
-        applyJournalRow(this.state, row)
-        this.onCommitted?.()
+      replaceState: (state) => {
+        this.state = state
+      },
+      markFoldStale: () => {
+        this.foldStale = true
       },
       loadCorrupt: () => this.loadCorrupt,
       currentFence: options.currentFence ?? (() => undefined),
@@ -150,8 +153,26 @@ export class AgentSessionJournal {
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
     this.queuedMessages = collaborators.queuedMessages
     this.restore = collaborators.restore
-    this.ensureSessionState = collaborators.ensureSessionState
+    this.backfillSessionStatus = collaborators.backfillSessionStatus
+    this.readSince = collaborators.readSince
     this.statusProjection = collaborators.statusProjection
+  }
+
+  /** Re-read from disk first while stale, so no reader or writer gets a fold the disk never held. */
+  private get state(): JournalReducerState {
+    if (this.foldStale) {
+      const reloaded = replayJournal(this.database.db, this.identity.sessionId)
+      if (!reloaded) {
+        throw new Error(`agent-session journal ${this.identity.sessionId} is gone`)
+      }
+      this.state = reloaded.state
+    }
+    return this.fold
+  }
+
+  private set state(state: JournalReducerState) {
+    this.fold = state
+    this.foldStale = false
   }
 
   get isReadOnly(): boolean {
@@ -288,25 +309,6 @@ export class AgentSessionJournal {
     this.state.receipts.get(clientMessageId) ?? null
 
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
-
-  readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
-    return readJournalSince(
-      {
-        state: this.state,
-        rowsAfter: (afterSequence) =>
-          readJournalRowsAfterCursor(
-            this.database.db,
-            this.identity.sessionId,
-            this.state.epoch,
-            afterSequence,
-            limit
-          ),
-        readOnly: this.readOnly
-      },
-      cursor,
-      () => this.cursor()
-    )
-  }
 
   /** Upsert by stable identity. The revision is assigned here so a caller
    *  cannot accidentally publish a revision the reducer will drop. */

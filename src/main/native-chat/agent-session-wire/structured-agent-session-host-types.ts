@@ -122,6 +122,9 @@ export type StructuredAgentSessionHostDeps = {
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
+  /** Pending while host startup settles the chats a gone process left with work: every chat
+   *  command waits for it, and none is refused. Null or absent once open. */
+  commandsReady?: () => Promise<void> | null
   /** Lease bookkeeping run for startup or a read (the reconcile, or resolving a chat's recovery)
    *  that refused or threw, once per distinct failure. Startup and the read carry on: the next
    *  attach or send reconciles and resolves recovery again before it acts. */

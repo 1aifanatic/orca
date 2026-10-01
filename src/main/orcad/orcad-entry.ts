@@ -290,7 +290,9 @@ async function startOrcadRuntime(
   observedStatusCapture.attach(runtime)
 
   // Why here and not on a client's first listing: a headless host seeds its chats' statuses and
-  // settles crashed ones itself, before any client connects.
+  // settles crashed ones itself, before any client connects. Chat commands a client sends meanwhile
+  // wait for that settle.
+  runtime.holdStructuredAgentSessionCommandsForStartup()
   void runtime.prepareStructuredAgentSessionStartupRestoration().catch((error: unknown) => {
     console.warn('[structured-agent-session] startup restoration failed', error)
   })

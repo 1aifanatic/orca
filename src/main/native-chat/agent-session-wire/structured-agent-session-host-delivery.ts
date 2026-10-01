@@ -138,8 +138,15 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       loop.dispose()
       stopResettling()
     },
-    open: (sessionId, options) =>
-      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
+    open: async (sessionId, options) => {
+      // Every command that opens a chat waits for startup's settle, as `conversation()` does.
+      await deps.commandsReady?.()
+      return openStructuredAgentSessionConversation(
+        { deps, sessions, adoptOpened },
+        sessionId,
+        options
+      )
+    }
   }
 }
 

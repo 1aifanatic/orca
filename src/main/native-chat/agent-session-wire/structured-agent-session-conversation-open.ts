@@ -117,7 +117,7 @@ export async function openStructuredAgentSessionConversationJournal(
   await appendOpenSettlement(opened.journal, plan, fence, (error) =>
     deps.onEventSinkError?.({ sessionId, error })
   )
-  opened.journal.ensureSessionState()
+  opened.journal.backfillSessionStatus()
   return {
     session: { journal: opened.journal, params, child: null },
     reset: opened.recovery?.reset ?? null

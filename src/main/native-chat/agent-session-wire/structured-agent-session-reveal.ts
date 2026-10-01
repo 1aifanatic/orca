@@ -114,6 +114,7 @@ export function createStructuredAgentSessionHostRestore(
       openDeps: deps,
       supportsRecord,
       seedStatus,
+      resolveRecovery: readRestore.resolveRecovery,
       restoreListed: (records) =>
         restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
       serialize: rest.serialize,

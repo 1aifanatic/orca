@@ -103,6 +103,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      * drop it after.
      */
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
+      // Startup's settle first: no command acts on a chat a gone process left mid-turn.
+      const startup = deps().commandsReady?.()
+      if (startup) {
+        await startup
+      }
       const open = sessions.get(sessionId)
       if (open) {
         // Restore left its per-chat file uncopied; a reader gets the chat from the one database.

@@ -278,21 +278,34 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   protected async prepareStructuredAgentSessionStartupRestorationOnce(): Promise<void> {
-    if (!this.hasPersistedStructuredAgentSessionStore()) {
-      return
-    }
-    // Durable agent records must exist before daemon inventory can be reconciled against them.
-    // A refused host is no host: startup goes on, and only structured requests are refused.
-    await ensureStructuredAgentSessionHostUnlessRefused(() =>
-      this.ensureStructuredAgentSessionHost()
-    )
-    await this.refreshMobileSessionPtyRecords()
-    const host = getStructuredAgentSessionHost()
-    if (host) {
-      this.structuredAgentSessionBackgroundRestoreIds = await runStructuredAgentSessionStartupStep(
-        host,
-        this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null
+    // Chat commands held for startup go ahead however this ends: when the settle does, or now.
+    let settling = false
+    try {
+      if (!this.hasPersistedStructuredAgentSessionStore()) {
+        return
+      }
+      // Durable agent records must exist before daemon inventory can be reconciled against them.
+      // A refused host is no host: startup goes on, and only structured requests are refused.
+      await ensureStructuredAgentSessionHostUnlessRefused(() =>
+        this.ensureStructuredAgentSessionHost()
       )
+      await this.refreshMobileSessionPtyRecords()
+      const host = getStructuredAgentSessionHost()
+      if (host) {
+        this.structuredAgentSessionBackgroundRestoreIds =
+          await runStructuredAgentSessionStartupStep(
+            host,
+            this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
+            (settled) => {
+              settling = true
+              this.structuredAgentSessionStartupGate.openWhen(settled)
+            }
+          )
+      }
+    } finally {
+      if (!settling) {
+        this.structuredAgentSessionStartupGate.open()
+      }
     }
   }
 

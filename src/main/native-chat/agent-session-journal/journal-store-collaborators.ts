@@ -18,11 +18,16 @@ import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
 import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
+import type Database from '../../sqlite/sync-database'
+import { applyJournalRow } from './journal-reducer'
+import { readJournalRowsAfterCursor, replayJournal } from './journal-open'
+import { readJournalSince } from './journal-cursor'
+import type { JournalReadSince } from './journal-store-contracts'
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import {
-  deriveJournalSessionState,
-  ensureJournalSessionStateCurrent,
-  writeJournalSessionState
+  deriveJournalSessionStatus,
+  hasJournalSessionStatus,
+  writeJournalSessionStatus
 } from './journal-session-state'
 import { JournalStatusProjection } from './journal-status-projection'
 
@@ -47,10 +52,12 @@ export type JournalStoreHost = {
   setReadOnly: (readOnly: boolean) => void
   cursor: () => AgentJournalCursor
   adopt: (loaded: JournalLoad) => void
-  commit: (row: JournalRow) => void
+  /** The fold re-read from disk after a failed append. */
+  replaceState: (state: JournalReducerState) => void
+  /** That re-read failed too: the fold is re-read before its next use, never served as it is. */
+  markFoldStale: () => void
   /** Whether a fresh replay would report the history corrupt. */
   loadCorrupt: () => boolean
-  /** Records whether the loaded history is corrupt. */
   setLoadCorrupt: (corrupt: boolean) => void
   /** The conversation's fence, which the stored status reads as the status feed does. */
   currentFence: () => number | undefined
@@ -71,15 +78,30 @@ export type JournalStoreCollaborators = {
   /** Restores the store's state from disk. Owned here because it needs the same
    *  collaborators the constructor just built. */
   restore: () => Promise<void>
-  /** Rewrites the chat's stored state if it does not describe the fold. */
-  ensureSessionState: () => void
+  /** Writes the chat's status if it has none: a chat an older build last wrote. */
+  backfillSessionStatus: () => void
+  readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
   statusProjection: JournalStatusProjection
 }
 
 export function createJournalStoreCollaborators(host: JournalStoreHost): JournalStoreCollaborators {
   const statusProjection = new JournalStatusProjection(host.state)
-  const storeState = (onlyIfStale: boolean) =>
-    storeJournalSessionState(host, statusProjection, onlyIfStale)
+  const writeStatus = (db: Database.Database, state: JournalReducerState, corrupt: boolean) =>
+    writeJournalSessionStatus(
+      db,
+      host.identity.sessionId,
+      deriveJournalSessionStatus(state, {
+        settlesRosters: !corrupt,
+        currentFence: host.currentFence(),
+        // The live fold's projection, shared with the status feed; an epoch's new fold has its own.
+        ...(state === host.state()
+          ? { statusSummary: () => statusProjection.at(host.currentFence()).summary }
+          : {})
+      })
+    )
+  // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
+  const corruptAfter = (row: JournalRow) =>
+    host.loadCorrupt() && row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID
   const epochController = new JournalEpochController({
     identity: host.identity,
     now: host.now,
@@ -93,8 +115,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     adopt: (loaded) => {
       host.setLoadCorrupt(loaded.corrupt)
       host.adopt(loaded)
-      storeState(false)
-    }
+    },
+    writeState: writeStatus
   })
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
@@ -109,7 +131,25 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     epochController,
     queuedMessages,
     statusProjection,
-    ensureSessionState: () => storeState(true),
+    backfillSessionStatus: () => backfillSessionStatus(host, writeStatus),
+    // Here rather than on the store, which is at its length limit.
+    readSince: (cursor, limit) =>
+      readJournalSince(
+        {
+          state: host.state(),
+          rowsAfter: (afterSequence) =>
+            readJournalRowsAfterCursor(
+              host.database().db,
+              host.identity.sessionId,
+              host.state().epoch,
+              afterSequence,
+              limit
+            ),
+          readOnly: host.readOnly()
+        },
+        cursor,
+        host.cursor
+      ),
     // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
     // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
     restore: () =>
@@ -124,14 +164,13 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       readOnly: host.readOnly,
       highestFence: () => host.state().highestFence,
       nextSequence: () => host.state().lastSequence + 1,
-      commit: (row) => {
-        // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
-        if (!(row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID)) {
-          host.setLoadCorrupt(false)
-        }
-        host.commit(row)
-        storeState(false)
+      apply: (row) => applyJournalRow(host.state(), row),
+      writeStatus: (db, row) => writeStatus(db, host.state(), corruptAfter(row)),
+      committed: (row) => {
+        host.setLoadCorrupt(corruptAfter(row))
+        host.notifyCommitted()
       },
+      recoverFold: () => recoverJournalFold(host),
       // Every rejection is a dispatch row through this one writer; the draft
       // returned-transition rides it so no path can bypass the hook.
       inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
@@ -149,38 +188,47 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   }
 }
 
-/**
- * The chat's stored state for the fold a commit (or an open) left, in its own transaction after the
- * journal's, unsynced: bookkeeping that never fails the write it describes. A failed or lost write
- * leaves the row behind the tip, which reads as stale, and the next open or startup re-derives it.
- */
-function storeJournalSessionState(
+/** Bookkeeping: a failure leaves the chat without a row, which its next open writes again. */
+function backfillSessionStatus(
   host: JournalStoreHost,
-  projection: JournalStatusProjection,
-  onlyIfStale: boolean
+  writeStatus: (db: Database.Database, state: JournalReducerState, corrupt: boolean) => void
 ): void {
   const database = host.database()
   if (host.readOnly() || database.readOnly || host.importPending()) {
     return
   }
-  const input = {
-    settlesRosters: !host.loadCorrupt(),
-    currentFence: host.currentFence(),
-    statusSummary: () => projection.summaryAtTip(host.currentFence())
-  }
   try {
-    database.unsyncedTransaction((db) => {
-      if (onlyIfStale) {
-        ensureJournalSessionStateCurrent(db, host.state(), input, host.now())
-      } else {
-        const state = deriveJournalSessionState(host.state(), input)
-        writeJournalSessionState(db, host.identity.sessionId, state, host.now())
+    database.transaction((db) => {
+      if (!hasJournalSessionStatus(db, host.identity.sessionId)) {
+        writeStatus(db, host.state(), host.loadCorrupt())
       }
     })
   } catch (error) {
-    console.warn('[agent-session-journal] storing the chat state failed', {
+    console.warn('[agent-session-journal] writing a chat status failed', {
       sessionId: host.identity.sessionId,
-      error: error instanceof Error ? error.message : String(error)
+      error
     })
   }
+}
+
+/**
+ * An append whose transaction failed after its row was folded: the fold is ahead of the disk, and
+ * an in-place apply cannot be undone, so the chat is folded again from what committed. The host
+ * database rolls a stranded transaction back before it hands out the connection, so the re-read
+ * never sees the row that failed. A re-read that fails leaves the fold marked stale.
+ */
+function recoverJournalFold(host: JournalStoreHost): void {
+  try {
+    const reloaded = replayJournal(host.database().db, host.identity.sessionId)
+    if (reloaded) {
+      host.replaceState(reloaded.state)
+      return
+    }
+  } catch (error) {
+    console.warn('[agent-session-journal] re-reading a chat after a failed append failed', {
+      sessionId: host.identity.sessionId,
+      error
+    })
+  }
+  host.markFoldStale()
 }

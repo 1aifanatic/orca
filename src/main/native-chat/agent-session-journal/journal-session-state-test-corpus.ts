@@ -173,8 +173,8 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
 
 export type JournalSessionStateCase = keyof typeof JOURNAL_SESSION_STATE_CORPUS
 
-/** Whether each case owes its open work whatever the record says: what the flag must read. */
-export const CORPUS_OWES_WORK: Record<JournalSessionStateCase, boolean> = {
+/** Whether each case's stored status shows work a gone process left: what startup selects. */
+export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   empty: false,
   settled: false,
   'older turn running beside a newer one': true,
@@ -185,7 +185,7 @@ export const CORPUS_OWES_WORK: Record<JournalSessionStateCase, boolean> = {
   'pending send': true,
   'unknown send': true,
   'queued leftover': true,
-  // Owed only to death evidence naming its writer.
+  // Its verdict was decided when it settled; startup never revises it.
   'unverifiable turn': false,
   'settled roster': false
 }

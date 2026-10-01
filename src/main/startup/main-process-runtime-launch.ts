@@ -308,6 +308,8 @@ export async function initializeMainProcessRuntimeLaunch(
     return
   }
   state.serveOptions = serveOptions
+  // Before anything is served: chat commands wait for the startup settle started below.
+  runtime.holdStructuredAgentSessionCommandsForStartup()
   const runtimeRpc = installRuntimeRpc(runtime, serveOptions)
   const shellPathReady = shellPathHydration.whenReady()
   // Why published: the renderer's git-environment barrier must fence on the same
@@ -341,9 +343,7 @@ export async function initializeMainProcessRuntimeLaunch(
   // client or neither sees the same state. Behind the barriers the renderer's own call awaits.
   void Promise.all([state.firstWindowStartupServicesReady, state.managedWslCliStartupBarrierReady])
     .then(() => runtime.prepareStructuredAgentSessionStartupRestoration())
-    .catch((error: unknown) => {
-      console.warn('[structured-agent-session] startup restoration failed', error)
-    })
+    .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
   app.on('activate', options.handleMacAppActivation)
   if (serveOptions) {
     await launchServeMode(runtime, runtimeRpc, serveOptions)
