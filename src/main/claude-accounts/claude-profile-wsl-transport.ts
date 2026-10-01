@@ -82,7 +82,7 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
     const result = await runWslProcess({ ...spec, distro, timeoutMs, maxOutputBytes: 256 * 1024 })
     if (result.code !== 0 || result.timedOut) {
       throw new Error(
-        `WSL Claude profile setup failed: ${result.stderr || 'guest command unavailable'}`
+        `WSL Claude profile setup failed: ${result.stderr.trim() || 'guest command unavailable'}`
       )
     }
     return result.stdout.trim()
@@ -142,7 +142,7 @@ export async function prepareClaudeWslGuest(distro: string): Promise<ClaudeWslGu
       })
       if (result.code !== 0 || result.timedOut) {
         throw new Error(
-          `WSL Claude profile refused: ${result.stderr || 'guest runtime unavailable'}`
+          `WSL Claude profile refused: ${result.stderr.trim() || 'guest runtime unavailable'}`
         )
       }
       return responseSchema.parse(JSON.parse(result.stdout))

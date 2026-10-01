@@ -11,6 +11,7 @@ import {
   REMOTE_NODE_RUNTIME_READY
 } from '../ssh/orcad-remote-node-runtime'
 import { getRemoteHostPlatform } from '../ssh/ssh-remote-platform'
+import { assertRemoteNodeRuntimePromoted } from '../ssh/orcad-remote-node-runtime-report'
 import { isGlibcBelow, PINNED_NODE_GLIBC_FLOOR } from '../ssh/ssh-relay-pinned-node'
 import type { WslSpec } from './wsl-runner'
 
@@ -63,7 +64,17 @@ export async function ensureWslPinnedRuntime(
       // Why its own deadline: a joining caller's abort must not cancel another caller's download.
       download = materializeNodeRuntimeArchive(target, cacheRoot, {
         signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
-      }).finally(() => downloads.delete(`${cacheRoot}:${target}`))
+      })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          // Why a checksum mismatch passes as is: its own text already names the runtime archive.
+          throw /checksum mismatch/.test(message)
+            ? error
+            : new Error(`Could not download Orca's Node runtime for WSL: ${message}`, {
+                cause: error
+              })
+        })
+        .finally(() => downloads.delete(`${cacheRoot}:${target}`))
       downloads.set(`${cacheRoot}:${target}`, download)
     }
     const localArchive = await waitForPromiseWithSignal(download, signal)
@@ -85,9 +96,8 @@ export async function ensureWslPinnedRuntime(
       },
       120_000
     )
-    if (promoted.split('\n').at(-1) !== REMOTE_NODE_RUNTIME_READY) {
-      throw new Error('WSL did not verify the pinned Node runtime.')
-    }
+    // Why classified: the loader's own words (missing libstdc++, security software) reach the user.
+    assertRemoteNodeRuntimePromoted(promoted)
   }
   return { executable, home }
 }

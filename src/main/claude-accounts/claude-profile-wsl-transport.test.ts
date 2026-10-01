@@ -104,7 +104,7 @@ it('surfaces runtime and process failures without substituting a personal Claude
   mocks.run.mockResolvedValue({
     code: 1,
     stdout: '',
-    stderr: 'pinned runtime missing',
+    stderr: 'pinned runtime missing\r\n',
     timedOut: false,
     environmentResolved: true
   })
@@ -116,7 +116,7 @@ it('surfaces runtime and process failures without substituting a personal Claude
       accountId: 'a',
       hooksEnabled: false
     })
-  ).rejects.toThrow('pinned runtime missing')
+  ).rejects.toThrow(/^WSL Claude profile refused: pinned runtime missing$/)
 })
 it('keeps a cached guest usable after its preparation deadline has passed', async () => {
   const deadline = new AbortController()
