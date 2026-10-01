@@ -262,8 +262,13 @@ describe('a failed write leaves the fold equal to the disk (T1)', () => {
     await expect(
       journal.resolveDispatch({
         clientMessageId: 'send-1',
-        state: 'rejected',
-        reason: 'refused',
+        state: 'accepted',
+        providerIdentity: {
+          provider: 'codex',
+          threadId: 'thread-held',
+          turnId: 'turn-1',
+          ordinal: 1
+        },
         fence: 3
       })
     ).rejects.toThrow('COMMIT failed')
