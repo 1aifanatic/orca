@@ -3,8 +3,9 @@
  *
  * Three things make this different from the PTY worker path, and all three live here:
  *
- * - The session is created directly as structured, so readiness is the attach returning ok. There
- *   is no boot-to-idle gap to wait on and no `tui-idle` edge to read.
+ * - The session is created directly as structured, at rest; its preamble is its first message and
+ *   starts its agent, so readiness is the agent taking the preamble. There is no boot-to-idle gap to
+ *   wait on and no `tui-idle` edge to read.
  * - Nothing here keeps its agent running. The idle sweep leaves it running while its dispatch is
  *   open, reading that from the orchestration database; once the dispatch settles the agent rests
  *   like any chat's, and the next mail starts it.
@@ -143,8 +144,8 @@ export async function createStructuredWorkerSession(args: {
     })
     return { identity, host }
   } catch (error) {
-    // A start that fails after the session exists would otherwise strand a live provider child
-    // that no dispatch owns and that nothing else in the runtime will ever retire.
+    // A start that fails after the session exists would otherwise strand a chat (and, once its
+    // first message runs, a provider child) that no dispatch owns and nothing else will retire.
     structuredWorkerIdentities.forget(identity.handle)
     if (structuredCreateMayHaveCommitted(created)) {
       await discardStructuredWorkerSession(sessionId, args.runtime)
@@ -154,12 +155,12 @@ export async function createStructuredWorkerSession(args: {
 }
 
 /**
- * Whether a create may have attached a session, which is the question cleanup has to ask.
+ * Whether a create may have committed a session, which is the question cleanup has to ask.
  *
- * `ok` is not the test. `commit` answers `agent_session_operation_unknown` when `attach` SUCCEEDED
- * and only the tab publish failed, and a throw out of the commit half is past `attach` too — the
- * pre-commit half never throws, it refuses. Both leave a session with a published tab and no
- * binding, so nothing else in the runtime will ever retire it. Only a DEFINITIVE refusal
+ * `ok` is not the test. `commit` answers `agent_session_operation_unknown` when the host's create
+ * SUCCEEDED and only the tab publish failed, and a throw out of the commit half is past the create
+ * too — the pre-commit half never throws, it refuses. Both leave a session with a published tab and
+ * no binding, so nothing else in the runtime will ever retire it. Only a DEFINITIVE refusal
  * proves there is nothing to discard; everything else gets the best-effort close.
  */
 function structuredCreateMayHaveCommitted(
@@ -174,7 +175,7 @@ function structuredCreateMayHaveCommitted(
  * Stops the provider child, drops the DURABLE tab reference so nothing restores the chat after a
  * restart, and — only once the close came back without throwing — retires the background tab this
  * start published from the live snapshot. All three are no-ops for a session that was never
- * attached, which is why a non-definitive refusal can reach here unconditionally. A close that
+ * created, which is why a non-definitive refusal can reach here unconditionally. A close that
  * threw leaves the tab alone: the child may still be running, and the tab is the way to reach it.
  *
  * Exported because a start can also fail AFTER `createStructuredWorkerSession` returned — on the
