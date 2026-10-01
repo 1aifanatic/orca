@@ -14,17 +14,22 @@ describe('blocked anchors', () => {
   const [menu] = anchorsOf([
     {
       id: 'menu',
-      state: 'blocked',
-      reason: 'agent-approval-prompt',
-      withinLastLines: 4,
-      lastOf: 'run it?',
-      lines: { atLeast: 2, includingLast: true, test: { regex: '\\([a-z]\\)$' } }
+      why: 'test',
+      when: {
+        find: { lastOf: 'run it?' },
+        withinLastLines: 4,
+        lines: { atLeast: 2, includingLast: true, test: { regex: '\\([a-z]\\)$' } }
+      },
+      answer: { state: 'blocked', reason: 'agent-approval-prompt' }
     }
   ]).blocked
 
   it('reports where the anchor starts once enough choices own the bottom', () => {
     const text = 'chat\nrun it?\nyes (y)\nno (n)\n'
-    expect(menu(text)).toEqual({ reason: 'agent-approval-prompt', index: text.indexOf('run it?') })
+    expect(menu(text)).toEqual({
+      answer: { state: 'blocked', reason: 'agent-approval-prompt' },
+      index: text.indexOf('run it?')
+    })
   })
 
   it('refuses a menu with too few choices, or one no longer at the bottom', () => {
@@ -38,23 +43,18 @@ describe('blocked anchors', () => {
 })
 
 describe('prompt anchors', () => {
-  const { prompts } = anchorsOf([
+  const [prompt] = anchorsOf([
     {
       id: 'prompt',
-      state: 'idle',
-      find: { lastOf: 'banner', followedBy: '→' },
-      workingIfAfter: { contains: '⠋' }
+      why: 'test',
+      when: { find: { lastOf: 'banner' }, after: { contains: '→' } },
+      answer: { state: 'idle' }
     }
-  ])
-  const [prompt] = prompts
+  ]).prompts
 
-  it('needs the follower after the last banner', () => {
-    expect(prompt('banner\n→')).toEqual({ index: 0, working: false })
+  it('needs the after test to pass on the text after the last banner', () => {
+    expect(prompt('banner\n→')).toEqual({ answer: { state: 'idle' }, index: 0 })
     expect(prompt('→ banner')).toBeNull()
-  })
-
-  it('stays a live prompt while busy', () => {
-    expect(prompt('banner\n⠋ working\n→')).toEqual({ index: 0, working: true })
   })
 
   it('reads a bundled busy prompt as live but not ready', () => {
@@ -63,6 +63,7 @@ describe('prompt anchors', () => {
       ready: null
     })
     expect(findPromptAnchorIndexes('cursor agent\n→')).toEqual({ live: 0, ready: 0 })
+    expect(findPromptAnchorIndexes('cursor agent\n⠋ starting')).toEqual({ live: null, ready: null })
   })
 })
 

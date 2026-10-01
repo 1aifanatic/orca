@@ -11,25 +11,29 @@ import { parseAgentStateRuleFiles } from './agent-state-rules-catalog'
 
 const QUIESCENCE_MS = 3000
 
+function anchor(when: Record<string, unknown>, answer: Record<string, unknown>) {
+  return { id: 'anchor', why: 'test', when, answer }
+}
+
 type RuleFileOverrides = { rules?: unknown[]; textAnchors?: unknown[] } & Record<string, unknown>
 
 function ruleFile(overrides: RuleFileOverrides = {}): Record<string, unknown> {
   return { id: 'cline', engineVersion: 1, textAnchors: [], rules: [], ...overrides }
 }
 
+const SCREEN = { region: 'screen' }
+
 function idleRule(id: string, priority: number, rows: unknown[]): Record<string, unknown> {
   return {
     id,
+    why: 'test',
     priority,
-    region: 'screen',
-    state: 'idle',
-    strength: 'strong',
-    requiresQuiet: true,
-    match: { rows }
+    when: { ...SCREEN, rows },
+    answer: { state: 'idle', strength: 'strong', requiresQuiet: true }
   }
 }
 
-const HOLD = { id: 'hold', priority: 100, region: 'screen', state: 'hold' }
+const HOLD = { id: 'hold', why: 'test', priority: 100, when: SCREEN, answer: { state: 'hold' } }
 
 function evaluate(rules: unknown[], screen: readonly string[] | null): string | null {
   const [file] = parseAgentStateRuleFiles([ruleFile({ rules })])
@@ -45,9 +49,11 @@ describe('agent state rules schema', () => {
     ['an unknown agent', ruleFile({ id: 'not-an-agent' })],
     ['another engine version', ruleFile({ engineVersion: 2 })],
     ['a misspelled rule field', ruleFile({ rules: [{ ...HOLD, requireQuiet: true }] })],
-    ['a backreference', ruleFile({ rules: [idleRule('a', 1, [{ regex: '(a)\\1' }])] })],
-    ['a lookbehind', ruleFile({ rules: [idleRule('a', 1, [{ regex: '(?<=a)b' }])] })],
-    ['nested quantifiers', ruleFile({ rules: [idleRule('a', 1, [{ regex: '(a+)+$' }])] })],
+    ['a rule with no why', ruleFile({ rules: [{ ...HOLD, why: undefined }] })],
+    [
+      'row modifiers with no rows',
+      ruleFile({ rules: [{ ...HOLD, when: { ...SCREEN, endsWithinBottom: 2 } }] })
+    ],
     ['a pattern that does not compile', ruleFile({ rules: [idleRule('a', 1, [{ regex: '(' }])] })],
     [
       'an optional last row',
@@ -57,13 +63,31 @@ describe('agent state rules schema', () => {
       'a codex-only blocked reason',
       ruleFile({
         textAnchors: [
-          { id: 'b', state: 'blocked', reason: 'codex-update-prompt', lastOf: 'update' }
+          anchor(
+            { find: { lastOf: 'update' } },
+            { state: 'blocked', reason: 'codex-update-prompt' }
+          )
         ]
       })
     ],
     [
       'an unregistered named anchor',
-      ruleFile({ textAnchors: [{ id: 'p', state: 'idle', find: { predicate: 'nope' } }] })
+      ruleFile({ textAnchors: [anchor({ find: { predicate: 'nope' } }, { state: 'idle' })] })
+    ],
+    [
+      'a blocked anchor the prefilter cannot key on',
+      ruleFile({
+        textAnchors: [
+          anchor(
+            { find: { predicate: 'antigravity-text-composer' } },
+            { state: 'blocked', reason: 'agent-approval-prompt' }
+          )
+        ]
+      })
+    ],
+    [
+      'an uppercase anchor literal, which the lowercased tail never contains',
+      ruleFile({ textAnchors: [anchor({ find: { lastOf: 'Cursor' } }, { state: 'idle' })] })
     ]
   ])('rejects %s', (_label, file) => {
     expect(() => parseAgentStateRuleFiles([file])).toThrow()
@@ -73,12 +97,25 @@ describe('agent state rules schema', () => {
     expect(() => parseAgentStateRuleFiles([ruleFile(), ruleFile()])).toThrow(/two files/)
   })
 
-  it('accepts a quantified group whose body does not repeat', () => {
-    expect(() =>
-      parseAgentStateRuleFiles([
-        ruleFile({ rules: [idleRule('a', 1, [{ regex: '(?: or [a-z])*' }])] })
-      ])
-    ).not.toThrow()
+  const withPattern = (regex: string) => ruleFile({ rules: [idleRule('a', 1, [{ regex }])] })
+
+  it.each([
+    ['a backreference', '(a)\\1'],
+    ['a lookbehind', '(?<=a)b'],
+    ['nested quantifiers', '(a+)+$'],
+    ['a repeated optional', '(a?)*$'],
+    ['a repeated alternation', '(?:a|aa)+$'],
+    ['a variable group nested in a repeated one', '(?:x(?:a|b))+']
+  ])('rejects %s', (_label, regex) => {
+    expect(() => parseAgentStateRuleFiles([withPattern(regex)])).toThrow(/pattern/)
+  })
+
+  it.each([
+    ['a repeated fixed group', '(?: or [a-z])*'],
+    ['an unrepeated alternation holding a repeat', '\\((?:tab|esc(?: or [a-z])*)\\)$'],
+    ['an optional alternation', '^(?:yes|no)?$']
+  ])('accepts %s', (_label, regex) => {
+    expect(() => parseAgentStateRuleFiles([withPattern(regex)])).not.toThrow()
   })
 })
 
@@ -107,7 +144,7 @@ describe('priority evaluation', () => {
 
 describe('screen rows', () => {
   const block = (match: Record<string, unknown>) => [
-    { id: 'm', priority: 1, region: 'screen', state: 'hold', match }
+    { ...HOLD, id: 'm', when: { ...SCREEN, ...match } }
   ]
 
   it('reads rows above the screen as empty', () => {

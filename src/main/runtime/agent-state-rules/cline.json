@@ -7,11 +7,8 @@
       "id": "composer_ready",
       "why": "Cline 3.0.x's empty composer box (startup, after-turn and Plan placeholders) over its Plan/Act mode row, which sits at most two rows above the bottom. Quiet and no spinner above because Cline repaints the same box while a reply streams and its spinner row has scrolled away.",
       "priority": 500,
-      "region": "screen",
-      "state": "idle",
-      "strength": "strong",
-      "requiresQuiet": true,
-      "match": {
+      "when": {
+        "region": "screen",
         "rows": [
           { "regex": "^─{8,}$" },
           {
@@ -23,14 +20,15 @@
         ],
         "endsWithinBottom": 3,
         "noneAbove": { "regex": "[⠀-⣿]" }
-      }
+      },
+      "answer": { "state": "idle", "strength": "strong", "requiresQuiet": true }
     },
     {
       "id": "composer_not_shown",
       "why": "A readable screen that is not the idle composer may be a picker, dialog or busy turn, which a name-only title or a quiet process cannot see.",
       "priority": 100,
-      "region": "screen",
-      "state": "hold"
+      "when": { "region": "screen" },
+      "answer": { "state": "hold" }
     }
   ]
 }

@@ -7,33 +7,26 @@ import { findAntigravityComposerIndex } from './antigravity-text-composer'
 
 export type BlockedTextSignal = { reason: RuntimeTerminalWaitBlockedReason; index: number }
 
-/** Where a live prompt starts, and whether the text after it says the agent is busy. */
-type PromptAnchorHit = { index: number; working: boolean }
+type TextAnchorHit = { answer: TextAnchor['answer']; index: number }
 
 const NAMED_TEXT_ANCHOR_FINDERS: Record<NamedTextAnchor, (normalized: string) => number | null> = {
   'antigravity-text-composer': findAntigravityComposerIndex
 }
 
-type BlockedAnchor = Extract<TextAnchor, { state: 'blocked' }>
-type PromptAnchor = Extract<TextAnchor, { state: 'idle' }>
-
-function compileBlockedAnchor(anchor: BlockedAnchor): (window: string) => BlockedTextSignal | null {
-  const hasChoices = anchor.lines ? compileLineCount(anchor.lines) : null
-  return (window) => {
-    const start = anchor.withinLastLines ? startOfLastLines(window, anchor.withinLastLines) : 0
-    const tail = window.slice(start)
-    const at = tail.lastIndexOf(anchor.lastOf)
-    if (at === -1 || (hasChoices && !hasChoices(tail))) {
-      return null
-    }
-    return { reason: anchor.reason, index: start + at }
+function compileFind(find: TextAnchor['when']['find']): (text: string) => number | null {
+  if ('predicate' in find) {
+    return NAMED_TEXT_ANCHOR_FINDERS[find.predicate]
+  }
+  return (text) => {
+    const index = text.lastIndexOf(find.lastOf)
+    return index === -1 ? null : index
   }
 }
 
-function compileLineCount(lines: NonNullable<BlockedAnchor['lines']>): TextMatcher {
+function compileLineCount(lines: NonNullable<TextAnchor['when']['lines']>): TextMatcher {
   const test = compileTextTest(lines.test)
-  return (tail) => {
-    const rows = tail.split('\n')
+  return (text) => {
+    const rows = text.split('\n')
     while (rows.length > 0 && rows.at(-1)?.trim() === '') {
       rows.pop()
     }
@@ -43,41 +36,37 @@ function compileLineCount(lines: NonNullable<BlockedAnchor['lines']>): TextMatch
   }
 }
 
-function compilePromptAnchor(anchor: PromptAnchor): (normalized: string) => PromptAnchorHit | null {
-  const find = anchor.find
-  const workingIfAfter = anchor.workingIfAfter ? compileTextTest(anchor.workingIfAfter) : null
-  const findIndex =
-    'predicate' in find
-      ? NAMED_TEXT_ANCHOR_FINDERS[find.predicate]
-      : (normalized: string): number | null => {
-          const index = normalized.lastIndexOf(find.lastOf)
-          if (index === -1) {
-            return null
-          }
-          return !find.followedBy || normalized.includes(find.followedBy, index) ? index : null
-        }
-  return (normalized) => {
-    const index = findIndex(normalized)
-    if (index === null) {
+function compileTextAnchor(anchor: TextAnchor): (text: string) => TextAnchorHit | null {
+  const { withinLastLines } = anchor.when
+  const find = compileFind(anchor.when.find)
+  const after = anchor.when.after ? compileTextTest(anchor.when.after) : null
+  const lines = anchor.when.lines ? compileLineCount(anchor.when.lines) : null
+  return (text) => {
+    const start = withinLastLines ? startOfLastLines(text, withinLastLines) : 0
+    const region = text.slice(start)
+    const index = find(region)
+    if (index === null || (after && !after(region.slice(index))) || (lines && !lines(region))) {
       return null
     }
-    return { index, working: workingIfAfter?.(normalized.slice(index)) ?? false }
+    return { answer: anchor.answer, index: start + index }
   }
 }
 
 export function compileTextAnchors(files: readonly AgentStateRulesFile[]): {
-  blocked: ((window: string) => BlockedTextSignal | null)[]
-  prompts: ((normalized: string) => PromptAnchorHit | null)[]
+  blocked: ((window: string) => TextAnchorHit | null)[]
+  prompts: ((normalized: string) => TextAnchorHit | null)[]
   blockedLiterals: string[]
   screenProbeBanners: string[]
 } {
   const anchors = files.flatMap((file) => file.textAnchors)
-  const blockedAnchors = anchors.filter((anchor) => anchor.state === 'blocked')
+  const blocked = anchors.filter((anchor) => anchor.answer.state === 'blocked')
   return {
-    blocked: blockedAnchors.map(compileBlockedAnchor),
-    prompts: anchors.filter((anchor) => anchor.state === 'idle').map(compilePromptAnchor),
-    blockedLiterals: blockedAnchors.map((anchor) => anchor.lastOf),
-    screenProbeBanners: files.flatMap((file) => file.screenProbeBanner ?? [])
+    blocked: blocked.map(compileTextAnchor),
+    prompts: anchors.filter((anchor) => anchor.answer.state !== 'blocked').map(compileTextAnchor),
+    blockedLiterals: blocked.flatMap((anchor) =>
+      'lastOf' in anchor.when.find ? [anchor.when.find.lastOf] : []
+    ),
+    screenProbeBanners: files.flatMap((file) => file.profile?.screenProbeBanner ?? [])
   }
 }
 
@@ -88,12 +77,15 @@ export const BLOCKED_ANCHOR_LITERALS: readonly string[] = TEXT_ANCHORS.blockedLi
 
 /** Every rule file's blocked anchor found in the blocked layer's live window. */
 export function findBlockedAnchorSignals(window: string): BlockedTextSignal[] {
-  return TEXT_ANCHORS.blocked.flatMap((find) => find(window) ?? [])
+  return TEXT_ANCHORS.blocked.flatMap((find) => {
+    const hit = find(window)
+    return hit?.answer.state === 'blocked' ? [{ reason: hit.answer.reason, index: hit.index }] : []
+  })
 }
 
 /**
- * The latest live prompt (`live`, idle or busy: it proves an earlier startup dialog was answered)
- * and the latest idle one (`ready`) that any rule file's anchors find in the text tail.
+ * The latest live prompt (`live`, idle or working: it proves an earlier startup dialog was
+ * answered) and the latest idle one (`ready`) that any rule file's anchors find in the text tail.
  */
 export function findPromptAnchorIndexes(normalized: string): {
   live: number | null
@@ -107,7 +99,7 @@ export function findPromptAnchorIndexes(normalized: string): {
       continue
     }
     live = Math.max(live ?? -1, hit.index)
-    if (!hit.working) {
+    if (hit.answer.state === 'idle') {
       ready = Math.max(ready ?? -1, hit.index)
     }
   }

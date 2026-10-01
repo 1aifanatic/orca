@@ -1,38 +1,25 @@
 import type { TuiAgent } from '../../../shared/tui-agent'
-import { compileScreenRows, type ScreenRowsMatcher } from './agent-state-rule-matchers'
+import { compileScreenCondition, type ScreenMatcher } from './agent-state-rule-matchers'
 import { BUNDLED_AGENT_STATE_RULE_FILES } from './agent-state-rules-catalog'
-import type { AgentStateRule, AgentStateRulesFile } from './agent-state-rules-schema'
+import type { AgentStateRuleAnswer, AgentStateRulesFile } from './agent-state-rules-schema'
 
 /** What the first matching rule answered. Callers rank it among the other readiness lanes. */
-export type AgentStateVerdict =
-  | { ruleId: string; state: 'idle'; strength: 'strong' | 'weak'; requiresQuiet: boolean }
-  | { ruleId: string; state: 'hold' }
+export type AgentStateVerdict = { ruleId: string } & AgentStateRuleAnswer
 
 /** The regions a rule may read, each null when no trustworthy copy exists. */
 export type AgentStateRegions = {
   readScreenLines: () => readonly string[] | null
 }
 
-type CompiledRule = { verdict: AgentStateVerdict; matches: ScreenRowsMatcher | null }
-
-function toVerdict(rule: AgentStateRule): AgentStateVerdict {
-  return rule.state === 'idle'
-    ? {
-        ruleId: rule.id,
-        state: 'idle',
-        strength: rule.strength,
-        requiresQuiet: rule.requiresQuiet
-      }
-    : { ruleId: rule.id, state: 'hold' }
-}
+type CompiledRule = { verdict: AgentStateVerdict; matches: ScreenMatcher }
 
 export function compileAgentRules(file: AgentStateRulesFile): CompiledRule[] {
   // Why stable: equal priorities keep file order.
   return file.rules
     .toSorted((left, right) => right.priority - left.priority)
     .map((rule) => ({
-      verdict: toVerdict(rule),
-      matches: rule.match ? compileScreenRows(rule.match) : null
+      verdict: { ruleId: rule.id, ...rule.answer },
+      matches: compileScreenCondition(rule.when)
     }))
 }
 
@@ -61,7 +48,7 @@ export function evaluateCompiledRules(
     return null
   }
   for (const rule of rules) {
-    if (rule.matches === null || rule.matches(screenLines)) {
+    if (rule.matches(screenLines)) {
       return rule.verdict
     }
   }

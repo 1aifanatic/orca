@@ -1,4 +1,4 @@
-import type { ScreenRows, TextTest } from './agent-state-rules-schema'
+import type { ScreenCondition, TextTest } from './agent-state-rules-schema'
 
 export type TextMatcher = (text: string) => boolean
 
@@ -25,16 +25,19 @@ export function compileTextTest(test: TextTest): TextMatcher {
     !none.some((matches) => matches(text))
 }
 
-export type ScreenRowsMatcher = (screenLines: readonly string[]) => boolean
+export type ScreenMatcher = (screenLines: readonly string[]) => boolean
 
-export function compileScreenRows(block: ScreenRows): ScreenRowsMatcher {
-  const rows = block.rows.map((row) =>
+export function compileScreenCondition(screen: ScreenCondition): ScreenMatcher {
+  if (!screen.rows) {
+    return () => true
+  }
+  const rows = screen.rows.map((row) =>
     'optional' in row
       ? { matches: compileTextTest(row.optional), optional: true }
       : { matches: compileTextTest(row), optional: false }
   )
-  const endsWithinBottom = block.endsWithinBottom ?? 1
-  const noneAbove = block.noneAbove ? compileTextTest(block.noneAbove) : null
+  const endsWithinBottom = screen.endsWithinBottom ?? 1
+  const noneAbove = screen.noneAbove ? compileTextTest(screen.noneAbove) : null
   const lastRow = rows.at(-1)
   const rowsUpward = rows.slice(0, -1).toReversed()
   return (screenLines) => {
