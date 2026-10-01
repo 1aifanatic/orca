@@ -21,6 +21,7 @@ import {
 } from './orcad-remote-host-support'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
+import { ORCAD_STOP_REQUEST_FILENAME } from '../../shared/orcad-stop-request'
 
 /** Stdout of the launched candidate: exactly one `orca_server_ready` line, then nothing. */
 export const ORCAD_READINESS_FILENAME = '.orcad-readiness'
@@ -63,6 +64,8 @@ export function orcadLaunchCommand(host: RemoteHostPlatform, spec: OrcadLaunchSp
     // Why truncate: a re-launch into a dir that already holds a previous readiness line would
     // otherwise let the deploy activate on the OLD process's health payload.
     `: > ${readiness} &&`,
+    // A stop request the previous process never consumed must not stop this one.
+    `rm -f ${shellEscape(joinRemotePath(host, spec.remoteInstallDir, ORCAD_STOP_REQUEST_FILENAME))} &&`,
     'umask 077 &&',
     `ORCA_VERSION=${shellEscape(spec.fullVersion)}`,
     `ORCA_USER_DATA=${shellEscape(spec.userDataDir)}`,
