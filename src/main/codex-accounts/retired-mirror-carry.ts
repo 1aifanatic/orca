@@ -116,12 +116,14 @@ function selectMirrorOnlyTables(
 ): string[] {
   const systemSections = getTomlSections(systemConfig)
   const systemProjects = new Set(
-    systemSections
-      .filter((section) => isRuntimeProjectTomlSection(section.header))
-      .flatMap((section) => [
-        getTomlSectionHeaderKey(section.header),
-        getRevocationTomlSectionHeaderKey(section.header)
-      ])
+    systemSections.flatMap((section) =>
+      isRuntimeProjectTomlSection(section.header)
+        ? [
+            getTomlSectionHeaderKey(section.header),
+            getRevocationTomlSectionHeaderKey(section.header)
+          ]
+        : []
+    )
   )
   const systemMcpServers = readMcpServerTomlOwnership(systemConfig)
   const mcpServersOwnedElsewhere = systemMcpServers.ownsRoot || baseline?.mcpServerRoot === true
