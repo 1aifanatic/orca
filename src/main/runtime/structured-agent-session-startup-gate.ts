@@ -5,10 +5,12 @@
 // those locks); none is refused. It always opens: when the settle ends, however it ends, or at a
 // ceiling, so a startup fault never strands a command.
 
-// Under the shortest client request timeout (15 s), counted from launch (`hold`): a held command
-// lets go before its caller gives up, and an open settles its own chat, so letting go early is
-// safe. Past it, the order is what is lost: a crashed turn may get its verdict from an open.
-const STARTUP_GATE_CEILING_MS = 10_000
+// Under the shortest client timeout on a held call, with margin: the AI vault's chat restore gives
+// its reveal 5 s (activate-ai-vault-structured-session.ts); remote desktop and phone give 15 s.
+// Counted from launch (`hold`). A held command lets go before its caller gives up, and an open
+// settles its own chat, so letting go early is safe. Past it, the order is what is lost: a crashed
+// turn may get its verdict from an open.
+const STARTUP_GATE_CEILING_MS = 4_000
 
 /** How the startup step ended. */
 export type StartupStepOutcome =
