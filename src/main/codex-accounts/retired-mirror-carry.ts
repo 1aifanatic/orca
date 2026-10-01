@@ -86,12 +86,14 @@ function carryMirrorOnlyTables({ runtimeHomePath, systemHomePath }: RetiredMirro
   const baseline = readCodexSettingsBaseline(runtimeHomePath)
   // Why: an MCP server the mirror copied from ~/.codex and the user since
   // removed there stays gone. Projects have no such record, so one deleted
-  // from ~/.codex but still trusted in the mirror's panes carries back.
+  // from ~/.codex but still trusted in the mirror's panes carries back; an
+  // older baseline that never recorded MCP ownership is treated the same way.
+  const mcpOwnership = baseline?.mcpOwnershipUnrecorded ? null : baseline
   const removedFromSystem = (header: string): boolean => {
     const mcpServerName = getMcpServerTomlSectionName(header)
     return (
       mcpServerName !== null &&
-      (baseline?.mcpServerRoot === true || baseline?.mcpServers.has(mcpServerName) === true)
+      (mcpOwnership?.mcpServerRoot === true || mcpOwnership?.mcpServers.has(mcpServerName) === true)
     )
   }
   const tables = deduplicateProjectTomlSections(getTomlSections(runtimeConfig))
