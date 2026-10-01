@@ -1,11 +1,13 @@
 import { getPtyIpc } from '../../pty-host-bindings'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
 import {
+  isCodexPaneOnOrcaMirrorHome,
   isPaneCodexOnSharedServer,
   resolveCodexPaneHome
 } from '../../../codex/codex-shared-server-pane'
 import {
   disableCodexSharedServerAutoStart,
+  disableCodexSharedServerAutoStartOnOrcaMirror,
   stopCodexSharedServer
 } from '../../../codex/codex-shared-server-fix'
 import { ptyOwnership } from '../provider/ownership-state'
@@ -58,13 +60,18 @@ function runForPaneHome(fix: (codexHome: string) => Promise<boolean>) {
   }
 }
 
+// Why: a real-home pane writes ~/.codex directly; only the mirror needs promotion around the write.
+function disableForPane(id: string): Promise<boolean> {
+  return runForPaneHome(
+    isCodexPaneOnOrcaMirrorHome(id)
+      ? disableCodexSharedServerAutoStartOnOrcaMirror
+      : disableCodexSharedServerAutoStart
+  )(id)
+}
+
 // Why its own read: only a pane already showing Codex asks, so no cadence poll pays for argv.
 export function installPtyCodexSharedServerIpcHandler(deps: Deps): void {
   handleLocalPane(deps, 'pty:isCodexOnSharedServer', isPaneCodexOnSharedServer)
-  handleLocalPane(
-    deps,
-    'pty:disableCodexSharedServerAutoStart',
-    runForPaneHome(disableCodexSharedServerAutoStart)
-  )
+  handleLocalPane(deps, 'pty:disableCodexSharedServerAutoStart', disableForPane)
   handleLocalPane(deps, 'pty:stopCodexSharedServer', runForPaneHome(stopCodexSharedServer))
 }

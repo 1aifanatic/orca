@@ -30,6 +30,7 @@ vi.mock('../pty/shell-startup-env', () => ({
 
 import {
   findPaneCodexCommandLine,
+  isCodexPaneOnOrcaMirrorHome,
   isPaneCodexOnSharedServer,
   resolveCodexPaneHome
 } from './codex-shared-server-pane'
@@ -126,6 +127,24 @@ describe('resolveCodexPaneHome', () => {
   it('names no home for a pane with no launch record', () => {
     mocks.getCodexPaneAccount.mockReturnValue(null)
     expect(resolveCodexPaneHome('pty')).toBeNull()
+  })
+})
+
+describe('isCodexPaneOnOrcaMirrorHome', () => {
+  it.each([
+    ['a Windows shared-home pane', 'shared-home', false, true],
+    ['a retired shared-home pane off Windows', 'shared-home', true, false],
+    ['a real-home pane', 'real-home', false, false],
+    ['a custom-home pane', 'custom-home', false, false]
+  ] as const)('%s → %s', (_label, homeRoute, probeSupported, expected) => {
+    mocks.isShellStartupEnvProbeSupported.mockReturnValue(probeSupported)
+    mocks.getCodexPaneAccount.mockReturnValue({
+      selectionKey: 'host',
+      accountId: null,
+      homeRoute,
+      environmentHomeOverride: { codexHome: '/custom/codex' }
+    })
+    expect(isCodexPaneOnOrcaMirrorHome('pty')).toBe(expected)
   })
 })
 

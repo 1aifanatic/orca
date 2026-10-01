@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
   hasProvider: vi.fn<(id: string) => boolean>(),
   isPaneCodexOnSharedServer: vi.fn<(id: string, rootPid: number) => Promise<boolean>>(),
   resolveCodexPaneHome: vi.fn<(id: string) => string | null>(),
+  isOnOrcaMirror: vi.fn<(id: string) => boolean>(),
   disable: vi.fn<(home: string) => Promise<boolean>>(),
+  disableOnMirror: vi.fn<(home: string) => Promise<boolean>>(),
   stop: vi.fn<(home: string) => Promise<boolean>>()
 }))
 vi.mock('../../pty-host-bindings', () => ({
@@ -18,11 +20,13 @@ vi.mock('../../pty-host-bindings', () => ({
   })
 }))
 vi.mock('../../../codex/codex-shared-server-pane', () => ({
+  isCodexPaneOnOrcaMirrorHome: mocks.isOnOrcaMirror,
   isPaneCodexOnSharedServer: mocks.isPaneCodexOnSharedServer,
   resolveCodexPaneHome: mocks.resolveCodexPaneHome
 }))
 vi.mock('../../../codex/codex-shared-server-fix', () => ({
   disableCodexSharedServerAutoStart: mocks.disable,
+  disableCodexSharedServerAutoStartOnOrcaMirror: mocks.disableOnMirror,
   stopCodexSharedServer: mocks.stop
 }))
 vi.mock('../provider/registry', () => ({
@@ -56,7 +60,9 @@ beforeEach(() => {
   mocks.hasProvider.mockReturnValue(true)
   mocks.isPaneCodexOnSharedServer.mockResolvedValue(true)
   mocks.resolveCodexPaneHome.mockReturnValue('/home/me/.codex')
+  mocks.isOnOrcaMirror.mockReturnValue(false)
   mocks.disable.mockResolvedValue(true)
+  mocks.disableOnMirror.mockResolvedValue(true)
   mocks.stop.mockResolvedValue(true)
   installPtyCodexSharedServerIpcHandler({ getLocalPtyProviderStartupPromise: () => undefined })
 })
@@ -72,6 +78,17 @@ describe('Codex shared-server IPC', () => {
     expect(mocks.resolveCodexPaneHome).toHaveBeenCalledWith('local-1')
     expect(mocks.disable).toHaveBeenCalledWith('/home/me/.codex')
     expect(mocks.stop).toHaveBeenCalledWith('/home/me/.codex')
+    // Why: a real-home pane writes ~/.codex itself, so no mirror pass runs around it.
+    expect(mocks.disableOnMirror).not.toHaveBeenCalled()
+  })
+
+  it('turns off a mirror-home pane through the mirror passes, not a bare write', async () => {
+    mocks.isOnOrcaMirror.mockReturnValue(true)
+    mocks.resolveCodexPaneHome.mockReturnValue('C:/orca/codex-runtime-home/home')
+    expect(await invoke('pty:disableCodexSharedServerAutoStart', 'local-1')).toBe(true)
+    expect(mocks.isOnOrcaMirror).toHaveBeenCalledWith('local-1')
+    expect(mocks.disableOnMirror).toHaveBeenCalledWith('C:/orca/codex-runtime-home/home')
+    expect(mocks.disable).not.toHaveBeenCalled()
   })
 
   const refusals: [string, string, () => void][] = [
@@ -94,6 +111,7 @@ describe('Codex shared-server IPC', () => {
       expect(await invoke(channel, id)).toBe(false)
       expect(mocks.isPaneCodexOnSharedServer).not.toHaveBeenCalled()
       expect(mocks.disable).not.toHaveBeenCalled()
+      expect(mocks.disableOnMirror).not.toHaveBeenCalled()
       expect(mocks.stop).not.toHaveBeenCalled()
     }
   )
@@ -102,6 +120,7 @@ describe('Codex shared-server IPC', () => {
     mocks.resolveCodexPaneHome.mockReturnValue(null)
     expect(await invoke(channel, 'local-1')).toBe(false)
     expect(mocks.disable).not.toHaveBeenCalled()
+    expect(mocks.disableOnMirror).not.toHaveBeenCalled()
     expect(mocks.stop).not.toHaveBeenCalled()
   })
 })

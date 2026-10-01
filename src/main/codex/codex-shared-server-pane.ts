@@ -63,6 +63,13 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
   }
 }
 
+/** Whether the pane's home is Orca's mirror, whose settings reach ~/.codex only through promotion. */
+export function isCodexPaneOnOrcaMirrorHome(ptyId: string): boolean {
+  return (
+    getCodexPaneAccount(ptyId)?.homeRoute === 'shared-home' && resolveCodexPaneHome(ptyId) !== null
+  )
+}
+
 /** Whether the Codex running in this local pane is a client of Codex's shared server. */
 export async function isPaneCodexOnSharedServer(ptyId: string, rootPid: number): Promise<boolean> {
   const codexHome = resolveCodexPaneHome(ptyId)
