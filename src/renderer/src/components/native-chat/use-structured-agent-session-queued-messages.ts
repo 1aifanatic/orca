@@ -15,7 +15,7 @@ import type {
   AgentSessionQueuePause,
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
-import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { appendNativeChatDraftNow } from './native-chat-draft-cache'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
@@ -127,7 +127,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         if (!card || !composerScopeKey) {
           return
         }
-        appendNativeChatDraftCache(composerScopeKey, card.text)
+        appendNativeChatDraftNow(composerScopeKey, { text: card.text })
         const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
           'agentSession.queuedMessageDelete',
           'agentSession.queuedMessageDelete',

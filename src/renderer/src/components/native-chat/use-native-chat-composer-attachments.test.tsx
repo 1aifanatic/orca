@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement, useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import {
-  clearNativeChatAttachmentCacheForTests,
-  readNativeChatAttachmentCache,
-  useNativeChatComposerAttachments
-} from './use-native-chat-composer-attachments'
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftAttachments
+} from './native-chat-draft-cache'
+import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 
@@ -131,7 +131,7 @@ async function renderProbe(
 describe('useNativeChatComposerAttachments', () => {
   afterEach(() => {
     runtimeTarget.remote = false
-    clearNativeChatAttachmentCacheForTests()
+    clearNativeChatDraftCacheForTests()
     document.body.replaceChildren()
   })
 
@@ -147,7 +147,7 @@ describe('useNativeChatComposerAttachments', () => {
     expect(first.latest().imageAttachments).toMatchObject([
       { path: '/tmp/orca-native-chat-attach-test.png' }
     ])
-    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([
+    expect(readNativeChatDraftAttachments('pty-1')).toMatchObject([
       { path: '/tmp/orca-native-chat-attach-test.png' }
     ])
 
@@ -316,7 +316,7 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().removeImageAttachment(id as string)
     })
     expect(probe.latest().imageAttachments).toMatchObject([])
-    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([])
+    expect(readNativeChatDraftAttachments('pty-1')).toMatchObject([])
     act(() => probe.root.unmount())
   })
 
@@ -450,7 +450,7 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().attachResolvedPaths(['/tmp/settled.png'])
     })
 
-    const cached = readNativeChatAttachmentCache('pty-1')
+    const cached = readNativeChatDraftAttachments('pty-1')
     expect(cached.some((attachment) => attachment.id === pendingId)).toBe(false)
     expect(cached).toMatchObject([{ path: '/tmp/settled.png' }])
     expect(cached[0]?.previewUrl).toBeUndefined()

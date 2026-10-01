@@ -54,18 +54,14 @@ import {
 } from '../../../../shared/protocol-version'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import {
-  appendNativeChatDraftCache,
+  appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
+  readNativeChatDraftAttachments,
   readNativeChatDraftCache,
   subscribeToNativeChatDraftAppend,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
-import {
-  appendNativeChatAttachmentCache,
-  clearNativeChatAttachmentCacheForTests,
-  readNativeChatAttachmentCache,
-  useNativeChatComposerAttachments
-} from './use-native-chat-composer-attachments'
+import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import { useNativeChatDraft } from './use-native-chat-draft'
 import {
   enqueueStructuredAgentSessionLaunchPrompt,
@@ -164,7 +160,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
-  clearNativeChatAttachmentCacheForTests()
   mocks.read.submissions = []
   mocks.read.items = []
   let uuid = 0
@@ -183,7 +178,10 @@ describe('a message the host withdrew at a Stop', () => {
     async (_case, handover) => {
       answerSendsPending()
       writeNativeChatDraftCache(PANE, 'already typed')
-      appendNativeChatAttachmentCache(PANE, [{ id: 'typed', path: '/tmp/typed.png' }])
+      appendNativeChatDraftNow(PANE, {
+        text: '',
+        attachments: [{ id: 'typed', path: '/tmp/typed.png' }]
+      })
       const { result, rerender } = renderOutbox()
       const id = await sendToHost(result, 'hello', [
         { path: '/tmp/shot.png', previewUri: '/tmp/shot.png' }
@@ -194,7 +192,7 @@ describe('a message the host withdrew at a Stop', () => {
 
       await waitFor(() => expect(result.current.outbox).toEqual([]))
       expect(readNativeChatDraftCache(PANE)).toBe('already typed\n\nhello')
-      expect(readNativeChatAttachmentCache(PANE)).toEqual([
+      expect(readNativeChatDraftAttachments(PANE)).toEqual([
         { id: 'typed', path: '/tmp/typed.png' },
         { id: expect.any(String), path: '/tmp/shot.png' }
       ])
@@ -433,14 +431,14 @@ describe('an open composer', () => {
     const { result } = renderHook(() => useNativeChatDraft(PANE, notComposing))
     act(() => result.current.setDraft('typed'))
 
-    act(() => appendNativeChatDraftCache(PANE, 'hello'))
+    act(() => appendNativeChatDraftNow(PANE, { text: 'hello' }))
 
     expect(result.current.draft).toBe('typed\n\nhello')
   })
 
   it('keeps text put back mid-composition through the composed writes, even if it unmounts', () => {
     const { result, unmount } = renderHook(() => useNativeChatDraft(PANE, () => true))
-    act(() => appendNativeChatDraftCache(PANE, 'hello'))
+    act(() => appendNativeChatDraftNow(PANE, { text: 'hello' }))
     act(() => result.current.setDraft('typed'))
 
     expect(result.current.draft).toBe('typed')
@@ -465,7 +463,12 @@ describe('an open composer', () => {
     )
     act(() => result.current.attachResolvedPaths(['/tmp/typed.png']))
 
-    act(() => appendNativeChatAttachmentCache(PANE, [{ id: 'restored', path: '/tmp/shot.png' }]))
+    act(() =>
+      appendNativeChatDraftNow(PANE, {
+        text: '',
+        attachments: [{ id: 'restored', path: '/tmp/shot.png' }]
+      })
+    )
 
     expect(result.current.imageAttachments.map((attachment) => attachment.path)).toEqual([
       '/tmp/typed.png',

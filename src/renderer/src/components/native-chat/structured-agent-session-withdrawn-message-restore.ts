@@ -2,9 +2,8 @@ import { useMemo } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { appendNativeChatDraftNow } from './native-chat-draft-cache'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
-import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
 
 /**
  * Gives the sender back what a Stop withdrew: its text and images go into this pane's composer,
@@ -29,18 +28,14 @@ function restoreWithdrawnMessages(
       continue
     }
     const blocks = entry.body.blocks
-    appendNativeChatDraftCache(
-      composerScopeKey,
-      blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
-    )
-    appendNativeChatAttachmentCache(
-      composerScopeKey,
-      blocks.flatMap((block, index) =>
+    appendNativeChatDraftNow(composerScopeKey, {
+      text: blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n'),
+      attachments: blocks.flatMap((block, index) =>
         block.type === 'image-ref' && block.path
           ? [{ id: `withdrawn-${entry.clientMessageId}-${index}`, path: block.path }]
           : []
       )
-    )
+    })
   }
 }
 

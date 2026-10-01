@@ -67,7 +67,11 @@ vi.mock('../dictation/dictation-control-events', () => ({
 }))
 
 import { NativeChatComposer } from './NativeChatComposer'
-import { appendNativeChatDraftCache, readNativeChatDraftCache } from './native-chat-draft-cache'
+import {
+  appendNativeChatDraftNow,
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from './native-chat-draft-cache'
 
 type Dispatched = { handled: boolean; accepted: boolean; error: string | null }
 
@@ -253,7 +257,7 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     fireEvent.compositionStart(input)
     changePrompt(input, 'abc안')
-    act(() => appendNativeChatDraftCache(pane, 'withdrawn'))
+    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     changePrompt(input, 'abc안녕')
     fireEvent.compositionEnd(input, { data: '안녕' })
 
@@ -269,7 +273,7 @@ describe('a withdrawn message put back during an IME composition', () => {
     changePrompt(input, 'abc')
     fireEvent.compositionStart(input)
     changePrompt(input, 'abc안')
-    act(() => appendNativeChatDraftCache(pane, 'withdrawn'))
+    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     fireEvent.compositionEnd(input, { data: '안' })
 
     changePrompt(input, 'abc안\n\nwithdrawn!')
@@ -293,7 +297,7 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     fireEvent.compositionStart(input)
     changePrompt(input, '안녕하')
-    act(() => appendNativeChatDraftCache(pane, 'withdrawn'))
+    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     await act(async () => {
       dispatch.resolve(PASS_THROUGH)
       await dispatch.promise
@@ -302,5 +306,23 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     expect(promptValue(input)).toBe('하\n\nwithdrawn')
     expect(readNativeChatDraftCache(pane)).toBe('하\n\nwithdrawn')
+  })
+})
+
+describe('the draft saved to disk', () => {
+  beforeEach(() => clearNativeChatDraftCacheForTests())
+
+  // A clear left to the typing delay would let a crash right after Enter bring the sent text back.
+  it('is removed the moment the send is accepted', async () => {
+    renderComposer(transport())
+    const key = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(`tab-${paneCounter}:structured`)}`
+    const input = textarea()
+    changePrompt(input, 'ship it')
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toMatchObject({ text: 'ship it' })
+
+    await act(async () => pressEnter(input))
+
+    expect(localStorage.getItem(key)).toBeNull()
   })
 })

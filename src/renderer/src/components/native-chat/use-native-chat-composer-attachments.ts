@@ -6,7 +6,11 @@ import {
   type NativeChatResolvedTarget
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import {
+  readNativeChatDraftAttachments,
+  subscribeToNativeChatDraftAttachmentAppend,
+  writeNativeChatDraftAttachments
+} from './native-chat-draft-cache'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 
@@ -49,13 +53,13 @@ export function useNativeChatComposerAttachments({
   dropPendingImageAttachment: (id: string) => void
 } {
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
-    () => readNativeChatAttachmentCache(attachmentScopeKey)
+    () => readNativeChatDraftAttachments(attachmentScopeKey)
   )
   const imageAttachmentCounter = useRef(0)
 
   useEffect(
     () =>
-      subscribeToNativeChatAttachmentAppend(attachmentScopeKey, (appended) =>
+      subscribeToNativeChatDraftAttachmentAppend(attachmentScopeKey, (appended) =>
         setImageAttachments((prev) => [...prev, ...appended])
       ),
     [attachmentScopeKey]
@@ -217,70 +221,18 @@ function removeAttachmentById(
   return attachments.filter((attachment) => attachment.id !== id)
 }
 
-const attachmentCache = new Map<string, NativeChatComposerImageAttachment[]>()
-
-export function readNativeChatAttachmentCache(
-  scopeKey: string
-): NativeChatComposerImageAttachment[] {
-  return [...(attachmentCache.get(scopeKey) ?? [])]
-}
-
 function writeNativeChatAttachmentCache(
   scopeKey: string,
   cacheable: readonly NativeChatComposerImageAttachment[]
 ): void {
   // A pending chip's save resolves into THIS hook instance; restoring one into a
   // remount would strand it pending forever, so only settled chips are cached.
-  const attachments = cacheable
-    .filter((attachment) => !attachment.pending)
-    // Preview URLs can retain the full clipboard Blob (or a large data URL) for
-    // the lifetime of the scope cache. Settled attachments reload from their
-    // authorized path after a remount, so never retain the transient preview.
-    .map(({ previewUrl: _previewUrl, ...attachment }) => attachment)
-  if (attachments.length === 0) {
-    attachmentCache.delete(scopeKey)
-    return
-  }
-  // LRU-bounded so pending attachments for permanently-removed panes can't accumulate.
-  setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...attachments])
-}
-
-// Only a write from outside the composer notifies; its own writes already hold the chips.
-const appendListeners = new Map<
-  string,
-  Set<(appended: readonly NativeChatComposerImageAttachment[]) => void>
->()
-
-/** Puts settled images back after whatever is attached, and shows them in a mounted composer. */
-export function appendNativeChatAttachmentCache(
-  scopeKey: string,
-  appended: readonly NativeChatComposerImageAttachment[]
-): void {
-  if (appended.length === 0) {
-    return
-  }
-  writeNativeChatAttachmentCache(scopeKey, [
-    ...readNativeChatAttachmentCache(scopeKey),
-    ...appended
-  ])
-  appendListeners.get(scopeKey)?.forEach((listener) => listener(appended))
-}
-
-function subscribeToNativeChatAttachmentAppend(
-  scopeKey: string,
-  listener: (appended: readonly NativeChatComposerImageAttachment[]) => void
-): () => void {
-  const listeners = appendListeners.get(scopeKey) ?? new Set()
-  appendListeners.set(scopeKey, listeners)
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-    if (listeners.size === 0 && appendListeners.get(scopeKey) === listeners) {
-      appendListeners.delete(scopeKey)
-    }
-  }
-}
-
-export function clearNativeChatAttachmentCacheForTests(): void {
-  attachmentCache.clear()
+  // Preview URLs can retain the full clipboard Blob (or a large data URL); settled
+  // attachments reload from their authorized path after a remount.
+  writeNativeChatDraftAttachments(
+    scopeKey,
+    cacheable
+      .filter((attachment) => !attachment.pending)
+      .map(({ previewUrl: _previewUrl, pending: _pending, ...attachment }) => attachment)
+  )
 }
