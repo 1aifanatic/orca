@@ -55,9 +55,17 @@ function requestFromWire(
   )
 }
 
+/** A session past startup, so no startup frame drains child work for the step under test. */
+async function startedProducer() {
+  const harness = await producer()
+  await harness.adapter.awaitStarted('session-1')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  return harness
+}
+
 /** Replays a capture up to its permission request and raises it, as the SDK would. */
 async function askedAt(name: string, options: { withoutAgentId?: boolean } = {}) {
-  const harness = await producer()
+  const harness = await startedProducer()
   const events = capturedScenario(name)
   const request = events.findIndex((event) => event.frame.type === 'control_request')
   for (const { frame } of events.slice(0, request)) {
@@ -82,7 +90,7 @@ function parentRow(harness: Awaited<ReturnType<typeof producer>>) {
 
 /** Replays one capture and returns the subagent's record state after each event, labelled. */
 async function replay(name: string, options: { withoutAgentId?: boolean } = {}) {
-  const harness = await producer()
+  const harness = await startedProducer()
   const { adapter, claude, send } = harness
   const connection = claude.connections[0]!
   const aborts = new Map<string, AbortController>()
@@ -144,7 +152,7 @@ describe('a Claude subagent waiting on a permission request', () => {
   })
 
   it('keeps the tool it is blocked on while it waits', async () => {
-    const harness = await producer()
+    const harness = await startedProducer()
     const events = capturedScenario('fg-allow')
     const request = events.findIndex((event) => event.frame.type === 'control_request')
     for (const { frame } of events.slice(0, request)) {
@@ -258,7 +266,7 @@ describe('a Claude subagent waiting on a permission request', () => {
   it('names the subagent from the request before its tool call reaches the journal', async () => {
     // The SDK answers control requests as they arrive but hands frames over in order, so a request
     // can land before the subagent's own tool call has been read.
-    const harness = await producer()
+    const harness = await startedProducer()
     const events = capturedScenario('fg-allow')
     const request = events.findIndex((event) => event.frame.type === 'control_request')
     const toolCall = events
