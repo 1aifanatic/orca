@@ -26,12 +26,17 @@ function stopIsAPersons(reason: JournalStopEvent['reason']): boolean {
   }
 }
 
+type TurnEndState = Pick<
+  JournalReducerState,
+  'items' | 'queuePauseMarks' | 'latestPersonTurnSequence'
+>
+
 /** Whether `stop` makes the end of turn `turnId` a person's cancellation: a person's Stop or close
- *  that named that turn (`opened`: or named none, and the turn opened under it). */
+ *  that named that turn (`opened`: or named none, and stopped the turn item `itemId` opened). */
 export function stopIsTurnCancellation(
   stop: JournalLatestStop | null,
   turnId: string,
-  opened?: { createdAt: number | null; latestPersonTurnSequence: number }
+  opened?: { state: TurnEndState; itemId: string }
 ): boolean {
   if (stop === null || !stopIsAPersons(stop.event.reason)) {
     return false
@@ -39,39 +44,56 @@ export function stopIsTurnCancellation(
   if (stop.event.turnId !== undefined || !opened) {
     return stop.event.turnId === turnId
   }
-  // Pressed before the turn showed: the turn its row opened after the Stop, unless a send a
-  // person made since was accepted, whose turn it would be.
-  return (
-    (opened.createdAt === null || opened.createdAt > stop.sequence) &&
-    opened.latestPersonTurnSequence < stop.sequence
-  )
+  return turnlessStopStopped(opened.state, stop, opened.itemId)
+}
+
+/** Pressed before any turn showed, a Stop stopped the first turn opened after it, and no later
+ *  one: unless a send a person made since was accepted, whose turn that is. */
+function turnlessStopStopped(
+  state: TurnEndState,
+  stop: JournalLatestStop,
+  itemId: string
+): boolean {
+  const createdAt = state.items.get(itemId)?.sequence ?? null
+  if (
+    (createdAt !== null && createdAt <= stop.sequence) ||
+    state.latestPersonTurnSequence >= stop.sequence
+  ) {
+    return false
+  }
+  for (const [otherId, item] of state.items) {
+    if (
+      otherId !== itemId &&
+      item.body.kind === 'turn' &&
+      item.sequence > stop.sequence &&
+      (createdAt === null || item.sequence < createdAt)
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
  * The body to write for item `itemId`: unchanged unless it ends, with no verdict of its own and no
- * earlier than the latest Stop event, a person's, which named it while it was still open (running,
- * or unproven). A provider's own verdict always stands.
+ * earlier than the latest Stop event, a person's, which named it, or stopped it before it showed,
+ * while it was still open (running, or unproven). A provider's own verdict always stands.
  */
 export function turnEndAfterStop(
-  state: Pick<JournalReducerState, 'items' | 'queuePauseMarks' | 'latestPersonTurnSequence'>,
+  state: TurnEndState,
   itemId: string,
   body: AgentJournalItemBody
 ): AgentJournalItemBody {
   if (body.kind !== 'turn' || body.state !== 'interrupted' || body.outcome !== undefined) {
     return body
   }
-  const existing = state.items.get(itemId)
-  const previous = readAgentJournalTurn(existing?.body)
+  const previous = readAgentJournalTurn(state.items.get(itemId)?.body)
   // An end already written stands: the Stop came after it.
   if (previous && previous.state !== 'running' && previous.state !== 'unverifiable') {
     return body
   }
   const stop = state.queuePauseMarks.latestStop
-  const opened = {
-    createdAt: existing?.sequence ?? null,
-    latestPersonTurnSequence: state.latestPersonTurnSequence
-  }
-  if (!stop || !stopIsTurnCancellation(stop, body.turnId, opened)) {
+  if (!stop || !stopIsTurnCancellation(stop, body.turnId, { state, itemId })) {
     return body
   }
   // An exit the provider saw before the Stop was news, whenever its end is written.

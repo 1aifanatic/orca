@@ -258,6 +258,42 @@ describe('a restart between a Stop and its turn end', () => {
     expect(settled().turn).not.toHaveProperty('outcome')
   })
 
+  // A Stop pressed before any turn showed stopped the turn its send was about to open, and no other.
+  it('reads a turn a host send opened after the turnless Stop ended its own turn as no Stop of its', async () => {
+    rig = await createQueuedMessageTestRig()
+    const stopped = await rig.workingSend()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(journal().stopMarks.latest()?.event.turnId).toBeUndefined()
+    await rig.settleAccepted(stopped, 'stopped')
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    await journal().appendItem(
+      CODEX_TURN,
+      { kind: 'turn', turnId: TURN, state: 'running', startedAt: Date.now() },
+      scope
+    )
+    await journal().appendItem(
+      CODEX_TURN,
+      { kind: 'turn', turnId: TURN, state: 'interrupted', completedAt: Date.now() + 1 },
+      scope
+    )
+    expect(settled(TURN).turn).toMatchObject({ outcome: 'cancellation' })
+    // The queue's drain sends as the host, so no person's send voids the Stop.
+    const drained = rig.send('drained after the Stop', undefined, { internal: true })
+    await drained.result
+    await rig.settleAccepted(drained.id, 'drained')
+    await journal().appendItem(
+      CODEX_NEXT_TURN,
+      { kind: 'turn', turnId: NEXT_TURN, state: 'running', startedAt: Date.now() },
+      scope
+    )
+
+    // Its exit is proven after the Stop, so only which turn the Stop stopped decides.
+    await restartAndSettle('exit-observed')
+
+    expect(settled(NEXT_TURN).turn).toMatchObject({ state: 'interrupted' })
+    expect(settled(NEXT_TURN).turn).not.toHaveProperty('outcome')
+  })
+
   // A refusal is no record: the first Stop stays the one in force, so pressing again repeats it.
   it('writes nothing for a Stop pressed again after the provider refused one', async () => {
     await runningTurn(CODEX_TURN)
