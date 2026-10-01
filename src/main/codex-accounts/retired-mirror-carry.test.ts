@@ -69,6 +69,14 @@ describe('carryRetiredSystemDefaultMirror', () => {
     expect(config).toContain('[mcp_servers.docs]\ncommand = "docs-mcp"')
     expect(config).toContain('[mcp_servers.docs.env]')
     expect(readSystem('.credentials.json')).toBe('{"docs":{}}\n')
+    const mirrorConfig = readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')
+    expect(mirrorConfig).not.toContain('[projects.')
+    expect(mirrorConfig).not.toContain('[mcp_servers.docs]')
+
+    // A removal made in ~/.codex after the carry sticks through a later carry.
+    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+    expect(carry()).toBe(true)
+    expect(readSystem('config.toml')).toBe('model = "gpt-5"\n')
   })
 
   it('seeds a missing ~/.codex from the mirror, which was the only config', () => {

@@ -23,7 +23,7 @@ import { CodexRuntimeHomeRouting } from './runtime-home-service-home-routing'
 import { hasRecordedLegacySharedCodexPane } from '../codex/codex-pane-account-registry'
 import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
 import { carryRetiredMirrorSettings, RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
-import type { CodexSharedRuntimeAuthProvenanceStatus } from './runtime-home-service-types'
+import { writeFileAtomicallyIfUnchanged } from './fs-utils'
 
 export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
   protected initializeLastSyncedState(): void {
@@ -170,49 +170,55 @@ export abstract class CodexRuntimeHomeLaunch extends CodexRuntimeHomeRouting {
     if (!markerPath || existsSync(markerPath)) {
       return
     }
-    const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
-    const mirrorOwnedBySystemDefault =
-      provenance.kind === 'missing' ||
-      (provenance.kind === 'committed' && provenance.provenance.owner === 'system-default')
-    const settingsCarried = carryRetiredMirrorSettings(
-      {
-        runtimeHomePath: resolveOrcaManagedCodexHomePath(),
-        systemHomePath: getSystemCodexHomePath()
-      },
-      { mirrorOwnedBySystemDefault }
-    )
-    const loginCarried = !mirrorOwnedBySystemDefault || this.carryRetiredMirrorLogin(provenance)
-    if (settingsCarried && loginCarried) {
-      writeFileSync(markerPath, `${JSON.stringify({ carriedAt: Date.now() })}\n`, 'utf-8')
+    try {
+      const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
+      // Why committed only: unattributed mirror bytes may be a managed account's.
+      const systemDefaultAuthJson =
+        provenance.kind === 'committed' && provenance.provenance.owner === 'system-default'
+          ? { mirrored: provenance.provenance.authJson }
+          : null
+      const settingsCarried = carryRetiredMirrorSettings(
+        {
+          runtimeHomePath: resolveOrcaManagedCodexHomePath(),
+          systemHomePath: getSystemCodexHomePath()
+        },
+        { mirrorOwnedBySystemDefault: systemDefaultAuthJson !== null }
+      )
+      if (systemDefaultAuthJson) {
+        this.carryRetiredMirrorLogin(systemDefaultAuthJson.mirrored)
+      }
+      if (settingsCarried) {
+        writeFileSync(markerPath, `${JSON.stringify({ carriedAt: Date.now() })}\n`, 'utf-8')
+      }
+    } catch (error) {
+      // Why: a best-effort migration must never fail the launch; the next one retries.
+      console.warn('[codex-runtime-home] Failed to carry the retired mirror into ~/.codex:', error)
     }
   }
 
   // Why: a login done inside an Orca pane lives only in the mirror. Bytes the
   // mirror copied from ~/.codex are not one: their absence there is a logout.
-  private carryRetiredMirrorLogin(provenance: CodexSharedRuntimeAuthProvenanceStatus): boolean {
-    try {
-      const runtimeAuthPath = this.getRuntimeAuthPath()
-      if (!existsSync(runtimeAuthPath) || this.readSystemDefaultAuth() !== null) {
-        return true
-      }
-      const runtimeAuth = readFileSync(runtimeAuthPath, 'utf-8')
-      const { mirroredAuthJson } = this.resolveSystemDefaultMirrorClaim(runtimeAuth, provenance)
-      if (
-        mirroredAuthJson !== null &&
-        this.runtimeAuthMatchesSystemDefaultIdentity(runtimeAuth, mirroredAuthJson)
-      ) {
-        return true
-      }
-      this.writeSystemDefaultAuth(runtimeAuth)
-      this.captureSystemDefaultSnapshot({ force: true })
-      // Why: retained mirror panes and ~/.codex now share one refresh token;
-      // this baseline lets the legacy-pane sync keep them in step (#5370).
-      this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
-      return true
-    } catch (error) {
-      console.warn('[codex-runtime-home] Failed to carry the mirror login into ~/.codex:', error)
-      return false
+  private carryRetiredMirrorLogin(mirroredAuthJson: string | null): void {
+    const runtimeAuthPath = this.getRuntimeAuthPath()
+    if (!existsSync(runtimeAuthPath)) {
+      return
     }
+    const runtimeAuth = readFileSync(runtimeAuthPath, 'utf-8')
+    if (
+      mirroredAuthJson !== null &&
+      this.runtimeAuthMatchesSystemDefaultIdentity(runtimeAuth, mirroredAuthJson)
+    ) {
+      return
+    }
+    const systemAuthPath = join(getSystemCodexHomePath(), 'auth.json')
+    // Why no overwrite: a login Codex wrote to ~/.codex meanwhile is newer.
+    if (!writeFileAtomicallyIfUnchanged(systemAuthPath, null, runtimeAuth, { mode: 0o600 })) {
+      return
+    }
+    this.captureSystemDefaultSnapshot({ force: true })
+    // Why: retained mirror panes and ~/.codex now share one refresh token;
+    // this baseline lets the legacy-pane sync keep them in step (#5370).
+    this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
   }
 
   beginHostSystemDefaultSessionMigrationLaunch(

@@ -19,7 +19,7 @@ import {
   isRuntimeProjectTomlSection,
   joinTomlBlocks
 } from '../codex/config-toml-runtime-owned-sections'
-import { writeFileAtomically, writeFileAtomicallyIfUnchanged } from './fs-utils'
+import { writeFileAtomicallyIfUnchanged } from './fs-utils'
 
 export const RETIRED_MIRROR_CARRY_MARKER = 'retired-mirror-carry-v1.json'
 
@@ -91,20 +91,30 @@ function carryMirrorOnlyConfig({ runtimeHomePath, systemHomePath }: RetiredMirro
   const baseConfig = systemConfig?.trim()
     ? systemConfig
     : extractOrdinaryCodexSettings(runtimeObservation.value)
-  const nextConfig = joinTomlBlocks([
+  const tables = selectMirrorOnlyTables(
+    runtimeObservation.value,
     baseConfig,
-    ...selectMirrorOnlyTables(
-      runtimeObservation.value,
-      baseConfig,
-      readCodexSettingsBaseline(runtimeHomePath)
-    )
-  ])
-  if (nextConfig === joinTomlBlocks([systemConfig ?? ''])) {
-    return true
+    readCodexSettingsBaseline(runtimeHomePath)
+  )
+  const nextConfig = joinTomlBlocks([baseConfig, ...tables])
+  if (
+    nextConfig !== joinTomlBlocks([systemConfig ?? '']) &&
+    !writeFileAtomicallyIfUnchanged(writeTarget.path, systemConfig, nextConfig, {
+      mode: writeTarget.mode
+    })
+  ) {
+    return false
   }
-  return writeFileAtomicallyIfUnchanged(writeTarget.path, systemConfig, nextConfig, {
-    mode: writeTarget.mode
-  })
+  // Why move, not copy: ~/.codex now owns these tables, so a later mirror pass
+  // takes them from there and a removal the user makes there sticks.
+  return (
+    tables.length === 0 ||
+    writeFileAtomicallyIfUnchanged(
+      join(runtimeHomePath, 'config.toml'),
+      runtimeObservation.value,
+      tables.reduce((config, table) => config.replace(table, ''), runtimeObservation.value)
+    )
+  )
 }
 
 /**
@@ -150,7 +160,10 @@ function selectMirrorOnlyTables(
 }
 
 function copyIfAbsent(sourcePath: string, targetPath: string): void {
-  if (existsSync(sourcePath) && !existsSync(targetPath)) {
-    writeFileAtomically(targetPath, readFileSync(sourcePath, 'utf-8'), { mode: 0o600 })
+  if (existsSync(sourcePath)) {
+    // Why no overwrite: a sign-in Codex wrote to ~/.codex meanwhile is newer.
+    writeFileAtomicallyIfUnchanged(targetPath, null, readFileSync(sourcePath, 'utf-8'), {
+      mode: 0o600
+    })
   }
 }

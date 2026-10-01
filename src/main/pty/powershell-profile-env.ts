@@ -27,8 +27,10 @@ const cache = new Map<string, string[]>()
  * as text. Spawning PowerShell to evaluate the profiles would run user code and
  * reads as suspicious to EDR (docs/reference/windows-edr-posture.md).
  *
- * Same fidelity as the POSIX rc-file probe: only `$env:NAME = value` and
- * `${env:NAME} = value` lines, no conditionals or dot-sourced files. `$HOME`
+ * Same fidelity as the POSIX rc-file probe: only `$env:NAME = value`,
+ * `${env:NAME} = value`, `Set-Item env:NAME value` and
+ * `[Environment]::SetEnvironmentVariable('NAME', value)` lines; no
+ * conditionals or dot-sourced files. `$HOME`
  * and `$env:USERPROFILE` expand in double-quoted and bare values; any other
  * expression is returned verbatim, which callers comparing against a known
  * path read as "something else". Preview and side-by-side PowerShell 7
@@ -46,12 +48,17 @@ export function readPowerShellProfileEnvAssignments(name: string, userProfile: s
   if (cached) {
     return cached
   }
-  const assignment = new RegExp(`^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`, 'i')
+  const assignments = [
+    `^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`,
+    `^(?:Set-Item|si)\\s+(?:-Path\\s+)?['"]?env:\\\\?${name}['"]?\\s+(?:-Value\\s+)?(.+)$`,
+    `^\\[(?:System\\.)?Environment\\]::SetEnvironmentVariable\\(\\s*['"]${name}['"]\\s*,\\s*(.+?)(?:\\s*,[^,)]+)?\\)\\s*;?$`
+  ].map((source) => new RegExp(source, 'i'))
   const values: string[] = []
   for (const path of powerShellProfilePaths(userProfile)) {
     const content = readProfile(path)
     for (const rawLine of content?.split(/\r?\n/) ?? []) {
-      const value = assignment.exec(rawLine.trim())?.[1]
+      const line = rawLine.trim()
+      const value = assignments.map((assignment) => assignment.exec(line)?.[1]).find(Boolean)
       const parsed = value === undefined ? '' : parsePowerShellValue(value, userProfile)
       if (parsed) {
         values.push(parsed)
