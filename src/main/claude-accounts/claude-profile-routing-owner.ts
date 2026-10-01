@@ -1,3 +1,4 @@
+import { CLAUDE_ACCOUNT_SIGN_IN_REQUIRED } from '../../shared/claude-account-refusal-copy'
 import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import type { ClaudeProfileDescriptor } from './claude-profile-paths'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
@@ -70,7 +71,7 @@ export type ClaudeProfileHostAccess = 'boot' | 'if-running'
 /** The account's own profile has no login; every other profile problem is "unavailable". */
 export class ClaudeProfileSignInRequiredError extends Error {
   override name = 'ClaudeProfileSignInRequiredError'
-  constructor(message = 'Sign in again to use this account.') {
+  constructor(message = CLAUDE_ACCOUNT_SIGN_IN_REQUIRED) {
     super(message)
   }
 }

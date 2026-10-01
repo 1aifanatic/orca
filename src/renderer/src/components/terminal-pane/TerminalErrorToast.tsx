@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { translate } from '@/i18n/i18n'
+import { CLAUDE_ACCOUNT_SIGN_IN_REQUIRED } from '../../../../shared/claude-account-refusal-copy'
 import { resolveClientEnvironmentFooter } from '@/lib/client-environment-info'
 import { Button } from '@/components/ui/button'
 import { hasClientEnvironmentFooter } from '../../../../shared/client-environment-info'
@@ -93,6 +94,7 @@ export function isExplainedTerminalError(error: string): boolean {
         TERMINAL_HOST_GONE_PATTERN.test(line) ||
         LEGACY_TERMINAL_HOST_GONE_PATTERN.test(line) ||
         SOURCE_RESTORE_REQUIRED_PATTERN.test(line) ||
+        line.includes(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED) ||
         UNREATTACHABLE_SESSION_PATTERNS.some((pattern) => pattern.test(line))
     )
 }
@@ -144,6 +146,14 @@ export function humanizeTerminalError(error: string): string {
     )
   }
   humanized = humanizeUnreattachableSession(humanized)
+  if (humanized.includes(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED)) {
+    humanized = humanized.replaceAll(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED, () =>
+      translate(
+        'accounts.claude.launchSignInRequired',
+        'The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.'
+      )
+    )
+  }
   if (!isExplainedTerminalError(humanized)) {
     return humanized
   }
@@ -177,6 +187,8 @@ export function TerminalErrorToast({
   onRetry?: () => Promise<boolean>
 }): React.JSX.Element {
   const ssh = isSshError(error)
+  // Why calm styling: a refused account launch is an expected state with a next step, not a crash.
+  const caution = ssh || error.includes(CLAUDE_ACCOUNT_SIGN_IN_REQUIRED)
   const paneOwnerUnverified = isPaneOwnerUnverifiedError(error)
   const showDaemonRestart = !ssh && onRestartDaemon && shouldOfferDaemonRestart(error)
   // Restart cannot recover a session after its owning daemon exits.
@@ -189,7 +201,7 @@ export function TerminalErrorToast({
     : humanizedError
   const tint = paneOwnerUnverified
     ? null
-    : ssh
+    : caution
       ? 'color-mix(in srgb, var(--color-amber-500) 20%, var(--popover))'
       : 'color-mix(in srgb, var(--destructive) 20%, var(--popover))'
   const [retrying, setRetrying] = useState(false)
@@ -248,7 +260,7 @@ export function TerminalErrorToast({
         backgroundImage: tint ? `linear-gradient(${tint}, ${tint})` : undefined,
         border: paneOwnerUnverified
           ? '1px solid var(--color-amber-500)'
-          : ssh
+          : caution
             ? '1px solid rgba(234, 179, 8, 0.35)'
             : '1px solid rgba(220, 38, 38, 0.4)',
         color: 'var(--popover-foreground)',

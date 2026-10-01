@@ -355,6 +355,20 @@ describe('TerminalErrorToast environment footer', () => {
     expect(view.container.textContent).toContain('(shell: /bin/zsh).')
   })
 
+  it('explains a refused Claude account launch with a next step instead of an issue request', () => {
+    const view = render(
+      React.createElement(TerminalErrorToast, {
+        error: 'Sign in again to use this account.',
+        onDismiss: vi.fn()
+      })
+    )
+
+    expect(view.container.textContent).toContain(
+      'The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.'
+    )
+    expect(view.container.textContent).not.toContain('If this persists')
+  })
+
   it('renders owner-unverified as a warning without an issue link', () => {
     const onRetry = vi.fn().mockResolvedValue(true)
     const view = render(
