@@ -32,6 +32,8 @@ export async function deliverWorkerDispatchPreamble(args: {
   coordinatorHandle: string
   devMode: boolean | undefined
   requestId: string
+  /** How long a structured preamble waits for its agent. */
+  preambleBudgetMs?: number
 }): Promise<{
   prompt?: RuntimeTerminalSend['prompt']
   structuredTurnStart?: WorkerTurnStartObservation
@@ -55,7 +57,8 @@ export async function deliverWorkerDispatchPreamble(args: {
       host: structuredSession.host,
       sessionId: structuredSession.identity.sessionId,
       dispatchId: args.dispatchId,
-      preamble
+      preamble,
+      ...(args.preambleBudgetMs === undefined ? {} : { budgetMs: args.preambleBudgetMs })
     })
     return { structuredTurnStart: structuredPreambleTurnStart(delivery) }
   }

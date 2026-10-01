@@ -50,6 +50,7 @@ export async function startLocalWorker(args: {
   mode: WorkerStartModeReceipt
 }): Promise<unknown> {
   const { params, runtime, db, run, coordinator, callerSession, existingTask } = args
+  const startedAtMs = Date.now()
   const { orchestrationMutation } = args
   const coordinatorPane = coordinator?.paneKey ?? null
   const requestedWorktree = params.worktree ?? 'current'
@@ -242,6 +243,7 @@ export async function startLocalWorker(args: {
       launchReceipt: launch.receipt,
       mode,
       timeoutMs: params.timeoutMs ?? 60_000,
+      startedAtMs,
       effects,
       terminalRevealWarning: placed.warning,
       onStage: (stage) => {

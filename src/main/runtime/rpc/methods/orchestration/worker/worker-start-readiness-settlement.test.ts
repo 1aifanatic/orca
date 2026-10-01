@@ -8,7 +8,13 @@ vi.mock('./worker-topology', async (importOriginal) => ({
 
 const { deliverAndSettleWorkerStartReadiness } = await import('./worker-start-readiness-settlement')
 
-function settle(delivered: 'accepted' | undefined) {
+function settle(
+  delivered: 'accepted' | undefined,
+  start: { timeoutMs: number; startedAtMs: number } = {
+    timeoutMs: 60_000,
+    startedAtMs: Date.now()
+  }
+) {
   const db = {
     getWorkerDispatch: () => ({ state: 'starting' }),
     markWorkerStartUnknown: vi.fn(() => ({
@@ -24,10 +30,11 @@ function settle(delivered: 'accepted' | undefined) {
       value: { clientMessageId: 'c1', submission: { dispatchState: 'pending', reason: null } }
     }),
     // undefined: the worker's agent was still starting when the wait ran out.
-    waitForSendSettlement: async () =>
+    waitForSendSettlement: vi.fn(async (..._args: unknown[]) =>
       delivered
         ? { value: { clientMessageId: 'c1', submission: { dispatchState: delivered } } }
         : undefined
+    )
   }
   const args = {
     runtime: {
@@ -48,14 +55,14 @@ function settle(delivered: 'accepted' | undefined) {
     setupReceipt: {},
     launchReceipt: {},
     mode: {},
-    timeoutMs: 60_000,
+    ...start,
     effects: [],
     terminalRevealWarning: undefined,
     onStage: () => {}
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fakes implement exactly the runtime, db and host members this settlement reaches.
   const receipt = deliverAndSettleWorkerStartReadiness(args as never)
-  return { db, receipt }
+  return { db, receipt, host }
 }
 
 describe('a structured worker whose agent outlasts the preamble wait', () => {
@@ -86,4 +93,29 @@ describe('a structured worker whose agent outlasts the preamble wait', () => {
     await expect(receipt).resolves.toMatchObject({ state: 'ready', turnStart: 'observed' })
     expect(db.markWorkerStartUnknown).not.toHaveBeenCalled()
   })
+
+  // The CLI gives a worker start its own timeout plus a fixed grace; a short timeout must not
+  // leave the preamble waiting past it, or the CLI times out before the receipt arrives.
+  it.each([
+    [60_000, 0, 60_000],
+    [10_000, 0, 40_000],
+    [10_000, 25_000, 15_000],
+    [10_000, 45_000, 0]
+  ])(
+    'waits for the agent within the start timeout %i ms less what %i ms already spent',
+    async (timeoutMs, spentMs, budgetMs) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        vi.setSystemTime(1_000_000)
+        const { host, receipt } = settle(undefined, {
+          timeoutMs,
+          startedAtMs: 1_000_000 - spentMs
+        })
+        await receipt
+        expect(host.waitForSendSettlement.mock.calls[0]?.[2]).toMatchObject({ budgetMs })
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 })
