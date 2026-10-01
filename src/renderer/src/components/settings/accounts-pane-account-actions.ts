@@ -183,17 +183,25 @@ export function createClaudeAccountActionRunner(
           nextActiveAccountId !== null &&
           action === `reauth:${nextActiveAccountId}`)
       if (shouldPromptRestart) {
+        // Why: adding never selects, so "System default → System default" told the user nothing.
+        const addedWithoutSelecting =
+          action === 'adding' && previousActiveAccountId === nextActiveAccountId
         toast.info(
           translate('auto.components.settings.AccountsPane.f921d32606', 'Claude account updated.'),
           {
-            description: translate(
-              'accounts.claude.nextLaunch',
-              '{{value0}} → {{value1}}. The next Claude you start uses this selection. Running sessions keep their account.',
-              {
-                value0: getClaudeAccountLabel(claudeAccounts, previousActiveAccountId),
-                value1: getClaudeAccountLabel(next, nextActiveAccountId)
-              }
-            )
+            description: addedWithoutSelecting
+              ? translate(
+                  'accounts.claude.added',
+                  'Account added. Select it to use it for the next Claude you start.'
+                )
+              : translate(
+                  'accounts.claude.nextLaunch',
+                  '{{value0}} → {{value1}}. The next Claude you start uses this selection. Running sessions keep their account.',
+                  {
+                    value0: getClaudeAccountLabel(claudeAccounts, previousActiveAccountId),
+                    value1: getClaudeAccountLabel(next, nextActiveAccountId)
+                  }
+                )
           }
         )
       }

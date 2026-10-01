@@ -121,4 +121,15 @@ describe('Claude accounts section', () => {
     expect(own).toContain('System default: me@example.test')
     expect(own).not.toContain('An earlier Orca version')
   })
+
+  it('explains the one-time sign-in only while a saved account still needs it', () => {
+    expect(render()).not.toContain('After upgrading')
+    const markup = render({
+      accounts: [account('legacy', 'old@example.test', { profileReadiness: 'sign-in-required' })]
+    })
+    expect(markup).toContain(
+      'After upgrading, sign in once for each saved account. Usage may be stale or expired until you start Claude in that account.'
+    )
+    expect(markup).not.toContain('stays separate')
+  })
 })

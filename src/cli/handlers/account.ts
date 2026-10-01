@@ -293,7 +293,7 @@ async function assertAccountImportSupported(
   if (!accepted.some((capability) => status.result.capabilities?.includes(capability))) {
     throw new RuntimeClientError(
       'incompatible_runtime',
-      'Update the Orca CLI to add accounts, and make sure the Orca execution host is up to date.'
+      'The running Orca app is too old to add accounts from this CLI. Update Orca on this computer, restart it, and try again.'
     )
   }
 }

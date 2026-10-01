@@ -548,7 +548,7 @@ describe('account CLI handlers', () => {
       })
 
       await expect(ACCOUNT_HANDLERS['account add'](context(agent))).rejects.toThrow(
-        'Update the Orca CLI to add accounts'
+        'The running Orca app is too old to add accounts from this CLI.'
       )
       expect(callMock).toHaveBeenCalledOnce()
       expect(callMock).toHaveBeenCalledWith('status.get')

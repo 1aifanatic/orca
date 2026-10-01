@@ -51,6 +51,10 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
   } = model
   // Why host only: the host reports its own login, never a WSL distro's.
   const systemDefault = accountRuntime.runtime === 'host' ? claudeAccounts.systemDefault : undefined
+  // Why derived: the notice ends once every saved account has been signed in again.
+  const needsUpgradeSignIn = claudeAccounts.accounts.some(
+    (account) => account.email && account.profileReadiness === 'sign-in-required'
+  )
   return (
     <section key="claude-accounts" id="accounts-claude" className="space-y-4 scroll-mt-6">
       <div className="space-y-1">
@@ -75,12 +79,14 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
           )}
         </p>
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        {translate(
-          'accounts.claude.upgrade',
-          'After upgrading, sign in once for each saved account. Your personal Claude login stays separate. Usage may be stale or expired until you start Claude in that account.'
-        )}
-      </p>
+      {needsUpgradeSignIn ? (
+        <p className="text-xs text-muted-foreground">
+          {translate(
+            'accounts.claude.upgradeSignIn',
+            'After upgrading, sign in once for each saved account. Usage may be stale or expired until you start Claude in that account.'
+          )}
+        </p>
+      ) : null}
       <SearchableSetting
         title={translate('auto.components.settings.AccountsPane.8bbfd74556', 'Claude Accounts')}
         description={translate(
