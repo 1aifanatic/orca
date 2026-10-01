@@ -93,7 +93,13 @@ export function evaluatePreDrainHardRules(readings: PreDrainHardRuleReadings): I
 export type PreDrainSampleRecord = {
   at: string
   failures: IncidentFailure[]
+  // Why a read failed; a failure code alone hides a permission error or a bad filter.
+  errors: string[]
 }
+
+// Samples past the window that may still carry a tolerated failure; alternating tolerated readings
+// (cell X, then cell Y) never trip a streak, so this is what bounds the overrun.
+export const PRE_DRAIN_MAX_OVERRUN_SAMPLES = INCIDENT_FRESHNESS_TOLERANCE_SAMPLES + 1
 
 export type PreDrainSampleResult = {
   windowMinutes: number
@@ -125,7 +131,7 @@ function bumpStreaks(streaks: Map<string, number>, keys: Set<string>): Map<strin
  * with no failure at all, so the drain never starts on an open reading. A breach of any
  * non-tolerated threshold or hard rule trips at once; readings the monitor tolerates (a cell probe
  * or the director instance count, an unread signal, a failed collector round trip) trip only past
- * the monitor's own consecutive-sample budget, which also bounds the overrun.
+ * the monitor's own consecutive-sample budget. The overrun is capped separately.
  */
 export async function runPreDrainSample(input: {
   windowMinutes: number
@@ -147,26 +153,31 @@ export async function runPreDrainSample(input: {
   const samples: PreDrainSampleRecord[] = []
   let continuityStreaks = new Map<string, number>()
   let probeStreaks = new Map<string, number>()
+  let overrunSamples = 0
   for (;;) {
     const sampleStartedMs = now()
     const failures: IncidentFailure[] = []
+    const errors: string[] = []
+    const reason = (error: unknown) => error instanceof Error ? error.message : String(error)
     try {
       failures.push(
         ...evaluateIncidentSample(await input.collect(), now(), 'strict', null, null).failures
       )
-    } catch {
+    } catch (error) {
       failures.push({ code: 'collector_failed', source: 'cloud-monitoring' })
+      errors.push(`collector: ${reason(error)}`)
     }
     try {
       failures.push(...evaluatePreDrainHardRules(await input.readHardRules()))
-    } catch {
+    } catch (error) {
       failures.push({
         code: 'collector_failed',
         source: 'cloud-monitoring',
         signal: 'pre-drain.hard-rules'
       })
+      errors.push(`hard rules: ${reason(error)}`)
     }
-    const record = { at: new Date(now()).toISOString(), failures }
+    const record = { at: new Date(now()).toISOString(), failures, errors }
     samples.push(record)
     input.log?.(record)
     const continuity = failures.filter((failure) => CONTINUITY_CODES.has(failure.code))
@@ -189,7 +200,14 @@ export async function runPreDrainSample(input: {
           INCIDENT_FRESHNESS_TOLERANCE_SAMPLES)
     ]
     if (tripped.length > 0) throw new PreDrainSampleTripped(tripped, samples)
-    if (failures.length === 0 && now() - startedMs >= windowMs) {
+    const windowDone = now() - startedMs >= windowMs
+    if (windowDone && failures.length > 0) {
+      overrunSamples += 1
+      if (overrunSamples > PRE_DRAIN_MAX_OVERRUN_SAMPLES) {
+        throw new PreDrainSampleTripped(failures, samples)
+      }
+    }
+    if (windowDone && failures.length === 0) {
       return {
         windowMinutes: input.windowMinutes,
         startedAt: new Date(startedMs).toISOString(),

@@ -7,6 +7,7 @@ import {
 import {
   evaluatePreDrainHardRules,
   PRE_DRAIN_HARD_RULES,
+  PRE_DRAIN_MAX_OVERRUN_SAMPLES,
   preDrainSampleWindowMinutes,
   PreDrainSampleTripped,
   runPreDrainSample,
@@ -263,5 +264,36 @@ describe('runPreDrainSample', () => {
     const result = await run
     expect(samples()).toBe(5)
     expect(result.samples.at(-1)?.failures).toEqual([])
+  })
+
+  // Why: two tolerated readings that alternate never build a streak, so only the overrun cap
+  // stops them from holding the step open until its timeout.
+  it('trips when alternating tolerated readings never leave a clean sample', async () => {
+    const { run, samples } = harness({
+      windowMinutes: 3,
+      hardRulesAt: (index) =>
+        index >= 3 && index % 2 === 1 ? { ...calm, directorConcurrencyP99: null } : calm,
+      sampleAt: (index, at) =>
+        index >= 3 && index % 2 === 0 ? new Error('collector down') : greenSample(at)
+    })
+    await expect(run).rejects.toBeInstanceOf(PreDrainSampleTripped)
+    expect(samples()).toBe(4 + PRE_DRAIN_MAX_OVERRUN_SAMPLES)
+  })
+
+  it('records why a read failed', async () => {
+    const records: string[][] = []
+    let clock = 0
+    await runPreDrainSample({
+      windowMinutes: 3,
+      now: () => clock,
+      wait: async (ms) => { clock += ms },
+      collect: async () => greenSample(clock),
+      readHardRules: async () => {
+        if (records.length === 1) throw new Error('Google telemetry returned 403')
+        return calm
+      },
+      log: (record) => records.push(record.errors)
+    })
+    expect(records[1]).toEqual(['hard rules: Google telemetry returned 403'])
   })
 })

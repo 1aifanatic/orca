@@ -28,7 +28,8 @@ jobs:
   rollout:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: blacksmith-2vcpu-ubuntu-2204
-    timeout-minutes: 75
+    # The pre-drain sample adds 3-8 min (20 at most); a timeout cancels the job and skips the failsafe.
+    timeout-minutes: 90
     environment: production
     env:
       GCP_PROJECT_ID: onorca-cloud
@@ -491,11 +492,23 @@ jobs:
         if: ${{ inputs.mode == 'verify' }}
         run: echo 'Exact same-cap rollback point verified.'
 
+      # The sample can age the first one-hour token by up to 20 min; the drain's 20-min
+      # restart-safe wait gets a fresh one.
+      - id: drain-auth
+        if: ${{ inputs.mode != 'verify' && env.ROLLBACK_RESUME != 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.PRODUCTION_GCP_RELAY_DEPLOY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PRODUCTION_GCP_RELAY_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: https://relay.onorca.dev/v1/admin/drain
+          id_token_include_email: true
+
       - name: Reversibly isolate and drain only the selected cell
         if: ${{ inputs.mode != 'verify' && env.ROLLBACK_RESUME != 'true' }}
         id: drain
         env:
-          ORCA_RELAY_ADMIN_ID_TOKEN: ${{ steps.deploy-auth.outputs.id_token }}
+          ORCA_RELAY_ADMIN_ID_TOKEN: ${{ steps.drain-auth.outputs.id_token }}
         run: |
           # Opens the window the report-only shadow health gate below judges this cell over.
           echo "drain-started-at=$(date -u +%FT%TZ)" >> "${GITHUB_OUTPUT}"

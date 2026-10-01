@@ -510,7 +510,12 @@ itself, inside its own job, as the last step before it isolates its cell:
    see: no relay cell container exit (`orca_relay_cell_process_exit`) in the last 10 minutes, no
    minute in the last 10 with more than 500 director 503s (a disconnect pulse), and director
    concurrency p99 at most the monitor's 64 over the last 4 minutes. The window does not end on a
-   sample that still carries a tolerated failure.
+   sample that still carries a tolerated failure, and trips if three samples past the window
+   still have not come back clean.
+
+The exit rule is fleet-wide and zero-tolerance: a cell that crashes every few hours blocks every
+roll for 10 minutes after each crash, including the roll that would fix it. Dispatch again once
+it has been quiet for 10 minutes.
 
 Any trip fails the wave before isolation, so nothing has changed; dispatch again once the fleet is
 quiet. Every later cell in a batch runs all three again, so a batch never drains on health read
