@@ -1,5 +1,4 @@
 import {
-  CLAUDE_INJECTED_CONFIG_DIR_ENV,
   CLAUDE_PROFILE_POINTER_ENV,
   requireClaudeProfileRoutingCapability
 } from '../../shared/claude-profile-routing'
@@ -19,7 +18,11 @@ import {
   describeClaudeSystemDefault,
   withObservedClaudeIdentities
 } from './claude-account-identity'
-import { provisionClaudeLaunchProfile } from './claude-profile-launch-provisioning'
+import {
+  claudeProfileLaunchEnvPatch,
+  claudeProfileLaunchPreparation,
+  provisionClaudeLaunchProfile
+} from './claude-profile-launch-preparation'
 import type { ClaudeLoginIdentity } from './claude-profile-readiness'
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
@@ -31,9 +34,16 @@ export class ClaudeProfileRoutingService {
   private readonly backgroundPublishes = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
-  // Every named distro pane must see its first account selection without reopening.
+  /** Settings only: a WSL distro is routed while it holds an Orca Claude account. An unrouted one
+   *  stays System Default exactly as before profiles: no pointer, no guest call. */
   routes(target?: ClaudeAccountSelectionTarget): boolean {
-    return target?.runtime !== 'wsl' || Boolean(target.wslDistro?.trim())
+    if (target?.runtime !== 'wsl') {
+      return true
+    }
+    const distro = target.wslDistro?.trim().toLowerCase()
+    return this.owner
+      .targets()
+      .some((entry) => entry.runtime === 'wsl' && entry.wslDistro?.toLowerCase() === distro)
   }
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
     const descriptor = this.owner.resolve(target)
@@ -185,16 +195,7 @@ export class ClaudeProfileRoutingService {
     return this.preparation(await this.publish(target, 'if-missing', 'boot'))
   }
   preparation(descriptor: ClaudeProfileLaunchDescriptor): ClaudeRuntimeAuthPreparation {
-    return {
-      configDir: descriptor.readHome,
-      runtime: descriptor.target.runtime ?? 'host',
-      wslDistro: descriptor.target.wslDistro ?? null,
-      wslLinuxConfigDir: descriptor.target.runtime === 'wsl' ? descriptor.configHome : null,
-      envPatch: this.envPatch(descriptor),
-      stripAuthEnv: descriptor.profile !== null,
-      provenance: descriptor.profile ? `profile:${descriptor.profile.accountId}` : 'system',
-      profileLaunch: descriptor
-    }
+    return claudeProfileLaunchPreparation(descriptor)
   }
   /**
    * A pane's spawn env: its children keep this account until the pane reopens, while the claude
@@ -209,7 +210,7 @@ export class ClaudeProfileRoutingService {
       this.publishInBackground(target)
     }
     try {
-      return this.envPatch(this.resolve(target))
+      return claudeProfileLaunchEnvPatch(this.resolve(target))
     } catch {
       return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
     }
@@ -236,14 +237,6 @@ export class ClaudeProfileRoutingService {
         .catch(() => {})
         .finally(() => this.backgroundPublishes.delete(key))
     )
-  }
-  // Why no CLAUDE_CONFIG_DIR for System Default: the user's inherited value must pass through.
-  private envPatch(descriptor: ClaudeProfileLaunchDescriptor): ClaudeEnvPatch {
-    const home = descriptor.profile ? descriptor.configHome : undefined
-    return {
-      [CLAUDE_PROFILE_POINTER_ENV]: descriptor.pointerPath,
-      ...(home ? { CLAUDE_CONFIG_DIR: home, [CLAUDE_INJECTED_CONFIG_DIR_ENV]: home } : {})
-    }
   }
   /** The login Claude recorded in the account's profile, as last read; never a credential. */
   observedIdentity(accountId: string): ClaudeLoginIdentity | null {

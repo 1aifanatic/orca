@@ -174,29 +174,26 @@ it('continues initializing other distros when one is stopped, then reports the f
     false
   )
 })
-it('makes an empty distro pointer-aware before its first account, then switches to the managed guest', async () => {
+it('leaves a distro with no account unrouted, then routes the next pane once its first account is added', async () => {
   const f = fixture()
   const target = { runtime: 'wsl' as const, wslDistro: 'Arch' }
-  expect(f.routing.routes(target)).toBe(true)
-  expect(f.routing.terminalEnv(target)).toEqual({
-    ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER
-  })
-  await vi.waitFor(() =>
-    expect(
-      f.calls.some(
-        (call) => call.distro === 'Arch' && call.action === 'publish' && call.accountId === null
-      )
-    ).toBe(true)
-  )
+  expect(f.routing.routes(target)).toBe(false)
+  expect(f.routing.terminalEnv(target)).toEqual({})
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(f.prepare.mock.calls.some(([distro]) => distro === 'Arch')).toBe(false)
   f.settings.claudeManagedAccounts.push({
     ...f.settings.claudeManagedAccounts[0],
     id: 'arch',
     wslDistro: 'Arch'
   })
   f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Arch = 'arch'
-  await f.routing.publish(target)
-  expect(f.prepare.mock.calls.filter(([distro]) => distro === 'Arch')).toHaveLength(2)
+  expect(f.routing.routes(target)).toBe(true)
+  // The add flow publishes the distro as soon as its draft is registered.
+  await f.routing.publish(target, 'always', 'boot')
   expect(f.calls.at(-1)).toMatchObject({ action: 'publish', distro: 'Arch', accountId: 'arch' })
+  expect(f.routing.terminalEnv(target)).toMatchObject({
+    ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER
+  })
   expect(f.routing.routes({ runtime: 'wsl', wslDistro: null })).toBe(false)
 })
 it('opens a routed WSL pane at once and re-derives its publish once the distro is up', async () => {
