@@ -58,9 +58,14 @@ function published(payload: ParsedAgentStatusPayload | null | undefined): Publis
  *  turn. */
 function refold(
   mainAgent: Published['mainAgent'],
-  childWorkLiveness: AgentChildWorkLiveness
+  childWorkLiveness: AgentChildWorkLiveness,
+  awaitsUser = false
 ): Published {
-  const resolution = foldAgentLeadStatus({ leadState: mainAgent.state, childWorkLiveness })
+  const resolution = foldAgentLeadStatus({
+    leadState: mainAgent.state,
+    childWorkLiveness,
+    awaitsUser
+  })
   return {
     state: resolution.stateName,
     ...(resolution.workingMode ? { workingMode: resolution.workingMode } : {}),
@@ -73,6 +78,7 @@ type Story = {
   claude?: { events: Record<string, unknown>[]; expect: Published }
   structured?: {
     status: 'working' | 'attention' | 'idle'
+    awaitsUser?: true
     backgroundTasks?: AgentSessionBackgroundTask[]
     turnOutcome?: AgentJournalTurnOutcome
     expect: Published
@@ -206,6 +212,12 @@ const STORIES: Story[] = [
       ],
       expect: { state: 'waiting', mainAgent: { state: 'working' } }
     },
+    structured: {
+      status: 'working',
+      awaitsUser: true,
+      backgroundTasks: [AGENT_TASK],
+      expect: { state: 'waiting', mainAgent: { state: 'working' } }
+    },
     codex: {
       events: [
         { hook_event_name: 'UserPromptSubmit', prompt: 'go' },
@@ -231,12 +243,12 @@ const STORIES: Story[] = [
       ],
       expect: { state: 'waiting', mainAgent: { state: 'done' } }
     },
-    // KNOWN DIVERGENCE: no structured producer reports a waiting task; a child's pending prompt
-    // is a session-level `attention`, so this lane blames the main agent for the child's request.
+    // The child's request is the session's `awaitsUser`, not the main agent's `attention`.
     structured: {
-      status: 'attention',
+      status: 'idle',
+      awaitsUser: true,
       backgroundTasks: [AGENT_TASK],
-      expect: { state: 'blocked', mainAgent: { state: 'blocked' } }
+      expect: { state: 'waiting', mainAgent: { state: 'done' } }
     },
     codex: {
       events: [
@@ -461,11 +473,14 @@ describe('mainAgent status parity across lanes', () => {
     it.each(storiesFor('structured'))('%s', (_name, lane) => {
       const row = structuredAgentSessionAgentStatus({
         status: lane.status,
+        awaitsUser: lane.awaitsUser,
         childWork: lane.backgroundTasks,
         turnOutcome: lane.turnOutcome
       })
       expect(row).toEqual(lane.expect)
-      expect(refold(row.mainAgent, agentChildWorkLiveness(lane.backgroundTasks))).toEqual(row)
+      expect(
+        refold(row.mainAgent, agentChildWorkLiveness(lane.backgroundTasks), lane.awaitsUser)
+      ).toEqual(row)
     })
   })
 

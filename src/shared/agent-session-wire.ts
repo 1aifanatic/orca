@@ -220,9 +220,13 @@ export type AgentSessionStatusSummary = {
   sessionId: string
   workspaceId: string
   agent: AgentSessionRecord['provider']
-  /** The session's own agent's status; a subagent's pending prompt is that child's `waiting`, not
-   *  this `attention`. Null until the journal holds a persisted user or assistant message. */
+  /** The session's own agent's status: `attention` is its own prompt only. A client that does not
+   *  advertise `agent-session.status-awaits-user.v1` is sent `attention` whenever `awaitsUser` is
+   *  set, as before the split. Null until the journal holds a persisted user or assistant message. */
   status: StructuredAgentSessionProjectedStatus | null
+  /** Someone in the session must answer a prompt: the main agent or a subagent. Absent from older
+   *  hosts, whose `attention` already says so for either. */
+  awaitsUser?: true
   /** Present only while this host has the provider child executing the session. */
   hostExecutionOwned?: true
   /** With `hostExecutionOwned`: whether that child has proven its start. `starting` is a

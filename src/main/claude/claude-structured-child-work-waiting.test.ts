@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalProducerLinkage } from '../../shared/agent-session-journal-types'
-import { projectStructuredAgentSessionStatus } from '../../shared/structured-agent-session-projection'
+import { projectStructuredAgentSessionStatusSummary } from '../../shared/structured-agent-session-projection'
 import { structuredAgentSessionAgentStatus } from '../../shared/structured-agent-session-agent-status'
 import { producer, system, toolUse } from './claude-child-work-producer-harness.test-fixture'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
@@ -81,11 +81,15 @@ function subagentTaskId(name: string): string {
   return text(started?.frame.task_id)
 }
 
-/** The parent row as the host folds it: the session's own status, projected from its journal as the
- *  status summary projects it, plus its children's records. */
+/** The parent row as the host folds it: the status summary projected from the journal, plus its
+ *  children's records. */
 function parentRow(harness: Awaited<ReturnType<typeof producer>>) {
-  const status = projectStructuredAgentSessionStatus(harness.journalItems(), [], null, 'main-agent')
-  const row = structuredAgentSessionAgentStatus({ status, childWork: harness.records() })
+  const { status, awaitsUser } = projectStructuredAgentSessionStatusSummary(harness.journalItems())
+  const row = structuredAgentSessionAgentStatus({
+    status: status ?? 'idle',
+    awaitsUser,
+    childWork: harness.records()
+  })
   return { sessionStatus: status, state: row.state, mainAgent: row.mainAgent }
 }
 

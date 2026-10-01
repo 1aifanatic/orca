@@ -183,23 +183,29 @@ export function structuredAgentSessionTabId(sessionId: string): string {
   return `structured-agent-session-${sessionId}`
 }
 
-/** `asking: 'anyone'` answers whether a human must answer; `'main-agent'` whether the session's own
- *  agent is the one waiting, which is what its status means: a subagent's request is the subagent's
- *  wait, carried by its own child record. */
+function isPendingPrompt(item: AgentJournalRenderItem): boolean {
+  return (
+    (item.body.kind === 'approval' || item.body.kind === 'question') &&
+    item.body.resolution.state === 'pending'
+  )
+}
+
+/** Whether a human must answer something in this session: the main agent's own request or a
+ *  subagent's. */
+export function structuredAgentSessionAwaitsUser(
+  items: readonly AgentJournalRenderItem[]
+): boolean {
+  return items.some(isPendingPrompt)
+}
+
+/** The main agent's own status: `attention` is its own request only. A subagent's request is that
+ *  subagent's wait, which `structuredAgentSessionAwaitsUser` and its child record carry. */
 export function projectStructuredAgentSessionStatus(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = [],
-  currentFence?: number | null,
-  asking: 'anyone' | 'main-agent' = 'anyone'
+  currentFence?: number | null
 ): StructuredAgentSessionProjectedStatus {
-  if (
-    items.some(
-      (item) =>
-        (item.body.kind === 'approval' || item.body.kind === 'question') &&
-        item.body.resolution.state === 'pending' &&
-        (asking === 'anyone' || isRootAgentJournalItem(item))
-    )
-  ) {
+  if (items.some((item) => isPendingPrompt(item) && isRootAgentJournalItem(item))) {
     return 'attention'
   }
   return owesStructuredAgentSessionWork(items, submissions, currentFence) ? 'working' : 'idle'
@@ -220,6 +226,8 @@ export type StructuredAgentSessionStatusProjection = {
    *  `status` is idle. */
   turnOutcome?: AgentTurnOutcome
   statusStartedAt?: number
+  /** Someone in the session must answer a prompt, whoever asked. */
+  awaitsUser?: true
 }
 
 /** One projection shared by host and client: null status means "no turn yet", not idle.
@@ -247,22 +255,12 @@ export function projectStructuredAgentSessionStatusState(
   latestRequest: StructuredAgentSessionLatestRequest | null
   /** Whether a running turn or an unanswered send is still owed, even beneath a pending prompt. */
   owesWork: boolean
-  /** Whether a human must answer a prompt: the session's own, or a subagent's, which the status
-   *  leaves to that subagent's child record. */
-  awaitsUser: boolean
 } {
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
-    return {
-      summary: { status: null, latestPrompt: '' },
-      latestRequest: null,
-      owesWork: false,
-      awaitsUser: false
-    }
+    return { summary: { status: null, latestPrompt: '' }, latestRequest: null, owesWork: false }
   }
-  const status = projectStructuredAgentSessionStatus(items, submissions, currentFence, 'main-agent')
-  const awaitsUser =
-    status === 'attention' ||
-    projectStructuredAgentSessionStatus(items, submissions, currentFence) === 'attention'
+  const status = projectStructuredAgentSessionStatus(items, submissions, currentFence)
+  const awaitsUser = status === 'attention' || structuredAgentSessionAwaitsUser(items)
   const statusToolCall = status === 'working' ? statusStructuredAgentSessionToolCall(items) : null
   const toolName = statusToolCall
     ? normalizeOptionalField(statusToolCall.name, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
@@ -293,7 +291,6 @@ export function projectStructuredAgentSessionStatusState(
   return {
     latestRequest,
     owesWork: status !== 'idle' && owesStructuredAgentSessionWork(items, submissions, currentFence),
-    awaitsUser,
     summary: {
       status,
       latestPrompt: normalizePromptField(latestStructuredAgentSessionPrompt(items)),
@@ -301,7 +298,8 @@ export function projectStructuredAgentSessionStatusState(
       ...(toolInput ? { toolInput } : {}),
       ...(lastAssistantMessage ? { lastAssistantMessage } : {}),
       ...(turnOutcome ? { turnOutcome } : {}),
-      ...(statusStartedAt !== undefined ? { statusStartedAt } : {})
+      ...(statusStartedAt !== undefined ? { statusStartedAt } : {}),
+      ...(awaitsUser ? { awaitsUser: true as const } : {})
     }
   }
 }

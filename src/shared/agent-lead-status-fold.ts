@@ -2,10 +2,13 @@ import type { AgentChildWorkLiveness } from './agent-status-child-work-liveness'
 import type { AgentMainAgentStatus, AgentStatusState, AgentWorkingMode } from './agent-status-types'
 
 export type AgentLeadStatusFoldInput = {
-  /** The main agent's own turn state. Anything but `done` wins over child work, except that a
-   *  child waiting on a human outranks a working main agent. */
+  /** The main agent's own turn state. Anything but `done` wins over child work, except that
+   *  someone else waiting on a human outranks a working main agent. */
   leadState: AgentStatusState
   childWorkLiveness: AgentChildWorkLiveness
+  /** Someone in the session must answer, whoever asked, so a subagent's request reaches the row
+   *  even when no child record carries its wait. Stated by the structured lane only. */
+  awaitsUser?: boolean
 }
 
 export type AgentLeadStatusResolution = {
@@ -22,10 +25,10 @@ export function mainAgentTurnInterrupted(
 }
 
 /**
- * One fold for every lane that publishes a main agent's status: a child waiting
- * on a human makes the row wait whatever the main agent is doing, a settled main
- * agent with live agent work is still working, and one with only watch loops is
- * monitoring. Every lane derives the liveness from its own evidence, but the
+ * One fold for every lane that publishes a main agent's status: anyone else
+ * waiting on a human makes the row wait whatever the main agent is doing, a
+ * settled main agent with live agent work is still working, and one with only
+ * watch loops is monitoring. Every lane derives the liveness from its own evidence, but the
  * policy must not differ.
  *
  * How the main agent's turn ended is not an input. A cancel is a verdict on the main agent
@@ -38,7 +41,7 @@ export function foldAgentLeadStatus(input: AgentLeadStatusFoldInput): AgentLeadS
   if (input.leadState === 'waiting' || input.leadState === 'blocked') {
     return { stateName: input.leadState }
   }
-  if (input.childWorkLiveness === 'waiting') {
+  if (input.awaitsUser === true || input.childWorkLiveness === 'waiting') {
     return { stateName: 'waiting' }
   }
   if (input.leadState !== 'done') {

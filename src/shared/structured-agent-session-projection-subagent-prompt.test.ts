@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import {
   projectStructuredAgentSessionStatus,
-  projectStructuredAgentSessionStatusSummary
+  projectStructuredAgentSessionStatusSummary,
+  structuredAgentSessionAwaitsUser
 } from './structured-agent-session-projection'
 
 function item(
@@ -41,16 +42,22 @@ describe("a subagent's prompt in the session's status", () => {
     const ownPrompt = item('own-prompt', 4, pending)
 
     // Someone has to answer either way; only the session's own prompt is the session waiting.
-    expect(projectStructuredAgentSessionStatus([running, childPrompt])).toBe('attention')
+    expect(structuredAgentSessionAwaitsUser([running, childPrompt])).toBe(true)
+    expect(structuredAgentSessionAwaitsUser([running])).toBe(false)
+    expect(projectStructuredAgentSessionStatus([running, childPrompt])).toBe('working')
+    expect(projectStructuredAgentSessionStatusSummary([user, running, childPrompt])).toMatchObject({
+      status: 'working',
+      awaitsUser: true
+    })
+    expect(projectStructuredAgentSessionStatusSummary([user, childPrompt])).toMatchObject({
+      status: 'idle',
+      awaitsUser: true
+    })
     expect(
-      projectStructuredAgentSessionStatus([running, childPrompt], [], null, 'main-agent')
-    ).toBe('working')
-    expect(projectStructuredAgentSessionStatusSummary([user, running, childPrompt]).status).toBe(
-      'working'
+      projectStructuredAgentSessionStatusSummary([user, running, childPrompt, ownPrompt])
+    ).toMatchObject({ status: 'attention', awaitsUser: true })
+    expect(projectStructuredAgentSessionStatusSummary([user, running])).not.toHaveProperty(
+      'awaitsUser'
     )
-    expect(projectStructuredAgentSessionStatusSummary([user, childPrompt]).status).toBe('idle')
-    expect(
-      projectStructuredAgentSessionStatusSummary([user, running, childPrompt, ownPrompt]).status
-    ).toBe('attention')
   })
 })

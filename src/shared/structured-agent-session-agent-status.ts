@@ -23,12 +23,13 @@ function structuredAgentSessionLeadState(
 }
 
 /** The agent-status state one structured session summary stands for, with its live child
- *  work folded in the same way the hook lane folds a subagent roster. Shared across the
- *  process boundary so `worktree ps`, mobile and the sidebar cannot disagree about one session.
+ *  work and `awaitsUser` folded in the same way the hook lane folds a subagent roster. Shared
+ *  across the process boundary so `worktree ps`, mobile and the sidebar cannot disagree about one
+ *  session.
  *  `childWork` is the host's child records (or their views); only an older host's summary, which
  *  publishes none, is read by its live background tasks. */
 export function structuredAgentSessionAgentStatus(
-  summary: Pick<AgentSessionStatusSummary, 'turnOutcome'> & {
+  summary: Pick<AgentSessionStatusSummary, 'turnOutcome' | 'awaitsUser'> & {
     status: StructuredAgentSessionProjectedStatus
     childWork?: readonly AgentChildWorkLivenessCandidate[]
   }
@@ -36,7 +37,8 @@ export function structuredAgentSessionAgentStatus(
   const leadState = structuredAgentSessionLeadState(summary.status)
   const resolution = foldAgentLeadStatus({
     leadState,
-    childWorkLiveness: agentChildWorkLiveness(summary.childWork)
+    childWorkLiveness: agentChildWorkLiveness(summary.childWork),
+    awaitsUser: summary.awaitsUser === true
   })
   return {
     state: resolution.stateName,
