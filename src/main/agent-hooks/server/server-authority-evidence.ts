@@ -24,17 +24,21 @@ export abstract class AgentHookServerAuthorityEvidence extends AgentHookServerSt
   /** The event without its launch token once that token's authority ended. Every process a shell
    *  starts inherits the token, so after a command end it proves nothing; it is honoured while the
    *  runtime still holds it for the pane or a commitment of this host still vouches for it. Derived
-   *  at every write and at persist, never stored; a pane with no PTY record keeps today's rule. */
-  protected withLiveLaunchToken<T extends { paneKey: string; launchToken?: string }>(event: T): T {
+   *  at every write and at persist, never stored. A pane with no PTY record keeps today's rule at
+   *  ingest; `requireVoucher` (persist) fails closed there, since a revoked token has no voucher. */
+  protected withLiveLaunchToken<T extends { paneKey: string; launchToken?: string }>(
+    event: T,
+    options?: { requireVoucher?: boolean }
+  ): T {
     const token = event.launchToken?.trim()
-    const runtime = token ? this.paneLaunchAuthorityReader?.(event.paneKey) : null
-    if (!token || !runtime) {
+    const runtime = token ? (this.paneLaunchAuthorityReader?.(event.paneKey) ?? null) : null
+    if (!token || (!runtime && !options?.requireVoucher)) {
       return event
     }
     const launchTokenHash = createHash('sha256').update(token).digest('hex')
     const ownerPaneKey = this.resolvePaneKeyAlias(event.paneKey)
     const live =
-      runtime.launchTokenHash === launchTokenHash ||
+      runtime?.launchTokenHash === launchTokenHash ||
       this.persistedAuthorityCommitmentsByPaneKey.get(ownerPaneKey)?.launchTokenHash ===
         launchTokenHash ||
       this.hydratedLaunchTokenHashByPaneKey.get(ownerPaneKey) === launchTokenHash

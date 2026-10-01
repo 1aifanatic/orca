@@ -47,7 +47,10 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
         ...persistedPayload
       } = enrichedPayload
       // Why derived: a row written before its pane's command ended still carries that token.
-      const liveLaunchToken = this.withLiveLaunchToken({ paneKey, launchToken }).launchToken?.trim()
+      const liveLaunchToken = this.withLiveLaunchToken(
+        { paneKey, launchToken },
+        { requireVoucher: true }
+      ).launchToken?.trim()
       const launchTokenHash = liveLaunchToken
         ? createHash('sha256').update(liveLaunchToken).digest('hex')
         : this.hydratedLaunchTokenHashByPaneKey.get(paneKey)

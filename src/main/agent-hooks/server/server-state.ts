@@ -284,7 +284,8 @@ export abstract class AgentHookServerState {
   protected abstract captureHydratedAuthorityCommitments(): void
   protected abstract recordCurrentAuthorityObservation(payload: AgentHookEventPayload): void
   protected abstract withLiveLaunchToken<T extends { paneKey: string; launchToken?: string }>(
-    event: T
+    event: T,
+    options?: { requireVoucher?: boolean }
   ): T
   protected abstract toAuthorityEvidence(
     payload: AgentHookEventPayload | EnrichedAgentHookEventPayload,

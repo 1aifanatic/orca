@@ -78,11 +78,18 @@ function attest(
   })
 }
 
+type RuntimeRecords = {
+  ptysById: Map<string, { connected: boolean; connectionId: string | null }>
+  dropDisconnectedPtyRecord: (ptyId: string) => void
+}
+
+function runtimeRecords(host: CommandEndHost): RuntimeRecords {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ptysById and dropDisconnectedPtyRecord are the runtime's protected PTY record members; a relay drop, an inventory miss and the record prune act on exactly these.
+  return host.runtime as unknown as RuntimeRecords
+}
+
 function setPtyConnected(host: CommandEndHost, ptyId: string, connected: boolean): void {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ptysById is the runtime's protected PTY record map; a relay drop or inventory miss flips exactly this flag.
-  const records = (host.runtime as unknown as { ptysById: Map<string, { connected: boolean }> })
-    .ptysById
-  records.get(ptyId)!.connected = connected
+  runtimeRecords(host).ptysById.get(ptyId)!.connected = connected
 }
 
 describe('the launch token a shell keeps after its command ends', () => {
@@ -158,6 +165,29 @@ describe('the launch token a shell keeps after its command ends', () => {
 
     expect(liveRow(host.server, pane.paneKey)?.launchToken).toBeUndefined()
     expect(attest(host.server, pane, 'current_runtime')).toBeNull()
+    const restarted = await restart(userDataPath, host.server)
+    expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
+    expect(attest(restarted, pane, 'restored')).toBeNull()
+  })
+
+  it('is not persisted once the runtime prunes the PTY record of a kept SSH row', async () => {
+    const userDataPath = tempDir('orca-pruned-record-token-')
+    const host = await wireLiveAgentHost(userDataPath)
+    const pane = await launchAgentPane(host, 'pty-pruned-record-token')
+    await postHook(host.server, 'claude', pane, {
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'claude-session',
+      prompt: 'review the PR'
+    })
+    await endCommand(host.runtime, pane.ptyId, 'shell bytes')
+
+    // An SSH record pruned after an unverifiable disconnect: its host-owned row survives.
+    const record = runtimeRecords(host).ptysById.get(pane.ptyId)!
+    record.connectionId = 'conn-ssh'
+    record.connected = false
+    runtimeRecords(host).dropDisconnectedPtyRecord(pane.ptyId)
+    expect(liveRow(host.server, pane.paneKey)?.state).toBe('working')
+
     const restarted = await restart(userDataPath, host.server)
     expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
     expect(attest(restarted, pane, 'restored')).toBeNull()
