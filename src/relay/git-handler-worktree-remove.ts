@@ -3,6 +3,8 @@ import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
 import { isBranchCheckedOutInWorktreeError } from '../shared/git-branch-delete-refusal'
 import { assertWorktreeUnlockedForRemoval } from '../shared/worktree/removal'
 import { isSubmoduleWorktreeRemovalRefusal } from '../shared/worktree/submodule-removal'
+import { isBranchHeadInBaseHistory } from '../shared/git-branch-base-containment'
+import { forceDeletePreservedRelayBranch } from './git-handler-branch-cleanup'
 import type { GitExec } from './git-handler-ops'
 import type { GitCapabilityCache } from '../shared/git-capability-cache'
 import { readRelayWorktreeList } from './git-handler-worktree-list'
@@ -175,11 +177,41 @@ export async function removeWorktreeOp(
     }
     return {}
   } catch (error) {
+    if (
+      !forceBranchDelete &&
+      branchHead &&
+      (await deleteRelayBranchInBaseHistory(git, repoPath, branchName, branchHead))
+    ) {
+      return {}
+    }
     // Expected when the branch still has unmerged/unpublished commits: keep it.
     console.warn(
       `relay removeWorktree: preserved local branch "${branchName}" after removing worktree (not fully merged)`,
       error
     )
     return { preservedBranch: { branchName, ...(branchHead ? { head: branchHead } : {}) } }
+  }
+}
+
+/** `branch -d` refused, but the head is in its base's history: delete it, still guarded on head. */
+async function deleteRelayBranchInBaseHistory(
+  git: GitExec,
+  repoPath: string,
+  branchName: string,
+  branchHead: string
+): Promise<boolean> {
+  try {
+    if (!(await isBranchHeadInBaseHistory((args) => git(args, repoPath), branchName, branchHead))) {
+      return false
+    }
+    await forceDeletePreservedRelayBranch(git, repoPath, branchName, branchHead)
+    return true
+  } catch (error) {
+    // Why: the checkout is already gone; a raced delete degrades to the kept-branch path.
+    console.warn(
+      `relay removeWorktree: kept branch "${branchName}": deleting it at its base failed`,
+      error
+    )
+    return false
   }
 }

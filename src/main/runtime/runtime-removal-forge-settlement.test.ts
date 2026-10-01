@@ -110,6 +110,10 @@ beforeEach(() => {
     if (args[0] === 'branch' && args[1] === '-d') {
       throw new Error(`error: the branch '${args[3]}' is not fully merged`)
     }
+    if (args[0] === 'merge-base') {
+      // No base holds the head: these branches carry squash-merged commits.
+      throw new Error('exit 1')
+    }
     return { stdout: '', stderr: '' }
   })
   getHostedReviewForBranchMock.mockReset()
