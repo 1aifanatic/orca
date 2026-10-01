@@ -54,6 +54,15 @@ it.each([undefined, 'ssh:restart'])(
   }
 )
 
+it('clears the stopped id whatever incarnation the binding carries', async () => {
+  const { store } = await fixture()
+  await store.persistPtyBinding({ ...binding, incarnationId: 'republished-incarnation' })
+  expect(await store.retirePtyBinding(binding)).toBe(true)
+  expect(store.getWorkspaceSession().terminalLayoutsByTabId[binding.tabId].ptyIdsByLeafId).toEqual(
+    {}
+  )
+})
+
 it('restores the old binding after a known save failure and allows another attempt', async () => {
   const { store, authority } = await fixture()
   vi.spyOn(console, 'error').mockImplementation(() => {})

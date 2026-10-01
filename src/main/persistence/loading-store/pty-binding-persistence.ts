@@ -69,11 +69,9 @@ export class PtyBindingPersistenceOperations {
     this[ptyBindingPersistenceOperationsContext] = { runtime, sessions }
   }
 
+  /** Clears a stopped process's binding, keeping the pane; fenced on the id, which is dead in any incarnation. */
   async retirePtyBinding(
-    binding: Pick<
-      PersistPtyBindingArgs,
-      'worktreeId' | 'tabId' | 'leafId' | 'ptyId' | 'incarnationId'
-    >,
+    binding: Pick<PersistPtyBindingArgs, 'worktreeId' | 'tabId' | 'leafId' | 'ptyId'>,
     hostId?: string | null
   ): Promise<boolean> {
     const { runtime, sessions } = this[ptyBindingPersistenceOperationsContext]
@@ -93,16 +91,12 @@ export class PtyBindingPersistenceOperations {
     }
     return runtime.runDurableMutation(() => {
       const session = sessions.getWorkspaceSession(resolved)
-      const paneKey = `${binding.tabId}:${binding.leafId}`
       const currentId =
         session.terminalLayoutsByTabId[binding.tabId]?.ptyIdsByLeafId?.[binding.leafId]
       if (!currentId) {
         return { value: true, persist: 'if-dirty' }
       }
-      if (
-        currentId !== binding.ptyId ||
-        session.terminalPtyIncarnationsByPaneKey?.[paneKey] !== binding.incarnationId
-      ) {
+      if (currentId !== binding.ptyId) {
         return { value: false, persist: false }
       }
       if (!session.tabsByWorktree[binding.worktreeId]?.some((tab) => tab.id === binding.tabId)) {
