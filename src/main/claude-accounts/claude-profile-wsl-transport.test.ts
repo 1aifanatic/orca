@@ -2,12 +2,12 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
-import type { WslSpec } from '../wsl/wsl-runner'
+import type { WslResult, WslSpec } from '../wsl/wsl-runner'
 const mocks = vi.hoisted(() => ({
   root: '',
   running: true,
   runningChecks: 0,
-  run: vi.fn(),
+  run: vi.fn<(spec: WslSpec) => Promise<WslResult>>(),
   runtime: vi.fn()
 }))
 vi.mock('../../shared/app-environment', () => ({
@@ -24,18 +24,18 @@ vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: mocks.run }))
 vi.mock('../wsl/wsl-pinned-runtime', () => ({ ensureWslPinnedRuntime: mocks.runtime }))
 import { prepareClaudeWslGuest, withdrawClaudeWslPointer } from './claude-profile-wsl-transport'
 const EXECUTABLE = '/home/fake/.cache/orca/runtimes/pinned/bin/node'
-const helperCalls = () =>
-  mocks.run.mock.calls.filter(([spec]: [WslSpec]) => spec.program === '/usr/bin/env')
+const helperCalls = () => mocks.run.mock.calls.filter(([spec]) => spec.program === '/usr/bin/env')
+const helperInput = () => JSON.parse(helperCalls().at(-1)?.[0].input ?? '{}')
 beforeEach(() => {
   mocks.root = mkdtempSync(join(tmpdir(), 'fake-wsl-'))
   mocks.running = true
   mocks.runningChecks = 0
-  mocks.run.mockReset().mockImplementation(async (spec: WslSpec) => {
+  mocks.run.mockReset().mockImplementation(async (spec) => {
     let stdout = '/mnt/c/fake-helper.cjs'
     if (spec.program === '/usr/bin/env') {
       stdout = JSON.stringify({ ready: true, provisioned: true })
     } else if (spec.args?.[0] === '-c') {
-      const script = spec.args[1]
+      const script = spec.args[1] ?? ''
       const begin = script.match(/__ORCA_WSL_CAPTURE_BEGIN_[a-z0-9]+__/)?.[0]
       const end = script.match(/__ORCA_WSL_CAPTURE_END_[a-z0-9]+__/)?.[0]
       stdout = `guest banner\n${begin}2.1.0 (Claude Code)${end}`
@@ -65,13 +65,12 @@ const setup = (home: string) =>
 it('runs the helper through the WSL runner with literal argv, stdin JSON and a fenced version probe', async () => {
   const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
   await guest.request(setup(guest.home))
-  const [helper] = helperCalls().at(-1) ?? []
-  expect(helper).toMatchObject({
+  expect(helperCalls().at(-1)?.[0]).toMatchObject({
     distro: 'Ubuntu with spaces',
     loginPath: 'none',
     args: ['-u', 'NODE_OPTIONS', EXECUTABLE, '/mnt/c/fake-helper.cjs']
   })
-  expect(JSON.parse(helper.input)).toMatchObject({ action: 'setup', claudeVersion: '2.1.0' })
+  expect(helperInput()).toMatchObject({ action: 'setup', claudeVersion: '2.1.0' })
   expect(
     mocks.run.mock.calls.some(([spec]) => spec.args?.[1]?.includes('__ORCA_WSL_CAPTURE_BEGIN_'))
   ).toBe(true)
@@ -121,18 +120,27 @@ it('keeps a cached guest usable after its preparation deadline has passed', asyn
   const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
   deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
   await expect(guest.request(setup(guest.home))).resolves.toMatchObject({ ready: true })
-  expect(JSON.parse(helperCalls().at(-1)?.[0].input).claudeVersion).toBe('2.1.0')
+  expect(helperInput().claudeVersion).toBe('2.1.0')
 })
 it('continues setup with an unknown Claude version when the guest probe fails, like native', async () => {
   const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
   const helper = mocks.run.getMockImplementation()
-  mocks.run.mockImplementation(async (spec: WslSpec) =>
+  if (!helper) {
+    throw new Error('The default WSL runner mock is missing')
+  }
+  mocks.run.mockImplementation(async (spec) =>
     spec.program === '/bin/sh'
-      ? { code: 127, stdout: '', stderr: 'claude: not found', timedOut: false }
-      : helper?.(spec)
+      ? {
+          code: 127,
+          stdout: '',
+          stderr: 'claude: not found',
+          timedOut: false,
+          environmentResolved: true
+        }
+      : helper(spec)
   )
   await expect(guest.request(setup(guest.home))).resolves.toMatchObject({ ready: true })
-  expect(JSON.parse(helperCalls().at(-1)?.[0].input)).not.toHaveProperty('claudeVersion')
+  expect(helperInput()).not.toHaveProperty('claudeVersion')
 })
 it('confirms the distro is running once per preparation and once per request', async () => {
   const guest = await prepareClaudeWslGuest('Ubuntu')
