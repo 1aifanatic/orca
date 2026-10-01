@@ -12,6 +12,7 @@ import {
   type MacDaemonTccAttributionHealth
 } from './daemon-tcc-attribution'
 import { PROTOCOL_VERSION } from './types'
+import { getAppEnvironment } from '../../shared/app-environment'
 
 let spawner: DaemonSpawner | null = null
 let adapter: DaemonProvider | null = null
@@ -82,6 +83,39 @@ export function readDaemonPidRecord(): ParsedDaemonPid | null {
 
 export function getDaemonProvider(): DaemonProvider | null {
   return adapter
+}
+
+/**
+ * True while a daemon started by an earlier Orca build still hosts terminals. Its shells were
+ * started with that build's shell integration, so they may lack newer features such as Claude
+ * account switching until they are reopened. Derived on each call from the live daemons.
+ */
+export async function daemonHostsTerminalsFromOlderBuild(): Promise<boolean> {
+  if (!adapter) {
+    return false
+  }
+  const record = readDaemonPidRecord()
+  const currentIsOlder =
+    getAppEnvironment().isPackaged() &&
+    record !== null &&
+    record.appVersion !== getAppEnvironment().getVersion()
+  const older = currentIsOlder
+    ? adapter instanceof DaemonPtyRouter || adapter instanceof DegradedDaemonPtyProvider
+      ? adapter.getAllAdapters()
+      : [adapter]
+    : adapter instanceof DaemonPtyRouter
+      ? adapter.getLegacyAdapters()
+      : []
+  for (const daemon of older) {
+    try {
+      if ((await daemon.listProcesses()).length > 0) {
+        return true
+      }
+    } catch {
+      // An unreadable inventory proves nothing either way; another daemon may still answer.
+    }
+  }
+  return false
 }
 
 // Why: computed from the pid record on demand (not cached at adoption) so the Settings

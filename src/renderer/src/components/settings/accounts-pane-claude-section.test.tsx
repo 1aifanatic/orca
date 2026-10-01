@@ -163,4 +163,11 @@ describe('Claude accounts section', () => {
     })
     expect(markup).toContain('status hooks could not be added to this account')
   })
+
+  it('says account switching may not reach terminals from before the update while they run', () => {
+    expect(render()).not.toContain('from before this Orca update')
+    expect(render({ olderTerminalsRunning: true })).toContain(
+      'Some terminals are still running from before this Orca update.'
+    )
+  })
 })

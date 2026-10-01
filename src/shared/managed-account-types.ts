@@ -107,6 +107,8 @@ export type ClaudeRateLimitAccountsState = {
   profileRoutingIssue?: string
   /** Sign-ins with no login yet. Kept out of `accounts` on the wire, whose clients require an email. */
   unfinishedAccounts?: ClaudeManagedAccountSummary[]
+  /** Local only: terminals an earlier Orca build started are still running and may not follow switching. */
+  olderTerminalsRunning?: boolean
   /** The host's own Claude login, read-only. Omitted where it is not read (WSL distros). */
   systemDefault?: ClaudeSystemDefaultIdentity
 }

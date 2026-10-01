@@ -79,6 +79,14 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
           )}
         </p>
       ) : null}
+      {claudeAccounts.olderTerminalsRunning ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          {translate(
+            'accounts.claude.olderTerminals',
+            'Some terminals are still running from before this Orca update. Until you close all of them, terminals keep the Claude account they started with.'
+          )}
+        </p>
+      ) : null}
       {needsUpgradeSignIn ? (
         <p className="text-xs text-muted-foreground">
           {translate(

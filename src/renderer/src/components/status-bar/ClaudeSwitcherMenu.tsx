@@ -307,10 +307,15 @@ export function ClaudeSwitcherMenu({
             })}
           </div>
           <div className="px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
-            {translate(
-              'accounts.claude.profileSwitching',
-              'Switching applies to the next Claude you start in any tab. Running sessions keep their account.'
-            )}
+            {accountState.olderTerminalsRunning || accounts.olderTerminalsRunning
+              ? translate(
+                  'accounts.claude.olderTerminals',
+                  'Some terminals are still running from before this Orca update. Until you close all of them, terminals keep the Claude account they started with.'
+                )
+              : translate(
+                  'accounts.claude.profileSwitching',
+                  'Switching applies to the next Claude you start in any tab. Running sessions keep their account.'
+                )}
           </div>
         </div>
       ) : null}
