@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { expandWindowsEnvironmentVariables } from '../../shared/windows-environment-expansion'
+import { loadWindowsNativeRegistry } from '../windows-native-registry'
 
 // Why both editions: a pane may run Windows PowerShell 5.1 or PowerShell 7, and
 // each loads its own profiles. Within one, $PSHOME's load before the user's.
@@ -16,6 +18,8 @@ const POWERSHELL_EDITIONS = [
   }
 ] as const
 const PROFILE_FILES = ['profile.ps1', 'Microsoft.PowerShell_profile.ps1']
+const USER_SHELL_FOLDERS_KEY =
+  'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders'
 
 const cache = new Map<string, string[]>()
 
@@ -30,25 +34,31 @@ const cache = new Map<string, string[]>()
  * expression is returned verbatim, which callers comparing against a known
  * path read as "something else".
  *
- * Memoized per (name, userProfile): profiles don't change under a running Orca
- * often enough to pay a re-read on every routing check.
+ * Memoized: profiles don't change under a running Orca often enough to pay a
+ * re-read on every routing check.
  */
 export function readPowerShellProfileEnvAssignments(
   name: string,
   userProfile: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  documentsDir?: string | null
 ): string[] {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     return []
   }
-  const cacheKey = `${name.toLowerCase()}\0${userProfile}`
+  const cacheKey = `${name.toLowerCase()}\0${userProfile}\0${documentsDir ?? ''}`
   const cached = cache.get(cacheKey)
   if (cached) {
     return cached
   }
   const assignment = new RegExp(`^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`, 'i')
   const values: string[] = []
-  for (const path of powerShellProfilePaths(userProfile, env)) {
+  const profilePaths = powerShellProfilePaths(
+    userProfile,
+    env,
+    documentsDir === undefined ? readRegistryDocumentsDir(env) : documentsDir
+  )
+  for (const path of profilePaths) {
     const content = readProfile(path)
     for (const rawLine of content?.split(/\r?\n/) ?? []) {
       const value = assignment.exec(rawLine.trim())?.[1]
@@ -62,22 +72,36 @@ export function readPowerShellProfileEnvAssignments(
   return values
 }
 
-function powerShellProfilePaths(userProfile: string, env: NodeJS.ProcessEnv): string[] {
-  // Why every candidate: OneDrive commonly redirects Documents, and resolving the
-  // known folder needs Electron or a spawn. A stale candidate only over-reports.
-  const documentsDirs = [
-    ...new Set(
-      [userProfile, env.OneDrive, env.OneDriveConsumer, env.OneDriveCommercial]
-        .filter((root): root is string => Boolean(root?.trim()))
-        .map((root) => join(root, 'Documents'))
-    )
-  ]
+function powerShellProfilePaths(
+  userProfile: string,
+  env: NodeJS.ProcessEnv,
+  documentsDir: string | null
+): string[] {
+  // Why both: the registry names the real (often OneDrive-redirected) folder,
+  // and the default location still counts when that read fails.
+  const documentsDirs = [...new Set([documentsDir, join(userProfile, 'Documents')])].filter(
+    (dir): dir is string => Boolean(dir)
+  )
   return POWERSHELL_EDITIONS.flatMap((edition) => [
     ...PROFILE_FILES.map((file) => join(edition.psHome(env), file)),
     ...documentsDirs.flatMap((dir) =>
       PROFILE_FILES.map((file) => join(dir, edition.documentsSubdir, file))
     )
   ])
+}
+
+// Why the registry: $PROFILE hangs off the Documents known folder, which
+// OneDrive or a policy can move anywhere; this is the same value it resolves.
+function readRegistryDocumentsDir(env: NodeJS.ProcessEnv): string | null {
+  try {
+    const registry = loadWindowsNativeRegistry()
+    const personal = registry.getRegistryKey(registry.HK.CU, USER_SHELL_FOLDERS_KEY)?.Personal
+    return typeof personal?.value === 'string'
+      ? expandWindowsEnvironmentVariables(personal.value, env)
+      : null
+  } catch {
+    return null
+  }
 }
 
 function readProfile(path: string): string | null {

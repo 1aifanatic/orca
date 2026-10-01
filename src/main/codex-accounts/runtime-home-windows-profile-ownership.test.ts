@@ -45,6 +45,14 @@ describe('Windows System Default Codex home ownership', () => {
 
     expect(service.isHostSystemDefaultRealHomeSelected({ USERPROFILE: userProfile })).toBe(false)
   })
+
+  it('stays managed when a Git Bash login file exports CODEX_HOME elsewhere', () => {
+    const userProfile = createUserProfile()
+    writeFileSync(join(userProfile, '.bash_profile'), 'export CODEX_HOME="$HOME/custom-codex"\n')
+    const service = createWindowsService()
+
+    expect(service.isHostSystemDefaultRealHomeSelected({ USERPROFILE: userProfile })).toBe(false)
+  })
 })
 
 function createWindowsService(): CodexRuntimeHomeService {

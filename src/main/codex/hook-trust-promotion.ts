@@ -143,15 +143,18 @@ export function snapshotCodexRuntimeHookTrustProvenance(
  * the user's own hooks.json. Runs before the config mirror so the promoted
  * trust is mirrored back on the same launch.
  */
+/** Returns false when promotion failed, so a one-time caller can retry. */
 export function promoteCodexRuntimeHookApprovalsToSystem(
   runtimeHomePath: string = getOrcaManagedCodexHomePath()
-): void {
+): boolean {
   try {
     promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath)
+    return true
   } catch (error) {
     // Why: promotion is best-effort launch prep; a malformed runtime file
     // must not block hook install or the Codex launch itself.
     console.warn('[codex-hook-promotion] failed to promote runtime hook approvals', error)
+    return false
   }
 }
 
