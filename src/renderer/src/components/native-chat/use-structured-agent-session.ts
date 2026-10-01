@@ -36,6 +36,7 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import { useStructuredAgentSessionRetryInPlace } from './use-structured-agent-session-retry-in-place'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
@@ -124,6 +125,12 @@ export function useStructuredAgentSession(args: {
     composerScopeKey,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
+  })
+  const { retry, retryInPlace } = useStructuredAgentSessionRetryInPlace({
+    target,
+    mutate,
+    submissions: transportState.submissions,
+    outboxRetry: outboxController.retry
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -224,7 +231,8 @@ export function useStructuredAgentSession(args: {
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       outboxController.send(...input),
-    retry: outboxController.retry,
+    retry,
+    retryInPlace,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,

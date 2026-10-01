@@ -110,7 +110,9 @@ async function dispatchSafely(
  * `retryUnknown` the client sent: `unknown` cannot prove non-delivery — that is
  * the whole content of the word — and one message reached the model five times
  * when this was a judgement call instead of an invariant. A distinct send after
- * a terminal rejection uses a fresh id, which is a first delivery.
+ * a terminal rejection uses a fresh id, which is a first delivery; the Retry of a
+ * message no agent took queues the same id again through its own operation
+ * (`agentSession.retryMessage`), never through this.
  *
  * Accepting only records the message; the session's delivery loop hands it over.
  */

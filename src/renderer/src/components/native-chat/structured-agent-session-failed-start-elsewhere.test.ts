@@ -11,7 +11,11 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
-import { resendableFailedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
+import { retryableFailedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
+import {
+  createStructuredAgentSessionOutboxEntry,
+  reconcileStructuredAgentSessionOutbox
+} from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
@@ -48,7 +52,7 @@ describe('a message sent from elsewhere whose start failed for good', () => {
   ] as const)('shows as unsent, says why %j, and offers a Retry', (fact, why) => {
     const submissions = [rejected(fact)]
     const retry = vi.fn()
-    const resendable = resendableFailedStartsSentElsewhere([TEXT], submissions, [])
+    const retryable = retryableFailedStartsSentElsewhere(submissions, [])
 
     expect(projectStructuredAgentSessionMessages([TEXT], [], submissions)).toEqual([
       expect.objectContaining({ id: KEY, unsent: true })
@@ -60,12 +64,27 @@ describe('a message sent from elsewhere whose start failed for good', () => {
       submissions,
       [],
       new Set(),
-      (id) => resendable.has(id)
+      (id) => retryable.has(id)
     ).get(KEY)
     expect(notice?.text).toBe(why)
     notice?.onRetry?.()
     expect(retry).toHaveBeenCalledWith(ID)
-    expect(resendable.get(ID)).toBe('Continue where you left off')
+  })
+
+  // An older host cannot queue it again, and its words alone would make it a second message.
+  it('says why, with no Retry, where the host cannot queue it again', () => {
+    const notice = structuredAgentSessionDeliveryNotices(
+      [],
+      'Codex',
+      vi.fn(),
+      [rejected({ kind: 'providerStartFailed' })],
+      [],
+      new Set(),
+      () => false
+    ).get(KEY)
+    expect(notice).toEqual({
+      text: 'Codex stopped before it finished starting. Send your message to try again.'
+    })
   })
 
   // The phone draws rows in the order the projection gives them; only the desktop sorts.
@@ -115,29 +134,64 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     ).toEqual([])
   })
 
-  it('offers no Retry for one with images, whose files are not on this client', () => {
-    const withImage = item({
-      kind: 'message',
-      role: 'user',
-      blocks: [
-        { type: 'text', text: 'look' },
-        { type: 'image-ref', url: 'orca-image://img-1' }
-      ]
-    })
+  // The host still holds the message, its images included, so its Retry sends it whole.
+  it('offers a Retry for one with images too', () => {
     const submissions = [rejected({ kind: 'providerStartFailed' })]
-    const resendable = resendableFailedStartsSentElsewhere([withImage], submissions, [])
-    expect(resendable.size).toBe(0)
-    const notice = structuredAgentSessionDeliveryNotices(
-      [],
-      'Codex',
-      vi.fn(),
-      submissions,
-      [],
-      new Set(),
-      (id) => resendable.has(id)
-    ).get(KEY)
-    expect(notice).toEqual({
-      text: 'Codex stopped before it finished starting. Send your message to try again.'
-    })
+    expect(retryableFailedStartsSentElsewhere(submissions, []).has(ID)).toBe(true)
+  })
+
+  // A queued card's message is the card's to show and to retry; drawn again it showed twice.
+  it("is never drawn for a queued card's message, whose card shows it", () => {
+    const card = { ...rejected({ kind: 'providerStartFailed' }), queuedMessageId: 'card-1' }
+
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [card])).toEqual([])
+    expect(retryableFailedStartsSentElsewhere([card], []).size).toBe(0)
+  })
+
+  it('offers no Retry for one an agent already took', () => {
+    const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
+    expect(retryableFailedStartsSentElsewhere([handedOver], []).size).toBe(0)
+  })
+})
+
+// A Retry in place moves the same message from rejected back to pending. A client of any version
+// reads that move as it reads any send: no second bubble, and its own outbox entry sends on.
+describe('a message whose start failed for good, queued again by its Retry', () => {
+  const requeued: AgentJournalSubmission = {
+    ...rejected({ kind: 'providerStartFailed' }),
+    dispatchState: 'pending',
+    reason: null,
+    rejection: undefined,
+    resolvedAt: null
+  }
+
+  it('is drawn once, queued, wherever it was sent from', () => {
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [requeued])).toEqual([
+      expect.objectContaining({ id: KEY, queued: true })
+    ])
+    expect(retryableFailedStartsSentElsewhere([requeued], []).size).toBe(0)
+  })
+
+  it("moves this desktop's own rejected entry back to sending, with its failure gone", () => {
+    const own = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: ID,
+        sessionId: 's',
+        text: 'Continue where you left off',
+        attachments: [],
+        queuedAt: 1
+      }),
+      state: 'rejected' as const,
+      lastAttemptAt: 2,
+      lastFailure: { kind: 'rejected' as const, reason: 'no' }
+    }
+
+    const [entry] = reconcileStructuredAgentSessionOutbox([own], [requeued])
+
+    expect(entry).toMatchObject({ clientMessageId: ID, state: 'dispatching' })
+    expect(entry).not.toHaveProperty('lastFailure')
+    expect(projectStructuredAgentSessionMessages([TEXT], [entry!], [requeued])).toEqual([
+      expect.objectContaining({ id: KEY, queued: true })
+    ])
   })
 })

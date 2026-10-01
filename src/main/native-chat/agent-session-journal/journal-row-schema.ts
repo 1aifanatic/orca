@@ -146,6 +146,9 @@ export type JournalDispatchRow = JournalRowBase & {
    *  older reader ignores the key and reads the row as a handover, so the message ends in doubt,
    *  never as sent or failed. A malformed one is dropped when read, never the row. */
   startRetry?: JournalStartRetryRecord
+  /** On `pending`: the person's Retry of a message rejected before any agent took it, which queues
+   *  the same message again. An older reader, for which `rejected` is final, ignores the row. */
+  requeued?: true
 }
 
 /** What a failed start's row records; the attempt count and the time are the reducer's. */

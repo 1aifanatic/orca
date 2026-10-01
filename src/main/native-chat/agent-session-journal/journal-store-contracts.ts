@@ -40,6 +40,8 @@ export type ResolveDispatchInput = {
     | { state: 'pending'; turnScope: AgentJournalTurnScope }
     /** Still queued: the start it was for was refused, and its next try is booked. */
     | { state: 'pending'; startRetry: JournalStartRetryRecord }
+    /** Queued again by the person's Retry; see `JournalDispatchRow.requeued`. */
+    | { state: 'pending'; requeued: true }
     /** `reason` is what released clients print, `rejection` what newer ones read: both from
      *  `agentSessionFailureWords`, never written by hand. */
     | ({ state: 'rejected' } & AgentJournalDispatchRejection)

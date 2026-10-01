@@ -22,8 +22,9 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   const submission = submissions.find((candidate) => candidate.clientMessageId === clientMessageId)
   const outbox = getStructuredAgentSessionOutbox(sessionId)
   const current = outbox.find((entry) => entry.clientMessageId === clientMessageId)
-  // The host settled this id as rejected, and reusing it only replays that forever, so rotate the
-  // id for a safe resend. Read from the message itself, which outlives a restart, or from a
+  // The host settled this id as rejected, and a send under it only replays that forever, so rotate
+  // the id for a safe resend. (A host that can queue it again in place is asked to instead, before
+  // this runs: see `useStructuredAgentSessionRetryInPlace`.) Read from the message itself, which outlives a restart, or from a
   // reconciliation that settled an earlier unknown before the outbox caught up. A refusal that
   // settled the message already rotated it. An expired id is refused for good; its row told the
   // user to check the chat first.

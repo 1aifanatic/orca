@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
   failedStartsSentElsewhere,
-  resendableFailedStartsSentElsewhere
+  retryableFailedStartsSentElsewhere
 } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
 import { isRetryingStructuredAgentSessionStart } from '../../../../shared/structured-agent-session-start-retry'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
@@ -10,46 +10,45 @@ import type { useStructuredAgentSession } from './use-structured-agent-session'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
+const NO_IDS: ReadonlySet<string> = new Set()
 
 /** The notice on each of the chat's own messages that did not go through, and their Retry. */
 export function useStructuredAgentSessionDeliveryNotices(
   controller: Pick<
     ReturnType<typeof useStructuredAgentSession>,
-    'retry' | 'send' | 'outbox' | 'submissions' | 'journalItems' | 'failedHere'
+    'retry' | 'retryInPlace' | 'outbox' | 'submissions' | 'journalItems' | 'failedHere'
   >,
   agentLabel: string
 ) {
-  // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
-  const retryRef = useRef(controller.retry)
+  // Read at click time, so the notices stay put while the Retry is rebuilt each render.
+  const retryRef = useRef({ retry: controller.retry, retryInPlace: controller.retryInPlace })
   useEffect(() => {
-    retryRef.current = controller.retry
+    retryRef.current = { retry: controller.retry, retryInPlace: controller.retryInPlace }
   })
-  // A message sent from elsewhere that failed to start has no outbox entry here: its Retry sends
-  // its words again as this desktop's own.
-  const resendable = useMemo(
+  // A message sent from elsewhere that failed to start has no outbox entry here: a host that can
+  // queues it again in place; an older one leaves it to its sender, so it reads with no Retry.
+  const retryableElsewhere = useMemo(
     () =>
-      resendableFailedStartsSentElsewhere(
-        controller.journalItems,
-        controller.submissions,
-        controller.outbox
-      ),
-    [controller.journalItems, controller.submissions, controller.outbox]
+      controller.retryInPlace
+        ? retryableFailedStartsSentElsewhere(controller.submissions, controller.outbox)
+        : NO_IDS,
+    [controller.retryInPlace, controller.submissions, controller.outbox]
   )
-  const resendRef = useRef({ resendable, send: controller.send })
+  const retryableElsewhereRef = useRef(retryableElsewhere)
   useEffect(() => {
-    resendRef.current = { resendable, send: controller.send }
+    retryableElsewhereRef.current = retryableElsewhere
   })
   const retryDelivery = useCallback((clientMessageId: string) => {
-    const words = resendRef.current.resendable.get(clientMessageId)
-    if (words === undefined) {
-      retryRef.current(clientMessageId)
+    const { retry, retryInPlace } = retryRef.current
+    if (retryInPlace && retryableElsewhereRef.current.has(clientMessageId)) {
+      retryInPlace(clientMessageId)
     } else {
-      resendRef.current.send(words)
+      retry(clientMessageId)
     }
   }, [])
   const canResend = useCallback(
-    (clientMessageId: string) => resendable.has(clientMessageId),
-    [resendable]
+    (clientMessageId: string) => retryableElsewhere.has(clientMessageId),
+    [retryableElsewhere]
   )
   // Only a rejected message, or one waiting out a refused start, reads the journal's rows, so a new
   // batch of them re-renders no row else.

@@ -115,7 +115,9 @@ export function journalDispatchRowBuilder(
       ? {}
       : 'startRetry' in input
         ? { startRetry: input.startRetry }
-        : { turnScope: input.turnScope })
+        : 'requeued' in input
+          ? { requeued: true }
+          : { turnScope: input.turnScope })
   })
 }
 

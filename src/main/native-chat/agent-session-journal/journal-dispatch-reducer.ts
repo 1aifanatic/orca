@@ -6,7 +6,11 @@ import {
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import {
+  isFailedStartRejection,
+  isRequeueableAgentJournalSubmission
+} from '../../../shared/structured-agent-session-dispatch-rejection'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import {
@@ -16,11 +20,35 @@ import {
 } from './journal-submission-fold'
 import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
 
+/** The one way back from `rejected`: the person's Retry of a message no agent ever took. It is
+ *  queued again under its own id, as when it was accepted: never handed over, no failure, no
+ *  booked try. Any other row for a settled message still changes nothing. */
+function requeueRejectedSubmission(
+  submission: AgentJournalSubmission | undefined,
+  row: Extract<JournalRow, { kind: 'dispatch' }>
+): void {
+  if (!submission || !isRequeueableAgentJournalSubmission(submission)) {
+    return
+  }
+  submission.fence = row.fence
+  submission.dispatchState = 'pending'
+  submission.providerItemId = null
+  submission.reason = null
+  submission.resolvedAt = null
+  delete submission.rejection
+  delete submission.startRetry
+  delete submission.recovered
+}
+
 export function applyJournalDispatchRow(
   state: JournalReducerState,
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
   const submission = state.submissions.get(row.clientMessageId)
+  if (row.requeued === true) {
+    requeueRejectedSubmission(submission, row)
+    return
+  }
   // Shared with the queued-draft returned hook: a row ignored here must not alter a draft.
   if (!submission || !journalDispatchRowApplies(submission)) {
     return

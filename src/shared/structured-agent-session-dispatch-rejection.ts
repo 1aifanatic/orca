@@ -6,8 +6,10 @@
 // `classifyDispatchRejection` is the only place a reader judges either.
 //
 // Every rejection makes the one claim that state exists to make: this message did not reach the
-// provider. None is ever re-delivered under its own id — `rejected` is terminal in the reducer — so
-// a retry rotates the client message id, which is a new message and cannot duplicate.
+// provider. `rejected` is terminal in the reducer, with one exception: the person's Retry of a
+// message no agent ever took (`isRequeueableAgentJournalSubmission`) queues that same message again
+// under its own id, through its own operation. Any other retry rotates the client message id, which
+// is a new message and cannot duplicate.
 
 import {
   isSubmissionRejectionKind,
@@ -178,6 +180,24 @@ export function isFailedStartRejection(
 ): boolean {
   const { category, kind } = classifyDispatchRejection(submission)
   return category === 'startFailed' || kind === 'hostStopped' || kind === 'providerExited'
+}
+
+/** Whether the person's Retry may queue this same message again: rejected for a failed start or an
+ *  Orca fault, never handed to any agent, and no queued card's, whose card is its Retry. */
+export function isRequeueableAgentJournalSubmission(
+  submission: Pick<
+    AgentJournalSubmission,
+    'dispatchState' | 'reason' | 'handedOverAt' | 'handoverRecorded' | 'queuedMessageId'
+  > & { rejection?: unknown }
+): boolean {
+  return (
+    submission.dispatchState === 'rejected' &&
+    submission.handedOverAt === undefined &&
+    submission.handoverRecorded === true &&
+    submission.queuedMessageId === undefined &&
+    (isFailedStartRejection(submission) ||
+      classifyDispatchRejection(submission).kind === 'hostFault')
+  )
 }
 
 /**
