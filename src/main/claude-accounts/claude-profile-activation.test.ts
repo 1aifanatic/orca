@@ -91,6 +91,24 @@ it('retains a recoverable draft when login is interrupted, then retries the same
   expect(f.settings.claudeManagedAccounts[0].email).toBe('fake@example.test')
   expect(f.prepare.mock.calls.every(([id]) => id === draft.id)).toBe(true)
 })
+it('leaves no draft row when profile preparation fails before any login', async () => {
+  const f = fixture()
+  f.prepare.mockRejectedValue(new Error('Claude profile could not be prepared.'))
+  await expect(f.registration.add({ runtime: 'wsl', wslDistro: 'Ubuntu' })).rejects.toThrow(
+    'could not be prepared'
+  )
+  expect(f.settings.claudeManagedAccounts).toEqual([])
+  expect(f.login).not.toHaveBeenCalled()
+})
+it('keeps an existing account when its sign-in preparation fails', async () => {
+  const f = fixture()
+  await f.registration.add()
+  f.prepare.mockRejectedValueOnce(new Error('Claude profile could not be prepared.'))
+  await expect(
+    f.registration.reauthenticate(f.settings.claudeManagedAccounts[0].id)
+  ).rejects.toThrow('could not be prepared')
+  expect(f.settings.claudeManagedAccounts).toHaveLength(1)
+})
 it('publishes the first distro after registering its draft, before login', async () => {
   const f = fixture()
   f.publish.mockImplementation(async () => {

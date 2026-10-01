@@ -13,7 +13,25 @@ import {
 import { formatAccountTimestamp, getClaudeAccountRuntimeLabel } from './accounts-pane-runtime'
 import type { AccountsPaneSectionModel } from './accounts-pane-types'
 
-export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): React.JSX.Element {
+export type ClaudeAccountsSectionModel = Pick<
+  AccountsPaneSectionModel,
+  | 'accountRuntime'
+  | 'accountRuntimeSentenceLabel'
+  | 'accountRuntimeUnavailable'
+  | 'accountVisibilityOptions'
+  | 'claudeAccounts'
+  | 'claudeAction'
+  | 'isRemoteAccountScope'
+  | 'remoteAccountScopeNotice'
+  | 'runClaudeAccountAction'
+  | 'setRemoveClaudeTarget'
+  | 'settings'
+  | 'systemClaudeActive'
+  | 'visibleClaudeAccounts'
+  | 'wslCapabilitiesLoading'
+>
+
+export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): React.JSX.Element {
   const {
     accountRuntime,
     accountRuntimeSentenceLabel,
@@ -304,11 +322,8 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                             runtime: getProviderAccountRuntime(account)
                           })
                         }}
-                        disabled={
-                          isBusy ||
-                          (account.profileReadiness !== undefined &&
-                            account.profileReadiness !== 'ready')
-                        }
+                        // Why: removing only forgets the registration, so no readiness may block it.
+                        disabled={isBusy}
                         className="h-6 px-2 text-muted-foreground hover:text-destructive"
                       >
                         <Trash2 className="size-3" />

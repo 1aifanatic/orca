@@ -58,11 +58,21 @@ export class ClaudeAccountRegistration {
   async begin(target: ClaudeAccountSelectionTarget = { runtime: 'host' }, accountId?: string) {
     const id = accountId ?? (await this.createDraft(target))
     const account = this.deps.selection.requireAccount(id)
-    const prepared = await (this.deps.prepare ?? prepareClaudeProfileLogin)(
-      id,
-      getClaudeSelectionTargetForAccount(account),
-      this.deps.store.getSettings()
-    )
+    let prepared: Awaited<ReturnType<typeof prepareClaudeProfileLogin>>
+    try {
+      prepared = await (this.deps.prepare ?? prepareClaudeProfileLogin)(
+        id,
+        getClaudeSelectionTargetForAccount(account),
+        this.deps.store.getSettings()
+      )
+    } catch (error) {
+      // Why: no Claude process ran, so a new draft holds nothing to retry; forget only the row.
+      if (!accountId) {
+        this.forget(id)
+        await this.publish(target)
+      }
+      throw error
+    }
     this.save({
       ...account,
       managedAuthPath: prepared.config.windowsPath,
@@ -133,6 +143,14 @@ export class ClaudeAccountRegistration {
       // Publication reports its own UI issue; a stale selection must not block signing in.
       console.warn('[claude-profile] Account selection publication failed:', error)
     }
+  }
+
+  private forget(accountId: string): void {
+    this.deps.store.updateSettings({
+      claudeManagedAccounts: this.deps.store
+        .getSettings()
+        .claudeManagedAccounts.filter((entry) => entry.id !== accountId)
+    })
   }
 
   private save(account: ClaudeManagedAccount): void {
