@@ -68,7 +68,7 @@ describe('detected worktree scan root registration', () => {
     mocks.gitOptions.mockReturnValue({})
     await scanAndRegister()
 
-    const listing = mocks.registerRoots.mock.calls[0]?.[3]
-    expect(listing?.wslDistro).toBeUndefined()
+    expect(mocks.registerRoots).toHaveBeenCalledTimes(1)
+    expect(mocks.registerRoots.mock.calls[0]?.[3]?.wslDistro).toBeUndefined()
   })
 })
