@@ -39,14 +39,49 @@ describe('terminal run facts', () => {
     expect(facts.read('pty-1', 'inc-1').freshSpawn).toBe(false)
   })
 
-  it('starts clean when a commit carries no incarnation to tell it from a new process', () => {
+  it('starts clean when a new process commits without an incarnation', () => {
     const facts = new TerminalRunFactsRegister()
     facts.recordSpawnCommit({ id: 'pty-1' })
     facts.recordInput('pty-1', 'driving', 'ls\r', 100)
 
-    facts.recordSpawnCommit({ id: 'pty-1', isReattach: true })
+    facts.recordSpawnCommit({ id: 'pty-1' })
 
-    expect(facts.read('pty-1', null)).toEqual({ freshSpawn: false, firstUserInputAt: null })
+    expect(facts.read('pty-1', null)).toEqual({ freshSpawn: true, firstUserInputAt: null })
+    expect(facts.readLastInputAt('pty-1')).toBeNull()
+  })
+
+  it.each([
+    ['a reattach', { isReattach: true }],
+    ['an adoption', { agentSessionEnsure: { disposition: 'adopted' } }]
+  ])('keeps the input of the running process through %s without an incarnation', (_l, commit) => {
+    const facts = new TerminalRunFactsRegister()
+    facts.recordSpawnCommit({ id: 'pty-1' })
+    facts.recordInput('pty-1', 'driving', 'next prompt\r', 100)
+
+    facts.recordSpawnCommit({ id: 'pty-1', ...commit })
+
+    expect(facts.read('pty-1', null)).toEqual({ freshSpawn: false, firstUserInputAt: 100 })
+    expect(facts.readLastInputAt('pty-1')).toBe(100)
+  })
+
+  it('keeps input recorded before main adopted the process with its first commit', () => {
+    const facts = new TerminalRunFactsRegister()
+    facts.recordInput('pty-1', 'driving', 'next prompt\r', 100)
+
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-1', isReattach: true })
+
+    expect(facts.readLastInputAt('pty-1')).toBe(100)
+  })
+
+  it('starts clean when a reattach names a different process than the one recorded', () => {
+    const facts = new TerminalRunFactsRegister()
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-1' })
+    facts.recordInput('pty-1', 'driving', 'ls\r', 100)
+
+    facts.recordSpawnCommit({ id: 'pty-1', incarnationId: 'inc-2', isReattach: true })
+
+    expect(facts.read('pty-1', 'inc-2')).toEqual({ freshSpawn: false, firstUserInputAt: null })
+    expect(facts.readLastInputAt('pty-1')).toBeNull()
   })
 
   it.each([

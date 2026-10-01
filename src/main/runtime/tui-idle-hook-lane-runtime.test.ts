@@ -131,6 +131,30 @@ describe('tui-idle hook lane through the runtime', () => {
     expect(await waitOutcome({ rows, afterCreate: typeAt(before + 1) })).toBe('timeout')
   })
 
+  it('reads no done from before a prompt sent just ahead of an adoption of the running agent', async () => {
+    const before = Date.now() - 1000
+    const rows = (): AgentStatusIpcPayload[] => [
+      row({ receivedAt: before, stateStartedAt: before })
+    ]
+    expect(
+      await waitOutcome({
+        rows,
+        afterCreate: (runtime) => {
+          runtime.terminalRunFacts.recordInput(
+            TRANSCRIPT_PANE_PTY_ID,
+            'driving',
+            'next\r',
+            before + 1
+          )
+          runtime.noteTerminalSpawnCommit({
+            id: TRANSCRIPT_PANE_PTY_ID,
+            agentSessionEnsure: { disposition: 'adopted' }
+          })
+        }
+      })
+    ).toBe('timeout')
+  })
+
   // Pi brackets each message in OSC 133 zones itself, so a command marker is no process boundary.
   it('keeps the row while the agent paints its own shell-integration markers', async () => {
     expect(

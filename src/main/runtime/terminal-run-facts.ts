@@ -43,22 +43,24 @@ export class TerminalRunFactsRegister {
   // Why apart from the run record: input must count on a PTY main adopted without a commit.
   private readonly lastInputAtByPtyId = new Map<string, number>()
 
-  /** Once per process: a re-registration of the same incarnation keeps its facts. Without an
-   *  incarnation a commit cannot be told from a new process, so it starts clean. */
+  /** Once per process: a re-registration of the same incarnation keeps its facts, and so does a
+   *  reattach or adoption of the running process unless its incarnation shows another process. */
   recordSpawnCommit(commit: TerminalSpawnCommit, expectedSourceBinding?: unknown): void {
     const incarnationId = commit.incarnationId ?? null
-    if (
-      incarnationId !== null &&
-      this.runsByPtyId.get(commit.id)?.incarnationId === incarnationId
-    ) {
+    const previous = this.runsByPtyId.get(commit.id)
+    if (incarnationId !== null && previous?.incarnationId === incarnationId) {
       return
     }
     const origin = spawnCommitBindingOrigin(commit, expectedSourceBinding)
-    this.lastInputAtByPtyId.delete(commit.id)
+    const sameProcess =
+      origin === 'reattach' && (incarnationId === null || !previous?.incarnationId)
+    if (!sameProcess) {
+      this.lastInputAtByPtyId.delete(commit.id)
+    }
     this.runsByPtyId.set(commit.id, {
       incarnationId,
       spawnOrigin: origin === 'spawn' && commit.coldRestore !== undefined ? 'cold-restore' : origin,
-      firstUserInputAt: null
+      firstUserInputAt: sameProcess ? (previous?.firstUserInputAt ?? null) : null
     })
   }
 
