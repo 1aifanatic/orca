@@ -18,7 +18,8 @@ export type TuiIdleHookTurn = {
 /**
  * Reads the main agent's turn off its row. Why the main agent's own state: the row's combined
  * state folds child work in, and a subagent finishing must not end the lead turn (#6011); a
- * child's permission wait still blocks, since its prompt is on the pane.
+ * child's permission wait still blocks, since its prompt is on the pane. A lead turn that ended
+ * reads done even while a subagent runs: its composer takes input then, as the screen rules read it.
  */
 export function hookLeadTurnState(
   row: Pick<AgentStatusIpcPayload, 'state' | 'mainAgent' | 'sessionBoundary'>
