@@ -117,7 +117,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedProviderChildWindDown(session)
   session.owesProviderChildWindDown = owed ? { ...owed, cause } : undefined
   const stopping = session.child
-  let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -158,19 +157,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         // Only a turn no adapter settled: one with no close, or whose settle threw.
         verdict: turnVerdictForChildEnd(cause, context.now()),
-        showUnexpectedExitOutcome: false,
-        onError: (id, error) => {
-          settlementError = error
-          context.deps.logger.warn("settling a closed agent's work failed", {
-            scope: 'close-settlement',
-            sessionId: id,
-            error
-          })
-        }
+        showUnexpectedExitOutcome: false
       })
-      if (!settled) {
+      if (!settled.ok) {
+        context.deps.logger.warn("settling a closed agent's work failed", {
+          scope: 'close-settlement',
+          sessionId,
+          error: settled.error
+        })
         // Without the cause the log names the step and nothing else.
-        throw new Error('dead generation work settlement failed', { cause: settlementError })
+        throw new Error('dead generation work settlement failed', { cause: settled.error })
       }
     },
     releaseLease: async () => {

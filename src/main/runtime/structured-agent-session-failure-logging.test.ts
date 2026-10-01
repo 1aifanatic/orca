@@ -10,6 +10,18 @@ import type { AgentSessionJournal } from '../native-chat/agent-session-journal/j
 import type { StructuredAgentSessionHostDeps } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { StructuredAgentSessionHostRuntimeState } from '../native-chat/agent-session-wire/structured-agent-session-host-runtime-state'
 import {
+  StructuredAgentSessionDeliveryLoop,
+  type StructuredAgentSessionDeliveryLoopDeps
+} from '../native-chat/agent-session-wire/structured-agent-session-delivery-loop'
+import {
+  StructuredAgentSessionIdleSweep,
+  type StructuredAgentSessionIdleSweepDeps
+} from '../native-chat/agent-session-wire/structured-agent-session-idle-sweep'
+import {
+  StructuredAgentSessionQueuedMessageDrain,
+  type QueuedMessageDrainDeps
+} from '../native-chat/agent-session-wire/structured-agent-session-queued-messages'
+import {
   createStructuredAgentSessionLogger,
   neverThrowingStructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -146,6 +158,74 @@ describe('failures the desktop host used to drop', () => {
         fields: { scope: 'journal-event-sink', sessionId: SESSION, error }
       })
     ])
+  })
+})
+
+describe('host collaborators log with their own scope', () => {
+  const error = new Error('serialize refused')
+  const rejectingSerialize = async (): Promise<never> => {
+    throw error
+  }
+
+  it('the delivery loop logs a failed delivery, and a failed recording of it', async () => {
+    const log = recordingStructuredAgentSessionLogger()
+    const loop = new StructuredAgentSessionDeliveryLoop(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a step that rejects at its first serialize reads only these members.
+      {
+        serialize: rejectingSerialize,
+        trackStart: <T>(start: Promise<T>) => start,
+        logger: log.logger
+      } as unknown as StructuredAgentSessionDeliveryLoopDeps
+    )
+
+    loop.wake(SESSION)
+
+    await vi.waitFor(() =>
+      expect(log.entries.map((entry) => entry.fields)).toEqual([
+        { scope: 'delivery-loop', sessionId: SESSION, error },
+        { scope: 'delivery-loop-fail', sessionId: SESSION, error }
+      ])
+    )
+  })
+
+  it('the idle sweep logs a step that fails', async () => {
+    const log = recordingStructuredAgentSessionLogger()
+    const sweep = new StructuredAgentSessionIdleSweep(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a tick whose serialize rejects reads only these members.
+      {
+        sessions: new Map([[SESSION, {}]]),
+        isDisposed: () => false,
+        serialize: rejectingSerialize,
+        logger: log.logger
+      } as unknown as StructuredAgentSessionIdleSweepDeps
+    )
+
+    await sweep.tick()
+
+    expect(log.entries.map((entry) => entry.fields)).toEqual([
+      { scope: 'idle-sweep', sessionId: SESSION, error }
+    ])
+  })
+
+  it('the queued-message drain logs a step that fails', async () => {
+    const log = recordingStructuredAgentSessionLogger()
+    const journal = { isReadOnly: false, queuedMessages: { settlementOwed: () => true } }
+    const drain = new StructuredAgentSessionQueuedMessageDrain(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a schedule past the owed-settlement check reads only these members.
+      {
+        sessions: new Map([[SESSION, { journal }]]),
+        serialize: rejectingSerialize,
+        logger: log.logger
+      } as unknown as QueuedMessageDrainDeps
+    )
+
+    drain.schedule(SESSION)
+
+    await vi.waitFor(() =>
+      expect(log.entries.map((entry) => entry.fields)).toEqual([
+        { scope: 'queued-drain', sessionId: SESSION, error }
+      ])
+    )
   })
 })
 

@@ -78,12 +78,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         deps.store.getRecord(sessionId),
         sessions.get(sessionId)?.journal
       ),
-    onError: (sessionId, error) =>
-      deps.logger.warn('delivering a queued message failed', {
-        scope: 'delivery-loop',
-        sessionId,
-        error
-      }),
+    logger: deps.logger,
     record: (sessionId) => deps.store.getRecord(sessionId),
     readChildWork: input.clientDelivery.readChildWork,
     flushStreamedEvents: input.flushStreamedEvents,

@@ -313,7 +313,6 @@ describe('processless structured session reservation', () => {
 
     await expect(
       performAttach({
-        logger: createStructuredAgentSessionLogger(),
         ...input,
         authority: {
           ...input.authority,

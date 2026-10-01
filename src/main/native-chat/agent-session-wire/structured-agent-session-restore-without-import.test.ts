@@ -39,6 +39,7 @@ import type { StructuredAgentSessionLifetimeContext } from './structured-agent-s
 import { createStructuredAgentSessionRestartOfferWithdrawal } from './structured-agent-session-restart-offer-withdrawal'
 import { restoreStructuredAgentSessionsOnRestart } from './structured-agent-session-restart-restore'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const { readOnlyOpens, openReadOnly } = vi.hoisted(() => ({
   readOnlyOpens: new Array<string>(),
@@ -217,7 +218,7 @@ type LifetimeHost = Parameters<typeof createStructuredAgentSessionConversationLi
 function conversations(): StructuredAgentSessionConversations {
   return new StructuredAgentSessionConversations({
     deliver: () => undefined,
-    onDeliveryError: () => undefined,
+    logger: recordingStructuredAgentSessionLogger().logger,
     now: () => clock
   })
 }
@@ -229,7 +230,12 @@ async function restore(sessionIds: readonly string[]) {
     getRecord: (sessionId: string) => recordFor(sessionId),
     listRecords: () => sessionIds.map(recordFor)
   } as unknown as AgentSessionRecordStore
-  const deps = { store, adapter: {}, journalDatabase: openTestJournalHostDatabase(root) }
+  const deps = {
+    store,
+    adapter: {},
+    journalDatabase: openTestJournalHostDatabase(root),
+    logger: recordingStructuredAgentSessionLogger().logger
+  }
   await restoreStructuredAgentSessionsOnRestart({
     openDeps: deps,
     records: sessionIds.map(recordFor),

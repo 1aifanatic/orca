@@ -24,6 +24,7 @@ import {
   type StructuredAgentSessionStatusSink
 } from './structured-agent-session-status-feed'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { testEventSinkLogging } from './structured-agent-session-logger-test-support'
 
 const SESSION = 'status-session'
 const TURN_IDENTITY = {
@@ -548,7 +549,7 @@ describe('StructuredAgentSessionStatusFeed', () => {
       const { feed } = feedFor(new Map([[SESSION, { journal }]]), null, (summary) =>
         seen.push(summary.status)
       )
-      const deferred = createDeferredStructuredAgentSessionEventSink()
+      const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
       if (agent === 'claude') {
         const translator = createClaudeJournalTranslator({ sink: deferred.sink })
         translator.handle({

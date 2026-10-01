@@ -131,7 +131,7 @@ async function sessionWithRunningTurn() {
 function settleDeadGeneration(
   journal: AgentSessionJournal,
   verdict: StructuredAgentSessionTurnVerdict
-): Promise<boolean> {
+): ReturnType<typeof settleStructuredAgentSessionDeadGeneration> {
   return settleStructuredAgentSessionDeadGeneration({
     journal,
     sessionId: SESSION,
@@ -162,7 +162,7 @@ describe('a turn recovery settled after its host went away', () => {
     async (_label, verdict, outcome, mark) => {
       const session = await sessionWithRunningTurn()
       session.recoverAt(RECOVERED)
-      expect(await settleDeadGeneration(session.journal, verdict)).toBe(true)
+      expect(await settleDeadGeneration(session.journal, verdict)).toEqual({ ok: true })
       session.publish()
 
       expect(session.summaries.at(-1)).toMatchObject({

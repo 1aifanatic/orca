@@ -88,8 +88,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         cause: 'host-stop'
       }),
     closeConversation,
-    onError: (sessionId, error) =>
-      deps().logger.warn('an idle sweep step failed', { scope: 'idle-sweep', sessionId, error }),
+    logger: deps().logger,
     ...deps().idleSweep
   })
 

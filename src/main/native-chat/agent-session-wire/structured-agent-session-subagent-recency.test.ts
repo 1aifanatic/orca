@@ -21,6 +21,7 @@ import { createDeferredStructuredAgentSessionEventSink } from './structured-agen
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { testEventSinkLogging } from './structured-agent-session-logger-test-support'
 
 const SESSION = 'recency-session'
 const CODEX_THREAD = 'thread-parent'
@@ -83,7 +84,7 @@ async function openSession() {
   })
   const events: AgentSessionStatusEvent[] = []
   feed.subscribe({ id: 'list-1', emit: (event) => events.push(event) })
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
   deferred.bind({ journal, fence: 1, publish: () => feed.publish(SESSION, journal) })
   const drain = async (): Promise<void> => {
     expect(await deferred.drained()).toEqual({ ok: true })

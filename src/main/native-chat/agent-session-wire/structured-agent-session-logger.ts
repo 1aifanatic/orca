@@ -56,14 +56,14 @@ export function withNeverThrowingLogger<T extends { logger: StructuredAgentSessi
   return { ...deps, logger: neverThrowingStructuredAgentSessionLogger(deps.logger) }
 }
 
-/** A `(sessionId, error)` reporter for a collaborator that reports per session. Lazy, for a host
- *  that wires its collaborators before its own deps are assigned. */
-export function logSessionFailure(
-  logger: () => StructuredAgentSessionLogger,
-  scope: string,
-  message: string
-): (sessionId: string, error: unknown) => void {
-  return (sessionId, error) => logger().warn(message, { scope, sessionId, error })
+/** The logger `resolve` returns at each call, for a collaborator built before the host's deps. */
+export function deferredStructuredAgentSessionLogger(
+  resolve: () => StructuredAgentSessionLogger
+): StructuredAgentSessionLogger {
+  return {
+    warn: (message, fields) => resolve().warn(message, fields),
+    error: (message, fields) => resolve().error(message, fields)
+  }
 }
 
 /** The production logger: a failed span in the local trace file, plus the console. */

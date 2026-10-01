@@ -25,3 +25,11 @@ export function recordingStructuredAgentSessionLogger(): {
     scopes: () => entries.map((entry) => entry.fields.scope)
   }
 }
+
+/** What an event sink built outside a host needs: the session it writes for, and a logger. */
+export function testEventSinkLogging(sessionId = 'session-1'): {
+  sessionId: string
+  logger: StructuredAgentSessionLogger
+} {
+  return { sessionId, logger: recordingStructuredAgentSessionLogger().logger }
+}

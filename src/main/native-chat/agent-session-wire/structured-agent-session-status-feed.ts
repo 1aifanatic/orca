@@ -28,7 +28,10 @@ import {
   type StructuredAgentSessionStatusState
 } from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
-import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import {
+  deferredStructuredAgentSessionLogger,
+  type StructuredAgentSessionLogger
+} from './structured-agent-session-logger'
 import {
   StructuredAgentSessionStatusOwnership,
   type StructuredAgentSessionStatusSink
@@ -86,10 +89,7 @@ export function createStructuredAgentSessionHostStatusFeed(args: {
     sessions: args.sessions,
     getRecord: (sessionId) => args.deps().store.getRecord(sessionId),
     now: args.now,
-    logger: {
-      warn: (message, fields) => args.deps().logger.warn(message, fields),
-      error: (message, fields) => args.deps().logger.error(message, fields)
-    },
+    logger: deferredStructuredAgentSessionLogger(() => args.deps().logger),
     onStatusChanged: (summary, options) => args.deps().onSessionStatusChanged?.(summary, options),
     // Resolved per call for the same reason the other deps are: the host builds this feed in a
     // field initializer, before its constructor parameters are assigned.
