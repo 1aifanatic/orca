@@ -39,7 +39,8 @@ const homes = setupCodexHookHomes(homedirMock, getPathMock)
 type HooksJson = { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
 
 function readHooksJson(path: string): HooksJson {
-  return JSON.parse(readFileSync(path, 'utf-8')) as HooksJson
+  const config: HooksJson = JSON.parse(readFileSync(path, 'utf-8'))
+  return config
 }
 
 function hasOrcaEntry(hooks: HooksJson['hooks']): boolean {

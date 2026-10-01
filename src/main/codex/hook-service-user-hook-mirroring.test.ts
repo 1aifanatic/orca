@@ -88,9 +88,8 @@ function expectNoOrcaEntry(managedCodexHome: string): void {
   const managedHooksPath = join(managedCodexHome, 'hooks.json')
   const hooksText = readFileSync(managedHooksPath, 'utf-8')
   expect(hooksText).not.toContain('codex-hook.')
-  const runtimeHooks = JSON.parse(hooksText) as {
-    hooks: Record<string, { hooks?: { command?: string }[] }[]>
-  }
+  const runtimeHooks: { hooks: Record<string, { hooks?: { command?: string }[] }[]> } =
+    JSON.parse(hooksText)
   const userHookPositions = new Set<string>()
   for (const [eventName, definitions] of Object.entries(runtimeHooks.hooks)) {
     definitions.forEach((definition, groupIndex) => {

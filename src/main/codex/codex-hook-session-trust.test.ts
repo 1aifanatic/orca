@@ -2,7 +2,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 
 const mocks = vi.hoisted(() => ({
   runProcess: vi.fn(),
@@ -29,7 +28,12 @@ import {
   handleCodexHookFlagRequest,
   refreshCodexHookSessionFlags
 } from './codex-hook-session-trust'
-import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
+import {
+  CODEX_EVENTS,
+  CODEX_EVENT_LABEL,
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
 import { buildCodexHookSessionFlag } from './codex-hook-session-flags'
 import { getCodexHookFlagTablePath, readCodexHookFlagEntry } from './codex-hook-flag-table'
 

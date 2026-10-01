@@ -121,9 +121,10 @@ describe('CodexHookService', () => {
 
     expect(readFileSync(systemHooksPath, 'utf-8')).toBe(hooksBefore)
     expect(readFileSync(join(systemCodexHome, 'config.toml'), 'utf-8')).toBe(tomlBefore)
-    const runtimeHooks = JSON.parse(
-      readFileSync(join(homes.userDataDir, 'codex-runtime-home', 'home', 'hooks.json'), 'utf-8')
-    ) as { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
+    const runtimeHooks: { hooks: Record<string, { hooks?: { command?: string }[] }[]> } =
+      JSON.parse(
+        readFileSync(join(homes.userDataDir, 'codex-runtime-home', 'home', 'hooks.json'), 'utf-8')
+      )
     expect(runtimeHooks.hooks.Stop).toEqual([
       { hooks: [{ type: 'command', command: 'user-hook' }] }
     ])

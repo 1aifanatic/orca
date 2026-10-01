@@ -68,7 +68,7 @@ function seedOlderBuildOrcaEntry(managedCodexHome: string): void {
 }
 
 function hasOrcaEntry(hooksPath: string): boolean {
-  const config = JSON.parse(readFileSync(hooksPath, 'utf-8')) as HooksJson
+  const config: HooksJson = JSON.parse(readFileSync(hooksPath, 'utf-8'))
   return Object.values(config.hooks).some((definitions) =>
     definitions.some((definition) =>
       definition.hooks?.some((hook) => isCodexManagedCommand(hook.command))
