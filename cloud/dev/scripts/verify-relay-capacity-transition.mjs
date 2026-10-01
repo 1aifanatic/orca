@@ -114,6 +114,7 @@ export function parseCapacityTransitionArguments(argv) {
   if (runtime === 'unavailable' && regionalRehomeProtocol !== undefined) {
     throw new Error('unavailable runtime cannot prove the regional rehome protocol')
   }
+  const strandedEscape = parseStrandedEscape(values, runtime)
   return {
     directorOrigin: origin.origin,
     cellOrigin: cellOrigin.origin,
@@ -127,8 +128,25 @@ export function parseCapacityTransitionArguments(argv) {
     ...(regionalRehomeProtocol === undefined ? {} : { regionalRehomeProtocol }),
     hardCap,
     unobservedBound,
+    ...(strandedEscape === undefined ? {} : { strandedEscape }),
     timeoutMs: integer(values['timeout-ms'] ?? 180_000, '--timeout-ms')
   }
+}
+
+// Opt-in so other restart-safe callers keep requiring zero director leases.
+function parseStrandedEscape(values, runtime) {
+  const quiet = values['stranded-quiet-ms']
+  const max = values['max-stranded-leases']
+  if (quiet === undefined && max === undefined) return undefined
+  if (values.activity !== 'restart-safe' || runtime !== 'required') {
+    throw new Error('the stranded-host escape requires restart-safe activity on a live runtime')
+  }
+  const quietMs = integer(quiet ?? 120_000, '--stranded-quiet-ms')
+  const maxLeases = integer(max ?? 25, '--max-stranded-leases')
+  // A zero window would escape on one sample; a zero cap could never escape.
+  if (quietMs === 0) throw new Error('--stranded-quiet-ms is invalid')
+  if (maxLeases === 0) throw new Error('--max-stranded-leases is invalid')
+  return { quietMs, maxLeases }
 }
 
 async function responseJson(response, label) {
@@ -365,6 +383,42 @@ function runtimeQuiescent(runtime, config) {
     (config.activity === 'restart-safe' ? restartSafe : quiescent)
 }
 
+// Hosts with no placement left keep redialling and hold director leases on a cell that
+// carries nothing; a long-empty drained runtime proves a restart loses no live work.
+function strandedHostsOnly(runtime, status, config, restartBlockingReservedRequests) {
+  if (
+    config.strandedEscape === undefined ||
+    runtime.draining !== true ||
+    status.admissionState !== 'migration-only'
+  ) {
+    return false
+  }
+  const empty = [
+    runtime.runtime?.totalConnections,
+    runtime.runtime?.preAuthConnections,
+    runtime.runtime?.inFlightConnections,
+    runtime.runtime?.reservedConnectionUnits,
+    runtime.runtime?.controls,
+    runtime.runtime?.splices,
+    runtime.runtime?.pendingSplices,
+    runtime.runtime?.queuedBytes
+  ].every((value) => integer(value, 'live runtime count') === 0)
+  const leases = integer(status.restartBlockingActivityLeases, 'restart-blocking activity leases')
+  const units = integer(
+    status.restartBlockingActivityRequestUnits,
+    'restart-blocking activity request units'
+  )
+  // Above the cap the drain has not finished; that is not a few stranded hosts.
+  const { maxLeases } = config.strandedEscape
+  return empty &&
+    leases > 0 &&
+    leases <= maxLeases &&
+    units <= maxLeases &&
+    restartBlockingReservedRequests <= 0 &&
+    integer(status.outgoingMigrations, 'outgoing migrations') === 0 &&
+    integer(status.incomingMigrations, 'incoming migrations') === 0
+}
+
 export async function verifyCapacityTransition(config, overrides = {}) {
   if (
     config.activity === 'restart-safe' &&
@@ -392,6 +446,7 @@ export async function verifyCapacityTransition(config, overrides = {}) {
   }
   const deadline = now() + config.timeoutMs
   let restartSafeSamples = 0
+  let strandedSince = null
   let lastObservation = { runtimeAvailable: false }
   for (;;) {
     const runtime = await cellRuntime(fetchImpl, config, token)
@@ -432,7 +487,20 @@ export async function verifyCapacityTransition(config, overrides = {}) {
           directorActivityMatches(status, config, restartBlockingReservedRequests) &&
           capacityMatches(status, config) &&
           heartbeatMatches(status, config.heartbeat)
-      if (matches && (config.activity !== 'restart-safe' || restartSafeSamples === 1)) {
+      const stranded = config.activity === 'restart-safe' &&
+        runtime !== null &&
+        !matches &&
+        strandedHostsOnly(runtime, status, config, restartBlockingReservedRequests) &&
+        runtimeQuiescent(runtime, config) &&
+        capacityMatches(status, config) &&
+        heartbeatMatches(status, config.heartbeat)
+      strandedSince = stranded ? strandedSince ?? now() : null
+      const strandedQuietMs = strandedSince === null ? 0 : now() - strandedSince
+      const strandedEscape = stranded && strandedQuietMs >= config.strandedEscape.quietMs
+      if (
+        strandedEscape ||
+        (matches && (config.activity !== 'restart-safe' || restartSafeSamples === 1))
+      ) {
         return {
           cellId: status.cellId,
           admissionState: status.admissionState,
@@ -445,18 +513,35 @@ export async function verifyCapacityTransition(config, overrides = {}) {
           imageDigest: runtime?.imageDigest ?? null,
           ...(config.activity === 'restart-safe'
             ? { restartBlockingReservedRequests }
+            : {}),
+          ...(strandedEscape
+            ? {
+                strandedEscape: {
+                  restartBlockingActivityLeases: status.restartBlockingActivityLeases,
+                  restartBlockingActivityRequestUnits: status.restartBlockingActivityRequestUnits,
+                  quietMs: strandedQuietMs,
+                  maxStrandedLeases: config.strandedEscape.maxLeases
+                }
+              }
             : {})
         }
       }
       restartSafeSamples = matches ? 1 : 0
     } else {
       restartSafeSamples = 0
+      strandedSince = null
     }
     if (config.activity === 'restart-safe') {
       lastObservation = {
         ...lastObservation,
         restartSafeSamples,
-        requiredRestartSafeSamples: 2
+        requiredRestartSafeSamples: 2,
+        ...(config.strandedEscape === undefined
+          ? {}
+          : {
+              strandedQuietMs: strandedSince === null ? 0 : now() - strandedSince,
+              requiredStrandedQuietMs: config.strandedEscape.quietMs
+            })
       }
     }
     if (now() >= deadline) {
@@ -469,7 +554,15 @@ export async function verifyCapacityTransition(config, overrides = {}) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const result = await verifyCapacityTransition(parseCapacityTransitionArguments(argv))
+  const { strandedEscape, ...result } =
+    await verifyCapacityTransition(parseCapacityTransitionArguments(argv))
+  if (strandedEscape !== undefined) {
+    process.stdout.write(`${JSON.stringify({
+      event: 'relay_capacity_transition_stranded_escape',
+      cellId: result.cellId,
+      ...strandedEscape
+    })}\n`)
+  }
   process.stdout.write(`${JSON.stringify({ event: 'relay_capacity_transition_verified', ...result })}\n`)
 }
 
