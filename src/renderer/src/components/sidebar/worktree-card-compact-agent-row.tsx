@@ -16,6 +16,7 @@ import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
 import { agentRowStoppingLabel } from '@/lib/agent-row-stopping-label'
+import { getCompactAgentLineOrder } from './worktree-card-compact-agent-line-order'
 
 function getCompactAgentPrimary(
   agent: DashboardAgentRowData,
@@ -137,10 +138,12 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   const stableMessage =
     turnHoldable && !currentMessage && held?.turn === turn ? held.message : undefined
   const secondary = getCompactAgentSecondary(agent, now, stableMessage)
-  // Why: sidebar truncation must preserve the passive-vs-active distinction.
-  const leadingText = dotState === 'monitoring' ? secondary : primary
-  const trailingText =
-    dotState === 'monitoring' ? (primary === secondary ? '' : primary) : secondary
+  const { leadingText, trailingText } = getCompactAgentLineOrder(
+    agent,
+    dotState,
+    primary,
+    secondary
+  )
   const rowTitle = `${leadingText}${trailingText ? ` - ${trailingText}` : ''}`
   const model = agent.entry.model?.trim() ?? ''
   const shortTime = getCompactAgentTime(agent, now)

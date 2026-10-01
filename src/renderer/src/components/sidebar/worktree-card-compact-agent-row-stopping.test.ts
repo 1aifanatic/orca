@@ -3,6 +3,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { makeTab } from '../../store/slices/store-test-helpers'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
 import { getAgentDotState } from './worktree-card-agent-summary'
+import { getCompactAgentLineOrder } from './worktree-card-compact-agent-line-order'
 import { getCompactAgentSecondary } from './worktree-card-compact-agent-row'
 
 const NOW = new Date('2026-05-04T12:00:00.000Z').getTime()
@@ -47,5 +48,24 @@ describe("the sidebar row while a person's Stop ends the turn", () => {
     expect(getCompactAgentSecondary(row({ state: 'working', stateStartedAt: NOW }), NOW)).not.toBe(
       'Stopping…'
     )
+  })
+
+  // The row truncates its one line from the end, and the model and time keep their room.
+  it('leads with Stopping so a narrow sidebar cuts the chat name, not the status', () => {
+    const stopping = row({ state: 'working', stopping: true, stateStartedAt: NOW })
+    const secondary = getCompactAgentSecondary(stopping, NOW)
+
+    expect(
+      getCompactAgentLineOrder(stopping, getAgentDotState(stopping), 'Codex Chat', secondary)
+    ).toEqual({ leadingText: 'Stopping…', trailingText: 'Codex Chat' })
+  })
+
+  it('leads with the chat name otherwise', () => {
+    const working = row({ state: 'working', stateStartedAt: NOW })
+    const secondary = getCompactAgentSecondary(working, NOW)
+
+    expect(
+      getCompactAgentLineOrder(working, getAgentDotState(working), 'Codex Chat', secondary)
+    ).toEqual({ leadingText: 'Codex Chat', trailingText: secondary })
   })
 })
