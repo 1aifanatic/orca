@@ -242,15 +242,15 @@ export class ClaudeProfileRoutingService {
   }
   /** The login Claude recorded in the account's profile, as last read; never a credential. */
   observedIdentity(accountId: string): ClaudeLoginIdentity | null {
-    return this.owner.readiness(accountId) === 'ready'
-      ? (this.owner.identity?.(accountId) ?? null)
-      : null
+    const state = this.owner.profileState(accountId)
+    return state.readiness === 'ready' ? state.identity : null
   }
+
   async refreshForRead(target?: ClaudeAccountSelectionTarget): Promise<void> {
     await this.owner.refresh?.(target, 'if-running')
   }
   accountHome(accountId: string): string {
-    const readiness = this.owner.readiness(accountId)
+    const { readiness } = this.owner.profileState(accountId)
     if (readiness !== 'ready') {
       throw readiness === 'sign-in-required'
         ? new ClaudeProfileSignInRequiredError()

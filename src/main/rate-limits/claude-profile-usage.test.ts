@@ -242,7 +242,7 @@ it('marks inactive usage unavailable, not signed out, when an account profile ca
       readHomes: () => [],
       capabilities: () => [],
       isProvisioned: () => false,
-      readiness: () => readiness,
+      profileState: () => ({ readiness, identity: null }),
       prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }),
       publish: async () => {},
       withdraw: () => {}
@@ -282,7 +282,7 @@ it('does not read an inactive WSL account through a stopped distro', async () =>
       readHomes: () => [],
       capabilities: () => [],
       isProvisioned: () => false,
-      readiness: () => 'ready',
+      profileState: () => ({ readiness: 'ready', identity: null }),
       accountHome: () => home,
       prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }),
       publish: async () => {},

@@ -1,5 +1,4 @@
 import { CLAUDE_ACCOUNT_SIGN_IN_REQUIRED } from '../../shared/claude-account-refusal-copy'
-import type { ClaudeProfileReadiness } from '../../shared/managed-account-types'
 import type { ClaudeProfileDescriptor } from './claude-profile-paths'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import type { ClaudeLoginIdentity, ClaudeLoginState } from './claude-profile-readiness'
@@ -34,11 +33,8 @@ export type ClaudeProfileRoutingOwner = {
   /** Derived from step-1 setup's own output, so no flag records that setup ran. */
   isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
   accountHome?: (accountId: string) => string
-  readiness: (accountId: string) => ClaudeProfileReadiness
-  /** The login Claude recorded in the account's profile, from the same read as readiness. */
-  identity?: (accountId: string) => ClaudeLoginIdentity | null
-  /** Readiness and identity together, so a listing reads each profile once. */
-  profileState?: (accountId: string) => ClaudeLoginState
+  /** The account profile's readiness and the login Claude recorded there, from one read. */
+  profileState: (accountId: string) => ClaudeLoginState
   /** The host's own (System Default) login, read where Claude itself reads it. */
   systemDefaultIdentity?: () => ClaudeLoginIdentity | null
   /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */

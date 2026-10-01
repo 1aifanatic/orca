@@ -1,7 +1,6 @@
 import { resolveClaudeGlobalConfigFile } from '../claude/claude-folder-trust-file'
 import {
   readClaudeLoginState,
-  readClaudeProfileReadiness,
   readClaudeProfileOwnership,
   readClaudeProfileState,
   type ClaudeLoginState
@@ -60,7 +59,7 @@ export function createNativeClaudeProfileRouting(args: {
       runtime: 'host'
     })
     assertClaudeProfileDescendant(args.dataRoot, profile.home)
-    const readiness = readClaudeProfileReadiness(args.dataRoot, profile)
+    const { readiness } = readClaudeProfileState(args.dataRoot, profile)
     if (readiness === 'sign-in-required') {
       throw new ClaudeProfileSignInRequiredError()
     }
@@ -143,8 +142,6 @@ export function createNativeClaudeProfileRouting(args: {
       }
     },
     accountHome: (id) => profileFor(id).home,
-    readiness: (id) => profileStateFor(id).readiness,
-    identity: (id) => profileStateFor(id).identity,
     profileState: (id) => profileStateFor(id),
     systemDefaultIdentity: () =>
       readClaudeLoginState(

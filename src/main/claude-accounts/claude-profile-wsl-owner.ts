@@ -192,11 +192,15 @@ export function createWslClaudeProfileOwner(
         account.wslDistro
       )
     },
-    readiness: (accountId) => {
+    profileState: (accountId) => {
       const inspection = inspectionFor(accountId)
-      return inspection ? (inspection.result.readiness?.[accountId] ?? 'unavailable') : 'unverified'
+      return inspection
+        ? {
+            readiness: inspection.result.readiness?.[accountId] ?? 'unavailable',
+            identity: inspection.result.identities?.[accountId] ?? null
+          }
+        : { readiness: 'unverified', identity: null }
     },
-    identity: (accountId) => inspectionFor(accountId)?.result.identities?.[accountId] ?? null,
     prepare: async (descriptor, access) => {
       const distro = distroFor(descriptor.target)
       const guest = guestFor(distro)

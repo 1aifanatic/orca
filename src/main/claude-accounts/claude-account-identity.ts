@@ -1,7 +1,6 @@
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
-  ClaudeProfileReadiness,
   ClaudeSystemDefaultIdentity
 } from '../../shared/managed-account-types'
 import { findDuplicateClaudeAccount, normalizeClaudeEmail } from './claude-duplicate-account'
@@ -84,17 +83,10 @@ export function describeClaudeAccountIdentityIssue(
 /** Adds each row's readiness and the login its profile holds; derived on every read. */
 export function withObservedClaudeIdentities(
   accounts: readonly ClaudeManagedAccountSummary[],
-  owner: {
-    readiness: (accountId: string) => ClaudeProfileReadiness
-    identity?: (accountId: string) => ClaudeLoginIdentity | null
-    profileState?: (accountId: string) => ClaudeLoginState
-  }
+  owner: { profileState: (accountId: string) => ClaudeLoginState }
 ): ClaudeManagedAccountSummary[] {
   const observed = accounts.map((account) => {
-    const state = owner.profileState?.(account.id) ?? {
-      readiness: owner.readiness(account.id),
-      identity: owner.identity?.(account.id) ?? null
-    }
+    const state = owner.profileState(account.id)
     const identity = state.readiness === 'ready' ? state.identity : null
     return { ...account, profileReadiness: state.readiness, observed: identity }
   })

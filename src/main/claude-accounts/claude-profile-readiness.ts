@@ -41,25 +41,6 @@ export function readClaudeProfileOwnership(
   }
 }
 
-export function readClaudeProfileReadiness(
-  dataRoot: string,
-  profile: ClaudeProfileDescriptor
-): ClaudeProfileReadiness {
-  const ownership = readClaudeProfileOwnership(dataRoot, profile)
-  if (ownership !== 'ready') {
-    return ownership
-  }
-  return readClaudeLoginState(join(profile.home, '.claude.json')).readiness
-}
-
-/** The login Claude itself recorded in an owned profile; read-only and never a credential. */
-export function readClaudeProfileIdentity(
-  dataRoot: string,
-  profile: ClaudeProfileDescriptor
-): ClaudeLoginIdentity | null {
-  return readClaudeProfileState(dataRoot, profile).identity
-}
-
 /** Readiness and identity from one ownership read and one (memoized) state-file read. */
 export function readClaudeProfileState(
   dataRoot: string,

@@ -50,7 +50,7 @@ function hostOwner(): ClaudeProfileRoutingOwner {
     readHomes: () => [],
     capabilities: () => [CLAUDE_PROFILE_ROUTING_CAPABILITY],
     isProvisioned: () => true,
-    readiness: () => 'unsupported',
+    profileState: () => ({ readiness: 'unsupported', identity: null }),
     prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }),
     publish: async () => {},
     withdraw: () => {}

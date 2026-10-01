@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import { ClaudeAccountRegistration } from './claude-account-registration'
-import { readClaudeProfileReadiness } from './claude-profile-readiness'
+import { readClaudeProfileState } from './claude-profile-readiness'
 import { describeClaudeProfile, prepareClaudeProfileDirectory } from './claude-profile-paths'
 import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
 import { loginToClaudeProfile } from './claude-profile-login'
@@ -159,16 +159,16 @@ it('derives upgrade, draft, ready and unavailable from profile files without rea
     runtime: 'host',
     executionHostId: 'local'
   })
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('sign-in-required')
   prepareClaudeProfileDirectory(f.root, profile, userHome)
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('sign-in-required')
   writeFileSync(
     join(profile.home, '.claude.json'),
     JSON.stringify({ oauthAccount: { emailAddress: 'fake' } })
   )
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('ready')
   writeFileSync(join(profile.home, '.claude.json'), '{')
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('unavailable')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('unavailable')
   expect(readFileSync(legacy, 'utf8')).toBe('SENTINEL-NOT-IMPORTED')
 })
 it("parses a profile's Claude state file once until it changes", () => {
@@ -185,15 +185,15 @@ it("parses a profile's Claude state file once until it changes", () => {
   const parse = vi.spyOn(JSON, 'parse')
   const stateParses = () =>
     parse.mock.calls.filter(([text]) => String(text).includes('oauthAccount')).length
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('ready')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('ready')
   expect(stateParses()).toBe(1)
   writeFileSync(state, JSON.stringify({ oauthAccount: null, other: true }))
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('sign-in-required')
   rmSync(state)
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('sign-in-required')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('sign-in-required')
   writeFileSync(state, JSON.stringify({ oauthAccount: { emailAddress: 'fake' } }))
-  expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
+  expect(readClaudeProfileState(f.root, profile).readiness).toBe('ready')
 })
 it('runs Claude login directly in the supplied final home, with no cleanup on failure', async () => {
   const f = fixture()
