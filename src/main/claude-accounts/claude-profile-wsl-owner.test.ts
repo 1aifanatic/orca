@@ -15,6 +15,7 @@ import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 import { mergeClaudeProfileReaderRoots } from './claude-profile-reader-roots'
 import {
   CLAUDE_PROFILE_ROUTING_CAPABILITY,
+  WSL_CLAUDE_PROFILE_POINTER,
   claudeProfileRoutingEnabled
 } from '../../shared/claude-profile-routing'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
@@ -127,9 +128,7 @@ it('keeps distro pointers, guest paths, startup and current selection separate',
     expect(result.envPatch.CLAUDE_CONFIG_DIR).toBe(
       `/home/${distro}/.local/share/orca/claude-profiles/${distro}/home`
     )
-    expect(result.envPatch.ORCA_CLAUDE_PROFILE_POINTER).toBe(
-      `/home/${distro}/.local/share/orca/claude-profiles/selected-wsl`
-    )
+    expect(result.envPatch.ORCA_CLAUDE_PROFILE_POINTER).toBe(WSL_CLAUDE_PROFILE_POINTER)
     expect(result.configDir).toContain(`\\${distro}\\home\\${distro}`)
   }
   expect(f.calls.filter((request) => request.action === 'setup')).toHaveLength(2)
@@ -168,14 +167,12 @@ it('continues initializing other distros when one is stopped, then reports the f
 })
 it('opens WSL panes without any guest call, even when the distro is stopped', async () => {
   const f = fixture()
-  expect(f.routing.terminalEnv(ubuntu)).toEqual({})
-  expect(f.routing.terminalEnv({ runtime: 'wsl', wslDistro: null })).toEqual({})
+  const pointer = { ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER }
+  expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
+  expect(f.routing.terminalEnv({ runtime: 'wsl', wslDistro: null })).toEqual(pointer)
   expect(f.prepare).not.toHaveBeenCalled()
   await f.routing.prepare(ubuntu)
   const home = profileHome('Ubuntu', 'Ubuntu')
-  const pointer = {
-    ORCA_CLAUDE_PROFILE_POINTER: '/home/Ubuntu/.local/share/orca/claude-profiles/selected-wsl'
-  }
   expect(f.routing.terminalEnv(ubuntu)).toEqual({
     ...pointer,
     CLAUDE_CONFIG_DIR: home,

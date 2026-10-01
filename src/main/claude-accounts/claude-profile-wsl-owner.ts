@@ -1,6 +1,9 @@
 import { posix } from 'node:path'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
-import { CLAUDE_PROFILE_ROUTING_CAPABILITY } from '../../shared/claude-profile-routing'
+import {
+  CLAUDE_PROFILE_ROUTING_CAPABILITY,
+  WSL_CLAUDE_PROFILE_POINTER
+} from '../../shared/claude-profile-routing'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
@@ -31,8 +34,6 @@ export function createWslClaudeProfileOwner(
   withdrawPointer: (distro: string) => Promise<void> = withdrawClaudeWslPointer
 ): ClaudeProfileRoutingOwner {
   const guests = new Map<string, { guest: ClaudeWslGuest; expires: number }>()
-  // Why kept past the runtime cache: panes compute the pointer path without a guest call.
-  const homes = new Map<string, string>()
   const inspections = new Map<
     string,
     { accountId: string | null; home: string; result: ClaudeWslProfileResponse }
@@ -94,7 +95,6 @@ export function createWslClaudeProfileOwner(
         cached && cached.expires > Date.now() ? cached.guest : await prepareGuest(distro)
       if (guest !== cached?.guest) {
         guests.set(key, { guest, expires: Date.now() + 600_000 })
-        homes.set(key, guest.home)
       }
       const result = await guest.request({
         action: 'inspect',
@@ -128,14 +128,8 @@ export function createWslClaudeProfileOwner(
         target: { runtime: 'wsl', wslDistro: distro }
       }
     },
-    pointerPath: (target) => {
-      const distro = distroFor(target)
-      const home = homes.get(distro.toLowerCase())
-      if (!home) {
-        throw new Error(`WSL distro ${distro} has not provided its Claude profile paths`)
-      }
-      return posix.join(home, '.local/share/orca/claude-profiles/selected-wsl')
-    },
+    // Why guest-relative: the claude function expands it, so a pane needs no guest home.
+    pointerPath: () => WSL_CLAUDE_PROFILE_POINTER,
     targets: () =>
       [
         ...new Set(

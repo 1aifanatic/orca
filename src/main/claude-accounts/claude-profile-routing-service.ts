@@ -222,17 +222,13 @@ export class ClaudeProfileRoutingService {
   /**
    * A pane's spawn env: its children keep this account until the pane reopens, while the claude
    * function re-reads the pointer. Makes no guest call and never throws, so a non-Claude pane
-   * always opens; a WSL pane gets nothing until its distro's guest home is known.
+   * always opens.
    */
   terminalEnv(target?: ClaudeAccountSelectionTarget): ClaudeEnvPatch {
     try {
       return this.envPatch(this.resolve(target))
     } catch {
-      try {
-        return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
-      } catch {
-        return {}
-      }
+      return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
     }
   }
   // Why no CLAUDE_CONFIG_DIR for System Default: the user's inherited value must pass through.

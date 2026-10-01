@@ -9,6 +9,7 @@ vi.mock('./claude-profile-routing', async (original) => ({
   ...(await original<typeof ProfileRouting>()),
   claudeProfileRoutingEnabled: () => gate.enabled
 }))
+import { WSL_CLAUDE_PROFILE_POINTER } from './claude-profile-routing'
 import {
   getPosixClaudeShellFunction,
   getFishClaudeShellFunction,
@@ -140,6 +141,26 @@ describe('Claude invocation account selection', () => {
       )
     }
   })
+  it.each([...POSIX_SHELLS, ...(FISH ? [FISH] : [])])(
+    'in %s expands a WSL pane’s guest-relative pointer against $HOME at each invocation',
+    (shell) => {
+      const f = fixture()
+      const fn = shell.endsWith('fish')
+        ? getFishClaudeShellFunction()
+        : getPosixClaudeShellFunction()
+      const relative = [`ORCA_CLAUDE_PROFILE_POINTER=${WSL_CLAUDE_PROFILE_POINTER}`]
+      const guestPointer = join(f.root, '.local/share/orca/claude-profiles/selected-wsl')
+      expect(f.run(shell, `${fn}\nclaude x`, relative).status).toBe(1)
+      mkdirSync(join(f.root, '.local/share/orca/claude-profiles'), { recursive: true })
+      writeFileSync(guestPointer, f.b)
+      expect(f.run(shell, `${fn}\nclaude x`, relative).stdout).toBe(
+        `HOME=${f.b} KEY=none ARG=x TWIN=${f.b}\n`
+      )
+      writeFileSync(guestPointer, join(f.root, 'missing'))
+      const missing = f.run(shell, `${fn}\nclaude x`, relative)
+      expect([missing.status, missing.stdout]).toEqual([1, ''])
+    }
+  )
   it('preserves dormant generated scripts byte for byte', () => {
     gate.enabled = false
     expect([

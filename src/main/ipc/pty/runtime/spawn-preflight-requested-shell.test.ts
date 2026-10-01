@@ -122,6 +122,9 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
     await expect(prepareRuntimePtySpawn(ctx)).resolves.toBeNull()
     expect(ctx.codexSelectionTarget).toEqual({ runtime: 'wsl', wslDistro: 'Ubuntu' })
     expect(prepareGuest).not.toHaveBeenCalled()
-    expect(args.env).toEqual({ KEEP: '1' })
+    expect(args.env).toEqual({
+      KEEP: '1',
+      ORCA_CLAUDE_PROFILE_POINTER: '~/.local/share/orca/claude-profiles/selected-wsl'
+    })
   })
 })
