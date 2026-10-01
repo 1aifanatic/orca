@@ -4,12 +4,16 @@ const manager = vi.hoisted(() => {
   const connection = {}
   return { getConnection: vi.fn(() => connection), reconnect: vi.fn(async () => {}) }
 })
+const recoverManagedTunnels = vi.hoisted(() => vi.fn(async () => {}))
 
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
-  return { powerMonitor: new EventEmitter() }
+  return { app: { getPath: () => '/user-data' }, powerMonitor: new EventEmitter() }
 })
 vi.mock('./ssh-ipc-context', () => ({ connectionManager: manager }))
+vi.mock('../ssh/orcad-managed-tunnel', () => ({
+  recoverOrcadManagedTunnelsAfterHostResume: recoverManagedTunnels
+}))
 
 import { powerMonitor } from 'electron'
 import { activeSessions } from './ssh-active-relay-sessions'
@@ -55,5 +59,16 @@ describe('host sleep reconnect in plain SSH mode', () => {
     registerPowerMonitorReconnect()
     powerMonitor.emit('resume')
     await vi.waitFor(() => expect(manager.reconnect).toHaveBeenCalledWith('target-1'))
+  })
+
+  it('recovers managed tunnels with the same probe policy, even with no relay sessions', async () => {
+    registerPowerMonitorReconnect()
+    powerMonitor.emit('resume')
+    await vi.waitFor(() =>
+      expect(recoverManagedTunnels).toHaveBeenCalledWith('/user-data', {
+        attempts: 2,
+        timeoutMs: 5_000
+      })
+    )
   })
 })

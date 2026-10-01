@@ -77,6 +77,7 @@ import { broadcastPortForwards, relayStateOverrides } from './ssh-renderer-broad
 import { resetSshShutdownDrain } from './ssh-shutdown-drain'
 import { registerSshTargetCrudHandlers } from './ssh-target-crud-handlers'
 import { targetLifecycleInFlight } from './ssh-target-lifecycle-queue'
+import { disposeOrcadManagedTunnels } from '../ssh/orcad-managed-tunnel'
 
 const SSH_IPC_CHANNELS = [
   'ssh:listTargets',
@@ -253,6 +254,7 @@ export async function resetSshHandlerStateForTests(): Promise<void> {
   resetSshShutdownDrain()
 
   await connectionManager?.disconnectAll()
+  disposeOrcadManagedTunnels()
   portForwardManager?.dispose()
   setConnectionManager(null)
   setSshConnectionManagerResolver(null)
