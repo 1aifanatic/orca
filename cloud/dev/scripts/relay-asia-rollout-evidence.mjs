@@ -11,7 +11,8 @@ const C27 = 'production-gce-c27'
 // Each canary proves its own cell under production load; C28/C29 promotion consumes only C27's.
 const PRODUCTION_CANARIES = {
   [C27]: { kind: 'production-c27-canary', origin: 'https://c27.relay.onorca.dev' },
-  'production-gce-c30': { kind: 'production-c30-canary', origin: 'https://c30.relay.onorca.dev' }
+  'production-gce-c30': { kind: 'production-c30-canary', origin: 'https://c30.relay.onorca.dev' },
+  'production-gce-c31': { kind: 'production-c31-canary', origin: 'https://c31.relay.onorca.dev' }
 }
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
 const SHA_PATTERN = /^[a-f0-9]{40}$/
@@ -85,7 +86,12 @@ export function buildStagingEvidence(input) {
   }
   assertLoadReports(launch, expectedLoad)
   const metrics = runtimeMetrics(input.logs, start, end, STAGING_CELL)
-  assertPassingRuntimeMetrics(metrics, 'staging proof', 1)
+  assertPassingRuntimeMetrics(metrics, 'staging proof')
+  // Staging is quiet, so its one intentional sticky fallback must be the only one.
+  if (
+    number(metrics.regionFallbacks, 'regionFallbacks') !== 1 ||
+    number(metrics.usRegionFallbacks, 'usRegionFallbacks') !== 1
+  ) throw new Error('staging proof regionFallbacks did not match the intentional probes')
   const minimumConcurrentSplices = expectedLoad.splices - expectedLoad.wedgedReaders
   if (
     metrics.targetControlsMax < expectedLoad.controls ||
@@ -303,6 +309,11 @@ export function buildProductionCanaryEvidence(input) {
   // Directors show a steady relay_cells lock and pool-wait baseline unrelated to the canary cell.
   const metrics = runtimeMetrics(input.logs, start, end, input.cellId, { gateDirectorDatabase: false })
   assertPassingRuntimeMetrics(metrics, `${canary.label} canary`)
+  // Fallbacks are keyed by the host's target region. US-targeted ones come from unhinted or
+  // US-preferring hosts an Asia cell cannot cause, so they are recorded but not gated.
+  if (number(metrics.asiaRegionFallbacks, 'asiaRegionFallbacks') !== 0) {
+    throw new Error(`${canary.label} canary asiaRegionFallbacks must be zero`)
+  }
   metrics.cloudSqlBackendsMax = cloudSqlMaximum(input.cloudSql, start, end)
   assertPassingCanary(metrics, input.cellId)
   return {
@@ -370,6 +381,12 @@ function runtimeMetrics(logs, start, end, targetCellId, { gateDirectorDatabase =
     regionFallbacks: directorPayloads.reduce(
       (total, payload) => total + sumMap(payload.regionFallbacksDelta, 'region fallbacks'), 0
     ),
+    asiaRegionFallbacks: directorPayloads.reduce(
+      (total, payload) => total + number(
+        payload.regionFallbacksDelta?.['asia-east2'] ?? 0,
+        'Asia region fallbacks'
+      ), 0
+    ),
     usRegionFallbacks: directorPayloads.reduce(
       (total, payload) => total + number(
         payload.regionFallbacksDelta?.['us-central1'] ?? 0,
@@ -424,15 +441,9 @@ function runtimeMetrics(logs, start, end, targetCellId, { gateDirectorDatabase =
   }
 }
 
-function assertPassingRuntimeMetrics(metrics, label, expectedRegionFallbacks = 0) {
+function assertPassingRuntimeMetrics(metrics, label) {
   if (number(metrics.asiaSelections, 'Asia selections') < 1) {
     throw new Error(`${label} observed no Asia selections`)
-  }
-  if (
-    number(metrics.regionFallbacks, 'regionFallbacks') !== expectedRegionFallbacks ||
-    number(metrics.usRegionFallbacks, 'usRegionFallbacks') !== expectedRegionFallbacks
-  ) {
-    throw new Error(`${label} regionFallbacks did not match the intentional probes`)
   }
   for (const key of [
     'unavailableRegions', 'relaySqlFailures', 'databasePoolWaitingMax'
