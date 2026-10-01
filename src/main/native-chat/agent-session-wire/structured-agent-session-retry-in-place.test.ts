@@ -75,7 +75,9 @@ function startHost(): void {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${beforeSpawn.mock.calls.length + 1}`,
-    now: () => NOW
+    now: () => NOW,
+    // A booked try never fires on its own here: a test that wants one presses Retry.
+    setStartRetryTimer: () => () => {}
   })
   host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
 }
@@ -229,5 +231,62 @@ describe('a Retry of a message whose start failed for good', () => {
       ok: false,
       refusal: { code: 'agent_session_operation_invalid' }
     })
+  })
+})
+
+// The usual way Retry is used: the message failed, the person fixed something, and came back later.
+// By then the chat was put to rest, Orca restarted, or the chat was closed while it waited.
+describe('a Retry after the chat it failed in was closed or reopened', () => {
+  async function reopen(): Promise<void> {
+    await expect(
+      host.attach(CALLER, hostTestAttachParams(fence(), { providerHandle: undefined }))
+    ).resolves.toMatchObject({ ok: true })
+  }
+
+  it('delivers it after the idle sweep put the chat to rest', async () => {
+    const id = await failedForGood('hello')
+    await host.close(SESSION, 'evict')
+
+    await expect(retry(id)).resolves.toMatchObject({ ok: true })
+
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([id])
+    )
+  })
+
+  it('delivers it after Orca restarted', async () => {
+    const id = await failedForGood('hello')
+    await host.flushAllStreamedEvents()
+    startHost()
+    await host.journalSnapshot(SESSION)
+
+    await expect(retry(id)).resolves.toMatchObject({ ok: true })
+
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([id])
+    )
+    expect(await submission(id)).not.toHaveProperty('rejection')
+  })
+
+  it('delivers one whose wait the chat closing ended, once it is open again', async () => {
+    beforeSpawn.mockRejectedValueOnce(
+      new AgentSessionPreSpawnError(new Error('switching'), { reason: 'accountSwitchInProgress' })
+    )
+    const id = await send('hello')
+    await eventually(async () => expect((await submission(id))?.startRetry).toBeDefined())
+    await host.close(SESSION, 'user-close')
+    await eventually(async () =>
+      expect(await submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        rejectionCause: 'chatClosed'
+      })
+    )
+    await reopen()
+
+    await expect(retry(id)).resolves.toMatchObject({ ok: true })
+
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([id])
+    )
   })
 })

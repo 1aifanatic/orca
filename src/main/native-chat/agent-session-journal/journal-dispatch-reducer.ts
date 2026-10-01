@@ -24,16 +24,19 @@ import {
 import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
 
 /** The one way back from `rejected`: the person's Retry of a message no agent ever took. It is
- *  queued again under its own id, as when it was accepted: never handed over, no failure, no
- *  booked try. Any other row for a settled message still changes nothing. */
+ *  queued again under its own id, accepted anew at the Retry's row: never handed over, no failure,
+ *  no booked try. Its acceptance moves because every "accepted before" rule — what an earlier
+ *  process left queued, what a close or Stop took, what a stop it waits on precedes — must read the
+ *  Retry as the person's latest ask. Any other row for a settled message still changes nothing. */
 function requeueRejectedSubmission(
   submission: AgentJournalSubmission | undefined,
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
-  if (!submission || !isRequeueableAgentJournalSubmission(submission)) {
+  if (row.state !== 'pending' || !submission || !isRequeueableAgentJournalSubmission(submission)) {
     return
   }
   submission.fence = row.fence
+  submission.acceptedSequence = row.seq
   submission.dispatchState = 'pending'
   submission.providerItemId = null
   submission.reason = null
