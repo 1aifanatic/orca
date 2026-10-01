@@ -311,7 +311,16 @@ describe("a card's option its provider routes to the chat's Stop", () => {
       stop: vi.fn(async () => ({ ok: true as const, value: { cancelled: true } })),
       answer: vi.fn(async () => ({
         ok: true as const,
-        value: { itemId, revision: 2, resolution: { state: 'resolved' as const } }
+        value: {
+          itemId,
+          revision: 2,
+          resolution: {
+            state: 'resolved' as const,
+            selectedOptionId: optionId,
+            resolvedBy: 'client-1',
+            resolvedAt: 1
+          }
+        }
       }))
     }
     const result = await answerStructuredAgentSessionPromptOrStop(
