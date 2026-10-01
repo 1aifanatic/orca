@@ -1,7 +1,6 @@
 import {
   detectAgentStatusFromTitle,
   isOpenCodeNativeTitle,
-  isQuarterCircleSpinnerOnlyAgentTitle,
   isShellProcess,
   type AgentStatus
 } from '../../shared/agent-detection'
@@ -11,6 +10,7 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   terminalTitleBlocksExplicitAgentStatus,
+  agentTitleProvesAgentPresence,
   getLatestAgentCandidateTitleInfo
 } from './runtime-worktree-status-projection'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
@@ -107,12 +107,8 @@ export class RuntimeTerminalAgentStatusQuery {
       }
     }
     if (terminal.titleStatus) {
-      // Why: an OpenCode marker and a lone quarter-circle spinner (STA-4028) are activity,
-      // not identity, so resolve both through the identity/foreground evidence path.
-      if (
-        isOpenCodeNativeTitle(terminal.title) ||
-        isQuarterCircleSpinnerOnlyAgentTitle(terminal.title)
-      ) {
+      // Activity-only titles need the same identity check as the presence query.
+      if (!agentTitleProvesAgentPresence(terminal.title, 'agent')) {
         const isRunningAgent = await this.deps.isRunning(handle)
         this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
         return {

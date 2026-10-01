@@ -1,3 +1,4 @@
+import { getPiStateTitleStatus } from '../../shared/pi-state-title-marker'
 import { isQoderComposerReady } from './qoder-terminal-readiness'
 import { memoizeTitleClassification } from '../../shared/terminal-title-classification-memo'
 import {
@@ -37,7 +38,8 @@ function computeExplicitIdleStatusFromTitle(title: string): AgentStatus | null {
     title.startsWith(CLAUDE_IDLE_PREFIX) ||
     title.startsWith('* ') ||
     title.includes(GEMINI_IDLE_PREFIX) ||
-    title.startsWith(PI_IDLE_PREFIX)
+    title.startsWith(PI_IDLE_PREFIX) ||
+    getPiStateTitleStatus(title) === 'idle'
   ) {
     return 'idle'
   }

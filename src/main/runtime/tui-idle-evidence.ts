@@ -66,16 +66,9 @@ export function hasExplicitIdleTitle(
   record: TuiIdleEvidenceRecord,
   rendererTitle?: string | null
 ): boolean {
-  // Why lastOscTitle too, not just the renderer's pane title: a daemon-hosted or
-  // background pane has no renderer publishing a title, so reading only the synced
-  // one dropped an explicit `Codex ready` to the tier-3 lane and delayed it by the
-  // whole quiescence window.
-  for (const title of [rendererTitle, record.lastOscTitle]) {
-    if (title && detectExplicitIdleStatusFromTitle(title) === 'idle') {
-      return true
-    }
-  }
-  return false
+  // Renderer titles may be display-only decay; native evidence takes precedence.
+  const title = record.lastOscTitle ?? rendererTitle
+  return Boolean(title && detectExplicitIdleStatusFromTitle(title) === 'idle')
 }
 
 /**
@@ -269,6 +262,25 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
+  // OMP emits its idle title before setup ends; only its composer can authorize input.
+  if (input.agent === 'omp') {
+    if (
+      hasFreshWorkingFirstPartyStatus(input.firstPartyStatus) ||
+      input.record.lastAgentStatus === 'working'
+    ) {
+      return WORKING
+    }
+    return hasExplicitIdleTitle(input.record) &&
+      (input.readPositiveBodyEvidence() ||
+        hasQuietReadyScreen(
+          input.record,
+          input.agent,
+          input.readQuietReadyBodyEvidence,
+          input.quiescenceMs
+        ))
+      ? READY_STRONG
+      : { kind: 'pending', quietForeground: 'closed' }
+  }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.
   if (hasExplicitIdleTitle(input.record, input.rendererTitle) || input.readPositiveBodyEvidence()) {
@@ -383,7 +395,7 @@ export function ptyTuiIdleEvidence(
     record: pty,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     readPositiveBodyEvidence: () =>
-      (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
+      (agent !== 'qoder' && agent !== 'omp' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
       isKnownReadyPromptBody(waitText(), agent, readScreen, pty.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,

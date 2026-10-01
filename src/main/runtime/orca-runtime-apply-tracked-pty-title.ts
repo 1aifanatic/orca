@@ -22,6 +22,10 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
     // asserting activity, so it records NO title/status evidence — only the tracker keeps it,
     // for display (#10258). Nulling the status here rather than trusting the detector keeps
     // that contract local, since every activity-gated effect below is keyed on status.
+    // Publish the tracker's display change without replacing native execution evidence.
+    if (meta?.staleWorkingTitleClear) {
+      return true
+    }
     const identityOnlyTitle = this.isLiveCursorNativeTitle(rawTitle, meta)
     const recordedTitle = identityOnlyTitle ? null : normalizedTitle
     const agentStatus = identityOnlyTitle ? null : detectAgentStatusFromTitle(rawTitle)

@@ -186,8 +186,8 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
   /** Display fallback for identities intentionally omitted from liveness records. */
   protected getTrackedDisplayTitleForPty(ptyId: string): string | null {
     return (
-      this.getTrackedRawTitleForPty(ptyId) ??
       this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ??
+      this.getTrackedRawTitleForPty(ptyId) ??
       null
     )
   }

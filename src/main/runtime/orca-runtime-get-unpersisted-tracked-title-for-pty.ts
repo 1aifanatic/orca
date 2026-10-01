@@ -9,7 +9,7 @@ import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-
 
 export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntimeWithEmitDaemonPtyTransientFact {
   protected getUnpersistedTrackedTitleForPty(ptyId: string | null): string | null {
-    if (!ptyId || this.getTrackedRawTitleForPty(ptyId) !== null) {
+    if (!ptyId) {
       return null
     }
     // Why: a manual title is authoritative until explicitly cleared with null.
@@ -17,7 +17,9 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
     if (pty && pty.title !== null) {
       return null
     }
-    return this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ?? null
+    const displayTitle =
+      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.getLastNormalizedTitle() ?? null
+    return displayTitle === this.getTrackedRawTitleForPty(ptyId) ? null : displayTitle
   }
 
   /** Why: synthetic agent title frames no longer ride pty:data, so neither

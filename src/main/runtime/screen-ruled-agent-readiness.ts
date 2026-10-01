@@ -1,3 +1,4 @@
+import { isOmpComposerReadyScreen } from './omp-terminal-readiness'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isAntigravityComposerReadyScreen } from './antigravity-terminal-readiness'
 import { isClineComposerReadyScreen } from './cline-terminal-readiness'
@@ -12,6 +13,7 @@ type ScreenReadyRule = (screenLines: readonly string[]) => boolean
  * erased before its redraw) and, for Prime, just before its first-launch question.
  */
 const SCREEN_READY_RULES: Partial<Record<TuiAgent, ScreenReadyRule>> = {
+  omp: isOmpComposerReadyScreen,
   antigravity: isAntigravityComposerReadyScreen,
   cline: isClineComposerReadyScreen,
   'prime-agent': isPrimeAgentComposerReadyScreen

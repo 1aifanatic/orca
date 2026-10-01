@@ -25,7 +25,11 @@ export class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntimeWithGetPt
   ): RuntimeTerminalSummary {
     const worktree = worktreesById.get(pty.worktreeId)
 
-    const title = getLatestPtyTitle(pty)
+    const observedTitle = getLatestPtyTitle(pty)
+    const title =
+      observedTitle !== null && observedTitle === pty.lastOscTitle
+        ? (this.getTrackedDisplayTitleForPty(pty.ptyId) ?? observedTitle)
+        : observedTitle
     const pane = parsePaneKey(pty.paneKey ?? '')
     const orphaned = !ptyHoldsRecordedSurface(pty, this.ptySurfaceTopology())
     // A live process awaiting its pane binding is not evidence of an orphan.

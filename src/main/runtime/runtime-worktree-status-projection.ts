@@ -1,6 +1,7 @@
 import {
   detectAgentStatusFromTitle,
   isClaudeManagementTitle,
+  isCursorAgentTitle,
   isOpenCodeNativeTitle,
   isQuarterCircleSpinnerOnlyAgentTitle,
   isShellProcess,
@@ -96,6 +97,8 @@ export function agentTitleProvesAgentPresence(
 ): boolean {
   return (
     classification === 'agent' &&
+    // Cursor's spinner is synthesized by Orca, so its process must corroborate identity.
+    !isCursorAgentTitle(title) &&
     !isOpenCodeNativeTitle(title) &&
     !isQuarterCircleSpinnerOnlyAgentTitle(title)
   )

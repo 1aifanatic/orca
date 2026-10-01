@@ -218,7 +218,7 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
   }
 
   protected getAdoptedPtyExplicitIdleStatus(pty: RuntimePtyWorktreeRecord): AgentStatus | null {
-    const title = this.getAdoptedPtyTitle(pty)
+    const title = pty.lastOscTitle ?? this.getAdoptedPtyTitle(pty)
     return title ? detectExplicitIdleStatusFromTitle(title) : null
   }
 
