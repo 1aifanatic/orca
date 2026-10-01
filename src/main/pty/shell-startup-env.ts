@@ -211,8 +211,8 @@ const cache = new Map<string, string | undefined>()
  *   nothing. LAST matching assignment wins.
  * - fish universal variables (`set -Ux` stored in fish_variables) are only
  *   seen when the assignment is also written in a config file.
- * - On Windows only an explicit `bash` (Git Bash) is read; PowerShell
- *   profiles are read by powershell-profile-env.ts.
+ * - Windows has no POSIX default shell and reads nothing; Git Bash goes
+ *   through readBashStartupEnvVar, PowerShell through powershell-profile-env.ts.
  *
  * Results are memoized per (name, home, shell, configHome); a bounded recent
  * window keeps SSH/WSL home churn from retaining every historical key.
@@ -223,9 +223,23 @@ export function readShellStartupEnvVar(
   shell = process.env.SHELL,
   configHome = process.env.XDG_CONFIG_HOME
 ): string | undefined {
-  // Why: Windows has no default POSIX shell; only Git Bash, named explicitly,
-  // sources bash login files there.
-  if (!home || (process.platform === 'win32' && shell !== 'bash')) {
+  return process.platform === 'win32'
+    ? undefined
+    : readStartupFilesEnvVar(name, home, shell, configHome)
+}
+
+/** The same probe over bash login files, for a Windows pane running Git Bash. */
+export function readBashStartupEnvVar(name: string, home: string): string | undefined {
+  return readStartupFilesEnvVar(name, home, 'bash', undefined)
+}
+
+function readStartupFilesEnvVar(
+  name: string,
+  home: string | undefined,
+  shell: string | undefined,
+  configHome: string | undefined
+): string | undefined {
+  if (!home) {
     return undefined
   }
   // Why: the regex above is fixed; rejecting unsafe names is cheap defense
