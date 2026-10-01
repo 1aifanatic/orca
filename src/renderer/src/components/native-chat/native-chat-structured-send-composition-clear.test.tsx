@@ -331,6 +331,64 @@ describe('the draft saved to disk', () => {
 
     expect(localStorage.getItem(key)).toBeNull()
   })
+
+  // The composing box still holds the sent text; its keystrokes must not save it again before the
+  // composition settles, or a crash meanwhile restores it and the next Enter sends it twice.
+  it('never gets the sent text back from a composition the clear landed in', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const dispatch = deferred()
+      renderComposer(transport({ dispatchCommand: vi.fn(() => dispatch.promise) }))
+      const key = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`
+      const input = textarea()
+      changePrompt(input, '안녕')
+      pressEnter(input)
+      fireEvent.compositionStart(input)
+      changePrompt(input, '안녕하')
+      await act(async () => {
+        dispatch.resolve(PASS_THROUGH)
+        await dispatch.promise
+      })
+
+      changePrompt(input, '안녕하나')
+      act(() => vi.advanceTimersByTime(1000))
+
+      expect(readNativeChatDraftCache(draftKey)).toBe('')
+      expect(localStorage.getItem(key)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps a put-back but not the sent text when both land mid-composition', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const dispatch = deferred()
+      renderComposer(transport({ dispatchCommand: vi.fn(() => dispatch.promise) }))
+      const pane = draftKey
+      const key = `orca:nativeChatComposerDraft:v1:${encodeURIComponent(pane)}`
+      const input = textarea()
+      changePrompt(input, '안녕')
+      pressEnter(input)
+      fireEvent.compositionStart(input)
+      changePrompt(input, '안녕하')
+      act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
+      await act(async () => {
+        dispatch.resolve(PASS_THROUGH)
+        await dispatch.promise
+      })
+
+      changePrompt(input, '안녕하나')
+      act(() => vi.advanceTimersByTime(1000))
+
+      expect(readNativeChatDraftCache(pane)).toBe('withdrawn')
+      expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toMatchObject({ text: 'withdrawn' })
+      fireEvent.compositionEnd(input, { data: '하나' })
+      expect(readNativeChatDraftCache(pane)).toBe('하나\n\nwithdrawn')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('one chat shown in two panes', () => {
@@ -440,5 +498,17 @@ describe('one chat shown in two panes', () => {
     expect(promptValue(second)).toBe('하')
     expect(promptValue(first)).toBe('하')
     expect(readNativeChatDraftCache(draftKey)).toBe('하')
+  })
+
+  it('never shows the sent text again in the sending pane while the other pane composes', async () => {
+    const { first, second } = renderTwoPanes()
+    changePrompt(first, 'sent')
+
+    fireEvent.compositionStart(second)
+    await act(async () => pressEnter(first))
+    changePrompt(second, 'sent하')
+
+    expect(promptValue(first)).toBe('')
+    expect(readNativeChatDraftCache(draftKey)).toBe('')
   })
 })

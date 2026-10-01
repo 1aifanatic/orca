@@ -11,7 +11,8 @@ import {
  * Composer draft state for one view of a chat. `draftKey` names the chat (`nativeChatDraftKey`);
  * every view of it shares one draft, so what is typed here shows in the others and survives the
  * composer unmounting or Orca quitting. While this view's IME composes, the live composition
- * owns the field: other writers' text waits until it settles, as every programmatic draft does.
+ * owns the field: other writers' text waits until it settles, as every programmatic draft does,
+ * and the composition reaches the chat only once it settles.
  */
 export function useNativeChatDraft(
   draftKey: string,
@@ -25,7 +26,7 @@ export function useNativeChatDraft(
   const [draft, setDraftState] = useState(() => readNativeChatDraftCache(draftKey))
   // This view's draft for synchronous updates; React state only renders it.
   const draftRef = useRef(draft)
-  // Appended while composing: the editor's own writes would erase it, so each write re-adds it.
+  // Appended while composing; settling (or a clear meanwhile) writes it after this view's text.
   const pendingAppendRef = useRef<{ draftKey: string; text: string } | null>(null)
 
   const showDraft = useCallback((next: string) => {
@@ -72,16 +73,21 @@ export function useNativeChatDraft(
   const setDraft = useCallback(
     (next: string | ((previous: string) => string)) => {
       const resolved = typeof next === 'function' ? next(draftRef.current) : next
-      const pending = pendingAppendRef.current
-      writeNativeChatDraftCache(
-        draftKey,
-        pending?.draftKey === draftKey
-          ? appendNativeChatDraftText(resolved, pending.text)
-          : resolved
-      )
+      // A composition's keystrokes stay in this view until it settles, so a box still holding
+      // text another view cleared never writes it back. A clear itself is written at once.
+      if (!isComposing() || resolved === '') {
+        const pending = pendingAppendRef.current
+        writeNativeChatDraftCache(
+          draftKey,
+          pending?.draftKey === draftKey
+            ? appendNativeChatDraftText(resolved, pending.text)
+            : resolved,
+          resolved === ''
+        )
+      }
       showDraft(resolved)
     },
-    [draftKey, showDraft]
+    [draftKey, isComposing, showDraft]
   )
 
   const flushDraftAppends = useCallback(() => {

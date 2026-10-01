@@ -4,6 +4,7 @@
 
 // @vitest-environment happy-dom
 
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
 import type * as NativeChatDraftCache from './native-chat-draft-cache'
@@ -33,6 +34,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   cache.clearNativeChatDraftCacheForTests()
@@ -114,6 +116,21 @@ describe('composer draft persistence', () => {
     expect(saved(SCOPE)).toBeNull()
     const next = await relaunch()
     expect(next.readNativeChatDraftCache(SCOPE)).toBe('')
+  })
+
+  // The put-back is not the sent text; a crash before the typing delay must not restore the latter.
+  it('writes a clear at once when a put-back made mid-composition rides along', async () => {
+    const { useNativeChatDraft } = await import('./use-native-chat-draft')
+    cache.writeNativeChatDraftCache(SCOPE, 'sent text')
+    vi.advanceTimersByTime(300)
+    const { result } = renderHook(() => useNativeChatDraft(SCOPE, () => true))
+    act(() => {
+      cache.appendNativeChatDraftNow(SCOPE, { text: 'withdrawn' })
+    })
+
+    act(() => result.current.setDraft(''))
+
+    expect(saved(SCOPE)?.text).toBe('withdrawn')
   })
 
   it('writes text put back at once and reports that it reached disk', async () => {
