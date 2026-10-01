@@ -122,7 +122,9 @@ export async function deliverStructuredAgentSessionLaunchPrompt(
         taken: false,
         warning: submission.reason ?? "The agent couldn't start, so its prompt wasn't sent."
       }
-    default:
+    // Still waiting at the budget (a start being retried, or one still running).
+    case 'pending':
+    case undefined:
       return { taken: false, warning: STRUCTURED_LAUNCH_PROMPT_STILL_STARTING }
   }
 }
