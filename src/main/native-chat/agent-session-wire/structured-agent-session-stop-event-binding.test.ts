@@ -239,11 +239,10 @@ describe('a host stop with no turn running after a Stop that named none', () => 
     expect(await evictedAt()).toEqual(['user-stop'])
   })
 
-  it("writes the host's event when a send after the Stop is unanswered too", async () => {
+  it("writes the host's event when a send after the Stop is unanswered beside the stopped one", async () => {
     rig = await createQueuedMessageTestRig()
-    const stopped = await rig.workingSend()
+    await rig.workingSend()
     expect(await rig.stop()).toMatchObject({ ok: true })
-    await rig.settleAccepted(stopped, 'stopped')
     const mail = rig.send('mail for the lead', undefined, { internal: true })
     await mail.result
     await eventually(async () =>
