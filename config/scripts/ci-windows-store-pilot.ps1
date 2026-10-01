@@ -20,7 +20,7 @@ $generatedFiles = @(
   'mobile/src/terminal/terminal-webview-document-script.generated.ts',
   'mobile/src/components/pr-sidebar/mermaid-webview-engine.generated.ts',
   'mobile/src/components/pr-sidebar/mermaid-page-engine.generated.ts',
-  'mobile/src/components/rich-markdown/rich-markdown-editor-document-script.generated.ts'
+  'mobile/src/components/rich-markdown-editor-document-script.generated.ts'
 )
 New-Item -ItemType Directory -Force $outputDirectory | Out-Null
 

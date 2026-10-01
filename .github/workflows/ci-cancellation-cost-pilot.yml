@@ -1,0 +1,68 @@
+name: Cancellation condition comparison
+
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-cancellation-cost-pilot.yml']
+
+permissions:
+  contents: read
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+
+jobs:
+  failure_control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - name: Intentional preceding test failure
+        id: failed-test
+        run: exit 1
+      - name: Require the later test after a real failure
+        if: '!cancelled()'
+        env:
+          OUTCOME: ${{ steps.failed-test.outcome }}
+        run: |
+          test "$OUTCOME" = failure
+          touch "$RUNNER_TEMP/later-test-ran"
+      - name: Require cleanup after the failure
+        if: always()
+        run: test -f "$RUNNER_TEMP/later-test-ran"
+
+  cancelled_steps:
+    name: cancellation ${{ matrix.treatment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        treatment: [baseline, candidate]
+    steps:
+      - name: Wait for controlled cancellation
+        run: |
+          echo 'Both runners must reach this step before the pilot is cancelled.'
+          sleep 180
+      - name: Existing always condition starts expensive follow-up
+        if: always() && matrix.treatment == 'baseline'
+        run: |
+          date -u +%FT%TZ > "$RUNNER_TEMP/followup-started"
+          sleep 60
+      - name: Proposed condition stops expensive follow-up
+        if: "!cancelled() && matrix.treatment == 'candidate'"
+        run: |
+          date -u +%FT%TZ > "$RUNNER_TEMP/followup-started"
+          sleep 60
+      - name: Keep cleanup after cancellation
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/cancellation-comparison"
+          date -u +%FT%TZ > "$RUNNER_TEMP/cancellation-comparison/cleanup-ran"
+          if [ -f "$RUNNER_TEMP/followup-started" ]; then
+            cp "$RUNNER_TEMP/followup-started" "$RUNNER_TEMP/cancellation-comparison/followup-started"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cancellation-${{ matrix.treatment }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cancellation-comparison/

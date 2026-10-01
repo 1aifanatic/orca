@@ -5,6 +5,89 @@ unit-selection evidence, headless runtime qualification, review cancellation and
 
 ## October 1 PR concurrency follow-up
 
+### Where the next gains are
+
+The [September 30 demand report](https://github.com/stablyai/orca/actions/runs/36816009362)
+samples 282 of 4,194 runs across workflow/conclusion strata. It estimates full job
+duration for runs created in the reporting window, rather than occupancy clipped
+to that window. PR CI accounts for about 537 runner-hours, including about 321
+hours of unit shards, 73 hours of E2E, 41 hours of Windows packaging, 35 hours of
+Linux packaging, 18 hours of static analysis, and 11 hours of typechecking. These
+are weighted estimates, not exact billing totals. Unassigned and incomplete jobs
+are excluded. The report predates the merged planning/setup change below.
+
+The [full reference run](https://github.com/stablyai/orca/actions/runs/36841821670)
+ran 10,310 files exactly once. Across its five shards Vitest reports about 5,063
+worker-seconds importing modules, 2,838 running tests, 685 transforming source,
+267 setting up tests, and 390 preparing environments. Workers overlap, so these
+figures cannot be added to predict job elapsed time. They identify repeated
+imports and real-time test waits as larger targets than line-count reporting,
+which uses about 1.1 runner-hours in the same demand sample.
+
+The [next draft](https://github.com/stablyai/orca/pull/24355) measures virtual
+readiness deadlines in captured-transcript tests, E2E allocations with no general
+consumer, renderer projection, native setup, Docker fixtures, and Windows store
+restoration. Its temporary workflows retain alternating comparisons and output
+parity checks.
+
+A [three-pair hosted transcript comparison](https://github.com/stablyai/orca/actions/runs/36849458799)
+on one four-worker ARM runner measured baseline invocations at 127.001 / 114.307 /
+114.265 seconds, versus 28.903 / 28.663 / 28.455 seconds with virtual readiness
+deadlines. Median elapsed time for these five files fell about 75%. All 259
+original named assertions passed in every baseline and candidate, and candidates
+also passed three repaint checks. Summed test-body time fell from a median 325.85
+to 31.80 worker-seconds. This comparison includes Vitest startup/import work but
+excludes checkout, dependency setup, and queues; it is not a measured percentage
+improvement in the full unit matrix. Real emulator setup and drains remain real,
+and the same captured bytes, readiness/refusal deadlines, and assertions run.
+
+The same hosted trial passed three forced Electron native rebuilds while the
+external node-gyp path pointed to a nonexistent file. A separate fresh consumer
+then restored the native cache, required a real hit, and passed the existing
+Electron binary probe. The Linux Node-runtime workaround remains intact.
+
+For a network-only E2E selection in that trial, both dedicated network jobs
+passed. The previous allocations consumed 87 seconds for the Electron build,
+34 for the native primer, and 67 for a general job whose log confirmed that
+every selected spec belonged to a dedicated lane. The candidate skipped those
+three jobs before runner allocation, avoiding 188 runner-seconds in this case.
+This single-case measurement excludes queues and does not predict savings for
+mixed selections; the existing dedicated SSH, IME, and ordinary E2E routes remain.
+
+The [first full PR validation](https://github.com/stablyai/orca/actions/runs/36849458648)
+passed all five unit shards and both Linux/Windows package checks. Its reports
+contain 10,326 unique files, each once, with zero unhandled errors. Full shard
+job durations ranged from 544 to 581 seconds. They ran a different merged source
+on different allocations from the earlier reference, so comparing their totals
+does not establish an end-to-end speedup. The alternating transcript comparison
+above is the controlled timing evidence.
+
+Two local cache screens do not justify enabling Node's compile cache. A 96-file
+screen with an explicit worker flush produced a small, noisy difference. A larger
+256-file screen retained all 2,088 assertions: baseline elapsed times were
+54.630 / 55.105 / 55.171 seconds, fresh caches 53.719 / 54.577, and a warm cache
+53.732. The roughly 1.7% median difference is too small to justify cache transfer
+and another test hook without stronger hosted evidence.
+
+Vitest 4.1.11's experimental filesystem module cache is more promising locally,
+but raw reuse is unsafe. A 96-file screen fell from about 8.4 to 5.9 seconds with
+a warm cache, while a cold cache cost about 3%. Negative controls then reproduced
+false passes after adding a preferred import extension, retargeting a symlink,
+changing package exports, or changing transform inputs. Cache-disabled controls
+failed correctly. A cache key must cover resolution and transform inputs as well
+as file contents before any production trial; source hashes alone do not suffice.
+
+Affected-test selection remains in shadow mode. Its first merge was September
+28, so October 1 cannot satisfy the documented week of evidence. Seven sampled
+complete reference reports included one red run, but only two evaluated a smaller
+candidate set; each omitted about 177–179 worker-seconds out of 8,073–8,392. Five
+full fallbacks are not selection-validation evidence, and two other sampled red
+runs had no review artifact. These samples support keeping the conservative
+policy, rather than claiming that omitting roughly 12% of files would omit the
+same fraction of work.
+
+### Shared planning and typechecking
+
 PR planning now shares checkout and dependency setup with typechecking. Planning
 runs in the background, with an explicit failure-propagating join before its
 artifact is published. Static analysis remains on a separate runner. Its existing
@@ -590,3 +673,69 @@ only one potential idle allocation per day, and active development usually
 requires that build. Defer another release-graph change until skip frequency
 justifies it. The substantive remaining release occupancy opportunity is the
 separately documented asynchronous signing policy decision.
+
+## Persistent Vitest transform cache: rejected for now
+
+A local 96-file import-heavy sample with Vitest 4.1.11 took 8.31/8.53 seconds
+without its filesystem module cache, 8.63/8.69 seconds cold, and 5.91/5.91
+seconds warm: about 30% faster warm. The cache held 3,770 modules and 83 MiB.
+These timings exclude hosted cache transfer and do not establish a PR saving.
+
+Correctness probes found eight changes that incorrectly kept a test passing
+against the old transformed import or compiler output:
+
+| Change after warming                                              | Raw cache  | Startup fingerprint |
+| ----------------------------------------------------------------- | ---------- | ------------------- |
+| Add preferred `value.js` beside previously resolved `value.ts`    | False pass | Correctly fails     |
+| Retarget a source symlink while its old target still exists       | False pass | Correctly fails     |
+| Change an inlined package's `exports` to another existing file    | False pass | Correctly fails     |
+| Add a preferred extension in a generated source directory         | False pass | Correctly fails     |
+| Change TypeScript's JSX factory in `tsconfig.json`                | False pass | Correctly fails     |
+| Create the preferred file from setup after startup fingerprinting | False pass | False pass          |
+| Add a preferred file inside an external symlinked directory       | False pass | False pass          |
+| Change an external file read by a transform plugin                | False pass | False pass          |
+
+The fingerprint included file names/types, symlink targets, package/config/
+TypeScript metadata contents, and effective alias/define options. Following
+external symlink inventories and hashing declared transform inputs repaired the
+last two rows, but did not repair files created after fingerprinting. All ten
+cache-disabled changed-input controls failed correctly; initial and repeated
+warm controls passed. Effective alias and simple define changes also invalidated
+correctly without the added fingerprint.
+
+The [Vitest 4.1.11 documentation](https://github.com/vitest-dev/vitest/blob/v4.1.11/docs/config/experimental.md#known-issues)
+documents incomplete plugin-input tracking. Its
+[cache implementation](https://github.com/vitest-dev/vitest/blob/v4.1.11/packages/vitest/src/node/cache/fsModuleCache.ts)
+hashes the module and selected configuration, but retains previously resolved
+import URLs. [Upstream fix #11381](https://github.com/vitest-dev/vitest/pull/11381)
+merged September 29 and revalidates those URLs. A disposable Vitest 5.0.3 probe,
+which contains that fix, reproduced all eight false-pass categories: the old
+target still exists, so checking its resolved URL misses a newly preferred file
+or changed package export. Upgrading alone does not make reuse safe.
+
+To reproduce the simplest negative control outside the worktree:
+
+1. Create `value.ts` containing `export const value = 1`, and a test importing
+   `./value` and asserting `expect(value).toBe(1)`. Use an isolated config/cache,
+   one fork worker, `ORCA_BACKGROUND_LAUNCH=1`, and
+   `NODE_DISABLE_COMPILE_CACHE=1`.
+2. Run the installed CLI with `--experimental.fsModuleCache=true` to warm it.
+   Add `value.js` containing `export const value = 2`; retain `value.ts` and the
+   unchanged test. The same cached invocation incorrectly passes.
+3. Repeat with `--experimental.fsModuleCache=false`. The assertion correctly
+   fails. Vitest 5 uses `--fsModuleCache` for the equivalent controls.
+4. For the startup-inventory control, use unchanged setup code that creates
+   `value.js` only when a runtime environment switch is enabled. Remove that
+   file before each invocation/fingerprint; warm with the switch off, then run
+   with it on. The cached importer still points at `value.ts`, while the fresh
+   module graph correctly fails. This is an additional persistent-cache error,
+   not a claim that normal in-process module reuse supports arbitrary mutation.
+
+Orca currently resolves only pinned Vitest/Vite built-in transform plugins.
+Its setup files install runtime guards/shims and temporary user data, rather
+than custom transforms. A narrower policy could cache only proven immutable
+source/dependency inputs and leave tests, setup, virtual modules, external
+fixtures, and unknown plugins cold. That requires a validated transitive input
+boundary and mutation policy; hashing every source tree on each lookup would
+also spend the gain. Until that policy and hosted transfer cost are measured,
+the local warm result does not justify adding a persistent cache to CI.

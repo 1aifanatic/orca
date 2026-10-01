@@ -1,0 +1,170 @@
+name: Linux package cost comparison
+
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-package-cost-pilot.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-package-cost-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+
+jobs:
+  seed_daemon_fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-linux-package-fixture
+        with:
+          fixture: daemon-shutdown-descendants
+          save-cache: 'true'
+
+  daemon_fixture:
+    needs: seed_daemon_fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        sample: [1, 2, 3]
+    env:
+      FIXTURE_SAMPLE: ${{ matrix.sample }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+
+      - name: Reset first cold treatment
+        if: matrix.sample != 2
+        env:
+          FIXTURE_TREATMENT: cold
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
+      - name: Start first cold measurement
+        if: matrix.sample != 2
+        id: cold-first
+        env:
+          FIXTURE_TREATMENT: cold
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
+      - name: Measure first cold oracle
+        if: matrix.sample != 2
+        env:
+          FIXTURE_TREATMENT: cold
+          FIXTURE_STARTED: ${{ steps.cold-first.outputs.started }}
+          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ''
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
+
+      - name: Reset warm treatment
+        env:
+          FIXTURE_TREATMENT: warm
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
+      - name: Start warm measurement
+        id: warm-start
+        env:
+          FIXTURE_TREATMENT: warm
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
+      - uses: ./.github/actions/prepare-linux-package-fixture
+        id: warm-fixture
+        with:
+          fixture: daemon-shutdown-descendants
+      - name: Measure restored warm oracle
+        env:
+          FIXTURE_TREATMENT: warm
+          FIXTURE_STARTED: ${{ steps.warm-start.outputs.started }}
+          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ${{ steps.warm-fixture.outputs.image }}
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
+
+      - name: Reset second cold treatment
+        if: matrix.sample == 2
+        env:
+          FIXTURE_TREATMENT: cold
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs reset
+      - name: Start second cold measurement
+        if: matrix.sample == 2
+        id: cold-second
+        env:
+          FIXTURE_TREATMENT: cold
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs start
+      - name: Measure second cold oracle
+        if: matrix.sample == 2
+        env:
+          FIXTURE_TREATMENT: cold
+          FIXTURE_STARTED: ${{ steps.cold-second.outputs.started }}
+          ORCA_DAEMON_SHUTDOWN_FIXTURE_CACHE_IMAGE: ''
+        run: node config/scripts/ci-daemon-fixture-pilot.mjs measure
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: daemon-fixture-comparison-${{ matrix.sample }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/daemon-fixture-comparison/
+
+  appimage_compression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Restore electron-builder tooling
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-linux-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-builder-linux-
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: electron
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Build one frozen renderer and app input
+        run: |
+          pnpm run build:cli
+          status=0
+          pnpm run build:relay &
+          relay_pid=$!
+          pnpm run build:electron-vite:parallel || status=1
+          wait "$relay_pid" || status=1
+          exit "$status"
+      - name: Compare web projection on the same renderer
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node config/scripts/ci-web-projection-pilot.mjs
+      - run: node config/scripts/verify-web-build.mjs
+      - run: pnpm run build:mobile-web
+      - run: pnpm run build:native
+      - name: Prepare one complete Linux directory package
+        env:
+          ORCA_REUSE_PREPARED_NATIVE_RUNTIME: '1'
+        run: pnpm exec electron-builder --config config/electron-builder.config.cjs --linux dir --x64 --publish never
+      - name: Compare complete AppImages in both orders
+        id: images
+        run: node config/scripts/ci-appimage-compression-pilot.mjs
+      - name: Check baseline headless and CLI journeys
+        env:
+          APPIMAGE: ${{ steps.images.outputs.baseline-appimage }}
+        run: |
+          node config/scripts/run-headless-serve-shutdown-docker.mjs --appimage "$APPIMAGE" --all-entrypoints
+          node config/scripts/run-linux-cli-launch-contract-docker.mjs --appimage "$APPIMAGE"
+      - name: Check candidate headless and CLI journeys
+        env:
+          APPIMAGE: ${{ steps.images.outputs.candidate-appimage }}
+        run: |
+          node config/scripts/run-headless-serve-shutdown-docker.mjs --appimage "$APPIMAGE" --all-entrypoints
+          node config/scripts/run-linux-cli-launch-contract-docker.mjs --appimage "$APPIMAGE"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: package-cost-comparison-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/appimage-compression-comparison/
+            ${{ runner.temp }}/web-projection-comparison/
