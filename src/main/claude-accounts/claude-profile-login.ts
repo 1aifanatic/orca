@@ -88,11 +88,12 @@ export async function prepareClaudeProfileLogin(
   return { config: { windowsPath: profile.home, linuxPath: null, wslDistro: null }, provision }
 }
 
+/** Runs only Claude's login; finishing reads the identity, so a supersede cannot discard it. */
 export async function loginToClaudeProfile(
   config: ClaudeCommandConfig,
   setCancel: (cancel: (() => boolean) | null) => void,
   run = runClaudeCommandProcess
-) {
+): Promise<void> {
   const controller = new AbortController()
   setCancel(() => {
     if (controller.signal.aborted) {
@@ -106,10 +107,6 @@ export async function loginToClaudeProfile(
       signal: controller.signal,
       keepStdinOpen: true
     })
-    const output = await run(['auth', 'status', '--json'], config, 20_000, {
-      signal: controller.signal
-    })
-    return identitySchema.parse(JSON.parse(output))
   } finally {
     setCancel(null)
   }

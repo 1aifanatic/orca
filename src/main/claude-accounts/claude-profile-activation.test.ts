@@ -188,13 +188,18 @@ it("parses a profile's Claude state file once until it changes", () => {
   writeFileSync(state, JSON.stringify({ oauthAccount: { emailAddress: 'fake' } }))
   expect(readClaudeProfileReadiness(f.root, profile)).toBe('ready')
 })
-it('runs Claude login and status directly in the supplied final home, with no cleanup on failure', async () => {
+it('runs Claude login directly in the supplied final home, with no cleanup on failure', async () => {
   const f = fixture()
   const config = { windowsPath: join(f.root, 'final'), linuxPath: null, wslDistro: null }
-  const run = vi.fn(async () => JSON.stringify({ loggedIn: true, email: 'fake@example.test' }))
   const cancel = vi.fn()
+  // Why: once the login returns, a superseding action must no longer be able to abort it.
+  const run = vi.fn(async () => {
+    expect(cancel).toHaveBeenLastCalledWith(expect.any(Function))
+    return ''
+  })
   await loginToClaudeProfile(config, cancel, run)
-  expect(run.mock.calls).toHaveLength(2)
+  expect(run.mock.calls).toHaveLength(1)
+  expect(cancel).toHaveBeenLastCalledWith(null)
   expect(run).toHaveBeenNthCalledWith(
     1,
     ['auth', 'login', '--claudeai'],
