@@ -200,6 +200,11 @@ describe('retirePaneAuthority', () => {
       expect(attest()).toBeNull()
       expect(seen.windowClears).toEqual([])
       expect(seen.subscriberClears).toEqual([])
+      // The kept row no longer carries the token, so a restart cannot rehydrate its authority.
+      server.flushStatusPersistSync()
+      const restarted = await startServer()
+      expect(restarted.getHydratedAuthorityCommitments()).toHaveLength(0)
+      restarted.stop()
       // Not fenced: the live agent's next event still lands.
       server.ingestRemote(claudeEvent('PostToolUse', 'still going'), CONNECTION)
       expect(liveRow(server)?.prompt).toBe('still going')
