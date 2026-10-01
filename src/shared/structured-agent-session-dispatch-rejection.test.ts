@@ -154,7 +154,8 @@ describe('a rejection because the agent never started', () => {
     'managedAccountEnvOverride',
     'accountSwitchInProgress',
     'managedAccountUnsupported',
-    'hostStopped'
+    'hostStopped',
+    'providerExited'
   ] as const
 
   it('is every failed start, and nothing else', () => {
@@ -175,6 +176,7 @@ describe('a rejection because the agent never started', () => {
     })
     expect(queuedCardHoldsQueue(returned('providerStartFailed'))).toBe(false)
     expect(queuedCardHoldsQueue(returned('queueFull'))).toBe(true)
+    expect(queuedCardHoldsQueue(returned('writeFailed'))).toBe(true)
     expect(queuedCardHoldsQueue(returned('providerRejected'))).toBe(true)
     expect(queuedCardHoldsQueue({ state: 'waiting' })).toBe(false)
   })
