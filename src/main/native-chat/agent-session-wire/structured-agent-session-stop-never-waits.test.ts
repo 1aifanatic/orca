@@ -178,6 +178,51 @@ describe.each([
     }
   )
 
+  // A provider whose Stop ends its session: the child's end, in the Stop's next step, goes out
+  // before the write settles too; that step holds the lane for the pause instead.
+  it.each([
+    ['withdrawing the queued sends', "Stop's withdrawal skipped:"],
+    ['recording its queue pause', "Stop's queue pause skipped:"]
+  ] as const)(
+    "ends a session-ending provider's child before %s settles, then reports its failure",
+    async (step, warning) => {
+      const journal = await runningTurn()
+      const order: string[] = []
+      const closeSession = vi.fn(async () => {
+        order.push('kill')
+        return true
+      })
+      Object.assign(host.deps.adapter, { stopEndsSession: () => true, closeSession })
+      const held = Promise.withResolvers<never>()
+      if (step === 'withdrawing the queued sends') {
+        vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(() => held.promise)
+      } else {
+        vi.spyOn(journal.queuedMessages, 'recordPause').mockImplementation(() => held.promise)
+      }
+      cancelTurn.mockImplementation(async () => {
+        order.push('interrupt')
+        return { cancelled: true }
+      })
+
+      const stopping = stop(fields)
+      try {
+        await vi.waitFor(() => expect(closeSession).toHaveBeenCalledOnce(), INTERRUPT_WAIT)
+      } finally {
+        order.push('write fails')
+        held.reject(new Error(MALFORMED))
+      }
+
+      expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
+      expect(order).toEqual(['interrupt', 'kill', 'write fails'])
+      await vi.waitFor(() =>
+        expect(warned).toHaveBeenCalledWith(
+          `[agent-session] ${warning}`,
+          expect.objectContaining({ error: MALFORMED })
+        )
+      )
+    }
+  )
+
   // The open pays an import owed before the Stop, so the work falls owed at the Stop's first write:
   // the one moment the Stop's own writes can wait behind it.
   it('interrupts before owed work its writes wait behind is paid', async () => {
