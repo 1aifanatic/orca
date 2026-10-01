@@ -348,6 +348,38 @@ describe('createRemoteRuntimePtyTransport', () => {
     )
   })
 
+  it('sends the route owner for a mixed row and lets the host use that agent settings', async () => {
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    const transport = createRemoteRuntimePtyTransport('env-1', {
+      worktreeId: 'repo1::/remote/wt',
+      command: 'claude --old',
+      launchAgent: 'claude',
+      agentArgsOverride: '--claude-only',
+      env: { CLAUDE_ONLY: '1' },
+      resumeProviderSession: {
+        key: 'session_id',
+        id: 'codex-owned',
+        resumeIdentity: { agent: 'codex' }
+      },
+      tabId: 'tab-1',
+      leafId: '11111111-1111-4111-8111-111111111111'
+    })
+    await transport.connect({ url: '', callbacks: {} })
+    expect(runtimeCall).toHaveBeenCalledWith({
+      selector: 'env-1',
+      method: 'terminal.ensureAgentSession',
+      timeoutMs: 15_000,
+      params: {
+        kind: 'explicit',
+        worktree: 'id:repo1::/remote/wt',
+        agent: 'codex',
+        providerSession: { key: 'session_id', id: 'codex-owned' },
+        placement: { tabId: 'tab-1', leafId: '11111111-1111-4111-8111-111111111111' },
+        presentation: 'background'
+      }
+    })
+  })
+
   it.each([
     ['the pane override', '--pane-override'],
     ['no agentArgs, so the host keeps its defaults', undefined]

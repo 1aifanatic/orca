@@ -99,8 +99,9 @@ describe('resume owner rule', () => {
       id: 'codex-new',
       resumeIdentity: { agent: 'codex' }
     })
-    // Whatever the display says, a Claude resume of that row is refused, never silently typed.
-    expect(claudeResumeCommand(row?.providerSession)).toBeNull()
+    expect(claudeResumeCommand(row?.providerSession)).toBe(
+      "codex '--dangerously-bypass-approvals-and-sandbox' 'resume' 'codex-new'"
+    )
   })
 
   it.each([undefined, 'unknown'])(

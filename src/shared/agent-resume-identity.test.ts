@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AGENT_RESUME_IDENTITY_ERROR,
-  agentResumeIdentityPermits,
+  resolveResumeAgent,
   decodeHookResumeSession,
   providerSessionForResumeRequest
 } from './agent-resume-identity'
@@ -16,7 +15,7 @@ describe('owned resume record', () => {
   it.each(RESUMABLE_TUI_AGENTS)('records %s from the producing route', (agent) => {
     const session = decodeHookResumeSession(locator, agent, null)
     expect(session?.resumeIdentity).toEqual({ agent })
-    expect(session && agentResumeIdentityPermits(agent, session)).toBe(true)
+    expect(session && resolveResumeAgent(agent, session)).toBe(agent)
   })
 
   it('keeps a legacy row without source unresolved, and resumes it as before', () => {
@@ -39,27 +38,34 @@ describe('owned resume record', () => {
     )
   })
 
-  it('refuses only an identity naming another agent', () => {
-    expect(agentResumeIdentityPermits('codex', locator)).toBe(true)
+  it('resolves the route owner ahead of the displayed agent', () => {
+    expect(resolveResumeAgent('codex', locator)).toBe('codex')
     const owned = decodeHookResumeSession(locator, 'codex', 'ssh-a')!
     expect(owned.resumeIdentity).toEqual({ agent: 'codex' })
-    expect(agentResumeIdentityPermits('codex', owned)).toBe(true)
-    expect(agentResumeIdentityPermits('claude', owned)).toBe(false)
+    expect(resolveResumeAgent('codex', owned)).toBe('codex')
+    expect(resolveResumeAgent('claude', owned)).toBe('codex')
   })
 
-  it('refuses a saved mixed identity rather than relabeling it', () => {
+  it('resumes a saved mixed identity with its owner and current settings', () => {
     const session = decodeHookResumeSession(locator, 'codex', null)!
     expect(
       buildAgentResumeStartupPlan({
         agent: 'claude',
         providerSession: session,
-        cmdOverrides: {},
+        cmdOverrides: { codex: '/opt/codex' },
+        agentCommand: 'claude --old',
+        agentArgs: '--claude-only',
+        agentEnv: { CLAUDE_ONLY: '1' },
+        agentDefaultArgs: { codex: '--codex-current' },
+        agentDefaultEnv: { codex: { CODEX_CURRENT: '1' } },
         platform: 'linux'
       })
-    ).toBeNull()
-    expect(() => providerSessionForResumeRequest('claude', session)).toThrow(
-      AGENT_RESUME_IDENTITY_ERROR
-    )
+    ).toMatchObject({
+      agent: 'codex',
+      launchCommand: "/opt/codex '--codex-current' 'resume' 'provider-owned-id'",
+      env: { CODEX_CURRENT: '1' }
+    })
+    expect(providerSessionForResumeRequest(session)).toEqual(locator)
   })
 
   it.each([{ agent: 'bogus' }, 'codex', 42, { connectionId: null }])(
@@ -72,7 +78,7 @@ describe('owned resume record', () => {
       })
       const legacy = decodeHookResumeSession(raw, undefined, null)!
       expect(legacy.resumeIdentity).toBeUndefined()
-      expect(agentResumeIdentityPermits('claude', legacy)).toBe(true)
+      expect(resolveResumeAgent('claude', legacy)).toBe('claude')
     }
   )
 
@@ -103,8 +109,6 @@ describe('owned resume record', () => {
 
   it('projects a validated locator for older strict RPC decoders', () => {
     const session = decodeHookResumeSession(locator, 'codex', null)!
-    expect(ProviderSession.parse(providerSessionForResumeRequest('codex', session))).toEqual(
-      locator
-    )
+    expect(ProviderSession.parse(providerSessionForResumeRequest(session))).toEqual(locator)
   })
 })

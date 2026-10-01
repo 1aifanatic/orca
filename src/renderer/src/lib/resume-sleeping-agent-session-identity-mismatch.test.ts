@@ -1,7 +1,3 @@
-// A sleeping record whose saved owner is another agent gets one visible refusal on automatic
-// wake and is then consumed like a launched record, instead of re-toasting on every activation.
-// A record whose pane is still preserved is left for that pane's cold restore, which keeps it.
-
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('sonner', () => ({
@@ -10,7 +6,6 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
-import { AGENT_RESUME_IDENTITY_DISCARDED_ERROR } from '../../../shared/agent-resume-identity'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { useAppStore } from '@/store'
 import { makeTab, makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
@@ -64,7 +59,7 @@ afterEach(() => {
   useAppStore.setState(initialAppStoreState, true)
 })
 
-it('refuses a mismatched record once, consumes it, and leaves every other record alone', () => {
+it('launches a mixed record once with its owner and leaves other workspaces alone', () => {
   const mismatched = makeRecord({ paneKey: 'tab-1:leaf-1', tabId: 'tab-1' })
   const owned = makeRecord({
     paneKey: 'tab-2:leaf-1',
@@ -74,19 +69,19 @@ it('refuses a mismatched record once, consumes it, and leaves every other record
   const elsewhere = makeRecord({ paneKey: 'tab-3:leaf-1', tabId: 'tab-3', worktreeId: OTHER_WT })
   seed([mismatched, owned, elsewhere])
 
-  expect(resumeSleepingAgentSessionsForWorktree(WT)).toBe(1)
-  expect(vi.mocked(toast.error).mock.calls).toEqual([[AGENT_RESUME_IDENTITY_DISCARDED_ERROR]])
+  expect(resumeSleepingAgentSessionsForWorktree(WT)).toBe(2)
+  expect(toast.error).not.toHaveBeenCalled()
   expect(useAppStore.getState().sleepingAgentSessionsByPaneKey).toEqual({
     [elsewhere.paneKey]: elsewhere
   })
-  expect(useAppStore.getState().tabsByWorktree[WT]).toHaveLength(1)
+  expect(useAppStore.getState().tabsByWorktree[WT]).toHaveLength(2)
 
   expect(resumeSleepingAgentSessionsForWorktree(WT)).toBe(0)
-  expect(toast.error).toHaveBeenCalledTimes(1)
-  expect(useAppStore.getState().tabsByWorktree[WT]).toHaveLength(1)
+  expect(toast.error).not.toHaveBeenCalled()
+  expect(useAppStore.getState().tabsByWorktree[WT]).toHaveLength(2)
 })
 
-it('leaves a mismatched record with a preserved pane to that pane, which keeps it', () => {
+it('leaves a mixed record with a preserved pane for cold restore', () => {
   const paneKey = makePaneKey('tab-1', LEAF)
   const record = makeRecord({ paneKey, tabId: 'tab-1', origin: 'quit' })
   seed([record], {

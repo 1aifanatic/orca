@@ -4,7 +4,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { AGENT_RESUME_IDENTITY_DISCARDED_ERROR } from '../../../shared/agent-resume-identity'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 
 const mockCreateTab = vi.fn()
@@ -112,15 +111,27 @@ describe('launchSleepingAgentSession Windows shell quoting', () => {
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
   })
 
-  it('visibly refuses and consumes an identity naming another agent without creating a resume tab', async () => {
+  it('resumes a mixed row with the owning agent and its current settings', async () => {
+    store.settings.agentCmdOverrides = { codex: 'custom-codex' }
+    store.settings.agentDefaultArgs = { codex: '--codex-current' }
+    store.settings.agentDefaultEnv = { codex: { CODEX_CURRENT: '1' } }
     await expect(
       launch({
         ...record,
-        providerSession: { ...record.providerSession, resumeIdentity: { agent: 'claude' } }
+        agent: 'claude',
+        providerSession: { ...record.providerSession, resumeIdentity: { agent: 'codex' } },
+        launchConfig: {
+          agentCommand: 'claude --old',
+          agentArgs: '--claude-only',
+          agentEnv: { CLAUDE_ONLY: '1' }
+        }
       })
-    ).resolves.toBeUndefined()
-    expect(toast.error).toHaveBeenCalledWith(AGENT_RESUME_IDENTITY_DISCARDED_ERROR)
-    expect(mockCreateTab).not.toHaveBeenCalled()
+    ).resolves.toBe(`custom-codex '--codex-current' 'resume' '${SESSION_ID}'`)
+    expect(mockCreateTab.mock.calls.at(-1)?.[3]).toMatchObject({
+      launchAgent: 'codex',
+      pendingStartup: { launchAgent: 'codex', env: { CODEX_CURRENT: '1' } }
+    })
+    expect(toast.error).not.toHaveBeenCalled()
     expect(store.clearSleepingAgentSession).toHaveBeenCalledWith(record.paneKey)
   })
 

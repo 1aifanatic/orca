@@ -142,7 +142,10 @@ describe('resume identity through authenticated provider hooks', () => {
           cmdOverrides: {},
           platform: 'linux'
         })
-    ).toBeNull()
+    ).toMatchObject({
+      agent: 'codex',
+      launchCommand: "codex '--dangerously-bypass-approvals-and-sandbox' 'resume' 'codex-worker'"
+    })
     delete legacy.source
     expect(sanitizeHydratedEntry(PANE, legacy)?.providerSession?.resumeIdentity).toBeUndefined()
   })

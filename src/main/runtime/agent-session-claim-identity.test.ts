@@ -8,14 +8,14 @@ import {
 } from './agent-session-claim-identity'
 
 describe('agent session claim identity', () => {
-  it('refuses a provider locator owned by another agent before creating a claim', () => {
-    expect(() =>
+  it('uses the route owner when creating a claim', () => {
+    expect(
       canonicalizeAgentSessionIdentity('claude', {
         key: 'session_id',
         id: 'codex-worker',
         resumeIdentity: { agent: 'codex' }
       })
-    ).toThrow('Cannot resume this session')
+    ).toMatchObject({ agent: 'codex', providerSession: { id: 'codex-worker' } })
   })
 
   it('creates stable opaque identity and worktree digests', () => {

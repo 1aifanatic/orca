@@ -1,4 +1,3 @@
-import { AGENT_RESUME_IDENTITY_ERROR } from '../../../../shared/agent-resume-identity'
 import type * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
@@ -145,7 +144,7 @@ describe('connectPanePty', () => {
   })
 
   const SESSION_ID = '0195f2ce-1111-4000-8000-000000000001'
-  // A Claude pane whose saved locator is owned by Codex: the one identity mismatch resume refuses.
+  // A Claude pane whose saved locator is owned by Codex: a main-era mixed row.
   const mismatchedSession = {
     key: 'session_id',
     id: SESSION_ID,
@@ -185,9 +184,15 @@ describe('connectPanePty', () => {
     expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
   })
 
-  it('refuses a mismatched cold restore once, types nothing, and lets the same pane start fresh', async () => {
+  it('resumes a mixed cold restore in Codex with its current settings', async () => {
     const { connectPanePty } = await import('./pty-connection')
     const paneKey = makePaneKey('tab-1', LEAF_1)
+    mockStoreState.settings = {
+      ...mockStoreState.settings,
+      agentCmdOverrides: { codex: 'custom-codex' },
+      agentDefaultArgs: { codex: '--codex-current' },
+      agentDefaultEnv: { codex: { CODEX_CURRENT: '1' } }
+    }
     mockStoreState.sleepingAgentSessionsByPaneKey = {
       [paneKey]: {
         paneKey,
@@ -195,6 +200,11 @@ describe('connectPanePty', () => {
         worktreeId: 'wt-1',
         agent: 'claude',
         providerSession: mismatchedSession,
+        launchConfig: {
+          agentCommand: 'claude --old',
+          agentArgs: '--claude-only',
+          agentEnv: { CLAUDE_ONLY: '1' }
+        },
         prompt: 'saved work',
         state: 'working',
         capturedAt: 1,
@@ -221,24 +231,14 @@ describe('connectPanePty', () => {
     expect(transport.connect).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'lost-pty' })
     )
-    expect(deps.onPtyErrorRef.current.mock.calls).toEqual([[1, AGENT_RESUME_IDENTITY_ERROR]])
-    expect(transport.sendInput).not.toHaveBeenCalled()
-    for (const [options] of transport.connect.mock.calls) {
-      expect(options.command).toBeUndefined()
-    }
-    expect(mockStoreState.clearSleepingAgentSession).not.toHaveBeenCalled()
-
-    // A fresh agent launched into the same tab and pane opens without another refusal.
-    const fresh = createMockTransport('fresh-agent-pty')
-    transportFactoryQueue.push(fresh)
-    const freshDeps = createDeps({
-      startup: { command: 'codex', launchAgent: 'codex', startupCommandDelivery: 'shell-ready' }
-    })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Same connection harness, reconnecting the refused pane with an explicit agent launch.
-    connectPanePty(createPane(1) as never, createManager(1) as never, freshDeps as never)
-    await flushAsyncTicks(20)
-    expect(freshDeps.onPtyErrorRef.current).not.toHaveBeenCalled()
-    expect(createdTransportOptions.at(-1)).toMatchObject({ command: 'codex', launchAgent: 'codex' })
-    expect(fresh.connect).toHaveBeenCalled()
+    expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
+    expect(transport.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: `custom-codex '--codex-current' 'resume' '${SESSION_ID}'`,
+        env: expect.objectContaining({ CODEX_CURRENT: '1' }),
+        launchAgent: 'codex'
+      })
+    )
+    expect(mockStoreState.clearSleepingAgentSession).toHaveBeenCalledWith(paneKey)
   })
 })

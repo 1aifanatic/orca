@@ -9,13 +9,6 @@ import {
   type AgentResumeIdentity
 } from './agent-session-resume'
 
-export const AGENT_RESUME_IDENTITY_ERROR =
-  'Cannot resume this session because its agent ownership could not be verified. The saved session is preserved. You can start a fresh agent separately.'
-
-/** Automatic wake consumes the refused record, so this text must not promise it is kept. */
-export const AGENT_RESUME_IDENTITY_DISCARDED_ERROR =
-  "Cannot resume this session because it belongs to a different agent. Orca removed its saved resume entry; the agent's own session history was not touched. You can start a fresh agent separately."
-
 /** Only the saved hook route can establish a legacy session's provider. */
 export function decodeHookResumeSession(
   raw: unknown,
@@ -79,23 +72,18 @@ export function inheritAgentResumeIdentity(
   }
 }
 
-/** One resume rule: no identity is a record saved before ownership existed and resumes as before;
- *  only an identity naming another agent refuses. */
-export function agentResumeIdentityPermits(
-  agent: string,
+/** The hook route owns the session; older unlabelled records retain their display agent. */
+export function resolveResumeAgent<T extends string>(
+  displayAgent: T,
   session: AgentProviderSessionMetadata
-): boolean {
-  return session.resumeIdentity === undefined || session.resumeIdentity.agent === agent
+): T | AgentResumeIdentity['agent'] {
+  return session.resumeIdentity?.agent ?? displayAgent
 }
 
-/** Strict older RPC decoders accept only the locator; validate ownership before projecting it. */
+/** Strict older RPC decoders accept only the locator, alongside the resolved agent. */
 export function providerSessionForResumeRequest(
-  agent: string,
   session: AgentProviderSessionMetadata
 ): AgentProviderSessionMetadata {
-  if (!agentResumeIdentityPermits(agent, session)) {
-    throw new Error(AGENT_RESUME_IDENTITY_ERROR)
-  }
   return {
     key: session.key,
     id: session.id,

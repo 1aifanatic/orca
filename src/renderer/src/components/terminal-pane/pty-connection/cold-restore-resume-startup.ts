@@ -1,7 +1,4 @@
-import {
-  AGENT_RESUME_IDENTITY_ERROR,
-  agentResumeIdentityPermits
-} from '../../../../../shared/agent-resume-identity'
+import { resolveResumeAgent } from '../../../../../shared/agent-resume-identity'
 import { useAppStore } from '@/store'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { buildAgentResumeStartupPlan } from '@/lib/tui-agent-startup'
@@ -25,9 +22,7 @@ import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySession): void {
-  const resolveStartup = (
-    onRefused?: (message: string) => void
-  ): ColdRestoreAgentResumeStartup | null => {
+  session.buildColdRestoreAgentResumeStartup = (): ColdRestoreAgentResumeStartup | null => {
     if (session.pendingStartupCommand) {
       return null
     }
@@ -37,8 +32,8 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     const sleepingRecord = sleepingRecordEntry?.record
 
     const useLiveEntry = entry && entry.state !== 'done'
-    const agent = useLiveEntry ? entry.agentType : sleepingRecord?.agent
-    if (!agent || !isResumableTuiAgent(agent)) {
+    const displayAgent = useLiveEntry ? entry.agentType : sleepingRecord?.agent
+    if (!displayAgent || !isResumableTuiAgent(displayAgent)) {
       return null
     }
     const providerSession = normalizeAgentProviderSession(
@@ -66,20 +61,19 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     ) {
       return null
     }
-    if (!agentResumeIdentityPermits(agent, providerSession)) {
-      onRefused?.(AGENT_RESUME_IDENTITY_ERROR)
-      return null
-    }
+    const agent = resolveResumeAgent(displayAgent, providerSession)
     const matchingSleepingLaunchConfig =
-      sleepingRecord?.launchConfig &&
+      sleepingRecord?.agent === agent &&
+      sleepingRecord.launchConfig &&
       (!useLiveEntry ||
         (sleepingRecord.agent === agent &&
           agentProviderSessionsEqual(agent, sleepingRecord.providerSession, providerSession)))
         ? sleepingRecord.launchConfig
         : undefined
     const launchConfig =
-      (useLiveEntry && entry ? state.getAgentLaunchConfigForStatusEntry(entry) : undefined) ??
-      matchingSleepingLaunchConfig
+      (useLiveEntry && entry?.agentType === agent
+        ? state.getAgentLaunchConfigForStatusEntry(entry)
+        : undefined) ?? matchingSleepingLaunchConfig
     // Why: the resume line is typed into this pane's live shell, so its quoting must
     // follow the tab's effective Windows shell, not the win32 PowerShell default.
     const resumeTarget = resolveAgentResumeLaunchTarget({
@@ -129,10 +123,5 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       hasSleepingRecord: Boolean(sleepingRecord),
       sleepingRecordEntry
     }
-  }
-  // Why: builds also run speculatively before a live reattach, so only an applied cold restore reports.
-  session.buildColdRestoreAgentResumeStartup = () => resolveStartup()
-  session.reportColdRestoreAgentResumeRefusal = (): void => {
-    resolveStartup((message) => session.reportError(message))
   }
 }
