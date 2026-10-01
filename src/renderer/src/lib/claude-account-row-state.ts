@@ -3,7 +3,7 @@ import { isUnfinishedClaudeSignIn } from '../../../shared/claude-unfinished-sign
 import type { ClaudeManagedAccountSummary } from '../../../shared/managed-account-types'
 
 export type ClaudeAccountRowState = {
-  /** The login the account's profile holds; the stored name only when the profile is unread. */
+  /** The email the account was added as; a draft shows the login its profile holds, if any. */
   label: string
   /** Why the row cannot be used as it is; null for a usable row. */
   problem: string | null
@@ -17,9 +17,12 @@ export function getClaudeAccountRowState(
   account: ClaudeManagedAccountSummary
 ): ClaudeAccountRowState {
   const unfinished = isUnfinishedClaudeSignIn(account)
-  const label =
-    account.profileEmail ||
-    (unfinished ? translate('accounts.claude.draft', 'Unfinished sign-in') : account.email)
+  // Why the added-as email: a row signed in to another login must still say which account it is;
+  // its problem text names the login it now holds.
+  const label = unfinished
+    ? account.profileEmail || translate('accounts.claude.draft', 'Unfinished sign-in')
+    : account.email
+  const signedInAs = account.profileEmail || account.email
   const readiness = account.profileReadiness
   const addedAsOther =
     !unfinished &&
@@ -30,13 +33,13 @@ export function getClaudeAccountRowState(
       ? translate(
           'accounts.claude.identityDuplicateAddedAs',
           'This account was added as {{value0}} but is now signed in as {{value1}}, which is already added as another account. Sign in again as {{value0}}, or remove this account.',
-          { value0: account.email, value1: label }
+          { value0: account.email, value1: signedInAs }
         )
       : account.profileIdentityIssue === 'duplicate'
         ? translate(
             'accounts.claude.identityDuplicate',
             '{{value0}} is already added as another account. Sign in again with a different account, or remove this account.',
-            { value0: label }
+            { value0: signedInAs }
           )
         : account.profileIdentityIssue === 'mismatch' &&
             account.profileEmail?.toLowerCase() === account.email.toLowerCase()
@@ -48,7 +51,7 @@ export function getClaudeAccountRowState(
             ? translate(
                 'accounts.claude.identityMismatch',
                 'This account was added as {{value0}} but is now signed in as {{value1}}. Sign in again to choose which account it uses.',
-                { value0: account.email, value1: label }
+                { value0: account.email, value1: signedInAs }
               )
             : readiness === 'sign-in-required'
               ? unfinished
