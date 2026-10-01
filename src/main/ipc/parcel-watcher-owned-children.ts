@@ -1,14 +1,14 @@
-import type { ChildProcess } from 'node:child_process'
+import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
 import {
   watcherChildPhysicalExit,
   requireWatcherChildTermination
 } from './parcel-watcher-child-termination'
 
 export class WatcherOwnedChildren {
-  private readonly children = new Set<ChildProcess>()
+  private readonly children = new Set<ChildProcessHandle>()
   private disposal: Promise<void> | null = null
 
-  track(child: ChildProcess): ChildProcess {
+  track(child: ChildProcessHandle): ChildProcessHandle {
     this.children.add(child)
     // Reuse launch-owned physical-exit evidence, including close without exit after spawn failure.
     void watcherChildPhysicalExit(child).then(() => {
