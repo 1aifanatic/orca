@@ -133,22 +133,25 @@ describe('createNativeFileDropQueue', () => {
     ])
   })
 
-  it('forwards a later plain drop without waiting on an earlier copy', async () => {
+  it('holds a later plain drop until an earlier copy is forwarded', async () => {
     const copy = deferred<DragTempCopyItemResult[]>()
     materializeMock.mockReturnValueOnce(copy.promise)
     const { enqueue, forwarded } = createQueue()
 
     enqueue({ paths: [DRAG_TEMP], target: 'composer' })
-    enqueue({ paths: [FINDER], target: 'editor' })
-    expect(forwarded).toEqual([{ paths: [FINDER], target: 'editor' }])
+    enqueue({ paths: [FINDER], target: 'composer' })
+    await settle()
+    expect(forwarded).toEqual([])
 
     copy.resolve([copied(DRAG_TEMP, COPY)])
     await settle()
 
     expect(forwarded).toEqual([
-      { paths: [FINDER], target: 'editor' },
-      { paths: [COPY], target: 'composer' }
+      { paths: [COPY], target: 'composer' },
+      { paths: [FINDER], target: 'composer' }
     ])
+    enqueue({ paths: [FINDER], target: 'editor' })
+    expect(forwarded).toHaveLength(3)
   })
 
   it('copies drag-temp drops one at a time, in arrival order', async () => {
@@ -169,23 +172,36 @@ describe('createNativeFileDropQueue', () => {
     expect(forwarded.map((payload) => payload.target)).toEqual(['composer', 'terminal'])
   })
 
-  it('hands an uncopied file over as its original and still reports it', async () => {
+  it('hands an uncopied file to a target main reads, without reporting it', async () => {
     materializeMock.mockResolvedValue([
       { sourcePath: DRAG_TEMP, status: 'uncopied', reason: 'too-large' }
     ])
     const { enqueue, forwarded } = createQueue()
 
-    enqueue({ paths: [DRAG_TEMP], target: 'composer' })
+    enqueue({ paths: [DRAG_TEMP], target: 'editor' })
+    await settle()
+
+    expect(forwarded).toEqual([{ paths: [DRAG_TEMP], target: 'editor' }])
+  })
+
+  it('withholds an uncopied file from terminals and composers and reports it', async () => {
+    materializeMock.mockResolvedValue([
+      copied(FINDER),
+      { sourcePath: DRAG_TEMP, status: 'uncopied', reason: 'storage-full' }
+    ])
+    const { enqueue, forwarded } = createQueue()
+
+    enqueue({ paths: [FINDER, DRAG_TEMP], target: 'terminal' })
     await settle()
 
     expect(forwarded).toEqual([
-      { paths: [DRAG_TEMP], target: 'composer' },
+      { paths: [FINDER], target: 'terminal' },
       {
         byteLength: 0,
         pathCount: 1,
         reason: 'temp-copy-failed',
         target: 'rejected',
-        commonReason: 'too-large'
+        commonReason: 'storage-full'
       }
     ])
   })
@@ -335,8 +351,8 @@ describe('createNativeFileDropQueue', () => {
     }
     enqueue({ paths: [FINDER, DRAG_TEMP], target: 'composer' })
 
+    // The ordinary path waits behind the earlier drops; the refusal does not.
     expect(forwarded).toEqual([
-      { paths: [FINDER], target: 'composer' },
       {
         byteLength: 0,
         pathCount: 1,

@@ -24,9 +24,9 @@ const DRAG_PROVIDER_DIR_PREFIX = 'NSIRD_'
 const COPY_ROOT_NAME = 'orca-drops'
 const COPY_DIR_PREFIX = 'orca-drop-'
 const COPY_DIR_PATTERN = /^orca-drop-[A-Za-z0-9]{6}$/
-// Why: drafts and startup prompts read the copy lazily, so keep it past the drop,
-// but not long: unlike the original, any same-user process can read the copy.
-export const DRAG_TEMP_COPY_TTL_MS = 24 * 60 * 60 * 1000
+// Why: open drafts and startup prompts read the copy lazily, often days later, so
+// keep it well past the drop; the TTL still bounds what the copy budget holds.
+export const DRAG_TEMP_COPY_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const SWEEP_FIRST_DELAY_MS = 30 * 1000
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000
 
@@ -40,7 +40,7 @@ export type DragTempCopyEnvironment = {
 
 export type DragTempCopyItemResult =
   | { sourcePath: string; status: 'imported'; destPath: string }
-  /** Handed over as the original path; only main's children can open it. */
+  /** Left as the original path, which only main's children can open. */
   | { sourcePath: string; status: 'uncopied'; reason: 'too-large' | 'storage-full' }
   | { sourcePath: string; status: 'failed'; reason: NativeFileDropCopyFailureReason }
 
@@ -148,9 +148,8 @@ export async function materializeDragTempPath(
       }
       const size = opened.size
       if (size > REMOTE_IMPORT_MAX_FILE_BYTES || size > remainingBytes) {
-        // Why: too big to copy is not a reason to refuse the drop; hand over the
-        // original as before the copy existed. Readers that are children of main still open it.
-        console.warn('[drop] passing a drag-temp file through uncopied: over the copy budget', {
+        // Why: targets read by main can still use the original; the relay decides.
+        console.warn('[drop] leaving a drag-temp file uncopied: over the copy budget', {
           bytes: formatByteCeiling(size),
           remaining: formatByteCeiling(Math.max(remainingBytes, 0))
         })

@@ -58,7 +58,7 @@ export const NATIVE_FILE_DROP_COPY_FAILURE_REASONS = [
   'copy-failed',
   'timed-out',
   'busy',
-  // The original was handed over uncopied, so only main's children can read it.
+  // Too big to copy, so agents in terminals and composers can't be given it.
   'too-large',
   'storage-full'
 ] as const

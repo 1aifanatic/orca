@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import {
   isNativeFileDropPayload,
+  NATIVE_FILE_DROP_TARGET,
   type NativeFileDropCopyFailureReason,
   type NativeFileDropPayload,
   type NativeFileDropRejectedPayload
@@ -74,34 +75,53 @@ export function registerFileDropRelay(mainWindow: BrowserWindow): void {
 /**
  * A drop holding a macOS drag-temp path waits for main to copy it, because the
  * PTY daemon cannot open the original. Those copies run one at a time, in order,
- * under one byte budget; every other drop is forwarded synchronously, so it can
- * overtake a drop still copying rather than wait on it.
+ * under one byte budget. Other drops are forwarded at once unless an earlier drop
+ * is still queued, so drops reach the renderer in the order they were made.
  */
 export function createNativeFileDropQueue(
   deps: NativeFileDropQueueDeps
 ): (payload: NativeFileDropPayload) => void {
   let tail = Promise.resolve()
-  let pending = 0
-  return (payload) => {
-    if (payload.target === 'rejected' || !needsDragTempCopy(payload, deps.platform)) {
-      deps.forward(payload)
-      return
-    }
-    if (pending >= MAX_PENDING_DRAG_TEMP_COPIES) {
-      forwardAll(deps, failWholeDrop(payload, deps.platform, 'busy'))
-      return
-    }
-    pending += 1
+  let queued = 0
+  let pendingCopies = 0
+  const enqueue = (
+    deliver: (lifetime: RendererLifetime) => Promise<void> | void,
+    isCopy: boolean
+  ): void => {
+    queued += 1
+    pendingCopies += isCopy ? 1 : 0
     // Why: bind to the document that dropped now, so a reload while this waits discards it.
     const lifetime = deps.watchRenderer()
     // Why: never reject, or one failed drop would stall every drop queued behind it.
     tail = tail
-      .then(() => copyAndForward(payload, lifetime, deps))
+      .then(() => (lifetime.signal.aborted ? undefined : deliver(lifetime)))
       .catch(() => undefined)
       .finally(() => {
-        pending -= 1
+        queued -= 1
+        pendingCopies -= isCopy ? 1 : 0
         lifetime.dispose()
       })
+  }
+  const forwardInOrder = (payload: NativeFileDropPayload): void => {
+    // Why: a rejection carries no paths, so only path drops wait their turn.
+    if (payload.target === 'rejected' || queued === 0) {
+      deps.forward(payload)
+    } else {
+      enqueue(() => deps.forward(payload), false)
+    }
+  }
+  return (payload) => {
+    if (payload.target === 'rejected' || !needsDragTempCopy(payload, deps.platform)) {
+      forwardInOrder(payload)
+      return
+    }
+    if (pendingCopies >= MAX_PENDING_DRAG_TEMP_COPIES) {
+      for (const item of failWholeDrop(payload, deps.platform, 'busy')) {
+        forwardInOrder(item)
+      }
+      return
+    }
+    enqueue((lifetime) => copyAndForward(payload, lifetime, deps), true)
   }
 }
 
@@ -112,15 +132,23 @@ export async function prepareNativeFileDrop(
   signal?: AbortSignal
 ): Promise<NativeFileDropPayload[]> {
   const results = await materializeDragTempPaths(payload.paths, env, signal)
-  // An uncopied file is still handed over as its original path, and reported.
+  // Why: agents run under the PTY daemon, which cannot open an uncopied original;
+  // other targets are read by main, so the original still works there.
+  const acceptsOriginal =
+    payload.target !== NATIVE_FILE_DROP_TARGET.terminal &&
+    payload.target !== NATIVE_FILE_DROP_TARGET.composer
   const paths = results.flatMap((result) =>
     result.status === 'imported'
       ? [result.destPath]
-      : result.status === 'uncopied'
+      : result.status === 'uncopied' && acceptsOriginal
         ? [result.sourcePath]
         : []
   )
-  const unprepared = results.flatMap((result) => (result.status === 'imported' ? [] : [result]))
+  const unprepared = results.flatMap((result) =>
+    result.status === 'imported' || (result.status === 'uncopied' && acceptsOriginal)
+      ? []
+      : [result]
+  )
   const prepared: NativeFileDropPayload[] = paths.length > 0 ? [{ ...payload, paths }] : []
   if (unprepared.length > 0) {
     const commonReason = unprepared.every((item) => item.reason === unprepared[0].reason)
@@ -167,9 +195,6 @@ async function copyAndForward(
   lifetime: RendererLifetime,
   deps: NativeFileDropQueueDeps
 ): Promise<void> {
-  if (lifetime.signal.aborted) {
-    return
-  }
   const timeout = new AbortController()
   const timer = setTimeout(
     () => timeout.abort(new Error('Copying the dropped files took too long')),

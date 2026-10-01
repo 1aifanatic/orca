@@ -1007,8 +1007,8 @@
         "storageNotPrivate": "L'espace de stockage d'Orca pour les fichiers déposés est lisible par d'autres utilisateurs ; rien n'a été copié.",
         "timedOut": "La copie a pris trop de temps. Réessayez de déposer les fichiers.",
         "busy": "Trop de dépôts sont encore en cours de copie. Patientez un instant, puis réessayez.",
-        "tooLarge": "Trop volumineux pour être copié : Orca a utilisé l'original. Les agents du terminal risquent de ne pas pouvoir l'ouvrir.",
-        "storageFull": "L'espace de stockage d'Orca pour les fichiers déposés est plein : Orca a utilisé l'original. Les agents du terminal risquent de ne pas pouvoir l'ouvrir.",
+        "tooLarge": "Trop volumineux pour être copié : Orca n'a pas pu le transmettre à l'agent.",
+        "storageFull": "L'espace de stockage d'Orca pour les fichiers déposés est plein : Orca n'a pas pu le transmettre à l'agent.",
         "generic": "Réessayez de déposer les fichiers."
       }
     },

@@ -747,8 +747,8 @@
         "storageNotPrivate": "Otros usuarios pueden leer el almacenamiento de Orca para archivos soltados, así que no se copió nada.",
         "timedOut": "La copia tardó demasiado. Vuelve a soltar los archivos.",
         "busy": "Todavía se están copiando demasiados archivos soltados. Espera un momento y vuelve a intentarlo.",
-        "tooLarge": "Es demasiado grande para copiarlo, así que Orca usó el original. Es posible que los agentes de la terminal no puedan abrirlo.",
-        "storageFull": "El almacenamiento de Orca para archivos soltados está lleno, así que Orca usó el original. Es posible que los agentes de la terminal no puedan abrirlo.",
+        "tooLarge": "Es demasiado grande para copiarlo, así que Orca no pudo pasárselo al agente.",
+        "storageFull": "El almacenamiento de Orca para archivos soltados está lleno, así que Orca no pudo pasárselo al agente.",
         "generic": "Vuelve a soltar los archivos."
       }
     },

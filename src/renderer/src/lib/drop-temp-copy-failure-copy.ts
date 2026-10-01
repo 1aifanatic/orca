@@ -43,12 +43,12 @@ export function describeDropTempCopyFailure(
     case 'too-large':
       return translate(
         'auto.lib.dropTempCopyFailure.tooLarge',
-        'Too large to copy, so Orca used the original. Terminal agents may not be able to open it.'
+        "Too large to copy, so Orca couldn't hand it to the agent."
       )
     case 'storage-full':
       return translate(
         'auto.lib.dropTempCopyFailure.storageFull',
-        "Orca's storage for dropped files is full, so Orca used the original. Terminal agents may not be able to open it."
+        "Orca's storage for dropped files is full, so Orca couldn't hand it to the agent."
       )
     case 'copy-failed':
     case undefined:

@@ -1034,8 +1034,8 @@
         "storageNotPrivate": "Orca's storage for dropped files can be read by other users, so nothing was copied.",
         "timedOut": "Copying took too long. Try the drop again.",
         "busy": "Too many drops are still being copied. Wait a moment, then try again.",
-        "tooLarge": "Too large to copy, so Orca used the original. Terminal agents may not be able to open it.",
-        "storageFull": "Orca's storage for dropped files is full, so Orca used the original. Terminal agents may not be able to open it.",
+        "tooLarge": "Too large to copy, so Orca couldn't hand it to the agent.",
+        "storageFull": "Orca's storage for dropped files is full, so Orca couldn't hand it to the agent.",
         "generic": "Try the drop again."
       }
     },
