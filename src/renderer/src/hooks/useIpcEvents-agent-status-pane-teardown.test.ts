@@ -382,7 +382,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
     onClearListenerRef.current({ paneKey: FUTURE_PANE_KEY })
 
     expect(removeAgentStatus).toHaveBeenCalledTimes(1)
-    expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY)
+    expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY, { agentGone: true })
   })
 
   it('blocks cleared snapshots across remount and accepts newer reconnect replay', async () => {
@@ -567,6 +567,6 @@ describe('useIpcEvents agent status snapshot integration', () => {
 
     onClearListenerRef.current({ paneKey: FUTURE_PANE_KEY })
 
-    expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY)
+    expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY, { agentGone: true })
   })
 })

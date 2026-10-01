@@ -72,7 +72,7 @@ export function registerAgentStatusListeners(args: {
       if (!('paneKey' in data) || typeof data.paneKey !== 'string') {
         return
       }
-      // Why: preserve set→clear FIFO so a queued completion still survives pane teardown.
+      // Why: preserve set→clear FIFO so a status queued before the clear cannot land after it.
       if (liveAgentStatusBurstQueue.some((queued) => queued.paneKey === data.paneKey)) {
         drainQueuedLiveAgentStatusesForPane(data.paneKey)
       }
@@ -82,8 +82,8 @@ export function registerAgentStatusListeners(args: {
         }
       }
       // Why no Done exemption: the host clears a pane only when its agent ended or the pane went
-      // away, and an exited agent is not waiting on the user. Retention is presentation policy.
-      useAppStore.getState().removeAgentStatus(data.paneKey)
+      // away, and an exited agent is not waiting on the user. No echo to main: the host cleared it.
+      useAppStore.getState().removeAgentStatus(data.paneKey, { agentGone: true })
     }
   )
   if (unsubscribeAgentStatusClear) {

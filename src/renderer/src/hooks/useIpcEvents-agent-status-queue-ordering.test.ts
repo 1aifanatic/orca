@@ -133,7 +133,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
       expect(setAgentStatus).toHaveBeenCalledTimes(1)
 
       onClearListenerRef.current({ paneKey: FUTURE_PANE_KEY })
-      expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY)
+      expect(removeAgentStatus).toHaveBeenCalledWith(FUTURE_PANE_KEY, { agentGone: true })
       expect(storeState.agentStatusByPaneKey).toEqual({})
 
       vi.advanceTimersByTime(40)
