@@ -578,7 +578,9 @@ describe('useNativeChatComposerAttachments', () => {
       localStorage.getItem(`orca:nativeChatComposerDraft:v1:${encodeURIComponent('pty-1')}`) ??
         'null'
     )
-    expect(saved?.attachments).toEqual([{ id: expect.any(String), path: '/tmp/settled.png' }])
+    expect(saved?.attachments).toEqual([
+      { id: expect.any(String), path: '/tmp/settled.png', location: 'local' }
+    ])
     expect(probe.latest().imageAttachments).toContainEqual(
       expect.objectContaining({ id: pendingId, previewUrl: 'blob:preview-1', pending: true })
     )
@@ -648,9 +650,12 @@ describe('a restored draft whose image is gone', () => {
     )
     Object.defineProperty(window, 'api', { configurable: true, value: { fs: { pathsExist } } })
     addNativeChatDraftAttachments('session:restored', [
-      { id: 'gone', path: '/gone.png' },
-      { id: 'here', path: '/here.png' },
-      { id: 'remote', path: '/remote.png', connectionId: 'ssh-1' }
+      { id: 'gone', path: '/gone.png', location: 'local' },
+      { id: 'here', path: '/here.png', location: 'local' },
+      { id: 'remote', path: '/remote.png', connectionId: 'ssh-1', location: 'ssh' },
+      // A runtime server's path, or one saved before locations were recorded, means nothing here.
+      { id: 'runtime', path: '/srv/gone.png', location: 'runtime' },
+      { id: 'unknown', path: '/old/gone.png' }
     ])
 
     const probe = await renderProbe('session:restored', true)
@@ -665,6 +670,8 @@ describe('a restored draft whose image is gone', () => {
       ['/gone.png', true],
       ['/here.png', false],
       ['/remote.png', false],
+      ['/srv/gone.png', false],
+      ['/old/gone.png', false],
       ['/new.png', false]
     ])
     expect(pathsExist).toHaveBeenCalledTimes(2)
@@ -672,7 +679,8 @@ describe('a restored draft whose image is gone', () => {
     expect(pathsExist).toHaveBeenCalledWith({ filePaths: ['/remote.png'], connectionId: 'ssh-1' })
     expect(readNativeChatDraftAttachments('session:restored')[0]).toEqual({
       id: 'gone',
-      path: '/gone.png'
+      path: '/gone.png',
+      location: 'local'
     })
     act(() => probe.root.unmount())
   })
@@ -695,7 +703,7 @@ describe('a restored draft whose image is gone', () => {
       value: { fs: { authorizeExternalPath, pathsExist } }
     })
     addNativeChatDraftAttachments('session:granted', [
-      { id: 'local', path: '/Users/me/Desktop/shot.png' },
+      { id: 'local', path: '/Users/me/Desktop/shot.png', location: 'local' },
       { id: 'remote', path: '/remote.png', connectionId: 'ssh-1' }
     ])
 

@@ -370,7 +370,7 @@ describe('the draft saved to disk', () => {
     const chat = nativeChatDraftKey({ sessionId: structured.sessionId, paneKey: '' })
     appendNativeChatDraftNow(chat, {
       text: 'look at this',
-      attachments: [{ id: 'gone', path: '/gone.png' }]
+      attachments: [{ id: 'gone', path: '/gone.png', location: 'local' }]
     })
     renderComposer(structured)
     await act(async () => {})

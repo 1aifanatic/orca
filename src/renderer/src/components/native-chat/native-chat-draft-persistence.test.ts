@@ -77,6 +77,29 @@ describe('composer draft persistence', () => {
     ])
   })
 
+  // Chips saved before their location was recorded must still load, as unknown.
+  it("restores each image chip's location, and loads a chip saved without one", async () => {
+    localStorage.setItem(
+      `${PREFIX}${encodeURIComponent(SCOPE)}`,
+      JSON.stringify({
+        text: '',
+        attachments: [
+          { id: 'old', path: '/old.png' },
+          { id: 'runtime', path: '/srv/a.png', location: 'runtime' },
+          { id: 'odd', path: '/odd.png', location: 'mars' }
+        ]
+      })
+    )
+
+    const next = await relaunch()
+
+    expect(next.readNativeChatDraftAttachments(SCOPE)).toEqual([
+      { id: 'old', path: '/old.png' },
+      { id: 'runtime', path: '/srv/a.png', location: 'runtime' },
+      { id: 'odd', path: '/odd.png' }
+    ])
+  })
+
   it('saves typing only after the pause', () => {
     cache.writeNativeChatDraftCache(SCOPE, 'h', 'after-pause')
     cache.writeNativeChatDraftCache(SCOPE, 'he', 'after-pause')

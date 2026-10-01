@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { ImageOff } from 'lucide-react'
 import type { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
 import { cn } from '@/lib/utils'
+import type { NativeChatDraftAttachmentLocation } from './native-chat-draft-storage'
 import { NATIVE_FILE_DROP_TARGET } from '../../../../shared/native-file-drop'
 import type { ComposerAutocomplete, NativeChatPickerItem } from './native-chat-composer-state'
 import { NativeChatMentionHint, NativeChatPickerMenu } from './NativeChatAutocompleteMenus'
@@ -68,6 +69,7 @@ export type NativeChatComposerImageAttachment = {
   /** Empty while `pending`: the clipboard image has no agent-readable path yet. */
   path: string
   connectionId?: string
+  location?: NativeChatDraftAttachmentLocation
   /** Clipboard thumbnail (blob/data URL) rendered before — and after — the file
    *  lands, so the chip never waits on a disk round-trip to show something. */
   previewUrl?: string

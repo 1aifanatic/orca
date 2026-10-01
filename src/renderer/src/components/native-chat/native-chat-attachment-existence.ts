@@ -2,17 +2,20 @@ import { requirePathExistenceResults } from '../../../../shared/path-existence-b
 import type { NativeChatDraftAttachment } from './native-chat-draft-storage'
 
 /**
- * Ids of attachments whose file is gone. Local paths are granted for reading first, as at attach.
- * A path that cannot be checked (an unreachable SSH host, a refused grant) is not reported:
- * losing contact is not proof the file is gone.
+ * Ids of attachments whose file is gone. Only a file this machine can ask about is checked: a
+ * local one (granted for reading first, as at attach) or one on an SSH host. One on a runtime
+ * server, or with no recorded location, is never reported; nor is one whose check cannot answer
+ * (an unreachable SSH host, a refused grant): losing contact is not proof the file is gone.
  */
 export async function findMissingNativeChatAttachments(
   attachments: readonly NativeChatDraftAttachment[]
 ): Promise<Set<string>> {
   const byConnection = new Map<string, NativeChatDraftAttachment[]>()
   for (const attachment of attachments) {
-    const connectionId = attachment.connectionId ?? ''
-    byConnection.set(connectionId, [...(byConnection.get(connectionId) ?? []), attachment])
+    const connectionId = attachment.connectionId ?? (attachment.location === 'local' ? '' : null)
+    if (connectionId !== null) {
+      byConnection.set(connectionId, [...(byConnection.get(connectionId) ?? []), attachment])
+    }
   }
   const missing = new Set<string>()
   await Promise.all(

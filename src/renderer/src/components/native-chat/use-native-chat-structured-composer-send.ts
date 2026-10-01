@@ -73,9 +73,12 @@ export function useNativeChatStructuredComposerSend({
         if (cleared) {
           restoreNativeChatDraftIfEmpty(draftKey, {
             text,
-            attachments: attachments.map(({ id, path, connectionId }) =>
-              connectionId ? { id, path, connectionId } : { id, path }
-            )
+            attachments: attachments.map(({ id, path, connectionId, location }) => ({
+              id,
+              path,
+              ...(connectionId ? { connectionId } : {}),
+              ...(location ? { location } : {})
+            }))
           })
         }
       }

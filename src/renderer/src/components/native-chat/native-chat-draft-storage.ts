@@ -5,7 +5,24 @@
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 
-export type NativeChatDraftAttachment = { id: string; path: string; connectionId?: string }
+/**
+ * Where an image's file lives: on this machine, on an SSH host (`connectionId`), or on a runtime
+ * server. Chips saved before this was recorded have none, and are treated as unknown.
+ */
+export type NativeChatDraftAttachmentLocation = 'local' | 'ssh' | 'runtime'
+
+export type NativeChatDraftAttachment = {
+  id: string
+  path: string
+  connectionId?: string
+  location?: NativeChatDraftAttachmentLocation
+}
+
+const ATTACHMENT_LOCATIONS: readonly unknown[] = ['local', 'ssh', 'runtime']
+
+function isAttachmentLocation(value: unknown): value is NativeChatDraftAttachmentLocation {
+  return ATTACHMENT_LOCATIONS.includes(value)
+}
 
 /** Launch text Orca typed into a terminal agent's input line, which still holds it. */
 export type NativeChatTuiInputSeed = { agent: TuiAgent; text: string; createdAt: number }
@@ -152,11 +169,16 @@ function parseAttachment(value: unknown): NativeChatDraftAttachment | null {
   if (!isRecord(value)) {
     return null
   }
-  const { id, path, connectionId } = value
+  const { id, path, connectionId, location } = value
   if (typeof id !== 'string' || typeof path !== 'string' || path === '') {
     return null
   }
-  return typeof connectionId === 'string' ? { id, path, connectionId } : { id, path }
+  return {
+    id,
+    path,
+    ...(typeof connectionId === 'string' ? { connectionId } : {}),
+    ...(isAttachmentLocation(location) ? { location } : {})
+  }
 }
 
 function parseTuiInputSeed(value: unknown): { tuiInputSeed?: NativeChatTuiInputSeed } {

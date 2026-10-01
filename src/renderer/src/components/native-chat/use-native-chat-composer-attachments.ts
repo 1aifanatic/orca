@@ -137,12 +137,12 @@ export function useNativeChatComposerAttachments({
   }, [setNotice])
 
   const appendImageAttachments = useCallback(
-    (paths: { path: string; connectionId?: string | null }[]) => {
+    (paths: { path: string; connectionId?: string | null; onRuntimeHost?: boolean }[]) => {
       if (paths.length === 0) {
         return
       }
-      const attached = paths.map(({ path, connectionId }) =>
-        settledChip(nextAttachmentId(), path, connectionId)
+      const attached = paths.map(({ path, connectionId, onRuntimeHost }) =>
+        settledChip(nextAttachmentId(), path, connectionId, onRuntimeHost)
       )
       attached.forEach(({ id }) => checkedIdsRef.current.add(id))
       addNativeChatDraftAttachments(attachmentScopeKey, attached)
@@ -230,8 +230,16 @@ export function useNativeChatComposerAttachments({
   }
 }
 
-function settledChip(id: string, path: string, connectionId?: string | null): NativeChatDraftChip {
-  return connectionId ? { id, path, connectionId } : { id, path }
+function settledChip(
+  id: string,
+  path: string,
+  connectionId?: string | null,
+  onRuntimeHost = false
+): NativeChatDraftChip {
+  if (connectionId) {
+    return { id, path, connectionId, location: 'ssh' }
+  }
+  return { id, path, location: onRuntimeHost ? 'runtime' : 'local' }
 }
 
 /** Object URLs minted from a clipboard blob leak until revoked; data URLs don't. */
