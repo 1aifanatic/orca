@@ -4,6 +4,7 @@ import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { findGithubPrWorkspaceAttachment } from '@/lib/github-work-item-workspace-attachment'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 import { launchWorkItemDirect } from '@/lib/launch-work-item-direct'
+import { launchPromptDelivered } from '@/lib/launch-prompt-delivered'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { planAgentCliArgsSuffix } from '@/lib/tui-agent-startup'
@@ -222,7 +223,8 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
     if (result.surface.kind === 'local-terminal') {
       focusTerminalTabSurface(result.surface.tabId)
     }
-    return true
+    // Callers say "Started an AI agent" on true: only once the agent took the prompt.
+    return launchPromptDelivered(result)
   }
 
   if (!args.item || !args.openModalFallback) {
@@ -246,6 +248,7 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
     launchSource: args.launchSource,
     telemetrySource: args.telemetrySource,
     promptDelivery: 'submit-after-ready',
+    waitForPromptDelivery: true,
     agentArgs: recipe.agentArgs,
     ...(agentOverride.kind === 'agent' ? { agentOverride: agentOverride.agent } : {}),
     openModalFallback: args.openModalFallback

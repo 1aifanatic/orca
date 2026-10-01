@@ -31,6 +31,7 @@ import {
   resolveDirectSetupDecision
 } from '@/lib/launch-work-item-direct-preflight'
 import type { LaunchWorkItemDirectArgs } from '@/lib/launch-work-item-direct-types'
+import { launchPromptDelivered } from '@/lib/launch-prompt-delivered'
 import { resolveSourceControlLaunchPlatform } from '@/lib/source-control-launch-platform'
 import { getSettingsForRepoRuntimeOwner } from '@/lib/repo-runtime-owner'
 import { getLocalRepoProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
@@ -166,6 +167,7 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
   let draftLaunchedNatively = false
   let plan: AgentSessionLaunchPlan | null = null
   let structuredLaunchCompleted = false
+  let structuredLaunch: ReturnType<typeof beginDirectWorkItemStructuredLaunch> | null = null
   const draftContent = await getDirectWorkItemDraftContent(item, repoConnectionId)
   let startupPlanFailed = false
   try {
@@ -265,6 +267,7 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       return false
     }
     structuredLaunchCompleted = structuredResult.completed
+    structuredLaunch = structuredResult
     primaryTabId = structuredResult.completed
       ? structuredResult.primaryTabId
       : activation.primaryTabId
@@ -277,7 +280,9 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
   store.setSidebarOpen(true)
 
   if (structuredLaunchCompleted) {
-    return true
+    return args.waitForPromptDelivery && structuredLaunch
+      ? launchPromptDelivered(structuredLaunch)
+      : true
   }
 
   if (startupPlanFailed) {

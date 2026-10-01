@@ -7,6 +7,7 @@ import type { AgentSessionLaunchPlan } from '@/lib/agent-session-launch-plan'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { resolveSourceControlLaunchPlatform } from '@/lib/source-control-launch-platform'
 import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
+import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
 
 export function buildDirectWorkItemStartup(args: {
   agent: TuiAgent | null
@@ -86,6 +87,7 @@ export function beginDirectWorkItemStructuredLaunch(args: {
   completed: boolean
   structuredLaunch: boolean
   primaryTabId: string | null
+  promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
 } {
   const { plan } = args
   const notLaunched = (structuredLaunch: boolean) => ({
@@ -107,6 +109,7 @@ export function beginDirectWorkItemStructuredLaunch(args: {
   return {
     completed: true,
     structuredLaunch: true,
-    primaryTabId: launch.tab.id
+    primaryTabId: launch.tab.id,
+    ...(launch.promptDeliveryResult ? { promptDeliveryResult: launch.promptDeliveryResult } : {})
   }
 }

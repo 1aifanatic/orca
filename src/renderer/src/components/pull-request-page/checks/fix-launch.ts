@@ -64,6 +64,8 @@ export async function startFixChecksFromDialog(args: {
     launchSource: 'task_page',
     telemetrySource: 'sidebar',
     promptDelivery: 'submit-after-ready',
+    // The dialog says "Started an AI agent" on true: only once the agent took the prompt.
+    waitForPromptDelivery: true,
     agentOverride: args.agent,
     agentArgs: args.agentArgs,
     openModalFallback: () => {

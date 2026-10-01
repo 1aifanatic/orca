@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import type { AppState } from '@/store'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
+import { launchPromptDelivered } from '@/lib/launch-prompt-delivered'
 import { getConnectionId } from '@/lib/connection-context'
 import { planAgentCliArgsSuffix } from '@/lib/tui-agent-startup'
 import {
@@ -172,6 +173,10 @@ export async function launchSourceControlRecoveryAgentWithDefault({
 
   if (result.surface.kind === 'local-terminal') {
     focusTerminalTabSurface(result.surface.tabId)
+  }
+  // "Started" only once the agent took the prompt; a failed start is reported on its message.
+  if (!(await launchPromptDelivered(result))) {
+    return false
   }
   toast.success(copy.success)
   return true
