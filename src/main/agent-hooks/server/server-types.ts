@@ -122,6 +122,8 @@ export type RetiredPaneFence = {
   aliases: readonly RetiredPaneAlias[]
   closed?: true
   retirementIdsByPaneKey: Record<string, string>
+  /** Status observed for a command that was already running at this time is about the retired command, not after it. */
+  retiredAt: number
 }
 
 export type LastStatusFile = {

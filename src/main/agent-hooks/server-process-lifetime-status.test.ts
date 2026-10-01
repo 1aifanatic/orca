@@ -109,4 +109,49 @@ describe('process-lifetime status', () => {
     processLifetime('done', Date.now())
     expect(paneState()).toBe('missing')
   })
+
+  // Why: a pane holding launch authority retires it at the 133;D that ends the run.
+  it('keeps the Done of a run whose own command end retired the pane, and fences what follows', async () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    await nextMillisecond()
+    server.retirePaneAuthority(PANE)
+    expect(paneState()).toBe('missing')
+
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('done')
+
+    // A late post from the retired launch is still suppressed: the Done did not lift the fence.
+    await openCodeHook('SessionBusy')
+    expect(paneState()).toBe('done')
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: null,
+      payload: { state: 'working', prompt: '', agentType: 'opencode' }
+    })
+    expect(paneState()).toBe('done')
+  })
+
+  it('suppresses a stale hook post after retirement before the run reports its end', async () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    await nextMillisecond()
+    server.retirePaneAuthority(PANE)
+
+    await openCodeHook('SessionBusy')
+    expect(paneState()).toBe('missing')
+  })
+
+  it('keeps the Done of a retired run out of a closed tab', async () => {
+    const commandStartedAt = Date.now()
+    processLifetime('working', commandStartedAt)
+    await nextMillisecond()
+    server.retirePaneAuthority(PANE)
+    server.dropStatusEntriesByTabPrefix('tab-1')
+
+    processLifetime('done', commandStartedAt)
+    expect(paneState()).toBe('missing')
+  })
 })

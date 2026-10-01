@@ -52,6 +52,8 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       launchToken?: string
       /** A process-lifetime Working: a fresh command whose foreground argv proves a new agent run. */
       processNewTurn?: boolean
+      /** A process-lifetime Done: the host saw the run that started at this time end. */
+      endedProcessRunStartedAt?: number
     }
   ): 'accept' | 'restart' | 'suppress' {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
@@ -96,12 +98,27 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
           return 'accept'
         }
       }
-      if (event && event.processNewTurn !== true && tokenFence) {
+      if (
+        event &&
+        event.processNewTurn !== true &&
+        event.endedProcessRunStartedAt === undefined &&
+        tokenFence
+      ) {
         const launchToken = event.launchToken?.trim()
         if (!launchToken || createHash('sha256').update(launchToken).digest('hex') !== tokenFence) {
           return 'suppress'
         }
       }
+      return 'accept'
+    }
+    // Why: the end of a run that was already running when the pane retired is the host's own
+    // observation of the retired command (its 133;D retires it), not a late post from after it.
+    // Accept without lifting the fence, so stale posts stay suppressed.
+    if (
+      event?.endedProcessRunStartedAt !== undefined &&
+      retirementFence !== undefined &&
+      retirementFence.retiredAt > event.endedProcessRunStartedAt
+    ) {
       return 'accept'
     }
     // Why: command completion retires launch authority but leaves its shell pane reusable.
@@ -193,6 +210,7 @@ export abstract class AgentHookServerStatusDisposition extends AgentHookServerSt
       paneKeys: [...paneKeys],
       aliases,
       retirementIdsByPaneKey,
+      retiredAt: Date.now(),
       ...(closed ? { closed: true as const } : {})
     }
     for (const key of paneKeys) {
