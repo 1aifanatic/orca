@@ -221,9 +221,9 @@ export type AgentSessionStatusSummary = {
   workspaceId: string
   agent: AgentSessionRecord['provider']
   /** The session's own agent's status: `attention` is its own prompt only. A client that does not
-   *  advertise `agent-session.status-awaits-user.v1` is sent `attention` dated `awaitsUserSince`
-   *  whenever that is set, as before the split. Null until the journal holds a persisted user or
-   *  assistant message. */
+   *  advertise `agent-session.status-awaits-user.v1` is sent `attention` whenever `awaitsUserSince`
+   *  is set, dated as before the split: by the main agent's own oldest ask, else by
+   *  `awaitsUserSince`. Null until the journal holds a persisted user or assistant message. */
   status: StructuredAgentSessionProjectedStatus | null
   /** Someone in the session must answer a prompt, the main agent or a subagent: when the oldest one
    *  still pending was raised. Absent while nobody is asked, and from older hosts, whose

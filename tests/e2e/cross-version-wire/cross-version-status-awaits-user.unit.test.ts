@@ -7,8 +7,9 @@ import { projectStatusAwaitsUserEvent } from '../../../src/main/runtime/rpc/meth
 
 /**
  * A summary's `status` became the main agent's own, with `awaitsUserSince` carrying anyone's
- * request. A client that predates the split is sent the downgraded summary, which must be the
- * summary a pre-split host projected from the same journal, clock included (Rule 3).
+ * request. A client that predates the split is sent the downgraded summary, whose fields the split
+ * touches must read as a pre-split host projected them from the same journal, clock included
+ * (Rule 3). Only those fields are compared, so an additive field elsewhere (Rule 1) stays green.
  *
  * Pinned rather than derived from the newest tag: once a release ships the split, that release
  * no longer projects the pre-split summary this compares against.
@@ -83,6 +84,18 @@ const pending: AgentJournalRenderItem['body'] = {
 const subagentAsk = item('subagent-ask', 5, pending, 'task-1')
 const ownAsk = item('own-ask', 6, pending)
 
+/** The summary fields the split changes the meaning or presence of. */
+function splitOwnedFields(summary: Record<string, unknown>): Record<string, unknown> {
+  return {
+    status: summary.status,
+    statusStartedAt: summary.statusStartedAt,
+    toolName: summary.toolName,
+    toolInput: summary.toolInput,
+    turnOutcome: summary.turnOutcome,
+    hasAwaitsUserSince: 'awaitsUserSince' in summary
+  }
+}
+
 /** What a client without the capability is sent for this journal. */
 function downgraded(items: readonly AgentJournalRenderItem[]): Record<string, unknown> {
   const session: AgentSessionStatusSummary = {
@@ -109,6 +122,6 @@ describe('an old client against a host that splits the main agent from awaitsUse
     ['nobody asks, working', [user, running, tool, reply]],
     ['nobody asks, settled', [user, settled, reply]]
   ])('is sent what the pre-split host published when %s', (_label, items) => {
-    expect(downgraded(items)).toEqual(preSplitProjection(items))
+    expect(splitOwnedFields(downgraded(items))).toEqual(splitOwnedFields(preSplitProjection(items)))
   })
 })
