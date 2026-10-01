@@ -178,6 +178,17 @@ describe('finishRuntimeLocalWorktreeRemoval branch settlement', () => {
     expect(finishRemoval).toHaveBeenCalledWith(kept, true, headOf('a'))
   })
 
+  it('reads no worktree metadata and asks nothing when Git deleted the branch', async () => {
+    const readMeta = vi.spyOn(store, 'getWorktreeMeta')
+    gitExecFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' })
+
+    const { result } = finish('a')
+
+    await expect(result).resolves.toEqual({})
+    expect(readMeta).not.toHaveBeenCalled()
+    expect(getHostedReviewForBranchMock).not.toHaveBeenCalled()
+  })
+
   it('overlaps the forge lookups of a batch, so a hung forge costs one cap, not one per branch', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     getHostedReviewForBranchMock.mockImplementation(() => new Promise(() => {}))
