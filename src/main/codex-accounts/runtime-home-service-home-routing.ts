@@ -167,12 +167,16 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
     if (!this.isHostSystemDefaultRealHome()) {
       return
     }
-    this.carryRetiredWindowsMirror()
+    const mirrorRetired = this.carryRetiredWindowsMirror()
     if (!hasRecordedLegacySharedCodexPane()) {
       return
     }
     this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
-    syncLegacySharedCodexConfigForRetainedPanes()
+    // Why gated: the refresh rewrites the mirror from ~/.codex, which would
+    // erase the mirror-only config a retry still has to carry.
+    if (mirrorRetired) {
+      syncLegacySharedCodexConfigForRetainedPanes()
+    }
   }
 
   /** Preserve refreshed auth from retained legacy WSL panes before restart. */

@@ -19,11 +19,34 @@ import { LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER } from './legacy-shared-
 import { RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
 import type { CodexRuntimeHomeService } from './runtime-home-service'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type * as CodexAccountFs from './fs-utils'
 
 vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   applyCodexDaemonSocketGuard: (config: string) => config
 }))
+
+const concurrentEdit = vi.hoisted(() => {
+  const edit: { path: string | null } = { path: null }
+  return edit
+})
+
+// Why: lands a write on ~/.codex between the carry's read and its guarded write.
+vi.mock('./fs-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof CodexAccountFs>()
+  return {
+    ...actual,
+    writeFileAtomicallyIfUnchanged: (
+      ...args: Parameters<typeof actual.writeFileAtomicallyIfUnchanged>
+    ) => {
+      if (args[0] === concurrentEdit.path) {
+        writeFileSync(args[0], 'model = "concurrent"\n')
+        concurrentEdit.path = null
+      }
+      return actual.writeFileAtomicallyIfUnchanged(...args)
+    }
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -67,6 +90,7 @@ async function launchOnMirror(): Promise<void> {
 
 describe('retiring the Windows system-default mirror', () => {
   beforeEach(() => {
+    concurrentEdit.path = null
     setupRuntimeHomeTest()
   })
 
@@ -182,6 +206,82 @@ describe('retiring the Windows system-default mirror', () => {
       expect(existsSync(getMarkerPath())).toBe(true)
     }
   )
+
+  it("carries nothing when the mirror's login belongs to another account", async () => {
+    const seeded = createCodexAuthJson('me@example.com', 'acct-me', 'seeded')
+    writeFileSync(getSystemCodexAuthPath(), seeded, 'utf-8')
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('other@example.com', 'acct-other', 'other'),
+      'utf-8'
+    )
+
+    await upgradeToRealHome()
+
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(seeded)
+  })
+
+  it('carries no credentials while a managed account owns the mirror', async () => {
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('managed@example.com', 'acct-managed', 'managed'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'managed-mcp', 'utf-8')
+    writeFileSync(
+      getSharedRuntimeAuthProvenancePath(),
+      `${JSON.stringify({ owner: 'managed', accountId: 'account-1' })}\n`
+    )
+
+    await upgradeToRealHome()
+
+    expect(existsSync(getSystemCodexAuthPath())).toBe(false)
+    expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
+  })
+
+  it('adds only the MCP tokens an existing ~/.codex credential store lacks', async () => {
+    await launchOnMirror()
+    const systemCredentials = join(getSystemCodexHomePath(), '.credentials.json')
+    writeFileSync(systemCredentials, JSON.stringify({ shared: 'codex-home' }), 'utf-8')
+    writeFileSync(
+      join(getRuntimeCodexHomePath(), '.credentials.json'),
+      JSON.stringify({ shared: 'mirror', paneOnly: 'mirror' }),
+      'utf-8'
+    )
+
+    await upgradeToRealHome()
+
+    expect(JSON.parse(readFileSync(systemCredentials, 'utf-8'))).toEqual({
+      shared: 'codex-home',
+      paneOnly: 'mirror'
+    })
+  })
+
+  it("leaves a retained pane's mirror config alone until the carry lands", async () => {
+    writeFileSync(join(getSystemCodexHomePath(), 'config.toml'), 'model = "gpt-5"\n', 'utf-8')
+    await launchOnMirror()
+    const mirrorConfigPath = join(getRuntimeCodexHomePath(), 'config.toml')
+    writeFileSync(
+      mirrorConfigPath,
+      `${readFileSync(mirrorConfigPath, 'utf-8')}\n[mcp_servers.pane]\ncommand = "pane-mcp"\n`,
+      'utf-8'
+    )
+    concurrentEdit.path = join(getSystemCodexHomePath(), 'config.toml')
+
+    await upgradeToRealHome()
+
+    expect(readFileSync(join(getSystemCodexHomePath(), 'config.toml'), 'utf-8')).toBe(
+      'model = "concurrent"\n'
+    )
+    expect(readFileSync(mirrorConfigPath, 'utf-8')).toContain('[mcp_servers.pane]')
+
+    await upgradeToRealHome()
+    expect(readFileSync(join(getSystemCodexHomePath(), 'config.toml'), 'utf-8')).toContain(
+      '[mcp_servers.pane]'
+    )
+  })
 
   it('runs once: a later mirror-lane launch does not reopen the migration', async () => {
     await launchOnMirror()

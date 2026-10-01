@@ -4,14 +4,35 @@ import { tmpdir } from 'node:os'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
-import { carryRetiredMirrorConfig } from './retired-mirror-carry'
+import type * as CodexAccountFs from './fs-utils'
+import { carryRetiredMirror } from './retired-mirror-carry'
 
-const { homedirMock } = vi.hoisted(() => ({ homedirMock: vi.fn<() => string>() }))
+const { homedirMock, concurrentEdit } = vi.hoisted(() => {
+  const edit: { configToml: string | null } = { configToml: null }
+  return { homedirMock: vi.fn<() => string>(), concurrentEdit: edit }
+})
 
 vi.mock('node:os', async (importOriginal) => ({
   ...(await importOriginal<typeof Os>()),
   homedir: homedirMock
 }))
+
+// Why: lands a write on ~/.codex/config.toml between the carry's read and its guarded write.
+vi.mock('./fs-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof CodexAccountFs>()
+  return {
+    ...actual,
+    writeFileAtomicallyIfUnchanged: (
+      ...args: Parameters<typeof actual.writeFileAtomicallyIfUnchanged>
+    ) => {
+      if (concurrentEdit.configToml !== null && args[0].endsWith('config.toml')) {
+        writeFileSync(args[0], concurrentEdit.configToml)
+        concurrentEdit.configToml = null
+      }
+      return actual.writeFileAtomicallyIfUnchanged(...args)
+    }
+  }
+})
 
 let root = ''
 let runtimeHomePath = ''
@@ -29,15 +50,23 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-function carry(): boolean {
-  return carryRetiredMirrorConfig({ runtimeHomePath, systemHomePath })
+function carry(carryCredentials: () => boolean = () => true): boolean {
+  return carryRetiredMirror({ runtimeHomePath, systemHomePath }, markerPath(), carryCredentials)
+}
+
+function markerPath(): string {
+  return join(root, 'orca', 'codex-runtime-home', 'retired-mirror-carry-v1.json')
+}
+
+function completedSteps(): unknown {
+  return JSON.parse(readFileSync(markerPath(), 'utf-8')).completed
 }
 
 function readSystem(file: string): string {
   return readFileSync(join(systemHomePath, file), 'utf-8')
 }
 
-describe('carryRetiredMirrorConfig', () => {
+describe('carryRetiredMirror', () => {
   it('carries mirror-only project trust and MCP servers, leaving the mirror intact', () => {
     mkdirSync(systemHomePath, { recursive: true })
     writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
@@ -164,5 +193,66 @@ describe('carryRetiredMirrorConfig', () => {
     expect(carry()).toBe(true)
 
     expect(readSystem('config.toml').includes('[mcp_servers.docs]')).toBe(carried)
+  })
+
+  it('reruns only the steps still owed, so a landed table removed later stays removed', () => {
+    mkdirSync(systemHomePath, { recursive: true })
+    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+    writeFileSync(join(runtimeHomePath, 'config.toml'), '[mcp_servers.docs]\ncommand = "server"\n')
+    const carryCredentials = vi.fn(() => carryCredentials.mock.calls.length > 1)
+
+    expect(carry(carryCredentials)).toBe(false)
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables'])
+    expect(readSystem('config.toml')).toContain('[mcp_servers.docs]')
+    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+
+    expect(carry(carryCredentials)).toBe(true)
+    expect(carryCredentials).toHaveBeenCalledTimes(2)
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables', 'credentials'])
+    expect(readSystem('config.toml')).toBe('model = "gpt-5"\n')
+    expect(carry(carryCredentials)).toBe(true)
+    expect(carryCredentials).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries tables after a concurrent ~/.codex write refuses the guarded write', () => {
+    mkdirSync(systemHomePath, { recursive: true })
+    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+    writeFileSync(join(runtimeHomePath, 'config.toml'), '[mcp_servers.docs]\ncommand = "server"\n')
+    concurrentEdit.configToml = 'model = "concurrent"\n'
+
+    expect(carry()).toBe(false)
+    expect(readSystem('config.toml')).toBe('model = "concurrent"\n')
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'credentials'])
+
+    expect(carry()).toBe(true)
+    expect(readSystem('config.toml')).toBe(
+      'model = "concurrent"\n\n[mcp_servers.docs]\ncommand = "server"\n'
+    )
+  })
+
+  it.each(['', '  \n\t\n'])('seeds an empty ~/.codex config (%j) from the mirror', (empty) => {
+    mkdirSync(systemHomePath, { recursive: true })
+    writeFileSync(join(systemHomePath, 'config.toml'), empty)
+    writeFileSync(
+      join(runtimeHomePath, 'config.toml'),
+      'model = "gpt-5"\n\n[mcp_servers.docs]\ncommand = "server"\n'
+    )
+
+    expect(carry()).toBe(true)
+
+    expect(readSystem('config.toml')).toBe(
+      'model = "gpt-5"\n\n[mcp_servers.docs]\ncommand = "server"\n'
+    )
+  })
+
+  it('leaves mirror MCP servers out when ~/.codex declares the whole table inline', () => {
+    mkdirSync(systemHomePath, { recursive: true })
+    const systemConfig = 'mcp_servers = { user = { command = "user-mcp" } }\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
+    writeFileSync(join(runtimeHomePath, 'config.toml'), '[mcp_servers.docs]\ncommand = "server"\n')
+
+    expect(carry()).toBe(true)
+
+    expect(readSystem('config.toml')).toBe(systemConfig)
   })
 })

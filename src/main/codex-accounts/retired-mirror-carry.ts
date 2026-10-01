@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { observeAgentStateFile } from '../codex/codex-path-observation'
 import { promoteCodexRuntimeSettingsToSystem } from '../codex/config-settings-promotion'
@@ -22,9 +22,13 @@ import {
   isRuntimeProjectTomlSection,
   joinTomlBlocks
 } from '../codex/config-toml-runtime-owned-sections'
-import { writeFileAtomicallyIfUnchanged } from './fs-utils'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import { writeFileAtomically, writeFileAtomicallyIfUnchanged } from './fs-utils'
 
 export const RETIRED_MIRROR_CARRY_MARKER = 'retired-mirror-carry-v1.json'
+
+const CARRY_STEPS = ['settings', 'hooks', 'tables', 'credentials'] as const
+type CarryStep = (typeof CARRY_STEPS)[number]
 
 type RetiredMirrorHomes = {
   runtimeHomePath: string
@@ -32,24 +36,57 @@ type RetiredMirrorHomes = {
 }
 
 /**
- * Carries the config only the system-default mirror holds into ~/.codex when
- * that lane retires. Promotion salvages settings only inside a mirror pass, and
- * the mirror keeps project trust and its own MCP servers to itself, so without
- * this the first real-home launch would drop them.
+ * Carries what only the system-default mirror holds into ~/.codex when that
+ * lane retires. Promotion salvages settings only inside a mirror pass, and the
+ * mirror keeps project trust, its own MCP servers and pane logins to itself, so
+ * without this the first real-home launch would drop them.
  *
- * Additive: never replaces anything ~/.codex already has. Every step runs even
- * when another fails, and the result says whether all of them landed.
+ * Additive: never replaces anything ~/.codex already has. The marker records
+ * each step that landed, so a launch reruns only the ones still owed and a
+ * landed step can never re-add what the user later removed. Returns whether
+ * every step is done.
  */
-export function carryRetiredMirrorConfig(homes: RetiredMirrorHomes): boolean {
-  // Why first: a fresh user may have no ~/.codex until Codex first runs there.
+export function carryRetiredMirror(
+  homes: RetiredMirrorHomes,
+  markerPath: string,
+  carryCredentials: () => boolean
+): boolean {
+  const completed = readCompletedCarrySteps(markerPath)
+  const pending = CARRY_STEPS.filter((step) => !completed.has(step))
+  if (pending.length === 0) {
+    return true
+  }
+  // Why: a fresh user may have no ~/.codex until Codex first runs there.
   mkdirSync(homes.systemHomePath, { recursive: true, mode: 0o700 })
-  return [
-    () => promoteCodexRuntimeSettingsToSystem(homes) !== null,
-    () => promoteCodexRuntimeHookApprovalsToSystem(homes.runtimeHomePath),
-    () => carryMirrorOnlyTables(homes)
-  ]
-    .map(runStep)
-    .every(Boolean)
+  const steps: Record<CarryStep, () => boolean> = {
+    settings: () => promoteCodexRuntimeSettingsToSystem(homes) !== null,
+    hooks: () => promoteCodexRuntimeHookApprovalsToSystem(homes.runtimeHomePath),
+    tables: () => carryMirrorOnlyTables(homes),
+    credentials: carryCredentials
+  }
+  const landed = pending.filter((step) => runStep(steps[step]))
+  if (landed.length > 0) {
+    const done = CARRY_STEPS.filter((step) => completed.has(step) || landed.includes(step))
+    writeFileAtomically(markerPath, `${JSON.stringify({ completed: done })}\n`)
+  }
+  return landed.length === pending.length
+}
+
+function readCompletedCarrySteps(markerPath: string): ReadonlySet<CarryStep> {
+  let marker: unknown
+  try {
+    marker = JSON.parse(readFileSync(markerPath, 'utf-8'))
+  } catch (error) {
+    if (isDefinitiveAbsence(error)) {
+      return new Set()
+    }
+    throw error
+  }
+  const completed: unknown[] =
+    marker && typeof marker === 'object' && 'completed' in marker && Array.isArray(marker.completed)
+      ? marker.completed
+      : []
+  return new Set(CARRY_STEPS.filter((step) => completed.includes(step)))
 }
 
 function runStep(step: () => boolean): boolean {
