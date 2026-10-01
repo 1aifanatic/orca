@@ -120,7 +120,7 @@ if [[ -n "${__orca_codex_binary:-}" && -x "${__orca_codex_binary}" ]]; then
       case "$__orca_codex_prev" in -c|--config) case "$__orca_codex_arg" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac ;; esac
       __orca_codex_prev="$__orca_codex_arg"
     done
-    if [[ -n "${ORCA_CODEX_HOOK_FLAGS:-}" ]]; then
+    if [[ -n "${ORCA_CODEX_HOOK_FLAGS:-}" && -d "${ORCA_CODEX_HOOK_FLAGS}" ]]; then
       __orca_codex_version="$(command codex --version 2>/dev/null </dev/null)"
       if [[ -n "$__orca_codex_version" && "$__orca_codex_version" != */* ]]; then
         __orca_codex_entry="${ORCA_CODEX_HOOK_FLAGS}/${__orca_codex_version}"

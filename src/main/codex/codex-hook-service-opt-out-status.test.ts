@@ -12,7 +12,11 @@ vi.mock('./codex-hook-trust-queue', () => ({
 }))
 
 import { CodexHookService } from './codex-hook-service-implementation'
-import { listCodexHookFlagEntries, publishCodexHookFlagEntry } from './codex-hook-flag-table'
+import {
+  codexHookFlagTableExists,
+  createCodexHookFlagTable,
+  publishCodexHookFlagEntry
+} from './codex-hook-flag-table'
 
 describe('Codex hook status after the opt-out', () => {
   let userData: string
@@ -20,6 +24,7 @@ describe('Codex hook status after the opt-out', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'orca-codex-hook-opt-out-'))
     vi.stubEnv('ORCA_USER_DATA_PATH', userData)
+    createCodexHookFlagTable()
   })
 
   afterEach(() => {
@@ -39,13 +44,13 @@ describe('Codex hook status after the opt-out', () => {
     })
   })
 
-  it('empties the table on opt-out, so open panes stop carrying at their next launch', async () => {
+  it('removes the table on opt-out, so open panes run plain codex at their next launch', async () => {
     publishCodexHookFlagEntry({ codexVersion: 'codex-cli 1.0.0', flag: 'hooks={}', noDaemon: true })
     const service = new CodexHookService()
 
     const status = await service.remove()
 
     expect(status.state).toBe('not_installed')
-    expect(listCodexHookFlagEntries()).toEqual([])
+    expect(codexHookFlagTableExists()).toBe(false)
   })
 })

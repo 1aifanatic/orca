@@ -6,7 +6,8 @@
 export const CODEX_SHARED_SERVER_ARGS = ['agents', 'queue', '--no-daemon', '--remote'] as const
 const CODEX_SHARED_SERVER_ARG_PATTERN = `^(${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=.*)$`
 // Why a table read at each launch: the pane holds only the table's path, so an
-// entry Orca derives or removes later reaches this pane's next launch.
+// entry Orca derives or removes later reaches this pane's next launch. The
+// directory exists only while Codex hooks are on, so without it nothing is probed.
 // Why keyed by version: the flag approves the hook with the hash one Codex version
 // computed, and a binary that hashes it differently would open its review screen.
 // Why skip beside a file entry: an older Orca's entry in this home already posts status.
@@ -59,7 +60,7 @@ if [[ -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
       case "$__orca_codex_prev" in -c|--config) case "$__orca_codex_arg" in hooks[.=[:space:]]*) __orca_codex_user_hooks=1 ;; esac ;; esac
       __orca_codex_prev="$__orca_codex_arg"
     done
-    if [[ -n "\${ORCA_CODEX_HOOK_FLAGS:-}" ]]; then
+    if [[ -n "\${ORCA_CODEX_HOOK_FLAGS:-}" && -d "\${ORCA_CODEX_HOOK_FLAGS}" ]]; then
       __orca_codex_version="$(command codex --version 2>/dev/null </dev/null)"
       if [[ -n "$__orca_codex_version" && "$__orca_codex_version" != */* ]]; then
         __orca_codex_entry="\${ORCA_CODEX_HOOK_FLAGS}/\${__orca_codex_version}"
@@ -108,7 +109,7 @@ if test "$__orca_codex_type" = file
       end
       set orca_codex_prev $orca_codex_arg
     end
-    if test -n "$ORCA_CODEX_HOOK_FLAGS"
+    if test -n "$ORCA_CODEX_HOOK_FLAGS"; and test -d "$ORCA_CODEX_HOOK_FLAGS"
       # Why a variable: fish before 3.4 has no quoted command substitution. Fish before 3.1 has no
       # string collect; its error is silenced, and the empty version then carries nothing.
       set -l orca_codex_version (command codex --version 2>/dev/null </dev/null | string collect 2>/dev/null)
@@ -117,7 +118,7 @@ if test "$__orca_codex_type" = file
       end
       if test -n "$orca_codex_entry"; and not test -f "$orca_codex_entry${CODEX_HOOK_FLAG_ENTRY_SUFFIX}"
         # Why: Orca derives this binary's entry, so a later launch carries it.
-        test -d "$ORCA_CODEX_HOOK_FLAGS"; and command -s codex >"$orca_codex_entry${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" 2>/dev/null
+        command -s codex >"$orca_codex_entry${CODEX_HOOK_FLAG_REQUEST_SUFFIX}" 2>/dev/null
         set orca_codex_entry
       else if test -n "$orca_codex_entry"; and test -z "$orca_codex_user_hooks"
         set -l orca_codex_home $CODEX_HOME
@@ -173,7 +174,7 @@ if ($orcaCodexCommand -and
                 $orcaCodexUserHooks = $true
             }
         }
-        if ($env:ORCA_CODEX_HOOK_FLAGS) {
+        if ($env:ORCA_CODEX_HOOK_FLAGS -and (Test-Path -LiteralPath $env:ORCA_CODEX_HOOK_FLAGS -PathType Container)) {
             try {
                 $orcaCodexVersion = ((& $orcaCodexExecutable.Source --version 2>$null) -join ' ').Trim()
                 if ($orcaCodexVersion -and $orcaCodexVersion -notmatch '[\\\\/:]') {

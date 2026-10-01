@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   statusCodex: vi.fn(),
   refreshClaude: vi.fn(),
   refreshCodex: vi.fn(),
+  enableCodex: vi.fn(),
   probeClaudeVersion: vi.fn()
 }))
 
@@ -43,7 +44,8 @@ vi.mock('./managed-agent-hook-registry', () => ({
   MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS: [
     ['claude', mocks.refreshClaude],
     ['codex', mocks.refreshCodex]
-  ]
+  ],
+  MANAGED_AGENT_HOOK_ENABLERS: [['codex', mocks.enableCodex]]
 }))
 
 import {
@@ -276,6 +278,33 @@ describe('managed agent hook controls', () => {
     )
 
     expect(mocks.removeClaude).not.toHaveBeenCalled()
+  })
+
+  // Why: a codex installed later must still find Codex hooks on when it first misses.
+  it("turns Codex's hooks on even when the codex CLI is not found", async () => {
+    mocks.detect.mockResolvedValue({})
+
+    await applyAgentStatusHooksEnabled(true, { agentCmdOverrides: {} })
+
+    expect(mocks.enableCodex).toHaveBeenCalledTimes(1)
+    expect(mocks.installCodex).not.toHaveBeenCalled()
+  })
+
+  it('does not turn on a disabled agent, or one a newer update turned off', async () => {
+    mocks.detect.mockResolvedValue({})
+
+    await applyAgentStatusHooksEnabled(true, {
+      agentCmdOverrides: {},
+      disabledTuiAgents: ['codex']
+    })
+    await applyAgentStatusHooksEnabled(
+      true,
+      { agentCmdOverrides: {} },
+      { shouldContinue: (agent) => agent !== 'codex' }
+    )
+    await applyAgentStatusHooksEnabled(false)
+
+    expect(mocks.enableCodex).not.toHaveBeenCalled()
   })
 
   it('removes every managed hook when the global setting is off', async () => {

@@ -20,7 +20,7 @@ if test "$__orca_codex_type" = file
       end
       set orca_codex_prev $orca_codex_arg
     end
-    if test -n "$ORCA_CODEX_HOOK_FLAGS"
+    if test -n "$ORCA_CODEX_HOOK_FLAGS"; and test -d "$ORCA_CODEX_HOOK_FLAGS"
       # Why a variable: fish before 3.4 has no quoted command substitution. Fish before 3.1 has no
       # string collect; its error is silenced, and the empty version then carries nothing.
       set -l orca_codex_version (command codex --version 2>/dev/null </dev/null | string collect 2>/dev/null)
@@ -29,7 +29,7 @@ if test "$__orca_codex_type" = file
       end
       if test -n "$orca_codex_entry"; and not test -f "$orca_codex_entry.flag"
         # Why: Orca derives this binary's entry, so a later launch carries it.
-        test -d "$ORCA_CODEX_HOOK_FLAGS"; and command -s codex >"$orca_codex_entry.request" 2>/dev/null
+        command -s codex >"$orca_codex_entry.request" 2>/dev/null
         set orca_codex_entry
       else if test -n "$orca_codex_entry"; and test -z "$orca_codex_user_hooks"
         set -l orca_codex_home $CODEX_HOME

@@ -109,6 +109,13 @@ describe.runIf(process.platform === 'win32')('cmd codex status hook flag gate on
     expect(existsSync(join(box.table, 'codex-cli 9.9.10.request'))).toBe(true)
   })
 
+  it('probes and requests nothing while hooks are off, which removes the table', () => {
+    const box = sandbox(['codex-cli 9.9.10'])
+    rmSync(box.table, { recursive: true })
+    expect(runGate(box)).not.toContain('ORCA_CODEX_HOOK_ARG=')
+    expect(existsSync(box.table)).toBe(false)
+  })
+
   it.each(['C:/x/.orca/agent-hooks/codex-hook.cmd', 'C:\\x\\.orca\\agent-hooks\\codex-hook.cmd'])(
     'sets nothing beside an older Orca entry (%s)',
     (command) => {

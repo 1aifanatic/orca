@@ -35,7 +35,11 @@ import {
   getManagedScriptPath
 } from './codex-hook-definition'
 import { buildCodexHookSessionFlag } from './codex-hook-session-flags'
-import { getCodexHookFlagTablePath, readCodexHookFlagEntry } from './codex-hook-flag-table'
+import {
+  createCodexHookFlagTable,
+  getCodexHookFlagTablePath,
+  readCodexHookFlagEntry
+} from './codex-hook-flag-table'
 
 /** hooks/list for a definition-only flag (untrusted), or for the full flag (trusted). */
 function listingFor(command: string, flag: string, hashPrefix = 'sha256:'): unknown {
@@ -87,6 +91,8 @@ describe('codex hook session trust', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'orca-codex-hook-trust-table-'))
     vi.stubEnv('ORCA_USER_DATA_PATH', userData)
+    // Why: the table exists exactly while Codex hooks are on.
+    createCodexHookFlagTable()
     _internals.resetForTesting()
     versions.clear()
     mocks.runProcess.mockReset()
@@ -238,7 +244,15 @@ describe('codex hook session trust', () => {
     release()
 
     expect(await refresh).toBeNull()
-    expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
+    expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
+  })
+
+  it('never recreates the table to publish while Codex hooks are off', async () => {
+    answerVersion('codex-cli 0.159.2')
+    clearCodexHookSessionFlags()
+
+    expect(await refreshCodexHookSessionFlags()).toBeNull()
+    expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
   })
 
   it("derives for the binary a launch's request names, not only the one Orca resolves", async () => {

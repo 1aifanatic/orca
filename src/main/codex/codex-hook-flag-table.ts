@@ -1,4 +1,12 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import {
   CODEX_HOOK_FLAG_ENTRY_SUFFIX,
@@ -12,7 +20,9 @@ import { getOrcaUserDataPath } from './codex-home-paths'
  * A pane carries only this directory's path, and every launch reads the entry
  * for its own binary's version then, so an entry published after the pane
  * opened, or removed by the opt-out, takes effect at that pane's next launch.
- * Per profile: one profile's opt-out never strips another's panes.
+ * Per profile: one profile's opt-out never strips another's panes. The
+ * directory exists exactly while Codex hooks are on for this profile, so a
+ * launch without it runs plain codex with no probe at all.
  *
  *   <version>.flag       the `-c` value, one line
  *   <version>.no-daemon  present when that Codex accepts --no-daemon
@@ -41,8 +51,16 @@ export function isCodexHookFlagEntryName(codexVersion: string): boolean {
   return ENTRY_NAME.test(codexVersion)
 }
 
-export function ensureCodexHookFlagTable(table = getCodexHookFlagTablePath()): void {
+export function createCodexHookFlagTable(table = getCodexHookFlagTablePath()): void {
   mkdirSync(table, { recursive: true })
+}
+
+export function codexHookFlagTableExists(table = getCodexHookFlagTablePath()): boolean {
+  return existsSync(table)
+}
+
+export function removeCodexHookFlagTable(table = getCodexHookFlagTablePath()): void {
+  rmSync(table, { recursive: true, force: true })
 }
 
 function readFirstLine(path: string): string | null {
@@ -104,15 +122,20 @@ function writeAtomically(path: string, content: string): void {
   renameSync(temp, path)
 }
 
-/** Marker first, so a launch that sees the flag also sees whether --no-daemon applies. */
+/**
+ * Marker first, so a launch that sees the flag also sees whether --no-daemon
+ * applies. False when the table is gone: publishing never re-enables hooks.
+ */
 export function publishCodexHookFlagEntry(
   entry: CodexHookFlagEntry,
   table = getCodexHookFlagTablePath()
-): void {
+): boolean {
   if (!isCodexHookFlagEntryName(entry.codexVersion) || /[\r\n]/.test(entry.flag)) {
     throw new Error(`Cannot publish a Codex hook flag for ${JSON.stringify(entry.codexVersion)}`)
   }
-  ensureCodexHookFlagTable(table)
+  if (!existsSync(table)) {
+    return false
+  }
   const base = join(table, entry.codexVersion)
   if (entry.noDaemon) {
     writeFileSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, '', 'utf-8')
@@ -120,6 +143,7 @@ export function publishCodexHookFlagEntry(
     rmSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, { force: true })
   }
   writeAtomically(`${base}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`, `${entry.flag}\n`)
+  return true
 }
 
 export function removeCodexHookFlagEntry(
@@ -129,19 +153,6 @@ export function removeCodexHookFlagEntry(
   const base = join(table, codexVersion)
   rmSync(`${base}${CODEX_HOOK_FLAG_ENTRY_SUFFIX}`, { force: true })
   rmSync(`${base}${CODEX_HOOK_FLAG_NO_DAEMON_SUFFIX}`, { force: true })
-}
-
-/** Removes every entry and request; the directory stays, since open panes point at it. */
-export function clearCodexHookFlagTable(table = getCodexHookFlagTablePath()): void {
-  let names: string[]
-  try {
-    names = readdirSync(table)
-  } catch {
-    return
-  }
-  for (const name of names) {
-    rmSync(join(table, name), { force: true, recursive: true })
-  }
 }
 
 /** What an Orca-side launch writes on a miss, the same request a pane's codex function writes. */

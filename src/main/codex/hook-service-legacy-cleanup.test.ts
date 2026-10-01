@@ -34,8 +34,10 @@ vi.mock('os', async (importOriginal) => {
 vi.mock('./codex-hook-session-trust', async (importOriginal) => ({
   ...(await importOriginal<typeof CodexHookSessionTrust>()),
   refreshCodexHookSessionFlags: async () => {
-    const { publishCodexHookFlagEntry } = await import('./codex-hook-flag-table')
+    const { createCodexHookFlagTable, publishCodexHookFlagEntry } =
+      await import('./codex-hook-flag-table')
     const entry = { codexVersion: 'codex-cli 0.0.0-test', flag: 'hooks={}', noDaemon: false }
+    createCodexHookFlagTable()
     publishCodexHookFlagEntry(entry)
     return entry
   }

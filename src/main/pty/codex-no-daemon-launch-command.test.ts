@@ -113,6 +113,7 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
     codexHome = join(dir, 'codex-home')
     table = join(dir, 'codex-hook-flags')
     mkdirSync(codexHome)
+    mkdirSync(table)
     publishCodexHookFlagEntry(
       { codexVersion: 'codex-cli 9.9.9', flag: FLAG, noDaemon: false },
       table
@@ -192,6 +193,12 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
       table
     )
     await expect(plan(`${codex} resume`)).resolves.toBe(`${codex} --no-daemon -c '${FLAG}' resume`)
+  })
+
+  it('probes nothing while hooks are off, which removes the table', () => {
+    const codex = writeVersionedCodex('codex-cli 9.9.9')
+    rmSync(table, { recursive: true })
+    expect(plan(`${codex} agents`)).toBeNull()
   })
 
   it('leaves a bare codex to the shell function, which carries the flag itself', () => {

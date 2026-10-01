@@ -62,6 +62,7 @@ function makeSandbox(): Sandbox {
     writeFileSync(
       join(bin, 'fake.js'),
       `const a = process.argv.slice(2)
+if (process.env.FAKE_CODEX_LOG) require('fs').appendFileSync(process.env.FAKE_CODEX_LOG, a[0] + '\\n')
 if (a[0] === '--version') { console.log(process.env.FAKE_CODEX_VERSION || ''); process.exit(0) }
 if (a[0] === '--help') { console.log(process.env.FAKE_CODEX_HELP || 'Usage: codex'); process.exit(0) }
 console.log(['ARGV', ...a].join('|'))
@@ -74,6 +75,7 @@ console.log(['ARGV', ...a].join('|'))
   writeFileSync(
     codex,
     `#!/bin/sh
+if [ -n "\${FAKE_CODEX_LOG:-}" ]; then printf '%s\\n' "$1" >>"$FAKE_CODEX_LOG"; fi
 if [ "$1" = --version ]; then printf '%s\\n' "\${FAKE_CODEX_VERSION:-}"; exit 0; fi
 if [ "$1" = --help ]; then printf '%s\\n' "\${FAKE_CODEX_HELP:-Usage: codex}"; exit 0; fi
 out=ARGV
@@ -270,6 +272,15 @@ describe('codex function status hook flag', () => {
         const sandbox = makeSandbox()
         publish(sandbox)
         expect(run(shell, sandbox, { ORCA_CODEX_HOOK_FLAGS: undefined })).toBe(WITHOUT_FLAG)
+      })
+
+      it('probes and requests nothing while hooks are off, which removes the table', () => {
+        const sandbox = makeSandbox()
+        rmSync(sandbox.table, { recursive: true })
+        const log = join(sandbox.root, 'codex-calls.log')
+        expect(run(shell, sandbox, { FAKE_CODEX_LOG: log })).toBe(WITHOUT_FLAG)
+        expect(readFileSync(log, 'utf-8').trim().split(/\r?\n/)).toEqual(['resume'])
+        expect(existsSync(sandbox.table)).toBe(false)
       })
     })
   }

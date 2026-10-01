@@ -11,10 +11,10 @@ import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 import {
-  clearCodexHookSessionFlags,
   getCodexHookSessionFlagFailure,
   refreshCodexHookSessionFlags
 } from './codex-hook-session-trust'
+import { closeCodexHookFlagTable, openCodexHookFlagTable } from './codex-hook-flag-requests'
 import { listCodexHookFlagEntries } from './codex-hook-flag-table'
 import {
   refreshCodexRuntimeUserHooksExclusively,
@@ -207,6 +207,14 @@ export class CodexHookService {
   }
 
   /**
+   * The setting turning on, whether or not codex is installed yet: a later
+   * launch's miss then asks for its entry instead of running plain codex.
+   */
+  openSessionFlagTable(): void {
+    openCodexHookFlagTable()
+  }
+
+  /**
    * App start and the setting turning on: publishes the flag for the resolved
    * Codex, deploys the hook script, and removes Orca's entries from ~/.codex
    * and the shared managed home. The only ~/.codex writes are those removals.
@@ -271,7 +279,7 @@ export class CodexHookService {
 
   private removeExclusively(): Promise<AgentHookInstallStatus> {
     // Why first: open panes read the table at their next launch, so this is what stops them.
-    clearCodexHookSessionFlags()
+    closeCodexHookFlagTable()
     return removeCodexHooksExclusively(() => this.getStatus())
   }
 }

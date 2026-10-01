@@ -13,6 +13,7 @@ import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { detectLocalManagedAgentCliPresence } from './local-agent-cli-presence'
 import {
   MANAGED_AGENT_HOOK_ASYNC_REMOVERS,
+  MANAGED_AGENT_HOOK_ENABLERS,
   MANAGED_AGENT_HOOK_INSTALLERS,
   MANAGED_AGENT_HOOK_REMOVERS,
   MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS,
@@ -266,6 +267,18 @@ export async function applyAgentStatusHooksEnabled(
   const disabled = normalizeDisabledTuiAgents(settings?.disabledTuiAgents).filter(
     isManagedAgentHookTarget
   )
+  const skipped = new Set<string>(disabled)
+  const allowed = options.agents ? new Set<string>(options.agents) : null
+  for (const [agent, enable] of MANAGED_AGENT_HOOK_ENABLERS) {
+    const stillOn = options.shouldContinue?.(agent) ?? true
+    if (!skipped.has(agent) && (!allowed || allowed.has(agent)) && stillOn) {
+      try {
+        enable()
+      } catch (error) {
+        console.error(`[agent-hooks] Failed to enable ${agent} hooks:`, error)
+      }
+    }
+  }
   const installed = await installManagedAgentHooks(settings, options)
   const disabledToRemove = options.shouldContinue
     ? disabled.filter((agent) => !options.shouldContinue?.(agent))

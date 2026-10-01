@@ -30,6 +30,7 @@ export type ManagedAgentHookInstaller = readonly [
     options?: ManagedAgentHookInstallOptions
   ) => AgentHookInstallStatus | Promise<AgentHookInstallStatus>
 ]
+export type ManagedAgentHookEnabler = readonly [HookInstallAgent, () => void]
 export type ManagedAgentHookScriptRefresher = readonly [HookInstallAgent, () => Promise<void>]
 export type ManagedAgentHookRemover = readonly [
   HookInstallAgent,
@@ -61,6 +62,12 @@ export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[]
   ['muse', () => museHookService.install()],
   ['zcode', () => zcodeHookService.install()],
   ['dsh', () => dshHookService.install()]
+]
+
+// Why: runs whenever the setting turns an agent on, even when its CLI is not
+// found and its installer is skipped, for state a later launch must find.
+export const MANAGED_AGENT_HOOK_ENABLERS: readonly ManagedAgentHookEnabler[] = [
+  ['codex', () => codexHookService.openSessionFlagTable()]
 ]
 
 // Why: covers the shared launcher/statusline scripts under ~/.orca/agent-hooks — the files a

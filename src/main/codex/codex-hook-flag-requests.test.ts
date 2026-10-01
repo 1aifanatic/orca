@@ -1,20 +1,46 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as CodexHookSessionTrust from './codex-hook-session-trust'
 
-const mocks = vi.hoisted(() => ({
-  handleCodexHookFlagRequest: vi.fn(),
-  clearCodexHookSessionFlags: vi.fn()
+const mocks = vi.hoisted(() => ({ handleCodexHookFlagRequest: vi.fn() }))
+
+vi.mock('./codex-hook-session-trust', async (importOriginal) => ({
+  ...(await importOriginal<typeof CodexHookSessionTrust>()),
+  handleCodexHookFlagRequest: mocks.handleCodexHookFlagRequest
 }))
-
-vi.mock('./codex-hook-session-trust', () => mocks)
 vi.mock('./codex-cmd-hook-flag-gate', () => ({ ensureCodexCmdHookFlagGate: () => {} }))
 
-import { startCodexHookFlagRequests } from './codex-hook-flag-requests'
-import { getCodexHookFlagTablePath, requestCodexHookFlagEntry } from './codex-hook-flag-table'
+import {
+  closeCodexHookFlagTable,
+  openCodexHookFlagTable,
+  startCodexHookFlagRequests
+} from './codex-hook-flag-requests'
+import {
+  createCodexHookFlagTable,
+  getCodexHookFlagTablePath,
+  requestCodexHookFlagEntry
+} from './codex-hook-flag-table'
 
-describe('Codex hook flag requests', () => {
+function writeLaunchRequest(version: string): void {
+  // Why a raw write: the shell carrier writes this file, not Orca's helper.
+  writeFileSync(join(getCodexHookFlagTablePath(), `${version}.request`), '/usr/local/bin/codex\n')
+}
+
+async function expectServed(version: string): Promise<void> {
+  // Why a long bound: file-watch delivery lags on a loaded machine.
+  await vi.waitFor(
+    () =>
+      expect(mocks.handleCodexHookFlagRequest).toHaveBeenCalledWith({
+        codexVersion: version,
+        codexPath: '/usr/local/bin/codex'
+      }),
+    { timeout: 10_000 }
+  )
+}
+
+describe('Codex hook flag table lifecycle and requests', () => {
   let userData: string
   let stop: () => void = () => {}
 
@@ -22,7 +48,6 @@ describe('Codex hook flag requests', () => {
     userData = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-requests-'))
     vi.stubEnv('ORCA_USER_DATA_PATH', userData)
     mocks.handleCodexHookFlagRequest.mockReset()
-    mocks.clearCodexHookSessionFlags.mockReset()
   })
 
   afterEach(() => {
@@ -31,29 +56,18 @@ describe('Codex hook flag requests', () => {
     rmSync(userData, { recursive: true, force: true })
   })
 
-  it('serves a request a launch writes while Orca runs', async () => {
+  it('creates the table at start while Codex hooks are on, and serves a launch request', async () => {
     stop = startCodexHookFlagRequests({ isEnabled: () => true })
-    const table = getCodexHookFlagTablePath()
+    expect(existsSync(getCodexHookFlagTablePath())).toBe(true)
 
-    // Why a shell's own write: the carrier writes this file, not Orca's helper.
-    writeFileSync(join(table, 'codex-cli 0.160.0.request'), '/usr/local/bin/codex\n')
+    writeLaunchRequest('codex-cli 0.160.0')
 
-    // Why a long bound: file-watch delivery lags on a loaded machine.
-    await vi.waitFor(
-      () =>
-        expect(mocks.handleCodexHookFlagRequest).toHaveBeenCalledWith({
-          codexVersion: 'codex-cli 0.160.0',
-          codexPath: '/usr/local/bin/codex'
-        }),
-      { timeout: 10_000 }
-    )
-    expect(readdirSync(table)).toEqual([])
+    await expectServed('codex-cli 0.160.0')
+    expect(existsSync(join(getCodexHookFlagTablePath(), 'codex-cli 0.160.0.request'))).toBe(false)
   })
 
   it('serves requests left while Orca was closed, at start', () => {
-    const table = getCodexHookFlagTablePath()
-    stop = startCodexHookFlagRequests({ isEnabled: () => true })
-    stop()
+    createCodexHookFlagTable()
     requestCodexHookFlagEntry('codex-cli 0.159.2', '/opt/codex')
 
     stop = startCodexHookFlagRequests({ isEnabled: () => true })
@@ -62,19 +76,29 @@ describe('Codex hook flag requests', () => {
       codexVersion: 'codex-cli 0.159.2',
       codexPath: '/opt/codex'
     })
-    expect(existsSync(join(table, 'codex-cli 0.159.2.request'))).toBe(false)
   })
 
-  it('drops requests without deriving while Codex hooks are off, and clears the table at start', () => {
-    const table = getCodexHookFlagTablePath()
-    stop = startCodexHookFlagRequests({ isEnabled: () => true })
-    stop()
+  it('removes the table at start while Codex hooks are off, so launches probe nothing', () => {
+    createCodexHookFlagTable()
     requestCodexHookFlagEntry('codex-cli 0.159.2', '/opt/codex')
 
     stop = startCodexHookFlagRequests({ isEnabled: () => false })
 
-    expect(mocks.clearCodexHookSessionFlags).toHaveBeenCalled()
+    expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
     expect(mocks.handleCodexHookFlagRequest).not.toHaveBeenCalled()
-    expect(existsSync(join(table, 'codex-cli 0.159.2.request'))).toBe(false)
+  })
+
+  it('watches the table again when hooks turn back on after the opt-out removed it', async () => {
+    let enabled = true
+    stop = startCodexHookFlagRequests({ isEnabled: () => enabled })
+    enabled = false
+    closeCodexHookFlagTable()
+    expect(existsSync(getCodexHookFlagTablePath())).toBe(false)
+
+    enabled = true
+    openCodexHookFlagTable()
+    writeLaunchRequest('codex-cli 0.160.0')
+
+    await expectServed('codex-cli 0.160.0')
   })
 })

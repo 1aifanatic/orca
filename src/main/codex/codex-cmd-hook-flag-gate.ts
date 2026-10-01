@@ -40,6 +40,8 @@ export function getCodexCmdHookFlagGateScript(): string {
   return [
     `@set "${ORCA_CODEX_HOOK_ARG_ENV}="`,
     `@if not defined ${ORCA_CODEX_HOOK_FLAGS_ENV} exit /b 0`,
+    // Why: the table exists only while Codex hooks are on; without it codex runs plain, unprobed.
+    `@if not exist "%${ORCA_CODEX_HOOK_FLAGS_ENV}%\\" exit /b 0`,
     `@set "${ENTRY}="`,
     `@set "${LAST_LINE}="`,
     `@for /f "delims=" %%v in ('codex --version 2^>nul') do @if "%%v"=="%%~nxv" (set "${LAST_LINE}=%%v" & if not defined ${ENTRY} if exist "${table}\\%%v${CODEX_HOOK_FLAG_ENTRY_SUFFIX}" set "${ENTRY}=${table}\\%%v")`,

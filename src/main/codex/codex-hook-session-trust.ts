@@ -14,11 +14,11 @@ import {
   getManagedScriptPath
 } from './codex-hook-definition'
 import {
-  clearCodexHookFlagTable,
   isCodexHookFlagEntryName,
   publishCodexHookFlagEntry,
   readCodexHookFlagEntry,
   removeCodexHookFlagEntry,
+  removeCodexHookFlagTable,
   type CodexHookFlagEntry,
   type CodexHookFlagRequest
 } from './codex-hook-flag-table'
@@ -122,12 +122,15 @@ export async function awaitCodexHookSessionFlags(timeoutMs: number): Promise<voi
   clearTimeout(timer)
 }
 
-/** Opt-out: open panes stop carrying at their next launch, and a derivation in flight publishes nothing. */
+/**
+ * Opt-out: removes the table, so open panes run plain codex at their next
+ * launch, and a derivation in flight publishes nothing.
+ */
 export function clearCodexHookSessionFlags(): void {
   generation += 1
   lastFailure = null
   requestFailures.clear()
-  clearCodexHookFlagTable()
+  removeCodexHookFlagTable()
 }
 
 /** Why the last derivation in this process published nothing, if it did not. */
@@ -185,7 +188,9 @@ async function deriveAndPublish(
     return null
   }
   const entry = { codexVersion, flag, noDaemon }
-  publishCodexHookFlagEntry(entry)
+  if (!publishCodexHookFlagEntry(entry)) {
+    return fail('Codex hooks are off for this profile')
+  }
   lastFailure = null
   return entry
 }

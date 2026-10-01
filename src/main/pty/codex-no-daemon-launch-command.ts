@@ -5,6 +5,7 @@ import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-termi
 import { resolveCommandOnLocalPath } from '../ipc/command-path-resolver'
 import { CODEX_SHARED_SERVER_ARGS, codexArgsOverrideHooks } from '../../shared/codex-shell-function'
 import {
+  codexHookFlagTableExists,
   readCodexHookFlagEntry,
   requestCodexHookFlagEntry,
   type CodexHookFlagEntry
@@ -72,7 +73,11 @@ export function planCodexNoDaemonLaunch(launch: LocalCodexLaunch): Promise<strin
   for (const key of launch.envToDelete ?? []) {
     delete env[key]
   }
-  const hookFlagTable = isAbsolute(executable) ? (launch.hookFlagTable ?? null) : null
+  // Why the existence check: no table means Codex hooks are off, so nothing is probed.
+  const hookFlagTable =
+    isAbsolute(executable) && launch.hookFlagTable && codexHookFlagTableExists(launch.hookFlagTable)
+      ? launch.hookFlagTable
+      : null
   const sharedServer =
     env.ORCA_CODEX_ISOLATE === '0' ||
     args.some((arg) => SHARED_SERVER_ARGS.has(arg) || arg.startsWith('--remote='))

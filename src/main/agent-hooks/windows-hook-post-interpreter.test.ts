@@ -23,7 +23,9 @@ vi.mock('../codex/codex-hook-session-trust', async (importOriginal) => {
   return {
     ...actual,
     refreshCodexHookSessionFlags: async () => {
-      const { publishCodexHookFlagEntry } = await import('../codex/codex-hook-flag-table')
+      const { createCodexHookFlagTable, publishCodexHookFlagEntry } =
+        await import('../codex/codex-hook-flag-table')
+      createCodexHookFlagTable()
       publishCodexHookFlagEntry(entry)
       return entry
     }
