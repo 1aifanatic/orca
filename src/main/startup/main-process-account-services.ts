@@ -130,6 +130,11 @@ export function initializeMainProcessAccountServices(): void {
     }
   })
   state.rateLimits.setGeminiCliOAuthEnabledResolver(() => store.getSettings().geminiCliOAuthEnabled)
+  // Why the status bar item and not a setting of its own: showing the meter is the only thing that
+  // makes the `agy` spawn worth paying for, and it is the switch the user already has.
+  state.rateLimits.setAntigravityUsageEnabledResolver(() =>
+    store.getUI().statusBarItems.includes('antigravity')
+  )
   state.rateLimits.setNetworkProxySettingsResolver(() => store.getSettings())
   state.keybindings = new KeybindingService({
     homePath: app.getPath('home'),

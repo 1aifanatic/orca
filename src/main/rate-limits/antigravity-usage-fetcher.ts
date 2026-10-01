@@ -9,13 +9,20 @@ import {
   antigravityCommandName
 } from './antigravity-usage-command'
 import { parseAntigravityUsageStdout, stdoutShowsModelTurn } from './antigravity-usage-response'
+import { classifyAntigravityUsageFailure } from './antigravity-usage-error'
 
-/**
- * Observed verbatim in agy's own log when the keyring holds no session. agy exits 0 and prints this
- * instead of a usage envelope, so the text is the only thing that separates "signed out" from
- * "answered nothing".
- */
-const NOT_SIGNED_IN_MARKER = 'not logged into antigravity'
+const GENERIC_FAILURE_REASON =
+  'Antigravity usage is not available. The Antigravity CLI could not read this account’s quota.'
+
+/** Why a table: each kind is a different user action, and a single sentence would fit none of them. */
+const ANTIGRAVITY_FAILURE_REASONS: Partial<Record<UsageRateLimitFailureKind, string>> = {
+  'rate-limited':
+    'Antigravity usage is not available right now. The Antigravity API is rate-limiting this account.',
+  'no-subscription':
+    'Antigravity usage is not available. This account is signed in but not entitled to Antigravity quota.',
+  server:
+    'Antigravity usage is not available right now. The Antigravity API returned a server error.'
+}
 
 const UNSUPPORTED_USAGE_COMMAND_REASON =
   'Antigravity usage is not available. This version of the Antigravity CLI answers `/usage` as a prompt instead of a command, so Orca stopped asking rather than spend quota on it. Update `agy` and restart Orca.'
@@ -147,10 +154,11 @@ export async function fetchAntigravityRateLimits(
   }
 
   const output = `${result.stdout}\n${result.stderr}`
-  if (output.toLowerCase().includes(NOT_SIGNED_IN_MARKER)) {
+  const failure = classifyAntigravityUsageFailure(output)
+  if (failure?.signedOut) {
     return unavailable(
       'Antigravity usage is not available. Sign in with `agy` to report this account’s quota.',
-      'missing-credentials',
+      failure.failureKind,
       now()
     )
   }
@@ -161,6 +169,15 @@ export async function fetchAntigravityRateLimits(
   if (!reading && stdoutShowsModelTurn(result.stdout)) {
     usageCommandUnsupported = true
     return unavailable(UNSUPPORTED_USAGE_COMMAND_REASON, 'usage-unavailable', now())
+  }
+  if (!reading && failure) {
+    // Why these stay 'error' and not 'unavailable': the account is signed in and the read failed
+    // for a reason that can clear on its own, so the segment should keep retrying.
+    return failed(
+      ANTIGRAVITY_FAILURE_REASONS[failure.failureKind] ?? GENERIC_FAILURE_REASON,
+      failure.failureKind,
+      now()
+    )
   }
   if (!reading) {
     // Why a non-zero exit is reported only here: `runProcess` treats the exit code as data, and agy

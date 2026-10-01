@@ -7,6 +7,7 @@ import { fetchCursorRateLimits } from '../cursor-fetcher'
 import { readCursorAuthSession } from '../cursor-auth'
 import { fetchZcodeRateLimits } from '../zcode-usage-fetcher'
 import { fetchAntigravityRateLimits } from '../antigravity-usage-fetcher'
+import { antigravityUsageDisabledSnapshot } from '../antigravity-usage-snapshot'
 import { fetchMiniMaxRateLimits } from '../minimax/minimax-fetcher'
 import { createHash } from 'node:crypto'
 import { fetchOpenCodeGoUsage } from '../opencode-go-usage-source-selection'
@@ -129,7 +130,10 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         ? this.withFetchingStatus(null, 'opencode-go')
         : this.withFetchingStatus(previousState.opencodeGo, 'opencode-go'),
       kimi: this.withFetchingStatus(previousState.kimi, 'kimi'),
-      antigravity: this.withFetchingStatus(previousState.antigravity, 'antigravity'),
+      antigravity:
+        (this.antigravityUsageEnabledResolver?.() ?? true)
+          ? this.withFetchingStatus(previousState.antigravity, 'antigravity')
+          : previousState.antigravity,
       minimax: miniMaxConfigChanged
         ? this.withFetchingStatus(null, 'minimax')
         : this.withFetchingStatus(previousState.minimax, 'minimax'),
@@ -155,10 +159,17 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       (reason) => ({ status: 'rejected', reason }) as const
     )
 
-    // Why its own promise: the Antigravity read spawns `agy` and waits ~2.5 s for the CLI to start
-    // its language server and refresh the quota. Inside the awaited tuple that latency would be
-    // added to every other provider's cycle.
-    const antigravityResultPromise = fetchAntigravityRateLimits({ signal }).then(
+    // Why gated: the probe spawns `agy`, which starts the CLI's language server for ~2.5 s. A user
+    // who has agy installed but is not showing Antigravity usage should not pay that every cycle.
+    // Default-on matches the status bar's own default, so the meter still fills itself in.
+    const antigravityUsageEnabled = this.antigravityUsageEnabledResolver?.() ?? true
+    // Why its own promise: that ~2.5 s inside the awaited tuple would be added to every other
+    // provider's cycle.
+    const antigravityResultPromise = (
+      antigravityUsageEnabled
+        ? fetchAntigravityRateLimits({ signal })
+        : Promise.resolve(previousState.antigravity ?? antigravityUsageDisabledSnapshot())
+    ).then(
       (value) => ({ status: 'fulfilled', value }) as const,
       (reason) => ({ status: 'rejected', reason }) as const
     )
