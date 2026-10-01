@@ -23,21 +23,24 @@ const USER_SHELL_FOLDERS_KEY =
 const cache = new Map<string, string[]>()
 
 /**
- * Every value a PowerShell profile assigns to `$env:<name>`, in load order, read
- * as text. Spawning PowerShell to evaluate the profiles would run user code and
- * reads as suspicious to EDR (docs/reference/windows-edr-posture.md).
+ * The value each PowerShell edition's profiles leave in `$env:<name>`, read as
+ * text: the last assignment in load order wins, and an edition that never sets
+ * it (or clears it) contributes nothing. Spawning PowerShell to evaluate the
+ * profiles would run user code and reads as suspicious to EDR
+ * (docs/reference/windows-edr-posture.md).
  *
  * Same fidelity as the POSIX rc-file probe: only `$env:NAME = value` and
  * `${env:NAME} = value` lines; no `Set-Item`, .NET setters, conditionals or
- * dot-sourced files. `$HOME` and `$env:USERPROFILE` expand in double-quoted and bare values; any other
- * expression is returned verbatim, which callers comparing against a known
- * path read as "something else". Preview and side-by-side PowerShell 7
- * installs keep their all-users profile elsewhere and are not read.
+ * dot-sourced files. `$HOME` and `$env:USERPROFILE` expand in double-quoted and
+ * bare values; any other expression is returned verbatim, which callers
+ * comparing against a known path read as "something else". Preview and
+ * side-by-side PowerShell 7 installs keep their all-users profile elsewhere and
+ * are not read.
  *
  * Memoized: profiles don't change under a running Orca often enough to pay a
  * re-read on every routing check.
  */
-export function readPowerShellProfileEnvAssignments(name: string, userProfile: string): string[] {
+export function readPowerShellProfileEnvValues(name: string, userProfile: string): string[] {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     return []
   }
@@ -47,29 +50,27 @@ export function readPowerShellProfileEnvAssignments(name: string, userProfile: s
     return cached
   }
   const assignment = new RegExp(`^(?:\\$env:${name}|\\$\\{env:${name}\\})\\s*=\\s*(.+)$`, 'i')
-  const values: string[] = []
-  for (const path of powerShellProfilePaths(userProfile)) {
-    const content = readProfile(path)
-    for (const line of content?.split(/\r?\n/) ?? []) {
-      const value = assignment.exec(line.trim())?.[1]
-      const parsed = value === undefined ? '' : parsePowerShellValue(value, userProfile)
-      if (parsed) {
-        values.push(parsed)
-      }
-    }
-  }
-  cache.set(cacheKey, values)
-  return values
-}
-
-function powerShellProfilePaths(userProfile: string): string[] {
   // Why the registry: it names the folder PowerShell loads from, which OneDrive
   // or folder redirection may have moved; the default is only a fallback.
   const documentsDir = readRegistryDocumentsDir() ?? join(userProfile, 'Documents')
-  return POWERSHELL_EDITIONS.flatMap((edition) => [
-    ...PROFILE_FILES.map((file) => join(edition.psHome(), file)),
-    ...PROFILE_FILES.map((file) => join(documentsDir, edition.documentsSubdir, file))
-  ])
+  const values = POWERSHELL_EDITIONS.map((edition) => {
+    let last = ''
+    const profilePaths = [
+      ...PROFILE_FILES.map((file) => join(edition.psHome(), file)),
+      ...PROFILE_FILES.map((file) => join(documentsDir, edition.documentsSubdir, file))
+    ]
+    for (const path of profilePaths) {
+      for (const line of readProfile(path)?.split(/\r?\n/) ?? []) {
+        const value = assignment.exec(line.trim())?.[1]
+        if (value !== undefined) {
+          last = parsePowerShellValue(value, userProfile)
+        }
+      }
+    }
+    return last
+  }).filter(Boolean)
+  cache.set(cacheKey, values)
+  return values
 }
 
 // Why the registry: $PROFILE hangs off the Documents known folder, which

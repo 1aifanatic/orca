@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { readBashStartupEnvVar, readShellStartupEnvVar } from '../pty/shell-startup-env'
-import { readPowerShellProfileEnvAssignments } from '../pty/powershell-profile-env'
+import { readPowerShellProfileEnvValues } from '../pty/powershell-profile-env'
 
 export type CodexShellStartupHomeOverride = {
   home: string
@@ -123,7 +123,7 @@ function readCustomShellStartupCodexHomes(
   const candidates =
     process.platform === 'win32'
       ? [
-          ...readPowerShellProfileEnvAssignments('CODEX_HOME', home),
+          ...readPowerShellProfileEnvValues('CODEX_HOME', home),
           readBashStartupEnvVar('CODEX_HOME', home)
         ]
       : [readShellStartupEnvVar('CODEX_HOME', home, shell, configHome)]
