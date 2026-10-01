@@ -67,15 +67,19 @@ async function loadLinuxIdentity(fixture: LinuxIdentityFixture) {
   return { identity: await import('./managed-hook-owner-identity'), readFile }
 }
 
-async function loadWindowsIdentity() {
+async function loadWindowsIdentity(creationTimeMs: number | null = 1777777777000) {
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-  const execFileAsync = vi.fn(async (_file: string, args: string[]) => ({
-    stdout: args.join(' ').includes('MachineGuid')
-      ? '\r\n    MachineGuid    REG_SZ    AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE\r\n'
-      : '1777777777000\r\n'
+  const execFileAsync = vi.fn(async () => ({
+    stdout: '\r\n    MachineGuid    REG_SZ    AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE\r\n'
   }))
+  const readWindowsProcessCreationTime = vi.fn(() => creationTimeMs)
   vi.doMock('node:util', () => ({ promisify: () => execFileAsync }))
-  return { identity: await import('./managed-hook-owner-identity'), execFileAsync }
+  vi.doMock('../windows/windows-process-table', () => ({ readWindowsProcessCreationTime }))
+  return {
+    identity: await import('./managed-hook-owner-identity'),
+    execFileAsync,
+    readWindowsProcessCreationTime
+  }
 }
 
 async function loadDarwinIdentity() {
@@ -105,6 +109,7 @@ afterEach(() => {
   vi.doUnmock('node:fs/promises')
   vi.doUnmock('node:child_process')
   vi.doUnmock('node:util')
+  vi.doUnmock('../windows/windows-process-table')
   vi.resetModules()
 })
 
@@ -209,7 +214,7 @@ describe('managed hook owner identity', () => {
   })
 
   it('uses machine and process creation identities on Windows', async () => {
-    const { identity, execFileAsync } = await loadWindowsIdentity()
+    const { identity, execFileAsync, readWindowsProcessCreationTime } = await loadWindowsIdentity()
 
     await expect(identity.readManagedHookHostIdentity()).resolves.toBe(
       'win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -220,7 +225,23 @@ describe('managed hook owner identity', () => {
     await expect(identity.readManagedHookProcessIdentity(process.pid)).resolves.toBe(
       `win32:${process.pid}:1777777777000`
     )
-    expect(execFileAsync).toHaveBeenCalledTimes(2)
+    // Only the registry read forks; the creation time comes from the in-process table.
+    expect(execFileAsync).toHaveBeenCalledTimes(1)
+    expect(readWindowsProcessCreationTime).toHaveBeenCalledWith(process.pid)
+  })
+
+  it('reads an untimed Windows process as gone only when the OS says it is', async () => {
+    const { identity } = await loadWindowsIdentity(null)
+    const kill = vi.spyOn(process, 'kill')
+
+    kill.mockImplementationOnce(() => {
+      throw Object.assign(new Error('no such process'), { code: 'ESRCH' })
+    })
+    await expect(identity.readManagedHookProcessIdentity(4242)).resolves.toBeNull()
+
+    kill.mockImplementationOnce(() => true)
+    await expect(identity.readManagedHookProcessIdentity(4242)).resolves.toBeUndefined()
+    kill.mockRestore()
   })
 
   it('retries an unverified macOS process identity', async () => {

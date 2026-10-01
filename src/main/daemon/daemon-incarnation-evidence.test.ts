@@ -362,7 +362,7 @@ describe('daemon audit availability evidence', () => {
       probeProcessIdentity: async () => ({
         state: 'present',
         reason: 'windows_identity_match',
-        evidenceSources: ['windows_cim', 'endpoint_identity']
+        evidenceSources: ['windows_process_table', 'endpoint_identity']
       })
     } satisfies DaemonAuditClassifierDependencies
 

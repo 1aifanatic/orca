@@ -1,4 +1,5 @@
 import { parseLinuxStartTicks, readBootIdentity } from '../agent-hooks/managed-hook-owner-identity'
+import { readWindowsProcess } from '../windows/windows-process-lookup'
 import { commandLineMatchesDaemon } from './daemon-pid-identity'
 import { startTimesWithinTolerance } from './daemon-process-start-time'
 import {
@@ -11,7 +12,6 @@ import {
 } from './daemon-incarnation-evidence-types'
 import {
   inspectProcessSignal,
-  queryWindowsProcess,
   readLinuxProcessStartedAtMs,
   readLinuxStat,
   readMacosProcessStartedAtMs,
@@ -199,20 +199,24 @@ async function probeWindowsProcess(
   signal: ProcessSignalEvidence,
   dependencies: DaemonProcessProbeDependencies
 ): Promise<DaemonProcessEvidence> {
-  const identity = await (dependencies.queryWindowsProcess ?? queryWindowsProcess)(
+  const identity = await (dependencies.queryWindowsProcess ?? readWindowsProcess)(
     exactIncarnation.identity.pid
   )
   if (identity.status === 'missing') {
-    return gone('windows_process_missing', ['windows_cim', 'endpoint_identity'], exactIncarnation)
+    return gone(
+      'windows_process_missing',
+      ['windows_process_table', 'endpoint_identity'],
+      exactIncarnation
+    )
   }
   if (identity.status === 'unavailable') {
     return unknown(signal === 'permission_denied' ? 'permission_denied' : 'inspection_failed', [
-      'windows_cim',
+      'windows_process_table',
       'process_signal'
     ])
   }
   if (identity.startedAtMs === null) {
-    return unknown('windows_process_start_time_unavailable', ['windows_cim'])
+    return unknown('windows_process_start_time_unavailable', ['windows_process_table'])
   }
   if (
     !startTimesWithinTolerance(
@@ -223,7 +227,7 @@ async function probeWindowsProcess(
   ) {
     return gone(
       'windows_creation_time_mismatch',
-      ['windows_cim', 'endpoint_identity'],
+      ['windows_process_table', 'endpoint_identity'],
       exactIncarnation
     )
   }
@@ -231,8 +235,8 @@ async function probeWindowsProcess(
     'windows_identity_match',
     identity.commandLine &&
       commandLineMatchesDaemon(identity.commandLine, endpoint.socketPath, endpoint.tokenPath)
-      ? ['windows_cim', 'process_command_line', 'endpoint_identity']
-      : ['windows_cim', 'endpoint_identity']
+      ? ['windows_process_table', 'process_command_line', 'endpoint_identity']
+      : ['windows_process_table', 'endpoint_identity']
   )
 }
 

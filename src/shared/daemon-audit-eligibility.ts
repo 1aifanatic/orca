@@ -20,8 +20,10 @@ export const DAEMON_EVIDENCE_SOURCE_VALUES = [
   'process_signal',
   'process_start_time',
   'token_file',
+  // Legacy: evidence recorded before per-PID lookups moved off PowerShell CIM.
   'windows_cim',
-  'windows_named_pipe'
+  'windows_named_pipe',
+  'windows_process_table'
 ] as const
 
 export const DAEMON_PROCESS_PRESENT_REASON_VALUES = [
