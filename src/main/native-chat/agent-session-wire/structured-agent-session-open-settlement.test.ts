@@ -31,10 +31,19 @@ import {
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   appendOpenSettlement,
-  openSettlementPlanIsEmpty,
   planOpenSettlement,
+  type OpenSettlementPlan,
   type OpenSettlementRecordFacts
 } from './structured-agent-session-open-settlement'
+
+function openSettlementPlanIsEmpty(plan: OpenSettlementPlan): boolean {
+  return (
+    plan.recoveredDispatches.length === 0 &&
+    plan.leftoverQueued.length === 0 &&
+    (plan.goneGeneration?.mutations.length ?? 0) === 0 &&
+    plan.rosters.length === 0
+  )
+}
 
 const journals = createTrackedJournalOpener()
 let root: string
@@ -204,21 +213,21 @@ describe('the stored status and the plan agree (T4)', () => {
     )
 
     expect(openSettlementPlanIsEmpty(plan)).toBe(true)
-    expect(storedStatus('unkeyed')).toMatchObject({ status: 'idle' })
+    expect(storedStatus('unkeyed')).toMatchObject({ lifecycle: 'idle' })
     expect(selected('unkeyed')).toBe(false)
   })
 
   it('never selects a chat to revise a verdict: an unverifiable turn stays as it settled (D16 gone)', async () => {
     const journal = await open('unverifiable')
     await JOURNAL_SESSION_STATE_CORPUS['unverifiable turn'](journal)
-    expect(storedStatus('unverifiable')).toMatchObject({ status: 'idle' })
+    expect(storedStatus('unverifiable')).toMatchObject({ lifecycle: 'idle' })
     expect(selected('unverifiable')).toBe(false)
   })
 
   it('selects a chat whose only debt is a queued leftover, and settles it (T15b)', async () => {
     const journal = await open('queued')
     await JOURNAL_SESSION_STATE_CORPUS['queued leftover'](journal)
-    expect(storedStatus('queued')).toMatchObject({ status: 'idle', queuedSends: 1 })
+    expect(storedStatus('queued')).toMatchObject({ lifecycle: 'idle', queuedSends: 1 })
     const plan = planOpenSettlement(journal, null, { settlesRosters: true })
     expect(plan.leftoverQueued).toEqual(['send-queued'])
 

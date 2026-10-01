@@ -1,6 +1,6 @@
 // The host's own startup step, run from `prepare` whether or not any client ever lists a tab: a
 // headless host has its seeded statuses and its settled crashed chats, and no failure in the step
-// (the lease check, one chat's open, one chat's settlement) costs startup or the other chats.
+// (one chat's open, one chat's settlement) costs startup or the other chats.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
@@ -128,8 +128,6 @@ it('never fails startup: each failure is logged by chat and the rest still settl
   await rig.crash()
   await rig.boot()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  const leaseCheck = new Error('lease check failed')
-  vi.spyOn(rig.host, 'reconcileRestartLeases').mockRejectedValueOnce(leaseCheck)
   rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
     if (sessionId === 'session-open-fails') {
       throw new Error('EACCES: permission denied')
@@ -147,8 +145,7 @@ it('never fails startup: each failure is logged by chat and the rest still settl
   )
   const runtime = restartedRuntime()
 
-  // The lease check's failure is still the step's answer, unchanged.
-  await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).rejects.toBe(leaseCheck)
+  await runtime.prepareStructuredAgentSessionStartupRestoration()
 
   expect(latestRestTestStatus(rig, 'session-settled')).toMatchObject({ status: 'idle' })
   await vi.waitFor(() => expect(owes('session-fine')).toBe(false))

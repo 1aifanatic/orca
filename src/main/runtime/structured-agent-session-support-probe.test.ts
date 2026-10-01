@@ -35,6 +35,8 @@ function stubStructuredHostInstall(runtime: OrcaRuntimeService): {
   // still returns the right answer and fails on the install effects alone.
   const host = {
     reconcileRestartLeases: vi.fn(async () => {}),
+    seedStoredStatuses: vi.fn((ids: readonly string[]) => [...ids]),
+    settleOwedSessions: vi.fn(async () => undefined),
     supportsCreate: (location: { executionHostId: string; wslDistro: string | null }) =>
       location.executionHostId === 'local' && location.wslDistro === null
   }

@@ -7,29 +7,22 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 
-/** Named from the host so a rename fails to compile. Only the lease check is required: a host
- *  stand-in without stored state seeds and settles nothing, and lists the saved session's chats. */
+/** Named from the host so a rename fails to compile. */
 export type StructuredAgentSessionStartupHost = Pick<
   StructuredAgentSessionHost,
-  'reconcileRestartLeases'
+  'reconcileRestartLeases' | 'seedStoredStatuses' | 'settleOwedSessions'
 > &
   StructuredAgentSessionListingHost &
-  Partial<
-    Pick<
-      StructuredAgentSessionHost,
-      'seedStoredStatuses' | 'settleOwedSessions' | 'startPerChatFileCopy'
-    >
-  >
+  Partial<Pick<StructuredAgentSessionHost, 'startPerChatFileCopy'>>
 
 type StructuredAgentSessionListingHost = Partial<
   Pick<StructuredAgentSessionHost, 'getPersistedVisibleSessionTabIndex'>
 >
 
 /**
- * Answers the listed chats stored state could not answer, which the post-listing restore opens.
- * Death evidence the lease check writes must exist before the settle takes its verdicts; a failed
- * check leaves them `unverifiable`, which is safe, so the seed and settle still run and the failure
- * is thrown after them.
+ * Answers the listed chats stored status could not answer, which the post-listing restore opens.
+ * The lease check runs first: the death evidence it writes is what the settle's verdicts read. It
+ * reports its own failures and never throws.
  */
 export async function runStructuredAgentSessionStartupStep(
   host: StructuredAgentSessionStartupHost,
@@ -40,22 +33,14 @@ export async function runStructuredAgentSessionStartupStep(
    *  the background copy of old chat files waits for. */
   isRuntimeChatWorkActive: () => boolean = () => false
 ): Promise<string[]> {
-  let leaseFailure: { error: unknown } | null = null
-  try {
-    await host.reconcileRestartLeases()
-  } catch (error) {
-    leaseFailure = { error }
-  }
+  await host.reconcileRestartLeases()
   const listedIds = listedStructuredAgentSessionIds(host, savedSession)
-  const background = host.seedStoredStatuses?.(listedIds) ?? listedIds
+  const background = host.seedStoredStatuses(listedIds)
   // Not awaited here: the tab list and paint never wait on it; chat commands do.
-  onSettling(host.settleOwedSessions?.(listedIds) ?? Promise.resolve())
+  onSettling(host.settleOwedSessions(listedIds))
   // After the settle, which it waits for; commands never wait on it. Latched on the host, so a
-  // second startup pass after a lease failure starts no second copy.
+  // second startup pass starts no second copy.
   host.startPerChatFileCopy?.({ listedIds, isRuntimeChatWorkActive })
-  if (leaseFailure) {
-    throw leaseFailure.error
-  }
   return background
 }
 

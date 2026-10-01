@@ -1,14 +1,20 @@
 // The background copy's second phase: a status row for every chat already in the host's database
 // that has none (see journal-session-status-backfill.ts), one chat per step, inside that chat's
 // serialize. A chat a crash left with work is settled at once from the same replay, as a copied
-// chat is, so startup never has to find it. A chat whose record is gone is skipped: nothing lists
-// or settles it, so its row would answer nobody. A row that fails for good is given up on while
-// the chat's rows and the app version stay as they were (journal-background-failures.ts).
+// chat is, so startup never has to find it. A chat this host cannot settle (its record is gone, or
+// its provider is not served here) is skipped: startup drops such a row, so writing it would loop
+// every launch. A row that fails for good is given up on while the chat's rows and the app version
+// stay as they were (journal-background-failures.ts).
 
 import {
   classifyJournalBackgroundFailure,
   recordJournalBackgroundFailure
 } from '../agent-session-journal/journal-background-failures'
+import type { JournalLoad } from '../agent-session-journal/journal-open'
+import {
+  isUnsettledJournalSessionStatus,
+  type JournalSessionStatus
+} from '../agent-session-journal/journal-session-state'
 import {
   backfillJournalSessionStatus,
   journalStatusInput,
@@ -24,7 +30,8 @@ type StatusBackfillDeps = Pick<
   | 'store'
   | 'serialize'
   | 'openJournal'
-  | 'settleCopied'
+  | 'settleClosedChat'
+  | 'canSettle'
   | 'isDisposed'
   | 'now'
   | 'appVersion'
@@ -32,11 +39,31 @@ type StatusBackfillDeps = Pick<
 
 /** The chats the phase owes a row, in the order it writes them. */
 export function readStatusBackfillOwed(
-  deps: Pick<StatusBackfillDeps, 'database' | 'store' | 'appVersion'>
+  deps: Pick<StatusBackfillDeps, 'database' | 'store' | 'canSettle' | 'appVersion'>
 ): string[] {
-  return readJournalSessionIdsWithoutStatus(deps.database.db, deps.appVersion).filter(
-    (sessionId) => deps.store.getRecord(sessionId) !== null
+  return readJournalSessionIdsWithoutStatus(deps.database.db, deps.appVersion).filter((sessionId) =>
+    deps.canSettle(deps.store.getRecord(sessionId))
   )
+}
+
+/** Settles a chat the job just wrote a status row for (a copy or this phase), from the load it
+ *  wrote that row from, when the row shows work a gone process left. Inside the chat's serialize.
+ *  Never rejects: a failure is logged, and the next startup settles the row. */
+export async function settleWrittenChat(
+  deps: Pick<StatusBackfillDeps, 'store' | 'settleClosedChat'>,
+  sessionId: string,
+  { load, status }: { load: JournalLoad; status: JournalSessionStatus }
+): Promise<void> {
+  const record = deps.store.getRecord(sessionId)
+  // A newer build's rows stay unwritten.
+  if (!record || load.readOnly || !isUnsettledJournalSessionStatus(status)) {
+    return
+  }
+  try {
+    await deps.settleClosedChat(record, load)
+  } catch (error) {
+    console.warn('[structured-agent-session] settling a copied chat failed', { sessionId, error })
+  }
 }
 
 export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillDeps): {
@@ -57,7 +84,7 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
     }
     const written = await backfillJournalSessionStatus(deps.database, sessionId)
     if (written) {
-      await deps.settleCopied(sessionId, written)
+      await settleWrittenChat(deps, sessionId, written)
     }
     return written !== null
   }

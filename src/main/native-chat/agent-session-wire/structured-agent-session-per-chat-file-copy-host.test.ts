@@ -4,6 +4,7 @@
 // given the status row the version 5 migration left it without.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   closeTestJournalHostDatabases,
   openTestJournalHostDatabase,
@@ -15,10 +16,15 @@ import {
   isUnsettledJournalSessionStatus,
   readUnsettledJournalSessionIds
 } from '../agent-session-journal/journal-session-state'
-import { createStructuredAgentSessionPerChatFileCopyControl } from './structured-agent-session-per-chat-file-copy-control'
+import {
+  createStructuredAgentSessionPerChatFileCopyControl,
+  startStructuredAgentSessionPerChatFileCopy
+} from './structured-agent-session-per-chat-file-copy-control'
+import { StructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
+  copyJobDeps,
   createChats,
   createCopyTestRig,
   hasPerChatFile,
@@ -89,7 +95,7 @@ describe('every old file copied, and the next launch reads none (T1, T4)', () =>
     // Every listed chat has its stored status, so nothing is left for the post-listing restore.
     expect(await startup(rig)).toEqual([])
     for (const sessionId of listed) {
-      expect(readTestJournalSessionStatus(rig.root, sessionId)?.status).toBe('idle')
+      expect(readTestJournalSessionStatus(rig.root, sessionId)?.lifecycle).toBe('idle')
     }
   })
 })
@@ -153,9 +159,10 @@ describe('a missing status row (R2A-3)', () => {
   })
 })
 
-describe('a chat this host does not serve (L1)', () => {
-  it('writes the row of a copied or row-less chat a crash cut, and settles neither, as startup does', async () => {
-    const rig = await newRig()
+describe('a chat this host cannot settle (L1, L2)', () => {
+  /** Two chats a crash cut mid-send in a workspace this host does not serve, one still in its old
+   *  file and one with no status row. */
+  async function unsupportedCutChats(rig: CopyTestRig): Promise<void> {
     await crashMidSend(rig, 'session-copied', false)
     await crashMidSend(rig, 'session-rowless', false)
     await rig.crash()
@@ -163,22 +170,59 @@ describe('a chat this host does not serve (L1)', () => {
     db(rig).prepare("DELETE FROM journal_session_state WHERE session_id = 'session-rowless'").run()
     rig.unsupportedWorkspaceIds.add(COPY_TEST_WORKSPACE)
     await rig.boot()
-    const job = copyJob(rig)
+  }
+
+  const unsettled = (rig: CopyTestRig, sessionId: string) => {
+    const status = readTestJournalSessionStatus(rig.root, sessionId)
+    return status && isUnsettledJournalSessionStatus(status)
+  }
+
+  it('settles neither through either of the job’s settles: the startup settle refuses both', async () => {
+    const rig = await newRig()
+    await unsupportedCutChats(rig)
+    const deps = copyJobDeps(rig)
+    // Lets the missing-row phase reach its settle, so both settle sites meet the refusal.
+    const job = new StructuredAgentSessionPerChatFileCopy({
+      ...deps,
+      canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
+        record !== null
+    })
 
     await runToEnd(rig, job)
 
-    for (const sessionId of ['session-copied', 'session-rowless']) {
-      expect(
-        isUnsettledJournalSessionStatus(readTestJournalSessionStatus(rig.root, sessionId)!)
-      ).toBe(true)
-    }
-    // Startup selects both and skips both, by the same rule.
-    expect(readUnsettledJournalSessionIds(db(rig)).toSorted()).toEqual([
+    const settle = vi.mocked(deps.settleClosedChat)
+    expect(settle.mock.calls.map(([record]) => record.sessionId).toSorted()).toEqual([
       'session-copied',
       'session-rowless'
     ])
+    for (const result of settle.mock.results) {
+      expect(await result.value).toBe(false)
+    }
+    expect(unsettled(rig, 'session-copied')).toBe(true)
+    expect(unsettled(rig, 'session-rowless')).toBe(true)
+    expect(rig.host.hasSession('session-copied')).toBe(false)
+  })
+
+  it('writes no row startup drops, so no launch writes one again', async () => {
+    const rig = await newRig()
+    await unsupportedCutChats(rig)
+    await runToEnd(rig, copyJob(rig))
+    // The copy's publish writes its row; the missing-row phase writes none.
+    expect(unsettled(rig, 'session-copied')).toBe(true)
+    expect(readTestJournalSessionStatus(rig.root, 'session-rowless')).toBeNull()
+
+    // The next launch: startup drops the row this host cannot settle, and the job owes nothing.
+    await rig.crash()
+    await rig.boot()
     await rig.host.settleOwedSessions([])
-    expect(readUnsettledJournalSessionIds(db(rig))).toHaveLength(2)
+    expect(readTestJournalSessionStatus(rig.root, 'session-copied')).toBeNull()
+    expect(
+      startStructuredAgentSessionPerChatFileCopy({ ...copyJobDeps(rig), listedIds: [] })
+    ).toBeNull()
+    await runToEnd(rig, copyJob(rig))
+    for (const sessionId of ['session-copied', 'session-rowless']) {
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
+    }
   })
 })
 
@@ -270,7 +314,9 @@ describe('starting and stopping (T17b, T6)', () => {
       store: rig.store,
       serialize: rig.host.collaboratorsForTests().serialize,
       openJournal: () => undefined,
-      settleCopied: async () => undefined,
+      settleClosedChat: async () => false,
+      canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
+        record !== null,
       isHostChatWorkActive: () => false,
       isDisposed: () => false,
       now: () => 0,
@@ -303,7 +349,9 @@ describe('starting and stopping (T17b, T6)', () => {
       },
       serialize: async (_sessionId, task) => task(),
       openJournal: () => undefined,
-      settleCopied: async () => undefined,
+      settleClosedChat: async () => false,
+      canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
+        record !== null,
       isHostChatWorkActive: () => false,
       isDisposed: () => false,
       now: () => 0,

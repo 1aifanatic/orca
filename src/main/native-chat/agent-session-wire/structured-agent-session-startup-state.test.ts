@@ -14,8 +14,16 @@ import {
   readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
 import Database from '../../sqlite/sync-database'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
+import {
+  createStructuredAgentSessionStartupState,
+  type StructuredAgentSessionStartupStateDeps
+} from './structured-agent-session-startup-state'
+import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
 import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
 import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
+import { editPersistedTestAgentSessionStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
   createRestTestRig,
   latestRestTestStatus,
@@ -49,6 +57,22 @@ function db(rig: RestTestRig) {
 async function crashMidSend(rig: RestTestRig, sessionId: string, listed = true): Promise<void> {
   rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
   await restTestChat(rig, sessionId, { message: `asked ${sessionId}`, listed })
+}
+
+/** A chat whose turn is running when Orca dies: startup selects it to settle. */
+async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> {
+  await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+  const [{ providerIdentity }] = await Promise.all(
+    rig.adapter.dispatch.mock.results.slice(-1).map((result) => result.value)
+  )
+  await rig.host
+    .collaboratorsForTests()
+    .sessions.get(sessionId)!
+    .journal.appendItem(
+      { ...providerIdentity, ordinal: 0 },
+      { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+      { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence, turnScope: { kind: 'thread' } }
+    )
 }
 
 /** What startup runs, in order, on the ids the tab list names. */
@@ -295,7 +319,7 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     for (const sessionId of ['session-crashed', ...unlisted]) {
       // The unanswered send is now recovered doubt, which projects as no running request.
       expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({
-        status: 'idle',
+        lifecycle: 'idle',
         handedOverSends: 0,
         summary: { status: null }
       })
@@ -393,7 +417,7 @@ describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', 
     await rig.host.settleOwedSessions(listed)
 
     expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
-      status: 'idle',
+      lifecycle: 'idle',
       handedOverSends: 0
     })
     expect(rig.host.hasSession('session-closing')).toBe(false)
@@ -445,5 +469,111 @@ describe('the startup gate holds chat commands and never refuses them', () => {
       ok: true
     })
     expect(gate.ready()).toBeNull()
+  })
+})
+
+describe('commands held for the real startup settle never deadlock it (R2T-1)', () => {
+  const CEILING_MS = 3_000
+
+  it('lets a command issued before the settle, one during it and a healthy read through as the settle ends', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const rig = await newRig()
+    for (const sessionId of ['session-a', 'session-b']) {
+      await crashMidTurn(rig, sessionId)
+    }
+    await restTestChat(rig, 'session-healthy', { message: 'fine' })
+    await rig.crash()
+    const gate = new StructuredAgentSessionStartupGate(CEILING_MS)
+    gate.hold()
+    await rig.boot({ commandsReady: gate.ready })
+    const listed = listedIds(rig)
+    await rig.host.reconcileRestartLeases()
+    rig.host.seedStoredStatuses(listed)
+    expect(readUnsettledJournalSessionIds(db(rig)).toSorted()).toEqual(['session-a', 'session-b'])
+    const started = Date.now()
+    const elapsed = () => Date.now() - started
+
+    // Before the settle: a send to a crashed chat, and the option read a chat pane fires on mount.
+    const sendBefore = sendRestTestMessage(rig, 'session-a', 'during startup').then(elapsed)
+    const optionsBefore = rig.host.readOptions('session-a').then(elapsed)
+    const settled = rig.host.settleOwedSessions(listed)
+    gate.openWhen(settled)
+    // During the settle: the second crashed chat, which the settle has not reached yet.
+    const optionsDuring = rig.host.readOptions('session-b').then(elapsed)
+    const healthyRead = rig.host.journalSnapshot('session-healthy').then(elapsed)
+    const settleEnded = await settled.then(elapsed)
+
+    const answered = await Promise.all([sendBefore, optionsBefore, optionsDuring, healthyRead])
+    expect(settleEnded).toBeLessThan(CEILING_MS / 2)
+    for (const at of answered) {
+      expect(at).toBeLessThan(CEILING_MS / 2)
+    }
+    expect(gate.ready()).toBeNull()
+  }, 20_000)
+})
+
+describe('a stored status no settle here can clear (R2A-4)', () => {
+  it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {
+    const opens: string[] = []
+    const openDeps = new Proxy(
+      {},
+      {
+        get: (_target, key) => {
+          opens.push(String(key))
+          throw new Error('the settle opened a chat this host cannot settle')
+        }
+      }
+    )
+    const refused: AgentSessionRecord[] = []
+    const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord => {
+      if (record) {
+        refused.push(record)
+      }
+      return false
+    }
+    const state = createStructuredAgentSessionStartupState({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a refused settle reads no open dependency; any read throws and fails the test.
+      openDeps: openDeps as StructuredAgentSessionStartupStateDeps['openDeps'],
+      canSettle,
+      seedStatus: vi.fn(),
+      resolveRecovery: vi.fn(async () => true),
+      restoreListed: vi.fn(async () => undefined),
+      serialize: (_sessionId, task) => task(),
+      hasSession: () => false,
+      isDisposed: () => false
+    })
+    const record = agentSessionRecordFixture()
+
+    await expect(state.settleClosedChat(record)).resolves.toBe(false)
+    expect(refused).toEqual([record])
+    expect(opens).toEqual([])
+  })
+
+  it('drops the row of a chat whose record is gone or whose provider this host does not serve, so the next boot selects neither', async () => {
+    const rig = await newRig()
+    await crashMidSend(rig, 'session-gone', false)
+    await crashMidSend(rig, 'session-elsewhere', false)
+    await rig.crash()
+    await editPersistedTestAgentSessionStore(rig.root, (persisted) => {
+      delete persisted.records['session-gone']
+    })
+    rig.unsupportedWorkspaceIds.add(rig.store.getRecord('session-elsewhere')!.location.workspaceId)
+
+    await rig.boot()
+    await startup(rig, listedIds(rig))
+
+    for (const sessionId of ['session-gone', 'session-elsewhere']) {
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
+    }
+    expect(opened(rig, ['session-gone', 'session-elsewhere'])).toEqual([])
+
+    // The obligation died: the next boot finds no row to select and opens neither chat.
+    await rig.crash()
+    await rig.boot()
+    await startup(rig, listedIds(rig))
+    for (const sessionId of ['session-gone', 'session-elsewhere']) {
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
+    }
+    expect(opened(rig, ['session-gone', 'session-elsewhere'])).toEqual([])
   })
 })

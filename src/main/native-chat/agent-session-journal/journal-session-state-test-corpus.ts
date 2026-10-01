@@ -1,85 +1,25 @@
-// Chats in every state an open's settlement plan can find, written through a real journal store,
-// for the tests of the stored state and the plan that must agree about them.
+// Chats in every state a settlement plan can find, written through a real journal store, for the
+// tests of the stored status and the plan that must agree about them.
 
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalItemBody,
-  type AgentJournalItemIdentity
-} from '../../../shared/agent-session-journal-types'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import type { AgentSessionJournal } from './journal-store'
+import {
+  assistantMessage,
+  codexItem,
+  CORPUS_FENCE,
+  item,
+  roster,
+  runningTool,
+  send,
+  settledTurn,
+  userMessage
+} from './journal-session-state-test-writes'
 
-/** The fence every case writes its content under; an `unverifiable` turn's writer. */
-export const CORPUS_FENCE = 3
-
-const THREAD = 'thread-corpus'
-
-function codexItem(turnId: string, ordinal: number): AgentJournalItemIdentity {
-  return { provider: 'codex', threadId: THREAD, turnId, ordinal }
-}
-
-async function item(
-  journal: AgentSessionJournal,
-  identity: AgentJournalItemIdentity,
-  body: AgentJournalItemBody
-): Promise<void> {
-  await journal.appendItem(identity, body, {
-    fence: CORPUS_FENCE,
-    turnScope: AGENT_JOURNAL_THREAD_SCOPE
-  })
-}
-
-async function send(
-  journal: AgentSessionJournal,
-  clientMessageId: string,
-  text: string,
-  handoverRecorded?: true
-): Promise<void> {
-  await journal.appendSubmission({
-    clientMessageId,
-    payloadFingerprint: `fp-${clientMessageId}`,
-    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
-    fence: CORPUS_FENCE,
-    ...(handoverRecorded ? { handoverRecorded } : {})
-  })
-}
-
-async function settledTurn(journal: AgentSessionJournal, turnId: string): Promise<void> {
-  await send(journal, `send-${turnId}`, `asked ${turnId}`)
-  await journal.resolveDispatch({
-    clientMessageId: `send-${turnId}`,
-    state: 'accepted',
-    providerIdentity: codexItem(turnId, 1),
-    fence: CORPUS_FENCE
-  })
-  await item(journal, codexItem(turnId, 0), {
-    kind: 'turn',
-    turnId,
-    state: 'completed',
-    outcome: 'success',
-    startedAt: 10,
-    completedAt: 20
-  })
-  await item(journal, codexItem(turnId, 2), {
-    kind: 'message',
-    role: 'assistant',
-    blocks: [{ type: 'text', text: `answered ${turnId}` }]
-  })
-}
-
-function roster(state: 'working' | 'completed'): AgentJournalItemBody {
-  return {
-    kind: 'message',
-    role: 'system',
-    blocks: [
-      {
-        type: 'subagent-group',
-        groupId: 'group-1',
-        agents: [{ id: 'child-1', label: 'reads', state, startedAt: 10 }]
-      }
-    ]
-  }
-}
+export { CORPUS_FENCE } from './journal-session-state-test-writes'
 
 /** Each case, written onto a freshly opened (empty) journal. */
 export const JOURNAL_SESSION_STATE_CORPUS = {
@@ -168,6 +108,101 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
   'settled roster': async (journal: AgentSessionJournal) => {
     await settledTurn(journal, 'turn-1')
     await item(journal, { provider: 'orca', clientMessageId: 'roster-1' }, roster('completed'))
+  },
+  'provider echo claiming a send': async (journal: AgentSessionJournal) => {
+    const body = userMessage('hello')
+    await journal.appendSubmission({
+      clientMessageId: 'send-echo',
+      payloadFingerprint: structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.send',
+        sessionId: journal.snapshot().sessionId,
+        fields: { body }
+      }),
+      body,
+      fence: CORPUS_FENCE
+    })
+    await item(journal, codexItem('turn-2', 0), {
+      kind: 'turn',
+      turnId: 'turn-2',
+      state: 'running',
+      startedAt: 10
+    })
+    // The provider's copy of the user's own message, matched to the send by its fingerprint.
+    await item(journal, codexItem('turn-2', 1), userMessage('hello'))
+    await item(journal, codexItem('turn-2', 2), assistantMessage('working on it'))
+  },
+  'newest reply tombstoned': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await item(journal, codexItem('turn-1', 3), assistantMessage('a later reply'))
+    await journal.appendTombstone(codexItem('turn-1', 3), { fence: CORPUS_FENCE })
+  },
+  'queued send handed over': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await send(journal, 'send-queued', 'waiting its turn', true)
+    await journal.resolveDispatch({
+      clientMessageId: 'send-queued',
+      state: 'pending',
+      turnScope: AGENT_JOURNAL_THREAD_SCOPE,
+      fence: CORPUS_FENCE
+    })
+  },
+  'refused send': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await send(journal, 'send-refused', 'nope')
+    await journal.resolveDispatch({
+      clientMessageId: 'send-refused',
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+        surface: 'rejection'
+      }),
+      fence: CORPUS_FENCE
+    })
+  },
+  'running turn on a legacy status row': async (journal: AgentSessionJournal) => {
+    await item(journal, codexItem('turn-9', 0), {
+      kind: 'status',
+      text: 'Codex is working',
+      turnLifecycle: { turnId: 'turn-9', state: 'running', startedAt: 10 }
+    })
+  },
+  'running work settled by a batch': async (journal: AgentSessionJournal) => {
+    await item(journal, codexItem('turn-1', 0), {
+      kind: 'turn',
+      turnId: 'turn-1',
+      state: 'running',
+      startedAt: 10
+    })
+    await item(journal, codexItem('turn-1', 4), runningTool)
+    await journal.appendLifecycleBatch({
+      settlementId: 'settle-1',
+      fence: CORPUS_FENCE,
+      recovered: true,
+      mutations: [
+        {
+          kind: 'item',
+          identity: codexItem('turn-1', 4),
+          body: { ...runningTool, state: 'failed' },
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
+        },
+        {
+          kind: 'item',
+          identity: codexItem('turn-1', 0),
+          body: {
+            kind: 'turn',
+            turnId: 'turn-1',
+            state: 'interrupted',
+            startedAt: 10,
+            completedAt: 20
+          },
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
+        }
+      ]
+    })
+  },
+  'unknown send recovered': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await send(journal, 'send-recovered', 'lost in a crash')
+    await journal.markPendingSubmissionsUnknown(CORPUS_FENCE)
   }
 } satisfies Record<string, (journal: AgentSessionJournal) => Promise<void>>
 
@@ -187,7 +222,14 @@ export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   'queued leftover': true,
   // Its verdict was decided when it settled; startup never revises it.
   'unverifiable turn': false,
-  'settled roster': false
+  'settled roster': false,
+  'provider echo claiming a send': true,
+  'newest reply tombstoned': false,
+  'queued send handed over': true,
+  'refused send': false,
+  'running turn on a legacy status row': true,
+  'running work settled by a batch': false,
+  'unknown send recovered': false
 }
 
 export const JOURNAL_SESSION_STATE_CASES = Object.keys(JOURNAL_SESSION_STATE_CORPUS).filter(

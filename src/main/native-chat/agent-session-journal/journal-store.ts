@@ -128,9 +128,6 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      replaceState: (state) => {
-        this.state = state
-      },
       markFoldStale: () => {
         this.foldStale = true
       },
@@ -162,7 +159,12 @@ export class AgentSessionJournal {
   /** Re-read from disk first while stale, so no reader or writer gets a fold the disk never held. */
   private get state(): JournalReducerState {
     if (this.foldStale) {
-      const reloaded = replayJournal(this.database.db, this.identity.sessionId)
+      const db = this.database.db
+      if (db.isTransaction) {
+        // A transaction would read its own uncommitted rows back as the fold.
+        throw new Error(`agent-session journal ${this.identity.sessionId} is stale mid-transaction`)
+      }
+      const reloaded = replayJournal(db, this.identity.sessionId)
       if (!reloaded) {
         throw new Error(`agent-session journal ${this.identity.sessionId} is gone`)
       }

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { vi } from 'vitest'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import {
   moveChatToPerChatFile,
@@ -87,14 +88,22 @@ export async function perChatFilesLeft(rig: RestTestRig): Promise<number> {
   return files
 }
 
-/** The job over the rig's current host, never started on a timer: a test calls `tick`. Its settle is
- *  the startup state's own. */
+/** The job over the rig's current host, never started on a timer: a test calls `tick`. */
 export function copyJob(
   rig: CopyTestRig,
   overrides: Partial<PerChatFileCopyDeps> = {}
 ): StructuredAgentSessionPerChatFileCopy {
+  return new StructuredAgentSessionPerChatFileCopy({ ...copyJobDeps(rig), ...overrides })
+}
+
+/** The job's dependencies over the rig's current host. Its settle is the startup state's own,
+ *  counted, and its rule for which chats this host settles is the rig adapter's. */
+export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
   const { sessions, serialize } = rig.host.collaboratorsForTests()
   const database = openTestJournalHostDatabase(rig.root)
+  // The rig adapter's own rule.
+  const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
+    record !== null && !rig.unsupportedWorkspaceIds.has(record.location.workspaceId)
   const startup = createStructuredAgentSessionStartupState({
     openDeps: {
       store: rig.store,
@@ -103,8 +112,7 @@ export function copyJob(
       },
       journalDatabase: database
     },
-    // The rig adapter's own rule.
-    supportsRecord: (record) => !rig.unsupportedWorkspaceIds.has(record.location.workspaceId),
+    canSettle,
     seedStatus: () => undefined,
     resolveRecovery: async () => true,
     restoreListed: async () => undefined,
@@ -112,21 +120,21 @@ export function copyJob(
     hasSession: (sessionId) => sessions.has(sessionId),
     isDisposed: () => false
   })
-  return new StructuredAgentSessionPerChatFileCopy({
+  return {
     database,
     store: rig.store,
     listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
     isStartupChatWorkActive: () => false,
     serialize,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
-    settleCopied: vi.fn(startup.settleCopied),
+    settleClosedChat: vi.fn(startup.settleClosedChat),
+    canSettle,
     isDisposed: () => false,
     now: () => rig.copyClock.now,
     appVersion: '1.0.0',
     freeBytes: async () => null,
-    startDelayMs: 0,
-    ...overrides
-  })
+    startDelayMs: 0
+  }
 }
 
 /** Ticks until the job has finished, a second of its clock apart; answers how many ticks it took. */

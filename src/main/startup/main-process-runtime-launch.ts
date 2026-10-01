@@ -340,8 +340,10 @@ export async function initializeMainProcessRuntimeLaunch(
     bindTerminalRuntimeStartupServices(Promise.resolve(startTerminalRuntimeStartupServices()))
   }
   // The host seeds its chats' statuses and settles crashed ones itself, so a window, a remote
-  // client or neither sees the same state. Behind the barriers the renderer's own call awaits.
-  void Promise.all([state.firstWindowStartupServicesReady, state.managedWslCliStartupBarrierReady])
+  // client or neither sees the same state. Only behind the first-window services: the PTY
+  // inventory it takes before the lease check needs the daemon provider. The managed-WSL barrier
+  // gates terminal spawns, which this step makes none of.
+  void state.firstWindowStartupServicesReady
     .then(() => runtime.prepareStructuredAgentSessionStartupRestoration())
     .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
   app.on('activate', options.handleMacAppActivation)

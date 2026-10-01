@@ -28,6 +28,11 @@ export class JournalStatusProjection {
     return tip && tip.fence === fence ? tip.state : this.project(fence)
   }
 
+  /** A failed append's projection read a row that never committed. */
+  invalidate(): void {
+    this.cached = null
+  }
+
   private atTip(): Cached | null {
     const fold = this.fold()
     const cached = this.cached

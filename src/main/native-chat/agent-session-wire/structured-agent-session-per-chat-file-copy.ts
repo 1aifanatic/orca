@@ -35,13 +35,19 @@ import {
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
-import { createStructuredAgentSessionStatusBackfill } from './structured-agent-session-status-backfill-step'
+import {
+  createStructuredAgentSessionStatusBackfill,
+  settleWrittenChat
+} from './structured-agent-session-status-backfill-step'
 import { StructuredAgentSessionPerChatFileQueue } from './structured-agent-session-per-chat-file-queue'
 import {
   removeEmptyPerChatDirectories,
   roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
-import type { StructuredAgentSessionStartupState } from './structured-agent-session-startup-state'
+import type {
+  StructuredAgentSessionStartupState,
+  StructuredAgentSessionStartupStateDeps
+} from './structured-agent-session-startup-state'
 
 export const PER_CHAT_FILE_COPY_INTERVAL_MS = 1_000
 /** No run before this long after host startup: the first launch's paint and listing go first. */
@@ -63,9 +69,10 @@ export type PerChatFileCopyDeps = {
   openJournal: (
     sessionId: string
   ) => Pick<AgentSessionJournal, 'importPending' | 'whenImported'> | undefined
-  /** Settles a chat the job wrote a status row for, when startup would. Inside the chat's
-   *  serialize; never rejects. */
-  settleCopied: StructuredAgentSessionStartupState['settleCopied']
+  /** The startup state's one closed-chat settle, which refuses a chat `canSettle` rejects. */
+  settleClosedChat: StructuredAgentSessionStartupState['settleClosedChat']
+  /** Whether this host settles a chat: the missing-row phase writes no row for one it doesn't. */
+  canSettle: StructuredAgentSessionStartupStateDeps['canSettle']
   isDisposed: () => boolean
   now: () => number
   appVersion: string
@@ -270,7 +277,7 @@ export class StructuredAgentSessionPerChatFileCopy {
     // opens it. A failed settle is not a failed copy: startup settles the row the copy wrote.
     const { load, status } = result
     if (!open && load && status) {
-      await this.deps.settleCopied(sessionId, { load, status })
+      await settleWrittenChat(this.deps, sessionId, { load, status })
     }
   }
 

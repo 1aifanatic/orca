@@ -131,9 +131,11 @@ Two rules the ingest must keep:
 - **Never persist a structured row in the store.** The chat journal database
   is the durable truth for a structured session. Each chat's status is stored
   there beside its journal (`journal_session_state`), written in the same
-  transaction as the journal rows it describes, so it is always current. At
-  host startup the host republishes a settled chat's row into the store without
-  opening the chat, and settles a chat a gone process left with work first. A structured row in `last-status.json` would
+  transaction as the journal rows it describes, so it is always current; a
+  chat last written before that table existed has no row until it is opened.
+  At host startup the host republishes a settled chat's row into the store
+  without opening the chat, and settles a chat a gone process left with work
+  first. A structured row in `last-status.json` would
   hydrate as `restoredUnconfirmed` and fight that republish, so the serializer
   still skips rows carrying `structuredHost`, and hydrate still drops any found
   on disk. Applying one therefore also skips

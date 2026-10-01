@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import Database from '../../sqlite/sync-database'
 import { NO_LEGACY_JOURNAL_RECORDS } from '../agent-session-journal/journal-database'
 import { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
@@ -416,7 +417,8 @@ const copyJobDeps = {
   isStartupChatWorkActive: () => false,
   serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
   openJournal: () => undefined,
-  settleCopied: async () => undefined,
+  settleClosedChat: async () => false,
+  canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => record !== null,
   isDisposed: () => false,
   now: () => 0,
   appVersion: '1.0.0'

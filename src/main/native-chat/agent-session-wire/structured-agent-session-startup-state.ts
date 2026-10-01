@@ -18,10 +18,10 @@ import type { StructuredAgentSessionStatusProjection } from '../../../shared/str
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { JournalLoad } from '../agent-session-journal/journal-open'
 import {
+  deleteJournalSessionStatus,
   isUnsettledJournalSessionStatus,
   readJournalSessionStatuses,
-  readUnsettledJournalSessionIds,
-  type JournalSessionStatus
+  readUnsettledJournalSessionIds
 } from '../agent-session-journal/journal-session-state'
 import {
   openStructuredAgentSessionConversationJournal,
@@ -36,7 +36,8 @@ export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
-  supportsRecord: (record: AgentSessionRecord) => boolean
+  /** `hostCanSettleRecord` bound to this host's adapter. */
+  canSettle: (record: AgentSessionRecord | null) => record is AgentSessionRecord
   seedStatus: (
     record: AgentSessionRecord,
     stored: { projected: StructuredAgentSessionStatusProjection; lastActivityAt: number }
@@ -58,14 +59,10 @@ export type StructuredAgentSessionStartupState = {
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
   /** The settle step has started and not finished. */
   isSettling: () => boolean
-  /** Settles a chat the background copy just wrote a status row for and nothing holds open, from
-   *  the load it wrote that row from, with no replay, when this settle would select it. For a
-   *  caller inside the chat's serialize, after this settle has finished. Never rejects: a failure
-   *  is logged, and the next startup settles the row. */
-  settleCopied: (
-    sessionId: string,
-    written: { load: JournalLoad; status: JournalSessionStatus }
-  ) => Promise<void>
+  /** The one settle of a chat nothing holds open, for any caller inside the chat's serialize, from
+   *  `loaded` in place of a replay when the caller holds the chat's current fold. False, opening
+   *  nothing, for a chat `canSettle` rejects, one already open, or after quit. */
+  settleClosedChat: (record: AgentSessionRecord, loaded?: JournalLoad) => Promise<boolean>
 }
 
 export function createStructuredAgentSessionStartupState(
@@ -82,7 +79,7 @@ export function createStructuredAgentSessionStartupState(
       return settling
     },
     isSettling: () => settling !== null && !settled,
-    settleCopied: (sessionId, written) => settleCopied(deps, sessionId, written)
+    settleClosedChat: (record, loaded) => settleClosed(deps, record, loaded)
   }
 }
 
@@ -112,7 +109,7 @@ function seedStoredStatuses(
       background.push(sessionId)
       continue
     }
-    if (!deps.supportsRecord(record)) {
+    if (!deps.canSettle(record)) {
       continue
     }
     if (!byId.has(sessionId)) {
@@ -151,8 +148,9 @@ async function settleOwedSessions(
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
     for (const sessionId of readUnsettledJournalSessionIds(database.db)) {
-      const record = settleableRecord(deps, sessionId)
-      if (!record) {
+      const record = deps.openDeps.store.getRecord(sessionId)
+      if (!deps.canSettle(record)) {
+        dropUnreachableStatus(database, sessionId, record)
         continue
       }
       if (listedOrder.has(sessionId)) {
@@ -188,6 +186,29 @@ async function settleOwedSessions(
   }
 }
 
+/**
+ * A row no settle here can clear: its chat's record is gone, or this host does not serve its
+ * provider. Dropped, so it is not selected every boot; an open writes it again if the chat is ever
+ * opened here. Kept while the records import is owed, which may still bring the record.
+ */
+function dropUnreachableStatus(
+  database: StructuredAgentSessionStartupStateDeps['openDeps']['journalDatabase'],
+  sessionId: string,
+  record: AgentSessionRecord | null
+): void {
+  if (!record && database.legacyRecordImportOwed) {
+    return
+  }
+  try {
+    deleteJournalSessionStatus(database.db, sessionId)
+  } catch (error) {
+    console.warn('[structured-agent-session] dropping an unreachable chat status failed', {
+      sessionId,
+      error
+    })
+  }
+}
+
 /** Every lease a crash left `recovering`, listed or not: a provider process that outlived the crash
  *  is stopped and its death recorded, so the settle below reads one verdict per turn. */
 async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateDeps) {
@@ -199,44 +220,19 @@ async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateD
   })
 }
 
-/** The record of a chat this host settles: one it serves. Every settle selects by this. */
-function settleableRecord(
-  deps: StructuredAgentSessionStartupStateDeps,
-  sessionId: string
-): AgentSessionRecord | null {
-  const record = deps.openDeps.store.getRecord(sessionId)
-  return record && deps.supportsRecord(record) ? record : null
-}
-
-async function settleCopied(
-  deps: StructuredAgentSessionStartupStateDeps,
-  sessionId: string,
-  { load, status }: { load: JournalLoad; status: JournalSessionStatus }
-): Promise<void> {
-  const record = settleableRecord(deps, sessionId)
-  // A newer build's rows stay unwritten.
-  if (!record || load.readOnly || !isUnsettledJournalSessionStatus(status)) {
-    return
-  }
-  try {
-    await settleClosed(deps, record, load)
-  } catch (error) {
-    console.warn('[structured-agent-session] settling a copied chat failed', { sessionId, error })
-  }
-}
-
 /** A chat nothing holds open: settled and closed, never indexed, so it gets no status row. */
 async function settleClosed(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord,
   loaded?: JournalLoad
-): Promise<void> {
-  if (deps.isDisposed() || deps.hasSession(record.sessionId)) {
-    return
+): Promise<boolean> {
+  if (deps.isDisposed() || deps.hasSession(record.sessionId) || !deps.canSettle(record)) {
+    return false
   }
   const opened = await openStructuredAgentSessionConversationJournal(deps.openDeps, record, {
     deferPerSessionImport: true,
     ...(loaded ? { loaded } : {})
   })
   await opened.session.journal.close()
+  return true
 }

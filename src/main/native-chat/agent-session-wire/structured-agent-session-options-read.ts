@@ -96,6 +96,8 @@ export async function readStructuredAgentSessionOptions(
   sessionId: string
 ): Promise<AgentSessionOptionsResult> {
   const { adapter, store } = context.deps
+  // Startup's settle first, before the chat's lock, which the settle takes too.
+  await context.deps.commandsReady?.()
   const live = await context.serialize(sessionId, async () => {
     const session = await context.openConversation(sessionId).catch((error: unknown) => {
       throw journalOpenReadRefusal(error)
