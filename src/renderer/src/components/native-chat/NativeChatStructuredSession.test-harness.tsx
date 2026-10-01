@@ -174,6 +174,7 @@ export function createStructuredSessionMocks() {
             loadOlder: mocks.loadOlder,
             prompts: mocks.promptItems,
             outbox: outbox.outbox,
+            failedHere: outbox.failedHere,
             submissions: mocks.submissions,
             send: outbox.send,
             retry: outbox.retry,

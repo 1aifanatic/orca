@@ -213,6 +213,7 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     outbox,
+    failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
     // A message typed during a command queues behind it on the host.

@@ -283,7 +283,8 @@ describe('structured agent session outbox admission', () => {
       'Claude',
       () => {},
       [],
-      []
+      [],
+      result.current.failedHere
     )
     expect(notices.get(agentJournalSubmissionKey(c!.clientMessageId))?.onRetry).toBeDefined()
 

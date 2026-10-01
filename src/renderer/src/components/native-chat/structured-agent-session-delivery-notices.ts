@@ -88,7 +88,8 @@ function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
   recorded: AgentJournalSubmission | undefined,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly AgentSessionFailureFact[],
+  failedHere: ReadonlySet<string>
 ): string {
   // A send attempted before a Stop and then interrupted may already be with the host.
   const attemptedAcrossStop =
@@ -108,6 +109,10 @@ function deliveryNoticeText(
   // An earlier attempt under the id the host forgot may already be in the chat.
   if (structuredAgentSessionEntryIdExpired(entry)) {
     return agentSessionWriteNoticeText(['outcomeUnknown'])
+  }
+  // Its cause may have cleared since it was saved; a Retry it still stops brings the cause back.
+  if (structuredAgentSessionEntryHeldForRetry(entry) && !failedHere.has(entry.clientMessageId)) {
+    return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
   if (
     entry.state === 'rejected' &&
@@ -133,7 +138,9 @@ export function structuredAgentSessionDeliveryNotices(
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly AgentSessionFailureFact[],
+  /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
+  failedHere: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -156,7 +163,8 @@ export function structuredAgentSessionDeliveryNotices(
         entry,
         { agentName, retryControl },
         rejected.get(entry.clientMessageId),
-        startFailures
+        startFailures,
+        failedHere
       )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),

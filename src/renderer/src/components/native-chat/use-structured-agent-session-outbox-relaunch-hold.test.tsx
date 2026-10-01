@@ -31,6 +31,8 @@ import { structuredAgentSessionDeliveryNotices } from './structured-agent-sessio
 const SESSION = 'session-1'
 // Stable, as the view passes it: a new object each render would re-run the owner-change requeue.
 const LOCAL_TARGET = { kind: 'local' } as const
+// Read back from storage, the cause may have cleared since (the user updated Orca, say).
+const NOT_SENT_WORDS = 'Your message was not sent.'
 const NEWER_ORCA_WORDS =
   'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
 
@@ -106,7 +108,14 @@ function mount(fence = 1) {
 type Outbox = ReturnType<typeof mount>['result']['current']
 
 function notices(outbox: Outbox) {
-  return structuredAgentSessionDeliveryNotices(outbox.outbox, 'Claude', outbox.retry, [], [])
+  return structuredAgentSessionDeliveryNotices(
+    outbox.outbox,
+    'Claude',
+    outbox.retry,
+    [],
+    [],
+    outbox.failedHere
+  )
 }
 
 function noticeFor(outbox: Outbox, clientMessageId: string) {
@@ -167,7 +176,7 @@ describe('a message the host refused, across a relaunch', () => {
       await settle()
       expect(mocks.call).toHaveBeenCalledTimes(1)
       const notice = noticeFor(after.result.current, refusedId)
-      expect(notice?.text).toBe(NEWER_ORCA_WORDS)
+      expect(notice?.text).toBe(NOT_SENT_WORDS)
       expect(notice?.onRetry).toBeDefined()
 
       act(() => notice?.onRetry?.())
@@ -249,7 +258,28 @@ describe('a message the host refused, across a relaunch', () => {
     const { result } = mount()
     await settle()
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(noticeFor(result.current, 'op-refused')?.text).toBe(NEWER_ORCA_WORDS)
+    expect(noticeFor(result.current, 'op-refused')?.text).toBe(NOT_SENT_WORDS)
+  })
+
+  it("words the cause again once a Retry is refused for it; a relaunch's row only says not sent", async () => {
+    mocks.call.mockResolvedValue(newerOrcaRefusal())
+    const before = mount()
+    act(() => expect(before.result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(before.result.current.outbox[0]?.lastFailure).toBeDefined())
+    const refusedId = sentIds()[0]!
+    before.unmount()
+
+    // The chat's history is still from a newer Orca.
+    const after = mount()
+    await settle()
+    expect(noticeFor(after.result.current, refusedId)).toMatchObject({ text: NOT_SENT_WORDS })
+
+    act(() => noticeFor(after.result.current, refusedId)?.onRetry?.())
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(noticeFor(after.result.current, refusedId)?.text).toBe(NEWER_ORCA_WORDS)
+    )
+    expect(noticeFor(after.result.current, refusedId)?.onRetry).toBeDefined()
   })
 })
 

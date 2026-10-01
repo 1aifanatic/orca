@@ -35,6 +35,7 @@ import {
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
+import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -83,6 +84,8 @@ export function useStructuredAgentSessionOutbox(args: {
   const inFlightIdRef = useRef<string | null>(null)
   const dispatchGenerationRef = useRef(0)
   const [error, setError] = useState<string | null>(null)
+  const { failedHere, recordFailures, forget } =
+    useStructuredAgentSessionOutboxFailedHere(sessionId)
   const [errorSession, setErrorSession] = useState(sessionId)
   // Render-time reset (react.dev: adjusting state when a prop changes), so the
   // old session's banner neither flashes for a frame nor resurrects on return.
@@ -167,11 +170,12 @@ export function useStructuredAgentSessionOutbox(args: {
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
       setError(disposition.error)
+      recordFailures(outboxRef.current, disposition.entries)
       outboxRef.current = disposition.entries
       setOutbox(disposition.entries)
       writeOutbox(sessionId, disposition.entries)
     },
-    [sessionId]
+    [recordFailures, sessionId]
   )
 
   useEffect(() => {
@@ -302,6 +306,7 @@ export function useStructuredAgentSessionOutbox(args: {
 
   const retry = (clientMessageId: string): void => {
     setError(null)
+    forget(clientMessageId)
     retryStructuredAgentSessionOutboxEntry({
       clientMessageId,
       sessionId,
@@ -315,6 +320,7 @@ export function useStructuredAgentSessionOutbox(args: {
   return {
     outbox,
     error,
+    failedHere,
     send,
     retry,
     withdrawUnsent

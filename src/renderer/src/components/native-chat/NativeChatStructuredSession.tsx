@@ -134,9 +134,17 @@ export function NativeChatStructuredSession(
         agentLabel,
         retryDelivery,
         rejectionRows,
-        startFailures
+        startFailures,
+        controller.failedHere
       ),
-    [controller.outbox, agentLabel, retryDelivery, rejectionRows, startFailures]
+    [
+      controller.outbox,
+      agentLabel,
+      retryDelivery,
+      rejectionRows,
+      startFailures,
+      controller.failedHere
+    ]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =

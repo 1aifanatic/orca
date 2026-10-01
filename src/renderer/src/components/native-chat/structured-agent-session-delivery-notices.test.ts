@@ -36,17 +36,21 @@ function entry(
   }
 }
 
+const NOT_FAILED_HERE: ReadonlySet<string> = new Set()
+
 function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[] = [],
   startFailures: readonly AgentSessionFailureFact[] = []
 ): Record<string, string> {
+  // Every failure seen while the chat was open, so each words its whole cause.
   const notices = structuredAgentSessionDeliveryNotices(
     outbox,
     'Claude',
     () => {},
     submissions,
-    startFailures
+    startFailures,
+    new Set(outbox.map((candidate) => candidate.clientMessageId))
   )
   return Object.fromEntries([...notices].map(([id, notice]) => [id, notice.text]))
 }
@@ -72,7 +76,8 @@ describe('the notice on each message that did not go through', () => {
       'Claude',
       retry,
       [],
-      []
+      [],
+      NOT_FAILED_HERE
     )
 
     expect([...notices.keys()]).toEqual([
@@ -173,7 +178,14 @@ describe('the notice on each message that did not go through', () => {
       [entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })],
       [entry('held', { outlivedStop: true }), entry('rejected', { state: 'rejected' })]
     ]) {
-      const notices = structuredAgentSessionDeliveryNotices(outbox, 'Claude', retry, [], [])
+      const notices = structuredAgentSessionDeliveryNotices(
+        outbox,
+        'Claude',
+        retry,
+        [],
+        [],
+        NOT_FAILED_HERE
+      )
       expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
         text: 'Message was not sent.'
       })
@@ -202,7 +214,8 @@ describe('the notice on each message that did not go through', () => {
       'Claude',
       retry,
       [],
-      []
+      [],
+      NOT_FAILED_HERE
     )
     for (const id of ['refused', 'rejected', 'stuck']) {
       notices.get(agentJournalSubmissionKey(id))?.onRetry?.()
@@ -411,7 +424,8 @@ describe('the notice on each message that did not go through', () => {
       'Claude',
       vi.fn(),
       [],
-      []
+      [],
+      NOT_FAILED_HERE
     )
     expect(notices.get(agentJournalSubmissionKey('expired'))).toMatchObject({
       text: "Orca couldn't confirm what happened. Check the chat."
@@ -419,6 +433,27 @@ describe('the notice on each message that did not go through', () => {
     expect(notices.get(agentJournalSubmissionKey('expired'))?.onRetry).toBeDefined()
     // A first attempt's id was replaced when it was refused, so nothing can have landed.
     expect(notices.get(agentJournalSubmissionKey('fresh'))?.text).toBe('Your message was not sent.')
+  })
+
+  // A cause read back from storage may have cleared; a Retry it still stops brings it back.
+  it('words a held cause only where its failure was seen while the chat was open', () => {
+    const held = entry('held', {
+      lastAttemptAt: 1,
+      lastFailure: {
+        kind: 'refused',
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalWrittenByNewerOrca' }
+      }
+    })
+    const words = (failedHere: ReadonlySet<string>) =>
+      structuredAgentSessionDeliveryNotices([held], 'Claude', vi.fn(), [], [], failedHere).get(
+        agentJournalSubmissionKey('held')
+      )
+    expect(words(NOT_FAILED_HERE)).toMatchObject({ text: 'Your message was not sent.' })
+    expect(words(NOT_FAILED_HERE)?.onRetry).toBeDefined()
+    expect(words(new Set(['held']))?.text).toBe(
+      'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
+    )
   })
 
   it('says nothing on a message that is only waiting its turn or on its way', () => {
