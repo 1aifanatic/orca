@@ -862,7 +862,6 @@ jobs:
           tests/e2e/cross-version-wire/cross-version-worktree-identity-downgrade.unit.test.ts
           tests/e2e/cross-version-wire/cross-version-session-tabs-retirement-proof.unit.test.ts
           tests/e2e/cross-version-wire/agent-session-resume-marker-downgrade.unit.test.ts
-          tests/e2e/cross-version-wire/agent-session-unproven-release-downgrade.unit.test.ts
           tests/e2e/cross-version-wire/cross-version-worktree-ps-verdict.unit.test.ts
 
   managed_hook_node18:
@@ -1125,6 +1124,7 @@ jobs:
           src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts
           src/main/codex/windows-hook-command.test.ts
           src/main/codex/windows-hook-upgrade.test.ts
+          src/main/codex/hook-service-managed-install.test.ts
           src/main/windows/windows-pty-job.win32.test.ts
           src/main/windows/windows-msys-job.win32.test.ts
           src/main/providers/agent-foreground-process-git-bash.win32.test.ts
