@@ -99,7 +99,7 @@ function validateGrant(
 }
 
 export async function openSshPtyConsumerSession(
-  mux: SshChannelMultiplexer,
+  mux: Pick<SshChannelMultiplexer, 'request'>,
   options: OpenSshPtyConsumerSessionOptions
 ): Promise<SshPtyConsumerAdmission> {
   return requestPtyConsumerSession(mux, options, SSH_PTY_OPEN_CLIENT_METHOD)
@@ -107,7 +107,7 @@ export async function openSshPtyConsumerSession(
 
 /** Dedicated RPC: old hosts refuse without minting a replacement claim. */
 export async function resumeSshPtyConsumerSession(
-  mux: SshChannelMultiplexer,
+  mux: Pick<SshChannelMultiplexer, 'request' | 'isDisposed'>,
   options: Omit<OpenSshPtyConsumerSessionOptions, 'resume' | 'allowSameBuildLegacyFallback'> & {
     resume: NonNullable<OpenSshPtyConsumerSessionOptions['resume']>
     signal: AbortSignal
@@ -174,7 +174,7 @@ export async function resumeSshPtyConsumerSession(
 }
 
 async function requestPtyConsumerSession(
-  mux: SshChannelMultiplexer,
+  mux: Pick<SshChannelMultiplexer, 'request'>,
   options: OpenSshPtyConsumerSessionOptions,
   method: string,
   signal?: AbortSignal

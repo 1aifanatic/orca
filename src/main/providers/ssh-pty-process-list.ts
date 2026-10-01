@@ -37,6 +37,7 @@ export async function listSshPtyProcesses(
       ? undefined
       : { timeoutMs: Math.max(1, args.deadlineMs - Date.now()) }
   )
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the relay answers pty.listProcesses with PtyProcessInfo rows; the mapper rejects unproven ownership.
   const processes = mapSshPtyProcessList(result as PtyProcessInfo[], (id) =>
     toAppSshPtyId(args.connectionId, id)
   )

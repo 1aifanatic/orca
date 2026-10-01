@@ -17,7 +17,7 @@ function fixture() {
   }
   const request = vi.fn().mockResolvedValue(grant)
   const isDisposed = vi.fn(() => false)
-  const mux = { request, isDisposed } as unknown as SshChannelMultiplexer
+  const mux: Pick<SshChannelMultiplexer, 'request' | 'isDisposed'> = { request, isDisposed }
   const options = {
     clientInstanceId: 'client',
     expectedServerBuildId: 'build',
