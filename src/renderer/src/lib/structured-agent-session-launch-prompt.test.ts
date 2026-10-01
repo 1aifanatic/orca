@@ -92,14 +92,16 @@ describe('settleStructuredAgentLaunchPrompt', () => {
   it.each([
     ['taken', { dispatchState: 'accepted' as const }, true],
     ['rejected', { dispatchState: 'rejected' as const, rejection: { kind: 'notSignedIn' } }, false]
-  ])('answers a first message already %s when the read opens', async (_case, opened, delivered) => {
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+  ])('answers a first message already %s when the read opens', async (state, opened, delivered) => {
+    // Its own session, so no other case's read can answer for it.
+    const sessionId = `session-opened-${state}`
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt(sessionId, 'review this')
     const onPromptDelivered = vi.fn()
     void firstMessageStream(mocks, stagedEntry!.clientMessageId, opened)
 
     await expect(
       settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        launchResult: Promise.resolve({ sessionId, fence: 1 }),
         options: { prompt: 'review this', onPromptDelivered },
         stagedEntry
       })
