@@ -33,11 +33,11 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../shared/agent-launch-intent'
 import { classifyAgentLaunchReplayRefusal } from '../../../shared/agent-launch-replay-refusal'
 import { isRecoverableRemoteRuntimeConnectionError } from '../../../shared/remote-runtime-client-error-classification'
+import type { RuntimeCapability } from '../../../shared/protocol-version'
 import {
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
-  type RuntimeCapability
-} from '../../../shared/protocol-version'
+  AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY
+} from '../../../shared/agent-launch-runtime-capability'
 import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import { createStructuredAgentSessionId } from '../../../shared/structured-agent-session-create'
 import { makePaneKey } from '../../../shared/stable-pane-id'

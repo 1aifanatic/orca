@@ -73,7 +73,7 @@ import {
 import {
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY
-} from '../../../shared/protocol-version'
+} from '../../../shared/agent-launch-runtime-capability'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import {
   peekWebSessionFocusIntent,
