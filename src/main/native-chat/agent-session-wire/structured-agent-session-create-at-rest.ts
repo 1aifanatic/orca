@@ -30,8 +30,10 @@ export function createStructuredAgentSessionAtRest(
   callerKey: string,
   params: AgentSessionAttachParams
 ): Promise<CreateResult> {
-  return context.serialize(params.envelope.sessionId, () =>
-    createAtRest(context, callerKey, params)
+  // Tracked from enqueue: a quit drains a create before it closes conversations, so none it opens
+  // is left open behind the teardown.
+  return context.tasks.trackAttach(
+    context.serialize(params.envelope.sessionId, () => createAtRest(context, callerKey, params))
   )
 }
 
