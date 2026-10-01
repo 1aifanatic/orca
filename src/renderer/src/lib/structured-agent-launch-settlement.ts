@@ -20,7 +20,8 @@ export type StructuredAgentLaunchSettlement =
       sessionId: string | null
     }
   | { kind: 'visibility-unknown'; sessionId: string }
-  | { kind: 'failed'; error: unknown }
+  /** `notified`: the launch already told the user, so a caller adds no message of its own. */
+  | { kind: 'failed'; error: unknown; notified?: true }
   /** The owning host declined the chat before anything was created; its terminal opened instead. */
   | { kind: 'terminal' }
 

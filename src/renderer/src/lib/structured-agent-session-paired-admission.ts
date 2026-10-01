@@ -16,6 +16,7 @@ import type {
   StructuredAgentLaunchSettlement
 } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
+import type { LaunchAgentInNewTabArgs } from '@/lib/launch-agent-in-new-tab'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 
@@ -85,15 +86,23 @@ function notifyHostUnreachable(
   )
 }
 
+/** What the caller's own terminal launch would have carried beyond the plan's agent and prompt. */
+export type DeclinedStructuredLaunchTerminalOptions = Pick<
+  LaunchAgentInNewTabArgs,
+  'agentArgs' | 'launchPlatform' | 'launchSource' | 'initialCwd'
+>
+
 /** A caller with no terminal path of its own gets the one a new agent tab would open. */
 export async function openDeclinedStructuredLaunchTerminal(args: {
   plan: AgentSessionLaunchPlan
   worktreeId: string
   targetGroupId?: string
+  terminal?: DeclinedStructuredLaunchTerminalOptions
 }): Promise<StructuredLaunchTerminal> {
   // Loaded late: the new-tab launcher begins these launches.
   const { launchAgentInNewTab } = await import('@/lib/launch-agent-in-new-tab')
   const result = launchAgentInNewTab({
+    ...args.terminal,
     agent: args.plan.agent,
     worktreeId: args.worktreeId,
     ...(args.targetGroupId ? { groupId: args.targetGroupId } : {}),
@@ -152,7 +161,11 @@ export function beginPairedStructuredLaunch(args: {
     if (admission === 'unreachable') {
       notifyHostUnreachable(plan.agent, args.executionHostId)
       resolveDelivery({ delivered: false, failureNotified: true })
-      return { kind: 'failed', error: new Error('structured chat host unreachable') }
+      return {
+        kind: 'failed',
+        error: new Error('structured chat host unreachable'),
+        notified: true
+      }
     }
     if (admission === 'declined') {
       if (plan.resumeFrom) {

@@ -15,6 +15,7 @@ import { isAgentSessionHandleProvider } from '../../../shared/agent-session-prov
 import {
   beginPairedStructuredLaunch,
   openDeclinedStructuredLaunchTerminal,
+  type DeclinedStructuredLaunchTerminalOptions,
   type PairedStructuredLaunch,
   type StructuredLaunchTerminal
 } from '@/lib/structured-agent-session-paired-admission'
@@ -101,6 +102,8 @@ type ProvisionalLaunchArgs = {
   beforeOpen?: (sessionId?: string) => boolean | void
   /** The terminal a paired server's "no" opens; a caller without one gets a new agent tab's. */
   onHostDeclined?: () => Promise<StructuredLaunchTerminal> | StructuredLaunchTerminal
+  /** What that default terminal carries from the caller, e.g. a recipe's saved CLI arguments. */
+  declinedTerminal?: DeclinedStructuredLaunchTerminalOptions
 }
 
 /** Binds the launch to a chat tab: at once locally, after the server admits it on a paired host. */
@@ -137,7 +140,8 @@ export function beginStructuredAgentSessionProvisionalLaunch(
         openDeclinedStructuredLaunchTerminal({
           plan: args.plan,
           worktreeId,
-          ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {})
+          ...(args.targetGroupId ? { targetGroupId: args.targetGroupId } : {}),
+          ...(args.declinedTerminal ? { terminal: args.declinedTerminal } : {})
         }))
   })
 }
