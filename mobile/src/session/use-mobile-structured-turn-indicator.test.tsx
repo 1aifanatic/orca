@@ -150,13 +150,15 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
   })
 
   it("reads Stopping from this phone's own Stop until its request answers", async () => {
-    let answer: (value: unknown) => void = () => undefined
     const passthrough = sendRequest.getMockImplementation()!
+    type Reply = Awaited<ReturnType<typeof passthrough>>
+    let answer: (value: Reply) => void = () => undefined
     // The Stop's request stays in flight until the test answers it; every other call is as usual.
-    sendRequest.mockImplementation(((method: string) =>
+    sendRequest.mockImplementation((method: string) =>
       method === 'agentSession.cancel'
-        ? new Promise((resolve) => (answer = resolve))
-        : passthrough(method)) as never)
+        ? new Promise<Reply>((resolve) => (answer = resolve))
+        : passthrough(method)
+    )
     onTestFinished(() => {
       sendRequest.mockImplementation(passthrough)
     })
@@ -173,11 +175,8 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
     expect(hook?.turnIndicator.stopping).toBe(true)
 
     await act(async () => {
-      answer({
-        ok: true,
-        result: { ok: true, value: { cancelled: true } },
-        _meta: { runtimeId: 'r1' }
-      })
+      const cancelled = { ok: true, value: { cancelled: true } }
+      answer({ ok: true, result: cancelled, _meta: { runtimeId: 'r1' } })
     })
     await vi.waitFor(() => expect(hook?.turnIndicator.stopping).toBe(false))
   })
