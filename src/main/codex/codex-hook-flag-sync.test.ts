@@ -280,6 +280,18 @@ describe('syncCodexHookFlags', () => {
     expect(entryFor('codex-cli 0.159.2')).not.toBeNull()
   })
 
+  it('reports a Codex older than the minimum, spawning no app-server for it again', async () => {
+    versions.set(mocks.state.mainPath, 'codex-cli 0.132.0')
+    await start()
+
+    expect(getKnownCodexHookFlag()?.failure).toBe(
+      'Codex 0.132.0 is older than 0.133; update Codex for Orca status'
+    )
+    await syncCodexHookFlags()
+    expect(mocks.runCodexAppServerSession).not.toHaveBeenCalled()
+    expect(versionCalls()).toHaveLength(1)
+  })
+
   it('caches a failure per fingerprint until the binary changes or hooks are toggled', async () => {
     mocks.runCodexAppServerSession.mockRejectedValue(new Error('timed out'))
     await start()
@@ -641,6 +653,17 @@ describe('syncCodexHookFlags', () => {
 
       await syncCodexHookFlags({ enabled: false })
       expect(existsSync(table())).toBe(false)
+    })
+
+    it('tells status a Codex older than the minimum needs an update', async () => {
+      versions.set(mocks.state.mainPath, 'codex-cli 0.131.0')
+
+      await learnCodexHookFlagVersion()
+
+      expect(getKnownCodexHookFlag()).toEqual({
+        version: 'codex-cli 0.131.0',
+        failure: 'Codex 0.131.0 is older than 0.133; update Codex for Orca status'
+      })
     })
 
     it('learns its codex version for status', async () => {

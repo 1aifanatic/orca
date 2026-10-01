@@ -22,6 +22,7 @@ import {
   _internals as derivationInternals,
   deriveCodexHookFlagEntry,
   readCodexHookFlagCheck,
+  readCodexTooOldForHookFlag,
   readCodexVersion
 } from './codex-hook-session-trust'
 
@@ -168,7 +169,9 @@ export async function learnCodexHookFlagVersion(): Promise<void> {
   known.set(normalizeRuntimePathForComparison(codexPath), {
     fingerprint: await fingerprintCodex(codexPath),
     version,
-    failure: version ? null : `${codexPath} did not report its version`,
+    failure: version
+      ? readCodexTooOldForHookFlag(version)
+      : `${codexPath} did not report its version`,
     failures: new Map()
   })
 }

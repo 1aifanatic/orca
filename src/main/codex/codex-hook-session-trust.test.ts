@@ -273,6 +273,28 @@ describe('codex hook session trust', () => {
     expect(result).toMatchObject({ entry: null, transient })
   })
 
+  it('asks no app-server of a Codex older than the minimum, and says to update it', async () => {
+    answerVersion('codex-cli 0.132.0')
+
+    const result = await deriveCodexHookFlagEntry('/opt/codex/bin/codex', () => true)
+
+    expect(result).toMatchObject({
+      entry: null,
+      transient: false,
+      failure: 'Codex 0.132.0 is older than 0.133; update Codex for Orca status'
+    })
+    expect(mocks.runCodexAppServerSession).not.toHaveBeenCalled()
+  })
+
+  it.each(['codex-cli 0.133.0', 'codex-cli 0.200.0-alpha.1', 'codex-cli dev-build'])(
+    'derives for %s, the minimum, newer, or a version it cannot read',
+    async (version) => {
+      answerVersion(version)
+
+      expect(await deriveEntry()).not.toBeNull()
+    }
+  )
+
   it('reports why a binary yields no entry, and its version', async () => {
     answerVersion(null)
 

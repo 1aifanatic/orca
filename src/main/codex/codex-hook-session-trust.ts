@@ -1,4 +1,5 @@
 import { runProcess } from '../../shared/child-process/run-process'
+import { compareAppVersions, isValidAppVersion } from '../../shared/app-version'
 import { withCliRuntimeOnPath } from '../codex-cli/command'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import {
@@ -29,6 +30,8 @@ import {
  */
 
 const VERSION_TIMEOUT_MS = 5_000
+// Why 0.133: from it, hooks/list lists all 8 hook events, SubagentStart/Stop included.
+export const MIN_CODEX_HOOK_FLAG_VERSION = '0.133.0'
 // Why retried: an 8.3 lookup that failed may only have timed out on a loaded machine.
 const UNCARRIABLE_RETRY_MS = 60_000
 
@@ -70,6 +73,10 @@ export async function deriveCodexHookFlagEntry(
     }
     if (!isCodexHookFlagEntryName(codexVersion)) {
       return failed(`Codex version ${JSON.stringify(codexVersion)} cannot name a flag entry`)
+    }
+    const tooOld = readCodexTooOldForHookFlag(codexVersion)
+    if (tooOld) {
+      return failed(tooOld)
     }
     const hookCommand = await resolveCarriableHookCommand()
     if (!hookCommand) {
@@ -147,6 +154,19 @@ async function lookupCarriableHookCommand(scriptPath: string): Promise<string | 
   const shortPath = await resolveWindowsShortPath(scriptPath)
   const shortCommand = shortPath ? getManagedCommand(shortPath) : null
   return shortCommand && buildCodexHookDefinitionFlag(shortCommand) ? shortCommand : null
+}
+
+/**
+ * Why the user should update, for a `codex-cli X.Y.Z` older than the minimum;
+ * null otherwise, including a version this cannot parse (a dev build is not old).
+ */
+export function readCodexTooOldForHookFlag(codexVersion: string): string | null {
+  const semver = /^codex-cli (\S+)$/.exec(codexVersion.trim())?.[1]
+  return semver &&
+    isValidAppVersion(semver) &&
+    compareAppVersions(semver, MIN_CODEX_HOOK_FLAG_VERSION) < 0
+    ? `Codex ${semver} is older than ${MIN_CODEX_HOOK_FLAG_VERSION.replace(/\.0$/, '')}; update Codex for Orca status`
+    : null
 }
 
 export async function readCodexVersion(codexCommand: string): Promise<string | null> {
