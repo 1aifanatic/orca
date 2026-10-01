@@ -231,6 +231,19 @@ export function reportCodexConfigTomlEditRefusal(
   warnCodexConfigOnce(error.configPath ?? context, `[codex-config] ${context}: ${error.message}`)
 }
 
+/** Status detail for a failed hook trust write; `/hooks` cannot help while Codex cannot read the file. */
+export function describeHookTrustWriteFailure(
+  summary: string,
+  error: unknown,
+  approveAdvice = 'Run /hooks in Codex to approve.'
+): string {
+  if (error instanceof CodexConfigTomlEditRefusedError && error.reason === 'input-invalid') {
+    return `${summary}: ${error.message}`
+  }
+  const message = (error instanceof Error ? error.message : String(error)).replace(/\.+$/, '')
+  return `${summary}: ${message}. ${approveAdvice}`
+}
+
 /** Logs each refused trust write once and returns the other failures for the caller. */
 export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
   const failures = error instanceof AggregateError ? error.errors : [error]
