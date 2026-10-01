@@ -1,3 +1,6 @@
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test, expect } from './helpers/orca-app'
 import { emitCodexHookStatus, readHookEndpoint } from './helpers/agent-hook-endpoint'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
@@ -7,7 +10,7 @@ import {
   waitForActiveTerminalManager
 } from './helpers/terminal'
 
-test('Codex Ctrl+C preserves the rendered working status', async ({
+test('Codex Ctrl+C preserves working status until a confirmed interruption', async ({
   orcaPage,
   electronApp
 }, testInfo) => {
@@ -24,26 +27,54 @@ test('Codex Ctrl+C preserves the rendered working status', async ({
       state.setWorktreeCardProperties([...state.worktreeCardProperties, 'inline-agents'])
     }
   })
-  await emitCodexHookStatus(endpoint, {
-    ...descriptor,
-    state: 'working',
-    prompt: 'Main task continues'
-  })
-  const working = orcaPage.locator('[aria-label="Working"]')
-  const interrupted = orcaPage.locator('[aria-label="Interrupted"]')
-  await expect(working.first()).toBeVisible()
-  await focusActiveTerminalInput(orcaPage)
-  await orcaPage.keyboard.press('Control+c')
-  // Allow the old 500 ms inference timer to fire before recording the rendered result.
-  await orcaPage.waitForTimeout(1_000)
-  await orcaPage.screenshot({
-    path: testInfo.outputPath('status-after-ctrl-c.png'),
-    clip: { x: 0, y: 180, width: 280, height: 240 }
-  })
-  await expect(interrupted).toHaveCount(0)
-  await expect(working.first()).toBeVisible()
+  const dir = mkdtempSync(join(tmpdir(), 'orca-codex-interruption-'))
+  const transcriptPath = join(dir, 'rollout-root.jsonl')
+  writeFileSync(
+    transcriptPath,
+    `${JSON.stringify({ type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-1' } })}\n`
+  )
+  try {
+    await emitCodexHookStatus(endpoint, {
+      ...descriptor,
+      transcriptPath,
+      state: 'working',
+      prompt: 'Main task continues'
+    })
+    const working = orcaPage.locator('[aria-label="Working"]')
+    const interrupted = orcaPage.locator('[aria-label="Interrupted"]')
+    await expect(working.first()).toBeVisible()
+    await focusActiveTerminalInput(orcaPage)
+    await orcaPage.keyboard.press('Control+c')
+    // Allow the old 500 ms inference timer to fire before recording the rendered result.
+    await orcaPage.waitForTimeout(1_000)
+    await orcaPage.screenshot({
+      path: testInfo.outputPath('status-after-ctrl-c.png'),
+      clip: { x: 0, y: 180, width: 280, height: 240 }
+    })
+    await expect(interrupted).toHaveCount(0)
+    await expect(working.first()).toBeVisible()
 
-  await emitCodexHookStatus(endpoint, { ...descriptor, state: 'done' })
-  await expect(working).toHaveCount(0)
-  await expect(interrupted).toHaveCount(0)
+    appendFileSync(
+      transcriptPath,
+      `${JSON.stringify({ type: 'event_msg', payload: { type: 'turn_aborted', turn_id: 'turn-1', reason: 'interrupted' } })}\n`
+    )
+    await expect(interrupted.first()).toBeVisible()
+    await expect(working).toHaveCount(0)
+    await orcaPage.screenshot({
+      path: testInfo.outputPath('status-after-confirmed-interruption.png'),
+      clip: { x: 0, y: 180, width: 280, height: 240 }
+    })
+    await emitCodexHookStatus(endpoint, {
+      ...descriptor,
+      state: 'working',
+      prompt: 'Next main task'
+    })
+    await expect(working.first()).toBeVisible()
+    await expect(interrupted).toHaveCount(0)
+    await emitCodexHookStatus(endpoint, { ...descriptor, state: 'done' })
+    await expect(working).toHaveCount(0)
+    await expect(interrupted).toHaveCount(0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

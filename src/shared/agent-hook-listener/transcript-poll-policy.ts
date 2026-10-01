@@ -11,7 +11,11 @@ export function shouldPollHookTranscript(
   event: AgentHookEventPayload
 ): boolean {
   if (source === 'codex') {
-    return hasCodexTranscriptSubagents(state, event.paneKey)
+    return (
+      hasCodexTranscriptSubagents(state, event.paneKey) ||
+      (state.codexLeadStateByPaneKey.get(event.paneKey)?.state !== 'done' &&
+        Boolean(state.codexSubagentTranscriptByPaneKey.get(event.paneKey)?.parent.filePath))
+    )
   }
   if (source === 'muse') {
     // Why: Muse's question tool fires no hook, so only its session log shows the wait and its answer.
@@ -37,5 +41,10 @@ export function transcriptPollUpdate<T extends AgentHookEventPayload>(
   }
   const subagentsChanged =
     JSON.stringify(polled.payload.subagents) !== JSON.stringify(original.payload.subagents)
-  return subagentsChanged ? polled : undefined
+  const leadChanged =
+    polled.payload.mainAgent?.state !== original.payload.mainAgent?.state ||
+    polled.payload.mainAgent?.outcome !== original.payload.mainAgent?.outcome
+  return subagentsChanged || leadChanged
+    ? { ...polled, hasExplicitPrompt: undefined, hookEventName: undefined }
+    : undefined
 }

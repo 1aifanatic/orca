@@ -1,3 +1,4 @@
+import { pollCodexTranscriptStatus } from '../shared/agent-hook-listener/providers/codex-transcript-poll'
 // Deferred re-normalization timers for late-arriving agent results: the transcript hadn't caught up
 // when the hook fired, so re-read the same body on a timer and re-apply only if it changed. Both
 // timer families live in one owner so pane teardown and server stop tear both down in one ordered
@@ -110,7 +111,10 @@ export class AgentHookResultRetryScheduler {
     ) {
       return
     }
-    const event = normalizeHookPayload(this.host.state, source, body, this.host.env)
+    const event =
+      source === 'codex'
+        ? pollCodexTranscriptStatus(this.host.state, original)
+        : normalizeHookPayload(this.host.state, source, body, this.host.env)
     if (!event) {
       return
     }

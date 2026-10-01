@@ -1,3 +1,4 @@
+import { pollCodexTranscriptStatus } from '../../../shared/agent-hook-listener/providers/codex-transcript-poll'
 import { normalizeHookPayload } from '../../../shared/agent-hook-listener'
 import {
   hasPendingAgentResultText,
@@ -73,7 +74,10 @@ export abstract class AgentHookServerStatusRetries extends AgentHookServerStatus
     ) {
       return
     }
-    const normalized = normalizeHookPayload(this.state, source, body, this.env)
+    const normalized =
+      source === 'codex'
+        ? pollCodexTranscriptStatus(this.state, original)
+        : normalizeHookPayload(this.state, source, body, this.env)
     if (!normalized) {
       return
     }

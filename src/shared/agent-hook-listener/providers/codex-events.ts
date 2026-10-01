@@ -195,6 +195,12 @@ export function normalizeCodexEvent(
       transcriptPath
     )
   }
+  if (!agentId && (eventName === 'UserPromptSubmit' || eventName === 'SessionStart')) {
+    const transcript = state.codexSubagentTranscriptByPaneKey.get(paneKey)
+    if (transcript) {
+      transcript.rootTurn.interrupted = false
+    }
+  }
   if (agentId) {
     // Why: reconcile the child rollout reviewer before classifying its approval, including after relay restart.
     const childState = resolveCodexApprovalOwnedState(

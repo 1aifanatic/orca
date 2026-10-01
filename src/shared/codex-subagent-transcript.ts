@@ -8,6 +8,8 @@ import {
   type JsonRecord
 } from './codex-rollout-jsonl-cursor'
 
+import { reconcileCodexTranscriptTurn, type CodexTranscriptTurn } from './codex-turn-transcript'
+
 import { readApprovalsReviewer } from './codex-subagent-reviewer'
 import type { CodexApprovalsReviewer } from './codex-subagent-reviewer'
 
@@ -34,6 +36,7 @@ type TrackedTranscriptSubagent = JsonlCursor & {
 
 export type CodexSubagentTranscriptState = {
   parent: JsonlCursor
+  rootTurn: CodexTranscriptTurn
   subagents: Map<string, TrackedTranscriptSubagent>
   /** Incremental reviewer cursors for child rollouts, which must not replace the parent cursor. */
   reviewerCursorsByPath: Map<string, JsonlCursor>
@@ -175,6 +178,7 @@ function childIsComplete(records: JsonRecord[]): boolean {
 export function createCodexSubagentTranscriptState(): CodexSubagentTranscriptState {
   return {
     parent: { offset: 0, carry: '' },
+    rootTurn: { interrupted: false },
     subagents: new Map(),
     reviewerCursorsByPath: new Map(),
     reviewersByPath: new Map()
@@ -201,6 +205,7 @@ export function reconcileCodexSubagentTranscript(
       finishCodexSubagent(roster, id)
     }
     state.parent = { filePath: normalizedPath, offset: 0, carry: '' }
+    state.rootTurn = { interrupted: false }
     state.subagents.clear()
     state.reviewerCursorsByPath.clear()
     state.reviewersByPath.clear()
@@ -208,6 +213,7 @@ export function reconcileCodexSubagentTranscript(
     state.approvalsReviewer = undefined
   }
   const parentRecords = readJsonlCursor(state.parent)
+  reconcileCodexTranscriptTurn(state.rootTurn, parentRecords ?? [])
   // A stale reviewer must never turn an unreadable rollout into a hidden prompt.
   state.approvalsReviewer =
     parentRecords === undefined
