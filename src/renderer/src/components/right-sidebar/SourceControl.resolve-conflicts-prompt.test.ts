@@ -51,7 +51,21 @@ describe('buildResolvePullRequestConflictsPrompt', () => {
     expect(prompt).toContain('of repository "git.example.com/acme/widgets"')
   })
 
-  it('has the agent check for an unpushed resolution before calling a clean merge stale, and never push', () => {
+  it('checks the refreshed upstream before merging and stops when the branch is behind', () => {
+    const prompt = buildResolvePullRequestConflictsPrompt({
+      worktreePath: '/repo/worktree',
+      baseRef: 'main',
+      baseRepository: { owner: 'acme', repo: 'widgets' }
+    })
+    const upstreamLine =
+      "- Before fetching the base (that fetch sets FETCH_HEAD), if the current branch has an upstream (git rev-parse --abbrev-ref @{upstream}), fetch that branch from its remote and run git status -sb. If it is behind, even if also ahead, stop without merging and tell the user to bring in the pull request's latest commits first. Otherwise note whether it is ahead."
+
+    expect(prompt).toContain(upstreamLine)
+    expect(prompt.indexOf(upstreamLine)).toBeLessThan(prompt.indexOf('- Fetch branch "main"'))
+    expect(prompt.indexOf(upstreamLine)).toBeLessThan(prompt.indexOf('git merge --no-ff'))
+  })
+
+  it('uses the pre-merge ahead reading for a clean merge, and never pushes', () => {
     const prompt = buildResolvePullRequestConflictsPrompt({
       worktreePath: '/repo/worktree',
       baseRef: 'main',
@@ -59,18 +73,20 @@ describe('buildResolvePullRequestConflictsPrompt', () => {
     })
 
     expect(prompt).toContain(
-      "- If merging the pull request's actual base completes with no conflicts or is already up to date, compare HEAD with its upstream (git status -sb): if ahead, say the conflicts appear resolved locally and pushing will update the pull request; if behind, say the pull request head has commits this worktree lacks; otherwise say the host's conflict report may be stale. Do not push in any case."
+      "- If the merge completes with no conflicts or is already up to date: if the branch was ahead of its upstream before merging, say its unpushed commits appear to already resolve the conflicts and pushing will update the pull request; otherwise say merging the pull request's actual base is clean, so the host's conflict report may be stale. Do not push in any case."
     )
   })
 
-  it('names a merge request in the clean-merge rule for GitLab', () => {
+  it('names a merge request in the upstream and clean-merge rules for GitLab', () => {
     const prompt = buildResolvePullRequestConflictsPrompt({
       worktreePath: '/repo/worktree',
       baseRef: 'main',
       reviewKind: 'MR'
     })
 
-    expect(prompt).toContain('pushing will update the merge request; if behind')
+    expect(prompt).toContain("bring in the merge request's latest commits first")
+    expect(prompt).toContain('pushing will update the merge request; otherwise')
+    expect(prompt).toContain("merging the merge request's actual base is clean")
   })
 
   it('does not emit unquoted git commands for option-looking base branches', () => {

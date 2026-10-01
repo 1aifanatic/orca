@@ -74,7 +74,12 @@ describe('buildResolveConflictsPrompt', () => {
     expect(prompt).toContain('Find the remote whose URL points at "acme/widgets"')
     expect(prompt).toContain('git fetch <remote> main')
     expect(prompt).toContain('Git lists them once the merge below stops')
-    expect(prompt).toContain('if ahead, say the conflicts appear resolved locally')
+    expect(prompt).toContain(
+      "If it is behind, even if also ahead, stop without merging and tell the user to bring in the pull request's latest commits first."
+    )
+    expect(prompt).toContain(
+      'if the branch was ahead of its upstream before merging, say its unpushed commits appear to already resolve the conflicts'
+    )
     expect(prompt).toContain('Do not push in any case.')
     expect(prompt).not.toContain('git fetch origin')
     expect(prompt).toContain('git reset --hard') // safety rule mentions it as forbidden

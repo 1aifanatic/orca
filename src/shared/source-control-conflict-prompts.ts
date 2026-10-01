@@ -180,11 +180,12 @@ export function buildResolvePullRequestConflictsPrompt({
     '- Start with git status. If it already shows a merge in progress or unmerged paths, continue from that live conflict state.',
     `- If git status is clean or only shows ordinary non-conflict changes, do not treat the handoff as stale. ${reviewKind} hosts can report conflicts before this worktree has a local MERGE_HEAD.`,
     '- Before starting the merge, make sure unrelated staged or unstaged changes are not at risk; stop and report if they would be overwritten.',
+    // Why: read ahead/behind before the --no-ff merge adds a commit; a stale tracking ref hides commits pushed elsewhere.
+    `- Before fetching the base (that fetch sets FETCH_HEAD), if the current branch has an upstream (git rev-parse --abbrev-ref @{upstream}), fetch that branch from its remote and run git status -sb. If it is behind, even if also ahead, stop without merging and tell the user to bring in the ${reviewName}'s latest commits first. Otherwise note whether it is ahead.`,
     remoteRule,
     fetchRule,
     '- Merge the fetched base tip into the current branch, usually with git merge --no-ff --no-edit FETCH_HEAD.',
-    // Why: a clean merge usually means an earlier run resolved locally but nothing was pushed, not a stale host report.
-    `- If merging the ${reviewName}'s actual base completes with no conflicts or is already up to date, compare HEAD with its upstream (git status -sb): if ahead, say the conflicts appear resolved locally and pushing will update the ${reviewName}; if behind, say the ${reviewName} head has commits this worktree lacks; otherwise say the host's conflict report may be stale. Do not push in any case.`,
+    `- If the merge completes with no conflicts or is already up to date: if the branch was ahead of its upstream before merging, say its unpushed commits appear to already resolve the conflicts and pushing will update the ${reviewName}; otherwise say merging the ${reviewName}'s actual base is clean, so the host's conflict report may be stale. Do not push in any case.`,
     '- Resolve the conflict by inspecting both sides and nearby code; do not choose ours/theirs wholesale unless clearly correct. Preserve existing manual resolution work unless it is clearly wrong.',
     '- Protect unrelated staged and unstaged changes. Do not run broad cleanup commands like git reset --hard, git checkout ., git restore ., git stash, or abort commands.',
     '- Edit the conflicted files only unless correctness requires another file. Keep changes minimal.',
