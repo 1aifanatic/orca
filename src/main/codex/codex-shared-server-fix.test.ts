@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProcessResult, ProcessSpec } from '../../shared/child-process/run-process'
 
@@ -87,6 +87,7 @@ describe('disableCodexSharedServerAutoStart', () => {
     expect(disable).toMatchObject({
       program: binary,
       args: ['features', 'disable', 'daemon_auto_start'],
+      cwd: dirname(binary),
       env: expect.objectContaining({ CODEX_HOME: home }),
       timeoutMs: 15_000
     })
@@ -115,36 +116,6 @@ describe('disableCodexSharedServerAutoStart', () => {
       .mockResolvedValueOnce(write)
       .mockResolvedValueOnce(result({ stdout: LIST_OFF }))
     expect(await disableCodexSharedServerAutoStart(home)).toBe(false)
-    expect(mocks.runProcess).toHaveBeenCalledTimes(1)
-  })
-
-  it("writes the user's own home first, then the pane's mirror home, with the server's Codex", async () => {
-    const binary = installPackage('app-server-daemon', 'current', 'bin')
-    const systemHome = join(home, 'system')
-    mocks.runProcess.mockResolvedValue(result({ stdout: LIST_OFF }))
-
-    expect(await disableCodexSharedServerAutoStart(home, systemHome)).toBe(true)
-
-    expect(
-      mocks.runProcess.mock.calls.map(([spec]) => [
-        spec.program,
-        spec.args,
-        spec.env?.CODEX_HOME,
-        spec.cwd
-      ])
-    ).toEqual([
-      // Why the pane's cwd: the user's home may not exist, and a missing cwd fails the spawn.
-      [binary, ['features', 'disable', 'daemon_auto_start'], systemHome, home],
-      [binary, ['features', 'list'], systemHome, home],
-      [binary, ['features', 'disable', 'daemon_auto_start'], home, home],
-      [binary, ['features', 'list'], home, home]
-    ])
-  })
-
-  it("leaves the pane's home alone when the user's own home refuses the setting", async () => {
-    installPackage('app-server-daemon', 'current', 'bin')
-    mocks.runProcess.mockResolvedValueOnce(result({ code: 1 }))
-    expect(await disableCodexSharedServerAutoStart(home, join(home, 'system'))).toBe(false)
     expect(mocks.runProcess).toHaveBeenCalledTimes(1)
   })
 

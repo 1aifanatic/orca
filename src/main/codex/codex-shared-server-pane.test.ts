@@ -1,17 +1,11 @@
-import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CodexPaneAccountRecord } from './codex-pane-account-registry-types'
-import type { CodexPathObservation } from './codex-path-observation'
 
 const mocks = vi.hoisted(() => ({
   getCodexPaneAccount: vi.fn<(ptyId: string) => CodexPaneAccountRecord | null>(),
   probeCodexSharedServer: vi.fn<(home: string) => Promise<'live' | 'absent' | 'unknown'>>(),
   getProcessTableSnapshot: vi.fn(),
-  readWindowsProcessTable: vi.fn(),
-  observeAgentStateFile: vi.fn<(path: string) => CodexPathObservation<string>>()
-}))
-vi.mock('./codex-path-observation', () => ({
-  observeAgentStateFile: mocks.observeAgentStateFile
+  readWindowsProcessTable: vi.fn()
 }))
 vi.mock('./codex-pane-account-registry', () => ({
   getCodexPaneAccount: mocks.getCodexPaneAccount
@@ -33,8 +27,7 @@ vi.mock('../windows/windows-process-table', () => ({
 import {
   findPaneCodexCommandLine,
   isPaneCodexOnSharedServer,
-  resolveCodexPaneHome,
-  resolveCodexPaneSettingsHome
+  resolveCodexPaneHome
 } from './codex-shared-server-pane'
 
 const SHELL = 100
@@ -116,63 +109,6 @@ describe('resolveCodexPaneHome', () => {
     mocks.getCodexPaneAccount.mockReturnValue(null)
     expect(resolveCodexPaneHome('pty')).toBeNull()
   })
-})
-
-describe('resolveCodexPaneSettingsHome', () => {
-  it.each([
-    [{ selectionKey: 'host', accountId: null, homeRoute: 'real-home' }, '/home/me/.codex'],
-    [
-      {
-        selectionKey: 'host',
-        accountId: null,
-        homeRoute: 'real-home',
-        environmentHomeOverride: { codexHome: '/custom/codex' }
-      },
-      '/custom/codex'
-    ],
-    // Why: Orca re-mirrors its shared home from ~/.codex on every launch.
-    [{ selectionKey: 'host', accountId: null, homeRoute: 'shared-home' }, '/home/me/.codex'],
-    [{ selectionKey: 'host', accountId: null, homeRoute: 'custom-home' }, null],
-    [{ selectionKey: 'wsl:Ubuntu', accountId: null, homeRoute: 'shared-home' }, null]
-  ] satisfies [CodexPaneAccountRecord, string | null][])(
-    'resolves %o to %s',
-    (record, expected) => {
-      mocks.getCodexPaneAccount.mockReturnValue(record)
-      mocks.observeAgentStateFile.mockReturnValue({ kind: 'present', value: 'model = "x"\n' })
-      expect(resolveCodexPaneSettingsHome('pty')).toBe(expected)
-    }
-  )
-
-  it("reads no config for a pane on the user's own home", () => {
-    mocks.getCodexPaneAccount.mockReturnValue({
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'real-home'
-    })
-    expect(resolveCodexPaneSettingsHome('pty')).toBe('/home/me/.codex')
-    expect(mocks.observeAgentStateFile).not.toHaveBeenCalled()
-  })
-
-  // Why: the mirror skips a missing or blank ~/.codex/config.toml, so only then does the mirror home keep it.
-  it.each([
-    ['missing', { kind: 'absent' }, '/data/orca/codex-runtime-home/home'],
-    ['blank', { kind: 'present', value: ' \n' }, '/data/orca/codex-runtime-home/home'],
-    ['unreadable', { kind: 'indeterminate', error: new Error('EACCES') }, null]
-  ] satisfies [string, CodexPathObservation<string>, string | null][])(
-    "keeps a shared-home pane's setting in the mirror when ~/.codex/config.toml is %s",
-    (_label, observation, expected) => {
-      mocks.getCodexPaneAccount.mockReturnValue({
-        selectionKey: 'host',
-        accountId: null,
-        homeRoute: 'shared-home'
-      })
-      mocks.observeAgentStateFile.mockReturnValue(observation)
-      expect(resolveCodexPaneSettingsHome('pty')).toBe(expected)
-      expect(mocks.observeAgentStateFile).toHaveBeenCalledWith(
-        join('/home/me/.codex', 'config.toml')
-      )
-    }
-  )
 })
 
 describe('isPaneCodexOnSharedServer', () => {

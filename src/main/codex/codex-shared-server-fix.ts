@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import {
   CODEX_DISABLE_SHARED_SERVER_ARGS,
@@ -39,10 +39,9 @@ export async function resolveCodexSharedServerBinary(codexHome: string): Promise
 async function runCodex(
   codexHome: string,
   args: readonly string[],
-  timeoutMs: number,
-  binaryHome = codexHome
+  timeoutMs: number
 ): Promise<string | null> {
-  const program = await resolveCodexSharedServerBinary(binaryHome)
+  const program = await resolveCodexSharedServerBinary(codexHome)
   if (!program) {
     return null
   }
@@ -50,8 +49,8 @@ async function runCodex(
     const result = await runProcess({
       program,
       args,
-      // Why: binaryHome holds the program, so it exists even when codexHome may not.
-      cwd: binaryHome,
+      // Why: the program's own folder exists whenever it resolved.
+      cwd: dirname(program),
       env: { ...process.env, CODEX_HOME: codexHome },
       timeoutMs,
       maxOutputBytes: MAX_OUTPUT_BYTES
@@ -74,33 +73,17 @@ export function readFeatureEnabled(stdout: string, key: string): boolean | null 
   return null
 }
 
-/** Turns sharing off in `codexHome`, using the server's Codex from `binaryHome`; true once read back as off. */
-async function disableAutoStartIn(codexHome: string, binaryHome: string): Promise<boolean> {
-  const run = (args: readonly string[]): Promise<string | null> =>
-    runCodex(codexHome, args, COMMAND_TIMEOUT_MS, binaryHome)
-  if ((await run(CODEX_DISABLE_SHARED_SERVER_ARGS)) === null) {
+/**
+ * Turns off server sharing in the pane's own home; true only once Codex reads
+ * it back as off. Orca promotes the change from its mirror home to ~/.codex.
+ */
+export async function disableCodexSharedServerAutoStart(codexHome: string): Promise<boolean> {
+  if ((await runCodex(codexHome, CODEX_DISABLE_SHARED_SERVER_ARGS, COMMAND_TIMEOUT_MS)) === null) {
     return false
   }
   // Why read back: managed config can pin the feature on even when the write exits 0.
-  const list = await run(['features', 'list'])
+  const list = await runCodex(codexHome, ['features', 'list'], COMMAND_TIMEOUT_MS)
   return list !== null && readFeatureEnabled(list, CODEX_SHARED_SERVER_FEATURE_KEY) === false
-}
-
-/**
- * Turns off server sharing in `settingsHome`, where it persists, and in the
- * pane's home, which a Codex typed in this pane reads before Orca next mirrors
- * `settingsHome` into it. True only once both read it back as off.
- */
-export async function disableCodexSharedServerAutoStart(
-  paneHome: string,
-  settingsHome: string = paneHome
-): Promise<boolean> {
-  for (const codexHome of new Set([settingsHome, paneHome])) {
-    if (!(await disableAutoStartIn(codexHome, paneHome))) {
-      return false
-    }
-  }
-  return true
 }
 
 /** Stops this home's shared server; true only once it is proven gone. */
