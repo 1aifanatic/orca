@@ -241,6 +241,12 @@ function wireClaudeModels(models: readonly ListedModel[]): WireClaudeModel[] {
   return models.map(wireClaudeModel)
 }
 
+/** The built-in models a running child lists when the CLI gives it none; a chat at rest with no
+ *  catalog lists the same. */
+export function claudeFallbackModelOptions(): WireClaudeModel[] {
+  return wireClaudeModels(seedModels())
+}
+
 /** The listing, with what the CLI runs when no effort is sent on each model the child applies —
  *  a default only a running child knows, and only while this session has no effort pick. */
 function catalogClaudeModels(session: ClaudeSession, discovered: ListedModel[]): WireClaudeModel[] {

@@ -57,8 +57,8 @@ const CATALOG = [
 ]
 
 /** get_settings with nothing overriding the CLI's own default; an effort write moves both views.
- *  `model` is what the CLI says it runs. */
-function settingsWithNoOverride(model = 'claude-opus-5-5[1m]') {
+ *  `model` is what the CLI says it runs, and `listing` the models it lists. */
+function settingsWithNoOverride(model = 'claude-opus-5-5[1m]', listing: unknown[] = CATALOG) {
   const effective: { effortLevel?: string } = {}
   const settings = {
     effective,
@@ -68,10 +68,10 @@ function settingsWithNoOverride(model = 'claude-opus-5-5[1m]') {
   const claude = fakeClaude({
     initProof: 'session-start',
     initModel: model,
-    initModels: CATALOG,
+    initModels: listing,
     settings,
     routes: {
-      list_models: () => CATALOG,
+      list_models: () => listing,
       apply_flag_settings: (params) => {
         const written = params?.settings
         const effort =
@@ -92,7 +92,7 @@ async function startChild(
   store: AgentModelCatalogStore,
   options?: Record<string, string>,
   events: ClaudeStructuredSessionEvent[] = [],
-  runs?: string
+  cli: { runs?: string; lists?: unknown[] } = {}
 ): Promise<ClaudeStructuredSessionAdapter> {
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
@@ -106,7 +106,7 @@ async function startChild(
       continuesChain: false
     }),
     onEvent: (event) => events.push(event),
-    openConnection: settingsWithNoOverride(runs).openConnection,
+    openConnection: settingsWithNoOverride(cli.runs, cli.lists).openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => 1_700_000_000_500,
     persistHandle: async () => {},
@@ -156,10 +156,10 @@ function readAtRest(store: AgentModelCatalogStore, record: AgentSessionRecord) {
   return readStructuredAgentSessionOptions(context, SESSION)
 }
 
-function pickerEffort(result: Awaited<ReturnType<typeof readAtRest>>) {
-  const seed = getAgentSessionOptionCatalog('claude')!
+function pickerEffort(result: Awaited<ReturnType<typeof readAtRest>>, agent = 'claude') {
+  const seed = getAgentSessionOptionCatalog(agent)!
   const state = applyStructuredAgentSessionOptions(
-    createStructuredAgentSessionOptionState('claude', seed),
+    createStructuredAgentSessionOptionState(agent, seed),
     seed,
     result
   )
@@ -214,7 +214,7 @@ describe('Claude effort default at rest', () => {
     const store = new AgentModelCatalogStore()
     const unlisted = { model: 'claude-unlisted-9', effort: 'medium' }
     // The CLI runs a model its own catalog does not list, as a newer or pinned model can be.
-    const child = await startChild(store, unlisted, [], unlisted.model)
+    const child = await startChild(store, unlisted, [], { runs: unlisted.model })
     const live = await child.readOptions({ sessionId: SESSION, fence: 7 })
 
     const resting = await readAtRest(store, restingRecord(unlisted))
@@ -261,6 +261,41 @@ describe('Claude effort default at rest', () => {
     }).result
 
     expect(resting.models).toEqual(live.models)
+    expect(live.models.find((entry) => entry.id === 'gpt-unlisted')).toMatchObject({ efforts: [] })
+    expect(pickerEffort(resting, 'codex')).toBeUndefined()
+  })
+
+  it("keeps a Claude model's effort at rest with no catalog yet, as a live child with none does", async () => {
+    const saved = { model: 'opus', effort: 'high' }
+    // A CLI that lists nothing: the live child falls back to Claude's built-in models.
+    const child = await startChild(new AgentModelCatalogStore(), saved, [], {
+      runs: 'opus',
+      lists: []
+    })
+    const live = await child.readOptions({ sessionId: SESSION, fence: 7 })
+
+    // An account the host has no catalog for yet.
+    const resting = await readAtRest(new AgentModelCatalogStore(), restingRecord(saved))
+
+    expect(resting.models).toEqual(live.models)
+    expect(pickerEffort(live)).toBe('high')
+    expect(pickerEffort(resting)).toBe('high')
+  })
+
+  it("keeps a Codex model's effort at rest with no catalog yet, from the client's own defaults", async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read and the catalog key touch only these fields.
+    const record = {
+      provider: 'codex',
+      accountHome: { variable: 'CODEX_HOME', path: '/accounts/codex' },
+      location: { wslDistro: null },
+      options: { model: 'gpt-5.5', effort: 'high' }
+    } as unknown as AgentSessionRecord
+
+    const resting = await readAtRest(new AgentModelCatalogStore(), record)
+
+    // A Codex child lists nothing without its catalog, so the answer leaves the list to the client.
+    expect(resting.models).toEqual([])
+    expect(pickerEffort(resting, 'codex')).toBe('high')
   })
 
   it("leaves a Codex chat's unsaved effort blank at rest, as its live child does", async () => {

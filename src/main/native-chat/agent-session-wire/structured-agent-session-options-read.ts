@@ -7,9 +7,12 @@
 
 import {
   refuse,
+  type AgentSessionModelOption,
   type AgentSessionOptionResult,
   type AgentSessionOptionsResult
 } from '../../../shared/agent-session-wire'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { claudeFallbackModelOptions } from '../../claude/claude-structured-session-options'
 import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structured-agent-session-option-codec'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
@@ -22,6 +25,15 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 
 type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
 
+/** With no catalog for the account, the list a running child falls back to: Claude's built-in
+ *  models. A Codex child answers nothing without its catalog, so none, and the client keeps its
+ *  own defaults as it does when a live read fails. */
+function restingFallbackModels(
+  provider: AgentSessionRecord['provider']
+): AgentSessionModelOption[] | null {
+  return provider === 'claude' ? claudeFallbackModelOptions() : null
+}
+
 async function readStructuredAgentSessionOptionsAtRest(
   deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'modelCatalog'>,
   sessionId: string
@@ -33,7 +45,9 @@ async function readStructuredAgentSessionOptionsAtRest(
   const catalog = (await deps.modelCatalog
     ?.read({ agent: record.provider, sessionId })
     .catch(() => null)) ?? { origin: 'unknown' as const }
-  const models = catalog.origin === 'unknown' ? [] : catalog.models
+  const listed =
+    catalog.origin === 'unknown' ? restingFallbackModels(record.provider) : catalog.models
+  const models = listed ?? []
   const saved = record.options ?? {}
   const fastMode =
     saved.fastMode === undefined
@@ -49,7 +63,7 @@ async function readStructuredAgentSessionOptionsAtRest(
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
   return {
-    models: structuredAgentSessionOptionModels(models, model, (row) => row),
+    models: listed ? structuredAgentSessionOptionModels(listed, model, (row) => row) : [],
     ...(catalog.origin !== 'unknown' && catalog.fastModeSupport
       ? { fastModeSupport: catalog.fastModeSupport }
       : {}),
