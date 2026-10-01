@@ -42,7 +42,12 @@ vi.mock('./filesystem-import-ssh-directory', () => ({
 }))
 
 const targetId = 'filesystem-continuation-target'
-const handlers = new Map<string, (_event: unknown, args: object) => Promise<unknown>>()
+// The IPC payload fields these handlers read; each test passes the subset its channel needs.
+type FilesystemHandlerArgs = Record<string, unknown>
+const handlers = new Map<
+  string,
+  (_event: unknown, args: FilesystemHandlerArgs) => Promise<unknown>
+>()
 const fileStat = { isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false }
 
 beforeEach(() => {
