@@ -104,6 +104,7 @@ export class StructuredAgentSessionHost {
   constructor(readonly deps: StructuredAgentSessionHostDeps) {
     // Every collaborator reads this copy, so a logger that throws cannot fail what it reports.
     this.deps = deps = sessionLogger.withNeverThrowingLogger(deps)
+    this.clientDelivery.watchAtRestCommands(deps.adapter)
     this.backgroundTasks = new StructuredAgentSessionBackgroundTaskChannel(
       deps,
       this.sessions,
@@ -312,9 +313,7 @@ export class StructuredAgentSessionHost {
     this.conversationCommands.run(...args)
   conversationReplacements = () => this.conversationCommands.replacements()
   /** Undefined means unavailable; an empty array is an authoritative catalog. */
-  readCommands = (sessionId: string): SessionWire.AgentSessionCommandsResult => ({
-    commands: this.deps.adapter.readCommands?.(sessionId)
-  })
+  readCommands = (sessionId: string) => ({ commands: this.clientDelivery.readCommands(sessionId) })
 
   /** From the record store, never the session map: an idle-released chat has no map entry. */
   handoffStatus = (sessionId: string): SessionWire.AgentSessionHandoffStatus =>
