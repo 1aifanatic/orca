@@ -17,7 +17,9 @@ import {
 } from './structured-agent-session-prompt-state'
 import {
   STOP_NOTE_CANCELLATION_REQUESTED,
-  structuredAgentSessionNamedTurnScope
+  structuredAgentSessionNamedTurnScope,
+  structuredAgentSessionStopNamesTurnNotLive,
+  structuredAgentSessionStoppedTurnId
 } from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -106,11 +108,14 @@ export async function performCancel(
   // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
   // dead-generation settlement writes the command's verdict.
   const liveTurnId = ctx.journal.activeTurnId()
+  // Read with the live turn, before the cancel settles it: the note is keyed by this turn.
+  const stoppedTurnId = structuredAgentSessionStoppedTurnId(ctx.journal, input.turnId)
+  const namesTurnNotLive = structuredAgentSessionStopNamesTurnNotLive(input.turnId, liveTurnId)
   const runningCommand =
     input.stopChild !== undefined &&
     liveTurnId !== null &&
     isStructuredAgentSessionCommandTurnId(liveTurnId) &&
-    (input.turnId === undefined || input.turnId === liveTurnId)
+    !namesTurnNotLive
   const stoppedBefore =
     runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, liveTurnId)
   // Read while the child is live: a provider whose Stop is a session boundary loses it next.
@@ -175,10 +180,7 @@ export async function performCancel(
   }
   // A Stop naming a turn that has since ended keeps the session only when the provider declined
   // it: an interrupt, answered or not, can stop a follow-up whose turn has not opened.
-  if (
-    endsSession &&
-    (input.turnId === undefined || input.turnId === liveTurnId || taken !== false)
-  ) {
+  if (endsSession && (!namesTurnNotLive || taken !== false)) {
     // An interrupt the provider took is worth waiting on, turn row or not: a Stop before the echo
     // has none, and the echo still opens the turn the Stop interrupted.
     input.endSession?.({ waitsForProvider: taken === true, stoppedAt })
@@ -205,7 +207,7 @@ export async function performCancel(
   }
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
   await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(input.turnId ?? liveTurnId ?? input.clientOperationId),
+    structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId),
     note,
     { fence: ctx.fence, turnScope }
   )

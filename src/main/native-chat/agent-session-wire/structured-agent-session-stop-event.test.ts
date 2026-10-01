@@ -226,6 +226,14 @@ describe("a Stop's event", () => {
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
   })
 
+  it('naming no turn, names the turn running when it takes effect', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    await turnRow('turn-1', 'running')
+    await rig.stop()
+    expect(stopEvents()).toMatchObject([{ reason: 'user-stop', turnId: 'turn-1' }])
+  })
+
   it('names a turn already over, as a late Stop from a phone does: writes nothing', async () => {
     rig = await createQueuedMessageTestRig()
     rig.cancelTurn.mockResolvedValueOnce({ cancelled: false })
