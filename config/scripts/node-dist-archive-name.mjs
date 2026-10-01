@@ -9,11 +9,16 @@ export const NODE_DIST_PLATFORMS = {
   'linux-arm64-musl': 'linux-arm64-musl',
   'linux-x64-musl': 'linux-x64-musl',
   'win32-arm64': 'win-arm64',
-  'win32-x64': 'win-x64'
+  'win32-x64': 'win-x64',
+  'linux-x64-glibc217': 'linux-x64-glibc-217'
 }
 
 export function nodeDistArchiveName(version, target) {
   // Why .tar.gz over .tar.xz: every POSIX host can extract gzip; xz is not guaranteed.
   const extension = target.startsWith('win32-') ? 'zip' : 'tar.gz'
   return `node-v${version}-${NODE_DIST_PLATFORMS[target]}.${extension}`
+}
+
+export function windowsImportLibFile(target) {
+  return `${NODE_DIST_PLATFORMS[target]}/node.lib`
 }
