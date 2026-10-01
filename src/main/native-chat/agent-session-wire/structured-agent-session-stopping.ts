@@ -5,6 +5,7 @@
 
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { newestStructuredAgentSessionTurn } from '../../../shared/structured-agent-session-live-turn'
 import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
 
 /** A Stop's note saying it did not take: the agent refused it, or it went unconfirmed. */
@@ -24,19 +25,23 @@ function noteSaysStopTookNoEffect(item: AgentJournalRenderItem): boolean {
  * keeps it whichever order the answers came in.
  */
 export function structuredAgentSessionStopping(
-  journal: Pick<AgentSessionJournal, 'activeTurnId' | 'stopMarks'>,
+  journal: Pick<AgentSessionJournal, 'stopMarks'>,
   items: readonly AgentJournalRenderItem[]
 ): boolean {
   const stop = journal.stopMarks.latest()
   if (stop === null) {
     return false
   }
-  const liveTurnId = journal.activeTurnId()
-  // Cheap exit before the full turn scan: a Stop naming a turn decides only that turn.
-  if (stop.event.turnId !== undefined && stop.event.turnId !== liveTurnId) {
+  // Read off the snapshot's tail with its opener, so no commit walks the whole journal for it.
+  const newest = newestStructuredAgentSessionTurn(items)
+  const live = newest?.state === 'running' ? newest : null
+  if (stop.event.turnId !== undefined && stop.event.turnId !== live?.turnId) {
     return false
   }
-  if (!journal.stopMarks.personStopDecides(liveTurnId)) {
+  const decides = live
+    ? journal.stopMarks.personStopDecidesOpenedTurn(live.turnId, live.userItemId)
+    : journal.stopMarks.personStopDecides(null)
+  if (!decides) {
     return false
   }
   let answered = false

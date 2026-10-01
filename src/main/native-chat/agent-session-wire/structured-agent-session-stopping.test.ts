@@ -3,7 +3,7 @@
 // the journal on every publish, so it clears by itself. Driven through the real host and its status
 // feed, with turn rows named as Codex writes them.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -220,6 +220,28 @@ describe('a Stop pressed before its send opened a turn', () => {
     await turn('turn-1', sent, 'interrupted')
     await eventually(() => expect(status()?.status).toBe('idle'))
     expect(status()).not.toHaveProperty('stopping')
+  })
+
+  it("reads the stopped send's turn and a later one from the turn record, never walking the journal for it", async () => {
+    rig = await createQueuedMessageTestRig()
+    const stopped = await rig.workingSend()
+    const status = watchStatus()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(stopped, 'stopped')
+    const walk = vi.spyOn(journal().stopMarks, 'personStopDecides')
+
+    await turn('turn-1', stopped, 'running')
+    await eventually(() => expect(status()).toMatchObject({ status: 'working', stopping: true }))
+    await turn('turn-1', stopped, 'interrupted')
+    await eventually(() => expect(status()?.status).toBe('idle'))
+    const later = await rig.workingSend()
+    await rig.settleAccepted(later, 'later')
+    await turn('turn-2', later, 'running')
+    await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+    expect(status()).not.toHaveProperty('stopping')
+
+    // Only the no-turn case may walk: a running turn's opener comes from its own record.
+    expect(walk.mock.calls.filter(([turnId]) => turnId !== null)).toEqual([])
   })
 
   it('reads a send made after the Stop as Working', async () => {

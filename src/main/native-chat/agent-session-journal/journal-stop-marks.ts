@@ -4,6 +4,7 @@
 import type { JournalReducerState } from './journal-reducer'
 import {
   latestAcceptedSendUnopened,
+  personStopDecidesOpenedTurn,
   personStopDecidesTurn,
   type JournalLatestStop
 } from './journal-stop-turn-end'
@@ -23,5 +24,10 @@ export class JournalStopMarks {
   /** `personStopDecidesTurn`: a person's Stop decides how turn `turnId` ends. */
   personStopDecides(turnId: string | null, endedAt?: number, openedBy?: string): boolean {
     return personStopDecidesTurn(this.deps.state(), turnId, endedAt, openedBy)
+  }
+
+  /** `personStopDecidesOpenedTurn`: the same, for a turn record the caller already read. */
+  personStopDecidesOpenedTurn(turnId: string, userItemId: string | undefined): boolean {
+    return personStopDecidesOpenedTurn(this.deps.state(), turnId, userItemId)
   }
 }

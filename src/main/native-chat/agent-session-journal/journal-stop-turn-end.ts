@@ -172,6 +172,21 @@ export function personStopDecidesTurn(
     .find((candidate) => candidate?.turnId === turnId)
   const userItemId =
     turn?.userItemId ?? (openedBy === undefined ? undefined : agentJournalSubmissionKey(openedBy))
+  return personStopDecidesOpenedTurn(state, turnId, userItemId, endedAt)
+}
+
+/** `personStopDecidesTurn` for turn `turnId` whose record the caller already holds: `userItemId`
+ *  is that record's opener. Spares a reader that has the record the walk for it. */
+export function personStopDecidesOpenedTurn(
+  state: TurnEndState,
+  turnId: string,
+  userItemId: string | undefined,
+  endedAt?: number
+): boolean {
+  const stop = state.queuePauseMarks.latestStop
+  if (stop === null || !stopIsAPersons(stop.event.reason)) {
+    return false
+  }
   return stopEndsTurnAsCancellation(state, turnId, userItemId, endedAt)
 }
 
