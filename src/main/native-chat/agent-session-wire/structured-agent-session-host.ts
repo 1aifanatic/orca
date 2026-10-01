@@ -34,9 +34,9 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import * as sessionTabs from './structured-agent-session-host-tabs'
 import {
   structuredAgentSessionMutationDelegates,
-  settleStructuredAgentSessionLateDispatch,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-host-mutations'
+import { settleStructuredAgentSessionLateDispatch } from './structured-agent-session-late-dispatch'
 import { releaseStructuredAgentSessionUnansweredDispatches } from './structured-agent-session-unanswered-dispatch-release'
 import { flushStructuredAgentSessionHost } from './structured-agent-session-host-teardown'
 import type {
@@ -185,14 +185,15 @@ export class StructuredAgentSessionHost {
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
     this.eventRecovery.handle(event)
 
-  private lifetimeContext(): StructuredAgentSessionLifetimeContext {
+  // Inferred, so the attach context's spread keeps `publishStatus` required.
+  private lifetimeContext() {
     return {
       deps: this.deps,
       runtimeState: this.runtimeState,
       sessions: this.sessions,
       now: () => this.now(),
       publishStatus: this.clientDelivery.publishStatus
-    }
+    } satisfies StructuredAgentSessionLifetimeContext
   }
 
   /** The host's half of attaching, named so it cannot grow dependencies unnoticed. */
@@ -203,12 +204,13 @@ export class StructuredAgentSessionHost {
       tasks: this.tasks,
       reconcileLeases: (sessionId) => this.reconcileLeases(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
-      publishStatus: this.clientDelivery.publishStatus,
       openConversation: this.conversationDelivery.open
     }
   }
-  /** Releases a session's resources without ending the conversation; see the lifetime's close. */
-  close = (sessionId: string): Promise<void> => this.lifetime.close(sessionId)
+  /** Releases a session's resources without ending the conversation; see the lifetime's close.
+   *  `user-close` makes a turn it cuts short the user's cancellation; an `evict` leaves it news. */
+  close: StructuredAgentSessionConversationLifetime['close'] = (sessionId, cause) =>
+    this.lifetime.close(sessionId, cause)
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
@@ -217,6 +219,8 @@ export class StructuredAgentSessionHost {
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
   getSessionTabId = (sessionId: string): string | null => this.deps.store.getSessionTabId(sessionId)
   showSessionTabs = (sessionIds: readonly string[]) => this.deps.store.showSessionTabs(sessionIds)
+  /** The records file could not be read this launch, so chats it holds are not listed yet. */
+  legacyRecordImportOwed = (): boolean => this.deps.journalDatabase.legacyRecordImportOwed === true
 
   setSessionTabVisibility = async (
     sessionId: string,
@@ -278,7 +282,7 @@ export class StructuredAgentSessionHost {
       ensureAgent: (sessionId) =>
         ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
-      stopAgent: this.lifetime.stopAgent,
+      stopAgent: (sessionId) => this.lifetime.stopAgent(sessionId, 'user-stop'),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
       now: () => this.now()
     }

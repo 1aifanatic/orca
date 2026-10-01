@@ -4,6 +4,14 @@
 
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 
+/** Which stop controls a provider honours. Provider capability, not a fact about any one task. */
+export type AgentSessionBackgroundTaskStops = {
+  /** A stop can name one task. */
+  supportsTaskStop: boolean
+  /** An untargeted "stop everything" exists. */
+  supportsStopAll: boolean
+}
+
 /** The strip offers this child its own stop: it is live, stoppable, and addressable by the id a
  *  targeted stop names. The host's command admission asks the same question of the same views. */
 export function agentChildWorkViewOffersStop(view: AgentChildWorkView): boolean {

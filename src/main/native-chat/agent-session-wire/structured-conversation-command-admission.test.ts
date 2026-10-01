@@ -5,7 +5,7 @@ import {
   conversationCommandBlocked,
   type ConversationCommandAdmissionContext
 } from './structured-conversation-command-admission'
-import type { AgentSessionBackgroundTaskStops } from './structured-agent-session-adapter'
+import type { AgentSessionBackgroundTaskStops } from '../../../shared/agent-child-work-stop-targets'
 
 const TARGETED: AgentSessionBackgroundTaskStops = { supportsTaskStop: true, supportsStopAll: true }
 const UNTARGETED: AgentSessionBackgroundTaskStops = {

@@ -18,7 +18,6 @@ import { launchOrcaApp } from './launch'
 import { addEnvironmentFromPairingCode } from './environments'
 import { RuntimeClientError } from './types'
 import {
-  AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
@@ -33,6 +32,7 @@ import {
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY
 } from '../../shared/protocol-version'
+import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from '../../shared/agent-session-background-task-child-views-capability'
 
 vi.mock('./launch', () => ({
   launchOrcaApp: vi.fn()

@@ -4,6 +4,7 @@
 // session owns are cleared exactly once, and only when the child was actually
 // proven stopped — a refused close leaves the session indexed for a retry.
 
+import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   closeAllCodexSessions,
   closeCodexPublishedSession,
@@ -25,12 +26,13 @@ export type CodexStructuredSessionTeardownDeps = {
 export class CodexStructuredSessionTeardown {
   constructor(private readonly deps: CodexStructuredSessionTeardownDeps) {}
 
-  close = async (sessionId: string): Promise<boolean> => {
+  close = async (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> => {
     const closed = await closeCodexSession(
       sessionId,
       this.deps.sessions,
       this.deps.acquisitions,
-      this.deps.onEvent
+      this.deps.onEvent,
+      cause
     )
     return this.settled(sessionId, closed)
   }

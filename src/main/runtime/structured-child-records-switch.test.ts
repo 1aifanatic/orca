@@ -366,7 +366,7 @@ describe('the chat strip and the session list read the same host child records',
     // store.
     const subject = parentSubject(summaries)
     await host.setSessionTabVisibility(SESSION, false)
-    await host.close(SESSION)
+    await host.close(SESSION, 'user-close')
     expect(server.getStructuredChildWorkViews(subject)).toEqual([])
     expect(summaries.at(-1)).not.toHaveProperty('children')
     expect(summaries.at(-1)).not.toHaveProperty('backgroundTasks')

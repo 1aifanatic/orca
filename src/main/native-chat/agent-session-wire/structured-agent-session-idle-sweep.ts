@@ -31,6 +31,8 @@ export type StructuredAgentSessionIdleSweepDeps = {
   childWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
   /** An orchestration dispatch that still owns this session's worker; derived from its database. */
   hasOpenDispatch: (sessionId: string) => boolean
+  /** The provider holds a send it took and has not answered; see `holdsDispatch`. */
+  providerHoldsDispatch: (sessionId: string) => boolean
   /** Each of these runs inside the session's serialize and never takes it again. */
   stopAgent: (sessionId: string) => Promise<void>
   stopStartingAgent: (sessionId: string) => Promise<void>
@@ -146,6 +148,7 @@ export class StructuredAgentSessionIdleSweep {
       this.queuedOrDelivering(sessionId, session) ||
       agentChildWorkLiveness(this.deps.childWork(sessionId)) !== null ||
       this.deps.hasOpenDispatch(sessionId) ||
+      this.deps.providerHoldsDispatch(sessionId) ||
       hasPendingStructuredAgentSessionPrompt(items)
     )
   }

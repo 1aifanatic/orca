@@ -4,10 +4,10 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
 import {
-  AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY
 } from '../../../../shared/protocol-version'
+import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from '../../../../shared/agent-session-background-task-child-views-capability'
 import type { RpcContext } from '../core'
 
 type BackgroundTaskReader = Pick<RpcContext, 'clientKind' | 'clientCapabilities'>

@@ -1,14 +1,14 @@
-import { agentChildWorkViewOffersStop } from '../../../shared/agent-child-work-stop-targets'
+import {
+  agentChildWorkViewOffersStop,
+  type AgentSessionBackgroundTaskStops
+} from '../../../shared/agent-child-work-stop-targets'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import type {
-  AgentSessionBackgroundTaskStops,
-  StructuredAgentSessionAdapter
-} from './structured-agent-session-adapter'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   refuse,
   type AgentSessionRefusalReason,

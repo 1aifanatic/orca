@@ -7,10 +7,7 @@
 // admitted without the writer lease; the delivery loop starts the provider child a send needs, and
 // an operation only the provider can perform starts it before admission.
 
-import type {
-  AgentJournalItemIdentity,
-  AgentJournalMessageItem
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -21,10 +18,7 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import {
-  agentSessionFailureWords,
-  type AgentJournalDispatchRejection
-} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
@@ -33,7 +27,6 @@ import {
   isMainAgentWorkingOnceFlushed,
   performCancel
 } from './structured-agent-session-turns-cancel'
-import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   admitAndRunAgentSessionMutation,
   type AgentSessionMutationRequest,
@@ -281,41 +274,6 @@ export function changeStructuredAgentSessionThreadGoal(
     params.envelope,
     threadGoalPlan(params),
     openWithAgent(context, params.envelope)
-  )
-}
-
-/** Settle provider-proven delivery independently of an in-flight client mutation. */
-export async function settleStructuredAgentSessionLateDispatch(
-  context: StructuredAgentSessionMutationContext,
-  input: {
-    sessionId: string
-    clientMessageId: string
-  } & (
-    | { providerIdentity: AgentJournalItemIdentity }
-    | ({ state: 'rejected' } & AgentJournalDispatchRejection)
-  )
-): Promise<void> {
-  const session = context.sessions.get(input.sessionId)
-  if (!session) {
-    return
-  }
-  const fence = structuredAgentSessionConversationFence(context.deps.store, input.sessionId)
-  // The journal queue drains before close; the host queue would defer this past teardown.
-  await session.journal.resolveDispatch(
-    'providerIdentity' in input
-      ? {
-          clientMessageId: input.clientMessageId,
-          state: 'accepted',
-          providerIdentity: input.providerIdentity,
-          fence
-        }
-      : {
-          clientMessageId: input.clientMessageId,
-          state: 'rejected',
-          reason: input.reason,
-          rejection: input.rejection,
-          fence
-        }
   )
 }
 
