@@ -63,6 +63,11 @@ describe('display surfaces after the stale-working title clear', () => {
         (candidate) => candidate.handle === terminal.handle
       )
       expect(listed?.title).toBe('Codex')
+
+      // The agent's next genuine title retires the clear.
+      runtime.onPtyData('bg-pty', '\x1b]0;Codex working\x07', Date.now())
+      expect(await psStatus()).toBe('working')
+      expect(await phoneTabs()).toEqual([{ title: 'Codex working', state: 'working' }])
     } finally {
       vi.useRealTimers()
     }

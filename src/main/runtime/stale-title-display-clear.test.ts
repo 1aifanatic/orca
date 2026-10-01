@@ -130,6 +130,30 @@ describe('the stale-working title clear is display-only', () => {
     }
   })
 
+  it("the agent's next genuine title proves presence again", async () => {
+    vi.useFakeTimers()
+    try {
+      const { runtime, handle } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: null,
+        data: ''
+      })
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;⠋ repo\x07', Date.now())
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, 'still running\r\n', Date.now())
+      await vi.advanceTimersByTimeAsync(3_000)
+      await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+        isRunningAgent: false
+      })
+      runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, '\x1b]0;⠙ repo\x07', Date.now())
+      await expect(runtime.getTerminalAgentStatus(handle)).resolves.toMatchObject({
+        isRunningAgent: true,
+        status: 'working'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a live Cursor spinner title proves presence when no foreground read can answer', async () => {
     const { runtime, handle } = await createTranscriptPane({
       paneTitle: 'Terminal',
