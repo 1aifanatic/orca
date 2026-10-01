@@ -117,8 +117,12 @@ export class ClaudeAccountSelection {
     }
   }
 
-  // Why caught: a rollback failure must not replace the error that caused the rollback.
+  // Why caught with profiles: a rollback failure must not replace the error that caused it.
   private async rollBackRuntimeAuth(target: ClaudeAccountSelectionTarget): Promise<void> {
+    if (!getClaudeProfileRoutingAuthority()) {
+      await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback(target)
+      return
+    }
     try {
       await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback(target)
     } catch (rollbackError) {

@@ -28,6 +28,11 @@ vi.mock('../codex-cli/command', () => ({
   resolveClaudeCommand: commandMocks.resolveClaudeCommand
 }))
 
+const profiles = vi.hoisted(() => ({ installed: false }))
+vi.mock('./claude-profile-routing-authority', () => ({
+  getClaudeProfileRoutingAuthority: () => (profiles.installed ? {} : undefined)
+}))
+
 vi.mock('./keychain', () => ({
   deleteActiveClaudeKeychainCredentialsStrict: vi.fn(async () => {}),
   deleteManagedClaudeKeychainCredentials: vi.fn(async () => {}),
@@ -420,6 +425,7 @@ describe('ClaudeAccountService credential capture', () => {
 
   it('keeps the selection error when the rollback republish fails, and republishes only that target', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    profiles.installed = true
     const account = (id: string, wslDistro?: string) => ({
       id,
       email: `${id}@example.com`,
@@ -467,6 +473,10 @@ describe('ClaudeAccountService credential capture', () => {
     expect(warn).toHaveBeenCalledWith(
       '[claude-accounts] Rollback rematerialization failed:',
       expect.objectContaining({ message: 'WSL distro Debian is not running' })
+    )
+    profiles.installed = false
+    await expect(service.selectAccount('host-a')).rejects.toThrow(
+      'WSL distro Debian is not running'
     )
   })
 })
