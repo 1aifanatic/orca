@@ -242,7 +242,7 @@ export async function askCodexForHookSessionTrust(
   return readSessionFlagTrust(listings, hookCommand)
 }
 
-/** Whether Codex lists every event of the complete flag (definition plus approval) as trusted. */
+/** Whether Codex lists every event of the complete flag (definition plus approval) as trusted and enabled. */
 export async function codexTrustsHookSessionFlag(
   codexCommand: string,
   flag: string,
@@ -251,7 +251,9 @@ export async function codexTrustsHookSessionFlag(
   const listings = await listSessionFlagHooks(codexCommand, flag)
   return CODEX_EVENTS.every((eventName) => {
     const matches = matchSessionFlagEvent(listings, hookCommand, CODEX_EVENT_LABEL[eventName])
-    return matches.length === 1 && matches[0].trustStatus === 'trusted'
+    return (
+      matches.length === 1 && matches[0].trustStatus === 'trusted' && matches[0].enabled === true
+    )
   })
 }
 

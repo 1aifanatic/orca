@@ -70,8 +70,10 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     return mkdtempSync(join(root, `${name}-`))
   }
 
-  async function listHooks(flag: string): Promise<ReturnType<typeof collectHookListings>> {
-    const home = freshHome('list')
+  async function listHooks(
+    flag: string,
+    home = freshHome('list')
+  ): Promise<ReturnType<typeof collectHookListings>> {
     const result = await runCodexAppServerSession(
       {
         command: binary!,
@@ -117,6 +119,25 @@ describe.runIf(binary)('codex hook session-flag binary contract', { timeout: 180
     )!
     expect(await codexTrustsHookSessionFlag(binary!, flag, hookCommand)).toBe(true)
     expect(await codexTrustsHookSessionFlag(binary!, wrong, hookCommand)).toBe(false)
+  })
+
+  it("keeps the hook on over the user's /hooks off switch for it", async () => {
+    // Why: Codex writes this when the user switches the hook off in /hooks, and
+    // merges it per field; only Orca's own setting may turn its hook off.
+    const trust = await askCodexForHookSessionTrust(binary!, hookCommand)
+    const home = freshHome('switched-off')
+    writeFileSync(
+      join(home, 'config.toml'),
+      Object.values(trust!)
+        .map((entry) => `[hooks.state.${JSON.stringify(entry.key)}]\nenabled = false\n`)
+        .join('\n')
+    )
+    const listings = (
+      await listHooks(buildCodexHookSessionFlag(hookCommand, trust!)!, home)
+    ).filter((listing) => listing.source === 'sessionFlags')
+    expect(listings).toHaveLength(CODEX_EVENTS.length)
+    expect(listings.every((listing) => listing.trustStatus === 'trusted')).toBe(true)
+    expect(listings.every((listing) => listing.enabled === true)).toBe(true)
   })
 
   it('puts a flag-defined hook up for review when its approval does not match', async () => {

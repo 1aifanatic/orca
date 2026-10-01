@@ -92,15 +92,17 @@ export function buildCodexHookSessionFlag(
     if (key === null || hash === null) {
       return null
     }
-    states.push(`${key}${g}=${g}{${g}trusted_hash${g}=${g}${hash}${g}}`)
+    // Why enabled: Codex merges a user's /hooks off switch for this key per field; only Orca's setting turns Orca's hook off.
+    states.push(`${key}${g}=${g}{${g}trusted_hash${g}=${g}${hash},${g}enabled${g}=${g}true${g}}`)
   }
   return `hooks=${renderTable([...entries, `state${g}=${g}${renderTable(states, spelling)}`], spelling)}`
 }
 
 /**
  * Whether `flag` defines exactly the hook `command` renders today, byte for
- * byte (command, timeout, shape); the approval it carries was derived for that
- * definition, so an entry that fails this is re-derived, never patched.
+ * byte (command, timeout, shape), with this build's state shape for every
+ * event; the approval it carries was derived for that definition, so an entry
+ * that fails this is re-derived, never patched.
  */
 export function codexHookSessionFlagDefines(
   flag: string,
@@ -111,6 +113,8 @@ export function codexHookSessionFlagDefines(
   const entries = renderHooksEntries(command, spelling)
   const g = spelling.gap
   return (
-    entries !== null && flag.startsWith(`hooks={${g}${entries.join(`,${g}`)},${g}state${g}=${g}{`)
+    entries !== null &&
+    flag.startsWith(`hooks={${g}${entries.join(`,${g}`)},${g}state${g}=${g}{`) &&
+    flag.split(`,${g}enabled${g}=${g}true${g}}`).length === CODEX_EVENTS.length + 1
   )
 }

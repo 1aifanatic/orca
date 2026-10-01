@@ -65,6 +65,8 @@ export type CodexHookListing = {
   trustStatus: string
   /** Codex's config source, e.g. `user` or `sessionFlags`; null when absent. */
   source: string | null
+  /** Whether Codex will run the hook; null when this Codex does not report it. */
+  enabled: boolean | null
 }
 
 export function collectHookListings(result: unknown): CodexHookListing[] {
@@ -95,7 +97,8 @@ export function collectHookListings(result: unknown): CodexHookListing[] {
         command: typeof hook.command === 'string' ? hook.command : null,
         currentHash: hook.currentHash,
         trustStatus: hook.trustStatus,
-        source: typeof hook.source === 'string' ? hook.source : null
+        source: typeof hook.source === 'string' ? hook.source : null,
+        enabled: typeof hook.enabled === 'boolean' ? hook.enabled : null
       })
     }
   }

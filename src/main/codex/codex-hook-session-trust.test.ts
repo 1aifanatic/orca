@@ -50,7 +50,8 @@ function listingFor(command: string, flag: string, hashPrefix = 'sha256:'): unkn
             command,
             currentHash: `${hashPrefix}${label}`,
             trustStatus: approved ? 'trusted' : 'untrusted',
-            source: 'sessionFlags'
+            source: 'sessionFlags',
+            enabled: !/state\s*=.*enabled\s*=\s*false/.test(flag)
           }
         })
       }
@@ -135,6 +136,16 @@ describe('codex hook session trust', () => {
       const listing = listingFor(command, flag)
       return flag.includes('state=') ? listingFor(command, flag.replace('state=', 'x=')) : listing
     })
+
+    expect(await refreshCodexHookSessionFlags()).toBeNull()
+    expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)
+  })
+
+  it('publishes nothing when Codex lists the approved hook as switched off', async () => {
+    answerVersion('codex-cli 0.159.2')
+    answerSession((command, flag) =>
+      listingFor(command, flag.includes('state=') ? `${flag} enabled=false` : flag)
+    )
 
     expect(await refreshCodexHookSessionFlags()).toBeNull()
     expect(existsSync(versionFile('codex-cli 0.159.2'))).toBe(false)

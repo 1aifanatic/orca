@@ -32,7 +32,7 @@ describe('buildCodexHookSessionFlag', () => {
         `${eventName}=[{hooks=[{type="command",command=": form; /bin/sh \\"$HOME/x\\"",timeout=10}]}]`
       )
       expect(flag).toContain(
-        `"/<session-flags>/config.toml:${label}:0:0"={trusted_hash="sha256:${label}"}`
+        `"/<session-flags>/config.toml:${label}:0:0"={trusted_hash="sha256:${label}",enabled=true}`
       )
     }
   })
@@ -47,7 +47,7 @@ describe('buildCodexHookSessionFlag', () => {
     expect(flag).toContain(' ')
     expect(flag).not.toMatch(/["%]/)
     expect(flag).toContain(
-      "'C:\\<session-flags>\\config.toml:stop:0:0' = { trusted_hash = 'sha256:stop' }"
+      "'C:\\<session-flags>\\config.toml:stop:0:0' = { trusted_hash = 'sha256:stop', enabled = true }"
     )
   })
 
@@ -93,6 +93,14 @@ describe('codexHookSessionFlagDefines', () => {
   it('rejects a flag for another command, whose approval hashes other bytes', () => {
     const flag = buildCodexHookSessionFlag('/a/codex-hook.sh', trust, 'linux')!
     expect(codexHookSessionFlagDefines(flag, '/b/codex-hook.sh', 'linux')).toBe(false)
+  })
+
+  it('rejects an entry from before every event carried enabled = true', () => {
+    const flag = buildCodexHookSessionFlag('/a/codex-hook.sh', trust, 'linux')!.replaceAll(
+      ',enabled=true}',
+      '}'
+    )
+    expect(codexHookSessionFlagDefines(flag, '/a/codex-hook.sh', 'linux')).toBe(false)
   })
 
   it('rejects a flag whose hook timeout differs, since Codex hashes the timeout too', () => {
