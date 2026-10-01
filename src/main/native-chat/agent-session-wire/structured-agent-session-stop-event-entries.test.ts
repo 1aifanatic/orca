@@ -1,5 +1,5 @@
 // Every way a host stop or close begins writes the Stop's event with its reason, before it ends the
-// child, and only when it ends work: a running turn, or a start. A stop that ends nothing writes
+// child, and only when it ends work: a running turn or a send. A stop that ends nothing writes
 // nothing, quit writes nothing (its resume marker records why), and any later Stop event ends a
 // person's Stop pause.
 
@@ -112,7 +112,7 @@ describe('every Stop entry writes its event, with its reason, before it ends the
     ])
   })
 
-  it('the idle sweep stopping a start that never landed', async () => {
+  it('the idle sweep stopping a start, with its send, that never landed', async () => {
     rig = await createQueuedMessageTestRig({
       starting: true,
       restartable: true,
@@ -192,6 +192,23 @@ describe("a person's Stop pause and the Stop events after it", () => {
     expect(rig.closeSession).toHaveBeenCalledTimes(1)
     expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  })
+
+  // A start that carries no send ends no turn and no send, so stopping it writes nothing.
+  it('holds through the sweep stopping a start that carries no send, which writes nothing', async () => {
+    rig = await createQueuedMessageTestRig({ starting: true, idleSweep: MANUAL_IDLE_SWEEP })
+    expect(rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child?.phase).toBe(
+      'starting'
+    )
+    // A person's Stop of an earlier turn still pauses the queue.
+    await journal().appendStopEvent({ reason: 'user-stop', caller: 'client-1' }, 1)
+    expect(journal().queuedMessages.userStopInForce()).not.toBeNull()
+    const atClose = stopEventsAtClose()
+
+    await idleSweep().tick()
+
+    expect(atClose.events?.map((event) => event.reason)).toEqual(['user-stop'])
+    expect(journal().queuedMessages.userStopInForce()).not.toBeNull()
   })
 
   it('ends when a host eviction ends a running turn: that Stop event is later', async () => {

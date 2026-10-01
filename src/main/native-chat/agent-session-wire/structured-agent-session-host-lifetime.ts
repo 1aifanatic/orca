@@ -105,9 +105,10 @@ export type StructuredAgentSessionStopEnding =
 const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
 
 /**
- * Whether this stop ends work its event must record: a start, or a running turn or unanswered send
- * read once the sink drained what the provider already said (`isMainAgentWorkingOnceFlushed`). A
- * person's Stop wrote its own event, and quit and the idle sweep's rest write none.
+ * Whether this stop ends work its event must record: a running turn or an unanswered send, a start's
+ * own included, read once the sink drained what the provider already said
+ * (`isMainAgentWorkingOnceFlushed`). A start that carries no send ends nothing. A person's Stop
+ * wrote its own event, and quit and the idle sweep's rest write none.
  */
 async function stopEndsWork(
   context: StructuredAgentSessionLifetimeContext,
@@ -119,16 +120,13 @@ async function stopEndsWork(
   if ('recorded' in ending || ending.quit || ending.resting || !child) {
     return false
   }
-  return (
-    child.phase === 'starting' ||
-    isMainAgentWorkingOnceFlushed(
-      {
-        journal,
-        fence: child.fence,
-        flushStreamedEvents: () => context.runtimeState.flushEventSink(sessionId)
-      },
-      STOP_EVENT_DRAIN_TIMEOUT_MS
-    )
+  return isMainAgentWorkingOnceFlushed(
+    {
+      journal,
+      fence: child.fence,
+      flushStreamedEvents: () => context.runtimeState.flushEventSink(sessionId)
+    },
+    STOP_EVENT_DRAIN_TIMEOUT_MS
   )
 }
 
