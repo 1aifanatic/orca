@@ -8,7 +8,8 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import {
   commitStructuredAgentSessionOutbox,
-  getStructuredAgentSessionOutbox
+  getStructuredAgentSessionOutbox,
+  retireStructuredAgentSessionMessageId
 } from './structured-agent-session-outbox-storage'
 
 export function retryStructuredAgentSessionOutboxEntry(args: {
@@ -22,8 +23,9 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   const submission = submissions.find((candidate) => candidate.clientMessageId === clientMessageId)
   const outbox = getStructuredAgentSessionOutbox(sessionId)
   const current = outbox.find((entry) => entry.clientMessageId === clientMessageId)
-  // The host settled this id as rejected, and reusing it only replays that forever, so rotate the
-  // id for a safe resend. Read from the message itself, which outlives a restart, or from a
+  // The host settled this id as rejected, and a send under it only replays that forever, so rotate
+  // the id for a safe resend. (A host that can queue it again in place is asked to instead, before
+  // this runs: see `useStructuredAgentSessionRetryInPlace`.) Read from the message itself, which outlives a restart, or from a
   // reconciliation that settled an earlier unknown before the outbox caught up. A refusal that
   // settled the message already rotated it. An expired id is refused for good; its row told the
   // user to check the chat first.
@@ -48,6 +50,12 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
     )
     if (!commitStructuredAgentSessionOutbox(sessionId, rotated, { onlyIfSaved: true })) {
       setError('Message could not be saved to the outbox')
+      return
+    }
+    // A rejected original stays in the journal; this chat never draws it beside its resend. One the
+    // host never settled (an expired id) may have reached the agent, so it is never hidden.
+    if (submission?.dispatchState === 'rejected') {
+      retireStructuredAgentSessionMessageId(sessionId, clientMessageId)
     }
     return
   }

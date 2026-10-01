@@ -17,6 +17,7 @@ import {
   hostTestAttachParams
 } from './structured-agent-session-host-test-data'
 import { startAgentForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 let root: string
 let host: StructuredAgentSessionHost
@@ -36,6 +37,7 @@ beforeEach(async () => {
     }
   }))
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,

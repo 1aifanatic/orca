@@ -10,7 +10,7 @@ export function isUnansweredStructuredAgentSessionDispatch(
 ): boolean {
   if (isQueuedAgentJournalSubmission(submission)) {
     // Accepted and still owed to whichever child the host starts next, whatever the fence. One
-    // waiting out a failed start has nothing running for it: the start failed, as the message says.
+    // waiting out a refused start has nothing running for it: the start failed, as the message says.
     return !isRetryingStructuredAgentSessionStart(submission)
   }
   return (

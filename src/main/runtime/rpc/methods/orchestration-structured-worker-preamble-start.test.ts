@@ -22,6 +22,7 @@ import {
 import { mintAgentSessionOperationId } from '../../orchestration/structured-pointer-operation-id'
 import { sendStructuredWorkerPreamble } from './orchestration-structured-worker-session'
 import { structuredPreambleTurnStart } from './orchestration/worker/deliver-worker-dispatch-preamble'
+import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
 
 let root: string
 let host: StructuredAgentSessionHost
@@ -46,6 +47,7 @@ beforeEach(async () => {
     }
   }))
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       supportsCreate: () => true,
@@ -112,7 +114,7 @@ describe('a structured worker preamble that starts its agent', () => {
     acquire.mockRejectedValueOnce(accountSwitch())
     const delivery = sendPreamble(5_000)
     await vi.waitFor(async () =>
-      expect((await host.journalSnapshot(SESSION)).submissions[0]?.startFailure).toBeDefined()
+      expect((await host.journalSnapshot(SESSION)).submissions[0]?.startRetry).toBeDefined()
     )
 
     // The retry comes due; the delivery loop takes it on its next wake.
@@ -128,7 +130,7 @@ describe('a structured worker preamble that starts its agent', () => {
 
     const delivery = await sendPreamble(200)
 
-    expect(delivery).toMatchObject({ state: 'pending', startFailure: { attempts: 1 } })
+    expect(delivery).toMatchObject({ state: 'pending', startRetry: { attempts: 1 } })
     expect(structuredPreambleTurnStart(delivery)).toEqual({
       verdict: 'unobserved',
       reason: expect.stringMatching(

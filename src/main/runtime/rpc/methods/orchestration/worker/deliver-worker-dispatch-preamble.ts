@@ -34,6 +34,8 @@ export async function deliverWorkerDispatchPreamble(args: {
   requestId: string
   /** How long a structured preamble waits for its agent. */
   preambleBudgetMs?: number
+  /** A structured preamble the host held, then rejected for good: why. */
+  whenUndelivered?: (reason: string) => void
 }): Promise<{
   prompt?: RuntimeTerminalSend['prompt']
   structuredTurnStart?: WorkerTurnStartObservation
@@ -58,7 +60,8 @@ export async function deliverWorkerDispatchPreamble(args: {
       sessionId: structuredSession.identity.sessionId,
       dispatchId: args.dispatchId,
       preamble,
-      ...(args.preambleBudgetMs === undefined ? {} : { budgetMs: args.preambleBudgetMs })
+      ...(args.preambleBudgetMs === undefined ? {} : { budgetMs: args.preambleBudgetMs }),
+      ...(args.whenUndelivered ? { whenUndelivered: args.whenUndelivered } : {})
     })
     return { structuredTurnStart: structuredPreambleTurnStart(delivery) }
   }
@@ -80,14 +83,13 @@ export function structuredPreambleTurnStart(
   if (delivery.state === 'accepted') {
     return { verdict: 'observed' }
   }
+  const waiting = delivery.startRetry
+    ? `The worker's agent did not start: ${delivery.startRetry.reason} The dispatch preamble ` +
+      'waits for its next start; if the worker then reports, this Dispatch settles normally.'
+    : 'The dispatch preamble was accepted, but the agent had not started to take it. It is ' +
+      'delivered when the agent starts; if the worker then reports, this Dispatch settles normally.'
   return {
     verdict: 'unobserved',
-    reason: delivery.startFailure
-      ? `The worker's agent did not start: ${delivery.startFailure.reason} The dispatch ` +
-        'preamble waits for its next start; if the worker then reports, this Dispatch ' +
-        'settles normally.'
-      : 'The dispatch preamble was accepted, but the agent had not started to take it. ' +
-        'It is delivered when the agent starts; if the worker then reports, this ' +
-        'Dispatch settles normally.'
+    reason: `${waiting} If Orca cannot start the agent, this Dispatch fails and its Run is told.`
   }
 }

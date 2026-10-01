@@ -109,13 +109,18 @@ export function journalDispatchRowBuilder(
     providerItemId,
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
+    ...(input.state === 'rejected' && input.rejectionCause
+      ? { rejectionCause: input.rejectionCause }
+      : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {}),
     ...(input.state !== 'pending'
       ? {}
-      : 'startFailure' in input
-        ? { startFailure: input.startFailure }
-        : { turnScope: input.turnScope })
+      : 'startRetry' in input
+        ? { startRetry: input.startRetry }
+        : 'requeued' in input
+          ? { requeued: true }
+          : { turnScope: input.turnScope })
   })
 }
 

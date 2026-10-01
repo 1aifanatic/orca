@@ -15,6 +15,7 @@ import {
   hostTestAttachParams,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 let root: string
 let host: StructuredAgentSessionHost | null = null
@@ -74,6 +75,7 @@ it('adjudicates an unreconciled lease, then founds the chat again at the next fe
   const store = await openTestAgentSessionRecordStore(root)
   expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       supportsCreate: () => true,

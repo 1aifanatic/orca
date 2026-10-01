@@ -18,6 +18,7 @@ import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import * as legacyImport from '../agent-session-journal/journal-legacy-import'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'codex_adopting_session'
@@ -119,6 +120,7 @@ function adapter(): StructuredAgentSessionAdapter {
 async function openHost(sessionAdapter: StructuredAgentSessionAdapter) {
   store ??= await openTestAgentSessionRecordStore(root!)
   host ??= new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: sessionAdapter,
     journalDatabase: openTestJournalHostDatabase(root!),

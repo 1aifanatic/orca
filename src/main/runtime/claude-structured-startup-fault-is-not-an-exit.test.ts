@@ -113,7 +113,7 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
         rejection: { kind: 'startFailed' }
       })
     )
-    expect(await submission(host, held)).not.toHaveProperty('startFailure')
+    expect(await submission(host, held)).not.toHaveProperty('startRetry')
     expect(await failureRows(host)).toEqual([])
     expect(claude.child(SESSION).calls).not.toContain('send')
   })
@@ -138,7 +138,7 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await submission(host, held)).not.toHaveProperty('startFailure')
+    expect(await submission(host, held)).not.toHaveProperty('startRetry')
     expect(await failureRows(host)).toEqual([])
   })
 })

@@ -9,7 +9,6 @@ import {
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { isRetryingStructuredAgentSessionStart } from '../../../shared/structured-agent-session-start-retry'
 import type {
   AgentSessionMutationEnvelope,
   AgentSessionMutationResult
@@ -93,11 +92,6 @@ function compactionReply(
   context: AgentSessionFailureWordsContext
 ): AgentSessionConversationCommandResult {
   const error = (reason: string | null, fallback: string) => (reason ?? fallback).slice(0, 4096)
-  // In the conversation, waiting for its next start: its own message says why, so the reply does
-  // not, and the composer is done with it.
-  if (submission && isRetryingStructuredAgentSessionStart(submission)) {
-    return { command: 'compact', state: 'completed' }
-  }
   if (!submission || isQueuedAgentJournalSubmission(submission)) {
     return { command: 'compact', state: 'unknown', error: 'The command has not started yet.' }
   }

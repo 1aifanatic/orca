@@ -14,10 +14,7 @@
 // newer build must not be misread as malformed (see journal-row-schema.ts).
 
 import { z } from 'zod'
-import {
-  AgentJournalStartFailureSchema,
-  FailureFact
-} from './agent-session-journal-failure-schemas'
+import { AgentJournalStartRetrySchema, FailureFact } from './agent-session-journal-failure-schemas'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
 import type {
   AgentJournalItemBody,
@@ -326,7 +323,7 @@ export const AgentJournalSubmissionSchema = z.object({
   handedOverAt: z.number().optional(),
   rejection: FailureFact.optional(),
   // A malformed one drops the field, never the submission.
-  startFailure: AgentJournalStartFailureSchema.optional().catch(undefined),
+  startRetry: AgentJournalStartRetrySchema.optional().catch(undefined),
   // Listed, or the parse strips it: this schema drops unknown keys.
   queuedMessageId: z.string().min(1).optional()
 })

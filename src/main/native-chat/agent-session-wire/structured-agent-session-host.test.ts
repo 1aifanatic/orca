@@ -33,6 +33,7 @@ import {
   attachForTests,
   startAgentForTests
 } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -141,6 +142,7 @@ describe('attach', () => {
         }
       }))
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: { ...adapter(), acquire },
       journalDatabase: openTestJournalHostDatabase(root),
@@ -575,6 +577,7 @@ describe('restart', () => {
   ) {
     store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: { ...adapter(), ...adapterOverrides },
       journalDatabase: openTestJournalHostDatabase(root),

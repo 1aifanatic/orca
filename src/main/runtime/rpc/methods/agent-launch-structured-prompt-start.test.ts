@@ -20,6 +20,7 @@ import {
 } from '../../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { mintAgentSessionOperationId } from '../../orchestration/structured-pointer-operation-id'
 import { deliverStructuredAgentSessionLaunchPrompt } from './agent-launch-structured-prompt'
+import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -49,6 +50,7 @@ beforeEach(async () => {
   }))
   closeSession = vi.fn(async () => true)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       supportsCreate: () => true,
@@ -109,7 +111,7 @@ describe('a launch prompt whose agent is still starting at the budget', () => {
     expect(closeSession).not.toHaveBeenCalled()
     expect(host.sessionAgent(SESSION)).not.toBeNull()
     const [waiting] = (await host.journalSnapshot(SESSION)).submissions
-    expect(waiting).toMatchObject({ dispatchState: 'pending', startFailure: { attempts: 1 } })
+    expect(waiting).toMatchObject({ dispatchState: 'pending', startRetry: { attempts: 1 } })
 
     // The retry comes due; the delivery loop starts the agent with that same message.
     clock += 15_000

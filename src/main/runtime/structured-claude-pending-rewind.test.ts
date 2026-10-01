@@ -25,6 +25,7 @@ import { openTestAgentSessionRecordStore } from './agent-session-record-store-te
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
+import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 
 const caller = { callerKey: 'desktop' }
 const PROVIDER_SESSION_ID = claudeSessionIdForOrcaSession(HOST_TEST_SESSION)
@@ -38,6 +39,7 @@ let store: AgentSessionRecordStore
 let claude: ReturnType<typeof fakeClaude>
 let adapter: ReturnType<typeof createStructuredClaudeRuntimeAdapter>
 let host: StructuredAgentSessionHost
+let log: ReturnType<typeof recordingStructuredAgentSessionLogger>
 
 function attachParams(fence: number | null) {
   return hostTestAttachParams(fence, {
@@ -119,7 +121,9 @@ beforeEach(async () => {
     readProcessStartTime: async () => HOST_TEST_NOW,
     onLifecycleEvent: () => {}
   })
+  log = recordingStructuredAgentSessionLogger()
   host = new StructuredAgentSessionHost({
+    logger: log.logger,
     store,
     // Only Claude sessions are attached here; the router supplies the production create gate.
     adapter: new StructuredAgentSessionAdapterRouter({ claude: adapter, codex: adapter }, () =>
@@ -174,7 +178,6 @@ describe('Claude rewind is unsupported', () => {
   )
 
   it('still attaches when settling the pending rewind fails, and logs it', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await seedPendingRewind('prepared')
     const transition = store.transitionHandoff.bind(store)
     vi.spyOn(store, 'transitionHandoff').mockImplementation((sessionId, apply) =>
@@ -190,9 +193,14 @@ describe('Claude rewind is unsupported', () => {
     await reattach()
 
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('prepared')
-    expect(warn).toHaveBeenCalledWith(
-      '[structured-rewind] pending Claude rewind was not settled:',
-      expect.objectContaining({ sessionId: HOST_TEST_SESSION, error: expect.any(Error) })
+    expect(log.entries).toContainEqual(
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          scope: 'rewind-unsupported-settlement',
+          sessionId: HOST_TEST_SESSION,
+          error: expect.any(Error)
+        })
+      })
     )
   })
 })

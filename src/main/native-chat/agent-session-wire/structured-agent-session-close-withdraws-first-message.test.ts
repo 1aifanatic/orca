@@ -19,6 +19,7 @@ import {
   hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 let root: string
 let host: StructuredAgentSessionHost
@@ -26,6 +27,7 @@ let host: StructuredAgentSessionHost
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-close-withdraws-first-message-'))
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store: await openTestAgentSessionRecordStore(root),
     adapter: {
       supportsCreate: () => true,
@@ -76,7 +78,7 @@ it('rejects the waiting first message, and its reader sees the rejection', async
   )
   await vi.waitFor(async () =>
     expect(
-      (await host.journalSnapshot(SESSION)).submissions[0]?.startFailure?.nextAttemptAt
+      (await host.journalSnapshot(SESSION)).submissions[0]?.startRetry?.nextAttemptAt
     ).toBeDefined()
   )
   const events: AgentSessionSubscribeEvent[] = []

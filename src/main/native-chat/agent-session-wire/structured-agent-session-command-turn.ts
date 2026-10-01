@@ -8,8 +8,7 @@
 
 import {
   agentSessionFailureFact,
-  type AgentSessionFailureFact,
-  type SubmissionRejectionFact
+  type AgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
@@ -30,7 +29,6 @@ import {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
 import {
   agentJournalTurnBody,
   readAgentJournalTurn
@@ -42,7 +40,7 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import { commandBlocked } from './structured-agent-session-command-handover-block'
 
 export const STRUCTURED_AGENT_SESSION_COMPACT_COMMAND = 'compact'
 
@@ -302,22 +300,4 @@ async function endUnsentCommandTurn(
     fence: ctx.fence,
     mutations
   })
-}
-
-/** Why the command may not run now, as the fact its message is rejected with; null when it may. */
-function commandBlocked(
-  ctx: StructuredAgentSessionCommandHandoverContext,
-  body: AgentJournalMessageItem
-): SubmissionRejectionFact | null {
-  if (body.command?.name !== STRUCTURED_AGENT_SESSION_COMPACT_COMMAND || !ctx.adapter.compact) {
-    return agentSessionFailureFact('commandRefused')
-  }
-  const record = ctx.record()
-  if (!record) {
-    return agentSessionFailureFact('hostFault')
-  }
-  const refusal = conversationCommandBlocked(ctx, record, ctx.childWork(), 'handover')
-  return refusal
-    ? agentSessionFailureFact('commandRefused', { refusal: agentSessionRefusalReference(refusal) })
-    : null
 }

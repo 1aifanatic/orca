@@ -43,6 +43,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
@@ -74,6 +75,8 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let generation = 0
 let clock = NOW
+// The wall clock moves on between two reads: the read after this one sees this time.
+let advanceAfterRead: number | null = null
 let timers: { dueAt: number; run: () => void; cancelled: boolean }[] = []
 let settleStart: (failure: SubmissionRejectionFact | undefined) => void = () => {}
 // Runs before each spawn; throwing refuses that start before it ran.
@@ -98,6 +101,7 @@ function exitBeforeProof(): Promise<void> {
 
 function startHost(): void {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire: vi.fn(async ({ fence, spawnToken }) => {
@@ -132,7 +136,14 @@ function startHost(): void {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${generation + 1}`,
-    now: () => clock,
+    now: () => {
+      const read = clock
+      if (advanceAfterRead !== null) {
+        clock = advanceAfterRead
+        advanceAfterRead = null
+      }
+      return read
+    },
     setStartRetryTimer: (delayMs, run) => {
       const timer = { dueAt: clock + delayMs, run, cancelled: false }
       timers.push(timer)
@@ -228,9 +239,7 @@ function framedStartFailures(clientMessageId: string): unknown[] {
   return frames.flatMap((frame) =>
     frame.type === 'batch'
       ? frame.batch.submissions.flatMap((entry) =>
-          entry.clientMessageId === clientMessageId && entry.startFailure
-            ? [entry.startFailure]
-            : []
+          entry.clientMessageId === clientMessageId && entry.startRetry ? [entry.startRetry] : []
         )
       : []
   )
@@ -258,6 +267,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   generation = 0
   clock = NOW
+  advanceAfterRead = null
   timers = []
   frames = []
   beforeSpawn = vi.fn(async () => undefined)
@@ -290,7 +300,7 @@ describe('a queued message whose start fails', () => {
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'pending',
-        startFailure: {
+        startRetry: {
           attempts: 1,
           reason: WAITING_REASON,
           rejection: TRANSIENT,
@@ -298,11 +308,26 @@ describe('a queued message whose start fails', () => {
         }
       })
     )
-    // Refused before it ran: no child, so no generation to name.
-    expect((await submission(queued))?.startFailure?.generation).toBeUndefined()
     expect((await submission(queued))?.handedOverAt).toBeUndefined()
     expect(await startRows()).toEqual([])
     expect(awaitStarted).not.toHaveBeenCalled()
+  })
+
+  // Only the start step's own refusal books a try: a situation that could clear on its own, seen
+  // after the child was spawned, still ends the message at once.
+  it('is rejected at once for any failure after its child was spawned, whatever the failure', async () => {
+    const queued = await sendQueued('hello')
+
+    settleStart(TRANSIENT)
+
+    await eventually(async () =>
+      expect(await submission(queued)).toMatchObject({
+        dispatchState: 'rejected',
+        ...TRANSIENT_WORDS
+      })
+    )
+    expect((await submission(queued))?.startRetry).toBeUndefined()
+    expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
   })
 
   it('ends a failed child still there when the next message comes, and starts afresh', async () => {
@@ -331,7 +356,7 @@ describe('a queued message whose start fails', () => {
     const booked: number[] = []
     for (const expected of [NOW + 15_000, NOW + 75_000, NOW + 375_000]) {
       await eventually(async () =>
-        expect((await submission(queued))?.startFailure?.nextAttemptAt).toBe(expected)
+        expect((await submission(queued))?.startRetry?.nextAttemptAt).toBe(expected)
       )
       booked.push(expected)
       await fireRetry()
@@ -343,7 +368,7 @@ describe('a queued message whose start fails', () => {
         ...TRANSIENT_WORDS
       })
     )
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(booked).toEqual([NOW + 15_000, NOW + 75_000, NOW + 375_000])
     // One at setup, then one start per try.
     expect(beforeSpawn).toHaveBeenCalledTimes(5)
@@ -393,7 +418,7 @@ describe('a queued message whose start fails', () => {
   it('lets a later message go first while it waits, then goes itself when its try is due', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
 
     const second = await send(hostTestMessage('second'))
@@ -402,7 +427,7 @@ describe('a queued message whose start fails', () => {
     )
     expect(await submission(first)).toMatchObject({
       dispatchState: 'pending',
-      startFailure: { attempts: 1 }
+      startRetry: { attempts: 1 }
     })
     expect((await submission(first))?.handedOverAt).toBeUndefined()
 
@@ -410,7 +435,7 @@ describe('a queued message whose start fails', () => {
     await eventually(() =>
       expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second, first])
     )
-    expect((await submission(first))?.startFailure).toBeUndefined()
+    expect((await submission(first))?.startRetry).toBeUndefined()
   })
 })
 
@@ -428,7 +453,7 @@ describe('the wake for a message waiting out a refused start', () => {
   it('books nothing for a try that comes due while a /compact runs: its end wakes the loop', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
     await send(structuredAgentSessionCompactBody())
     await eventually(() => expect(compact).toHaveBeenCalledOnce())
@@ -440,10 +465,36 @@ describe('the wake for a message waiting out a refused start', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  // A timer can fire a moment before the clock reaches its due time, which the clock then reaches
+  // during the step it woke.
+  it('is booked again when its try comes due during the step that found it not yet due', async () => {
+    const { id: first, refuse } = await sendRefused('first')
+    refuse()
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
+    awaitStarted.mockImplementation(async () => undefined)
+    await settleSteps()
+    const due = (await submission(first))!.startRetry!.nextAttemptAt
+    const timer = armed().at(-1)!
+    expect(timer.dueAt).toBe(due)
+
+    timer.cancelled = true
+    clock = due - 1
+    advanceAfterRead = due
+    timer.run()
+    await settleSteps()
+
+    expect(clock).toBe(due)
+    expect(armed()).toHaveLength(1)
+    await fireRetry()
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([first])
+    )
+  })
+
   it('is not booked again for every commit while nothing can go', async () => {
     const { id: first, refuse } = await sendRefused('first')
     refuse()
-    await eventually(async () => expect((await submission(first))?.startFailure).toBeDefined())
+    await eventually(async () => expect((await submission(first))?.startRetry).toBeDefined())
     awaitStarted.mockImplementation(async () => undefined)
     const second = await send(hostTestMessage('second'))
     await eventually(() =>
@@ -510,6 +561,32 @@ describe('an operation that needs the agent the chat does not have running', () 
     expect(changeThreadGoal).toHaveBeenCalledOnce()
   })
 
+  // Each child that replaced the one waited on is a new start, waited on outside the queue too.
+  it('waits outside the queue for every child that replaced the one it waited on', async () => {
+    const changed = changeGoal()
+    for (const child of ['generation-2', 'generation-3', 'generation-4']) {
+      await eventually(() => expect(generation).toBe(Number(child.split('-')[1])))
+      let queueFree = false
+      void host.collaboratorsForTests().serialize(SESSION, async () => {
+        queueFree = true
+      })
+      await eventually(() => expect(queueFree).toBe(true))
+      if (child === 'generation-4') {
+        break
+      }
+      // That child's start lands and it ends before the call is back in the queue.
+      const settle = settleStart
+      await exitBeforeProof()
+      settle(undefined)
+    }
+    expect(changeThreadGoal).not.toHaveBeenCalled()
+
+    awaitStarted.mockImplementation(async () => undefined)
+    settleStart(undefined)
+    await expect(changed).resolves.toMatchObject({ ok: true, value: { change: 'set' } })
+    expect(changeThreadGoal).toHaveBeenCalledOnce()
+  })
+
   it('is answered with why the start it waited on failed', async () => {
     const changed = changeGoal()
     await eventually(() => expect(awaitStarted).toHaveBeenCalled())
@@ -529,7 +606,7 @@ describe('a start that fails while its child exits', () => {
 
     await exitBeforeProof()
     expect(await submission(queued)).toMatchObject({ dispatchState: 'pending' })
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     settleStart(undefined)
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
@@ -541,7 +618,7 @@ describe('a start that fails while its child exits', () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(await submission(queued)).toEqual(recorded)
-    expect(recorded?.startFailure).toBeUndefined()
+    expect(recorded?.startRetry).toBeUndefined()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     expect(await startRows()).toEqual([])
   })
@@ -582,7 +659,7 @@ describe('a start that fails while its child exits', () => {
         rejection: PROVIDER_START_FAILED
       })
     )
-    expect((await submission(handed))?.startFailure).toBeUndefined()
+    expect((await submission(handed))?.startRetry).toBeUndefined()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     // Never in doubt on the way: the child it was handed to took nothing.
     expect(framedStates(handed)).not.toContain('unknown')
@@ -609,7 +686,7 @@ describe('a start whose child took one message and cannot take the next', () => 
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     for (const id of [first, second]) {
       expect(await submission(id)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
-      expect((await submission(id))?.startFailure).toBeUndefined()
+      expect((await submission(id))?.startRetry).toBeUndefined()
       // Never in doubt on the way: the child it was handed to took nothing.
       expect(framedStates(id)).not.toContain('unknown')
     }
@@ -636,12 +713,39 @@ describe('a start whose child took one message and cannot take the next', () => 
       })
     )
     await host.flushStreamedEvents(SESSION)
-    expect((await submission(queued))?.startFailure).toBeUndefined()
+    expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(framedStartFailures(queued)).toEqual([])
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     expect(dispatch).toHaveBeenCalledOnce()
     // generation-1 at setup, then this message's one start.
     expect(generation).toBe(2)
+  })
+})
+
+// Like a goal, a rewind or /clear, a command does not wait out a refused start.
+describe('a /compact whose start is refused before it ran', () => {
+  it('is rejected at once, with no try booked, and a later message goes ahead', async () => {
+    const refuse = holdNextStart()
+    const calls = beforeSpawn.mock.calls.length
+    const command = await send(structuredAgentSessionCompactBody())
+    await eventually(() => expect(beforeSpawn.mock.calls.length).toBeGreaterThan(calls))
+    refuse()
+
+    await eventually(async () =>
+      expect(await submission(command)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: TRANSIENT
+      })
+    )
+    expect((await submission(command))?.startRetry).toBeUndefined()
+    expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
+
+    awaitStarted.mockImplementation(async () => undefined)
+    const later = await send(hostTestMessage('second'))
+    await eventually(() =>
+      expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([later])
+    )
+    expect(compact).not.toHaveBeenCalled()
   })
 })
 
@@ -651,7 +755,7 @@ describe('a /compact whose start fails at its handover', () => {
     const { id: plain, refuse } = await sendRefused('first')
     refuse()
     await eventually(async () =>
-      expect((await submission(plain))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(plain))?.startRetry).toMatchObject({ attempts: 1 })
     )
     awaitStarted.mockImplementation(async () => undefined)
     compact.mockImplementation(() => {
@@ -671,7 +775,7 @@ describe('a /compact whose start fails at its handover', () => {
         command: 'compact'
       }).reason
     )
-    expect((await submission(plain))?.startFailure?.reason).toBe(WAITING_REASON)
+    expect((await submission(plain))?.startRetry?.reason).toBe(WAITING_REASON)
     const turn = (await host.journalSnapshot(SESSION)).items.find(
       (item) => item.itemId === structuredAgentSessionCommandTurn(command).itemId
     )
@@ -684,34 +788,76 @@ describe('a message waiting for its next try when it can wait no longer', () => 
     const { id: queued, refuse } = await sendRefused('hello')
     refuse()
     await eventually(async () =>
-      expect((await submission(queued))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(queued))?.startRetry).toMatchObject({ attempts: 1 })
     )
     return queued
   }
 
-  it('reads as failed with its own failure when the chat closes', async () => {
+  // The person ended its wait, so nothing announces it; the chat still reads it as failed.
+  it('reads as failed with its own failure when the chat closes, and notifies nothing', async () => {
     const queued = await retrying()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
 
     await host.close(SESSION, 'user-close')
 
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
+        reason: TRANSIENT_WORDS.reason,
+        rejection: TRANSIENT,
+        rejectionCause: 'chatClosed'
       })
     )
+    await host.journalSnapshot(SESSION)
+    expect(completions).toEqual([])
   })
 
-  it('reads as failed with its own failure when Orca restarts', async () => {
+  it('reads as failed with its own failure when Orca quits and restarts, and notifies nothing', async () => {
     const queued = await retrying()
+    await host.flushAllStreamedEvents()
+    startHost()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
 
-    await restartHostAndOpen()
+    await host.journalSnapshot(SESSION)
 
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
         dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
+        reason: TRANSIENT_WORDS.reason,
+        // Quitting closes the chat first, which ends the wait.
+        rejection: TRANSIENT,
+        rejectionCause: 'chatClosed'
       })
+    )
+    expect(completions).toEqual([])
+  })
+
+  it('notifies its failure once when its last try fails for good', async () => {
+    const queued = await retrying()
+    const completions: unknown[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
+    refuseStarts()
+
+    for (let attempt = 2; attempt <= 4; attempt += 1) {
+      await fireRetry()
+      if (attempt < 4) {
+        await eventually(async () =>
+          expect((await submission(queued))?.startRetry).toMatchObject({ attempts: attempt })
+        )
+      }
+    }
+
+    await eventually(async () => expect((await submission(queued))?.dispatchState).toBe('rejected'))
+    expect(await submission(queued)).not.toHaveProperty('rejectionCause')
+    await eventually(() =>
+      expect(completions).toEqual([
+        expect.objectContaining({
+          type: 'completion',
+          completion: expect.objectContaining({ outcome: 'failure' })
+        })
+      ])
     )
   })
 
@@ -751,7 +897,7 @@ describe('what waits on a message whose start failed', () => {
 
     for (const settled of [await handedOver, await answered]) {
       expect(settled?.value).toMatchObject({
-        submission: { dispatchState: 'pending', startFailure: { attempts: 1 } }
+        submission: { dispatchState: 'pending', startRetry: { attempts: 1 } }
       })
     }
   })
@@ -770,7 +916,7 @@ describe('what waits on a message whose start failed', () => {
 
     refuse()
     await eventually(async () =>
-      expect((await submission(queued))?.startFailure).toMatchObject({ attempts: 1 })
+      expect((await submission(queued))?.startRetry).toMatchObject({ attempts: 1 })
     )
 
     await eventually(() =>

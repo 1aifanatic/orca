@@ -5,7 +5,7 @@
 // A request is either a turn, whose record carries the provider's verdict, or a send that never
 // became one because the agent or its start refused it. A send its handover placed inside a
 // running turn (a steer) is not a request of its own: the turn it joined answers for it. Nor is a
-// conversation command. A message waiting out a failed start reads as that failure until its next
+// conversation command. A message waiting out a refused start reads as that failure until its next
 // try: nothing runs for it meanwhile.
 
 import type {
@@ -18,7 +18,10 @@ import type {
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  failedBeforeHandover
+} from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
 import { isRetryingStructuredAgentSessionStart } from './structured-agent-session-start-retry'
 import {
@@ -38,43 +41,41 @@ export type StructuredAgentSessionLatestRequest = {
   outcome: AgentJournalTurnOutcome | null
   /** When it settled: the turn's end, or the refusal. Undefined while it runs. */
   settledAt: number | undefined
+  /** A send waiting for its next start: it reads as failed, but that is not its verdict yet. */
+  waiting?: true
 }
 
 /** Null when the journal holds no request with a verdict to give. Accepted and unanswered sends
  *  are passed over — the session is working until their turn records — and so are sends that
- *  failed nobody (withdrawn, or left undelivered by a restart or a close). The newest request is
- *  the last in the conversation, unless a send before it failed after that one settled: a message
- *  whose start failed lets later ones go first, so its failure can be the newer news. */
+ *  failed nobody (withdrawn, or left undelivered by a restart or a close).
+ *
+ *  A refused send sits where its refusal was written (a waiting message is moved there when it
+ *  fails for good), so among refusals the last is the newest. A turn sits where it began and ends
+ *  later, so only the newest turn can have ended after a refusal written since it began: the walk
+ *  stops there, and the one that settled later is the newest. A running turn is the news. */
 export function latestStructuredAgentSessionRequest(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionLatestRequest | null {
   const rejected = rejectedSubmissionsByItem(submissions)
   const commandTurns = structuredAgentSessionCommandTurnItemIds(items)
-  let latest: StructuredAgentSessionLatestRequest | null = null
-  let unvisitedRefusals = rejected.size
+  let refusal: StructuredAgentSessionLatestRequest | null = null
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
-    if (item && rejected.has(item.itemId)) {
-      unvisitedRefusals -= 1
-    }
     const request = item ? requestOf(item, rejected, commandTurns) : null
-    if (!latest) {
-      latest = request
-    } else if (
-      request?.kind === 'refused-send' &&
-      request.settledAt !== undefined &&
-      latest.settledAt !== undefined &&
-      request.settledAt > latest.settledAt
-    ) {
-      latest = request
-    }
-    // A running turn is the news whatever settled before it, and nothing older can be newer.
-    if (latest && (latest.turnState === 'running' || unvisitedRefusals === 0)) {
-      return latest
+    if (request?.kind === 'refused-send') {
+      refusal ??= request
+    } else if (request) {
+      return !refusal ||
+        request.turnState === 'running' ||
+        (request.settledAt !== undefined &&
+          refusal.settledAt !== undefined &&
+          request.settledAt > refusal.settledAt)
+        ? request
+        : refusal
     }
   }
-  return latest
+  return refusal
 }
 
 function requestOf(
@@ -101,7 +102,7 @@ function requestOf(
     }
   }
   const submission = rejected.get(item.itemId)
-  const refusal = submission?.startFailure ?? submission
+  const refusal = submission?.startRetry ?? submission
   if (
     !submission ||
     !refusal ||
@@ -116,8 +117,46 @@ function requestOf(
     id: item.itemId,
     turnState: null,
     outcome: 'failure',
-    settledAt: submission.startFailure?.failedAt ?? submission.resolvedAt ?? undefined
+    settledAt: submission.startRetry?.failedAt ?? submission.resolvedAt ?? undefined,
+    ...(isRetryingStructuredAgentSessionStart(submission) ? { waiting: true as const } : {})
   }
+}
+
+/** The sends whose start failed for good, by their item keys: each one's failure is final the
+ *  moment it is written, whatever else the session still owes. */
+export function structuredAgentSessionFailedStartIds(
+  submissions: readonly AgentJournalSubmission[]
+): string[] {
+  return submissions.flatMap((submission) =>
+    failedBeforeHandover(submission) ? [agentJournalSubmissionKey(submission.clientMessageId)] : []
+  )
+}
+
+/** Of those, the ones that are no news: a conversation command, which is not a request; and a
+ *  message whose wait for its next try the chat's close or a restart ended, which the person did.
+ *  Each still reads as failed in the chat. */
+export function structuredAgentSessionQuietFailedStartIds(
+  items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[]
+): string[] {
+  const failed = new Map(
+    submissions.flatMap((submission) =>
+      failedBeforeHandover(submission)
+        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission] as const]
+        : []
+    )
+  )
+  const quiet: string[] = []
+  for (const item of items) {
+    const submission = failed.get(item.itemId)
+    if (
+      submission &&
+      (isStructuredAgentSessionCommandEntry(item.body) || submission.rejectionCause !== undefined)
+    ) {
+      quiet.push(item.itemId)
+    }
+  }
+  return quiet
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn
@@ -150,7 +189,7 @@ export function hasStructuredAgentSessionRequest(
   )
 }
 
-/** Rejected sends, and queued ones waiting out a failed start. */
+/** Rejected sends, and queued ones waiting out a refused start. */
 function rejectedSubmissionsByItem(
   submissions: readonly AgentJournalSubmission[]
 ): Map<string, AgentJournalSubmission> {

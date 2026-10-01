@@ -111,7 +111,7 @@ describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await submission(host, held)).not.toHaveProperty('startFailure')
+    expect(await submission(host, held)).not.toHaveProperty('startRetry')
     expect(await statusRows(host)).toEqual([])
     // The restart moved the fence twice: its acquisition, and the exit that released it.
     expect(fence(host)).toBe(releasedFence + 2)
@@ -164,7 +164,7 @@ describe('a send while the first Claude start is still answering initialize', ()
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await submission(host, held)).not.toHaveProperty('startFailure')
+    expect(await submission(host, held)).not.toHaveProperty('startRetry')
     expect(await statusRows(host)).toEqual([])
     expect(fence(host)).toBe(startedFence + 1)
     expect(claude.children(SESSION)).toHaveLength(1)

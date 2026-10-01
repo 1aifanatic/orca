@@ -16,30 +16,25 @@
 // from the journal.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from '../../../shared/agent-session-failure-words'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
+  isStructuredAgentSessionPreviousExitUnverifiable,
+  type StructuredAgentSessionResumeOutcome
+} from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
+import { StructuredAgentSessionStartRetryWakes } from './structured-agent-session-start-retry-wakes'
 import {
-  setStartRetryTimer,
   leftoverRejection,
   nextDeliverableSubmission,
-  nextStartRetryAt,
-  recordStructuredAgentSessionStartAttemptFailure,
-  submissionsHandedToChild,
-  type StructuredAgentSessionStartAttemptFailure
+  recordStructuredAgentSessionStartRefusal,
+  rejectStructuredAgentSessionFailedStart,
+  submissionsHandedToChild
 } from './structured-agent-session-start-attempt-failure'
 import {
   markProviderChildStartFailed,
@@ -48,42 +43,20 @@ import {
 import {
   childWhoseStartFailed,
   closeWhatTheUserClosed,
+  endChildWhoseStartFailed,
   startThatFailedUnrecorded,
   structuredAgentSessionEndedChildFailure
 } from './structured-agent-session-ended-child-failure'
 import { handOverSubmission } from './structured-agent-session-turns'
+import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
+import {
+  recordStructuredAgentSessionWindDownWait,
+  structuredAgentSessionWindDownWaitHolds
+} from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
-export type StructuredAgentSessionDeliveryLoopDeps = {
-  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
-  adapter: StructuredAgentSessionAdapter
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** A start step, tracked from enqueue so quit waits for the child it may produce. */
-  trackStart: <T>(start: Promise<T>) => Promise<T>
-  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
-  ensureProviderChild: (
-    sessionId: string,
-    startedFor: string
-  ) => Promise<StructuredAgentSessionResumeOutcome>
-  /** Ends the session's child, whose start failed, as a host stop; for a caller inside `serialize`. */
-  endFailedStart: (sessionId: string) => Promise<void>
-  /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
-  conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
-  abandonQueued: (
-    sessionId: string,
-    which: (submission: AgentJournalSubmission) => boolean
-  ) => Promise<boolean>
-  /** Who the chat's failure sentences name. */
-  failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  onError: (sessionId: string, error: unknown) => void
-  record: (sessionId: string) => AgentSessionRecord | null
-  readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
-  flushStreamedEvents: (sessionId: string) => Promise<void>
-  now: () => number
-  /** Runs `run` after `delayMs`; answers how to cancel it. */
-  setTimer?: (delayMs: number, run: () => void) => () => void
-}
+export type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
 type Step = 'continue' | 'stop'
 
@@ -95,10 +68,12 @@ type Prepared =
 
 export class StructuredAgentSessionDeliveryLoop {
   private readonly running = new Set<string>()
-  private readonly retryTimers = new Map<string, () => void>()
   private disposed = false
+  private readonly retryWakes: StructuredAgentSessionStartRetryWakes
 
-  constructor(private readonly deps: StructuredAgentSessionDeliveryLoopDeps) {}
+  constructor(private readonly deps: StructuredAgentSessionDeliveryLoopDeps) {
+    this.retryWakes = new StructuredAgentSessionStartRetryWakes(deps, (id) => this.wake(id))
+  }
 
   isRunning(sessionId: string): boolean {
     return this.running.has(sessionId)
@@ -107,10 +82,7 @@ export class StructuredAgentSessionDeliveryLoop {
   /** Quit: no step after this one starts a child or hands a message over. */
   dispose(): void {
     this.disposed = true
-    for (const cancel of this.retryTimers.values()) {
-      cancel()
-    }
-    this.retryTimers.clear()
+    this.retryWakes.dispose()
   }
 
   /** From inside the session's serialize, after a message was accepted or the conversation
@@ -144,9 +116,7 @@ export class StructuredAgentSessionDeliveryLoop {
             ...(diagnostic ? { diagnostic } : {}),
             ...(newSession ? { newSession: true as const } : {})
           }
-          await this.deps.serialize(sessionId, () =>
-            this.fail(sessionId, { generation: null, cause }, [startedFor])
-          )
+          await this.deps.serialize(sessionId, () => this.refused(sessionId, cause, startedFor))
           continue
         }
         // A child published before it proved its start takes no input yet; waited for outside
@@ -161,21 +131,25 @@ export class StructuredAgentSessionDeliveryLoop {
       }
     } catch (error) {
       // The error is Orca's own and goes to the log; the chat says only that Orca failed.
-      this.deps.onError(sessionId, error)
+      this.deps.logger.warn('delivering a queued message failed', {
+        scope: 'delivery-loop',
+        sessionId,
+        error
+      })
       await this.deps
         .serialize(sessionId, async () => {
-          const next = this.nextDeliverable(sessionId)
-          await this.fail(
-            sessionId,
-            { generation: null, cause: { hostFault: true } },
-            next ? [next.clientMessageId] : []
-          )
+          const next = this.nextDeliverable(sessionId, this.deps.now())
+          await this.fail(sessionId, { hostFault: true }, next ? [next.clientMessageId] : [])
           return this.stop(sessionId)
         })
         .catch((failure: unknown) => {
           // Rows left queued are rejected by the next open, or by the next loop an accept wakes.
           this.running.delete(sessionId)
-          this.deps.onError(sessionId, failure)
+          this.deps.logger.warn('recording a failed delivery failed', {
+            scope: 'delivery-loop-fail',
+            sessionId,
+            error: failure
+          })
         })
     }
   }
@@ -188,13 +162,7 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     await session.journal.rejectQueuedSubmissions(
       this.deps.conversationFence(sessionId),
-      leftoverRejection(
-        session.journal,
-        this.deps.record(sessionId),
-        agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
-          surface: 'rejection'
-        })
-      ),
+      leftoverRejection(session.journal, this.deps.record(sessionId), 'hostRestarted'),
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
@@ -204,23 +172,38 @@ export class StructuredAgentSessionDeliveryLoop {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
     }
-    const next = this.nextDeliverable(sessionId)
+    // One clock read decides the step: what may go now, and from when a later try is booked.
+    const decidedAt = this.deps.now()
+    const next = this.nextDeliverable(sessionId, decidedAt)
     const failedStart = startThatFailedUnrecorded(session, next)
     if (failedStart) {
-      return this.fail(sessionId, failedStart.failure, failedStart.waiting, failedStart.ended)
+      return this.fail(sessionId, failedStart.cause, failedStart.waiting, failedStart.ended)
     }
     const failedChild = childWhoseStartFailed(session, next)
     if (failedChild) {
       return failedChild === 'end'
-        ? this.deps.endFailedStart(sessionId).then(() => 'continue')
-        : this.stop(sessionId)
+        ? endChildWhoseStartFailed(session, sessionId, this.deps)
+        : this.stop(sessionId, decidedAt)
     }
     // A running command takes no input while its child carries it; its end is a commit, which
     // wakes the loop again. With no child it is a gone generation's, which the start below settles.
     if (!next || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
-      return this.stop(sessionId)
+      return this.stop(sessionId, decidedAt)
+    }
+    // Already waiting on a stop that could not prove its child gone: a new message retries it, and
+    // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
+    // Another operation's retry may have failed first, so the row is made sure of here too.
+    if (structuredAgentSessionWindDownWaitHolds(session)) {
+      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
+      return this.stop(sessionId, decidedAt)
     }
     const ready = await this.deps.ensureProviderChild(sessionId, next.clientMessageId)
+    if (!ready.ok && isStructuredAgentSessionPreviousExitUnverifiable(ready.refusal)) {
+      // The start retried that stop first and still could not prove the exit: the message waits,
+      // saying why, rather than being refused. The row is written once per unproven child.
+      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
+      return this.stop(sessionId, decidedAt)
+    }
     if (!ready.ok) {
       return { ...ready, startedFor: next.clientMessageId }
     }
@@ -266,19 +249,17 @@ export class StructuredAgentSessionDeliveryLoop {
       }
       return this.fail(
         sessionId,
-        {
-          generation: awaited?.generation ?? null,
-          cause: endedFailure ??
-            // Gone with no end observed: nothing says the provider stopped.
-            { failure: startFailure ?? agentSessionFailureFact('startFailed') }
-        },
+        endedFailure ??
+          // Gone with no end observed: nothing says the provider stopped.
+          { failure: startFailure ?? agentSessionFailureFact('startFailed') },
         [waitingFor, ...(awaited ? submissionsHandedToChild(session.journal, awaited.fence) : [])],
         awaitedChild ? undefined : (awaited ?? undefined)
       )
     }
-    const next = this.nextDeliverable(sessionId)
+    const decidedAt = this.deps.now()
+    const next = this.nextDeliverable(sessionId, decidedAt)
     if (!next) {
-      return this.stop(sessionId)
+      return this.stop(sessionId, decidedAt)
     }
     const unstarted = await handOverSubmission(
       {
@@ -303,16 +284,35 @@ export class StructuredAgentSessionDeliveryLoop {
     await this.deps.endFailedStart(sessionId)
     return this.fail(
       sessionId,
-      { generation: awaitedChild.generation, cause: unstarted },
+      unstarted,
       submissionsHandedToChild(session.journal, awaitedChild.fence),
       awaitedChild
     )
   }
 
-  /** Records a failed start on the messages it was for; the rest of the queue goes on. */
+  /** The loop's start step was refused before anything ran: the message it was for waits for its
+   *  next try, or is rejected; the rest of the queue goes on. */
+  private async refused(
+    sessionId: string,
+    cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>,
+    startedFor: string
+  ): Promise<'continue'> {
+    const session = this.deps.sessions.get(sessionId)
+    if (session) {
+      await recordStructuredAgentSessionStartRefusal(
+        this.writer(sessionId, session),
+        cause,
+        startedFor
+      )
+    }
+    return 'continue'
+  }
+
+  /** A start that ran and failed: the messages it was for, or was handed, are rejected; the rest
+   *  of the queue goes on. */
   private async fail(
     sessionId: string,
-    failure: StructuredAgentSessionStartAttemptFailure,
+    cause: StructuredAgentSessionStartFailureCause,
     clientMessageIds: readonly string[],
     ended?: StructuredAgentSessionProviderChildIdentity
   ): Promise<'continue'> {
@@ -321,44 +321,37 @@ export class StructuredAgentSessionDeliveryLoop {
       if (ended) {
         markProviderChildStartFailureRecorded(session, ended)
       }
-      await recordStructuredAgentSessionStartAttemptFailure(
-        {
-          journal: session.journal,
-          fence: this.deps.conversationFence(sessionId),
-          record: this.deps.record(sessionId),
-          now: this.deps.now
-        },
-        failure,
+      await rejectStructuredAgentSessionFailedStart(
+        this.writer(sessionId, session),
+        cause,
         clientMessageIds
       )
     }
     return 'continue'
   }
 
-  private nextDeliverable(sessionId: string): AgentJournalSubmission | undefined {
+  private writer(sessionId: string, session: StructuredAgentSessionHostSession) {
+    return {
+      journal: session.journal,
+      fence: this.deps.conversationFence(sessionId),
+      record: this.deps.record(sessionId),
+      now: this.deps.now
+    }
+  }
+
+  private nextDeliverable(sessionId: string, now: number): AgentJournalSubmission | undefined {
     const session = this.deps.sessions.get(sessionId)
-    return session ? nextDeliverableSubmission(session.journal, this.deps.now()) : undefined
+    return session ? nextDeliverableSubmission(session.journal, now) : undefined
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. Books a
-   *  wake for the next message waiting out a failed start; one already due and held by a running
-   *  command is woken by that command's end. */
-  private stop(sessionId: string): 'stop' {
+   *  wake for the next message waiting out a refused start, judged at `decidedAt`, the time the step
+   *  decided nothing could go; one already due then and held by a running command is woken by that
+   *  command's end. */
+  private stop(sessionId: string, decidedAt: number = this.deps.now()): 'stop' {
     this.running.delete(sessionId)
-    this.retryTimers.get(sessionId)?.()
-    this.retryTimers.delete(sessionId)
-    const now = this.deps.now()
-    const due = nextStartRetryAt(this.deps.sessions.get(sessionId)?.journal, now)
-    if (due !== null && !this.disposed) {
-      const setTimer = this.deps.setTimer ?? setStartRetryTimer
-      const cancel = setTimer(due - now, () => {
-        this.retryTimers.delete(sessionId)
-        void this.deps
-          .serialize(sessionId, async () => this.wake(sessionId))
-          .catch((error: unknown) => this.deps.onError(sessionId, error))
-      })
-      this.retryTimers.set(sessionId, cancel)
-    }
+    const journal = this.disposed ? undefined : this.deps.sessions.get(sessionId)?.journal
+    this.retryWakes.rebook(sessionId, journal, decidedAt)
     return 'stop'
   }
 }

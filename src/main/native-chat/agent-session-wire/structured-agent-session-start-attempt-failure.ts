@@ -1,10 +1,11 @@
 // The one writer of a failed agent start: the delivery loop, which records it on the message the
-// start was for and on any message handed to that start's child, which took nothing. A start
-// refused before it ran leaves each in the queue with its next try booked, until out of tries; one
-// that ran and failed ends each `rejected` at once, for the person's Retry. The messages behind it
-// go on meanwhile.
+// start was for and on any message handed to that start's child, which took nothing. Its two
+// entries keep the rule by construction: a start refused before it ran leaves its message in the
+// queue with the next try booked, until out of tries; one that ran and failed can only reject each
+// at once, for the person's Retry. The messages behind it go on meanwhile.
 
 import {
+  agentSessionFailureFact,
   isSubmissionRejectionFact,
   readAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
@@ -14,7 +15,10 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRejectionCause,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { structuredAgentSessionStartRetryAt } from '../../../shared/structured-agent-session-start-retry'
@@ -34,10 +38,11 @@ type StartFailureJournal = Pick<
   'submissions' | 'itemBody' | 'resolveDispatch' | 'appendLifecycleBatch'
 >
 
-export type StructuredAgentSessionStartAttemptFailure = {
-  cause: StructuredAgentSessionStartFailureCause
-  /** The child whose start failed; null when none was published. */
-  generation: string | null
+type StartFailureWriter = {
+  journal: StartFailureJournal
+  fence: number
+  record: AgentSessionRecord | null
+  now: () => number
 }
 
 /** Who the message's sentence names, and the command its own body sends, so the next step is to run
@@ -59,18 +64,37 @@ function startFailureWordsContext(
 }
 
 /**
- * Records `failure` on each of `clientMessageIds` still waiting on it: queued, or handed to the
- * child whose start failed. A message that Stop withdrew meanwhile is left alone.
+ * A start the loop's own start step was refused before it ran, for `startedFor`: the message waits
+ * for its next try, or, a refusal only the person can clear, out of tries, or a conversation
+ * command, is rejected. A command never waits: like a goal, a rewind or /clear, its failure is the
+ * person's to Retry at once. The one place a try is booked.
  */
-export async function recordStructuredAgentSessionStartAttemptFailure(
-  ctx: {
-    journal: StartFailureJournal
-    fence: number
-    record: AgentSessionRecord | null
-    now: () => number
-  },
-  failure: StructuredAgentSessionStartAttemptFailure,
+export function recordStructuredAgentSessionStartRefusal(
+  ctx: StartFailureWriter,
+  cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>,
+  startedFor: string
+): Promise<void> {
+  return recordStartFailure(ctx, cause, [startedFor], true)
+}
+
+/**
+ * A start that ran here and failed: each message it was for, and each it was handed, which it took
+ * nothing of, is rejected at once for the person's Retry. A message that Stop withdrew meanwhile
+ * is left alone.
+ */
+export function rejectStructuredAgentSessionFailedStart(
+  ctx: StartFailureWriter,
+  cause: StructuredAgentSessionStartFailureCause,
   clientMessageIds: readonly string[]
+): Promise<void> {
+  return recordStartFailure(ctx, cause, clientMessageIds, false)
+}
+
+async function recordStartFailure(
+  ctx: StartFailureWriter,
+  cause: StructuredAgentSessionStartFailureCause,
+  clientMessageIds: readonly string[],
+  refusedBeforeItRan: boolean
 ): Promise<void> {
   for (const clientMessageId of new Set(clientMessageIds)) {
     const submission = ctx.journal
@@ -80,27 +104,27 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
       continue
     }
     const context = startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
-    const words = structuredAgentSessionStartFailure(failure.cause, context)
-    const nextAttemptAt = structuredAgentSessionStartRetryAt(
-      words.rejection,
-      (submission.startFailure?.attempts ?? 0) + 1,
-      ctx.now()
-    )
+    const words = structuredAgentSessionStartFailure(cause, context)
+    const nextAttemptAt =
+      refusedBeforeItRan && context.command === undefined
+        ? structuredAgentSessionStartRetryAt(
+            words.rejection,
+            (submission.startRetry?.attempts ?? 0) + 1,
+            ctx.now()
+          )
+        : null
     await ctx.journal.resolveDispatch(
       nextAttemptAt === null
         ? { clientMessageId, state: 'rejected', ...words, fence: ctx.fence }
         : {
             clientMessageId,
             state: 'pending',
-            startFailure: {
+            startRetry: {
               // Orca tries again on its own, so the sentence leaves out trying again.
-              reason: structuredAgentSessionStartFailure(failure.cause, {
-                ...context,
-                orcaRetries: true
-              }).reason,
+              reason: structuredAgentSessionStartFailure(cause, { ...context, orcaRetries: true })
+                .reason,
               rejection: words.rejection,
-              nextAttemptAt,
-              ...(failure.generation ? { generation: failure.generation } : {})
+              nextAttemptAt
             },
             fence: ctx.fence
           }
@@ -113,25 +137,32 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
   }
 }
 
-/** What a queued message is rejected with when it cannot wait any longer — the chat closed, Orca
- *  quit or restarted: the start failure it was waiting out, else `fallback`. */
+/** What a queued message is rejected with when it cannot wait any longer — the chat closed (`end`
+ *  `chatClosed`), Orca quit or restarted (`hostRestarted`): the start failure it was waiting out,
+ *  with what ended the wait as the submission's `rejectionCause`, else `end` itself. */
 export function leftoverRejection(
   journal: Pick<AgentSessionJournal, 'itemBody'>,
   record: AgentSessionRecord | null,
-  fallback: AgentJournalDispatchRejection
-): (submission: AgentJournalSubmission) => AgentJournalDispatchRejection {
+  end: AgentJournalRejectionCause
+): (
+  submission: AgentJournalSubmission
+) => AgentJournalDispatchRejection & { rejectionCause?: AgentJournalRejectionCause } {
   return (submission) => {
-    const fact = readAgentSessionFailureFact(submission.startFailure?.rejection)
-    return fact && isSubmissionRejectionFact(fact)
-      ? agentSessionFailureWords(fact, {
-          ...startFailureWordsContext(journal, record, submission.clientMessageId),
-          surface: 'rejection'
-        })
-      : fallback
+    const fact = readAgentSessionFailureFact(submission.startRetry?.rejection)
+    if (!fact || !isSubmissionRejectionFact(fact)) {
+      return agentSessionFailureWords(agentSessionFailureFact(end), { surface: 'rejection' })
+    }
+    return {
+      ...agentSessionFailureWords(fact, {
+        ...startFailureWordsContext(journal, record, submission.clientMessageId),
+        surface: 'rejection'
+      }),
+      rejectionCause: end
+    }
   }
 }
 
-/** The oldest queued message that may go now: not waiting out a failed start, or due again. Later
+/** The oldest queued message that may go now: not waiting out a refused start, or due again. Later
  *  messages overtake one that is waiting. */
 export function nextDeliverableSubmission(
   journal: Pick<AgentSessionJournal, 'submissions'>,
@@ -141,7 +172,7 @@ export function nextDeliverableSubmission(
   for (const submission of journal.submissions()) {
     if (
       isQueuedAgentJournalSubmission(submission) &&
-      (submission.startFailure === undefined || submission.startFailure.nextAttemptAt <= now) &&
+      (submission.startRetry === undefined || submission.startRetry.nextAttemptAt <= now) &&
       (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))
     ) {
       oldest = submission
@@ -150,7 +181,7 @@ export function nextDeliverableSubmission(
   return oldest
 }
 
-/** When the earliest message waiting out a failed start comes due after `now`; null when none
+/** When the earliest message waiting out a refused start comes due after `now`; null when none
  *  does. One already due is the loop's to take, or waits on what holds it, never on a timer. */
 export function nextStartRetryAt(
   journal: Pick<AgentSessionJournal, 'submissions'> | undefined,
@@ -159,7 +190,7 @@ export function nextStartRetryAt(
   let earliest: number | null = null
   for (const submission of journal?.submissions() ?? []) {
     const due = isQueuedAgentJournalSubmission(submission)
-      ? submission.startFailure?.nextAttemptAt
+      ? submission.startRetry?.nextAttemptAt
       : undefined
     if (due !== undefined && due > now && (earliest === null || due < earliest)) {
       earliest = due

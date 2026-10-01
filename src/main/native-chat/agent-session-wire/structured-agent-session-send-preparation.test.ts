@@ -75,6 +75,10 @@ beforeEach(async () => {
   }))
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: {
+      warn: (_message, fields) => hostErrors.push(fields.error),
+      error: (_message, fields) => hostErrors.push(fields.error)
+    },
     store,
     adapter: {
       acquire,
@@ -88,8 +92,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
-    now: () => NOW,
-    onEventSinkError: ({ error }) => hostErrors.push(error)
+    now: () => NOW
   })
   expect(await attachForTests(host, CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
 })
@@ -139,16 +142,16 @@ async function settled(clientMessageId: string) {
     expect(
       current?.dispatchState !== 'pending' ||
         current.handedOverAt !== undefined ||
-        current.startFailure !== undefined
+        current.startRetry !== undefined
     ).toBe(true)
   })
   const current = await submission(clientMessageId)
-  return current?.startFailure
+  return current?.startRetry
     ? {
         ...current,
         dispatchState: 'retrying',
-        reason: current.startFailure.reason,
-        rejection: current.startFailure.rejection
+        reason: current.startRetry.reason,
+        rejection: current.startRetry.rejection
       }
     : current
 }
@@ -410,7 +413,7 @@ describe('a send with no live owner', () => {
       reason: cause,
       rejection: { kind: 'restartFailed' }
     })
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(dispatch).not.toHaveBeenCalled()
     // Accepted, so the ledger answers a resend with the message rather than a second attempt.
     expect(
@@ -426,8 +429,6 @@ describe('a send with no live owner', () => {
     acquire.mockRejectedValue(
       new CodexAppServerRequestError('thread/resume', -32600, `thread/resume failed: ${said}`, said)
     )
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
     const id = await accept(sendParams('after the thread went away'))
 
     // The sentence names no cause and quotes nothing; Codex's words ride in the fact for Details.
@@ -443,11 +444,11 @@ describe('a send with no live owner', () => {
     })
     expect(await errorStatuses()).toEqual([])
     // Orca's own text is logged once where the start failed.
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-session] provider start failed:',
-      expect.objectContaining({ message: `thread/resume failed: ${said}` })
-    )
-    warn.mockRestore()
+    expect(
+      hostErrors.filter(
+        (error) => error instanceof Error && error.message === `thread/resume failed: ${said}`
+      )
+    ).toHaveLength(1)
   })
 
   it('restarts again for a Retry under a new id, and replays a resend of the same id', async () => {
@@ -521,7 +522,7 @@ describe('a send with no live owner', () => {
       reason: "Codex couldn't restart. Send your message to try again.",
       rejection: { kind: 'restartFailed', refusal: { code: 'agent_session_operation_invalid' } }
     })
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(acquire).toHaveBeenCalledOnce()
   })
 
@@ -572,7 +573,7 @@ describe('a send with no live owner', () => {
       reason: "Codex couldn't restart.",
       rejection: { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } }
     })
-    expect((await submission(id))?.startFailure?.nextAttemptAt).toBe(NOW + 15_000)
+    expect((await submission(id))?.startRetry?.nextAttemptAt).toBe(NOW + 15_000)
     expect(acquire).not.toHaveBeenCalled()
     expect(await errorStatuses()).toEqual([])
   })

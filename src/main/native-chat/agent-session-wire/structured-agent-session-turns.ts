@@ -40,6 +40,7 @@ import {
   isJournalWrittenByNewerOrca,
   journalOpenRefusal
 } from '../agent-session-journal/journal-open-failure'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
 export { performCancel } from './structured-agent-session-turns-cancel'
@@ -49,6 +50,7 @@ export type AgentSessionTurnContext = {
   journal: AgentSessionJournal
   fence: number
   adapter: StructuredAgentSessionAdapter
+  logger: StructuredAgentSessionLogger
   persistedOptions?: Readonly<Record<string, string>>
   persistOptions: (options: Readonly<Record<string, string>>) => Promise<void>
   /** Opaque client identity recorded as the resolver of a prompt. */
@@ -108,7 +110,9 @@ async function dispatchSafely(
  * `retryUnknown` the client sent: `unknown` cannot prove non-delivery — that is
  * the whole content of the word — and one message reached the model five times
  * when this was a judgement call instead of an invariant. A distinct send after
- * a terminal rejection uses a fresh id, which is a first delivery.
+ * a terminal rejection uses a fresh id, which is a first delivery; the Retry of a
+ * message no agent took queues the same id again through its own operation
+ * (`agentSession.retryMessage`), never through this.
  *
  * Accepting only records the message; the session's delivery loop hands it over.
  */
@@ -167,7 +171,7 @@ export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverC
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
  * after it leaves a message in doubt, never one that reads as queued and so provably unwritten.
  * Returns the cause when the child's start failed at the handover, leaving the message handed over
- * for the delivery loop to put back in the queue with that failure.
+ * for the delivery loop to reject with that failure.
  */
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,

@@ -10,6 +10,7 @@ import {
   startStructuredAgentSessionContinuation,
   type StructuredAgentSessionContinuationDeps
 } from './structured-agent-session-restart-continuation'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 /** The whole continuation: handed over, then its verdict. */
 async function continueStructuredAgentSessionAfterRestart(
@@ -21,7 +22,9 @@ async function continueStructuredAgentSessionAfterRestart(
 
 function dependencies(
   settledDispatch: 'accepted' | 'pending' | 'unknown' | 'rejected',
-  handedOver: 'pending' | 'rejected' | undefined = 'pending'
+  handedOver: 'pending' | 'rejected' | undefined = 'pending',
+  /** Why it was rejected before its handover: its agent's start failing, unless said otherwise. */
+  rejection: { kind: string } = { kind: 'startFailed' }
 ): StructuredAgentSessionContinuationDeps & {
   note: ReturnType<typeof vi.fn>
   send: ReturnType<typeof vi.fn>
@@ -40,12 +43,15 @@ function dependencies(
       handedOver
         ? {
             dispatchState: handedOver,
-            reason: handedOver === 'rejected' ? 'Codex could not start.' : null
+            // Accepted, and settled by this host's delivery loop.
+            handoverRecorded: true as const,
+            reason: handedOver === 'rejected' ? 'Codex could not start.' : null,
+            ...(handedOver === 'rejected' ? { rejection } : {})
           }
         : undefined
     ),
     note: vi.fn(async () => undefined),
-    onNoteFailed: vi.fn()
+    logger: createStructuredAgentSessionLogger()
   }
 }
 
@@ -139,6 +145,17 @@ it('reports a continuation rejected at handover without waiting for the provider
   })
   expect(deps.awaitSettlement).not.toHaveBeenCalled()
   expect(deps.note).not.toHaveBeenCalled()
+})
+
+// Only a failed start is the message's alone to report; any other rejection before its handover is
+// noted and filed as before.
+it('notes a continuation rejected before its handover for anything but its start', async () => {
+  const deps = dependencies('accepted', 'rejected', { kind: 'queueFull' })
+
+  await expect(
+    continueStructuredAgentSessionAfterRestart(deps, SESSION, marker(), 'operation-1')
+  ).resolves.toEqual({ sessionId: SESSION, outcome: 'refused', reason: 'Codex could not start.' })
+  expect(deps.note).toHaveBeenCalledExactlyOnceWith(...REFUSED)
 })
 
 // The start completes once the agent took the message; the provider's answer is a later verdict.

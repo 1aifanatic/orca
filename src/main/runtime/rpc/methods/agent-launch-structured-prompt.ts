@@ -75,7 +75,11 @@ export async function commitStructuredAgentSessionLaunchPrompt(args: {
     } catch {
       // The host may have gone away before the snapshot; the caller retains the text in that case.
     }
-    console.warn('[agent-launch] the session was created, its launch prompt was not sent', error)
+    args.host.deps.logger.warn("sending a created chat's launch prompt failed", {
+      scope: 'launch-prompt',
+      sessionId: args.sessionId,
+      error
+    })
     return null
   }
 }
@@ -110,8 +114,7 @@ export async function deliverStructuredAgentSessionLaunchPrompt(
   const settled = await args.host
     .waitForSendSettlement(args.sessionId, messageId, {
       budgetMs: args.budgetMs ?? STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS,
-      until: 'final',
-      throughStartRetries: true
+      until: 'final'
     })
     .catch(() => undefined)
   const submission = agentSessionSendSubmission(settled?.value)

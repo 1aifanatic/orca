@@ -10,12 +10,11 @@ export const FailureFact = z.object({
   refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
 })
 
-/** A queued message's failed start: see `AgentJournalStartFailure`. */
-export const AgentJournalStartFailureSchema = z.object({
+/** A queued message's failed start: see `AgentJournalStartRetry`. */
+export const AgentJournalStartRetrySchema = z.object({
   attempts: z.number().int().positive(),
   reason: z.string(),
   rejection: FailureFact,
   failedAt: z.number(),
-  generation: z.string().min(1).optional(),
   nextAttemptAt: z.number()
 })

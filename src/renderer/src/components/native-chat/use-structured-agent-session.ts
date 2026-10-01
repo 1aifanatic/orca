@@ -36,6 +36,11 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import { useStructuredAgentSessionRetryInPlace } from './use-structured-agent-session-retry-in-place'
+import {
+  readRetiredStructuredAgentSessionMessageIds,
+  withoutRetiredStructuredAgentSessionMessages
+} from './structured-agent-session-outbox-storage'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
@@ -125,6 +130,12 @@ export function useStructuredAgentSession(args: {
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
   })
+  const { retry, retryInPlace, retryHeld } = useStructuredAgentSessionRetryInPlace({
+    target,
+    mutate,
+    submissions: transportState.submissions,
+    outboxRetry: outboxController.retry
+  })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
     journalItems: transportState.journalItems,
@@ -145,6 +156,18 @@ export function useStructuredAgentSession(args: {
 
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const { outbox } = outboxController
+  // Read each render, as the outbox is: a Retry that sent a message again under a new id retires
+  // the old id in the same step that rotates the entry.
+  const retiredIds = [...readRetiredStructuredAgentSessionMessageIds(sessionId)].join('\n')
+  const shown = useMemo(
+    () =>
+      withoutRetiredStructuredAgentSessionMessages(
+        { items: transportState.journalItems, submissions: transportState.submissions },
+        new Set(retiredIds ? retiredIds.split('\n') : [])
+      ),
+    [transportState.journalItems, transportState.submissions, retiredIds]
+  )
+  const { submissions } = shown
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
@@ -166,11 +189,7 @@ export function useStructuredAgentSession(args: {
       }),
     [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds]
   )
-  const messages = useStructuredAgentSessionMessages(
-    transportState.journalItems,
-    transcriptOutbox,
-    transportState.submissions
-  )
+  const messages = useStructuredAgentSessionMessages(shown.items, transcriptOutbox, submissions)
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
     queuedMessages: transportState.queuedMessages,
@@ -218,13 +237,15 @@ export function useStructuredAgentSession(args: {
     outbox,
     failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
-    submissions: transportState.submissions,
+    submissions,
     // A message typed during a command queues behind it on the host.
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       outboxController.send(...input),
-    retry: outboxController.retry,
+    retry,
+    retryInPlace,
+    retryHeld,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,

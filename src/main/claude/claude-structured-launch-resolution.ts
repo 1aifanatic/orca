@@ -27,6 +27,10 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { isCliCommandMissing, resolveClaudeCommand } from '../codex-cli/command'
+import {
+  openClaudeStreamJsonConnection,
+  type ClaudeStreamJsonConnection
+} from './claude-stream-json-connection'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
@@ -295,13 +299,6 @@ export function createClaudeStructuredLaunchResolver(
         [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
       })
     )
-    // Found before any spawn, so a spawn that fails after this stays a start worth trying again.
-    if (isCliCommandMissing('claude', command, env)) {
-      throw new AgentSessionPreSpawnError(
-        new Error('claude is not on PATH or in the usual install directories'),
-        { reason: 'providerMissing' }
-      )
-    }
     return {
       pathToClaudeCodeExecutable: command,
       options: {
@@ -321,4 +318,22 @@ export function createClaudeStructuredLaunchResolver(
       continuesChain
     }
   }
+}
+
+/**
+ * The real Claude child: refused before it spawns when the spawn's own environment holds no
+ * `claude` to run. Part of the spawn, so a host that supplies its own connection never reads this
+ * machine's PATH.
+ */
+export async function openClaudeStructuredChild(
+  ...[launch, ...rest]: Parameters<typeof openClaudeStreamJsonConnection>
+): Promise<ClaudeStreamJsonConnection> {
+  // The SDK spawns with this environment whole when it is given, as it always is here.
+  if (isCliCommandMissing('claude', launch.pathToClaudeCodeExecutable, launch.env ?? process.env)) {
+    throw new AgentSessionPreSpawnError(
+      new Error('claude is not on PATH or in the usual install directories'),
+      { reason: 'providerMissing' }
+    )
+  }
+  return openClaudeStreamJsonConnection(launch, ...rest)
 }

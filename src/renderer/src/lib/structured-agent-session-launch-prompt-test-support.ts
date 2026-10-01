@@ -24,7 +24,7 @@ const QUEUED: FirstMessage = {
 }
 
 const RETRYING = (attempts: number): Partial<FirstMessage> => ({
-  startFailure: {
+  startRetry: {
     attempts,
     reason: 'An account switch is in progress.',
     rejection: { kind: 'accountSwitchInProgress' },

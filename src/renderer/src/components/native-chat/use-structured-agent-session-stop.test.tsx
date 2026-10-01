@@ -108,7 +108,7 @@ const IN_FLIGHT = {
     submissions = [
       submission({
         handoverRecorded: true,
-        startFailure: {
+        startRetry: {
           attempts: 1,
           reason: 'A Claude account switch is in progress.',
           rejection: { kind: 'accountSwitchInProgress' },

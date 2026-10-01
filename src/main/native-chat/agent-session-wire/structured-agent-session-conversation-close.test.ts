@@ -249,8 +249,8 @@ describe('a start that never finishes (P2-15)', () => {
     ) {
       if (input.state === 'rejected') {
         order.push(`rejected: ${input.reason}`)
-      } else if (input.state === 'pending' && 'startFailure' in input) {
-        order.push(`pending: ${input.startFailure.reason}`)
+      } else if (input.state === 'pending' && 'startRetry' in input) {
+        order.push(`pending: ${input.startRetry.reason}`)
       }
       return resolve.call(this, input)
     })
@@ -305,6 +305,7 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
       owesProviderChildWindDown: { generation: 'generation-1', fence: 1 }
     }
     const stopAgent = vi.fn(async () => undefined)
+    const finishOwedWindDown = vi.fn(async () => true)
     const sweep = new StructuredAgentSessionIdleSweep({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a session fixture carrying only the journal and child facts the sweep reads.
       sessions: Object.assign(new Map([[SESSION, session as never]]), {
@@ -320,12 +321,20 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
       providerHoldsDispatch: () => false,
       stopAgent,
       stopStartingAgent: stopAgent,
+      finishOwedWindDown,
       closeConversation: vi.fn(async () => false),
-      onError: (_id, error) => {
-        throw error
+      // A failed step fails the test.
+      logger: {
+        warn: (_message, fields) => {
+          throw fields.error
+        },
+        error: (_message, fields) => {
+          throw fields.error
+        }
       }
     })
     await sweep.tick()
     expect(stopAgent).not.toHaveBeenCalled()
+    expect(finishOwedWindDown).not.toHaveBeenCalled()
   })
 })

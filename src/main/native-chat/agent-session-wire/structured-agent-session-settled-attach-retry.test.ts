@@ -31,6 +31,7 @@ import {
   attachForTests,
   startAgentForTests
 } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -112,6 +113,7 @@ beforeEach(async () => {
   dispatch = vi.fn(async () => accepted())
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(root),
@@ -138,6 +140,7 @@ describe('settled attach retry', () => {
       .fn<NonNullable<StructuredAgentSessionAdapter['historyFilePath']>>()
       .mockResolvedValue(null)
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: { ...adapter(), historyFilePath },
       journalDatabase: openTestJournalHostDatabase(root),
@@ -201,6 +204,7 @@ describe('settled attach retry', () => {
     })
     const mintSpawnToken = vi.fn(() => 'spawn-safe')
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: adapter(),
       journalDatabase: openTestJournalHostDatabase(root),
@@ -249,6 +253,7 @@ describe('settled attach retry', () => {
     let token = 0
     const mintSpawnToken = vi.fn(() => `spawn-${++token}`)
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: adapter(),
       journalDatabase: openTestJournalHostDatabase(root),
@@ -278,6 +283,7 @@ describe('settled attach retry', () => {
     await host.flushAllStreamedEvents()
     store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: adapter(),
       journalDatabase: openTestJournalHostDatabase(root),
@@ -335,6 +341,7 @@ describe('settled attach retry', () => {
     await host.flushAllStreamedEvents()
     store = await openTestAgentSessionRecordStore(root)
     host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: adapter(),
       journalDatabase: openTestJournalHostDatabase(root),

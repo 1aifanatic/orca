@@ -89,6 +89,6 @@ describe('a reopened Claude chat whose CLI dies before initialize', () => {
       reason: STARTUP_TEXT,
       rejection: { kind: 'providerStartFailed', detail: { text: DIAGNOSTIC, audience: 'log' } }
     })
-    expect(submission).not.toHaveProperty('startFailure')
+    expect(submission).not.toHaveProperty('startRetry')
   })
 })

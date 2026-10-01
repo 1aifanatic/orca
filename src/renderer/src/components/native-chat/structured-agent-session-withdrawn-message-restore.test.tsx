@@ -288,7 +288,7 @@ describe('a message the host withdrew at a Stop', () => {
       rerender({
         submissions: [
           submission(id, {
-            startFailure: {
+            startRetry: {
               attempts: 1,
               reason: 'An account switch is in progress.',
               rejection: { kind: 'accountSwitchInProgress' },

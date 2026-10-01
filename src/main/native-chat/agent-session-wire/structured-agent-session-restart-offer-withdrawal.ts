@@ -13,6 +13,7 @@ import type { AgentSessionResumeMarker } from '../../../shared/agent-session-res
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { isRestartContinuationOf } from './structured-agent-session-restart-continuation-envelope'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionRestartOfferWithdrawal = ReturnType<
   typeof createStructuredAgentSessionRestartOfferWithdrawal
@@ -26,6 +27,7 @@ export type StructuredAgentSessionRestartOfferSession = Pick<
 export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
   sessions: ReadonlyMap<string, StructuredAgentSessionRestartOfferSession>
   capsule?: Pick<AgentSessionRecoveryCapsule, 'dismiss'>
+  logger: StructuredAgentSessionLogger
   now: () => number
   /** The capsule's single mutation lane, shared with the offer's own operations. */
   enqueue: <T>(operation: () => Promise<T>) => Promise<T>
@@ -43,8 +45,9 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
         session.journal.submissions().some(
           (submission) =>
             (submission.acceptedSequence ?? 0) > taken.sequence &&
-            // The offer's own continuation, still queued or rejected, never reached the agent: a
-            // retry sends a new one. One handed over may have, answered or not.
+            // The offer's own continuation, still queued or rejected, never reached the agent: its
+            // Retry queues it again, or sends a new one on an older host. One handed over may have,
+            // answered or not.
             !(
               (isQueuedAgentJournalSubmission(submission) ||
                 submission.dispatchState === 'rejected') &&
@@ -85,7 +88,10 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
           )
         )
         .catch(() => {
-          console.warn('[structured-agent-session] withdrawing a restart offer failed')
+          deps.logger.warn('withdrawing a restart offer failed', {
+            scope: 'restart-offer-withdraw',
+            sessionId
+          })
         })
     }
   }

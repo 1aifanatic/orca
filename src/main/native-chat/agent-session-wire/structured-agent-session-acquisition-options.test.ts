@@ -23,6 +23,7 @@ import { openTestAttachConversation } from './structured-agent-session-attach-te
 import { performAttach } from './structured-agent-session-attach-flow'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'legacy-session'
@@ -173,6 +174,7 @@ describe('structured session acquisition options', () => {
 
     let firstJournal: AgentSessionJournal | undefined
     const first = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store: initialStore,
       adapter: withHistory('created'),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -210,6 +212,7 @@ describe('structured session acquisition options', () => {
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
 
     const second = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: withHistory('resumed'),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -241,6 +244,7 @@ describe('structured session acquisition options', () => {
     const recordPhase = vi.fn<AgentSessionCreatePhaseRecorder>()
 
     const created = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: sessionAdapter,
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -270,6 +274,7 @@ describe('structured session acquisition options', () => {
     const sessionAdapter = adapter({ origin: 'created' })
     const attempt = async (options: Readonly<Record<string, string>>, spawnToken: string) =>
       performAttach({
+        logger: createStructuredAgentSessionLogger(),
         store,
         adapter: sessionAdapter,
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -300,6 +305,7 @@ describe('structured session acquisition options', () => {
     const store = await foundedStore(root)
 
     const created = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: adapter({ origin: 'created' }),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -330,6 +336,7 @@ describe('structured session acquisition options', () => {
     })
     const releasedFence = resumedStore.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const resumed = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store: resumedStore,
       adapter: adapter({
         origin: 'resumed',
@@ -372,6 +379,7 @@ describe('structured session acquisition options', () => {
     })
 
     const created = await performAttach({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: sessionAdapter,
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -408,6 +416,7 @@ describe('structured session acquisition options', () => {
 
     await expect(
       performAttach({
+        logger: createStructuredAgentSessionLogger(),
         store,
         adapter: failingAdapter,
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
@@ -497,6 +506,7 @@ describe('structured session acquisition options', () => {
       }
       const perform = (target: AgentSessionRecordStore, operationId: string, fence: number) =>
         performAttach({
+          logger: createStructuredAgentSessionLogger(),
           store: target,
           adapter: failingAdapter,
           openConversation: openTestAttachConversation(

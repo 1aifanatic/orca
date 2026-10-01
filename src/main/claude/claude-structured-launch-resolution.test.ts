@@ -13,7 +13,8 @@ import {
   CLAUDE_SESSION_STATE_EVENTS_ENV,
   CLAUDE_STRUCTURED_BASE_OPTIONS,
   claudeSessionIdForOrcaSession,
-  createClaudeStructuredLaunchResolver
+  createClaudeStructuredLaunchResolver,
+  openClaudeStructuredChild
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
 
@@ -532,16 +533,26 @@ describe('claude structured launch resolution', () => {
 })
 
 describe('a Claude CLI the host cannot find', () => {
-  /** The resolver found nothing on the process PATH; `env` is what the spawn itself inherits. */
-  function bareResolver(env: Record<string, string>) {
-    return createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
-      resolveWorkspacePath: async (id) => `/repos/${id}`,
-      resolveCommand: () => 'claude',
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
-      resolveInheritedEnv: async () => env,
-      hasTranscript: async () => false
-    })
+  /** The real child with the resolver's bare name; `env` is what the spawn itself gets. Its SDK
+   *  query is stubbed, so reaching it means the check let the start through. */
+  function open(env: Record<string, string>) {
+    const spawned = new Error('spawned')
+    return {
+      spawned,
+      opened: openClaudeStructuredChild(
+        {
+          pathToClaudeCodeExecutable: 'claude',
+          options: CLAUDE_STRUCTURED_BASE_OPTIONS,
+          cwd: '/repos/w',
+          env
+        },
+        {},
+        undefined,
+        () => {
+          throw spawned
+        }
+      )
+    }
   }
 
   it.skipIf(process.platform === 'win32')(
@@ -550,7 +561,7 @@ describe('a Claude CLI the host cannot find', () => {
       const root = mkdtempSync(join(tmpdir(), 'orca-claude-missing-'))
 
       await expect(
-        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
+        open({ PATH: join(root, 'bin'), HOME: join(root, 'home') }).opened
       ).rejects.toSatisfy(
         (error) => error instanceof AgentSessionPreSpawnError && error.reason === 'providerMissing'
       )
@@ -558,21 +569,35 @@ describe('a Claude CLI the host cannot find', () => {
   )
 
   it.skipIf(process.platform === 'win32')(
-    "launches one only the spawn's PATH or a version manager has",
+    "spawns one only the spawn's PATH or a version manager has",
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'orca-claude-found-'))
       makeExecutable(join(root, 'shell-bin', 'claude'))
       makeExecutable(join(root, 'home', '.volta', 'bin', 'claude'))
 
-      await expect(
-        bareResolver({
-          PATH: [join(root, 'shell-bin')].join(delimiter),
-          HOME: join(root, 'empty-home')
-        })({ identity: IDENTITY })
-      ).resolves.toMatchObject({ pathToClaudeCodeExecutable: 'claude' })
-      await expect(
-        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
-      ).resolves.toMatchObject({ pathToClaudeCodeExecutable: 'claude' })
+      for (const env of [
+        { PATH: [join(root, 'shell-bin')].join(delimiter), HOME: join(root, 'empty-home') },
+        { PATH: join(root, 'bin'), HOME: join(root, 'home') }
+      ]) {
+        const { spawned, opened } = open(env)
+        await expect(opened).rejects.toBe(spawned)
+      }
     }
   )
+
+  // The launch is only the record's: whether the CLI is there is the spawn's to find, so a host
+  // that opens its own connection never reads this machine's PATH.
+  it('resolves the launch whether or not this machine has claude', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-claude-launch-'))
+    await expect(
+      createClaudeStructuredLaunchResolver({
+        store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+        resolveWorkspacePath: async (id) => `/repos/${id}`,
+        resolveCommand: () => 'claude',
+        resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+        resolveInheritedEnv: async () => ({ PATH: join(root, 'bin'), HOME: join(root, 'home') }),
+        hasTranscript: async () => false
+      })({ identity: IDENTITY })
+    ).resolves.toMatchObject({ pathToClaudeCodeExecutable: 'claude' })
+  })
 })

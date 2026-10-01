@@ -29,6 +29,7 @@ import { agentSessionFailureFact } from '../../../../shared/agent-session-failur
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from '../../../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const CONNECTION = 'connection-1'
 const CLIENT = {
@@ -79,6 +80,7 @@ beforeEach(async () => {
   }))
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,

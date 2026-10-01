@@ -37,6 +37,7 @@ import {
 } from '../../renderer/src/components/native-chat/structured-agent-question-projection'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -94,6 +95,7 @@ beforeEach(async () => {
   }
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter,
     journalDatabase: openTestJournalHostDatabase(root),

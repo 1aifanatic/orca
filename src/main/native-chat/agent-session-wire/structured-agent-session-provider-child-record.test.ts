@@ -41,6 +41,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 const CHAT_CLOSED = agentSessionFailureWords(agentSessionFailureFact('chatClosed'), {
@@ -84,6 +85,7 @@ const spawnStartingChild: StructuredAgentSessionAdapter['acquire'] = async (inpu
 
 function startHost(): void {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,
@@ -430,7 +432,7 @@ describe('a published child that dies while it proves its start', () => {
           reason: TEXT,
           rejection: START_FAILURE
         })
-        expect(await submission(id)).not.toHaveProperty('startFailure')
+        expect(await submission(id)).not.toHaveProperty('startRetry')
       }
       expect(rejectedIn(events, first)).toBe(true)
       expect(dispatch).not.toHaveBeenCalled()
@@ -477,7 +479,7 @@ describe('a start another operation made that dies while a sent message waits on
       reason: TEXT,
       rejection: { kind: 'providerStartFailed' }
     })
-    expect(await submission(id)).not.toHaveProperty('startFailure')
+    expect(await submission(id)).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(rejectedIn(events, id)).toBe(true)
     // The setup's child and the operation's: nothing started again into the same failure.
@@ -558,7 +560,7 @@ describe('a child that ends before its message is handed over', () => {
         detail: { text: 'codex app-server crashed', audience: 'log' }
       }
     })
-    expect(await submission(id)).not.toHaveProperty('startFailure')
+    expect(await submission(id)).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
@@ -846,7 +848,7 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
       reason: text,
       rejection: { kind: 'hostStopped' }
     })
-    expect(first).not.toHaveProperty('startFailure')
+    expect(first).not.toHaveProperty('startRetry')
     expect(await statusRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })

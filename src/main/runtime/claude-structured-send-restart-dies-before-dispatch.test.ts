@@ -156,7 +156,7 @@ describe('a send whose restarted Claude child dies before it proves its start', 
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await submission(host, sent)).not.toHaveProperty('startFailure')
+    expect(await submission(host, sent)).not.toHaveProperty('startRetry')
     expect(await statusRows(host)).toEqual([])
     expect(fence(host)).toBe(releasedFence + 2)
     expect(claude.children(SESSION)).toHaveLength(2)
@@ -195,7 +195,7 @@ describe('a send whose restarted Claude child dies before it proves its start', 
         })
       )
       await waitForStructuredAgentSessionRecovery()
-      expect(await submission(host, sent)).not.toHaveProperty('startFailure')
+      expect(await submission(host, sent)).not.toHaveProperty('startRetry')
 
       expect(await statusRows(host)).toEqual([])
     }

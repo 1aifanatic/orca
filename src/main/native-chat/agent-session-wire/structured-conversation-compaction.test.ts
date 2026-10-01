@@ -403,11 +403,13 @@ it('rejects a command whose start failed, saying why on the answer and its messa
     reason: "Codex couldn't restart. Run /compact again.",
     rejection: restartFailed
   })
-  expect(message?.startFailure).toBeUndefined()
+  expect(message?.startRetry).toBeUndefined()
   expect(compact).not.toHaveBeenCalled()
 })
 
-it('takes a command whose start was refused before it ran, which waits on its own message', async () => {
+// Like a goal, a rewind or /clear, a command does not wait out a refused start: its failure is the
+// person's to Retry at once.
+it('rejects a command whose start was refused before it ran at once, with no countdown', async () => {
   await attach()
   await state.host.close(SESSION, 'evict')
   state.acquire.mockRejectedValue(
@@ -417,17 +419,21 @@ it('takes a command whose start was refused before it ran, which waits on its ow
   )
   const params = compactParams()
 
-  // Started, in this reply's meaning: the composer is done with it, and its message says why.
   const answered = await state.host.conversationCommand(CALLER, params)
-  expect(answered).toMatchObject({ ok: true, value: { command: 'compact', state: 'completed' } })
-  expect(answered.ok && answered.value.error).toBeFalsy()
+
+  // Answered with why, as any refused command is: the composer offers it again.
+  expect(answered).toMatchObject({
+    ok: true,
+    value: { command: 'compact', state: 'completed', error: expect.any(String) }
+  })
   const message = (await journal()).submissions.find(
     (entry) => entry.clientMessageId === params.envelope.clientOperationId
   )
   expect(message).toMatchObject({
-    dispatchState: 'pending',
-    startFailure: { attempts: 1, rejection: { kind: 'accountSwitchInProgress' } }
+    dispatchState: 'rejected',
+    rejection: { kind: 'accountSwitchInProgress' }
   })
+  expect(message).not.toHaveProperty('startRetry')
   expect(compact).not.toHaveBeenCalled()
 })
 

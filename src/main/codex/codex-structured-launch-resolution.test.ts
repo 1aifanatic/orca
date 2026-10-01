@@ -6,7 +6,10 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
-import { createCodexStructuredLaunchResolver } from './codex-structured-launch-resolution'
+import {
+  createCodexStructuredLaunchResolver,
+  openCodexStructuredChild
+} from './codex-structured-launch-resolution'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
 
 // The host's own install directories are this machine's; each case names the only places it has.
@@ -277,15 +280,16 @@ describe('a Codex CLI the host cannot find', () => {
     chmodSync(join(dir, name), 0o755)
   }
 
-  /** The resolver found nothing on the process PATH; `env` is what the spawn itself would get. */
-  function bareResolver(env: NodeJS.ProcessEnv) {
-    return createCodexStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
-      resolveWorkspacePath: async (id) => `/repos/${id}`,
-      resolveCommand: () => 'codex',
-      resolveEnvironment: async () => env,
-      isWindowsProcessStartTimeAvailable: () => true
-    })
+  /** The real child with the resolver's bare name; `env` is what the spawn itself gets. Its spawn
+   *  is stubbed, so reaching it means the check let the start through. */
+  function open(env: Record<string, string>) {
+    const spawned = new Error('spawned')
+    return {
+      spawned,
+      opened: openCodexStructuredChild({ command: 'codex', args: ['app-server'], env }, {}, () => {
+        throw spawned
+      })
+    }
   }
 
   it.skipIf(process.platform === 'win32')(
@@ -293,32 +297,41 @@ describe('a Codex CLI the host cannot find', () => {
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'orca-codex-missing-'))
 
-      const refused = bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({
-        identity: IDENTITY
-      })
-
-      await expect(refused).rejects.toMatchObject({
-        name: 'AgentSessionPreSpawnError',
-        reason: 'providerMissing'
-      })
+      await expect(
+        open({ PATH: join(root, 'bin'), HOME: join(root, 'home') }).opened
+      ).rejects.toMatchObject({ name: 'AgentSessionPreSpawnError', reason: 'providerMissing' })
     }
   )
 
   it.skipIf(process.platform === 'win32')(
-    "launches one only the spawn's PATH or a version manager has",
+    "spawns one only the spawn's PATH or a version manager has",
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'orca-codex-found-'))
       executable(join(root, 'shell-bin'), 'codex')
       executable(join(root, 'home', '.volta', 'bin'), 'codex')
 
-      await expect(
-        bareResolver({ PATH: join(root, 'shell-bin'), HOME: join(root, 'empty-home') })({
-          identity: IDENTITY
-        })
-      ).resolves.toMatchObject({ command: 'codex' })
-      await expect(
-        bareResolver({ PATH: join(root, 'bin'), HOME: join(root, 'home') })({ identity: IDENTITY })
-      ).resolves.toMatchObject({ command: 'codex' })
+      for (const env of [
+        { PATH: join(root, 'shell-bin'), HOME: join(root, 'empty-home') },
+        { PATH: join(root, 'bin'), HOME: join(root, 'home') }
+      ]) {
+        const { spawned, opened } = open(env)
+        await expect(opened).rejects.toBe(spawned)
+      }
     }
   )
+
+  // The launch is only the record's: whether the CLI is there is the spawn's to find, so a host
+  // that opens its own connection never reads this machine's PATH.
+  it('resolves the launch whether or not this machine has codex', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-launch-'))
+    await expect(
+      createCodexStructuredLaunchResolver({
+        store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+        resolveWorkspacePath: async (id) => `/repos/${id}`,
+        resolveCommand: () => 'codex',
+        resolveEnvironment: async () => ({ PATH: join(root, 'bin'), HOME: join(root, 'home') }),
+        isWindowsProcessStartTimeAvailable: () => true
+      })({ identity: IDENTITY })
+    ).resolves.toMatchObject({ command: 'codex' })
+  })
 })

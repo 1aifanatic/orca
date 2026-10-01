@@ -18,7 +18,8 @@ export const START_REFUSAL_STAGE: Record<
   execution_owner_reconciling: 'beforeHandoff',
   agent_session_conflict: 'beforeHandoff',
   agent_session_checkpoint_stale: 'beforeHandoff',
-  agent_session_ownership_unknown: 'beforeHandoff',
+  // A start whose cleanup could not prove its process gone, or that left no child to write to.
+  agent_session_ownership_unknown: 'hostSide',
   agent_session_operation_capacity: 'beforeHandoff',
   structured_agent_session_unsupported: 'newChat',
   agent_session_operation_conflict: 'beforeHandoff',

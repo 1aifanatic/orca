@@ -1,5 +1,5 @@
-// A `pending` dispatch row that records a failed start puts its message back in the queue, and the
-// reducer counts the attempts from those rows; nothing else stores the count.
+// A `pending` dispatch row that records a start refused before it ran keeps its queued message
+// waiting, and the reducer counts the attempts from those rows; nothing else stores the count.
 
 import { describe, expect, it } from 'vitest'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
@@ -7,9 +7,14 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journa
 import {
   applyJournalRow,
   createJournalReducerState,
+  renderJournalState,
   type JournalReducerState
 } from './journal-reducer'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionFailedStartIds } from '../../../shared/structured-agent-session-latest-request'
+import { isRequeueableAgentJournalSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { nextDeliverableSubmission } from '../agent-session-wire/structured-agent-session-start-attempt-failure'
 
 const EPOCH = 'epoch-1'
 
@@ -44,53 +49,50 @@ function fromDisk(row: Record<string, unknown>): JournalRow {
   return parsed.row
 }
 
-function failedStart(seq: number, startFailure: unknown): JournalRow {
+function failedStart(seq: number, startRetry: unknown): JournalRow {
   return fromDisk({
     kind: 'dispatch',
     clientMessageId: 'cm_1',
     state: 'pending',
     providerItemId: null,
     reason: null,
-    startFailure,
+    startRetry,
     ...base(seq)
   })
 }
 
 const RECORD = {
-  reason: "Codex couldn't start. Send your message to try again.",
-  rejection: { kind: 'startFailed' },
-  generation: 'generation-2',
+  reason: 'A Claude account switch is in progress.',
+  rejection: { kind: 'accountSwitchInProgress' },
   nextAttemptAt: 20_000
 }
 
 describe('a failed start recorded on its message', () => {
-  it('puts a handed-over message back in the queue and counts each failed start', () => {
-    const handedOver: JournalRow = {
-      kind: 'dispatch',
-      clientMessageId: 'cm_1',
-      state: 'pending',
-      providerItemId: null,
-      reason: null,
-      turnScope: AGENT_JOURNAL_THREAD_SCOPE,
-      ...base(2)
-    }
+  it('keeps a queued message in the queue and counts each start refused for it', () => {
     const state = fold([
       accepted,
-      handedOver,
-      failedStart(3, RECORD),
-      failedStart(4, { ...RECORD, nextAttemptAt: 80_000 })
+      failedStart(2, RECORD),
+      failedStart(3, { ...RECORD, nextAttemptAt: 80_000 })
     ])
 
     const submission = state.submissions.get('cm_1')!
     expect(isQueuedAgentJournalSubmission(submission)).toBe(true)
-    expect(submission.startFailure).toEqual({
+    expect(submission.startRetry).toEqual({
       attempts: 2,
       reason: RECORD.reason,
-      rejection: { kind: 'startFailed' },
-      generation: 'generation-2',
-      failedAt: 1_004,
+      rejection: { kind: 'accountSwitchInProgress' },
+      failedAt: 1_003,
       nextAttemptAt: 80_000
     })
+  })
+
+  // A record a development build wrote names the child whose start failed; nothing reads it.
+  it('drops the child an earlier development build named on the record', () => {
+    const submission = fold([
+      accepted,
+      failedStart(2, { ...RECORD, generation: 'generation-2' })
+    ]).submissions.get('cm_1')!
+    expect(submission.startRetry).not.toHaveProperty('generation')
   })
 
   it('clears the record when the message is handed over again, or ends', () => {
@@ -107,7 +109,7 @@ describe('a failed start recorded on its message', () => {
         ...base(3)
       }
     ]).submissions.get('cm_1')!
-    expect(handedOver.startFailure).toBeUndefined()
+    expect(handedOver.startRetry).toBeUndefined()
     expect(handedOver.handedOverAt).toBe(1_003)
 
     const rejected = fold([
@@ -124,7 +126,81 @@ describe('a failed start recorded on its message', () => {
       }
     ]).submissions.get('cm_1')!
     expect(rejected).toMatchObject({ dispatchState: 'rejected', reason: RECORD.reason })
-    expect(rejected.startFailure).toBeUndefined()
+    expect(rejected.startRetry).toBeUndefined()
+  })
+
+  // A child that never proved its start took nothing it was handed, so no reader may read the
+  // message as possibly written, as one rejected after its handover otherwise reads.
+  it('reads a message its failed start rejected after its handover as never handed over', () => {
+    const handedThenRejected = (rejection: { kind: string }) =>
+      fold([
+        accepted,
+        {
+          kind: 'dispatch',
+          clientMessageId: 'cm_1',
+          state: 'pending',
+          providerItemId: null,
+          reason: null,
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE,
+          ...base(2)
+        },
+        fromDisk({
+          kind: 'dispatch',
+          clientMessageId: 'cm_1',
+          state: 'rejected',
+          providerItemId: null,
+          reason: 'Written by the host.',
+          rejection,
+          ...base(3)
+        })
+      ]).submissions.get('cm_1')!
+
+    expect(handedThenRejected({ kind: 'providerStartFailed' }).handedOverAt).toBeUndefined()
+    expect(handedThenRejected({ kind: 'hostStopped' }).handedOverAt).toBeUndefined()
+    // The provider refusing what it was handed is no failed start: it was handed over.
+    expect(handedThenRejected({ kind: 'providerRejected' }).handedOverAt).toBe(1_002)
+  })
+
+  // Drawn below the conversation while it waited, a message whose start failed for good stays where
+  // its failure was written instead of jumping back above what came since.
+  describe('where a message whose start failed for good is placed', () => {
+    const later: JournalRow = {
+      kind: 'item',
+      itemId: 'codex:later-answer',
+      revision: 1,
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'later' }] },
+      ...base(3)
+    }
+    const failed = (kind: string, seq: number): JournalRow =>
+      fromDisk({
+        kind: 'dispatch',
+        clientMessageId: 'cm_1',
+        state: 'rejected',
+        providerItemId: null,
+        reason: 'Written by the host.',
+        rejection: { kind },
+        ...base(seq)
+      })
+    const order = (rows: JournalRow[]) =>
+      renderJournalState(fold(rows)).items.map((entry) => entry.itemId)
+    const message = agentJournalSubmissionKey('cm_1')
+
+    it('stays below what came while it waited', () => {
+      expect(
+        order([accepted, failedStart(2, RECORD), later, failed('accountSwitchInProgress', 4)])
+      ).toEqual(['codex:later-answer', message])
+    })
+
+    it('is where it was when nothing came after it', () => {
+      expect(order([accepted, failed('providerStartFailed', 2)])).toEqual([message])
+    })
+
+    it('keeps its place for a rejection that is not a failed start', () => {
+      expect(order([accepted, later, failed('cancelled', 4)])).toEqual([
+        message,
+        'codex:later-answer'
+      ])
+    })
   })
 
   it('reads a malformed record as a plain handover: in doubt at the next open, never failed', () => {
@@ -133,7 +209,7 @@ describe('a failed start recorded on its message', () => {
       failedStart(2, { reason: 'no fact', nextAttemptAt: 'soon' })
     ]).submissions.get('cm_1')!
 
-    expect(submission.startFailure).toBeUndefined()
+    expect(submission.startRetry).toBeUndefined()
     expect(submission.handedOverAt).toBe(1_002)
     expect(isQueuedAgentJournalSubmission(submission)).toBe(false)
   })
@@ -154,5 +230,85 @@ describe('a failed start recorded on its message', () => {
 
     expect(submission).toMatchObject({ dispatchState: 'rejected', reason: RECORD.reason })
     expect(submission).not.toHaveProperty('rejectedByStartKey')
+  })
+})
+
+// The delivery loop rejects a waiting message with Orca's own fault when it throws mid-delivery. It
+// is a failure before any handover like a failed start: every reader treats the two alike.
+describe('a waiting message rejected before any handover', () => {
+  const later: JournalRow = {
+    kind: 'item',
+    itemId: 'codex:later-answer',
+    revision: 1,
+    body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'later' }] },
+    ...base(3)
+  }
+  const rejectedWith = (kind: string): JournalRow =>
+    fromDisk({
+      kind: 'dispatch',
+      clientMessageId: 'cm_1',
+      state: 'rejected',
+      providerItemId: null,
+      reason: 'Written by the host.',
+      rejection: { kind },
+      ...base(4)
+    })
+  const message = agentJournalSubmissionKey('cm_1')
+
+  it.each(['accountSwitchInProgress', 'hostFault'])(
+    'for %s: stays below what came while it waited, is announced, and can be queued again',
+    (kind) => {
+      const view = renderJournalState(
+        fold([accepted, failedStart(2, RECORD), later, rejectedWith(kind)])
+      )
+      const submission = view.submissions.find((entry) => entry.clientMessageId === 'cm_1')
+
+      expect(view.items.map((entry) => entry.itemId)).toEqual(['codex:later-answer', message])
+      expect(structuredAgentSessionFailedStartIds(view.submissions)).toEqual([message])
+      expect(submission && isRequeueableAgentJournalSubmission(submission)).toBe(true)
+    }
+  )
+})
+
+// A Retry queues the message again behind what was queued before it: it is drawn where it now waits,
+// in the order the queue sends.
+describe('a message queued again by its Retry', () => {
+  const sent = (clientMessageId: string, seq: number): JournalRow => ({
+    ...accepted,
+    clientMessageId,
+    payloadFingerprint: `fp_${clientMessageId}`,
+    ...base(seq)
+  })
+  const dispatch = (clientMessageId: string, seq: number, fields: Record<string, unknown>) =>
+    fromDisk({
+      kind: 'dispatch',
+      clientMessageId,
+      providerItemId: null,
+      reason: null,
+      ...fields,
+      ...base(seq)
+    })
+
+  it('is drawn behind a message queued before the Retry, and that one goes first', () => {
+    const view = renderJournalState(
+      fold([
+        sent('cm_1', 1),
+        dispatch('cm_1', 2, {
+          state: 'rejected',
+          reason: 'Codex could not start.',
+          rejection: { kind: 'providerStartFailed' }
+        }),
+        sent('cm_2', 3),
+        dispatch('cm_1', 4, { state: 'pending', requeued: true })
+      ])
+    )
+
+    expect(view.items.map((entry) => entry.itemId)).toEqual([
+      agentJournalSubmissionKey('cm_2'),
+      agentJournalSubmissionKey('cm_1')
+    ])
+    expect(
+      nextDeliverableSubmission({ submissions: () => view.submissions }, 10_000)
+    ).toMatchObject({ clientMessageId: 'cm_2' })
   })
 })

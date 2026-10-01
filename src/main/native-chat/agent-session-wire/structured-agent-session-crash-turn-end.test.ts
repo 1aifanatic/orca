@@ -46,6 +46,8 @@ import {
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
 import { attachForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const PROVIDER_SESSION = 'provider-session-alpha-1'
 /** The tool call's row: the last thing the provider wrote before the crash. */
@@ -156,6 +158,7 @@ async function seedClaudeToolTurn(): Promise<void> {
 
 function openHost(overrides: Partial<StructuredAgentSessionHostDeps>): void {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire: vi.fn(),
@@ -442,11 +445,11 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
 
   it('stays unverifiable when the revision cannot be written, and a later open revises it', async () => {
     let now = RELAUNCHED_AT
-    const onEventSinkError = vi.fn()
+    const log = recordingStructuredAgentSessionLogger()
     openHost({
       probeOwner: async () => ({ outcome: 'pid-absent' }),
       now: () => now,
-      onEventSinkError
+      logger: log.logger
     })
     await host.history({ sessionId: SESSION, direction: 'tail' })
     const { journal } = host.collaboratorsForTests().sessions.get(SESSION)!
@@ -455,7 +458,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await host.reconcileRestartLeases()
     await drainSession()
 
-    expect(onEventSinkError).toHaveBeenCalledOnce()
+    expect(log.scopes()).toEqual(['open-dead-generation'])
     expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
     // The proof is durable on the record, so the next open converges.
     now += STRUCTURED_AGENT_SESSION_IDLE_MS + 1

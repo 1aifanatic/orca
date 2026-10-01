@@ -24,6 +24,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -65,6 +66,7 @@ let ownerProbe: AgentSessionOwnerProbe = { outcome: 'pid-absent' }
 async function openHost(): Promise<void> {
   store = await openTestAgentSessionRecordStore(generationRoot())
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter,
     journalDatabase: openTestJournalHostDatabase(generationRoot()),
@@ -587,7 +589,7 @@ describe("the replacement's first send", () => {
       })
     )
     // The spawn ran here and failed, so no later try is booked.
-    expect((await submissionOf(replacement, clientMessageId))?.startFailure).toBeUndefined()
+    expect((await submissionOf(replacement, clientMessageId))?.startRetry).toBeUndefined()
     expect(await errorRows(replacement)).toEqual([])
     const reason = (await submissionOf(replacement, clientMessageId))?.reason
     expect(reason).toContain("Codex couldn't start.")

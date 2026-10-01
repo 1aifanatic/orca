@@ -44,6 +44,7 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -75,6 +76,7 @@ const spawnChild: StructuredAgentSessionAdapter['acquire'] = async ({ fence, spa
 
 async function startHost(): Promise<void> {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,
@@ -330,31 +332,30 @@ describe('a start the chat needed and did not get', () => {
         refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
       }
     })
-    expect((await submission(first))?.startFailure).toBeUndefined()
+    expect((await submission(first))?.startRetry).toBeUndefined()
     expect(await errorRows()).toEqual([])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
 
-  it('notifies failed once for the queued messages whose starts all failed', async () => {
+  it('notifies each queued message whose start failed, once, as it fails', async () => {
     await host.close(SESSION, 'evict')
     acquire.mockRejectedValue(new Error('spawn codex ENOENT'))
     const completions: AgentSessionTurnCompletionEvent[] = []
     host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
-    await accept('first')
+    const first = await accept('first')
     const second = await accept('second')
 
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     await host.flushAllStreamedEvents()
-    expect(completions).toEqual([
-      {
-        type: 'completion',
-        completion: expect.objectContaining({
-          sessionId: SESSION,
-          turnId: agentJournalSubmissionKey(second),
-          outcome: 'failure'
-        })
-      }
-    ])
+    const failed = (id: string) => ({
+      type: 'completion',
+      completion: expect.objectContaining({
+        sessionId: SESSION,
+        turnId: agentJournalSubmissionKey(id),
+        outcome: 'failure'
+      })
+    })
+    expect(completions).toEqual([failed(first), failed(second)])
   })
 
   it.each([
@@ -424,7 +425,7 @@ describe('a start the chat needed and did not get', () => {
           rejection: expected.failure
         })
       )
-      expect(told().some((entry) => entry.startFailure !== undefined)).toBe(false)
+      expect(told().some((entry) => entry.startRetry !== undefined)).toBe(false)
       expect(await errorRows()).toEqual([])
     }
   )
@@ -450,7 +451,7 @@ describe('a start the chat needed and did not get', () => {
     // The message names the start that failed, not a close or a restart it never met — and never
     // the store's own error, which is Orca's and goes to the log.
     expect(settled).toMatchObject({ rejection: { kind: 'restartFailed' } })
-    expect(settled?.startFailure).toBeUndefined()
+    expect(settled?.startRetry).toBeUndefined()
     expect(settled?.reason).not.toContain('record store write failed')
     expect(await errorRows()).toEqual([])
   })
@@ -561,7 +562,7 @@ describe('a child that exits before its message is handed over', () => {
         rejection: { kind: 'providerExited' }
       })
     )
-    expect((await submission(id))?.startFailure).toBeUndefined()
+    expect((await submission(id))?.startRetry).toBeUndefined()
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
   })

@@ -7,11 +7,81 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 
 const OUTBOX_PREFIX = 'orca:desktopStructuredAgentSessionOutbox:v1:'
 
 function storageKey(sessionId: string): string {
   return `${OUTBOX_PREFIX}${encodeURIComponent(sessionId)}`
+}
+
+const RETIRED_PREFIX = 'orca:desktopStructuredAgentSessionRetiredIds:v1:'
+// Bounded: an id matters only while its rejected row is still near the chat's end.
+const MAX_RETIRED_IDS = 200
+
+/** The ids this desktop's Retry sent again under a new id, on a host that cannot queue a message
+ *  again in place. Their rejected rows stay in the journal; the chat here never draws them again. */
+export function readRetiredStructuredAgentSessionMessageIds(
+  sessionId: string
+): ReadonlySet<string> {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem(`${RETIRED_PREFIX}${encodeURIComponent(sessionId)}`) ?? '[]'
+    )
+    return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+/** The journal's sends, and their rows, less those this desktop retired while the journal still has
+ *  them rejected: what this chat draws and words. Both go: a row whose send is missing would be
+ *  drawn as a delivered message. One the journal shows any other way — queued again or delivered
+ *  from another device — shows: the retirement only ever hid a refusal. */
+export function withoutRetiredStructuredAgentSessionMessages(
+  journal: {
+    items: readonly AgentJournalRenderItem[]
+    submissions: readonly AgentJournalSubmission[]
+  },
+  retired: ReadonlySet<string>
+): {
+  items: readonly AgentJournalRenderItem[]
+  submissions: readonly AgentJournalSubmission[]
+} {
+  const hidden = new Set(
+    retired.size === 0
+      ? []
+      : journal.submissions
+          .filter(
+            (submission) =>
+              submission.dispatchState === 'rejected' && retired.has(submission.clientMessageId)
+          )
+          .map((submission) => submission.clientMessageId)
+  )
+  if (hidden.size === 0) {
+    return journal
+  }
+  const keys = new Set([...hidden].map(agentJournalSubmissionKey))
+  return {
+    items: journal.items.filter((item) => !keys.has(item.itemId)),
+    submissions: journal.submissions.filter((submission) => !hidden.has(submission.clientMessageId))
+  }
+}
+
+export function retireStructuredAgentSessionMessageId(sessionId: string, id: string): void {
+  const ids = [...readRetiredStructuredAgentSessionMessageIds(sessionId), id]
+  try {
+    localStorage.setItem(
+      `${RETIRED_PREFIX}${encodeURIComponent(sessionId)}`,
+      JSON.stringify(ids.slice(-MAX_RETIRED_IDS))
+    )
+  } catch {
+    // Best effort: unsaved, the old row shows again as a read-only "not sent" message.
+  }
 }
 
 export function readOutbox(

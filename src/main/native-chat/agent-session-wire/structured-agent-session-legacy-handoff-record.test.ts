@@ -25,6 +25,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -43,6 +44,7 @@ let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 
 function openHost(): void {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,
@@ -96,7 +98,7 @@ async function delivered(text: string) {
     expect(
       current?.dispatchState !== 'pending' ||
         current?.handedOverAt !== undefined ||
-        current?.startFailure !== undefined
+        current?.startRetry !== undefined
     ).toBe(true)
   })
   return submission()
@@ -258,7 +260,7 @@ describe('a record an older build left mid terminal handoff', () => {
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
     expect(await delivered('while the terminal still runs')).toMatchObject({
       dispatchState: 'pending',
-      startFailure: {
+      startRetry: {
         reason:
           "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
       }

@@ -27,6 +27,7 @@ import {
   stopStructuredAgentSessionRuntime,
   waitForStructuredAgentSessionRecovery
 } from './structured-agent-session-runtime'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 const SESSION = 'claude-integration-1'
 const PROVIDER_SESSION = claudeSessionIdForOrcaSession(SESSION)
@@ -265,6 +266,7 @@ beforeEach(async () => {
     publishStructuredAgentSessionTab: vi.fn(),
     ensureStructuredAgentSessionHost: () =>
       ensureStructuredAgentSessionHost({
+        logger: createStructuredAgentSessionLogger(),
         stateDirectory: root,
         hostId: 'local',
         claimKeyId: 'key-1',
@@ -515,7 +517,7 @@ describe('a structured Claude session over agentSession.*', () => {
     await vi.waitFor(async () =>
       expect(await submissionOf(sent.clientMessageId)).toMatchObject({
         dispatchState: 'pending',
-        startFailure: { attempts: 1, rejection: { kind: 'startFailed' } }
+        startRetry: { attempts: 1, rejection: { kind: 'startFailed' } }
       })
     )
     expect(claude.connections).toHaveLength(1)

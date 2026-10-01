@@ -51,6 +51,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { attachForTests, startAgentForTests } from './structured-agent-session-attach-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 const CALLER = { callerKey: 'client-1' }
 const DEAD_OWNER: AgentSessionProcessIdentity = {
@@ -122,6 +123,7 @@ async function seedStore(record: PersistedAgentSessionRecord): Promise<void> {
 /** Every recorded owner in these fixtures is long gone; that is the present-time evidence. */
 function openHost(overrides: Partial<StructuredAgentSessionHostDeps> = {}): void {
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,

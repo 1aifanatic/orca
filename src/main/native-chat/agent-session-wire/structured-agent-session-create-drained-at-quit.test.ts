@@ -13,6 +13,7 @@ import {
   HOST_TEST_SESSION as SESSION,
   hostTestAttachParams
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 let root: string | null = null
 
@@ -39,6 +40,7 @@ it('closes the conversation a create opened while the quit waited for it', async
     }
   }
   const host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store: await openTestAgentSessionRecordStore(root),
     adapter,
     journalDatabase: openTestJournalHostDatabase(root),
