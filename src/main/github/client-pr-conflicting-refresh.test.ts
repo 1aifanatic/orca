@@ -78,4 +78,35 @@ describe('getPRForBranch for a conflicting PR', () => {
       expect(backgroundMergeCalls()).toEqual([])
     }
   )
+
+  it('treats a DIRTY merge state as conflicting while gh pr view still reports UNKNOWN', async () => {
+    getOwnerRepoMock.mockResolvedValueOnce({ owner: 'acme', repo: 'widgets' })
+    ghExecFileAsyncMock
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          number: 42,
+          title: 'Fix PR discovery',
+          state: 'OPEN',
+          url: 'https://github.com/acme/widgets/pull/42',
+          statusCheckRollup: [],
+          updatedAt: '2026-09-30T00:00:00Z',
+          isDraft: false,
+          mergeable: 'UNKNOWN',
+          mergeStateStatus: 'DIRTY',
+          baseRefName: 'main',
+          headRefName: 'feature/test',
+          baseRefOid: 'base-oid',
+          headRefOid: 'head-oid'
+        })
+      })
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({ data: { repository: { mergeQueue: null } } })
+      })
+
+    const pr = await getPRForBranch('/repo-root', 'feature/test', 42)
+
+    expect(pr?.mergeable).toBe('CONFLICTING')
+    expect(pr?.baseRefName).toBe('main')
+    expect(backgroundMergeCalls()).toEqual([])
+  })
 })
