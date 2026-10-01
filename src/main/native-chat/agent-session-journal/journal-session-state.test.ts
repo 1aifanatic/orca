@@ -295,7 +295,7 @@ describe('a failed write leaves the fold equal to the disk (T1)', () => {
     expect(journal.submission('send-1')).toMatchObject({ dispatchState: 'pending' })
   })
 
-  it('re-reads the chat when the undo fails, and keeps the chat open', async () => {
+  it('re-reads before next use a fold whose undo failed, and keeps the chat open', async () => {
     const journal = await write('settled')
     const tip = journal.cursor()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -305,27 +305,6 @@ describe('a failed write leaves the fold equal to the disk (T1)', () => {
         throw new Error('undo failed')
       }
     }))
-    failNextCommit()
-
-    await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')
-
-    expect(journal.cursor()).toEqual(tip)
-    expect(journal.snapshot()).toEqual(renderJournalState(loadTestJournal(root, 'settled')!.state))
-  })
-
-  it('re-reads before next use a fold whose undo and re-read both failed, and keeps the chat open', async () => {
-    const journal = await write('settled')
-    const tip = journal.cursor()
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    vi.mocked(JournalFoldUndo.beginJournalFoldUndo).mockImplementationOnce(() => ({
-      commit: () => undefined,
-      rollback: () => {
-        throw new Error('undo failed')
-      }
-    }))
-    vi.mocked(JournalOpen.replayJournal).mockImplementationOnce(() => {
-      throw new Error('disk I/O error')
-    })
     failNextCommit()
 
     await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')

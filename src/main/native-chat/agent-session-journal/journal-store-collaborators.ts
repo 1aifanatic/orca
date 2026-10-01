@@ -20,7 +20,7 @@ import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
 import type Database from '../../sqlite/sync-database'
 import { applyJournalRow } from './journal-reducer'
-import { readJournalRowsAfterCursor, replayJournal } from './journal-open'
+import { readJournalRowsAfterCursor } from './journal-open'
 import { readJournalSince } from './journal-cursor'
 import type { JournalReadSince } from './journal-store-contracts'
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
@@ -53,8 +53,6 @@ export type JournalStoreHost = {
   setReadOnly: (readOnly: boolean) => void
   cursor: () => AgentJournalCursor
   adopt: (loaded: JournalLoad) => void
-  /** The fold re-read from disk after a failed append. */
-  replaceState: (state: JournalReducerState) => void
   /** That re-read failed too: the fold is re-read before its next use, never served as it is. */
   markFoldStale: () => void
   /** Whether a fresh replay would report the history corrupt. */
@@ -227,9 +225,9 @@ function backfillSessionStatus(
 
 /**
  * An append whose transaction failed after its row was folded: the undo puts back what the row
- * changed. If that fails, the chat is folded again from what committed (the host database rolls a
- * stranded transaction back before it hands out the connection, so the re-read never sees the
- * failed row), and if that fails too the fold is marked stale and re-read before its next use.
+ * changed. If it cannot, the fold is marked stale and folded again from what committed before its
+ * next use (the host database rolls a stranded transaction back before it hands out the connection,
+ * so that re-read never sees the failed row).
  */
 function recoverJournalFold(host: JournalStoreHost, undo: JournalFoldUndo | null): void {
   try {
@@ -239,18 +237,6 @@ function recoverJournalFold(host: JournalStoreHost, undo: JournalFoldUndo | null
     }
   } catch (error) {
     console.warn('[agent-session-journal] undoing a failed append failed', {
-      sessionId: host.identity.sessionId,
-      error
-    })
-  }
-  try {
-    const reloaded = replayJournal(host.database().db, host.identity.sessionId)
-    if (reloaded) {
-      host.replaceState(reloaded.state)
-      return
-    }
-  } catch (error) {
-    console.warn('[agent-session-journal] re-reading a chat after a failed append failed', {
       sessionId: host.identity.sessionId,
       error
     })

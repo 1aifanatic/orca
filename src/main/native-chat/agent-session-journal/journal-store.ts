@@ -127,9 +127,6 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      replaceState: (state) => {
-        this.state = state
-      },
       markFoldStale: () => {
         this.foldStale = true
       },
