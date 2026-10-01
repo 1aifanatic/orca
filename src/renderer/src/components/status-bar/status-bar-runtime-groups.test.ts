@@ -209,7 +209,7 @@ describe('status bar runtime switch groups', () => {
       host.targets.map((target) => [target.label, target.disabled ?? false, target.hint ?? null])
     ).toEqual([
       ['System default', false, null],
-      ['Unfinished sign-in', true, 'Sign in again to use this account'],
+      ['Unfinished sign-in', true, 'Finish signing in to use this account'],
       ['old@example.test', true, 'Sign in again to use this account'],
       ['ok@example.test', false, null]
     ])

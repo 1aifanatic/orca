@@ -51,7 +51,9 @@ export function getClaudeAccountRowState(
                 { value0: account.email, value1: label }
               )
             : readiness === 'sign-in-required'
-              ? translate('accounts.claude.signInRequired', 'Sign in again to use this account')
+              ? unfinished
+                ? translate('accounts.claude.finishSignIn', 'Finish signing in to use this account')
+                : translate('accounts.claude.signInRequired', 'Sign in again to use this account')
               : readiness === 'unverified'
                 ? translate(
                     'accounts.claude.wslNotChecked',

@@ -46,4 +46,23 @@ describe('Claude account action toasts', () => {
       description: 'Account added. Select it to use it for the next Claude you start.'
     })
   })
+
+  it('says a re-signed-in selected account is signed in again instead of "a@ → a@"', async () => {
+    const selected = { ...added, activeAccountId: 'new' }
+    const run = createClaudeAccountActionRunner({
+      settings: getDefaultSettings('/tmp'),
+      accountRuntime: { runtime: 'host', wslDistro: null, label: 'This device' },
+      isRemoteAccountScope: true,
+      claudeAccounts: selected,
+      setClaudeAccounts: vi.fn(),
+      setClaudeAction: vi.fn(),
+      fetchSettings: vi.fn(async () => {}),
+      recordFeatureInteraction: vi.fn()
+    })
+    await run('reauth:new', async () => selected)
+    expect(toast.info).toHaveBeenCalledWith(expect.any(String), {
+      description:
+        'new@example.test is signed in again. The next Claude you start uses it. Running sessions keep their account.'
+    })
+  })
 })

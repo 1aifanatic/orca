@@ -86,7 +86,7 @@ export function renderAccountsRemovalDialogs(
             <DialogDescription>
               {translate(
                 'settings.accounts.claudeRemoveProfile',
-                'Orca will forget this account and leave its login files on disk. If selected, the next Claude launch uses System Default. Running sessions keep their account.'
+                'Orca will forget this account and leave its login files on disk. If selected, the next Claude launch uses System default. Running sessions keep their account.'
               )}
             </DialogDescription>
           </DialogHeader>

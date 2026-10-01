@@ -347,7 +347,9 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                         ) : (
                           <RefreshCw className="size-3" />
                         )}
-                        {translate('accounts.claude.signInAgain', 'Sign in again')}
+                        {isUnfinishedClaudeSignIn(account)
+                          ? translate('accounts.claude.finishSigningIn', 'Finish signing in')
+                          : translate('accounts.claude.signInAgain', 'Sign in again')}
                       </Button>
                       <Button
                         variant="ghost"
