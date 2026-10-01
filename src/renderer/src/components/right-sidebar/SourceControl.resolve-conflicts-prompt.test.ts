@@ -51,7 +51,7 @@ describe('buildResolvePullRequestConflictsPrompt', () => {
     expect(prompt).toContain('of repository "git.example.com/acme/widgets"')
   })
 
-  it('tells the agent a clean merge means the report may be stale and not to push', () => {
+  it('has the agent check for an unpushed resolution before calling a clean merge stale, and never push', () => {
     const prompt = buildResolvePullRequestConflictsPrompt({
       worktreePath: '/repo/worktree',
       baseRef: 'main',
@@ -59,8 +59,18 @@ describe('buildResolvePullRequestConflictsPrompt', () => {
     })
 
     expect(prompt).toContain(
-      "- If merging the pull request's actual base completes with no conflicts, the host's conflict report may be stale; say so, and do not push."
+      "- If merging the pull request's actual base completes with no conflicts or is already up to date, compare HEAD with its upstream (git status -sb): if ahead, say the conflicts appear resolved locally and pushing will update the pull request; if behind, say the pull request head has commits this worktree lacks; otherwise say the host's conflict report may be stale. Do not push in any case."
     )
+  })
+
+  it('names a merge request in the clean-merge rule for GitLab', () => {
+    const prompt = buildResolvePullRequestConflictsPrompt({
+      worktreePath: '/repo/worktree',
+      baseRef: 'main',
+      reviewKind: 'MR'
+    })
+
+    expect(prompt).toContain('pushing will update the merge request; if behind')
   })
 
   it('does not emit unquoted git commands for option-looking base branches', () => {

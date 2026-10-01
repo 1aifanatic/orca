@@ -183,7 +183,8 @@ export function buildResolvePullRequestConflictsPrompt({
     remoteRule,
     fetchRule,
     '- Merge the fetched base tip into the current branch, usually with git merge --no-ff --no-edit FETCH_HEAD.',
-    `- If merging the ${reviewName}'s actual base completes with no conflicts, the host's conflict report may be stale; say so, and do not push.`,
+    // Why: a clean merge usually means an earlier run resolved locally but nothing was pushed, not a stale host report.
+    `- If merging the ${reviewName}'s actual base completes with no conflicts or is already up to date, compare HEAD with its upstream (git status -sb): if ahead, say the conflicts appear resolved locally and pushing will update the ${reviewName}; if behind, say the ${reviewName} head has commits this worktree lacks; otherwise say the host's conflict report may be stale. Do not push in any case.`,
     '- Resolve the conflict by inspecting both sides and nearby code; do not choose ours/theirs wholesale unless clearly correct. Preserve existing manual resolution work unless it is clearly wrong.',
     '- Protect unrelated staged and unstaged changes. Do not run broad cleanup commands like git reset --hard, git checkout ., git restore ., git stash, or abort commands.',
     '- Edit the conflicted files only unless correctness requires another file. Keep changes minimal.',
