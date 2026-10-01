@@ -1,6 +1,7 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { translate } from '@/i18n/i18n'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -63,7 +64,6 @@ export function useNativeChatComposerAttachments({
   const writerRef = useRef<object>({})
   // The shared list last shown here.
   const syncedRef = useRef<readonly NativeChatDraftAttachment[]>(shownAtMount)
-  const imageAttachmentCounter = useRef(0)
   // Chips this view has checked or attached itself; anything else may be restored from disk.
   const checkedIdsRef = useRef(new Set<string>())
   const [missingIds, setMissingIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -99,22 +99,21 @@ export function useNativeChatComposerAttachments({
       }
       syncedRef.current = shared
       const local = attachmentsRef.current
-      const sharedIds = new Set(shared.map((attachment) => attachment.id))
-      local
-        .filter((attachment) => !attachment.pending && !sharedIds.has(attachment.id))
-        .forEach(releaseAttachmentPreview)
-      const previews = new Map(
-        local.flatMap((attachment) =>
-          attachment.previewUrl ? [[attachment.id, attachment.previewUrl] as const] : []
-        )
-      )
-      showAttachments([
-        ...shared.map((attachment) => {
-          const previewUrl = previews.get(attachment.id)
-          return previewUrl ? { ...attachment, previewUrl } : attachment
-        }),
-        ...local.filter((attachment) => attachment.pending)
-      ])
+      const sharedById = new Map(shared.map((attachment) => [attachment.id, attachment]))
+      // Chips keep the order they were added in, pending ones included; new ones go last.
+      const kept = local.flatMap((attachment) => {
+        const settled = sharedById.get(attachment.id)
+        if (attachment.pending) {
+          return [attachment]
+        }
+        if (!settled) {
+          releaseAttachmentPreview(attachment)
+          return []
+        }
+        return [attachment.previewUrl ? { ...settled, previewUrl: attachment.previewUrl } : settled]
+      })
+      const localIds = new Set(local.map((attachment) => attachment.id))
+      showAttachments([...kept, ...shared.filter((attachment) => !localIds.has(attachment.id))])
     }
     const unsubscribe = subscribeToNativeChatDraft(attachmentScopeKey, showShared)
     // A write between this view's render and its subscription would otherwise never show here.
@@ -136,10 +135,8 @@ export function useNativeChatComposerAttachments({
     [attachmentScopeKey, showAttachments]
   )
 
-  const nextAttachmentId = useCallback((): string => {
-    imageAttachmentCounter.current += 1
-    return `${Date.now()}-${imageAttachmentCounter.current}`
-  }, [])
+  // Every view of the chat attaches into one list, so ids must not repeat across views.
+  const nextAttachmentId = useCallback((): string => createBrowserUuid(), [])
 
   // Client-local paths cannot cross into a runtime target; workspace-owned
   // paths may only bypass this after the internal drop ownership gate.

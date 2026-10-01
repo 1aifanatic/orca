@@ -371,6 +371,50 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
+  it('keeps a still-saving paste in its place when another view adds a chip', async () => {
+    const first = await renderProbe('session:chat-race', true)
+    const second = await renderProbe('session:chat-race', true)
+    let pastedId: string | null = null
+    act(() => {
+      pastedId = first.latest().beginPendingImageAttachment('blob:pasted')
+    })
+    await act(async () => {
+      first.latest().attachResolvedPaths(['/tmp/first.png'])
+    })
+    await act(async () => {
+      second.latest().attachResolvedPaths(['/tmp/second.png'])
+    })
+    act(() => first.latest().resolvePendingImageAttachment(pastedId ?? '', '/tmp/pasted.png'))
+
+    expect(readNativeChatDraftAttachments('session:chat-race').map(({ path }) => path)).toEqual([
+      '/tmp/pasted.png',
+      '/tmp/first.png',
+      '/tmp/second.png'
+    ])
+    act(() => first.root.unmount())
+    act(() => second.root.unmount())
+  })
+
+  it('keeps both chips when two views attach in the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000)
+    const first = await renderProbe('session:chat-same-ms', true)
+    const second = await renderProbe('session:chat-same-ms', true)
+    await act(async () => {
+      first.latest().attachResolvedPaths(['/tmp/first.png'])
+    })
+    await act(async () => {
+      second.latest().attachResolvedPaths(['/tmp/second.png'])
+    })
+    now.mockRestore()
+
+    expect(first.latest().imageAttachments.map(({ path }) => path)).toEqual([
+      '/tmp/first.png',
+      '/tmp/second.png'
+    ])
+    act(() => first.root.unmount())
+    act(() => second.root.unmount())
+  })
+
   it('removes an attached image chip cleanly', async () => {
     const probe = await renderProbe('pty-1')
     await act(async () => {
