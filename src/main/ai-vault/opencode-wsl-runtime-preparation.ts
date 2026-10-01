@@ -128,7 +128,12 @@ async function prepare(distro: string): Promise<OpenCodeWslRuntime> {
   }
   if (!executable?.startsWith('/')) {
     executable = (
-      await ensureWslPinnedRuntime(run, join(app.getPath('userData'), 'orcad-artifacts'), signal)
+      await ensureWslPinnedRuntime(
+        run,
+        join(app.getPath('userData'), 'orcad-artifacts'),
+        signal,
+        'SQLite reader'
+      )
     ).executable
   }
   return { distro, executable, readerPath }
