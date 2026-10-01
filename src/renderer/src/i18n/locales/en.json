@@ -18540,11 +18540,23 @@
       "openSettings": "Open Settings"
     },
     "codexSharedServerBanner": {
-      "body": "This Codex is sharing a server with other tabs, so its agent status may be wrong. To stop this for good, run:",
+      "title": "This Codex is sharing a server with your other Codex tabs",
+      "body": "Sessions may end unexpectedly, and agent status may be wrong.",
+      "fix": "Fix",
+      "dontShowAgain": "Don't show again",
+      "dismiss": "Dismiss",
+      "dialogTitle": "Give each Codex tab its own server",
+      "dialogDescription": "Codex sessions started directly in a terminal share one background server. Orca keeps the Codex sessions it starts separate. When sessions share a server, closing one can end the others, and agent status can be wrong.",
       "copy": "Copy",
       "copied": "Copied",
-      "dontShowAgain": "Don't show again",
-      "dismiss": "Dismiss"
+      "done": "Done",
+      "step1Title": "Turn off Codex server sharing",
+      "step1Note": "This changes your Codex settings, so it also applies outside Orca.",
+      "step2Title": "Stop the running shared server",
+      "undo": "To undo, run codex features enable daemon_auto_start.",
+      "step2Warning": "Closes any open Codex sessions that share the server",
+      "learnMore": "Learn more",
+      "stepsHeading": "Run these once in any terminal"
     }
   },
   "fileExplorer": {
