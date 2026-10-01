@@ -64,6 +64,17 @@ export function recordLocalCreateCheckoutDuration(
   cooldownUntil = Math.max(cooldownUntil, now + SLOW_CREATE_COOLDOWN_MS)
 }
 
+/** A create's checkout that failed: only a slow one says the disk is busy; none feeds the baseline. */
+export function recordFailedLocalCreateCheckoutDuration(
+  repoKey: string,
+  durationMs: number,
+  now = Date.now()
+): void {
+  if (isSlowCheckout(repoKey, durationMs)) {
+    recordLocalCreateCheckoutDuration(repoKey, durationMs, now)
+  }
+}
+
 /** A spare's checkout only feeds the baseline; a slow one sets no cooldown. */
 export function recordSpareBuildDuration(repoKey: string, durationMs: number): void {
   if (!isSlowCheckout(repoKey, durationMs)) {

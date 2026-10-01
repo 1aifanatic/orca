@@ -70,9 +70,7 @@ export async function createFromReadySpare(
   if (take.status === 'miss') {
     return take
   }
-  return (await handOverSpare(take.entry, request))
-    ? { status: 'hit' }
-    : { status: 'miss', reason: 'finalize_failed' }
+  return handOverSpare(take.entry, request)
 }
 
 function git(args: string[], cwd: string, options: AddWorktreeOptions): Promise<unknown> {
@@ -117,8 +115,13 @@ async function holdsSpare(path: string, spare: SpareEntry): Promise<boolean> {
   }
 }
 
-/** True when the worktree now exists at the target; false when the caller should run a plain add. */
-async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Promise<boolean> {
+const FINALIZE_FAILED: PreparedCheckoutOutcome = { status: 'miss', reason: 'finalize_failed' }
+
+/** A hit when the worktree now exists at the target; a miss means the caller runs a plain add. */
+async function handOverSpare(
+  spare: SpareEntry,
+  request: SpareCreateRequest
+): Promise<PreparedCheckoutOutcome> {
   const { repoPath, worktreePath, branch, options } = request
   try {
     await mkdir(toHostFilesystemPath(pathOps(worktreePath).dirname(worktreePath)), {
@@ -131,18 +134,18 @@ async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Pr
     )
     if (occupied) {
       discardAt(spare, spare.preparedPath)
-      return false
+      return { status: 'miss', reason: 'target_exists' }
     }
     await moveWorktree(repoPath, spare.preparedPath, worktreePath, options)
   } catch (error) {
     console.warn('[worktree-create] spare checkout could not be moved; using a plain add', error)
     discardAt(spare, spare.preparedPath)
-    return false
+    return FINALIZE_FAILED
   }
   if (!(await holdsSpare(worktreePath, spare))) {
     // The path appeared after the check and the spare went inside it; never touch what is there.
     discardAt(spare, pathOps(worktreePath).join(worktreePath, spare.id))
-    return false
+    return FINALIZE_FAILED
   }
   let branchCreated = false
   try {
@@ -165,7 +168,7 @@ async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Pr
       error
     )
     await putSpareBack(spare, request, branchCreated)
-    return false
+    return FINALIZE_FAILED
   }
   try {
     if (spare.hookRun) {
@@ -194,7 +197,7 @@ async function handOverSpare(spare: SpareEntry, request: SpareCreateRequest): Pr
   await persistWorktreeCreationBase(worktreePath, branch, request.effectiveBase, options)
   await configurePushAutoSetupRemote(worktreePath, options)
   await finishHandover(spare, repoPath, worktreePath, options)
-  return true
+  return { status: 'hit' }
 }
 
 async function putSpareBack(

@@ -127,6 +127,15 @@ describe('rule 1: a create never waits on an unfinished spare', () => {
     expect(findSpare(spareRepoKey('/repo-b'))).toBeUndefined()
   })
 
+  it("labels a create not_ready only when its own repo's spare was stopped", async () => {
+    script.resetMode = 'hang'
+    spare('/repo-b')
+    await vi.waitFor(() => expect(script.resetSignals).toHaveLength(1))
+
+    expect((await create('/repo-a')).preparedCheckout).toEqual({ status: 'miss', reason: 'none' })
+    expect((await create('/repo-b')).preparedCheckout).toEqual({ status: 'miss', reason: 'none' })
+  })
+
   it("leaves another repo's ready spare for its own create", async () => {
     spare('/repo-b')
     await spareReady('/repo-b')

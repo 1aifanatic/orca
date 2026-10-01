@@ -42,6 +42,8 @@ export type PreparedCheckoutMissReason =
   /** The spare's commit is not the create's base commit after the create's own fetch. */
   | 'base_moved'
   | 'workspace_root_mismatch'
+  /** Something already exists at the create's path, so the spare is not moved there. */
+  | 'target_exists'
   /** No spare was built: Git before 2.36 cannot give `post-checkout` a plain create's arguments. */
   | 'hook_unsupported'
   | 'finalize_failed'

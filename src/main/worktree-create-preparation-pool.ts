@@ -59,7 +59,9 @@ export type StartSpareArgs = {
 const spares = new Map<string, SpareEntry>()
 // Repos whose last request built nothing because the handover could not honor `post-checkout`.
 const hookUnsupportedRepos = new Set<string>()
-// Repos whose spare was still building when a create started, for that create's miss reason.
+// Repos whose spare was still building when the latest create started, for its miss reason. Reset
+// at every create start, so a spare stopped for one create never labels a later create elsewhere.
+// Overlapping creates can lose a label, never misattribute one.
 const stoppedForCreate = new Set<string>()
 // Builds whose git may still be running, abandoned WSL ones included.
 let buildsRunning = 0
@@ -136,6 +138,7 @@ export function hasSpareWork(): boolean {
 
 /** Every create start, machine-wide: an unfinished spare is a second checkout on the same disk. */
 export function abandonUnfinishedSpares(): void {
+  stoppedForCreate.clear()
   // Deleting the current entry while iterating a Map is safe.
   for (const entry of spares.values()) {
     if (entry.state === 'building') {

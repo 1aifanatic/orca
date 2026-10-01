@@ -16,7 +16,10 @@ import { gitExecOptions, resolveWorktreeAddTimeoutMs } from './worktree-operatio
 import { bumpWorktreeScanGeneration } from './worktree-scan-cache'
 import { assertNoPendingWorktreeRemovalConflict } from '../worktree-background-removal'
 import { spareRepoKey } from '../worktree-create-preparation-pool'
-import { recordLocalCreateCheckoutDuration } from '../worktree-create-spare-gate'
+import {
+  recordFailedLocalCreateCheckoutDuration,
+  recordLocalCreateCheckoutDuration
+} from '../worktree-create-spare-gate'
 import type { PreparedCheckoutOutcome } from '../../shared/worktree/create-types'
 import {
   configurePushAutoSetupRemote,
@@ -169,17 +172,23 @@ async function performAddWorktree(
       options
     })
   } catch (error) {
-    // Why: settle the overlapped refresh inside the caller's ref-maintenance pause before reporting the failure.
-    await pendingLocalBaseRefRefresh
-    throw error
-  } finally {
-    // A slow checkout that then failed still says the disk is busy.
+    // A slow checkout that then failed still says the disk is busy; a fast failure (an existing
+    // branch, a bad base) says nothing about the disk and must not feed the baseline.
     if (!noCheckout) {
-      recordLocalCreateCheckoutDuration(
+      recordFailedLocalCreateCheckoutDuration(
         spareRepoKey(repoPath, options.wslDistro),
         Date.now() - checkoutStartedAt
       )
     }
+    // Why: settle the overlapped refresh inside the caller's ref-maintenance pause before reporting the failure.
+    await pendingLocalBaseRefRefresh
+    throw error
+  }
+  if (!noCheckout) {
+    recordLocalCreateCheckoutDuration(
+      spareRepoKey(repoPath, options.wslDistro),
+      Date.now() - checkoutStartedAt
+    )
   }
   if (options.checkoutExistingBranch) {
     return preparedCheckout ? { preparedCheckout } : {}

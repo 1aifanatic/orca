@@ -116,7 +116,7 @@ it('runs a plain add instead of moving the spare into a path that already exists
 
   const result = await create('feature')
 
-  expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'finalize_failed' })
+  expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'target_exists' })
   expect(gitCommands(script, (args) => args[1] === 'move')).toHaveLength(0)
   expect(gitCommands(script, isPlainAdd)).toHaveLength(1)
 })

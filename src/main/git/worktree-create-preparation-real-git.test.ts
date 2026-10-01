@@ -166,7 +166,7 @@ describe('spare checkouts with real Git', () => {
       })
     )
 
-    expect(result.preparedCheckout?.status).toBe('miss')
+    expect(result.preparedCheckout).toEqual({ status: 'miss', reason: 'target_exists' })
     expect(git(repoPath, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/main')
     expect(git(target, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/feature')
   })

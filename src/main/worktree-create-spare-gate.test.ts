@@ -57,6 +57,7 @@ import {
 import {
   _resetSpareGateForTests,
   noteLocalCreateSettled,
+  recordFailedLocalCreateCheckoutDuration,
   recordLocalCreateCheckoutDuration,
   recordSpareBuildDuration,
   spareStartRefusal
@@ -156,6 +157,17 @@ describe('rule 2: no spare while the machine is busy', () => {
       }
     }
     expect(slow).toEqual([53, 105, 209])
+  })
+
+  it('keeps fast failed checkouts out of the baseline, so a normal one stays fast', () => {
+    recordLocalCreateCheckoutDuration(KEY, 10_000)
+    recordLocalCreateCheckoutDuration(KEY, 10_000)
+    for (let failure = 0; failure < 3; failure += 1) {
+      recordFailedLocalCreateCheckoutDuration(KEY, 30)
+    }
+    recordLocalCreateCheckoutDuration(KEY, 16_000)
+
+    expect(spareStartRefusal()).toBeNull()
   })
 
   it('builds once for three requests inside the debounce, on the last base', async () => {
