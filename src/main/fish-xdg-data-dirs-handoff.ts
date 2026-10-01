@@ -67,10 +67,6 @@ function __orca_fish_xdg_handoff
         set -e -g XDG_DATA_DIRS
     end
 
-    set -l orca_fish_dir (string split -m 1 : -- $prefix)[1]/fish
-    for var in __fish_vendor_confdirs __fish_vendor_functionsdirs __fish_vendor_completionsdirs fish_function_path fish_complete_path
-        set $var (string match -v -- "$orca_fish_dir/*" $$var)
-    end
 
     status is-interactive; or return 0
     function __orca_define_codex --on-event fish_prompt

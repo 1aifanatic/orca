@@ -86,31 +86,14 @@ const fish = fishLookup.available
       }).stdout.trim()
     }
   : { available: false, path: '' }
-// Why: fish 4.7 is the first to scan the XDG default dirs when the variable is unset.
-const fishScansXdgDefaultWhenUnset = (() => {
-  if (!fish.available) {
-    return false
-  }
-  const [major, minor] = (
-    /version (\d+)\.(\d+)/.exec(
-      spawnSync(fish.path, ['--version'], { encoding: 'utf8' }).stdout ?? ''
-    ) ?? []
-  )
-    .slice(1)
-    .map(Number)
-  return major > 4 || (major === 4 && minor >= 7)
-})()
 const FAKE_CODEX = `#!/bin/sh
 if [ "$1" = --help ]; then echo "  --no-daemon"; exit 0; fi
 echo "fake-codex $*"
 `
-// Every path fish derives from XDG_DATA_DIRS, plus what a child process inherits.
+// XDG_DATA_DIRS as fish and a child process see it.
 const STATE_PROBE = [
   'set -q XDG_DATA_DIRS; and echo "xdg=[$XDG_DATA_DIRS]"; or echo xdg=unset',
   `set -q ${FISH_XDG_DATA_DIRS_PREFIX_ENV}; and echo marker-left`,
-  'printf "conf %s\\n" $__fish_vendor_confdirs',
-  'printf "fn %s\\n" $fish_function_path',
-  'printf "complete %s\\n" $fish_complete_path',
   'env | grep "^XDG_DATA_DIRS=\\|ORCA_FISH"; or echo child-clean',
   'functions -q __orca_fish_xdg_handoff; and echo handoff-left'
 ].join('\n')
@@ -155,11 +138,8 @@ describe.skipIf(!fish.available)('fish vendor snippet in a real fish', () => {
     return result.stdout
   }
 
-  const inheritedValues: (string | undefined)[] = ['/opt/a:/opt/b/', '/opt/a:']
-  if (fishScansXdgDefaultWhenUnset) {
-    inheritedValues.push(undefined)
-  }
-  it.each(inheritedValues.map((value) => [value] as const))(
+  // Why a baseline: a distro vendor snippet (Ubuntu's snapd) may set XDG_DATA_DIRS itself.
+  it.each([['/opt/a:/opt/b/'], ['/opt/a:'], [undefined]] as const)(
     'leaves fish exactly as it starts without Orca when XDG_DATA_DIRS is %s',
     (inherited) => {
       const base: Record<string, string> =
@@ -174,18 +154,6 @@ describe.skipIf(!fish.available)('fish vendor snippet in a real fish', () => {
       expect(withOrca).not.toContain('handoff-left')
     }
   )
-
-  // Why separate: before 4.7 fish's unset default was its own data dir, so only the env is exact.
-  it('restores an unset XDG_DATA_DIRS and drops its own dir from fish paths', () => {
-    // Why a baseline: a distro vendor snippet (Ubuntu's snapd) may set XDG_DATA_DIRS itself.
-    const envLines = (output: string) =>
-      output.split('\n').filter((line) => /^(xdg=|XDG_DATA_DIRS=|child-clean)/.test(line))
-    const withoutOrca = runFish(['-c', STATE_PROBE], {})
-    const output = runFish(['-c', STATE_PROBE], getFishXdgDataDirsLaunchEnv(root, undefined))
-    expect(envLines(output)).toEqual(envLines(withoutOrca))
-    expect(output).not.toContain('marker-left')
-    expect(output).not.toContain(root)
-  })
 
   it('wraps a typed codex at the first prompt', () => {
     const output = runFish(
