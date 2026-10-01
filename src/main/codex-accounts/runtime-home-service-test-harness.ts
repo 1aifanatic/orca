@@ -1,3 +1,6 @@
+/* oxlint-disable anti-slop/no-module-mocking -- Vitest support module for the runtime-home specs, not shipped code, and it falls outside the *.test / *.spec / tests glob set.
+   setupRuntimeHomeTest() stubs the Windows registry so the PowerShell profile probe reads only the fake
+   home; inlining that stub into every spec that routes a launch would duplicate it many times. */
 import { expect, vi } from 'vitest'
 import {
   existsSync,
@@ -166,6 +169,16 @@ export function setupRuntimeHomeTest(): void {
   setRealHomeRoutableForTest(true)
   testState.userDataDir = mkdtempSync(join(tmpdir(), 'orca-runtime-home-'))
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-codex-home-'))
+  // Why: Windows routing reads PowerShell profiles and Git Bash rc files; keep
+  // them, and the registry-named Documents folder, inside the fake home.
+  vi.doMock('../windows-native-registry', () => ({
+    loadWindowsNativeRegistry: () => {
+      throw new Error('no registry in runtime-home tests')
+    }
+  }))
+  vi.stubEnv('USERPROFILE', testState.fakeHomeDir)
+  vi.stubEnv('SystemRoot', join(testState.fakeHomeDir, 'Windows'))
+  vi.stubEnv('ProgramFiles', join(testState.fakeHomeDir, 'Program Files'))
   testState.previousUserDataPath = process.env.ORCA_USER_DATA_PATH
   process.env.ORCA_USER_DATA_PATH = testState.userDataDir
   mkdirSync(getSystemCodexHomePath(), { recursive: true })
@@ -180,6 +193,7 @@ export function setupRuntimeHomeTest(): void {
 }
 
 export function teardownRuntimeHomeTest(): void {
+  vi.unstubAllEnvs()
   rmSync(testState.userDataDir, { recursive: true, force: true })
   rmSync(testState.fakeHomeDir, { recursive: true, force: true })
   if (testState.previousUserDataPath === undefined) {
