@@ -47,6 +47,10 @@ export class RelayPublicAssignmentAdmission {
     }
   ) {}
 
+  get queued(): number {
+    return this.pendingAssignments.length
+  }
+
   async acquire(
     relayHostId: string,
     notifyRejected?: RejectionSink
