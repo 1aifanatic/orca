@@ -95,6 +95,11 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
 }
 
+/** Whether the settlement was written, and what stopped it when it was not. */
+export type StructuredAgentSessionDeadGenerationSettlement =
+  | { ok: true }
+  | { ok: false; error: unknown }
+
 export async function settleStructuredAgentSessionDeadGeneration(input: {
   journal: DeadGenerationJournal
   sessionId: string
@@ -110,16 +115,15 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The child failed before it proved its start, so it took nothing: the delivery loop, the one
    *  writer of a failed start, rejects what it was handed with why. */
   unprovenStart?: true
-  onError?: (sessionId: string, error: unknown) => void
-}): Promise<boolean> {
+}): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   if (input.unprovenStart) {
-    return true
+    return { ok: true }
   }
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
-      return true
+      return { ok: true }
     }
     // A queued message is the delivery loop's to settle: it was never handed to this child. A
     // proven child's handed-over sends stay in doubt.
@@ -167,10 +171,10 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         mutations: chunk.mutations
       })
     }
-    return true
+    return { ok: true }
   } catch (error) {
-    input.onError?.(input.sessionId, error)
-    return false
+    // Returned rather than logged: each caller logs it under its own scope.
+    return { ok: false, error }
   }
 }
 

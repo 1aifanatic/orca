@@ -8,6 +8,7 @@ import type { AgentSessionFailureWordsContext } from '../../../shared/agent-sess
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -31,7 +32,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   ) => Promise<boolean>
   /** Who the chat's failure sentences name. */
   failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  onError: (sessionId: string, error: unknown) => void
+  logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
   flushStreamedEvents: (sessionId: string) => Promise<void>

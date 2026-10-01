@@ -8,6 +8,7 @@ import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-rec
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import {
   adapter,
   attach,
@@ -80,6 +81,16 @@ describe('a Stop pressed again', () => {
     expect(await statusRows()).toEqual([REQUESTED])
   })
 
+  it('naming no turn, rewrites the row of the turn running, as a Stop naming it does', async () => {
+    await attach()
+    await turn('running')
+    const unnamed = () => host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+    expect(await unnamed()).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(await unnamed()).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(await stopTurn()).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(await statusRows()).toEqual([REQUESTED])
+  })
+
   it('writes nothing when neither Stop found anything to stop', async () => {
     await attach()
     await turn('running')
@@ -101,6 +112,7 @@ describe('a Stop pressed again', () => {
     await store.renewLeases([])
     const relaunchedStore = await openTestAgentSessionRecordStore(root)
     const relaunched = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store: relaunchedStore,
       adapter: adapter(),
       journalDatabase: openTestJournalHostDatabase(root),

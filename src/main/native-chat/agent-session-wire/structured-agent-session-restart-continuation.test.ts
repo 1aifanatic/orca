@@ -10,6 +10,7 @@ import {
   startStructuredAgentSessionContinuation,
   type StructuredAgentSessionContinuationDeps
 } from './structured-agent-session-restart-continuation'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 /** The whole continuation: handed over, then its verdict. */
 async function continueStructuredAgentSessionAfterRestart(
@@ -48,7 +49,7 @@ function dependencies(
         : undefined
     ),
     note: vi.fn(async () => undefined),
-    onNoteFailed: vi.fn()
+    logger: createStructuredAgentSessionLogger()
   }
 }
 

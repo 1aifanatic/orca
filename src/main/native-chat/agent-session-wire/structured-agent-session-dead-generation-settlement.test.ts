@@ -100,7 +100,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'unverifiable' },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const snapshot = journal.snapshot()
     expect(snapshot.submissions).toEqual([
@@ -135,9 +135,9 @@ describe('dead structured-session generation settlement', () => {
       showUnexpectedExitOutcome: true
     }
 
-    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toBe(true)
+    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toEqual({ ok: true })
     const settledCursor = journal.cursor()
-    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toBe(true)
+    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toEqual({ ok: true })
 
     expect(journal.cursor()).toEqual(settledCursor)
     expect(
@@ -166,7 +166,7 @@ describe('dead structured-session generation settlement', () => {
           detail: providerDiagnostic('stack frame '.repeat(4_000), 'log')
         })
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const statuses = journal
       .snapshot()
@@ -254,7 +254,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'interrupted', completedAt: 1_000 },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
   })
 
   it('settles a live unknown submission even when no unfinished item remains', async () => {
@@ -281,7 +281,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'interrupted', completedAt: 1_000 },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     expect(journal.submissions()).toEqual([
       expect.objectContaining({
@@ -322,7 +322,7 @@ describe('dead structured-session generation settlement', () => {
         }),
         unprovenStart: true
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     // Handed to a child that took nothing, it is neither rejected nor left in doubt here.
     expect(journal.cursor()).toEqual(before)
@@ -462,7 +462,7 @@ describe('whether a dead generation interrupted anything', () => {
           1_000
         )
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const snapshot = journal.snapshot()
     expect(snapshot.items.some((item) => item.body.kind === 'status')).toBe(false)

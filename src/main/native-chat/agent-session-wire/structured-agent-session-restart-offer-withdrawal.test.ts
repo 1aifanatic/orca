@@ -30,6 +30,7 @@ import {
   HOST_TEST_SESSION as SESSION,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -466,6 +467,7 @@ describe('reading the chat against where the offer was taken', () => {
       }
     }
     const withdrawal = createStructuredAgentSessionRestartOfferWithdrawal({
+      logger: createStructuredAgentSessionLogger(),
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fact reads only the journal's cursor and submissions and the child fields given here.
       sessions: new Map([[SESSION, session as never]]),
       now: () => NOW,
@@ -543,6 +545,7 @@ describe('reading the chat against where the offer was taken', () => {
         }
       }
       const withdrawal = createStructuredAgentSessionRestartOfferWithdrawal({
+        logger: createStructuredAgentSessionLogger(),
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fact reads only the journal's cursor and submissions and the child fields given here.
         sessions: new Map([[SESSION, session as never]]),
         now: () => afterCrash,

@@ -20,6 +20,7 @@ import {
 } from './structured-agent-session-adapter'
 import { withObservedProviderExit } from './structured-agent-session-failure-text'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -75,6 +76,7 @@ beforeEach(async () => {
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire,

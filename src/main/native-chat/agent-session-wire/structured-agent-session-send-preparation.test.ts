@@ -74,6 +74,10 @@ beforeEach(async () => {
   }))
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: {
+      warn: (_message, fields) => hostErrors.push(fields.error),
+      error: (_message, fields) => hostErrors.push(fields.error)
+    },
     store,
     adapter: {
       acquire,
@@ -87,8 +91,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
-    now: () => NOW,
-    onEventSinkError: ({ error }) => hostErrors.push(error)
+    now: () => NOW
   })
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
 })
@@ -425,8 +428,6 @@ describe('a send with no live owner', () => {
     acquire.mockRejectedValue(
       new CodexAppServerRequestError('thread/resume', -32600, `thread/resume failed: ${said}`, said)
     )
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
     const id = await accept(sendParams('after the thread went away'))
 
     // The sentence names no cause and quotes nothing; Codex's words ride in the fact for Details.
@@ -442,11 +443,11 @@ describe('a send with no live owner', () => {
     })
     expect(await errorStatuses()).toEqual([])
     // Orca's own text is logged once where the start failed.
-    expect(warn).toHaveBeenCalledWith(
-      '[agent-session] provider start failed:',
-      expect.objectContaining({ message: `thread/resume failed: ${said}` })
-    )
-    warn.mockRestore()
+    expect(
+      hostErrors.filter(
+        (error) => error instanceof Error && error.message === `thread/resume failed: ${said}`
+      )
+    ).toHaveLength(1)
   })
 
   it('restarts again for a Retry under a new id, and replays a resend of the same id', async () => {
