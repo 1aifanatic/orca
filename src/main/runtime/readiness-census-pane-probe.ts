@@ -19,7 +19,7 @@ type CensusRuntimeInternals = {
 }
 
 function internalsOf(runtime: OrcaRuntimeService): CensusRuntimeInternals {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: protected members of OrcaRuntimeService, read-only, named exactly as declared in orca-runtime-runtime-id.ts and orca-runtime-build-pty-terminal-summary.ts.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: protected members of OrcaRuntimeService, named as declared in orca-runtime-runtime-id.ts and orca-runtime-build-pty-terminal-summary.ts; only asClocklessPane writes, and it restores what it clears.
   return runtime as unknown as CensusRuntimeInternals
 }
 
