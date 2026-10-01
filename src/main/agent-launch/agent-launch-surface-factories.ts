@@ -52,8 +52,9 @@ export type AgentLaunchSurfaceFactory = {
    * in `warning`, when it has them).
    *
    * Not taken is the answer for every failure — a refused send, an unreachable host, a throw, a start
-   * that failed or is still being retried. Delivery must not fail a launch whose chat already
-   * exists: the caller keeps the text under `not-delivered`, but it cannot un-create a workspace.
+   * that failed — since the caller keeps the text under `not-delivered` but cannot un-create a
+   * workspace. A start still being retried when the wait ends is the exception: it throws an unknown
+   * outcome, because the text will still be sent and "not delivered" would invite a second copy.
    */
   deliverStructuredPrompt?(args: {
     sessionId: string

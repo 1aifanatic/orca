@@ -26,6 +26,7 @@ import type { StructuredAgentSessionHost } from '../../../native-chat/agent-sess
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { StructuredLaunchPromptDelivery } from '../../../agent-launch/agent-launch-surface-factories'
 import { agentSessionSendSubmission } from '../../../../shared/agent-session-wire'
+import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
 
 /**
  * The committed transcript row's id, or `null` when nothing was committed.
@@ -86,17 +87,18 @@ export async function commitStructuredAgentSessionLaunchPrompt(args: {
  */
 export const STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS = 60_000
 
-/** Said of a prompt whose agent is still starting when the wait ends: it will still be sent. */
+/** Why a launch whose agent is still starting when the wait ends cannot say how it went. */
 export const STRUCTURED_LAUNCH_PROMPT_STILL_STARTING =
-  "The agent is still starting. Its prompt will be sent automatically once it starts, so don't send it again."
+  'The agent is still starting; its prompt will be sent automatically once it starts.'
 
 /**
  * The launch prompt sent as the chat's first message, followed to whether the agent took it.
  *
  * Temporary: an older phone reads any committed row as "Agent started" and marks its notes sent,
  * so the host answers only once the start has settled, within the budget. A start still being
- * retried at the budget answers not taken, keeping the notes, with words saying it will still be
- * sent. The follow-up is phones that watch the message's own settlement and finish then.
+ * retried at the budget refuses the launch as an unknown outcome: the phone keeps its notes and
+ * says it couldn't confirm the start, and the message is still sent when the agent starts. The
+ * follow-up is phones that watch the message's own settlement and finish then.
  */
 export async function deliverStructuredAgentSessionLaunchPrompt(
   args: Parameters<typeof commitStructuredAgentSessionLaunchPrompt>[0] & { budgetMs?: number }
@@ -125,6 +127,10 @@ export async function deliverStructuredAgentSessionLaunchPrompt(
     // Still waiting at the budget (a start being retried, or one still running).
     case 'pending':
     case undefined:
-      return { taken: false, warning: STRUCTURED_LAUNCH_PROMPT_STILL_STARTING }
+      throw agentSessionRefusalError(
+        'agent_session_operation_unknown',
+        { reason: 'outcomeUnknown' },
+        STRUCTURED_LAUNCH_PROMPT_STILL_STARTING
+      )
   }
 }

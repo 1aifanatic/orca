@@ -186,13 +186,19 @@ describe('a launch prompt followed to whether its agent took it', () => {
     })
   })
 
-  it('waits through a retried start, and at the budget says it is still starting, never later', async () => {
+  it('waits through a retried start, and at the budget refuses as an unknown outcome, never later', async () => {
     vi.useFakeTimers()
     const { host, becomes } = settlingHost()
-    let answer: unknown
-    void deliver(host).then((value) => {
-      answer = value
-    })
+    let refused: unknown
+    let answered = false
+    void deliver(host).then(
+      () => {
+        answered = true
+      },
+      (error: unknown) => {
+        refused = error
+      }
+    )
     await vi.advanceTimersByTimeAsync(0)
     becomes({
       startFailure: {
@@ -205,8 +211,23 @@ describe('a launch prompt followed to whether its agent took it', () => {
     })
 
     await vi.advanceTimersByTimeAsync(STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS - 1)
-    expect(answer).toBeUndefined()
+    expect(refused).toBeUndefined()
     await vi.advanceTimersByTimeAsync(1)
-    expect(answer).toEqual({ taken: false, warning: STRUCTURED_LAUNCH_PROMPT_STILL_STARTING })
+    expect(answered).toBe(false)
+    expect(refused).toMatchObject({
+      refusal: {
+        code: 'agent_session_operation_unknown',
+        message: STRUCTURED_LAUNCH_PROMPT_STILL_STARTING
+      }
+    })
+  })
+
+  it('waits through an unknown hand-over and names the row', async () => {
+    const { host, becomes } = settlingHost()
+    const delivered = deliver(host)
+    await vi.waitFor(() => expect(host.send).toHaveBeenCalled())
+    becomes({ handedOverAt: 2, dispatchState: 'unknown' })
+
+    await expect(delivered).resolves.toMatchObject({ taken: true, messageId: expect.any(String) })
   })
 })

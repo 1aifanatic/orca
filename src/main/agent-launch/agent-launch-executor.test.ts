@@ -290,6 +290,16 @@ describe('the prompt receipt', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'not-delivered' })
   })
 
+  it('fails the launch as unknown when its prompt is still waiting on a retried start', async () => {
+    const h = harness({})
+    const stillStarting = Object.assign(new Error('agent_session_operation_unknown'), {
+      code: 'agent_session_operation_unknown'
+    })
+    h.deliverStructuredPrompt.mockRejectedValueOnce(stillStarting)
+
+    await expect(h.run({ ...CREATE_INTENT, prompt: SUBMIT })).rejects.toBe(stillStarting)
+  })
+
   it("reports the host's words for a prompt the agent did not take as the launch's warning", async () => {
     const h = harness({ deliveredMessageId: null, notTakenWarning: 'The agent is still starting.' })
     const result = await h.run({ ...CREATE_INTENT, prompt: SUBMIT })
