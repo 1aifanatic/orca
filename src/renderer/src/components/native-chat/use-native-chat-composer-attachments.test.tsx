@@ -587,6 +587,25 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => other.root.unmount())
   })
 
+  // Once the pasting pane is gone nothing else holds the URL, so a later remove could not free it.
+  it("revokes a pane's blob previews when it unmounts, though its chips stay in the chat", async () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL')
+    const pasting = await renderProbe('session:chat-unmount', true)
+    let id: string | null = null
+    act(() => {
+      id = pasting.latest().beginPendingImageAttachment('blob:pasted')
+    })
+    act(() => pasting.latest().resolvePendingImageAttachment(id ?? '', '/tmp/pasted.png'))
+
+    act(() => pasting.root.unmount())
+
+    expect(revoke).toHaveBeenCalledWith('blob:pasted')
+    expect(readNativeChatDraftAttachments('session:chat-unmount')).toMatchObject([
+      { path: '/tmp/pasted.png' }
+    ])
+    revoke.mockRestore()
+  })
+
   it('revokes a blob: preview URL on removal but not a data: preview URL', async () => {
     const probe = await renderProbe('pty-1')
     const revoke = vi.spyOn(URL, 'revokeObjectURL')

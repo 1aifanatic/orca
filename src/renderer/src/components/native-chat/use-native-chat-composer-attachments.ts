@@ -88,13 +88,14 @@ export function useNativeChatComposerAttachments({
   }, [shared])
 
   useEffect(() => {
+    const previews = previewsRef.current
     const showShared = (): void => {
       const next = readNativeChatDraftAttachments(attachmentScopeKey)
       const ids = new Set(next.map((chip) => chip.id))
-      for (const [id, previewUrl] of previewsRef.current) {
+      for (const [id, previewUrl] of previews) {
         if (!ids.has(id)) {
           releasePreviewUrl(previewUrl)
-          previewsRef.current.delete(id)
+          previews.delete(id)
         }
       }
       setShared(next)
@@ -102,7 +103,12 @@ export function useNativeChatComposerAttachments({
     const unsubscribe = subscribeToNativeChatDraft(attachmentScopeKey, showShared)
     // A write between this view's render and its subscription would otherwise never show here.
     showShared()
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      // Previews die with the view that holds them; other views read the chip from its path.
+      previews.forEach(releasePreviewUrl)
+      previews.clear()
+    }
   }, [attachmentScopeKey])
 
   // Every view of the chat attaches into one list, so ids must not repeat across views.
