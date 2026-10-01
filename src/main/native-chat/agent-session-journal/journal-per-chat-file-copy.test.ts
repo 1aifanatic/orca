@@ -217,6 +217,10 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     for (let seq = 1_001; seq <= 1_010; seq += 1) {
       stage.run('session-staged', epoch, seq, 1, '{}')
     }
+    const stagedLeft = () =>
+      openTestJournalHostDatabase(root)
+        .db.prepare('SELECT count(*) AS n FROM journal_rows WHERE session_id = ? AND seq > 1000')
+        .get('session-staged')?.n
     /** The staged rows left after each batch transaction; quit lands after the `abortAfter`th. */
     const trackStaged = (abortAfter?: number) => {
       const database = openTestJournalHostDatabase(root)
@@ -225,11 +229,7 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
         const out = Reflect.apply(Object.getPrototypeOf(database).unsyncedTransaction, database, [
           run
         ])
-        left.push(
-          database.db
-            .prepare('SELECT count(*) AS n FROM journal_rows WHERE session_id = ? AND seq > 1000')
-            .get('session-staged')?.n
-        )
+        left.push(stagedLeft())
         if (batch.mock.calls.length === abortAfter) {
           database.abortImports()
         }
@@ -244,13 +244,24 @@ describe('stopping a copy for quit (T6, T6p, T6b)', () => {
     )
     expect(stopped).toEqual([6])
 
-    // The next launch deletes the rest a batch at a time, then copies.
+    // The next launch deletes the rest a batch at a time, with other work between, then copies.
     closeTestJournalHostDatabase(root)
     const next = trackStaged()
+    const turns: unknown[] = []
+    let ticking = true
+    const tick = (): void => {
+      turns.push(stagedLeft())
+      if (ticking) {
+        setImmediate(tick)
+      }
+    }
+    setImmediate(tick)
     expect((await importChat('session-staged', directory, { batchRows: 4 })).outcome).toBe(
       'imported'
     )
+    ticking = false
     expect(next.slice(0, 2)).toEqual([2, 0])
+    expect(turns).toContain(2)
     expect([
       ...iterateJournalEpochRows(openTestJournalHostDatabase(root).db, 'session-staged', epoch)
     ]).toEqual(rows)
