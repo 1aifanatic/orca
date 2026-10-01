@@ -211,6 +211,14 @@ const INTERRUPTED_RESULT = {
   uuid: 'interrupted-result'
 }
 
+// As the real control surface runs it: no answer ever comes, only the deadline Orca sets.
+const NEVER_ANSWERS = (options?: Record<string, unknown>) =>
+  runClaudeControl(
+    'interrupt',
+    () => new Promise(() => {}),
+    typeof options?.timeoutMs === 'number' ? options.timeoutMs : undefined
+  )
+
 async function interruptSent(connection: FakeConnection): Promise<void> {
   await eventually(() =>
     expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
@@ -314,13 +322,7 @@ it('ends the child when the interrupt fails, with no unconfirmed row', async () 
 })
 
 it('ends the child within the grace when Claude never answers the interrupt', async () => {
-  // As the real control surface runs it: no answer ever comes, only the deadline Orca sets.
-  claude.routes.interrupt = (options) =>
-    runClaudeControl(
-      'interrupt',
-      () => new Promise(() => {}),
-      typeof options?.timeoutMs === 'number' ? options.timeoutMs : undefined
-    )
+  claude.routes.interrupt = NEVER_ANSWERS
   const connection = claude.connections[0]!
   await openTurn(connection)
 
@@ -419,6 +421,40 @@ it('delivers a send issued with the pre-Stop fence during the Stop to the resume
   expect((await statusTexts()).filter((text) => text !== 'Cancellation requested.')).toEqual([])
 })
 
+it('sends a queue-if-active message issued while the Stop ends the child directly to the resumed child', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  const fence = store.getRecord(SESSION)!.lease.runtimeFence
+  let childrenWhenClosed: number | undefined
+  const close = connection.close
+  connection.close = async () => {
+    const proven = await close()
+    childrenWhenClosed = claude.connections.length
+    return proven
+  }
+
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  // Issued while the Stop's second step waits for the stopped turn, with the fence it moves.
+  const body = hostTestMessage('Queued during the Stop.')
+  const sent = host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body, delivery: 'queue-if-active' }, fence),
+    body,
+    delivery: 'queue-if-active',
+    userSend: true
+  })
+  frame(connection, INTERRUPTED_RESULT)
+
+  // Nothing runs after the rest, so it goes out as a direct submission, not a queued card.
+  expect(await sent).toMatchObject({ ok: true, value: { submission: expect.any(Object) } })
+  await eventually(() => {
+    const started = claude.connections.at(-1)!
+    expect(started).not.toBe(connection)
+    expect(wrote(started, 'Queued during the Stop.')).toBe(true)
+  })
+  expect(childrenWhenClosed).toBe(1)
+  expect(wrote(connection, 'Queued during the Stop.')).toBe(false)
+})
+
 it("runs nothing queued during the Stop's first step before the child's end", async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
@@ -463,26 +499,43 @@ it('still answers the Stop, with its row, when the child cannot be proven gone; 
   connection.close = close
 })
 
-it('ends the child for a Stop naming the turn that just ended when Claude interrupts the follow-up', async () => {
-  const connection = claude.connections[0]!
-  const ended = await openTurn(connection)
-  frame(connection, { type: 'result', subtype: 'success', is_error: false, uuid: 'result-1' })
-  await eventually(async () =>
-    expect(
-      activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
-    ).toBeNull()
-  )
-  // Handed over but not yet echoed: no turn of its own for a client to name.
-  await send('Follow-up.')
-  await eventually(() => expect(wrote(connection, 'Follow-up.')).toBe(true))
+it.each([
+  ['takes', undefined],
+  [
+    'fails',
+    () => {
+      throw new Error('control request lost')
+    }
+  ],
+  ['never answers', NEVER_ANSWERS]
+])(
+  'ends the child for a Stop naming the turn that just ended when Claude interrupts the follow-up and %s',
+  async (_answer, interrupt) => {
+    if (interrupt) {
+      claude.routes.interrupt = interrupt
+    }
+    const connection = claude.connections[0]!
+    const ended = await openTurn(connection)
+    frame(connection, { type: 'result', subtype: 'success', is_error: false, uuid: 'result-1' })
+    await eventually(async () =>
+      expect(
+        activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
+      ).toBeNull()
+    )
+    // Handed over but not yet echoed: no turn of its own for a client to name.
+    await send('Follow-up.')
+    await eventually(() => expect(wrote(connection, 'Follow-up.')).toBe(true))
 
-  // As the phone sends it: the turn it last saw working.
-  await expect(stop(ended)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
-  await laneDrained()
+    // As the phone sends it: the turn it last saw working.
+    await expect(stop(ended)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
 
-  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
-  expect(connection.closed).toBe(true)
-})
+    expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(true)
+    expect(connection.closed).toBe(true)
+    expect(await statusTexts()).toEqual(['Cancellation requested.'])
+  },
+  15_000
+)
 
 it('keeps a second Stop pressed while the first ends the child quiet', async () => {
   const connection = claude.connections[0]!

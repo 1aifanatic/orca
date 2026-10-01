@@ -319,8 +319,8 @@ export type StructuredAgentSessionAdapter = {
     resolveLiveTurnId?: () => string | null
   }): Promise<AgentSessionCancelOutcome>
   /** A Stop ends this provider's child after `cancelTurn`, whatever it answered, unless it named a
-   *  turn that is no longer live and the cancel did not take it; the next send resumes the
-   *  conversation. Absent or false keeps the child after a Stop. */
+   *  turn that is no longer live and the cancel answered that it did not take it; the next send
+   *  resumes the conversation. Absent or false keeps the child after a Stop. */
   stopEndsSession?(sessionId: string): boolean
   /** What a Stop that ends the session waits on before it ends the child: resolves at once when
    *  `turnId` is not the provider's open turn, else when it ends or the provider's grace, counted

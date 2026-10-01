@@ -420,6 +420,19 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await statusRows()).toEqual([ALREADY_FINISHED])
   })
 
+  it("ends the child when the provider's cancel of a Stop naming a turn no longer live fails", async () => {
+    stopEndsSession = true
+    await handedOver()
+    // The interrupt went out and its answer was lost: what it stopped is unknown.
+    cancelTurn.mockRejectedValueOnce(new Error('control request lost'))
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    await laneDrained()
+
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
+  })
+
   it('ends the child when the provider took a Stop naming a turn that is no longer live', async () => {
     stopEndsSession = true
     await handedOver()

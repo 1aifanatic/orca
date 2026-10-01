@@ -98,7 +98,8 @@ export async function performCancel(
   const endsSession =
     input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
   const stoppedAt = Date.now()
-  let taken = false
+  // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
+  let taken: boolean | undefined
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     const outcome: AgentSessionCancelOutcome = stoppedBefore
@@ -155,10 +156,13 @@ export async function performCancel(
       ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
     }
   }
-  // A Stop naming a turn that has since ended ends the session only if the provider took it: an
-  // interrupt can stop a follow-up whose turn has not opened, which no client can name.
-  if (endsSession && (input.turnId === undefined || input.turnId === liveTurnId || taken)) {
-    input.endSession?.({ turnId: taken ? liveTurnId : null, stoppedAt })
+  // A Stop naming a turn that has since ended keeps the session only when the provider declined
+  // it: an interrupt, answered or not, can stop a follow-up whose turn has not opened.
+  if (
+    endsSession &&
+    (input.turnId === undefined || input.turnId === liveTurnId || taken !== false)
+  ) {
+    input.endSession?.({ turnId: taken === true ? liveTurnId : null, stoppedAt })
     cancelled = true
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {
