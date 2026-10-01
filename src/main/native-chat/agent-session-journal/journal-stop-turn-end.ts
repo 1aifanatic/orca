@@ -80,31 +80,59 @@ function stopIsAPersons(reason: JournalStopEvent['reason']): boolean {
   }
 }
 
+/** Whether `stop` makes the end of turn `turnId` a person's cancellation: a person's Stop or close
+ *  that named that turn (`opened`: or named none, and the turn opened under it), and that no
+ *  refusal answered. */
+export function stopIsTurnCancellation(
+  stop: JournalLatestStop | null,
+  turnId: string,
+  opened?: { createdAt: number | null; latestPersonTurnSequence: number }
+): boolean {
+  if (stop === null || stop.refused || !stopIsAPersons(stop.event.reason)) {
+    return false
+  }
+  if (stop.event.turnId !== undefined || !opened) {
+    return stop.event.turnId === turnId
+  }
+  // Pressed before the turn showed: the turn its row opened after the Stop, unless a send a
+  // person made since was accepted, whose turn it would be.
+  return (
+    (opened.createdAt === null || opened.createdAt > stop.sequence) &&
+    opened.latestPersonTurnSequence < stop.sequence
+  )
+}
+
 /**
  * The body to write for item `itemId`: unchanged unless it ends, with no verdict of its own and no
  * earlier than the latest Stop event, a person's, which named it while it was still open (running,
  * or unproven) and which no refusal answered. A provider's own verdict always stands.
  */
 export function turnEndAfterStop(
-  state: Pick<JournalReducerState, 'items' | 'queuePauseMarks' | 'latestStopRefusal'>,
+  state: Pick<
+    JournalReducerState,
+    'items' | 'queuePauseMarks' | 'latestStopRefusal' | 'latestPersonTurnSequence'
+  >,
   itemId: string,
   body: AgentJournalItemBody
 ): AgentJournalItemBody {
   if (body.kind !== 'turn' || body.state !== 'interrupted' || body.outcome !== undefined) {
     return body
   }
-  const previous = readAgentJournalTurn(state.items.get(itemId)?.body)
+  const existing = state.items.get(itemId)
+  const previous = readAgentJournalTurn(existing?.body)
   // An end already written stands: the Stop came after it.
   if (previous && previous.state !== 'running' && previous.state !== 'unverifiable') {
     return body
   }
   const stop = journalLatestStop(state)
-  return stop &&
-    !stop.refused &&
-    stop.event.turnId === body.turnId &&
-    stopIsAPersons(stop.event.reason) &&
-    // An exit the provider saw before the Stop was news, whenever its end is written.
-    (body.completedAt === undefined || body.completedAt >= stop.event.at)
-    ? { ...body, outcome: 'cancellation' }
-    : body
+  const opened = {
+    createdAt: existing?.sequence ?? null,
+    latestPersonTurnSequence: state.latestPersonTurnSequence
+  }
+  if (!stop || !stopIsTurnCancellation(stop, body.turnId, opened)) {
+    return body
+  }
+  // An exit the provider saw before the Stop was news, whenever its end is written.
+  const endedAfterStop = body.completedAt === undefined || body.completedAt >= stop.event.at
+  return endedAfterStop ? { ...body, outcome: 'cancellation' } : body
 }

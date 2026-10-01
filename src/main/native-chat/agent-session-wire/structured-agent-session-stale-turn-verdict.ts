@@ -17,17 +17,12 @@ import {
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
-import type {
-  StructuredAgentSessionChildEndCause,
-  StructuredAgentSessionEndedEvent
-} from './structured-agent-session-adapter'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 export type StructuredAgentSessionTurnVerdict =
-  /** `cancellation` only for a stop the user aimed at this chat: every other cut is news. */
-  | { state: 'interrupted'; completedAt: number; outcome?: 'cancellation' }
-  | { state: 'unverifiable' }
+  /** Whose end it was is the Stop event's to say, where the row is built (`turnEndAfterStop`). */
+  { state: 'interrupted'; completedAt: number } | { state: 'unverifiable' }
 
 export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
   state: 'unverifiable'
@@ -70,45 +65,6 @@ export function stopFoundTurnLiveAt(
   const stop = journal.stopMarks.latest()
   const turnId = readAgentJournalTurn(item.body)?.turnId
   return stop && turnId !== undefined && stop.event.turnId === turnId ? stop.event.at : undefined
-}
-
-/**
- * The one mapping from why a provider child ended to what the turn it cut reads as. Each adapter
- * settles its own open turn through it on `ended`, and the host's fallback settles through it any
- * turn no adapter did. Only a stop the user aimed at this chat is their cancellation.
- */
-export function turnVerdictForChildEnd(
-  cause: StructuredAgentSessionChildEndCause,
-  completedAt: number
-): Extract<StructuredAgentSessionTurnVerdict, { state: 'interrupted' }> {
-  return stopIsTheUsers(cause)
-    ? { state: 'interrupted', completedAt, outcome: 'cancellation' }
-    : { state: 'interrupted', completedAt }
-}
-
-/** Whether the user asked for this end. Only then is a cut turn their cancellation. */
-export function stopIsTheUsers(cause: StructuredAgentSessionChildEndCause): boolean {
-  switch (cause) {
-    case 'user-stop':
-    case 'user-close':
-      return true
-    case 'host-stop':
-    case 'evict':
-    case 'exit':
-    case 'attach-failed':
-      return false
-  }
-}
-
-/** Why the child an `ended` event reports ended: who asked for a close, else an exit it had. A
- *  requested close with no cause named is the host's own. */
-export function childEndCauseOfEndedEvent(
-  event: { type: 'ended' } & Partial<Pick<StructuredAgentSessionEndedEvent, 'cause' | 'stopCause'>>
-): StructuredAgentSessionChildEndCause {
-  if (event.cause === 'unexpected-exit') {
-    return 'exit'
-  }
-  return event.stopCause ?? 'host-stop'
 }
 
 /** Revises every still-running lifecycle item in place, keeping its identity and start. */
@@ -187,7 +143,6 @@ function settledLifecycle(
   return {
     ...kept,
     state: verdict.state,
-    completedAt: Math.max(verdict.completedAt, began),
-    ...(verdict.outcome ? { outcome: verdict.outcome } : {})
+    completedAt: Math.max(verdict.completedAt, began)
   }
 }

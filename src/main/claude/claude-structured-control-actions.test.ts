@@ -249,8 +249,6 @@ describe('answerClaudePrompt', () => {
         resolve: resolvePrompt
       },
       currentTurnId: null,
-      recordTurnStop: () => true,
-      withdrawTurnStop: () => {},
       commandTurnId: null,
       beginCommand: vi.fn(),
       forgetCommand: vi.fn(),

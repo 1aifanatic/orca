@@ -132,7 +132,7 @@ function emitTurnLifecycle(state: 'running' | 'completed', ordinal: number): voi
 /** The sweep stops the child first and closes the conversation last. */
 function waitForEviction(): Promise<void> {
   return vi.waitFor(() => {
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(host.hasSession(SESSION)).toBe(false)
   })
 }
@@ -247,7 +247,7 @@ describe('a chat that closes', () => {
 
     await host.close(SESSION, 'evict')
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(host.hasSession(SESSION)).toBe(false)
     expect(hostErrors).toEqual([])
     // The record and its journal stay; only the process and the claim on it go.

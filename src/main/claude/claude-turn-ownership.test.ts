@@ -95,8 +95,6 @@ function sessionHoldingTurn(turnId: string | null): ReturnType<typeof sessionFor
     openTurnInLiveProviderCycle: false,
     journalPrompts: { cancel: vi.fn(), resolve: vi.fn() },
     currentTurnId: turnId,
-    recordTurnStop: () => true,
-    withdrawTurnStop: () => {},
     commandTurnId: null,
     beginCommand: vi.fn(),
     forgetCommand: vi.fn(),

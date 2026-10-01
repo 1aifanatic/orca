@@ -280,7 +280,8 @@ export class StructuredAgentSessionHost {
       ensureAgent: (sessionId) =>
         ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
-      stopAgent: (sessionId) => this.lifetime.stopAgent(sessionId, 'user-stop'),
+      // A person's Stop: its own step wrote the Stop's event first.
+      stopAgent: (sessionId) => this.lifetime.stopAgent(sessionId, { recorded: true }),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
       now: () => this.now()
     }
