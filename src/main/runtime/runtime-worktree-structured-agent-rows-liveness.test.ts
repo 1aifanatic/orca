@@ -169,8 +169,10 @@ describe('worktree ps and a closed structured chat', () => {
 
   it('keeps an aged host-held working state authoritative', async () => {
     const { store, published } = await awaitingApproval()
+    // The same session later working with nobody asked: its request no longer pending.
+    const { awaitsUserSince: _asked, ...approval } = published.at(-1)!
     const aged = {
-      ...published.at(-1)!,
+      ...approval,
       hostExecutionOwned: true as const,
       updatedAt: Date.now() - 30 * 60 * 1000 - 1,
       status: 'working' as const
