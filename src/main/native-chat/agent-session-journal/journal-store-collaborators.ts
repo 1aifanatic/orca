@@ -30,6 +30,7 @@ import {
   writeJournalSessionStatus
 } from './journal-session-state'
 import { JournalStatusProjection } from './journal-status-projection'
+import { beginJournalFoldUndo, type JournalFoldUndo } from './journal-fold-undo'
 
 export type JournalStoreHost = {
   /** Fires the journal's commit listener for a durable change that appended no
@@ -99,6 +100,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
           : {})
       })
     )
+  // The open append's undo: what its row changed in the fold, put back if its transaction fails.
+  let undo: JournalFoldUndo | null = null
   // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
   const corruptAfter = (row: JournalRow) =>
     host.loadCorrupt() && row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID
@@ -164,13 +167,24 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       readOnly: host.readOnly,
       highestFence: () => host.state().highestFence,
       nextSequence: () => host.state().lastSequence + 1,
-      apply: (row) => applyJournalRow(host.state(), row),
+      apply: (row) => {
+        undo = beginJournalFoldUndo(host.state())
+        applyJournalRow(host.state(), row)
+      },
       writeStatus: (db, row) => writeStatus(db, host.state(), corruptAfter(row)),
       committed: (row) => {
+        undo?.commit()
+        undo = null
         host.setLoadCorrupt(corruptAfter(row))
         host.notifyCommitted()
       },
-      recoverFold: () => recoverJournalFold(host),
+      recoverFold: () => {
+        // What the projection read of the failed row must not answer for the next one at its seq.
+        statusProjection.invalidate()
+        const failed = undo
+        undo = null
+        recoverJournalFold(host, failed)
+      },
       // Every rejection is a dispatch row through this one writer; the draft
       // returned-transition rides it so no path can bypass the hook.
       inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
@@ -212,12 +226,23 @@ function backfillSessionStatus(
 }
 
 /**
- * An append whose transaction failed after its row was folded: the fold is ahead of the disk, and
- * an in-place apply cannot be undone, so the chat is folded again from what committed. The host
- * database rolls a stranded transaction back before it hands out the connection, so the re-read
- * never sees the row that failed. A re-read that fails leaves the fold marked stale.
+ * An append whose transaction failed after its row was folded: the undo puts back what the row
+ * changed. If that fails, the chat is folded again from what committed (the host database rolls a
+ * stranded transaction back before it hands out the connection, so the re-read never sees the
+ * failed row), and if that fails too the fold is marked stale and re-read before its next use.
  */
-function recoverJournalFold(host: JournalStoreHost): void {
+function recoverJournalFold(host: JournalStoreHost, undo: JournalFoldUndo | null): void {
+  try {
+    if (undo) {
+      undo.rollback()
+      return
+    }
+  } catch (error) {
+    console.warn('[agent-session-journal] undoing a failed append failed', {
+      sessionId: host.identity.sessionId,
+      error
+    })
+  }
   try {
     const reloaded = replayJournal(host.database().db, host.identity.sessionId)
     if (reloaded) {

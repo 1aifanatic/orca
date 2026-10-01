@@ -16,6 +16,7 @@ import {
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from './journal-host-database-test-support'
+import * as JournalFoldUndo from './journal-fold-undo'
 import * as JournalOpen from './journal-open'
 import { renderJournalState } from './journal-reducer'
 import { deleteJournalRepairedSuffix } from './journal-repair-marker'
@@ -37,6 +38,10 @@ import type { AgentSessionJournal } from './journal-store'
 vi.mock('./journal-open', async (importOriginal) => {
   const actual = await importOriginal<typeof JournalOpen>()
   return { ...actual, replayJournal: vi.fn(actual.replayJournal) }
+})
+vi.mock('./journal-fold-undo', async (importOriginal) => {
+  const actual = await importOriginal<typeof JournalFoldUndo>()
+  return { ...actual, beginJournalFoldUndo: vi.fn(actual.beginJournalFoldUndo) }
 })
 
 const journals = createTrackedJournalOpener()
@@ -87,6 +92,14 @@ function note(journal: AgentSessionJournal, id: string) {
   return journal.appendItem(
     { provider: 'orca', clientMessageId: id },
     { kind: 'status', text: id },
+    { fence: 3, turnScope: { kind: 'thread' } }
+  )
+}
+
+function reply(journal: AgentSessionJournal, text: string) {
+  return journal.appendItem(
+    { provider: 'orca', clientMessageId: 'reply' },
+    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] },
     { fence: 3, turnScope: { kind: 'thread' } }
   )
 }
@@ -214,21 +227,26 @@ describe('a repair writes the status of what it leaves (T10)', () => {
 })
 
 describe('a failed write leaves the fold equal to the disk (T1)', () => {
-  it('folds nothing, stores nothing, and the next append takes the sequence, after a failed COMMIT', async () => {
+  it('puts back what a failed COMMIT folded, stores nothing, and the next append takes the sequence', async () => {
     const journal = await write('settled')
     const tip = journal.cursor()
     const before = stored('settled')
     failNextCommit()
+    vi.mocked(JournalOpen.replayJournal).mockClear()
 
-    await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')
+    await expect(reply(journal, 'lost')).rejects.toThrow('COMMIT failed')
 
+    // Undone in memory: the chat is not read from disk again.
+    expect(JournalOpen.replayJournal).not.toHaveBeenCalled()
     expect(journal.cursor()).toEqual(tip)
     expect(journal.snapshot()).toEqual(renderJournalState(loadTestJournal(root, 'settled')!.state))
     expect(stored('settled')).toEqual(before)
-    await expect(note(journal, 'kept')).resolves.toMatchObject({
+    await expect(reply(journal, 'kept')).resolves.toMatchObject({
       cursor: { sequence: tip.sequence + 1 }
     })
+    // Not the projection of the reply that rolled back, which held the same sequence.
     expect(stored('settled')).toEqual(freshDerivation('settled'))
+    expect(stored('settled')?.summary.lastAssistantMessage).toBe('kept')
   })
 
   it('fails the append when its status write fails: the row and its status land together or not at all', async () => {
@@ -277,10 +295,34 @@ describe('a failed write leaves the fold equal to the disk (T1)', () => {
     expect(journal.submission('send-1')).toMatchObject({ dispatchState: 'pending' })
   })
 
-  it('re-reads a fold whose re-read failed before its next use, and keeps the chat open', async () => {
+  it('re-reads the chat when the undo fails, and keeps the chat open', async () => {
     const journal = await write('settled')
     const tip = journal.cursor()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(JournalFoldUndo.beginJournalFoldUndo).mockImplementationOnce(() => ({
+      commit: () => undefined,
+      rollback: () => {
+        throw new Error('undo failed')
+      }
+    }))
+    failNextCommit()
+
+    await expect(note(journal, 'lost')).rejects.toThrow('COMMIT failed')
+
+    expect(journal.cursor()).toEqual(tip)
+    expect(journal.snapshot()).toEqual(renderJournalState(loadTestJournal(root, 'settled')!.state))
+  })
+
+  it('re-reads before next use a fold whose undo and re-read both failed, and keeps the chat open', async () => {
+    const journal = await write('settled')
+    const tip = journal.cursor()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(JournalFoldUndo.beginJournalFoldUndo).mockImplementationOnce(() => ({
+      commit: () => undefined,
+      rollback: () => {
+        throw new Error('undo failed')
+      }
+    }))
     vi.mocked(JournalOpen.replayJournal).mockImplementationOnce(() => {
       throw new Error('disk I/O error')
     })
