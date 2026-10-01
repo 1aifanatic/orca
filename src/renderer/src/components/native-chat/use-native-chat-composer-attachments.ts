@@ -8,10 +8,13 @@ import {
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import {
+  addNativeChatDraftAttachments,
+  clearNativeChatDraftAttachments,
   readNativeChatDraftAttachments,
+  removeNativeChatDraftAttachment,
+  settleNativeChatDraftAttachment,
   subscribeToNativeChatDraft,
-  writeNativeChatDraftAttachments,
-  type NativeChatDraftAttachment
+  type NativeChatDraftChip
 } from './native-chat-draft-cache'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { findMissingNativeChatAttachments } from './native-chat-attachment-existence'
@@ -55,28 +58,17 @@ export function useNativeChatComposerAttachments({
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
   dropPendingImageAttachment: (id: string) => void
 } {
-  const [shownAtMount] = useState(() => readNativeChatDraftAttachments(attachmentScopeKey))
-  const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
-    () => [...shownAtMount]
-  )
-  // This view's chips for synchronous updates; React state only renders them.
-  const attachmentsRef = useRef(imageAttachments)
-  const writerRef = useRef<object>({})
-  // The shared list last shown here.
-  const syncedRef = useRef<readonly NativeChatDraftAttachment[]>(shownAtMount)
+  // Clipboard thumbnails of chips pasted in this view; the chips themselves are the chat's.
+  const previewsRef = useRef(new Map<string, string>())
+  const [shared, setShared] = useState(() => readNativeChatDraftAttachments(attachmentScopeKey))
   // Chips this view has checked or attached itself; anything else may be restored from disk.
   const checkedIdsRef = useRef(new Set<string>())
   const [missingIds, setMissingIds] = useState<ReadonlySet<string>>(() => new Set())
 
-  const showAttachments = useCallback((next: NativeChatComposerImageAttachment[]) => {
-    attachmentsRef.current = next
-    setImageAttachments(next)
-  }, [])
-
   // A saved draft can outlive its image (age sweep, OS temp cleanup), so each restored chip is
   // checked once; a missing one is shown as such and blocks Send, rather than sending a dead path.
   useEffect(() => {
-    const unchecked = imageAttachments.filter(
+    const unchecked = shared.filter(
       (attachment) => !attachment.pending && !checkedIdsRef.current.has(attachment.id)
     )
     if (unchecked.length === 0) {
@@ -88,52 +80,25 @@ export function useNativeChatComposerAttachments({
         setMissingIds((previous) => new Set([...previous, ...missing]))
       }
     })
-  }, [imageAttachments])
+  }, [shared])
 
-  // Settled chips are the chat's, shared with every view; pending chips and previews stay here.
   useEffect(() => {
-    const showShared = (writer?: object): void => {
-      const shared = readNativeChatDraftAttachments(attachmentScopeKey)
-      if (writer === writerRef.current || shared === syncedRef.current) {
-        return
+    const showShared = (): void => {
+      const next = readNativeChatDraftAttachments(attachmentScopeKey)
+      const ids = new Set(next.map((chip) => chip.id))
+      for (const [id, previewUrl] of previewsRef.current) {
+        if (!ids.has(id)) {
+          releasePreviewUrl(previewUrl)
+          previewsRef.current.delete(id)
+        }
       }
-      syncedRef.current = shared
-      const local = attachmentsRef.current
-      const sharedById = new Map(shared.map((attachment) => [attachment.id, attachment]))
-      // Chips keep the order they were added in, pending ones included; new ones go last.
-      const kept = local.flatMap((attachment) => {
-        const settled = sharedById.get(attachment.id)
-        if (attachment.pending) {
-          return [attachment]
-        }
-        if (!settled) {
-          releaseAttachmentPreview(attachment)
-          return []
-        }
-        return [attachment.previewUrl ? { ...settled, previewUrl: attachment.previewUrl } : settled]
-      })
-      const localIds = new Set(local.map((attachment) => attachment.id))
-      showAttachments([...kept, ...shared.filter((attachment) => !localIds.has(attachment.id))])
+      setShared(next)
     }
     const unsubscribe = subscribeToNativeChatDraft(attachmentScopeKey, showShared)
     // A write between this view's render and its subscription would otherwise never show here.
     showShared()
     return unsubscribe
-  }, [attachmentScopeKey, showAttachments])
-
-  const updateImageAttachments = useCallback(
-    (
-      updater: (
-        previous: NativeChatComposerImageAttachment[]
-      ) => NativeChatComposerImageAttachment[]
-    ) => {
-      const next = updater(attachmentsRef.current)
-      showAttachments(next)
-      writeNativeChatAttachmentCache(attachmentScopeKey, next, writerRef.current)
-      syncedRef.current = readNativeChatDraftAttachments(attachmentScopeKey)
-    },
-    [attachmentScopeKey, showAttachments]
-  )
+  }, [attachmentScopeKey])
 
   // Every view of the chat attaches into one list, so ids must not repeat across views.
   const nextAttachmentId = useCallback((): string => createBrowserUuid(), [])
@@ -165,15 +130,13 @@ export function useNativeChatComposerAttachments({
       if (paths.length === 0) {
         return
       }
-      const attached = paths.map(({ path, connectionId }) => ({
-        id: nextAttachmentId(),
-        path,
-        connectionId: connectionId ?? undefined
-      }))
+      const attached = paths.map(({ path, connectionId }) =>
+        settledChip(nextAttachmentId(), path, connectionId)
+      )
       attached.forEach(({ id }) => checkedIdsRef.current.add(id))
-      updateImageAttachments((prev) => [...prev, ...attached])
+      addNativeChatDraftAttachments(attachmentScopeKey, attached)
     },
-    [nextAttachmentId, updateImageAttachments]
+    [attachmentScopeKey, nextAttachmentId]
   )
 
   const { attachResolvedPaths, disabledRef, flushPendingAttachments } =
@@ -202,105 +165,66 @@ export function useNativeChatComposerAttachments({
         return null
       }
       const id = nextAttachmentId()
-      updateImageAttachments((prev) => [...prev, { id, path: '', previewUrl, pending: true }])
+      if (previewUrl) {
+        previewsRef.current.set(id, previewUrl)
+      }
+      addNativeChatDraftAttachments(attachmentScopeKey, [{ id, path: '', pending: true }])
       return id
     },
     [
+      attachmentScopeKey,
       attachmentTargetBlocked,
       disabledRef,
       nextAttachmentId,
-      noteAttachmentTargetBlocked,
-      updateImageAttachments
+      noteAttachmentTargetBlocked
     ]
   )
 
   const resolvePendingImageAttachment = useCallback(
     (id: string, path: string, connectionId?: string | null) => {
       checkedIdsRef.current.add(id)
-      updateImageAttachments((prev) =>
-        prev.map((attachment) =>
-          attachment.id === id
-            ? {
-                ...attachment,
-                path,
-                connectionId: connectionId ?? undefined,
-                pending: undefined
-              }
-            : attachment
-        )
-      )
+      settleNativeChatDraftAttachment(attachmentScopeKey, settledChip(id, path, connectionId))
     },
-    [updateImageAttachments]
+    [attachmentScopeKey]
   )
 
-  const dropPendingImageAttachment = useCallback(
-    (id: string) => {
-      updateImageAttachments((prev) => removeAttachmentById(prev, id))
-    },
-    [updateImageAttachments]
+  const removeImageAttachment = useCallback(
+    (id: string) => removeNativeChatDraftAttachment(attachmentScopeKey, id),
+    [attachmentScopeKey]
   )
 
-  const shownAttachments = useMemo(
+  const imageAttachments = useMemo(
     () =>
-      missingIds.size === 0
-        ? imageAttachments
-        : imageAttachments.map((attachment) =>
-            missingIds.has(attachment.id) ? { ...attachment, missing: true } : attachment
-          ),
-    [imageAttachments, missingIds]
+      shared.map((chip): NativeChatComposerImageAttachment => {
+        const previewUrl = previewsRef.current.get(chip.id)
+        return {
+          ...chip,
+          ...(previewUrl ? { previewUrl } : {}),
+          ...(missingIds.has(chip.id) ? { missing: true } : {})
+        }
+      }),
+    [missingIds, shared]
   )
 
   return {
-    imageAttachments: shownAttachments,
+    imageAttachments,
     attachResolvedPaths,
-    clearImageAttachments: () =>
-      updateImageAttachments((prev) => {
-        prev.forEach(releaseAttachmentPreview)
-        return []
-      }),
+    clearImageAttachments: () => clearNativeChatDraftAttachments(attachmentScopeKey),
     flushPendingAttachments,
-    removeImageAttachment: (id) => updateImageAttachments((prev) => removeAttachmentById(prev, id)),
+    removeImageAttachment,
     beginPendingImageAttachment,
     resolvePendingImageAttachment,
-    dropPendingImageAttachment
+    dropPendingImageAttachment: removeImageAttachment
   }
+}
+
+function settledChip(id: string, path: string, connectionId?: string | null): NativeChatDraftChip {
+  return connectionId ? { id, path, connectionId } : { id, path }
 }
 
 /** Object URLs minted from a clipboard blob leak until revoked; data URLs don't. */
-function releaseAttachmentPreview(attachment: NativeChatComposerImageAttachment): void {
-  if (attachment.previewUrl?.startsWith('blob:')) {
-    URL.revokeObjectURL(attachment.previewUrl)
+function releasePreviewUrl(previewUrl: string): void {
+  if (previewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(previewUrl)
   }
-}
-
-function removeAttachmentById(
-  attachments: readonly NativeChatComposerImageAttachment[],
-  id: string
-): NativeChatComposerImageAttachment[] {
-  const removed = attachments.find((attachment) => attachment.id === id)
-  if (removed) {
-    releaseAttachmentPreview(removed)
-  }
-  return attachments.filter((attachment) => attachment.id !== id)
-}
-
-function writeNativeChatAttachmentCache(
-  scopeKey: string,
-  cacheable: readonly NativeChatComposerImageAttachment[],
-  writer: object
-): void {
-  // A pending chip's save resolves into THIS hook instance; sharing one with another view or a
-  // remount would strand it pending forever, so only settled chips are written.
-  // Preview URLs can retain the full clipboard Blob (or a large data URL); settled
-  // attachments reload from their path, which Orca's attachment roots keep readable.
-  writeNativeChatDraftAttachments(
-    scopeKey,
-    cacheable
-      .filter((attachment) => !attachment.pending)
-      .map(
-        ({ previewUrl: _previewUrl, pending: _pending, missing: _missing, ...attachment }) =>
-          attachment
-      ),
-    writer
-  )
 }

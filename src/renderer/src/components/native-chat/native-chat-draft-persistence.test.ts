@@ -64,7 +64,7 @@ function fullStorage(): Storage {
 describe('composer draft persistence', () => {
   it('restores typed text and attachments after a relaunch', async () => {
     cache.writeNativeChatDraftCache(SCOPE, 'half typed', 'after-pause')
-    cache.writeNativeChatDraftAttachments(SCOPE, [
+    cache.addNativeChatDraftAttachments(SCOPE, [
       { id: 'a1', path: '/tmp/shot.png', connectionId: 'ssh-1' }
     ])
     vi.advanceTimersByTime(300)

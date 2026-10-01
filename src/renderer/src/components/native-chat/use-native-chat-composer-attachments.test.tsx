@@ -4,9 +4,9 @@ import { act, createElement, useEffect, useLayoutEffect, useRef, useState } from
 import { createRoot, type Root } from 'react-dom/client'
 import { renderHook } from '@testing-library/react'
 import {
+  addNativeChatDraftAttachments,
   clearNativeChatDraftCacheForTests,
-  readNativeChatDraftAttachments,
-  writeNativeChatDraftAttachments
+  readNativeChatDraftAttachments
 } from './native-chat-draft-cache'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
@@ -307,7 +307,7 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
-  it('shares settled chips with every view of the chat, but keeps pending chips local', async () => {
+  it('shows every chip in every view of the chat, a pending one included', async () => {
     const first = await renderProbe('session:chat-1', true)
     const second = await renderProbe('session:chat-1', true)
 
@@ -317,7 +317,10 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => {
       first.latest().beginPendingImageAttachment('blob:preview-1')
     })
-    expect(second.latest().imageAttachments).toMatchObject([{ path: '/tmp/shared.png' }])
+    expect(second.latest().imageAttachments).toMatchObject([
+      { path: '/tmp/shared.png' },
+      { pending: true }
+    ])
 
     const id = second.latest().imageAttachments[0]?.id ?? ''
     act(() => second.latest().removeImageAttachment(id))
@@ -343,7 +346,7 @@ describe('useNativeChatComposerAttachments', () => {
       })
       useLayoutEffect(
         () =>
-          writeNativeChatDraftAttachments('session:chat-gap', [{ id: 'late', path: '/late.png' }]),
+          addNativeChatDraftAttachments('session:chat-gap', [{ id: 'late', path: '/late.png' }]),
         []
       )
       return view
@@ -371,7 +374,7 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
-  it('keeps a still-saving paste in its place when another view adds a chip', async () => {
+  it('keeps one chip order in every pane and on disk while a paste saves and chips come and go', async () => {
     const first = await renderProbe('session:chat-race', true)
     const second = await renderProbe('session:chat-race', true)
     let pastedId: string | null = null
@@ -385,12 +388,21 @@ describe('useNativeChatComposerAttachments', () => {
       second.latest().attachResolvedPaths(['/tmp/second.png'])
     })
     act(() => first.latest().resolvePendingImageAttachment(pastedId ?? '', '/tmp/pasted.png'))
+    const order = () => ({
+      first: first.latest().imageAttachments.map(({ path }) => path),
+      second: second.latest().imageAttachments.map(({ path }) => path),
+      saved: JSON.parse(
+        localStorage.getItem(
+          `orca:nativeChatComposerDraft:v1:${encodeURIComponent('session:chat-race')}`
+        ) ?? 'null'
+      ).attachments.map(({ path }: { path: string }) => path)
+    })
 
-    expect(readNativeChatDraftAttachments('session:chat-race').map(({ path }) => path)).toEqual([
-      '/tmp/pasted.png',
-      '/tmp/first.png',
-      '/tmp/second.png'
-    ])
+    const all = ['/tmp/pasted.png', '/tmp/first.png', '/tmp/second.png']
+    expect(order()).toEqual({ first: all, second: all, saved: all })
+    act(() => second.latest().removeImageAttachment(first.latest().imageAttachments[1]!.id))
+    const rest = ['/tmp/pasted.png', '/tmp/second.png']
+    expect(order()).toEqual({ first: rest, second: rest, saved: rest })
     act(() => first.root.unmount())
     act(() => second.root.unmount())
   })
@@ -550,8 +562,9 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
-  it('keeps a pending chip and its preview in the pane, out of the shared draft', async () => {
+  it('keeps a pending chip off disk and its preview in the pane that pasted it', async () => {
     const probe = await renderProbe('pty-1')
+    const other = await renderProbe('pty-1')
     let pendingId: string | null = null
     act(() => {
       pendingId = probe.latest().beginPendingImageAttachment('blob:preview-1')
@@ -559,15 +572,19 @@ describe('useNativeChatComposerAttachments', () => {
     await act(async () => {
       probe.latest().attachResolvedPaths(['/tmp/settled.png'])
     })
+    act(() => window.dispatchEvent(new Event('pagehide')))
 
-    const cached = readNativeChatDraftAttachments('pty-1')
-    expect(cached.some((attachment) => attachment.id === pendingId)).toBe(false)
-    expect(cached).toMatchObject([{ path: '/tmp/settled.png' }])
-    expect(cached[0]).not.toHaveProperty('previewUrl')
+    const saved = JSON.parse(
+      localStorage.getItem(`orca:nativeChatComposerDraft:v1:${encodeURIComponent('pty-1')}`) ??
+        'null'
+    )
+    expect(saved?.attachments).toEqual([{ id: expect.any(String), path: '/tmp/settled.png' }])
     expect(probe.latest().imageAttachments).toContainEqual(
       expect.objectContaining({ id: pendingId, previewUrl: 'blob:preview-1', pending: true })
     )
+    expect(other.latest().imageAttachments[0]).not.toHaveProperty('previewUrl')
     act(() => probe.root.unmount())
+    act(() => other.root.unmount())
   })
 
   it('revokes a blob: preview URL on removal but not a data: preview URL', async () => {
@@ -611,7 +628,7 @@ describe('a restored draft whose image is gone', () => {
         )
     )
     Object.defineProperty(window, 'api', { configurable: true, value: { fs: { pathsExist } } })
-    writeNativeChatDraftAttachments('session:restored', [
+    addNativeChatDraftAttachments('session:restored', [
       { id: 'gone', path: '/gone.png' },
       { id: 'here', path: '/here.png' },
       { id: 'remote', path: '/remote.png', connectionId: 'ssh-1' }

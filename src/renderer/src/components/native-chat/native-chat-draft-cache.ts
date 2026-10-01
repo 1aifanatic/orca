@@ -31,9 +31,14 @@ export function nativeChatDraftKey(chat: { sessionId?: string; paneKey: string }
   return chat.sessionId ? `session:${chat.sessionId}` : `pane:${chat.paneKey}`
 }
 
-type DraftEntry = PersistedNativeChatDraft
+/** A chip in the chat's shared, ordered list; a `pending` one is still being saved and is never written to disk. */
+export type NativeChatDraftChip = NativeChatDraftAttachment & { pending?: true }
 
-const EMPTY_ATTACHMENTS: readonly NativeChatDraftAttachment[] = []
+type DraftEntry = Omit<PersistedNativeChatDraft, 'attachments'> & {
+  attachments: readonly NativeChatDraftChip[]
+}
+
+const EMPTY_ATTACHMENTS: readonly NativeChatDraftChip[] = []
 const draftCache = new Map<string, DraftEntry>()
 let hydrated = false
 
@@ -50,9 +55,12 @@ function drafts(): Map<string, DraftEntry> {
     if (!observingOtherWindows) {
       observingOtherWindows = true
       // A web client tab must not keep showing, and re-save, text another tab already sent.
-      observeOtherWindowNativeChatDrafts((draftKey, draft) =>
-        setEntry(draftKey, draft ?? { text: '', attachments: EMPTY_ATTACHMENTS }, undefined)
-      )
+      observeOtherWindowNativeChatDrafts((draftKey, draft) => {
+        // This window's pending chips never reach disk, so the other window cannot know them.
+        const pending = readEntry(draftKey).attachments.filter((chip) => chip.pending)
+        const saved = draft ?? { text: '', attachments: EMPTY_ATTACHMENTS }
+        setEntry(draftKey, { ...saved, attachments: [...saved.attachments, ...pending] })
+      })
     }
   }
   return draftCache
@@ -62,10 +70,9 @@ function readEntry(draftKey: string): DraftEntry {
   return drafts().get(draftKey) ?? { text: '', attachments: EMPTY_ATTACHMENTS }
 }
 
-/** An attachment write carries its view's token, so that view can skip its own echo. */
-const changeListeners = new Map<string, Set<(writer: object | undefined) => void>>()
+const changeListeners = new Map<string, Set<() => void>>()
 
-function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefined): void {
+function setEntry(draftKey: string, entry: DraftEntry): void {
   // An empty draft carries no state worth retaining; drop it so a stale key never resurrects it.
   if (isEmptyNativeChatDraft(entry)) {
     drafts().delete(draftKey)
@@ -75,7 +82,7 @@ function setEntry(draftKey: string, entry: DraftEntry, writer: object | undefine
       inUse: (key) => changeListeners.has(key)
     })
   }
-  changeListeners.get(draftKey)?.forEach((listener) => listener(writer))
+  changeListeners.get(draftKey)?.forEach((listener) => listener())
 }
 
 /**
@@ -106,14 +113,22 @@ export function discardNativeChatDrafts(ended: {
   }
   for (const draftKey of doomed) {
     if (drafts().has(draftKey)) {
-      setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS }, undefined)
+      setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS })
     }
     persistNativeChatDraftNow(draftKey, null)
   }
 }
 
 function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
-  return drafts().get(draftKey) ?? null
+  const entry = drafts().get(draftKey)
+  return entry
+    ? {
+        ...entry,
+        attachments: entry.attachments.flatMap(({ pending, ...attachment }) =>
+          pending ? [] : [attachment]
+        )
+      }
+    : null
 }
 
 function persistNow(draftKey: string): NativeChatDraftWriteResult {
@@ -130,7 +145,7 @@ export function writeNativeChatDraftCache(
   draft: string,
   persist: 'now' | 'after-pause'
 ): void {
-  setEntry(draftKey, { ...readEntry(draftKey), text: draft }, undefined)
+  setEntry(draftKey, { ...readEntry(draftKey), text: draft })
   if (persist === 'now') {
     persistNow(draftKey)
   } else {
@@ -149,7 +164,7 @@ export function writeNativeChatDraftTuiInputSeed(
   draftKey: string,
   seed: NativeChatTuiInputSeed
 ): void {
-  setEntry(draftKey, { ...readEntry(draftKey), tuiInputSeed: seed }, undefined)
+  setEntry(draftKey, { ...readEntry(draftKey), tuiInputSeed: seed })
   persistNow(draftKey)
 }
 
@@ -159,33 +174,53 @@ export function forgetNativeChatTuiInputSeeds(terminalTabId: string): void {
   for (const [draftKey, entry] of Array.from(drafts())) {
     if (draftKey.startsWith(prefix) && entry.tuiInputSeed) {
       const { tuiInputSeed: _gone, ...rest } = entry
-      setEntry(draftKey, rest, undefined)
+      setEntry(draftKey, rest)
       persistNow(draftKey)
     }
   }
 }
 
-export function readNativeChatDraftAttachments(
-  draftKey: string
-): readonly NativeChatDraftAttachment[] {
+export function readNativeChatDraftAttachments(draftKey: string): readonly NativeChatDraftChip[] {
   return readEntry(draftKey).attachments
 }
 
-/** Settled attachments only; a view keeps its own pending chips and previews. Written at once. */
-export function writeNativeChatDraftAttachments(
+// Every view of the chat edits one ordered list, by chip id, and the result is written at once.
+function updateNativeChatDraftAttachments(
   draftKey: string,
-  attachments: readonly NativeChatDraftAttachment[],
-  writer?: object
+  update: (chips: readonly NativeChatDraftChip[]) => readonly NativeChatDraftChip[]
 ): void {
-  setEntry(draftKey, { ...readEntry(draftKey), attachments: [...attachments] }, writer)
+  const current = readEntry(draftKey)
+  setEntry(draftKey, { ...current, attachments: update(current.attachments) })
   persistNow(draftKey)
 }
 
-/** Fires on every change to the chat's draft, with the writing view's token if it gave one. */
-export function subscribeToNativeChatDraft(
+export function addNativeChatDraftAttachments(
   draftKey: string,
-  listener: (writer: object | undefined) => void
-): () => void {
+  chips: readonly NativeChatDraftChip[]
+): void {
+  updateNativeChatDraftAttachments(draftKey, (current) => [...current, ...chips])
+}
+
+export function removeNativeChatDraftAttachment(draftKey: string, id: string): void {
+  updateNativeChatDraftAttachments(draftKey, (current) => current.filter((chip) => chip.id !== id))
+}
+
+/** A pending chip's save landed; one removed meanwhile stays removed. */
+export function settleNativeChatDraftAttachment(
+  draftKey: string,
+  settled: NativeChatDraftAttachment
+): void {
+  updateNativeChatDraftAttachments(draftKey, (current) =>
+    current.map((chip) => (chip.id === settled.id ? settled : chip))
+  )
+}
+
+export function clearNativeChatDraftAttachments(draftKey: string): void {
+  updateNativeChatDraftAttachments(draftKey, () => EMPTY_ATTACHMENTS)
+}
+
+/** Fires on every change to the chat's draft. */
+export function subscribeToNativeChatDraft(draftKey: string, listener: () => void): () => void {
   return subscribe(changeListeners, draftKey, listener)
 }
 
@@ -214,16 +249,12 @@ export function appendNativeChatDraftNow(
   if (content.text !== '') {
     textAppendListeners.get(draftKey)?.forEach((listener) => listener(content.text))
   }
-  setEntry(
-    draftKey,
-    {
-      ...current,
-      text:
-        content.text === '' ? current.text : appendNativeChatDraftText(current.text, content.text),
-      attachments: [...current.attachments, ...attachments]
-    },
-    undefined
-  )
+  setEntry(draftKey, {
+    ...current,
+    text:
+      content.text === '' ? current.text : appendNativeChatDraftText(current.text, content.text),
+    attachments: [...current.attachments, ...attachments]
+  })
   return persistNow(draftKey)
 }
 
