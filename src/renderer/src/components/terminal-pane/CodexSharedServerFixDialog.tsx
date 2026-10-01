@@ -11,23 +11,20 @@ import {
 } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import {
-  CODEX_DISABLE_SHARED_SERVER_ARGS,
-  CODEX_STOP_SHARED_SERVER_ARGS
+  CODEX_DISABLE_AUTO_START_COMMAND,
+  CODEX_STOP_SHARED_SERVER_COMMAND
 } from '../../../../shared/codex-shared-server-command'
-
-export const CODEX_DISABLE_AUTO_START_COMMAND = `codex ${CODEX_DISABLE_SHARED_SERVER_ARGS.join(' ')}`
-export const CODEX_STOP_SHARED_SERVER_COMMAND = `codex ${CODEX_STOP_SHARED_SERVER_ARGS.join(' ')}`
 
 type FixStepStatus = 'idle' | 'running' | 'done' | 'failed'
 
-function useFixStep(run: (() => Promise<boolean>) | undefined): {
+function useFixStep(run: () => Promise<boolean>): {
   status: FixStepStatus
   start: () => Promise<boolean>
 } {
   const [status, setStatus] = useState<FixStepStatus>('idle')
   const start = async (): Promise<boolean> => {
     setStatus('running')
-    const ok = run ? await run().catch(() => false) : false
+    const ok = await run().catch(() => false)
     setStatus(ok ? 'done' : 'failed')
     return ok
   }
@@ -193,11 +190,8 @@ export function CodexSharedServerFixDialog({
   onOpenChange: (open: boolean) => void
   onServerStopped: () => void
 }): React.JSX.Element {
-  const { disableCodexSharedServerAutoStart, stopCodexSharedServer } = window.api.pty
-  const turnOff = useFixStep(
-    disableCodexSharedServerAutoStart && (() => disableCodexSharedServerAutoStart(ptyId))
-  )
-  const stop = useFixStep(stopCodexSharedServer && (() => stopCodexSharedServer(ptyId)))
+  const turnOff = useFixStep(() => window.api.pty.disableCodexSharedServerAutoStart(ptyId))
+  const stop = useFixStep(() => window.api.pty.stopCodexSharedServer(ptyId))
   const [confirmStopOpen, setConfirmStopOpen] = useState(false)
 
   return (

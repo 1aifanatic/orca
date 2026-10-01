@@ -13,7 +13,7 @@ import { getProviderForPty, hasPtyProviderForInspection } from '../provider/regi
 
 type Deps = { getLocalPtyProviderStartupPromise: () => Promise<void> | undefined }
 
-/** The pane's root pid when it is a local, non-WSL pane this window owns; otherwise null. */
+/** The pane's root pid when it is a local, non-WSL pane; otherwise null. */
 async function findLocalPaneRootPid(deps: Deps, id: unknown): Promise<number | null> {
   // Why local only: SSH and WSL panes run Codex on another host, which must answer for itself.
   if (

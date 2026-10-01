@@ -6,13 +6,11 @@ import type { ProcessResult, ProcessSpec } from '../../shared/child-process/run-
 
 const mocks = vi.hoisted(() => ({
   runProcess: vi.fn<(spec: ProcessSpec) => Promise<ProcessResult>>(),
-  isCodexSharedServerLive: vi.fn<(home: string) => Promise<boolean>>(),
-  forgetCodexSharedServerProbe: vi.fn<(home: string) => void>()
+  isCodexSharedServerLive: vi.fn<(home: string) => Promise<boolean>>()
 }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: mocks.runProcess }))
 vi.mock('./codex-shared-server-probe', () => ({
-  isCodexSharedServerLive: mocks.isCodexSharedServerLive,
-  forgetCodexSharedServerProbe: mocks.forgetCodexSharedServerProbe
+  isCodexSharedServerLive: mocks.isCodexSharedServerLive
 }))
 
 import {
@@ -39,7 +37,7 @@ function result(overrides: Partial<ProcessResult> = {}): ProcessResult {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   home = mkdtempSync(join(tmpdir(), 'codex-shared-server-fix-'))
 })
 
@@ -98,10 +96,6 @@ describe('disableCodexSharedServerAutoStart', () => {
 
   it.each([
     ['managed config keeps it on', [result(), result({ stdout: LIST_ON })]],
-    [
-      'an old Codex without the feature',
-      [result({ code: 1 }), result({ stdout: 'apps  stable  true' })]
-    ],
     ['the read-back times out', [result(), result({ timedOut: true, code: null })]],
     ['the read-back fails', [result(), result({ code: 1, stdout: LIST_OFF })]]
   ])('fails when %s', async (_label, results) => {
@@ -110,6 +104,18 @@ describe('disableCodexSharedServerAutoStart', () => {
       mocks.runProcess.mockResolvedValueOnce(next)
     }
     expect(await disableCodexSharedServerAutoStart(home)).toBe(false)
+  })
+
+  it.each([
+    ['exits non-zero, as an old Codex without the feature does', result({ code: 1 })],
+    ['times out', result({ timedOut: true, code: null })]
+  ])('skips the read-back when the write %s', async (_label, write) => {
+    installPackage('app-server-daemon', 'current', 'bin')
+    mocks.runProcess
+      .mockResolvedValueOnce(write)
+      .mockResolvedValueOnce(result({ stdout: LIST_OFF }))
+    expect(await disableCodexSharedServerAutoStart(home)).toBe(false)
+    expect(mocks.runProcess).toHaveBeenCalledTimes(1)
   })
 
   it('fails without running anything when the binary is missing', async () => {
@@ -135,22 +141,25 @@ describe('stopCodexSharedServer', () => {
       args: ['app-server', 'daemon', 'stop'],
       env: expect.objectContaining({ CODEX_HOME: home })
     })
-    expect(mocks.forgetCodexSharedServerProbe).toHaveBeenCalledWith(home)
-    expect(mocks.forgetCodexSharedServerProbe.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.isCodexSharedServerLive.mock.invocationCallOrder[0] ?? 0
-    )
   })
 
-  it('fails when the server is still live, whatever the exit code', async () => {
+  it('fails when the server is still live after a clean exit', async () => {
     installPackage('app-server-daemon', 'current', 'bin')
     mocks.runProcess.mockResolvedValueOnce(result())
     mocks.isCodexSharedServerLive.mockResolvedValueOnce(true)
     expect(await stopCodexSharedServer(home)).toBe(false)
   })
 
-  it('fails without probing when the binary is missing', async () => {
+  it('succeeds on a failed exit once the server is gone', async () => {
+    installPackage('app-server-daemon', 'current', 'bin')
+    mocks.runProcess.mockResolvedValueOnce(result({ code: 1 }))
+    mocks.isCodexSharedServerLive.mockResolvedValueOnce(false)
+    expect(await stopCodexSharedServer(home)).toBe(true)
+  })
+
+  it('fails without running anything when the binary is missing and the server is live', async () => {
+    mocks.isCodexSharedServerLive.mockResolvedValueOnce(true)
     expect(await stopCodexSharedServer(home)).toBe(false)
     expect(mocks.runProcess).not.toHaveBeenCalled()
-    expect(mocks.isCodexSharedServerLive).not.toHaveBeenCalled()
   })
 })

@@ -45,11 +45,12 @@ function askUntilOnSharedServer(
 function usePaneCodexOnSharedServer(ptyId: string, enabled: boolean, recheck: number): boolean {
   const [joined, setJoined] = useState(false)
   useEffect(() => {
-    const ask = window.api.pty.isCodexOnSharedServer
-    if (!enabled || !ask) {
+    if (!enabled) {
       return
     }
-    const cancel = askUntilOnSharedServer(ask, ptyId, () => setJoined(true))
+    const cancel = askUntilOnSharedServer(window.api.pty.isCodexOnSharedServer, ptyId, () =>
+      setJoined(true)
+    )
     return () => {
       cancel()
       setJoined(false)
@@ -71,12 +72,10 @@ function useReservePaneTopSpace(): React.RefObject<HTMLDivElement | null> {
       pane.style.setProperty('--orca-pane-top-banner-height', `${banner.offsetHeight}px`)
     }
     reserve()
-    pane.dataset.topBanner = ''
     const observer = new ResizeObserver(reserve)
     observer.observe(banner)
     return () => {
       observer.disconnect()
-      delete pane.dataset.topBanner
       pane.style.removeProperty('--orca-pane-top-banner-height')
     }
   }, [])
@@ -150,7 +149,7 @@ function CodexSharedServerBannerContent({
     <div
       ref={ref}
       role="status"
-      // Why pr-20: the pane's own split/close controls float over its top-right corner.
+      // Why pr-16: the pane's own split/close controls float over its top-right corner.
       className="pane-top-banner @container border-b border-status-warning-border bg-status-warning-background py-2 pr-16 pl-3 text-xs"
     >
       {/* Why a container query: split panes are narrow, so actions drop below the text there.

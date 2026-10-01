@@ -9,10 +9,7 @@ const { readWindowsProcessCreationTime } = vi.hoisted(() => ({
 }))
 vi.mock('../windows/windows-process-table', () => ({ readWindowsProcessCreationTime }))
 
-import {
-  isCodexSharedServerLive,
-  resetCodexSharedServerProbesForTests
-} from './codex-shared-server-probe'
+import { isCodexSharedServerLive } from './codex-shared-server-probe'
 
 const originalPlatform = process.platform
 let home: string
@@ -40,7 +37,6 @@ function close(): Promise<void> {
 beforeEach(() => {
   // Why /tmp: a unix socket path must fit sun_path, which a macOS $TMPDIR can exceed.
   home = mkdtempSync(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'cxh-'))
-  resetCodexSharedServerProbesForTests()
   readWindowsProcessCreationTime.mockReset()
 })
 
@@ -66,19 +62,6 @@ describe.skipIf(process.platform === 'win32')('isCodexSharedServerLive on POSIX'
     mkdirSync(join(home, 'app-server-control'), { recursive: true })
     writeFileSync(join(home, 'app-server-control', 'app-server-control.sock'), '')
     await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
-  })
-
-  it('reuses one probe for a home briefly, then probes again', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    try {
-      await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
-      await listen()
-      await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
-      vi.setSystemTime(Date.now() + 3_000)
-      await expect(isCodexSharedServerLive(home)).resolves.toBe(true)
-    } finally {
-      vi.useRealTimers()
-    }
   })
 })
 
@@ -116,11 +99,9 @@ describe('isCodexSharedServerLive on Windows', () => {
     readWindowsProcessCreationTime.mockReturnValue(null)
     writeRecord('daemon.pid', { pid: 27368, processStartTime: START_FILETIME })
     await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
-    resetCodexSharedServerProbesForTests()
     writeRecord('daemon.pid', { pid: 27368, processStartTime: 'Wed Sep 30 15:33:16 2026' })
     readWindowsProcessCreationTime.mockReturnValue(START_UNIX_MS)
     await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
-    resetCodexSharedServerProbesForTests()
     rmSync(join(home, 'app-server-daemon'), { recursive: true })
     await expect(isCodexSharedServerLive(home)).resolves.toBe(false)
   })

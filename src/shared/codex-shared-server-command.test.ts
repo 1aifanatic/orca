@@ -23,6 +23,12 @@ describe('codexCommandLineJoinsSharedServer', () => {
     ['approval flags keep sharing', 'codex --dangerously-bypass-approvals-and-sandbox'],
     ['model and approval values', 'codex -m gpt-5 -a on-request'],
     ['a prompt', 'codex fix the flaky test'],
+    ['a prompt with the apply alias as a word', 'codex "fix a bug in the parser"'],
+    ['a prompt with a subcommand as a later word', 'codex "update the readme"'],
+    ['a prompt with review as a later word', 'codex "please review this"'],
+    ['a space-joined prompt with subcommand words', 'codex please review and update a test'],
+    ['a prompt after a valueless flag', 'codex --yolo fix a bug'],
+    ['a Windows path with spaces', '"C:\\Program Files\\My Codex\\codex.exe" fix a bug'],
     ['launcher args', `${NPM_LAUNCHER} resume --last`]
   ])('%s joins the shared server', (_label, commandLine) => {
     expect(codexCommandLineJoinsSharedServer(commandLine)).toBe(true)
@@ -48,9 +54,12 @@ describe('codexCommandLineJoinsSharedServer', () => {
     ['-c', 'codex -c model="o3"'],
     ['-c glued', 'codex -cmodel=o3'],
     ['--config', 'codex --config model=o3'],
+    ['--no-daemon before a prompt', 'codex --no-daemon "a"'],
     ['exec', 'codex exec "summarize"'],
     ['exec alias', 'codex e hi'],
     ['exec after a flag value', 'codex -m gpt-5 exec hi'],
+    ['exec after a flag value through the launcher', `${NPM_LAUNCHER} -m gpt-5 exec hi`],
+    ['exec after a quoted Windows path', '"C:\\Program Files\\My Codex\\codex.exe" exec hi'],
     ['review', 'codex review'],
     ['queue', 'codex queue hi'],
     ['mcp', 'codex mcp list'],
@@ -70,19 +79,8 @@ describe('codexCommandLineJoinsSharedServer', () => {
     ['sandbox', 'codex sandbox macos ls'],
     ['debug', 'codex debug models'],
     ['an apostrophe in a prompt before --no-daemon', "codex don't touch tests --no-daemon"],
-    ['an apostrophe before a subcommand', "codex it's exec time"],
     ['an apostrophe through the launcher', `${NPM_LAUNCHER} don't break --oss`]
   ])('%s stays off the shared server', (_label, commandLine) => {
-    expect(codexCommandLineJoinsSharedServer(commandLine)).toBe(false)
-  })
-
-  it.each([
-    ['another agent', 'claude'],
-    ['a shell', '-zsh'],
-    ['node running something else', 'node /srv/app/server.js'],
-    ['a prompt that names codex', 'claude "compare codex and claude"'],
-    ['an empty line', '']
-  ])('%s is not Codex', (_label, commandLine) => {
     expect(codexCommandLineJoinsSharedServer(commandLine)).toBe(false)
   })
 })

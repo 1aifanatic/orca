@@ -1,9 +1,3 @@
-import { recognizeAgentProcessFromCommandLine } from './agent-process-recognition'
-import {
-  findInterpreterEntrypointToken,
-  tokenizeCommandLine
-} from './agent-command-line-entrypoint'
-
 // Mirrors Codex's own opt-outs (tui/src/daemon_startup.rs `exclusion`). Every
 // `-c`/`--enable`/`--disable` counts, although Codex allows a few: skipping one
 // only costs a warning, never a false one.
@@ -60,50 +54,65 @@ const NON_TUI_SUBCOMMANDS: ReadonlySet<string> = new Set([
   'help'
 ])
 
-function isEmbeddedFlag(token: string): boolean {
-  const name = token.split('=', 1)[0] ?? token
+// Flags that never take a value, so the word after one is still the first positional.
+const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
+  '--dangerously-bypass-approvals-and-sandbox',
+  '--yolo',
+  '--no-alt-screen',
+  '--worktree'
+])
+
+// The program word: `codex`, `codex.exe`, the npm `codex.js` launcher, or a platform binary.
+const CODEX_PROGRAM_RE = /(?:^|[\\/])codex(?:\.(?:js|mjs|cjs|exe|cmd)|-[^\\/]+)?$/i
+
+function isEmbeddedFlag(word: string): boolean {
+  const name = word.split('=', 1)[0] ?? word
   // Why the prefix check: clap also accepts a short flag glued to its value (`-pwork`, `-cx=1`).
-  return EMBEDDED_FLAGS.has(name) || /^-[pc][^-]/.test(token)
+  return EMBEDDED_FLAGS.has(name) || /^-[pc][^-]/.test(word)
 }
 
 /**
- * True when a process-table command line is an interactive Codex that joins its
- * shared server when one is running. Process tables may join argv with spaces,
- * so any token that could be an opt-out counts as one: a prompt that happens to
- * contain `exec` misses the warning rather than raising a false one.
+ * True when a Codex process-table command line is an interactive Codex that
+ * joins its shared server when one is running. Process tables may join argv
+ * with spaces, so words are split on whitespace (double quotes group, as
+ * Windows quotes paths); apostrophes never group because a prompt's `don't`
+ * would swallow the rest. Opt-outs set through env (`CODEX_EXEC_SERVER_URL`,
+ * workload identity) are invisible here, so those rare panes get a false banner.
  */
 export function codexCommandLineJoinsSharedServer(commandLine: string): boolean {
-  if (
-    recognizeAgentProcessFromCommandLine(commandLine, { includeHeadlessOneShot: true })?.agent !==
-    'codex'
-  ) {
+  const words = (commandLine.match(/"[^"]*"|\S+/g) ?? []).map((word) =>
+    word.replace(/^["']+|["']+$/g, '')
+  )
+  const args = words.slice(words.findIndex((word) => CODEX_PROGRAM_RE.test(word)) + 1)
+  if (args.some(isEmbeddedFlag)) {
     return false
   }
-  const tokens = tokenizeCommandLine(commandLine)
-  const entrypoint = findInterpreterEntrypointToken(
-    tokens,
-    (tokens[0] ?? '')
-      .replace(/^.*[\\/]/, '')
-      .toLowerCase()
-      .replace(/\.exe$/, '')
-  )
-  const args = tokens.slice(entrypoint === null ? 1 : tokens.indexOf(entrypoint, 1) + 1)
-  // Why the plain split too: a lone `'` in a space-joined prompt (`don't`) swallows later tokens.
-  const plainArgs = commandLine
-    .trim()
-    .split(/\s+/)
-    .slice(1)
-    .map((token) => token.replace(/^["']+|["']+$/g, ''))
-  return ![...args, ...plainArgs].some(
-    (token) => isEmbeddedFlag(token) || NON_TUI_SUBCOMMANDS.has(token)
-  )
+  // Why only the first positional: clap reads a subcommand there, and later words are prompt text.
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index]
+    if (word.startsWith('-')) {
+      continue
+    }
+    if (NON_TUI_SUBCOMMANDS.has(word)) {
+      return false
+    }
+    const previous = args[index - 1]
+    // Why check one more: this word may be the previous flag's value (`-m gpt-5 exec`).
+    if (!previous?.startsWith('-') || previous.includes('=') || VALUELESS_FLAGS.has(previous)) {
+      return true
+    }
+  }
+  return true
 }
 
-/** The fix's commands, as argv after the `codex` program; shown verbatim in the UI. */
+export const CODEX_SHARED_SERVER_FEATURE_KEY = 'daemon_auto_start'
+/** The fix's commands, as argv after the `codex` program. */
 export const CODEX_DISABLE_SHARED_SERVER_ARGS = [
   'features',
   'disable',
-  'daemon_auto_start'
+  CODEX_SHARED_SERVER_FEATURE_KEY
 ] as const
 export const CODEX_STOP_SHARED_SERVER_ARGS = ['app-server', 'daemon', 'stop'] as const
-export const CODEX_SHARED_SERVER_FEATURE_KEY = 'daemon_auto_start'
+/** What the fix dialog shows the user it runs. */
+export const CODEX_DISABLE_AUTO_START_COMMAND = `codex ${CODEX_DISABLE_SHARED_SERVER_ARGS.join(' ')}`
+export const CODEX_STOP_SHARED_SERVER_COMMAND = `codex ${CODEX_STOP_SHARED_SERVER_ARGS.join(' ')}`

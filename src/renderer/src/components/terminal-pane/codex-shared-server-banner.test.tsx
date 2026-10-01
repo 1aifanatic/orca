@@ -10,7 +10,7 @@ import { CodexSharedServerBanner } from './CodexSharedServerBanner'
 import {
   CODEX_DISABLE_AUTO_START_COMMAND,
   CODEX_STOP_SHARED_SERVER_COMMAND
-} from './CodexSharedServerFixDialog'
+} from '../../../../shared/codex-shared-server-command'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -107,7 +107,7 @@ describe('CodexSharedServerBanner', () => {
 
     expect(isCodexOnSharedServer).toHaveBeenCalledWith(ptyId)
     expect(paneElement.textContent).toContain('agent status may be wrong')
-    expect(paneElement.dataset.topBanner).toBe('')
+    expect(paneElement.querySelector(':scope > .pane-top-banner')).not.toBeNull()
     expect(paneElement.style.getPropertyValue('--orca-pane-top-banner-height')).toMatch(/px$/)
   })
 
@@ -184,7 +184,7 @@ describe('CodexSharedServerBanner', () => {
     await advance(1_000)
     await act(async () => button('Dismiss').click())
     expect(paneElement.textContent).toBe('')
-    expect(paneElement.dataset.topBanner).toBeUndefined()
+    expect(paneElement.style.getPropertyValue('--orca-pane-top-banner-height')).toBe('')
     expect(updateSettings).not.toHaveBeenCalled()
 
     act(() => root.unmount())

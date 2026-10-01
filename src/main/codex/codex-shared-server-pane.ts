@@ -35,7 +35,10 @@ export function findPaneCodexCommandLine(
   return outermost?.command ?? null
 }
 
-/** The CODEX_HOME this host pane launched with, or null when it cannot be named. */
+/**
+ * The CODEX_HOME this host pane launched with, or null when it cannot be named.
+ * A CODEX_HOME the user exports later in the pane's shell is not seen.
+ */
 export function resolveCodexPaneHome(ptyId: string): string | null {
   const record = getCodexPaneAccount(ptyId)
   if (record?.selectionKey !== 'host') {

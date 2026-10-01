@@ -1,7 +1,6 @@
 import { createPortal } from 'react-dom'
 import CodexRestartChip from '../CodexRestartChip'
 import { CodexSharedServerBanner } from './CodexSharedServerBanner'
-import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { TerminalSshReconnectOverlay } from './TerminalSshReconnectOverlay'
 import { TerminalRemoteRuntimeReconnectBanner } from './TerminalRemoteRuntimeReconnectBanner'
@@ -18,42 +17,8 @@ export function TerminalPaneCodexRestartPortals({
 }: {
   controller: TerminalPaneController
 }): React.JSX.Element {
-  const { activePane, isActive, isVisible, managedPanes, paneTransportsRef, savedLayout } =
+  const { activePane, isActive, isVisible, managedPanes, paneTransportsRef, savedLayout, tabId } =
     controller
-  return (
-    <>
-      {managedPanes.map((pane) => {
-        const ptyId =
-          paneTransportsRef.current.get(pane.id)?.getPtyId() ??
-          savedLayout.ptyIdsByLeafId?.[pane.leafId]
-        if (!ptyId) {
-          return null
-        }
-        return createPortal(
-          <CodexRestartChip
-            key={`codex-restart-${pane.id}-${ptyId}`}
-            isVisible={isVisible}
-            ptyId={ptyId}
-            shouldFocus={isActive && isVisible && activePane?.id === pane.id}
-          />,
-          pane.container,
-          `codex-restart-${pane.id}`
-        )
-      })}
-    </>
-  )
-}
-
-export function TerminalPaneCodexSharedServerPortals({
-  controller
-}: {
-  controller: TerminalPaneController
-}): React.JSX.Element | null {
-  const { managedPanes, paneTransportsRef, savedLayout, tabId } = controller
-  // Why: a paired web client's terminals belong to the host, whose setting this window does not own.
-  if (isPairedWebClientWindow()) {
-    return null
-  }
   return (
     <>
       {managedPanes.map((pane) => {
@@ -65,13 +30,21 @@ export function TerminalPaneCodexSharedServerPortals({
           return null
         }
         return createPortal(
-          <CodexSharedServerBanner
-            key={`codex-shared-server-${pane.id}-${ptyId}`}
-            ptyId={ptyId}
-            paneKey={makePaneKey(tabId, pane.leafId)}
-          />,
+          <>
+            <CodexRestartChip
+              key={`codex-restart-${pane.id}-${ptyId}`}
+              isVisible={isVisible}
+              ptyId={ptyId}
+              shouldFocus={isActive && isVisible && activePane?.id === pane.id}
+            />
+            <CodexSharedServerBanner
+              key={`codex-shared-server-${pane.id}-${ptyId}`}
+              ptyId={ptyId}
+              paneKey={makePaneKey(tabId, pane.leafId)}
+            />
+          </>,
           pane.container,
-          `codex-shared-server-${pane.id}`
+          `codex-restart-${pane.id}`
         )
       })}
     </>

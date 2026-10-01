@@ -6,7 +6,7 @@ import {
   CODEX_SHARED_SERVER_FEATURE_KEY,
   CODEX_STOP_SHARED_SERVER_ARGS
 } from '../../shared/codex-shared-server-command'
-import { forgetCodexSharedServerProbe, isCodexSharedServerLive } from './codex-shared-server-probe'
+import { isCodexSharedServerLive } from './codex-shared-server-probe'
 
 const COMMAND_TIMEOUT_MS = 15_000
 // Why longer: Codex lets running turns drain for up to 60 s by default, then forces after 10 s.
@@ -14,9 +14,9 @@ const STOP_TIMEOUT_MS = 75_000
 const MAX_OUTPUT_BYTES = 64 * 1024
 
 /**
- * The Codex CLI the shared server itself runs from, mirroring Codex's
- * `managed_codex_bin`: a complete CLI package of the server's own version,
- * so its lifecycle commands understand that server's layout.
+ * The Codex CLI Codex installed under this home's `packages/` (the server's
+ * package, else the legacy standalone one), so its lifecycle commands match
+ * the server's version rather than whatever `codex` is on PATH.
  */
 export async function resolveCodexSharedServerBinary(codexHome: string): Promise<string | null> {
   const fileName = process.platform === 'win32' ? 'codex.exe' : 'codex'
@@ -35,17 +35,18 @@ export async function resolveCodexSharedServerBinary(codexHome: string): Promise
   return null
 }
 
+/** The command's stdout when it exited 0 in time; otherwise null. */
 async function runCodex(
   codexHome: string,
   args: readonly string[],
   timeoutMs: number
-): Promise<{ code: number | null; stdout: string; timedOut: boolean } | null> {
+): Promise<string | null> {
   const program = await resolveCodexSharedServerBinary(codexHome)
   if (!program) {
     return null
   }
   try {
-    return await runProcess({
+    const result = await runProcess({
       program,
       args,
       cwd: codexHome,
@@ -53,6 +54,7 @@ async function runCodex(
       timeoutMs,
       maxOutputBytes: MAX_OUTPUT_BYTES
     })
+    return result.code === 0 && !result.timedOut ? result.stdout : null
   } catch {
     return null
   }
@@ -72,24 +74,17 @@ export function readFeatureEnabled(stdout: string, key: string): boolean | null 
 
 /** Turns off server sharing for this home; true only once Codex reads it back as off. */
 export async function disableCodexSharedServerAutoStart(codexHome: string): Promise<boolean> {
-  if (!(await runCodex(codexHome, CODEX_DISABLE_SHARED_SERVER_ARGS, COMMAND_TIMEOUT_MS))) {
+  if ((await runCodex(codexHome, CODEX_DISABLE_SHARED_SERVER_ARGS, COMMAND_TIMEOUT_MS)) === null) {
     return false
   }
   // Why read back: managed config can pin the feature on even when the write exits 0.
   const list = await runCodex(codexHome, ['features', 'list'], COMMAND_TIMEOUT_MS)
-  return (
-    list !== null &&
-    list.code === 0 &&
-    !list.timedOut &&
-    readFeatureEnabled(list.stdout, CODEX_SHARED_SERVER_FEATURE_KEY) === false
-  )
+  return list !== null && readFeatureEnabled(list, CODEX_SHARED_SERVER_FEATURE_KEY) === false
 }
 
 /** Stops this home's shared server; true only once it no longer accepts clients. */
 export async function stopCodexSharedServer(codexHome: string): Promise<boolean> {
-  if (!(await runCodex(codexHome, CODEX_STOP_SHARED_SERVER_ARGS, STOP_TIMEOUT_MS))) {
-    return false
-  }
-  forgetCodexSharedServerProbe(codexHome)
+  // Why the probe decides: only it shows whether this home's server is actually gone.
+  await runCodex(codexHome, CODEX_STOP_SHARED_SERVER_ARGS, STOP_TIMEOUT_MS)
   return !(await isCodexSharedServerLive(codexHome))
 }
