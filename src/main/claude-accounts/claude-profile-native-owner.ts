@@ -16,7 +16,10 @@ import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hoo
 import { describeClaudeProfile, assertClaudeProfileDescendant } from './claude-profile-paths'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileSignInRequiredError,
+  type ClaudeProfileRoutingOwner
+} from './claude-profile-routing-owner'
 import { withWslClaudeProfileOwner } from './claude-profile-wsl-owner'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'
@@ -57,12 +60,11 @@ export function createNativeClaudeProfileRouting(args: {
     })
     assertClaudeProfileDescendant(args.dataRoot, profile.home)
     const readiness = readClaudeProfileReadiness(args.dataRoot, profile)
+    if (readiness === 'sign-in-required') {
+      throw new ClaudeProfileSignInRequiredError()
+    }
     if (readiness !== 'ready') {
-      throw new Error(
-        readiness === 'sign-in-required'
-          ? 'Sign in again to use this account.'
-          : 'Claude profile is unavailable. Try again.'
-      )
+      throw new Error('Claude profile is unavailable. Try again.')
     }
     return profile
   }

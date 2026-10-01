@@ -13,11 +13,14 @@ import { abortedClaudeRateLimitResult, makeClaudeUsageResult } from './claude-us
 export async function fetchActiveClaudeRateLimits(
   options?: ClaudeRateLimitFetchOptions
 ): Promise<ProviderRateLimits> {
-  if (options?.authPreparation?.profileIssue) {
-    return makeClaudeUsageResult('error', options.authPreparation.profileIssue, {
-      failureKind: 'missing-credentials',
-      attemptedSources: []
-    })
+  const { profileIssue, profileIssueKind } = options?.authPreparation ?? {}
+  if (profileIssue) {
+    return profileIssueKind === 'sign-in-required'
+      ? makeClaudeUsageResult('error', profileIssue, {
+          failureKind: 'missing-credentials',
+          attemptedSources: []
+        })
+      : claudeUsageUnavailable()
   }
   if (options?.signal?.aborted) {
     return abortedClaudeRateLimitResult()
@@ -84,4 +87,12 @@ export async function fetchActiveClaudeRateLimits(
       }
     )
   }
+}
+
+// Why plain: the profile/host reason is shown on the account row, not as raw text in usage.
+function claudeUsageUnavailable(): ProviderRateLimits {
+  return makeClaudeUsageResult('error', 'Claude usage is unavailable right now.', {
+    failureKind: 'usage-unavailable',
+    attemptedSources: []
+  })
 }

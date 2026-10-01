@@ -10,6 +10,7 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
 import {
   ClaudeProfileHostUnreachableError,
+  ClaudeProfileSignInRequiredError,
   type ClaudeProfileRoutingOwner
 } from './claude-profile-routing-owner'
 import {
@@ -87,6 +88,12 @@ export function createWslClaudeProfileOwner(
       runtime: 'wsl',
       distro
     })
+  const inspectionFor = (accountId: string) => {
+    const distro = settings().claudeManagedAccounts.find(
+      (entry) => entry.id === accountId
+    )?.wslDistro
+    return distro ? inspections.get(distro.toLowerCase()) : undefined
+  }
   const selectedAccountId = (target?: ClaudeAccountSelectionTarget) => {
     try {
       return selected(target).accountId
@@ -152,7 +159,11 @@ export function createWslClaudeProfileOwner(
           inspections.set(key, { accountId, home: guest.home, result })
         }
         if (!result.ready) {
-          throw new Error('Selected WSL Claude account needs a fresh sign-in')
+          throw accountId && result.readiness?.[accountId] === 'sign-in-required'
+            ? new ClaudeProfileSignInRequiredError(
+                'Selected WSL Claude account needs a fresh sign-in'
+              )
+            : new Error('Selected WSL Claude account could not be checked')
         }
       } catch (error) {
         if (inspections.get(key) === previous) {
@@ -214,22 +225,10 @@ export function createWslClaudeProfileOwner(
       )
     },
     readiness: (accountId) => {
-      const account = settings().claudeManagedAccounts.find((entry) => entry.id === accountId)
-      const inspection = account?.wslDistro
-        ? inspections.get(account.wslDistro.toLowerCase())
-        : undefined
-      if (!inspection) {
-        return 'unverified'
-      }
-      return inspection.result.readiness?.[accountId] ?? 'unavailable'
+      const inspection = inspectionFor(accountId)
+      return inspection ? (inspection.result.readiness?.[accountId] ?? 'unavailable') : 'unverified'
     },
-    identity: (accountId) => {
-      const account = settings().claudeManagedAccounts.find((entry) => entry.id === accountId)
-      const inspection = account?.wslDistro
-        ? inspections.get(account.wslDistro.toLowerCase())
-        : undefined
-      return inspection?.result.identities?.[accountId] ?? null
-    },
+    identity: (accountId) => inspectionFor(accountId)?.result.identities?.[accountId] ?? null,
     prepare: async (descriptor, access) => {
       const distro = distroFor(descriptor.target)
       const guest = guestFor(distro)

@@ -65,6 +65,14 @@ export type ClaudeProfileRoutingOwner = {
  *  background work (startup, pane repair, readers) only talks to a running one. */
 export type ClaudeProfileHostAccess = 'boot' | 'if-running'
 
+/** The account's own profile has no login; every other profile problem is "unavailable". */
+export class ClaudeProfileSignInRequiredError extends Error {
+  override name = 'ClaudeProfileSignInRequiredError'
+  constructor(message = 'Sign in again to use this account.') {
+    super(message)
+  }
+}
+
 /** The execution host could not be reached, so its pointer cannot be stale or rewritten. */
 export class ClaudeProfileHostUnreachableError extends Error {
   override name = 'ClaudeProfileHostUnreachableError'

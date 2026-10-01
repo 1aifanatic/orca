@@ -17,7 +17,10 @@ import {
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
-import type { ClaudeProfileHostAccess } from './claude-profile-routing-owner'
+import {
+  ClaudeProfileSignInRequiredError,
+  type ClaudeProfileHostAccess
+} from './claude-profile-routing-owner'
 import { resolveLocalAccountRuntimeTarget } from '../../shared/local-account-runtime'
 import { ClaudeRuntimePathResolver } from './runtime-paths'
 import { getDefaultWslDistro, getWslHome } from '../wsl'
@@ -83,7 +86,9 @@ export class ClaudeRuntimeAuthService {
         envPatch: {},
         stripAuthEnv: true,
         provenance: `profile:${getSelectedClaudeAccountIdForTarget(this.store.getSettings(), effective) ?? 'system'}`,
-        profileIssue: error instanceof Error ? error.message : 'Claude usage is unavailable.'
+        profileIssue: error instanceof Error ? error.message : 'Claude usage is unavailable.',
+        profileIssueKind:
+          error instanceof ClaudeProfileSignInRequiredError ? 'sign-in-required' : 'unavailable'
       }
     }
   }
@@ -153,7 +158,7 @@ export class ClaudeRuntimeAuthService {
   private getPreparation(target?: ClaudeAccountSelectionTarget): ClaudeRuntimeAuthPreparation {
     const effective = target ?? this.getDefaultAccountSelectionTarget()
     if (getSelectedClaudeAccountIdForTarget(this.store.getSettings(), effective)) {
-      throw new Error('Sign in again to use this account.')
+      throw new ClaudeProfileSignInRequiredError()
     }
     const paths = new ClaudeRuntimePathResolver().getRuntimePaths()
     if (effective.runtime === 'wsl') {

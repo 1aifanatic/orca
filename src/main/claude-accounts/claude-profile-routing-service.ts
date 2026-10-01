@@ -7,6 +7,7 @@ import { readClaudeProfilePointer } from './claude-profile-pointer'
 import { ClaudeProfilePointerQueue } from './claude-profile-pointer-queue'
 import {
   ClaudeProfileHostUnreachableError,
+  ClaudeProfileSignInRequiredError,
   type ClaudeProfileHostAccess,
   type ClaudeProfileLaunchDescriptor,
   type ClaudeProfileRoutingOwner
@@ -248,8 +249,11 @@ export class ClaudeProfileRoutingService {
     await this.owner.refresh?.(target, 'if-running')
   }
   accountHome(accountId: string): string {
-    if (this.owner.readiness(accountId) !== 'ready') {
-      throw new Error('Claude profile is not signed in or is unavailable.')
+    const readiness = this.owner.readiness(accountId)
+    if (readiness !== 'ready') {
+      throw readiness === 'sign-in-required'
+        ? new ClaudeProfileSignInRequiredError()
+        : new Error('Claude profile is unavailable.')
     }
     const home = this.owner.accountHome?.(accountId)
     if (!home) {

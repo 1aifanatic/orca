@@ -3,6 +3,8 @@ import type { ClaudeEnvPatch } from '../environment'
 
 export type ClaudeRuntimeAuthPreparation = {
   profileIssue?: string
+  /** Only a profile with no login reads as signed out; host and file problems are unavailable. */
+  profileIssueKind?: 'sign-in-required' | 'unavailable'
   profileLaunch?: ClaudeProfileLaunchDescriptor
   configDir: string
   runtime?: 'host' | 'wsl'
