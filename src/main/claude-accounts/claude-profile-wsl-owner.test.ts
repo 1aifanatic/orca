@@ -7,10 +7,8 @@ import {
   withWslClaudeProfileOwner,
   type ClaudeProfileSettings
 } from './claude-profile-wsl-owner'
-import {
-  ClaudeProfileRoutingService,
-  type ClaudeProfileRoutingOwner
-} from './claude-profile-routing-service'
+import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
+import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
 import type { ClaudeWslProfileRequest } from './claude-profile-wsl-guest'
 import { mergeClaudeProfileReaderRoots } from './claude-profile-reader-roots'
 import {
@@ -165,25 +163,63 @@ it('continues initializing other distros when one is stopped, then reports the f
     false
   )
 })
-it('opens WSL panes without any guest call, even when the distro is stopped', async () => {
+it('leaves a WSL distro with no Orca account exactly as before profiles', () => {
   const f = fixture()
+  for (const target of [
+    { runtime: 'wsl' as const, wslDistro: 'Arch' },
+    { runtime: 'wsl' as const, wslDistro: null }
+  ]) {
+    expect(f.routing.routes(target)).toBe(false)
+    expect(f.routing.terminalEnv(target)).toEqual({})
+  }
+  expect(f.routing.routes({ runtime: 'wsl', wslDistro: 'ubuntu' })).toBe(true)
+  expect(f.prepare).not.toHaveBeenCalled()
+})
+it('opens a routed WSL pane at once and re-derives its publish in the background', async () => {
+  const f = fixture({ withHost: true })
+  const stopped = Promise.withResolvers<never>()
+  f.prepare.mockImplementationOnce(() => stopped.promise)
   const pointer = { ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER }
   expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
-  expect(f.routing.terminalEnv({ runtime: 'wsl', wslDistro: null })).toEqual(pointer)
-  expect(f.prepare).not.toHaveBeenCalled()
-  await f.routing.prepare(ubuntu)
+  expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
+  expect(f.prepare).toHaveBeenCalledTimes(1)
+  stopped.reject(new Error('WSL distro Ubuntu is not running'))
+  const issue = () =>
+    f.routing.describeAccounts({ accounts: [], activeAccountId: null }).profileRoutingIssue
+  await vi.waitFor(() => expect(issue()).toContain('WSL Ubuntu: WSL distro Ubuntu is not running'))
+  expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
+  await vi.waitFor(() => expect(issue()).toBeUndefined())
   const home = profileHome('Ubuntu', 'Ubuntu')
   expect(f.routing.terminalEnv(ubuntu)).toEqual({
     ...pointer,
     CLAUDE_CONFIG_DIR: home,
     ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
   })
-  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 600_001)
-  f.prepare.mockRejectedValueOnce(new Error('WSL distro Ubuntu is not running'))
-  await expect(f.routing.prepare(ubuntu)).rejects.toThrow('not running')
-  const prepared = f.prepare.mock.calls.length
-  expect(f.routing.terminalEnv(ubuntu)).toEqual(pointer)
-  expect(f.prepare).toHaveBeenCalledTimes(prepared)
+  expect(f.prepare).toHaveBeenCalledTimes(2)
+  expect(f.calls.filter((call) => call.action === 'setup')).toHaveLength(0)
+})
+it('keeps the newer selection verified when an older setup lands late', async () => {
+  const f = fixture()
+  f.settings.claudeManagedAccounts.push({ ...f.settings.claudeManagedAccounts[0], id: 'second' })
+  const gate = Promise.withResolvers<void>()
+  const respond = f.respond.getMockImplementation()
+  f.respond.mockImplementation(async (request) => {
+    if (request.action === 'setup' && request.accountId === 'Ubuntu') {
+      await gate.promise
+    }
+    return respond!(request)
+  })
+  const older = f.routing.publish(ubuntu)
+  await vi.waitFor(() =>
+    expect(f.calls.some((call) => call.action === 'setup' && call.accountId === 'Ubuntu')).toBe(
+      true
+    )
+  )
+  f.settings.activeClaudeManagedAccountIdsByRuntime!.wsl.Ubuntu = 'second'
+  await f.routing.publish(ubuntu)
+  gate.resolve()
+  await expect(older).rejects.toThrow('changed')
+  expect(f.routing.resolve(ubuntu).profile?.accountId).toBe('second')
 })
 it('lets overlapping launches of the same WSL account share the newest publish', async () => {
   const f = fixture()

@@ -13,7 +13,7 @@ import {
 } from './claude-profile-paths'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 import { publishClaudeProfilePointer, withdrawClaudeProfilePointer } from './claude-profile-pointer'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-service'
+import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
 import { withWslClaudeProfileOwner } from './claude-profile-wsl-owner'
 import { ClaudeProfileRoutingService } from './claude-profile-routing-service'
 import { ClaudeProfileSetupWorker } from './claude-profile-worker'

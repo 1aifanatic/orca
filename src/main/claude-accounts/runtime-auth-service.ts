@@ -50,7 +50,10 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
     const profiles = getClaudeProfileRoutingAuthority()
     if (profiles) {
-      return profiles.prepare(effectiveTarget)
+      // Why: an unrouted WSL distro launches System Default with no guest call, as before profiles.
+      return profiles.routes(effectiveTarget)
+        ? profiles.prepare(effectiveTarget)
+        : this.getPreparation(effectiveTarget)
     }
     await this.syncForCurrentSelection(effectiveTarget)
     return this.getPreparation(effectiveTarget)
@@ -72,9 +75,13 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     await this.serializeMutation(async () => {
       const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
       const profiles = getClaudeProfileRoutingAuthority()
-      await (profiles
-        ? profiles.publish(effectiveTarget)
-        : this.doSyncForCurrentSelection(effectiveTarget))
+      if (!profiles) {
+        await this.doSyncForCurrentSelection(effectiveTarget)
+      } else if (profiles.routes(effectiveTarget)) {
+        await profiles.publish(effectiveTarget)
+      } else {
+        await profiles.retire(effectiveTarget)
+      }
     })
   }
 
@@ -85,7 +92,11 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     await this.serializeMutation(async () => {
       const profiles = getClaudeProfileRoutingAuthority()
       if (profiles) {
-        await (target ? profiles.publish(target) : profiles.startup())
+        if (!target) {
+          await profiles.startup()
+        } else if (profiles.routes(target)) {
+          await profiles.publish(target)
+        }
         return
       }
       const settings = this.store.getSettings()

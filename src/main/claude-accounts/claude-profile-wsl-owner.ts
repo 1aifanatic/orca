@@ -7,7 +7,7 @@ import {
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { describeClaudeProfile } from './claude-profile-paths'
-import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-service'
+import type { ClaudeProfileRoutingOwner } from './claude-profile-routing-owner'
 import {
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
@@ -182,15 +182,19 @@ export function createWslClaudeProfileOwner(
       if (!result.report) {
         throw new Error('WSL profile helper did not report setup')
       }
-      inspections.set(distro.toLowerCase(), {
-        accountId: descriptor.profile?.accountId ?? null,
-        home: guest.home,
-        result: {
-          ...result,
-          homes: inspections.get(distro.toLowerCase())?.result.homes,
-          historyHomes: inspections.get(distro.toLowerCase())?.result.historyHomes
-        }
-      })
+      const accountId = descriptor.profile?.accountId ?? null
+      // Why: same guard as refresh; a late setup must not replace a newer selection's verification.
+      if (selectedAccountId(descriptor.target) === accountId) {
+        inspections.set(distro.toLowerCase(), {
+          accountId,
+          home: guest.home,
+          result: {
+            ...result,
+            homes: inspections.get(distro.toLowerCase())?.result.homes,
+            historyHomes: inspections.get(distro.toLowerCase())?.result.historyHomes
+          }
+        })
+      }
       return result.report
     },
     trust: async ({ target, profile }, workspacePath) => {

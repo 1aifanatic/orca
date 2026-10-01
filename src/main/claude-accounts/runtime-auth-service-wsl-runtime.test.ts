@@ -30,6 +30,23 @@ vi.mock('node:os', async () => {
 
 vi.mock('./keychain', () => createKeychainMock())
 
+const profiles = vi.hoisted(() => {
+  const state: {
+    authority?: {
+      routes: (target?: { runtime?: string; wslDistro?: string | null }) => boolean
+      prepare: ReturnType<typeof vi.fn>
+      publish: ReturnType<typeof vi.fn>
+      retire: ReturnType<typeof vi.fn>
+      startup: ReturnType<typeof vi.fn>
+    }
+  } = {}
+  return state
+})
+vi.mock('./claude-profile-routing-authority', () => ({
+  getClaudeProfileRoutingAuthority: () => profiles.authority,
+  installClaudeProfileRoutingAuthority: () => {}
+}))
+
 describe('ClaudeRuntimeAuthService', () => {
   beforeEach(() => {
     resetRuntimeAuthTestState()
@@ -270,6 +287,46 @@ describe('ClaudeRuntimeAuthService', () => {
       if (originalPlatform) {
         Object.defineProperty(process, 'platform', originalPlatform)
       }
+    }
+  })
+
+  it('launches a WSL distro with no Orca account as System Default, with no guest call', async () => {
+    setPlatform('win32')
+    vi.doMock('../wsl', () => ({
+      getDefaultWslDistro: () => 'Ubuntu',
+      getWslHome: () => null,
+      toWindowsWslPath: (value: string) => value
+    }))
+    profiles.authority = {
+      routes: (target) => target?.runtime !== 'wsl' || target.wslDistro === 'Ubuntu',
+      prepare: vi.fn(async () => {
+        throw new Error(
+          'WSL distro Arch is not running. Start it before choosing a Claude account.'
+        )
+      }),
+      publish: vi.fn(async () => {}),
+      retire: vi.fn(async () => {}),
+      startup: vi.fn(async () => {})
+    }
+    const store = createStore(createSettings({ claudeManagedAccounts: [] }))
+    try {
+      const { ClaudeRuntimeAuthService } = await import('./runtime-auth-service')
+      const service = new ClaudeRuntimeAuthService(store as never)
+      const arch = { runtime: 'wsl' as const, wslDistro: 'Arch' }
+      await expect(service.prepareForClaudeLaunch(arch)).resolves.toMatchObject({
+        runtime: 'wsl',
+        envPatch: {},
+        provenance: 'wsl:Arch:system'
+      })
+      await service.syncForCurrentSelection(arch)
+      expect(profiles.authority.prepare).not.toHaveBeenCalled()
+      expect(profiles.authority.publish).not.toHaveBeenCalled()
+      expect(profiles.authority.retire).toHaveBeenCalledWith(arch)
+      await expect(
+        service.prepareForClaudeLaunch({ runtime: 'wsl', wslDistro: 'Ubuntu' })
+      ).rejects.toThrow('not running')
+    } finally {
+      profiles.authority = undefined
     }
   })
 })

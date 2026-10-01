@@ -3,48 +3,16 @@ import {
   CLAUDE_PROFILE_POINTER_ENV,
   requireClaudeProfileRoutingCapability
 } from '../../shared/claude-profile-routing'
-import type {
-  ClaudeProfileReadiness,
-  ClaudeRateLimitAccountsState
-} from '../../shared/managed-account-types'
-import type { ClaudeProfileDescriptor } from './claude-profile-paths'
+import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
 import { readClaudeProfilePointer } from './claude-profile-pointer'
+import type {
+  ClaudeProfileLaunchDescriptor,
+  ClaudeProfileRoutingOwner
+} from './claude-profile-routing-owner'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth-service'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import type { ClaudeEnvPatch } from './environment'
-
-export type ClaudeProfileLaunchDescriptor = {
-  profile: ClaudeProfileDescriptor | null
-  /** Paths belong to the execution host; readHome may be the host's UNC access path. */
-  configHome: string
-  readHome: string
-  defaultHome: string
-  pointerPath: string
-  target: ClaudeAccountSelectionTarget
-}
-
-export type ClaudeProfileRoutingOwner = {
-  resolve: (target?: ClaudeAccountSelectionTarget) => ClaudeProfileLaunchDescriptor
-  refresh?: (target?: ClaudeAccountSelectionTarget) => Promise<void>
-  pointerPath: (target?: ClaudeAccountSelectionTarget) => string
-  targets: () => ClaudeAccountSelectionTarget[]
-  /** All known owned profiles, including unselected profiles with private/retained history. */
-  readHomes: (
-    target?: ClaudeAccountSelectionTarget,
-    surface?: 'projects' | 'transcripts'
-  ) => string[]
-  capabilities: (target: ClaudeAccountSelectionTarget) => readonly string[]
-  /** Derived from step-1 setup's own output, so no flag records that setup ran. */
-  isProvisioned: (descriptor: ClaudeProfileLaunchDescriptor) => boolean
-  readiness: (accountId: string) => ClaudeProfileReadiness
-  /** Implemented on the owning host/guest; never materializes through a Windows UNC share. */
-  prepare: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<ClaudeProfileSetupReport>
-  trust?: (descriptor: ClaudeProfileLaunchDescriptor, workspace: string) => Promise<void>
-  publish: (descriptor: ClaudeProfileLaunchDescriptor) => Promise<void>
-  /** Removes the pointer so the shell refuses visibly; never throws. */
-  withdraw: (target?: ClaudeAccountSelectionTarget) => void | Promise<void>
-}
 
 /** Settings remain authoritative; nothing in this class persists a second selection. */
 export class ClaudeProfileRoutingService {
@@ -52,8 +20,22 @@ export class ClaudeProfileRoutingService {
   private readonly publishes = new Map<string, number>()
   private readonly latestPublishes = new Map<string, Promise<ClaudeProfileLaunchDescriptor>>()
   private readonly pointerWrites = new Map<string, Promise<unknown>>()
+  /** Targets whose newest publish succeeded; re-derived by every publish, never persisted. */
+  private readonly current = new Set<string>()
+  private readonly backgroundPublishes = new Map<string, Promise<unknown>>()
   private repair: Promise<unknown> | null = null
   constructor(private readonly owner: ClaudeProfileRoutingOwner) {}
+  /** Settings only: a WSL distro is routed while it holds an Orca Claude account. An unrouted one
+   *  stays System Default exactly as before profiles: no pointer, no guest call. */
+  routes(target?: ClaudeAccountSelectionTarget): boolean {
+    if (target?.runtime !== 'wsl') {
+      return true
+    }
+    const distro = target.wslDistro?.trim().toLowerCase()
+    return this.owner
+      .targets()
+      .some((entry) => entry.runtime === 'wsl' && entry.wslDistro?.toLowerCase() === distro)
+  }
   resolve(target?: ClaudeAccountSelectionTarget): ClaudeProfileLaunchDescriptor {
     const descriptor = this.owner.resolve(target)
     if (descriptor.target.runtime === 'wsl' && !descriptor.target.wslDistro) {
@@ -112,6 +94,7 @@ export class ClaudeProfileRoutingService {
       }
       if (generation === this.publishes.get(key)) {
         this.publishIssues.delete(key)
+        this.current.add(key)
       }
       return descriptor
     } catch (error) {
@@ -119,6 +102,7 @@ export class ClaudeProfileRoutingService {
       // target publish, still naming the current selection, speaks for the pointer.
       if (generation === this.publishes.get(key) && !this.isOvertaken(descriptor)) {
         const message = error instanceof Error ? error.message : String(error)
+        this.current.delete(key)
         this.publishIssues.set(
           key,
           target?.runtime === 'wsl' ? `WSL ${target.wslDistro ?? 'distro'}: ${message}` : message
@@ -132,6 +116,28 @@ export class ClaudeProfileRoutingService {
         }
       }
       throw error
+    }
+  }
+  /** A distro that lost its last account: panes opened while it was routed must stop launching
+   *  that account. Bookkeeping, so it only warns. */
+  async retire(target: ClaudeAccountSelectionTarget): Promise<void> {
+    const key = publishKey(target)
+    const generation = (this.publishes.get(key) ?? 0) + 1
+    this.publishes.set(key, generation)
+    // Why: an in-flight publish this overtakes must not wait on itself as the newest one.
+    const retired = Promise.reject(
+      new Error('Claude account changed while preparing its profile; retry')
+    )
+    retired.catch(() => {})
+    this.latestPublishes.set(key, retired)
+    this.current.delete(key)
+    this.publishIssues.delete(key)
+    try {
+      await this.mutatePointer(key, generation, async () => {
+        await this.owner.withdraw(target)
+      })
+    } catch (error) {
+      console.warn('[claude-profile] Pointer withdrawal failed:', error)
     }
   }
   private async mutatePointer(
@@ -221,15 +227,34 @@ export class ClaudeProfileRoutingService {
   }
   /**
    * A pane's spawn env: its children keep this account until the pane reopens, while the claude
-   * function re-reads the pointer. Makes no guest call and never throws, so a non-Claude pane
+   * function re-reads the pointer. Never waits on a guest and never throws, so a non-Claude pane
    * always opens.
    */
   terminalEnv(target?: ClaudeAccountSelectionTarget): ClaudeEnvPatch {
+    if (!this.routes(target)) {
+      return {}
+    }
+    if (target?.runtime === 'wsl') {
+      this.publishInBackground(target)
+    }
     try {
       return this.envPatch(this.resolve(target))
     } catch {
       return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath(target) }
     }
+  }
+  // Why: a distro stopped at startup has no current publish; its first pane re-derives it.
+  private publishInBackground(target: ClaudeAccountSelectionTarget): void {
+    const key = publishKey(target)
+    if (this.current.has(key) || this.backgroundPublishes.has(key)) {
+      return
+    }
+    this.backgroundPublishes.set(
+      key,
+      this.publish(target, 'if-missing')
+        .catch(() => {})
+        .finally(() => this.backgroundPublishes.delete(key))
+    )
   }
   // Why no CLAUDE_CONFIG_DIR for System Default: the user's inherited value must pass through.
   private envPatch(descriptor: ClaudeProfileLaunchDescriptor): ClaudeEnvPatch {

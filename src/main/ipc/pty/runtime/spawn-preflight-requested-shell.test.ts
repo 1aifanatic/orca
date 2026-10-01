@@ -8,6 +8,7 @@ import { createRuntimePtySpawnState, type RuntimePtySpawnArgs } from './spawn-st
 import type { PtyRuntimeControllerDeps } from './controller-deps'
 import { ClaudeProfileRoutingService } from '../../../claude-accounts/claude-profile-routing-service'
 import { createWslClaudeProfileOwner } from '../../../claude-accounts/claude-profile-wsl-owner'
+import { WSL_CLAUDE_PROFILE_POINTER } from '../../../../shared/claude-profile-routing'
 
 const profiles = vi.hoisted(() => {
   const state: { authority?: ClaudeProfileRoutingService } = {}
@@ -97,15 +98,27 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
   })
 
-  it('opens a plain WSL pane on a stopped distro without asking the guest anything', async () => {
+  it('opens a wsl.exe pane on a stopped routed distro without waiting on the guest', async () => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    const prepareGuest = vi.fn(async (): Promise<never> => {
-      throw new Error('WSL distro Ubuntu is not running')
-    })
+    const stopped = Promise.withResolvers<never>()
+    const prepareGuest = vi.fn(() => stopped.promise)
+    const settings = getDefaultSettings('/tmp')
     profiles.authority = new ClaudeProfileRoutingService(
       createWslClaudeProfileOwner(
         () => ({
-          ...getDefaultSettings('/tmp'),
+          ...settings,
+          claudeManagedAccounts: [
+            {
+              id: 'a',
+              email: 'a@example.test',
+              managedAuthPath: '/unused-legacy',
+              managedAuthRuntime: 'wsl',
+              wslDistro: 'Ubuntu',
+              createdAt: 0,
+              updatedAt: 0,
+              lastAuthenticatedAt: 0
+            }
+          ],
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'a' } }
         }),
         prepareGuest,
@@ -116,15 +129,40 @@ describe('runtime pty spawn preflight: Claude profiles in a WSL pane', () => {
       cols: 120,
       rows: 40,
       cwd: '\\\\wsl.localhost\\Ubuntu\\home\\u',
+      shellOverride: 'wsl.exe',
       env: { KEEP: '1' }
     }
     const ctx = createRuntimePtySpawnState(makeDeps(), args)
     await expect(prepareRuntimePtySpawn(ctx)).resolves.toBeNull()
     expect(ctx.codexSelectionTarget).toEqual({ runtime: 'wsl', wslDistro: 'Ubuntu' })
-    expect(prepareGuest).not.toHaveBeenCalled()
-    expect(args.env).toEqual({
-      KEEP: '1',
-      ORCA_CLAUDE_PROFILE_POINTER: '~/.local/share/orca/claude-profiles/selected-wsl'
+    expect(args.env).toEqual({ KEEP: '1', ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER })
+    // The background republish asked the guest; the pane did not wait for it.
+    expect(prepareGuest).toHaveBeenCalledWith('Ubuntu')
+    stopped.reject(new Error('WSL distro Ubuntu is not running'))
+  })
+
+  it('gives a wsl.exe pane in a distro with no Orca account nothing, as before profiles', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const prepareGuest = vi.fn(async (): Promise<never> => {
+      throw new Error('unexpected guest call')
     })
+    profiles.authority = new ClaudeProfileRoutingService(
+      createWslClaudeProfileOwner(
+        () => getDefaultSettings('/tmp'),
+        prepareGuest,
+        async () => {}
+      )
+    )
+    const args: RuntimePtySpawnArgs = {
+      cols: 120,
+      rows: 40,
+      cwd: '\\\\wsl.localhost\\Arch\\home\\u',
+      shellOverride: 'wsl.exe',
+      env: { KEEP: '1' }
+    }
+    const ctx = createRuntimePtySpawnState(makeDeps(), args)
+    await expect(prepareRuntimePtySpawn(ctx)).resolves.toBeNull()
+    expect(args.env).toEqual({ KEEP: '1' })
+    expect(prepareGuest).not.toHaveBeenCalled()
   })
 })

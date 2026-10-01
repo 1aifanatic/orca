@@ -147,7 +147,7 @@ export async function prepareRuntimePtySpawn(
   // notifyResumeUnavailable — runtime/relay panes start fresh without the notice.
   ctx.launchCommand = codexResumeLaunch.command
   if (!args.connectionId) {
-    // Why no guest call: a WSL pane must open even when its distro is stopped; launches publish.
+    // Why: a WSL pane opens even when its distro is stopped; terminalEnv never waits on a guest.
     const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv(ctx.codexSelectionTarget)
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
