@@ -24,7 +24,7 @@ export function supportsStructuredAgentSessions(
 /**
  * COMPAT(released phones): a remote client that does not pick each launch's mode itself reads
  * `agentSession.createSupport` as "should this launch be a chat", which the host's setting
- * answered. Such a client keeps that answer until no supported build lacks the capability.
+ * answered. Remove once the oldest supported phone build launches agents through `agent.launch`.
  */
 export function createSupportFollowsHostSetting(
   context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>
