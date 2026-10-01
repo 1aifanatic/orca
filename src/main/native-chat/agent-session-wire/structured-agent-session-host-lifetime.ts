@@ -122,7 +122,8 @@ async function stopEndsWork(
     return false
   }
   // A failed drain has nothing more to deliver, so the journal's read as it stands holds. One
-  // still running past its bound may hold the turn's row, so the agent reads working.
+  // still running past its bound may hold the turn row of a send already accepted: that reads
+  // working.
   const drain = await withTimeout(
     context.runtimeState.flushEventSink(sessionId).then(
       () => 'drained' as const,
@@ -132,7 +133,7 @@ async function stopEndsWork(
     'slow' as const
   )
   const working =
-    drain === 'slow' ||
+    (drain === 'slow' && journal.stopMarks.latestAcceptedSendUnopened()) ||
     isStructuredAgentSessionMainAgentWorking(
       journal.activeTurnId(),
       journal.submissions(),

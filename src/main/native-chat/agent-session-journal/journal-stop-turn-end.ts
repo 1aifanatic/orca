@@ -54,6 +54,35 @@ function openingSubmission(
     : undefined
 }
 
+/** Whether the latest send the agent accepted has opened no turn the journal holds: its turn's row
+ *  may still be on its way. */
+export function latestAcceptedSendUnopened(state: TurnEndState): boolean {
+  let latest: { submission: AgentJournalSubmission; sequence: number } | undefined
+  for (const submission of state.submissions.values()) {
+    const sequence = state.items.get(
+      agentJournalSubmissionKey(submission.clientMessageId)
+    )?.sequence
+    if (
+      submission.dispatchState === 'accepted' &&
+      sequence !== undefined &&
+      sequence >= (latest?.sequence ?? -1)
+    ) {
+      latest = { submission, sequence }
+    }
+  }
+  if (!latest) {
+    return false
+  }
+  for (const item of state.items.values()) {
+    if (
+      openingSubmission(state, readAgentJournalTurn(item.body)?.userItemId) === latest.submission
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 /** A send a Stop that named no turn stopped: one already handed to the agent at the Stop's
  *  position, whose turn had not opened. A card the Stop held, or anything sent after it, is not. */
 function isStopTarget(
