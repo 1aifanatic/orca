@@ -19,6 +19,11 @@ const MANAGED_STATUS_LINE = {
   type: 'command',
   command: '"$HOME/.orca/agent-hooks/claude-statusline.sh"'
 }
+const USER_HOOK = { matcher: '', hooks: [{ type: 'command', command: 'notify-me' }] }
+const ORCA_HOOK = {
+  matcher: '',
+  hooks: [{ type: 'command', command: '"$HOME/.orca/agent-hooks/claude-hook.sh"' }]
+}
 const roots: string[] = []
 function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'claude-profile-setup-')))
@@ -58,12 +63,12 @@ describe('dormant Claude profile provisioning', () => {
     expect(fs.readFileSync(join(f.profileHome, 'skills/new.md'), 'utf8')).toBe('new skill')
     expect(fs.readFileSync(join(f.profileHome, 'agents/mine.md'), 'utf8')).toBe('private')
   })
-  it('shares future settings keys but excludes auth and hooks; profile edits survive reprovision', async () => {
+  it("shares future settings keys and the user's hooks but excludes auth and Orca hooks; profile edits survive reprovision", async () => {
     const f = fixture()
     f.json(join(f.source, 'settings.json'), {
       futureFeature: true,
       model: 'a',
-      hooks: { private: true },
+      hooks: { Stop: [USER_HOOK, ORCA_HOOK], SessionStart: [ORCA_HOOK] },
       apiKeyHelper: 'secret',
       awsAuthRefresh: 'secret',
       awsCredentialExport: 'secret',
@@ -81,6 +86,7 @@ describe('dormant Claude profile provisioning', () => {
     expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({
       futureFeature: true,
       model: 'a',
+      hooks: { Stop: [USER_HOOK] },
       env: { NORMAL: 'yes' }
     })
     f.json(join(f.profileHome, 'settings.json'), {

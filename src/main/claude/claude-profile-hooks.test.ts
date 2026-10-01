@@ -99,6 +99,46 @@ describe('Claude hooks at an explicit profile', () => {
     f.installProfile()
     expect(f.settings(f.profile).statusLine).toEqual(custom)
   })
+  it("shares the user's own hooks around Orca's, keeping profile edits and never duplicating Orca's", async () => {
+    const f = fixture()
+    const hook = (command: string) => ({ matcher: '', hooks: [{ type: 'command', command }] })
+    const stopOf = (value: Record<string, unknown>): unknown[] => {
+      const hooks: unknown = value.hooks
+      return hooks && typeof hooks === 'object' && 'Stop' in hooks && Array.isArray(hooks.Stop)
+        ? hooks.Stop
+        : []
+    }
+    const isOrca = (entry: unknown) => JSON.stringify(entry).includes('agent-hooks')
+    const setStop = (dir: string, commands: string[]) =>
+      f.edit(dir, (value) => {
+        const hooks = typeof value.hooks === 'object' ? value.hooks : {}
+        value.hooks = { ...hooks, Stop: [...commands.map(hook), ...stopOf(value).filter(isOrca)] }
+      })
+    const stop = (dir: string) => stopOf(f.settings(dir))
+    const orcaCount = (dir: string) => stop(dir).filter(isOrca).length
+    f.service.install(CURRENT)
+    setStop(f.defaultDir, ['notify-me', 'format-me'])
+    await f.provision()
+    f.installProfile()
+    expect(stop(f.profile).slice(0, 2)).toEqual([hook('notify-me'), hook('format-me')])
+    expect(orcaCount(f.profile)).toBe(1)
+    setStop(f.defaultDir, ['notify-me'])
+    await f.provision()
+    // Orca's entry survives the merge before the installer runs again.
+    expect(stop(f.profile)).toEqual([hook('notify-me'), expect.anything()])
+    expect(orcaCount(f.profile)).toBe(1)
+    f.installProfile()
+    await f.provision()
+    expect(stop(f.profile)[0]).toEqual(hook('notify-me'))
+    expect(stop(f.profile)).toHaveLength(2)
+    expect(orcaCount(f.profile)).toBe(1)
+    setStop(f.profile, ['profile-only'])
+    setStop(f.defaultDir, ['notify-v2'])
+    await f.provision()
+    f.installProfile()
+    expect(stop(f.profile)[0]).toEqual(hook('profile-only'))
+    expect(orcaCount(f.profile)).toBe(1)
+  })
   it('creates the marker in a profile directory that did not exist yet', () => {
     const f = fixture()
     f.service.install(CURRENT)

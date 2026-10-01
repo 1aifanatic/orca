@@ -62,7 +62,22 @@ function appendHistory(destination: string, bytes: Buffer): void {
       closeSync(fd)
     }
   }
-  appendFileSync(destination, separator ? Buffer.concat([Buffer.from('\n'), bytes]) : bytes)
+  // Why: an unterminated last record would fuse with Claude's next append.
+  const terminator = bytes.at(-1) === 10 ? [] : [Buffer.from('\n')]
+  const lead = separator ? [Buffer.from('\n')] : []
+  appendFileSync(destination, Buffer.concat([...lead, bytes, ...terminator]))
+}
+
+/** Bytes a rewrite of the shared file carried over unchanged, cut back to a whole line. */
+function sharedPrefixLength(file: string, destination: string): number {
+  const own = readFileSync(file)
+  const shared = readFileSync(destination)
+  const limit = Math.min(own.length, shared.length)
+  let length = 0
+  while (length < limit && own[length] === shared[length]) {
+    length++
+  }
+  return length === 0 ? 0 : own.lastIndexOf(10, length - 1) + 1
 }
 
 function isSharedFile(file: string, destination: string): boolean {
@@ -198,6 +213,8 @@ export function mergeClaudeProfilePromptHistory(
     // Why: a second name for the shared file holds nothing new, and would replay it if the default is replaced.
     unlinkSync(aside)
   } else if (aside) {
+    // Why: a CLI that rewrote the shared file (old records + new) must contribute only the new ones.
+    writeFileSync(`${aside}.offset`, `${sharedPrefixLength(aside, destination)}\n`, { mode: 0o600 })
     drainHistory(aside, destination)
   }
   return 'linked'

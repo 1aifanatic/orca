@@ -146,12 +146,13 @@ export function syncClaudeProfileFile(
   return 'synced'
 }
 
+/** Returns the keys it changed in `target`. */
 export function mergeClaudeProfileKeys(
   target: Record<string, unknown>,
   desired: Record<string, unknown>,
   written: Record<string, string>
-): boolean {
-  let changed = false
+): string[] {
+  const changed: string[] = []
   for (const [key, value] of Object.entries(desired)) {
     const serialized = JSON.stringify(value)
     const current = key in target ? JSON.stringify(target[key]) : undefined
@@ -160,7 +161,7 @@ export function mergeClaudeProfileKeys(
     }
     if (current !== serialized) {
       target[key] = value
-      changed = true
+      changed.push(key)
     }
     written[key] = serialized
   }

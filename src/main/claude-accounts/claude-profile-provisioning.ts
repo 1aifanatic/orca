@@ -7,7 +7,7 @@ import {
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
-import { isManagedStatusLine } from '../claude/hook-settings'
+import { isManagedStatusLine, splitManagedHooks } from '../claude/hook-settings'
 import { assertOutsideDefaultClaudeHomes, readClaudeProfileObject } from './claude-profile-paths'
 import {
   ClaudeProfileSurfaceError,
@@ -33,7 +33,6 @@ export const CLAUDE_PROFILE_RESOURCE_DIRS = [
   'output-styles'
 ] as const
 const PRIVATE_KEYS = new Set([
-  'hooks',
   'apiKeyHelper',
   'awsAuthRefresh',
   'awsCredentialExport',
@@ -47,14 +46,44 @@ const PRIVATE_ENV = new Set([
 ])
 const SHARED_STATE_KEYS = ['mcpServers', 'theme']
 
+/**
+ * Orca's hook entries and managed statusLine belong to the profile's installer. Stripped on both sides
+ * of the ledger comparison, they never travel through the merge or make a key look user-owned.
+ */
+function withoutOrcaEntries(settings: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...settings }
+  if ('hooks' in next) {
+    const { user } = splitManagedHooks(next.hooks)
+    if (user === undefined) {
+      delete next.hooks
+    } else {
+      next.hooks = user
+    }
+  }
+  if (isManagedStatusLine(next.statusLine)) {
+    delete next.statusLine
+  }
+  return next
+}
+
+/** The user's shared hooks plus Orca's entries already in the profile, so hooks keep firing until install. */
+function withProfileOrcaHooks(user: unknown, profileHooks: unknown): unknown {
+  const { managed } = splitManagedHooks(profileHooks)
+  if (!user || typeof user !== 'object' || Array.isArray(user)) {
+    return user
+  }
+  const next: Record<string, unknown> = { ...user }
+  for (const [event, definitions] of Object.entries(managed)) {
+    const own = next[event]
+    next[event] = [...(Array.isArray(own) ? own : []), ...definitions]
+  }
+  return next
+}
+
 function pickSettings(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
+  const picked = Object.fromEntries(
     Object.entries(source)
-      // Why: Orca's managed statusLine belongs to the profile's hook installer; a user's own line is shared.
-      .filter(
-        ([key, value]) =>
-          !PRIVATE_KEYS.has(key) && !(key === 'statusLine' && isManagedStatusLine(value))
-      )
+      .filter(([key]) => !PRIVATE_KEYS.has(key))
       .map(([key, value]) => {
         if (key === 'env' && value && typeof value === 'object' && !Array.isArray(value)) {
           return [
@@ -65,6 +94,7 @@ function pickSettings(source: Record<string, unknown>): Record<string, unknown> 
         return [key, value]
       })
   )
+  return withoutOrcaEntries(picked)
 }
 
 function isLink(file: string): boolean {
@@ -91,20 +121,20 @@ function mergeSettings(
   if (existing.kind === 'unavailable' || input.kind === 'unavailable') {
     throw new ClaudeProfileSurfaceError('unreadable', 'Claude settings.json is unreadable')
   }
-  const config = existing.kind === 'present' ? { ...existing.value } : {}
+  const config: Record<string, unknown> = existing.kind === 'present' ? { ...existing.value } : {}
+  const current = withoutOrcaEntries(config)
   const desired = pickSettings(input.kind === 'present' ? input.value : {})
   const written = { ...ledger.keys['settings.json'] }
-  if ('statusLine' in desired && isManagedStatusLine(config.statusLine)) {
-    // Why: the profile's managed line is the installer's, so a user's own line from the default replaces it.
-    written.statusLine = JSON.stringify(config.statusLine)
+  const changed = mergeClaudeProfileKeys(current, desired, written)
+  for (const key of changed) {
+    config[key] = key === 'hooks' ? withProfileOrcaHooks(current.hooks, config.hooks) : current[key]
   }
-  const changed = mergeClaudeProfileKeys(config, desired, written)
-  if (changed) {
+  if (changed.length > 0) {
     writeFileAtomically(target, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
   }
   // Committed only after the write, so a failed write never marks an unwritten value as shared.
   ledger.keys['settings.json'] = written
-  return changed ? 'merged' : existing.kind === 'absent' ? 'absent' : 'unchanged'
+  return changed.length > 0 ? 'merged' : existing.kind === 'absent' ? 'absent' : 'unchanged'
 }
 
 async function mergeState(args: {
@@ -131,7 +161,7 @@ async function mergeState(args: {
   const outcome = await updateClaudeGlobalConfig(args.target, (current) => {
     const config = { ...current }
     written = { ...args.ledger.keys['.claude.json'] }
-    let changed = mergeClaudeProfileKeys(config, desired, written)
+    let changed = mergeClaudeProfileKeys(config, desired, written).length > 0
     // Why: otherwise first launch opens the onboarding wizard, where a stray Enter starts a login that rebinds the profile.
     if (config.hasCompletedOnboarding !== true) {
       config.hasCompletedOnboarding = true

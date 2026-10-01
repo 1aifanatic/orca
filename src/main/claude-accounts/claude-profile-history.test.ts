@@ -129,6 +129,25 @@ describe('Claude profile history sharing', () => {
     )
     expect(f.history()).toBe('default\nprofile\nlate\nreplacement\n')
   })
+  it('terminates merged records so the next append starts its own line', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\n')
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'p1\np2')
+    await f.share()
+    fs.appendFileSync(join(f.profileHome, 'history.jsonl'), 'after-link\n')
+    expect(f.history()).toBe('d1\np1\np2\nafter-link\n')
+  })
+  it('adds only the new lines of a CLI rewrite of the shared file', async () => {
+    for (const platform of ['darwin', 'win32'] as const) {
+      const f = fixture()
+      fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\nd2\n')
+      await f.share(platform)
+      fs.writeFileSync(join(f.profileHome, 'rewrite'), 'd1\nd2\nnew\n')
+      fs.renameSync(join(f.profileHome, 'rewrite'), join(f.profileHome, 'history.jsonl'))
+      await f.share(platform)
+      expect(f.history()).toBe('d1\nd2\nnew\n')
+    }
+  })
   it('drains retained generations in numeric order', async () => {
     const f = fixture()
     for (const generation of [0, 1, 2, 10, 11]) {
