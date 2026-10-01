@@ -199,8 +199,10 @@ C31 followed that path and was promoted to general on 2026-10-01, so it is now a
 cell and in the fleet pool list beside C27-C30.
 
 C32 and C33 are US cells at that same 3,000-connection shape, in `us-central1-a` and
-`us-central1-b`, and use the same two workflows and the C30 steps, one cell per wave. Each wave's
-region comes from its reviewed zone. A US wave plans no additional-region network, and its template
+`us-central1-b`, and use the same two workflows and the C30 steps. They are declared together, so
+they share one topology wave: the live-image step refuses a declared non-target cell with no
+template, so a lone C32 plan would fail on C33. Registration, director configuration, and
+promotion still take one cell at a time. Each wave's region comes from its reviewed zone. A US wave plans no additional-region network, and its template
 carries no region label or region line. Its pool stays at the US default of 10 and emits no pool
 line, because 16 exists only for the asia-east2 round trip. Registration and the runtime check
 expect `us-central1`. Promotion skips the Asia launch-order gates, which bind Asia cells only.

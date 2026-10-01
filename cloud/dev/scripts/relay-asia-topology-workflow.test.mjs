@@ -50,8 +50,7 @@ test('accepts only the reviewed Asia topology waves', () => {
       'production:production-gce-c27,production-gce-c28,production-gce-c29',
       'production:production-gce-c30',
       'production:production-gce-c31',
-      'production:production-gce-c32',
-      'production:production-gce-c33'
+      'production:production-gce-c32,production-gce-c33'
     ]
   )
 })
@@ -100,12 +99,19 @@ test('targets the asia-east2 network for Asia waves and only the cell and URL ma
       targets: [...asiaNetwork, urlMap, ...cellIds.split(',').flatMap(cellTargets)]
     }, cellIds)
   }
-  for (const cellId of ['production-gce-c32', 'production-gce-c33']) {
-    assert.deepEqual(waveTargets('production', cellId), {
-      region: 'us-central1',
-      targets: [urlMap, ...cellTargets(cellId)]
-    }, cellId)
-  }
+  const usWave = 'production-gce-c32,production-gce-c33'
+  assert.deepEqual(waveTargets('production', usWave), {
+    region: 'us-central1',
+    targets: [urlMap, ...usWave.split(',').flatMap(cellTargets)]
+  })
+})
+
+// The live-image overlay refuses a declared non-target cell with no template, so the two US cells
+// declared together must also plan together; a lone C32 or C33 plan is not a reviewed wave.
+test('plans the two declared US cells as one wave', () => {
+  const cases = /case "\$\{TARGET_ENVIRONMENT\}:\$\{TARGET_CELL_IDS\}" in\n([\s\S]*?)\n\s*esac/
+    .exec(workflow)?.[1]
+  assert.doesNotMatch(cases, /production:production-gce-c3[23]\)/)
 })
 
 test('plans only additive Asia topology and applies the saved plan', () => {

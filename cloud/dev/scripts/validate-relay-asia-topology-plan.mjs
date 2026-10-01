@@ -30,8 +30,8 @@ const CELL_SHAPES = {
       ['production-gce-c27', 'production-gce-c28', 'production-gce-c29'],
       ['production-gce-c30'],
       ['production-gce-c31'],
-      ['production-gce-c32'],
-      ['production-gce-c33']
+      // Declared together, so they plan together: a lone C32 plan would hit C33's missing template.
+      ['production-gce-c32', 'production-gce-c33']
     ]
   },
   staging: {

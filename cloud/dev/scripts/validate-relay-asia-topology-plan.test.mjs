@@ -163,7 +163,7 @@ test('accepts the additive production C31 wave only in asia-east2-b', () => {
 
 // A US cell joins the root region: no additional-region network, no region label or line, and
 // the default pool emits no line, exactly as the startup template renders a root-region cell.
-function usWavePlan(hostname = 'c32', zone = 'us-central1-a') {
+function usCellPlan(hostname, zone) {
   const plan = productionWavePlan(hostname, zone).slice(3)
   const template = plan[0].change.after
   template.labels = { 'orca-relay-cell': `production-gce-${hostname}` }
@@ -174,48 +174,64 @@ function usWavePlan(hostname = 'c32', zone = 'us-central1-a') {
   return plan
 }
 
-test('accepts the additive US C32 and C33 waves at the root-region shape', () => {
-  const c32Config = { ...productionConfig, cells: ['production-gce-c32'] }
-  const c33Config = { ...productionConfig, cells: ['production-gce-c33'] }
+// C32 and C33 plan as one wave: both cells' resources and one URL map adding both hosts.
+function usWavePlan(c33Zone = 'us-central1-b') {
+  const c32 = usCellPlan('c32', 'us-central1-a')
+  const c33 = usCellPlan('c33', c33Zone)
+  const urlMap = c32.at(-1)
+  const added = c33.at(-1).change.after
+  urlMap.change.after.host_rule.push(added.host_rule.at(-1))
+  urlMap.change.after.path_matcher.push(added.path_matcher.at(-1))
+  return [...c32.slice(0, -1), ...c33.slice(0, -1), urlMap]
+}
+
+const usConfig = { ...productionConfig, cells: ['production-gce-c32', 'production-gce-c33'] }
+
+test('accepts the additive US C32+C33 wave at the root-region shape', () => {
   assert.deepEqual(
-    validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan() }, c32Config),
-    { environment: 'production', cells: ['production-gce-c32'], changes: 4 }
-  )
-  assert.deepEqual(
-    validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan('c33', 'us-central1-b') }, c33Config),
-    { environment: 'production', cells: ['production-gce-c33'], changes: 4 }
+    validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan() }, usConfig),
+    { environment: 'production', cells: ['production-gce-c32', 'production-gce-c33'], changes: 7 }
   )
   assert.throws(
-    () => validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan('c32', 'us-central1-b') }, c32Config),
+    () => validateRelayAsiaTopologyPlan({ resource_changes: usWavePlan('us-central1-a') }, usConfig),
     /fixed-one Asia MIG shape/
   )
-  const mutate = (edit) => {
+  // A plan missing either cell is not the reviewed wave.
+  assert.throws(
+    () => validateRelayAsiaTopologyPlan({ resource_changes: usCellPlan('c32', 'us-central1-a') }, usConfig),
+    /no exact host for production-gce-c33|absent or has an unreviewed topology action/
+  )
+  const mutate = (index, edit) => {
     const plan = usWavePlan()
-    edit(plan[0].change.after)
+    edit(plan[index].change.after)
     return plan
   }
   const asiaLine = "printf 'ORCA_RELAY_REGION=%s\\n' 'asia-east2'"
-  for (const [label, plan] of [
-    ['region label', mutate((after) => { after.labels['orca-relay-region'] = 'us-central1' })],
-    ['region line', mutate((after) => { after.metadata_startup_script = `${asiaLine}\n${after.metadata_startup_script}` })],
-    ['Asia pool', mutate((after) => {
-      after.metadata_startup_script += "\nprintf 'ORCA_RELAY_DATABASE_POOL_MAX=%s\\n' '16'"
-    })],
-    ['Asia subnet', mutate((after) => {
-      after.network_interface[0].subnetwork = 'projects/p/regions/asia-east2/subnetworks/relay'
-    })]
-  ]) {
-    assert.throws(
-      () => validateRelayAsiaTopologyPlan({ resource_changes: plan }, c32Config),
-      /reviewed Asia cell shape/,
-      label
-    )
+  for (const index of [0, 3]) {
+    for (const [label, plan] of [
+      ['region label', mutate(index, (after) => { after.labels['orca-relay-region'] = 'us-central1' })],
+      ['region line', mutate(index, (after) => {
+        after.metadata_startup_script = `${asiaLine}\n${after.metadata_startup_script}`
+      })],
+      ['Asia pool', mutate(index, (after) => {
+        after.metadata_startup_script += "\nprintf 'ORCA_RELAY_DATABASE_POOL_MAX=%s\\n' '16'"
+      })],
+      ['Asia subnet', mutate(index, (after) => {
+        after.network_interface[0].subnetwork = 'projects/p/regions/asia-east2/subnetworks/relay'
+      })]
+    ]) {
+      assert.throws(
+        () => validateRelayAsiaTopologyPlan({ resource_changes: plan }, usConfig),
+        /reviewed Asia cell shape/,
+        `${index} ${label}`
+      )
+    }
   }
   // A US wave plans no additional-region network, so creating one is an unreviewed change.
   const withNetwork = [...productionWavePlan('c32', 'us-central1-a').slice(0, 1), ...usWavePlan()]
   withNetwork[0].change.actions = ['create']
   assert.throws(
-    () => validateRelayAsiaTopologyPlan({ resource_changes: withNetwork }, c32Config),
+    () => validateRelayAsiaTopologyPlan({ resource_changes: withNetwork }, usConfig),
     /unreviewed topology action/
   )
 })
@@ -267,7 +283,9 @@ test('accepts only a reviewed Asia topology wave', () => {
     'production-gce-c30,production-gce-c30',
     'production-gce-c30,production-gce-c31',
     'production-gce-c31,production-gce-c32',
-    'production-gce-c32,production-gce-c33',
+    'production-gce-c32',
+    'production-gce-c33',
+    'production-gce-c32,production-gce-c33,production-gce-c34',
     'production-gce-c34'
   ]) {
     assert.throws(
@@ -281,11 +299,11 @@ test('accepts only a reviewed Asia topology wave', () => {
     /exact reviewed Asia topology set/
   )
   // Each wave's region comes from its reviewed zone, so the workflow must pass that region.
-  for (const cellIds of ['production-gce-c32', 'production-gce-c33']) {
-    assert.equal(
+  for (const cellIds of ['production-gce-c32,production-gce-c33', 'production-gce-c33,production-gce-c32']) {
+    assert.deepEqual(
       parseRelayAsiaTopologyPlanArguments(argv('production', cellIds, productionImage, 'us-central1'))
-        .cells[0],
-      cellIds
+        .cells,
+      cellIds.split(',')
     )
     assert.throws(
       () => parseRelayAsiaTopologyPlanArguments(argv('production', cellIds, productionImage)),
