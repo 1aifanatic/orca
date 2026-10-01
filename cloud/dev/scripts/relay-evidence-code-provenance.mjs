@@ -33,6 +33,8 @@ export const TRUSTED_EVIDENCE_CODE_PATHS = [
   relayTreePath('dev/scripts/probe-relay-rehome-trust.mjs'),
   relayTreePath('dev/scripts/validate-relay-capacity-plan.mjs'),
   relayTreePath('dev/scripts/verify-relay-capacity-transition.mjs'),
+  // The exit metric filter the same-cap pre-drain sample's crash rule reads.
+  relayTreePath('infra/terraform/relay-observability.tf'),
   // The monitor, the live preflight recheck, and the same-cap pre-drain sample, plus anything that
   // changes their behaviour.
   relayTreePath('apps/relay-ops'),

@@ -24,7 +24,7 @@ import {
 const NumericSchema = z.union([z.number(), z.string()])
   .transform(Number)
   .pipe(z.number().finite())
-const MonitoringPointSchema = z.object({
+export const MonitoringPointSchema = z.object({
   interval: z.object({ endTime: z.string() }),
   value: z.object({
     doubleValue: NumericSchema.optional(),

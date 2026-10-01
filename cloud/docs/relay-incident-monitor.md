@@ -54,7 +54,8 @@ unavailable telemetry fails closed.
 `Deploy Relay Production Same-Cap` does not consume this dry-run. Each `apply` wave samples
 the fleet itself right before it isolates its cell, with this monitor's evaluator, thresholds,
 and tolerances, for a window sized to the hosts the drain will re-place (3, 5, or 8 minutes),
-plus three lookback rules: no cell container exit in 10 minutes, no minute with more than 500
+plus three lookback rules: no container exit in 10 minutes on a general or migration-only cell
+other than the one being rolled, no minute with more than 500
 director 503s in 10 minutes, and director concurrency p99 within this monitor's bar over 4
 minutes. See [pre-drain fleet-health sample](./relay-workflows.md#pre-drain-fleet-health-sample).
 The break-glass override that used to skip this gate for same-cap is gone with it.

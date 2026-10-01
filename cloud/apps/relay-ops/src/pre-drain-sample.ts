@@ -24,7 +24,8 @@ export const PRE_DRAIN_SAMPLE_WINDOWS = [
 ] as const
 
 export const PRE_DRAIN_HARD_RULES = {
-  // Any relay cell container exit; a drain into a crash loop re-places its hosts twice.
+  // Any container exit on a cell that takes placements, other than the cell being rolled; a drain
+  // into a crash loop re-places its hosts twice.
   cellProcessExitLookbackMs: 10 * 60_000,
   cellProcessExitsMax: 0,
   // A disconnect pulse lands as thousands of director 503s in one minute (7,750 and 13,000 on
@@ -37,10 +38,39 @@ export const PRE_DRAIN_HARD_RULES = {
 } as const
 
 export type PreDrainHardRuleReadings = {
+  // Exits on general or migration-only cells other than the target.
   cellProcessExits: number
+  // Exits on an instance no cell could be resolved for; never assumed harmless.
+  unattributedExitInstances: string[]
   director503PeakPerMinute: number
   // Null when Cloud Monitoring published no point in the lookback.
   directorConcurrencyP99: number | null
+}
+
+// Which exits count. The target's own exits are why it is being rolled (c25 crashed 12 times in
+// a week and is the first US roll), and existing-only legacy cells take no placements (c5 alone
+// exited 15 times in that week), so neither can stop a drain. An instance with no known cell
+// counts as unattributed and trips the rule.
+export function attributeCellExits(input: {
+  exitsByInstance: ReadonlyMap<string, number>
+  cellByInstance: ReadonlyMap<string, string | null>
+  targetCellId: string
+  placementCellIds: ReadonlySet<string>
+  configuredCellIds: ReadonlySet<string>
+}): { counted: number; unattributed: string[] } {
+  let counted = 0
+  const unattributed: string[] = []
+  for (const [instanceId, exits] of input.exitsByInstance) {
+    if (exits <= 0) continue
+    const cellId = input.cellByInstance.get(instanceId) ?? null
+    if (cellId === null || !input.configuredCellIds.has(cellId)) {
+      unattributed.push(instanceId)
+      continue
+    }
+    if (cellId === input.targetCellId || !input.placementCellIds.has(cellId)) continue
+    counted += exits
+  }
+  return { counted, unattributed: unattributed.sort() }
 }
 
 export function preDrainSampleWindowMinutes(hostCount: number): number {
@@ -61,6 +91,15 @@ export function evaluatePreDrainHardRules(readings: PreDrainHardRuleReadings): I
       signal: 'cells.process_exits_10m',
       observed: readings.cellProcessExits,
       threshold: PRE_DRAIN_HARD_RULES.cellProcessExitsMax
+    })
+  }
+  if (readings.unattributedExitInstances.length > 0) {
+    failures.push({
+      code: 'exit_unattributed',
+      source: 'cloud-monitoring',
+      signal: `cells.process_exits_10m.instances=${readings.unattributedExitInstances.join('+')}`,
+      observed: readings.unattributedExitInstances.length,
+      threshold: 0
     })
   }
   if (readings.director503PeakPerMinute > PRE_DRAIN_HARD_RULES.director503PerMinuteMax) {

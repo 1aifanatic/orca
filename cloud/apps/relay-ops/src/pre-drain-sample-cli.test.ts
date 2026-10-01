@@ -27,6 +27,7 @@ function membershipFile(): string {
 
 function args(overrides: Record<string, string> = {}): string[] {
   const values: Record<string, string> = {
+    '--target-cell-id': 'production-gce-c25',
     '--target-hosts': '1200',
     '--expected-selector-generation': '40',
     '--selector-membership-file': membershipFile(),
@@ -49,6 +50,13 @@ describe('pre-drain sample CLI', () => {
     expect(() => parsePreDrainSampleArgs([...full, '--skip-window', '1'])).toThrow('usage')
     expect(() => parsePreDrainSampleArgs(args({ '--target-hosts': '-1' }))).toThrow('usage')
     expect(() => parsePreDrainSampleArgs(args({ '--target-hosts': '' }))).toThrow('usage')
+  })
+
+  it('rejects a target cell the environment does not configure', async () => {
+    await expect(runPreDrainSampleCli(args({ '--target-cell-id': 'production-gce-c99' }), {
+      collect: async () => { throw new Error('must not sample') },
+      readHardRules: async () => { throw new Error('must not sample') }
+    })).rejects.toThrow('target cell is unknown')
   })
 
   it('rejects a wave index or selector delta no wave produces', async () => {
@@ -74,6 +82,7 @@ describe('pre-drain sample CLI', () => {
       },
       readHardRules: async () => ({
         cellProcessExits: 0,
+        unattributedExitInstances: [],
         director503PeakPerMinute: 0,
         directorConcurrencyP99: 1
       }),
@@ -82,6 +91,7 @@ describe('pre-drain sample CLI', () => {
     const events = lines.map((line) => JSON.parse(line))
     expect(events[0]).toEqual({
       event: 'relay_pre_drain_sample_window',
+      targetCellId: 'production-gce-c25',
       targetHosts: 1200,
       windowMinutes: 5
     })

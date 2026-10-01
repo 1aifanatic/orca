@@ -5,6 +5,7 @@ import {
   type IncidentSample
 } from './incident-monitor.js'
 import {
+  attributeCellExits,
   evaluatePreDrainHardRules,
   PRE_DRAIN_HARD_RULES,
   PRE_DRAIN_MAX_OVERRUN_SAMPLES,
@@ -85,6 +86,7 @@ function greenSample(at: number): IncidentSample {
 
 const calm: PreDrainHardRuleReadings = {
   cellProcessExits: 0,
+  unattributedExitInstances: [],
   director503PeakPerMinute: 40,
   directorConcurrencyP99: 20
 }
@@ -138,6 +140,54 @@ describe('pre-drain sample window', () => {
   })
 })
 
+describe('cell exit attribution', () => {
+  const scope = {
+    targetCellId: 'production-gce-c25',
+    placementCellIds: new Set(['production-gce-c25', 'production-gce-c26', 'production-gce-c17']),
+    configuredCellIds: new Set([
+      'production-gce-c5', 'production-gce-c17', 'production-gce-c25', 'production-gce-c26'
+    ])
+  }
+  const attribute = (exits: Record<string, number>, cells: Record<string, string | null>) =>
+    attributeCellExits({
+      exitsByInstance: new Map(Object.entries(exits)),
+      cellByInstance: new Map(Object.entries(cells)),
+      ...scope
+    })
+
+  it('ignores the target cell rolling the fix for its own crashes', () => {
+    expect(attribute({ '25': 12 }, { '25': 'production-gce-c25' }))
+      .toEqual({ counted: 0, unattributed: [] })
+  })
+
+  it('counts an exit on another general or migration-only cell', () => {
+    expect(attribute({ '26': 1 }, { '26': 'production-gce-c26' }))
+      .toEqual({ counted: 1, unattributed: [] })
+    expect(attribute({ '17': 2 }, { '17': 'production-gce-c17' }))
+      .toEqual({ counted: 2, unattributed: [] })
+  })
+
+  it('ignores an existing-only legacy cell, which takes no placements', () => {
+    expect(attribute({ '5': 15 }, { '5': 'production-gce-c5' }))
+      .toEqual({ counted: 0, unattributed: [] })
+  })
+
+  it('reports an instance with no cell, or an unknown cell, as unattributed', () => {
+    expect(attribute({ '9': 1, '8': 1 }, { '9': null, '8': 'production-gce-c99' }))
+      .toEqual({ counted: 0, unattributed: ['8', '9'] })
+    expect(attribute({ '7': 1 }, {})).toEqual({ counted: 0, unattributed: ['7'] })
+  })
+
+  it('trips the rule through the evaluator for a counted exit', () => {
+    const { counted } = attribute({ '26': 1, '25': 3, '5': 4 }, {
+      '26': 'production-gce-c26', '25': 'production-gce-c25', '5': 'production-gce-c5'
+    })
+    expect(evaluatePreDrainHardRules({ ...calm, cellProcessExits: counted })).toEqual([
+      expect.objectContaining({ signal: 'cells.process_exits_10m', observed: 1 })
+    ])
+  })
+})
+
 describe('pre-drain hard rules', () => {
   it('passes a calm fleet', () => {
     expect(evaluatePreDrainHardRules(calm)).toEqual([])
@@ -147,6 +197,15 @@ describe('pre-drain hard rules', () => {
     expect(evaluatePreDrainHardRules({ ...calm, cellProcessExits: 1 })).toEqual([
       expect.objectContaining({ signal: 'cells.process_exits_10m', observed: 1, threshold: 0 })
     ])
+  })
+
+  it('trips on an exit no cell could be named for', () => {
+    expect(evaluatePreDrainHardRules({ ...calm, unattributedExitInstances: ['111', '222'] }))
+      .toEqual([expect.objectContaining({
+        code: 'exit_unattributed',
+        signal: 'cells.process_exits_10m.instances=111+222',
+        observed: 2
+      })])
   })
 
   it('trips on a disconnect pulse, not on a busy healthy minute', () => {

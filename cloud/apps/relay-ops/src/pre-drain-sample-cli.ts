@@ -17,10 +17,11 @@ import {
 } from './pre-drain-sample.js'
 
 const USAGE =
-  'usage: --target-hosts <n> --expected-selector-generation <n>' +
+  'usage: --target-cell-id <cell> --target-hosts <n> --expected-selector-generation <n>' +
   ' --selector-membership-file <json> --wave-index <0-9> --selector-wave-delta <0|2>'
 
 const OPTIONS = [
+  '--target-cell-id',
   '--target-hosts',
   '--expected-selector-generation',
   '--selector-membership-file',
@@ -52,6 +53,7 @@ export function parsePreDrainSampleArgs(argv: string[]): Record<Option, string> 
     return value
   }
   const parsed = {
+    '--target-cell-id': get('--target-cell-id'),
     '--target-hosts': get('--target-hosts'),
     '--expected-selector-generation': get('--expected-selector-generation'),
     '--selector-membership-file': get('--selector-membership-file'),
@@ -78,6 +80,11 @@ export async function runPreDrainSampleCli(
   } = {}
 ): Promise<void> {
   const options = parsePreDrainSampleArgs(argv)
+  const environment = relayOpsEnvironment('production')
+  const configuredCellIds = new Set(environment.cells.map((cell) => cell.cellId))
+  const targetCellId = options['--target-cell-id']
+  // An unknown target would exempt nothing and make every one of its exits unattributed.
+  if (!configuredCellIds.has(targetCellId)) throw new Error('pre-drain sample target cell is unknown')
   const windowMinutes = preDrainSampleWindowMinutes(Number(options['--target-hosts']))
   const expectedSelector = waveAdjustedSelector(
     await readDispatchSelector(
@@ -97,13 +104,20 @@ export async function runPreDrainSampleCli(
     expectedSelector,
     ...(dependencies.now ? { now: dependencies.now } : {})
   })
+  const { membership } = expectedSelector
   const readHardRules = dependencies.readHardRules ?? createPreDrainHardRuleReader(
-    relayOpsEnvironment('production'),
+    environment,
     () => gcloud.accessToken(),
+    {
+      targetCellId,
+      placementCellIds: new Set([...membership.general, ...membership.migrationOnly]),
+      configuredCellIds
+    },
     dependencies.now ? { now: dependencies.now } : {}
   )
   print(JSON.stringify({
     event: 'relay_pre_drain_sample_window',
+    targetCellId,
     targetHosts: Number(options['--target-hosts']),
     windowMinutes
   }))

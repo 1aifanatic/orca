@@ -507,15 +507,18 @@ itself, inside its own job, as the last step before it isolates its cell:
    8 minutes. Every sample is judged by the monitor's own evaluator and thresholds, with the same
    tolerance for a flaky cell probe, a director instance replacement, or an unread signal (two
    consecutive samples). Every sample also applies three lookback rules no single reading can
-   see: no relay cell container exit (`orca_relay_cell_process_exit`) in the last 10 minutes, no
-   minute in the last 10 with more than 500 director 503s (a disconnect pulse), and director
-   concurrency p99 at most the monitor's 64 over the last 4 minutes. The window does not end on a
+   see: no container exit (`orca_relay_cell_process_exit`) in the last 10 minutes on a cell that
+   takes placements (general or migration-only in the dispatch membership) other than the cell
+   being rolled, no minute in the last 10 with more than 500 director 503s (a disconnect
+   pulse), and director concurrency p99 at most the monitor's 64 over the last 4 minutes. The window does not end on a
    sample that still carries a tolerated failure, and trips if three samples past the window
    still have not come back clean.
 
-The exit rule is fleet-wide and zero-tolerance: a cell that crashes every few hours blocks every
-roll for 10 minutes after each crash, including the roll that would fix it. Dispatch again once
-it has been quiet for 10 minutes.
+The exit metric names only an instance, so each exiting instance is matched to a cell by that
+instance's own newest `orca_relay_runtime_metrics` line from the last two hours. The target's own
+exits are ignored, because the roll exists to fix them, and so are existing-only legacy cells,
+which take no placements. An exit whose instance cannot be matched to a configured cell trips the
+rule; a failed lookup counts as a failed read.
 
 Any trip fails the wave before isolation, so nothing has changed; dispatch again once the fleet is
 quiet. Every later cell in a batch runs all three again, so a batch never drains on health read

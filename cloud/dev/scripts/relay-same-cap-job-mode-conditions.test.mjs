@@ -155,6 +155,8 @@ test('every apply wave samples fleet health right before it drains', () => {
   // The window is sized from the headroom step's own count, and each wave offsets its selector.
   assert.match(step, /pnpm incident:relay-pre-drain-sample/)
   assert.match(step, /--target-hosts "\$\{TARGET_HOSTS\}"/)
+  // The crash rule exempts the cell being rolled, so it must be told which one that is.
+  assert.match(step, /--target-cell-id "\$\{TARGET_CELL_ID\}"/)
   assert.match(step, /--wave-index "\$\{WAVE_INDEX\}"/)
   assert.match(step, /--selector-wave-delta "\$\{SELECTOR_WAVE_DELTA\}"/)
   assert.match(job, /echo "TARGET_HOSTS=\$\{TARGET_HOSTS\}" >> "\$\{GITHUB_ENV\}"/)
