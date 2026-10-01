@@ -92,20 +92,6 @@ describe('a send addressed to an agent session', () => {
     })
   })
 
-  it('reaches a chat named by the legacy session:<id> spelling exactly as by its current address', async () => {
-    expect(await send(`session:${SESSION_X}`)).toMatchObject({
-      ok: true,
-      result: { message: { to_handle: ADDRESS_X } }
-    })
-    const created = await h.dispatch(
-      orchestrationRequest('orchestration.runCreate', { objective: 'o' }, { sessionId: SESSION_Y })
-    )
-    expect(await send(`session:${SESSION_Y}`)).toMatchObject({
-      ok: true,
-      result: { message: { to_handle: `run:${idOf(resultOf(created).run)}` } }
-    })
-  })
-
   it.each([
     [
       'an unknown session',
@@ -128,6 +114,17 @@ describe('a send addressed to an agent session', () => {
     expect(errorMessage(await send(to()))).toBe(
       `${PROVIDER_ID_X} is the provider's own session id, which changes on /clear. This session's Orca session ID is orca_session_id:${SESSION_X}; address it by that instead. No message was sent.`
     )
+  })
+
+  it('refuses the retired session:<id> spelling like any unknown terminal handle', async () => {
+    expect(await send(`session:${SESSION_X}`)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'terminal_not_found',
+        message: `Terminal session:${SESSION_X} has no live pane or durable Run/Dispatch mailbox.`
+      }
+    })
+    expect(h.db.getInbox(100)).toEqual([])
   })
 
   it('refuses a session on another host', async () => {

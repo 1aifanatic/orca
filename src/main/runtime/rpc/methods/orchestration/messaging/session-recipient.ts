@@ -1,8 +1,7 @@
 /**
- * An agent session named as a recipient: `orca_session_id:<id>` (or the legacy `session:<id>`), or
- * a bare Orca session id. Any session on this host can be addressed, not only one that coordinates
- * a Run: an agent's id is its public address, and a user telling one agent to message another's id
- * is a supported workflow.
+ * An agent session named as a recipient: `orca_session_id:<id>`, or a bare Orca session id. Any session on
+ * this host can be addressed, not only one that coordinates a Run: an agent's id is its public
+ * address, and a user telling one agent to message another's id is a supported workflow.
  *
  * Mail that no Run or Dispatch owns is stored at the conversation's `orca_session_id:<root id>` and pointed
  * at its live session as a turn, so any session of a `/clear` lineage is a valid spelling. A
@@ -14,7 +13,6 @@ import {
   ORCA_SESSION_ADDRESS_PREFIX,
   formatOrcaSessionAddress,
   isOrcaSessionId,
-  isSpelledAsOrcaSessionAddress,
   parseOrcaSessionAddress,
   type OrcaSessionAddress,
   type OrcaSessionId
@@ -38,7 +36,7 @@ export type SessionRecipientRefusal = {
 
 /** Whether a recipient may name a session, so the caller can install the session host first. */
 export function mayNameSession(recipient: string): boolean {
-  return isSpelledAsOrcaSessionAddress(recipient) || isOrcaSessionId(recipient)
+  return recipient.startsWith(ORCA_SESSION_ADDRESS_PREFIX) || isOrcaSessionId(recipient)
 }
 
 /**
@@ -49,7 +47,7 @@ export function readSessionRecipient(
   recipient: string,
   store: AgentSessionRecordReader | null
 ): SessionRecipient | SessionRecipientRefusal | null {
-  if (isSpelledAsOrcaSessionAddress(recipient)) {
+  if (recipient.startsWith(ORCA_SESSION_ADDRESS_PREFIX)) {
     const sessionId = parseOrcaSessionAddress(recipient)
     return sessionId
       ? { sessionId, address: formatOrcaSessionAddress(sessionId) }
