@@ -107,8 +107,8 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   exitFailure?: SubmissionRejectionFact
   /** Who the exit row names. */
   failureTextContext?: AgentSessionFailureWordsContext
-  /** The child failed before it proved its start, so it took nothing: what it was handed goes back
-   *  in the queue, and the delivery loop, the one writer of a failed start, records why. */
+  /** The child failed before it proved its start, so it took nothing: the delivery loop, the one
+   *  writer of a failed start, rejects what it was handed with why. */
   unprovenStart?: true
   onError?: (sessionId: string, error: unknown) => void
 }): Promise<boolean> {

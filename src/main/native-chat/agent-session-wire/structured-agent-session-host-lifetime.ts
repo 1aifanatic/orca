@@ -53,7 +53,7 @@ type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkEr
 }
 
 /** A conversation's handle closes with nothing queued: what is still queued when the chat closes,
- *  or the app quits, will not be handed over. One waiting out a failed start keeps that failure, so
+ *  or the app quits, will not be handed over. One waiting out a refused start keeps that failure, so
  *  it reads as failed. Best effort: the next open's delivery loop rejects a leftover itself. `which`
  *  narrows it to the messages a close that did not complete closed. Resolves false when the
  *  rejection failed; the failure is reported, never thrown. */

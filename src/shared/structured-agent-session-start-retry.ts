@@ -27,7 +27,7 @@ export function structuredAgentSessionStartRetryAt(
   return delay === undefined ? null : failedAt + delay
 }
 
-/** A queued message waiting out a failed start: nothing runs for it until its next try. */
+/** A queued message waiting out a refused start: nothing runs for it until its next try. */
 export function isRetryingStructuredAgentSessionStart(
   submission: Pick<
     AgentJournalSubmission,

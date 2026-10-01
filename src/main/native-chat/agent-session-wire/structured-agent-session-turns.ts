@@ -167,7 +167,7 @@ export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverC
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
  * after it leaves a message in doubt, never one that reads as queued and so provably unwritten.
  * Returns the cause when the child's start failed at the handover, leaving the message handed over
- * for the delivery loop to put back in the queue with that failure.
+ * for the delivery loop to reject with that failure.
  */
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,

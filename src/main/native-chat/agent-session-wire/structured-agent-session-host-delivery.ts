@@ -114,7 +114,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   }
   const wakesQueued = new Set<string>()
   const afterCommit = (sessionId: string, journal: AgentSessionJournal): void => {
-    // A message waiting out a failed start has its own wake booked; only one that may go now needs
+    // A message waiting out a refused start has its own wake booked; only one that may go now needs
     // this one.
     if (wakesQueued.has(sessionId) || structuredAgentSessionCommandRunning(journal)) {
       return

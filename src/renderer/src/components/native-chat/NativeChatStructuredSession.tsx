@@ -121,7 +121,7 @@ export function NativeChatStructuredSession(
     retryRef.current(clientMessageId)
   }, [])
   const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
-  // Only a rejected message, or one waiting out a failed start, reads the journal's rows, so a new
+  // Only a rejected message, or one waiting out a refused start, reads the journal's rows, so a new
   // batch of them re-renders no row else.
   const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
   const rejectionRows =

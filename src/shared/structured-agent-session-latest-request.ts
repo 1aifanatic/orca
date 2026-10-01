@@ -5,7 +5,7 @@
 // A request is either a turn, whose record carries the provider's verdict, or a send that never
 // became one because the agent or its start refused it. A send its handover placed inside a
 // running turn (a steer) is not a request of its own: the turn it joined answers for it. Nor is a
-// conversation command. A message waiting out a failed start reads as that failure until its next
+// conversation command. A message waiting out a refused start reads as that failure until its next
 // try: nothing runs for it meanwhile.
 
 import type {
@@ -170,7 +170,7 @@ export function hasStructuredAgentSessionRequest(
   )
 }
 
-/** Rejected sends, and queued ones waiting out a failed start. */
+/** Rejected sends, and queued ones waiting out a refused start. */
 function rejectedSubmissionsByItem(
   submissions: readonly AgentJournalSubmission[]
 ): Map<string, AgentJournalSubmission> {

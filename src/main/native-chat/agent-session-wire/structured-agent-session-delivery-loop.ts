@@ -348,7 +348,7 @@ export class StructuredAgentSessionDeliveryLoop {
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. Books a
-   *  wake for the next message waiting out a failed start, judged at `decidedAt`, the time the step
+   *  wake for the next message waiting out a refused start, judged at `decidedAt`, the time the step
    *  decided nothing could go; one already due then and held by a running command is woken by that
    *  command's end. */
   private stop(sessionId: string, decidedAt: number = this.deps.now()): 'stop' {

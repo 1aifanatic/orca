@@ -131,7 +131,7 @@ export function leftoverRejection(
   }
 }
 
-/** The oldest queued message that may go now: not waiting out a failed start, or due again. Later
+/** The oldest queued message that may go now: not waiting out a refused start, or due again. Later
  *  messages overtake one that is waiting. */
 export function nextDeliverableSubmission(
   journal: Pick<AgentSessionJournal, 'submissions'>,
@@ -150,7 +150,7 @@ export function nextDeliverableSubmission(
   return oldest
 }
 
-/** When the earliest message waiting out a failed start comes due after `now`; null when none
+/** When the earliest message waiting out a refused start comes due after `now`; null when none
  *  does. One already due is the loop's to take, or waits on what holds it, never on a timer. */
 export function nextStartRetryAt(
   journal: Pick<AgentSessionJournal, 'submissions'> | undefined,
