@@ -28,6 +28,7 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -55,7 +56,7 @@ beforeEach(() => {
 
 describe('attach', () => {
   it('reserves the lease, spawns through the adapter, and opens the journal', async () => {
-    const result = await host.attach(CALLER, attachParams())
+    const result = await attachForTests(host, CALLER, attachParams())
     expect(result).toMatchObject({ ok: true, replayed: false })
     const record = store.getRecord(SESSION)
     expect(record?.lease.ownerProcess?.pid).toBe(4242)
@@ -64,7 +65,7 @@ describe('attach', () => {
 
   it('refuses a payload the client fingerprinted wrong', async () => {
     const params = attachParams()
-    const result = await host.attach(CALLER, {
+    const result = await attachForTests(host, CALLER, {
       ...params,
       envelope: { ...params.envelope, payloadFingerprint: 'a'.repeat(64) }
     })
@@ -79,7 +80,7 @@ describe('attach', () => {
       providerHandle: { kind: 'claude', sessionId: 'claude-session', leafUuid: null }
     })
 
-    expect(await host.attach(CALLER, params)).toMatchObject({
+    expect(await attachForTests(host, CALLER, params)).toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_operation_invalid' }
     })
@@ -88,13 +89,13 @@ describe('attach', () => {
 
   it('refuses a second create against a live session', async () => {
     await attach()
-    expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: false })
+    expect(await attachForTests(host, CALLER, attachParams())).toMatchObject({ ok: false })
   })
 
   it('replays a retried attach instead of reserving a second owner', async () => {
     const params = attachParams()
-    await host.attach(CALLER, params)
-    const retry = await host.attach(CALLER, params)
+    await attachForTests(host, CALLER, params)
+    const retry = await attachForTests(host, CALLER, params)
     expect(retry).toMatchObject({ ok: true, replayed: true })
   })
 
@@ -151,10 +152,12 @@ describe('attach', () => {
         ownerVerdict: 'exited'
       }
     }
-    expect(await host.attach(CALLER, params)).toEqual(refused)
-    expect(await host.attach(CALLER, params)).toEqual(refused)
+    expect(await attachForTests(host, CALLER, params)).toEqual(refused)
+    expect(await attachForTests(host, CALLER, params)).toEqual(refused)
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-    expect(await host.attach(CALLER, ensureParams(releasedFence))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, CALLER, ensureParams(releasedFence))).toMatchObject({
+      ok: true
+    })
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
     expect(releaseAcquisition).toHaveBeenCalledWith({ sessionId: SESSION })
@@ -163,7 +166,7 @@ describe('attach', () => {
   it('reaps an acquisition when process identity commit fails', async () => {
     vi.spyOn(store, 'commitProcessIdentity').mockRejectedValueOnce(new Error('commit failed'))
 
-    await expect(host.attach(CALLER, attachParams())).resolves.toMatchObject({
+    await expect(attachForTests(host, CALLER, attachParams())).resolves.toMatchObject({
       ok: false,
       refusal: {
         message: "Codex couldn't restart. Send your message to try again.",
@@ -199,7 +202,7 @@ describe('attach', () => {
       now: NOW
     })
 
-    const replacement = host.attach(CALLER, ensureParams(released.lease.runtimeFence))
+    const replacement = attachForTests(host, CALLER, ensureParams(released.lease.runtimeFence))
     await new Promise<void>((resolve) => setImmediate(resolve))
     expect(acquire).toHaveBeenCalledTimes(1)
 
@@ -577,7 +580,7 @@ describe('restart', () => {
   /** The refusal a restarted host owes a client holding the dead generation's
    *  fence: stale, with the live fence attached so the retry can succeed. */
   async function staleFenceFrom(held: number): Promise<number> {
-    const refused = await host.attach(CALLER, ensureParams(held))
+    const refused = await attachForTests(host, CALLER, ensureParams(held))
     if (refused.ok) {
       throw new Error('a fence from the previous host generation was accepted')
     }
@@ -592,7 +595,7 @@ describe('restart', () => {
     const held = before?.lease.runtimeFence ?? 0
     await reboot(async () => ({ outcome: 'pid-absent' }))
 
-    const reattached = await host.attach(CALLER, ensureParams(await staleFenceFrom(held)))
+    const reattached = await attachForTests(host, CALLER, ensureParams(await staleFenceFrom(held)))
     expect(reattached).toMatchObject({ ok: true })
     expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(false)
     expect(store.getRecord(SESSION)?.lease.ownerProcess?.pid).toBe(4242)
@@ -637,7 +640,7 @@ describe('restart', () => {
     // The recovery stage clears on evidence at startup; the child comes back only once work
     // starts it — here the explicit attach a send's delivery would make.
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-    expect(await host.attach(CALLER, ensureParams(fence))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, CALLER, ensureParams(fence))).toMatchObject({ ok: true })
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -669,7 +672,8 @@ describe('restart', () => {
       return settled(input)
     })
 
-    const start = host.attach(
+    const start = attachForTests(
+      host,
       CALLER,
       ensureParams(store.getRecord(SESSION)?.lease.runtimeFence ?? 0)
     )
@@ -702,7 +706,9 @@ describe('restart', () => {
     )
     acquire.mockClear()
 
-    expect(await host.attach(CALLER, ensureParams(await staleFenceFrom(held)))).toMatchObject({
+    expect(
+      await attachForTests(host, CALLER, ensureParams(await staleFenceFrom(held)))
+    ).toMatchObject({
       ok: true
     })
     expect(acquire).toHaveBeenCalledOnce()
@@ -719,8 +725,8 @@ describe('restart', () => {
       .mockResolvedValue({ outcome: 'pid-absent' })
     await reboot(probe)
 
-    await expect(host.attach(CALLER, ensureParams(held))).rejects.toThrow('probe exploded')
-    const reattached = await host.attach(CALLER, ensureParams(await staleFenceFrom(held)))
+    await expect(attachForTests(host, CALLER, ensureParams(held))).rejects.toThrow('probe exploded')
+    const reattached = await attachForTests(host, CALLER, ensureParams(await staleFenceFrom(held)))
     expect(reattached).toMatchObject({ ok: true })
     expect(probe).toHaveBeenCalledTimes(2)
   })
@@ -842,7 +848,11 @@ describe('subscribe', () => {
       now: NOW
     })
 
-    const replacement = await host.attach(CALLER, ensureParams(released.lease.runtimeFence))
+    const replacement = await attachForTests(
+      host,
+      CALLER,
+      ensureParams(released.lease.runtimeFence)
+    )
     if (!replacement.ok) {
       throw new Error(`expected replacement owner, got ${replacement.refusal.code}`)
     }

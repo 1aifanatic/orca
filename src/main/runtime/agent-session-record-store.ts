@@ -70,6 +70,11 @@ import { setAgentSessionTabVisibility, showAgentSessionTabs } from './agent-sess
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
+import {
+  commitAgentSessionAtRestCreate,
+  type AgentSessionAtRestCreateRequest,
+  type AgentSessionAtRestCreateResult
+} from './agent-session-at-rest-create'
 
 export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
@@ -159,6 +164,12 @@ export class AgentSessionRecordStore {
   /** A committed /clear and the at-rest conversation it continues in, in one write. */
   commitConversationClear = (clear: AgentSessionConversationClear): Promise<void> =>
     this.transact((draft) => commitConversationClearRecord(draft, clear))
+
+  /** A new chat at rest and the operation row its create answers retries from, in one write. */
+  createAtRest = (
+    request: AgentSessionAtRestCreateRequest
+  ): Promise<AgentSessionAtRestCreateResult> =>
+    this.transact((draft) => commitAgentSessionAtRestCreate(draft, request))
 
   /** Unfenced on purpose: the name is a durable note, so writing it never contends with the
    *  writer lease. `null` clears it. */

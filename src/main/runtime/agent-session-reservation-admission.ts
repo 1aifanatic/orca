@@ -91,7 +91,7 @@ export type AgentSessionReserveResult = {
 
 export function evaluateAgentSessionReserveOperation(
   state: AgentSessionStoreState,
-  request: AgentSessionReserveRequest
+  request: Pick<AgentSessionReserveRequest, 'operation' | 'now'>
 ): AgentSessionOperationDecision {
   state.operations = pruneAgentSessionOperationRows(state.operations, request.now)
   return evaluateAgentSessionOperation({
@@ -226,9 +226,9 @@ export function applyAgentSessionReservation(
  * compare-and-swap never collides and both would pass. Codex permits two app-servers on one thread
  * silently, so the cost of missing this is a corrupted conversation rather than an error.
  */
-function assertAdoptedConversationUnowned(
+export function assertAdoptedConversationUnowned(
   state: AgentSessionStoreState,
-  request: AgentSessionReserveRequest
+  request: Pick<AgentSessionReserveRequest, 'sessionId' | 'adoptedHandleLink'>
 ): void {
   const adopted = request.adoptedHandleLink
   if (!adopted) {
@@ -255,9 +255,9 @@ function assertAdoptedConversationUnowned(
  * Checked, not claimed: the id is taken when the chat's tab is published, so a create that never
  * gets that far leaves nothing in the table to restore or release.
  */
-function assertReservedTabUnheld(
+export function assertReservedTabUnheld(
   state: AgentSessionStoreState,
-  request: AgentSessionReserveRequest
+  request: Pick<AgentSessionReserveRequest, 'sessionId' | 'surfaceTabId'>
 ): void {
   if (request.surfaceTabId === undefined) {
     return

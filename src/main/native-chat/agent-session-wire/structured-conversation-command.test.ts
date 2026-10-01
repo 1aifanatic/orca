@@ -23,6 +23,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -139,7 +140,7 @@ beforeEach(async () => {
   }
   await openHost()
   expect(
-    await host.attach(caller, hostTestAttachParams(null, { options: { effort: 'low' } }))
+    await attachForTests(host, caller, hostTestAttachParams(null, { options: { effort: 'low' } }))
   ).toMatchObject({ ok: true })
   await host.setSessionTabVisibility(HOST_TEST_SESSION, true)
 })
@@ -296,7 +297,8 @@ describe('/clear starts nothing', () => {
   it('copies the launch arguments the source was pinned to', async () => {
     const pinned = 'session-pinned'
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(null, {
           envelope: {
@@ -667,7 +669,7 @@ describe('what an older build left', () => {
         now: clock
       })
     ).toMatchObject({ admission: { decision: 'admit' } })
-    expect(await host.attach(caller, orphanStart)).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, orphanStart)).toMatchObject({ ok: true })
     await restartHost()
     await host.restoreReadableSessions(store.listVisibleSessionIds())
 

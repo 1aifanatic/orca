@@ -25,6 +25,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const CHILD_PID = 4321
@@ -106,7 +107,7 @@ describe('a host that dies while its Codex child is starting', () => {
   it('leaves the spawned child recorded, so the next host stops it by identity and starts over', async () => {
     const first = await openStore('dying')
     const dying = host('dying', first, adapterThatNeverFinishesStarting())
-    void dying.attach(CALLER, hostTestAttachParams(null)).catch(() => {})
+    void attachForTests(dying, CALLER, hostTestAttachParams(null)).catch(() => {})
     await vi.waitFor(() => expect(first.getRecord(SESSION)?.lease.ownerProcess).toBeTruthy())
     // Durable before the handshake returned: the only record the next host will have.
     expect(first.getRecord(SESSION)?.lease).toMatchObject({
@@ -147,7 +148,9 @@ describe('a host that dies while its Codex child is starting', () => {
     })
     // What the next send's delivery does: start at the record's current fence.
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-    expect(await relaunched.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({ ok: true })
+    expect(await attachForTests(relaunched, CALLER, hostTestAttachParams(fence))).toMatchObject({
+      ok: true
+    })
     expect(restarted.connections).toHaveLength(1)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'live',
@@ -179,7 +182,7 @@ describe('a create replayed after the host that ran it died', () => {
     const params = hostTestAttachParams(null)
     const first = await openStore('dying')
     const dying = host('dying', first, dyingAdapter())
-    void dying.attach(CALLER, params).catch(() => {})
+    void attachForTests(dying, CALLER, params).catch(() => {})
     await vi.waitFor(() =>
       expect(first.getRecord(SESSION)?.lease).toMatchObject(
         dyingAdapter === adapterThatNeverSpawns
@@ -212,7 +215,7 @@ describe('a create replayed after the host that ran it died', () => {
       runtimeFence: 2
     })
 
-    const replayed = await relaunched.attach(CALLER, params)
+    const replayed = await attachForTests(relaunched, CALLER, params)
     // Before, `agent_session_ownership_unknown` while the row was pending, then `_operation_expired`.
     expect(replayed.ok ? null : replayed.refusal.code).toBeNull()
     expect(replayed).toMatchObject({ ok: true, value: { sessionId: SESSION, fence: 3 } })
@@ -227,7 +230,7 @@ describe('a create replayed after the host that ran it died', () => {
     ).toEqual({ status: 'succeeded', sessionId: SESSION })
 
     // Settled now: the same id replays that answer and never starts a second agent.
-    await expect(relaunched.attach(CALLER, params)).resolves.toMatchObject({
+    await expect(attachForTests(relaunched, CALLER, params)).resolves.toMatchObject({
       ok: true,
       replayed: true
     })

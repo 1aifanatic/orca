@@ -26,6 +26,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
 
@@ -89,7 +90,7 @@ export async function createQueuedMessageTestRig() {
     mintSpawnToken: () => 'spawn-1',
     now: () => NOW
   })
-  expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
+  expect(await attachForTests(host, QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
     ok: true
   })
 

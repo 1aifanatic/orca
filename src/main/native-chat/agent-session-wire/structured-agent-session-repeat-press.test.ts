@@ -22,6 +22,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -70,7 +71,7 @@ beforeEach(async () => {
     mintSpawnToken: () => 'spawn-1',
     now: () => NOW
   })
-  expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
+  expect(await attachForTests(host, CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
 })
 
 afterEach(async () => {
@@ -199,7 +200,9 @@ describe('a press sent again', () => {
       'pending-admission'
     )
     const fence = store.getRecord(SESSION)!.lease.runtimeFence
-    expect(await host.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, CALLER, hostTestAttachParams(fence))).toMatchObject({
+      ok: true
+    })
 
     expect(await stop(store.getRecord(SESSION)!.lease.runtimeFence)).toMatchObject({
       ok: true,

@@ -34,6 +34,7 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 // The turns a send or Stop is waiting on to open, so a test knows the wait began.
 const openWaits = vi.hoisted(() => {
@@ -229,7 +230,7 @@ beforeEach(async () => {
   })
   const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
   attachParams.envelope.clientOperationId = operationId()
-  const attached = await host.attach(CALLER, attachParams)
+  const attached = await attachForTests(host, CALLER, attachParams)
   if (!attached.ok) {
     throw new Error(JSON.stringify(attached.refusal))
   }

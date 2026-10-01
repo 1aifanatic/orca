@@ -20,7 +20,7 @@ import {
 } from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
-import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
+import { createStructuredAgentSessionAtRest } from './structured-agent-session-create-at-rest'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import {
   ensureStructuredAgentSessionAgent,
@@ -248,11 +248,12 @@ export class StructuredAgentSessionHost {
 
   private serialize = this.tasks.serialize.bind(this.tasks)
 
-  attach(
+  /** A new chat at rest; its first message starts the agent. */
+  create(
     caller: StructuredAgentSessionCaller,
     params: AgentSessionAttachParams
   ): Promise<SessionWire.AgentSessionMutationResult<SessionWire.AgentSessionAttachResult>> {
-    return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
+    return createStructuredAgentSessionAtRest(this.attachContext(), caller.callerKey, params)
   }
 
   flushStreamedEvents = (sessionId: string): Promise<void> =>
@@ -348,6 +349,7 @@ export class StructuredAgentSessionHost {
 
   /** Test rigs only: the collaborators the host builds itself, typed, for tests that drive them. */
   collaboratorsForTests = () => ({
+    attachContext: () => this.attachContext(),
     sessions: this.sessions,
     subscribers: this.subscribers,
     runtimeState: this.runtimeState,

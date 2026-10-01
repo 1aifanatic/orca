@@ -41,6 +41,7 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
@@ -99,13 +100,15 @@ async function reboot(): Promise<void> {
 }
 
 async function attach(): Promise<void> {
-  expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
+  expect(await attachForTests(host, CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
 }
 
 /** What a send's delivery or `agentSession.ensure` does: attach at the record's current fence. */
 async function startAgent(): Promise<void> {
   const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-  expect(await host.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({ ok: true })
+  expect(await attachForTests(host, CALLER, hostTestAttachParams(fence))).toMatchObject({
+    ok: true
+  })
 }
 
 function envelope(method: string, fields: Record<string, unknown>): AgentSessionMutationEnvelope {

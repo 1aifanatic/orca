@@ -21,6 +21,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'claude stream-json exited (code 1): claude: not signed in'
@@ -82,7 +83,7 @@ describe('a create that fails after its child wrote through the unbound sink', (
         throw cause
       })
 
-      const failed = host.attach(CALLER, hostTestAttachParams(null))
+      const failed = attachForTests(host, CALLER, hostTestAttachParams(null))
       await (cause instanceof AgentSessionPreSpawnError
         ? expect(failed).rejects.toThrow("Codex couldn't restart. Send your message to try again.")
         : expect(failed).resolves.toMatchObject({
@@ -90,9 +91,11 @@ describe('a create that fails after its child wrote through the unbound sink', (
             refusal: { message: "Codex couldn't restart. Send your message to try again." }
           }))
 
-      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
-        ok: true
-      })
+      await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).resolves.toMatchObject(
+        {
+          ok: true
+        }
+      )
       await expect(host.flushAllStreamedEvents()).resolves.toBeUndefined()
       expect(acquire).toHaveBeenCalledTimes(2)
     }
@@ -102,7 +105,7 @@ describe('a create that fails after its child wrote through the unbound sink', (
     ['refused', new Error(EXIT_REASON)],
     ['thrown', new AgentSessionPreSpawnError(new Error(EXIT_REASON))]
   ])('releases the sink when a resume of a still-indexed session is %s', async (_how, cause) => {
-    await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
+    await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
       ok: true
     })
     const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
@@ -121,13 +124,13 @@ describe('a create that fails after its child wrote through the unbound sink', (
     })
 
     // The session stays indexed across this failure: it is a resume, not a create.
-    const failed = host.attach(CALLER, hostTestAttachParams(releasedFence))
+    const failed = attachForTests(host, CALLER, hostTestAttachParams(releasedFence))
     await (cause instanceof AgentSessionPreSpawnError
       ? expect(failed).rejects.toThrow("Codex couldn't restart. Send your message to try again.")
       : expect(failed).resolves.toMatchObject({ ok: false }))
 
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-    await expect(host.attach(CALLER, hostTestAttachParams(fence))).resolves.toMatchObject({
+    await expect(attachForTests(host, CALLER, hostTestAttachParams(fence))).resolves.toMatchObject({
       ok: true
     })
     expect(acquire).toHaveBeenCalledTimes(3)

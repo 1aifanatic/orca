@@ -29,6 +29,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const journals = createTrackedJournalOpener()
 
@@ -93,7 +94,7 @@ function adapter(): StructuredAgentSessionAdapter {
 }
 
 async function attach(): Promise<AgentSessionRecord | null> {
-  const result = await host.attach(CALLER, attachParams())
+  const result = await attachForTests(host, CALLER, attachParams())
   expect(result.ok).toBe(true)
   return store.getRecord(SESSION)
 }

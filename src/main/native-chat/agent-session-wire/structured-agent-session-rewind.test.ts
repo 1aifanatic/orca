@@ -29,6 +29,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -106,7 +107,7 @@ afterEach(async () => {
 })
 
 async function seed(acceptedSubmissions = false) {
-  expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+  expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
   const keys = ['kept', 'drop', 'tip'].map((turnId) => ({
     provider: 'codex' as const,
     threadId: HOST_TEST_THREAD,
@@ -195,7 +196,9 @@ describe('host rewind', () => {
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('provider-succeeded')
     replace.mockRestore()
     const fence = store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence
-    expect(await host.attach(caller, hostTestAttachParams(fence))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, hostTestAttachParams(fence))).toMatchObject({
+      ok: true
+    })
     expect((await host.journalSnapshot(HOST_TEST_SESSION)).items).toHaveLength(1)
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('completed')
     expect(await host.rewind(caller, request)).toMatchObject({ ok: true, replayed: true })
@@ -213,14 +216,16 @@ describe('host rewind', () => {
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind).toMatchObject({ phase: 'prepared' })
     recoverRewind.mockRejectedValueOnce(new Error('history still unavailable'))
     await expect(
-      host.attach(
+      attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
     ).rejects.toThrow('history still unavailable')
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('prepared')
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -312,7 +317,8 @@ describe('host rewind', () => {
     })
     expect(adapter.dispatch).not.toHaveBeenCalled()
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -329,7 +335,8 @@ describe('host rewind', () => {
     await expect(host.rewind(caller, await params(target))).rejects.toThrow('read failed')
     recoverRewind.mockResolvedValueOnce({ ok: false, reason: 'provider-refused' })
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -350,7 +357,8 @@ describe('host rewind', () => {
     expect(store.getRecord(HOST_TEST_SESSION)?.rewind).toMatchObject({ phase: 'prepared' })
     recoverRewind.mockResolvedValueOnce({ ok: false, reason: 'provider-refused' })
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -376,7 +384,9 @@ describe('host rewind', () => {
   })
 
   it('keeps host-stamped turn and goal rows through a Codex provider hydration', async () => {
-    expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({
+      ok: true
+    })
     const message = (turnId: string) => ({
       provider: 'codex' as const,
       threadId: HOST_TEST_THREAD,
@@ -457,7 +467,9 @@ describe('host rewind', () => {
   })
 
   it('keeps each kept turn opened by the message that opened it, under its provider key', async () => {
-    expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({
+      ok: true
+    })
     const message = (turnId: string, ordinal = 0) => ({
       provider: 'codex' as const,
       threadId: HOST_TEST_THREAD,
@@ -548,7 +560,9 @@ describe('host rewind', () => {
   })
 
   it('keeps a host goal row when interrupted Codex rewind recovery rebuilds provider history', async () => {
-    expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({
+      ok: true
+    })
     const message = (turnId: string) => ({
       provider: 'codex' as const,
       threadId: HOST_TEST_THREAD,
@@ -593,7 +607,8 @@ describe('host rewind', () => {
       items: [{ identity: message('kept'), body: hostTestMessage('kept from recovery') }]
     })
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -624,7 +639,8 @@ describe('host rewind', () => {
     await expect(host.rewind(caller, await params(target))).rejects.toThrow('lost after revert')
     recoverRewind.mockResolvedValueOnce({ ok: true, items })
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )
@@ -658,7 +674,8 @@ describe('host rewind', () => {
       })
       const replace = vi.spyOn(AgentSessionJournal.prototype, 'replaceEpochItems')
       await expect(
-        host.attach(
+        attachForTests(
+          host,
           caller,
           hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
         )
@@ -691,7 +708,8 @@ describe('host rewind', () => {
     checkpoint.mockRestore()
     const replace = vi.spyOn(AgentSessionJournal.prototype, 'replaceEpochItems')
     expect(
-      await host.attach(
+      await attachForTests(
+        host,
         caller,
         hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
       )

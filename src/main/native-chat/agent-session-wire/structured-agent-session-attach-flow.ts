@@ -35,10 +35,6 @@ import { resolveAgentSessionReplayOutcome } from './structured-agent-session-rep
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { acquireOwner } from './structured-agent-session-acquisition'
 import {
-  importAdoptedTranscript,
-  prepareAdoptedTranscript
-} from './structured-agent-session-adopted-import'
-import {
   withAgentSessionCreatePhase,
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
@@ -95,7 +91,7 @@ export async function performAttach(
   if (!admitted.ok) {
     return admitted
   }
-  // Ensure/recovery bypass create-intent, so recheck before reserving or spawning.
+  // An agent start bypasses create-intent, so recheck before reserving or spawning.
   if (!adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)) {
     return unsupported()
   }
@@ -108,12 +104,6 @@ export async function performAttach(
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
   let providerHistoryWindow: ProviderHistoryWindow | null = null
-  const preparedTranscript = store.getRecord(sessionId)
-    ? { ok: true as const, items: null }
-    : await prepareAdoptedTranscript(params)
-  if (!preparedTranscript.ok) {
-    return preparedTranscript
-  }
   try {
     const reserved = await withAgentSessionCreatePhase('reserve_owner', input.recordPhase, () =>
       store.reserveOwner(
@@ -230,7 +220,6 @@ export async function performAttach(
       openConversation: input.openConversation,
       providerHistoryWindow
     })
-    await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
     await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
     await store.recordOperationOutcome({
       callerKey: input.callerKey,

@@ -13,7 +13,10 @@
 
 import { randomUUID } from 'node:crypto'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
-import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalStartFailure
+} from '../../../../shared/agent-session-journal-types'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration-timing-budgets'
 import { agentSessionSendSubmission } from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
@@ -76,8 +79,8 @@ export async function createStructuredWorkerSession(args: {
   onJournalActivity: (sessionId: string) => void
 }): Promise<{ identity: StructuredWorkerIdentity; host: StructuredAgentSessionHost }> {
   const sessionId = randomUUID()
-  // Registered BEFORE the session is created, because `attach` is what spawns the provider child
-  // and the child's environment is read from this registry at spawn time. Registering afterwards
+  // Registered BEFORE the session is created, because the child's environment is read from this
+  // registry when its first message (the preamble) starts it. Registering afterwards
   // ships a worker with no ORCA_TERMINAL_HANDLE, whose bare `orca orchestration check` then
   // resolves to whatever single leaf sits in the worktree — by default the COORDINATOR's pane.
   //
@@ -213,14 +216,20 @@ type StructuredWorkerPreambleHost = Pick<
   deps: { store: { getRecord: (sessionId: string) => { lease: { runtimeFence: number } } | null } }
 }
 
-/** Delivers the dispatch preamble as the worker's first turn. `pending`: the worker's agent had
- *  not taken it within the wait; the host still holds it for that agent, and never re-sends it. */
+/** What became of the preamble within the wait. `pending`: the worker's agent had not taken it; the
+ *  host still holds it for that agent and never re-sends it. `startFailure`: its start failed and
+ *  another is booked, which is why it had not. */
+export type StructuredWorkerPreambleDelivery =
+  | { state: 'accepted' }
+  | { state: 'pending'; startFailure?: AgentJournalStartFailure }
+
+/** Delivers the dispatch preamble as the worker's first turn, which is what starts its agent. */
 export async function sendStructuredWorkerPreamble(args: {
   host: StructuredWorkerPreambleHost
   sessionId: string
   dispatchId: string
   preamble: string
-}): Promise<'accepted' | 'pending'> {
+}): Promise<StructuredWorkerPreambleDelivery> {
   const body: AgentJournalMessageItem = {
     kind: 'message',
     role: 'user',
@@ -259,8 +268,14 @@ export async function sendStructuredWorkerPreamble(args: {
           )?.value
         ) ?? answered)
       : answered
-  if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'pending') {
-    return submission.dispatchState
+  if (submission?.dispatchState === 'accepted') {
+    return { state: 'accepted' }
+  }
+  if (submission?.dispatchState === 'pending') {
+    return {
+      state: 'pending',
+      ...(submission.startFailure ? { startFailure: submission.startFailure } : {})
+    }
   }
   if (submission?.dispatchState === 'rejected') {
     // A rejection is a verdict, not a mystery: the preamble provably did not happen.

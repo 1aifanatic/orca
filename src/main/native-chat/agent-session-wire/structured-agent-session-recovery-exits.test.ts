@@ -22,6 +22,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -65,7 +66,7 @@ async function stopOwner(child: ReturnType<typeof spawnProcess>): Promise<void> 
 /** What a send's delivery or `agentSession.ensure` does: attach at the record's current fence. */
 async function startAgent(): Promise<void> {
   const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
-  expect((await host.attach(CALLER, hostTestAttachParams(fence))).ok).toBe(true)
+  expect((await attachForTests(host, CALLER, hostTestAttachParams(fence))).ok).toBe(true)
 }
 
 function adapter(): StructuredAgentSessionAdapter {
@@ -129,7 +130,7 @@ afterEach(async () => {
 describe('recovery exits', () => {
   it('releases an ownerless unproven acquisition, so the next start goes ahead', async () => {
     acquire.mockRejectedValueOnce(new Error('simulated crash before identity commit'))
-    await expect(host.attach(CALLER, hostTestAttachParams(null))).rejects.toThrow(
+    await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).rejects.toThrow(
       'agent_session_acquisition_exit_unproven'
     )
     // No owner was recorded, and the adapter closed the stdio of anything it spawned.
@@ -146,14 +147,14 @@ describe('recovery exits', () => {
     await reopenStore()
     openHost({ mintSpawnToken: () => 'spawn-b' })
 
-    expect(await host.attach(CALLER, hostTestAttachParams(2))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, CALLER, hostTestAttachParams(2))).toMatchObject({ ok: true })
     expect(acquire).toHaveBeenCalledTimes(2)
   })
 
   it('releases an unproven acquisition whose owner later dies, without replaying it as a handoff', async () => {
     // A real session first, so restart restore has a journal to read and runs the
     // handoff restorer over the residue instead of skipping the record.
-    expect((await host.attach(CALLER, hostTestAttachParams(null))).ok).toBe(true)
+    expect((await attachForTests(host, CALLER, hostTestAttachParams(null))).ok).toBe(true)
     await reopenStore()
 
     // The resume fails at owner proof and cleanup cannot prove exit: the settlement
@@ -163,7 +164,7 @@ describe('recovery exits', () => {
       mintSpawnToken: () => 'spawn-b',
       probeOwner: async () => ({ outcome: 'pid-absent' })
     })
-    await expect(host.attach(CALLER, hostTestAttachParams(2))).rejects.toThrow(
+    await expect(attachForTests(host, CALLER, hostTestAttachParams(2))).rejects.toThrow(
       'agent_session_acquisition_exit_unproven'
     )
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -207,7 +208,7 @@ describe('recovery exits', () => {
   })
 
   it('stops a surviving native child after restart instead of readopting its dead transport', async () => {
-    expect((await host.attach(CALLER, hostTestAttachParams(null))).ok).toBe(true)
+    expect((await attachForTests(host, CALLER, hostTestAttachParams(null))).ok).toBe(true)
     await reopenStore()
 
     let orphanAlive = true
@@ -223,13 +224,13 @@ describe('recovery exits', () => {
       stopOwnerProcess
     })
 
-    const stale = await host.attach(CALLER, hostTestAttachParams(1))
+    const stale = await attachForTests(host, CALLER, hostTestAttachParams(1))
     expect(stale).toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_checkpoint_stale', currentFence: 2 }
     })
     expect(stopOwnerProcess).toHaveBeenCalledWith(4242, 'SIGTERM')
-    const retried = await host.attach(CALLER, hostTestAttachParams(2))
+    const retried = await attachForTests(host, CALLER, hostTestAttachParams(2))
     expect(retried).toMatchObject({ ok: true })
     // A fresh child was spawned; the orphan pid's lease did not survive as the owner.
     expect(acquire).toHaveBeenCalledTimes(2)
@@ -241,7 +242,7 @@ describe('recovery exits', () => {
   })
 
   it('heals a stranded native owner during startup restore, and spawns nothing until work asks', async () => {
-    expect((await host.attach(CALLER, hostTestAttachParams(null))).ok).toBe(true)
+    expect((await attachForTests(host, CALLER, hostTestAttachParams(null))).ok).toBe(true)
     await reopenStore()
 
     let orphanAlive = true
@@ -292,7 +293,7 @@ describe('recovery exits', () => {
         observedAt: NOW
       }
     })
-    expect((await host.attach(CALLER, hostTestAttachParams(null))).ok).toBe(true)
+    expect((await attachForTests(host, CALLER, hostTestAttachParams(null))).ok).toBe(true)
 
     const outgoingHost = host
     const outgoingStore = store

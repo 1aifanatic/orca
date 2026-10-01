@@ -16,6 +16,7 @@ import {
   hostTestState
 } from './structured-agent-session-host-test-harness'
 import { HOST_TEST_NOW as NOW } from './structured-agent-session-host-test-data'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 let host: StructuredAgentSessionHost
 
@@ -45,7 +46,7 @@ async function launchAndDeliver(): Promise<{
   dispatchState: string
 }> {
   const send = vi.spyOn(host, 'send')
-  const created = await host.attach(CALLER, attachParams())
+  const created = await attachForTests(host, CALLER, attachParams())
   if (!created.ok) {
     throw new Error(`expected a create, got ${created.refusal.code}`)
   }

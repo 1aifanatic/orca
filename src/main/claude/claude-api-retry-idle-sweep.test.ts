@@ -18,6 +18,7 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 const SWEEP_MS = 5
 const RETRY_GAP_MS = 10 * 60_000
@@ -94,7 +95,9 @@ afterEach(async () => {
 
 describe('a Claude retrying a refused request', () => {
   it('keeps the conversation open past the idle window while retry frames arrive', async () => {
-    expect(await host.attach({ callerKey: 'client-1' }, hostTestAttachParams(null))).toMatchObject({
+    expect(
+      await attachForTests(host, { callerKey: 'client-1' }, hostTestAttachParams(null))
+    ).toMatchObject({
       ok: true
     })
     if (!sink) {

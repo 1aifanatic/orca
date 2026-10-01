@@ -244,7 +244,7 @@ describe('adopting a provider conversation on create', () => {
       new Error('disk write failed')
     )
     const attached = await host
-      .attach({ callerKey: 'client-1' }, attachParams(transcriptPath))
+      .create({ callerKey: 'client-1' }, attachParams(transcriptPath))
       .catch(() => null)
     expect(attached?.ok).not.toBe(true)
 

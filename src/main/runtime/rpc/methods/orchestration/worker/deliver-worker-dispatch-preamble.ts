@@ -56,14 +56,17 @@ export async function deliverWorkerDispatchPreamble(args: {
     })
     return {
       structuredTurnStart:
-        delivery === 'accepted'
+        delivery.state === 'accepted'
           ? { verdict: 'observed' }
           : {
               verdict: 'unobserved',
-              reason:
-                'The dispatch preamble was accepted, but the agent had not started to take it. It ' +
-                'is delivered when the agent starts; if the worker then reports, this Dispatch ' +
-                'settles normally.'
+              reason: delivery.startFailure
+                ? `The worker's agent did not start: ${delivery.startFailure.reason} The dispatch ` +
+                  'preamble waits for its next start; if the worker then reports, this Dispatch ' +
+                  'settles normally.'
+                : 'The dispatch preamble was accepted, but the agent had not started to take it. ' +
+                  'It is delivered when the agent starts; if the worker then reports, this ' +
+                  'Dispatch settles normally.'
             }
     }
   }

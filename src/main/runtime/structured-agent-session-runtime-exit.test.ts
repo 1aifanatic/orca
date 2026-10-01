@@ -17,6 +17,7 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 describe('structured session runtime provider-exit wiring', () => {
   let root: string | null = null
@@ -92,7 +93,7 @@ describe('structured session runtime provider-exit wiring', () => {
     })
     const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
     attachParams.envelope.clientOperationId = operationId()
-    const attached = await host.attach({ callerKey: 'runtime-test' }, attachParams)
+    const attached = await attachForTests(host, { callerKey: 'runtime-test' }, attachParams)
     if (!attached.ok) {
       throw new Error(
         JSON.stringify({ refusal: attached.refusal, connections: connections.length })
@@ -196,7 +197,7 @@ describe('structured session runtime provider-exit wiring', () => {
     })
     const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
     attachParams.envelope.clientOperationId = operationId()
-    const attached = await host.attach({ callerKey: 'runtime-test' }, attachParams)
+    const attached = await attachForTests(host, { callerKey: 'runtime-test' }, attachParams)
     if (!attached.ok) {
       throw new Error(
         JSON.stringify({ refusal: attached.refusal, connections: connections.length })
@@ -300,7 +301,7 @@ describe('structured session runtime provider-exit wiring', () => {
     })
     const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
     attachParams.envelope.clientOperationId = operationId()
-    const attached = await host.attach({ callerKey: 'runtime-test' }, attachParams)
+    const attached = await attachForTests(host, { callerKey: 'runtime-test' }, attachParams)
     expect(attached.ok).toBe(true)
     connections[0]?.handlers.onExit?.(new Error('the first child exited'))
     await vi.waitFor(() =>
@@ -406,7 +407,7 @@ describe('structured session runtime provider-exit wiring', () => {
     })
     const attachParams = hostTestAttachParams(null, { providerHandle: undefined })
     attachParams.envelope.clientOperationId = operationId()
-    expect(await host.attach({ callerKey: 'runtime-test' }, attachParams)).toMatchObject({
+    expect(await attachForTests(host, { callerKey: 'runtime-test' }, attachParams)).toMatchObject({
       ok: true
     })
 

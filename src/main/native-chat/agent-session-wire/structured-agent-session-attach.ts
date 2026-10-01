@@ -72,8 +72,8 @@ export type AgentSessionAttachParams = {
    * than starting one: it seeds the handle chain so the adapter resumes instead of creating, and
    * names the transcript to import so the journal shows the conversation so far.
    *
-   * Deliberately separate from `providerHandle`, which `agentSession.ensure` already supplies
-   * without adopting — presence of a handle must never be what triggers a resume.
+   * Deliberately separate from `providerHandle`, which an agent start supplies without
+   * adopting — presence of a handle must never be what triggers a resume.
    */
   adopt?: {
     providerHandle: Exclude<AgentSessionProviderHandle, { kind: 'opaque' }>
@@ -264,7 +264,7 @@ async function reconcileAgainstProviderHistory(input: {
  */
 const ADOPTED_HANDLE_FENCE = 1
 
-function adoptedProviderHandleLink(
+export function adoptedProviderHandleLink(
   handle: Exclude<AgentSessionProviderHandle, { kind: 'opaque' }>,
   observedAt: number
 ): AgentSessionProviderHandleLink {
@@ -306,13 +306,6 @@ export function reserveRequestFor(input: {
       : {}),
     ...(authority.launchArgs ? { launchArgs: authority.launchArgs } : {}),
     ...(authority.launchEnv ? { launchEnv: authority.launchEnv } : {}),
-    ...(params.adopt
-      ? {
-          // Fence 1 is a new record's first, and the owner probe requires the head link to carry
-          // the record's current fence.
-          adoptedHandleLink: adoptedProviderHandleLink(params.adopt.providerHandle, input.now)
-        }
-      : {}),
     expectedFence: params.envelope.expectedRuntimeFence,
     spawnToken: authority.spawnToken,
     claimKeyId: authority.claimKeyId,

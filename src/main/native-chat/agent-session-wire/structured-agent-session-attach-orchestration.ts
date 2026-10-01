@@ -50,12 +50,10 @@ export type StructuredAgentSessionAttachOptions = {
 }
 
 /**
- * The attach itself, for a caller already inside the session's serialize.
- *
- * That is every caller that has to know what the session looks like RIGHT NOW: the delivery loop,
- * and an operation that needs the provider. They run their check and this attach in one serialized
- * step, so "the session has no child" is still true when
- * the attach starts. `attachStructuredAgentSession` is this under `serialize`, for a client.
+ * The attach itself, for a caller already inside the session's serialize: the delivery loop, and
+ * an operation that needs the provider. They run their check and this attach in one serialized
+ * step, so "the session has no child" is still true when the attach starts. It is the only way an
+ * agent starts; a create starts none (`structured-agent-session-create-at-rest`).
  */
 export function attachStructuredAgentSessionUnderSerialize(
   context: StructuredAgentSessionAttachContext,
@@ -63,36 +61,27 @@ export function attachStructuredAgentSessionUnderSerialize(
   params: AgentSessionAttachParams,
   options: StructuredAgentSessionAttachOptions = {}
 ): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
-  return context.tasks.trackAttach(runAttach(context, callerKey, params, options))
-}
-
-export function attachStructuredAgentSession(
-  context: StructuredAgentSessionAttachContext,
-  callerKey: string,
-  params: AgentSessionAttachParams
-): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
-  const sessionId = params.envelope.sessionId
-  // Tracked from enqueue, not from its turn on the queue: a quit drains a queued attach before it
-  // evicts, so no child is spawned behind the eviction and orphaned.
-  const run = (recordPhase?: AgentSessionCreatePhaseRecorder) =>
-    context.tasks.trackAttach(
-      context.serialize(sessionId, () => runAttach(context, callerKey, params, { recordPhase }))
-    )
-  if (params.envelope.expectedRuntimeFence !== null) {
-    return run()
-  }
-  return withAgentSessionSpan(async (span) => {
-    const startedAtMs = Date.now()
-    const phases: Parameters<AgentSessionCreatePhaseRecorder>[0][] = []
-    try {
-      return await run((timing) => phases.push(timing))
-    } finally {
-      addAgentSessionCreatePhaseAttributes(span, {
-        totalDurationMs: Math.max(0, Date.now() - startedAtMs),
-        phases
-      })
-    }
-  })
+  // Tracked from the start: a quit drains it before it evicts, so no child is orphaned behind that.
+  return context.tasks.trackAttach(
+    withAgentSessionSpan(async (span) => {
+      const startedAtMs = Date.now()
+      const phases: Parameters<AgentSessionCreatePhaseRecorder>[0][] = []
+      try {
+        return await runAttach(context, callerKey, params, {
+          ...options,
+          recordPhase: (timing) => {
+            phases.push(timing)
+            options.recordPhase?.(timing)
+          }
+        })
+      } finally {
+        addAgentSessionCreatePhaseAttributes(span, {
+          totalDurationMs: Math.max(0, Date.now() - startedAtMs),
+          phases
+        })
+      }
+    })
+  )
 }
 
 async function runAttach(

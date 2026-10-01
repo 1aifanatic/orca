@@ -26,6 +26,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const caller = { callerKey: 'desktop' }
 const KEPT = { provider: 'codex' as const, threadId: THREAD, turnId: 'kept', ordinal: 0 }
@@ -156,7 +157,7 @@ function sendParams(text: string) {
 
 /** A chat whose rewind the provider applied, whose Orca side never finished, reopened at rest. */
 async function interruptedRewindAtRest(): Promise<void> {
-  expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+  expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
   const drop = { ...KEPT, turnId: 'drop' }
   sink.appendItem(KEPT, hostTestMessage('verified history'), {
     turnScope: AGENT_JOURNAL_THREAD_SCOPE
@@ -225,7 +226,9 @@ describe('an interrupted Codex rewind on a chat at rest (R16)', () => {
 
 describe('a rewind asked of a chat at rest (P2-23)', () => {
   it('starts the agent first and answers with what the provider says', async () => {
-    expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
+    expect(await attachForTests(host, caller, hostTestAttachParams(null))).toMatchObject({
+      ok: true
+    })
     sink.appendItem(KEPT, hostTestMessage('kept'), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     await host.flushStreamedEvents(SESSION)
     const epoch = (await host.journalSnapshot(SESSION)).cursor.epoch

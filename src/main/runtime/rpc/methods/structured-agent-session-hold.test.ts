@@ -28,6 +28,7 @@ import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
 import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from '../../../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 const CONNECTION = 'connection-1'
 const CLIENT = {
@@ -110,7 +111,9 @@ beforeEach(async () => {
       >
   )
   dispatcher = new RpcDispatcher({ runtime, methods: STRUCTURED_AGENT_SESSION_METHODS })
-  expect(await host.attach({ callerKey: 'client-1' }, hostTestAttachParams(null))).toMatchObject({
+  expect(
+    await attachForTests(host, { callerKey: 'client-1' }, hostTestAttachParams(null))
+  ).toMatchObject({
     ok: true
   })
 })

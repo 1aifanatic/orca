@@ -23,6 +23,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'claude stream-json exited (code 1): stderr tail'
@@ -97,13 +98,13 @@ describe('failed create owner verdict', () => {
         ownerVerdict: 'exited'
       }
 
-      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(attachForTests(host, CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(attachForTests(host, CALLER, first)).resolves.toEqual({ ok: false, refusal })
       expect(acquire).toHaveBeenCalledOnce()
 
       const retry = hostTestAttachParams(null)
       expect(retry.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
-      await expect(host.attach(CALLER, retry)).resolves.toMatchObject({ ok: true })
+      await expect(attachForTests(host, CALLER, retry)).resolves.toMatchObject({ ok: true })
       expect(acquire).toHaveBeenCalledTimes(2)
       expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
     }
@@ -132,13 +133,15 @@ describe('failed create owner verdict', () => {
         ownerVerdict: 'exited'
       }
 
-      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(attachForTests(host, CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(attachForTests(host, CALLER, first)).resolves.toEqual({ ok: false, refusal })
       expect(acquire).toHaveBeenCalledOnce()
 
-      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
-        ok: true
-      })
+      await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).resolves.toMatchObject(
+        {
+          ok: true
+        }
+      )
       expect(acquire).toHaveBeenCalledTimes(2)
     }
   )
@@ -146,7 +149,7 @@ describe('failed create owner verdict', () => {
   it('answers an acquisition refusal with its verdict directly', async () => {
     acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRefusal('not signed in'))
 
-    await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toEqual({
+    await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).resolves.toEqual({
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
@@ -161,8 +164,8 @@ describe('failed create owner verdict', () => {
     acquire.mockRejectedValueOnce(new AgentSessionAcquisitionExitUnprovenError(new Error('hung')))
     const first = hostTestAttachParams(null)
 
-    await expect(host.attach(CALLER, first)).rejects.toThrow()
-    const replay = await host.attach(CALLER, first)
+    await expect(attachForTests(host, CALLER, first)).rejects.toThrow()
+    const replay = await attachForTests(host, CALLER, first)
 
     expect(replay).toMatchObject({
       ok: false,

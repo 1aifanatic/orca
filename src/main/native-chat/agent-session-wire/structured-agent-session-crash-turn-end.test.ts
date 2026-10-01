@@ -45,6 +45,7 @@ import {
   HOST_TEST_LOCATION as LOCATION,
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const PROVIDER_SESSION = 'provider-session-alpha-1'
 /** The tool call's row: the last thing the provider wrote before the crash. */
@@ -249,7 +250,8 @@ function turnStatesSent(events: readonly AgentSessionSubscribeEvent[]) {
 }
 
 function attach(fence: number) {
-  return host.attach(
+  return attachForTests(
+    host,
     { callerKey: 'client-1' },
     hostTestAttachParams(fence, {
       provider: 'claude',

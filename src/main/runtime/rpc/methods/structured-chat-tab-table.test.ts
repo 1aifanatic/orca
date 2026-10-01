@@ -38,6 +38,7 @@ import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
 import { commitStructuredAgentSessionCreate } from './structured-agent-session-create'
 import { closeStructuredAgentSessionChild } from '../../structured-agent-session-close'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from '../../../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 const WORKTREE = `id:${HOST_TEST_LOCATION.workspaceId}`
 const SOURCE_TAB = `structured-agent-session-${HOST_TEST_SESSION}`
@@ -485,7 +486,8 @@ describe('a create that reserves its tab', () => {
   })
 
   it('restores no tab for a reserved create that stopped before its tab was published', async () => {
-    const attached = await host.attach(
+    const attached = await attachForTests(
+      host,
       caller,
       hostTestAttachParams(null, {
         envelope: {

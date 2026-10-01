@@ -42,6 +42,7 @@ import {
   resetProviderFaults,
   type FakeConnection
 } from './structured-chat-coordinator-fake-codex-fixture'
+import { attachForTests } from '../native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 
 const COORDINATOR = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 const PEER_CHAT = '7e3b9d15-2c4a-4f86-a0b1-5c9e2d7f3b64'
@@ -88,7 +89,11 @@ async function call(
 }
 
 async function openChat(sessionId: string): Promise<FakeConnection> {
-  const attached = await host.attach({ callerKey: 'test-surface' }, attachParams(sessionId))
+  const attached = await attachForTests(
+    host,
+    { callerKey: 'test-surface' },
+    attachParams(sessionId)
+  )
   expect(attached, JSON.stringify(attached)).toMatchObject({ ok: true })
   await host.setSessionTabVisibility(sessionId, true)
   threadBySession.set(sessionId, codex.connections.at(-1)!.threadId!)

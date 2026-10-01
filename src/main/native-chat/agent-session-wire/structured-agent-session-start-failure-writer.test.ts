@@ -42,6 +42,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
@@ -268,7 +269,7 @@ beforeEach(async () => {
   closeSession = vi.fn(async () => true)
   store = await openTestAgentSessionRecordStore(root)
   startHost()
-  await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
+  await expect(attachForTests(host, CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
     ok: true
   })
   // The first child (generation-1) is lost at setup; the first send starts generation-2.

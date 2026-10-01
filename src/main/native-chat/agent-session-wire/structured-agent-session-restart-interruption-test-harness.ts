@@ -35,6 +35,7 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { attachForTests } from './structured-agent-session-attach-test-support'
 
 /** Starts the agent explicitly — the attach a client's ensure makes — for a test that needs a
  *  running child before its next step. Nothing else starts one ahead of a send. */
@@ -42,7 +43,8 @@ export async function startAgent(state: {
   host: StructuredAgentSessionHost
   store: AgentSessionRecordStore
 }): Promise<void> {
-  const result = await state.host.attach(
+  const result = await attachForTests(
+    state.host,
     CALLER,
     hostTestAttachParams(state.store.getRecord(SESSION)?.lease.runtimeFence ?? null)
   )

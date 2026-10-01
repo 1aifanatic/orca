@@ -69,7 +69,7 @@ import {
 import { sendStructuredAgentSessionForClient } from './structured-agent-session-send-compatibility'
 
 /**
- * The attach-shaped entries take the location from the client instead of resolving it from a
+ * An attach-shaped create takes the location from the client instead of resolving it from a
  * worktree, so they never reach the worktree-resolving create-support check. Ask the executing
  * host the same question directly: the answer includes host-measured facts the client cannot see
  * or forge, such as whether this machine can read a provider child's process start time.
@@ -89,14 +89,6 @@ async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>,
     agent: params.agent as 'claude' | 'codex'
   } as AgentSessionAttachParams
   return { host, attachParams }
-}
-
-async function attachClientSuppliedLocation(
-  params: z.infer<typeof AttachParams>,
-  ctx: RpcContext
-): Promise<unknown> {
-  const { host, attachParams } = await resolveClientSuppliedAttach(params, ctx)
-  return host.attach(callerFor(ctx), attachParams)
 }
 
 export const STRUCTURED_AGENT_SESSION_METHODS = [
@@ -190,11 +182,6 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
         activate: true
       })
     }
-  }),
-  defineMethod({
-    name: 'agentSession.ensure',
-    params: AttachParams,
-    handler: async (params, ctx) => attachClientSuppliedLocation(params, ctx)
   }),
   defineMethod({
     name: 'agentSession.send',
