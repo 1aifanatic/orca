@@ -88,13 +88,14 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       return false
     }
     const hostId = parseExecutionHostId(options.hostId)?.id
+    const allowUnverifiedPtyStop = options.allowUnverifiedPtyStop === true
     return retryFailedRemovalUnlessRegistered(target.id, target.path, registeredWorktrees, () =>
       retryFailedWorktreeRemoval(target.id, hostId, (record) =>
         interruptedLocalWorktreeRemovalJob(record, {
           ...this.localRemovalJobHost(store),
           stopPtys: () =>
             this.stopPtysForDestructiveWorktreeRemoval(record.worktreeId, {
-              allowUnverifiedStop: options.allowUnverifiedPtyStop === true
+              allowUnverifiedStop: allowUnverifiedPtyStop
             })
         })
       )
