@@ -24,11 +24,29 @@ figures cannot be added to predict job elapsed time. They identify repeated
 imports and real-time test waits as larger targets than line-count reporting,
 which uses about 1.1 runner-hours in the same demand sample.
 
-The [next draft](https://github.com/stablyai/orca/pull/24355) measures virtual
+Parallel steps share the job's CPU and memory. Their
+[background/wait support](https://github.blog/changelog/2026-06-25-actions-steps-can-now-be-run-in-parallel/)
+saves repeated runner setup when independent checks fit together, but does not
+increase machine resources or the account's concurrent-job allowance. Cheap
+preflight checks still gate expensive unit and package jobs.
+
+Organization metadata reported the Team plan on October 1. GitHub documents
+[60 standard concurrent jobs by default](https://docs.github.com/en/actions/reference/limits#job-concurrency-limits-for-github-hosted-runners)
+and allows support requests for increases. The effective configured allowance
+was not exposed by the API. A seven-second, repository-only sample at 10:48 UTC
+found 32 queued jobs and 70 assigned job records marked in progress, including
+one Blacksmith label. Those non-atomic records, runner turnover, other repositories
+and provider labels cannot establish the actual allowance or simultaneous usage.
+These changes reduce demand; they do not change account settings. If queues
+remain, ask GitHub Support to confirm the effective organization limit before
+choosing a larger allowance or paid runners.
+
+The [follow-up PR](https://github.com/stablyai/orca/pull/24355) measures virtual
 readiness deadlines in captured-transcript tests, E2E allocations with no general
 consumer, renderer projection, native setup, Docker fixtures, and Windows store
-restoration. Its temporary workflows retain alternating comparisons and output
-parity checks.
+restoration. Alternating hosted comparisons check output parity. Completed
+benchmark workflows and drivers are removed; their trial commits retain the
+exact reproduction code.
 
 A [three-pair hosted transcript comparison](https://github.com/stablyai/orca/actions/runs/36849458799)
 on one four-worker ARM runner measured baseline invocations at 127.001 / 114.307 /
@@ -70,6 +88,18 @@ job durations ranged from 544 to 581 seconds. They ran a different merged source
 on different allocations from the earlier reference, so comparing their totals
 does not establish an end-to-end speedup. The alternating transcript comparison
 above is the controlled timing evidence.
+
+The [updated full PR validation](https://github.com/stablyai/orca/actions/runs/36855833565)
+passed all required gates and both package checks. All 10,335 discovered files
+appear once across five passing timing reports, with zero unhandled errors;
+122 modules have the existing expected skipped status. Named merge-tree discovery
+and saved assignment replay match both successful validation runs. The latest
+unit jobs took 520–558 seconds. Refreshing weights with that same measurement set
+would reduce the largest projected load from 1,756.706 to 1,708.187 worker-seconds
+(2.76%), while retaining the same 8,540.831 total. Applying the earlier successful
+run's proposed weights to the latest measurements improves the maximum only
+1.54% and the median 0.68%. These small, variable projections do not establish
+an elapsed-time gain, so the existing weights remain.
 
 A [three-pair Windows store comparison](https://github.com/stablyai/orca/actions/runs/36853246494)
 used fresh dependency trees, stores and pnpm metadata before each treatment. The
@@ -113,6 +143,43 @@ the canary alive. The PR keeps restoration in the background during root/mobile
 installation. One serial pair was slower, so the roughly 24s oracle reduction
 is not a guaranteed total runner saving. The drivers and exact workflows remain
 available at source commit `9231d1be6c76ccc1d2fef741a4e68ae29735a5c8`.
+
+A [three-pair AppImage compression comparison](https://github.com/stablyai/orca/actions/runs/36855833100)
+packaged the same complete Linux x64 app with the pinned 1.0.3 toolset and
+mksquashfs 4.6.1. Each timing includes the private app copy, electron-builder
+and blockmap generation. Tool download, app compilation, extraction, parity
+checks and queues are excluded; the middle pair reversed order.
+
+| Pair | First treatment | Default zstd 15 | PR zstd 3 | Saving  |
+| ---- | --------------- | --------------- | --------- | ------- |
+| 1    | Default         | 22.580s         | 11.760s   | 10.820s |
+| 2    | PR              | 22.612s         | 12.560s   | 10.052s |
+| 3    | Default         | 22.512s         | 11.815s   | 10.697s |
+
+Median packaging time fell from 22.580s to 11.815s (47.7%); median package size
+grew from 213,873,601 to 237,570,611 bytes (11.1%). All six extracted manifests
+matched every path, byte, mode and symlink target: 4,096 files and 601,194,650
+file bytes. The runtime prefix matched the pinned runtime exactly, and stored
+SquashFS options confirmed the actual level-3 override. All static checks passed;
+the representative baseline and candidate each passed the unchanged headless
+and CLI journeys, including all entrypoints and both shutdown signals. The
+directory build passed the existing glibc floor checks on all 19 native binaries.
+
+Only the PR Linux x64 AppImage child receives the private tool overlay. It resolves
+the existing custom-tool override first, checks the pinned tool/version and zstd
+configuration, and reuses the original runtime, validator and libraries. Cleanup
+waits for every package worker even on failure. Release settings, Linux ARM,
+Debian/RPM packaging and all native/package gates retain their existing behavior.
+The isolated AppImage result does not establish the full three-format job's gain.
+
+The same hosted comparison projected one already-built renderer three times per
+treatment, again alternating order. Baseline times were 8.079 / 8.219 / 8.129s;
+candidate times were 2.568 / 2.477 / 2.403s. Median projection fell from 8.129s to
+2.477s (69.5%, 5.653s saved). All six web snapshots matched all 1,137 files and
+51,957,014 bytes, and the renderer input remained unchanged after every run.
+These timings include the projector process but exclude renderer compilation,
+checkout, setup and queues. The drivers and workflow remain available at source
+commit `8ba5c9bf9f734d585f5e89945519aef4f607face`.
 
 Two local cache screens do not justify enabling Node's compile cache. A 96-file
 screen with an explicit worker flush produced a small, noisy difference. A larger
@@ -818,7 +885,7 @@ results also measure isolated file groups; they are not additive shard savings.
 The remaining inspected builder-only imports already load the full store as
 their subject, or use builders whose defaults differ from existing exports.
 
-## Vitest threads: scoped pilot only
+## Vitest threads: retain forks after the scoped pilot
 
 Three local interleaved comparisons kept four workers, `isolate: true`, both
 persistent caches disabled, and the same test assertions/module graph. The
@@ -827,7 +894,7 @@ persistent caches disabled, and the same test assertions/module graph. The
 median reduction. A 23-file shared JavaScript cohort passed all 248 assertions,
 with its median falling from 1.435 to 1.274 seconds (11.2%). No main-process
 module or native addon loaded; guards reject native loading, `chdir`, and
-process signals. These Mac/Node 24 timings do not establish a hosted saving.
+process signals. These Mac/Node 24 timings motivated the hosted comparison.
 
 The [pinned Vitest pool documentation](https://github.com/vitest-dev/vitest/blob/v4.1.11/docs/config/pool.md)
 defaults to forks and documents thread limitations around process APIs and
@@ -839,11 +906,66 @@ it only from thread worker arguments; GC availability is checked in every
 test environment. Process, native, lifecycle, and GC-retention tests stay out
 of this comparison.
 
-The temporary `ci-unit-pool-pilot.yml` runs the fixed audited cohorts on the
-same Linux ARM64/four-CPU runner as unit CI. Its driver records source hashes,
-module graphs, all assertion identities/results, and three alternating pairs.
-Single-worker positive isolation controls pass, while disabled isolation,
-missing GC, and forbidden native/process operations must fail in both pools.
-Production keeps forks. Any later adoption needs repeatable hosted gains and
-a deliberate eligible-file policy with conservative fallback; a renderer path
-alone does not prove that future imports avoid process or native behavior.
+The [hosted pilot](https://github.com/stablyai/orca/actions/runs/36855833033)
+passed on Linux ARM64, four CPUs, Node 24.21.0, and Ubuntu image
+`20260927.135.1`. Three alternating pairs preserved source hashes and complete
+module graphs, with no main-process module or native addon loaded:
+
+| Audited cohort                              | Forks, seconds           | Threads, seconds         | Median saving         |
+| ------------------------------------------- | ------------------------ | ------------------------ | --------------------- |
+| 94 renderer files / 570 assertions          | 48.591 / 48.144 / 47.299 | 42.486 / 42.402 / 42.221 | 5.742 seconds (11.9%) |
+| 23 shared JavaScript files / 248 assertions | 3.386 / 3.330 / 3.424    | 3.203 / 3.237 / 3.278    | 0.149 seconds (4.4%)  |
+
+Each timed group also included two isolation sentinels: totals were 96 files /
+572 assertions and 25 files / 250 assertions, respectively, with no skips.
+Their graph hashes matched in every pair (4,015 and 251 modules). Separate
+single-worker positive controls passed both sentinels in each pool. With
+isolation disabled, the second sentinel correctly failed on leaked state.
+Missing GC failed setup, and native loading, `chdir`, and process-signal probes
+failed at the guard in both pools. Those expected failures did not pass silently.
+
+The fixed 117-file sample accounts for about 1.5% of the baseline's aggregate
+module time; its isolated gains are not a whole-suite estimate. Maintaining
+that exact file list for this benefit is not justified. A broader route needs
+a safe eligibility policy, Node 26/Windows evidence, and a mixed full-shard
+comparison: separate Vitest projects can repeat shared transforms and erase
+the pool-startup saving. A renderer path alone does not prove that future
+imports avoid process or native behavior. Production retains forks, and the
+temporary workflow, driver, and cohort list were removed after measurement.
+
+## Oxlint scan consolidation: rejected
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/36855833063)
+used one Linux ARM64/four-CPU runner, Node 24.21.0, and three alternating
+baseline/candidate pairs. The baseline kept root lint and anti-slop in parallel,
+then native and type-aware audits in parallel. The candidate merged the first
+three scans and ran the unchanged type-aware audit alongside them.
+
+| Pair/order         | Baseline stage | Candidate stage | Change |
+| ------------------ | -------------- | --------------- | ------ |
+| 1: baseline first  | 49.409 s       | 53.197 s        | +7.7%  |
+| 2: candidate first | 50.249 s       | 60.297 s        | +20.0% |
+| 3: baseline first  | 50.040 s       | 56.672 s        | +13.3% |
+| Median             | 50.040 s       | 56.672 s        | +13.3% |
+
+These complete stage timings include anti-slop synchronization in both variants
+and candidate configuration generation. Candidate preparation took only
+0.141–0.255 seconds. The unchanged type-aware scan took 16.386–17.279 seconds
+in the baseline wave, versus 33.561–55.736 seconds beside the merged scan;
+these timings are consistent with contention on the four-CPU runner.
+
+The corrected local Mac/16-CPU comparison had reduced the median from 16.676
+to 14.381 seconds (13.8%). Both comparisons limited each Oxlint invocation to
+four threads and used identical source configuration hashes. The hosted result
+shows why the local gain did not justify adoption on the actual CI runner.
+
+Coverage controls passed: the merged scan matched the exact 28,621-file union
+with no missing or extra files. Thirty-one fault fixture files produced the
+exact 16-diagnostic union, including all seven active root JavaScript rules.
+Eighteen focused controls preserved nested-mobile exemptions, type-aware
+exclusions, and exit behavior. The native audit's warnings still failed its
+original `--deny-warnings` gate and became errors in the merged scan; root
+warnings remained non-fatal. Every full-repository scan passed cleanly.
+
+Keep the existing production waves. The temporary workflow and 601-line
+benchmark driver were removed after recording this rejected result.
