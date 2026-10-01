@@ -65,6 +65,9 @@ export type AgentSessionFailureWordsContext = {
   /** The surface retries for the person — its own Retry beside the words, or a read that reconnects
    *  on its own — so they leave out sending or trying again. */
   retryControl?: boolean
+  /** Orca starts it again on its own, so the words leave out even when to try again. Implies
+   *  `retryControl`. */
+  orcaRetries?: boolean
 }
 
 /** Person-facing provider text is quoted, but bounded so the sentence stays one. */
@@ -187,7 +190,11 @@ const FAILURE_SENTENCES = {
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
-  accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
+  accountSwitchInProgress: ({ orcaRetries }, _fact, _surface, say) =>
+    joinSentences([
+      say('accountSwitchInProgress'),
+      ...(orcaRetries ? [] : [say('tryAgainAfterSwitch')])
+    ]),
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),
@@ -266,7 +273,12 @@ export function agentSessionFailureSentence(
   say: AgentSessionFailureSay = sayAgentSessionFailureEnglish
 ): string {
   const sentence: Sentence = FAILURE_SENTENCES[fact.kind]
-  return sentence(context, fact, surface, say)
+  return sentence(
+    context.orcaRetries ? { ...context, retryControl: true } : context,
+    fact,
+    surface,
+    say
+  )
 }
 
 /** The markers released clients hide, for the rejections that had one before rows carried a fact.

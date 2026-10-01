@@ -78,10 +78,8 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
     if (submission?.dispatchState !== 'pending') {
       continue
     }
-    const words = structuredAgentSessionStartFailure(
-      failure.cause,
-      startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
-    )
+    const context = startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
+    const words = structuredAgentSessionStartFailure(failure.cause, context)
     const nextAttemptAt = structuredAgentSessionStartRetryAt(
       words.rejection,
       (submission.startFailure?.attempts ?? 0) + 1,
@@ -94,7 +92,11 @@ export async function recordStructuredAgentSessionStartAttemptFailure(
             clientMessageId,
             state: 'pending',
             startFailure: {
-              reason: words.reason,
+              // Orca tries again on its own, so the sentence leaves out trying again.
+              reason: structuredAgentSessionStartFailure(failure.cause, {
+                ...context,
+                orcaRetries: true
+              }).reason,
               rejection: words.rejection,
               nextAttemptAt,
               ...(failure.generation ? { generation: failure.generation } : {})

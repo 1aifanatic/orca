@@ -53,7 +53,7 @@ function startRetryingNoticeText(submission: AgentJournalSubmission, agentName: 
     ? agentSessionFailureSentence(
         fact,
         'rejection',
-        { agentName, retryControl: true },
+        { agentName, orcaRetries: true },
         sayAgentSessionFailureTranslated
       )
     : (submission.startFailure?.reason ?? '')

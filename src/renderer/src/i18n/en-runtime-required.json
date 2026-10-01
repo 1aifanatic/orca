@@ -2716,7 +2716,8 @@
         "imageUnsupported": "Image paste is not supported for this agent."
       },
       "failureWords": {
-        "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
+        "accountSwitchInProgress": "A Claude account switch is in progress.",
+        "tryAgainAfterSwitch": "Try again after it finishes.",
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "attachmentAtMost": "{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.",
         "attachmentEmpty": "An image on this message is empty, so the message was not sent.",

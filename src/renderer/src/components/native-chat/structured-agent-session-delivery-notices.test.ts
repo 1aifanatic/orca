@@ -594,11 +594,67 @@ describe('the notice on a message whose agent start failed', () => {
       NOT_FAILED_HERE
     )
 
-    const said =
-      'A Claude account switch is in progress. Try again after it finishes. Orca will try again shortly.'
+    const said = 'A Claude account switch is in progress. Orca will try again shortly.'
     expect(Object.fromEntries(notices)).toEqual({
       [agentJournalSubmissionKey('mine')]: { text: said },
       [agentJournalSubmissionKey('orca')]: { text: said }
+    })
+  })
+
+  function retrying(id: string, rejection: AgentSessionFailureFact): AgentJournalSubmission {
+    return queued(id, {
+      attempts: 1,
+      reason: 'Written by the host.',
+      rejection,
+      failedAt: 1,
+      nextAttemptAt: 15_001
+    })
+  }
+
+  it.each([
+    [{ kind: 'accountSwitchInProgress' }, 'A Claude account switch is in progress.'],
+    [
+      { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } },
+      "Claude couldn't restart."
+    ],
+    [
+      { kind: 'startFailed', refusal: { code: 'agent_session_operation_conflict' } },
+      "Claude couldn't start."
+    ],
+    [
+      {
+        kind: 'restartFailed',
+        refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
+      },
+      "Claude couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
+    ]
+  ] as const)(
+    'says why %j and that Orca tries again, and leaves trying again to Orca',
+    (rejection, why) => {
+      expect(texts([], [retrying('mine', rejection)])).toEqual({
+        [agentJournalSubmissionKey('mine')]: `${why} Orca will try again shortly.`
+      })
+    }
+  )
+
+  it('keeps when to try again beside the Retry once the tries run out', () => {
+    const words = agentSessionFailureWords(
+      { kind: 'accountSwitchInProgress' },
+      { surface: 'rejection', agentName: 'Claude' }
+    )
+    expect(
+      texts(
+        [
+          entry('mine', {
+            state: 'rejected',
+            lastFailure: structuredAgentSessionRejectedFailure(words)
+          })
+        ],
+        [{ ...queued('mine'), dispatchState: 'rejected', ...words }]
+      )
+    ).toEqual({
+      [agentJournalSubmissionKey('mine')]:
+        'A Claude account switch is in progress. Try again after it finishes.'
     })
   })
 

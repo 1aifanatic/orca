@@ -435,7 +435,7 @@ export type AgentJournalSubmission = {
 export type AgentJournalStartFailure = {
   /** Starts that failed for this message so far, counted from the rows that recorded them. */
   attempts: number
-  /** The sentence `agentSessionFailureWords` gave, as a terminal rejection would carry it. */
+  /** The sentence `agentSessionFailureWords` gives a message Orca starts again on its own. */
   reason: string
   rejection: UnreadAgentSessionFailureFact
   failedAt: number
