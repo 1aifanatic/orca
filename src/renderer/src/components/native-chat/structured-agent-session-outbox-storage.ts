@@ -37,8 +37,10 @@ export function readRetiredStructuredAgentSessionMessageIds(
   }
 }
 
-/** The journal's sends, and their rows, less those this desktop retired: what this chat draws and
- *  words. Both go: a row whose send is missing would be drawn as a delivered message. */
+/** The journal's sends, and their rows, less those this desktop retired while the journal still has
+ *  them rejected: what this chat draws and words. Both go: a row whose send is missing would be
+ *  drawn as a delivered message. One the journal shows any other way — queued again or delivered
+ *  from another device — shows: the retirement only ever hid a refusal. */
 export function withoutRetiredStructuredAgentSessionMessages(
   journal: {
     items: readonly AgentJournalRenderItem[]
@@ -49,15 +51,23 @@ export function withoutRetiredStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[]
   submissions: readonly AgentJournalSubmission[]
 } {
-  if (retired.size === 0) {
+  const hidden = new Set(
+    retired.size === 0
+      ? []
+      : journal.submissions
+          .filter(
+            (submission) =>
+              submission.dispatchState === 'rejected' && retired.has(submission.clientMessageId)
+          )
+          .map((submission) => submission.clientMessageId)
+  )
+  if (hidden.size === 0) {
     return journal
   }
-  const keys = new Set([...retired].map(agentJournalSubmissionKey))
+  const keys = new Set([...hidden].map(agentJournalSubmissionKey))
   return {
     items: journal.items.filter((item) => !keys.has(item.itemId)),
-    submissions: journal.submissions.filter(
-      (submission) => !retired.has(submission.clientMessageId)
-    )
+    submissions: journal.submissions.filter((submission) => !hidden.has(submission.clientMessageId))
   }
 }
 

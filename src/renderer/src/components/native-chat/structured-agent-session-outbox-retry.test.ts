@@ -178,3 +178,69 @@ describe("the original of a copy this desktop's Retry sent to an older host", ()
     expect(chat.retryable.has(OLD)).toBe(false)
   })
 })
+
+// Retiring only ever hides a refusal: a send the journal shows any other way is the conversation's.
+describe('a retired id the journal does not show as rejected', () => {
+  const KEY = agentJournalSubmissionKey(OLD)
+  const items: AgentJournalRenderItem[] = [
+    {
+      itemId: KEY,
+      revision: 0,
+      sequence: 1,
+      observedAt: 1,
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
+    }
+  ]
+  const settled = (fields: Partial<AgentJournalSubmission>): AgentJournalSubmission => ({
+    ...rejected,
+    reason: null,
+    handedOverAt: 2,
+    ...fields
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('is never retired when its Retry rotates an id the host refused as expired, which may have reached the agent', () => {
+    commitStructuredAgentSessionOutbox(SESSION, [
+      {
+        ...createStructuredAgentSessionOutboxEntry({
+          clientMessageId: OLD,
+          sessionId: SESSION,
+          text: 'hello',
+          attachments: [],
+          queuedAt: 1
+        }),
+        lastAttemptAt: 2,
+        lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
+      }
+    ])
+
+    retryStructuredAgentSessionOutboxEntry({
+      clientMessageId: OLD,
+      sessionId: SESSION,
+      submissions: [settled({ dispatchState: 'unknown', reason: 'lost reply' })],
+      setError: vi.fn(),
+      createOperationId: () => NEW
+    })
+
+    expect(getStructuredAgentSessionOutbox(SESSION)).toEqual([
+      expect.objectContaining({ clientMessageId: NEW })
+    ])
+    expect(readRetiredStructuredAgentSessionMessageIds(SESSION).size).toBe(0)
+  })
+
+  it.each([
+    ['delivered from another device', settled({ dispatchState: 'accepted' })],
+    ['queued again in place', settled({ dispatchState: 'pending', handedOverAt: undefined })],
+    ['in doubt', settled({ dispatchState: 'unknown', reason: 'lost reply' })]
+  ])('shows it when %s', (_case, submission) => {
+    const shown = withoutRetiredStructuredAgentSessionMessages(
+      { items, submissions: [submission] },
+      new Set([OLD])
+    )
+    expect(shown.items.map((item) => item.itemId)).toEqual([KEY])
+    expect(shown.submissions).toEqual([submission])
+  })
+})

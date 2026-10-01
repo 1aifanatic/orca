@@ -52,8 +52,11 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
       setError('Message could not be saved to the outbox')
       return
     }
-    // The rejected original stays in the journal; this chat never draws it beside its resend.
-    retireStructuredAgentSessionMessageId(sessionId, clientMessageId)
+    // A rejected original stays in the journal; this chat never draws it beside its resend. One the
+    // host never settled (an expired id) may have reached the agent, so it is never hidden.
+    if (submission?.dispatchState === 'rejected') {
+      retireStructuredAgentSessionMessageId(sessionId, clientMessageId)
+    }
     return
   }
   const retryAfterUnknownSubmittedAt =
