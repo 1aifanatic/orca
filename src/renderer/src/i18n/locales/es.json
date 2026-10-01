@@ -15178,6 +15178,9 @@
       "dismissDeliveryNotice": "Descartar",
       "messageNotSent": "Mensaje no enviado",
       "startRetrying": "Orca lo intentará de nuevo en breve.",
+      "launchPromptSendAgain": "Vuelve a enviarlo desde donde lo iniciaste.",
+      "launchPromptNotSent": "No enviado: {{reason}}",
+      "launchPromptNotTaken": "El agente no recibió el mensaje, así que no se marcó nada como enviado. Vuelve a enviarlo desde aquí.",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "subagents": {
         "unnamed": "Subagente"

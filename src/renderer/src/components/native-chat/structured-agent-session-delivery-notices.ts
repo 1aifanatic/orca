@@ -180,6 +180,23 @@ function deliveryNoticeText(
   )
 }
 
+/** A launch prompt the host rejected for good belongs to where it was sent from (notes, review
+ *  comments, a fix action): that source still holds it as unsent and is where it goes again, so a
+ *  Retry here would deliver it while the source never learns it went. */
+function sentFromSource(entry: StructuredAgentSessionOutboxEntry): boolean {
+  return entry.source === 'launch' && entry.state === 'rejected'
+}
+
+function launchPromptNotSentText(reason: string): string {
+  return joinSentences([
+    translate('components.native-chat.launchPromptNotSent', 'Not sent: {{reason}}', { reason }),
+    translate(
+      'components.native-chat.launchPromptSendAgain',
+      'Send it again from where you started it.'
+    )
+  ])
+}
+
 /** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
  *  agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
@@ -213,14 +230,18 @@ export function structuredAgentSessionDeliveryNotices(
       const retryControl = stalledFrom === -1 || index <= stalledFrom
       const text = deliveryNoticeText(
         entry,
-        { agentName, retryControl },
+        { agentName, retryControl: retryControl || sentFromSource(entry) },
         rejected.get(entry.clientMessageId),
         startFailures,
         failedHere
       )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
-        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
+        sentFromSource(entry)
+          ? { text: launchPromptNotSentText(text) }
+          : retryControl
+            ? { text, onRetry: () => retry(entry.clientMessageId) }
+            : { text }
       )
     }
   }

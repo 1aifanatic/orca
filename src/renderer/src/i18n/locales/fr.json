@@ -17863,6 +17863,9 @@
       "dismissDeliveryNotice": "Ignorer",
       "messageNotSent": "Message non envoyé",
       "startRetrying": "Orca réessaiera sous peu.",
+      "launchPromptSendAgain": "Renvoyez-le depuis l'endroit où vous l'avez lancé.",
+      "launchPromptNotSent": "Non envoyé : {{reason}}",
+      "launchPromptNotTaken": "L'agent n'a pas pris l'invite, donc rien n'a été marqué comme envoyé. Renvoyez-la d'ici.",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",

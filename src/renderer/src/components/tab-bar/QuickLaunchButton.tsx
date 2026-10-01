@@ -18,6 +18,23 @@ import {
 import { translate } from '@/i18n/i18n'
 import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
 
+/** Says, once the launch prompt settles, that the agent did not take it, unless something already
+ *  said so. */
+export async function reportLaunchPromptNotTaken(
+  delivery: Promise<{ delivered: boolean; failureNotified: boolean }>
+): Promise<void> {
+  const settled = await delivery.catch(() => ({ delivered: false, failureNotified: false }))
+  if (settled.delivered || settled.failureNotified) {
+    return
+  }
+  toast.error(
+    translate(
+      'components.native-chat.launchPromptNotTaken',
+      "The agent didn't take the prompt, so nothing was marked sent. Send it again from here."
+    )
+  )
+}
+
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
   groupId: string
@@ -152,6 +169,11 @@ function QuickLaunchAgentMenuItemsInner({
           )
         )
         return
+      }
+      // A caller that marks something sent on delivery (notes, annotations) keeps it unsent when
+      // the agent never takes the prompt; say so, since this menu is where it goes again.
+      if (onPromptDelivered && result.promptDeliveryResult) {
+        void reportLaunchPromptNotTaken(result.promptDeliveryResult)
       }
       if (result.surface.kind !== 'local-terminal') {
         return

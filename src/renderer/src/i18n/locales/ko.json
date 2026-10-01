@@ -17799,6 +17799,9 @@
       "dismissDeliveryNotice": "닫기",
       "messageNotSent": "메시지가 전송되지 않음",
       "startRetrying": "Orca가 곧 다시 시도합니다.",
+      "launchPromptSendAgain": "시작한 곳에서 다시 보내세요.",
+      "launchPromptNotSent": "보내지 않음: {{reason}}",
+      "launchPromptNotTaken": "에이전트가 프롬프트를 받지 않아 보낸 것으로 표시되지 않았습니다. 여기에서 다시 보내세요.",
       "deliveryUnconfirmed": "전달 확인 안 됨 — 다시 시도하기 전에 채팅을 확인하세요",
       "queuedMessages": {
         "alreadySent": "이 메시지는 이미 전송되었습니다.",

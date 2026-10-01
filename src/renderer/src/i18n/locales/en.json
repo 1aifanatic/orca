@@ -17956,6 +17956,9 @@
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
       "startRetrying": "Orca will try again shortly.",
+      "launchPromptSendAgain": "Send it again from where you started it.",
+      "launchPromptNotSent": "Not sent: {{reason}}",
+      "launchPromptNotTaken": "The agent didn't take the prompt, so nothing was marked sent. Send it again from here.",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",

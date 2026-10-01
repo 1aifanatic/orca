@@ -214,4 +214,21 @@ describe('Resolve comments with AI, when the chat starts on its first message', 
       })
     }
   )
+
+  // The source owns the retry of a launch prompt the host rejected for good: the chat offers none,
+  // and sending again from the checks panel is what posts, once.
+  it('posts once when sent again from the checks panel after a start that failed for good', async () => {
+    const { model, hook } = acknowledgement()
+    const first = resolveCommentsWithAi(hook)
+    play(await first.host, FIRST_START_FAILS.rejectedAfterTries)
+    await expect(first.launched).resolves.toBe(false)
+    expectNothingPosted(model)
+
+    const again = resolveCommentsWithAi(hook)
+    play(await again.host, FIRST_START_FAILS.retriedThenTaken)
+    await expect(again.launched).resolves.toBe(true)
+
+    await vi.waitFor(() => expect(model.resolveReviewThread).toHaveBeenCalledTimes(1))
+    expect(model.addPRConversationComment).toHaveBeenCalledTimes(1)
+  })
 })

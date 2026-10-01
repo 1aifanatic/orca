@@ -508,4 +508,16 @@ describe('NotesSendMenu sending to a new chat', () => {
     await expect(delivery).resolves.toMatchObject({ delivered: false })
     expect(onDelivered).not.toHaveBeenCalled()
   })
+
+  it('marks the notes sent once, when sent again from the notes after a start that failed for good', async () => {
+    const onDelivered = vi.fn()
+    const first = await sendToNewChat(onDelivered)
+    play(first.stream, FIRST_START_FAILS.rejectedAfterTries)
+    await expect(first.delivery).resolves.toMatchObject({ delivered: false })
+
+    const again = await sendToNewChat(onDelivered)
+    play(again.stream, FIRST_START_FAILS.retriedThenTaken)
+    await expect(again.delivery).resolves.toMatchObject({ delivered: true })
+    expect(onDelivered).toHaveBeenCalledOnce()
+  })
 })

@@ -1,7 +1,11 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { QuickLaunchAgentMenuItems, shouldShowLaunchWatchdogTimeout } from './QuickLaunchButton'
+import {
+  QuickLaunchAgentMenuItems,
+  reportLaunchPromptNotTaken,
+  shouldShowLaunchWatchdogTimeout
+} from './QuickLaunchButton'
 
 const {
   shortcutLabelMock,
@@ -223,5 +227,20 @@ describe('shouldShowLaunchWatchdogTimeout', () => {
         hasPty: false
       })
     ).toBe(true)
+  })
+
+  // Notes and annotations sent to a new agent stay unsent when it never takes the prompt; the menu
+  // they were sent from says so, since that is where they go again.
+  it.each([
+    [{ delivered: false, failureNotified: false }, 1],
+    [{ delivered: false, failureNotified: true }, 0],
+    [{ delivered: true, failureNotified: false }, 0]
+  ])('reports a launch prompt the agent did not take (%o)', async (delivery, toasts) => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    await reportLaunchPromptNotTaken(Promise.resolve(delivery))
+
+    expect(toast.error).toHaveBeenCalledTimes(toasts)
   })
 })
