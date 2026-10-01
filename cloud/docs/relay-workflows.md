@@ -518,7 +518,10 @@ The exit metric names only an instance, so each exiting instance is matched to a
 instance's own newest `orca_relay_runtime_metrics` line from the last two hours. The target's own
 exits are ignored, because the roll exists to fix them, and so are existing-only legacy cells,
 which take no placements. An exit whose instance cannot be matched to a configured cell trips the
-rule; a failed lookup counts as a failed read.
+rule; a failed lookup counts as a failed read. A newly booted instance can exit several times in
+its first seconds while its Cloud SQL proxy sidecar starts (c25's replacement did on
+2026-09-28); if that lands within 10 minutes of the next wave's sample, that wave trips and the
+remaining cells need a new dispatch.
 
 Any trip fails the wave before isolation, so nothing has changed; dispatch again once the fleet is
 quiet. Every later cell in a batch runs all three again, so a batch never drains on health read

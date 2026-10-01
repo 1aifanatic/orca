@@ -813,7 +813,7 @@ jobs:
         # cancelled job takes the whole wave with it. A healthy gate is already minutes of
         # serial reads, so both bounds sit above that: the script settles at seven minutes and
         # reaching this eight is the pathological case. Eight on top of a ~14-minute cell still
-        # leaves the job's 75 minutes intact.
+        # leaves the job's 90 minutes intact.
         timeout-minutes: 8
         env:
           DRAIN_STARTED_AT: ${{ steps.drain.outputs.drain-started-at }}

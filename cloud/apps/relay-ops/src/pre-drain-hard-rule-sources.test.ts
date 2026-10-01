@@ -157,6 +157,20 @@ describe('pre-drain hard rule reader', () => {
     expect(body.orderBy).toBe('timestamp desc')
   })
 
+  it('asks again next sample for an instance it could not name', async () => {
+    const fake: Fake = { exits: { '2626': [1] } }
+    const { fetchImpl, requests } = fakeGoogle(fake)
+    const read = reader(fetchImpl)
+    await expect(read()).resolves.toMatchObject({ unattributedExitInstances: ['2626'] })
+    fake.cells = { '2626': 'production-gce-c26' }
+    await expect(read()).resolves.toMatchObject({
+      cellProcessExits: 1,
+      unattributedExitInstances: []
+    })
+    expect(requests.filter(({ url }) => url.hostname === 'logging.googleapis.com'))
+      .toHaveLength(2)
+  })
+
   it('aligns each read per minute over its own lookback on the director service', async () => {
     const { fetchImpl, requests } = fakeGoogle({})
     await reader(fetchImpl)()
