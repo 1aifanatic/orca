@@ -311,3 +311,31 @@ it('lets a held message be withdrawn with Stop, and the owed stop still ends on 
   expect(claude.connections).toHaveLength(1)
   expect(wrote(connection, 'Carry on.')).toBe(false)
 })
+
+function setModel(model: string) {
+  const fields = { key: 'model', value: model }
+  return host.setOption(CALLER, { envelope: envelope('agentSession.setOption', fields), ...fields })
+}
+
+it('refuses an option change with the exit unverifiable after retrying the stop, never writing to the old child', async () => {
+  const connection = await stopWithUnprovenClose(2)
+
+  await expect(setModel('claude-opus-5')).resolves.toMatchObject({
+    ok: false,
+    refusal: {
+      code: 'agent_session_ownership_unknown',
+      details: { reason: 'previousExitUnverifiable', ownerVerdict: 'unverifiable' }
+    }
+  })
+  expect(connection.closeCount).toBe(2)
+  expect(connection.calls.some((call) => call.subtype === 'set_model')).toBe(false)
+  expect(owedWindDown()).toBeDefined()
+
+  // Trying again retries the stop; proven, the pick is the chat's at rest, for the next start.
+  await expect(setModel('claude-opus-5')).resolves.toMatchObject({ ok: true })
+  expect(connection.closeCount).toBe(3)
+  expect(owedWindDown()).toBeUndefined()
+  expect(connection.calls.some((call) => call.subtype === 'set_model')).toBe(false)
+  expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
+  expect(claude.connections).toHaveLength(1)
+})

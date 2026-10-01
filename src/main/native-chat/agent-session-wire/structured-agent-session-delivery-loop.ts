@@ -26,7 +26,10 @@ import {
   structuredAgentSessionStartFailure,
   type StructuredAgentSessionStartFailureCause
 } from './structured-agent-session-failure-text'
-import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
+import {
+  isStructuredAgentSessionPreviousExitUnverifiable,
+  type StructuredAgentSessionResumeOutcome
+} from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionChildEndCause,
   StructuredAgentSessionEndedChild,
@@ -57,8 +60,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
     sessionId: string,
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
-  /** Retries a stop that did not finish; resolves whether nothing is owed now. */
-  finishOwedWindDown: (sessionId: string) => Promise<boolean>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
   /** Rejects queued messages as a completed close of the chat does; false when that failed. */
@@ -179,17 +180,9 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
       return this.stop(sessionId)
     }
-    // A child a stop could not prove gone takes no input, and none may start beside it: a new
-    // message retries the stop first. Still unproven, it waits, saying why, for the next retry.
-    if (
-      session.owesProviderChildWindDown !== undefined &&
-      (structuredAgentSessionWindDownWaitHolds(session) ||
-        !(await this.deps.finishOwedWindDown(sessionId)))
-    ) {
-      await recordStructuredAgentSessionWindDownWait(session, {
-        fence: this.deps.conversationFence(sessionId),
-        failureTextContext: this.deps.failureTextContext(sessionId)
-      })
+    // Already waiting on a stop that could not prove its child gone: only a new message, or the
+    // sweep, retries it, so the waiting row's own commit does not.
+    if (structuredAgentSessionWindDownWaitHolds(session)) {
       return this.stop(sessionId)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)
@@ -197,6 +190,15 @@ export class StructuredAgentSessionDeliveryLoop {
       return this.fail(sessionId, failedStart)
     }
     const ready = await this.deps.ensureProviderChild(sessionId, oldest.clientMessageId)
+    if (!ready.ok && isStructuredAgentSessionPreviousExitUnverifiable(ready.refusal)) {
+      // The start retried that stop first and still could not prove the exit: the message waits,
+      // saying why, rather than being refused.
+      await recordStructuredAgentSessionWindDownWait(session, {
+        fence: this.deps.conversationFence(sessionId),
+        failureTextContext: this.deps.failureTextContext(sessionId)
+      })
+      return this.stop(sessionId)
+    }
     if (!ready.ok) {
       return ready
     }
