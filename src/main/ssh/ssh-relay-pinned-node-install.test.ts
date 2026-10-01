@@ -244,7 +244,7 @@ describe('pinned relay on a Windows host', () => {
         baseVersion: '0.1.0+abc',
         targetId: 'target-1'
       })
-    ).resolves.toEqual({ kind: 'host-node', fallbackReason: 'security_software' })
+    ).resolves.toEqual({ kind: 'host-node', fallbackReason: 'security_software', remembered: true })
   })
 
   it('classifies application control blocking node.exe as a refusal', async () => {
@@ -277,7 +277,7 @@ describe('pinned relay on a Windows host', () => {
         /^C:\/Users\/u\/\.orca-remote\/runtimes\/node-[0-9a-f]{64}\/node\.exe$/
       ),
       undefined,
-      { host: windowsHost }
+      { host: windowsHost, expectPinnedVersion: true }
     )
   })
 })
