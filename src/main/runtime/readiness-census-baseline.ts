@@ -112,8 +112,8 @@ function readOrWriteBaseline(
   }
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
   const stored: unknown =
-    typeof parsed === 'object' && parsed !== null && field in parsed
-      ? Reflect.get(parsed, field)
+    typeof parsed === 'object' && parsed !== null
+      ? new Map(Object.entries(parsed)).get(field)
       : undefined
   if (typeof stored !== 'object' || stored === null) {
     return { message: `${subject}: baseline at ${path} has no ${field}` }
