@@ -10,12 +10,17 @@ import {
   writeFileSync
 } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { mirrorEntry, safeRemoveTree } from '../pty/overlay-mirror'
+import { mirrorEntry, safeRemoveOverlay } from '../pty/overlay-mirror'
 import {
   getOpenCode2PluginSource,
   getOpenCodeFamilyPluginSource,
   getOpenCodePluginSource
 } from './status-plugin-module-source'
+import {
+  readOpenCodeOverlayManifest,
+  OPENCODE_OVERLAY_MANIFEST_FILE,
+  type OpenCodeOverlayManifest
+} from './opencode-overlay-manifest'
 import { resolveOpenCodeConfigDirectory } from '../../shared/opencode-config-directory'
 import {
   getOpenCodeLegacySharedConfigDir,
@@ -41,12 +46,6 @@ import {
 
 const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
 const OPENCODE_OVERLAY_DIR = 'opencode-config-overlays'
-const OPENCODE_OVERLAY_MANIFEST_FILE = '.orca-opencode-overlay-manifest.json'
-
-type OpenCodeOverlayManifest = {
-  topLevelEntries: string[]
-  pluginEntries: string[]
-}
 
 type OpenCodeHookVariant = {
   pluginFileName: string
@@ -201,20 +200,6 @@ export class OpenCodeHookService {
     )
   }
 
-  private readOverlayManifest(overlayDir: string): OpenCodeOverlayManifest {
-    try {
-      const parsed = JSON.parse(
-        readFileSync(join(overlayDir, OPENCODE_OVERLAY_MANIFEST_FILE), 'utf8')
-      ) as Partial<OpenCodeOverlayManifest>
-      return {
-        topLevelEntries: Array.isArray(parsed.topLevelEntries) ? parsed.topLevelEntries : [],
-        pluginEntries: Array.isArray(parsed.pluginEntries) ? parsed.pluginEntries : []
-      }
-    } catch {
-      return { topLevelEntries: [], pluginEntries: [] }
-    }
-  }
-
   private writeOverlayManifest(overlayDir: string, manifest: OpenCodeOverlayManifest): void {
     writeFileSync(
       join(overlayDir, OPENCODE_OVERLAY_MANIFEST_FILE),
@@ -224,7 +209,7 @@ export class OpenCodeHookService {
 
   private clearManifestEntries(overlayDir: string, manifest: OpenCodeOverlayManifest): void {
     for (const entryName of manifest.topLevelEntries) {
-      safeRemoveTree(join(overlayDir, entryName))
+      safeRemoveOverlay(join(overlayDir, entryName), overlayDir)
     }
 
     const overlayPluginsDir = join(overlayDir, 'plugins')
@@ -232,13 +217,13 @@ export class OpenCodeHookService {
       if (entryName === this.pluginFileName) {
         continue
       }
-      safeRemoveTree(join(overlayPluginsDir, entryName))
+      safeRemoveOverlay(join(overlayPluginsDir, entryName), overlayPluginsDir)
     }
   }
 
   // Why: mirror user config entries as symlinks so edits propagate live; only plugins/ becomes a real overlay dir so Orca can drop a sibling plugin file.
   private mirrorUserConfig(sourceDir: string, overlayDir: string): void {
-    const previousManifest = this.readOverlayManifest(overlayDir)
+    const previousManifest = readOpenCodeOverlayManifest(overlayDir)
     // Why: overlays persist across terminals; remove only Orca-mirrored paths so stale user config clears but OpenCode runtime dirs (node_modules) survive.
     this.clearManifestEntries(overlayDir, previousManifest)
 
