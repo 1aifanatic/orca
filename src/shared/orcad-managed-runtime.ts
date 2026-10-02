@@ -94,6 +94,26 @@ export type OrcadManagedRuntimeStatus = {
     | null
   /** Terminals the daemon runs; `null` counts are unverifiable and block updates and stops. */
   terminals: OrcadTerminalCensus
+  /** An unfinished dormant migration into this server; a rollback is refused while it runs. */
+  migration: {
+    migrationId: string
+    phase: 'source-fenced' | 'destination-staged' | 'destination-committed' | 'source-retired'
+    startedAt: string
+  } | null
   /** The last update this client deferred for this server, cleared once one goes through. */
   deferredUpdate: (OrcadManagedDeferral & { deferredAt: string }) | null
 }
+
+export type OrcadManagedConversionResult =
+  | {
+      outcome: 'committed'
+      environment: PublicKnownRuntimeEnvironment
+      migrationId: string
+    }
+  | OrcadManagedDeferral
+  | {
+      outcome: 'refused'
+      verdict: 'live' | 'unverifiable'
+      code: string
+      reason: string
+    }

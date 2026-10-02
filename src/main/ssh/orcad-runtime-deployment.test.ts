@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import {
+  createManagedOrcadSshOwner,
+  getManagedOrcadOwnerEnvironmentId
+} from '../../shared/managed-orcad-ssh-owner'
+import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
+import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
@@ -308,6 +313,37 @@ describe('createManagedOrcadEnvironment', () => {
   })
 })
 
+describe('createManagedOrcadEnvironment for a migration', () => {
+  it('deploys into its own journaled fence without leaving a provisioning intent', async () => {
+    target = { ...target, owner: createManagedOrcadSshOwner('env-m'), generation: 9 }
+    writeOrcadMigrationSourceCutover(
+      userDataPath,
+      orcadMigrationCutoverFixture('m-1', 'ssh-1', { generation: 9, environmentId: 'env-m' })
+    )
+    await expect(
+      createManagedOrcadEnvironment(userDataPath, {
+        name: 'Managed',
+        sshTargetId: 'ssh-1',
+        migration: true
+      })
+    ).resolves.toMatchObject({ outcome: 'created' })
+    expect(listEnvironments(userDataPath).map((entry) => entry.id)).toEqual(['env-m'])
+    expect(target.orcadProvisioning).toBeUndefined()
+  })
+
+  it('refuses a migration deploy whose fence has no journal, before connecting', async () => {
+    target = { ...target, owner: createManagedOrcadSshOwner('env-m'), generation: 9 }
+    await expect(
+      createManagedOrcadEnvironment(userDataPath, {
+        name: 'Managed',
+        sshTargetId: 'ssh-1',
+        migration: true
+      })
+    ).rejects.toThrow('orcad_migration_fence_required')
+    expect(mocks.connect).not.toHaveBeenCalled()
+  })
+})
+
 describe('getManagedOrcadRuntimeStatus', () => {
   it('reports the activation record and an interrupted transaction without repairing it', async () => {
     await deploy()
@@ -339,6 +375,7 @@ describe('getManagedOrcadRuntimeStatus', () => {
         startedAt: 'then'
       },
       terminals: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 39 },
+      migration: null,
       deferredUpdate: null
     })
     expect(mocks.recover).toHaveBeenCalledTimes(1)
@@ -354,6 +391,28 @@ describe('getManagedOrcadRuntimeStatus', () => {
     })
     await expect(getManagedOrcadRuntimeStatus(userDataPath, 'Managed')).resolves.toMatchObject({
       recovery: { operation: 'decommission', phase: 'stop-dispatched', version: VERSION }
+    })
+  })
+
+  it('reports an unfinished migration into the server', async () => {
+    await deploy()
+    const [environment] = listEnvironments(userDataPath)
+    writeOrcadMigrationSourceCutover(userDataPath, {
+      ...orcadMigrationCutoverFixture('m-2', 'ssh-1', {
+        generation: 9,
+        environmentId: environment!.id
+      }),
+      phase: 'destination-staged'
+    })
+    mocks.resolveContext.mockImplementation(async (claimed: SshTarget) => ({
+      activationRecord: { ...emptyRecord, active: VERSION },
+      connection: {},
+      host: getRemoteHostPlatform('linux-x64'),
+      remoteHome: '/home/dev',
+      target: claimed
+    }))
+    await expect(getManagedOrcadRuntimeStatus(userDataPath, 'Managed')).resolves.toMatchObject({
+      migration: { migrationId: 'm-2', phase: 'destination-staged' }
     })
   })
 

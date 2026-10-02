@@ -159,3 +159,31 @@ function samePairing(left: PairingOffer, right: PairingOffer): boolean {
     left.pairedDeviceId === right.pairedDeviceId
   )
 }
+
+/**
+ * Marks a managed server as holding migrated state from `at` on. Written before a commit is
+ * attempted, so a crash after the commit can never leave a rollback across it unblocked.
+ */
+export function recordManagedOrcadMigration(
+  userDataPath: string,
+  environmentId: string,
+  at: string
+): KnownRuntimeEnvironment {
+  const store = readPersistedEnvironmentStore(userDataPath)
+  const persisted = resolveEnvironmentFromStore(store, environmentId)
+  const entry = readCurrentRuntimeEnvironmentSidecarEntry(userDataPath, persisted)
+  if (!entry?.orcadDeployment) {
+    throw new RuntimeEnvironmentStoreError('invalid_argument', 'This server is not managed.')
+  }
+  const { binding: _binding, ...state } = entry
+  // The earliest mark wins: a snapshot older than any migration must stay out of reach.
+  const earliest =
+    state.orcadMigratedAt && Date.parse(state.orcadMigratedAt) <= Date.parse(at)
+      ? state.orcadMigratedAt
+      : at
+  writeRuntimeEnvironmentSidecarEntry(userDataPath, store.environments, persisted, {
+    ...state,
+    orcadMigratedAt: earliest
+  })
+  return resolveEnvironmentFromStore(readEnvironmentStore(userDataPath), environmentId)
+}

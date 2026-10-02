@@ -1,12 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
-import type {
-  OrcadMigrationCatalogState,
-  OrcadMigrationManifest
-} from '../../shared/orcad-migration-manifest'
 import type { SshTarget } from '../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
@@ -20,6 +16,7 @@ import { ORCAD_MIGRATION_DESTINATION_UNSUPPORTED } from './orcad-migration-catal
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
 import { fenceOrcadMigrationSource } from './orcad-migration-source-fence'
 import { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
+import { fakeOrcadMigrationDestination as fakeDestination } from './orcad-migration-destination-fake'
 
 const TARGET: SshTarget = {
   id: 'ssh-prod',
@@ -37,59 +34,6 @@ afterEach(async () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
-
-/** An in-memory destination with the T6-9 semantics: idempotent stage, receipt-keyed commit. */
-function fakeDestination() {
-  let state: 'absent' | 'staged' | 'committed' = 'absent'
-  const view = (manifest: OrcadMigrationManifest): OrcadMigrationCatalogState => {
-    const base = { migrationId: manifest.migrationId, manifestSha256: manifest.manifestSha256 }
-    if (state === 'committed') {
-      return {
-        ...base,
-        state,
-        receipt: {
-          version: 1,
-          migrationId: manifest.migrationId,
-          manifestSha256: manifest.manifestSha256,
-          source: manifest.source,
-          importedAt: '2026-10-01T00:00:00.000Z',
-          repositoryIds: [],
-          projectGroupIds: [],
-          folderWorkspaceIds: []
-        }
-      }
-    }
-    return state === 'staged'
-      ? { ...base, state, stagedAt: '2026-10-01T00:00:00.000Z', snapshotUploads: [] }
-      : { ...base, state }
-  }
-  const destination = {
-    commits: 0,
-    readState: vi.fn(async (manifest: OrcadMigrationManifest) => view(manifest)),
-    stage: vi.fn(async (manifest: OrcadMigrationManifest) => {
-      if (state === 'absent') {
-        state = 'staged'
-      }
-      return view(manifest)
-    }),
-    commit: vi.fn(async (manifest: OrcadMigrationManifest) => {
-      if (state === 'staged') {
-        state = 'committed'
-        destination.commits += 1
-      }
-      return view(manifest)
-    }),
-    abort: vi.fn(async (manifest: OrcadMigrationManifest) => {
-      const aborted = state === 'staged'
-      if (aborted) {
-        state = 'absent'
-      }
-      return { ...view(manifest), aborted, ...(aborted ? {} : { durableAbsent: true as const }) }
-    }),
-    stageChunk: vi.fn()
-  }
-  return destination
-}
 
 async function setup() {
   const userDataPath = mkdtempSync(join(tmpdir(), 'orcad-cutover-coordinator-'))

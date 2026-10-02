@@ -11,6 +11,7 @@ import {
 } from './runtime-environment-store'
 import {
   addManagedOrcadEnvironment,
+  recordManagedOrcadMigration,
   refreshManagedOrcadPairing,
   removeManagedOrcadEnvironment
 } from './runtime-environment-managed-orcad-store'
@@ -129,5 +130,24 @@ describe('managed orcad environment store', () => {
     expect(() =>
       refreshManagedOrcadPairing(userDataPath, 'environment-1', pairingCode('ws://127.0.0.1:1'))
     ).toThrow('does not point at its SSH tunnel')
+  })
+
+  it('keeps the earliest migration mark, across a downgrade rewrite and a re-pair', () => {
+    add()
+    recordManagedOrcadMigration(userDataPath, 'environment-1', '2026-02-01T00:00:00.000Z')
+    recordManagedOrcadMigration(userDataPath, 'environment-1', '2026-03-01T00:00:00.000Z')
+    shippedBuildRewrite(userDataPath, (environments) => {
+      environments[0]!.lastUsedAt = 900
+    })
+    expect(listEnvironments(userDataPath)[0]?.orcadMigratedAt).toBe('2026-02-01T00:00:00.000Z')
+    const rotated = encodePairingOffer({
+      v: 2,
+      endpoint: 'ws://127.0.0.1:46768',
+      deviceToken: 'rotated-token',
+      publicKeyB64: Buffer.alloc(32, 1).toString('base64')
+    })
+    expect(
+      refreshManagedOrcadPairing(userDataPath, 'environment-1', rotated, 500).orcadMigratedAt
+    ).toBe('2026-02-01T00:00:00.000Z')
   })
 })

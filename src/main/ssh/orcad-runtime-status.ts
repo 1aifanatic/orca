@@ -7,6 +7,7 @@ import {
   resolveLinkedOrcadContext
 } from './orcad-managed-runtime-context'
 import { readManagedOrcadUpdateDeferral } from './orcad-managed-update-deferrals'
+import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
 
 /** Read-only: what the host's activation record and journal say, without repairing either. */
@@ -34,6 +35,7 @@ export async function getManagedOrcadRuntimeStatus(
       rollbackAvailable: Boolean(record.previous && record.snapshot),
       recovery: transaction ? managedRecoveryStatus(transaction) : null,
       terminals: await collectManagedTerminalCensus(userDataPath, environment, record),
+      migration: migrationStatus(userDataPath, environment.id),
       deferredUpdate: readManagedOrcadUpdateDeferral(environment.id)
     }
   })
@@ -65,4 +67,14 @@ function managedRecoveryStatus(
         startedAt: transaction.startedAt
       }
   }
+}
+
+function migrationStatus(
+  userDataPath: string,
+  environmentId: string
+): OrcadManagedRuntimeStatus['migration'] {
+  const migration = findIncompleteManagedOrcadMigration(userDataPath, environmentId)
+  return migration
+    ? { migrationId: migration.migrationId, phase: migration.phase, startedAt: migration.startedAt }
+    : null
 }

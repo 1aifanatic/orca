@@ -38,6 +38,8 @@ const SidecarEntrySchema = z.object({
   pendingSshAccessOperation: RuntimeSshAccessOperationSchema.optional(),
   // The managed deployment's tunnel; its loopback endpoint is the persisted pairing itself.
   orcadDeployment: OrcadDeploymentLinkSchema.optional(),
+  // A rollback to a snapshot older than this would discard the migrated catalog.
+  orcadMigratedAt: z.string().datetime().optional(),
   // Keeps the overlaid pairing revision monotonic after the access that raised it is removed.
   pairingRevisionFloor: z.number().finite().optional(),
   reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
@@ -143,6 +145,7 @@ export function overlayRuntimeEnvironmentSidecar(
       ? { pendingSshAccessOperation: entry.pendingSshAccessOperation }
       : {}),
     ...(entry.orcadDeployment ? { orcadDeployment: entry.orcadDeployment } : {}),
+    ...(entry.orcadMigratedAt ? { orcadMigratedAt: entry.orcadMigratedAt } : {}),
     ...(entry.reconciliation ? { reconciliation: entry.reconciliation } : {})
   })
   return overlaid.success ? overlaid.data : base
@@ -171,6 +174,7 @@ export function writeRuntimeEnvironmentSidecarEntry(
       entry.sshAccess !== undefined ||
       entry.pendingSshAccessOperation !== undefined ||
       entry.orcadDeployment !== undefined ||
+      entry.orcadMigratedAt !== undefined ||
       entry.reconciliation !== undefined ||
       (entry.pairingRevisionFloor ?? basePairingRevision) > basePairingRevision)
   if (entry && hasState) {
