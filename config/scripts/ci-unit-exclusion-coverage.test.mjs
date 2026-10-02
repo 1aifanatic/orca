@@ -43,32 +43,29 @@ function runByVitestStep(file, pathArguments) {
   )
 }
 
-function excludedUnitFiles() {
-  const sharded = new Set(discoverUnitFiles())
-  return posixPaths(globSync(UNIT_INCLUDE, { exclude: defaultExclude })).filter(
-    (file) => !sharded.has(file)
-  )
-}
+// Why module scope: globbing the unit tree costs seconds, and every test reads the same result.
+const UNIT_FILES = posixPaths(globSync(UNIT_INCLUDE, { exclude: defaultExclude }))
+const SHARDED_UNIT_FILES = new Set(discoverUnitFiles())
+const EXCLUDED_UNIT_FILES = UNIT_FILES.filter((file) => !SHARDED_UNIT_FILES.has(file))
+const GATING_JOBS = gatingJobs()
 
 describe('unit files kept out of the sharded test job', () => {
   it('each still runs in a job that gates the PR', () => {
-    const excluded = excludedUnitFiles()
-    const jobs = gatingJobs()
-
-    expect(excluded.length).toBeGreaterThan(0)
+    expect(EXCLUDED_UNIT_FILES.length).toBeGreaterThan(0)
     // Why: an excluded file no gating step names guards nothing, and nothing else reports it.
     expect(
-      excluded.filter((file) => !jobs.some((job) => runByVitestStep(file, job.pathArguments)))
+      EXCLUDED_UNIT_FILES.filter(
+        (file) => !GATING_JOBS.some((job) => runByVitestStep(file, job.pathArguments))
+      )
     ).toEqual([])
   })
 
   it('a change to each runs a gating job that names it', () => {
-    const jobs = gatingJobs()
     // Why: otherwise a PR editing only the file skips the one job that runs it.
     expect(
-      excludedUnitFiles().filter(
+      EXCLUDED_UNIT_FILES.filter(
         (file) =>
-          !jobs.some(
+          !GATING_JOBS.some(
             ({ gate, pathArguments }) =>
               runByVitestStep(file, pathArguments) && (!gate || classifyPrJobs([file])[gate])
           )
@@ -77,7 +74,7 @@ describe('unit files kept out of the sharded test job', () => {
   })
 
   it('runs the whole cross-version-wire directory, not a list of its files', () => {
-    expect(gatingJobs().flatMap((job) => job.pathArguments)).toContain(CROSS_VERSION_WIRE_DIR)
+    expect(GATING_JOBS.flatMap((job) => job.pathArguments)).toContain(CROSS_VERSION_WIRE_DIR)
   })
 
   it('names every cross-version-wire test so the unit include picks it up', () => {
@@ -85,7 +82,7 @@ describe('unit files kept out of the sharded test job', () => {
     const tests = posixPaths(
       globSync(`${CROSS_VERSION_WIRE_DIR}**/*.{test,spec}.{js,cjs,mjs,ts,tsx}`)
     )
-    const included = new Set(posixPaths(globSync(UNIT_INCLUDE)))
+    const included = new Set(UNIT_FILES)
     expect(tests.length).toBeGreaterThan(0)
     expect(tests.filter((file) => !included.has(file))).toEqual([])
   })
