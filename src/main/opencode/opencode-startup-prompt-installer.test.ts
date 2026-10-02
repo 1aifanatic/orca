@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setAppEnvironment } from '../../shared/app-environment'
-import { createOpenCodeStartupPromptInstaller } from './opencode-startup-prompt-installer'
+import {
+  createOpenCodeStartupPromptInstaller,
+  installOpenCodeStartupPromptForLaunch
+} from './opencode-startup-prompt-installer'
 
 let root: string
 let originalXdg: string | undefined
@@ -30,6 +33,28 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 describe('OpenCode startup prompt installer', () => {
+  it('keeps a missing user config untouched and installs the launch into an owned overlay', () => {
+    const source = join(root, 'missing-user-config')
+    const env: Record<string, string> = {
+      ORCA_OPENCODE_PLUGIN_API: 'v2',
+      ORCA_OPENCODE_STARTUP_PROMPT_NONCE: 'private-launch',
+      OPENCODE_CONFIG_DIR: source,
+      OPENCODE_CONFIG_CONTENT: '{"model":"opencode/model"}'
+    }
+    installOpenCodeStartupPromptForLaunch(env)
+    expect(existsSync(source)).toBe(false)
+    expect(env.OPENCODE_CONFIG_DIR).toContain(
+      join(root, 'profile', 'opencode-startup-prompt-overlays')
+    )
+    expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe(env.OPENCODE_CONFIG_DIR)
+    expect(env.OPENCODE_CONFIG_CONTENT).toBe('{"model":"opencode/model"}')
+    expect(
+      existsSync(join(env.OPENCODE_CONFIG_DIR, 'plugins', 'orca-opencode-startup-prompt', 'tui.js'))
+    ).toBe(true)
+    expect(existsSync(join(env.OPENCODE_CONFIG_DIR, 'plugins', 'orca-opencode-status.js'))).toBe(
+      false
+    )
+  })
   it('installs only a TUI entry without installing status hooks or a v1/server entry', () => {
     const service = createOpenCodeStartupPromptInstaller(() => 'prompt source')
     expect(service.buildPtyEnv('pane')).toEqual({})

@@ -121,13 +121,15 @@ export class OpenCodeHookService {
         return {}
       }
     }
-    if (!existsSync(existingConfigDir)) {
+    if (!existsSync(existingConfigDir) && !this.tuiOnlyDirectory) {
       return { OPENCODE_CONFIG_DIR: existingConfigDir }
     }
     const overlayDir = this.getSourceOverlayDir(existingConfigDir)
     try {
       mkdirSync(overlayDir, { recursive: true })
-      this.mirrorUserConfig(existingConfigDir, overlayDir)
+      if (existsSync(existingConfigDir)) {
+        this.mirrorUserConfig(existingConfigDir, overlayDir)
+      }
       this.writePluginIntoOverlay(overlayDir)
       return { OPENCODE_CONFIG_DIR: overlayDir }
     } catch {
