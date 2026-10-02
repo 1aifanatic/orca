@@ -44,7 +44,7 @@ export function getDiscardEntryConfirmationCopy(
         { value0: name }
       ),
       description: translate(
-        'auto.components.right.sidebar.source.control.discard.confirmation.40e9357b2a',
+        'sourceControl.discard.restoreStagedVersionDescription',
         'This will restore the last staged version and discard the deletion. This cannot be undone.'
       ),
       confirmLabel: 'Restore'
@@ -58,7 +58,7 @@ export function getDiscardEntryConfirmationCopy(
       { value0: name }
     ),
     description: translate(
-      'auto.components.right.sidebar.source.control.discard.confirmation.1426c2efff',
+      'sourceControl.discard.unstagedChangesDescription',
       'This will revert the unstaged changes to this file. This cannot be undone.'
     ),
     confirmLabel: 'Discard'
