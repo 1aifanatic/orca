@@ -40,6 +40,8 @@ const JOINED: CodexSharedServerStatus = { joined: true, openedBeforeWrapper: fal
 const NOT_JOINED: CodexSharedServerStatus = { joined: false }
 const OLD_TAB_JOINED: CodexSharedServerStatus = { joined: true, openedBeforeWrapper: true }
 const TITLE = 'This Codex is sharing a server'
+const OLD_TAB_BODY =
+  'This terminal was opened before Orca started giving each Codex its own server.'
 let paneElement: HTMLDivElement
 let root: Root
 let isCodexOnSharedServer: ReturnType<
@@ -138,6 +140,19 @@ describe('CodexSharedServerBanner', () => {
     expect(paneElement.textContent).toContain('agent status may be wrong')
     expect(paneElement.querySelector(':scope > .pane-top-banner')).not.toBeNull()
     expect(paneElement.style.getPropertyValue('--orca-pane-top-banner-height')).toMatch(/px$/)
+  })
+
+  it('keeps the default Learn more on the Fix steps, with no old-terminal copy', async () => {
+    setState({})
+    await renderBanner()
+    await advance(1_000)
+    expect(paneElement.textContent).not.toContain(OLD_TAB_BODY)
+    expect(() => button('Open new terminal')).toThrow()
+    button('Fix')
+
+    await act(async () => button('Learn more').click())
+    expect(document.body.textContent).toContain('Give each Codex tab its own server')
+    expect(document.body.textContent).not.toContain('Turn off sharing everywhere')
   })
 
   it("retires the one-time 'runs Codex without its shared server' toast, which it contradicts", async () => {
@@ -303,17 +318,15 @@ describe('CodexSharedServerBanner', () => {
       await advance(1_000)
 
       expect(paneElement.textContent).toContain(TITLE)
-      expect(paneElement.textContent).toContain(
-        "This terminal was opened before Orca's last update."
-      )
+      expect(paneElement.textContent).toContain(OLD_TAB_BODY)
       expect(paneElement.textContent).not.toContain('agent status may be wrong')
       expect(() => button('Fix')).toThrow()
-      expect(() => button('Learn more')).toThrow()
+      button('Open new terminal')
       button("Don't show again")
       button('Dismiss')
     })
 
-    async function clickOpenNewTerminal(worktreeId: string): Promise<() => Promise<void>> {
+    async function renderOldTab(worktreeId: string): Promise<() => Promise<void>> {
       const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
       setState({})
       useAppStore.setState({
@@ -325,6 +338,51 @@ describe('CodexSharedServerBanner', () => {
       isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
       await renderBanner()
       await advance(1_000)
+      return openNewTerminalTabInActiveWorkspace
+    }
+
+    function dialog(): Element | null {
+      return document.querySelector('[role="dialog"]')
+    }
+
+    it('explains the old terminal in Learn more, without the Fix steps', async () => {
+      await renderOldTab('wt-1')
+      expect(dialog()).toBeNull()
+      await act(async () => button('Learn more').click())
+
+      expect(dialog()?.textContent).toContain('Why this Codex shares a server')
+      expect(dialog()?.textContent).toContain('New terminals get one automatically.')
+      expect(document.body.textContent).not.toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+    })
+
+    it('opens a new terminal from Learn more and closes the dialog', async () => {
+      const openNewTerminal = await renderOldTab('wt-1')
+      await act(async () => button('Learn more').click())
+      const inDialog = Array.from(dialog()?.querySelectorAll('button') ?? []).find(
+        (candidate) => candidate.textContent?.trim() === 'Open new terminal'
+      )
+      await act(async () => inDialog?.click())
+
+      expect(openNewTerminal).toHaveBeenCalledWith('group-2')
+      expect(dialog()).toBeNull()
+      expect(paneElement.textContent).toContain(OLD_TAB_BODY)
+    })
+
+    it('reaches the Fix steps through Turn off sharing everywhere, running nothing yet', async () => {
+      await renderOldTab('wt-1')
+      await act(async () => button('Learn more').click())
+      await act(async () => button('Turn off sharing everywhere').click())
+
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
+      expect(dialog()?.textContent).toContain('Give each Codex tab its own server')
+      expect(document.body.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+      expect(document.body.textContent).toContain(CODEX_STOP_SHARED_SERVER_COMMAND)
+      expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
+      expect(stopCodexSharedServer).not.toHaveBeenCalled()
+    })
+
+    async function clickOpenNewTerminal(worktreeId: string): Promise<() => Promise<void>> {
+      const openNewTerminalTabInActiveWorkspace = await renderOldTab(worktreeId)
       await act(async () => button('Open new terminal').click())
       expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
       expect(stopCodexSharedServer).not.toHaveBeenCalled()

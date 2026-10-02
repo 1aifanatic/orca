@@ -10,6 +10,7 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { createFloatingWorkspaceTerminalTab } from '@/lib/floating-workspace-tab-creation'
 import { revealFloatingWorkspacePanel } from '@/lib/floating-workspace-panel-reveal'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
+import { CodexOldTerminalDialog } from './CodexOldTerminalDialog'
 import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
 import { retireCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
 
@@ -141,7 +142,8 @@ export function CodexSharedServerBanner({
     warningEnabled && codexInPane && !dismissed,
     recheck
   )
-  const [fixOpen, setFixOpen] = useState(false)
+  const [openDialog, setOpenDialog] = useState<'fix' | 'oldTerminal' | null>(null)
+  const fixOpen = openDialog === 'fix'
   // Why fixOpen keeps it: stopping the server ends this pane's Codex, which must not close the dialog.
   if (!status && !fixOpen) {
     return null
@@ -149,9 +151,14 @@ export function CodexSharedServerBanner({
   const { body, primaryAction } =
     status?.joined && status.openedBeforeWrapper
       ? {
-          body: translate(
-            'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
-            "This terminal was opened before Orca's last update."
+          body: (
+            <>
+              {translate(
+                'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
+                'This terminal was opened before Orca started giving each Codex its own server.'
+              )}{' '}
+              <LearnMoreLink onClick={() => setOpenDialog('oldTerminal')} />
+            </>
           ),
           primaryAction: (
             <Button
@@ -171,21 +178,20 @@ export function CodexSharedServerBanner({
                 'terminal.codexSharedServerBanner.body',
                 'Sessions may end unexpectedly, and agent status may be wrong.'
               )}{' '}
-              <button
-                type="button"
-                className="text-foreground underline underline-offset-2 hover:text-foreground/80"
-                onClick={() => setFixOpen(true)}
-              >
-                {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
-              </button>
+              <LearnMoreLink onClick={() => setOpenDialog('fix')} />
             </>
           ),
           primaryAction: (
-            <Button type="button" variant="outline" size="xs" onClick={() => setFixOpen(true)}>
+            <Button type="button" variant="outline" size="xs" onClick={() => setOpenDialog('fix')}>
               {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
             </Button>
           )
         }
+  const closeDialog = (open: boolean): void => {
+    if (!open) {
+      setOpenDialog(null)
+    }
+  }
   return (
     <>
       <CodexSharedServerBannerFrame
@@ -199,13 +205,34 @@ export function CodexSharedServerBanner({
           void useAppStore.getState().updateSettings({ codexSharedServerWarning: false })
         }
       />
+      <CodexOldTerminalDialog
+        open={openDialog === 'oldTerminal'}
+        onOpenChange={closeDialog}
+        onOpenNewTerminal={() => {
+          setOpenDialog(null)
+          openTerminalBesideTab(tabId)
+        }}
+        onTurnOffSharing={() => setOpenDialog('fix')}
+      />
       <CodexSharedServerFixDialog
         ptyId={ptyId}
         open={fixOpen}
-        onOpenChange={setFixOpen}
+        onOpenChange={closeDialog}
         onServerStopped={() => setRecheck((count) => count + 1)}
       />
     </>
+  )
+}
+
+function LearnMoreLink({ onClick }: { onClick: () => void }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="text-foreground underline underline-offset-2 hover:text-foreground/80"
+      onClick={onClick}
+    >
+      {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
+    </button>
   )
 }
 

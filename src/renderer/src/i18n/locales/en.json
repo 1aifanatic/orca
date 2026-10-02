@@ -18638,7 +18638,12 @@
     "codexSharedServerBanner": {
       "title": "This Codex is sharing a server with your other Codex tabs",
       "body": "Sessions may end unexpectedly, and agent status may be wrong.",
-      "openedBeforeUpdateBody": "This terminal was opened before Orca's last update.",
+      "openedBeforeUpdateBody": "This terminal was opened before Orca started giving each Codex its own server.",
+      "oldTerminalDialogTitle": "Why this Codex shares a server",
+      "oldTerminalDialogRisk": "Codex sessions that share a server can end together, and agent status can be wrong.",
+      "oldTerminalDialogCause": "This terminal started before Orca gave each Codex its own server. New terminals get one automatically.",
+      "oldTerminalDialogAction": "Open new terminal opens a fresh terminal beside this one. Codex in this terminal keeps running until you close it.",
+      "turnOffSharingEverywhere": "Turn off sharing everywhere",
       "fix": "Fix",
       "openNewTerminal": "Open new terminal",
       "dontShowAgain": "Don't show again",
