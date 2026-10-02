@@ -5,10 +5,8 @@
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import {
-  collectSavedStructuredAgentSessionIds,
-  orderOnScreenStructuredAgentSessionsFirst
-} from './saved-structured-agent-session-restoration'
+import { orderOnScreenStructuredAgentSessionsFirst } from '../../shared/saved-on-screen-structured-agent-sessions'
+import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import type {
   StartupStepOutcome,

@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Tab } from '../../shared/tab-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
-import {
-  collectSavedStructuredAgentSessionIds,
-  orderOnScreenStructuredAgentSessionsFirst
-} from './saved-structured-agent-session-restoration'
+import { orderOnScreenStructuredAgentSessionsFirst } from '../../shared/saved-on-screen-structured-agent-sessions'
+import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { runStructuredAgentSessionStartupStep } from './structured-agent-session-startup-step'
 
 function tab(input: Partial<Tab> & Pick<Tab, 'id'>): Tab {
