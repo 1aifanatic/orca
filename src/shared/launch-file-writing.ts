@@ -229,7 +229,7 @@ export function removeLaunchFile(written: WrittenLaunchFile | undefined): void {
   try {
     rmSync(written.directory, { recursive: true, force: true })
   } catch {
-    // The age-gated sweep is the fallback.
+    // The sweep removes it once this process is gone.
   }
 }
 
