@@ -278,15 +278,23 @@ describe('attachRestoredTabConflictScan', () => {
       }))
     } as never)
 
+    let finishGrant: () => void = () => {}
+    mocks.authorizeExternalPath.mockImplementation(
+      () => new Promise<void>((resolve) => (finishGrant = resolve))
+    )
+
     const detach = attachRestoredTabConflictScan(store)
     try {
       await vi.advanceTimersByTimeAsync(10)
       expect(mocks.authorizeExternalPath).toHaveBeenCalledWith({
-        targetPath: '/Users/me/notes.txt'
+        targetPath: '/Users/me/notes.txt',
+        skipIfInsideAllowedRoots: true
       })
-      expect(mocks.authorizeExternalPath.mock.invocationCallOrder[0]).toBeLessThan(
-        mocks.readRuntimeFileContent.mock.invocationCallOrder[0]
-      )
+      expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
+
+      finishGrant()
+      await vi.advanceTimersByTimeAsync(10)
+      expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
       expect(store.getState().openFiles[0]?.pendingDiskBaselineVerification).toBeUndefined()
     } finally {
       detach()

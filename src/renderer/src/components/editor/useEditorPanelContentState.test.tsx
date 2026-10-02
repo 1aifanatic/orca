@@ -294,28 +294,6 @@ describe('useEditorPanelContentState', () => {
     )
   })
 
-  it('re-authorizes a client-local external tab before reading it', async () => {
-    const activeFile = createOpenFile({
-      id: '/Users/me/notes/audit.md',
-      filePath: '/Users/me/notes/audit.md',
-      relativePath: '/Users/me/notes/audit.md',
-      worktreeId: 'repo-local::/Users/me/project'
-    })
-    mocks.getConnectionIdForFile.mockReturnValue(undefined)
-    mocks.readRuntimeFileContent.mockResolvedValue({ content: '# local', isBinary: false })
-
-    container = document.createElement('div')
-    document.body.appendChild(container)
-    root = createRoot(container)
-
-    await act(async () => {
-      root?.render(<HookProbe activeFile={activeFile} openFiles={[activeFile]} />)
-    })
-
-    await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
-    expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: '/Users/me/notes/audit.md' })
-  })
-
   it('rejects an unstamped external tab in a remote runtime workspace', async () => {
     const activeFile = createOpenFile({
       id: '/work/reports/audit.md',

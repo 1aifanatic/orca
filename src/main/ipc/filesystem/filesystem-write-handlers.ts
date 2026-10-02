@@ -5,7 +5,11 @@ import { assertSshMutationExpectation } from '../../ssh/ssh-connection-generatio
 import { runSshProviderContinuation } from '../../ssh/ssh-provider-continuations'
 import { requireSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { tryDeleteWslUncPath } from '../../wsl-unc-delete'
-import { authorizeExternalPath, resolveAuthorizedPath } from '../filesystem-auth'
+import {
+  authorizeExternalPath,
+  authorizeExternalPathOutsideAllowedRoots,
+  resolveAuthorizedPath
+} from '../filesystem-auth'
 import { isENOENT } from '../filesystem-path-containment'
 import { registerFilesystemMutationHandlers } from '../filesystem-mutations'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
@@ -90,7 +94,17 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
 
   registerFilesystemMutationHandlers(store)
 
-  ipcMain.handle('fs:authorizeExternalPath', (_event, args: { targetPath: string }): void => {
-    authorizeExternalPath(args.targetPath)
-  })
+  ipcMain.handle(
+    'fs:authorizeExternalPath',
+    async (
+      _event,
+      args: { targetPath: string; skipIfInsideAllowedRoots?: boolean }
+    ): Promise<void> => {
+      if (args.skipIfInsideAllowedRoots === true) {
+        await authorizeExternalPathOutsideAllowedRoots(args.targetPath, store)
+        return
+      }
+      authorizeExternalPath(args.targetPath)
+    }
+  )
 }

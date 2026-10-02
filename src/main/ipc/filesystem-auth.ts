@@ -45,6 +45,57 @@ export function authorizeExternalPath(targetPath: string): void {
 }
 
 /**
+ * Re-derives a restored editor tab's grant without widening any project: a path a project root
+ * already covers gets none, and an alias spelling of a project path gets only that spelling, never
+ * its realpath — so a project symlink's outside target is never granted.
+ */
+export async function authorizeExternalPathOutsideAllowedRoots(
+  targetPath: string,
+  store: Store
+): Promise<void> {
+  const resolvedTarget = resolve(targetPath)
+  await ensureAuthorizedRootsCache(store)
+  const roots = getAllowedRoots(store)
+  const isInsideRoot = (path: string, candidateRoots: readonly string[]): boolean =>
+    candidateRoots.some((root) => isDescendantOrEqual(path, root)) ||
+    isRegisteredWorktreePath(path, store)
+  if (isInsideRoot(resolvedTarget, roots)) {
+    return
+  }
+  const canonicalRoots = await Promise.all(
+    roots.map((root) => normalizeExistingPath(root).catch(() => root))
+  )
+  const canonicalTarget = await canonicalizeParentKeepingLeaf(resolvedTarget)
+  if (
+    isInsideRoot(resolvedTarget, canonicalRoots) ||
+    (canonicalTarget !== null &&
+      (isInsideRoot(canonicalTarget, roots) || isInsideRoot(canonicalTarget, canonicalRoots)))
+  ) {
+    rememberAuthorizedExternalPath(resolvedTarget)
+    return
+  }
+  authorizeExternalPath(resolvedTarget)
+}
+
+// Why keep the leaf: a project symlink must still read as inside its project, not as its target.
+async function canonicalizeParentKeepingLeaf(resolvedTarget: string): Promise<string | null> {
+  const missingSegments = [basename(resolvedTarget)]
+  let ancestor = dirname(resolvedTarget)
+  while (true) {
+    try {
+      return resolve(await realpath(ancestor), ...missingSegments)
+    } catch (error) {
+      const parent = dirname(ancestor)
+      if (!isENOENT(error) || parent === ancestor) {
+        return null
+      }
+      missingSegments.unshift(basename(ancestor))
+      ancestor = parent
+    }
+  }
+}
+
+/**
  * One allowed-root list shared by every check in a single authorization.
  *
  * Lazy so a path already covered by an external grant still builds nothing at all, the way it did

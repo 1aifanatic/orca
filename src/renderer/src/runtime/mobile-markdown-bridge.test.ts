@@ -74,23 +74,32 @@ describe('mobile markdown bridge', () => {
     })
     const tabId = useAppStore.getState().openFiles[0]!.id
     const readFile = vi.fn().mockResolvedValue({ content: '# notes', isBinary: false })
-    const authorizeExternalPath = vi.fn().mockResolvedValue(undefined)
+    let finishGrant: () => void = () => {}
+    const authorizeExternalPath = vi.fn(
+      () => new Promise<void>((resolve) => (finishGrant = resolve))
+    )
     setupWindow({ readFile, authorizeExternalPath })
     const detach = attachMobileMarkdownBridge()
 
     try {
-      const response = await sendRequest({
+      const response = sendRequest({
         id: 'read-floating',
         operation: 'read',
         worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
         tabId
       })
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      expect(authorizeExternalPath).toHaveBeenCalledWith({
+        targetPath: '/Users/me/notes.md',
+        skipIfInsideAllowedRoots: true
+      })
+      expect(readFile).not.toHaveBeenCalled()
 
-      expect(response).toMatchObject({ ok: true, result: { content: '# notes', source: 'file' } })
-      expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: '/Users/me/notes.md' })
-      expect(authorizeExternalPath.mock.invocationCallOrder[0]).toBeLessThan(
-        readFile.mock.invocationCallOrder[0]
-      )
+      finishGrant()
+      expect(await response).toMatchObject({
+        ok: true,
+        result: { content: '# notes', source: 'file' }
+      })
     } finally {
       detach()
     }

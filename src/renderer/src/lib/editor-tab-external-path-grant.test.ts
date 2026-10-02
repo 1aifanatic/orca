@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../../shared/repo-types'
 import type { Worktree } from '../../../shared/worktree/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { useAppStore } from '@/store'
 import {
   getEditorTabExternalPathGrantTarget,
@@ -96,17 +97,6 @@ describe('getEditorTabExternalPathGrantTarget', () => {
     ).toBeNull()
   })
 
-  it('does not grant a floating tab whose file lies inside a project', () => {
-    // A grant would also authorize the outside target of a project symlink.
-    expect(
-      grantTarget({
-        filePath: '/Users/me/project/src/link.ts',
-        relativePath: 'project/src/link.ts',
-        worktreeId: FLOATING_TERMINAL_WORKTREE_ID
-      })
-    ).toBeNull()
-  })
-
   it('keeps SSH-owned external tabs off the local grant', () => {
     expect(
       grantTarget({
@@ -131,6 +121,17 @@ describe('getEditorTabExternalPathGrantTarget', () => {
         filePath: '/work/reports/audit.md',
         relativePath: '/work/reports/audit.md',
         worktreeId: 'repo-missing::/work/other'
+      })
+    ).toBeNull()
+  })
+
+  it('does not grant an external tab in a folder workspace whose host is unknown', () => {
+    // Why: a missing or ambiguous folder host may be SSH; only an explicitly local owner is granted.
+    expect(
+      grantTarget({
+        filePath: '/home/remote-user/notes.md',
+        relativePath: '/home/remote-user/notes.md',
+        worktreeId: folderWorkspaceKey('fw-missing')
       })
     ).toBeNull()
   })
@@ -164,6 +165,10 @@ describe('getEditorTabExternalPathGrantTarget', () => {
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID
     })
     expect(authorizeExternalPath).toHaveBeenCalledTimes(1)
-    expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: '/Users/me/notes.txt' })
+    // Main, not the renderer, decides whether a project root already covers the path.
+    expect(authorizeExternalPath).toHaveBeenCalledWith({
+      targetPath: '/Users/me/notes.txt',
+      skipIfInsideAllowedRoots: true
+    })
   })
 })

@@ -83,7 +83,7 @@ function HookProbe({ activeFile }: { activeFile: OpenFile }): null {
   return null
 }
 
-describe('restored floating-workspace editor tabs', () => {
+describe('restored client-local editor tabs', () => {
   let container: HTMLDivElement | null = null
   let root: Root | null = null
 
@@ -113,35 +113,50 @@ describe('restored floating-workspace editor tabs', () => {
 
   // The notebook kernel and environment handlers authorize the same filePath.
   it.each(['/Users/me/notes.txt', '/Users/me/analysis.ipynb'])(
-    're-grants %s before reading it after a restart',
+    're-grants %s and waits for the grant before reading it after a restart',
     async (filePath) => {
+      let finishGrant: () => void = () => {}
+      authorizeExternalPath.mockImplementation(
+        () => new Promise<void>((resolve) => (finishGrant = resolve))
+      )
       const activeFile = createFloatingFile(filePath)
 
       await act(async () => root?.render(<HookProbe activeFile={activeFile} />))
 
-      await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
-      expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: filePath })
-      expect(authorizeExternalPath.mock.invocationCallOrder[0]).toBeLessThan(
-        mocks.readRuntimeFileContent.mock.invocationCallOrder[0]
+      await vi.waitFor(() =>
+        expect(authorizeExternalPath).toHaveBeenCalledWith({
+          targetPath: filePath,
+          skipIfInsideAllowedRoots: true
+        })
       )
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      })
+      expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
+
+      await act(async () => finishGrant())
+
+      await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
       expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
         expect.objectContaining({ filePath, connectionId: undefined })
       )
     }
   )
 
-  it('does not grant a floating tab whose file lies inside a project', async () => {
-    const activeFile = createFloatingFile('/Users/me/project/src/link.md')
-    mocks.findWorkspaceFileRoute.mockReturnValue({
-      worktreeId: 'repo::/Users/me/project',
-      relativePath: 'src/link.md',
-      executionHostId: 'local'
+  it('re-authorizes a client-local tab stored outside its own project', async () => {
+    const filePath = '/Users/me/notes/audit.md'
+    const activeFile = createFloatingFile(filePath, {
+      relativePath: filePath,
+      worktreeId: 'repo-local::/Users/me/project'
     })
 
     await act(async () => root?.render(<HookProbe activeFile={activeFile} />))
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
-    expect(authorizeExternalPath).not.toHaveBeenCalled()
+    expect(authorizeExternalPath).toHaveBeenCalledWith({
+      targetPath: filePath,
+      skipIfInsideAllowedRoots: true
+    })
   })
 
   it('does not grant a project tab that its authorized root already covers', async () => {
