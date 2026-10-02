@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react'
-import type { RefObject } from 'react'
+import { useMemo, type RefObject } from 'react'
+import { extractFrontMatter, markdownFrontMatterInner } from './markdown-frontmatter'
 import {
   VirtualMarkdownPreviewBody,
   type VirtualMarkdownPreviewNavigation
@@ -50,11 +51,14 @@ export function MarkdownPreviewSurface({
     editorFontSize,
     isDark,
     bodyRef,
-    frontMatter,
     frontmatterVisible,
-    frontMatterInner,
     renderedContent
   } = foundation
+
+  const displayedContent =
+    documentState.status === 'ready' ? documentState.content : renderedContent
+  const frontMatter = useMemo(() => extractFrontMatter(displayedContent), [displayedContent])
+  const frontMatterInner = useMemo(() => markdownFrontMatterInner(frontMatter), [frontMatter])
 
   return (
     <div className="markdown-preview-shell">
@@ -80,6 +84,7 @@ export function MarkdownPreviewSurface({
       >
         {isSearchOpen ? (
           <MarkdownPreviewSearchBar
+            searchFailed={documentSearch.failed}
             searchPending={documentSearch.pending}
             searchTruncated={documentSearch.truncated}
             foundation={foundation}
@@ -87,11 +92,13 @@ export function MarkdownPreviewSurface({
           />
         ) : null}
         {canShowReviewTools ? (
-          <MarkdownPreviewReviewToolbar
-            foundation={foundation}
-            reviewActions={reviewActions}
-            filePath={filePath}
-          />
+          <div inert={documentState.refreshing || undefined}>
+            <MarkdownPreviewReviewToolbar
+              foundation={foundation}
+              reviewActions={reviewActions}
+              filePath={filePath}
+            />
+          </div>
         ) : null}
         {/* Why: OS page translation can replace react-owned text nodes and crash reconciliation. */}
         <div
@@ -112,14 +119,29 @@ export function MarkdownPreviewSurface({
           ) : null}
           {largePreview ? (
             <>
-              <p className="text-xs text-muted-foreground">
+              <p className="relative text-xs text-muted-foreground">
                 {translate(
                   'editor.markdownPreview.largeNotice',
                   'Large preview. Use source view to copy the complete document. PDF export is unavailable.'
                 )}
+                {documentState.refreshing ? (
+                  <span
+                    role={documentState.refreshError ? 'alert' : 'status'}
+                    className="absolute inset-0 bg-background"
+                  >
+                    {documentState.refreshError
+                      ? translate(
+                          'editor.markdownPreview.refreshFailed',
+                          'Preview update failed. Showing the previous version; open source view for current content.'
+                        )
+                      : translate('editor.markdownPreview.preparing', 'Preparing preview…')}
+                  </span>
+                ) : null}
               </p>
               {documentState.status === 'ready' ? (
                 <VirtualMarkdownPreviewBody
+                  inert={documentState.refreshing}
+                  revision={documentState.revision}
                   document={documentState.document}
                   client={documentState.client}
                   components={components}

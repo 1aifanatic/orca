@@ -120,7 +120,7 @@ export function EditorDiffFileSurface({
         <div className="min-h-0 flex-1">
           <MarkdownPreviewSizeGate content={modifiedDiffContent} isDiff>
             <MarkdownPreview
-              key={viewStateScopeId}
+              key={`${viewStateScopeId}:${diffViewStateKey}`}
               content={modifiedDiffContent}
               filePath={activeFile.filePath}
               sourceFileId={activeFile.id}

@@ -16,12 +16,14 @@ export function useMarkdownPreviewScrollAnchor({
   blocks,
   rootRef,
   virtualizer,
-  scrollCacheKey
+  scrollCacheKey,
+  revision
 }: {
   blocks: MarkdownPreviewBlock[]
   rootRef: RefObject<HTMLDivElement | null>
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
   scrollCacheKey: string
+  revision: number
 }): void {
   const [initialPosition] = useState(() => ({
     anchor: anchors.get(scrollCacheKey) ?? null,
@@ -39,7 +41,7 @@ export function useMarkdownPreviewScrollAnchor({
     scrollElementRef: rootRef,
     virtualizer,
     totalSize: virtualizer.getTotalSize(),
-    restoreSignal: scrollCacheKey
+    restoreSignal: `${scrollCacheKey}:${revision}`
   })
   useLayoutEffect(
     () => () => {

@@ -18472,7 +18472,9 @@
       "largeNotice": "Aperçu volumineux. Utilisez la vue source pour copier le document complet. L’exportation PDF est indisponible.",
       "processingFailed": "Ce document dépasse les limites de l’aperçu. Ouvrez la vue source pour lire le fichier complet.",
       "preparing": "Préparation de l’aperçu…",
-      "searching": "Recherche…"
+      "searching": "Recherche…",
+      "searchFailed": "La recherche n’a pas pu aboutir. Réessayez.",
+      "refreshFailed": "La mise à jour de l’aperçu a échoué. La version précédente est affichée ; ouvrez la source pour voir le contenu actuel."
     }
   },
   "checksPanel": {

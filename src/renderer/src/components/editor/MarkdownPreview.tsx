@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useCallback, useRef } from 'react'
+import { VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT } from '@/hooks/useVirtualizedScrollAnchor'
 import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
 import { MarkdownPreviewSurface } from './MarkdownPreviewSurface'
 import type { MarkdownPreviewProps } from './markdown-preview-types'
@@ -54,7 +55,15 @@ export default function MarkdownPreview({
     largePreview: incomingLargePreview
   })
   const largePreview = exceedsMarkdownRichModeSizeLimit(foundation.renderedContent)
-  const documentState = useMarkdownPreviewDocument(foundation.renderedContent, largePreview)
+  const recordBeforeSwap = useCallback(() => {
+    foundation.rootRef.current?.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
+  }, [foundation.rootRef])
+  const documentState = useMarkdownPreviewDocument(
+    foundation.renderedContent,
+    largePreview,
+    recordBeforeSwap
+  )
+  const annotationsEnabled = markdownAnnotationsEnabled && !documentState.refreshing
   const largeDocument = documentState.status === 'ready' ? documentState.document : null
   const largeClient = documentState.status === 'ready' ? documentState.client : null
   const documentSearch = useMarkdownPreviewDocumentSearch(largeClient, foundation, largePreview)
@@ -63,17 +72,19 @@ export default function MarkdownPreview({
     scrollCacheKey,
     initialAnchor,
     content,
-    markdownAnnotationsEnabled,
+    markdownAnnotationsEnabled: annotationsEnabled,
     largePreview,
     largeDocument,
     largeNavigationRef
   })
   const reviewActions = useMarkdownPreviewReviewActions({ foundation, viewport })
+  const displayedContent =
+    documentState.status === 'ready' ? documentState.content : foundation.renderedContent
   const annotationRenderers = useMarkdownPreviewAnnotationRenderers({
-    foundation,
+    foundation: { ...foundation, renderedContent: displayedContent },
     reviewActions,
     filePath,
-    content,
+    content: displayedContent,
     markdownAnnotationsEnabled
   })
   const components = useMarkdownPreviewComponents({

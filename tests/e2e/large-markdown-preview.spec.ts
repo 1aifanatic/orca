@@ -272,6 +272,48 @@ for (const width of [1920, 1280]) {
       )
       .toBe(false)
     await orcaPage.screenshot({ path: path.join(proofDirectory, `resized-${width}.png`) })
+    const beforeRefresh = await restoredHeading.evaluate(
+      (element) => element.getBoundingClientRect().top
+    )
+    await orcaPage.evaluate(
+      ({ content }) => {
+        const preview = document.querySelector('.markdown-preview')
+        if (!preview) {
+          throw new Error('Missing preview')
+        }
+        document.documentElement.dataset.previewCollapsed = 'false'
+        const observer = new MutationObserver(() => {
+          if (!preview.querySelector('[data-markdown-virtual-preview]')) {
+            document.documentElement.dataset.previewCollapsed = 'true'
+          }
+        })
+        observer.observe(preview, { childList: true, subtree: true })
+        const state = window.__store!.getState()
+        const file = state.openFiles.find((candidate) => candidate.id === state.activeFileId)
+        if (!file) {
+          throw new Error('Missing active file')
+        }
+        state.setEditorDraft(file.markdownPreviewSourceFileId ?? file.filePath, content)
+      },
+      { content: content.replace('## Section 1999', '## Updated section 1999') }
+    )
+    const updatedHeading = preview.getByRole('heading', {
+      name: 'Updated section 1999',
+      exact: true
+    })
+    await expect(updatedHeading).toBeInViewport({ timeout: 25_000 })
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await updatedHeading.evaluate((element) => element.getBoundingClientRect().top)) -
+            beforeRefresh
+        )
+      )
+      .toBeLessThanOrEqual(2)
+    expect(await orcaPage.evaluate(() => document.documentElement.dataset.previewCollapsed)).toBe(
+      'false'
+    )
+    await orcaPage.screenshot({ path: path.join(proofDirectory, `refreshed-${width}.png`) })
     const memory = await electronApp.evaluate(({ app }) =>
       app
         .getAppMetrics()

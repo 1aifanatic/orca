@@ -24,6 +24,9 @@ self.onmessage = async (event: MessageEvent<MarkdownPreviewWorkerRequest>): Prom
         }
         break
       }
+      case 'cancel-search':
+        engine.cancelSearch()
+        break
     }
   } catch (error) {
     send({

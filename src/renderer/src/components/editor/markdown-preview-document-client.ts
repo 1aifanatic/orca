@@ -36,7 +36,9 @@ export class MarkdownPreviewDocumentClient {
       if (result.type === 'error') {
         const error = new Error(result.message)
         pending.reject(error)
-        this.fail(error)
+        if (pending.type !== 'search') {
+          this.fail(error)
+        }
       } else {
         pending.resolve(result)
       }
@@ -51,10 +53,7 @@ export class MarkdownPreviewDocumentClient {
     this.cancel(request.type)
     const id = ++this.nextId
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => this.fail(new Error('Preview processing timed out.')),
-        MARKDOWN_PREVIEW_WORKER_TIMEOUT_MS
-      )
+      const timer = setTimeout(() => this.timeout(id), MARKDOWN_PREVIEW_WORKER_TIMEOUT_MS)
       this.pending.set(id, { type: request.type, resolve, reject, timer })
       try {
         this.worker.postMessage({ ...request, id })
@@ -65,6 +64,7 @@ export class MarkdownPreviewDocumentClient {
   }
 
   cancel(type: PreviewRequest['type']): void {
+    let cancelled = false
     for (const [id, pending] of this.pending) {
       if (pending.type !== type) {
         continue
@@ -72,6 +72,35 @@ export class MarkdownPreviewDocumentClient {
       clearTimeout(pending.timer)
       this.pending.delete(id)
       pending.reject(new Error('Preview request superseded.'))
+      cancelled = true
+    }
+    if (cancelled && type === 'search') {
+      this.stopSearch()
+    }
+  }
+
+  private timeout(id: number): void {
+    const pending = this.pending.get(id)
+    if (!pending) {
+      return
+    }
+    if (pending.type !== 'search') {
+      this.fail(new Error('Preview processing timed out.'))
+      return
+    }
+    this.pending.delete(id)
+    pending.reject(new Error('Preview search timed out.'))
+    this.stopSearch()
+  }
+
+  private stopSearch(): void {
+    if (this.closed) {
+      return
+    }
+    try {
+      this.worker.postMessage({ id: ++this.nextId, type: 'cancel-search' })
+    } catch {
+      // Viewport requests retain their own failure handling.
     }
   }
 

@@ -15,6 +15,8 @@ import {
   MARKDOWN_PREVIEW_VIEWPORT_MAX_NODES,
   MARKDOWN_PREVIEW_MAX_REQUESTED_BLOCKS,
   MARKDOWN_PREVIEW_MAX_SEARCH_MATCHES,
+  MARKDOWN_PREVIEW_SEARCH_TEXT_MAX_BYTES,
+  MARKDOWN_PREVIEW_SEARCH_TEXT_MAX_NODES,
   type MarkdownPreviewRenderedBlock,
   type MarkdownPreviewDocumentMatch
 } from './markdown-preview-document-types'
@@ -43,12 +45,20 @@ function collectTextNodes(node: Root | Root['children'][number], values: string[
 export class MarkdownPreviewDocumentEngine {
   private tree: Root | null = null
   private readonly cache = new Map<number, MarkdownPreviewRenderedBlock>()
+  private readonly searchText = new Map<number, string[]>()
+  private searchTextBytes = 0
+  private searchTextNodes = 0
+  private searchIndexFailed = false
   private searchRevision = 0
 
   load(content: string) {
     this.searchRevision += 1
     this.tree = null
     this.cache.clear()
+    this.searchText.clear()
+    this.searchTextBytes = 0
+    this.searchTextNodes = 0
+    this.searchIndexFailed = false
     if (isClipboardTextByteLengthOverLimit(content, LARGE_MARKDOWN_PREVIEW_MAX_BYTES)) {
       throw new Error('Document exceeds the preview size limit.')
     }
@@ -65,14 +75,7 @@ export class MarkdownPreviewDocumentEngine {
       this.cache.set(index, existing)
       return existing
     }
-    const node = this.tree?.children[index]
-    if (!node) {
-      throw new Error('Invalid preview block.')
-    }
-    const block = renderMarkdownPreviewBlock(node, index)
-    if (block.oversized) {
-      block.tree = { type: 'root', children: [] }
-    }
+    const block = this.compile(index)
     this.cache.set(index, block)
     while (this.cache.size > 64) {
       const oldest = this.cache.keys().next().value
@@ -81,6 +84,44 @@ export class MarkdownPreviewDocumentEngine {
       }
     }
     return block
+  }
+
+  private compile(index: number): MarkdownPreviewRenderedBlock {
+    const node = this.tree?.children[index]
+    if (!node) {
+      throw new Error('Invalid preview block.')
+    }
+    const block = renderMarkdownPreviewBlock(node, index)
+    if (block.oversized) {
+      block.tree = { type: 'root', children: [] }
+    }
+    return block
+  }
+
+  private searchableText(index: number): string[] {
+    const existing = this.searchText.get(index)
+    if (existing) {
+      return existing
+    }
+    const values: string[] = []
+    // Searching must not evict or reorder the viewport's rendered-block cache.
+    collectTextNodes((this.cache.get(index) ?? this.compile(index)).tree, values)
+    const bytes = values.reduce((total, value) => total + value.length * 2, 0)
+    if (
+      this.searchTextBytes + bytes > MARKDOWN_PREVIEW_SEARCH_TEXT_MAX_BYTES ||
+      this.searchTextNodes + values.length > MARKDOWN_PREVIEW_SEARCH_TEXT_MAX_NODES
+    ) {
+      this.searchIndexFailed = true
+      throw new Error('Document exceeds the preview search limit.')
+    }
+    this.searchText.set(index, values)
+    this.searchTextBytes += bytes
+    this.searchTextNodes += values.length
+    return values
+  }
+
+  cancelSearch(): void {
+    this.searchRevision += 1
   }
 
   blocks(indices: number[]): MarkdownPreviewRenderedBlock[] {
@@ -113,13 +154,14 @@ export class MarkdownPreviewDocumentEngine {
     if (!query || isMarkdownPreviewSearchQueryTooLarge(query)) {
       return { matches, truncated: false }
     }
+    if (this.searchIndexFailed) {
+      throw new Error('Document exceeds the preview search limit.')
+    }
     for (let blockIndex = 0; blockIndex < (this.tree?.children.length ?? 0); blockIndex += 1) {
       if (revision !== this.searchRevision) {
         return null
       }
-      const rendered = this.render(blockIndex)
-      const values: string[] = []
-      collectTextNodes(rendered.tree, values)
+      const values = this.searchableText(blockIndex)
       let occurrence = 0
       for (const value of values) {
         for (const _range of findTextMatchRanges(value, query)) {

@@ -15552,7 +15552,9 @@
       "largeNotice": "Vista previa grande. Usa la vista de código fuente para copiar el documento completo. La exportación a PDF no está disponible.",
       "processingFailed": "Este documento supera los límites de la vista previa. Abre la vista de código fuente para leer el archivo completo.",
       "preparing": "Preparando vista previa…",
-      "searching": "Buscando…"
+      "searching": "Buscando…",
+      "searchFailed": "La búsqueda no pudo finalizar. Inténtalo de nuevo.",
+      "refreshFailed": "No se pudo actualizar la vista previa. Se muestra la versión anterior; abre la vista de código para ver el contenido actual."
     }
   }
 }

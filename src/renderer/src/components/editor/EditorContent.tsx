@@ -214,7 +214,7 @@ export function EditorContent({
       <div className="min-h-0 flex-1">
         <MarkdownPreviewSizeGate content={previewContent}>
           <MarkdownPreview
-            key={viewStateScopeId}
+            key={`${viewStateScopeId}:${markdownPreviewViewStateKey}`}
             content={previewContent}
             filePath={activeFile.filePath}
             sourceFileId={previewSourceFileId}

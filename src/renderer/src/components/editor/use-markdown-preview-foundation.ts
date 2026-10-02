@@ -8,7 +8,7 @@ import {
 import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
 import { createMarkdownDocumentIndex } from './markdown-doc-links'
 import { exceedsMarkdownRichModeSizeLimit } from './markdown-rich-size-limit'
-import { extractFrontMatter } from './markdown-frontmatter'
+import { extractFrontMatter, markdownFrontMatterInner } from './markdown-frontmatter'
 import { previewHasAnnotationBlockKey } from './markdown-preview-annotation-shortcut'
 import { selectMarkdownTableOfContents } from './markdown-toc-visibility-gate'
 import type { NotesSendMenuScope } from './NotesSendMenu'
@@ -65,15 +65,7 @@ export function useMarkdownPreviewFoundation({
     () => createMarkdownDocumentIndex(markdownDocuments),
     [markdownDocuments]
   )
-  const frontMatterInner = useMemo(() => {
-    if (!frontMatter) {
-      return ''
-    }
-    return frontMatter.raw
-      .replace(/^(?:---|\+\+\+)\r?\n/, '')
-      .replace(/\r?\n(?:---|\+\+\+)\r?\n?$/, '')
-      .trim()
-  }, [frontMatter])
+  const frontMatterInner = useMemo(() => markdownFrontMatterInner(frontMatter), [frontMatter])
   const toggleableSourceFileId: string | null = sourceFileId ?? null
   const frontmatterVisible = toggleableSourceFileId
     ? (frontmatterVisibleByFile[toggleableSourceFileId] ?? true)

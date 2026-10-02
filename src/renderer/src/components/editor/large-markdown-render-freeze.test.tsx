@@ -25,13 +25,19 @@ vi.mock('@/store', () => ({
   })
 }))
 
-vi.mock('./editor-lazy-views', () => {
+vi.mock('./editor-lazy-views', async () => {
+  const { useState } = await import('react')
+  let nextPreviewInstance = 0
+  const Preview = () => {
+    const [instance] = useState(() => ++nextPreviewInstance)
+    return <div data-editor-view="preview" data-preview-instance={instance} />
+  }
   const view = (name: string) => () => <div data-editor-view={name} />
   return {
     MonacoEditor: view('source'),
     CombinedDiffViewer: view('combined-diff'),
     RichMarkdownEditor: view('rich-editor'),
-    MarkdownPreview: view('preview'),
+    MarkdownPreview: Preview,
     DiffViewer: view('diff'),
     ImageDiffViewer: view('image-diff')
   }
@@ -98,7 +104,7 @@ function renderPreviewTab(content: string) {
   const fileContents = { [previewTab.id]: { content, isBinary: false } }
   const props = {
     activeFile: previewTab,
-    viewStateScopeId: previewTab.id,
+    viewStateScopeId: 'stable-preview-tab',
     fileContents,
     diffContents: {},
     editBuffers: {},
@@ -124,7 +130,8 @@ function renderPreviewTab(content: string) {
   const view = render(<EditorContent {...props} />)
   return {
     view,
-    rerender: () => view.rerender(<EditorContent {...props} />),
+    rerender: (overrides: Partial<typeof props> = {}) =>
+      view.rerender(<EditorContent {...props} {...overrides} />),
     isPreviewRendered: () => view.container.querySelector('[data-editor-view="preview"]') !== null
   }
 }
@@ -191,6 +198,29 @@ describe('large markdown render guard', () => {
   it('"Open anyway" cannot push a document past the hard cap into the rich editor', () => {
     expect(richRenderMode(hugeDoc, true)).toBe('source')
     expect(richRenderMode(hugeCjkDoc, true)).toBe('source')
+  })
+
+  it('keeps a preview for content updates but remounts when a stable tab changes file path', () => {
+    const preview = renderPreviewTab('# Original')
+    const instance = () =>
+      preview.view.container
+        .querySelector('[data-preview-instance]')
+        ?.getAttribute('data-preview-instance')
+    const originalInstance = instance()
+    preview.rerender({
+      fileContents: { [previewTab.id]: { content: '# Updated', isBinary: false } }
+    })
+    expect(instance()).toBe(originalInstance)
+    const movedTab = {
+      ...previewTab,
+      id: 'markdown-preview::/repo/MOVED.md',
+      filePath: '/repo/MOVED.md'
+    }
+    preview.rerender({
+      activeFile: movedTab,
+      fileContents: { [movedTab.id]: { content: '# Updated', isBinary: false } }
+    })
+    expect(instance()).not.toBe(originalInstance)
   })
 
   it('preview tab renders small documents directly', () => {

@@ -8,11 +8,15 @@ type SearchResult = {
   query: string
   matches: MarkdownPreviewDocumentMatch[]
   truncated: boolean
+  failed: boolean
 }
 
 export function useMarkdownPreviewDocumentSearch(
   client: MarkdownPreviewDocumentClient | null,
-  foundation: MarkdownPreviewFoundation,
+  foundation: Pick<
+    MarkdownPreviewFoundation,
+    'query' | 'isSearchOpen' | 'setMatchCount' | 'setActiveMatchIndex'
+  >,
   enabled: boolean
 ) {
   const { query, isSearchOpen, setMatchCount, setActiveMatchIndex } = foundation
@@ -30,11 +34,21 @@ export function useMarkdownPreviewDocumentSearch(
         if (!current || response.type !== 'search') {
           return
         }
-        setResult({ client, query, matches: response.matches, truncated: response.truncated })
+        setResult({
+          client,
+          query,
+          matches: response.matches,
+          truncated: response.truncated,
+          failed: false
+        })
         setMatchCount(response.matches.length)
         setActiveMatchIndex(response.matches.length > 0 ? 0 : -1)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (current) {
+          setResult({ client, query, matches: [], truncated: false, failed: true })
+        }
+      })
     return () => {
       current = false
       client.cancel('search')
@@ -44,6 +58,7 @@ export function useMarkdownPreviewDocumentSearch(
   return {
     matches: resolved?.matches ?? [],
     truncated: resolved?.truncated ?? false,
+    failed: resolved?.failed ?? false,
     pending: enabled && isSearchOpen && query.length > 0 && !resolved
   }
 }

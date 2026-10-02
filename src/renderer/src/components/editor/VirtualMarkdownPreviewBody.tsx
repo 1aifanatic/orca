@@ -58,6 +58,8 @@ const RenderedBlock = memo(function RenderedBlock({
 })
 
 export function VirtualMarkdownPreviewBody({
+  inert,
+  revision,
   document,
   client,
   components,
@@ -71,6 +73,8 @@ export function VirtualMarkdownPreviewBody({
   scrollCacheKey,
   activeAnnotationBlockKey
 }: {
+  inert: boolean
+  revision: number
   document: MarkdownPreviewDocument
   client: MarkdownPreviewDocumentClient
   components: Components
@@ -128,7 +132,13 @@ export function VirtualMarkdownPreviewBody({
     )
     measuredMinimumHeight.current = minimumRowHeight
   }, [minimumRowHeight, rendered, virtualizer])
-  useMarkdownPreviewScrollAnchor({ blocks: document.blocks, rootRef, virtualizer, scrollCacheKey })
+  useMarkdownPreviewScrollAnchor({
+    blocks: document.blocks,
+    rootRef,
+    virtualizer,
+    scrollCacheKey,
+    revision
+  })
   const anchorBlocks = useMemo(
     () =>
       new Map(
@@ -260,6 +270,7 @@ export function VirtualMarkdownPreviewBody({
   return (
     <div
       ref={virtualBodyRef}
+      inert={inert || undefined}
       className="relative w-full"
       style={{ height: virtualizer.getTotalSize() }}
       data-markdown-virtual-preview="true"
