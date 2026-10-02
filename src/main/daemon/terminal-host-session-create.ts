@@ -6,7 +6,11 @@ import {
   type StartupCommandStaging
 } from '../../shared/startup-command-staging'
 import { resolvePtyOwnerBackend } from '../../shared/pty-owner-backend'
-import { removeLaunchFile, writeSpawnLaunchFile } from '../../shared/launch-file-writing'
+import {
+  LaunchFileUnavailableError,
+  removeLaunchFile,
+  writeSpawnLaunchFile
+} from '../../shared/launch-file-writing'
 import { getDaemonSessionResultMetadata } from './daemon-create-or-attach-result'
 import { enumerateDirectoryOnce } from './directory-enumeration-probe'
 import { normalizePtySize } from './daemon-pty-size'
@@ -206,11 +210,33 @@ async function spawnAndPublishSession(
     throw new TerminalAttachCanceledError(opts.sessionId)
   }
 
+  const startupCommandWritten = Boolean(command) && !subprocess.startupCommandDeliveredInShellArgs
+  if (startupCommandWritten && command) {
+    staging = stageStartupCommand({
+      command,
+      shellPath: subprocess.shellPath,
+      orcaBuiltLine: opts.launchAgent !== undefined,
+      wslDirectory
+    })
+    // Why refuse: typed in full, a long agent line can leave the shell at a quote prompt with the
+    // prompt lost while the launch reports success; the refusal hands the user the prompt instead.
+    if (staging.failure !== undefined && opts.launchAgent !== undefined) {
+      deps.sessions.set(opts.sessionId, session)
+      await session.forceKillAndDisposeSubprocess()
+      removeLaunchFile(launchFile)
+      if (deps.sessions.get(opts.sessionId) === session) {
+        session.dispose()
+        deps.sessions.delete(opts.sessionId)
+        deps.onDeadSessionRemoved(opts.sessionId)
+      }
+      throw new LaunchFileUnavailableError(staging.failure, 'staged-line')
+    }
+  }
+
   deps.sessions.set(opts.sessionId, session)
   deps.onSessionCreated(opts.sessionId, opts.agentSessionGeneration, session.isAlive)
   const token = session.attachClient(opts.streamClient)
 
-  const startupCommandWritten = Boolean(command) && !subprocess.startupCommandDeliveredInShellArgs
   // Why: without this, a missing command and a lost one log identically.
   // Length, never the text -- launches can carry credentials.
   try {
@@ -225,13 +251,7 @@ async function spawnAndPublishSession(
   } catch {
     // Diagnostics must never turn a live PTY into a failed create.
   }
-  if (startupCommandWritten && command) {
-    staging = stageStartupCommand({
-      command,
-      shellPath: subprocess.shellPath,
-      orcaBuiltLine: opts.launchAgent !== undefined,
-      wslDirectory
-    })
+  if (staging) {
     const notice = startupStagingFailureNotice(staging)
     if (notice) {
       session.startupIngress.accept(notice)

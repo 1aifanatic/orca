@@ -30,7 +30,10 @@ import {
   writeSpawnLaunchFile,
   type WrittenLaunchFile
 } from '../../shared/launch-file-writing'
-import { resolveSpawnWslLaunchDirectory } from './wsl-launch-directory-resolution'
+import {
+  forgetWslLaunchDirectoryAfterRefusal,
+  resolveSpawnWslLaunchDirectory
+} from './wsl-launch-directory-resolution'
 
 export async function spawnLocalPty(
   args: PtySpawnOptions,
@@ -55,14 +58,20 @@ export async function spawnLocalPty(
   if (args.attachOnly) {
     throw new SessionNotFoundError(args.sessionId ?? '')
   }
-  const launchFile = writeSpawnLaunchFile({
-    launchFile: args.launchFile,
-    command: args.command,
-    env: args.env,
-    orcaBuiltLine: args.launchAgent !== undefined,
-    wslDistro,
-    wslDirectory: wslLaunchDirectory
-  })
+  let launchFile: WrittenLaunchFile | undefined
+  try {
+    launchFile = writeSpawnLaunchFile({
+      launchFile: args.launchFile,
+      command: args.command,
+      env: args.env,
+      orcaBuiltLine: args.launchAgent !== undefined,
+      wslDistro,
+      wslDirectory: wslLaunchDirectory
+    })
+  } catch (error) {
+    forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
+    throw error
+  }
   args = {
     ...args,
     ...(launchFile ? { command: launchFile.command, env: launchFile.env } : {}),
@@ -75,6 +84,7 @@ export async function spawnLocalPty(
     return await spawnFreshLocalPty(args, getOptions, reattachId, launchFile)
   } catch (error) {
     removeLaunchFile(launchFile)
+    forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
     throw error
   }
 }

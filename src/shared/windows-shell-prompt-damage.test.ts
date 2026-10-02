@@ -99,7 +99,7 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
         paired: true,
         provesAgentInFront: false,
         takesLaunchFile: false,
-        windowsPowerShell: null
+        windowsPaneShell: null
       }
     })
     expect(startup?.launchFile).toBeUndefined()

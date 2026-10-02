@@ -88,7 +88,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
         paired: false,
         provesAgentInFront: true,
         takesLaunchFile: true,
-        windowsPowerShell: null
+        windowsPaneShell: null
       },
       agent: 'codex',
       draftContent: 'Review issue 42',
@@ -108,7 +108,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
         paired: false,
         provesAgentInFront: true,
         takesLaunchFile: true,
-        windowsPowerShell: null
+        windowsPaneShell: null
       },
       agent: 'codex',
       draftContent: 'Review issue 42',
@@ -162,7 +162,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
         paired: false,
         provesAgentInFront: true,
         takesLaunchFile: true,
-        windowsPowerShell: null
+        windowsPaneShell: null
       },
       agent: 'codex',
       draftContent: 'Fix the broken checks',
@@ -181,7 +181,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
         paired: false,
         provesAgentInFront: true,
         takesLaunchFile: true,
-        windowsPowerShell: null
+        windowsPaneShell: null
       },
       agent: 'codex',
       agentArgs: '--model gpt-5',
@@ -200,7 +200,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 describe('buildDirectWorkItemAgentStartupPlan submitted prompts', () => {
   const submit = (agent: 'claude' | 'gemini', draftContent: string, paired = false) =>
     buildDirectWorkItemAgentStartupPlan({
-      host: { paired, provesAgentInFront: true, takesLaunchFile: !paired, windowsPowerShell: null },
+      host: { paired, provesAgentInFront: true, takesLaunchFile: !paired, windowsPaneShell: null },
       agent,
       draftContent,
       promptDelivery: 'submit-after-ready',

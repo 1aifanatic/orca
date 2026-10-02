@@ -99,6 +99,31 @@ describePosix('daemon startup command staging', () => {
     expect(sub.write).not.toHaveBeenCalled()
   })
 
+  // Why (stack QA P8-2): typed in full, a long agent line left the shell at a quote prompt, the
+  // prompt lost while agent.launch reported success; refusing hands the user the prompt instead.
+  it('refuses an agent launch it could not stage, typing nothing and keeping no session', async () => {
+    vi.stubEnv('TMPDIR', join(tempDir, 'missing'))
+    const sub = mockSubprocess('/bin/zsh')
+    vi.mocked(sub.forceKill).mockImplementation(() => exitSubprocess?.(1))
+    vi.mocked(sub.kill).mockImplementation(() => exitSubprocess?.(1))
+    const host = new TerminalHost({ spawnSubprocess: () => sub })
+    await expect(
+      host.createOrAttach({
+        sessionId: 's-agent-stage-failed',
+        cols: 80,
+        rows: 24,
+        command: `claude '${'x'.repeat(600)}'`,
+        launchAgent: 'claude',
+        shellReadySupported: false,
+        streamClient: { onData: vi.fn(), onExit: vi.fn() }
+      })
+    ).rejects.toThrow(/launch_file_unavailable/)
+    expect(sub.write).not.toHaveBeenCalled()
+    expect(host.listSessions().map((session) => session.sessionId)).not.toContain(
+      's-agent-stage-failed'
+    )
+  })
+
   it('prints a notice in the terminal when it types a line it could not stage', async () => {
     vi.stubEnv('TMPDIR', join(tempDir, 'missing'))
     const command = `claude '${'x'.repeat(600)}'`

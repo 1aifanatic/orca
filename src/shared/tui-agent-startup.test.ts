@@ -104,24 +104,37 @@ describe('tui agent startup plans', () => {
     expect(plan?.launchCommand).toBe('claude "fix ""quoted"" & "^%"PATH"^%""')
   })
 
-  it.each(['cmd', 'powershell'] as const)(
-    'never types a line break into %s: a multi-line prompt rides a launch file',
-    (shell) => {
-      const prompt = 'fix the build\r\n& echo PWNED\nthen run tests'
-      const plan = planLaunchForTest({
-        agent: 'claude',
-        prompt,
-        cmdOverrides: {},
-        platform: 'win32',
-        shell
-      })
+  it('never types a line break into cmd: a multi-line prompt rides a launch file', () => {
+    const prompt = 'fix the build\r\n& echo PWNED\nthen run tests'
+    const plan = planLaunchForTest({
+      agent: 'claude',
+      prompt,
+      cmdOverrides: {},
+      platform: 'win32',
+      shell: 'cmd'
+    })
 
-      expect(plan?.launchCommand).not.toMatch(/[\r\n]/)
-      expect(plan?.launchCommand).not.toContain('PWNED')
-      expect(plan?.launchFile).toMatchObject({ content: prompt })
-      expect(plan?.launchCommand).toContain(plan?.launchFile?.placeholder)
-    }
-  )
+    expect(plan?.launchCommand).not.toMatch(/[\r\n]/)
+    expect(plan?.launchCommand).not.toContain('PWNED')
+    expect(plan?.launchFile).toMatchObject({ content: prompt })
+    expect(plan?.launchCommand).toContain(plan?.launchFile?.placeholder)
+  })
+
+  // Why: PowerShell keeps a line break inside a single-quoted argument (measured), so `&` there is
+  // text, never a command; a CR before a line feed was not measured, so it is typed as main typed it.
+  it('keeps a PowerShell prompt with line breaks inside its one quoted argument', () => {
+    const prompt = 'fix the build\r\n& echo PWNED\nthen run tests'
+    const plan = planLaunchForTest({
+      agent: 'claude',
+      prompt,
+      cmdOverrides: {},
+      platform: 'win32',
+      shell: 'powershell'
+    })
+
+    expect(plan?.launchFile).toBeUndefined()
+    expect(plan?.launchCommand).toBe(`claude '${prompt}'`)
+  })
 
   it('keeps a multi-line prompt inline for a POSIX shell on a POSIX host, which stages it', () => {
     const plan = planLaunchForTest({

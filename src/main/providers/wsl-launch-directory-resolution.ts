@@ -3,6 +3,7 @@ import { quotePosixShell, RESOLVE_WSL_LOGIN_SHELL } from '../../shared/wsl-login
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
 import type { LaunchFile } from '../../shared/launch-prompt-file'
 import { spawnNeedsWslLaunchDirectory } from '../../shared/launch-file-writing'
+import { isLaunchFileRefusal } from '../../shared/launch-prompt-file'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { runWslProcess } from '../wsl/wsl-runner'
@@ -40,7 +41,8 @@ export function resolveSpawnWslLaunchDirectory(
  * The distro directory a WSL spawn's staged line and launch file are written to, and the login
  * shell the pane runs, which decides how a staged line is sourced; undefined when the distro cannot
  * be asked, and the write site then refuses a launch that needs one. Probed once per distro; a
- * success is kept, a failure for `WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS`.
+ * success is kept until a write into it fails (`forgetWslLaunchDirectoryAfterRefusal`), a failure
+ * for `WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS`.
  */
 export async function resolveWslLaunchDirectory(
   distro: string | null | undefined
@@ -64,6 +66,17 @@ export async function resolveWslLaunchDirectory(
     })
   }
   return await probe
+}
+
+/** A spawn into this directory was refused: forget it, so the next launch asks the distro again
+ *  rather than writing into a folder that stopped working. */
+export function forgetWslLaunchDirectoryAfterRefusal(
+  directory: WslLaunchDirectory | undefined,
+  error: unknown
+): void {
+  if (directory && isLaunchFileRefusal(error)) {
+    probes.delete(directory.distro)
+  }
 }
 
 async function probeWslLaunchDirectory(distro: string): Promise<WslLaunchDirectory | undefined> {

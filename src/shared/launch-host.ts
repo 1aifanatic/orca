@@ -1,6 +1,10 @@
 import type { GlobalSettings } from './global-settings-types'
+import { WINDOWS_GIT_BASH_SHELL } from './windows-terminal-shell'
 
 export type WindowsPowerShell = 'powershell.exe' | 'pwsh.exe'
+
+/** The shell a local Windows pane runs; `wsl.exe` is the distro's POSIX login shell. */
+export type WindowsPaneShell = WindowsPowerShell | 'cmd.exe' | 'git-bash' | 'wsl.exe'
 
 export type WindowsShellSettings =
   | Partial<
@@ -21,29 +25,39 @@ export type LaunchHost = {
    *  SSH Windows host's relay may run its panes in WSL (its OpenSSH default shell, which this client
    *  cannot see), where it writes none. Such a host gets the line or the paste instead. */
   takesLaunchFile: boolean
-  /** The PowerShell a local Windows pane is spawned as, which decides how it hands `"` and a
-   *  trailing `\` to the agent. Null where this Orca does not choose it (an SSH or paired host) or
-   *  has not yet learned whether pwsh is installed. */
-  windowsPowerShell: WindowsPowerShell | null
+  /** The shell a local Windows pane is spawned as, which the line is judged and quoted by: a WSL
+   *  pane runs the distro's POSIX shell whatever the Windows setting, and the PowerShell decides
+   *  how `"` and a trailing `\` reach the agent. Null where this Orca does not choose it (an SSH or
+   *  paired host), or has not yet learned whether pwsh is installed. */
+  windowsPaneShell: WindowsPaneShell | null
 }
 
 /**
- * The PowerShell this host spawns for a pane, resolved as the spawn resolves it: the requested
- * shell, then the implementation setting, then whether pwsh.exe is installed. Null for a shell that
- * is not PowerShell, or when that probe has not answered.
+ * The shell this host spawns for a local Windows pane, resolved as the spawn resolves it: the
+ * requested shell, then the setting; for PowerShell, the implementation setting, then whether
+ * pwsh.exe is installed. Null for a shell it cannot name (a custom path, or `bash.exe`, which may be
+ * Git Bash or WSL), or a PowerShell before that probe answers.
  */
-export function spawnedWindowsPowerShell(args: {
+export function spawnedWindowsShell(args: {
   settings: WindowsShellSettings
   /** The shell this launch asked for, which outranks the setting. */
   windowsShellOverride?: string | null
   pwshAvailable: boolean | null
-}): WindowsPowerShell | null {
+}): WindowsPaneShell | null {
   const shell = (args.windowsShellOverride ?? args.settings?.terminalWindowsShell ?? '').trim()
-  const name = shell.replaceAll('\\', '/').split('/').pop()?.toLowerCase() ?? ''
-  if (name === 'pwsh.exe' || name === 'pwsh') {
-    return 'pwsh.exe'
+  if (shell === WINDOWS_GIT_BASH_SHELL) {
+    return 'git-bash'
   }
-  if (name !== '' && name !== 'powershell.exe' && name !== 'powershell') {
+  const name = shell
+    .replaceAll('\\', '/')
+    .split('/')
+    .pop()
+    ?.toLowerCase()
+    .replace(/\.exe$/, '')
+  if (name === 'pwsh' || name === 'cmd' || name === 'wsl') {
+    return `${name}.exe`
+  }
+  if (name !== '' && name !== 'powershell') {
     return null
   }
   const implementation = args.settings?.terminalWindowsPowerShellImplementation
@@ -64,15 +78,15 @@ export function describeLaunchHost(args: {
   /** The platform of the machine this Orca runs on. */
   hostPlatform: NodeJS.Platform
   paired: boolean
-  /** `spawnedWindowsPowerShell` on this machine, which a launch elsewhere does not use. */
-  windowsPowerShell?: WindowsPowerShell | null
+  /** `spawnedWindowsShell` on this machine, which a launch elsewhere does not use. */
+  windowsPaneShell?: WindowsPaneShell | null
 }): LaunchHost {
   const runsElsewhere = args.isRemote || args.paired
   return {
     paired: args.paired,
     provesAgentInFront: (runsElsewhere ? args.launchPlatform : args.hostPlatform) !== 'win32',
     takesLaunchFile: !args.paired && !(args.isRemote && args.launchPlatform === 'win32'),
-    windowsPowerShell:
-      runsElsewhere || args.launchPlatform !== 'win32' ? null : (args.windowsPowerShell ?? null)
+    windowsPaneShell:
+      runsElsewhere || args.launchPlatform !== 'win32' ? null : (args.windowsPaneShell ?? null)
   }
 }

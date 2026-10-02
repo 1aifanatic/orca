@@ -3,6 +3,7 @@ import { createLocalPtyLaunchPlan, resolveLocalPtyWslDistro } from './local-pty-
 import type { LocalPtyProviderOptions } from './local-pty-provider-types'
 import type { PtySpawnOptions } from './types'
 import {
+  forgetWslLaunchDirectoryAfterRefusal,
   resolveSpawnWslLaunchDirectory,
   resolveWslLaunchDirectory,
   WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS
@@ -79,6 +80,23 @@ describe('resolveWslLaunchDirectory', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Why (stack QA P8-2): a folder found once and broken later must not be written into forever.
+  it('asks the distro again after a write into the found folder was refused', async () => {
+    runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
+    const found = await resolveWslLaunchDirectory('Void')
+    forgetWslLaunchDirectoryAfterRefusal(found, new Error('EACCES'))
+    await resolveWslLaunchDirectory('Void')
+    expect(runWslProcess).toHaveBeenCalledTimes(1)
+    forgetWslLaunchDirectoryAfterRefusal(
+      found,
+      new Error(
+        'Orca could not write it (EEXIST), so the agent was not started. [launch_file_unavailable]'
+      )
+    )
+    await resolveWslLaunchDirectory('Void')
+    expect(runWslProcess).toHaveBeenCalledTimes(2)
   })
 
   it('probes only for a spawn that needs the directory', async () => {

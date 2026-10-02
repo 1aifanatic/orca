@@ -28,16 +28,20 @@ const WINDOWS_POSIX_LINE_DAMAGED_CHARS = 20_551
 
 const encoder = new TextEncoder()
 
-/** A control byte other than a line feed: every Windows line editor reads it as a key (a carriage
- *  return is Enter, which in cmd runs the rest as commands; Tab completes), so the bytes change. */
-function hasKeyByte(line: string): boolean {
+/** Control bytes other than a line feed: Tab and carriage return were measured, the rest not. */
+function keyBytes(line: string): { tabOrReturn: boolean; unmeasured: boolean } {
+  let tabOrReturn = false
+  let unmeasured = false
   for (let i = 0; i < line.length; i += 1) {
     const code = line.charCodeAt(i)
-    if ((code < 0x20 && code !== 0x0a) || code === 0x7f) {
-      return true
+    // Measured: a Tab and a bare carriage return; a CR before a line feed was not.
+    if (code === 0x09 || (code === 0x0d && line.charCodeAt(i + 1) !== 0x0a)) {
+      tabOrReturn = true
+    } else if ((code < 0x20 && code !== 0x0a) || code === 0x7f) {
+      unmeasured = true
     }
   }
-  return false
+  return { tabOrReturn, unmeasured }
 }
 
 /** An agent spelled as a `.cmd`/`.bat` shim, whose cmd.exe re-reads its arguments. A bare name
@@ -70,6 +74,10 @@ function shellVerdict(line: string, shell: AgentStartupShell): WindowsLineVerdic
   return line.length >= WINDOWS_POSIX_LINE_DAMAGED_CHARS ? 'damaged' : 'uncertain'
 }
 
+function withUnmeasuredKeys(verdict: WindowsLineVerdict, unmeasured: boolean): WindowsLineVerdict {
+  return unmeasured && verdict === 'exact' ? 'uncertain' : verdict
+}
+
 export function windowsLaunchLineVerdict(
   prompt: string,
   line: string,
@@ -77,10 +85,13 @@ export function windowsLaunchLineVerdict(
   /** The PowerShell the pane is spawned as (`LaunchHost.windowsPowerShell`), when known. */
   windowsPowerShell: WindowsPowerShell | null
 ): WindowsLineVerdict {
-  if (hasKeyByte(line)) {
+  const keys = keyBytes(line)
+  // Measured: cmd and Git Bash read a Tab or carriage return as a key (completion, or Enter, which
+  // in cmd runs the rest as commands); both PowerShells carried them exactly.
+  if (keys.tabOrReturn && shell !== 'powershell') {
     return 'damaged'
   }
-  const verdict = shellVerdict(line, shell)
+  const verdict = withUnmeasuredKeys(shellVerdict(line, shell), keys.unmeasured)
   const legacyArgsDamage = prompt.includes('"') || prompt.endsWith('\\')
   if (shell === 'cmd' || !launchesThroughCmdShim(line)) {
     if (shell !== 'powershell' || verdict !== 'exact' || !legacyArgsDamage) {

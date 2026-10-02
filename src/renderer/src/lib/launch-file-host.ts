@@ -3,7 +3,7 @@ import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { useAppStore } from '@/store'
 import {
   describeLaunchHost,
-  spawnedWindowsPowerShell,
+  spawnedWindowsShell,
   type LaunchHost
 } from '../../../shared/launch-host'
 import { isWebClientLocation } from './web-client-location'
@@ -32,8 +32,8 @@ export function clientLaunchHost(args: {
     hostPlatform: CLIENT_PLATFORM,
     paired,
     // Why this client's settings: a local pane is spawned from them, as its shell is.
-    windowsPowerShell: local
-      ? spawnedWindowsPowerShell({
+    windowsPaneShell: local
+      ? spawnedWindowsShell({
           settings: useAppStore.getState().settings,
           pwshAvailable: localPwshAvailability()
         })

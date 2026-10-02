@@ -169,9 +169,16 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (readsEnv) {
     return { carry: 'on-line', plan }
   }
+  const paneShell = args.host.windowsPaneShell
+  // Why not for a WSL pane: it runs the distro's POSIX shell, which the host stages into.
   const windowsLine =
-    args.platform === 'win32'
-      ? windowsLaunchLineVerdict(text, plan.launchCommand, shell, args.host.windowsPowerShell)
+    args.platform === 'win32' && paneShell !== 'wsl.exe'
+      ? windowsLaunchLineVerdict(
+          text,
+          plan.launchCommand,
+          shell,
+          paneShell === 'powershell.exe' || paneShell === 'pwsh.exe' ? paneShell : null
+        )
       : 'exact'
   // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
   if (

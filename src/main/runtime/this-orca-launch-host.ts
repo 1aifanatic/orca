@@ -1,7 +1,7 @@
 import { cachedPwshAvailability } from '../pwsh'
 import {
   describeLaunchHost,
-  spawnedWindowsPowerShell,
+  spawnedWindowsShell,
   type LaunchHost,
   type WindowsShellSettings
 } from '../../shared/launch-host'
@@ -20,8 +20,8 @@ export function thisOrcaLaunchHost(args: {
     isRemote: args.isRemote,
     hostPlatform: process.platform,
     paired: false,
-    windowsPowerShell: local
-      ? spawnedWindowsPowerShell({
+    windowsPaneShell: local
+      ? spawnedWindowsShell({
           settings: args.settings,
           windowsShellOverride: args.windowsShellOverride,
           pwshAvailable: cachedPwshAvailability()

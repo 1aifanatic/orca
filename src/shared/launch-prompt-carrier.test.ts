@@ -29,7 +29,7 @@ describe('the one launch-prompt decision every launch path builds through', () =
         paired: true,
         provesAgentInFront: true,
         takesLaunchFile: false,
-        windowsPowerShell: null
+        windowsPaneShell: null
       }
     })
     expect(short?.carry).toBe('on-line')
@@ -41,7 +41,7 @@ describe('the one launch-prompt decision every launch path builds through', () =
         paired: true,
         provesAgentInFront: true,
         takesLaunchFile: false,
-        windowsPowerShell: null
+        windowsPaneShell: null
       }
     })
     expect(long?.carry).toBe('paste-after-ready')

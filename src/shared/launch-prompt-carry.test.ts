@@ -185,7 +185,7 @@ describe('a host that types the line raw', () => {
         paired: false,
         provesAgentInFront: false,
         takesLaunchFile: true,
-        windowsPowerShell: null
+        windowsPaneShell: null
       }
     }
     const prompt = 'fix the build\nthen run the tests'
@@ -225,7 +225,7 @@ describe('a host that types the line raw', () => {
         paired: true,
         provesAgentInFront: true,
         takesLaunchFile: false,
-        windowsPowerShell: null
+        windowsPaneShell: null
       }
     }
     expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')

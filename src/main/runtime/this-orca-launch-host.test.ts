@@ -30,12 +30,12 @@ describe('the PowerShell a launch this Orca runs lands in', () => {
         settings,
         windowsShellOverride
       })
-    expect(host().windowsPowerShell).toBeNull()
+    expect(host().windowsPaneShell).toBeNull()
     vi.mocked(cachedPwshAvailability).mockReturnValue(false)
-    expect(host().windowsPowerShell).toBe('powershell.exe')
-    expect(host('pwsh.exe').windowsPowerShell).toBe('pwsh.exe')
+    expect(host().windowsPaneShell).toBe('powershell.exe')
+    expect(host('pwsh.exe').windowsPaneShell).toBe('pwsh.exe')
     expect(
-      thisOrcaLaunchHost({ launchPlatform: 'win32', isRemote: true, settings }).windowsPowerShell
+      thisOrcaLaunchHost({ launchPlatform: 'win32', isRemote: true, settings }).windowsPaneShell
     ).toBeNull()
   })
 
@@ -47,7 +47,7 @@ describe('the PowerShell a launch this Orca runs lands in', () => {
         launchPlatform: 'win32',
         isRemote: false,
         settings: { terminalWindowsShell: 'pwsh.exe' }
-      }).windowsPowerShell
+      }).windowsPaneShell
     ).toBeNull()
   })
 })

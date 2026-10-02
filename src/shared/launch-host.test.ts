@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeLaunchHost, spawnedWindowsPowerShell } from './launch-host'
+import { describeLaunchHost, spawnedWindowsShell } from './launch-host'
 
 describe('what a launch host can do with its prompt', () => {
   it.each([
@@ -20,14 +20,14 @@ describe('what a launch host can do with its prompt', () => {
         paired,
         provesAgentInFront: proves,
         takesLaunchFile,
-        windowsPowerShell: null
+        windowsPaneShell: null
       })
     }
   )
 })
 
 // Why: the PowerShell decides how `"` and a trailing `\` reach the agent, and this Orca picks it.
-describe('the PowerShell a local Windows pane is spawned as', () => {
+describe('the shell a local Windows pane is spawned as', () => {
   it.each([
     ['the pwsh shell', { terminalWindowsShell: 'pwsh.exe' }, undefined, null, 'pwsh.exe'],
     [
@@ -68,12 +68,21 @@ describe('the PowerShell a local Windows pane is spawned as', () => {
       null,
       null
     ],
-    ['cmd', { terminalWindowsShell: 'cmd.exe' }, undefined, true, null],
-    ['Git Bash', { terminalWindowsShell: 'git-bash' }, undefined, true, null]
+    ['cmd', { terminalWindowsShell: 'cmd.exe' }, undefined, true, 'cmd.exe'],
+    ['Git Bash', { terminalWindowsShell: 'git-bash' }, undefined, true, 'git-bash'],
+    // The distro's POSIX shell, whatever PowerShell would have been.
+    ['WSL', { terminalWindowsShell: 'wsl.exe' }, undefined, true, 'wsl.exe'],
+    [
+      'a requested WSL over a cmd setting',
+      { terminalWindowsShell: 'cmd.exe' },
+      'wsl',
+      null,
+      'wsl.exe'
+    ],
+    // Why unknown: System32's bash.exe is WSL, Git's is Git Bash.
+    ['a bare bash.exe', { terminalWindowsShell: 'bash.exe' }, undefined, true, null]
   ] as const)('%s', (_label, settings, windowsShellOverride, pwshAvailable, expected) => {
-    expect(spawnedWindowsPowerShell({ settings, windowsShellOverride, pwshAvailable })).toBe(
-      expected
-    )
+    expect(spawnedWindowsShell({ settings, windowsShellOverride, pwshAvailable })).toBe(expected)
   })
 
   it('is not this machine’s to know for an SSH or paired host', () => {
@@ -86,8 +95,8 @@ describe('the PowerShell a local Windows pane is spawned as', () => {
           ...where,
           launchPlatform: 'win32',
           hostPlatform: 'win32',
-          windowsPowerShell: 'powershell.exe'
-        }).windowsPowerShell
+          windowsPaneShell: 'powershell.exe'
+        }).windowsPaneShell
       ).toBeNull()
     }
   })

@@ -20,7 +20,7 @@ describe('the full composer’s renderer-spawned startup', () => {
           paired: false,
           provesAgentInFront: true,
           takesLaunchFile: true,
-          windowsPowerShell: null
+          windowsPaneShell: null
         },
         paste: 'when-host-proves-agent'
       }),

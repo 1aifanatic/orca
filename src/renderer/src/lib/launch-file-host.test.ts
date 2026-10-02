@@ -34,7 +34,7 @@ describe('the quick composer on a paired host', () => {
         paired: true,
         provesAgentInFront: true,
         takesLaunchFile: false,
-        windowsPowerShell: null
+        windowsPaneShell: null
       },
       telemetrySource: 'sidebar'
     })
@@ -62,12 +62,12 @@ describe('the PowerShell a local Windows launch from this client lands in', () =
         terminalWindowsPowerShellImplementation: 'auto'
       }
     })
-    expect(host().windowsPowerShell).toBeNull()
+    expect(host().windowsPaneShell).toBeNull()
     vi.mocked(localPwshAvailability).mockReturnValue(false)
-    expect(host().windowsPowerShell).toBe('powershell.exe')
+    expect(host().windowsPaneShell).toBe('powershell.exe')
     vi.mocked(localPwshAvailability).mockReturnValue(true)
-    expect(host().windowsPowerShell).toBe('pwsh.exe')
-    expect(host(true).windowsPowerShell).toBeNull()
+    expect(host().windowsPaneShell).toBe('pwsh.exe')
+    expect(host(true).windowsPaneShell).toBeNull()
     useAppStore.setState({ settings })
   })
 })

@@ -18,7 +18,10 @@ import { getRecoveredHistorySeedSegments } from './terminal-history-seed-segment
 import { AGENT_SESSION_CLAIM_DAEMON_PROTOCOL_VERSION, type CreateOrAttachResult } from './types'
 import { normalizeWslColdRestoreCwd } from './wsl-cold-restore-cwd'
 import { resolveWslSessionContext } from './wsl-session-context'
-import { resolveSpawnWslLaunchDirectory } from '../providers/wsl-launch-directory-resolution'
+import {
+  forgetWslLaunchDirectoryAfterRefusal,
+  resolveSpawnWslLaunchDirectory
+} from '../providers/wsl-launch-directory-resolution'
 import { resolveSafePtyDefaultCwd } from '../providers/pty-default-cwd'
 import { resolveUnixShellPath } from '../providers/local-pty-utils'
 import type { PtySpawnOptions, PtySpawnResult } from '../providers/types'
@@ -258,7 +261,13 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
       detectColdRestore
     }
     activeSpawnContext = context
-    const result = await this.createOrAttachSpawn(context, context.historySeedSegments)
+    let result
+    try {
+      result = await this.createOrAttachSpawn(context, context.historySeedSegments)
+    } catch (error) {
+      forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
+      throw error
+    }
     if (result.isNew && !attachOnly) {
       // Not awaited: the app-side read behind it can sit on an unanswered macOS folder prompt.
       void reportDaemonPtyCwdVerdict({

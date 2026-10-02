@@ -37,7 +37,7 @@ function windowsHost(windowsPowerShell: WindowsPowerShell | null) {
     isRemote: false,
     hostPlatform: 'win32',
     paired: false,
-    windowsPowerShell
+    windowsPaneShell: windowsPowerShell
   })
 }
 
@@ -132,29 +132,48 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
     )
   })
 
-  // Why: a typed carriage return is Enter (in cmd the rest runs as commands) and a Tab completes.
-  it.each<AgentStartupShell>(['cmd', 'powershell', 'posix'])(
-    'never types a Tab or a carriage return into %s',
-    (shell) => {
-      const planned = (paste: 'once-agent-runs' | 'when-host-proves-agent') =>
-        planLaunchPrompt({
-          agent: 'claude',
-          prompt: 'before\tmiddle\r& echo PWNED',
-          cmdOverrides: {},
-          platform: 'win32',
-          shell,
-          host: describeLaunchHost({
-            launchPlatform: 'win32',
-            isRemote: false,
-            hostPlatform: 'win32',
-            paired: false
-          }),
-          paste
-        })?.carry
-      expect(planned('once-agent-runs')).toBe('paste-after-ready')
-      expect(planned('when-host-proves-agent')).toBe('launch-file')
+  // Why per shell (stack QA ptab/pcr): cmd and Git Bash read a Tab or carriage return as a key
+  // (completion, or Enter, which in cmd runs the rest as commands); both PowerShells carried them.
+  it.each<[AgentStartupShell, 'ptab' | 'pcr', 'on-line' | 'launch-file']>([
+    ['cmd', 'ptab', 'launch-file'],
+    ['cmd', 'pcr', 'launch-file'],
+    ['posix', 'ptab', 'launch-file'],
+    ['posix', 'pcr', 'launch-file'],
+    ['powershell', 'ptab', 'on-line'],
+    ['powershell', 'pcr', 'on-line']
+  ])('types %s %s only where the shell carried it: %s', (shell, row, expected) => {
+    const prompt =
+      row === 'ptab'
+        ? 'QA-STACK PTAB one line with a\ttab inside, inert, do not run any command.'
+        : 'QA-STACK PCR one line with a bare\rCR inside, inert, do not run any command.'
+    for (const windowsPowerShell of ['powershell.exe', 'pwsh.exe'] as const) {
+      const planned = planLaunchPrompt({
+        agent: 'claude',
+        prompt,
+        cmdOverrides: {},
+        platform: 'win32',
+        shell,
+        host: windowsHost(windowsPowerShell),
+        paste: 'when-host-proves-agent'
+      })
+      expect(planned?.carry).toBe(expected)
     }
-  )
+  })
+
+  it('leaves another control byte, never measured, to main’s delivery', () => {
+    const planned = (paste: 'once-agent-runs' | 'when-host-proves-agent') =>
+      planLaunchPrompt({
+        agent: 'claude',
+        prompt: 'before\x1bafter',
+        cmdOverrides: {},
+        platform: 'win32',
+        shell: 'powershell',
+        host: windowsHost('pwsh.exe'),
+        paste
+      })?.carry
+    expect(planned('once-agent-runs')).toBe('paste-after-ready')
+    expect(planned('when-host-proves-agent')).toBe('on-line')
+  })
 
   // Why: an AI button's prompt was pasted on main, so only a line measured exact replaces that
   // paste; measured damage and the unmeasured both keep main's paste.
