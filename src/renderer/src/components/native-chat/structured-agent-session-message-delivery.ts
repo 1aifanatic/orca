@@ -100,7 +100,7 @@ export function whenStructuredAgentSessionHostHasMessages(
   })
 }
 
-/** The host answered these sends ok, or its journal shows them. */
+/** The host's reply to these sends shows it holds them. */
 export function noteStructuredAgentSessionMessagesDelivered(
   sessionId: string,
   clientMessageIds: Iterable<string>

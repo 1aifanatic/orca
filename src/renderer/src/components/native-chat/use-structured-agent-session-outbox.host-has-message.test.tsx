@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
-// The journal showing a message is the host having it: a composer's saved draft stops holding it
-// then, even while the message waits for the provider and its outbox entry stays.
+// A watched send settles once the journal's answer takes its entry out of the outbox: accepted by
+// the agent. One the host accepted but has not handed over, or handed over but the agent has not
+// accepted, keeps its entry and stays watched.
 
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'

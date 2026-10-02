@@ -211,7 +211,8 @@ export function readNativeChatDraftCache(draftKey: string): string {
   return readEntry(draftKey).text
 }
 
-/** Typing waits for a pause; a clear is written at once (a send's, once the host has it). */
+/** Typing waits for a pause; a clear is written at once (a send's, with its held send or, for a
+ *  terminal agent, once the terminal has it). */
 export function writeNativeChatDraftCache(
   draftKey: string,
   draft: string,
