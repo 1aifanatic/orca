@@ -97,7 +97,15 @@ async function relayRig(dir: string) {
       { paneKey: PANE, worktreeId: 'wt-1', tabId: 'tab-1' },
       presence(pid)
     )
-  return { desktop, relay, capture, post, pump, sent }
+  const postPi = async (body: Record<string, unknown>) => {
+    const response = await fetch(`http://127.0.0.1:${port}/hook/pi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Orca-Agent-Hook-Token': token },
+      body: JSON.stringify({ paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload: body })
+    })
+    expect(response.status).toBe(204)
+  }
+  return { desktop, relay, capture, post, postPi, pump, sent }
 }
 
 describe('owner handover across execution hosts', () => {
@@ -225,6 +233,33 @@ describe('owner handover across execution hosts', () => {
       await pending
       rig.pump()
       expect(rig.desktop.getAgentOwner(PANE)?.presence).toMatchObject(presence(4005))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('sends a relay owner admission over a Pi session to the owner path only', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
+    try {
+      const rig = await relayRig(dir)
+      await rig.postPi({
+        hook_event_name: 'session_start',
+        session_id: 'pi-session-1',
+        session_file: '/tmp/pi-session-1.jsonl'
+      })
+      rig.pump()
+      const turns = vi.fn()
+      rig.desktop.subscribeEnrichedStatus(turns)
+      rig.relay.ingestForegroundPresence(
+        { paneKey: PANE, worktreeId: 'wt-1', tabId: 'tab-1' },
+        { agent: 'pi', process: { pid: 4100, platform: 'linux', startTime: 'b-4100' } }
+      )
+      rig.pump()
+      expect(rig.sent.at(-1)).toMatchObject({ providerSessionOnly: true })
+      expect(rig.sent.at(-1)).not.toHaveProperty('providerSession')
+      expect(turns).not.toHaveBeenCalled()
+      expect(rig.desktop.getAgentOwner(PANE)?.presence.process?.pid).toBe(4100)
+      expect(rig.desktop.getProviderSessionIdentities()).toHaveLength(1)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

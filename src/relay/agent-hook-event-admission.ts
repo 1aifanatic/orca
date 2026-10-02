@@ -76,7 +76,11 @@ export function applyRelayAgentEvent(
   host.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
   host.forward(
     buildRelayHookEnvelope(
-      options.hostPresence ? { ...event, providerSessionOnly: true } : event,
+      // Why without resume identity: an owner observation must reach the owner path only, never
+      // pass as a Pi session row on the turn path.
+      options.hostPresence
+        ? { ...event, providerSession: undefined, providerSessionOnly: true }
+        : event,
       source,
       env,
       version,
