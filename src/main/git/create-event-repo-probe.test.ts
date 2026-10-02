@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { probeCreateEventRepoFacts } from './create-event-repo-probe'
+import { createWorktreePreparationLockReason } from '../../shared/worktree/create-preparation'
 
 async function hookPresence(repoPath: string, platform: NodeJS.Platform): Promise<string> {
   return (await probeCreateEventRepoFacts(repoPath, platform)).postCheckoutHook
@@ -59,12 +60,29 @@ describe('probeCreateEventRepoFacts', () => {
     expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'unknown' })
   })
 
-  it('counts the main checkout plus every registered linked worktree', async () => {
-    for (const name of ['feature-a', 'feature-b', '123-prepared']) {
-      await mkdir(path.join(repo, '.git', 'worktrees', name), { recursive: true })
+  async function registerWorktree(name: string, lockReason?: string): Promise<void> {
+    const adminDir = path.join(repo, '.git', 'worktrees', name)
+    await mkdir(adminDir, { recursive: true })
+    if (lockReason !== undefined) {
+      await writeFile(path.join(adminDir, 'locked'), `${lockReason}\n`)
     }
+  }
+
+  it('counts the main checkout plus the linked worktrees, leaving out Orca prepared checkouts', async () => {
+    await registerWorktree('feature-a')
+    await registerWorktree('feature-b', 'on a USB drive')
+    // This process's spare, another process's spare, and a crash leftover all carry the marker.
+    await registerWorktree('spare-here', createWorktreePreparationLockReason('here'))
+    await registerWorktree('spare-other', 'orca-create-preparation:v1:424242:other')
+    await registerWorktree('spare-crashed', 'orca-create-preparation:v1:7:gone')
     await writeFile(path.join(repo, '.git', 'worktrees', 'stray-file'), '')
-    expect(await probeCreateEventRepoFacts(repo, 'linux')).toMatchObject({ worktreeCount: 4 })
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toMatchObject({ worktreeCount: 3 })
+  })
+
+  it('does not count a spare whose admin directory Git has not written yet', async () => {
+    await registerWorktree('feature-a')
+    // A spare that has only just started has no entry under .git/worktrees, so nothing to drop.
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toMatchObject({ worktreeCount: 2 })
   })
 
   it('reports neither fact for a missing repo', async () => {

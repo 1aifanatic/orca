@@ -13,11 +13,9 @@ import type {
 import type { WorktreeCreatePhase } from '../shared/worktree/create-timing-vocabulary'
 import type { AddWorktreeOptions, AddWorktreeResult } from './git/worktree'
 import { WorktreePreparationLockOwnershipError } from './git/worktree-preparation-lock'
-import { preparationPathKey } from './worktree-create-preparation-claim'
 import {
   _resetPreparationPoolForTests,
   hasPendingPreparations,
-  listPreparations,
   releasePreparationClaim,
   startPreparation,
   type DeferredPreparation,
@@ -53,14 +51,6 @@ export {
 /** A prepared checkout is a create that is either in flight or imminent. */
 export function hasPendingWorktreeCreatePreparations(): boolean {
   return hasPendingPreparations()
-}
-
-/** Prepared checkouts this process has registered in `repoPath`; Git lists them as worktrees. */
-export function countRegisteredPreparations(repoPath: string): number {
-  const repoPathKey = preparationPathKey(repoPath)
-  return listPreparations().filter(
-    (entry) => entry.repoPathKey === repoPathKey && entry.checkoutStarted
-  ).length
 }
 
 /** Carries the consumed slot's pending re-arm to the create's outermost `finally`, which fires it

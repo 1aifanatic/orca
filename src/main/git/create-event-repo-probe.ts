@@ -1,6 +1,7 @@
 import { open, readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { getErrorCode } from './worktree-operation-options'
+import { parseWorktreePreparationOwnerPid } from '../../shared/worktree/create-preparation'
 
 /** Existence only: the hook's content is never read. */
 export type PostCheckoutHookPresence = 'present' | 'absent' | 'custom_hooks_path' | 'unknown'
@@ -10,35 +11,43 @@ export type CreateEventRepoFacts = {
   postCheckoutHook: PostCheckoutHookPresence
   /** Entries in the index header, i.e. tracked files; absent when the count is missing or unreliable. */
   indexEntryCount?: number
-  /** The main checkout plus every registered linked worktree, prepared checkouts included. */
+  /** The main checkout plus registered linked worktrees, Orca's prepared checkouts excluded. */
   worktreeCount?: number
 }
 
 const PROBE_TIMEOUT_MS = 2_000
+// Shorter than the whole probe, so a slow per-worktree read cannot cost the other facts.
+const WORKTREE_COUNT_TIMEOUT_MS = 1_500
 
-/**
- * Reads, from files only and never by spawning Git, whether `git worktree add` in this repo will
- * run a repo-local post-checkout hook, and how many files the repo tracks.
- *
- * A `core.hooksPath` in the repo's config is reported as such rather than followed, and global or
- * included config is not read, so a hooks path set there reads as `absent`. A `.git` file (a repo
- * registered from a linked worktree or submodule) needs Git to resolve, so it yields neither fact.
- */
-export async function probeCreateEventRepoFacts(
-  repoPath: string,
-  platform: NodeJS.Platform = process.platform
-): Promise<CreateEventRepoFacts> {
+/** A hung network or WSL mount must not hold the caller; every answer here is best-effort. */
+async function withTimeout<T>(operation: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<CreateEventRepoFacts>((resolve) => {
-    // A hung network or WSL mount must not hold the caller; this answer is best-effort.
-    timer = setTimeout(() => resolve({ postCheckoutHook: 'unknown' }), PROBE_TIMEOUT_MS)
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms)
     timer.unref?.()
   })
   try {
-    return await Promise.race([readFacts(repoPath, platform), timeout])
+    return await Promise.race([operation, timeout])
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Reads, from files only and never by spawning Git, whether `git worktree add` in this repo will
+ * run a repo-local post-checkout hook, how many files the repo tracks, and how many worktrees it has.
+ *
+ * A `core.hooksPath` in the repo's config is reported as such rather than followed, and global or
+ * included config is not read, so a hooks path set there reads as `absent`. A `.git` file (a repo
+ * registered from a linked worktree or submodule) needs Git to resolve, so it yields no facts.
+ */
+export function probeCreateEventRepoFacts(
+  repoPath: string,
+  platform: NodeJS.Platform = process.platform
+): Promise<CreateEventRepoFacts> {
+  return withTimeout(readFacts(repoPath, platform), PROBE_TIMEOUT_MS, {
+    postCheckoutHook: 'unknown'
+  })
 }
 
 async function readFacts(
@@ -62,7 +71,7 @@ async function readFacts(
   const [postCheckoutHook, indexEntryCount, worktreeCount] = await Promise.all([
     readPostCheckoutHook(gitDir, config, platform),
     readIndexEntryCount(gitDir, config),
-    readWorktreeCount(gitDir)
+    withTimeout(readWorktreeCount(gitDir), WORKTREE_COUNT_TIMEOUT_MS, undefined)
   ])
   return {
     postCheckoutHook,
@@ -71,13 +80,26 @@ async function readFacts(
   }
 }
 
-/** One listing of `.git/worktrees`, Git's registry of linked worktrees, since the create itself no
- *  longer lists them. Admin directory names survive `worktree move`, so prepared checkouts cannot be
- *  told apart here; the caller subtracts the ones it holds. */
+/**
+ * The worktree count from Git's registry of linked worktrees, since the create itself no longer
+ * lists them. Like the listing, an entry whose lock reason names an Orca preparation is a prepared
+ * checkout, not the user's worktree, whichever process or crash left it.
+ */
 async function readWorktreeCount(gitDir: string): Promise<number | undefined> {
+  const registry = path.join(gitDir, 'worktrees')
   try {
-    const entries = await readdir(path.join(gitDir, 'worktrees'), { withFileTypes: true })
-    return entries.filter((entry) => entry.isDirectory()).length + 1
+    const entries = await readdir(registry, { withFileTypes: true })
+    const preparations = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) =>
+          readFile(path.join(registry, entry.name, 'locked'), 'utf8').then(
+            (reason) => parseWorktreePreparationOwnerPid(reason.trim()) !== null,
+            () => false
+          )
+        )
+    )
+    return preparations.filter((isPreparation) => !isPreparation).length + 1
   } catch (error) {
     return getErrorCode(error) === 'ENOENT' ? 1 : undefined
   }

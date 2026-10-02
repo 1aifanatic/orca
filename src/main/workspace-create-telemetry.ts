@@ -11,7 +11,6 @@ import {
   type WorktreeCreateTimingRecorder
 } from './worktree-create-timing'
 import { beginWorktreeCreate } from './worktree-create-concurrency'
-import { countRegisteredPreparations } from './worktree-create-preparation'
 import {
   workspaceCreateFailureFields,
   workspaceCreateTimingFields,
@@ -154,13 +153,6 @@ async function trackWorkspaceCreated(
     isTelemetryEnabled() && (timing.executionHost === 'local' || timing.executionHost === 'wsl')
       ? await probeCreateEventRepoFacts(repoPath)
       : undefined
-  if (repoFacts?.worktreeCount !== undefined) {
-    // Git also registers this process's prepared checkouts; they are not the user's worktrees.
-    repoFacts.worktreeCount = Math.max(
-      1,
-      repoFacts.worktreeCount - countRegisteredPreparations(repoPath)
-    )
-  }
   track('workspace_created', {
     ...props,
     ...workspaceCreateTimingFields(timing, { ...context, ...(repoFacts ? { repoFacts } : {}) })

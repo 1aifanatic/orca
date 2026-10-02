@@ -2,7 +2,7 @@ import type { PreparedCheckoutOrigin } from '../shared/worktree/create-types'
 import { beginPreparationWork, type PreparationWork } from './worktree-create-concurrency'
 
 /** What a create's event reports about the prepared checkout it used: who asked for it, and the
- *  disk work and timing of its latest build or tip refresh. Recording only; never gates the pool. */
+ *  disk work of its build and tip refreshes, and their timing. Recording only; never gates the pool. */
 export type PreparationActivity = {
   /** Counts the latest build or refresh as disk work competing with creates. */
   readonly work: PreparationWork
@@ -11,14 +11,19 @@ export type PreparationActivity = {
   /** Covers `ready`, the checkout's latest build or tip refresh, until it settles. */
   track(ready: Promise<void>): void
   origin(): PreparedCheckoutOrigin
-  /** Build time of the latest work, and how long it then sat ready before `claimedAt`. */
+  /** First build's duration, and how long the checkout sat ready before `claimedAt`. */
   timesAt(claimedAt: number): { buildMs: number; idleMs: number }
 }
 
 export function createPreparationActivity(kind: 'explicit' | 'automatic'): PreparationActivity {
   let work = beginPreparationWork()
-  let startedAt = performance.now()
-  let readyAt: number | undefined
+  let workSettled = false
+  // Build: from the first build's start (including any wait for the base fetch it is built on)
+  // to its first ready; a later tip refresh does not restart it.
+  const buildStartedAt = performance.now()
+  let buildFinishedAt: number | undefined
+  // Idle: measured from the latest ready, build or refresh, to the claim.
+  let latestReadyAt: number | undefined
   let latest: Promise<void> | undefined
   let prefetchRequested = false
 
@@ -30,22 +35,27 @@ export function createPreparationActivity(kind: 'explicit' | 'automatic'): Prepa
       prefetchRequested = true
     },
     track(ready) {
-      // A refresh queued after the build finished is new work, timed from its own start.
-      if (readyAt !== undefined) {
+      // A refresh queued after the previous work settled is new disk work.
+      if (workSettled) {
         work = beginPreparationWork()
-        startedAt = performance.now()
-        readyAt = undefined
+        workSettled = false
       }
       latest = ready
+      latestReadyAt = undefined
       const current = work
       const settle = (succeeded: boolean): void => {
+        const now = performance.now()
+        if (succeeded) {
+          buildFinishedAt ??= now
+        }
         // A refresh chained onto this work extends it; only the latest settle ends it.
         if (latest !== ready) {
           return
         }
         if (succeeded) {
-          readyAt = performance.now()
+          latestReadyAt = now
         }
+        workSettled = true
         current.end()
       }
       void ready.then(
@@ -61,10 +71,9 @@ export function createPreparationActivity(kind: 'explicit' | 'automatic'): Prepa
     },
     timesAt(claimedAt) {
       // A create that waited for the work reports no idle time.
-      const finishedAt = readyAt ?? claimedAt
       return {
-        buildMs: Math.max(0, finishedAt - startedAt),
-        idleMs: Math.max(0, claimedAt - finishedAt)
+        buildMs: Math.max(0, (buildFinishedAt ?? claimedAt) - buildStartedAt),
+        idleMs: Math.max(0, claimedAt - (latestReadyAt ?? claimedAt))
       }
     }
   }
