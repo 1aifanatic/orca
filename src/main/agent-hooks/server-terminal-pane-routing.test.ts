@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, _internals } from './server'
-import { buildBody, FRESH_PANE, OLD_PANE, PANE, postHookEvent } from './server.test-fixtures'
+import {
+  buildBody,
+  FRESH_PANE,
+  OLD_PANE,
+  PANE,
+  postHookEvent,
+  TAB_A_PANE
+} from './server.test-fixtures'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({
@@ -169,6 +176,37 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     expect(
       Object.fromEntries(server.getStatusSnapshot().map((row) => [row.paneKey, row.prompt]))
     ).toEqual({ [OLD_PANE]: 'local, newer', [FRESH_PANE]: 'remote' })
+  })
+
+  it('leaves aliases untouched when a move is rejected for another host’s row', async () => {
+    await postFromSpawnedPane(server, 'local')
+    // An alias that falls back onto the exported key.
+    server.transferPaneAuthority(TAB_A_PANE, OLD_PANE, 'pty-detached')
+    server.ingestRemote(
+      {
+        paneKey: FRESH_PANE,
+        tabId: 'tab-fresh',
+        worktreeId: 'wt-1',
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'remote', agentType: 'claude' }
+      },
+      'ssh-other'
+    )
+    await postFromSpawnedPane(server, 'local, newer')
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+    await postHookEvent(
+      server,
+      buildBody(
+        { hook_event_name: 'UserPromptSubmit', prompt: 'via alias' },
+        { paneKey: TAB_A_PANE, tabId: 'tab-A' }
+      )
+    )
+
+    expect(
+      Object.fromEntries(server.getStatusSnapshot().map((row) => [row.paneKey, row.prompt]))
+    ).toEqual({ [OLD_PANE]: 'via alias', [FRESH_PANE]: 'remote' })
   })
 
   it('never moves a row posted by another host onto a terminal’s pane', async () => {
