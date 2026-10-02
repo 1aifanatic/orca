@@ -17,6 +17,7 @@ import {
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 
 const SESSION_ID = 'orca-session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<
@@ -528,27 +529,37 @@ describe('claude structured launch resolution', () => {
 })
 
 describe('readable Claude thinking', () => {
-  const launchWith = (thinkingDisplay?: ClaudeStructuredLaunchResolverDeps['thinkingDisplay']) =>
+  const launchWith = (
+    thinkingDisplay?: ClaudeStructuredLaunchResolverDeps['thinkingDisplay'],
+    authSwitchSettleTimeoutMs?: number
+  ) =>
     createClaudeStructuredLaunchResolver({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launch resolution reads only getRecord.
       store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
-      resolveEnv: () => ({ PROJECT_SHIM: '1' }),
+      resolveEnv: () => ({ PROJECT_SHIM: '1', ANTHROPIC_API_KEY: 'sk-user' }),
       hasTranscript: async () => false,
-      ...(thinkingDisplay ? { thinkingDisplay } : {})
+      ...(thinkingDisplay ? { thinkingDisplay } : {}),
+      ...(authSwitchSettleTimeoutMs === undefined ? {} : { authSwitchSettleTimeoutMs })
     })({ identity: IDENTITY })
 
-  it("asks with the launch's own command, cwd and env, and never forces thinking on", async () => {
-    const argsFor = vi.fn(async () => ({ 'thinking-display': 'summarized' }))
+  it('probes the CLI the launch runs, on its PATH and shims, without its credentials', async () => {
+    const argsFor = vi.fn(
+      async (_launch: { command: string; cwd: string; env: Record<string, string> }) => ({
+        'thinking-display': 'summarized'
+      })
+    )
     const launch = await launchWith({ argsFor })
-    expect(argsFor).toHaveBeenCalledWith({
-      command: '/usr/local/bin/claude',
-      cwd: '/repos/workspace-1',
-      env: launch.env
-    })
-    expect(launch.env).toMatchObject({ PROJECT_SHIM: '1' })
+    const asked = argsFor.mock.calls[0]?.[0]
+    expect(asked).toMatchObject({ command: '/usr/local/bin/claude', cwd: '/repos/workspace-1' })
+    // The launch only adds Orca's own CLI ahead of it, which picks no other `claude` or runtime.
+    expect(launch.env?.PATH?.endsWith(asked?.env.PATH ?? '<none>')).toBe(true)
+    expect(asked?.env).toMatchObject({ PROJECT_SHIM: '1' })
+    expect(asked?.env).not.toHaveProperty('ANTHROPIC_API_KEY')
+    // The launch keeps the credential the user gave it.
+    expect(launch.env).toMatchObject({ ANTHROPIC_API_KEY: 'sk-user' })
     expect(launch.options.extraArgs).toEqual({
       'replay-user-messages': null,
       'thinking-display': 'summarized'
@@ -560,5 +571,22 @@ describe('readable Claude thinking', () => {
     const launch = await launchWith({ argsFor: async () => ({}) })
     expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
     expect((await launchWith()).options.extraArgs).toEqual({ 'replay-user-messages': null })
+  })
+
+  it('still rechecks an account switch that began while the probe ran', async () => {
+    try {
+      const launch = launchWith(
+        {
+          argsFor: async () => {
+            beginClaudeAuthSwitch()
+            return {}
+          }
+        },
+        10
+      )
+      await expect(launch).rejects.toMatchObject({ reason: 'accountSwitchInProgress' })
+    } finally {
+      endClaudeAuthSwitch()
+    }
   })
 })
