@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 // Which Retry a press takes: the same message queued again on a host that can, a new copy from the
-// outbox where the host cannot, and nothing yet while the host has not said which.
+// outbox where the host cannot, and none while the host has not said which.
 
 import '@testing-library/jest-dom/vitest'
 import {
@@ -27,7 +27,8 @@ vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
 
 const { useStructuredAgentSessionRetryInPlace } =
   await import('./use-structured-agent-session-retry-in-place')
-const { withHeldRetries } = await import('./use-structured-agent-session-delivery-notices')
+const { structuredAgentSessionDeliveryNotices } =
+  await import('./structured-agent-session-delivery-notices')
 const { MessageRow } = await import('./NativeChatMessageRow')
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
@@ -100,79 +101,54 @@ describe('a Retry press', () => {
     expect(outboxRetry).toHaveBeenCalledWith(ID)
   })
 
-  it('sends a new copy on a host known not to queue it again, and offers no Retry elsewhere', () => {
+  it('sends a new copy on a host known not to queue it again', () => {
     capability.state = 'unsupported'
     const { result } = render([rejected({ kind: 'providerStartFailed' })])
     result.current.retry(ID)
     expect(outboxRetry).toHaveBeenCalledWith(ID)
     expect(mutate).not.toHaveBeenCalled()
-    expect(result.current.retryInPlace).toBeUndefined()
+    expect(result.current.retriesInPlace).toBe(false)
   })
 
   // A new copy sent before the answer would leave the original with a live Retry once the host
-  // says it can: the same words delivered twice.
-  it.each([
-    ['can', 'supported', true],
-    ['cannot', 'unsupported', false]
-  ] as const)(
-    'waits while the host has not answered, then does what a host that %s takes',
-    (_answer, answered, inPlace) => {
-      capability.state = 'unknown'
-      const { result, rerender } = render([rejected({ kind: 'providerStartFailed' })])
-
-      act(() => result.current.retry(ID))
-      act(() => result.current.retry(ID))
-      expect(mutate).not.toHaveBeenCalled()
-      expect(outboxRetry).not.toHaveBeenCalled()
-      expect(result.current.retryInPlace).toBeUndefined()
-      // Shown as pending meanwhile, so it reads as taken rather than dead.
-      expect([...result.current.retryHeld]).toEqual([ID])
-
-      capability.state = answered
-      act(() => rerender())
-
-      expect(mutate).toHaveBeenCalledTimes(inPlace ? 1 : 0)
-      expect(outboxRetry).toHaveBeenCalledTimes(inPlace ? 0 : 1)
-      expect(result.current.retryHeld.size).toBe(0)
-    }
-  )
-})
-
-describe('the notice of a held Retry', () => {
-  it('keeps its Retry, shown as pending, and leaves every other notice as it was', () => {
-    const onRetry = vi.fn()
-    const notices = new Map([
-      [agentJournalSubmissionKey(ID), { text: 'Codex stopped.', onRetry }],
-      [agentJournalSubmissionKey('other'), { text: 'Codex stopped.', onRetry }]
+  // says it can: the same words delivered twice. Nothing is held for the answer either.
+  it('takes no press while the host has not answered, and sends nothing once it has', () => {
+    capability.state = 'unknown'
+    const { result, rerender } = render([
+      rejected({ kind: 'providerStartFailed' }),
+      rejected({ kind: 'providerRejected' }, { clientMessageId: 'refused' })
     ])
 
-    const marked = withHeldRetries(notices, new Set([ID]))
+    act(() => result.current.retry(ID))
+    expect(mutate).not.toHaveBeenCalled()
+    expect(outboxRetry).not.toHaveBeenCalled()
+    // Only a message the host could queue again waits on it; a refusal sends a new copy as ever.
+    expect([...result.current.retryWaitsForHost]).toEqual([ID])
 
-    expect(marked.get(agentJournalSubmissionKey(ID))).toEqual({
-      text: 'Codex stopped.',
-      onRetry,
-      retryPending: true
-    })
-    expect(marked.get(agentJournalSubmissionKey('other'))).toEqual({
-      text: 'Codex stopped.',
-      onRetry
-    })
-    expect(withHeldRetries(notices, new Set())).toBe(notices)
+    capability.state = 'supported'
+    act(() => rerender())
+    expect(mutate).not.toHaveBeenCalled()
+    expect(result.current.retryWaitsForHost.size).toBe(0)
   })
 })
 
-describe('a Retry pressed before the host has answered', () => {
+describe('a Retry before the host has answered', () => {
   function Chat({ submissions }: { submissions: AgentJournalSubmission[] }) {
-    const { retry, retryHeld } = useStructuredAgentSessionRetryInPlace({
+    const { retry, retryWaitsForHost } = useStructuredAgentSessionRetryInPlace({
       target: { kind: 'local' },
       mutate,
       submissions,
       outboxRetry
     })
     const key = agentJournalSubmissionKey(ID)
-    const notices = withHeldRetries(
-      new Map([[key, { text: 'Codex stopped.', onRetry: () => retry(ID) }]]),
-      retryHeld
+    const notices = structuredAgentSessionDeliveryNotices(
+      [],
+      'Codex',
+      retry,
+      submissions,
+      [],
+      new Set(),
+      retryWaitsForHost
     )
     return (
       <MessageRow
@@ -190,25 +166,26 @@ describe('a Retry pressed before the host has answered', () => {
     )
   }
 
-  it('shows the button pending and disabled, then queues the message again once the host can', () => {
+  it('is disabled until the host can queue the message again, then queues it on a press', () => {
     capability.state = 'unknown'
     const submissions = [rejected({ kind: 'providerStartFailed' })]
     const { rerender } = renderUi(<Chat submissions={submissions} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-
-    const pending = screen.getByRole('button', { name: 'Retry' })
-    expect(pending).toBeDisabled()
-    expect(pending).toHaveAttribute('aria-busy', 'true')
+    const waiting = screen.getByRole('button', { name: 'Retry' })
+    expect(waiting).toBeDisabled()
+    expect(waiting).toHaveAttribute('aria-busy', 'true')
+    fireEvent.click(waiting)
     expect(mutate).not.toHaveBeenCalled()
-    expect(outboxRetry).not.toHaveBeenCalled()
 
     capability.state = 'supported'
-    act(() => rerender(<Chat submissions={submissions} />))
+    rerender(<Chat submissions={submissions} />)
+    const ready = screen.getByRole('button', { name: 'Retry' })
+    expect(ready).toBeEnabled()
+    expect(mutate).not.toHaveBeenCalled()
 
+    fireEvent.click(ready)
     expect(mutate).toHaveBeenCalledTimes(1)
     expect(mutate).toHaveBeenCalledWith(...QUEUE_AGAIN)
     expect(outboxRetry).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
   })
 })

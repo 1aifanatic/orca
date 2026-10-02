@@ -11,7 +11,6 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
-import { retryableFailedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
 import {
   createStructuredAgentSessionOutboxEntry,
   reconcileStructuredAgentSessionOutbox
@@ -52,7 +51,6 @@ describe('a message sent from elsewhere whose start failed for good', () => {
   ] as const)('shows as unsent, says why %j, and offers a Retry', (fact, why) => {
     const submissions = [rejected(fact)]
     const retry = vi.fn()
-    const retryable = retryableFailedStartsSentElsewhere(submissions, [])
 
     expect(projectStructuredAgentSessionMessages([TEXT], [], submissions)).toEqual([
       expect.objectContaining({ id: KEY, unsent: true })
@@ -63,28 +61,24 @@ describe('a message sent from elsewhere whose start failed for good', () => {
       retry,
       submissions,
       [],
-      new Set(),
-      (id) => retryable.has(id)
+      new Set()
     ).get(KEY)
     expect(notice?.text).toBe(why)
     notice?.onRetry?.()
     expect(retry).toHaveBeenCalledWith(ID)
   })
 
-  // An older host cannot queue it again, and its words alone would make it a second message.
-  it('says why, with no Retry, where the host cannot queue it again', () => {
-    const notice = structuredAgentSessionDeliveryNotices(
-      [],
-      'Codex',
-      vi.fn(),
-      [rejected({ kind: 'providerStartFailed' })],
-      [],
-      new Set(),
-      () => false
-    ).get(KEY)
-    expect(notice).toEqual({
-      text: 'Codex stopped before it finished starting. Send your message to try again.'
-    })
+  // An older host cannot queue it again, and its words alone would make it a second message; an
+  // original this desktop already sent again as a new one is one of these.
+  it('stays hidden where the host cannot queue it again, as before', () => {
+    expect(
+      projectStructuredAgentSessionMessages(
+        [TEXT],
+        [],
+        [rejected({ kind: 'providerStartFailed' })],
+        { showsFailedStartsSentElsewhere: false }
+      )
+    ).toEqual([])
   })
 
   // The phone draws rows in the order the projection gives them; only the desktop sorts.
@@ -134,23 +128,16 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     ).toEqual([])
   })
 
-  // The host still holds the message, its images included, so its Retry sends it whole.
-  it('offers a Retry for one with images too', () => {
-    const submissions = [rejected({ kind: 'providerStartFailed' })]
-    expect(retryableFailedStartsSentElsewhere(submissions, []).has(ID)).toBe(true)
-  })
-
   // A queued card's message is the card's to show and to retry; drawn again it showed twice.
   it("is never drawn for a queued card's message, whose card shows it", () => {
     const card = { ...rejected({ kind: 'providerStartFailed' }), queuedMessageId: 'card-1' }
 
     expect(projectStructuredAgentSessionMessages([TEXT], [], [card])).toEqual([])
-    expect(retryableFailedStartsSentElsewhere([card], []).size).toBe(0)
   })
 
-  it('offers no Retry for one an agent already took', () => {
+  it('is never drawn for one an agent already took', () => {
     const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
-    expect(retryableFailedStartsSentElsewhere([handedOver], []).size).toBe(0)
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver])).toEqual([])
   })
 })
 
@@ -169,7 +156,6 @@ describe('a message whose start failed for good, queued again by its Retry', () 
     expect(projectStructuredAgentSessionMessages([TEXT], [], [requeued])).toEqual([
       expect.objectContaining({ id: KEY, queued: true })
     ])
-    expect(retryableFailedStartsSentElsewhere([requeued], []).size).toBe(0)
   })
 
   it("moves this desktop's own rejected entry back to sending, with its failure gone", () => {
