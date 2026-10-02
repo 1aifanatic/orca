@@ -1,10 +1,15 @@
 import { z } from 'zod'
 
+// Preserve raw own keys: Zod records erase __proto__ before emptiness checks.
+const rawConfigSchema = z.custom<Record<string, unknown>>(
+  (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+)
+
 const modelRuleSchema = z
   .object({
     providerId: z.string().min(1),
     modelId: z.string().min(1),
-    config: z.record(z.string(), z.unknown())
+    config: rawConfigSchema
   })
   .strict()
 const providerRuleSchema = z
@@ -13,7 +18,7 @@ const providerRuleSchema = z
     templateId: z.string().min(1).nullable().optional(),
     providerName: z.string().min(1).nullable().optional(),
     enabled: z.boolean().optional(),
-    config: z.record(z.string(), z.unknown())
+    config: rawConfigSchema
   })
   .strict()
 const selectionSchema = z
