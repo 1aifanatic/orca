@@ -10,6 +10,8 @@ import { browserManager } from '../browser/browser-manager'
 import { configureBrowserClientPageAutomationRuntime } from '../browser/browser-client-page-automation-runtime'
 import { BrowserClientPageCommandError } from '../browser/browser-client-page-command-failure'
 import { startPreGoneCrashSampling } from '../crash-reporting/process-gone-diagnostics'
+import { setLinuxOomKillDaemonPidSource } from '../crash-reporting/linux-oom-kill-counters'
+import { readDaemonPidRecord } from '../daemon/daemon-init'
 import { recordProcessGoneCrash } from './main-window-lifecycle-flags'
 import { handleGpuChildCrash } from './gpu-lifecycle'
 import { isGpuFallbackCrashCandidate } from '../crash-reporting/gpu-crash-fallback-decision'
@@ -143,6 +145,7 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   // Why: process-gone metrics only see survivors, and the gone-time host memory
   // read lands after the corpse released its pages; both need a live pre-gone
   // sample to compare against in crash reports.
+  setLinuxOomKillDaemonPidSource(() => readDaemonPidRecord()?.pid)
   startPreGoneCrashSampling()
   app.on('child-process-gone', (_event, details) => {
     recordProcessGoneCrash('child', details.type, details.reason, details.exitCode ?? null, {

@@ -11,11 +11,21 @@ import type { CrashReportDetailValue } from '../../shared/crash-reporting'
 
 type CrashReportDetails = Record<string, CrashReportDetailValue>
 
+/** What Orca's cgroup leaf is; a session or terminal scope also counts unrelated siblings. */
+export type LinuxCgroupLeafKind = 'orca' | 'login-session' | 'root' | 'other'
+
 export type LinuxOomKillCounters = {
   /** Host-wide kills from /proc/vmstat (kernel 4.13+). */
   vmstatOomKill?: number
-  /** Kills of processes inside Orca's cgroup v2 subtree, any OOM killer kind. */
+  /** Kills inside Orca main's cgroup v2 subtree (renderers included), any OOM killer kind. */
   cgroupOomKill?: number
+  cgroupLeafKind?: LinuxCgroupLeafKind
+  /** The terminal daemon's cgroup when it is a separate scope from Orca main's. */
+  daemonCgroupPath?: string
+  /** Kills inside that daemon scope: the PTY daemon and every terminal agent. */
+  daemonCgroupOomKill?: number
+  /** True when the daemon shares Orca main's cgroup, so `cgroupOomKill` covers agents too. */
+  daemonSharesCgroup?: boolean
   /** Nearest memory.max at or above Orca's cgroup; undefined when unlimited. */
   cgroupMemoryMaxMB?: number
   /** memory.events `oom` (limit reached) of the cgroup owning that memory.max. */
@@ -36,6 +46,14 @@ function readTextFile(path: string): string | undefined {
 
 let fileReader: FileReader = readTextFile
 let counterPlatform: NodeJS.Platform = process.platform
+let daemonPidSource: (() => number | null | undefined) | null = null
+
+/** Why injected: crash-reporting must not import the daemon provider graph. */
+export function setLinuxOomKillDaemonPidSource(
+  source: (() => number | null | undefined) | null
+): void {
+  daemonPidSource = source
+}
 
 export function setLinuxOomKillFileReaderForTest(
   reader: FileReader | null,
@@ -51,9 +69,51 @@ function keyedCounter(text: string | undefined, key: string): number | undefined
 }
 
 /** cgroup v2 path from the unified `0::/path` line; v1-only hosts have none. */
-function ownCgroupPath(): string | undefined {
-  const match = fileReader('/proc/self/cgroup')?.match(/^0::(\/.*)$/m)
+function cgroupPathOf(procCgroupFile: string): string | undefined {
+  const match = fileReader(procCgroupFile)?.match(/^0::(\/.*)$/m)
   return match?.[1]
+}
+
+function cgroupDir(cgroupPath: string): string {
+  return `/sys/fs/cgroup${cgroupPath === '/' ? '' : cgroupPath}`
+}
+
+function cgroupLeafKind(cgroupPath: string): LinuxCgroupLeafKind {
+  const leaf = cgroupPath.split('/').findLast(Boolean)
+  if (!leaf) {
+    return 'root'
+  }
+  if (/^session-[^/]+\.scope$/.test(leaf)) {
+    return 'login-session'
+  }
+  return /orca/i.test(leaf) ? 'orca' : 'other'
+}
+
+// Why the prefix check: a stale pid record can point at a recycled pid in an unrelated cgroup.
+const DAEMON_SCOPE_LEAF = /^(orca-daemon-|app-orca-).*\.scope$/
+
+function readDaemonCgroup(counters: LinuxOomKillCounters, ownPath: string): void {
+  const pid = daemonPidSource?.()
+  if (!pid || pid <= 0) {
+    return
+  }
+  const daemonPath = cgroupPathOf(`/proc/${pid}/cgroup`)
+  if (!daemonPath) {
+    return
+  }
+  if (daemonPath === ownPath) {
+    counters.daemonSharesCgroup = true
+    return
+  }
+  if (!DAEMON_SCOPE_LEAF.test(daemonPath.split('/').at(-1) ?? '')) {
+    return
+  }
+  counters.daemonSharesCgroup = false
+  counters.daemonCgroupPath = daemonPath
+  counters.daemonCgroupOomKill = keyedCounter(
+    fileReader(`${cgroupDir(daemonPath)}/memory.events`),
+    'oom_kill'
+  )
 }
 
 function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } | undefined {
@@ -76,10 +136,18 @@ export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
   const counters: LinuxOomKillCounters = {
     vmstatOomKill: keyedCounter(fileReader('/proc/vmstat'), 'oom_kill')
   }
-  const cgroupPath = ownCgroupPath()
+  const cgroupPath = cgroupPathOf('/proc/self/cgroup')
   if (cgroupPath) {
-    const dir = `/sys/fs/cgroup${cgroupPath === '/' ? '' : cgroupPath}`
-    counters.cgroupOomKill = keyedCounter(fileReader(`${dir}/memory.events`), 'oom_kill')
+    counters.cgroupOomKill = keyedCounter(
+      fileReader(`${cgroupDir(cgroupPath)}/memory.events`),
+      'oom_kill'
+    )
+    counters.cgroupLeafKind = cgroupLeafKind(cgroupPath)
+    try {
+      readDaemonCgroup(counters, cgroupPath)
+    } catch {
+      // Why: the daemon split is optional; Orca's own counters still stand.
+    }
     const limit = nearestMemoryLimit(cgroupPath)
     if (limit) {
       counters.cgroupMemoryMaxMB = limit.maxMB
@@ -94,9 +162,12 @@ export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
   return counters
 }
 
+// Why "cgroup" in the names: on systemd hosts the terminal daemon and its agents sit in a
+// sibling `orca-daemon-*.scope`, and a shell-launched Orca shares its terminal's scope.
 export type LinuxOomKillVerdict =
-  | 'orca-process-oom-kill'
-  | 'oom-kill-outside-orca'
+  | 'orca-cgroup-oom-kill'
+  | 'daemon-cgroup-oom-kill'
+  | 'oom-kill-outside-orca-cgroups'
   | 'host-oom-kill-unattributed'
   | 'no-kernel-oom-kill'
 
@@ -109,17 +180,21 @@ function counterDelta(before: number | undefined, after: number | undefined): nu
 
 function oomKillVerdict(
   vmstatDelta: number | undefined,
-  cgroupDelta: number | undefined
+  cgroupDelta: number | undefined,
+  daemonCgroupDelta: number | undefined
 ): LinuxOomKillVerdict {
-  // Why cgroup first: it counts only Orca's own processes, while a host kill may be anyone's.
+  // Why Orca's cgroup first: renderers live there, while a host kill may be anyone's.
   if ((cgroupDelta ?? 0) > 0) {
-    return 'orca-process-oom-kill'
+    return 'orca-cgroup-oom-kill'
+  }
+  if ((daemonCgroupDelta ?? 0) > 0) {
+    return 'daemon-cgroup-oom-kill'
   }
   if ((vmstatDelta ?? 0) === 0) {
     return 'no-kernel-oom-kill'
   }
-  // Why: the kernel bumps the victim's memcg on every OOM kill, so a still cgroup counter clears Orca.
-  return cgroupDelta === 0 ? 'oom-kill-outside-orca' : 'host-oom-kill-unattributed'
+  // Why: the kernel bumps the victim's memcg on every OOM kill, so a still counter clears that cgroup.
+  return cgroupDelta === 0 ? 'oom-kill-outside-orca-cgroups' : 'host-oom-kill-unattributed'
 }
 
 function oomKillScope(
@@ -148,6 +223,12 @@ export function linuxOomKillDetails(
 ): CrashReportDetails {
   const vmstatDelta = counterDelta(baseline.vmstatOomKill, current.vmstatOomKill)
   const cgroupDelta = counterDelta(baseline.cgroupOomKill, current.cgroupOomKill)
+  // Why same path only: a daemon restart in the window moves it to a new scope with fresh counters.
+  const daemonCgroupDelta =
+    baseline.daemonCgroupPath !== undefined &&
+    baseline.daemonCgroupPath === current.daemonCgroupPath
+      ? counterDelta(baseline.daemonCgroupOomKill, current.daemonCgroupOomKill)
+      : undefined
   if (vmstatDelta === undefined && cgroupDelta === undefined) {
     return {}
   }
@@ -160,9 +241,18 @@ export function linuxOomKillDetails(
   if (cgroupDelta !== undefined) {
     details.linuxOomKillCgroupDelta = cgroupDelta
   }
-  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta)
+  if (current.cgroupLeafKind !== undefined) {
+    details.linuxOomKillCgroupLeafKind = current.cgroupLeafKind
+  }
+  if (daemonCgroupDelta !== undefined) {
+    details.linuxOomKillDaemonCgroupDelta = daemonCgroupDelta
+  }
+  if (current.daemonSharesCgroup !== undefined) {
+    details.linuxOomKillDaemonSharesCgroup = current.daemonSharesCgroup
+  }
+  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta)
   details.linuxOomKillVerdict = verdict
-  const scope = verdict === 'orca-process-oom-kill' ? oomKillScope(baseline, current) : undefined
+  const scope = verdict === 'orca-cgroup-oom-kill' ? oomKillScope(baseline, current) : undefined
   if (scope) {
     details.linuxOomKillScope = scope
   }

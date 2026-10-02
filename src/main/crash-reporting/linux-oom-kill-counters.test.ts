@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   linuxOomKillDetails,
   readLinuxOomKillCounters,
+  setLinuxOomKillDaemonPidSource,
   setLinuxOomKillFileReaderForTest
 } from './linux-oom-kill-counters'
 import {
@@ -14,15 +15,23 @@ import { setSwapVolumeFreeSpaceReaderForTest } from './swap-volume-free-space'
 
 // Paths and contents as read on Ubuntu 24.04 (WSL2 kernel 6.18) during the scan-35 repro.
 const SCOPE = '/user.slice/user-1000.slice/user@1000.service/app.slice/orca.scope'
+const DAEMON_SCOPE = '/user.slice/user-1000.slice/user@1000.service/app.slice/orca-daemon-n1.scope'
+const DAEMON_PID = 4242
 
 function fakeHost(state: {
   hostKills: number
   cgroupKills: number
   memoryMax?: string
   sliceOomEvents?: number
+  daemonCgroup?: string
+  daemonKills?: number
 }) {
   return (path: string): string | undefined => {
     switch (path) {
+      case `/proc/${DAEMON_PID}/cgroup`:
+        return state.daemonCgroup ? `0::${state.daemonCgroup}\n` : undefined
+      case `/sys/fs/cgroup${DAEMON_SCOPE}/memory.events`:
+        return `oom 0\noom_kill ${state.daemonKills ?? 0}\n`
       case '/proc/vmstat':
         return `pgfault 123\noom_kill ${state.hostKills}\npgmajfault 4\n`
       case '/proc/self/cgroup':
@@ -45,6 +54,7 @@ function fakeHost(state: {
 
 afterEach(() => {
   setLinuxOomKillFileReaderForTest(null)
+  setLinuxOomKillDaemonPidSource(null)
 })
 
 describe('readLinuxOomKillCounters', () => {
@@ -66,10 +76,68 @@ describe('readLinuxOomKillCounters', () => {
     expect(readLinuxOomKillCounters()).toEqual({
       vmstatOomKill: 3,
       cgroupOomKill: 1,
+      cgroupLeafKind: 'orca',
       cgroupMemoryMaxMB: 8192,
       memoryLimitOomEvents: 2,
       memoryPressureSomeAvg10: 42.5
     })
+  })
+
+  it('reads the terminal daemon scope separately when it is a sibling of Orca main', () => {
+    setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
+    setLinuxOomKillFileReaderForTest(
+      fakeHost({
+        hostKills: 3,
+        cgroupKills: 0,
+        daemonCgroup: DAEMON_SCOPE,
+        daemonKills: 2
+      }),
+      'linux'
+    )
+    expect(readLinuxOomKillCounters()).toMatchObject({
+      daemonSharesCgroup: false,
+      daemonCgroupPath: DAEMON_SCOPE,
+      daemonCgroupOomKill: 2
+    })
+  })
+
+  it('marks an unscoped daemon as sharing Orca main cgroup', () => {
+    setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
+    setLinuxOomKillFileReaderForTest(
+      fakeHost({ hostKills: 3, cgroupKills: 0, daemonCgroup: SCOPE }),
+      'linux'
+    )
+    const counters = readLinuxOomKillCounters()
+    expect(counters).toMatchObject({ daemonSharesCgroup: true })
+    expect(counters).not.toHaveProperty('daemonCgroupPath')
+  })
+
+  it('ignores a daemon pid whose cgroup is not an Orca daemon scope (recycled pid)', () => {
+    setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
+    setLinuxOomKillFileReaderForTest(
+      fakeHost({
+        hostKills: 3,
+        cgroupKills: 0,
+        daemonCgroup: '/system.slice/cron.service'
+      }),
+      'linux'
+    )
+    const counters = readLinuxOomKillCounters()
+    expect(counters).not.toHaveProperty('daemonSharesCgroup')
+    expect(counters).not.toHaveProperty('daemonCgroupOomKill')
+  })
+
+  it.each([
+    ['/user.slice/user-1000.slice/session-3.scope', 'login-session'],
+    ['/user.slice/user-1000.slice/user@1000.service/app.slice/app-Alacritty-9.scope', 'other'],
+    ['/', 'root']
+  ])('classifies a cgroup leaf of %s as %s', (cgroup, kind) => {
+    const host = fakeHost({ hostKills: 0, cgroupKills: 0 })
+    setLinuxOomKillFileReaderForTest(
+      (path) => (path === '/proc/self/cgroup' ? `0::${cgroup}\n` : host(path)),
+      'linux'
+    )
+    expect(readLinuxOomKillCounters()).toMatchObject({ cgroupLeafKind: kind })
   })
 
   it('degrades to the host counter on a cgroup v1-only host', () => {
@@ -108,7 +176,7 @@ describe('linuxOomKillDetails', () => {
       linuxOomKillBaselineAgeMs: 12_000,
       linuxOomKillHostDelta: 1,
       linuxOomKillCgroupDelta: 1,
-      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'memcg-limit',
       linuxCgroupMemoryMaxMB: 600,
       linuxMemoryPressurePreGoneSomeAvg10: 61
@@ -122,7 +190,7 @@ describe('linuxOomKillDetails', () => {
         cgroupOomKill: 1
       })
     ).toMatchObject({
-      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'global'
     })
     expect(
@@ -142,7 +210,7 @@ describe('linuxOomKillDetails', () => {
         }
       )
     ).toMatchObject({
-      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'global'
     })
   })
@@ -155,9 +223,55 @@ describe('linuxOomKillDetails', () => {
     expect(details).toMatchObject({
       linuxOomKillHostDelta: 1,
       linuxOomKillCgroupDelta: 0,
-      linuxOomKillVerdict: 'oom-kill-outside-orca'
+      linuxOomKillVerdict: 'oom-kill-outside-orca-cgroups'
     })
     expect(details).not.toHaveProperty('linuxOomKillScope')
+  })
+
+  it('names a kill in the terminal daemon scope as a daemon-cgroup kill', () => {
+    const before = {
+      vmstatOomKill: 5,
+      cgroupOomKill: 0,
+      cgroupLeafKind: 'orca' as const,
+      daemonSharesCgroup: false,
+      daemonCgroupPath: DAEMON_SCOPE,
+      daemonCgroupOomKill: 0
+    }
+    const details = linuxOomKillDetails(before, 5_000, {
+      ...before,
+      vmstatOomKill: 6,
+      daemonCgroupOomKill: 1
+    })
+    expect(details).toMatchObject({
+      linuxOomKillCgroupDelta: 0,
+      linuxOomKillDaemonCgroupDelta: 1,
+      linuxOomKillDaemonSharesCgroup: false,
+      linuxOomKillCgroupLeafKind: 'orca',
+      linuxOomKillVerdict: 'daemon-cgroup-oom-kill'
+    })
+    expect(details).not.toHaveProperty('linuxOomKillScope')
+  })
+
+  it('drops the daemon delta when the daemon moved to a new scope in the window', () => {
+    const details = linuxOomKillDetails(
+      {
+        vmstatOomKill: 5,
+        cgroupOomKill: 0,
+        daemonCgroupPath: '/a/orca-daemon-old.scope',
+        daemonCgroupOomKill: 4
+      },
+      5_000,
+      {
+        vmstatOomKill: 6,
+        cgroupOomKill: 0,
+        daemonCgroupPath: DAEMON_SCOPE,
+        daemonCgroupOomKill: 0
+      }
+    )
+    expect(details).not.toHaveProperty('linuxOomKillDaemonCgroupDelta')
+    expect(details).toMatchObject({
+      linuxOomKillVerdict: 'oom-kill-outside-orca-cgroups'
+    })
   })
 
   it('leaves a host-only kill unattributed when Orca has no readable cgroup counter', () => {
@@ -213,7 +327,7 @@ describe('preGoneLinuxOomKillDetails', () => {
     expect(preGoneLinuxOomKillDetails(20_050)).toMatchObject({
       linuxOomKillBaselineAgeMs: 10_050,
       linuxOomKillCgroupDelta: 1,
-      linuxOomKillVerdict: 'orca-process-oom-kill'
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill'
     })
   })
 
