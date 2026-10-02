@@ -96,7 +96,7 @@ export function useNativeChatStructuredComposerSend({
             (entry) => entry.clientMessageId
           )
         )
-        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer)
+        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer, { releaseAtQuit: true })
       })
         .then(
           ({ accepted, error }) => {

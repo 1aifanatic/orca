@@ -340,6 +340,15 @@ describe('a draft dies with its chat', () => {
     expect(next.readNativeChatDraftCache(next.nativeChatDraftKey(chats.otherPane))).toBe('unsent')
   })
 
+  it('forgets the sends of a chat that ended', () => {
+    const key = cache.nativeChatDraftKey({ sessionId: 's-ended', paneKey: '' })
+    cache.clearNativeChatDraftForSend(key, () => {})
+
+    cache.discardNativeChatDrafts({ sessionIds: ['s-ended'] })
+
+    expect(cache.nativeChatSendsAwaitingHostForTests(key)).toBe(0)
+  })
+
   it("deletes every pane's draft of a closed terminal tab, and no other tab's", async () => {
     cache.discardNativeChatDrafts({ terminalTabIds: ['tab-2'] })
 

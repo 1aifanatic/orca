@@ -77,6 +77,7 @@ import {
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 import { noteStructuredAgentSessionMessagesDelivered } from './structured-agent-session-message-delivery'
+import { flushNativeChatDraftPersists } from './native-chat-draft-storage'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
@@ -373,7 +374,7 @@ describe('the saved draft at send', () => {
     renderComposer(structured)
     const input = textarea()
     changePrompt(input, text)
-    act(() => window.dispatchEvent(new Event('pagehide')))
+    act(() => flushNativeChatDraftPersists())
     await act(async () => pressEnter(input))
     return input
   }
@@ -428,7 +429,7 @@ describe('the saved draft at send', () => {
     })
 
     changePrompt(input, 'message B')
-    act(() => window.dispatchEvent(new Event('pagehide')))
+    act(() => flushNativeChatDraftPersists())
     await act(async () => pressEnter(input))
     const later = getStructuredAgentSessionOutbox(structured.sessionId).filter(
       (entry) => entry.clientMessageId !== held.clientMessageId
@@ -449,7 +450,7 @@ describe('the saved draft at send', () => {
     const input = await sendTyped(structured, 'message A')
     const [first] = getStructuredAgentSessionOutbox(structured.sessionId)
     changePrompt(input, 'message B')
-    act(() => window.dispatchEvent(new Event('pagehide')))
+    act(() => flushNativeChatDraftPersists())
     await act(async () => pressEnter(input))
 
     act(() =>
@@ -459,6 +460,23 @@ describe('the saved draft at send', () => {
 
     expect(savedText()).toBe('message B')
   })
+
+  // A graceful quit commits the outbox, which still has an undelivered message, so the hold ends
+  // there: a reply lost after the host took the message cannot bring it back on the next launch.
+  it.each(['pagehide', 'beforeunload'])(
+    'saves the box when the window goes away (%s) before the host answered',
+    async (event) => {
+      const structured = outboxTransport()
+      await sendTyped(structured, 'ship it')
+      expect(savedText()).toBe('ship it')
+
+      act(() => window.dispatchEvent(new Event(event)))
+      await act(async () => {})
+
+      expect(savedText()).toBeNull()
+      expect(getStructuredAgentSessionOutbox(structured.sessionId)).toHaveLength(1)
+    }
+  )
 
   it('keeps what was typed after Enter when the host takes the message', async () => {
     const structured = outboxTransport()

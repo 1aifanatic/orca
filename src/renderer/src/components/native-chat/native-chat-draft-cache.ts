@@ -4,6 +4,7 @@ import type { JSONContent } from '@tiptap/react'
 // subscribe to changes, so typing in one pane shows in every other pane on the same chat.
 
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import { createNativeChatDraftSendHolds } from './native-chat-draft-send-holds'
 import {
   awaitNativeChatDraftSaved,
   hasPendingNativeChatDraftPersist,
@@ -109,6 +110,7 @@ export function discardNativeChatDrafts(ended: {
       }
     }
   }
+  sendHolds.forget(doomed)
   for (const draftKey of doomed) {
     if (drafts().has(draftKey)) {
       setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS })
@@ -129,14 +131,10 @@ function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
     : null
 }
 
-// Chats whose box is being cleared for a send; that clear is saved once the host has the message.
-const clearingForSend = new Set<string>()
-// Per chat, the sends whose message the host does not have yet, by send order.
-const sendsAwaitingHost = new Map<string, Set<number>>()
-let sendSequence = 0
+const sendHolds = createNativeChatDraftSendHolds((draftKey) => void persistNow(draftKey))
 
 function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
-  if (clearingForSend.has(draftKey)) {
+  if (sendHolds.isClearingForSend(draftKey)) {
     return Promise.resolve('memory-only')
   }
   return persistNativeChatDraftNow(draftKey, persistedDraft(draftKey))
@@ -148,40 +146,22 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
  * the message is back in the box; a message that stays undelivered never calls it. It saves the
  * draft as it is then, keeping whatever was typed since Enter, unless a later send on the chat is
  * still waiting for its host. A store that saves a send's clear at once (the web client's browser
- * storage) saves it now instead.
+ * storage) saves it now instead. With `releaseAtQuit`, a graceful quit ends the hold too (a
+ * structured send, whose outbox keeps an undelivered message across a quit).
  */
-export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
+export function clearNativeChatDraftForSend(
+  draftKey: string,
+  clear: () => void,
+  options: { releaseAtQuit?: boolean } = {}
+): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.
   if (hasPendingNativeChatDraftPersist(draftKey)) {
     void persistNow(draftKey)
   }
-  const sequence = (sendSequence += 1)
-  const awaiting = sendsAwaitingHost.get(draftKey) ?? new Set()
-  sendsAwaitingHost.set(draftKey, awaiting.add(sequence))
-  if (nativeChatDraftStoreSavesSendClearAtOnce()) {
-    clear()
-  } else {
-    clearingForSend.add(draftKey)
-    try {
-      clear()
-    } finally {
-      clearingForSend.delete(draftKey)
-    }
-  }
-  return () => {
-    if (!awaiting.delete(sequence)) {
-      return
-    }
-    if (awaiting.size === 0) {
-      sendsAwaitingHost.delete(draftKey)
-    }
-    // A later send still waiting keeps its own message saved, and saves once the host has it. An
-    // earlier one that never lands (held for Retry) holds nothing up.
-    if (Array.from(awaiting).some((later) => later > sequence)) {
-      return
-    }
-    void persistNow(draftKey)
-  }
+  return sendHolds.clearForSend(draftKey, clear, {
+    saveAtOnce: nativeChatDraftStoreSavesSendClearAtOnce(),
+    releaseAtQuit: options.releaseAtQuit === true
+  })
 }
 
 export function readNativeChatDraftCache(draftKey: string): string {
@@ -351,8 +331,12 @@ export function subscribeToNativeChatDraftAppend(
 const documentCache = new Map<string, { text: string; document: JSONContent }>()
 
 /** Clears memory and the saved drafts on disk. */
+export function nativeChatSendsAwaitingHostForTests(draftKey: string): number {
+  return sendHolds.sendsAwaitingForTests(draftKey)
+}
+
 export function clearNativeChatDraftCacheForTests(): void {
-  sendsAwaitingHost.clear()
+  sendHolds.clearForTests()
   draftCache.clear()
   documentCache.clear()
   hydrated = false
