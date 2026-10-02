@@ -3,14 +3,17 @@
  * chunking (the receiver's parser rejects oversized lines) and the safe-index
  * clamp shared by the batcher's bulk write slicing and keep-tail dropping.
  */
+import { resolveSynchronizedOutputSafeSplit } from '../../shared/terminal-synchronized-output-scan'
 import { encodeNdjson } from './ndjson'
+import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 
 export function encodeStreamDataEvent(
   sessionId: string,
   data: string,
   rawLength?: number,
   seq?: number,
-  transformed?: boolean
+  transformed?: boolean,
+  incarnationId?: PtyIncarnationId
 ): string {
   return encodeNdjson({
     type: 'event',
@@ -18,6 +21,7 @@ export function encodeStreamDataEvent(
     sessionId,
     payload: {
       data,
+      ...(incarnationId === undefined ? {} : { incarnationId }),
       ...(seq === undefined ? {} : { seq }),
       ...(rawLength === undefined ? {} : { rawLength }),
       ...(rawLength === undefined ? {} : { sequenceChars: rawLength }),
@@ -26,8 +30,16 @@ export function encodeStreamDataEvent(
   })
 }
 
-function streamDataEventLineBytes(sessionId: string, data: string, rawLength?: number): number {
-  return Buffer.byteLength(encodeStreamDataEvent(sessionId, data, rawLength), 'utf8')
+function streamDataEventLineBytes(
+  sessionId: string,
+  data: string,
+  rawLength?: number,
+  incarnationId?: PtyIncarnationId
+): number {
+  return Buffer.byteLength(
+    encodeStreamDataEvent(sessionId, data, rawLength, undefined, false, incarnationId),
+    'utf8'
+  )
 }
 
 function isHighSurrogate(value: number): boolean {
@@ -36,6 +48,21 @@ function isHighSurrogate(value: number): boolean {
 
 function isLowSurrogate(value: number): boolean {
   return value >= 0xdc00 && value <= 0xdfff
+}
+
+/**
+ * Bulk-write split policy: frame-align first so a held remainder cannot strand an
+ * open DEC 2026 frame's closing \x1b[?2026l (xterm then stops repainting until its
+ * 1s timeout), then let the surrogate clamp have the final say.
+ */
+export function clampToSafeBulkWriteSplitIndex(value: string, end: number): number {
+  // Math.max(1): the surrogate clamp can decrement an aligned index to 0 (e.g.
+  // ('\u{1F600}aaaa', 1)), and a 0-length slice would never shift the batcher's
+  // queue entry, spinning its drain loop.
+  return Math.max(
+    1,
+    clampToSafeSplitIndex(value, 0, resolveSynchronizedOutputSafeSplit(value, end))
+  )
 }
 
 export function clampToSafeSplitIndex(value: string, start: number, end: number): number {
@@ -63,20 +90,28 @@ export function splitStreamDataForNdjson(
   sessionId: string,
   data: string,
   maxLineBytes: number,
-  sequenceChars?: number
+  sequenceChars?: number,
+  incarnationId?: PtyIncarnationId
 ): string[] {
-  if (streamDataEventLineBytes(sessionId, data, sequenceChars) <= maxLineBytes) {
+  if (streamDataEventLineBytes(sessionId, data, sequenceChars, incarnationId) <= maxLineBytes) {
     return [data]
   }
 
-  return splitOversizedStreamDataForNdjson(sessionId, data, maxLineBytes, sequenceChars)
+  return splitOversizedStreamDataForNdjson(
+    sessionId,
+    data,
+    maxLineBytes,
+    sequenceChars,
+    incarnationId
+  )
 }
 
 function splitOversizedStreamDataForNdjson(
   sessionId: string,
   data: string,
   maxLineBytes: number,
-  sequenceChars?: number
+  sequenceChars?: number,
+  incarnationId?: PtyIncarnationId
 ): string[] {
   const chunks: string[] = []
   let start = 0
@@ -94,7 +129,8 @@ function splitOversizedStreamDataForNdjson(
       }
 
       if (
-        streamDataEventLineBytes(sessionId, data.slice(start, mid), sequenceChars) <= maxLineBytes
+        streamDataEventLineBytes(sessionId, data.slice(start, mid), sequenceChars, incarnationId) <=
+        maxLineBytes
       ) {
         best = mid
         low = rawMid + 1
@@ -118,28 +154,36 @@ export function writeStreamDataEvents(
   maxLineBytes: number,
   rawLength = data.length,
   seq?: number,
-  transformed = false
+  transformed = false,
+  incarnationId?: PtyIncarnationId
 ): void {
   const explicitRawLength = rawLength === data.length ? undefined : rawLength
   if (transformed) {
-    streamSocket.write(encodeStreamDataEvent(sessionId, data, rawLength, seq, true))
+    streamSocket.write(encodeStreamDataEvent(sessionId, data, rawLength, seq, true, incarnationId))
     return
   }
   const carriesMetadata = explicitRawLength !== undefined || seq !== undefined
   let chunks: string[]
   if (!carriesMetadata) {
-    const line = encodeStreamDataEvent(sessionId, data)
+    const line = encodeStreamDataEvent(sessionId, data, undefined, undefined, false, incarnationId)
     if (Buffer.byteLength(line, 'utf8') <= maxLineBytes) {
       streamSocket.write(line)
       return
     }
-    chunks = splitOversizedStreamDataForNdjson(sessionId, data, maxLineBytes)
+    chunks = splitOversizedStreamDataForNdjson(
+      sessionId,
+      data,
+      maxLineBytes,
+      undefined,
+      incarnationId
+    )
   } else {
     chunks = splitStreamDataForNdjson(
       sessionId,
       data,
       Math.max(1, maxLineBytes - 96),
-      explicitRawLength
+      explicitRawLength,
+      incarnationId
     )
   }
   let consumed = 0
@@ -147,6 +191,8 @@ export function writeStreamDataEvents(
     consumed += chunk.length
     const chunkEndSeq = seq === undefined ? undefined : seq - (data.length - consumed)
     const chunkRawLength = explicitRawLength === 0 ? 0 : carriesMetadata ? chunk.length : undefined
-    streamSocket.write(encodeStreamDataEvent(sessionId, chunk, chunkRawLength, chunkEndSeq))
+    streamSocket.write(
+      encodeStreamDataEvent(sessionId, chunk, chunkRawLength, chunkEndSeq, false, incarnationId)
+    )
   }
 }

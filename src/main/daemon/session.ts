@@ -12,12 +12,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import { randomUUID } from 'node:crypto'
 import { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 
-import type {
-  SessionState,
-  ShellReadyState,
-  TakePendingOutputResult,
-  TerminalSnapshot
-} from './types'
+import type * as SessionProtocol from './types'
 import type { PtyChildProcessVerdict } from '../../shared/terminal-process-inspection'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 
@@ -28,7 +23,7 @@ export class Session {
   readonly launchAgent: TuiAgent | null
   readonly wslDistro: string | null
   readonly processNameIsSpawnFile: boolean
-  private _state: SessionState = 'running'
+  private _state: SessionProtocol.SessionState = 'running'
   private _exitCode: number | null = null
   private _disposed = false
   private subprocess: SubprocessHandle
@@ -55,7 +50,8 @@ export class Session {
       wslDistro: opts.wslDistro,
       historySeedChunks: opts.historySeedChunks,
       subprocess: this.subprocess,
-      isAlive: () => !this._disposed && this._state !== 'exited'
+      isAlive: () => !this._disposed && this._state !== 'exited',
+      incarnationId: this.incarnationId
     })
     this.output = pipeline.output
     this.recoveryBarrier = pipeline.recoveryBarrier
@@ -95,11 +91,11 @@ export class Session {
     this.subprocess.onExit((code, cause) => this.handleSubprocessExit(code, cause))
   }
 
-  get state(): SessionState {
+  get state(): SessionProtocol.SessionState {
     return this._state
   }
 
-  get shellState(): ShellReadyState {
+  get shellState(): SessionProtocol.ShellReadyState {
     return this.shellReady.state
   }
 
@@ -146,13 +142,9 @@ export class Session {
 
     // Daemon POSIX PTYs need the local provider's cooked-echo containment (#13137).
     // DA1/CPR stay immediate unless an echo-risk reply is already held (#13892, #15559).
-    if (this.startupIngress.answerLiveQueryReply(data)) {
-      return
-    }
-
-    // Why: keep queuing during the post-ready flush-gate window ('ready' but not yet flushed); a
-    // direct write would race fresh input ahead of the buffered startup command.
-    if (this.shellReady.tryEnqueue(data)) {
+    // Why the queue: keep queuing during the post-ready flush-gate window ('ready' but not yet
+    // flushed); a direct write would race fresh input ahead of the buffered startup command.
+    if (this.startupIngress.answerLiveQueryReply(data) || this.shellReady.tryEnqueue(data)) {
       return
     }
 
@@ -220,7 +212,7 @@ export class Session {
     this.producerPause.release({ resume: true })
   }
 
-  getSnapshot(opts: { scrollbackRows?: number } = {}): TerminalSnapshot | null {
+  getSnapshot(opts: { scrollbackRows?: number } = {}): SessionProtocol.TerminalSnapshot | null {
     this.startupIngress.snapshotBarrier()
     return this.output.getSnapshot(opts)
   }
@@ -236,7 +228,7 @@ export class Session {
   takePendingOutput(
     includeSnapshot: boolean,
     opts: { teardownSnapshot?: boolean } = {}
-  ): TakePendingOutputResult | null {
+  ): SessionProtocol.TakePendingOutputResult | null {
     if (this._disposed) {
       return null
     }
@@ -275,6 +267,10 @@ export class Session {
 
   clearScrollback(): void {
     this.output.clearScrollback(this.subprocess, this.shellReady.isGatingWrites)
+  }
+
+  resetInputModes(): void {
+    this.output.applyInputModeGround(this.recoveryBarrier.groundInputModes())
   }
 
   prepareForFinalSnapshot(): string {
