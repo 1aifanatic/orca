@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _settleGitObjectQuarantineSweepsForTests } from '../shared/git-object-quarantine'
 import type { GitExec } from './git-handler-ops'
 import { createRelayGitObjectQuarantine } from './relay-git-object-quarantine'
 
@@ -16,8 +15,7 @@ describe('createRelayGitObjectQuarantine', () => {
     git = vi.fn(async () => ({ stdout: '.git\n', stderr: '' }))
   })
 
-  afterEach(async () => {
-    await _settleGitObjectQuarantineSweepsForTests()
+  afterEach(() => {
     vi.unstubAllEnvs()
     rmSync(root, { recursive: true, force: true })
   })

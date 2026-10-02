@@ -6,7 +6,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  utimesSync,
   writeFileSync
 } from 'node:fs'
 import type * as NodeFsPromises from 'node:fs/promises'
@@ -14,19 +13,15 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  _resetGitObjectQuarantineSweepForTests,
-  _settleGitObjectQuarantineSweepsForTests,
   createGitObjectQuarantine,
   GIT_OBJECT_QUARANTINE_DIR_PREFIX,
   inheritedObjectStore,
-  STALE_GIT_OBJECT_QUARANTINE_AGE_MS,
   type GitObjectQuarantineEnv
 } from './git-object-quarantine'
 
-const { failedRenameTargets, objectsReaddirGate } = vi.hoisted(() => {
-  // Why: holds the stale sweep's `objects/` listing so a test can show the command does not wait for it.
-  const objectsReaddirGate: { current: Promise<void> | undefined } = { current: undefined }
-  return { failedRenameTargets: new Set<string>(), objectsReaddirGate }
+const { failedRenameTargets, renamedTargets } = vi.hoisted(() => {
+  const renamedTargets: string[] = []
+  return { failedRenameTargets: new Set<string>(), renamedTargets }
 })
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -37,13 +32,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       if (failedRenameTargets.has(basename(to))) {
         throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
       }
-      return actual.rename(from, to)
-    },
-    readdir: async (path: string) => {
-      if (basename(path) === 'objects') {
-        await objectsReaddirGate.current
-      }
-      return actual.readdir(path)
+      await actual.rename(from, to)
+      renamedTargets.push(basename(to))
     }
   }
 })
@@ -53,15 +43,14 @@ describe('createGitObjectQuarantine', () => {
   let objects: string
 
   beforeEach(() => {
-    _resetGitObjectQuarantineSweepForTests()
     root = mkdtempSync(join(tmpdir(), 'orca-object-quarantine-'))
     objects = join(root, 'objects')
     mkdirSync(join(objects, 'pack'), { recursive: true })
   })
 
-  afterEach(async () => {
-    await _settleGitObjectQuarantineSweepsForTests()
+  afterEach(() => {
     failedRenameTargets.clear()
+    renamedTargets.length = 0
     vi.restoreAllMocks()
     rmSync(root, { recursive: true, force: true })
   })
@@ -229,14 +218,14 @@ describe('createGitObjectQuarantine', () => {
     )
   })
 
-  it('moves packs Git fetched into the scratch dir to the real store, index included', async () => {
+  it('moves packs Git fetched into the scratch dir to the real store, index last', async () => {
     await createGitObjectQuarantine(resolveNative()).run(async (env) => {
       const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
       mkdirSync(scratchPack)
-      for (const file of ['pack-abc1.pack', 'pack-abc1.idx', 'pack-abc1.promisor']) {
+      for (const file of ['pack-abc1.idx', 'pack-abc1.pack', 'pack-abc1.promisor']) {
         writeFileSync(join(scratchPack, file), file)
       }
-      // A pack still being written has no index yet; Git could not use it.
+      // A pack without its index is invisible to Git, so moving it is harmless.
       writeFileSync(join(scratchPack, 'pack-def2.pack'), 'partial')
       writeFileSync(join(scratchPack, 'tmp_pack_XYZ'), 'partial')
       mkdirSync(join(env?.GIT_OBJECT_DIRECTORY ?? '', 'ab'))
@@ -246,24 +235,11 @@ describe('createGitObjectQuarantine', () => {
     expect(readdirSync(join(objects, 'pack')).sort()).toEqual([
       'pack-abc1.idx',
       'pack-abc1.pack',
-      'pack-abc1.promisor'
+      'pack-abc1.promisor',
+      'pack-def2.pack'
     ])
+    expect(renamedTargets.at(-1)).toBe('pack-abc1.idx')
     expect(existsSync(join(objects, 'ab'))).toBe(false)
-    expect(scratchDirs()).toEqual([])
-  })
-
-  it('rolls back a pack whose index could not be moved, keeping the other packs', async () => {
-    failedRenameTargets.add('pack-abc1.idx')
-
-    await createGitObjectQuarantine(resolveNative()).run(async (env) => {
-      const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
-      mkdirSync(scratchPack)
-      for (const file of ['pack-abc1.pack', 'pack-abc1.idx', 'pack-def2.pack', 'pack-def2.idx']) {
-        writeFileSync(join(scratchPack, file), file)
-      }
-    })
-
-    expect(readdirSync(join(objects, 'pack')).sort()).toEqual(['pack-def2.idx', 'pack-def2.pack'])
     expect(scratchDirs()).toEqual([])
   })
 
@@ -282,71 +258,28 @@ describe('createGitObjectQuarantine', () => {
     expect(readFileSync(join(objects, 'pack', 'pack-abc1.idx'), 'utf8')).toBe('installed')
   })
 
-  it('never moves a fetched pack’s `.keep` into the real store', async () => {
-    await createGitObjectQuarantine(resolveNative()).run(async (env) => {
-      const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
-      mkdirSync(scratchPack)
-      for (const file of ['pack-abc1.pack', 'pack-abc1.idx', 'pack-abc1.keep']) {
-        writeFileSync(join(scratchPack, file), file)
-      }
-    })
+  it('stops at a failed pack move, still removing the scratch dir and returning the result', async () => {
+    failedRenameTargets.add('pack-abc1.pack')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    expect(readdirSync(join(objects, 'pack')).sort()).toEqual(['pack-abc1.idx', 'pack-abc1.pack'])
-  })
-
-  describe('stale scratch sweep', () => {
-    const DAY = 24 * 60 * 60 * 1000
-    const makeDir = (name: string, ageMs: number): string => {
-      const dir = join(objects, name)
-      mkdirSync(dir)
-      const modified = (Date.now() - ageMs) / 1000
-      utimesSync(dir, modified, modified)
-      return dir
-    }
-
-    it('removes scratch dirs past Git’s own two-week expiry and keeps younger ones', async () => {
-      expect(STALE_GIT_OBJECT_QUARANTINE_AGE_MS).toBe(14 * DAY)
-      const expired = makeDir(`${GIT_OBJECT_QUARANTINE_DIR_PREFIX}old`, 15 * DAY)
-      const young = makeDir(`${GIT_OBJECT_QUARANTINE_DIR_PREFIX}young`, 13 * DAY)
-      const gitOwn = makeDir('tmp_objdir-incoming-old', 15 * DAY)
-
-      await createGitObjectQuarantine(resolveNative()).run(async () => {})
-      await _settleGitObjectQuarantineSweepsForTests()
-
-      expect(existsSync(expired)).toBe(false)
-      expect(existsSync(young)).toBe(true)
-      expect(existsSync(gitOwn)).toBe(true)
-    })
-
-    it('sweeps once per objects dir', async () => {
-      await createGitObjectQuarantine(resolveNative()).run(async () => {})
-      await _settleGitObjectQuarantineSweepsForTests()
-      const expired = makeDir(`${GIT_OBJECT_QUARANTINE_DIR_PREFIX}old`, 15 * DAY)
-
-      await createGitObjectQuarantine(resolveNative()).run(async () => {})
-      await _settleGitObjectQuarantineSweepsForTests()
-
-      expect(existsSync(expired)).toBe(true)
-    })
-
-    it('does not hold the command back while the sweep runs', async () => {
-      let releaseSweep = (): void => {}
-      objectsReaddirGate.current = new Promise((resolve) => {
-        releaseSweep = resolve
+    await expect(
+      createGitObjectQuarantine(resolveNative()).run(async (env) => {
+        const scratchPack = join(env?.GIT_OBJECT_DIRECTORY ?? '', 'pack')
+        mkdirSync(scratchPack)
+        for (const file of ['pack-abc1.idx', 'pack-abc1.pack']) {
+          writeFileSync(join(scratchPack, file), file)
+        }
+        return 'ok'
       })
-      let commandRan = false
-      try {
-        const running = createGitObjectQuarantine(resolveNative()).run(async () => {
-          commandRan = true
-        })
-        await vi.waitFor(() => expect(commandRan).toBe(true))
-        releaseSweep()
-        await running
-      } finally {
-        releaseSweep()
-        objectsReaddirGate.current = undefined
-      }
-    })
+    ).resolves.toBe('ok')
+
+    // The index never lands without its pack.
+    expect(readdirSync(join(objects, 'pack'))).toEqual([])
+    expect(scratchDirs()).toEqual([])
+    expect(warn).toHaveBeenCalledWith(
+      '[git-object-quarantine] could not keep a fetched pack',
+      expect.any(Error)
+    )
   })
 })
 

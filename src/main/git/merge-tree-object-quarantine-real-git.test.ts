@@ -123,6 +123,22 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
     expect(clone.scratchDirectories()).toEqual([])
   })
 
+  it('lists a partial clone’s conflicts offline once an earlier check downloaded the contents', async () => {
+    const clone = fixture.createPartialClone()
+    const git = (...args: string[]): string => fixture.git(clone.clonePath, ...args).trim()
+    const base = git('rev-parse', 'origin/main')
+    const head = git('rev-parse', 'origin/feature-conflict')
+
+    const online = await getPRConflictSummary(clone.clonePath, 'main', base, head)
+    git('remote', 'set-url', 'origin', join(dirname(clone.clonePath), 'unreachable-origin'))
+    __resetPRConflictSummaryCachesForTests()
+    const offline = await getPRConflictSummary(clone.clonePath, 'main', base, head)
+
+    expect(online?.files).toEqual(['shared.txt'])
+    expect(offline?.files).toEqual(['shared.txt'])
+    expect(clone.scratchDirectories()).toEqual([])
+  })
+
   it('removes the scratch directory when the Git command fails', async () => {
     const quarantine = createLocalGitObjectQuarantine(fixture.linkedPath)
     let scratch: string | undefined

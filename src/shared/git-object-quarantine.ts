@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, rename, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from './cross-platform-path'
 import { removeTree } from './windows-transient-lock-removal'
@@ -32,11 +32,6 @@ export type GitObjectQuarantine = {
 // quarantine dirs, it is on the Git host for native, WSL and SSH alike, and
 // `git gc` expires stale `tmp_*` entries too.
 export const GIT_OBJECT_QUARANTINE_DIR_PREFIX = 'tmp_objdir-orca-merge-tree-'
-
-// Why two weeks: `git gc` expires its own `objects/tmp_*` dirs at that age, and no merge-tree runs that long.
-export const STALE_GIT_OBJECT_QUARANTINE_AGE_MS = 14 * 24 * 60 * 60 * 1000
-
-const sweepsByObjectsDirectory = new Map<string, Promise<void>>()
 
 /** Decided by path syntax, not by platform: a Windows main process drives WSL Git. */
 export function pathApiForGitPath(value: string): typeof posix {
@@ -99,35 +94,6 @@ async function quarantineAlternates(objects: GitObjectsDirectory): Promise<strin
     : realStore
 }
 
-async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
-  const path = pathApiForGitPath(objectsHostPath)
-  const entries = await readdir(objectsHostPath).catch(() => [])
-  const cutoff = Date.now() - STALE_GIT_OBJECT_QUARANTINE_AGE_MS
-  for (const entry of entries) {
-    if (!entry.startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)) {
-      continue
-    }
-    const scratch = path.join(objectsHostPath, entry)
-    const modified = await stat(scratch).then(
-      (stats) => stats.mtimeMs,
-      () => undefined
-    )
-    if (modified !== undefined && modified < cutoff) {
-      await removeTree(scratch).catch(() => {})
-    }
-  }
-}
-
-// Why not awaited: cleanup must not delay the user's check, and it only removes dirs far older than this run's.
-function startSweepOnce(objectsHostPath: string): void {
-  if (!sweepsByObjectsDirectory.has(objectsHostPath)) {
-    sweepsByObjectsDirectory.set(
-      objectsHostPath,
-      sweepStaleScratchDirectories(objectsHostPath).catch(() => {})
-    )
-  }
-}
-
 /**
  * A partial clone fetches missing blobs on demand, and Git files that download
  * as a pack in the scratch dir. Keep those packs so the next check does not
@@ -136,40 +102,24 @@ function startSweepOnce(objectsHostPath: string): void {
 async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string): Promise<void> {
   const path = pathApiForGitPath(objectsHostPath)
   const scratchPackDir = path.join(scratchHostPath, 'pack')
-  const entries = await readdir(scratchPackDir).catch(() => [])
-  const packNames = entries
-    .filter((entry) => /^pack-[0-9a-f]+\.pack$/.test(entry))
-    .map((entry) => entry.slice(0, -'.pack'.length))
-  for (const packName of packNames) {
-    const files = entries.filter((entry) => entry.startsWith(`${packName}.`))
-    if (!files.includes(`${packName}.idx`)) {
-      continue
-    }
-    // Why no `.keep`: an aborted lazy fetch can leave its transient one, and gc never repacks a kept pack.
-    const kept = files.filter((file) => !file.endsWith('.keep'))
-    // Why `.idx` last: Git finds a pack through its index, so everything it names must already be in place.
-    const ordered = [...kept.filter((file) => !file.endsWith('.idx')), `${packName}.idx`]
-    const installed: string[] = []
-    try {
-      for (const file of ordered) {
-        const target = path.join(objectsHostPath, 'pack', file)
-        // Why skip: pack names are content hashes, and replacing a live pack's file could strand its index.
-        const exists = await lstat(target).then(
-          () => true,
-          () => false
-        )
-        if (exists) {
-          continue
-        }
-        await rename(path.join(scratchPackDir, file), target)
-        installed.push(target)
-      }
-    } catch (error) {
-      // Why undo: a pack without its index is garbage Git cannot see; the next lookup fetches it again.
-      for (const target of installed) {
-        await rm(target, { force: true }).catch(() => {})
-      }
-      console.warn('[git-object-quarantine] could not keep a fetched pack', packName, error)
+  // Why `pack-` only: Git's in-progress `tmp_pack_*` files are not usable packs.
+  const files = (await readdir(scratchPackDir).catch(() => [])).filter((file) =>
+    file.startsWith('pack-')
+  )
+  // Why `.idx` last: Git finds a pack through its index (Git's own migration order).
+  const ordered = [
+    ...files.filter((file) => !file.endsWith('.idx')),
+    ...files.filter((file) => file.endsWith('.idx'))
+  ]
+  for (const file of ordered) {
+    const target = path.join(objectsHostPath, 'pack', file)
+    // Why skip: pack names are content hashes, and Git also leaves an existing file in place.
+    const exists = await lstat(target).then(
+      () => true,
+      () => false
+    )
+    if (!exists) {
+      await rename(path.join(scratchPackDir, file), target)
     }
   }
 }
@@ -190,7 +140,6 @@ export function createGitObjectQuarantine(
       const alternates = objects ? await quarantineAlternates(objects) : undefined
       let scratchHostPath: string | undefined
       if (objects && alternates !== undefined) {
-        startSweepOnce(objects.hostPath)
         const path = pathApiForGitPath(objects.hostPath)
         scratchHostPath = await mkdtemp(
           path.join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
@@ -209,9 +158,12 @@ export function createGitObjectQuarantine(
           GIT_ALTERNATE_OBJECT_DIRECTORIES: alternates
         })
       } finally {
-        await keepFetchedPacks(scratchHostPath, objects.hostPath)
+        // Why stop at the first failure: an index must never be installed after its pack failed.
+        await keepFetchedPacks(scratchHostPath, objects.hostPath).catch((error: unknown) => {
+          console.warn('[git-object-quarantine] could not keep a fetched pack', error)
+        })
         await removeTree(scratchHostPath).catch((error: unknown) => {
-          // Why: the stale sweep removes it later; the check's result still stands.
+          // Why: `git gc` prunes leftover `tmp_*` dirs; the check's result still stands.
           console.warn(
             '[git-object-quarantine] could not remove scratch dir',
             scratchHostPath,
@@ -221,12 +173,4 @@ export function createGitObjectQuarantine(
       }
     }
   }
-}
-
-export function _resetGitObjectQuarantineSweepForTests(): void {
-  sweepsByObjectsDirectory.clear()
-}
-
-export async function _settleGitObjectQuarantineSweepsForTests(): Promise<void> {
-  await Promise.all(sweepsByObjectsDirectory.values())
 }
