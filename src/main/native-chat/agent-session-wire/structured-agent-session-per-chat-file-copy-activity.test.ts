@@ -34,7 +34,7 @@ import {
   type CopyTestRig,
   type LiveTestChat
 } from './structured-agent-session-per-chat-file-copy-test-rig'
-import { restTestChat } from './structured-agent-session-rest-test-rig'
+import { restTestChat, sendRestTestMessage } from './structured-agent-session-rest-test-rig'
 
 vi.mock('../agent-session-journal/journal-session-state', async (importOriginal) => {
   const actual = await importOriginal<typeof SessionState>()
@@ -183,6 +183,63 @@ describe('a chat working on the same host (G3)', () => {
 
     expect(importJournal).not.toHaveBeenCalled()
     expect(await perChatFilesLeft(rig)).toBe(OLD.length)
+  })
+
+  it('holds the copy for a send that starts its chat’s agent, from accept through hand-over', async () => {
+    const rig = await createCopyTestRig()
+    rigs.push(rig)
+    await createChats(rig, [...OLD, 'session-cold'], { listed: false })
+    await rig.crash()
+    moveToPerChatFiles(rig, OLD)
+    await rig.boot()
+    const importJournal = rowPerBatchImport()
+    const job = copyJob(rig, { importJournal })
+    const chatWork = rig.host['clientDelivery'].chatWork
+    // The agent's start waits until the test lets it finish.
+    const started = Promise.withResolvers<void>()
+    const acquire = rig.adapter.acquire.getMockImplementation()!
+    rig.adapter.acquire.mockImplementationOnce(async (input) => {
+      await started.promise
+      return acquire(input)
+    })
+    const acquires = rig.adapter.acquire.mock.calls.length
+    const dispatches = rig.adapter.dispatch.mock.calls.length
+
+    const sending = sendRestTestMessage(rig, 'session-cold', 'wake up')
+    await vi.waitFor(() => expect(rig.adapter.acquire.mock.calls.length).toBeGreaterThan(acquires))
+    expect(chatWork.sendInFlight()).toBe(true)
+    await tickFor(rig, job, 3 * (PER_CHAT_FILE_COPY_QUIET_MS / 1_000))
+    expect(importJournal).not.toHaveBeenCalled()
+
+    started.resolve()
+    expect((await sending).ok).toBe(true)
+    await vi.waitFor(() =>
+      expect(rig.adapter.dispatch.mock.calls.length).toBeGreaterThan(dispatches)
+    )
+    await rig.host.flushStreamedEvents('session-cold')
+    // Handed over and answered: no longer in flight.
+    expect(chatWork.sendInFlight()).toBe(false)
+    await tickFor(rig, job, 1)
+    expect(await perChatFilesLeft(rig)).toBe(0)
+  })
+
+  it('does not hold the copy for a send queued behind a running agent’s turn', async () => {
+    const { rig, live } = await oldChatsAndALiveOne()
+    const importJournal = rowPerBatchImport()
+    const job = copyJob(rig, { importJournal })
+    await live.streamTurn()
+    expect((await sendRestTestMessage(rig, 'session-live', 'after this')).ok).toBe(true)
+    await rig.host.flushStreamedEvents('session-live')
+    const queued = rig.host['sessions']
+      .get('session-live')!
+      .journal.submissions()
+      .filter((submission) => submission.handedOverAt === undefined)
+    expect(queued).toHaveLength(1)
+    expect(rig.host['clientDelivery'].chatWork.sendInFlight()).toBe(false)
+
+    rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS
+    await job.tick()
+    expect(await perChatFilesLeft(rig)).toBe(0)
   })
 
   it.each([

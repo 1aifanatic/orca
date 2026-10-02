@@ -91,6 +91,10 @@ export class StructuredAgentSessionSinkQueue {
   bind(target: StructuredAgentSessionEventTarget): void {
     if (!this.closed) {
       this.target = target
+      // Frames noted before the bind were dropped; the rows they left are written now.
+      if (this.queue.length > 0) {
+        target.noteActivity?.()
+      }
       this.pump()
     }
   }

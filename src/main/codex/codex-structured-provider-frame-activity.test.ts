@@ -40,4 +40,26 @@ describe('Codex frames as chat activity', () => {
 
     expect(calls.slice(before)).toEqual(['noteProviderFrame'])
   })
+
+  it('notes an approval request at receipt, before anything it writes', async () => {
+    const codex = fakeCodex()
+    const { sink, calls } = recordingEventSink()
+    const adapter = adapterFor(codex)
+    await adapter.acquire({
+      identity: identityFor('session-1'),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      events: sink
+    })
+    const before = calls.length
+
+    codex.connections[0]!.handlers.onServerRequest?.({
+      id: 5,
+      method: 'item/commandExecution/requestApproval',
+      params: { itemId: 'codex-item-1', threadId: THREAD_ID, turnId: 'turn-1' }
+    })
+    await settle()
+
+    expect(calls.slice(before)[0]).toBe('noteProviderFrame')
+  })
 })
