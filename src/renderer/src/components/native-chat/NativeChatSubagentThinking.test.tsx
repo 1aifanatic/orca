@@ -50,6 +50,29 @@ describe("a subagent's live Thinking", () => {
     expect(within(search!).queryByText('Thinking')).toBeNull()
   })
 
+  it('shows only while the roster says the subagent works, whatever the signal says', () => {
+    render(
+      <NativeChatReasoningOpenContext.Provider value={isReasoningOpen}>
+        <NativeChatSubagentEntries
+          agents={[{ id: 'task-1', label: 'review', state: 'completed' }]}
+        />
+        <NativeChatSubagentSectionHead
+          agentId="task-1"
+          entry={{ id: 'task-1', label: 'review', state: 'idle' }}
+          expanded={false}
+          onSetOpen={vi.fn()}
+        />
+        <NativeChatSubagentSectionHead
+          agentId="task-1"
+          entry={undefined}
+          expanded={false}
+          onSetOpen={vi.fn()}
+        />
+      </NativeChatReasoningOpenContext.Provider>
+    )
+    expect(screen.queryByText('Thinking')).toBeNull()
+  })
+
   it('shows nowhere without the host signal', () => {
     render(
       <NativeChatSubagentEntries agents={[{ id: 'task-1', label: 'review', state: 'working' }]} />

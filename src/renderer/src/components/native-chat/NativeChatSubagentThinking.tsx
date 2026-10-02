@@ -5,12 +5,16 @@ import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-con
 /** "Thinking" beside a subagent's name while the host reports its reasoning open: the turn line's
  *  word, in the type the entry's own state text ("working") uses. */
 export function NativeChatSubagentThinking({
-  agentId
+  agentId,
+  working
 }: {
   agentId: string
+  /** The roster says the agent works. Reasoning a host never saw end (a helper turn that never
+   *  completed) must not outlive the agent. */
+  working: boolean
 }): React.JSX.Element | null {
   const isReasoningOpen = useContext(NativeChatReasoningOpenContext)
-  if (!isReasoningOpen(agentId)) {
+  if (!working || !isReasoningOpen(agentId)) {
     return null
   }
   return (
