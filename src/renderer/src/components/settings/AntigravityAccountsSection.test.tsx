@@ -37,6 +37,28 @@ const state: AntigravityAccountState = {
 }
 const owner = { kind: 'local' } as const
 const target = { runtime: 'host' } as const
+const usage = {
+  rateLimits: {
+    antigravity: {
+      provider: 'antigravity',
+      session: { usedPercent: 31, windowMinutes: 300, resetsAt: null, resetDescription: null },
+      weekly: null,
+      updatedAt: 1,
+      error: null,
+      status: 'ok'
+    }
+  }
+}
+const changedState: AntigravityAccountState = {
+  ...state,
+  activeAccountId: null,
+  currentAccount: {
+    email: 'second@example.invalid',
+    subject: 'other-google-subject',
+    authMethod: 'consumer',
+    identityKnown: true
+  }
+}
 
 beforeEach(() => {
   vi.mocked(callAntigravityAccounts).mockReset().mockResolvedValue(state)
@@ -46,6 +68,35 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('native Antigravity Accounts', () => {
+  it.each(['Refresh accounts', 'Save current account'])(
+    'hides the previous account quota when %s observes a different native identity',
+    async (action) => {
+      vi.mocked(callRuntimeRpc).mockResolvedValue(usage)
+      render(<AntigravityAccountsSection owner={owner} target={target} label="This device" />)
+      await screen.findByText('Native account')
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh usage' }))
+      await screen.findByText('Session: 31% · Weekly: —')
+      vi.mocked(callAntigravityAccounts).mockResolvedValueOnce(changedState)
+      await userEvent.click(screen.getByRole('button', { name: action }))
+      await screen.findByText('second@example.invalid')
+      expect(screen.queryByText('Session: 31% · Weekly: —')).toBeNull()
+    }
+  )
+
+  it('clears previous quota when an identity changes during a new usage refresh', async () => {
+    vi.mocked(callRuntimeRpc).mockResolvedValue(usage)
+    render(<AntigravityAccountsSection owner={owner} target={target} label="This device" />)
+    await screen.findByText('Native account')
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh usage' }))
+    await screen.findByText('Session: 31% · Weekly: —')
+    vi.mocked(callAntigravityAccounts)
+      .mockResolvedValueOnce(state)
+      .mockResolvedValueOnce(changedState)
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh usage' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('native account changed')
+    expect(screen.queryByText('Session: 31% · Weekly: —')).toBeNull()
+  })
+
   it('shows the native identity and supported CLI sign-in instructions without inventing a login', async () => {
     render(<AntigravityAccountsSection owner={owner} target={target} label="This device" />)
     await screen.findByText('Native account')

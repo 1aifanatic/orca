@@ -22,7 +22,16 @@ export function AntigravityAccountsSection({
   label: string
 }): React.JSX.Element {
   const [state, setState] = useState<AntigravityAccountState | null>(null)
-  const [usage, setUsage] = useState<ProviderRateLimits | null>(null)
+  const [usageSnapshot, setUsageSnapshot] = useState<{
+    subject: string
+    authMethod: string
+    limits: ProviderRateLimits | null
+  } | null>(null)
+  const current = state?.currentAccount
+  const usage =
+    current?.subject === usageSnapshot?.subject && current?.authMethod === usageSnapshot?.authMethod
+      ? usageSnapshot?.limits
+      : null
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
@@ -71,6 +80,7 @@ export function AntigravityAccountsSection({
     setError(null)
     try {
       if (action === 'Usage') {
+        setUsageSnapshot(null)
         const before = await callAntigravityAccounts(owner, target, 'List')
         const snapshot = await callRuntimeRpc<{ rateLimits: RateLimitState }>(
           owner,
@@ -89,11 +99,15 @@ export function AntigravityAccountsSection({
           throw new Error('The native account changed while reading usage. Refresh usage again.')
         }
         if (mounted.current) {
-          setUsage(snapshot.rateLimits.antigravity)
+          setUsageSnapshot({
+            subject: before.currentAccount.subject,
+            authMethod: before.currentAccount.authMethod,
+            limits: snapshot.rateLimits.antigravity
+          })
         }
       } else {
         if (action === 'Select') {
-          setUsage(null)
+          setUsageSnapshot(null)
         }
         const next = await callAntigravityAccounts(owner, target, action, accountId)
         if (mounted.current) {

@@ -5,6 +5,8 @@ an owning Orca runtime and a host/distro target before sending an operation; it 
 the client's Mac Keychain item for another host. The RPC capability is
 `accounts.antigravity-native.v1`. Older paired hosts are refused before account mutations.
 The RPC returns account summaries only, never credential JSON, access tokens or refresh tokens.
+Displayed quota is tied to the subject and authentication method observed during its refresh;
+an external identity change hides the previous account's quota without an automatic fetch.
 
 ## Supported authority
 
