@@ -238,8 +238,11 @@ function causeParts(
   cause: AgentSessionWriteNoticeSentence,
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticeSentence[] {
+  // Says the request didn't happen, but a read asked for nothing "this" could name.
+  if (cause === 'notAvailable') {
+    return write === 'read-history' ? [NOT_DONE[write]] : [cause]
+  }
   const saysNotDone =
-    cause === 'notAvailable' ||
     (write === 'read-history' && AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(cause)) ||
     (cause === 'questionChanged' && write === 'answer')
   return saysNotDone ? [cause] : [cause, NOT_DONE[write]]

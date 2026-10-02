@@ -341,11 +341,14 @@ describe('the notice for every reason a host names', () => {
     }))
   )
 
-  // An unsupported location or agent, or no chat host, is not fixed by updating Orca.
+  // An unsupported location or agent, or no chat host, is not fixed by updating Orca. A read asked
+  // for nothing "this" could name, so it says only that the history didn't load.
   it('says an unsupported write only is not available when the host names why', () => {
-    for (const { failure, parts, cell } of cells) {
+    for (const { failure, write, parts, cell } of cells) {
       if (failure.code === 'structured_agent_session_unsupported') {
-        expect(parts, cell).toEqual(['notAvailable'])
+        expect(parts, cell).toEqual(
+          write === 'read-history' ? ['notDoneReadHistory'] : ['notAvailable']
+        )
       }
     }
   })
@@ -437,7 +440,8 @@ describe('the notice for every reason a host names', () => {
       }
       const notDone = parts.filter((part) => typeof part === 'string' && part.startsWith('notDone'))
       const answeredAway = write === 'answer' && parts.includes('questionChanged')
-      const unsupported = failure.code === 'structured_agent_session_unsupported'
+      const unsupported =
+        failure.code === 'structured_agent_session_unsupported' && write !== 'read-history'
       const saysNotDone =
         write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
       expect(notDone, cell).toEqual(

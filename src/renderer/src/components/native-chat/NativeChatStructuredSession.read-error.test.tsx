@@ -99,6 +99,21 @@ it("says a code's own words that the history didn't load, and nothing under them
   expect(screen.queryByText(/keeps trying/)).toBeNull()
 })
 
+// "This isn't available in this chat." would name nothing the reader asked for.
+it('says only that the history did not load for a chat its host cannot run', () => {
+  mocks.status = 'error'
+  mocks.readRefusal = {
+    code: 'structured_agent_session_unsupported',
+    details: { reason: 'hostUnsupported' }
+  } as const
+  mocks.messages = []
+
+  renderPane()
+
+  expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
+  expect(screen.queryByText(/isn't available|newer Orca/)).toBeNull()
+})
+
 it("says a newer Orca's words alone", () => {
   mocks.status = 'error'
   mocks.readRefusal = journalRefusal('journalWrittenByNewerOrca')
