@@ -4,6 +4,7 @@ import {
   type TerminalProcessInspection
 } from './terminal-process-inspection'
 
+/** Owning-host verdicts: see docs/reference/ssh-execution-boundary.md. */
 export type PtyRunningWorkVerdict = 'live' | 'unverifiable' | 'exited'
 
 export type PtyRunningWorkProbe = {
@@ -17,7 +18,7 @@ export type PtyRunningWorkProbe = {
   remote: boolean
 }
 
-// Only owning-host evidence can replace an unanswered probe with a verified verdict.
+/** Never rejects; unanswered probes stay unverifiable until owning-host evidence arrives. */
 export async function probePtyRunningWorkWithInspection(
   ptyIds: readonly string[],
   options: { timeoutMs: number },
