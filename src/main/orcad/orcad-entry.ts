@@ -275,11 +275,12 @@ async function startOrcadRuntime(
     console.info(`[orcad] agent state rules ${rules.version} (${rules.source})`)
   )
 
-  // Why here too and not only on the desktop: nothing else republishes `session.tabs` when a
-  // pane's status row changes, and orcad's whole job is serving paired clients.
   agentHookServer.setPaneTerminalSleepStopProbe((paneKey) =>
     runtime.isPaneTerminalSleepStopInFlight(paneKey)
   )
+
+  // Why here too and not only on the desktop: nothing else republishes `session.tabs` when a
+  // pane's status row changes, and orcad's whole job is serving paired clients.
   uninstallHookStatusRepublish = installHookStatusSessionTabsRepublish(
     agentHookServer,
     () => runtime
