@@ -149,8 +149,8 @@ function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
 }
 
 // Product decision: a card queued AFTER a Stop is a new instruction and is not held; only cards
-// queued before it, and a steer it withdrew, wait. It still never jumps ahead of a held card: the
-// drain stops at the first one. true instead holds every waiting card, whenever it was queued.
+// queued before it, and a steer it withdrew, wait. It still never jumps ahead of one a pause holds:
+// the drain stops at the first one. true instead holds every waiting card, whenever it was queued.
 const PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT = false
 
 /** THE rule for which cards are held: by ANY pause in force, named by the first that holds it, so
@@ -167,8 +167,9 @@ export function queuePauseHolding(
 }
 
 /** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
- *  returned card or a held one comes first. The queue never reorders, so a newer card never
- *  overtakes a held one. The drain's pick and its consume both read this. */
+ *  returned card or one a pause holds comes first. The queue never reorders, so a newer card never
+ *  overtakes one a pause holds; a card held on its own is passed over. The drain's pick and its
+ *  consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]

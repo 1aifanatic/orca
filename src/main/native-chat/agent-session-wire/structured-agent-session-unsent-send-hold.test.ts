@@ -267,6 +267,80 @@ describe('cards queued behind a working turn, then Orca stops', () => {
   )
 })
 
+describe('the queue at a quit', () => {
+  /** A /compact the provider took; its end, written later by `finishCompact`, wakes the drain. */
+  async function compactRunning(): Promise<void> {
+    const fields = { command: 'compact' as const }
+    expect(
+      await rig.host.conversationCommand(QUEUED_RIG_CALLER, {
+        envelope: rig.envelope(fields, 'agentSession.conversationCommand', hostTestOperationId()),
+        ...fields
+      })
+    ).toMatchObject({ ok: true })
+    await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+  }
+
+  it('a drain step already running when quit begins makes no hand-off', async () => {
+    await compactRunning()
+    const queued = rig.send('queued behind the compact', 'queue-if-active')
+    expect(await queued.result).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
+    const host = rig.host
+    const flush = host.flushStreamedEvents
+    let release = (): void => undefined
+    const held = new Promise<void>((resolve) => (release = resolve))
+    let reached = (): void => undefined
+    const inStep = new Promise<void>((resolve) => (reached = resolve))
+    let blocked = false
+    // Holds only the drain step's own flush, past its first dispose check, until quit has begun.
+    host.flushStreamedEvents = async (sessionId: string) => {
+      if (
+        !blocked &&
+        (new Error('which caller flushes').stack ?? '').includes('QueuedMessageDrain.step')
+      ) {
+        blocked = true
+        reached()
+        await held
+      }
+      return flush(sessionId)
+    }
+    rig.finishCompact()
+    await inStep
+    const quitting = host.flushAllStreamedEvents()
+    release()
+    await quitting
+    host.flushStreamedEvents = flush
+    rig.crashRestartHostProcess()
+
+    expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(await rig.handoff(queued.id)).toBeUndefined()
+    expect(rig.dispatch).not.toHaveBeenCalled()
+  })
+
+  // The card the person pushed ahead waits for their own Send; Resume sends the rest.
+  it('Send now on an ordinary card, cut short by a quit, returns it kept while Resume sends the rest', async () => {
+    await compactRunning()
+    const first = rig.send('first queued', 'queue-if-active')
+    await first.result
+    const pushed = rig.send('pushed ahead', 'queue-if-active')
+    await pushed.result
+    expect(await rig.sendNow(pushed.id)).toMatchObject({ ok: true })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect((await rig.handoff(pushed.id))?.handedOverAt).toBeUndefined()
+    await rig.quitRestartHostProcess()
+
+    expect(await rig.drafts()).toEqual([
+      { messageId: pushed.id, ...KEPT },
+      { messageId: first.id, state: 'waiting' }
+    ])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    await rig.resume()
+    await eventually(() => expect(dispatchedTexts()).toEqual(['first queued']))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await rig.drafts()).toEqual([{ messageId: pushed.id, ...KEPT }])
+  })
+})
+
 // The same rule as a restart: tab close, worktree teardown and an orchestration stop all close the
 // chat, and the chat can be reopened from its history.
 describe('a message accepted while the agent starts, then the chat closes', () => {

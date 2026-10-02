@@ -272,8 +272,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
 
   /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
-   *  quit leaves the cards exactly as a crash does. Read in the step, which a step already
-   *  scheduled also passes through. */
+   *  quit leaves the cards exactly as a crash does. Read by the step at its start, and again
+   *  right before it appends, since quit can land while it awaits. */
   dispose(): void {
     this.disposed = true
   }
@@ -347,7 +347,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     // Live facts only, through the one gate; the backlog is never a gate, so a
     // lone draft drains. Whatever clears a hold publishes or commits, which
     // re-derives this step.
-    if (structuredQueueHold({ journal, record, fence }) !== null) {
+    if (this.disposed || structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.

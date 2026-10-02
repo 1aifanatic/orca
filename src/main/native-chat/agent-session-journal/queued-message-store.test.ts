@@ -534,6 +534,46 @@ describe('open-time repair and retention', () => {
     }
   })
 
+  // The repair reaches the live hook's answer from the stored rejection and who asked for it.
+  it.each([
+    {
+      origin: 'client' as const,
+      cause: 'hostRestarted' as const,
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+    },
+    { origin: 'host' as const, cause: 'hostRestarted' as const, holdReason: null },
+    {
+      origin: 'client' as const,
+      cause: 'chatClosed' as const,
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+    },
+    { origin: 'host' as const, cause: 'chatClosed' as const, holdReason: null }
+  ])(
+    'a skipped hook for a $origin hand-off cut short ($cause) is repaired at open, holdReason $holdReason',
+    async ({ origin, cause, holdReason }) => {
+      let journal = await open()
+      await queueDraft(journal, 'draft-1')
+      await consumeDraft(journal, 'draft-1', { origin })
+      await journal.rejectQueuedSubmissions(
+        0,
+        agentSessionFailureWords(agentSessionFailureFact(cause), { surface: 'rejection' })
+      )
+      await journal.close()
+      // The hook "was skipped": the draft is back to dispatched behind the stored rejection.
+      const db = new Database(journalDatabasePath(root))
+      db.prepare(
+        "UPDATE queued_messages SET state = 'dispatched', hold_reason = NULL, consumed_as = 'sub-draft-1' WHERE message_id = ?"
+      ).run('draft-1')
+      db.close()
+      journal = await open()
+      expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+        state: 'waiting',
+        holdReason,
+        consumedAs: null
+      })
+    }
+  )
+
   it('returns a dispatched row whose loaded submission is effectively rejected (downgrade wrote no hook)', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')

@@ -37,7 +37,8 @@ export type RejectedDraftSettlement = { state: 'returned' } | { state: 'waiting'
  * pauses the queue: a Stop's, or the restart's, derived from the host instance. A Send the person
  * asked for (`origin` client) that a restart or a close cut short is kept (`kept`) until they send
  * it again, as the host keeps every message a person sent and it never handed over; the queue's
- * own hand-off is not theirs, so it waits under the pause. A returned card would block the drafts
+ * own hand-off is not theirs, so it waits as any queued card does: under the restart's pause after
+ * a restart, and plainly queued after a close in the same process. A returned card would block the drafts
  * behind it on a failure that never happened. A failure returns the card with its refusal for the
  * user to act on.
  */
