@@ -18,7 +18,8 @@ import {
   getSshFilesystemProviderMock,
   tryDeleteWslUncPathMock,
   recordCrashBreadcrumbMock,
-  resetFilesystemIpcMocks
+  resetFilesystemIpcMocks,
+  localFileHandleMock
 } from './filesystem-test-harness'
 
 vi.mock('electron', async () => (await import('./filesystem-test-harness')).electronMock)
@@ -361,8 +362,7 @@ describe('registerFilesystemHandlers', () => {
     }
   ])('returns base64 content for supported $ext binaries', async ({ ext, mime, data }) => {
     const buf = Buffer.from(data)
-    statMock.mockResolvedValue({ size: buf.length, isDirectory: () => false, mtimeMs: 123 })
-    readFileMock.mockResolvedValue(buf)
+    openMock.mockResolvedValue(localFileHandleMock(buf))
     registerFilesystemHandlers(store as never)
     await expect(
       handlers.get('fs:readFile')!(null, { filePath: path.resolve(`/workspace/repo/file.${ext}`) })
@@ -376,8 +376,7 @@ describe('registerFilesystemHandlers', () => {
 
   it('opens text files larger than the old 5MB guard', async () => {
     const content = 'a'.repeat(6 * 1024 * 1024)
-    statMock.mockResolvedValue({ size: content.length, isDirectory: () => false, mtimeMs: 123 })
-    readFileMock.mockResolvedValue(Buffer.from(content))
+    openMock.mockResolvedValue(localFileHandleMock(Buffer.from(content)))
 
     registerFilesystemHandlers(store as never)
 
@@ -391,17 +390,8 @@ describe('registerFilesystemHandlers', () => {
 
   it('returns stable byte metadata only for opted-in local log snapshots', async () => {
     const content = Buffer.from('first\npartial')
-    const close = vi.fn()
-    openMock.mockResolvedValue({
-      stat: vi.fn().mockResolvedValue({
-        size: content.byteLength,
-        dev: 1,
-        ino: 2,
-        birthtimeMs: 3
-      }),
-      readFile: vi.fn().mockResolvedValue(content),
-      close
-    })
+    const handle = localFileHandleMock(content)
+    openMock.mockResolvedValue(handle)
     registerFilesystemHandlers(store as never)
 
     await expect(
@@ -414,12 +404,13 @@ describe('registerFilesystemHandlers', () => {
       isBinary: false,
       fileIdentity: '1:2:3'
     })
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(handle.close).toHaveBeenCalledTimes(1)
     expect(readFileMock).not.toHaveBeenCalled()
   })
 
   it('rejects text files beyond the editor read budget', async () => {
-    statMock.mockResolvedValue({ size: 51 * 1024 * 1024, isDirectory: () => false, mtimeMs: 123 })
+    const handle = localFileHandleMock(Buffer.alloc(0), { size: 51 * 1024 * 1024 })
+    openMock.mockResolvedValue(handle)
 
     registerFilesystemHandlers(store as never)
 
@@ -427,18 +418,13 @@ describe('registerFilesystemHandlers', () => {
       handlers.get('fs:readFile')!(null, { filePath: path.resolve('/workspace/repo/huge.json') })
     ).rejects.toThrow('exceeds 50MB limit')
 
-    expect(readFileMock).not.toHaveBeenCalled()
+    expect(handle.read).not.toHaveBeenCalled()
+    expect(handle.close).toHaveBeenCalled()
   })
 
   it('probes large unknown binaries without reading the full file', async () => {
-    statMock.mockResolvedValue({ size: 6 * 1024 * 1024, isDirectory: () => false, mtimeMs: 123 })
-    openMock.mockResolvedValue({
-      read: vi.fn(async (buffer: Buffer) => {
-        buffer[0] = 0x00
-        return { bytesRead: 1, buffer }
-      }),
-      close: vi.fn()
-    })
+    const handle = localFileHandleMock(Buffer.alloc(6 * 1024 * 1024))
+    openMock.mockResolvedValue(handle)
 
     registerFilesystemHandlers(store as never)
 
@@ -449,7 +435,7 @@ describe('registerFilesystemHandlers', () => {
       isBinary: true
     })
 
-    expect(readFileMock).not.toHaveBeenCalled()
+    expect(handle.read).toHaveBeenCalledTimes(1)
   })
 
   it('moves files to trash', async () => {
@@ -519,8 +505,7 @@ describe('registerFilesystemHandlers', () => {
   })
 
   it('keeps non-image binaries hidden from the editor payload', async () => {
-    statMock.mockResolvedValue({ size: 4, isDirectory: () => false, mtimeMs: 123 })
-    readFileMock.mockResolvedValue(Buffer.from([0x00, 0x01, 0x02]))
+    openMock.mockResolvedValue(localFileHandleMock(Buffer.from([0x00, 0x01, 0x02])))
 
     registerFilesystemHandlers(store as never)
 
