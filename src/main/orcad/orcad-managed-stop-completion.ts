@@ -15,10 +15,10 @@ import {
   type OrcadManagedStopVerdict
 } from '../../shared/orcad-stop-request'
 import {
-  getProcessStartedAtMs,
   START_TIME_TOLERANCE_MS,
   startTimesWithinTolerance
 } from '../daemon/daemon-process-start-time'
+import { readOrcadProcessStartedAtMs } from './orcad-process-start-time'
 import { persistOrcadCompletedStopReceipt } from './orcad-completed-stop-receipt'
 import { readOrcadManagedStopDecision } from './orcad-managed-stop-decision'
 import {
@@ -56,8 +56,9 @@ function observeInstance(
   if (probe !== 'alive') {
     return probe === 'missing' ? 'exited' : 'unverifiable'
   }
-  const actual = (options.startedAtMs ?? getProcessStartedAtMs)(instance.pid)
-  // A reused PID is proof of exit only when both start times are known and disagree.
+  const actual = (options.startedAtMs ?? readOrcadProcessStartedAtMs)(instance.pid)
+  // A reused PID is proof of exit only when both start times are known and disagree; on Windows
+  // without the addon both stay null, so a live PID is never read as exited.
   if (
     actual !== null &&
     instance.startedAtMs !== null &&

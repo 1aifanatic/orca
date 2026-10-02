@@ -26,7 +26,11 @@ import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { z } from 'zod'
-import { getProcessStartedAtMs, startTimeMatches } from '../daemon/daemon-process-start-time'
+import {
+  orcadProcessStartTimeMatches,
+  readOrcadProcessStartedAtMs
+} from './orcad-process-start-time'
+import { restrictWindowsPathSync } from '../../shared/secure-path-windows-acl'
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 
 export const ORCAD_LOCK_FILE_NAME = 'orcad.lock'
@@ -83,6 +87,9 @@ export type OrcadInstanceLockHooks = {
   processIsAlive?: (pid: number) => boolean
   startedAtMs?: (pid: number) => number | null
   startTimeMatches?: (pid: number, expected: number | null) => boolean
+  platform?: NodeJS.Platform
+  /** Windows: restrict the data root's ACL to this user; false when it could not be applied. */
+  restrictWindowsDataRoot?: (dataRoot: string) => boolean
 }
 
 function defaultIdentity(): string {
@@ -124,10 +131,20 @@ export function parseOrcadInstanceLockRecord(content: string): OrcadLockRecord |
  * we own the directory, tightening it is strictly better than refusing to start. We refuse
  * only when the permissions are not ours to fix.
  */
-function assertDataRootIsPrivate(dataRoot: string): void {
+function assertDataRootIsPrivate(dataRoot: string, hooks: OrcadInstanceLockHooks): void {
   // Windows ACLs are not expressible as a POSIX mode, and `statSync().mode` there reports a
-  // synthesized one. Checking it would refuse correct deployments and pass wrong ones.
-  if (process.platform === 'win32') {
+  // synthesized one, so Windows restricts and verifies the ACL instead (icacls, no PowerShell).
+  if ((hooks.platform ?? process.platform) === 'win32') {
+    const restrict =
+      hooks.restrictWindowsDataRoot ?? ((path: string) => restrictWindowsPathSync(path, true))
+    if (!restrict(dataRoot)) {
+      throw new OrcadInstanceLockError(
+        'orcad_data_root_shared',
+        `Could not restrict the orcad data root ${dataRoot} to this user. orcad stores ` +
+          'credentials there unsealed, so it refuses to start. Point ORCA_USER_DATA at a ' +
+          'directory this account owns.'
+      )
+    }
     return
   }
   let stats
@@ -187,8 +204,8 @@ export function acquireOrcadInstanceLock(
 ): OrcadInstanceLock {
   const identity = (hooks.identity ?? defaultIdentity)()
   const isAlive = hooks.processIsAlive ?? defaultProcessIsAlive
-  const readStartedAt = hooks.startedAtMs ?? getProcessStartedAtMs
-  const matchesStartTime = hooks.startTimeMatches ?? startTimeMatches
+  const readStartedAt = hooks.startedAtMs ?? readOrcadProcessStartedAtMs
+  const matchesStartTime = hooks.startTimeMatches ?? orcadProcessStartTimeMatches
 
   try {
     mkdirSync(dataRoot, { recursive: true, mode: 0o700 })
@@ -198,7 +215,7 @@ export function acquireOrcadInstanceLock(
       `Cannot create the orcad data root ${dataRoot}: ${(error as Error).message}`
     )
   }
-  assertDataRootIsPrivate(dataRoot)
+  assertDataRootIsPrivate(dataRoot, hooks)
 
   const lockPath = join(dataRoot, ORCAD_LOCK_FILE_NAME)
   const record: OrcadLockRecord = {
