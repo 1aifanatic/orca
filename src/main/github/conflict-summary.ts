@@ -247,7 +247,7 @@ async function loadConflictingFiles(
             ...gitOptionsForWorktree(repoPath, localGitOptions),
             ...(env ? { env } : {})
           })
-        // Why only once known supported: old Git would still get a scratch folder, and Git < 2.35 cannot prune a leftover one.
+        // Why only once supported: an old Git still gets the folder, and Git < 2.35 can't prune a leftover.
         return capabilities.isKnownSupported('merge-tree-write-tree')
           ? quarantine.run(run)
           : run(undefined)

@@ -112,6 +112,15 @@ async function hasBranchOnlyMergeCommits(
   return Number(stdout ?? 0) > 0
 }
 
+/** `merge-tree --write-tree` exits 1 on a conflict after printing the merged tree's ID first. */
+function printedMergedTreeId(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('stdout' in error)) {
+    return false
+  }
+  const firstLine = typeof error.stdout === 'string' ? error.stdout.split('\n', 1)[0].trim() : ''
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(firstLine)
+}
+
 async function branchMergesWithoutTreeChanges(
   runGit: GitBranchCleanupExec,
   targetOid: string,
@@ -124,9 +133,17 @@ async function branchMergesWithoutTreeChanges(
       return await capabilities.runWithFallback(
         'merge-tree-write-tree',
         async () => {
-          // Why only once known supported: old Git would still get a scratch folder, and Git < 2.35 cannot prune a leftover one.
+          // Why only once supported: an old Git still gets the folder, and Git < 2.35 can't prune a leftover.
           const discardWrittenObjects = capabilities.isKnownSupported('merge-tree-write-tree')
-          return (await runGit(args, { discardWrittenObjects })).stdout.trim() || null
+          try {
+            return (await runGit(args, { discardWrittenObjects })).stdout.trim() || null
+          } catch (error) {
+            // Why: a conflict still proves --write-tree ran; returning lets the cache record it.
+            if (printedMergedTreeId(error)) {
+              return null
+            }
+            throw error
+          }
         },
         async () => null,
         isUnsupportedMergeTreeWriteTreeError

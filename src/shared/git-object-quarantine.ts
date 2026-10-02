@@ -163,7 +163,7 @@ export function createGitObjectQuarantine(
           console.warn('[git-object-quarantine] could not keep a fetched pack', error)
         })
         await removeTree(scratchHostPath).catch((error: unknown) => {
-          // Why: callers quarantine only Git that writes trees (2.38+), whose `git gc` prunes leftover `tmp_*` dirs.
+          // Why: quarantined only once this host's Git ran --write-tree (2.38+), whose gc prunes `tmp_*`.
           console.warn(
             '[git-object-quarantine] could not remove scratch dir',
             scratchHostPath,
