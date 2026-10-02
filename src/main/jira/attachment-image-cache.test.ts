@@ -170,4 +170,63 @@ describe('attachment image cache', () => {
     expect(_getAttachmentImageCacheSize()).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it('preserves the 96-entry limit and LRU eviction without extending the hit lifetime', () => {
+    for (let id = 0; id < 96; id += 1) {
+      storeImage('site-a', String(id))
+    }
+    vi.advanceTimersByTime(60_000)
+    expect(getCachedAttachmentDataUrl('site-a', '0')).not.toBeNull()
+    storeImage('site-a', '96')
+
+    expect(_getAttachmentImageCacheSize()).toBe(96)
+    expect(getCachedAttachmentDataUrl('site-a', '0')).not.toBeNull()
+    expect(getCachedAttachmentDataUrl('site-a', '1')).toBeNull()
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.advanceTimersByTime(29 * 60_000)
+    expect(_getAttachmentImageCacheSize()).toBe(1)
+    expect(getCachedAttachmentDataUrl('site-a', '96')).not.toBeNull()
+    vi.advanceTimersByTime(60_000)
+    expect(_getAttachmentImageCacheSize()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('preserves the 24 MiB byte limit and releases the remaining images while idle', () => {
+    for (let id = 0; id < 13; id += 1) {
+      setCachedAttachmentDataUrl({
+        siteId: 'site-a',
+        attachmentId: String(id),
+        dataUrl: `data:image/png;base64,${id}`,
+        byteSize: 2 * 1024 * 1024
+      })
+    }
+
+    expect(_getAttachmentImageCacheSize()).toBe(12)
+    expect(getCachedAttachmentDataUrl('site-a', '0')).toBeNull()
+    expect(getCachedAttachmentDataUrl('site-a', '1')).not.toBeNull()
+    expect(getCachedAttachmentDataUrl('site-a', '12')).not.toBeNull()
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.advanceTimersByTime(30 * 60_000)
+    expect(_getAttachmentImageCacheSize()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps expiry scheduled for another site after clearing the earliest site', () => {
+    storeImage('site-a', 'old')
+    vi.advanceTimersByTime(60_000)
+    storeImage('site-b', 'new')
+    clearAttachmentImagesForSite('site-a')
+
+    expect(_getAttachmentImageCacheSize()).toBe(1)
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(29 * 60_000)
+    expect(_getAttachmentImageCacheSize()).toBe(1)
+    expect(getCachedAttachmentDataUrl('site-b', 'new')).not.toBeNull()
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(60_000)
+    expect(_getAttachmentImageCacheSize()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })
