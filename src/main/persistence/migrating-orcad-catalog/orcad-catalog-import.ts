@@ -302,7 +302,7 @@ function committedCatalogState(receipt: OrcadMigrationImportReceipt): OrcadMigra
 }
 
 export function installOrcadCatalogImportPersistenceContext(
-  target: object,
+  target: OrcadCatalogImportPersistence,
   source: OrcadCatalogImportPersistence
 ): void {
   Object.defineProperty(target, orcadCatalogImportContext, {

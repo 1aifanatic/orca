@@ -1,15 +1,14 @@
-import { z } from 'zod'
+import type { z } from 'zod'
+import { OrcadMigrationCatalogParams } from '../../../../shared/rpc-contract/orcad-migration-params'
 import { parseOrcadMigrationManifest } from '../../../../shared/orcad-migration-manifest'
 import { OrcadMigrationSnapshotChunkRequestSchema } from '../../../../shared/orcad-migration-scrollback'
 import { assertOrcadMigrationManifestDigest } from '../../../orcad/orcad-migration-manifest-digest'
 import { defineMethod, type RpcContext } from '../core'
 
-const OrcadMigrationImport = z.object({ manifest: z.unknown() })
-
 export const ORCAD_MIGRATION_METHODS = [
   defineMethod({
     name: 'orcad.migration.importCatalog',
-    params: OrcadMigrationImport,
+    params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {
       requireMigrationRuntimeClient(context)
       return context.runtime.importOrcadMigrationCatalog(migrationManifest(params), {
@@ -19,7 +18,7 @@ export const ORCAD_MIGRATION_METHODS = [
   }),
   defineMethod({
     name: 'orcad.migration.stageCatalog',
-    params: OrcadMigrationImport,
+    params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {
       requireMigrationRuntimeClient(context)
       return context.runtime.stageOrcadMigrationCatalog(migrationManifest(params), {
@@ -29,7 +28,7 @@ export const ORCAD_MIGRATION_METHODS = [
   }),
   defineMethod({
     name: 'orcad.migration.commitCatalog',
-    params: OrcadMigrationImport,
+    params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {
       requireMigrationRuntimeClient(context)
       return context.runtime.commitStagedOrcadMigrationCatalog(migrationManifest(params), {
@@ -47,7 +46,7 @@ export const ORCAD_MIGRATION_METHODS = [
   }),
   defineMethod({
     name: 'orcad.migration.abortCatalog',
-    params: OrcadMigrationImport,
+    params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {
       requireMigrationRuntimeClient(context)
       return context.runtime.abortStagedOrcadMigrationCatalog(migrationManifest(params), {
@@ -57,7 +56,7 @@ export const ORCAD_MIGRATION_METHODS = [
   }),
   defineMethod({
     name: 'orcad.migration.catalogState',
-    params: OrcadMigrationImport,
+    params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {
       requireMigrationRuntimeClient(context)
       return context.runtime.getOrcadMigrationCatalogState(migrationManifest(params))
@@ -65,7 +64,7 @@ export const ORCAD_MIGRATION_METHODS = [
   })
 ]
 
-function migrationManifest(params: z.infer<typeof OrcadMigrationImport>) {
+function migrationManifest(params: z.infer<typeof OrcadMigrationCatalogParams>) {
   const manifest = parseOrcadMigrationManifest(params.manifest)
   assertOrcadMigrationManifestDigest(manifest)
   return manifest

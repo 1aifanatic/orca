@@ -354,6 +354,7 @@ import {
   NotificationUnsubscribeParams,
   NotificationsSubscribeParams
 } from './notifications-params'
+import { OrcadMigrationCatalogParams } from './orcad-migration-params'
 import {
   FederationDispatchParams,
   FederationFleetSnapshotParams,
@@ -989,6 +990,11 @@ export const RPC_PARAMS_BY_METHOD = {
   'notifications.testPush': null,
   'notifications.unregisterPush': null,
   'notifications.unsubscribe': NotificationUnsubscribeParams,
+  'orcad.migration.abortCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.catalogState': OrcadMigrationCatalogParams,
+  'orcad.migration.commitCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.importCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.stageCatalog': OrcadMigrationCatalogParams,
   'orcad.migration.stageSnapshotChunk': OrcadMigrationSnapshotChunkRequestSchema,
   'orcad.terminalCensus': OrcadTerminalCensusParamsSchema,
   'orchestration.ask': AskParams,
@@ -1202,11 +1208,6 @@ export const RPC_PARAMS_BY_METHOD = {
 // graph reaches into src/main. Listing them keeps the gap visible instead of absent.
 export const RPC_METHODS_WITHOUT_SHARED_PARAMS: readonly string[] = [
   'emulator.install',
-  'orcad.migration.abortCatalog',
-  'orcad.migration.catalogState',
-  'orcad.migration.commitCatalog',
-  'orcad.migration.importCatalog',
-  'orcad.migration.stageCatalog',
   'orchestration.send',
   'orchestration.taskUpdate'
 ]
