@@ -21,7 +21,7 @@ describe('reasoning disclosure', () => {
   it('starts collapsed without mounting markdown', () => {
     render(
       <NativeChatReasoningRow
-        message={{ timestamp: STARTED, state: 'completed' }}
+        message={{ role: 'reasoning', timestamp: STARTED, state: 'completed' }}
         markdown={'\n\nInspecting the request\nFull reasoning'}
       />
     )
@@ -33,26 +33,20 @@ describe('reasoning disclosure', () => {
   })
 
   it('expands through a native button and keeps disclosure state through revisions', () => {
-    const message = { timestamp: STARTED, state: 'running' as const }
-    const { rerender } = render(
-      <NativeChatReasoningRow message={message} markdown="Inspecting" turnIsWorking />
-    )
+    const message = { role: 'reasoning' as const, timestamp: STARTED, state: 'completed' as const }
+    const { rerender } = render(<NativeChatReasoningRow message={message} markdown="Inspecting" />)
     const trigger = screen.getByRole('button')
     expect(trigger.tagName).toBe('BUTTON')
     fireEvent.click(trigger)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByTestId('markdown')).toHaveTextContent('Inspecting')
-    rerender(
-      <NativeChatReasoningRow message={message} markdown={'Inspecting\nMore'} turnIsWorking />
-    )
+    rerender(<NativeChatReasoningRow message={message} markdown={'Inspecting\nMore'} />)
     expect(screen.getByRole('button')).toBe(trigger)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByTestId('markdown')).toHaveTextContent('More')
-    // Collapsed again by the user, it stays collapsed through the next streamed revision.
+    // Collapsed again by the user, it stays collapsed through the next revision.
     fireEvent.click(trigger)
-    rerender(
-      <NativeChatReasoningRow message={message} markdown={'Inspecting\nFinal'} turnIsWorking />
-    )
+    rerender(<NativeChatReasoningRow message={message} markdown={'Inspecting\nFinal'} />)
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByTestId('markdown')).not.toBeInTheDocument()
   })
@@ -60,7 +54,7 @@ describe('reasoning disclosure', () => {
   it.each(['', ' \n\t'])('draws nothing for blank reasoning %j', (markdown) => {
     const { container } = render(
       <NativeChatReasoningRow
-        message={{ timestamp: STARTED, state: 'running' }}
+        message={{ role: 'reasoning', timestamp: STARTED, state: 'running' }}
         markdown={markdown}
       />
     )
@@ -74,17 +68,20 @@ describe('the reasoning headline', () => {
     turnIsWorking = false
   ) => {
     render(
-      <NativeChatReasoningRow message={message} markdown="Reasoned" turnIsWorking={turnIsWorking} />
+      <NativeChatReasoningRow
+        message={{ role: 'reasoning', ...message }}
+        markdown="Reasoned"
+        turnIsWorking={turnIsWorking}
+      />
     )
-    return screen.getByRole('button').textContent
+    return screen.queryByRole('button')?.textContent ?? null
   }
 
-  it('reads Thinking only while the row is open and its turn is running', () => {
-    expect(headline({ timestamp: STARTED, state: 'running' }, true)).toContain('Thinking…')
-    expect(screen.getByText('Thinking…')).toHaveClass('animate-pulse')
+  it('draws nothing while the row is open and its turn is running: the activity line says Thinking', () => {
+    expect(headline({ timestamp: STARTED, state: 'running' }, true)).toBeNull()
   })
 
-  it('does not read Thinking for a closed row while the turn goes on working', () => {
+  it('reads Thought for N s once it closes, while the turn goes on working', () => {
     expect(
       headline({ timestamp: STARTED, state: 'completed', completedAt: STARTED + 12_000 }, true)
     ).toContain('Thought for 12s')
@@ -100,7 +97,7 @@ describe('the reasoning headline', () => {
     ).toContain('Thought for 1s')
   })
 
-  it('claims no duration it never saw, and nothing live for an open row in a settled turn', () => {
+  it('claims no duration it never saw, and draws an open row in a settled turn as Thought', () => {
     expect(headline({ timestamp: STARTED, state: 'completed' })).toBe('Reasoning: Thought')
     cleanup()
     expect(headline({ timestamp: STARTED, state: 'running' })).toBe('Reasoning: Thought')
@@ -110,7 +107,7 @@ describe('the reasoning headline', () => {
     expect(headline({ timestamp: STARTED }, true)).toBe('Reasoning')
   })
 
-  it('reads the lifecycle through the message row', () => {
+  it('appears through the message row only once it closes', () => {
     const message: NativeChatMessage = {
       id: 'reasoning-1',
       role: 'reasoning',
@@ -127,7 +124,7 @@ describe('the reasoning headline', () => {
         onScrollMessageToTop={vi.fn()}
       />
     )
-    expect(screen.getByRole('button')).toHaveTextContent('Thinking…')
+    expect(screen.queryByRole('button')).toBeNull()
     rerender(
       <MessageRow
         message={{ ...message, state: 'completed', completedAt: STARTED + 3_000 }}

@@ -17986,7 +17986,6 @@
         "queuePaused": "Queue paused",
         "resume": "Resume"
       },
-      "thinking": "Thinking…",
       "thought": "Thought",
       "thoughtForDuration": "Thought for {{duration}}"
     },

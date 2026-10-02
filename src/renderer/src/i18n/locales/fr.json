@@ -17889,7 +17889,6 @@
         "queuePaused": "File d'attente en pause",
         "resume": "Reprendre"
       },
-      "thinking": "Réflexion…",
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}"
     },

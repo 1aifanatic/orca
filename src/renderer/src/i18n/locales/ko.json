@@ -17825,7 +17825,6 @@
         "queuePaused": "대기열이 일시 중지되었습니다",
         "resume": "재개"
       },
-      "thinking": "생각 중…",
       "thought": "생각함",
       "thoughtForDuration": "{{duration}} 동안 생각함"
     },

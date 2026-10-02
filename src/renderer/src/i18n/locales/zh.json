@@ -17790,7 +17790,6 @@
         "queuePaused": "队列已暂停",
         "resume": "继续"
       },
-      "thinking": "思考中…",
       "thought": "已思考",
       "thoughtForDuration": "思考了 {{duration}}"
     },

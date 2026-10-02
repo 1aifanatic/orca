@@ -5,22 +5,18 @@ import CommentMarkdown, {
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
-import { cn } from '@/lib/utils'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { formatNativeChatDuration } from '../../../../shared/native-chat-turn-status'
+import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-live-reasoning'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 
 /** What the row's own lifecycle says, read from host facts only: the row's start (`timestamp`)
  *  and the end the host saw. A row with no lifecycle came from a host that kept none. */
 function reasoningHeadline(
-  message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>,
-  live: boolean
+  message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
 ): string {
   if (message.state === undefined) {
     return translate('components.native-chat.reasoning', 'Reasoning')
-  }
-  if (live) {
-    return translate('components.native-chat.thinking', 'Thinking…')
   }
   // An open row in a turn that is no longer live ended unseen, so it claims no duration.
   if (
@@ -44,19 +40,18 @@ export function NativeChatReasoningRow({
   onLinkClick,
   allowFileUriLinks
 }: {
-  message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
+  message: Pick<NativeChatMessage, 'role' | 'state' | 'completedAt' | 'timestamp'>
   markdown: string
   /** The row's own turn is still running; a row is live only inside one. */
   turnIsWorking?: boolean
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
 }): React.JSX.Element | null {
-  if (!markdown.trim()) {
+  if (!markdown.trim() || isNativeChatReasoningUnderway(message, turnIsWorking)) {
     return null
   }
-  const live = message.state === 'running' && turnIsWorking
   const label = translate('components.native-chat.reasoning', 'Reasoning')
-  const headline = reasoningHeadline(message, live)
+  const headline = reasoningHeadline(message)
 
   return (
     <div className="min-w-0 text-sm text-muted-foreground">
@@ -64,11 +59,7 @@ export function NativeChatReasoningRow({
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="xs" className="group w-full min-w-0 justify-start">
             {headline === label ? null : <span className="sr-only">{label}: </span>}
-            <span
-              className={cn('min-w-0 truncate', live && 'animate-pulse motion-reduce:animate-none')}
-            >
-              {headline}
-            </span>
+            <span className="min-w-0 truncate">{headline}</span>
             <ChevronRight
               aria-hidden
               className="ml-auto size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"

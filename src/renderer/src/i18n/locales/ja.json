@@ -17825,7 +17825,6 @@
         "queuePaused": "キューは一時停止中です",
         "resume": "再開"
       },
-      "thinking": "考え中…",
       "thought": "考えました",
       "thoughtForDuration": "{{duration}} 考えました"
     },
