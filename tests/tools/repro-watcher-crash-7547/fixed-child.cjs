@@ -154,8 +154,10 @@ function subscribeLikeOrca(dir) {
         stats.events += events.length
       },
       OPTS,
-      () => {
-        stats.interruptions++
+      {
+        onInterruption: () => {
+          stats.interruptions++
+        }
       }
     )
     .then((sub) => {
