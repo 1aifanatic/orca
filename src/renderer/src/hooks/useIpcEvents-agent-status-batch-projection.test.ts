@@ -219,8 +219,8 @@ describe('useIpcEvents agent status snapshot integration', () => {
     await vi.waitFor(() =>
       expect(store.getState().agentPresenceByPaneKey[paneKey]?.presence.ended).toBe(true)
     )
-    // The row is the host pane clear's to remove, which keeps main's rule for finished rows.
-    expect(store.getState().agentStatusByPaneKey[paneKey]).toBeDefined()
+    // A proven exit drops the owner's row, as a confirmed shell return does.
+    expect(store.getState().agentStatusByPaneKey[paneKey]).toBeUndefined()
   })
 
   it('projects ordered tab titles across panes in an inactive split snapshot', async () => {

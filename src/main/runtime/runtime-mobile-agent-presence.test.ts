@@ -84,8 +84,7 @@ function projection(agentStatus?: AgentStatusEntry) {
       projectSessionTabsForClient(
         projectRuntimeMobileSessionTabs(snapshot, host),
         'mobile',
-        capabilities,
-        false
+        capabilities
       ).tabs[0]
   }
 }
