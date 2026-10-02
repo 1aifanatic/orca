@@ -1,5 +1,5 @@
 // The user's Retry on a stuck outbox entry: requeue it, rotating the operation
-// id when the host has forgotten the recorded one.
+// id when the recorded one can only ever replay a settled rejection.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
@@ -22,10 +22,19 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   const submission = submissions.find((candidate) => candidate.clientMessageId === clientMessageId)
   const outbox = getStructuredAgentSessionOutbox(sessionId)
   const current = outbox.find((entry) => entry.clientMessageId === clientMessageId)
-  // An expired id is refused for good, so only a new one sends it; its row told the user to check
-  // the chat first. A refusal that settled the message already rotated it, and one the host
-  // rejected after recording it has no Retry.
-  if (current && structuredAgentSessionEntryIdExpired(current)) {
+  // The host settled this id as rejected, and reusing it only replays that forever, so rotate the
+  // id for a safe resend. Read from the message itself, which outlives a restart, or from a
+  // reconciliation that settled an earlier unknown before the outbox caught up. A refusal that
+  // settled the message already rotated it. An expired id is refused for good; its row told the
+  // user to check the chat first.
+  const recordedRejection =
+    current?.state === 'rejected' && current.lastFailure?.kind === 'rejected'
+  if (
+    current &&
+    (recordedRejection ||
+      submission?.dispatchState === 'rejected' ||
+      structuredAgentSessionEntryIdExpired(current))
+  ) {
     const rotated = outbox.map((entry) =>
       entry.clientMessageId === clientMessageId
         ? {

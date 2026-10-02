@@ -15,8 +15,7 @@ import { structuredAgentSessionPayloadFingerprint } from './structured-agent-ses
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
 /** `rejected`: settled as not delivered. The drain never sends it again and nothing queues behind
- *  it. One the host refused unrecorded waits for the user's Retry; one it recorded only for the
- *  journal, whose row then shows it (`structuredAgentSessionEntryRejectedByHost`). */
+ *  it; only the user's Retry does. One the host recorded leaves once the journal's row shows it. */
 export type StructuredAgentSessionOutboxState =
   | 'queued'
   | 'dispatching'
@@ -174,8 +173,8 @@ export function structuredAgentSessionEntryIdExpired(
   )
 }
 
-/** The host recorded this send and then rejected it: its journal row is the message from here. The
- *  entry offers no Retry and draws it only until the journal carries it; a remount drops it. */
+/** The host recorded this send and then rejected it: the reconcile drops it once the journal's
+ *  submissions say so, and its row is the message from then on. */
 export function structuredAgentSessionEntryRejectedByHost(
   entry: StructuredAgentSessionOutboxEntry
 ): boolean {

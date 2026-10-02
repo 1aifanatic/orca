@@ -39,7 +39,7 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
     )
   const rejectionRows = hasRejected ? submissions : NO_SUBMISSIONS
   const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
-  return useMemo(
+  const notices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices(
         outbox,
@@ -52,4 +52,35 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
       ),
     [outbox, agentName, retry, rejectionRows, startFailures, failedHere, queuedMessageIds]
   )
+  // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
+  const previousRef = useRef(notices)
+  const stable = sameNoticesKept(previousRef.current, notices)
+  useEffect(() => {
+    previousRef.current = stable
+  }, [stable])
+  return stable
+}
+
+/** `next`, reusing each notice `previous` words the same way, and `previous` itself when all are. */
+function sameNoticesKept(
+  previous: ReadonlyMap<string, NativeChatDeliveryNotice>,
+  next: ReadonlyMap<string, NativeChatDeliveryNotice>
+): ReadonlyMap<string, NativeChatDeliveryNotice> {
+  if (previous === next) {
+    return next
+  }
+  let allKept = previous.size === next.size
+  const kept = new Map<string, NativeChatDeliveryNotice>()
+  for (const [id, notice] of next) {
+    const before = previous.get(id)
+    // Each Retry calls the stable `retry` with its own id, so one under the same key is the same.
+    const same =
+      before !== undefined &&
+      before.text === notice.text &&
+      (before.onRetry === undefined) === (notice.onRetry === undefined) &&
+      (before.onDismiss === undefined) === (notice.onDismiss === undefined)
+    allKept &&= same
+    kept.set(id, same ? before : notice)
+  }
+  return allKept ? previous : kept
 }

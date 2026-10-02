@@ -22,7 +22,11 @@ import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import { writeOutbox } from './structured-agent-session-outbox-storage'
+import {
+  hasUndeliveredStructuredAgentSessionOutbox,
+  readOutbox,
+  writeOutbox
+} from './structured-agent-session-outbox-storage'
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -266,26 +270,13 @@ describe('a send the host rejected because the agent never started', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
-  // After a restart its journal row may be older than the loaded page; that row still holds it.
-  it('leaves a message rejected before a restart to its journal row, loaded or not', async () => {
-    const rejected = createStructuredAgentSessionOutboxEntry({
-      clientMessageId: 'rejected-before-restart',
-      sessionId: 'session-1',
-      text: 'first',
-      attachments: [],
-      queuedAt: 1
-    })
-    writeOutbox('session-1', [
-      {
-        ...rejected,
-        state: 'rejected',
-        lastFailure: {
-          kind: 'rejected',
-          reason: 'The provider did not accept this message.',
-          rejection: { kind: 'providerRejected' }
-        }
-      }
-    ])
+  // After a restart nothing in memory remembers the rejection, and its journal row may be older
+  // than the loaded page, or lost to a repair: the message keeps its Retry, which needs a new id.
+  it('retries a message rejected before a restart under a new id while its row is not loaded', async () => {
+    writeOutbox('session-1', [rejectedBeforeRestart()])
+    mocks.call.mockImplementation(async (_target, _method, params) =>
+      acceptedResultFor(String(params.envelope.clientOperationId))
+    )
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
         sessionId: 'session-1',
@@ -294,9 +285,44 @@ describe('a send the host rejected because the agent never started', () => {
         submissions: []
       })
     )
+    expect(result.current.outbox[0]?.state).toBe('rejected')
 
-    expect(result.current.outbox).toEqual([])
-    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    act(() => result.current.retry('rejected-before-restart'))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    const sentId: unknown = mocks.call.mock.calls[0]![2].envelope.clientOperationId
+    expect(sentId).not.toBe('rejected-before-restart')
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+  })
+
+  // The host's own record is what lets it go, and storage forgets it too: nothing is owed.
+  it('drops a message rejected before a restart once the journal says so, from storage too', async () => {
+    writeOutbox('session-1', [rejectedBeforeRestart()])
+    const { result, rerender } = renderHook(
+      (props: { submissions: AgentJournalSubmission[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: { kind: 'local' },
+          fence: 1,
+          submissions: props.submissions
+        }),
+      { initialProps: { submissions: NO_SUBMISSIONS } }
+    )
+    expect(result.current.outbox).toHaveLength(1)
+
+    rerender({
+      submissions: [
+        {
+          ...pendingResultFor('rejected-before-restart').value.submission,
+          dispatchState: 'rejected',
+          reason: 'The provider did not accept this message.',
+          resolvedAt: 2
+        }
+      ]
+    })
+
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(readOutbox('session-1')).toEqual([])
+    expect(hasUndeliveredStructuredAgentSessionOutbox('session-1')).toBe(false)
     expect(mocks.call).not.toHaveBeenCalled()
   })
 
@@ -339,6 +365,24 @@ describe('a send the host rejected because the agent never started', () => {
 })
 
 const NO_SUBMISSIONS: AgentJournalSubmission[] = []
+
+function rejectedBeforeRestart(): StructuredAgentSessionOutboxEntry {
+  return {
+    ...createStructuredAgentSessionOutboxEntry({
+      clientMessageId: 'rejected-before-restart',
+      sessionId: 'session-1',
+      text: 'first',
+      attachments: [],
+      queuedAt: 1
+    }),
+    state: 'rejected',
+    lastFailure: {
+      kind: 'rejected',
+      reason: 'The provider did not accept this message.',
+      rejection: { kind: 'providerRejected' }
+    }
+  }
+}
 
 function pendingResultFor(clientMessageId: string) {
   const submission: AgentJournalSubmission = {

@@ -56,8 +56,7 @@ function texts(
 }
 
 describe('the notice on each message that did not go through', () => {
-  // Recorded by the host, so sending it again is a new message: no Retry until the journal row
-  // takes it over.
+  // Rejected while the chat watched, so the host has them: no Retry, the journal row takes over.
   it('gives two messages the host rejected each their own reason and no Retry', () => {
     const retry = vi.fn()
     const notices = structuredAgentSessionDeliveryNotices(
@@ -79,7 +78,7 @@ describe('the notice on each message that did not go through', () => {
       retry,
       [],
       [],
-      NOT_FAILED_HERE
+      new Set(['first', 'second'])
     )
 
     expect([...notices.keys()]).toEqual([
@@ -94,6 +93,26 @@ describe('the notice on each message that did not go through', () => {
     )
     expect(notices.get(agentJournalSubmissionKey('first'))?.onRetry).toBeUndefined()
     expect(notices.get(agentJournalSubmissionKey('second'))?.onRetry).toBeUndefined()
+  })
+
+  // Read back from storage with no row loaded: the host may have lost it, so it keeps its Retry.
+  it('keeps the Retry on a message the host rejected before this chat opened', () => {
+    const retry = vi.fn()
+    const notice = structuredAgentSessionDeliveryNotices(
+      [
+        entry('earlier', {
+          state: 'rejected',
+          lastFailure: { kind: 'rejected', reason: 'Claude messages support at most 20 images' }
+        })
+      ],
+      'Claude',
+      retry,
+      [],
+      [],
+      NOT_FAILED_HERE
+    ).get(agentJournalSubmissionKey('earlier'))
+    notice?.onRetry?.()
+    expect(retry).toHaveBeenCalledExactlyOnceWith('earlier')
   })
 
   it('chooses the words from the saved refusal on a refused message', () => {

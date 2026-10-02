@@ -19,6 +19,8 @@ import { buildNativeChatTranscriptSlots } from './native-chat-transcript-slots'
 import type { NativeChatTurnDiff } from './native-chat-turn-diffs'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
+const NO_CARDS: readonly string[] = []
+
 function row(sequence: number, body: AgentJournalItemBody, itemId = `item-${sequence}`) {
   return { itemId, revision: 1, sequence, observedAt: 1_000 + sequence, body }
 }
@@ -68,7 +70,7 @@ const JOURNAL: AgentJournalRenderItem[] = [
 /** The renderer's own path from journal items to rail items, as the list runs it. */
 function loadedRailItems(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]) {
   const projected = createNativeChatMessageListProjection()(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS)
   ).conversation
   const messages = omitNativeChatThreadGoalRows(projectNativeChatTaskListFrames(projected))
   let turn: string | undefined

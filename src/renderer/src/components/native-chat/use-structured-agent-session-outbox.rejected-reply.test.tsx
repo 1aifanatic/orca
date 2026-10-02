@@ -29,6 +29,8 @@ import {
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 
+const NO_CARDS: readonly string[] = []
+
 afterEach(cleanup)
 
 beforeEach(() => {
@@ -86,7 +88,7 @@ it('draws a send its reply rejected in place once, and leaves the composer empty
     body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'steer this way' }] }
   }
   const users = (outbox: typeof result.current.outbox) =>
-    projectStructuredAgentSessionMessages([hostItem], outbox, [submission])
+    projectStructuredAgentSessionMessages([hostItem], outbox, [submission], NO_CARDS)
       .filter((message) => message.role === 'user')
       .map((message) => ({ id: message.id, unsent: message.unsent }))
 

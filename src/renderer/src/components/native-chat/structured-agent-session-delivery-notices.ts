@@ -10,7 +10,7 @@
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
 // journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
 // failed start's, the fact its loaded row states, says only that it was not sent: the row already
-// says why. Until the journal carries it, the outbox draws it from its smaller copy of that fact.
+// says why. Until the journal's submissions say so, the outbox draws it from its smaller copy.
 
 import {
   readAgentSessionFailureFact,
@@ -170,10 +170,12 @@ export function structuredAgentSessionDeliveryNotices(
       structuredAgentSessionEntryHeldForRetry(entry) ||
       entry.clientMessageId === held
     ) {
-      // Its own Retry is the step, so the words leave out sending again.
+      // Its own Retry is the step, so the words leave out sending again. One the host rejected
+      // while this chat watched waits for its journal row instead: the host has it. Read back from
+      // storage with no row loaded, the host may have lost it, so it keeps its Retry.
       const retryControl =
         (stalledFrom === -1 || index <= stalledFrom) &&
-        !structuredAgentSessionEntryRejectedByHost(entry)
+        !(structuredAgentSessionEntryRejectedByHost(entry) && failedHere.has(entry.clientMessageId))
       const text = deliveryNoticeText(entry, { agentName, retryControl }, failedHere)
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),

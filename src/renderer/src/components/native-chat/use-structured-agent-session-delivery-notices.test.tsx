@@ -12,6 +12,36 @@ const NONE = new Set<string>()
 const NO_CARDS: readonly string[] = []
 const EMPTY: never[] = []
 
+function rejected(
+  clientMessageId: string,
+  kind: 'hostRestarted' | 'notDelivered'
+): AgentJournalSubmission {
+  return {
+    clientMessageId,
+    fence: 1,
+    payloadFingerprint: clientMessageId,
+    dispatchState: 'rejected',
+    providerItemId: null,
+    reason: null,
+    rejection: { kind },
+    submittedAt: 1,
+    resolvedAt: 2
+  }
+}
+
+function accepted(clientMessageId: string): AgentJournalSubmission {
+  return {
+    clientMessageId,
+    fence: 1,
+    payloadFingerprint: clientMessageId,
+    dispatchState: 'accepted',
+    providerItemId: `provider-${clientMessageId}`,
+    reason: null,
+    submittedAt: 3,
+    resolvedAt: 4
+  }
+}
+
 function withdrawn(clientMessageId: string): AgentJournalSubmission {
   return {
     clientMessageId,
@@ -47,4 +77,44 @@ it('keeps the same notices across batches in a chat whose only rejection a Stop 
 
   expect(result.current).toBe(first)
   expect(result.current.size).toBe(0)
+})
+
+function renderNotices(submissions: readonly AgentJournalSubmission[]) {
+  return renderHook(
+    ({ submissions: current }: { submissions: readonly AgentJournalSubmission[] }) =>
+      useStructuredAgentSessionDeliveryNotices({
+        outbox: EMPTY,
+        submissions: current,
+        journalItems: EMPTY,
+        failedHere: NONE,
+        queuedMessageIds: NO_CARDS,
+        retry: () => {},
+        agentName: 'Claude'
+      }),
+    { initialProps: { submissions } }
+  )
+}
+
+// A batch for another message rebuilds the journal's rows; the rows already marked not sent keep
+// the same notices, so no row wrapper re-renders.
+it('keeps the same notices when a batch leaves every not-sent message as it was', () => {
+  const { result, rerender } = renderNotices([rejected('lost', 'hostRestarted')])
+  const first = result.current
+  expect(first.size).toBe(1)
+
+  rerender({ submissions: [rejected('lost', 'hostRestarted'), accepted('next')] })
+
+  expect(result.current).toBe(first)
+})
+
+it('keeps the notice of a row that did not change when another one does', () => {
+  const { result, rerender } = renderNotices([rejected('lost', 'hostRestarted')])
+  const lost = result.current.get('orca:lost')
+
+  rerender({
+    submissions: [rejected('lost', 'hostRestarted'), rejected('other', 'notDelivered')]
+  })
+
+  expect(result.current.size).toBe(2)
+  expect(result.current.get('orca:lost')).toBe(lost)
 })

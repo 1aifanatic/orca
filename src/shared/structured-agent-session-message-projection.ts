@@ -84,7 +84,8 @@ export function projectStructuredAgentSessionMessages(
   const visibleItems: AgentJournalRenderItem[] = []
   const unsentItems: AgentJournalRenderItem[] = []
   for (const item of items) {
-    if (inPlace.has(item.itemId)) {
+    // A command such as `/compact` has its rejection reported as its own reply, so it stays hidden.
+    if (inPlace.has(item.itemId) && !(item.body.kind === 'message' && item.body.command)) {
       unsentItems.push(item)
     } else if (!rejected.has(item.itemId)) {
       visibleItems.push(item)

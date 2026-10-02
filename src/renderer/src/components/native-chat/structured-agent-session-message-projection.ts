@@ -12,7 +12,8 @@ export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  queuedMessageIds: readonly string[] = []
+  /** The queue's live cards; required, since a rejected message a card holds must not draw twice. */
+  queuedMessageIds: readonly string[]
 ) {
   return projectMessages(
     items,
