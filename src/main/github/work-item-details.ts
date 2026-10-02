@@ -1,14 +1,15 @@
 import type { PRCheckDetail } from '../../shared/github/check-types'
 import type { GitHubPRFile, GitHubPRFileContents } from '../../shared/github/pull-request-types'
-import type { GitHubWorkItem, GitHubWorkItemDetails } from '../../shared/github/work-item-types'
+import type { GitHubWorkItemDetails } from '../../shared/github/work-item-types'
 import type { IssueSourcePreference } from '../../shared/repo-types'
-import { getPRChecks, getPRComments, getWorkItem, getWorkItemByOwnerRepo } from './client'
-import { acquire, release, type LocalGitExecOptions } from './gh-utils'
 import {
-  resolveGitHubRepoExecution,
-  resolveIssueGitHubApiRepositorySource,
-  type GitHubApiRepository
-} from './github-api-repository'
+  getPRChecks,
+  getPRComments,
+  getWorkItemWithRepository,
+  getWorkItemByOwnerRepo
+} from './client'
+import { acquire, release, type LocalGitExecOptions } from './gh-utils'
+import { resolveGitHubRepoExecution, type GitHubApiRepository } from './github-api-repository'
 import { isValidGitHubApiRepository } from './github-api-repository-validation'
 import { getIssueBodyAndComments, getIssueDetailsViaGraphQL } from './issue-work-item-details'
 import {
@@ -80,16 +81,26 @@ export async function getWorkItemDetails(
     }
     issueRepositoryOverride = repositoryOverride
   }
-  const item: Omit<GitHubWorkItem, 'repoId'> | null = issueRepositoryOverride
-    ? await getWorkItemByOwnerRepo(
+  const { item, repository: selectedRepository } = issueRepositoryOverride
+    ? {
+        item: await getWorkItemByOwnerRepo(
+          repoPath,
+          issueRepositoryOverride,
+          number,
+          'issue',
+          connectionId,
+          localGitOptions
+        ),
+        repository: issueRepositoryOverride
+      }
+    : await getWorkItemWithRepository(
         repoPath,
-        issueRepositoryOverride,
         number,
-        'issue',
+        type,
         connectionId,
-        localGitOptions
+        localGitOptions,
+        preference
       )
-    : await getWorkItem(repoPath, number, type, connectionId, localGitOptions, preference)
   if (!item) {
     return null
   }
@@ -106,14 +117,7 @@ export async function getWorkItemDetails(
               localGitOptions
             )
           ).ownerRepo
-        : (
-            await resolveIssueGitHubApiRepositorySource(
-              repoPath,
-              preference,
-              connectionId,
-              localGitOptions
-            )
-          ).source
+        : selectedRepository
       : (await resolveGitHubRepoExecution(repoPath, item.prRepo, connectionId, localGitOptions))
           .ownerRepo
 
