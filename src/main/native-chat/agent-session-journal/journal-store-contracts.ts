@@ -12,7 +12,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
-import type { JournalReadRow } from './journal-skipped-row'
+import type { JournalRow } from './journal-row-schema'
 
 export type AgentSessionJournalOptions = {
   identity: AgentSessionJournalIdentity
@@ -24,7 +24,7 @@ export type AgentSessionJournalOptions = {
 }
 
 export type JournalReadSince =
-  | { ok: true; rows: JournalReadRow[]; cursor: AgentJournalCursor }
+  | { ok: true; rows: JournalRow[]; cursor: AgentJournalCursor }
   | { ok: false; reset: AgentJournalResetReason }
 
 export type ResolveDispatchInput = {

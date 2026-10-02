@@ -5,15 +5,13 @@
 // UNREADABLE, not skippable: the caller must degrade to read-only rather than
 // render a partial timeline or compact past a row it cannot interpret.
 //
-// A row whose KIND this build does not know is UNREADABLE the same way and kept
-// on disk, unless its writer declared `ifUnknown` on it: `skip` (read past it;
-// a rewrite drops it) or `carry` (read past it; a rewrite carries it after the
-// rebuilt history, its epoch, seq and fence restamped). A new kind may declare
-// either only if a build that never sees it makes no different write, and a
-// `carry` row only if it means the same at any later place in a new epoch (no
-// sequence or epoch references). Otherwise it stays undeclared, or is written
-// at a bumped `v`, and older builds go read-only. Each kind records its choice
-// in `journal-row-kind-compatibility.ts`.
+// A row whose KIND this build does not know is UNREADABLE the same way, and kept
+// on disk, when it has the envelope every row keeps: a non-empty `epoch`, an
+// integer `seq` >= 1, an integer `fence` and a numeric `ts`. So a new kind keeps
+// that envelope; changing the envelope is a `v` bump. Builds from before this
+// rule delete the journal from an unknown kind, so a new kind either ships its
+// reader first and is written only once no supported build lacks that reader,
+// or is written at a bumped `v`.
 
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
@@ -31,12 +29,6 @@ import {
 } from '../../../shared/agent-session-journal-schemas'
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
 import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
-import { JOURNAL_ROW_KINDS } from './journal-row-kind-compatibility'
-import {
-  hasJournalRowEnvelope,
-  unknownKindJournalRow,
-  type JournalSkippedRow
-} from './journal-skipped-row'
 
 /** Producer linkage rides the row BASE rather than the body: the two nested
  *  prompt shapes are `.strict()`, so an unknown key on a body would make the
@@ -95,10 +87,10 @@ export type JournalTombstoneRow = JournalRowBase & {
   queueResume?: true
 }
 
-/** One Stop that took effect. Temporary carrier: a tombstone's extra key, because an older host
- *  ignores an unknown key but deletes the journal from the first row kind it does not know. A Stop
- *  changes the queue and the turn's end, so no build may skip it: a kind of its own ships its reader
- *  first and is written once no supported build lacks that reader, or is written at a bumped `v`. */
+/** One Stop that took effect. Temporary carrier: a tombstone's extra key, which every host ignores,
+ *  where a host from before the header's rule deletes the journal from a kind it does not know. A
+ *  kind of its own ships its reader first and is written once no supported build lacks that
+ *  reader, or is written at a bumped `v`: an older host must never fold past a person's Stop. */
 export type JournalStopEvent = {
   /** Persisted: never rename an arm. Only `user-stop` pauses the queue. */
   reason: StructuredAgentSessionStopCause
@@ -195,21 +187,27 @@ export type JournalRow =
 export type JournalRowParse =
   | { ok: true; row: JournalRow }
   /** Malformed JSON or a shape this build rejects outright. */
-  | { ok: false; unreadable: false; skipped?: undefined }
-  /** A future schema version, or a kind this build does not know that its writer did not declare
-   *  `ifUnknown`. The host must not write or compact this journal. */
-  | { ok: false; unreadable: true; skipped?: undefined }
-  /** A kind this build does not know that its writer declared may be read past. */
-  | { ok: false; unreadable: false; skipped: JournalSkippedRow }
+  | { ok: false; unreadable: false }
+  /** A future schema version, or a kind this build does not know. The host must not write or
+   *  compact this journal. */
+  | { ok: false; unreadable: true }
+
+const ROW_KINDS = new Set([
+  'epoch',
+  'item',
+  'tombstone',
+  'submission',
+  'dispatch',
+  'lifecycle-batch'
+])
 
 export function serializeJournalRow(row: JournalRow): string {
   return JSON.stringify(row)
 }
 
 /**
- * Parse one persisted line. Older versions are upcast; newer versions, and newer
- * kinds their writer did not declare skippable, are reported as unreadable so the
- * caller fails closed.
+ * Parse one persisted line. Older versions are upcast; newer versions and newer
+ * kinds are reported as unreadable so the caller fails closed.
  */
 export function parseJournalRow(line: string): JournalRowParse {
   let parsed: unknown
@@ -244,13 +242,10 @@ export function parseJournalRow(line: string): JournalRowParse {
   if (isJournalRow(upcast)) {
     return { ok: true, row: upcast }
   }
-  const unknownKind = unknownKindJournalRow(upcast)
-  if (unknownKind === 'unreadable') {
-    return { ok: false, unreadable: true }
-  }
-  return unknownKind
-    ? { ok: false, unreadable: false, skipped: unknownKind }
-    : { ok: false, unreadable: false }
+  // A newer build's kind is placed by the envelope every row keeps; one without it is damage.
+  const { kind } = upcast
+  const unknownKind = typeof kind === 'string' && kind !== '' && !ROW_KINDS.has(kind)
+  return { ok: false, unreadable: unknownKind && hasJournalRowEnvelope(upcast) }
 }
 
 /** Linkage ids this build cannot trust, removed from a row it still keeps.
@@ -337,7 +332,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  schema — their nested shapes are dereferenced unguarded all the way to the
  *  rendered surface, so a JSON-valid corruption must fail here, not there. */
 function isJournalRow(record: Record<string, unknown>): record is JournalRow {
-  if (typeof record.kind !== 'string' || !JOURNAL_ROW_KINDS.has(record.kind)) {
+  if (typeof record.kind !== 'string' || !ROW_KINDS.has(record.kind)) {
     return false
   }
   if (!hasJournalRowEnvelope(record)) {
@@ -387,6 +382,18 @@ function isJournalRow(record: Record<string, unknown>): record is JournalRow {
     record.kind === 'epoch' &&
     typeof record.reason === 'string' &&
     isPlainObject(record.providerHandle)
+  )
+}
+
+/** The fields every row keeps whatever its kind: its epoch, its place in it, its writer, its time. */
+function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
+  return (
+    typeof record.epoch === 'string' &&
+    record.epoch !== '' &&
+    Number.isInteger(record.seq) &&
+    Number(record.seq) >= 1 &&
+    Number.isInteger(record.fence) &&
+    typeof record.ts === 'number'
   )
 }
 

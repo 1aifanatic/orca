@@ -26,8 +26,7 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import { isJournalStopOrResumeRow } from './journal-row-schema'
-import type { JournalReadRow } from './journal-skipped-row'
+import { isJournalStopOrResumeRow, type JournalRow } from './journal-row-schema'
 import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
 import { applyJournalDispatchRow } from './journal-dispatch-reducer'
 import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
@@ -65,8 +64,6 @@ export type JournalReducerState = {
   latestPersonTurnSequence: number
   /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
   queuePauseMarks: JournalQueuePauseMarks
-  /** Sequences of a newer build's rows declared `carry`, which a replacement carries. */
-  carrySequences: number[]
 }
 
 export function createJournalReducerState(sessionId: string, epoch: string): JournalReducerState {
@@ -86,22 +83,14 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     appliedSettlementIds: new Set(),
     derivedTurnScope: new JournalDerivedTurnScope(),
     latestPersonTurnSequence: 0,
-    queuePauseMarks: createJournalQueuePauseMarks(),
-    carrySequences: []
+    queuePauseMarks: createJournalQueuePauseMarks()
   }
 }
 
-export function applyJournalRow(state: JournalReducerState, row: JournalReadRow): void {
+export function applyJournalRow(state: JournalReducerState, row: JournalRow): void {
   state.lastSequence = Math.max(state.lastSequence, row.seq)
   state.highestFence = Math.max(state.highestFence, row.fence)
   if (row.kind === 'epoch') {
-    return
-  }
-  // Holds its sequence and fence, the envelope facts every row has; its content is unknown here.
-  if (row.kind === 'skipped') {
-    if (row.ifUnknown === 'carry') {
-      state.carrySequences.push(row.seq)
-    }
     return
   }
   state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)

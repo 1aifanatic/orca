@@ -5,8 +5,8 @@
 //
 // Rows are append-only. `schemaVersion` is upcast at read time and never
 // rewritten in place, so a host that cannot read a row (a newer version, or a
-// newer kind its writer did not declare skippable) refuses to write the journal
-// rather than skipping or compacting past it.
+// newer kind) refuses to write the journal rather than skipping or compacting
+// past it.
 
 import type { UnreadAgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureRowWords } from './agent-session-failure-words'

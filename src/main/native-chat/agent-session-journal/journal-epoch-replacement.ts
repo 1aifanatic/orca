@@ -3,8 +3,6 @@
 // One transaction: discard the old epoch's rows, insert the epoch row plus the
 // replacement items, move the session projection, and retire any repair marker
 // — this republished history is exactly what the marker was holding out for.
-// A newer build's rows its writer declared `carry` are carried, not discarded:
-// that build still reads them after a downgrade and upgrade.
 
 import type {
   AgentJournalItemBody,
@@ -26,18 +24,10 @@ import type { JournalQueuePauseRestatement } from './queued-message-pause'
 import {
   deleteJournalEpochRows,
   insertJournalRow,
-  insertJournalStoredRow,
   publishJournalSessionEpoch,
-  readJournalRow,
-  readJournalSessionEpoch,
-  type JournalStoredRow
+  readJournalSessionEpoch
 } from './journal-row-table'
-import {
-  parseJournalRow,
-  type AgentJournalEpochReason,
-  type JournalRow
-} from './journal-row-schema'
-import { restampSkippedJournalRow } from './journal-skipped-row'
+import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 import { assertJournalFence } from './journal-write-guards'
 
 export type JournalReplacementItem = AgentJournalProducerLinkage & {
@@ -58,8 +48,6 @@ export function replaceJournalEpoch(input: {
   /** Restated in the new epoch, or the rewind would release cards the person stopped, or bring
    *  back a /clear pause they already lifted. */
   queuePause: JournalQueuePauseRestatement
-  /** The live epoch's rows of a newer build's kind, declared `carry`. */
-  carrySequences: readonly number[]
   now: () => number
   mintEpoch: () => string
   /** Called the instant the transaction commits, before any fallible follow-up. */
@@ -104,22 +92,6 @@ export function replaceJournalEpoch(input: {
   }
 
   const { sessionId } = input.identity
-  // Last, in source order: their writer vouched they mean the same at any later place.
-  const carried: JournalStoredRow[] = []
-  for (const stored of readLiveJournalRows(input.database, sessionId, input.carrySequences)) {
-    const parsed = parseJournalRow(stored.rowJson)
-    const skipped = !parsed.ok && parsed.skipped
-    if (!skipped || skipped.ifUnknown !== 'carry') {
-      continue
-    }
-    const at = { epoch, seq: state.lastSequence + 1, fence: input.fence }
-    const moved = restampSkippedJournalRow(stored.rowJson, skipped, at)
-    if (moved) {
-      applyJournalRow(state, moved.row)
-      carried.push({ epoch, seq: moved.row.seq, ts: moved.row.ts, rowJson: moved.rowJson })
-    }
-  }
-
   input.database.transaction((db) => {
     const retired = readJournalSessionEpoch(db, sessionId)
     if (retired !== null) {
@@ -129,9 +101,6 @@ export function replaceJournalEpoch(input: {
     for (const row of rows) {
       insertJournalRow(db, sessionId, row)
     }
-    for (const row of carried) {
-      insertJournalStoredRow(db, sessionId, row)
-    }
     publishJournalSessionEpoch(db, input.identity, epoch)
   })
 
@@ -140,16 +109,4 @@ export function replaceJournalEpoch(input: {
   // live store writing into an epoch whose rows were just deleted.
   state.oldestSequence = 1
   input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
-}
-
-/** The live epoch's rows at these sequences, as stored. */
-function readLiveJournalRows(
-  database: JournalHostDatabase,
-  sessionId: string,
-  sequences: readonly number[]
-): JournalStoredRow[] {
-  const live = readJournalSessionEpoch(database.db, sessionId)
-  return live === null
-    ? []
-    : sequences.flatMap((seq) => readJournalRow(database.db, sessionId, live, seq) ?? [])
 }

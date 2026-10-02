@@ -68,7 +68,6 @@ function replace(input: {
     fence: 1,
     items: input.items,
     queuePause: { lifted: false, liveStop: null },
-    carrySequences: [],
     now,
     mintEpoch: () => `epoch-${clock}`,
     onPublished: input.onPublished ?? (() => undefined)

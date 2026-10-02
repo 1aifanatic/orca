@@ -13,7 +13,6 @@ import { journalDatabasePath } from '../../../src/main/native-chat/agent-session
 import {
   closeTestJournalHostDatabase,
   createTrackedJournalOpener,
-  deleteTestJournalRow,
   insertTestJournalRowJson,
   liveTestJournalRows,
   openTestJournalHostDatabase
@@ -82,7 +81,7 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     if (!since.ok) {
       throw new Error(`expected rows, got reset ${since.reset}`)
     }
-    const rows = since.rows.flatMap((row): JournalRow[] => (row.kind === 'skipped' ? [] : [row]))
+    const rows: JournalRow[] = since.rows
 
     // The older build, after a downgrade, replays the same rows from its own database.
     const checkout = await materializeReleaseCheckout(BASELINE_REF)
@@ -229,61 +228,48 @@ test("an older build opens this build's journal writable and appends to it; the 
   }
 }, 120_000)
 
-// Why a Stop's event cannot have a row kind of its own yet: a build before this one deletes the
-// journal from a kind it does not know. This build keeps every row and goes read-only on an
-// undeclared kind, and reads past one its writer declared `skip` or `carry`; a Stop changes the
-// queue and the turn's end, so it may never declare either. A Stop kind ships its reader first and
-// is written once no supported build lacks that reader, or is written at a bumped `v`.
-test("this build keeps a newer build's row kind: read-only undeclared, writable declared; a build before it deletes it", async () => {
+// Why a Stop's event cannot have a row kind of its own yet: this build keeps a kind it does not know
+// and goes read-only, but a build from before that deletes the journal from it. So a Stop kind ships
+// its reader first and is written once no supported build lacks that reader, or is written at a
+// bumped `v`. Move the baseline to the first release with this rule, and the older build keeps the
+// row too.
+test("this build keeps a newer build's row kind and goes read-only; a build before it deletes it", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-newer-kind-downgrade-'))
   const journals = createTrackedJournalOpener()
   const newerKinds = () => storedRows(directory).filter((row) => row.includes('"future-mark"'))
-  const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   try {
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
     await journal.appendItem(item(0), { kind: 'status', text: 'before' }, scope)
     const at = journal.cursor().sequence + 1
-    const newerRow = (declared: Record<string, unknown>) =>
-      JSON.stringify({
-        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-        kind: 'future-mark',
-        epoch: journal.epoch,
-        seq: at,
-        fence: 1,
-        ts: 2_000,
-        payload: { said: 'by a newer build' },
-        ...declared
-      })
+    const newer = JSON.stringify({
+      v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+      kind: 'future-mark',
+      epoch: journal.epoch,
+      seq: at,
+      fence: 1,
+      ts: 2_000,
+      payload: { said: 'by a newer build' }
+    })
     await journals.closeAll()
-    // Each case starts from the same journal: its rows before `at`, then the newer row.
-    const storeNewerRow = (json: string) => {
-      const { db } = openTestJournalHostDatabase(directory)
-      deleteTestJournalRow(db, IDENTITY.sessionId, at)
-      deleteTestJournalRow(db, IDENTITY.sessionId, at + 1)
-      insertTestJournalRowJson(db, IDENTITY.sessionId, at, json)
-      closeTestJournalHostDatabase(directory)
-    }
+    insertTestJournalRowJson(
+      openTestJournalHostDatabase(directory).db,
+      IDENTITY.sessionId,
+      at,
+      newer
+    )
+    closeTestJournalHostDatabase(directory)
+    const rowsBefore = storedRows(directory)
 
-    const undeclared = newerRow({})
-    storeNewerRow(undeclared)
-    const readOnly = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    expect(readOnly.isReadOnly).toBe(true)
+    const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+    expect(reopened.isReadOnly).toBe(true)
+    expect(reopened.repair).toEqual({ malformedRows: 0 })
     await expect(
-      readOnly.appendItem(item(1), { kind: 'status', text: 'after' }, scope)
+      reopened.appendItem(item(1), { kind: 'status', text: 'after' }, scope)
     ).rejects.toMatchObject({ code: 'journal_read_only' })
     await journals.closeAll()
-    expect(newerKinds()).toEqual([undeclared])
-
-    for (const ifUnknown of ['skip', 'carry']) {
-      const declared = newerRow({ ifUnknown })
-      storeNewerRow(declared)
-      const writable = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-      expect(writable.isReadOnly).toBe(false)
-      expect(writable.repair).toEqual({ malformedRows: 0 })
-      await writable.appendItem(item(1), { kind: 'status', text: 'after' }, scope)
-      await journals.closeAll()
-      expect(newerKinds()).toEqual([declared])
-    }
+    expect(storedRows(directory)).toEqual(rowsBefore)
+    expect(newerKinds()).toEqual([newer])
 
     const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
     const support = await importReleaseCheckoutModule(
