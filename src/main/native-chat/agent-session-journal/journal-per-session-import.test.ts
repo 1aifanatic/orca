@@ -29,6 +29,7 @@ import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
 import { readJournalSessionEpoch, type JournalStoredRow } from './journal-row-table'
 import { createStructuredAgentSessionLogger } from '../agent-session-wire/structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from '../agent-session-wire/structured-agent-session-logger-test-support'
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFs>()
@@ -445,6 +446,8 @@ describe('importing a per-chat journal', () => {
     await writeLegacyJournal(epoch, rows)
     removeFails()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logged = recordingStructuredAgentSessionLogger()
+    openTestJournalHostDatabase(root, logged.logger)
 
     const journal = await openChat()
     await journal.appendItem(
@@ -453,6 +456,13 @@ describe('importing a per-chat journal', () => {
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
+    expect(logged.entries.map(({ fields }) => fields)).toEqual([
+      expect.objectContaining({
+        scope: 'journal-import-retire',
+        sessionId: IDENTITY.sessionId,
+        legacyDirectory: legacyDir()
+      })
+    ])
     // The process exits and the database closes.
     await journals.closeAll()
     await removeWorks()

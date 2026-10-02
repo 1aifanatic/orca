@@ -130,7 +130,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     if (!published) {
       return 'absent'
     }
-    retireLegacyJournal(input.legacyDirectory, input.database.logger, input.remove)
+    retireLegacyJournal(input.legacyDirectory, sessionId, input.database.logger, input.remove)
     return 'already-imported'
   }
   if (plan?.kind === 'kept') {
@@ -138,7 +138,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     return 'kept'
   }
   // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
-  retireLegacyJournal(input.legacyDirectory, input.database.logger, input.remove)
+  retireLegacyJournal(input.legacyDirectory, sessionId, input.database.logger, input.remove)
   if (plan?.kind === 'copied') {
     return 'already-imported'
   }

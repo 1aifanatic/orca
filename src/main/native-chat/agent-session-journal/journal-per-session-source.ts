@@ -124,6 +124,7 @@ export async function foldLegacyJournal(
  */
 export function retireLegacyJournal(
   legacyDirectory: string,
+  sessionId: string,
   logger: StructuredAgentSessionLogger,
   remove: (path: string) => void = (path) => rmSync(path, { force: true })
 ): void {
@@ -137,6 +138,7 @@ export function retireLegacyJournal(
   } catch (error) {
     logger.warn('deleting an imported per-chat journal failed', {
       scope: 'journal-import-retire',
+      sessionId,
       legacyDirectory,
       error
     })
