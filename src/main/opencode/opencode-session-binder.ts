@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { resolveOpenCodeDataDirectory } from './opencode-data-directory'
 import {
   bindOpenCodeSession,
@@ -225,11 +225,9 @@ export function listOpenCodeDbSessions(
   dbPath: string,
   cursor: OpenCodeSessionCursor
 ): BinderSessionRow[] {
-  // A store that has not been created yet is an expected state, not a read failure.
-  if (!existsSync(dbPath)) {
-    return []
-  }
   try {
+    // Check absence without hiding permission failures as an unused store.
+    statSync(dbPath)
     return readOpenCodeDatabase({
       dbPath,
       read: (db) => {
@@ -274,6 +272,13 @@ export function listOpenCodeDbSessions(
       }
     })
   } catch (err) {
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      (err.code === 'ENOENT' || err.code === 'ENOTDIR')
+    ) {
+      return []
+    }
     console.warn('[opencode-binder] session store read failed; skipping round', err)
     return []
   }

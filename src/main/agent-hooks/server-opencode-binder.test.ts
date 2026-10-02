@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -343,4 +343,21 @@ describe('listOpenCodeDbSessions', () => {
       warn.mockRestore()
     }
   })
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'warns when an existing database is behind an inaccessible directory',
+    () => {
+      writeDb(dbPath, 'session')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        chmodSync(dir, 0o000)
+        expect(listOpenCodeDbSessions(dbPath, { ms: 0, id: '' })).toEqual([])
+        expect(warn).toHaveBeenCalledTimes(1)
+        expect(warn.mock.calls[0]?.[1]).toMatchObject({ code: 'EACCES' })
+      } finally {
+        chmodSync(dir, 0o700)
+        warn.mockRestore()
+      }
+    }
+  )
 })
