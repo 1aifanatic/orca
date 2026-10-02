@@ -4,6 +4,13 @@ on:
   pull_request:
     paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Pilot to run
+        type: choice
+        required: true
+        default: verification-cache
+        options: [verification-cache, mac-native-floor]
 
 permissions:
   contents: read
@@ -17,6 +24,7 @@ env:
 
 jobs:
   seed:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'verification-cache'
     strategy:
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
@@ -36,6 +44,7 @@ jobs:
           key: ${{ steps.deps.outputs.verification-cache-key }}
 
   measure:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'verification-cache'
     needs: seed
     name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
     strategy:
@@ -63,3 +72,33 @@ jobs:
           if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
           git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
           node -e "require.resolve('vitest'); require.resolve('electron')"
+
+  mac-native-floor:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mac-native-floor'
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        id: deps
+        with:
+          native-runtime: none
+      - uses: ./.github/actions/prepare-orcad-prebuilds
+      - run: pnpm build:orcad
+      - name: Inspect macOS deployment floors and exact native payloads
+        if: always() && steps.deps.outcome == 'success'
+        run: pnpm exec node config/scripts/ci-mac-native-floor-pilot.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mac-native-floor-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/orca-mac-native-floor
+            out/orcad-prebuilds/manifest.json
+            out/orcad-prebuilds/darwin-arm64/pty.node
+            out/orcad-prebuilds/darwin-arm64/spawn-helper
+            out/orcad/node_modules/@parcel/watcher/watcher.node
