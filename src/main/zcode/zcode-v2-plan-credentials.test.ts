@@ -428,10 +428,10 @@ describe('external v2 file boundaries', () => {
       const config = JSON.parse(readFileSync(path, 'utf8'))
       const selection = config.config.defaultModelSelection
       if (kind === 'duplicate-provider') {
-        config.config.providerConfigRules.providerRules = Array(2).fill({
+        config.config.providerConfigRules.providerRules = Array.from({ length: 2 }, () => ({
           providerId: selection.providerId,
           config: {}
-        })
+        }))
       } else {
         const group = kind === 'manual-model' ? 'manualProviderModelRules' : 'providerModelRules'
         config.config.modelConfigRules[group] = [
