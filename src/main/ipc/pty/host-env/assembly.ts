@@ -6,6 +6,7 @@ import {
 } from '../../../../shared/pi-agent-kind'
 import { applyTerminalGitCredentialPromptGuard } from '../../terminal-git-credential-guard'
 import { openCode2HookService, openCodeHookService } from '../../../opencode/hook-service'
+import { ensureOpenCodeStartupPromptForLaunch } from '../../../opencode/opencode-startup-prompt-installer'
 import {
   OPENCODE_CONFIG_DIR_ENV_KEYS,
   isOpenCodeLegacySharedConfigDir
@@ -341,5 +342,8 @@ export function buildPtyHostEnv(
   // process.env when baseEnv carries none, which is the daemon path's normal shape.
   stripLegacyTerminalShimEnv(baseEnv, process.platform)
 
+  if (!opts.isWsl) {
+    ensureOpenCodeStartupPromptForLaunch(baseEnv)
+  }
   return baseEnv
 }

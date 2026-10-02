@@ -25,7 +25,10 @@ import { structuredStatusLegacyEvent } from './server-structured-status-row'
 const UNORDERED_STATUS_ROW = Number.MAX_SAFE_INTEGER
 
 export abstract class AgentHookServerListeners extends AgentHookServerState {
-  setStartupPromptClaimListener(listener: (body: unknown) => boolean, clear: () => void): void {
+  setStartupPromptClaimListener(
+    listener: (body: unknown) => boolean | 'pending',
+    clear: () => void
+  ): void {
     this.onStartupPromptClaim = listener
     this.clearStartupPromptClaims = clear
   }

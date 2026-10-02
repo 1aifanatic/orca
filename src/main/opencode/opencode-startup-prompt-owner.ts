@@ -9,15 +9,30 @@ import {
 } from '../../shared/opencode-startup-prompt'
 import { OpenCodeStartupPromptClaims } from './opencode-startup-prompt-claims'
 
+type OpenCodePromptRuntime = Pick<
+  OrcaRuntimeService,
+  | 'terminalRunFacts'
+  | 'readOpenCodeStartupPromptOwner'
+  | 'isPtyStopRequested'
+  | 'subscribeToPtyExit'
+>
 const claims = new OpenCodeStartupPromptClaims()
+
+export function reserveOpenCodeStartupPrompt(nonce: string, digest: string): boolean {
+  agentHookServer.setStartupPromptClaimListener(
+    (body) => claims.claim(body),
+    () => claims.clear()
+  )
+  return claims.register(nonce, digest, () => 'pending')
+}
 
 export async function commitPtyWithOpenCodePromptIntent<Result extends PtySpawnResult>(
   context: {
     env?: Record<string, string>
     spawnEnv?: Record<string, string>
-    deps: { runtime?: OrcaRuntimeService }
+    deps: { runtime?: OpenCodePromptRuntime }
     result: PtySpawnResult
-    provider: IPtyProvider
+    provider: Pick<IPtyProvider, 'hasPty'>
     args: { connectionId?: string | null }
   },
   commit: () => Promise<Result>
@@ -35,6 +50,12 @@ export async function commitPtyWithOpenCodePromptIntent<Result extends PtySpawnR
     const result = await commit()
     bindOpenCodeStartupPromptOwner({ ...options, result })
     return result
+  } catch (error) {
+    const nonce = options.env?.[OPENCODE_STARTUP_PROMPT_NONCE_ENV]
+    if (nonce) {
+      claims.cancel(nonce)
+    }
+    throw error
   } finally {
     facts?.discardSpawnCommit(options.result)
   }
@@ -43,8 +64,8 @@ export async function commitPtyWithOpenCodePromptIntent<Result extends PtySpawnR
 export function bindOpenCodeStartupPromptOwner(options: {
   env: Record<string, string> | undefined
   result: PtySpawnResult
-  runtime: OrcaRuntimeService | undefined
-  provider: IPtyProvider
+  runtime: OpenCodePromptRuntime | undefined
+  provider: Pick<IPtyProvider, 'hasPty'>
   connectionId?: string | null
 }): void {
   const { env, result, runtime, provider } = options
@@ -62,17 +83,15 @@ export function bindOpenCodeStartupPromptOwner(options: {
     !digest ||
     !launchToken
   ) {
+    if (nonce) {
+      claims.cancel(nonce)
+    }
     return
   }
-  agentHookServer.setStartupPromptClaimListener(
-    (body) => claims.claim(body),
-    () => claims.clear()
-  )
   let unsubscribe = () => {}
   if (
-    claims.register(
+    claims.admit(
       nonce,
-      digest,
       () => {
         if (
           ptyOwnership.get(result.id) !== null ||
