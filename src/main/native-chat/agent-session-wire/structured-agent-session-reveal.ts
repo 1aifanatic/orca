@@ -127,8 +127,13 @@ export function createStructuredAgentSessionHostRestore(
     canSettle,
     seedStatus: chatStatus.seedStatus,
     resolveRecovery: readRestore.resolveRecovery,
-    restoreListed: (records) =>
-      restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
+    restoreListed: (records, resolveListedRecovery) =>
+      restoreStructuredAgentSessionsOnRestart({
+        ...readRestore,
+        records,
+        resolveRecovery: resolveListedRecovery
+      }),
+    recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
     isDisposed: rest.isDisposed

@@ -683,13 +683,53 @@ describe('a recovery that never answers', () => {
     await state.settleOwedSessions([])
 
     expect(resolveRecovery).toHaveBeenCalledWith('session-stuck')
-    expect(restoreListed).toHaveBeenCalledWith([])
+    expect(restoreListed).toHaveBeenCalledWith([], expect.any(Function))
     expect(stuck.lease.handoffStage).toBe('recovering')
     expect(logger.warn).toHaveBeenCalledWith('a chat recovery outlasted startup; left unverified', {
       scope: 'startup-recovery-timeout',
       sessionId: 'session-stuck'
     })
   })
+})
+
+describe('a listed chat whose recovery never answers', () => {
+  it('is opened unverified, with no second recovery beside the first, and the rest still settle', async () => {
+    const rig = await newRig()
+    await crashMidSend(rig, 'session-stuck')
+    await crashMidSend(rig, 'session-closed', false)
+    const lease = rig.store.getRecord('session-stuck')!.lease
+    await rig.crash()
+    // Its provider process was up when Orca died; the check of it answers once, then never again.
+    await writeOlderBuildLease(rig.root, 'session-stuck', { ...lease })
+    let answered = false
+    let hung = 0
+    rig.probeOwner.mockImplementation(async (record) => {
+      if (record.sessionId !== 'session-stuck') {
+        return { outcome: 'pid-absent' }
+      }
+      if (!answered) {
+        answered = true
+        return { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+      }
+      hung += 1
+      return new Promise(() => {})
+    })
+    await rig.boot({ startupRecoveryBudgetMs: 50 })
+    expect(listedIds(rig)).toEqual(['session-stuck'])
+
+    const done = await Promise.race([
+      startup(rig, listedIds(rig)).then(() => 'done'),
+      new Promise((resolve) => setTimeout(() => resolve('still waiting'), 5_000))
+    ])
+
+    expect(done).toBe('done')
+    expect(hung).toBe(1)
+    expect(rig.store.getRecord('session-stuck')!.lease.handoffStage).toBe('recovering')
+    expect(opened(rig, ['session-closed'])).toEqual(['session-closed'])
+    expect(readTestJournalSessionStatus(rig.root, 'session-closed')).toMatchObject({
+      lifecycle: 'idle'
+    })
+  }, 20_000)
 })
 
 describe('a stored status no settle here can clear (R2A-4)', () => {

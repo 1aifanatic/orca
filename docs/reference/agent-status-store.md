@@ -132,8 +132,11 @@ Two rules the ingest must keep:
   is the durable truth for a structured session. Each chat's status is stored
   there beside its journal (`journal_session_state`), written in the same
   transaction as the journal rows it describes, so it is always current. A
-  chat last written before that table existed gets its row from the background
-  copy after startup or from its first open, whichever comes first (see
+  chat last written before that table existed has no row at first: a listed
+  chat gets one at startup, computed from its journal rows without opening it
+  (or from its open, when those rows show work a gone process left); any
+  other chat gets one from the background copy after startup or from its
+  first open, whichever comes first (see
   `structured-agent-session-per-chat-file-copy.ts` for the chats the copy skips).
   At host startup the host republishes a settled chat's row into the store
   without opening the chat, and settles a chat a gone process left with work
