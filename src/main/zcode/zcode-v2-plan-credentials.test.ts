@@ -366,4 +366,92 @@ describe('external v2 file boundaries', () => {
     writeFileSync(path, JSON.stringify(config))
     expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe('error')
   })
+
+  it('accepts a valid selected-provider empty personal rule and smart model rule', () => {
+    install('bigmodel')
+    const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    const selection = config.config.defaultModelSelection
+    config.config.providerConfigRules.providerRules = [
+      { providerId: selection.providerId, config: {} }
+    ]
+    config.config.modelConfigRules.providerModelRules = [{ ...selection, config: {} }]
+    writeFileSync(path, JSON.stringify(config))
+    expect(readZcodeV2PlanCredential(host)).toMatchObject({
+      status: 'ok',
+      baseUrl: 'https://open.bigmodel.cn'
+    })
+  })
+
+  it.each([
+    { access: { type: 'api-key', apiKey: 'synthetic-personal-key' } },
+    { access: null },
+    { api: { type: 'bad-api-type', baseUrl: 'invalid-url' } },
+    { api: { baseUrl: 'https://valid.example' } },
+    { visibility: 'hidden' }
+  ])(
+    'refuses unvalidated provider config %j without reading the vault or querying quota',
+    async (personal) => {
+      install('bigmodel')
+      legacy()
+      const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+      const config = JSON.parse(readFileSync(path, 'utf8'))
+      config.config.providerConfigRules.providerRules = [
+        { providerId: config.config.defaultModelSelection.providerId, config: personal }
+      ]
+      writeFileSync(path, JSON.stringify(config))
+      rmSync(join(dir, '.zcode', 'v2', 'credentials.json'))
+      expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe('unavailable')
+      expect((await fetchZcodeRateLimits({ credentialHost: host })).status).toBe('unavailable')
+      expect(fetch).not.toHaveBeenCalled()
+      expect(readFileSync(path, 'utf8')).toBe(JSON.stringify(config))
+      expect(
+        (
+          await fetchZcodeRateLimits({
+            credentialHost: host,
+            planCredential: {
+              apiKey: 'synthetic-orca-key',
+              baseUrl: 'https://api.z.ai'
+            }
+          })
+        ).status
+      ).toBe('ok')
+    }
+  )
+
+  it.each(['duplicate-provider', 'malformed-model', 'valid-unsupported-model', 'manual-model'])(
+    'cannot establish selected credentials from %s rules',
+    (kind) => {
+      install('bigmodel')
+      legacy()
+      const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+      const config = JSON.parse(readFileSync(path, 'utf8'))
+      const selection = config.config.defaultModelSelection
+      if (kind === 'duplicate-provider') {
+        config.config.providerConfigRules.providerRules = Array(2).fill({
+          providerId: selection.providerId,
+          config: {}
+        })
+      } else {
+        const group = kind === 'manual-model' ? 'manualProviderModelRules' : 'providerModelRules'
+        config.config.modelConfigRules[group] = [
+          {
+            ...selection,
+            config:
+              kind === 'manual-model'
+                ? {}
+                : {
+                    optionSpecs: {
+                      reasoningLevel: { values: kind === 'malformed-model' ? 42 : ['high'] }
+                    }
+                  }
+          }
+        ]
+      }
+      writeFileSync(path, JSON.stringify(config))
+      expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe(
+        kind === 'duplicate-provider' ? 'error' : 'unavailable'
+      )
+    }
+  )
 })

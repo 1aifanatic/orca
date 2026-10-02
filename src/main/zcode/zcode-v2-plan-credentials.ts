@@ -4,51 +4,8 @@ import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 import { ZCODE_PLAN_SITE_BASE_URLS } from '../../shared/zcode-plan-sites'
+import { readSupportedZcodeV2Selection } from './zcode-v2-personal-overlay'
 
-const modelRuleSchema = z
-  .object({
-    providerId: z.string().min(1),
-    modelId: z.string().min(1),
-    config: z.record(z.string(), z.unknown())
-  })
-  .strict()
-const providerRuleSchema = z
-  .object({
-    providerId: z.string().min(1),
-    templateId: z.string().min(1).nullable().optional(),
-    providerName: z.string().min(1).nullable().optional(),
-    enabled: z.boolean().optional(),
-    config: z.record(z.string(), z.unknown())
-  })
-  .strict()
-const selectionSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    config: z
-      .object({
-        providerOrder: z.array(z.string().min(1)).optional(),
-        providerConfigRules: z.object({ providerRules: z.array(providerRuleSchema) }).strict(),
-        modelConfigRules: z
-          .object({
-            providerModelRules: z.array(modelRuleSchema),
-            manualProviderModelRules: z.array(modelRuleSchema)
-          })
-          .strict(),
-        defaultModelSelection: z
-          .object({
-            providerId: z.string().trim().min(1),
-            modelId: z.string().trim().min(1),
-            options: z
-              .object({ reasoningLevel: z.string().trim().min(1).optional() })
-              .strict()
-              .optional()
-          })
-          .strict()
-          .optional()
-      })
-      .strict()
-  })
-  .strict()
 const MAX_V2_FILE_BYTES = 4 * 1024 * 1024
 function readV2File(path: string): string {
   return readNodeFileSyncWithinLimit(path, MAX_V2_FILE_BYTES, {
@@ -135,7 +92,7 @@ export function readZcodeV2PlanCredential(
     }
   }
   try {
-    const selection = selectionSchema.parse(JSON.parse(rawConfig)).config.defaultModelSelection
+    const selection = readSupportedZcodeV2Selection(JSON.parse(rawConfig))
     if (!selection) {
       return { status: 'unavailable' }
     }
