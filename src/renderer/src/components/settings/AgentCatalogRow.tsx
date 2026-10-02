@@ -16,7 +16,7 @@ import {
 } from './AgentLaunchDefaultsEditor'
 import { AgentPermissionOverrideControl } from './AgentPermissionControls'
 import type { AgentPermissionMode } from '../../../../shared/tui-agent-permissions'
-import type { AgentPermissionPosture } from '../../../../shared/tui-agent-launch-defaults'
+import type { AgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
 
 type AgentAvailability = 'enabled' | 'disabled'
 

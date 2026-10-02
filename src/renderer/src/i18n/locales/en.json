@@ -6831,7 +6831,7 @@
           "agentPermissionOverride": "Permissions",
           "agentPermissionOverrideAria": "{{value0}} permissions",
           "agentPermissionOverrideDefault": "Default ({{value0}})",
-          "agentPermissionArgumentsOptions": "Arguments set permissions themselves ({{value0}}), so {{value1}} uses them instead of this setting."
+          "agentPermissionArgumentsOptions": "Arguments or environment set permissions themselves ({{value0}}), so {{value1}} uses them instead of this setting."
         },
         "AppIconSelector": {
           "d5a112dc9b": "Next icon",

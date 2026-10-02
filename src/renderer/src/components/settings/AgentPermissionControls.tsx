@@ -3,7 +3,7 @@ import { translate } from '@/i18n/i18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { SettingsSegmentedControl, SettingsSubsectionHeader } from './SettingsFormControls'
 import type { AgentPermissionMode } from '../../../../shared/tui-agent-permissions'
-import type { AgentPermissionPosture } from '../../../../shared/tui-agent-launch-defaults'
+import type { AgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
 
 /** An agent whose launch posture differs from the shared default. */
 export type AgentPermissionException = { label: string; effectiveBypass: boolean }
@@ -112,11 +112,11 @@ export function AgentPermissionOverrideControl({
   onChange: (choice: AgentPermissionChoice) => void
 }): React.JSX.Element {
   const notice =
-    posture.argumentPermissionOptions.length > 0
+    posture.typedPermissionOptions.length > 0
       ? translate(
           'auto.components.settings.AgentsPane.agentPermissionArgumentsOptions',
-          'Arguments set permissions themselves ({{value0}}), so {{value1}} uses them instead of this setting.',
-          { value0: posture.argumentPermissionOptions.join(' '), value1: agentLabel }
+          'Arguments or environment set permissions themselves ({{value0}}), so {{value1}} uses them instead of this setting.',
+          { value0: posture.typedPermissionOptions.join(' '), value1: agentLabel }
         )
       : null
   return (

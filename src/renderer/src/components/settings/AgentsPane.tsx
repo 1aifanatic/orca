@@ -23,7 +23,7 @@ import {
   isTuiAgentEnabled,
   normalizeDisabledTuiAgents
 } from '../../../../shared/tui-agent-selection'
-import { resolveAgentPermissionPosture } from '../../../../shared/tui-agent-launch-defaults'
+import { resolveAgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
 import {
   agentHasPermissionMode,
   applyAgentPermissionModeToAll,
@@ -104,12 +104,14 @@ export function AgentsPane({
   const agentDefaultEnv = settings.agentDefaultEnv ?? {}
   const permissionOverrides = settings.agentPermissionModeOverrides ?? {}
   const defaultPermissionMode = resolveDefaultAgentPermissionMode(settings)
-  const platform = getRendererAppPlatform()
-  const permissionPostures = new Map(
-    catalog
-      .filter((agent) => agentHasPermissionMode(agent.id))
-      .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, settings, platform)])
-  )
+  const permissionPostures = useMemo(() => {
+    const platform = getRendererAppPlatform()
+    return new Map(
+      getAgentCatalog()
+        .filter((agent) => agentHasPermissionMode(agent.id))
+        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, settings, platform)])
+    )
+  }, [settings])
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))

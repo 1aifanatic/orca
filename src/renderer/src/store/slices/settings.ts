@@ -1,8 +1,5 @@
 import type { StateCreator } from 'zustand'
-import {
-  isAgentPermissionMode,
-  normalizeAgentPermissionModeOverrides
-} from '../../../../shared/tui-agent-permissions'
+import { normalizeAgentPermissionSettingsUpdate } from '../../../../shared/tui-agent-permissions'
 import type { AppState } from '../types'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { toast } from 'sonner'
@@ -109,18 +106,8 @@ function normalizeSettingsUpdates(
     sanitizedUpdates.agentDefaultEnv = normalizeTuiAgentEnvRecord(updates.agentDefaultEnv)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
-  if ('agentPermissionMode' in updates) {
-    if (isAgentPermissionMode(updates.agentPermissionMode)) {
-      sanitizedUpdates.agentPermissionMode = updates.agentPermissionMode
-    } else {
-      delete sanitizedUpdates.agentPermissionMode
-    }
-  }
-  if ('agentPermissionModeOverrides' in updates) {
-    sanitizedUpdates.agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
-      updates.agentPermissionModeOverrides
-    )
-  }
+  delete sanitizedUpdates.agentPermissionMode
+  Object.assign(sanitizedUpdates, normalizeAgentPermissionSettingsUpdate(updates))
   if ('uiLanguage' in updates) {
     sanitizedUpdates.uiLanguage = normalizeUiLanguage(updates.uiLanguage)
   }

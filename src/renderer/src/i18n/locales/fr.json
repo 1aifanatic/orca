@@ -6760,7 +6760,7 @@
           "agentPermissionOverride": "Autorisations",
           "agentPermissionOverrideAria": "Autorisations de {{value0}}",
           "agentPermissionOverrideDefault": "Par défaut ({{value0}})",
-          "agentPermissionArgumentsOptions": "Les arguments règlent eux-mêmes les autorisations ({{value0}}), donc {{value1}} les utilise à la place de ce réglage."
+          "agentPermissionArgumentsOptions": "Les arguments ou l'environnement règlent eux-mêmes les autorisations ({{value0}}), donc {{value1}} les utilise à la place de ce réglage."
         },
         "AppIconSelector": {
           "d5a112dc9b": "Icône suivante",

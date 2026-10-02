@@ -6642,7 +6642,7 @@
           "agentPermissionOverride": "権限",
           "agentPermissionOverrideAria": "{{value0}} の権限",
           "agentPermissionOverrideDefault": "デフォルト（{{value0}}）",
-          "agentPermissionArgumentsOptions": "引数で権限が設定されている（{{value0}}）ため、{{value1}} はこの設定の代わりにそれを使用します。"
+          "agentPermissionArgumentsOptions": "引数または環境変数で権限が設定されている（{{value0}}）ため、{{value1}} はこの設定の代わりにそれを使用します。"
         },
         "AppIconSelector": {
           "d5a112dc9b": "次へのアイコン",

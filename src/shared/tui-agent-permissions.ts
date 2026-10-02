@@ -57,7 +57,9 @@ const EXTRA_PERMISSION_OPTION_NAMES: Partial<Record<TuiAgent, readonly string[]>
   claude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
   'claude-agent-teams': ['--permission-mode', '--allow-dangerously-skip-permissions'],
   openclaude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
-  codex: ['--yolo', '--ask-for-approval', '-a', '--sandbox', '-s', '--full-auto']
+  codex: ['--yolo', '--ask-for-approval', '-a', '--sandbox', '-s', '--full-auto'],
+  gemini: ['--approval-mode', '-y'],
+  'qwen-code': ['--yolo', '-y']
 }
 
 /** The persisted permission settings; part of GlobalSettings. */
@@ -88,6 +90,22 @@ export function normalizeAgentPermissionModeOverrides(
     if (isTuiAgent(agent) && isAgentPermissionMode(mode)) {
       normalized[agent] = mode
     }
+  }
+  return normalized
+}
+
+/** Validates the permission fields of a settings update; an invalid mode is dropped. */
+export function normalizeAgentPermissionSettingsUpdate(
+  updates: AgentPermissionSettingsFields
+): AgentPermissionSettingsFields {
+  const normalized: AgentPermissionSettingsFields = {}
+  if (isAgentPermissionMode(updates.agentPermissionMode)) {
+    normalized.agentPermissionMode = updates.agentPermissionMode
+  }
+  if ('agentPermissionModeOverrides' in updates) {
+    normalized.agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
+      updates.agentPermissionModeOverrides
+    )
   }
   return normalized
 }

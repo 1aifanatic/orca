@@ -1,9 +1,7 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import {
-  resolveAgentPermissionPosture,
-  type AgentLaunchProfileSettings
-} from '../../shared/tui-agent-launch-defaults'
+import type { AgentLaunchProfileSettings } from '../../shared/tui-agent-launch-defaults'
+import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
 
 /**
  * The Agent Permissions setting as the SDK's own permission mode.

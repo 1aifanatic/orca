@@ -2,14 +2,16 @@ import type { GlobalSettings } from './global-settings-types'
 import {
   composeTuiAgentLaunchArgsRecord,
   composeTuiAgentLaunchEnvRecord,
-  liftTuiAgentBypassArgs,
-  liftTuiAgentBypassEnv,
   normalizeTuiAgentArgsRecord,
   normalizeTuiAgentEnvRecord,
   resolveComposedTuiAgentLaunchArgs,
-  resolveComposedTuiAgentLaunchEnv,
-  tuiAgentArgsSetPermissions
+  resolveComposedTuiAgentLaunchEnv
 } from './tui-agent-launch-defaults'
+import {
+  liftTuiAgentBypassArgs,
+  liftTuiAgentBypassEnv,
+  tuiAgentArgsSetPermissions
+} from './tui-agent-permission-args'
 import {
   PERMISSION_AGENT_IDS,
   resolveAgentPermissionMode,
@@ -28,13 +30,8 @@ export type AgentLaunchProfile = Required<
 >
 
 /**
- * Turns a launch-ready profile — permission flag inline in each agent's arguments, the only shape
- * before the mode was typed and still the shape paired clients exchange — into a permission mode
- * plus the user's remaining text.
- *
- * Lossless: composing the result gives back the same options, with the flag moved to the front.
- * Agents that agree with the majority share the default; the rest become overrides, and a tie
- * defaults to asking so agents added later don't silently bypass.
+ * Turns a launch-ready profile (flag inline) into a mode plus extra text, losslessly.
+ * The majority mode becomes the default; a tie asks, so agents added later don't silently bypass.
  */
 export function liftComposedAgentLaunchProfile(
   composed: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>> | null | undefined
@@ -77,12 +74,7 @@ export function liftComposedAgentLaunchProfile(
   return { agentDefaultArgs, agentDefaultEnv, agentPermissionMode, agentPermissionModeOverrides }
 }
 
-/**
- * Applies a launch-ready `agentDefaultArgs`/`agentDefaultEnv` write — the shape paired clients
- * built before the mode was typed — to a typed profile. Like before, a written record replaces the
- * whole record: each agent gets the mode its text implies and keeps only the rest of the text, and
- * a permission agent the record leaves out reads as the shipped default, the bypass flag.
- */
+/** Applies a paired client's launch-ready args/env write; as before, it replaces the whole record. */
 export function applyComposedAgentLaunchUpdate(
   current: Partial<
     Pick<

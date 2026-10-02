@@ -6642,7 +6642,7 @@
           "agentPermissionOverride": "权限",
           "agentPermissionOverrideAria": "{{value0}} 权限",
           "agentPermissionOverrideDefault": "默认（{{value0}}）",
-          "agentPermissionArgumentsOptions": "参数已自行设置权限（{{value0}}），因此 {{value1}} 会使用参数而不是此设置。"
+          "agentPermissionArgumentsOptions": "参数或环境变量已自行设置权限（{{value0}}），因此 {{value1}} 会使用它们而不是此设置。"
         },
         "AppIconSelector": {
           "d5a112dc9b": "下一个图标",

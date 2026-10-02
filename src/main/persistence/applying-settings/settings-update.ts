@@ -1,8 +1,5 @@
 import type { GlobalSettings } from '../../../shared/global-settings-types'
-import {
-  isAgentPermissionMode,
-  normalizeAgentPermissionModeOverrides
-} from '../../../shared/tui-agent-permissions'
+import { normalizeAgentPermissionSettingsUpdate } from '../../../shared/tui-agent-permissions'
 import { normalizeDisabledTuiAgents } from '../../../shared/tui-agent-selection'
 import { resolveNestedWorkerMaxDepth } from '../../../shared/nested-worker-depth'
 import {
@@ -108,18 +105,8 @@ export function updateSettings(
     sanitizedUpdates.agentDefaultEnv = normalizeTuiAgentEnvRecord(updates.agentDefaultEnv)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
-  if ('agentPermissionMode' in updates) {
-    if (isAgentPermissionMode(updates.agentPermissionMode)) {
-      sanitizedUpdates.agentPermissionMode = updates.agentPermissionMode
-    } else {
-      delete sanitizedUpdates.agentPermissionMode
-    }
-  }
-  if ('agentPermissionModeOverrides' in updates) {
-    sanitizedUpdates.agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
-      updates.agentPermissionModeOverrides
-    )
-  }
+  delete sanitizedUpdates.agentPermissionMode
+  Object.assign(sanitizedUpdates, normalizeAgentPermissionSettingsUpdate(updates))
   if ('terminalQuickCommands' in updates) {
     sanitizedUpdates.terminalQuickCommands = normalizeTerminalQuickCommands(
       updates.terminalQuickCommands

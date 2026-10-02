@@ -171,12 +171,8 @@ export type MigratedAgentLaunchProfile = Pick<
 >
 
 /**
- * Loads an agent launch profile as a typed permission mode plus the user's extra arguments.
- *
- * A stored `agentPermissionMode` marks a profile already in that shape, so this runs once and
- * re-running it is a no-op. Older profiles first get the yolo-defaults pass — which reads the flag
- * inline and keeps command-override users and the `agentYoloDefaultsMigrated` rule intact — and
- * then have that flag lifted out into the mode.
+ * Loads the agent launch profile as a typed mode plus extra text. A stored mode means already
+ * migrated; older profiles get the yolo-defaults pass first, then the flag lifted into the mode.
  */
 export function migrateAgentLaunchProfile(settings: GlobalSettings | undefined): {
   profile: MigratedAgentLaunchProfile

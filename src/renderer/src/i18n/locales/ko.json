@@ -6642,7 +6642,7 @@
           "agentPermissionOverride": "권한",
           "agentPermissionOverrideAria": "{{value0}} 권한",
           "agentPermissionOverrideDefault": "기본값({{value0}})",
-          "agentPermissionArgumentsOptions": "인수에서 권한을 직접 설정하므로({{value0}}) {{value1}}은(는) 이 설정 대신 인수를 사용합니다."
+          "agentPermissionArgumentsOptions": "인수나 환경 변수에서 권한을 직접 설정하므로({{value0}}) {{value1}}은(는) 이 설정 대신 그 값을 사용합니다."
         },
         "AppIconSelector": {
           "d5a112dc9b": "다음 아이콘",

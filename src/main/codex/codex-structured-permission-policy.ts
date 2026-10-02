@@ -1,8 +1,6 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import {
-  resolveAgentPermissionPosture,
-  type AgentLaunchProfileSettings
-} from '../../shared/tui-agent-launch-defaults'
+import type { AgentLaunchProfileSettings } from '../../shared/tui-agent-launch-defaults'
+import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
 
 export type CodexStructuredPermissionPolicy =
   | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }

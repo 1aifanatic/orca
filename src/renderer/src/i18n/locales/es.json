@@ -5689,7 +5689,7 @@
           "agentPermissionOverride": "Permisos",
           "agentPermissionOverrideAria": "Permisos de {{value0}}",
           "agentPermissionOverrideDefault": "Predeterminado ({{value0}})",
-          "agentPermissionArgumentsOptions": "Los argumentos ya configuran los permisos ({{value0}}), así que {{value1}} los usa en lugar de este ajuste."
+          "agentPermissionArgumentsOptions": "Los argumentos o el entorno ya configuran los permisos ({{value0}}), así que {{value1}} los usa en lugar de este ajuste."
         },
         "AppIconSelector": {
           "d5a112dc9b": "Icono siguiente",

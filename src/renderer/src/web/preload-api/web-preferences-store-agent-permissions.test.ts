@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SETTINGS_STORAGE_KEY } from './web-storage'
 
+const runtimeMock = vi.hoisted(() => ({
+  reply: {} as Record<string, unknown>,
+  environment: null as { id: string } | null
+}))
+
+vi.mock('./web-runtime-calls', () => ({
+  callRuntimeResult: vi.fn(async () => ({ settings: runtimeMock.reply }))
+}))
+vi.mock('./web-runtime-session', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  requireActiveEnvironmentOrNull: () => runtimeMock.environment
+}))
+
 function memoryStorage(): Storage {
   const values = new Map<string, string>()
   return {
@@ -57,5 +70,24 @@ describe('web stored settings agent permissions', () => {
 
     expect(settings.agentPermissionMode).toBe('bypass')
     expect(settings.agentDefaultArgs).toEqual({})
+  })
+
+  // The host replies to settings.update with launch-ready args (flag inline).
+  it('keeps the typed shape when merging a paired host reply', async () => {
+    runtimeMock.environment = { id: 'env-1' }
+    runtimeMock.reply = {
+      compactWorktreeCards: true,
+      agentDefaultArgs: { claude: '--dangerously-skip-permissions --model opus', codex: '' }
+    }
+    const { getStoredSettings, syncRuntimeBackedSettings } = await import('./web-preferences-store')
+
+    const next = await syncRuntimeBackedSettings(
+      { compactWorktreeCards: true },
+      getStoredSettings()
+    )
+
+    expect(next.agentDefaultArgs?.claude).toBe('--model opus')
+    expect(next.agentPermissionModeOverrides?.codex).toBe('ask')
+    runtimeMock.environment = null
   })
 })

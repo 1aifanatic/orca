@@ -1,32 +1,12 @@
 import type { GlobalSettings } from './global-settings-types'
 import { isTuiAgent, TUI_AGENT_CONFIG } from './tui-agent-config'
 import {
-  agentHasPermissionMode,
-  agentPermissionOptionNames,
   resolveAgentPermissionMode,
   YOLO_TUI_AGENT_ARGS,
-  YOLO_TUI_AGENT_ENV,
-  type AgentPermissionMode
+  YOLO_TUI_AGENT_ENV
 } from './tui-agent-permissions'
-import {
-  resolveStartupShell,
-  tokenizeStartupCommand,
-  type AgentStartupShell,
-  type StartupCommandTokens
-} from './tui-agent-startup-shell'
+import { tuiAgentArgsSetPermissions } from './tui-agent-permission-args'
 import type { TuiAgent } from './tui-agent'
-import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
-
-/** Other spellings of an agent's bypass that users type into Arguments. */
-const BYPASS_ARG_ALIASES: Partial<Record<TuiAgent, readonly string[]>> = {
-  claude: ['--permission-mode bypassPermissions', '--permission-mode=bypassPermissions'],
-  'claude-agent-teams': [
-    '--permission-mode bypassPermissions',
-    '--permission-mode=bypassPermissions'
-  ],
-  openclaude: ['--permission-mode bypassPermissions', '--permission-mode=bypassPermissions'],
-  codex: ['--yolo']
-}
 
 const UNSUPPORTED_TUI_AGENT_ARGS: Partial<Record<TuiAgent, readonly string[]>> = {
   opencode: ['--dangerously-skip-permissions'],
@@ -100,133 +80,9 @@ export function normalizeTuiAgentEnvRecord(
   return normalized
 }
 
-function optionTokens(value: string, shell: AgentStartupShell): StartupCommandTokens {
-  const tokenized = tokenizeStartupCommand(value, shell)
-  if (!tokenized.ok) {
-    return tokenized
-  }
-  // Why: operands after `--` are prompt text, never options.
-  const terminator = tokenized.tokens.indexOf('--')
-  return terminator === -1
-    ? tokenized
-    : {
-        ok: true,
-        tokens: tokenized.tokens.slice(0, terminator),
-        spans: tokenized.spans.slice(0, terminator)
-      }
-}
-
-/** Index where `sequence` starts in `tokens`, or -1. */
-function findTokenSequence(tokens: readonly string[], sequence: readonly string[]): number {
-  return tokens.findIndex(
-    (_, index) =>
-      index + sequence.length <= tokens.length &&
-      sequence.every((token, offset) => tokens[index + offset] === token)
-  )
-}
-
-function tokenizeFlag(flag: string): string[] {
-  const tokenized = tokenizeStartupCommand(flag, 'posix')
-  return tokenized.ok ? tokenized.tokens : []
-}
-
-/** Every spelling that puts this agent in bypass, canonical first. */
-function bypassTokenSequences(agent: TuiAgent): string[][] {
-  return [YOLO_TUI_AGENT_ARGS[agent], ...(BYPASS_ARG_ALIASES[agent] ?? [])]
-    .filter((flag): flag is string => flag !== undefined)
-    .map(tokenizeFlag)
-    .filter((tokens) => tokens.length > 0)
-}
-
-// Why every grammar: one settings string reaches POSIX, PowerShell and cmd hosts, so text any of
-// them would read as a permission option counts — adding a second flag beside it can stop the CLI.
-const LAUNCH_GRAMMARS: readonly AgentStartupShell[] = ['posix', 'powershell', 'cmd']
-
-/** Permission-changing options in these arguments, under any launch grammar, in order. */
-function argumentPermissionOptions(agent: TuiAgent, args: string): string[] {
-  const names = agentPermissionOptionNames(agent)
-  const found: string[] = []
-  for (const shell of LAUNCH_GRAMMARS) {
-    const tokens = optionTokens(args, shell)
-    for (const token of tokens.ok ? tokens.tokens : []) {
-      if (
-        !found.includes(token) &&
-        names.some((name) => token === name || token.startsWith(`${name}=`))
-      ) {
-        found.push(token)
-      }
-    }
-  }
-  return found
-}
-
-/** Whether these arguments set this agent's permissions themselves, so its mode adds nothing. */
-export function tuiAgentArgsSetPermissions(
-  agent: TuiAgent,
-  args: string | null | undefined
-): boolean {
-  return argumentPermissionOptions(agent, args ?? '').length > 0
-}
-
 /**
- * Splits this agent's permission-bypass flag out of an arguments string.
- *
- * Matches the flag's whole token sequence as options (outside quotes, before `--`) and cuts
- * those exact characters out, so the rest of the user's text keeps its own quoting. Used to
- * read arguments written before the mode was typed, which stored the flag inline. When the rest
- * still sets permissions itself, the text is kept whole: a launch adds no flag beside such text,
- * so lifting it out would drop it.
- */
-export function liftTuiAgentBypassArgs(
-  agent: TuiAgent,
-  args: string | null | undefined
-): { bypass: boolean; extraArgs: string } {
-  const original = args?.trim() ?? ''
-  const bypassArg = YOLO_TUI_AGENT_ARGS[agent]
-  const flag = bypassArg ? tokenizeFlag(bypassArg) : []
-  let text = original
-  let bypass = false
-  while (flag.length > 0 && text) {
-    const tokens = optionTokens(text, 'posix')
-    const at = tokens.ok ? findTokenSequence(tokens.tokens, flag) : -1
-    if (!tokens.ok || at === -1) {
-      break
-    }
-    bypass = true
-    const before = text.slice(0, tokens.spans[at].start).trimEnd()
-    const after = text.slice(tokens.spans[at + flag.length - 1].end).trimStart()
-    text = before && after ? `${before} ${after}` : before || after
-  }
-  if (bypass && tuiAgentArgsSetPermissions(agent, text)) {
-    return { bypass, extraArgs: original }
-  }
-  return { bypass, extraArgs: text }
-}
-
-/** Splits this agent's env-driven permission bypass out of an environment record. */
-export function liftTuiAgentBypassEnv(
-  agent: TuiAgent,
-  env: Record<string, string> | null | undefined
-): { bypass: boolean; extraEnv: Record<string, string> } {
-  const extraEnv = { ...env }
-  const bypassEnv = YOLO_TUI_AGENT_ENV[agent]
-  if (!bypassEnv || !Object.entries(bypassEnv).every(([name, value]) => extraEnv[name] === value)) {
-    return { bypass: false, extraEnv }
-  }
-  for (const name of Object.keys(bypassEnv)) {
-    delete extraEnv[name]
-  }
-  return { bypass: true, extraEnv }
-}
-
-/**
- * The launch arguments for this agent: its permission mode's flag, then the user's extra text.
- *
- * This is the one place a permission mode becomes a CLI flag. `extraArgs` replaces the configured
- * extra text for one launch (e.g. a Source Control action's own arguments); the mode still applies.
- * When the extra text already sets permissions itself — the bypass flag, or an option like
- * `--permission-mode` / `-a` — that text decides and no flag is added: a repeated or conflicting
- * flag makes clap-based CLIs refuse to start.
+ * The one place a permission mode becomes a CLI flag: the mode's flag, then the extra text.
+ * Extra text that sets permissions itself decides alone — a repeated or conflicting flag stops clap CLIs.
  */
 export function resolveTuiAgentLaunchArgs(
   agent: TuiAgent,
@@ -260,10 +116,7 @@ export function resolveTuiAgentLaunchEnv(
     : { ...extra }
 }
 
-/**
- * Every agent's launch-ready arguments, flag included: the shape paired clients read from
- * `settings.get` and wrote before the mode was typed. Derived per read, never stored.
- */
+/** Every agent's launch-ready arguments (flag inline): the shape paired clients exchange. */
 export function composeTuiAgentLaunchArgsRecord(
   settings: AgentLaunchProfileSettings | null | undefined
 ): Partial<Record<TuiAgent, string>> {
@@ -289,12 +142,7 @@ export function composeTuiAgentLaunchEnvRecord(
   return record
 }
 
-/**
- * Reads one agent's arguments out of a launch-ready record (flag already inside) — what a host
- * publishes to paired clients, and what profiles stored before the mode was typed. A missing key
- * falls back to the bypass flag, which is what those records meant by it. Never for stored
- * settings: use resolveTuiAgentLaunchArgs.
- */
+/** Reads a launch-ready record (flag inline), never stored settings; a missing key meant the bypass flag. */
 export function resolveComposedTuiAgentLaunchArgs(
   agent: TuiAgent,
   record: Partial<Record<TuiAgent, string>> | null | undefined
@@ -314,57 +162,4 @@ export function resolveComposedTuiAgentLaunchEnv(
     return { ...record[agent] }
   }
   return { ...YOLO_TUI_AGENT_ENV[agent] }
-}
-
-export type AgentPermissionPosture = {
-  /** The mode Settings stores for this agent. */
-  mode: AgentPermissionMode
-  /** Whether the agent actually launches in bypass, after its typed Arguments have their say. */
-  effectiveBypass: boolean
-  /** Permission-changing options typed into the agent's Arguments; when present they decide. */
-  argumentPermissionOptions: string[]
-}
-
-/**
- * What an agent's permission settings add up to. Read by Settings and by structured sessions, so
- * both agree with what a terminal launch does (see resolveTuiAgentLaunchArgs).
- */
-export function resolveAgentPermissionPosture(
-  agent: TuiAgent,
-  settings:
-    | (AgentLaunchProfileSettings & Partial<Pick<GlobalSettings, 'terminalWindowsShell'>>)
-    | null
-    | undefined,
-  platform: NodeJS.Platform
-): AgentPermissionPosture {
-  const mode = resolveAgentPermissionMode(agent, settings)
-  const extra = settings?.agentDefaultArgs?.[agent] ?? ''
-  const options = argumentPermissionOptions(agent, extra)
-  if (options.length === 0) {
-    return {
-      mode,
-      effectiveBypass: mode === 'bypass' && agentHasPermissionMode(agent),
-      argumentPermissionOptions: options
-    }
-  }
-  // Why the local launch shell here: this decides whether the CLI really bypasses, and quoted
-  // text or operands after `--` must not authorize a structured session.
-  const shell = resolveStartupShell(
-    platform,
-    resolveLocalWindowsAgentStartupShell({
-      platform,
-      isRemote: false,
-      terminalWindowsShell: settings?.terminalWindowsShell
-    })
-  )
-  const tokens = optionTokens(extra, shell)
-  return {
-    mode,
-    effectiveBypass:
-      tokens.ok &&
-      bypassTokenSequences(agent).some(
-        (sequence) => findTokenSequence(tokens.tokens, sequence) !== -1
-      ),
-    argumentPermissionOptions: options
-  }
 }

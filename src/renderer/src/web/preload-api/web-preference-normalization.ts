@@ -24,7 +24,7 @@ import { normalizeDisabledTuiAgents } from '../../../../shared/tui-agent-selecti
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
 import { normalizeUsagePercentageDisplay } from '../../../../shared/usage-percentage-display'
 import { mergeWorkspaceCleanupUIState } from '../../../../shared/workspace-cleanup-ui-state'
-import { normalizeAgentPermissionModeOverrides } from '../../../../shared/tui-agent-permissions'
+import { normalizeAgentPermissionSettingsUpdate } from '../../../../shared/tui-agent-permissions'
 
 export function mergeWebUIState(
   base: PersistedUIState,
@@ -154,9 +154,11 @@ export function mergeSettings(
       updates.agentDefaultArgs ?? base.agentDefaultArgs
     ),
     agentDefaultEnv: normalizeTuiAgentEnvRecord(updates.agentDefaultEnv ?? base.agentDefaultEnv),
-    agentPermissionModeOverrides: normalizeAgentPermissionModeOverrides(
-      updates.agentPermissionModeOverrides ?? base.agentPermissionModeOverrides
-    ),
+    ...normalizeAgentPermissionSettingsUpdate({
+      agentPermissionMode: updates.agentPermissionMode ?? base.agentPermissionMode,
+      agentPermissionModeOverrides:
+        updates.agentPermissionModeOverrides ?? base.agentPermissionModeOverrides
+    }),
     voice: {
       ...(base.voice ?? defaults.voice),
       ...updates.voice
