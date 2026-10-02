@@ -1,3 +1,4 @@
+import { buildAntigravityReferenceStartup } from './ai-vault-antigravity-reference-startup'
 import { isAntigravityReferenceSession } from '../../../shared/antigravity-session-origin'
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import {
@@ -161,6 +162,19 @@ function buildAiVaultResumeForWorktree(
       : undefined
   const cwd = embedCwd ? args.session.cwd : null
   const startupCwd = !embedCwd && args.session.cwd ? { cwd: args.session.cwd } : {}
+  if (isAntigravityReferenceSession(args.session)) {
+    const reference = buildAntigravityReferenceStartup({
+      session: { ...args.session, filePath: resumeFilePath },
+      cwd,
+      platform,
+      shell: liveShell,
+      commandOverride: args.commandOverride,
+      settings: args.state.settings
+    })
+    if (reference) {
+      return { ...reference, ...startupCwd }
+    }
+  }
   if (providerSession && isResumableTuiAgent(args.session.agent)) {
     const startupPlan = buildAgentResumeStartupPlan({
       agent: args.session.agent,

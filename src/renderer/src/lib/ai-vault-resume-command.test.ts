@@ -82,10 +82,18 @@ describe('ai vault resume command runtime', () => {
       filePath:
         '\\\\wsl.localhost\\Ubuntu\\home\\example\\.gemini\\antigravity-ide\\brain\\ide-id\\.system_generated\\logs\\transcript_full.jsonl'
     }
+    if (!state.settings) {
+      throw new Error('Missing fixture settings')
+    }
+    state.settings.agentDefaultArgs = { antigravity: '--model claude-sonnet-4-6' }
+    state.settings.agentDefaultEnv = { antigravity: { AGY_CLI_HIDE_ACCOUNT_INFO: '1' } }
     const startup = buildAiVaultResumeStartupForWorktree({ state, session })
     expect(startup.command).toContain('--prompt-interactive')
     expect(startup.command).not.toContain('--conversation')
     expect(startup.command).not.toContain('wsl.localhost')
+    expect(startup.command).toContain('--model')
+    expect(startup.command).toContain('claude-sonnet-4-6')
+    expect(startup.env).toMatchObject({ AGY_CLI_HIDE_ACCOUNT_INFO: '1' })
     expect(startup.providerSession).toBeUndefined()
     expect(getAiVaultAgentProviderSession(session)).toBeNull()
     expect(startup.cwd).toBe('/home/example/project')
