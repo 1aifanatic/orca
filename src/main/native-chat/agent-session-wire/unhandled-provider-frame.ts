@@ -1,4 +1,5 @@
 import type { AgentJournalPlainStatusItem } from '../../../shared/agent-session-journal-types'
+import { CLAUDE_LOCAL_COMMAND_OUTPUT_FRAME_KIND } from '../../../shared/native-chat-provider-frame-summary'
 import {
   boundInlineText,
   boundPayload,
@@ -79,8 +80,6 @@ export function readableProviderFrameText(payload: unknown): string | null {
   return null
 }
 
-const CLAUDE_LOCAL_COMMAND_OUTPUT_KIND = 'message:system:local_command_output'
-
 /** Substantive adapter fallbacks become bounded journal rows; a chat draws one only with a sentence. */
 export function unhandledProviderFrameJournalItem(
   provider: string,
@@ -139,7 +138,7 @@ export function unhandledProviderFrameJournalItem(
         .join('\n\n') || message
   }
   // A local slash command's output (`/usage`) is the answer the user asked for; it rides `content`.
-  if (provider === 'claude' && kind === CLAUDE_LOCAL_COMMAND_OUTPUT_KIND) {
+  if (provider === 'claude' && kind === CLAUDE_LOCAL_COMMAND_OUTPUT_FRAME_KIND) {
     const content =
       typeof payload === 'object' && payload !== null && 'content' in payload
         ? payload.content
