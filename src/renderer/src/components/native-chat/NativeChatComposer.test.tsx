@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   composerIsComposing: null as (() => boolean) | null,
   attachmentIsComposing: null as (() => boolean) | null,
   flushPendingAttachments: vi.fn(),
-  voice: { enabled: false } as { enabled: boolean; sttModel?: string },
+  voice: ((): { enabled: boolean; sttModel?: string } => ({ enabled: false }))(),
   fieldProps: null as {
     onSend?: () => void
     onStop?: () => void
@@ -27,11 +27,6 @@ const mocks = vi.hoisted(() => ({
     sessionOptionsSnapshot?: SessionOptionDescriptor[]
     attachDisabled?: boolean
     sendButtonDisabled?: boolean
-    disabled?: boolean
-    canSend?: boolean
-    lockReason?: string
-    dictationDisabled?: boolean
-    sessionOptionsDisabled?: boolean
     autocomplete?: { mode: string; items?: { kind: string; name: string }[] }
   } | null,
   modelSwitchOutcome: 'applied' as 'applied' | 'rejected' | 'unknown',
