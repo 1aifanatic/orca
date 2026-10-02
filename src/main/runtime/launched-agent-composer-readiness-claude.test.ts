@@ -131,7 +131,7 @@ describe('a fresh orchestration worker start for Claude', () => {
   })
 })
 
-describe('whether a shell is proven in front of a launched agent’s terminal', () => {
+describe('what holds a launched agent’s terminal', () => {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
   const setPlatform = (value: NodeJS.Platform): void => {
     Object.defineProperty(process, 'platform', { configurable: true, value })
@@ -140,315 +140,206 @@ describe('whether a shell is proven in front of a launched agent’s terminal', 
     Object.defineProperty(process, 'platform', originalPlatform)
   })
 
-  describe('macOS and Linux: a fresh foreground read', () => {
+  describe('macOS and Linux: one fresh foreground read decides', () => {
     beforeEach(() => setPlatform('darwin'))
 
     it.each([
       // For its first 5 s the daemon's cached read names the launch agent while zsh is in front.
-      ['claude', 'zsh', true],
-      ['claude', 'claude', false],
-      ['zsh', 'zsh', true],
-      ['-zsh', '-zsh', true],
-      ['bash', 'bash', true],
-      [null, 'zsh', true],
-      [null, null, false]
-    ])('cached %s, scan %s: %s', async (foregroundProcess, scanned, shellInFront) => {
+      ['claude', 'zsh', 'shell'],
+      // A stub agent that crashed: the cached read can still name it after zsh took the terminal.
+      ['python3', 'zsh', 'shell'],
+      ['claude', 'claude', 'agent'],
+      // A native Claude names itself by its version.
+      ['zsh', '2.1.285', 'agent'],
+      ['zsh', 'node', 'agent'],
+      ['-zsh', '-zsh', 'shell'],
+      ['bash', 'bash', 'shell'],
+      [null, 'zsh', 'shell'],
+      ['claude', null, 'unknown']
+    ] as const)('cached %s, scan %s: %s', async (foregroundProcess, scanned, found) => {
       const scan = vi.fn()
+      const proof = vi.fn()
       const { runtime } = await createTranscriptPane({
         paneTitle: 'Claude Code',
         foregroundProcess,
         confirmedForegroundProcess: scanned,
         onForegroundScan: scan,
+        shellForegroundProven: false,
+        onShellForegroundProof: proof,
         launchAgent: 'claude',
         data: ''
       })
 
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        shellInFront
-      )
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe(found)
       expect(scan).toHaveBeenCalledOnce()
+      expect(proof).not.toHaveBeenCalled()
     })
 
-    // The terminal daemon answers the shell-foreground check from its recovery state, which an
-    // agent that exits without leaving a full-screen mode up never sets.
-    it('an agent that exited: the scan names zsh while the daemon’s shell check says no', async () => {
-      const proof = vi.fn()
+    it('proves nothing on a controller without a fresh scan', async () => {
       const { runtime } = await createTranscriptPane({
-        paneTitle: 'copilot',
-        foregroundProcess: 'copilot',
-        confirmedForegroundProcess: 'zsh',
-        shellForegroundProven: false,
-        onShellForegroundProof: proof,
+        paneTitle: 'Claude Code',
+        foregroundProcess: 'claude',
+        launchAgent: 'claude',
+        data: ''
+      })
+
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe('unknown')
+    })
+
+    // Captured with `ps -o pid=,ppid=,pgid=,tpgid=,stat=,command=` on a pane spawned the way a macOS
+    // pane is, under `login`: zsh holds the terminal in its own group, never the root's.
+    it('reads a login-wrapped pane’s zsh at its prompt as the shell', async () => {
+      const rows: ProcessTableRow[] = [
+        {
+          pid: 60404,
+          ppid: 60394,
+          pgid: 60404,
+          tpgid: 60406,
+          stat: 'Ss',
+          tty: 'ttys004',
+          startTime: 'Fri Oct  2 01:20:11 2026',
+          command: '/usr/bin/login -flpq user /bin/bash --noprofile --norc -p -c'
+        },
+        {
+          pid: 60406,
+          ppid: 60404,
+          pgid: 60406,
+          tpgid: 60406,
+          stat: 'S+',
+          tty: 'ttys004',
+          startTime: 'Fri Oct  2 01:20:11 2026',
+          command: '-/bin/zsh -f'
+        }
+      ]
+      const inspection = {
+        foregroundProcess: 'zsh',
+        hasChildProcesses: true,
+        foregroundProcessEvidence: resolveRemoteForegroundEvidence(
+          { rootPid: 60404, fallbackProcess: 'zsh' },
+          {
+            ptyId: TRANSCRIPT_PANE_PTY_ID,
+            ptyIncarnationId: 'inc-1',
+            authorityGeneration: 'gen-1',
+            observationEpoch: 1,
+            capturedAgeMs: 0,
+            platform: 'darwin'
+          },
+          rows
+        )
+      }
+      // Presence precondition: the fence is live, and its foreground group is not the root's.
+      expect(inspection.foregroundProcessEvidence).toMatchObject({
+        verdict: 'live',
+        fence: { shellPid: 60404, foregroundPgid: 60406 }
+      })
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'python3',
+        processInspection: inspection,
+        confirmedForegroundProcess: '-zsh',
+        launchAgent: 'claude',
+        data: ''
+      })
+
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe('shell')
+    })
+
+    // A wrapper that does not `exec` an agent the scan cannot recognize keeps its own name in front,
+    // which reads as a shell: the prompt stays undelivered rather than risk the user's shell.
+    it('reads a bash wrapper still in front of an unrecognized agent as a shell', async () => {
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'bash',
+        confirmedForegroundProcess: 'bash',
         launchAgent: 'copilot',
         data: ''
       })
 
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-        true
-      )
-      expect(proof).not.toHaveBeenCalled()
-    })
-
-    it('takes the cached read on a controller without a scan', async () => {
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Claude Code',
-        foregroundProcess: 'zsh',
-        launchAgent: 'claude',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        true
-      )
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
+      ).resolves.toBe('shell')
     })
   })
 
-  describe('Windows: only the shell-foreground check', () => {
+  // The scan names the pane's shell for an agent it cannot recognize (an npm agent as `node.exe`),
+  // and Git Bash and WSL keep other processes in the shell's job, so nothing proves the agent.
+  describe('Windows: only the shell-foreground check, and never the agent', () => {
     beforeEach(() => setPlatform('win32'))
 
-    // The scan names the pane's shell for an agent it cannot recognize (an npm agent as
-    // `node.exe`); only the shell alone in the pane's job proves one.
     it.each([
-      ['powershell.exe', false, false],
-      ['powershell.exe', true, true],
-      ['claude', true, true],
-      ['claude', false, false]
-    ])('cached %s, shell check %s: %s', async (foregroundProcess, proven, shellInFront) => {
+      ['powershell.exe', false, 'unknown'],
+      ['powershell.exe', true, 'shell'],
+      ['claude', true, 'shell'],
+      ['claude', false, 'unknown'],
+      ['node', false, 'unknown']
+    ] as const)('cached %s, shell check %s: %s', async (foregroundProcess, proven, found) => {
       const scan = vi.fn()
       const { runtime } = await createTranscriptPane({
         paneTitle: 'Claude Code',
         foregroundProcess,
-        confirmedForegroundProcess: 'powershell.exe',
+        confirmedForegroundProcess: 'claude',
         onForegroundScan: scan,
         shellForegroundProven: proven,
         launchAgent: 'claude',
         data: ''
       })
 
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        shellInFront
-      )
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe(found)
       expect(scan).not.toHaveBeenCalled()
-    })
-
-    it('proves nothing on a controller without a shell check', async () => {
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Claude Code',
-        foregroundProcess: 'powershell.exe',
-        confirmedForegroundProcess: 'powershell.exe',
-        launchAgent: 'claude',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        false
-      )
     })
   })
 
   // The stubs always disagree with the relay's name, so asking either would flip the answer.
   it.each([
-    ['claude', false],
-    ['bash', true]
-  ])(
-    'SSH: takes the relay’s own read %s (shell %s), without a scan or check',
-    async (relayRead, shell) => {
+    ['claude', 'agent'],
+    ['bash', 'shell']
+  ] as const)(
+    'SSH: takes the relay’s own read %s (%s), without a scan or check',
+    async (relayRead, found) => {
+      setPlatform('darwin')
       const scan = vi.fn()
       const proof = vi.fn()
       const { runtime } = await createTranscriptPane({
         paneTitle: 'Claude Code',
         foregroundProcess: relayRead,
-        confirmedForegroundProcess: shell ? 'claude' : 'zsh',
+        confirmedForegroundProcess: found === 'shell' ? 'claude' : 'zsh',
         onForegroundScan: scan,
-        shellForegroundProven: !shell,
+        shellForegroundProven: found !== 'shell',
         onShellForegroundProof: proof,
         connectionId: 'ssh-1',
         launchAgent: 'claude',
         data: ''
       })
 
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        shell
-      )
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe(found)
       expect(scan).not.toHaveBeenCalled()
       expect(proof).not.toHaveBeenCalled()
     }
   )
 
-  describe('macOS and Linux: by the shell’s identity, from the host’s process inspection', () => {
-    beforeEach(() => setPlatform('darwin'))
-
-    // Captured with `ps -axo pid=,ppid=,pgid=,tpgid=,stat=,tty=,lstart=,command=` on a pty running
-    // `zsh -f -i` (macOS 26): first while it ran `bash -c 'sleep 4; :'`, then back at its prompt.
-    const zsh = (tpgid: number, stat: string): ProcessTableRow => ({
-      pid: 20894,
-      ppid: 20891,
-      pgid: 20894,
-      tpgid,
-      stat,
-      tty: 'ttys000',
-      startTime: 'Wed Sep 30 09:18:50 2026',
-      command: '/bin/zsh -f -i'
-    })
-    const wrapperRunning: ProcessTableRow[] = [
-      zsh(20996, 'Ss'),
-      {
-        pid: 20996,
-        ppid: 20894,
-        pgid: 20996,
-        tpgid: 20996,
-        stat: 'S+',
-        tty: 'ttys000',
-        startTime: 'Wed Sep 30 09:18:52 2026',
-        command: 'bash -c sleep 4; :'
-      },
-      {
-        pid: 20997,
-        ppid: 20996,
-        pgid: 20996,
-        tpgid: 20996,
-        stat: 'S+',
-        tty: 'ttys000',
-        startTime: 'Wed Sep 30 09:18:52 2026',
-        command: 'sleep 4'
-      }
-    ]
-    const zshAtPrompt: ProcessTableRow[] = [zsh(20894, 'Ss+')]
-    const inspect = (rows: ProcessTableRow[]) => ({
-      foregroundProcess: 'zsh',
-      hasChildProcesses: rows.length > 1,
-      foregroundProcessEvidence: resolveRemoteForegroundEvidence(
-        { rootPid: 20894, fallbackProcess: 'zsh' },
-        {
-          ptyId: TRANSCRIPT_PANE_PTY_ID,
-          ptyIncarnationId: 'inc-1',
-          authorityGeneration: 'gen-1',
-          observationEpoch: 1,
-          capturedAgeMs: 0,
-          platform: 'darwin'
-        },
-        rows
-      )
-    })
-
-    it.each([
-      // A wrapper script's bash runs as its own job: named like a shell, but not the pane's shell.
-      ['a bash wrapper under zsh is not the shell', wrapperRunning, 'bash', false, false],
-      ['zsh back at its prompt is the shell', zshAtPrompt, 'zsh', true, true]
-    ] as const)('%s', async (_label, rows, foregroundName, shell, scanned) => {
-      const inspection = inspect([...rows])
-      // Presence precondition: the captured rows are a live observation, not an unreadable one.
-      expect(inspection.foregroundProcessEvidence).toMatchObject({ verdict: 'live' })
-      const scan = vi.fn()
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Terminal',
-        foregroundProcess: foregroundName,
-        processInspection: inspection,
-        confirmedForegroundProcess: foregroundName,
-        onForegroundScan: scan,
-        launchAgent: 'copilot',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-        shell
-      )
-      expect(scan).toHaveBeenCalledTimes(scanned ? 1 : 0)
-    })
-
-    it('SSH: takes the relay’s inspection the same way', async () => {
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Terminal',
-        foregroundProcess: 'bash',
-        processInspection: inspect([...wrapperRunning]),
-        connectionId: 'ssh-1',
-        launchAgent: 'copilot',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-        false
-      )
-    })
-
-    it('an agent in the shell’s own group (a shell without job control) is not the shell', async () => {
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Copilot',
-        // node-pty names the group's leader, which is the shell itself here.
-        foregroundProcess: 'zsh',
-        processInspection: inspect([...zshAtPrompt]),
-        confirmedForegroundProcess: 'node',
-        launchAgent: 'copilot',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-        false
-      )
-    })
-
-    it('an inspection that cannot observe proves nothing, and falls back to no name', async () => {
-      const scan = vi.fn()
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Terminal',
-        foregroundProcess: 'zsh',
-        processInspection: inspect([]),
-        confirmedForegroundProcess: 'zsh',
-        onForegroundScan: scan,
-        launchAgent: 'claude',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        false
-      )
-      expect(scan).not.toHaveBeenCalled()
-    })
-  })
-
   // Why: a Windows relay names the pane's shell for an agent its scan cannot recognize (node.exe).
-  it('SSH to a Windows host: the relay’s shell name proves nothing', async () => {
+  it('SSH to a Windows host: never the agent', async () => {
     const { runtime } = await createTranscriptPane({
       paneTitle: 'Copilot',
-      foregroundProcess: 'powershell.exe',
+      foregroundProcess: 'node',
       connectionId: 'ssh-1',
       remoteWindowsHost: true,
       launchAgent: 'copilot',
       data: ''
     })
 
-    await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'copilot')).resolves.toBe(
-      false
-    )
+    await expect(
+      runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
+    ).resolves.toBe('unknown')
   })
-
-  // Why no read: a native Claude names itself by its version, which the cached read gives at once.
-  it.each([
-    ['darwin', '2.1.285'],
-    ['darwin', 'node'],
-    ['win32', 'node']
-  ] as const)(
-    '%s: takes the non-shell name %s, other than the agent’s own, at once',
-    async (platform, foregroundProcess) => {
-      setPlatform(platform)
-      const scan = vi.fn()
-      const proof = vi.fn()
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Claude Code',
-        foregroundProcess,
-        confirmedForegroundProcess: 'zsh',
-        onForegroundScan: scan,
-        shellForegroundProven: true,
-        onShellForegroundProof: proof,
-        launchAgent: 'claude',
-        data: ''
-      })
-
-      await expect(runtime.isLaunchShellInFront(TRANSCRIPT_PANE_PTY_ID, 'claude')).resolves.toBe(
-        false
-      )
-      expect(scan).not.toHaveBeenCalled()
-      expect(proof).not.toHaveBeenCalled()
-    }
-  )
 })

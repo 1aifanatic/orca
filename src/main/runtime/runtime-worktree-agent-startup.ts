@@ -10,7 +10,10 @@ import { isTuiAgentEnabled, pickTuiAgent } from '../../shared/tui-agent-selectio
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt-carry'
-import { nameLocalTypedLineShell } from './agent-launch-typed-line-shell'
+import {
+  launchHostProvesAgentInFront,
+  nameLocalTypedLineShell
+} from './agent-launch-typed-line-shell'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents
@@ -153,16 +156,18 @@ export function buildWorktreeStartupForAgent(
   const prompt = environment.prompt ?? ''
   let startupPlan: ReturnType<typeof buildAgentStartupPlan>
   if (environment.onPromptCarry) {
-    const offered = planStartupWithPromptCandidate(
-      planInputs,
-      prompt,
-      nameLocalTypedLineShell({
+    const offered = planStartupWithPromptCandidate(planInputs, prompt, {
+      shellName: nameLocalTypedLineShell({
         isRemote: repoIsRemote(repo),
         ...(settings.terminalDefaultShell
           ? { defaultShellSetting: settings.terminalDefaultShell }
           : {})
+      }),
+      provesAgentInFront: launchHostProvesAgentInFront({
+        isRemote: repoIsRemote(repo),
+        launchPlatform: environment.getLaunchPlatform()
       })
-    )
+    })
     startupPlan = offered.plan
     if (startupPlan && prompt.trim()) {
       environment.onPromptCarry(offered.promptCarried)

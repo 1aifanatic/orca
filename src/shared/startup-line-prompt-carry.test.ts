@@ -12,16 +12,24 @@ import { AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY } from './agent-launch-run
 function offer(
   agent: TuiAgent,
   prompt: string,
-  extra: { cmdOverride?: string; shellName?: string | undefined } = {}
+  extra: {
+    cmdOverride?: string
+    shellName?: string | undefined
+    platform?: NodeJS.Platform
+    provesAgentInFront?: boolean
+  } = {}
 ) {
   return planStartupWithPromptCandidate(
     {
       agent,
       cmdOverrides: extra.cmdOverride ? { [agent]: extra.cmdOverride } : {},
-      platform: 'darwin'
+      platform: extra.platform ?? 'darwin'
     },
     prompt,
-    extra.shellName
+    {
+      ...(extra.shellName ? { shellName: extra.shellName } : {}),
+      provesAgentInFront: extra.provesAgentInFront ?? true
+    }
   )
 }
 
@@ -170,6 +178,24 @@ describe('a multi-line prompt typed into a shell the host names', () => {
     ['CR', 'first\r\nsecond']
   ])('never types a %s-bearing multi-line prompt into zsh', (_label, prompt) => {
     expect(offer('claude', prompt, { shellName: 'zsh' }).promptCarried).toBe(false)
+  })
+})
+
+// Why: a host that cannot prove the agent took the terminal could paste into the shell of one that
+// exited, so there the line carries the prompt whatever its size, as it did before.
+describe('on a host that cannot prove the launched agent is in front', () => {
+  it.each([
+    ['a long single line', 'x'.repeat(TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES * 4)],
+    ['a multi-line prompt', linesOf(5, 40)]
+  ])('carries %s on the launch line', (_label, prompt) => {
+    const { plan, promptCarried } = offer('claude', prompt, {
+      platform: 'win32',
+      provesAgentInFront: false
+    })
+    expect(promptCarried).toBe(true)
+    expect(plan?.launchCommand).toContain(prompt.split('\n')[0])
+    // Control: the same prompt is pasted where the host can prove the agent.
+    expect(offer('claude', prompt, { platform: 'win32' }).promptCarried).toBe(false)
   })
 })
 
