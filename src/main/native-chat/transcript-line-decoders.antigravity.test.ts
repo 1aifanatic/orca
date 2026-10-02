@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
 import { decodeAntigravityTranscriptLine } from './transcript-line-decoders-antigravity'
 
 const lines = readFileSync(
@@ -89,3 +90,37 @@ it('keeps tool arguments on the observed MODEL/GENERIC shape, including outputle
     { type: 'tool-result', output: 'sample' }
   ])
 })
+
+it('preserves user-before-response step order across a decimal boundary at the same second', () => {
+  const [userLine, replyLine] = readFileSync(
+    new URL('./__fixtures__/antigravity/live-timestamp-tie.jsonl', import.meta.url),
+    'utf8'
+  )
+    .trim()
+    .split('\n')
+  if (!userLine || !replyLine) {
+    throw new Error('Expected captured user and reply records')
+  }
+  const user = decodeAntigravityTranscriptLine(userLine, 'user-fallback')
+  const reply = decodeAntigravityTranscriptLine(replyLine, 'reply-fallback')
+  if (!user || !reply) {
+    throw new Error('Expected captured message shapes to decode')
+  }
+  expect(user.id).toBe('9')
+  expect(reply.id).toBe('10')
+  expect(user.timestamp).toBe(reply.timestamp)
+  expect(projectNativeChatTranscriptMessages([reply, user]).map((message) => message.id)).toEqual([
+    '9',
+    '10'
+  ])
+})
+
+it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, 'opaque-id'])(
+  'does not invent transcript order for invalid step %s',
+  (step_index) => {
+    expect(
+      decode({ source: 'USER_EXPLICIT', type: 'USER_INPUT', step_index, content: 'hello' })
+        ?.transcriptPosition
+    ).toBeUndefined()
+  }
+)

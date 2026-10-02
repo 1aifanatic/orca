@@ -35,6 +35,9 @@ export function decodeAntigravityTranscriptLine(
       ? String(record.step_index)
       : (extractString(record.step_index) ?? extractString(record.id))
   const id = stepIndex ?? fallbackId
+  const ordinal = stepIndex && /^\d+$/.test(stepIndex) ? Number(stepIndex) : undefined
+  const transcriptPosition =
+    ordinal !== undefined && Number.isSafeInteger(ordinal) ? ordinal : undefined
   const source = extractString(record.source)
   const type = extractString(record.type)
 
@@ -52,6 +55,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'user',
       blocks: [{ type: 'text', text }],
       timestamp,
+      ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
   }
@@ -80,6 +84,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'assistant',
       blocks,
       timestamp,
+      ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
   }
@@ -101,6 +106,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'tool',
       blocks,
       timestamp,
+      ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
   }
