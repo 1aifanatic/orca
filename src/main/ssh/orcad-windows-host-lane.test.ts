@@ -96,7 +96,8 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
           record,
           census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null }
         })
-        expect(receipt.decommission).toMatchObject({
+        // The message carries the refusal code and reason, which toMatchObject's diff omits.
+        expect(receipt.decommission, JSON.stringify(receipt.decommission)).toMatchObject({
           outcome: 'decommissioned',
           version: deployed.fullVersion
         })
