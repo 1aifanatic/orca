@@ -21,20 +21,23 @@ export function isWindowsReservedDeviceName(filePath: string): boolean {
   return WINDOWS_RESERVED_DEVICE_STEM.test(stem.replace(/ +$/, ''))
 }
 
+function toBackslashes(filePath: string): string {
+  return filePath.replace(/\//g, '\\')
+}
+
+/** A Windows device-namespace path (`\\?\`, `\\.\`), which can name devices and shares alike. */
+export function isDeviceNamespacePath(filePath: string): boolean {
+  return usesWindowsPaths() && /^\\\\[?.]\\/.test(toBackslashes(filePath))
+}
+
 /**
- * A network share (`\\host\share`) or device namespace (`\\?\`, `\\.\`) path. WSL paths are UNC in
- * form but stay on this machine, so they are not network paths.
+ * A network share (`\\host\share`). WSL paths are UNC in form but stay on this machine, so they
+ * are not network paths.
  */
-export function isNetworkOrDeviceNamespacePath(filePath: string): boolean {
-  if (!usesWindowsPaths()) {
+export function isNetworkSharePath(filePath: string): boolean {
+  if (!usesWindowsPaths() || isDeviceNamespacePath(filePath)) {
     return false
   }
-  const normalized = filePath.replace(/\//g, '\\')
-  if (!normalized.startsWith('\\\\')) {
-    return false
-  }
-  if (/^\\\\[?.]\\/.test(normalized)) {
-    return true
-  }
-  return parseWslUncPath(normalized) === null
+  const normalized = toBackslashes(filePath)
+  return normalized.startsWith('\\\\') && parseWslUncPath(normalized) === null
 }

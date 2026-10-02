@@ -33,12 +33,21 @@ export async function openLocalRegularFile(
   }
 }
 
-/** Reads from the start of the handle; the cap holds even when a file reports a false size. */
-export async function readLocalFileBounded(handle: FileHandle, limit: number): Promise<Buffer> {
+/**
+ * Reads from the start of the handle, sized from its fstat so a small file costs a small buffer.
+ * The size is only a hint: a file that grows past it is read on in bounded chunks, and the cap holds
+ * even when a file reports a false size.
+ */
+export async function readLocalFileBounded(
+  handle: FileHandle,
+  limit: number,
+  expectedSize = 0
+): Promise<Buffer> {
   const chunks: Buffer[] = []
   let total = 0
+  let nextChunkBytes = Math.max(0, Math.min(expectedSize, limit)) + 1
   while (true) {
-    const chunk = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, limit + 1 - total))
+    const chunk = Buffer.allocUnsafe(Math.min(nextChunkBytes, limit + 1 - total))
     const { bytesRead } = await handle.read(chunk, 0, chunk.length, total)
     if (bytesRead === 0) {
       return Buffer.concat(chunks, total)
@@ -48,6 +57,8 @@ export async function readLocalFileBounded(handle: FileHandle, limit: number): P
     if (total > limit) {
       throw fileTooLargeError(total, limit)
     }
+    // Why a 1-byte probe after a short read: it confirms EOF without another full-size buffer.
+    nextChunkBytes = bytesRead < chunk.length ? 1 : READ_CHUNK_BYTES
   }
 }
 

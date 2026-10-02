@@ -42,7 +42,7 @@ export async function readLocalFileContent(filePath: string): Promise<LocalFileC
       throw fileTooLargeError(stats.size, sizeLimit)
     }
     if (mimeType) {
-      const buffer = await readLocalFileBounded(handle, sizeLimit)
+      const buffer = await readLocalFileBounded(handle, sizeLimit, stats.size)
       return {
         content: buffer.toString('base64'),
         isBinary: true,
@@ -58,7 +58,7 @@ export async function readLocalFileContent(filePath: string): Promise<LocalFileC
     ) {
       return { content: '', isBinary: true }
     }
-    const buffer = await readLocalFileBounded(handle, sizeLimit)
+    const buffer = await readLocalFileBounded(handle, sizeLimit, stats.size)
     if (isBinaryBuffer(buffer)) {
       return { content: '', isBinary: true }
     }
@@ -74,7 +74,7 @@ export async function readLocalLogSnapshot(filePath: string): Promise<LocalFileC
     if (stats.size > MAX_TEXT_FILE_SIZE) {
       throw fileTooLargeError(stats.size, MAX_TEXT_FILE_SIZE)
     }
-    const buffer = await readLocalFileBounded(handle, MAX_TEXT_FILE_SIZE)
+    const buffer = await readLocalFileBounded(handle, MAX_TEXT_FILE_SIZE, stats.size)
     if (isBinaryBuffer(buffer)) {
       return { content: '', isBinary: true }
     }

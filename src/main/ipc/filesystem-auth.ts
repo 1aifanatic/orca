@@ -1,6 +1,7 @@
 import { resolve, dirname, basename } from 'node:path'
 import { realpath } from 'node:fs/promises'
 import type { Store } from '../persistence'
+import { PATH_OUTSIDE_ALLOWED_DIRECTORIES } from '../../shared/local-file-access'
 import { getAllowedRoots } from './filesystem-allowed-roots'
 import { isDescendantOrEqual, isENOENT, normalizeExistingPath } from './filesystem-path-containment'
 import {
@@ -15,8 +16,7 @@ export { invalidateAuthorizedRootsCache } from './registered-worktree-roots-cach
 export { invalidateAuthorizedRootsCacheForRepo } from './registered-worktree-roots-scoped-invalidation'
 export { isENOENT } from './filesystem-path-containment'
 
-export const PATH_ACCESS_DENIED_MESSAGE =
-  'Access denied: path resolves outside allowed directories. If this blocks a legitimate workflow, please file a GitHub issue.'
+export const PATH_ACCESS_DENIED_MESSAGE = `${PATH_OUTSIDE_ALLOWED_DIRECTORIES}. If this blocks a legitimate workflow, please file a GitHub issue.`
 /** One allowed-root list shared by every check in a single authorization, built on first use. */
 type AllowedRootsSnapshot = { get: () => readonly string[] }
 

@@ -22,7 +22,11 @@ function answer(containedOk: boolean, userNamedOk: boolean, isDirectory = false)
   mocks.statRuntimePath.mockImplementation(
     async (_context: unknown, _path: string, access?: { kind: string }) => {
       if (access ? !userNamedOk : !containedOk) {
-        throw new Error(access ? 'ENOENT: no such file' : 'Access denied')
+        throw new Error(
+          access
+            ? 'ENOENT: no such file'
+            : 'Access denied: path resolves outside allowed directories.'
+        )
       }
       return { size: 1, isDirectory, mtime: 1 }
     }
@@ -57,6 +61,16 @@ describe('statUserOpenedPath', () => {
       expect(mocks.statRuntimePath).toHaveBeenLastCalledWith(project, '/repo/link', {
         kind: 'user-file'
       })
+    }
+  )
+
+  it.each(['ENOENT: no such file or directory', 'Remote connection dropped'])(
+    'surfaces a project check that fails with %s instead of opening it as named',
+    async (message) => {
+      mocks.statRuntimePath.mockRejectedValue(new Error(message))
+
+      await expect(statUserOpenedPath(project, '/repo/gone.md')).rejects.toThrow(message)
+      expect(mocks.statRuntimePath).toHaveBeenCalledTimes(1)
     }
   )
 

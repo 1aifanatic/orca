@@ -19,7 +19,11 @@ vi.mock('node:fs/promises', () => {
   const record = (name: string) =>
     vi.fn(async (target: unknown) => {
       fsCalls.push(`${name} ${String(target)}`)
-      return name === 'realpath' ? target : { isFile: () => true, isDirectory: () => false }
+      if (name !== 'realpath') {
+        return { isFile: () => true, isDirectory: () => false }
+      }
+      // A project image that is really a link to a device name.
+      return String(target).endsWith('dev-link.png') ? 'C:\\repo\\CON.png' : target
     })
   return { realpath: record('realpath'), stat: record('stat'), open: record('open') }
 })
@@ -160,5 +164,90 @@ describe('Windows reserved device names in automatic image loads', () => {
     await expect(
       resolveLocalFileRequestPath('C:\\Users\\me\\notes\\console.png', CHAT_IMAGE, store)
     ).resolves.toBe('C:\\Users\\me\\notes\\console.png')
+  })
+})
+
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members.
+const shareProjectStore = {
+  getRepos: () => [
+    {
+      id: 'repo',
+      path: '\\\\server\\share\\repo',
+      displayName: 'repo',
+      badgeColor: '#000',
+      addedAt: 0
+    }
+  ],
+  getProjects: () => [],
+  getProjectGroups: () => [],
+  getFolderWorkspaces: () => [],
+  getSettings: () => ({ nestWorkspaces: false, workspaceDir: '' })
+} as unknown as Store
+
+describe('automatic image loads and dot segments that resolve to a device name', () => {
+  beforeEach(() => {
+    fsCalls.length = 0
+  })
+
+  it.each(['C:\\d\\NUL.png\\.', 'C:\\d\\COM1.png\\x\\..', 'C:/d/COM1.jpg/.'])(
+    'refuses %s in both shapes without touching it',
+    async (target) => {
+      await expect(resolveLocalFileRequestPath(target, CHAT_IMAGE, store)).rejects.toThrow(
+        'Access denied'
+      )
+      await expect(
+        resolveLocalFileRequestPath(
+          target,
+          { kind: 'document-resource', documentPath: 'C:\\d\\README.md' },
+          store
+        )
+      ).rejects.toThrow('Access denied')
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it('refuses a project image whose real target is a device name', async () => {
+    await expect(
+      resolveLocalFileRequestPath(
+        'C:\\repo\\dev-link.png',
+        { kind: 'document-resource', documentPath: 'C:\\repo\\README.md' },
+        store
+      )
+    ).rejects.toThrow('Access denied')
+  })
+})
+
+describe('automatic image loads on a network share', () => {
+  beforeEach(() => {
+    fsCalls.length = 0
+  })
+
+  it('reads a chat or document image inside a project the user added from the share', async () => {
+    const image = '\\\\server\\share\\repo\\out.png'
+
+    await expect(resolveLocalFileRequestPath(image, CHAT_IMAGE, shareProjectStore)).resolves.toBe(
+      image
+    )
+    await expect(
+      resolveLocalFileRequestPath(
+        image,
+        { kind: 'document-resource', documentPath: '\\\\server\\share\\repo\\README.md' },
+        shareProjectStore
+      )
+    ).resolves.toBe(image)
+  })
+
+  it('refuses a share image outside every project without touching the share', async () => {
+    await expect(
+      resolveLocalFileRequestPath('\\\\server\\share\\other\\x.png', CHAT_IMAGE, shareProjectStore)
+    ).rejects.toThrow('Access denied')
+    await expect(
+      resolveLocalFileRequestPath(
+        '\\\\nas\\notes\\x.png',
+        { kind: 'document-resource', documentPath: '\\\\nas\\notes\\todo.md' },
+        shareProjectStore
+      )
+    ).rejects.toThrow('Access denied')
+    expect(fsCalls.filter((call) => call.includes('other') || call.includes('nas'))).toEqual([])
   })
 })

@@ -9,3 +9,12 @@ export type LocalFileAccess =
   | { kind: 'document-resource'; documentPath: string }
   /** An image a chat transcript or composer shows: any local image file, never a network share. */
   | { kind: 'chat-image' }
+
+/** Main's refusal of a request that resolves outside every root it may serve. */
+export const PATH_OUTSIDE_ALLOWED_DIRECTORIES =
+  'Access denied: path resolves outside allowed directories'
+
+// Why match the message: IPC errors cross to the renderer as plain messages, without their class.
+export function isPathOutsideAllowedDirectoriesError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(PATH_OUTSIDE_ALLOWED_DIRECTORIES)
+}

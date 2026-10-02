@@ -1,7 +1,7 @@
 import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readLocalFileContent } from './filesystem-file-content-inspection'
 import {
   assertLocalWriteTargetIsRegularFile,
@@ -41,6 +41,34 @@ describe('local regular-file reads', () => {
     const { handle } = await openLocalRegularFile(filePath)
     try {
       await expect(readLocalFileBounded(handle, 1024)).rejects.toThrow('File too large')
+    } finally {
+      await handle.close()
+    }
+  })
+
+  it('sizes the read from fstat, so a small file costs a small buffer', async () => {
+    const filePath = join(base, 'small.txt')
+    await writeFile(filePath, 'hello')
+    const { handle, stats } = await openLocalRegularFile(filePath)
+    const read = vi.spyOn(handle, 'read')
+    try {
+      await expect(readLocalFileBounded(handle, 1024 * 1024, stats.size)).resolves.toEqual(
+        Buffer.from('hello')
+      )
+      // One read sized past the reported length, then a 1-byte probe confirming EOF.
+      expect(read.mock.calls.map((call) => call.at(2))).toEqual([6, 1])
+    } finally {
+      await handle.close()
+    }
+  })
+
+  it('keeps reading a file that grew past its reported size, up to the cap', async () => {
+    const filePath = join(base, 'grew.txt')
+    await writeFile(filePath, 'a'.repeat(5000))
+    const { handle } = await openLocalRegularFile(filePath)
+    try {
+      await expect(readLocalFileBounded(handle, 1024 * 1024, 10)).resolves.toHaveLength(5000)
+      await expect(readLocalFileBounded(handle, 4096, 10)).rejects.toThrow('File too large')
     } finally {
       await handle.close()
     }

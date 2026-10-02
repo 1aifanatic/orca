@@ -1,4 +1,5 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { isPathOutsideAllowedDirectoriesError } from '../../../shared/local-file-access'
 import {
   isRemoteRuntimeFileOperation,
   statRuntimePath,
@@ -36,6 +37,10 @@ export async function statUserOpenedPath(
     const stat = await statRuntimePath(context, filePath)
     return { isDirectory: stat.isDirectory, escapesWorktree: false }
   } catch (containedError) {
+    // Why only this refusal: a missing file or a dropped connection is not a link out of the project.
+    if (!isPathOutsideAllowedDirectoriesError(containedError)) {
+      throw containedError
+    }
     let stat: Awaited<ReturnType<typeof statRuntimePath>>
     try {
       stat = await statRuntimePath(context, filePath, userNamedFileAccess())
