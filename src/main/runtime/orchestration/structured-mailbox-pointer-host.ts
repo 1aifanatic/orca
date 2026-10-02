@@ -6,8 +6,6 @@
  * the send and reports what the host said.
  */
 
-import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
-import { agentSessionSendSubmission } from '../../../shared/agent-session-wire'
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type {
@@ -19,6 +17,7 @@ import {
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
+import { sendAgentTurn } from './send-agent-turn'
 
 /** Per-dispatch so one worker's nudges cannot exhaust the shared runtime operation-ledger budget. */
 export function structuredPointerCallerKey(dispatchId: string): string {
@@ -93,43 +92,31 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       if (!host) {
         return { kind: 'unattached' }
       }
-      const result = await host.send(
+      const outcome = await sendAgentTurn(
         {
+          kind: 'structured-session',
+          host,
+          sessionId: input.sessionId,
           callerKey: input.dispatchId
             ? structuredPointerCallerKey(input.dispatchId)
             : structuredSessionPointerCallerKey(input.sessionId)
         },
         {
-          envelope: {
-            sessionId: input.sessionId,
-            clientOperationId: input.operationId,
-            expectedRuntimeFence: input.expectedRuntimeFence,
-            payloadFingerprint: input.payloadFingerprint
-          },
-          body: input.body
+          body: input.body,
+          delivery: 'now',
+          operationId: input.operationId,
+          expectedRuntimeFence: input.expectedRuntimeFence,
+          payloadFingerprint: input.payloadFingerprint
         }
       )
-      if (!result.ok) {
-        return result.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
+      if (outcome.kind === 'refused') {
+        return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
           ? { kind: 'unattached' }
           : { kind: 'sent', state: 'rejected' }
       }
-      // `pending` is not yet an acknowledgement; only `accepted` may consume mail. Accepted is not
-      // delivered, so wait out a start; a wait that runs out parks for the next journal edge.
-      const answered = agentSessionSendSubmission(result.value)
-      const submission =
-        answered?.dispatchState === 'pending'
-          ? (agentSessionSendSubmission(
-              (
-                await host
-                  .waitForSendSettlement(input.sessionId, result.value.clientMessageId, {
-                    budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-                  })
-                  .catch(() => undefined)
-              )?.value
-            ) ?? answered)
-          : answered
-      const state = submission?.dispatchState
+      // `pending` is not yet an acknowledgement; only `accepted` may consume mail. A send still
+      // pending after the wait parks for the next journal edge.
+      const state = outcome.kind === 'sent' ? outcome.submission?.dispatchState : undefined
       return {
         kind: 'sent',
         state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
