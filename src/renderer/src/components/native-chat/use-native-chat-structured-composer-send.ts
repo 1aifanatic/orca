@@ -105,8 +105,8 @@ export function useNativeChatStructuredComposerSend({
               putBack()
               return
             }
-            // Saved once the host holds the message for good (handed to the agent, accepted, or a
-            // card) or it is withdrawn back into the box; until then the draft keeps a copy.
+            // Saved once the host holds the message for good (the agent accepted it, or a card) or
+            // it is withdrawn back into the box; until then the draft keeps a copy.
             if (cleared) {
               void whenStructuredAgentSessionHostHasMessages(
                 structuredTransport.sessionId,

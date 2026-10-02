@@ -461,8 +461,8 @@ describe('the saved draft at send', () => {
     expect(savedText()).toBe('message B')
   })
 
-  // Case 12: a send while the agent works, then a normal quit. The host may reject a message it has
-  // not handed over yet when Orca quits, so both copies stay: the outbox entry and the saved draft.
+  // Case 12: a send while the agent works, then a normal quit. Until the agent accepted it, the host
+  // may lose the message when Orca quits, so both copies stay: the outbox entry and the saved draft.
   it.each(['pagehide', 'beforeunload'])(
     'keeps the saved message and its outbox entry when the window goes away (%s)',
     async (event) => {

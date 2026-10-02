@@ -1,12 +1,11 @@
 // Tells a composer when the host has a message it sent for good, so the chat's saved draft can stop
-// holding it: the host handed it to the agent, the agent accepted it, or the host queued it as a
-// card (all kept across quit and restart), by the send's reply or the journal.
+// holding it: the agent accepted it, or the host queued it as a card (both kept across quit and
+// restart), by the send's reply or the journal.
 // A message withdrawn back into the box, or dropped, also settles; one refused, rejected or still
 // unconfirmed keeps its draft copy until it is delivered or leaves. A refusal that gives the entry
 // a new id is followed to that id.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import { isQueuedAgentJournalSubmission } from '../../../../shared/agent-session-queued-submission'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
 type Watched = { queuedAt: number; body: string }
@@ -32,17 +31,14 @@ function forEachWatcher(sessionId: string, visit: (watcher: Watcher) => void): v
 }
 
 /**
- * Whether the host holds a submission past quit and restart: the agent accepted it, or the host
- * handed it over. One it accepted but has not handed over yet is rejected when Orca quits, and
- * after a crash when the chat next opens, so its draft copy must stay until then.
+ * Whether the host holds a submission past quit and restart: only once the agent accepted it. A
+ * pending one can still be lost: not handed over yet, the host rejects it when Orca quits or after
+ * a crash; handed over but not in the agent's history, a reopen settles it as never delivered.
  */
 export function structuredAgentSessionSubmissionHeldForGood(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'handoverRecorded' | 'handedOverAt'>
+  submission: Pick<AgentJournalSubmission, 'dispatchState'>
 ): boolean {
-  return (
-    submission.dispatchState === 'accepted' ||
-    (submission.dispatchState === 'pending' && !isQueuedAgentJournalSubmission(submission))
-  )
+  return submission.dispatchState === 'accepted'
 }
 
 /** Settles once the host has every one of `entries` (or each was withdrawn or dropped). */

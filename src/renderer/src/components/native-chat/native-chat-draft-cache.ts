@@ -146,8 +146,8 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
  * the message is back in the box; a message that stays undelivered never calls it. It saves the
  * draft as it is then, keeping whatever was typed since Enter, unless a later send on the chat is
  * still waiting for its host. A store that saves a send's clear at once (the web client's browser
- * storage) saves it now instead. A quit does not end a hold: the host may reject a message it has
- * not handed over yet, so the draft keeps it for the next launch.
+ * storage) saves it now instead. A quit does not end a hold: until the agent accepted the message
+ * the host may still lose it, so the draft keeps it for the next launch.
  */
 export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.

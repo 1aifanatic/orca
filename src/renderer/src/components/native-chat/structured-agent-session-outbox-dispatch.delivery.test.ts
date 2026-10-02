@@ -104,37 +104,41 @@ afterEach(() => {
 })
 
 describe("a sent message's saved draft", () => {
+  it('is released by an accepted reply', async () => {
+    const hostHasIt = await sendWithReply((entry) =>
+      ok({
+        clientMessageId: entry.clientMessageId,
+        submission: submission(entry.clientMessageId, 'accepted')
+      })
+    )
+
+    expect(hostHasIt()).toBe(true)
+  })
+
+  // Until the agent accepts it the host can still lose it: not handed over, it is rejected when
+  // Orca quits or after a crash; handed over (a send mid-turn joins the running turn at once) but
+  // not in the agent's history, a reopen settles it as never delivered.
   it.each([
-    ['an accepted', 'accepted', {}],
-    ['a handed-over pending', 'pending', { handoverRecorded: true, handedOverAt: 5 }],
-    ["an older host's pending", 'pending', {}]
-  ] as const)('is released by %s reply', async (_label, state, overrides) => {
-    const hostHasIt = await sendWithReply((entry) =>
-      ok({
-        clientMessageId: entry.clientMessageId,
-        submission: submission(entry.clientMessageId, state, overrides)
-      })
-    )
+    ['not handed over yet', { handoverRecorded: true }],
+    ['handed over into the running turn', { handoverRecorded: true, handedOverAt: 5 }],
+    ['from an older host', {}]
+  ] as const)(
+    'is kept for a pending reply %s, until the agent accepts it',
+    async (_label, overrides) => {
+      const hostHasIt = await sendWithReply((entry) =>
+        ok({
+          clientMessageId: entry.clientMessageId,
+          submission: submission(entry.clientMessageId, 'pending', overrides)
+        })
+      )
+      expect(hostHasIt()).toBe(false)
 
-    expect(hostHasIt()).toBe(true)
-  })
-
-  // Accepted but not handed over yet: the host rejects it when Orca quits, and after a crash when
-  // the chat next opens, so the saved draft must keep it until the handover.
-  it('is kept for a pending reply the host has not handed over yet, until the handover', async () => {
-    const hostHasIt = await sendWithReply((entry) =>
-      ok({
-        clientMessageId: entry.clientMessageId,
-        submission: submission(entry.clientMessageId, 'pending', { handoverRecorded: true })
-      })
-    )
-    expect(hostHasIt()).toBe(false)
-
-    const [entry] = getStructuredAgentSessionOutbox(SESSION)
-    noteStructuredAgentSessionMessagesDelivered(SESSION, [entry.clientMessageId])
-    await Promise.resolve()
-    expect(hostHasIt()).toBe(true)
-  })
+      const [entry] = getStructuredAgentSessionOutbox(SESSION)
+      noteStructuredAgentSessionMessagesDelivered(SESSION, [entry.clientMessageId])
+      await Promise.resolve()
+      expect(hostHasIt()).toBe(true)
+    }
+  )
 
   it('is released by a queued reply', async () => {
     const hostHasIt = await sendWithReply((entry) =>

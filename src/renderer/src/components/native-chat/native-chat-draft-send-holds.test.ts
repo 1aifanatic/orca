@@ -17,7 +17,7 @@ describe('send holds', () => {
     expect(persist).toHaveBeenCalledOnce()
   })
 
-  // The host may reject a message it has not handed over yet when Orca quits.
+  // Until the agent accepted it, the host may lose a message when Orca quits.
   it('keeps a hold when the window goes away', () => {
     const persist = vi.fn()
     const holds = createNativeChatDraftSendHolds(persist)
