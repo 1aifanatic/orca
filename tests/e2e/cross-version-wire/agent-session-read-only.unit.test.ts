@@ -23,7 +23,10 @@ import {
   liveTestJournalRows,
   openTestJournalHostDatabase
 } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
-import { readAgentSessionHydrationPage } from '../../../src/main/native-chat/agent-session-wire/agent-session-history-page'
+import {
+  readAgentSessionHistory,
+  readAgentSessionHydrationPage
+} from '../../../src/main/native-chat/agent-session-wire/agent-session-history-page'
 import {
   importReleaseCheckoutModule,
   materializeReleaseCheckout,
@@ -84,7 +87,7 @@ const NEWER_NESTED_LITERAL = {
   subject: { kind: 'diff', path: 'a.ts' }
 }
 
-/** This build's journal of one item, then `body` as a newer build wrote it: closed. */
+/** This build's journal of two items, then `body` as a newer build wrote it: closed. */
 async function journalWithNewerBody(
   body: Record<string, unknown> = NEWER_BODY_KIND
 ): Promise<{ rows: string[]; newer: string }> {
@@ -92,6 +95,11 @@ async function journalWithNewerBody(
   await journal.appendItem(
     { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 0 },
     { kind: 'status', text: 'before' },
+    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
+  await journal.appendItem(
+    { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 2 },
+    { kind: 'status', text: 'also before' },
     { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   const seq = journal.cursor().sequence + 1
@@ -156,6 +164,58 @@ describe('a chat a newer Orca saved, across versions', () => {
           reduce(empty, { type: 'event', event: reference }, 1)
         )
       }
+    },
+    SUITE_TIMEOUT_MS
+  )
+
+  it(
+    'old client against new host: it hydrates a read-only chat and scrolls back through it as through a writable one',
+    async () => {
+      rmSync(directory, { recursive: true, force: true })
+      directory = mkdtempSync(join(tmpdir(), 'orca-read-only-xv-'))
+      await journalWithNewerBody()
+      const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+      expect(journal.isReadOnly).toBe(true)
+      const request = { sessionId: IDENTITY.sessionId, limit: 1 }
+      const tail = readAgentSessionHistory(journal, { ...request, direction: 'tail' })
+      const requestedCursor = tail.page.window.nextCursor
+      const older = readAgentSessionHistory(journal, {
+        ...request,
+        direction: 'before',
+        cursor: requestedCursor
+      })
+      await journals.closeAll()
+      // Both are pages, not resets, and carry the field, or this compares nothing.
+      expect([tail.ok, older.ok, tail.page.readOnly, older.page.readOnly]).toEqual([
+        true,
+        true,
+        'written-by-newer-orca',
+        'written-by-newer-orca'
+      ])
+      const { readOnly: _tailField, ...tailWithout } = tail.page
+      const { readOnly: _olderField, ...olderWithout } = older.page
+
+      const checkout = await materializeReleaseCheckout(resolveBaselineReleaseRef())
+      const reducer = await importReleaseCheckoutModule(
+        checkout,
+        'src/shared/structured-agent-session-reducer.ts'
+      )
+      const reduce = releaseExport<Reduce>(reducer, 'reduceStructuredAgentSession')
+      const empty = releaseExport<unknown>(reducer, 'EMPTY_STRUCTURED_AGENT_SESSION')
+      const scrolledBack = (first: AgentSessionHistoryPage, next: AgentSessionHistoryPage) =>
+        reduce(
+          reduce(empty, { type: 'history-page', page: first }, 1),
+          { type: 'older-page', requestedCursor, page: next },
+          1
+        )
+      const state = scrolledBack(tail.page, older.page)
+      expect(state).toEqual(scrolledBack(tailWithout, olderWithout))
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the released reducer's state keeps its loaded items under `items`, as every release has.
+      const items = (state as { items: { body: unknown }[] }).items.map((item) => item.body)
+      expect(items).toEqual([
+        { kind: 'status', text: 'before' },
+        { kind: 'status', text: 'also before' }
+      ])
     },
     SUITE_TIMEOUT_MS
   )
