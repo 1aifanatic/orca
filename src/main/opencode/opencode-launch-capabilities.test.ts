@@ -13,9 +13,29 @@ vi.mock('../wsl/wsl-runner', () => ({ runWslProcess: mocks.wsl }))
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.probe.mockResolvedValue(getOpenCodeCliCapabilities('2.0.16'))
+  mocks.wsl.mockResolvedValue({
+    code: 0,
+    timedOut: false,
+    stdout: '1.18.30',
+    environmentResolved: true
+  })
 })
 
 describe('OpenCode execution-host launch capability probe', () => {
+  it('refuses a successful version response from an unresolved WSL execution environment', async () => {
+    mocks.wsl.mockResolvedValue({
+      code: 0,
+      timedOut: false,
+      stdout: '1.18.30',
+      environmentResolved: false
+    })
+    await probeOpenCodeLaunchCapabilities({
+      command: 'opencode',
+      env: {},
+      wsl: { distro: 'Ubuntu' }
+    })
+    expect(await mocks.probe.mock.calls[0]?.[0].execute()).toMatchObject({ code: null })
+  })
   it('recognizes quoted executables and preserves explicit run commands', () => {
     expect(getOpenCodeLaunchExecutable('"/app dir/opencode" run task')).toBe('/app dir/opencode')
     expect(getOpenCodeLaunchExecutable('custom-launcher --standalone', 'opencode')).toBe(
