@@ -29,6 +29,19 @@ function group(policy, ctx) {
   )
 }
 
+it('skips draft detection and rechecks the same draft once it is ready', () => {
+  const draft = context('pull_request', 1)
+  draft.github.event.pull_request.draft = true
+  expect(runInNewContext(workflow.jobs.changes.if, draft)).toBe(false)
+  draft.github.event.pull_request.draft = false
+  expect(runInNewContext(workflow.jobs.changes.if, draft)).toBe(true)
+  expect(workflow.on.pull_request.types).toContain('ready_for_review')
+  expect(runInNewContext(workflow.jobs.changes.if, context('push', 2))).toBe(true)
+  for (const event of ['schedule', 'workflow_dispatch', 'workflow_call']) {
+    expect(runInNewContext(workflow.jobs.changes.if, context(event, 2))).toBe(false)
+  }
+})
+
 it('lets main pushes finish detection without cancelling another push', () => {
   const first = context('push', 1)
   const second = context('push', 2)
