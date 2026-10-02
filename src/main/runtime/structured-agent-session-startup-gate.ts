@@ -5,6 +5,11 @@
 // those locks); none is refused. It always opens: when the settle ends, however it ends, or at a
 // ceiling, so a startup fault never strands a command.
 
+import {
+  createStructuredAgentSessionLogger,
+  type StructuredAgentSessionLogger
+} from '../native-chat/agent-session-wire/structured-agent-session-logger'
+
 // Under the shortest client timeout on a held call, with margin: the AI vault's chat restore gives
 // its reveal 5 s (activate-ai-vault-structured-session.ts); remote desktop and phone give 15 s.
 // Counted from launch (`hold`). A held command lets go before its caller gives up, and an open
@@ -39,7 +44,8 @@ export class StructuredAgentSessionStartupGate {
 
   constructor(
     private readonly ceilingMs = STARTUP_GATE_CEILING_MS,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly logger: StructuredAgentSessionLogger = createStructuredAgentSessionLogger()
   ) {}
 
   /** Closes the gate until it is opened, once per launch, before any request is served. */
@@ -54,9 +60,9 @@ export class StructuredAgentSessionStartupGate {
       this.release = resolve
     })
     this.ceiling = setTimeout(() => {
-      console.warn(
-        '[structured-agent-session] startup settle still running; chat commands go ahead'
-      )
+      this.logger.warn('startup settle still running; chat commands go ahead', {
+        scope: 'startup-gate-ceiling'
+      })
       this.open('ceiling')
     }, this.ceilingMs)
     this.ceiling.unref?.()
@@ -80,7 +86,7 @@ export class StructuredAgentSessionStartupGate {
     void settled.then(
       () => this.stepEnded('settle ended'),
       (error: unknown) => {
-        console.warn('[structured-agent-session] startup settle failed', error)
+        this.logger.warn('startup settle failed', { scope: 'startup-settle', error })
         this.stepEnded('settle failed')
       }
     )

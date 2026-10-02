@@ -19,6 +19,11 @@ import type { JournalEpochStateWriter } from './journal-epoch-rollover'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
 import {
+  buildJournalQueueResumeRow,
+  buildJournalStopEventRow
+} from './journal-stop-and-resume-rows'
+import type { JournalQueuePauseRestatement } from './queued-message-pause'
+import {
   deleteJournalEpochRows,
   insertJournalRow,
   publishJournalSessionEpoch,
@@ -42,6 +47,9 @@ export function replaceJournalEpoch(input: {
   reason: AgentJournalEpochReason
   fence: number
   items: readonly JournalReplacementItem[]
+  /** Restated in the new epoch, or the rewind would release cards the person stopped, or bring
+   *  back a /clear pause they already lifted. */
+  queuePause: JournalQueuePauseRestatement
   now: () => number
   mintEpoch: () => string
   writeState: JournalEpochStateWriter
@@ -70,6 +78,18 @@ export function replaceJournalEpoch(input: {
       turnScope: item.turnScope ?? state.derivedTurnScope.scopeFor(item.body)
     })
     assertJournalFence(row.fence, state.highestFence)
+    applyJournalRow(state, row)
+    rows.push(row)
+  }
+  const { lifted, liveStop } = input.queuePause
+  const place = () => ({ state, seq: state.lastSequence + 1, fence: input.fence, ts: input.now() })
+  if (lifted) {
+    const row = buildJournalQueueResumeRow(place())
+    applyJournalRow(state, row)
+    rows.push(row)
+  }
+  if (liveStop) {
+    const row = buildJournalStopEventRow({ ...place(), event: liveStop })
     applyJournalRow(state, row)
     rows.push(row)
   }

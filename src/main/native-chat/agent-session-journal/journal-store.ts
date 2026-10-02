@@ -26,14 +26,13 @@ import {
 } from '../../../shared/structured-agent-session-live-turn'
 import type { JournalReplacementItem } from './journal-epoch-replacement'
 import type { JournalHostDatabase } from './journal-host-database'
-import { replayJournal, type JournalLoad } from './journal-open'
+import type { JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
   rejectJournalQueuedSubmissions
 } from './journal-pending-submission-recovery'
 import {
-  createJournalReducerState,
   renderJournalState,
   resolveJournalItemId,
   type JournalReducerState
@@ -60,7 +59,11 @@ import type {
   JournalStatusProjection,
   JournalStatusProjectionState
 } from './journal-status-projection'
-import type { AgentJournalEpochReason } from './journal-row-schema'
+import {
+  journalQueueResumeRowBuilder,
+  journalStopEventRowBuilder
+} from './journal-stop-and-resume-rows'
+import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
 import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
@@ -68,6 +71,8 @@ import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
 import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
+import type { JournalStopMarks } from './journal-stop-marks'
+import { JournalFoldHolder } from './journal-fold-holder'
 
 export { AgentSessionJournalError } from './journal-write-guards'
 
@@ -77,9 +82,7 @@ export class AgentSessionJournal {
   private readonly now: () => number
   private readonly mintEpoch: () => string
 
-  private fold: JournalReducerState
-  /** A failed append's re-read from disk failed too: the fold may hold a row that never committed. */
-  private foldStale = false
+  private readonly fold: JournalFoldHolder
   private readOnly = false
   private malformedRows = 0
   /** A fresh replay would report the history corrupt: it is still owed a rebuild. */
@@ -99,13 +102,14 @@ export class AgentSessionJournal {
   private readonly statusProjection: JournalStatusProjection
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
+  readonly stopMarks: JournalStopMarks
 
   constructor(options: AgentSessionJournalOptions) {
     this.identity = options.identity
     this.database = options.database
     this.now = options.now ?? (() => Date.now())
     this.mintEpoch = options.mintEpoch ?? randomUUID
-    this.fold = createJournalReducerState(options.identity.sessionId, '')
+    this.fold = new JournalFoldHolder(options.identity.sessionId, options.database)
     // Serializes sequence assignment with the durable write behind it.
     this.queue = new JournalWriteQueue(options.identity.sessionId)
     const collaborators = createJournalStoreCollaborators({
@@ -127,9 +131,7 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      markFoldStale: () => {
-        this.foldStale = true
-      },
+      markFoldStale: () => this.fold.markStale(),
       loadCorrupt: () => this.loadCorrupt,
       currentFence: options.currentFence ?? (() => undefined),
       importPending: () => this.queue.owing,
@@ -149,32 +151,19 @@ export class AgentSessionJournal {
     this.itemAppender = collaborators.itemAppender
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
     this.queuedMessages = collaborators.queuedMessages
+    this.stopMarks = collaborators.stopMarks
     this.restore = collaborators.restore
     this.backfillSessionStatus = collaborators.backfillSessionStatus
     this.readSince = collaborators.readSince
     this.statusProjection = collaborators.statusProjection
   }
 
-  /** Re-read from disk first while stale, so no reader or writer gets a fold the disk never held. */
   private get state(): JournalReducerState {
-    if (this.foldStale) {
-      const db = this.database.db
-      if (db.isTransaction) {
-        // A transaction would read its own uncommitted rows back as the fold.
-        throw new Error(`agent-session journal ${this.identity.sessionId} is stale mid-transaction`)
-      }
-      const reloaded = replayJournal(db, this.identity.sessionId)
-      if (!reloaded) {
-        throw new Error(`agent-session journal ${this.identity.sessionId} is gone`)
-      }
-      this.state = reloaded.state
-    }
-    return this.fold
+    return this.fold.get()
   }
 
   private set state(state: JournalReducerState) {
-    this.fold = state
-    this.foldStale = false
+    this.fold.set(state)
   }
 
   get isReadOnly(): boolean {
@@ -330,6 +319,16 @@ export class AgentSessionJournal {
     return this.rowWriter.append(
       journalTombstoneRowBuilder(() => this.state, itemId, options.fence)
     )
+  }
+
+  /** A Stop that took effect, timed by its row (`JournalStopEvent`). */
+  appendStopEvent(event: Omit<JournalStopEvent, 'at'>, fence: number): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
+  }
+
+  /** A person's Resume of the queue. */
+  appendQueueResume(fence: number): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalQueueResumeRowBuilder(() => this.state, fence))
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {

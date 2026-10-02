@@ -11,10 +11,10 @@ import {
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createRestTestRig,
-  latestRestTestStatus,
   restTestChat,
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
+import { latestRestTestStatus } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-observations'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
@@ -312,7 +312,7 @@ describe('listing chat tabs at startup', () => {
       }
       return null
     })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const warn = vi.spyOn(rig.host.deps.logger, 'warn').mockImplementation(() => undefined)
     const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
     const { listAll } = restartedRuntime()
 
@@ -326,7 +326,7 @@ describe('listing chat tabs at startup', () => {
       })
     }
     const failures = warn.mock.calls.filter(
-      ([message]) => message === '[structured-agent-session] restoring a chat for reading failed'
+      ([message]) => message === 'restoring a chat for reading failed'
     )
     expect(failures.map(([, detail]) => detail)).toEqual(
       failing.map((sessionId) =>

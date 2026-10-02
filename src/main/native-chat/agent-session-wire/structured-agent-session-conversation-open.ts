@@ -43,7 +43,7 @@ export type StructuredAgentSessionConversationOpenDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
   adapter: Pick<StructuredAgentSessionAdapter, 'historyFilePath'>
   journalDatabase: JournalHostDatabase
-  onEventSinkError?: StructuredAgentSessionHostDeps['onEventSinkError']
+  logger: StructuredAgentSessionHostDeps['logger']
 }
 
 /** An acquisition's own open: its reserve cleared the record's death evidence, so it settles
@@ -115,7 +115,11 @@ export async function openStructuredAgentSessionConversationJournal(
     settlesRosters: !opened.journal.needsRebuild
   })
   await appendOpenSettlement(opened.journal, plan, fence, (error) =>
-    deps.onEventSinkError?.({ sessionId, error })
+    deps.logger.warn("settling a gone agent's work on open failed", {
+      scope: 'open-dead-generation',
+      sessionId,
+      error
+    })
   )
   opened.journal.backfillSessionStatus()
   return {
@@ -153,7 +157,11 @@ export async function resettleOpenStructuredAgentSessionConversation(
     }
   } catch (error) {
     // Best effort: the next open or acquire re-derives it.
-    deps.onEventSinkError?.({ sessionId, error })
+    deps.logger.warn("settling a gone agent's work on open failed", {
+      scope: 'open-dead-generation',
+      sessionId,
+      error
+    })
   }
 }
 

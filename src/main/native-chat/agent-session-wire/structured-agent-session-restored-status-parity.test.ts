@@ -8,10 +8,10 @@ import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wi
 import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-host-database-test-support'
 import {
   createRestTestRig,
-  latestRestTestStatus,
   restTestChat,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import { latestRestTestStatus } from './structured-agent-session-rest-test-observations'
 
 const rigs: RestTestRig[] = []
 

@@ -31,8 +31,10 @@ import {
 } from '../agent-session-journal/journal-subagent-liveness'
 import { runningRootTurnScope } from './structured-agent-session-exit-turn-scope'
 import {
+  endedByPersonsStop,
   provenUnverifiableTurnRevisions,
   runningTurnLifecycleRevisions,
+  stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence
 } from './structured-agent-session-stale-turn-verdict'
 
@@ -64,7 +66,7 @@ export type OpenSettlementPlan = {
 
 export type OpenSettlementJournal = Pick<
   AgentSessionJournal,
-  'snapshot' | 'submissions' | 'itemFence' | 'cursor'
+  'snapshot' | 'submissions' | 'itemFence' | 'cursor' | 'stopMarks'
 >
 
 export type OpenSettlementOptions = {
@@ -91,7 +93,7 @@ export function planOpenSettlement(
       ? null
       : planGoneGenerationSettlement({
           items,
-          itemFence: (itemId) => journal.itemFence(itemId),
+          journal,
           sessionId: record?.sessionId ?? '',
           fence: record?.fence ?? 0,
           // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
@@ -111,7 +113,8 @@ export function planOpenSettlement(
  */
 export function planGoneGenerationSettlement(input: {
   items: readonly AgentJournalRenderItem[]
-  itemFence: (itemId: string) => number | undefined
+  /** Who wrote each item, and what the latest Stop event says about the turn it found. */
+  journal: Pick<AgentSessionJournal, 'itemFence' | 'stopMarks'>
   sessionId: string
   fence: number
   generation: string
@@ -121,7 +124,11 @@ export function planGoneGenerationSettlement(input: {
   const { items } = input
   // Each turn is judged by the evidence only if it names that turn's owner.
   const verdictFor = (item: AgentJournalRenderItem) =>
-    turnVerdictFromDeathEvidence(input.deathEvidence, input.itemFence(item.itemId))
+    turnVerdictFromDeathEvidence(
+      input.deathEvidence,
+      input.journal.itemFence(item.itemId),
+      stopFoundTurnLiveAt(input.journal, item)
+    )
   const mutations: JournalLifecycleMutationInput[] = []
   for (const item of items) {
     const identity = openSettlementItemIdentity(item)
@@ -135,18 +142,19 @@ export function planGoneGenerationSettlement(input: {
       })
     }
   }
-  const proven = provenUnverifiableTurnRevisions(items, input.deathEvidence, {
-    itemFence: input.itemFence
-  })
-  mutations.push(
+  const proven = provenUnverifiableTurnRevisions(items, input.deathEvidence, input.journal)
+  const turnEnds = [
     ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
     ...proven
-  )
+  ]
+  mutations.push(...turnEnds)
   const evidence = input.deathEvidence
+  // A turn a person's Stop ended reads as theirs, with no row saying the provider stopped.
   if (
     evidence &&
     (proven.length > 0 ||
-      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted'))
+      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')) &&
+    !endedByPersonsStop(input.journal, turnEnds)
   ) {
     mutations.unshift({
       kind: 'item',

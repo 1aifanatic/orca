@@ -88,7 +88,7 @@ export function createStructuredAgentSessionHostRestore(
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
 } & StructuredAgentSessionStartupState {
   const { reconcileLeases, resolveRecovery, seedStatus, ...rest } = wiring
-  const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
+  const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
   const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
