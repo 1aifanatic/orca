@@ -6,7 +6,6 @@ import type {
   ClaudeStructuredSessionEvent
 } from './claude-structured-session-state'
 import { cancelClaudeAcquisitionAttempt } from './claude-structured-session-state'
-import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionAcquisitionRootExitObservedError,
@@ -18,6 +17,7 @@ import type { ClaudePromptRegistry } from './claude-structured-prompt-replies'
 import { closeProcessRegistry } from '../../shared/child-process/close-process-registry'
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
+import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 
 /** The root's own exit was seen first-hand. The lease follows the root, so a descendant
  *  left unverified or seen alive does not hold it. */
@@ -68,6 +68,7 @@ export function settleClaudeExitedSession(session: ClaudeSession): void {
   // The child is gone, so no replay can start these turns. Nothing else ends a
   // waiter's life now that no deadline does.
   retireClaudeDispatchWaiters(session)
+  settleClaudeTurnEndWaiters(session)
   for (const prompt of session.prompts.clear()) {
     prompt.settle(null)
   }
@@ -77,8 +78,6 @@ export function settleClaudeExitedSession(session: ClaudeSession): void {
 type CloseClaudePublishedSessionInput = {
   sessions: Map<string, ClaudeSession>
   sessionId: string
-  /** Who asked for the close; the translator settles the open turn with it. */
-  stopCause?: StructuredAgentSessionStopCause
   persistHandle?: (handle: {
     sessionId: string
     providerSessionId: string
@@ -93,6 +92,7 @@ async function finalizeClaudePublishedSession(
   session: ClaudeSession
 ): Promise<boolean> {
   retireClaudeDispatchWaiters(session)
+  settleClaudeTurnEndWaiters(session)
   // Settle every in-flight permission callback so closing leaves no dangling promise; `null`
   // writes no response, and the SDK ignores any post-cleanup answer regardless.
   for (const prompt of session.prompts.clear()) {
@@ -115,6 +115,11 @@ async function finalizeClaudePublishedSession(
     rootExitVerdict = cleanupError
   }
   // Queues the session's ending for the host's child records; the adapter delivers it after close.
+  // A close that proved the whole tree gone stopped what still ran. One that saw a descendant
+  // survive, like an exit of the session's own, leaves how it ended unknown.
+  if (connectionClosed === true) {
+    session.childWork.stopLive()
+  }
   session.childWork.clear()
   session.backgroundTasks.clear()
   const leafUuid = await settledClaudeTurnEndLeaf(session)
@@ -132,7 +137,6 @@ async function finalizeClaudePublishedSession(
     type: 'ended',
     sessionId: input.sessionId,
     reason: 'claude session closed',
-    ...(input.stopCause ? { stopCause: input.stopCause } : {}),
     observedAt: Date.now()
   } as const
   let callbackError: unknown
@@ -236,7 +240,6 @@ export function closeClaudePublishedSessionForDeps(
 
 export async function closeClaudeSession(input: {
   sessionId: string
-  stopCause?: StructuredAgentSessionStopCause
   sessions: Map<string, ClaudeSession>
   acquisitions: ClaudeAcquisitionRegistry
   persistHandle?: (handle: {

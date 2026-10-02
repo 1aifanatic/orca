@@ -80,7 +80,9 @@ export function NativeChatStructuredSession(
     isVisible: props.isVisible,
     rootRef,
     composerRef,
-    terminalPaneActions: props.contextMenuActions
+    terminalPaneActions: props.contextMenuActions,
+    sessionId: props.sessionId,
+    target: props.target
   })
   const session = useMemo<NativeChatLiveSession>(
     () => ({
@@ -131,19 +133,19 @@ export function NativeChatStructuredSession(
     () =>
       structuredAgentSessionDeliveryNotices(
         controller.outbox,
-        controller.blockedClientMessageId,
         agentLabel,
         retryDelivery,
         rejectionRows,
-        startFailures
+        startFailures,
+        controller.failedHere
       ),
     [
       controller.outbox,
-      controller.blockedClientMessageId,
       agentLabel,
       retryDelivery,
       rejectionRows,
-      startFailures
+      startFailures,
+      controller.failedHere
     ]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })

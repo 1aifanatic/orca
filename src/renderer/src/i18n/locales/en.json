@@ -213,6 +213,10 @@
       "codexTerminalServerIsolation": {
         "title": "Run each Codex terminal on its own server",
         "description": "Keeps Orca's status and closing tabs working correctly. Turn off to use Codex's shared server and its agents overview. Applies to new terminals."
+      },
+      "codexSharedServerWarning": {
+        "title": "Warn when a Codex tab shares a server",
+        "description": "Shows a notice on a Codex you started yourself when it shares a server with other tabs, because its agent status may be wrong."
       }
     }
   },
@@ -1026,6 +1030,17 @@
         "symlink": "Symbolic links cannot be attached.",
         "permissionDenied": "Permission denied.",
         "unsupported": "Unsupported file type."
+      },
+      "dropTempCopyFailure": {
+        "changed": "The file changed while Orca was copying it. Try the drop again.",
+        "outOfSpace": "Not enough disk space to copy the dropped files.",
+        "storageUnavailable": "Orca couldn't create storage for dropped files.",
+        "storageNotPrivate": "Orca's storage for dropped files can be read by other users, so nothing was copied.",
+        "timedOut": "Copying took too long. Try the drop again.",
+        "busy": "Too many drops are still being copied. Wait a moment, then try again.",
+        "tooLarge": "Too large to copy, so Orca couldn't hand it to the agent.",
+        "storageFull": "Orca's storage for dropped files is full, so Orca couldn't hand it to the agent.",
+        "generic": "Try the drop again."
       }
     },
     "hooks": {
@@ -1060,7 +1075,10 @@
         "nativeDropPathsTooLarge": "Drop path list is too large.",
         "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects.",
         "nativeDropUnresolvedPathsDescription": "Save them to disk first, then drop the saved files.",
-        "nativeDropUnresolvedPaths": "Orca couldn't read a path for the dropped files."
+        "nativeDropUnresolvedPaths": "Orca couldn't read a path for the dropped files.",
+        "nativeDropTempCopyFailed": "Orca couldn't copy {{count}} dropped files.",
+        "nativeDropTempCopyFailed_one": "Orca couldn't copy {{count}} dropped file.",
+        "nativeDropTempCopyFailed_other": "Orca couldn't copy {{count}} dropped files."
       },
       "useIpcEvents": {
         "0e3cf53060": "Browser tab {{value0}} not found",
@@ -5582,6 +5600,7 @@
           "bdd23b4e07": "GitHub issues",
           "44713a5d04": "Linear issues",
           "jiraIssues": "Jira issues",
+          "host": "Host",
           "cc17bd443b": "Detailed",
           "0f9b959b31": "PR",
           "e029a2d775": "Status",
@@ -7301,9 +7320,9 @@
           "80c454e8a6": "Match this to your provider's cache TTL."
         },
         "GeneralEditorSettingsSection": {
-          "f80603d293": "Show local markdown note controls in rich editor mode and agent handoff actions.",
+          "f80603d293": "Show markdown note controls in every markdown view and include markdown notes in agent handoff actions.",
           "4edc104f0f": "Markdown Review Notes",
-          "5f02e6fb21": "Show local markdown review note controls in rich editor mode.",
+          "5f02e6fb21": "Show local markdown review note controls in markdown files.",
           "51161d1647": "Show the minimap overview when editing a file.",
           "6690b1ffb9": "Minimap",
           "5a1ea6eaa2": "Hidden",
@@ -8672,6 +8691,11 @@
           "e9609ddca6": "Proxy, jump host, and connection reuse",
           "8c922dffba": "Reuse SSH connection for faster setup",
           "53e9aabfc0": "Uses OpenSSH multiplexing when available. Turn off for hosts with custom SSH restrictions.",
+          "remoteRuntime": "Runtime",
+          "remoteRuntimeHelp": "Which Node.js runs Orca on this host. Orca-managed Node uploads its own and needs no npm; Host Node uses the Node.js already installed there.",
+          "remoteRuntimeAuto": "Auto",
+          "remoteRuntimePinnedNode": "Orca-managed Node",
+          "remoteRuntimeHostNode": "Host Node",
           "editTitle": "Edit SSH host",
           "addTitle": "Add SSH host",
           "editDescription": "Update connection details for this machine. Changes apply on next connect.",
@@ -15955,6 +15979,7 @@
             "4300f38145": "Downloading from {{value0}}{{value1}}",
             "31375046b7": "Download from {{value0}}",
             "acbe79fd01": "Grab page element ({{value0}})",
+            "cc4a071d3a": "Annotate page element ({{value0}})",
             "572046436a": "Remote browser",
             "b313a7275b": "Opening remote browser",
             "5f66313863": "annotation",
@@ -17524,7 +17549,8 @@
         "hostStopped": "{{agent}} never finished starting, so Orca stopped it.",
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
-        "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}."
+        "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
+        "previousExitUnverifiable": "Orca couldn't confirm {{agent}}'s previous process ended. Messages wait to be sent until Orca confirms it has ended."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17930,6 +17956,12 @@
         "label": "Context {{used}} of {{window}} tokens, {{percent}}% used",
         "title": "Context",
         "estimated": "Estimated from the last response."
+      },
+      "contextMenu": {
+        "copyOrcaSessionId": "Copy Orca Session ID",
+        "orcaSessionIdCopied": "Orca session ID copied",
+        "orcaSessionIdCopyFailed": "Unable to copy Orca session ID",
+        "orcaSessionIdTooltip": "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
@@ -18606,6 +18638,36 @@
       "title": "Orca now runs Codex without its shared server",
       "description": "This makes agent status more reliable. You can turn it back on in Settings.",
       "openSettings": "Open Settings"
+    },
+    "codexSharedServerBanner": {
+      "title": "This Codex is sharing a server with your other Codex tabs",
+      "body": "Sessions may end unexpectedly, and agent status may be wrong.",
+      "fix": "Fix",
+      "dontShowAgain": "Don't show again",
+      "dismiss": "Dismiss",
+      "dialogTitle": "Give each Codex tab its own server",
+      "dialogDescription": "Codex sessions started directly in a terminal share one background server. Orca keeps the Codex sessions it starts separate. When sessions share a server, closing one can end the others, and agent status can be wrong.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "done": "Done",
+      "step1Title": "Turn off Codex server sharing",
+      "step1Note": "This changes your Codex settings, so it also applies outside Orca.",
+      "step2Title": "Stop the running shared server",
+      "undo": "To undo, run codex features enable daemon_auto_start.",
+      "step2Warning": "Closes any open Codex sessions that share the server",
+      "learnMore": "Learn more",
+      "turnOff": "Turn off",
+      "turningOff": "Turning off…",
+      "turnedOff": "Turned off",
+      "turnOffFailed": "Orca couldn't turn this off.",
+      "stopServer": "Stop server",
+      "stopping": "Stopping…",
+      "stopped": "Stopped",
+      "stopFailed": "Orca couldn't stop the server.",
+      "confirmStopTitle": "Stop the shared server?",
+      "confirmStopDescription": "This closes any open Codex sessions that share it, including ones outside Orca.",
+      "cancel": "Cancel",
+      "runs": "Runs"
     }
   },
   "fileExplorer": {
