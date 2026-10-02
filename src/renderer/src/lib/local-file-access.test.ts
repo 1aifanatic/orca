@@ -76,6 +76,15 @@ describe('editorTabFileAccess', () => {
       'user-file'
     ],
     [
+      'a project link opened by its absolute path because it leads out of the project',
+      {
+        filePath: '/Users/me/project/docs/link.md',
+        relativePath: '/Users/me/project/docs/link.md',
+        worktreeId: localWorktreeId
+      },
+      'user-file'
+    ],
+    [
       'an AI Vault log tab in an SSH workspace',
       {
         filePath: '/Users/me/.codex/session.jsonl',
@@ -149,10 +158,10 @@ const USER_NAMED_ACCESS_IMPORTERS = [
   'components/native-chat/use-native-chat-external-attachments.ts',
   'components/sidebar/useSidebarProjectDrop.ts',
   'components/tab-bar/tab-create-entry-absolute-file.ts',
-  'components/terminal-pane/terminal-file-open-routing.ts',
   'hooks/composer-state/attachment-drop-state.ts',
   'hooks/useGlobalFileDrop.ts',
-  'lib/local-file-access.ts'
+  'lib/local-file-access.ts',
+  'lib/user-opened-local-path.ts'
 ]
 
 function collectSourceFiles(dir: string): string[] {

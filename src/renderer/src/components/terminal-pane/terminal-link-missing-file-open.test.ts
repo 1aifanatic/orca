@@ -34,7 +34,8 @@ describe('openDetectedFilePath on a path it cannot verify', () => {
   it('reports a verified miss', async () => {
     setPlatform('Macintosh')
     const error = new Error("Error invoking remote method 'fs:stat': Error: ENOENT: no such file")
-    statMock.mockRejectedValueOnce(error)
+    // A missing file fails both the project check and the user-named one.
+    statMock.mockRejectedValue(error)
     const onOpenFailure = vi.fn<OnOpenFailure>()
 
     openDetectedFilePath('/tmp/src/gone.md', null, null, { ...deps, onOpenFailure })
@@ -48,7 +49,7 @@ describe('openDetectedFilePath on a path it cannot verify', () => {
   it('reports a host that could not answer as unverifiable, not missing', async () => {
     setPlatform('Macintosh')
     const error = new Error('SSH connection closed')
-    statMock.mockRejectedValueOnce(error)
+    statMock.mockRejectedValue(error)
     const onOpenFailure = vi.fn<OnOpenFailure>()
 
     openDetectedFilePath('/tmp/src/present.md', null, null, { ...deps, onOpenFailure })

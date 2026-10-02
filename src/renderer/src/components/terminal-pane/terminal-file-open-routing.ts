@@ -10,7 +10,6 @@ import {
 } from '@/lib/workspace-file-host-routing'
 import {
   isMissingRuntimePathError,
-  statRuntimePath,
   type RuntimeFileOperationArgs
 } from '@/runtime/runtime-file-client'
 import { useAppStore } from '@/store'
@@ -23,7 +22,7 @@ import {
   toSshExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
-import { userNamedFileAccess } from '@/lib/local-file-access'
+import { statUserOpenedPath } from '@/lib/user-opened-local-path'
 
 export type FileOpenFailure = {
   /** `missing` is a verified absence; `unverifiable` means the host could not answer (dropped SSH, timeout, denied path). */
@@ -174,7 +173,7 @@ export function openDetectedFilePath(
     }
 
     try {
-      statResult = await statRuntimePath(fileContext, mappedFilePath, userNamedFileAccess())
+      statResult = await statUserOpenedPath(fileContext, mappedFilePath)
     } catch (error) {
       if (requestId === latestOpenDetectedFilePathRequestId && deps.onOpenFailure) {
         // Why: loss of contact with the host is not evidence the file is gone.
@@ -236,7 +235,9 @@ export function openDetectedFilePath(
     let relativePath = mappedFilePath
     if (worktreePath && isPathInsideWorktree(mappedFilePath, worktreePath)) {
       const maybeRelative = toWorktreeRelativePath(mappedFilePath, worktreePath)
-      if (maybeRelative !== null && maybeRelative.length > 0) {
+      // Why: a link out of the project keeps its absolute path, so the tab reads it as the file
+      // the user named, before and after a restart, instead of being refused as a project file.
+      if (maybeRelative !== null && maybeRelative.length > 0 && !statResult.escapesWorktree) {
         relativePath = maybeRelative
       }
     } else if (

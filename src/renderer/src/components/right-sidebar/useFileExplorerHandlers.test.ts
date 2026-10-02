@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 import { useAppStore } from '@/store'
 import type { TreeNode } from './file-explorer-types'
 import { activateFileExplorerNode } from './useFileExplorerHandlers'
@@ -70,6 +73,59 @@ describe('activateFileExplorerNode', () => {
     expect(markPathAsDirectory).toHaveBeenCalledWith('/repo/linked-docs')
     expect(toggleDir).toHaveBeenCalledWith('wt-1', '/repo/linked-docs')
     expect(openFile).not.toHaveBeenCalled()
+  })
+
+  it('does not follow a folder link that leads out of the project', async () => {
+    const loadDir = vi.fn()
+    const openFile = vi.fn()
+
+    await activateFileExplorerNode({
+      node: { ...symlinkNode, operationOwner: { kind: 'local' } },
+      activeWorktreeId: 'wt-1',
+      openFile,
+      toggleDir: vi.fn(),
+      loadDir,
+      statPath: vi.fn().mockResolvedValue({ isDirectory: true, escapesWorktree: true }),
+      markPathAsDirectory: vi.fn(),
+      setSelectedPath: vi.fn()
+    })
+
+    expect(loadDir).not.toHaveBeenCalled()
+    expect(openFile).not.toHaveBeenCalled()
+    expect(toastError).toHaveBeenCalledWith(
+      "This folder links outside the project, so it can't be opened here."
+    )
+  })
+
+  it('opens a file link that leads out of the project by its absolute path', async () => {
+    const openFile = vi.fn()
+    useAppStore.setState({
+      worktreesByRepo: {
+        'repo-1': [{ id: 'wt-1', repoId: 'repo-1', path: '/repo', hostId: 'local' } as never]
+      }
+    })
+
+    await activateFileExplorerNode({
+      node: { ...symlinkNode, operationOwner: { kind: 'local' } },
+      activeWorktreeId: 'wt-1',
+      runtimeEnvironmentId: null,
+      openFile,
+      toggleDir: vi.fn(),
+      loadDir: vi.fn(),
+      statPath: vi.fn().mockResolvedValue({ isDirectory: false, escapesWorktree: true }),
+      markPathAsDirectory: vi.fn(),
+      setSelectedPath: vi.fn()
+    })
+
+    // The absolute relativePath marks the tab as user-named, which survives a restart.
+    expect(openFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/repo/linked-docs',
+        relativePath: '/repo/linked-docs',
+        worktreeId: 'wt-1'
+      }),
+      expect.anything()
+    )
   })
 
   it('opens a symlink as a file when target stat fails', async () => {

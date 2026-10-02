@@ -58,9 +58,7 @@ describe('handleOscLink', () => {
     // before asserting on positive behavior.
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/tmp/test.txt', access: { kind: 'user-file' } })
-    )
+    expect(statMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: '/tmp/test.txt' }))
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: '/tmp/test.txt' }),
       { forceContentReload: true }
@@ -84,7 +82,7 @@ describe('handleOscLink', () => {
     await flushDoubleRaf()
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: 'C:/repo/src/index.ts', access: { kind: 'user-file' } })
+      expect.objectContaining({ filePath: 'C:/repo/src/index.ts' })
     )
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: 'C:/repo/src/index.ts' }),
@@ -114,10 +112,7 @@ describe('handleOscLink', () => {
     await flushAsyncWork()
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filePath: '//server/share/repo/test.txt',
-        access: { kind: 'user-file' }
-      })
+      expect.objectContaining({ filePath: '//server/share/repo/test.txt' })
     )
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: '//server/share/repo/test.txt' }),
@@ -148,9 +143,7 @@ describe('handleOscLink', () => {
     await flushAsyncWork()
     await flushDoubleRaf()
 
-    expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/tmp/test.txt', access: { kind: 'user-file' } })
-    )
+    expect(statMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: '/tmp/test.txt' }))
     expect(openFilePathMock).not.toHaveBeenCalled()
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: '/tmp/test.txt' }),
@@ -176,9 +169,7 @@ describe('handleOscLink', () => {
     )
     await flushAsyncWork()
 
-    expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/tmp/test.txt', access: { kind: 'user-file' } })
-    )
+    expect(statMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: '/tmp/test.txt' }))
     expect(openFilePathMock).toHaveBeenCalledWith('/tmp/test.txt')
     expect(openFileMock).not.toHaveBeenCalled()
     expect(setPendingEditorRevealMock).not.toHaveBeenCalled()
@@ -196,9 +187,7 @@ describe('handleOscLink', () => {
     await flushAsyncWork()
     await flushDoubleRaf()
 
-    expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/tmp/test.txt', access: { kind: 'user-file' } })
-    )
+    expect(statMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: '/tmp/test.txt' }))
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: '/tmp/test.txt' }),
       { forceContentReload: true }
@@ -228,10 +217,7 @@ describe('handleOscLink', () => {
     await flushDoubleRaf()
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filePath: '//server/Share/Repo/src/app.ts',
-        access: { kind: 'user-file' }
-      })
+      expect.objectContaining({ filePath: '//server/Share/Repo/src/app.ts' })
     )
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -265,10 +251,7 @@ describe('handleOscLink', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filePath: '/tmp/project/docs/README.md',
-        access: { kind: 'user-file' }
-      })
+      expect.objectContaining({ filePath: '/tmp/project/docs/README.md' })
     )
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -298,8 +281,7 @@ describe('handleOscLink', () => {
 
     expect(statMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        filePath: '\\\\wsl.localhost\\Ubuntu\\root\\workspace\\myrepo\\README.md',
-        access: { kind: 'user-file' }
+        filePath: '\\\\wsl.localhost\\Ubuntu\\root\\workspace\\myrepo\\README.md'
       })
     )
     expect(openFileMock).toHaveBeenCalledWith(
@@ -334,8 +316,7 @@ describe('handleOscLink', () => {
 
     expect(statMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        filePath: '\\\\wsl.localhost\\Ubuntu\\root\\workspace\\myrepo\\README.md',
-        access: { kind: 'user-file' }
+        filePath: '\\\\wsl.localhost\\Ubuntu\\root\\workspace\\myrepo\\README.md'
       })
     )
     expect(openFileMock).toHaveBeenCalledWith(
@@ -369,7 +350,7 @@ describe('handleOscLink', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/home/alice/file.ts', access: { kind: 'user-file' } })
+      expect.objectContaining({ filePath: '/home/alice/file.ts' })
     )
     expect(openFileMock).toHaveBeenCalledWith(
       expect.objectContaining({

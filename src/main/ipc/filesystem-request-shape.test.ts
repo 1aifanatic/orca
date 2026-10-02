@@ -221,6 +221,18 @@ describe.skipIf(process.platform === 'win32')('project symlinks under every spel
     expect(await settles(resolveLocalWriteRequestPath(named(), undefined, store))).toBe('denied')
     expect(await settles(resolveLocalFileRequestPath(secret, undefined, store))).toBe('denied')
   })
+
+  it('reads a project link the user opened by name in place, while project requests stay refused', async () => {
+    const store = makeStore({ repoPaths: [real] })
+    const link = join(real, 'escape.txt')
+
+    expect(await settles(resolveLocalFileRequestPath(link, undefined, store))).toBe('denied')
+    const named = await resolveLocalFileRequestPath(link, USER_FILE, store)
+    await expect(readLocalFileContent(named)).resolves.toEqual({
+      content: 'secret\n',
+      isBinary: false
+    })
+  })
 })
 
 describe('document-resource requests', () => {

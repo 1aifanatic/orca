@@ -88,7 +88,7 @@ describe('handleOscLink', () => {
     await flushAsyncWork()
 
     expect(statMock).toHaveBeenCalledWith(
-      expect.objectContaining({ filePath: '/tmp/other-worktree', access: { kind: 'user-file' } })
+      expect.objectContaining({ filePath: '/tmp/other-worktree' })
     )
     expect(statMock).toHaveBeenCalled()
     expect(openFilePathMock).toHaveBeenCalledWith('/tmp/other-worktree')

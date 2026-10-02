@@ -38,7 +38,7 @@ type UseFileExplorerHandlersParams = {
     depth: number,
     options?: { force?: boolean; failOnError?: boolean }
   ) => Promise<boolean>
-  statPath: (path: string) => Promise<{ isDirectory: boolean }>
+  statPath: (path: string) => Promise<{ isDirectory: boolean; escapesWorktree?: boolean }>
   markPathAsDirectory: (path: string) => void
   setSelectedPath: (path: string) => void
   scrollRef: RefObject<HTMLDivElement | null>
@@ -87,17 +87,29 @@ export async function activateFileExplorerNode(args: {
     toggleDir(activeWorktreeId, node.path)
     return
   }
+  let escapesWorktree = false
   if (node.isSymlink) {
     // Why: symlink targets may live in macOS TCC-protected app data. Resolve
     // them only after the user explicitly activates the row.
-    let targetIsDirectory = false
+    let target: { isDirectory: boolean; escapesWorktree?: boolean } | null = null
     try {
-      targetIsDirectory = (await statPath(node.path)).isDirectory
+      target = await statPath(node.path)
     } catch {
       // Why: an unresolvable target can't be proven to be a directory; fall through so
       // the editor reports the real error instead of the click dead-ending here.
     }
-    if (targetIsDirectory) {
+    escapesWorktree = target?.escapesWorktree === true
+    if (target?.isDirectory && escapesWorktree) {
+      // Why: project listings stay inside the project, so a folder link out of it isn't followed.
+      toast.error(
+        translate(
+          'auto.components.right.sidebar.useFileExplorerHandlers.folderLinksOutsideProject',
+          "This folder links outside the project, so it can't be opened here."
+        )
+      )
+      return
+    }
+    if (target?.isDirectory) {
       const loadedAsDirectory = await loadDir(node.path, node.depth, {
         force: true,
         failOnError: true
@@ -129,7 +141,9 @@ export async function activateFileExplorerNode(args: {
   openFile(
     {
       filePath: node.path,
-      relativePath: node.relativePath,
+      // Why: a file link out of the project opens by its absolute path, as a file the user named,
+      // so it reads the same before and after a restart instead of being refused as a project file.
+      relativePath: escapesWorktree ? node.path : node.relativePath,
       worktreeId: activeWorktreeId,
       runtimeEnvironmentId: fileRuntimeEnvironmentId ?? undefined,
       language: detectLanguage(node.name),
