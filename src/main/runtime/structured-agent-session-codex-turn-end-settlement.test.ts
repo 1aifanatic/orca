@@ -22,6 +22,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -506,7 +507,8 @@ describe('a Stop in that window that the turn never opens for', () => {
     expect(await settledWithin(stopping, 0)).not.toBe('held')
     expect(childCloses).toBe(1)
     expect(interrupts).toBe(0)
-    expect(await statusRows()).toContain('Codex had no turn running to stop.')
+    // Its wait ran out with the turn still able to open, so the Stop ended the child.
+    expect(await statusRows()).toContain('Cancellation requested.')
   })
 
   it('lets the app quit behind it within the eviction budget, and still close the child', async () => {
@@ -516,6 +518,51 @@ describe('a Stop in that window that the turn never opens for', () => {
       await settledWithin(stopStructuredAgentSessionRuntime(), CHILD_EVICTION_TIMEOUT_MS)
     ).not.toBe('held')
     expect(childCloses).toBe(1)
+  })
+})
+
+describe("a Stop pressed while Codex's turn/start is in flight", () => {
+  function turnRow(
+    items: Awaited<ReturnType<StructuredAgentSessionHost['journalSnapshot']>>['items']
+  ) {
+    return items
+      .map((item) => readAgentJournalTurn(item.body))
+      .find((turn) => turn?.turnId === 'turn-1')
+  }
+
+  it("interrupts the turn that opens, which reads as the Stop's, and nothing reads as running", async () => {
+    const release = turns.holdNextAnswer()
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    // Queued behind the send's handover on the session's lane, so it runs after Codex answers.
+    const stopping = stop()
+    release()
+    await vi.waitFor(() => expect(openWaits.turnIds).toContain('turn-1'))
+    turns.start()
+    await stopping
+
+    expect(interrupts).toBe(1)
+    const after = await settled()
+    expect(turnRow((await host.journalSnapshot(SESSION)).items)).toMatchObject({
+      state: 'interrupted',
+      outcome: 'cancellation'
+    })
+    expect(after.owesWork).toBe(false)
+  })
+
+  it('ends the child when the turn has not opened by the end of its wait', async () => {
+    const release = turns.holdNextAnswer()
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const stopping = stop()
+    release()
+
+    expect(await settledWithin(stopping, CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+
+    expect(interrupts).toBe(0)
+    expect(childCloses).toBe(1)
+    expect((await settled()).owesWork).toBe(false)
+    expect(turnRow((await host.journalSnapshot(SESSION)).items)).toBeUndefined()
   })
 })
 
