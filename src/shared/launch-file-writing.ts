@@ -25,9 +25,21 @@ import type { WslLaunchDirectory } from './wsl-launch-directory'
 
 const LAUNCH_FILE_DIR_PREFIX = 'orca-launch-file-'
 const LAUNCH_FILE_NAME = 'task-context.md'
+/** `orca-launch-file-<owner pid>-<random>`: the process whose sessions read the file. */
+const OWNED_LAUNCH_FILE_DIR = /^orca-launch-file-(\d+)-/
 
-/** A running agent may re-read its task file, so leftovers get a day, not an hour. */
+/** Backstop for a folder that names no owner: a running agent may re-read its task file. */
 export const LAUNCH_FILE_STALE_MS = 24 * 60 * 60 * 1000
+
+/** Whether `pid` is a live process; one this process may not signal still counts as live. */
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'EPERM'
+  }
+}
 
 // Characters one of the three quotings ends or expands on: `'` (POSIX, PowerShell, which also
 // honours the typographic single quotes), `"` and `%` (cmd).
@@ -111,7 +123,9 @@ export function writeLaunchFile(args: {
     // Why realpath: an agent matches its read grant against the resolved path (macOS $TMPDIR sits
     // under /var -> /private/var), so the pointer and the granted directory both name that form.
     // A UNC path into WSL is named by its Linux path instead, which the distro resolves itself.
-    const created = mkdtempSync(join(baseDirectory, LAUNCH_FILE_DIR_PREFIX))
+    // Why the pid: this process owns the sessions that read the file, which it removes when they
+    // end; the sweep leaves it alone while this process lives, however long that is.
+    const created = mkdtempSync(join(baseDirectory, `${LAUNCH_FILE_DIR_PREFIX}${process.pid}-`))
     directory = wsl ? created : realpathSync(created)
     const launchDirectory = wsl ? posix.join(wsl.linuxPath, basename(created)) : directory
     const path = (wsl ? posix.join : join)(launchDirectory, LAUNCH_FILE_NAME)
@@ -219,7 +233,11 @@ export function removeLaunchFile(written: WrittenLaunchFile | undefined): void {
   }
 }
 
-/** Removes launch files a crashed host left behind; age-gated so a live agent's file survives. */
+/**
+ * Removes launch files a crashed host left behind. A folder whose owner process is alive is never
+ * touched: that process removes it when the session reading it ends. A dead owner's sessions died
+ * with it. A folder that names no owner falls back to the age backstop.
+ */
 export function sweepStaleLaunchFiles(args: { baseDirectory?: string; now?: number }): void {
   const baseDirectory = args.baseDirectory ?? tmpdir()
   const now = args.now ?? Date.now()
@@ -234,8 +252,12 @@ export function sweepStaleLaunchFiles(args: { baseDirectory?: string; now?: numb
       continue
     }
     const directory = join(baseDirectory, name)
+    const owner = OWNED_LAUNCH_FILE_DIR.exec(name)?.[1]
     try {
-      if (now - statSync(directory).mtimeMs > LAUNCH_FILE_STALE_MS) {
+      const orphaned = owner
+        ? !processIsAlive(Number(owner))
+        : now - statSync(directory).mtimeMs > LAUNCH_FILE_STALE_MS
+      if (orphaned) {
         rmSync(directory, { recursive: true, force: true })
       }
     } catch {

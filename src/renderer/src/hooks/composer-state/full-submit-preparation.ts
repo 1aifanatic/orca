@@ -39,7 +39,7 @@ import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { clientLaunchHost } from '@/lib/launch-file-host'
 import { composerAgentStartupPlan } from '@/lib/composer-agent-startup-plan'
 import type { PendingSmartGitHubSubmitResolution } from './source-selection-decisions'
 
@@ -205,7 +205,12 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
           platform: selectedRepoAgentLaunchPlatform,
           shell: selectedRepoStartupShell,
           isRemote: selectedRepoIsRemote,
-          launchHostIsPaired: launchHostIsPaired(selectedRepoSettings?.activeRuntimeEnvironmentId)
+          host: clientLaunchHost({
+            runtimeEnvironmentId: selectedRepoSettings?.activeRuntimeEnvironmentId,
+            launchPlatform: selectedRepoAgentLaunchPlatform,
+            isRemote: selectedRepoIsRemote
+          }),
+          canPasteAfterReady: true
         }),
         submitStartupPrompt
       )

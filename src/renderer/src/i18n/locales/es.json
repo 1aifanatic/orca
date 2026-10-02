@@ -416,6 +416,11 @@
                   "message": "El agente no se inició: Orca no pudo escribir el archivo que contiene tu prompt. Copia el prompt e inícialo de nuevo."
                 }
               }
+            },
+            "unconfirmed": {
+              "notice": {
+                "message": "Orca no pudo confirmar que el agente recibió tu prompt. Revisa el agente antes de enviarlo de nuevo."
+              }
             }
           }
         }

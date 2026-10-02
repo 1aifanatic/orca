@@ -19,9 +19,9 @@ import { terminalShellOverrideRefusal } from './terminal-shell-override-host-sup
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtime-resolution'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
-import { agentPromptRidesLaunchCommand, planLaunchPrompt } from '../../shared/tui-agent-startup'
+import { planLaunchPrompt } from '../../shared/tui-agent-startup'
 import { launchPromptNeedsPasteRefusal } from '../../shared/launch-prompt-carry'
-import { launchHostProvesAgentInFront } from './launch-host-agent-in-front'
+import { thisOrcaLaunchHost } from './this-orca-launch-host'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -256,11 +256,6 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       return opts
     }
 
-    // A prompt this launch command cannot carry has nowhere to go from here — the create returns
-    // options, not a live PTY — so refuse rather than spawn the agent and drop the text.
-    if (opts.startupPrompt && !agentPromptRidesLaunchCommand(agent)) {
-      throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
-    }
     const planInputs = resolveAgentStartupPlanInputs({
       agent,
       settings,
@@ -276,7 +271,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       ...planInputs,
       prompt: opts.startupPrompt ?? '',
       ...(opts.launchFile ? { launchFile: opts.launchFile } : {}),
-      hostProvesAgentInFront: launchHostProvesAgentInFront({ isRemote, launchPlatform: platform })
+      host: thisOrcaLaunchHost({ launchPlatform: platform, isRemote }),
+      canPasteAfterReady: opts.onStartupPromptCarry !== undefined
     })
     if (!planned) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare

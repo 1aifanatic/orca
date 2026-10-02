@@ -15,7 +15,7 @@ import {
   type AgentStartupPlan
 } from '../../shared/tui-agent-startup'
 import type { LaunchFile } from '../../shared/launch-prompt-file'
-import { launchHostProvesAgentInFront } from './launch-host-agent-in-front'
+import { thisOrcaLaunchHost } from './this-orca-launch-host'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents
@@ -158,10 +158,12 @@ export function buildWorktreeStartupForAgent(
   const planned = planLaunchPrompt({
     ...planInputs,
     prompt: environment.prompt ?? '',
-    hostProvesAgentInFront: launchHostProvesAgentInFront({
+    host: thisOrcaLaunchHost({
       isRemote: repoIsRemote(repo),
       launchPlatform: environment.getLaunchPlatform()
-    })
+    }),
+    // A caller that cannot paste takes a follow-up and sends it once the agent is ready.
+    canPasteAfterReady: true
   })
   if (!planned) {
     throw new Error(`Could not build launch command for ${agent}.`)

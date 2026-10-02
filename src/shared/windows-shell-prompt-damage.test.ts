@@ -76,18 +76,18 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
     )
   })
 
-  it('launches clean and leaves the prompt for the paste when the host writes no launch file', () => {
+  it('keeps the prompt on a paired Windows host’s line, which writes no file and cannot paste', () => {
     const startup = planLaunchForTest({
       agent: 'claude',
       prompt: 'fix the build\nthen run the tests',
       cmdOverrides: {},
       platform: 'win32',
       shell: 'powershell',
-      launchHostIsPaired: true
+      host: { paired: true, provesAgentInFront: false }
     })
     expect(startup?.launchFile).toBeUndefined()
-    expect(startup?.launchCommand).toBe('claude')
-    expect(startup?.pasteAfterReady).toBe('fix the build\nthen run the tests')
+    expect(startup?.launchCommand).toContain('fix the build')
+    expect(startup?.pasteAfterReady).toBeNull()
   })
 
   it('tells its own pointer apart from a prompt that merely mentions one', () => {

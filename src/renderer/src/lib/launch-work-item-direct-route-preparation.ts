@@ -4,7 +4,6 @@ import { getConnectionId } from '@/lib/connection-context'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
 import type {
   AgentSessionLaunchPlan,
@@ -93,9 +92,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
               CLIENT_PLATFORM
             ) ?? args.repoProjectRuntime)
           : undefined,
-      launchHostIsPaired: launchHostIsPaired(
-        getRuntimeEnvironmentIdForWorktree(args.latestStore, args.worktreeId)
-      )
+      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(args.latestStore, args.worktreeId)
     })
 
   const plan =

@@ -1,6 +1,7 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { AgentStartupShell } from '../../../../shared/tui-agent-startup-shell'
+import type { LaunchHost } from '../../../../shared/launch-host'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import { buildAgentDraftLaunchPlan, planLaunchPrompt } from '@/lib/tui-agent-startup'
@@ -25,8 +26,8 @@ export type QuickComposerStartupInput = {
   platform: NodeJS.Platform
   shell: AgentStartupShell | null | undefined
   isRemote: boolean
-  /** See `launchHostIsPaired`. */
-  launchHostIsPaired: boolean
+  /** The host the launch runs on (`clientLaunchHost`). */
+  host: LaunchHost
   telemetrySource: WorktreeCreationRequest['telemetrySource']
 }
 
@@ -96,7 +97,8 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
         platform: input.platform,
         shell: input.shell ?? undefined,
         isRemote: input.isRemote,
-        launchHostIsPaired: input.launchHostIsPaired
+        host: input.host,
+        canPasteAfterReady: true
       }),
       prompt
     )

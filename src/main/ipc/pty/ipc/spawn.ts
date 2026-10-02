@@ -2,7 +2,10 @@ import { getPtyIpc } from '../../pty-host-bindings'
 import { runPtyIpcSpawn } from './spawn-run'
 import type { PtySpawnIpcArgs, PtySpawnIpcDeps } from './spawn-types'
 import { isLaunchFileUnavailableMessage } from '../../../../shared/launch-prompt-file'
-import { recordTerminalLaunchRefusal } from '../../../runtime/terminal-launch-refusals'
+import {
+  noteTerminalPaneSpawn,
+  recordTerminalLaunchRefusal
+} from '../../../runtime/terminal-launch-refusals'
 
 export function installPtySpawnIpcHandler(deps: PtySpawnIpcDeps): void {
   const ipcMain = getPtyIpc()
@@ -13,6 +16,8 @@ export function installPtySpawnIpcHandler(deps: PtySpawnIpcDeps): void {
     if (startupPromise) {
       await startupPromise
     }
+    // Why: a create waiting on this tab's handle keeps waiting while the spawn still runs.
+    const settleSpawn = args.tabId ? noteTerminalPaneSpawn(args.tabId) : () => {}
     try {
       return await runPtyIpcSpawn(deps, args)
     } catch (error) {
@@ -22,6 +27,8 @@ export function installPtySpawnIpcHandler(deps: PtySpawnIpcDeps): void {
         recordTerminalLaunchRefusal(args.tabId, message)
       }
       throw error
+    } finally {
+      settleSpawn()
     }
   })
 }

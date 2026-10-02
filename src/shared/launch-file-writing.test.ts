@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runProcess } from './child-process/run-process'
 import {
   LAUNCH_FILE_STALE_MS,
@@ -187,7 +187,39 @@ describePosix('a launch line naming a file under an unusual home directory', () 
 })
 
 describe('sweepStaleLaunchFiles', () => {
-  it('removes only launch file directories older than a day', () => {
+  const ageOut = (directory: string, now: number): void => {
+    const staleSeconds = (now - LAUNCH_FILE_STALE_MS - 1000) / 1000
+    utimesSync(directory, staleSeconds, staleSeconds)
+  }
+
+  // Why: a daemon session outlives app restarts; its agent may re-read its task file any time.
+  it('never removes a folder whose owning process is alive, however old', () => {
+    const now = Date.now()
+    const live = join(baseDirectory, `orca-launch-file-${process.pid}-aaaaaa`)
+    mkdirSync(live)
+    ageOut(live, now)
+    sweepStaleLaunchFiles({ baseDirectory, now })
+    expect(readdirSync(baseDirectory)).toEqual([`orca-launch-file-${process.pid}-aaaaaa`])
+  })
+
+  it('removes a folder whose owning process is gone, however new', () => {
+    const deadPid = 2_147_483_000
+    const kill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid === deadPid) {
+        throw Object.assign(new Error('no such process'), { code: 'ESRCH' })
+      }
+      return true
+    })
+    try {
+      mkdirSync(join(baseDirectory, `orca-launch-file-${deadPid}-bbbbbb`))
+      sweepStaleLaunchFiles({ baseDirectory })
+      expect(readdirSync(baseDirectory)).toEqual([])
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  it('falls back to the age backstop for a folder that names no owner', () => {
     const now = Date.now()
     const stale = join(baseDirectory, 'orca-launch-file-aaaaaa')
     const fresh = join(baseDirectory, 'orca-launch-file-bbbbbb')
@@ -195,10 +227,19 @@ describe('sweepStaleLaunchFiles', () => {
     for (const directory of [stale, fresh, unrelated]) {
       mkdirSync(directory)
     }
-    const staleSeconds = (now - LAUNCH_FILE_STALE_MS - 1000) / 1000
-    utimesSync(stale, staleSeconds, staleSeconds)
-    utimesSync(unrelated, staleSeconds, staleSeconds)
+    ageOut(stale, now)
+    ageOut(unrelated, now)
     sweepStaleLaunchFiles({ baseDirectory, now })
     expect(readdirSync(baseDirectory).sort()).toEqual(['orca-launch-file-bbbbbb', 'unrelated'])
+  })
+
+  it('names the owning process in each folder it writes', () => {
+    const { launchFile } = carryInLaunchFile('x', true)
+    const written = writeLaunchFile({
+      launchFile: { ...launchFile, quoting: 'posix' },
+      baseDirectory
+    })
+    expect(written.directory).toMatch(new RegExp(`orca-launch-file-${process.pid}-[^/\\\\]+$`))
+    removeLaunchFile(written)
   })
 })

@@ -16,7 +16,7 @@ type BuildSourceControlAgentDeliveryPlanArgs = {
   /** Why: keep the previewed command label in sync with the real remote launch,
    * which omits the Linux-only `orca-ide` rename for SSH hosts. */
   isRemote?: boolean
-  launchHostIsPaired?: boolean
+  runtimeEnvironmentId?: string | null
 }
 
 export function buildSourceControlAgentDeliveryPlan({
@@ -28,7 +28,7 @@ export function buildSourceControlAgentDeliveryPlan({
   connectionUnavailable,
   launchPlatform,
   isRemote,
-  launchHostIsPaired
+  runtimeEnvironmentId
 }: BuildSourceControlAgentDeliveryPlanArgs): SourceControlAgentActionDeliveryPlanState {
   if (connectionUnavailable) {
     return buildSourceControlAgentConnectionErrorPlan()
@@ -53,7 +53,7 @@ export function buildSourceControlAgentDeliveryPlan({
     terminalWindowsShell: settings?.terminalWindowsShell,
     platform: launchPlatform,
     isRemote,
-    launchHostIsPaired
+    runtimeEnvironmentId
   })
   if (!result.ok) {
     return { status: 'error', error: result.error }

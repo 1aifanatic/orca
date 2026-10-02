@@ -8,6 +8,31 @@ const MAX_REFUSALS = 64
 
 const refusals = new Map<string, { message: string; at: number }>()
 const listeners = new Set<(tabId: string, message: string) => void>()
+/** Pane spawns still running per tab; each `noteTerminalPaneSpawn` settles in a `finally`. */
+const spawnsInFlight = new Map<string, number>()
+
+/** Marks a tab's pane spawn as running until the returned settle runs. */
+export function noteTerminalPaneSpawn(tabId: string): () => void {
+  spawnsInFlight.set(tabId, (spawnsInFlight.get(tabId) ?? 0) + 1)
+  let settled = false
+  return () => {
+    if (settled) {
+      return
+    }
+    settled = true
+    const remaining = (spawnsInFlight.get(tabId) ?? 1) - 1
+    if (remaining > 0) {
+      spawnsInFlight.set(tabId, remaining)
+    } else {
+      spawnsInFlight.delete(tabId)
+    }
+  }
+}
+
+/** Whether a pane spawn for the tab is still running, such as one probing a cold WSL distro. */
+export function terminalPaneSpawnInFlight(tabId: string): boolean {
+  return spawnsInFlight.has(tabId)
+}
 
 export function recordTerminalLaunchRefusal(tabId: string, message: string): void {
   const now = Date.now()

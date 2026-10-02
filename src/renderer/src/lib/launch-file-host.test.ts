@@ -23,10 +23,10 @@ describe('the quick composer on a paired host', () => {
       draftPrompt: null,
       settings: null,
       repoConnectionId: null,
-      platform: 'win32',
-      shell: 'powershell',
+      platform: 'linux',
+      shell: null,
       isRemote: false,
-      launchHostIsPaired: true,
+      host: { paired: true, provesAgentInFront: true },
       telemetrySource: 'sidebar'
     })
     expect(startup.backendStartup).toBeUndefined()

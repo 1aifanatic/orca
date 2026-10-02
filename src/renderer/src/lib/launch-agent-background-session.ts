@@ -1,5 +1,5 @@
 import { useAppStore } from '@/store'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { clientLaunchHost } from '@/lib/launch-file-host'
 import { planLaunchPrompt, type AgentStartupPlan } from '@/lib/tui-agent-startup'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
 import type {
@@ -70,7 +70,6 @@ export async function launchAgentBackgroundSession(
     terminalWindowsShell: store.settings?.terminalWindowsShell
   })
   const trimmedPrompt = prompt?.trim() ?? ''
-  const hasPrompt = trimmedPrompt.length > 0
   const isFollowupPath = requireTuiAgentConfig(agent).promptInjectionMode === 'stdin-after-start'
 
   // Route by the worktree's owner host, not the focused runtime.
@@ -85,7 +84,12 @@ export async function launchAgentBackgroundSession(
     platform: launchPlatform,
     shell: startupShell,
     isRemote,
-    launchHostIsPaired: launchHostIsPaired(ownerSettings?.activeRuntimeEnvironmentId)
+    host: clientLaunchHost({
+      runtimeEnvironmentId: ownerSettings?.activeRuntimeEnvironmentId,
+      launchPlatform,
+      isRemote
+    }),
+    canPasteAfterReady: true
   })
   if (!planned) {
     return null
@@ -108,7 +112,7 @@ export async function launchAgentBackgroundSession(
       promptLeftForPaste = isFollowupPath ? null : planned.text
       break
   }
-  let pasteDraftAfterLaunch = hasPrompt && isFollowupPath ? trimmedPrompt : promptLeftForPaste
+  let pasteDraftAfterLaunch = trimmedPrompt && isFollowupPath ? trimmedPrompt : promptLeftForPaste
 
   // A hidden run tab must never be store-visible without its PTY (#2989).
   const { reservedTabId, leafId, launchToken, launchRegistration, paneEnv } =
@@ -174,7 +178,7 @@ export async function launchAgentBackgroundSession(
         tabId: reservedTabId,
         leafId,
         agent,
-        ...(hasPrompt && !isFollowupPath ? { prompt: trimmedPrompt } : {}),
+        ...(trimmedPrompt && !isFollowupPath ? { prompt: trimmedPrompt } : {}),
         ...(startupPlan.sessionOptions ? { sessionOptions: startupPlan.sessionOptions } : {}),
         legacy: {
           command: startupPlan.launchCommand,
@@ -247,7 +251,7 @@ export async function launchAgentBackgroundSession(
     tab = adopted.tab
     paneKey = adopted.paneKey
     terminalOwnership = adopted.terminalOwnership
-    if (agent === 'command-code' && hasPrompt && !isFollowupPath) {
+    if (agent === 'command-code' && trimmedPrompt && !isFollowupPath) {
       // Why: Command Code does not expose a prompt-start hook; seed working for
       // hidden prompt launches so sidebar/activity surfaces do not stay idle.
       const routing = agentStatusConsumer.resolveRouting()

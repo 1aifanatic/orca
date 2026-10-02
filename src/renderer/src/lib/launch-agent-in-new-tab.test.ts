@@ -142,7 +142,7 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 describe('launchAgentInNewTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockWaitForLaunchPromptReceipt.mockResolvedValue(true)
+    mockWaitForLaunchPromptReceipt.mockResolvedValue('delivered')
     mockIsWebRuntimeSessionActive.mockReturnValue(false)
     mockCreateWebRuntimeSessionTerminal.mockResolvedValue({ status: 'created' })
     mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft.mockResolvedValue({ status: 'created' })
@@ -867,7 +867,7 @@ describe('launchAgentInNewTab', () => {
 
   it('reports a carried prompt undelivered when the agent never received it', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-    mockWaitForLaunchPromptReceipt.mockResolvedValue(false)
+    mockWaitForLaunchPromptReceipt.mockResolvedValue('not-delivered')
     const onPromptDelivered = vi.fn()
 
     const result = launchAgentInNewTab({

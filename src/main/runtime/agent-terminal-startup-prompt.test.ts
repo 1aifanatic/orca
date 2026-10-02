@@ -161,7 +161,7 @@ describe('a terminal create that is handed a launch prompt', () => {
         startupAgent: 'aider',
         startupPrompt: 'summarize the diff'
       })
-    ).rejects.toThrow(/does not take a startup prompt/)
+    ).rejects.toThrow(/takes its prompt only after it starts/)
     expect(spawn).not.toHaveBeenCalled()
   })
 })

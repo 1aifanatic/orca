@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
-import { recordTerminalLaunchRefusal, takeTerminalLaunchRefusal } from './terminal-launch-refusals'
+import {
+  noteTerminalPaneSpawn,
+  recordTerminalLaunchRefusal,
+  takeTerminalLaunchRefusal
+} from './terminal-launch-refusals'
 import { describeLaunchFileUnavailable } from '../../shared/launch-prompt-file'
 
 vi.mock('electron', () => ({
@@ -10,12 +14,16 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-function waitForHandle(runtime: OrcaRuntimeService, tabId: string): Promise<string> {
+function waitForHandle(
+  runtime: OrcaRuntimeService,
+  tabId: string,
+  timeoutMs = 5_000
+): Promise<string> {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the wait under test is a protected member of the runtime; the assertion names only that method.
   const internal = runtime as unknown as {
     waitForTerminalHandle: (tabId: string, timeoutMs?: number) => Promise<string>
   }
-  return internal.waitForTerminalHandle(tabId, 5_000)
+  return internal.waitForTerminalHandle(tabId, timeoutMs)
 }
 
 describe('a pane spawn the host refused for its launch file', () => {
@@ -42,5 +50,26 @@ describe('a pane spawn the host refused for its launch file', () => {
     const runtime = new OrcaRuntimeService()
     recordTerminalLaunchRefusal('tab-early', refusal)
     await expect(waitForHandle(runtime, 'tab-early')).rejects.toThrow(refusal)
+  })
+
+  // Why: a cold WSL probe plus the spawn can outlast the create's wait; the agent then starts
+  // anyway, so a timeout there would be false.
+  it('keeps waiting past its budget while that tab’s spawn still runs, then times out', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService()
+      const settleSpawn = noteTerminalPaneSpawn('tab-cold-wsl')
+      let outcome: string | null = null
+      waitForHandle(runtime, 'tab-cold-wsl', 100).catch((error: Error) => {
+        outcome = error.message
+      })
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(outcome).toBeNull()
+      settleSpawn()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(outcome).toMatch(/Timed out waiting for terminal handle/)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

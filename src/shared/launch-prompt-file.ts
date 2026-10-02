@@ -87,7 +87,7 @@ export function parseLaunchFile(value: unknown): LaunchFile | undefined {
   return { placeholder, content, sensitive, ...(knownQuoting ? { quoting: knownQuoting } : {}) }
 }
 
-const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
+export const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
 
 /** The refusal a host sends when it could not write what carries the prompt (a launch file, or the
  *  staged script holding a long line); it reaches the user as is. */
@@ -105,4 +105,9 @@ export function describeLaunchFileUnavailable(
 /** Also matches the `launch_file_unavailable: <reason>` form earlier builds sent. */
 export function isLaunchFileUnavailableMessage(message: string): boolean {
   return message.includes(LAUNCH_FILE_UNAVAILABLE_CODE)
+}
+
+/** The refusal as it reaches main from any host: its code is its type across process boundaries. */
+export function isLaunchFileRefusal(error: unknown): boolean {
+  return error instanceof Error && isLaunchFileUnavailableMessage(error.message)
 }

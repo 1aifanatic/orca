@@ -10,6 +10,7 @@ import {
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 import type { LaunchFile } from './launch-prompt-file'
+import type { LaunchHost } from './launch-host'
 import {
   carryLaunchPrompt,
   launchFileDirectoryGrant,
@@ -72,10 +73,10 @@ export type AgentLaunchPromptArgs = AgentStartupPlanInputs & {
   prompt: string
   /** The file `prompt` already points at, when the caller wrote its own. */
   launchFile?: LaunchFile
-  /** Another Orca this client drives; see `CarriedPlanArgs`. */
-  launchHostIsPaired?: boolean
   /** See `CarriedPlanArgs`. */
-  hostProvesAgentInFront?: boolean
+  host: LaunchHost
+  /** See `CarriedPlanArgs`. */
+  canPasteAfterReady: boolean
 }
 
 /**
@@ -89,7 +90,9 @@ export function planLaunchPrompt(
 }
 
 /** Builds the line with `prompt` on it; the carry rule decides whether it should. */
-function buildPlanWithPromptOnLine(args: AgentLaunchPromptArgs): AgentStartupPlan | null {
+function buildPlanWithPromptOnLine(
+  args: AgentStartupPlanInputs & { prompt: string; launchFile?: LaunchFile }
+): AgentStartupPlan | null {
   const { agent, prompt, cmdOverrides, platform } = args
   const shell = resolveStartupShell(platform, args.shell)
   const trimmedPrompt = prompt.trim()

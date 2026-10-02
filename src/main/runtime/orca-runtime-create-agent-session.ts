@@ -27,6 +27,7 @@ import {
   windowsDraftRefusal
 } from '../../shared/launch-prompt-carry'
 import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
+import { thisOrcaLaunchHost } from './this-orca-launch-host'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
   AgentSessionCreateOperation,
@@ -180,7 +181,16 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           throw new Error(refusal ?? 'agent_session_identity_required')
         }
       } else {
-        const planned = planLaunchPrompt({ ...startupArgs, prompt: request.prompt ?? '' })
+        const planned = planLaunchPrompt({
+          ...startupArgs,
+          prompt: request.prompt ?? '',
+          host: thisOrcaLaunchHost({
+            launchPlatform: startupArgs.platform,
+            isRemote: Boolean(workspace.connectionId)
+          }),
+          // Why: this create returns before the agent is ready, so nothing pastes after it.
+          canPasteAfterReady: false
+        })
         if (!planned) {
           throw new Error('agent_session_identity_required')
         }

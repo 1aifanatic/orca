@@ -273,7 +273,7 @@ async function sendBracketedPasteToAgent(args: {
   }
 }
 
-export function waitForAgentDraftInputReadyOnTab(args: {
+function waitForAgentDraftInputReadyOnTab(args: {
   tabId: string
   spawnTimeoutMs: number
   readinessTimeoutMs: number

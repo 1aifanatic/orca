@@ -1,4 +1,5 @@
 import type { LaunchFile } from './launch-prompt-file'
+import { describeLaunchHost } from './launch-host'
 import type { LaunchPromptCarry } from './launch-prompt-carry'
 import {
   planLaunchPrompt,
@@ -17,13 +18,28 @@ export type PlannedLaunchForTest = AgentStartupPlan & {
 /** `planLaunchPrompt`, flattened; null where it answers null, or for an empty prompt unless
  *  `allowEmptyPromptLaunch`, as the builder did before the outcome was explicit. */
 export function planLaunchForTest(
-  args: AgentLaunchPromptArgs & { allowEmptyPromptLaunch?: boolean }
+  args: Omit<AgentLaunchPromptArgs, 'host' | 'canPasteAfterReady'> &
+    Partial<Pick<AgentLaunchPromptArgs, 'host' | 'canPasteAfterReady'>> & {
+      allowEmptyPromptLaunch?: boolean
+    }
 ): PlannedLaunchForTest | null {
   const { allowEmptyPromptLaunch, ...launchArgs } = args
   if (allowEmptyPromptLaunch !== true && !args.prompt.trim()) {
     return null
   }
-  const planned = planLaunchPrompt(launchArgs)
+  const planned = planLaunchPrompt({
+    ...launchArgs,
+    // A local launch on the platform under test, by a caller that pastes, unless the test says.
+    host:
+      args.host ??
+      describeLaunchHost({
+        launchPlatform: args.platform,
+        isRemote: args.isRemote === true,
+        hostPlatform: args.platform,
+        paired: false
+      }),
+    canPasteAfterReady: args.canPasteAfterReady ?? true
+  })
   if (!planned) {
     return null
   }

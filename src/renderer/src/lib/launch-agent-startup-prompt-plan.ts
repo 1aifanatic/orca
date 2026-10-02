@@ -6,6 +6,7 @@ import {
   type AgentStartupPlanInputs
 } from '@/lib/tui-agent-startup'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
+import type { LaunchHost } from '../../../shared/launch-host'
 
 export type LaunchAgentStartupPromptPlan = {
   startupPlan: AgentStartupPlan | null
@@ -26,8 +27,8 @@ export function planLaunchAgentStartupPrompt(args: {
   prompt: string
   promptDelivery: 'auto-submit' | 'draft' | 'submit-after-ready'
   isFollowupPath: boolean
-  /** See `launchHostIsPaired`. */
-  launchHostIsPaired: boolean
+  /** The host the launch runs on (`clientLaunchHost`). */
+  host: LaunchHost
 }): LaunchAgentStartupPromptPlan {
   const { base, prompt, promptDelivery, isFollowupPath } = args
   const pasteAfterReady = (
@@ -65,19 +66,13 @@ export function planLaunchAgentStartupPrompt(args: {
       submitPastedPrompt: false
     }
   }
-  if (prompt.length > 0 && isFollowupPath) {
-    return pasteAfterReady(cleanPlan(), prompt, promptDelivery === 'submit-after-ready')
-  }
-  // Why: a caller that waits for delivery gets a verdict from a paste; this client cannot observe a
-  // paired host's carried prompt reach its agent. Temporary, until paired hosts report that receipt.
-  if (prompt.length > 0 && args.launchHostIsPaired && promptDelivery === 'submit-after-ready') {
+  // Why outside the rule: this is the caller's need, not a host fact. A caller that waits for
+  // delivery gets a verdict from a paste, and this client cannot observe a paired host's carried
+  // prompt reach its agent. Temporary, until paired hosts report that receipt.
+  if (prompt.length > 0 && args.host.paired && promptDelivery === 'submit-after-ready') {
     return pasteAfterReady(cleanPlan(), prompt, true)
   }
-  const planned = planLaunchPrompt({
-    ...base,
-    prompt,
-    launchHostIsPaired: args.launchHostIsPaired
-  })
+  const planned = planLaunchPrompt({ ...base, prompt, host: args.host, canPasteAfterReady: true })
   if (!planned) {
     return { startupPlan: null, pasteDraftAfterLaunch: null, submitPastedPrompt: false }
   }
@@ -93,7 +88,11 @@ export function planLaunchAgentStartupPrompt(args: {
         submitPastedPrompt: false
       }
     case 'paste-after-ready':
-      // Every non-draft new-tab prompt is submitted; a draft returned above.
-      return pasteAfterReady(planned.cleanPlan, planned.text, true)
+      // An agent that takes text only after start keeps an auto-submit prompt as an editable draft.
+      return pasteAfterReady(
+        planned.cleanPlan,
+        planned.text,
+        !isFollowupPath || promptDelivery === 'submit-after-ready'
+      )
   }
 }

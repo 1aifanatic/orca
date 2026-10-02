@@ -1,5 +1,6 @@
 import { createPasteReadinessTimeoutNotice } from '@/lib/launch-agent-paste-timeout-notice'
 import { waitForLaunchPromptReceipt } from '@/lib/agent-launch-prompt-receipt'
+import { showAgentLaunchPromptUnconfirmedNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import {
   deliverLaunchPromptToAgentTab,
   seedNativeChatLaunchDraftForAgentTab,
@@ -60,9 +61,18 @@ export function deliverNewTabLaunchPrompt(args: {
     content
   })
   // Why the receipt for a carried prompt: callers post replies and resolve threads on this result.
-  const delivery =
+  const result =
     pasteDraftAfterLaunch === null
-      ? waitForLaunchPromptReceipt({ tabId, agent, launchedAt: args.launchedAt, ...unconfirmed })
+      ? waitForLaunchPromptReceipt({ tabId, agent, launchedAt: args.launchedAt }).then(
+          (receipt) => {
+            if (receipt !== 'unconfirmed') {
+              return timeoutNotice.settle(receipt === 'delivered', args.onPromptDelivered)
+            }
+            // The agent may have the prompt: say so, and never invite pasting it a second time.
+            showAgentLaunchPromptUnconfirmedNotice({ agent, prompt })
+            return { delivered: false, failureNotified: true }
+          }
+        )
       : deliverLaunchPromptToAgentTab({
           tabId,
           content,
@@ -71,10 +81,7 @@ export function deliverNewTabLaunchPrompt(args: {
           forcePaste: true,
           onTimeout: timeoutNotice.onTimeout,
           ...unconfirmed
-        })
-  const result = delivery.then((delivered) =>
-    timeoutNotice.settle(delivered, args.onPromptDelivered)
-  )
+        }).then((delivered) => timeoutNotice.settle(delivered, args.onPromptDelivered))
   if (promptDelivery === 'submit-after-ready') {
     return result
   }

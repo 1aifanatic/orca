@@ -21,7 +21,7 @@ import { planAgentSessionLaunch } from '@/lib/agent-session-launch-plan'
 import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
 import { getNewWorkspaceProjectGroupHostId } from '@/lib/new-workspace-project-options'
 import { useAppStore } from '@/store'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { clientLaunchHost } from '@/lib/launch-file-host'
 import {
   composerAgentStartupPlan,
   type ComposerAgentStartupPlan
@@ -129,7 +129,12 @@ export async function submitFolderWorkspaceCreate({
               platform: launchPlatform,
               shell: launchShell,
               isRemote: launchIsRemote,
-              launchHostIsPaired: launchHostIsPaired(runtimeEnvironmentId)
+              host: clientLaunchHost({
+                runtimeEnvironmentId,
+                launchPlatform,
+                isRemote: launchIsRemote
+              }),
+              canPasteAfterReady: true
             }),
             note
           )

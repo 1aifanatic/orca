@@ -626,6 +626,11 @@
                   "message": "L’agent n’a pas démarré : Orca n’a pas pu écrire le fichier qui contient votre prompt. Copiez le prompt et relancez."
                 }
               }
+            },
+            "unconfirmed": {
+              "notice": {
+                "message": "Orca n’a pas pu confirmer que l’agent a reçu votre prompt. Vérifiez l’agent avant de le renvoyer."
+              }
             }
           }
         }

@@ -48,7 +48,7 @@ vi.mock('@/lib/agent-paste-draft', () => ({
 vi.mock('@/lib/agent-ready-wait', () => ({
   waitForAgentReady: vi.fn(async () => ({ ready: true, reason: 'foreground-match' }))
 }))
-const mockWaitForLaunchPromptReceipt = vi.fn(async () => true)
+const mockWaitForLaunchPromptReceipt = vi.fn(async () => 'delivered')
 vi.mock('@/lib/agent-launch-prompt-receipt', () => ({
   waitForLaunchPromptReceipt: mockWaitForLaunchPromptReceipt
 }))

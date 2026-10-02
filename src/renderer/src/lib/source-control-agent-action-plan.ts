@@ -6,6 +6,7 @@ import {
   type AgentStartupPlan
 } from '@/lib/tui-agent-startup'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
+import { clientLaunchHost } from '@/lib/launch-file-host'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { isTuiAgentEnabled } from '../../../shared/tui-agent-selection'
 import type { TuiAgent } from '../../../shared/tui-agent'
@@ -45,8 +46,8 @@ export function planSourceControlAgentActionLaunch(args: {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must not be applied for remote launches. */
   isRemote?: boolean
-  /** See `launchHostIsPaired`. */
-  launchHostIsPaired?: boolean
+  /** The runtime environment the launch targets, for its host facts (`clientLaunchHost`). */
+  runtimeEnvironmentId?: string | null
 }): SourceControlLaunchPlanResult {
   const agent = args.agent
   if (!agent) {
@@ -104,24 +105,7 @@ export function planSourceControlAgentActionLaunch(args: {
   let startupPlan: AgentStartupPlan | null = null
   let delivery: SourceControlLaunchPlanDelivery
 
-  // Only an agent that takes no launch prompt waits for readiness; the rest carry it on argv.
-  if (
-    args.promptDelivery === 'submit-after-ready' &&
-    TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'
-  ) {
-    startupPlan = buildAgentStartupPlan({
-      agent,
-      prompt: '',
-      cmdOverrides,
-      platform,
-      shell,
-      isRemote,
-      agentArgs: args.agentArgs,
-      sessionOptions: args.sessionOptions,
-      allowEmptyPromptLaunch: true
-    })
-    delivery = 'paste-submit'
-  } else if (args.promptDelivery === 'draft') {
+  if (args.promptDelivery === 'draft') {
     const draftLaunchPlan = buildAgentDraftLaunchPlan({
       agent,
       draft: trimmedInput,
@@ -161,19 +145,6 @@ export function planSourceControlAgentActionLaunch(args: {
       })
       delivery = 'draft-paste'
     }
-  } else if (TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start') {
-    startupPlan = buildAgentStartupPlan({
-      agent,
-      prompt: '',
-      cmdOverrides,
-      platform,
-      shell,
-      isRemote,
-      agentArgs: args.agentArgs,
-      sessionOptions: args.sessionOptions,
-      allowEmptyPromptLaunch: true
-    })
-    delivery = 'draft-paste'
   } else {
     const planned = planLaunchPrompt({
       agent,
@@ -184,7 +155,12 @@ export function planSourceControlAgentActionLaunch(args: {
       isRemote,
       agentArgs: args.agentArgs,
       sessionOptions: args.sessionOptions,
-      launchHostIsPaired: args.launchHostIsPaired ?? false
+      host: clientLaunchHost({
+        runtimeEnvironmentId: args.runtimeEnvironmentId,
+        launchPlatform: platform,
+        isRemote
+      }),
+      canPasteAfterReady: true
     })
     switch (planned?.carry) {
       case undefined:
@@ -201,7 +177,12 @@ export function planSourceControlAgentActionLaunch(args: {
         break
       case 'paste-after-ready':
         startupPlan = planned.cleanPlan
-        delivery = 'paste-submit'
+        // An agent that takes text only after start keeps an auto-submit prompt as a draft.
+        delivery =
+          TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start' &&
+          args.promptDelivery !== 'submit-after-ready'
+            ? 'draft-paste'
+            : 'paste-submit'
         break
     }
   }

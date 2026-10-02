@@ -14,6 +14,7 @@ import {
 } from './tui-agent-startup-shell'
 import { hasControlByte, typedStartupLineFits } from './typed-startup-line'
 import type { TuiAgent } from './tui-agent'
+import type { LaunchHost } from './launch-host'
 
 /**
  * Whether a Windows shell would damage `prompt` as one quoted argument. No quoting keeps a control
@@ -75,26 +76,41 @@ export type CarriedPlanArgs = {
   shell?: AgentStartupShell
   /** The file `prompt` already points at, when the caller wrote its own. */
   launchFile?: LaunchFile
-  /** Another Orca this client drives, possibly an older one: it is sent a command it may neither
-   *  stage nor accompany with a launch file. Temporary, until paired hosts advertise both. */
-  launchHostIsPaired?: boolean
-  /** False where the host cannot prove the launched agent holds its terminal (a Windows host),
-   *  so it refuses a paste (`launched-agent-foreground`). */
-  hostProvesAgentInFront?: boolean
+  /** The host the launch runs on (`describeLaunchHost`). */
+  host: LaunchHost
+  /** Whether the caller pastes a prompt left for after the agent is ready. One that cannot still
+   *  starts the agent with the prompt on its line, as main did. */
+  canPasteAfterReady: boolean
 }
 
 export function agentReadsLaunchFile(agent: TuiAgent): boolean {
   return TUI_AGENT_CONFIG[agent].readsLaunchFile === true
 }
 
+/** cmd.exe's documented line cap, the smallest of the Windows shells Orca types into. */
+export const WINDOWS_TYPED_LINE_MAX_CHARS = 8191
+
 /**
- * The one carry rule. The prompt rides the agent's line, which a host that stages (POSIX, SSH, WSL)
- * stages when it is long or multi-line. It rides a launch file when it is past the argv ceiling,
- * when a Windows shell would damage it, or when the host types the line raw (a Windows host, a
- * paired Orca) and the line is past the typed budget. A launch file goes only to an agent measured
- * reading one, on a host that writes it; otherwise the agent starts clean and the prompt is pasted
- * once it is ready, except where the host cannot prove the agent is in front to paste into: there
- * the line carries it, as main typed it.
+ * Whether a Windows shell carries `prompt` exactly on `line`. Nothing stages a Windows line, so it
+ * must hold no control byte, fit cmd's cap, and survive the shell's quoting (measured matrix:
+ * `windowsShellDamagesPrompt`).
+ */
+function windowsLineCarriesExactly(prompt: string, line: string, shell: AgentStartupShell) {
+  return (
+    !hasControlByte(line) &&
+    line.length <= WINDOWS_TYPED_LINE_MAX_CHARS &&
+    !windowsShellDamagesPrompt(prompt, shell)
+  )
+}
+
+/**
+ * The one carry rule. The prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
+ * stages it when it is long or multi-line, and a Windows host types it when its shell carries the
+ * text exactly. It rides a launch file when it is past the argv ceiling, when a Windows line would
+ * damage it, or past a paired host's typed budget. A launch file goes only to an agent measured
+ * reading one, on a host that writes it. Otherwise the prompt is pasted once the agent is ready,
+ * unless the host cannot prove the agent is in front to paste into or the caller has no paste:
+ * then the line carries it, as main typed it.
  */
 export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchCommand: string }>(
   args: A,
@@ -120,12 +136,13 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
     return pasteAfterReady()
   }
   const lineOrPaste = (): LaunchPromptPlan<P> | null => {
-    const plan = args.hostProvesAgentInFront === false ? buildLine(args) : null
+    const pasteIsSafe = args.host.provesAgentInFront && args.canPasteAfterReady
+    const plan = pasteIsSafe ? null : buildLine(args)
     return plan ? { carry: 'on-line', plan } : pasteAfterReady()
   }
   const viaLaunchFile = (): LaunchPromptPlan<P> | null => {
     // Why: an agent not measured reading the file would stop on an approval or refuse the path.
-    if (args.launchHostIsPaired === true || !agentReadsLaunchFile(args.agent)) {
+    if (args.host.paired || !agentReadsLaunchFile(args.agent)) {
       return lineOrPaste()
     }
     const pointer = carryInLaunchFile(text, false)
@@ -134,23 +151,25 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
       plan && { carry: 'launch-file', plan, launchFile: withQuoting(pointer.launchFile, shell) }
     )
   }
-  const readsEnv = mode === 'hermes-query'
-  if (
-    text.length > MAX_INLINE_LAUNCH_PROMPT_CHARS ||
-    (!readsEnv && windowsShellDamagesPrompt(text, shell))
-  ) {
+  if (text.length > MAX_INLINE_LAUNCH_PROMPT_CHARS) {
     return viaLaunchFile()
   }
   const plan = buildLine(args)
+  const readsEnv = mode === 'hermes-query'
   if (!plan) {
     // Hermes reads its prompt from the env and refuses one past that budget, counted in bytes; a
     // one-character query building proves the budget, not the command, refused it.
     return readsEnv && buildLine({ ...args, prompt: '.' }) ? viaLaunchFile() : null
   }
-  // Why the typed budget (#24257's): nothing stages a line the host types raw, and a long typed
-  // line is truncated or submitted early. Hermes's line never holds the text.
-  const hostTypesLineRaw = args.launchHostIsPaired === true || args.platform === 'win32'
-  if (!readsEnv && hostTypesLineRaw && !typedStartupLineFits(plan.launchCommand)) {
+  // Hermes's line never holds the text.
+  if (readsEnv) {
+    return { carry: 'on-line', plan }
+  }
+  if (args.platform === 'win32' && !windowsLineCarriesExactly(text, plan.launchCommand, shell)) {
+    return viaLaunchFile()
+  }
+  // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
+  if (args.host.paired && !typedStartupLineFits(plan.launchCommand)) {
     return viaLaunchFile()
   }
   return { carry: 'on-line', plan }

@@ -26,6 +26,28 @@ export function showAgentLaunchPromptNotDeliveredNotice(args: {
 }
 
 /**
+ * The agent started with the prompt on its command line, but nothing proved it received it: no hook
+ * turn, and the host cannot tell what holds the terminal. Not a "wasn't sent", so the user is told
+ * to check the agent before sending the prompt again.
+ */
+export function showAgentLaunchPromptUnconfirmedNotice(args: {
+  agent: TuiAgent
+  prompt: string
+}): void {
+  showPromptCopyNotice(
+    translate(
+      'auto.lib.agent.launch.prompt.unconfirmed.notice.message',
+      "Orca couldn't confirm the agent received your prompt. Check the agent before sending it again."
+    ),
+    args.prompt
+  )
+  track('agent_error', {
+    error_class: 'paste_readiness_timeout',
+    agent_kind: tuiAgentToAgentKind(args.agent)
+  })
+}
+
+/**
  * The host refused to start the agent because it could not write the launch file that carries the
  * prompt. Nothing ran, so the user is handed the text to launch again with.
  */

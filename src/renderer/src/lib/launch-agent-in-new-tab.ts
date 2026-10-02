@@ -3,7 +3,7 @@ import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import { planLaunchAgentStartupPrompt } from '@/lib/launch-agent-startup-prompt-plan'
 import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { clientLaunchHost } from '@/lib/launch-file-host'
 import { deliverNewTabLaunchPrompt } from '@/lib/launch-agent-new-tab-prompt-delivery'
 import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
@@ -160,7 +160,11 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       prompt: trimmedPrompt,
       promptDelivery,
       isFollowupPath,
-      launchHostIsPaired: launchHostIsPaired(runtimeEnvironmentId)
+      host: clientLaunchHost({
+        runtimeEnvironmentId,
+        launchPlatform: resolvedLaunchPlatform,
+        isRemote
+      })
     })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 

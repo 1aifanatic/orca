@@ -10,7 +10,6 @@ import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { buildSourceControlAgentDeliveryPlan } from './buildSourceControlAgentDeliveryPlan'
 import { useAppStore } from '@/store'
-import { launchHostIsPaired } from '@/lib/launch-file-host'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { SourceControlAgentActionDeliveryPlanState } from './SourceControlAgentActionDialogForm'
 import { runSourceControlAgentActionStart } from './runSourceControlAgentActionStart'
@@ -120,9 +119,7 @@ export function useSourceControlAgentActionStart({
         connectionUnavailable,
         launchPlatform,
         isRemote,
-        launchHostIsPaired: launchHostIsPaired(
-          getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
-        )
+        runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
       })
     },
     [

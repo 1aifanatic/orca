@@ -51,7 +51,7 @@ describe('a daemon WSL session with a launch file', () => {
   it('writes the file into the distro and types its Linux path', async () => {
     await create({ distro: 'Ubuntu', windowsPath: windowsSide, linuxPath: '/home/ada/.cache/orca' })
     const command = spawn.mock.calls[0]?.[0].command ?? ''
-    const linuxPath = /\/home\/ada\/\.cache\/orca\/orca-launch-file-\w+\/task-context\.md/.exec(
+    const linuxPath = /\/home\/ada\/\.cache\/orca\/orca-launch-file-\d+-\w+\/task-context\.md/.exec(
       command
     )?.[0]
     expect(command).toBe(`claude '${buildLaunchFilePointer(linuxPath ?? 'missing')}'`)

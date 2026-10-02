@@ -19,6 +19,7 @@ import { translate } from '@/i18n/i18n'
 import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat/native-chat-launch-session-options'
 import type { PersistedNativeChatSessionOptions } from '../../../shared/native-chat-session-options'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
+import type { LaunchHost } from '../../../shared/launch-host'
 
 export function buildDirectWorkItemAgentStartupPlan(args: {
   agent: TuiAgent | null
@@ -41,8 +42,8 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must not be applied for remote launches. */
   isRemote?: boolean
-  /** See `launchHostIsPaired`. */
-  launchHostIsPaired: boolean
+  /** The host the launch runs on (`clientLaunchHost`). */
+  host: LaunchHost
 }): {
   startupPlan: AgentStartupPlan | null
   launchFile?: LaunchFile
@@ -81,7 +82,8 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
     const planned = planLaunchPrompt({
       ...planInputs,
       prompt: args.draftContent,
-      launchHostIsPaired: args.launchHostIsPaired
+      host: args.host,
+      canPasteAfterReady: true
     })
     if (!planned) {
       return { startupPlan: null, promptOnLaunchCommand: false, startupPlanFailed: true }
