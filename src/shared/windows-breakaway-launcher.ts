@@ -52,6 +52,8 @@ export type WindowsBreakawayLaunchRequest = {
 }
 
 const ENV_ASSIGNMENT = /^([A-Z_][A-Z0-9_]*)=(.*)$/su
+// argv is readable by other users on a shared host; secrets need an owner-only staged file instead.
+const SECRET_SHAPED_NAME = /TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL/u
 
 export function parseWindowsBreakawayLaunchRequest(
   contract: WindowsBreakawayLaunchContract,
@@ -83,6 +85,9 @@ export function parseWindowsBreakawayLaunchRequest(
     const assignment = ENV_ASSIGNMENT.exec(own[index + 1] ?? '')
     if (!assignment?.[1]) {
       throw new Error(`${WINDOWS_BREAKAWAY_ENV_FLAG} needs NAME=VALUE`)
+    }
+    if (SECRET_SHAPED_NAME.test(assignment[1])) {
+      throw new Error(`${WINDOWS_BREAKAWAY_ENV_FLAG} refuses ${assignment[1]}: argv is not secret`)
     }
     env[assignment[1]] = assignment[2] ?? ''
   }

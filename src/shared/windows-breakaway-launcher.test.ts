@@ -242,6 +242,23 @@ describe('orcad Windows breakaway launcher', () => {
     ).toThrow('NAME=VALUE')
   })
 
+  it.each([
+    'ORCA_PAIRING_TOKEN',
+    'ORCA_RUNTIME_SECRET',
+    'ANTHROPIC_API_KEY',
+    'DB_PASSWORD',
+    'ORCA_CREDENTIAL_FILE'
+  ])('refuses the secret-shaped name %s on --env', (name) => {
+    expect(() =>
+      parseWindowsBreakawayLaunchRequest(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, [
+        ...orcadArgv.slice(0, 3),
+        '--env',
+        `${name}=x`,
+        ...orcadArgv.slice(3)
+      ])
+    ).toThrow('argv is not secret')
+  })
+
   it('records the PID with its creation time so a reused PID is never mistaken for it', () => {
     const request = parseWindowsBreakawayLaunchRequest(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, orcadArgv)
     if (!request) {
