@@ -17,7 +17,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { Worker, isMainThread, workerData } = require('node:worker_threads')
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..')
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..')
 
 // The real host client, bundled on demand so the harness always exercises the
 // current src/main/ipc/parcel-watcher-process.ts.
