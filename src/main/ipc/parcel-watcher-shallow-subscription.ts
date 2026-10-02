@@ -116,7 +116,7 @@ export function startShallowWatcher(
 
   const directoryIdentitySync = (parent: string): string | null => {
     try {
-      const entry = statSync(join(rootPath, parent))
+      const entry = statSync(join(rootPath, parent), { bigint: true })
       return entry.isDirectory() ? `${entry.dev}:${entry.ino}` : null
     } catch {
       return null
@@ -125,7 +125,7 @@ export function startShallowWatcher(
 
   const directoryIdentity = async (parent: string): Promise<string | null> => {
     try {
-      const entry = await stat(join(rootPath, parent))
+      const entry = await stat(join(rootPath, parent), { bigint: true })
       return entry.isDirectory() ? `${entry.dev}:${entry.ino}` : null
     } catch {
       return null
