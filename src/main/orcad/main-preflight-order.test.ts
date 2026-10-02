@@ -3,10 +3,7 @@ import {
   ORCAD_PROFILE_PREFLIGHT_FLAG,
   ORCAD_STARTUP_PREFLIGHT_FLAG
 } from '../../shared/orcad-profile-preflight'
-import {
-  ORCAD_CANCEL_MANAGED_STOP_FLAG,
-  ORCAD_COMPLETE_MANAGED_STOP_FLAG
-} from '../../shared/orcad-stop-request'
+import { ORCAD_COMPLETE_MANAGED_STOP_FLAG } from '../../shared/orcad-stop-request'
 
 /**
  * The precondition is only worth anything if it runs first. A loader failure is not
@@ -78,14 +75,16 @@ describe('orcad entry', () => {
     expect(order).toEqual(['profile-admission', 'preflight', 'main'])
   })
 
-  it.each([ORCAD_COMPLETE_MANAGED_STOP_FLAG, ORCAD_CANCEL_MANAGED_STOP_FLAG])(
-    'runs %s without preflights, the bundled handoff, or a runtime',
-    async (flag) => {
-      vi.spyOn(process, 'argv', 'get').mockReturnValue(['runtime', 'orcad.js', flag, '{}'])
-      await import('./main')
-      await vi.waitFor(() => expect(order).toHaveLength(1))
+  it('completes a managed stop without preflights, the bundled handoff, or a runtime', async () => {
+    vi.spyOn(process, 'argv', 'get').mockReturnValue([
+      'runtime',
+      'orcad.js',
+      ORCAD_COMPLETE_MANAGED_STOP_FLAG,
+      '{}'
+    ])
+    await import('./main')
+    await vi.waitFor(() => expect(order).toHaveLength(1))
 
-      expect(order).toEqual([`managed-stop:${flag} {}`])
-    }
-  )
+    expect(order).toEqual([`managed-stop:${ORCAD_COMPLETE_MANAGED_STOP_FLAG} {}`])
+  })
 })

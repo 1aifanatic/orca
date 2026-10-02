@@ -1,5 +1,5 @@
 /**
- * The host-side journal that makes an orcad activation, rollback or decommission crash-safe.
+ * The host-side journal that makes an orcad activation or rollback crash-safe.
  *
  * Written before the first mutation and kept until the host is proven to serve exactly one
  * slot again. The activation record stays the commit point: a journal whose `recordAfter`
@@ -15,12 +15,6 @@ import {
   type ORCAD_ACTIVATION_TRANSACTION_SCHEMA_VERSION,
   OrcadActivationTransactionSchema
 } from './orcad-activation-transaction-schema'
-import {
-  orcadDecommissionTransactionDefect,
-  planOrcadDecommissionRecovery,
-  type OrcadDecommissionRecoveryPlan,
-  type OrcadDecommissionTransaction
-} from './orcad-decommission-transaction'
 
 export const ORCAD_ACTIVATION_TRANSACTION_FILENAME = 'transaction.json'
 export const ORCAD_ACTIVATION_TRANSACTION_DIRNAME = '.orcad-activation-transaction'
@@ -59,10 +53,7 @@ export type OrcadRollbackTransaction = {
   rescue: OrcadSnapshotVerdict
 }
 
-export type OrcadActivationTransaction =
-  | OrcadActivateTransaction
-  | OrcadRollbackTransaction
-  | OrcadDecommissionTransaction
+export type OrcadActivationTransaction = OrcadActivateTransaction | OrcadRollbackTransaction
 
 export type OrcadActivationTransactionReadResult =
   | { state: 'absent' }
@@ -81,7 +72,6 @@ export type OrcadTransactionRecoveryPlan =
       activeVersion: string | null
       restoreState: OrcadSnapshotVerdict | null
     }
-  | OrcadDecommissionRecoveryPlan
   | { action: 'refuse'; code: string; reason: string }
 
 export function parseOrcadActivationTransaction(
@@ -105,19 +95,6 @@ export function parseOrcadActivationTransaction(
   const recordBefore = parseNestedRecord(parsed.data.recordBefore, 'recordBefore')
   if (recordBefore.state === 'unreadable') {
     return recordBefore
-  }
-  if (parsed.data.operation === 'decommission') {
-    const after = parseNestedRecord(parsed.data.recordAfter, 'recordAfter')
-    if (after.state === 'unreadable') {
-      return after
-    }
-    const transaction = {
-      ...parsed.data,
-      recordBefore: recordBefore.record,
-      recordAfter: after.record
-    }
-    const defect = orcadDecommissionTransactionDefect(transaction)
-    return defect ? unreadable(defect) : { state: 'ok', transaction }
   }
   if (parsed.data.operation === 'activate') {
     const recordAfter =
@@ -176,12 +153,6 @@ export function planOrcadTransactionRecovery(
   transaction: OrcadActivationTransaction,
   currentRecord: OrcadActivationRecord
 ): OrcadTransactionRecoveryPlan {
-  if (transaction.operation === 'decommission') {
-    const committed = sameOrcadActivationRecord(currentRecord, transaction.recordAfter)
-    return committed || sameOrcadActivationRecord(currentRecord, transaction.recordBefore)
-      ? planOrcadDecommissionRecovery(transaction, committed)
-      : recordChangedRefusal(transaction)
-  }
   if (
     transaction.recordAfter &&
     sameOrcadActivationRecord(currentRecord, transaction.recordAfter)
@@ -189,7 +160,13 @@ export function planOrcadTransactionRecovery(
     return { action: 'stabilize-committed', activeVersion: transaction.recordAfter.active }
   }
   if (!sameOrcadActivationRecord(currentRecord, transaction.recordBefore)) {
-    return recordChangedRefusal(transaction)
+    return {
+      action: 'refuse',
+      code: 'orcad_recovery_activation_record_changed',
+      reason:
+        `The activation record matches neither side of the interrupted ${transaction.operation}. ` +
+        'Preserving the activation fence for operator inspection.'
+    }
   }
   if (transaction.phase === 'candidate-ready' || transaction.phase === 'target-ready') {
     return { action: 'finish-commit', record: transaction.recordAfter ?? neverRecord() }
@@ -233,18 +210,6 @@ function parseNestedRecord(
     : unreadable(
         `${field} is invalid: ${parsed.state === 'absent' ? 'record is absent' : parsed.reason}`
       )
-}
-
-function recordChangedRefusal(
-  transaction: OrcadActivationTransaction
-): Extract<OrcadTransactionRecoveryPlan, { action: 'refuse' }> {
-  return {
-    action: 'refuse',
-    code: 'orcad_recovery_activation_record_changed',
-    reason:
-      `The activation record matches neither side of the interrupted ${transaction.operation}. ` +
-      'Preserving the activation fence for operator inspection.'
-  }
 }
 
 function neverRecord(): never {

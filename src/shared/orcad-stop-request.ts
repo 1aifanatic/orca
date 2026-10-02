@@ -44,14 +44,10 @@ export type OrcadManagedStopContext = Omit<
 /** The execution host's verdict; `exited` only on proof, never on silence. */
 export const OrcadManagedStopVerdictSchema = z.enum(['live', 'unverifiable', 'exited'])
 
-// Outputs are read by clients that may be older than the host: unknown fields are tolerated.
-export const OrcadManagedStopCompletionSchema = z.object({
-  ...OrcadManagedStopRequestSchema.shape,
+export const OrcadManagedStopCompletionSchema = OrcadManagedStopRequestSchema.extend({
   kind: z.literal('orcad_managed_stop_completion'),
   verdict: OrcadManagedStopVerdictSchema,
-  receiptPersisted: z.boolean(),
-  /** For a request that asked to retire the daemon, the outcome its receipt recorded. */
-  retirement: z.enum(['retired', 'live', 'unverifiable']).optional()
+  receiptPersisted: z.boolean()
 })
 
 /** `retired` only when the daemon accepted; a busy daemon stays up and keeps its terminals. */
@@ -81,28 +77,3 @@ export type OrcadManagedStopCompletion = z.infer<typeof OrcadManagedStopCompleti
 export type OrcadCompletedStopReceipt = z.infer<typeof OrcadCompletedStopReceiptSchema>
 export type OrcadDaemonRetirementVerdict = z.infer<typeof OrcadDaemonRetirementVerdictSchema>
 export type OrcadDaemonRetirementRecord = z.infer<typeof OrcadDaemonRetirementRecordSchema>
-
-export const ORCAD_CANCEL_MANAGED_STOP_FLAG = '--cancel-managed-stop'
-/** Readiness `health.stopRequests`: this build consumes stop files and both commands above. */
-export const ORCAD_STOP_REQUESTS_CAPABILITY = 1
-
-/**
- * Which side won a managed request: the running orcad acting on it, or a client cancelling it.
- * Created exclusively once per transaction, so the two can never both believe they won.
- */
-export const OrcadManagedStopDecisionSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  kind: z.literal('orcad_managed_stop_decision'),
-  request: OrcadManagedStopRequestSchema,
-  decision: z.enum(['dispatched', 'canceled'])
-})
-
-/** `dispatched` means orcad already acted on the request; the caller must await its exit. */
-export const OrcadManagedStopCancellationSchema = z.object({
-  ...OrcadManagedStopRequestSchema.shape,
-  kind: z.literal('orcad_managed_stop_cancellation'),
-  outcome: z.enum(['canceled', 'dispatched'])
-})
-
-export type OrcadManagedStopDecision = z.infer<typeof OrcadManagedStopDecisionSchema>
-export type OrcadManagedStopCancellation = z.infer<typeof OrcadManagedStopCancellationSchema>

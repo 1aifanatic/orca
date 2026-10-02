@@ -19,13 +19,26 @@
  * pre-activation snapshot rather than against a version comparison.
  */
 import type { OrcadActivationRecord } from './orcad-activation-record'
-import type { OrcadTerminalCensus } from '../../shared/orcad-terminal-census'
 import {
   assessOrcadLiveDaemonCrossing,
   type OrcadDaemonProtocolFacts
 } from './orcad-daemon-protocol-crossing'
 
-export type { OrcadTerminalCensus } from '../../shared/orcad-terminal-census'
+export type OrcadTerminalCensus = {
+  /**
+   * Sessions the live daemon owns right now. `null` means the probe could not answer —
+   * never treated as zero, because loss of contact is not evidence of process death
+   * (docs/reference/ssh-execution-boundary.md).
+   */
+  liveSessions: number | null
+  /**
+   * Of those, how many started at or after `record.activatedAt`. These are the sessions the
+   * pre-activation snapshot does not describe.
+   */
+  startedSinceActivation: number | null
+  /** Protocol of the daemon that owns those sessions; `null` when it did not answer. */
+  daemonProtocolVersion: number | null
+}
 
 export type OrcadUpdateDecision =
   | { action: 'noop'; reason: string }

@@ -66,7 +66,7 @@ export type OrcadLockRecord = z.infer<typeof OrcadLockRecordSchema>
 
 /** `null` when absent, unreadable, oversized or malformed; callers must not read that as free. */
 export function readOrcadInstanceLockRecord(path: string): OrcadLockRecord | null {
-  return parseOrcadInstanceLockRecord(readBoundedLockFile(path) ?? '')
+  return parseLockRecord(readBoundedLockFile(path) ?? '')
 }
 
 export type OrcadInstanceLock = {
@@ -106,8 +106,7 @@ function isErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code
 }
 
-/** `null` for anything that is not a complete record; never a reason to treat a lock as free. */
-export function parseOrcadInstanceLockRecord(content: string): OrcadLockRecord | null {
+function parseLockRecord(content: string): OrcadLockRecord | null {
   try {
     const result = OrcadLockRecordSchema.safeParse(JSON.parse(content))
     return result.success ? result.data : null
@@ -230,7 +229,7 @@ export function acquireOrcadInstanceLock(
     return makeLock(lockPath, record)
   }
 
-  const existing = parseOrcadInstanceLockRecord(readBoundedLockFile(lockPath) ?? '')
+  const existing = parseLockRecord(readBoundedLockFile(lockPath) ?? '')
   if (!existing) {
     // Why fail closed: an unreadable record proves nothing about its holder having exited.
     throw new OrcadInstanceLockError(
@@ -271,7 +270,7 @@ export function acquireOrcadInstanceLock(
   }
   // A contender may have replaced the entry after the liveness check; never displace its record.
   const claimedContents = readBoundedLockFile(claimPath)
-  if (parseOrcadInstanceLockRecord(claimedContents ?? '')?.nonce !== existing.nonce) {
+  if (parseLockRecord(claimedContents ?? '')?.nonce !== existing.nonce) {
     restoreDisplacedLock(claimPath, lockPath, claimedContents)
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_held',
@@ -342,7 +341,7 @@ function makeLock(lockPath: string, record: OrcadLockRecord): OrcadInstanceLock 
       // Why re-read before unlinking: a reclaim by a later orcad (after, say, a SIGKILL that
       // this process somehow survived enough to run handlers) leaves a record that is not
       // ours. Deleting it would unlock a live runtime.
-      const current = parseOrcadInstanceLockRecord(readBoundedLockFile(lockPath) ?? '')
+      const current = parseLockRecord(readBoundedLockFile(lockPath) ?? '')
       if (!current || current.nonce !== record.nonce) {
         return
       }
