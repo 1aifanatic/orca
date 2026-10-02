@@ -28,6 +28,7 @@ on:
       - 'config/patches/@vscode__windows-process-tree*'
       - 'config/scripts/build-windows-process-tree-relay-addon.mjs'
       - 'config/scripts/relay-windows-process-tree-staging.mjs'
+      - 'config/scripts/relay-windows-process-tree-prepared-addon*.mjs'
       - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
       - 'src/shared/relay-windows-breakaway-launch.ts'
       - '!src/**/*.test.ts'
@@ -83,6 +84,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
+        id: dependencies
         with:
           native-runtime: node
       - name: Self-test the provisioning scripts before touching the machine
@@ -99,7 +101,14 @@ jobs:
       # orcad slot and the relay both stage it, and a standard-user host has no other launch route.
       - name: Build this runner's Windows process-table addon
         shell: bash
-        run: node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }}
+        env:
+          REUSE_PREPARED_RUNTIME: ${{ github.event_name == 'pull_request' && steps.dependencies.outputs.native-cache-hit == 'true' }}
+        run: |
+          reuse_args=()
+          if [ "$REUSE_PREPARED_RUNTIME" = true ]; then
+            reuse_args+=(--reuse-prepared-runtime)
+          fi
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }} "${reuse_args[@]}"
       - uses: ./.github/actions/prepare-orcad-prebuilds
         with:
           resolve-windows-cache: ${{ github.event_name == 'pull_request' }}

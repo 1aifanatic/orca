@@ -62,6 +62,20 @@ below suggest about 160 aggregate runner-seconds saved across four warm SSH jobs
 that is a conditional estimate, not a measured improvement of this consumer.
 Private sshd installation and host execution still dominate this workflow.
 
+## Prepared relay addon reuse
+
+A [completed SSH Windows run](https://github.com/stablyai/orca/actions/runs/36972043877)
+rebuilt the process-table relay addon after native dependency preparation. From
+its builder's start message to the validated staged artifact, x64 took 85.5 seconds
+and ARM64 took 135.6 seconds. These are single-run observations, not medians.
+
+An opt-in reuse path checks the same binary architecture, patched reader and
+launcher exports as staging, then runs the existing native-load and CreationTime
+probe. Repaired source or incomplete evidence requires a fresh build. SSH PRs
+request reuse only following an exact prepared native-cache hit; manual SSH and
+all release builders retain fresh compilation. Subsequent staging checks still
+run. Hosted validation and the reuse interval remain to be measured.
+
 ## October 1 Windows and dependency cache follow-up
 
 [PR #24355](https://github.com/stablyai/orca/pull/24355) merged at `197ea3a3`.
