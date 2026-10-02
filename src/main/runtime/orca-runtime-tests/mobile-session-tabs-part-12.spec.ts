@@ -42,10 +42,7 @@ describe('OrcaRuntimeService', () => {
   // ready, so it keeps the line rather than refuse what main started.
   it('starts an agent with a prompt it cannot paste on its line, as main did', async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-agent-long-prompt' })
-    const runtime = new OrcaRuntimeService({
-      ...store,
-      getSettings: () => ({ ...store.getSettings(), disabledTuiAgents: [], agentCmdOverrides: {} })
-    } as never)
+    const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
       spawn,
       write: () => true,
