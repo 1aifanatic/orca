@@ -23,7 +23,7 @@ export type ClaudeStreamedTextCheckpointDeps = {
   schedule?: AgentSessionDeltaCoalescerDeps['schedule']
 }
 
-/** How a block ended: `completedAt` only when the host saw the end itself. */
+/** How a block ended: `completedAt` is when the host saw it end, or saw what cut it off. */
 export type ClaudeStreamedBlockEnd = { completedAt?: number }
 
 export type ClaudeStreamedTextCheckpoints = {

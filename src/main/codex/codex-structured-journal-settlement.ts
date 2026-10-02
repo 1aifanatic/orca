@@ -38,6 +38,8 @@ export type CodexActiveJournalItem = {
   item: CodexThreadItem
   /** Names the helpers a collab call acted on, so a settled revision keeps naming them. */
   helperName?: CodexHelperName
+  /** Host clock at item/started, for a row whose first write comes later. */
+  startedAt?: number
 }
 
 export type CodexPendingJournalPrompt = {

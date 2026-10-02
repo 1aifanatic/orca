@@ -114,8 +114,9 @@ export type AgentJournalMessageItem = {
   /** Written on reasoning rows. ABSENT MEANS UNKNOWN — an older host, or a row from before the
    *  field — and never reads as live. The row's `observedAt` is when it started. */
   state?: AgentJournalMessageState
-  /** Host clock when the host saw the message end live. Absent when the end was inferred (a
-   *  settled turn, a crash sweep) or the row came from history, so no duration is claimed. */
+  /** Host clock when the host saw the message end: its own end, or the end of the turn or
+   *  stream that cut it off. Absent only when no end was seen live — history, a crash sweep — so
+   *  no duration is claimed. */
   completedAt?: number
 }
 

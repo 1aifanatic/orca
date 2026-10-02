@@ -35,8 +35,8 @@ export function withCodexReasoningLifecycle(
   return body.kind === 'message' && body.role === 'reasoning' ? { ...body, ...lifecycle } : body
 }
 
-/** The end a reasoning row gets when its item will never complete: `completedAt` only when the
- *  host saw the end happen (the turn ending), never for an inferred one. */
+/** A reasoning row's end: `completedAt` is when the host saw it end, its item's completion or the
+ *  turn or exit that cut it off; absent when no end was seen live. */
 export function endedCodexReasoning(completedAt?: number): CodexReasoningLifecycle {
   return { state: 'completed', ...(completedAt === undefined ? {} : { completedAt }) }
 }

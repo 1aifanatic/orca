@@ -1,5 +1,4 @@
 import type {
-  AgentJournalItemBody,
   AgentJournalItemIdentity,
   AgentJournalRowAttribution
 } from '../../shared/agent-session-journal-types'
@@ -32,6 +31,7 @@ import type { CodexActiveJournalItem } from './codex-structured-journal-settleme
 import { readCodexJournalString } from './codex-structured-journal-translation-values'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import { readCodexDispatchEcho } from './codex-structured-dispatch-echo'
+import { evictedCodexItemBody } from './codex-structured-journal-eviction'
 import {
   endedCodexReasoning,
   withCodexReasoningLifecycle,
@@ -49,7 +49,7 @@ export class CodexJournalItems {
   constructor(
     private readonly deps: Pick<
       CodexJournalTranslatorDeps,
-      'sink' | 'coalesceMs' | 'maxRetainedBytes' | 'schedule'
+      'sink' | 'coalesceMs' | 'maxRetainedBytes' | 'schedule' | 'now'
     > & { maxMetadataBytes?: number; attributionFor: CodexRowAttribution },
     private readonly activeTurn: (threadId: string) => string | null,
     private readonly suppress: (threadId: string, turnId: string) => void,
@@ -104,14 +104,14 @@ export class CodexJournalItems {
       return { handled: true, admission: { accepted: false, reason: 'failed' } }
     }
     const itemKey = codexStructuredItemKey(event.threadId, item.id)
-    const started =
-      event.method === 'item/completed' ? this.activeItems.get(itemKey)?.item : undefined
+    const active = event.method === 'item/completed' ? this.activeItems.get(itemKey) : undefined
+    const receivedAt = event.observedAt ?? this.deps.now?.() ?? Date.now()
     const translated = withItemLifecycle(
-      codexJournalItem(item, this.helperName, started),
+      codexJournalItem(item, this.helperName, active?.item),
       source === 'history'
         ? endedCodexReasoning()
         : event.method === 'item/completed'
-          ? endedCodexReasoning(event.observedAt ?? Date.now())
+          ? endedCodexReasoning(receivedAt)
           : { state: 'running' }
     )
     const command = readCodexJournalString(item, 'command')
@@ -126,22 +126,26 @@ export class CodexJournalItems {
         this.streams.forget(event.threadId, item.id)
         this.activeItems.delete(itemKey)
       } else {
-        // Reasoning writes its row only with its first text; the row still starts here.
-        const startedAt = item.type === 'reasoning' ? (event.observedAt ?? Date.now()) : undefined
-        this.track(event.threadId, turnId, item, identity, startedAt)
-        const admission = this.trimActiveState()
+        const admission = this.trimActiveState(this.growsActiveSet(itemKey, item))
         if (!admission.accepted) {
           return { handled: true, admission }
         }
+        // Reasoning writes its row only with its first text; the row still starts here.
+        this.track(
+          event.threadId,
+          turnId,
+          item,
+          identity,
+          item.type === 'reasoning' ? receivedAt : undefined
+        )
       }
       return { handled: true, admission: CODEX_JOURNAL_ADMITTED }
     }
-    const admission = this.appendTranslated(
-      event.method,
-      identity,
-      translated,
-      this.deps.attributionFor(event.threadId, turnId)
-    )
+    const admission = this.appendTranslated(event.method, identity, translated, {
+      ...this.deps.attributionFor(event.threadId, turnId),
+      // A completion can be the row's first write: its text came within one coalescing window.
+      ...(active?.startedAt === undefined ? {} : { observedAt: active.startedAt })
+    })
     if (!admission.accepted) {
       return { handled: true, admission }
     }
@@ -149,11 +153,11 @@ export class CodexJournalItems {
       this.streams.forget(event.threadId, item.id)
       this.activeItems.delete(itemKey)
     } else {
-      this.track(event.threadId, turnId, item, identity)
-      const trimAdmission = this.trimActiveState()
+      const trimAdmission = this.trimActiveState(this.growsActiveSet(itemKey, item))
       if (!trimAdmission.accepted) {
         return { handled: true, admission: trimAdmission }
       }
+      this.track(event.threadId, turnId, item, identity)
     }
     return { handled: true, admission: CODEX_JOURNAL_ADMITTED }
   }
@@ -169,7 +173,7 @@ export class CodexJournalItems {
     method: string,
     identity: AgentJournalItemIdentity,
     translated: ReturnType<typeof codexJournalItem>,
-    attribution: AgentJournalRowAttribution
+    attribution: AgentJournalRowAttribution & { observedAt?: number }
   ): CodexJournalTranslationAdmission {
     if (!translated.body) {
       return CODEX_JOURNAL_ADMITTED
@@ -213,6 +217,7 @@ export class CodexJournalItems {
       turnId,
       identity,
       item: retainedItem,
+      ...(startedAt === undefined ? {} : { startedAt }),
       ...(this.helperName ? { helperName: this.helperName } : {})
     })
   }
@@ -244,8 +249,15 @@ export class CodexJournalItems {
     return identity
   }
 
-  private trimActiveState(): CodexJournalTranslationAdmission {
-    while (this.activeItems.size - this.streams.persistentCount > MAX_CODEX_ACTIVE_ITEMS) {
+  private growsActiveSet(itemKey: string, item: CodexThreadItem): boolean {
+    return !this.activeItems.has(itemKey) && !codexCommandOutlivesTurn(item)
+  }
+
+  /** Makes room for an item before it is tracked: tracking it first lets the stream bound drop an
+   *  evictee's text before this eviction can close the evictee's row with it. */
+  private trimActiveState(incoming: boolean): CodexJournalTranslationAdmission {
+    const room = MAX_CODEX_ACTIVE_ITEMS - (incoming ? 1 : 0)
+    while (this.activeItems.size - this.streams.persistentCount > room) {
       const oldest = [...this.activeItems].find(
         ([, active]) => !codexCommandOutlivesTurn(active.item)
       )?.[0]
@@ -254,14 +266,12 @@ export class CodexJournalItems {
       }
       const evicted = this.activeItems.get(oldest)
       if (evicted) {
-        const translated = codexJournalItem(evicted.item, this.helperName).body
-        if (translated) {
-          const admission = appendCodexLifecycleItem(
-            this.deps.sink,
-            evicted.identity,
-            evictedActiveBody(translated),
-            this.deps.attributionFor(evicted.threadId, evicted.turnId)
-          )
+        const body = evictedCodexItemBody(evicted, this.streams, this.helperName)
+        if (body) {
+          const admission = appendCodexLifecycleItem(this.deps.sink, evicted.identity, body, {
+            ...this.deps.attributionFor(evicted.threadId, evicted.turnId),
+            ...(evicted.startedAt === undefined ? {} : { observedAt: evicted.startedAt })
+          })
           if (!admission.accepted) {
             return admission
           }
@@ -286,29 +296,4 @@ function withItemLifecycle(
   return translated.body
     ? { ...translated, body: withCodexReasoningLifecycle(translated.body, lifecycle) }
     : translated
-}
-
-function evictedActiveBody(body: AgentJournalItemBody): AgentJournalItemBody {
-  // Evicted, not ended: nothing saw when the item stopped, so the end claims no time.
-  if (body.kind === 'message') {
-    return withCodexReasoningLifecycle(body, endedCodexReasoning())
-  }
-  if (body.kind === 'tool-call' && body.state === 'running') {
-    return { ...body, state: 'failed' }
-  }
-  if (
-    (body.kind === 'approval' || body.kind === 'question') &&
-    body.resolution.state === 'pending'
-  ) {
-    return {
-      ...body,
-      resolution: {
-        state: 'cancelled',
-        selectedOptionId: null,
-        resolvedBy: null,
-        resolvedAt: null
-      }
-    }
-  }
-  return body
 }

@@ -67,9 +67,24 @@ function streamingTurn() {
   })
   translator.handle(notification('turn/started', { turn: { id: TURN_ID } }, 1_000))
   translator.handle(notification('item/started', reasoning('r-1'), 2_000))
+  // Production times only turn and item boundaries at receipt; a delta carries no time.
   translator.handle(
-    notification('item/reasoning/summaryTextDelta', { itemId: 'r-1', delta: 'Planning' }, 3_000)
+    notification('item/reasoning/summaryTextDelta', { itemId: 'r-1', delta: 'Planning' })
   )
+  return { rows, translator, firstObservedAt }
+}
+
+/** A turn whose deltas wait out the coalescing window, as they do in production. */
+function coalescedTurn(now?: () => number) {
+  const { rows, sink, firstObservedAt } = recorder()
+  const translator = createCodexJournalTranslator({
+    sink,
+    primaryThreadId: () => THREAD_ID,
+    sessionId: SESSION_ID,
+    schedule: () => () => {},
+    ...(now ? { now } : {})
+  })
+  translator.handle(notification('turn/started', { turn: { id: TURN_ID } }, 1_000))
   return { rows, translator, firstObservedAt }
 }
 
@@ -87,6 +102,37 @@ describe('a Codex reasoning row', () => {
   it('starts when its item started, though its first text came later', () => {
     const { firstObservedAt } = streamingTurn()
     expect(firstObservedAt.get(ROW)).toBe(2_000)
+  })
+
+  // Captured: summary text lands 13–50 ms before item/completed, inside one coalescing window.
+  it('starts at item/started when its first write is the completion itself', () => {
+    const streamed = coalescedTurn()
+    streamed.translator.handle(notification('item/started', reasoning('r-1'), 2_000))
+    streamed.translator.handle(
+      notification('item/reasoning/summaryTextDelta', { itemId: 'r-1', delta: 'Planning' })
+    )
+    streamed.translator.handle(
+      notification('item/completed', reasoning('r-1', ['Planning']), 7_650)
+    )
+    expect(streamed.firstObservedAt.get(ROW)).toBe(2_000)
+    expect(streamed.rows.get(ROW)).toMatchObject({ state: 'completed', completedAt: 7_650 })
+
+    const completedOnly = coalescedTurn()
+    completedOnly.translator.handle(notification('item/started', reasoning('r-1'), 2_000))
+    completedOnly.translator.handle(
+      notification('item/completed', reasoning('r-1', ['Planning']), 7_650)
+    )
+    expect(completedOnly.firstObservedAt.get(ROW)).toBe(2_000)
+  })
+
+  it('times its start and end on the host clock when a boundary arrives without a time', () => {
+    let now = 2_000
+    const { translator, rows, firstObservedAt } = coalescedTurn(() => now)
+    translator.handle(notification('item/started', reasoning('r-1')))
+    now = 6_000
+    translator.handle(notification('item/completed', reasoning('r-1', ['Planning'])))
+    expect(firstObservedAt.get(ROW)).toBe(2_000)
+    expect(rows.get(ROW)).toMatchObject({ completedAt: 6_000 })
   })
 
   it('ends when its item completes, at the completion it saw', () => {
@@ -128,22 +174,32 @@ describe('a Codex reasoning row', () => {
     expect(rows.get(ROW)).not.toHaveProperty('completedAt')
   })
 
-  it('ends with no claimed time when it is evicted from the bounded live set', () => {
+  it('ends with its streamed text and no claimed time when the bounded live set drops it', () => {
     const { rows, sink } = recorder()
     const items = new CodexJournalItems(
-      { sink, attributionFor: () => ({ turnScope: AGENT_JOURNAL_THREAD_SCOPE }) },
+      {
+        sink,
+        attributionFor: () => ({ turnScope: AGENT_JOURNAL_THREAD_SCOPE }),
+        schedule: () => () => {}
+      },
       () => TURN_ID,
       () => {}
     )
-    for (let index = 1; index <= MAX_CODEX_ACTIVE_ITEMS + 1; index += 1) {
-      items.handle({
-        threadId: THREAD_ID,
-        method: 'item/started',
-        params: reasoning(`r-${index}`, ['Thinking'])
-      })
+    // As captured: a started reasoning item carries an empty summary; its text only streams.
+    items.handle({ threadId: THREAD_ID, method: 'item/started', params: reasoning('r-1') })
+    items.streams.handle(THREAD_ID, 'item/reasoning/summaryTextDelta', {
+      itemId: 'r-1',
+      delta: 'Thinking'
+    })
+    expect(rows.get(ROW)).toBeUndefined()
+    for (let index = 2; index <= MAX_CODEX_ACTIVE_ITEMS + 1; index += 1) {
+      items.handle({ threadId: THREAD_ID, method: 'item/started', params: reasoning(`r-${index}`) })
     }
-    expect(rows.get(ROW)).toMatchObject({ state: 'completed' })
-    expect(rows.get(ROW)).not.toHaveProperty('completedAt')
-    expect(rows.get('orca:codex-item%3Athread-abc%3Ar-2')).toMatchObject({ state: 'running' })
+    expect(rows.get(ROW)).toEqual({
+      kind: 'message',
+      role: 'reasoning',
+      blocks: [{ type: 'text', text: 'Thinking' }],
+      state: 'completed'
+    })
   })
 })

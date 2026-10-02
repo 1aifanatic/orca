@@ -213,7 +213,7 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   sentAs?: AgentJournalMessageSendMode
   /** The journal row's own lifecycle; absent means unknown, never live. */
   state?: AgentJournalMessageState
-  /** Host clock when the row's message ended, when the host saw it end live. */
+  /** Host clock when the row's message was seen to end; absent when no end was seen live. */
   completedAt?: number
   /** Accepted but not yet handed to the agent: drawn after everything the agent has done. */
   queued?: true
