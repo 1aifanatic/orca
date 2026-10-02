@@ -17,6 +17,22 @@ export function failedStartsSentElsewhere(
       !sentHere.has(submission.clientMessageId) &&
       // A queued card's message: the card shows it, and its own Retry is the card's.
       submission.queuedMessageId === undefined &&
-      failedBeforeHandover(submission)
+      failedBeforeHandover(submission) &&
+      !sentAgainSince(submission, submissions)
+  )
+}
+
+/** The same words went through since, as a message of their own: an older host's Retry sent a new
+ *  copy under a new id. A copy's body is the original's, so its body-only fingerprint matches. */
+function sentAgainSince(
+  original: AgentJournalSubmission,
+  submissions: readonly AgentJournalSubmission[]
+): boolean {
+  return submissions.some(
+    (later) =>
+      later.clientMessageId !== original.clientMessageId &&
+      later.payloadFingerprint === original.payloadFingerprint &&
+      later.submittedAt > original.submittedAt &&
+      (later.dispatchState === 'accepted' || later.handedOverAt !== undefined)
   )
 }

@@ -81,6 +81,55 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     ).toEqual([])
   })
 
+  // An older host's Retry sent this desktop's own message again as a new one, under a new id, and
+  // that copy went through; the host then gained Retry in place. The same words already reached the
+  // agent, so the original shows no more, and offers no Retry.
+  describe('sent again since as the same words', () => {
+    const COPY = '1759312345999-fedcba9876543210fedcba9876543210'
+    const copy = (fields: Partial<AgentJournalSubmission>): AgentJournalSubmission => ({
+      ...rejected({ kind: 'providerStartFailed' }),
+      clientMessageId: COPY,
+      submittedAt: 9,
+      reason: null,
+      rejection: undefined,
+      ...fields
+    })
+    const shown = (submissions: AgentJournalSubmission[]) => ({
+      rows: projectStructuredAgentSessionMessages([TEXT], [], submissions).map((row) => row.id),
+      notice: structuredAgentSessionDeliveryNotices(
+        [],
+        'Codex',
+        vi.fn(),
+        submissions,
+        [],
+        new Set()
+      ).get(KEY)
+    })
+
+    it.each([
+      ['delivered', { dispatchState: 'accepted' }],
+      ['handed over', { dispatchState: 'pending', handedOverAt: 10 }]
+    ] as const)('is hidden, with no Retry, once that copy was %s', (_how, fields) => {
+      expect(shown([rejected({ kind: 'providerStartFailed' }), copy(fields)])).toEqual({
+        rows: [],
+        notice: undefined
+      })
+    })
+
+    it.each([
+      ['a copy that did not go through', copy({ dispatchState: 'rejected', reason: 'no' })],
+      [
+        'other words that went through',
+        copy({ dispatchState: 'accepted', payloadFingerprint: 'other' })
+      ],
+      ['the same words sent before it', copy({ dispatchState: 'accepted', submittedAt: 1 })]
+    ])('still shows, with its Retry, beside %s', (_case, other) => {
+      const { rows, notice } = shown([rejected({ kind: 'providerStartFailed' }), other])
+      expect(rows).toContain(KEY)
+      expect(notice?.onRetry).toBeDefined()
+    })
+  })
+
   // The phone draws rows in the order the projection gives them; only the desktop sorts.
   it('is placed where the journal recorded it, above what came after it', () => {
     const exchange = (id: string, sequence: number, role: 'user' | 'assistant') => ({
