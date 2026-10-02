@@ -84,13 +84,17 @@ export function NativeChatStructuredSession(
     sessionId: props.sessionId,
     target: props.target
   })
+  // Unknown, not empty, until the first read settles; a chat started here has nothing to read.
+  const firstReadPending =
+    provisionalLaunch.launch?.kind !== 'new' &&
+    (!provisionalLaunch.transportEnabled || controller.status !== 'ready')
   const session = useMemo<NativeChatLiveSession>(
     () => ({
       messages: controller.messages,
       status:
         controller.status === 'error'
           ? 'error'
-          : controller.status === 'loading'
+          : firstReadPending
             ? 'loading'
             : controller.isWorking
               ? 'working'
@@ -111,7 +115,7 @@ export function NativeChatStructuredSession(
             ? 'error'
             : 'ready'
     }),
-    [controller, props.agent, props.sessionId]
+    [controller, firstReadPending, props.agent, props.sessionId]
   )
   // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
   const retryRef = useRef(controller.retry)
@@ -266,9 +270,8 @@ export function NativeChatStructuredSession(
       className="flex h-full min-h-0 w-full flex-col bg-background focus:outline-none"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {viewState.kind === 'loading' ? (
-          <NativeChatEmptyState kind="loading" />
-        ) : viewState.kind === 'error' ? (
+        {/* A blank pane while the first read runs: no text for a state that passes on its own. */}
+        {viewState.kind === 'loading' ? null : viewState.kind === 'error' ? (
           <NativeChatEmptyState
             kind="error"
             retrying={!readFailure?.final}

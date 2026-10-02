@@ -91,7 +91,7 @@ export async function launchStructuredWorktreeSession(
     }
   } catch {
     // Why: nothing awaits this creation's caller, so an escaped throw would strand the panel
-    // mid-create. Report it the way a failed launch already does; the launch layer toasts it.
+    // mid-create.
     return { ...settled, activation, primaryTabId }
   } finally {
     unsubscribe()
