@@ -358,3 +358,17 @@ return to the empty composer. This verifies the existing Chat approval card's
 one-time acceptance key on native Windows 1.2.7. The recorder metadata confirms
 completion; the capture was transferred as raw UTF-8 bytes without newline
 normalization and its username was replaced with a same-length placeholder.
+
+## Native macOS command approval — 1.2.14 (2026-10-02)
+
+`antigravity-macos-1-2-14-command-approval.txt` captures an actual authenticated
+Claude Sonnet turn requesting `cat proof.txt` in a disposable folder. It is the
+authoritative restored main PTY grid at 159×69, with ANSI retained and identifying
+username, hostname and task-profile suffix scrubbed; the sidecar distinguishes
+this grid snapshot from raw PTY event bytes. Existing replay tests recognize the
+four-choice menu and return `hold`. No predicate was changed for this capture.
+
+The owning hook-server row was absent during this run. This proves the current
+CLI permission screen, not automatic Chat association, an actionable Chat card,
+or successful Allow/Deny delivery. Those require live verification after the
+separately owned POSIX hook transport successor lands.

@@ -2,15 +2,18 @@
 
 Antigravity uses the existing experimental Chat UI over its terminal and saved
 transcript. It is not a structured-session provider. The opt-in default-chat
-setting applies, and users can return to the terminal.
+setting applies when a real provider session is associated. New unassociated
+Antigravity sessions start in Terminal; users can switch views after association.
 
 ## Transcript contract
 
 The execution host reads
 `.gemini/antigravity-cli/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`.
 A hook-reported transcript path takes precedence. Existing WSL exact-path and
-host-isolation rules apply; a missing guest transcript must not fall back to a
-native host's same-named conversation. Direct SSH panes stay in the terminal:
+host-isolation rules apply; id-only WSL reads derive the distro from the owning
+hook server's canonical provider-session row and inspect only that guest.
+Ambiguous namespaces fail as read errors. A missing guest transcript must not
+fall back to a native host's same-named conversation. Direct SSH panes stay in the terminal:
 that connection has no native-chat transcript transport, and its absolute file
 path must never be opened on the client. Paired runtimes remain eligible because
 their own host reads the transcript. Direct SSH chat support remains unfinished.
@@ -70,6 +73,15 @@ with a reset about 120 hours away. To inspect the real transcript in Chat withou
 installing hooks, the actual session ID/path was manually bound after matching the
 submitted marker in that file. This is real read/send/toggle evidence, not proof
 of automatic hook delivery, successful generation, or live Allow/Deny actions.
+
+A subsequent isolated, authenticated Claude Sonnet turn reached an actual
+`cat proof.txt` command approval on macOS agy 1.2.14. Its sanitized authoritative
+159×69 main-buffer grid is recorded with a provenance sidecar and passes the
+existing hold rule. The canonical hook-server snapshot remained empty on that
+main build, so automatic Chat association and live Chat Allow/Deny remain
+unverified pending the separately owned POSIX hook transport fix. This turn
+proves real generation and the current permission layout, not completed tool
+execution or a Chat approval card.
 
 The committed Windows approval recordings came from the scoped predecessor and
 remain historical 1.2.7 evidence. Current Windows/WSL/Linux/paired execution and
