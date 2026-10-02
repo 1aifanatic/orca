@@ -50,4 +50,10 @@ describe('account command specs', () => {
 
     expect(descriptionColumn(help, 'agent')).toBe(descriptionColumn(help, 'json'))
   })
+
+  it('describes the supported providers for profile selection and removal', () => {
+    for (const command of ['account list', 'account select', 'account remove']) {
+      expect(formatCommandHelp(spec(command))).toContain('Account provider: opencode or devin')
+    }
+  })
 })
