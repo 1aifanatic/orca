@@ -11,7 +11,7 @@ import type { JournalReducerState } from './journal-reducer'
 import {
   notePersonTurnAccepted,
   placeHandedOverMessage,
-  placeRejectedQueuedMessage
+  placeRejectedMessage
 } from './journal-submission-fold'
 import type { JournalRow } from './journal-row-schema'
 
@@ -39,7 +39,7 @@ export function applyJournalDispatchRow(
     submission.handedOverAt = row.ts
     placeHandedOverMessage(state, submission, row)
   } else if (row.state === 'rejected') {
-    placeRejectedQueuedMessage(state, submission, row)
+    placeRejectedMessage(state, submission, row)
   }
   if (row.recovered) {
     submission.recovered = row.recovered
