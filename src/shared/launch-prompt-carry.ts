@@ -160,7 +160,7 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
       return pasteAfterReady()
     }
     // Why: an agent not measured reading the file would stop on an approval or refuse the path.
-    if (args.host.paired || !agentReadsLaunchFile(args.agent)) {
+    if (!args.host.takesLaunchFile || !agentReadsLaunchFile(args.agent)) {
       return lineOrPaste()
     }
     const pointer = carryInLaunchFile(text, false)

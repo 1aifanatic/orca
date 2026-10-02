@@ -84,7 +84,7 @@ const settings = {
 describe('buildDirectWorkItemAgentStartupPlan', () => {
   it('omits native-chat preferences when the new workspace opens in terminal mode', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
-      host: { paired: false, provesAgentInFront: true },
+      host: { paired: false, provesAgentInFront: true, takesLaunchFile: true },
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
@@ -99,7 +99,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
 
   it('applies native-chat preferences when the new workspace opens in chat', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
-      host: { paired: false, provesAgentInFront: true },
+      host: { paired: false, provesAgentInFront: true, takesLaunchFile: true },
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
@@ -148,7 +148,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 
   it('resolves the global Agents arguments when the launch names none', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
-      host: { paired: false, provesAgentInFront: true },
+      host: { paired: false, provesAgentInFront: true, takesLaunchFile: true },
       agent: 'codex',
       draftContent: 'Fix the broken checks',
       promptDelivery: 'draft',
@@ -162,7 +162,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 
   it('lets an explicit per-action value win over the global one', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
-      host: { paired: false, provesAgentInFront: true },
+      host: { paired: false, provesAgentInFront: true, takesLaunchFile: true },
       agent: 'codex',
       agentArgs: '--model gpt-5',
       draftContent: 'Fix the broken checks',
@@ -180,7 +180,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 describe('buildDirectWorkItemAgentStartupPlan submitted prompts', () => {
   const submit = (agent: 'claude' | 'gemini', draftContent: string, paired = false) =>
     buildDirectWorkItemAgentStartupPlan({
-      host: { paired, provesAgentInFront: true },
+      host: { paired, provesAgentInFront: true, takesLaunchFile: !paired },
       agent,
       draftContent,
       promptDelivery: 'submit-after-ready',

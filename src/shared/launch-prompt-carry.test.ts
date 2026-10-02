@@ -190,7 +190,7 @@ describe('a host that types the line raw', () => {
     // A local WSL pane: a Linux line, on a Windows host that cannot read what holds it.
     const extra = {
       platform: 'linux' as const,
-      host: { paired: false, provesAgentInFront: false }
+      host: { paired: false, provesAgentInFront: false, takesLaunchFile: true }
     }
     const prompt = 'fix the build\nthen run the tests'
     expect(plan('gemini', prompt, extra)?.carry).toBe('on-line')
@@ -203,8 +203,30 @@ describe('a host that types the line raw', () => {
     expect(plan('gemini', huge, button)?.carry).toBe('paste-after-ready')
   })
 
+  // Why: its relay may run the pane in WSL, where no launch file is written; main typed the line or
+  // pasted, so that is the fallback, never a refusal.
+  it('gives an SSH Windows host no launch file: the line, or the paste main used', () => {
+    const host = describeLaunchHost({
+      launchPlatform: 'win32',
+      isRemote: true,
+      hostPlatform: 'darwin',
+      paired: false
+    })
+    const prompt = 'fix the build\nthen run the tests'
+    const extra = { platform: 'win32' as const, shell: 'powershell' as const, host }
+    expect(plan('claude', prompt, extra)?.carry).toBe('on-line')
+    expect(plan('codex', 'y'.repeat(MAX_LINE_PROMPT_BYTES + 1), extra)?.carry).toBe('on-line')
+    expect(plan('claude', prompt, { ...extra, paste: 'once-agent-runs' })?.carry).toBe(
+      'paste-after-ready'
+    )
+    expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')
+  })
+
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {
-    const extra = { platform: 'linux' as const, host: { paired: true, provesAgentInFront: true } }
+    const extra = {
+      platform: 'linux' as const,
+      host: { paired: true, provesAgentInFront: true, takesLaunchFile: false }
+    }
     expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')
     expect(plan('claude', 'first line\nsecond line', extra)?.carry).toBe('paste-after-ready')
     expect(plan('claude', 'z'.repeat(20_000), extra)?.carry).toBe('paste-after-ready')

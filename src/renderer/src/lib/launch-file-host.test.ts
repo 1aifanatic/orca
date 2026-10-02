@@ -26,7 +26,7 @@ describe('the quick composer on a paired host', () => {
       platform: 'linux',
       shell: null,
       isRemote: false,
-      host: { paired: true, provesAgentInFront: true },
+      host: { paired: true, provesAgentInFront: true, takesLaunchFile: false },
       telemetrySource: 'sidebar'
     })
     expect(startup.backendStartup).toBeUndefined()

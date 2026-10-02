@@ -31,10 +31,13 @@ describe('a launch file sent to a terminal daemon', () => {
     expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(LAUNCH_FILE_DAEMON_PROTOCOL_VERSION)
   })
 
-  // Why: an older daemon drops `launchFile` and would type a line naming a file nobody wrote.
-  it('is refused, with the reason, by a daemon older than launch files', async () => {
+  // Why: only a session an older daemon still runs routes to it, so the spawn attaches; it must never
+  // type a line naming a file that daemon would not write, and it must not refuse the attach.
+  it('is withheld, with its command, from a daemon older than launch files', async () => {
     vi.spyOn(DaemonClient.prototype, 'ensureConnected').mockResolvedValue()
-    const request = vi.spyOn(DaemonClient.prototype, 'request')
+    const request = vi
+      .spyOn(DaemonClient.prototype, 'request')
+      .mockResolvedValue({ isNew: false, snapshot: null, pid: 1 })
     const legacy = new DaemonPtyAdapter({
       socketPath,
       tokenPath,
@@ -42,8 +45,8 @@ describe('a launch file sent to a terminal daemon', () => {
     })
     const { prompt, launchFile } = carryInLaunchFile('the whole task', false)
     try {
-      await expect(
-        legacy.spawn({
+      await legacy
+        .spawn({
           sessionId: 'legacy-launch',
           cols: 80,
           rows: 24,
@@ -51,12 +54,11 @@ describe('a launch file sent to a terminal daemon', () => {
           launchAgent: 'claude',
           launchFile
         })
-      ).rejects.toThrow(/launch_file_unavailable/)
-      expect(request).not.toHaveBeenCalledWith(
-        'createOrAttach',
-        expect.anything(),
-        expect.anything()
-      )
+        .catch(() => undefined)
+      const createCall = request.mock.calls.find(([method]) => method === 'createOrAttach')
+      expect(createCall?.[1]).toMatchObject({ sessionId: 'legacy-launch' })
+      expect(createCall?.[1]).not.toHaveProperty('launchFile')
+      expect(createCall?.[1]).toMatchObject({ command: undefined })
     } finally {
       legacy.dispose()
     }

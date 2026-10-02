@@ -25,14 +25,14 @@ describe('the one launch-prompt decision every launch path builds through', () =
       ...base,
       prompt: 'fix it',
       platform: 'linux',
-      host: { paired: true, provesAgentInFront: true }
+      host: { paired: true, provesAgentInFront: true, takesLaunchFile: false }
     })
     expect(short?.carry).toBe('on-line')
     const long = planLaunchForTest({
       ...base,
       prompt: 'fix it\nthen run the tests',
       platform: 'linux',
-      host: { paired: true, provesAgentInFront: true }
+      host: { paired: true, provesAgentInFront: true, takesLaunchFile: false }
     })
     expect(long?.carry).toBe('paste-after-ready')
     expect(long?.pasteAfterReady).toBe('fix it\nthen run the tests')

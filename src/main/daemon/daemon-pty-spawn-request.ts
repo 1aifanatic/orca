@@ -11,7 +11,6 @@ import {
   HISTORY_SEED_TRANSFER_PROTOCOL_VERSION,
   LAUNCH_FILE_DAEMON_PROTOCOL_VERSION
 } from './daemon-protocol-version'
-import { LaunchFileUnavailableError } from '../../shared/launch-file-writing'
 import type { ColdRestoreInfo } from './history-reader'
 import { NdjsonLineTooLongError } from './ndjson'
 import {
@@ -110,17 +109,11 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
       if (opts.signal?.aborted) {
         throw new Error('client_disconnected')
       }
-      // Why refuse: an older daemon (a same-id respawn routed to it) would drop the file and type
-      // a line naming it. The refusal reaches the user with the prompt to copy. Temporary: main
-      // pastes here, but a paste needs a second, prompt-less plan and a guarded paste at every
-      // spawn site; only sessions an older daemon still holds route here, and they end when closed.
-      if (
+      // Why no command: only a session an older daemon still runs routes here, so this attaches and
+      // types nothing; were it gone, a line naming a file that daemon never writes must not run.
+      const launches =
         !context.attachOnly &&
-        opts.launchFile &&
-        this.protocolVersion < LAUNCH_FILE_DAEMON_PROTOCOL_VERSION
-      ) {
-        throw new LaunchFileUnavailableError("this terminal's daemon is from an older Orca")
-      }
+        !(opts.launchFile && this.protocolVersion < LAUNCH_FILE_DAEMON_PROTOCOL_VERSION)
       const payload = {
         sessionId: context.sessionId,
         cols: context.effectiveCols,
@@ -128,9 +121,9 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
         cwd: context.attachOnly ? undefined : context.effectiveCwd,
         env: context.attachOnly ? undefined : opts.env,
         envToDelete: context.attachOnly ? undefined : opts.envToDelete,
-        command: context.attachOnly ? undefined : opts.command,
-        startupCommandDelivery: context.attachOnly ? undefined : opts.startupCommandDelivery,
-        ...(!context.attachOnly && opts.launchFile ? { launchFile: opts.launchFile } : {}),
+        command: launches ? opts.command : undefined,
+        startupCommandDelivery: launches ? opts.startupCommandDelivery : undefined,
+        ...(launches && opts.launchFile ? { launchFile: opts.launchFile } : {}),
         ...(!context.attachOnly && opts.wslLaunchDirectory
           ? { wslLaunchDirectory: opts.wslLaunchDirectory }
           : {}),

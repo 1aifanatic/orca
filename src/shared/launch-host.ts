@@ -6,6 +6,10 @@ export type LaunchHost = {
   /** Whether the host can prove the launched agent holds its terminal before a paste
    *  (`launched-agent-foreground`). A Windows host cannot, so #24257's guarded paste is refused. */
   provesAgentInFront: boolean
+  /** Whether the host writes a launch file the agent can read. A paired Orca may be older, and an
+   *  SSH Windows host's relay may run its panes in WSL (its OpenSSH default shell, which this client
+   *  cannot see), where it writes none. Such a host gets the line or the paste instead. */
+  takesLaunchFile: boolean
 }
 
 /**
@@ -23,6 +27,7 @@ export function describeLaunchHost(args: {
   const runsElsewhere = args.isRemote || args.paired
   return {
     paired: args.paired,
-    provesAgentInFront: (runsElsewhere ? args.launchPlatform : args.hostPlatform) !== 'win32'
+    provesAgentInFront: (runsElsewhere ? args.launchPlatform : args.hostPlatform) !== 'win32',
+    takesLaunchFile: !args.paired && !(args.isRemote && args.launchPlatform === 'win32')
   }
 }
