@@ -5,7 +5,6 @@ import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-e
 import type { SshTarget } from '../../../../shared/ssh-types'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { translate } from '@/i18n/i18n'
-import { useAppStore } from '@/store'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -13,7 +12,6 @@ import { ManagedServerRow } from './ManagedServerRow'
 import { RuntimeSshAccessControl } from './RuntimeSshAccessControl'
 import { SshTargetSelect } from './SshTargetSelect'
 import { migrationPhaseLabel } from './managed-server-copy'
-import { isManagedServerCapableHost } from './managed-server-hosts'
 
 type ManagedServersSectionProps = {
   environments: PublicKnownRuntimeEnvironment[]
@@ -26,7 +24,6 @@ export function ManagedServersSection({
 }: ManagedServersSectionProps): React.JSX.Element | null {
   const api = window.api.runtimeEnvironments.managedOrcad
   const mountedRef = useMountedRef()
-  const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
   const [targets, setTargets] = useState<SshTarget[]>([])
   const [pending, setPending] = useState<OrcadManagedPendingMigrationRow[]>([])
   const [name, setName] = useState('')
@@ -54,10 +51,6 @@ export function ManagedServersSection({
   if (!api) {
     return null
   }
-  // Why: Windows SSH hosts cannot run a managed server yet, so they are not offered.
-  const eligible = targets.filter((target) =>
-    isManagedServerCapableHost(sshConnectionStates.get(target.id))
-  )
   const managed = environments.filter((environment) => environment.orcadDeployment)
   const paired = environments.filter((environment) => !environment.orcadDeployment)
 
@@ -115,7 +108,7 @@ export function ManagedServersSection({
             {translate('auto.components.settings.managedServers.deploy.host', 'SSH host')}
           </Label>
           <SshTargetSelect
-            targets={eligible}
+            targets={targets}
             value={targetId}
             onChange={setTargetId}
             placeholder={translate(
@@ -182,7 +175,7 @@ export function ManagedServersSection({
                 key={environment.id}
                 api={api}
                 environment={environment}
-                targets={eligible}
+                targets={targets}
                 onChanged={onChanged}
               />
             ))}

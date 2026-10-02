@@ -11,7 +11,7 @@ import {
   redactRuntimeEnvironment,
   createEnvironmentFromPairingOffer
 } from '../../../../shared/runtime-environments'
-import { canMoveHostToManagedServer, isManagedServerCapableHost } from './managed-server-hosts'
+import { canMoveHostToManagedServer } from './managed-server-hosts'
 
 vi.mock('../ui/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
@@ -151,13 +151,14 @@ describe('Move to managed server', () => {
 })
 
 describe('managed server host eligibility', () => {
-  it('hides Windows hosts and only offers a move on a connected macOS or Linux host', () => {
+  it('offers a move on any connected host that reported its platform, Windows included', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: eligibility reads only status and remotePlatform.
-    const state = (status: string, remotePlatform: string) => ({ status, remotePlatform }) as never
-    expect(isManagedServerCapableHost(state('connected', 'win32'))).toBe(false)
-    expect(isManagedServerCapableHost(undefined)).toBe(true)
+    const state = (status: string, remotePlatform?: string) => ({ status, remotePlatform }) as never
     expect(canMoveHostToManagedServer(state('connected', 'linux'))).toBe(true)
-    expect(canMoveHostToManagedServer(state('connected', 'win32'))).toBe(false)
-    expect(canMoveHostToManagedServer(state('disconnected', 'linux'))).toBe(false)
+    expect(canMoveHostToManagedServer(state('connected', 'darwin'))).toBe(true)
+    expect(canMoveHostToManagedServer(state('connected', 'win32'))).toBe(true)
+    expect(canMoveHostToManagedServer(state('disconnected', 'win32'))).toBe(false)
+    expect(canMoveHostToManagedServer(state('connected'))).toBe(false)
+    expect(canMoveHostToManagedServer(undefined)).toBe(false)
   })
 })
