@@ -1,3 +1,4 @@
+import { isMobileFolderNativeChatReadable } from './mobile-native-chat-eligibility'
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import {
@@ -181,4 +182,18 @@ describe('resolveMobileNativeChat', () => {
     expect(canShowMobileNativeChat({ type: 'terminal', launchAgent: 'claude' })).toBe(true)
     expect(canShowMobileNativeChat(null)).toBe(false)
   })
+})
+
+it('resolves folder readability from the serving host catalog and rejects Model-A SSH', () => {
+  const read = (connectionId: unknown) =>
+    isMobileFolderNativeChatReadable(
+      {
+        folderWorkspaces: [{ id: 'one', connectionId }]
+      },
+      'folder:one'
+    )
+  expect(read(null)).toBe(true)
+  expect(read('ssh:box')).toBe(false)
+  expect(isMobileFolderNativeChatReadable({ folderWorkspaces: [] }, 'folder:one')).toBe(false)
+  expect(isMobileFolderNativeChatReadable(null, 'folder:one')).toBe(false)
 })
