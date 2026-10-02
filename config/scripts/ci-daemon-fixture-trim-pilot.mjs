@@ -35,6 +35,8 @@ const report = { base, node: process.version, daemons: [], images: {}, samples: 
 const save = () => writeFileSync(join(output, 'results.json'), JSON.stringify(report, null, 2))
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
+const containerRun = ['run', '--rm', '--network=none']
+const imageBuild = ['build', '--progress=plain', '--platform', 'linux/amd64']
 
 function run(program, args, label, { allowFailure = false, timeoutMs = 600_000 } = {}) {
   const started = performance.now()
@@ -214,21 +216,12 @@ function dependencyPaths(text) {
 function inventory(docker, image, name) {
   const first = JSON.parse(
     docker(
-      ['run', '--rm', '--network=none', '--entrypoint', 'node', image, '-e', inventorySource],
+      [...containerRun, '--entrypoint', 'node', image, '-e', inventorySource],
       `${name}-payload`
     ).stdout
   )
   const libraries = docker(
-    [
-      'run',
-      '--rm',
-      '--network=none',
-      '--entrypoint',
-      'ldd',
-      image,
-      '/usr/local/bin/node',
-      first.addon
-    ],
+    [...containerRun, '--entrypoint', 'ldd', image, '/usr/local/bin/node', first.addon],
     `${name}-ldd`
   ).stdout
   const paths = dependencyPaths(libraries)
@@ -238,9 +231,7 @@ function inventory(docker, image, name) {
   const full = JSON.parse(
     docker(
       [
-        'run',
-        '--rm',
-        '--network=none',
+        ...containerRun,
         '--entrypoint',
         'node',
         image,
@@ -258,6 +249,55 @@ function inventory(docker, image, name) {
   full.libraryPaths = paths
   writeFileSync(join(output, `${name}-inventory.json`), JSON.stringify(full, null, 2))
   return full
+}
+
+function assertRuntimeParity(baseline, candidate) {
+  const removable = ['/usr/local/lib/python3.11', '/usr/local/lib/python3.11/dist-packages']
+  const candidatePaths = new Set(candidate.payload.map((entry) => entry.path))
+  const removed = baseline.payload.filter((entry) => !candidatePaths.has(entry.path))
+  for (const entry of removed) {
+    if (
+      entry.type !== 'directory' ||
+      !removable.includes(entry.path) ||
+      baseline.payload.some(
+        (child) =>
+          child.path.startsWith(`${entry.path}/`) &&
+          (child.type !== 'directory' || !removable.includes(child.path))
+      )
+    ) {
+      throw new Error(
+        `Runtime payload removal is not an empty Python build-tool directory: ${entry.path}`
+      )
+    }
+  }
+  const expected = {
+    ...baseline,
+    payload: baseline.payload.filter((entry) => !removed.includes(entry))
+  }
+  if (JSON.stringify(expected) !== JSON.stringify(candidate)) {
+    throw new Error('Node, common payload bytes/modes/links or runtime dependencies changed.')
+  }
+  return removed.map((entry) => entry.path)
+}
+
+function comparatorControls(baseline, candidate) {
+  const bytes = structuredClone(candidate)
+  bytes.payload.find((entry) => entry.type === 'file').sha256 = 'deliberate-byte-change'
+  const mode = structuredClone(candidate)
+  mode.payload.find((entry) => entry.type === 'directory').mode ^= 8
+  return Object.fromEntries(
+    [
+      ['byte-change', bytes],
+      ['directory-mode-change', mode]
+    ].map(([name, changed]) => {
+      try {
+        assertRuntimeParity(baseline, changed)
+      } catch {
+        return [name, 'rejected']
+      }
+      throw new Error(`Runtime comparator accepted ${name}.`)
+    })
+  )
 }
 
 function oracle(docker, image, label, leak = false) {
@@ -373,11 +413,8 @@ try {
       const image = `orca-daemon-trim-${name}:pilot-${process.pid}`
       const buildResult = docker(
         [
-          'build',
-          '--progress=plain',
+          ...imageBuild,
           '--no-cache',
-          '--platform',
-          'linux/amd64',
           '--build-arg',
           'BUILDKIT_INLINE_CACHE=1',
           '--tag',
@@ -389,9 +426,7 @@ try {
       inventories[name] = inventory(docker, image, name)
       docker(
         [
-          'run',
-          '--rm',
-          '--network=none',
+          ...containerRun,
           '--entrypoint',
           'dpkg-query',
           image,
@@ -403,9 +438,7 @@ try {
       if (name === 'candidate') {
         docker(
           [
-            'run',
-            '--rm',
-            '--network=none',
+            ...containerRun,
             '--entrypoint',
             '/bin/sh',
             image,
@@ -455,9 +488,8 @@ try {
       }
       save()
     }
-    if (JSON.stringify(inventories.baseline) !== JSON.stringify(inventories.candidate)) {
-      throw new Error('Node, full /usr/local payload or runtime dependency inventory changed.')
-    }
+    report.allowedRemovedPaths = assertRuntimeParity(inventories.baseline, inventories.candidate)
+    report.comparatorControls = comparatorControls(inventories.baseline, inventories.candidate)
     report.runtimeParity = true
   }
   for (let pair = 1; pair <= 3; pair++) {
@@ -493,10 +525,7 @@ try {
         }
         const built = docker(
           [
-            'build',
-            '--progress=plain',
-            '--platform',
-            'linux/amd64',
+            ...imageBuild,
             '--cache-from',
             image,
             '--tag',

@@ -15,7 +15,8 @@ const { values } = parseArgs({
   options: {
     output: { type: 'string' },
     'prepare-only': { type: 'boolean', default: false },
-    'controls-only': { type: 'boolean', default: false }
+    'controls-only': { type: 'boolean', default: false },
+    'candidate-first': { type: 'boolean', default: false }
   }
 })
 assert(values.output, '--output is required')
@@ -464,7 +465,8 @@ if (values['prepare-only']) {
     if (!values['controls-only']) {
       let reference
       for (let pair = 1; pair <= 3; pair++) {
-        for (const arm of pair % 2 ? ['baseline', 'candidate'] : ['candidate', 'baseline']) {
+        const candidateFirst = values['candidate-first'] === (pair % 2 === 1)
+        for (const arm of candidateFirst ? ['candidate', 'baseline'] : ['baseline', 'candidate']) {
           const run = invoke(
             prepare(`timed-${pair}-${arm}`, arm === 'baseline' ? baseline : candidate)
           )
@@ -523,6 +525,9 @@ if (values['prepare-only']) {
           node: process.version,
           platform: process.platform,
           arch: process.arch,
+          firstArm: values['candidate-first'] ? 'candidate' : 'baseline',
+          candidateFirst: values['candidate-first'],
+          order: runs.map((run) => run.arm),
           inputHash,
           frozenSha256,
           candidateSha256: sha256(candidate),
