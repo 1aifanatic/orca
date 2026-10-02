@@ -9,7 +9,7 @@ unit-selection evidence, headless runtime qualification, review cancellation and
 main pushes. Unrelated pushes skip qualification; relevant pushes still run all
 six persistence targets and five Linux compatibility jobs. Explicit Windows or
 Mac PR paths select both architectures plus a Linux smoke, while shared
-execution/storage changes, native inputs, manifests, and incomplete evidence
+execution/storage changes, SSH/provider/relay inputs, native inputs, manifests, and incomplete evidence
 retain the full matrix. Main pushes use the same validated exact Windows slot
 cache as PRs; nightly and release builds still compile freshly.
 
@@ -21,6 +21,18 @@ Draft PRs have no server verdict, so their detector is also skipped. The existin
 `ready_for_review` event performs detection and qualification once the PR is ready.
 This removes the checkout and dependency installation for a result whose platform
 jobs were already ineligible.
+
+The glibc 2.28 prerequisite step checks all five tools before installing anything.
+The pinned ARM image already supplies them, including Git 2.55.0 built under
+`/usr/local/bin`; installing the Git RPM does not change the Git on PATH. A
+missing-tool fallback still installs the original package list and disables EPEL
+for that one command. In
+the baseline x64 log, EPEL metadata took 4 minutes 50 seconds to download although
+every installed package came from AlmaLinux BaseOS or AppStream. The package list,
+compiler image, libc floor, native smoke, and persistence tests stay unchanged.
+The [DNF command reference](https://dnf.readthedocs.io/en/stable/command_ref.html)
+defines `--disablerepo` as a temporary command-level filter, so later commands
+retain the image's repository configuration.
 
 A [completed main run](https://github.com/stablyai/orca/actions/runs/36962172614)
 used 42 aggregate runner-minutes across 11 test jobs. The

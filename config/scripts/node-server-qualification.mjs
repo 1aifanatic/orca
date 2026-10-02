@@ -14,15 +14,14 @@ const BUILD_PREFIXES = [
   '.github/actions/install-node-dependencies/',
   '.github/actions/prepare-native-runtime/'
 ]
+// A remote target's OS does not identify the client platform that builds its commands.
+const CROSS_HOST_PREFIXES = ['src/main/ssh/', 'src/main/providers/', 'src/relay/']
 const PLATFORM_PREFIXES = [
   'src/main/persistence/',
   'src/main/sqlite/',
   'src/main/orcad/',
-  'src/main/providers/',
   'src/main/daemon/',
-  'src/main/ssh/',
   'src/main/wsl/',
-  'src/relay/',
   'src/shared/child-process/'
 ]
 
@@ -41,6 +40,9 @@ export function nodeServerQualification(changedFiles, scope, { fullQualification
     if (
       !file.includes('/') ||
       BUILD_PREFIXES.some((prefix) => file.startsWith(prefix)) ||
+      CROSS_HOST_PREFIXES.some((prefix) => file.startsWith(prefix)) ||
+      (/(?:^|[/.-])(?:remote|ssh)(?:[/.-]|$)/i.test(file) &&
+        PLATFORM_FAMILIES.some(({ pattern }) => pattern.test(file))) ||
       file === 'src/shared/node-runtime-pin.ts' ||
       file === '.github/workflows/node-server-tests.yml' ||
       file.startsWith('config/scripts/node-server-') ||
