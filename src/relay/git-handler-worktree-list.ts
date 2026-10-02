@@ -1,3 +1,4 @@
+import { throwIfSignalAborted, waitForPromiseWithSignal } from '../shared/abort-signal-reason'
 import { annotateWorktreeLocksFromAdmin } from '../shared/git-worktree-admin'
 import { expandTilde } from './context'
 import { stat } from 'node:fs/promises'
@@ -46,13 +47,15 @@ const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
  *  harmless backstop. The relay owns the filesystem, so a plain stat is
  *  authoritative. */
 export async function annotatePrunableWorktreesByExistence(
-  worktrees: GitWorktreeInfo[]
+  worktrees: GitWorktreeInfo[],
+  signal?: AbortSignal
 ): Promise<GitWorktreeInfo[]> {
   const annotated = [...worktrees]
   let nextIndex = 0
 
   async function probeNext(): Promise<void> {
     while (nextIndex < worktrees.length) {
+      throwIfSignalAborted(signal)
       const index = nextIndex
       nextIndex += 1
       const worktree = worktrees[index]
@@ -81,7 +84,11 @@ export async function annotatePrunableWorktreesByExistence(
   }
 
   const workerCount = Math.min(PRUNABLE_EXISTENCE_PROBE_CONCURRENCY, worktrees.length)
-  await Promise.all(Array.from({ length: workerCount }, () => probeNext()))
+  await waitForPromiseWithSignal(
+    Promise.all(Array.from({ length: workerCount }, () => probeNext())),
+    signal
+  )
+  throwIfSignalAborted(signal)
   return annotated
 }
 
