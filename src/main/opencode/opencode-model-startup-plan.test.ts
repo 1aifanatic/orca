@@ -66,6 +66,16 @@ describe('execution-host OpenCode model startup', () => {
       })
   })
 
+  it('refuses unsupported effort preferences before probing or dropping them', async () => {
+    const options = scope()
+    options.inputs.sessionOptions = { model: preferred, effort: 'high' }
+    await expect(buildExecutionHostAgentStartupPlan(options)).rejects.toMatchObject({
+      code: 'capability_unsupported'
+    })
+    expect(probeOpenCodeLaunchModelContext).not.toHaveBeenCalled()
+    expect(probeOpenCodeLaunchCapabilities).not.toHaveBeenCalled()
+  })
+
   it('launches current v2 in isolation and keeps one-time model preferences out of resume state', async () => {
     const options = scope()
     const plan = await buildExecutionHostAgentStartupPlan(options)
