@@ -43,7 +43,18 @@ function snapshot(readOnly?: 'written-by-newer-orca'): AgentSessionSubscribeEven
       }
     ],
     removedItemIds: [],
-    submissions: [],
+    submissions: [
+      {
+        clientMessageId: 'send-1',
+        fence: 3,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'pending',
+        providerItemId: null,
+        reason: null,
+        submittedAt: 1,
+        resolvedAt: null
+      }
+    ],
     window: { oldest: null, newest: null, nextCursor: { epoch: 'epoch-1', sequence: 0 } },
     liveCursor: { epoch: 'epoch-1', sequence: 0 },
     hasOlder: false,

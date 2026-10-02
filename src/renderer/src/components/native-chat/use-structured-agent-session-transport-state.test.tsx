@@ -8,7 +8,8 @@ import {
 } from '../../../../shared/structured-agent-session-reducer'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
 
-/** A chat whose turn opened and never settled, as a read-only host leaves it. */
+/** A chat whose turn opened and never settled, and a send never answered, as a read-only host
+ *  leaves them. */
 function openTurn(readOnly?: AgentSessionReadOnlyReason): StructuredAgentSessionState {
   return {
     ...EMPTY_STRUCTURED_AGENT_SESSION,
@@ -22,6 +23,19 @@ function openTurn(readOnly?: AgentSessionReadOnlyReason): StructuredAgentSession
         sequence: 1,
         observedAt: 1,
         body: { kind: 'turn', turnId: 'turn-1', state: 'running' }
+      }
+    ],
+    // A send the provider never answered: on a writable chat it alone reads as working.
+    submissions: [
+      {
+        clientMessageId: 'send-1',
+        fence: 1,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'pending',
+        providerItemId: null,
+        reason: null,
+        submittedAt: 1,
+        resolvedAt: null
       }
     ],
     backgroundTasks: { state: 'monitoring', tasks: [], supportsTaskStop: true },
