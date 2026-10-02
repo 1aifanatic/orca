@@ -45,8 +45,8 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:\\Users\\me\\AppData\\Roam
 vi.mock('../repo-worktrees', () => ({ listRepoWorktreeGraph: vi.fn(async () => []) }))
 
 import {
-  resolveDocumentFolderPath,
-  resolveLocalFileRequestPath
+  resolveLocalFileRequestPath,
+  resolveLocalRequestPath
 } from './local-file-access-resolution'
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members.
@@ -59,6 +59,8 @@ const store = {
   getFolderWorkspaces: () => [],
   getSettings: () => ({ nestWorkspaces: false, workspaceDir: '' })
 } as unknown as Store
+
+const besideTodo = { kind: 'document-folder', documentPath: 'C:\\Users\\me\\notes\\todo.md' }
 
 const networkTargets = [
   '\\\\attacker.example\\share\\x.png',
@@ -179,11 +181,9 @@ describe('Windows reserved device names in automatic image loads', () => {
   it.each(deviceTargets)(
     'refuses %s as a new file beside an opened document without touching it',
     async (target) => {
-      await expect(
-        resolveDocumentFolderPath(target, 'C:\\Users\\me\\notes\\todo.md', {
-          preserveLeaf: true
-        })
-      ).rejects.toThrow('Access denied')
+      await expect(resolveLocalRequestPath(target, besideTodo, store, 'rename-to')).rejects.toThrow(
+        'Access denied'
+      )
       expect(fsCalls).toEqual([])
     }
   )
@@ -192,7 +192,7 @@ describe('Windows reserved device names in automatic image loads', () => {
     'refuses %s outside an opened document folder without touching it',
     async (target) => {
       await expect(
-        resolveDocumentFolderPath(target, 'C:\\Users\\me\\notes\\todo.md')
+        resolveLocalRequestPath(target, besideTodo, store, 'import-into')
       ).rejects.toThrow('Access denied')
       expect(fsCalls).toEqual([])
     }
@@ -244,6 +244,13 @@ describe('automatic image loads and dot segments that resolve to a device name',
     }
   )
 
+  it('refuses a device name inside a project for automatic loads without touching it', async () => {
+    await expect(
+      resolveLocalFileRequestPath('C:\\repo\\NUL.png', CHAT_IMAGE, store)
+    ).rejects.toThrow('Access denied')
+    expect(fsCalls).toEqual([])
+  })
+
   it('refuses a project image whose real target is a device name', async () => {
     await expect(
       resolveLocalFileRequestPath(
@@ -253,6 +260,32 @@ describe('automatic image loads and dot segments that resolve to a device name',
       )
     ).rejects.toThrow('Access denied')
   })
+})
+
+describe('the default check runs first for every declared kind', () => {
+  beforeEach(() => {
+    fsCalls.length = 0
+  })
+
+  it.each([
+    ['user-file', 'read', { kind: 'user-file' }],
+    [
+      'document-resource',
+      'read',
+      { kind: 'document-resource', documentPath: 'C:\\repo\\README.md' }
+    ],
+    ['chat-image', 'read', CHAT_IMAGE],
+    ['document-folder', 'rename-to', besideTodo],
+    ['document-folder', 'import-into', besideTodo]
+  ] as const)(
+    'never touches a share outside every project while resolving %s %s',
+    async (_kind, operation, access) => {
+      for (const target of networkTargets) {
+        await resolveLocalRequestPath(target, access, store, operation).catch(() => undefined)
+      }
+      expect(fsCalls.filter((call) => call.includes('attacker'))).toEqual([])
+    }
+  )
 })
 
 describe('automatic image loads on a network share', () => {

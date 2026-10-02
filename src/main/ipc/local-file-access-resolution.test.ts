@@ -8,7 +8,9 @@ import { resolveAuthorizedPath } from './filesystem-auth'
 import {
   resolveDesktopAuthorizedPath,
   resolveLocalFileRequestPath,
-  resolveLocalWriteRequestPath
+  resolveLocalRequestPath,
+  resolveLocalWriteRequestPath,
+  type LocalRequestOperation
 } from './local-file-access-resolution'
 import { readLocalFileContent } from './filesystem/filesystem-file-content-inspection'
 import {
@@ -121,6 +123,76 @@ describe('user-file requests', () => {
 
     await expect(readLocalFileContent(filePath)).rejects.toThrow(NOT_A_REGULAR_FILE_MESSAGE)
   })
+})
+
+describe('a declared kind never refuses what the default project check allows', () => {
+  const outsideDocument = () => join(outside, 'doc-folder', 'note.md')
+  const declaredKinds = (): [string, unknown, LocalRequestOperation][] => [
+    ['user-file read', USER_FILE, 'read'],
+    ['user-file write', USER_FILE, 'write'],
+    ['document-resource read', documentResource(outsideDocument()), 'read'],
+    ['chat-image read', { kind: 'chat-image' }, 'read'],
+    [
+      'document-folder rename-from',
+      { kind: 'document-folder', documentPath: outsideDocument() },
+      'rename-from'
+    ],
+    [
+      'document-folder rename-to',
+      { kind: 'document-folder', documentPath: outsideDocument() },
+      'rename-to'
+    ],
+    [
+      'document-folder import-into',
+      { kind: 'document-folder', documentPath: outsideDocument() },
+      'import-into'
+    ]
+  ]
+
+  beforeEach(async () => {
+    await mkdir(join(project, 'src'), { recursive: true })
+    await mkdir(join(outside, 'doc-folder'), { recursive: true })
+    await writeFile(join(project, 'src', 'notes.txt'), 'text')
+  })
+
+  it('accepts every in-project path the default accepts, for every kind and operation', async () => {
+    const store = makeStore({ repoPaths: [project] })
+    const targets = [
+      join(project, 'src', 'notes.txt'),
+      join(project, 'src'),
+      join(project, 'src', 'new-name.txt'),
+      join(userData.path, 'floating-workspace', 'scratch.md')
+    ]
+    for (const [label, access, operation] of declaredKinds()) {
+      for (const target of targets) {
+        const byDefault = await resolveLocalRequestPath(target, undefined, store, operation)
+        await expect(
+          resolveLocalRequestPath(target, access, store, operation),
+          `${label} ${target}`
+        ).resolves.toBe(byDefault)
+      }
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'accepts an in-project link for every kind exactly as the default does',
+    async () => {
+      await symlink(join(project, 'src', 'notes.txt'), join(project, 'notes-link'))
+      const store = makeStore({ repoPaths: [project] })
+      for (const [label, access, operation] of declaredKinds()) {
+        const byDefault = await resolveLocalRequestPath(
+          join(project, 'notes-link'),
+          undefined,
+          store,
+          operation
+        )
+        await expect(
+          resolveLocalRequestPath(join(project, 'notes-link'), access, store, operation),
+          label
+        ).resolves.toBe(byDefault)
+      }
+    }
+  )
 })
 
 describe('requests with no declared access (roots only)', () => {

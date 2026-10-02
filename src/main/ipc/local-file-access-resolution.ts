@@ -51,15 +51,6 @@ export async function resolveUserNamedRegularFile(targetPath: string): Promise<s
   return filePath
 }
 
-async function isInsideDesktopRoots(documentPath: string, store: Store): Promise<boolean> {
-  try {
-    await resolveDesktopAuthorizedPath(documentPath, store)
-    return true
-  } catch {
-    return false
-  }
-}
-
 // Why every previewable type but PDF: chat shows these in an <img>, which renders no PDF.
 function isChatImage(filePath: string): boolean {
   const extension = extname(filePath).toLowerCase()
@@ -72,15 +63,14 @@ function isRefusedAutomaticLoadPath(filePath: string): boolean {
 }
 
 /**
- * A file a document references (an image, typically): limited to every project root when the
- * document is in one, else to the document's own folder, like the common markdown-preview rule.
- * A target outside that scope, or a network share outside every project, is refused by its path
- * text before any filesystem call; a symlink inside the scope is still resolved by the scope check.
+ * A file a document references (an image, typically) beyond what the default check allows: one in
+ * the document's own folder, like the common markdown-preview rule. A target outside the folder,
+ * or a network share, is refused by its path text before any filesystem call; a symlink inside the
+ * folder is still resolved by the folder check.
  */
-export async function resolveDocumentResourcePath(
+async function resolveDocumentResourcePath(
   targetPath: string,
-  documentPath: string,
-  store: Store
+  documentPath: string
 ): Promise<string> {
   if (
     typeof targetPath !== 'string' ||
@@ -94,21 +84,13 @@ export async function resolveDocumentResourcePath(
   if (isRefusedAutomaticLoadPath(resolvedTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  let realTarget: string
-  if (await isInsideDesktopRoots(documentPath, store)) {
-    realTarget = await resolveDesktopAuthorizedPath(resolvedTarget, store)
-  } else {
-    const documentFolder = dirname(resolve(documentPath))
-    if (
-      isNetworkSharePath(resolvedTarget) ||
-      !isDescendantOrEqual(resolvedTarget, documentFolder)
-    ) {
-      throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-    }
-    realTarget = resolve(await realpath(resolvedTarget))
-    if (!isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))) {
-      throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-    }
+  const documentFolder = dirname(resolve(documentPath))
+  if (isNetworkSharePath(resolvedTarget) || !isDescendantOrEqual(resolvedTarget, documentFolder)) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  const realTarget = resolve(await realpath(resolvedTarget))
+  if (!isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   if (isRefusedAutomaticLoadPath(realTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
@@ -119,10 +101,10 @@ export async function resolveDocumentResourcePath(
 /**
  * An image shown in a chat transcript, whoever's turn named it: any absolute local image file,
  * typed by its real target. Transcripts load as they scroll into view, so a network share is read
- * only inside a project the user added from it; anywhere else its path text, like a device path,
- * is refused before any filesystem call.
+ * only inside a project the user added from it (the default check); anywhere else its path text,
+ * like a device path, is refused before any filesystem call.
  */
-export async function resolveChatImagePath(targetPath: string, store: Store): Promise<string> {
+async function resolveChatImagePath(targetPath: string, store: Store): Promise<string> {
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
@@ -130,10 +112,10 @@ export async function resolveChatImagePath(targetPath: string, store: Store): Pr
   if (isRefusedAutomaticLoadPath(resolvedTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  // Why the roots check for a share: it refuses by path text first, so an outside share is never contacted.
-  const realTarget = isNetworkSharePath(resolvedTarget)
-    ? await resolveDesktopAuthorizedPath(resolvedTarget, store)
-    : resolve(await realpath(resolvedTarget))
+  if (isNetworkSharePath(resolvedTarget)) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  const realTarget = resolve(await realpath(resolvedTarget))
   if (isRefusedAutomaticLoadPath(realTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
@@ -152,7 +134,7 @@ export async function resolveChatImagePath(targetPath: string, store: Store): Pr
  * A write beside a document the user opened: the target must stay inside the document's own
  * folder, symlinks included. With `preserveLeaf`, a rename acts on the named entry, not its target.
  */
-export async function resolveDocumentFolderPath(
+async function resolveDocumentFolderPath(
   targetPath: string,
   documentPath: string,
   { preserveLeaf = false }: { preserveLeaf?: boolean } = {}
@@ -185,10 +167,15 @@ export async function resolveDocumentFolderPath(
   return realTarget
 }
 
-/** The document a write is scoped to, when the request declares one. */
-export function documentFolderAccessPath(access: unknown): string | undefined {
-  const fileAccess = parseLocalFileAccess(access)
-  return fileAccess?.kind === 'document-folder' ? fileAccess.documentPath : undefined
+// Why only the document itself: a write beside it may rename that file, never a neighbour.
+async function resolveDocumentRenameSource(
+  targetPath: string,
+  documentPath: string
+): Promise<string> {
+  if (typeof targetPath !== 'string' || resolve(targetPath) !== resolve(documentPath)) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  return resolveDocumentFolderPath(targetPath, documentPath, { preserveLeaf: true })
 }
 
 // Why parse: IPC input is untyped, and an unrecognised access kind must fall back to roots only.
@@ -219,32 +206,95 @@ function parseLocalFileAccess(access: unknown): LocalFileAccess | undefined {
   return undefined
 }
 
-/** Resolves a desktop read/stat request by its declared file access; none means roots only. */
-export async function resolveLocalFileRequestPath(
-  targetPath: string,
-  access: unknown,
+/** What a desktop request does with its path; each declared kind adds access to only some. */
+export type LocalRequestOperation = 'read' | 'write' | 'rename-from' | 'rename-to' | 'import-into'
+
+type KindRule = (targetPath: string) => Promise<string>
+
+function declaredKindRule(
+  fileAccess: LocalFileAccess,
+  operation: LocalRequestOperation,
   store: Store
-): Promise<string> {
-  const fileAccess = parseLocalFileAccess(access)
-  if (fileAccess?.kind === 'user-file') {
-    return resolveUserNamedLocalPath(targetPath)
+): KindRule | undefined {
+  switch (fileAccess.kind) {
+    case 'user-file':
+      return operation === 'read' || operation === 'write'
+        ? async (targetPath) => resolveUserNamedLocalPath(targetPath)
+        : undefined
+    case 'document-resource':
+      return operation === 'read'
+        ? (targetPath) => resolveDocumentResourcePath(targetPath, fileAccess.documentPath)
+        : undefined
+    case 'chat-image':
+      return operation === 'read'
+        ? (targetPath) => resolveChatImagePath(targetPath, store)
+        : undefined
+    case 'document-folder':
+      if (operation === 'rename-from') {
+        return (targetPath) => resolveDocumentRenameSource(targetPath, fileAccess.documentPath)
+      }
+      if (operation === 'rename-to' || operation === 'import-into') {
+        return (targetPath) =>
+          resolveDocumentFolderPath(targetPath, fileAccess.documentPath, {
+            preserveLeaf: operation === 'rename-to'
+          })
+      }
+      return undefined
   }
-  if (fileAccess?.kind === 'document-resource') {
-    return resolveDocumentResourcePath(targetPath, fileAccess.documentPath, store)
-  }
-  if (fileAccess?.kind === 'chat-image') {
-    return resolveChatImagePath(targetPath, store)
-  }
-  return resolveDesktopAuthorizedPath(targetPath, store)
 }
 
-/** Writes accept only user-file access: saving the open file the user named. */
-export async function resolveLocalWriteRequestPath(
+/**
+ * The one resolver for desktop local file requests. A declared kind never refuses what the default
+ * project check allows; its own rule only adds paths outside every project.
+ */
+export async function resolveLocalRequestPath(
+  targetPath: string,
+  access: unknown,
+  store: Store,
+  operation: LocalRequestOperation
+): Promise<string> {
+  // Why the leaf is kept: a rename acts on a link itself, never on what it points to.
+  const options = { preserveSymlink: operation === 'rename-from' || operation === 'rename-to' }
+  const fileAccess = parseLocalFileAccess(access)
+  const kindRule = fileAccess && declaredKindRule(fileAccess, operation, store)
+  if (!fileAccess || !kindRule) {
+    return resolveDesktopAuthorizedPath(targetPath, store, options)
+  }
+  if (typeof targetPath !== 'string') {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  // Why device text first: a device is never a file to load, even inside a project.
+  const automaticLoad = fileAccess.kind === 'document-resource' || fileAccess.kind === 'chat-image'
+  if (automaticLoad && isRefusedAutomaticLoadPath(resolve(targetPath))) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  // Why the default check refuses an outside path by its text first: no share is contacted here.
+  const insideRoots = await resolveDesktopAuthorizedPath(targetPath, store, options).catch(
+    () => undefined
+  )
+  if (insideRoots === undefined) {
+    return kindRule(targetPath)
+  }
+  if (automaticLoad && isRefusedAutomaticLoadPath(insideRoots)) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  return insideRoots
+}
+
+/** A desktop read/stat request; no declared access means roots only. */
+export function resolveLocalFileRequestPath(
   targetPath: string,
   access: unknown,
   store: Store
 ): Promise<string> {
-  return parseLocalFileAccess(access)?.kind === 'user-file'
-    ? resolveUserNamedLocalPath(targetPath)
-    : resolveDesktopAuthorizedPath(targetPath, store)
+  return resolveLocalRequestPath(targetPath, access, store, 'read')
+}
+
+/** A desktop save; user-file access adds the open file the user named. */
+export function resolveLocalWriteRequestPath(
+  targetPath: string,
+  access: unknown,
+  store: Store
+): Promise<string> {
+  return resolveLocalRequestPath(targetPath, access, store, 'write')
 }

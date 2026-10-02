@@ -24,9 +24,18 @@ vi.mock('../repo-worktrees', async () => {
 
 import { registerFilesystemMutationHandlers } from './filesystem-mutations'
 
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members; no project is registered.
-const NO_PROJECTS = {
-  getRepos: () => [],
+let projectPaths: string[] = []
+
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members.
+const STORE = {
+  getRepos: () =>
+    projectPaths.map((path, index) => ({
+      id: `repo-${index}`,
+      path,
+      displayName: 'project',
+      badgeColor: '#000',
+      addedAt: 0
+    })),
   getProjects: () => [],
   getProjectGroups: () => [],
   getFolderWorkspaces: () => [],
@@ -65,7 +74,8 @@ beforeEach(async () => {
   await mkdir(docFolder)
   await writeFile(note, '# note\n')
   await writeFile(join(base, 'shot.png'), 'png')
-  registerFilesystemMutationHandlers(NO_PROJECTS)
+  projectPaths = []
+  registerFilesystemMutationHandlers(STORE)
 })
 
 afterEach(async () => {
@@ -153,5 +163,26 @@ describe('inserting an image into a document the user opened outside every proje
     expect(await importInto(base, documentFolder(note))).toBe('denied')
     expect(await importInto(docFolder)).toBe('denied')
     expect(await readdir(docFolder)).toEqual(['note.md'])
+  })
+})
+
+describe('a project file opened by its full path', () => {
+  it('renames into another folder of the same project, as with no declared access', async () => {
+    const project = join(base, 'project')
+    await mkdir(join(project, 'docs'), { recursive: true })
+    await mkdir(join(project, 'archive'))
+    await writeFile(join(project, 'docs', 'plan.md'), '# plan\n')
+    projectPaths = [project]
+    invalidateAuthorizedRootsCache()
+    const plan = join(project, 'docs', 'plan.md')
+
+    await call('fs:rename', {
+      oldPath: plan,
+      newPath: join(project, 'archive', 'plan.md'),
+      access: documentFolder(plan)
+    })
+
+    expect(await readdir(join(project, 'archive'))).toEqual(['plan.md'])
+    expect(await readdir(join(project, 'docs'))).toEqual([])
   })
 })

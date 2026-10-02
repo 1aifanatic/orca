@@ -1,14 +1,12 @@
 import { app, ipcMain } from 'electron'
 import { constants } from 'node:fs'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname } from 'node:path'
 import type { Store } from '../persistence'
 import {
-  documentFolderAccessPath,
   resolveDesktopAuthorizedPath,
-  resolveDocumentFolderPath
+  resolveLocalRequestPath
 } from './local-file-access-resolution'
-import { PATH_ACCESS_DENIED_MESSAGE } from './filesystem-auth'
 import type { LocalFileAccess } from '../../shared/local-file-access'
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { resolveLocalDroppedPathsForAgent } from './dropped-path-resolution'
@@ -118,25 +116,9 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // target file (potentially elsewhere in the worktree) and leave the
       // symlink dangling. newPath must also preserve its leaf so we don't
       // accidentally write into a symlinked destination name.
-      const documentPath = documentFolderAccessPath(args.access)
-      if (documentPath !== undefined) {
-        // Why: renaming the document the user opened works wherever it lives, but only that
-        // document, and only to a new name inside its own folder.
-        if (resolve(args.oldPath) !== resolve(documentPath)) {
-          throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-        }
-        await renameLocalPathSerializedByDestination(
-          await resolveDocumentFolderPath(args.oldPath, documentPath, { preserveLeaf: true }),
-          await resolveDocumentFolderPath(args.newPath, documentPath, { preserveLeaf: true })
-        )
-        return
-      }
-      const oldPath = await resolveDesktopAuthorizedPath(args.oldPath, store, {
-        preserveSymlink: true
-      })
-      const newPath = await resolveDesktopAuthorizedPath(args.newPath, store, {
-        preserveSymlink: true
-      })
+      // Outside every project, a document the user opened may still be renamed in its own folder.
+      const oldPath = await resolveLocalRequestPath(args.oldPath, args.access, store, 'rename-from')
+      const newPath = await resolveLocalRequestPath(args.newPath, args.access, store, 'rename-to')
       await renameLocalPathSerializedByDestination(oldPath, newPath)
     }
   )
@@ -210,11 +192,12 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // This only applies to local imports — remote paths are authorized by
       // the SSH connection boundary (see importExternalPathsSsh).
       // An image inserted into a document the user opened lands in that document's own folder.
-      const documentPath = documentFolderAccessPath(args.access)
-      const resolvedDest =
-        documentPath === undefined
-          ? await resolveDesktopAuthorizedPath(args.destDir, store)
-          : await resolveDocumentFolderPath(args.destDir, documentPath)
+      const resolvedDest = await resolveLocalRequestPath(
+        args.destDir,
+        args.access,
+        store,
+        'import-into'
+      )
 
       const results: ImportItemResult[] = []
       const reservedNames = new Set<string>()
