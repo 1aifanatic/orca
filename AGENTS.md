@@ -2,10 +2,6 @@
 
 All UI work — layout, color, typography, spacing, component selection, UX behavior — must follow [`docs/STYLEGUIDE.md`](./docs/STYLEGUIDE.md). Most of it is linted: `pnpm run check:code-quality:changed` fails on new restyles of a `components/ui/` primitive, raw palette colors, and computed `className` strings; `pnpm lint` fails on any class Tailwind cannot generate. See the Enforcement section of the style guide before suppressing either. Use the tokens defined in `src/renderer/src/assets/main.css` (the canonical source) and the shadcn primitives in `src/renderer/src/components/ui/`. Don't invent new color values, font sizes, or shadow tiers when a documented one already covers the role. When STYLEGUIDE.md is silent, follow the resolution order in its final section.
 
-## Status Messages and Notices
-
-Don't add a notice, banner, toast, or status line for a transient or internal state (starting, loading, reconnecting, handing off, confirming a connection). Users read anything that pops up as something going wrong, and a state every normal flow passes through will flash. Show the state through a surface that already exists — the working indicator, the item's own row, a placeholder — and only when the common pattern for that kind of app shows it at all. Say a failure once, in one place, not as a toast plus a line plus a row. If a message flashes, remove it; don't keep it and hide it behind a delay or threshold, even where the common pattern does. Only a loading placeholder the common pattern shows (a skeleton or spinner, no text), or a control's own busy state from STYLEGUIDE.md (its label swapping to "Saving…"), may wait a moment before appearing. Copy names what the user can do, never Orca internals (execution host, owner, fence, journal, structured, child process).
-
 ## Electron UI Validation
 
 Always run tests and agent-launched apps in the background with `ORCA_BACKGROUND_LAUNCH=1`.
