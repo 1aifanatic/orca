@@ -73,6 +73,9 @@ export function MobileAgentSessionHistoryPanel({
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
   const [worktreesLoaded, setWorktreesLoaded] = useState(false)
   const [query, setQuery] = useState('')
+  const emptyMessage = query
+    ? 'No sessions match your search.'
+    : 'No past agent sessions in this scope.'
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(null)
   const [resumeMessage, setResumeMessage] = useState<string | null>(null)
   const now = useNow(30_000)
@@ -339,30 +342,33 @@ export function MobileAgentSessionHistoryPanel({
               autoCorrect={false}
             />
           </View>
-          <MobileAgentHistoryScanBanners sessions={sessions} issues={issues} />
-          {resumeMessage ? (
-            <View style={styles.resumeBanner}>
-              <Text style={styles.resumeBannerText}>{resumeMessage}</Text>
-            </View>
-          ) : null}
-          {sections.length === 0 ? (
-            <View style={styles.state}>
-              <Text style={styles.stateTitle}>No agent sessions</Text>
-              <Text style={styles.stateText}>
-                {query ? 'No sessions match your search.' : 'No past agent sessions in this scope.'}
-              </Text>
-            </View>
-          ) : (
-            <MobileAgentSessionHistoryList
-              sections={sections}
-              sessionsById={sessionsById}
-              refreshing={refreshing}
-              showCurrentWorktreeBadges={shouldShowMobileCurrentWorktreeBadge(scope)}
-              resumeActionStateBySessionId={resumeActionStateBySessionId}
-              onResume={onResumeSession}
-              onRefresh={() => void onRefresh()}
-            />
-          )}
+          <MobileAgentSessionHistoryList
+            sections={sections}
+            sessionsById={sessionsById}
+            refreshing={refreshing}
+            showCurrentWorktreeBadges={shouldShowMobileCurrentWorktreeBadge(scope)}
+            resumeActionStateBySessionId={resumeActionStateBySessionId}
+            onResume={onResumeSession}
+            onRefresh={() => void onRefresh()}
+            header={
+              issues.length > 0 || resumeMessage ? (
+                <>
+                  <MobileAgentHistoryScanBanners sessions={sessions} issues={issues} />
+                  {resumeMessage ? (
+                    <View style={styles.resumeBanner}>
+                      <Text style={styles.resumeBannerText}>{resumeMessage}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : undefined
+            }
+            emptyState={
+              <View style={styles.state}>
+                <Text style={styles.stateTitle}>No agent sessions</Text>
+                <Text style={styles.stateText}>{emptyMessage}</Text>
+              </View>
+            }
+          />
         </>
       )}
     </View>

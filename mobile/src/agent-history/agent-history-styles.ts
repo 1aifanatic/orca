@@ -85,6 +85,16 @@ export const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl
   },
+  listViewport: {
+    flex: 1
+  },
+  emptyList: {
+    flexGrow: 1
+  },
+  listHeader: {
+    marginHorizontal: -spacing.md,
+    marginTop: -spacing.sm
+  },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
