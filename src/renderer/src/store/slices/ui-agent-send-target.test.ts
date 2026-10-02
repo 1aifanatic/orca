@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
   sendNotesToActiveAgentSession: vi.fn(),
   appendStructuredAgentSessionOutboxMessage: vi.fn(),
   relaunchFailedStructuredAgentSessionForMessage: vi.fn(),
-  awaitStructuredSourcedMessageTaken: vi.fn(),
   track: vi.fn(),
   toastMessage: vi.fn(),
   toastSuccess: vi.fn(),
@@ -29,10 +28,6 @@ vi.mock('@/lib/active-agent-note-send', () => ({
 
 vi.mock('@/components/native-chat/structured-agent-session-outbox-storage', () => ({
   appendStructuredAgentSessionOutboxMessage: mocks.appendStructuredAgentSessionOutboxMessage
-}))
-
-vi.mock('@/lib/structured-agent-session-sourced-message-taken', () => ({
-  awaitStructuredSourcedMessageTaken: mocks.awaitStructuredSourcedMessageTaken
 }))
 
 vi.mock('@/lib/structured-agent-session-launch', () => ({
@@ -63,8 +58,6 @@ beforeEach(() => {
   mocks.appendStructuredAgentSessionOutboxMessage.mockReset()
   mocks.appendStructuredAgentSessionOutboxMessage.mockReturnValue({ clientMessageId: 'queued' })
   mocks.relaunchFailedStructuredAgentSessionForMessage.mockReset()
-  mocks.awaitStructuredSourcedMessageTaken.mockReset()
-  mocks.awaitStructuredSourcedMessageTaken.mockResolvedValue(true)
   mocks.track.mockReset()
   mocks.toastMessage.mockReset()
   mocks.toastSuccess.mockReset()
@@ -396,11 +389,8 @@ describe('createUISlice agent send target mode', () => {
 
     expect(mocks.appendStructuredAgentSessionOutboxMessage).toHaveBeenCalledWith(
       'claude_1',
-      'Review this',
-      [],
-      'surface'
+      'Review this'
     )
-    expect(mocks.awaitStructuredSourcedMessageTaken).toHaveBeenCalledWith('claude_1', 'queued')
     expect(mocks.relaunchFailedStructuredAgentSessionForMessage).toHaveBeenCalledWith(
       worktreeId,
       'claude_1'

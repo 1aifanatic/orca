@@ -25,8 +25,6 @@ export type StructuredAgentSessionOutboxState =
   | 'unconfirmed'
   | 'rejected'
 
-export type StructuredAgentSessionOutboxSource = 'launch' | 'surface'
-
 export type StructuredAgentSessionOutboxEntry = {
   clientMessageId: string
   sessionId: string
@@ -36,9 +34,7 @@ export type StructuredAgentSessionOutboxEntry = {
   queuedAt: number
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
-  /** Sent from outside the chat, which owns sending it again: a launch's prompt (`launch`), or a
-   *  message another surface sent to this chat (`surface`), such as review notes. */
-  source?: StructuredAgentSessionOutboxSource
+  source?: 'launch'
   /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
    *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
@@ -192,13 +188,12 @@ export function requeueStructuredAgentSessionSendRefusal(
   const ownerExited =
     refusal.code === 'agent_session_ownership_unknown' &&
     agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
-  // Its source sends it again as a new message, never this entry, so its id stays what it waits on.
-  if (entry.source !== undefined && refusalSettled) {
+  // Its source sends it again as a new message, so refused for good it stays here as not sent.
+  if (entry.source === 'launch' && refusalSettled) {
     return { ...entry, state: 'rejected' }
   }
   if (
     !(refusalSettled || ownerExited) ||
-    entry.source !== undefined ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
@@ -232,7 +227,7 @@ export function reconcileStructuredAgentSessionOutbox(
       classifyDispatchRejection(submission).category === 'withdrawn'
     ) {
       const failure = structuredAgentSessionRejectedFailure(submission)
-      return entry.source === undefined ? [] : [withdrawnFromItsSource(entry, failure)]
+      return entry.source === 'launch' ? [withdrawnFromItsSource(entry, failure)] : []
     }
     if (submission?.dispatchState === 'pending') {
       if (entry.state === 'dispatching') {
@@ -307,7 +302,7 @@ export function parseStructuredAgentSessionOutboxEntry(
       typeof entry.retryAfterUnknownSubmittedAt === 'number'
         ? entry.retryAfterUnknownSubmittedAt
         : null,
-    ...(entry.source === 'launch' || entry.source === 'surface' ? { source: entry.source } : {}),
+    ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

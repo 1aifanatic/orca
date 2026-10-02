@@ -2,8 +2,7 @@ import {
   createStructuredAgentSessionOutboxEntry,
   parseStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionAttachment,
-  type StructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionOutboxSource
+  type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
@@ -224,27 +223,6 @@ export function subscribeToStructuredAgentSessionOutbox(
   }
 }
 
-const committedListeners = new Map<
-  string,
-  Set<(entries: readonly StructuredAgentSessionOutboxEntry[]) => void>
->()
-
-/** Every outbox `entries` becomes, whether or not a chat holds it open. */
-export function subscribeToStructuredAgentSessionOutboxCommits(
-  sessionId: string,
-  listener: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
-): () => void {
-  const listeners = committedListeners.get(sessionId) ?? new Set()
-  listeners.add(listener)
-  committedListeners.set(sessionId, listeners)
-  return () => {
-    listeners.delete(listener)
-    if (listeners.size === 0 && committedListeners.get(sessionId) === listeners) {
-      committedListeners.delete(sessionId)
-    }
-  }
-}
-
 /** Makes `entries` the session's outbox and saves it. With `onlyIfSaved`, a failed save leaves
  *  the outbox as it was; otherwise the open chat still shows the change. */
 export function commitStructuredAgentSessionOutbox(
@@ -263,9 +241,6 @@ export function commitStructuredAgentSessionOutbox(
       listener()
     }
   }
-  for (const listener of committedListeners.get(sessionId) ?? []) {
-    listener(entries)
-  }
   return saved
 }
 
@@ -275,7 +250,7 @@ export function appendStructuredAgentSessionOutboxMessage(
   sessionId: string,
   text: string,
   attachments: readonly StructuredAgentSessionAttachment[] = [],
-  source?: StructuredAgentSessionOutboxSource
+  source?: 'launch'
 ): StructuredAgentSessionOutboxEntry | null {
   const entry = {
     ...createStructuredAgentSessionOutboxEntry({

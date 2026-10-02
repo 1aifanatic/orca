@@ -73,22 +73,21 @@ export type FirstMessageStream = {
  * Answers the send as accepted-but-queued and hands back the stream the host then publishes: a
  * snapshot first, as the host's subscribe always opens, then batches. `opened` is what the message
  * already is when the reader subscribes, e.g. taken in the gap between the send's answer and then.
- * A message whose id is minted by the code under test names it once the reader subscribes.
  */
 export function firstMessageStream(
   client: LaunchPromptClientMock,
-  clientMessageId: string | (() => string),
+  clientMessageId: string,
   opened: Partial<FirstMessage> = {}
 ): Promise<FirstMessageStream> {
-  const idNow = (): string =>
-    typeof clientMessageId === 'function' ? clientMessageId() : clientMessageId
-  client.call.mockImplementation(async () => ({
+  const answered: AgentJournalSubmission = { clientMessageId, ...QUEUED }
+  let current: AgentJournalSubmission = { ...answered, ...opened }
+  client.call.mockResolvedValue({
     ok: true,
     replayed: false,
     fence: 1,
     cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: { clientMessageId: idNow(), submission: { clientMessageId: idNow(), ...QUEUED } }
-  }))
+    value: { clientMessageId, submission: answered }
+  })
   return new Promise((resolve) => {
     client.subscribe.mockImplementation(
       async (
@@ -96,7 +95,6 @@ export function firstMessageStream(
         _params: unknown,
         onEvent: (e: AgentSessionSubscribeEvent) => void
       ) => {
-        let current: AgentJournalSubmission = { clientMessageId: idNow(), ...QUEUED, ...opened }
         let subscribed = true
         const publish = (submission: AgentJournalSubmission): void =>
           onEvent({

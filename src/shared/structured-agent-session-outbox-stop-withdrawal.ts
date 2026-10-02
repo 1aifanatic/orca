@@ -71,7 +71,7 @@ export function withdrawUnsentStructuredAgentSessionOutboxEntries(
     ) {
       return [markedOutlivingStop(entry)]
     }
-    return entry.source === undefined ? [] : [withdrawnFromItsSource(entry)]
+    return entry.source === 'launch' ? [withdrawnFromItsSource(entry)] : []
   })
 }
 

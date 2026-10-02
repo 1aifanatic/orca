@@ -181,14 +181,11 @@ function deliveryNoticeText(
   )
 }
 
-/** A message sent from elsewhere (a launch's prompt, review notes) and not sent belongs to where it
- *  came from: that source still holds it as unsent and is where it goes again, so a Retry here
- *  would deliver it while the source never learns it went. */
+/** A launch prompt the host rejected for good belongs to where it was sent from (notes, review
+ *  comments, a fix action): that source still holds it as unsent and is where it goes again, so a
+ *  Retry here would deliver it while the source never learns it went. */
 function sentFromSource(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return (
-    entry.source !== undefined &&
-    (entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry))
-  )
+  return entry.source === 'launch' && entry.state === 'rejected'
 }
 
 function sourcedMessageNotSentText(reason: string): string {

@@ -3,7 +3,6 @@ import type { AgentMessageTarget } from './agent-message-target'
 import { sendNotesToActiveAgentSession } from './active-agent-note-send'
 import { relaunchFailedStructuredAgentSessionForMessage } from './structured-agent-session-launch'
 import { appendStructuredAgentSessionOutboxMessage } from '@/components/native-chat/structured-agent-session-outbox-storage'
-import { awaitStructuredSourcedMessageTaken } from './structured-agent-session-sourced-message-taken'
 
 export type { AgentMessageTarget } from './agent-message-target'
 
@@ -26,15 +25,10 @@ export async function sendMessageToAgent(args: {
     })
   }
   // Why: queued on the chat's own outbox, as its composer does, so the message shows in the
-  // chat. The open chat delivers it; marked as this caller's, a failed send stays there without
-  // a Retry, since the caller keeps what it sent and sends it again.
-  const entry = appendStructuredAgentSessionOutboxMessage(target.sessionId, prompt, [], 'surface')
-  if (!entry) {
+  // chat and a failed send stays there with Retry. The open chat delivers it.
+  if (!appendStructuredAgentSessionOutboxMessage(target.sessionId, prompt)) {
     return { status: 'not-writable', code: 'session-outbox-unsaved' }
   }
   relaunchFailedStructuredAgentSessionForMessage(worktreeId, target.sessionId)
-  // A chat at rest starts its agent on this message, which may fail: sent means the agent took it.
-  return (await awaitStructuredSourcedMessageTaken(target.sessionId, entry.clientMessageId))
-    ? { status: 'sent' }
-    : { status: 'not-taken', code: 'session-message-not-taken' }
+  return { status: 'sent' }
 }
