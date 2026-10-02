@@ -196,7 +196,11 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.bgPanel
   },
   noticeText: {
-    color: colors.statusAmber,
+    color: colors.textMuted,
+    fontSize: typography.metaSize
+  },
+  hostIssueText: {
+    color: colors.statusRed,
     fontSize: typography.metaSize
   },
   resumeBanner: {
