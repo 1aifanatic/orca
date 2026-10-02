@@ -5,12 +5,16 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { performance } from 'node:perf_hooks'
+import process from 'node:process'
+import { setTimeout } from 'node:timers'
 import { stripVTControlCharacters } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { NODE_RUNTIME_ASSETS, NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
@@ -253,6 +257,7 @@ async function observe(id) {
   }
   process.on('SIGTERM', cancel)
   process.on('SIGINT', cancel)
+  records = scanOwned(begin.token, records)
   writeJson(partPath(id, 'observer-ready'), processRecord(process.pid))
   while (!cancelled && !existsSync(partPath(id, 'observer-stop'))) {
     records = scanOwned(begin.token, records)
@@ -521,6 +526,7 @@ async function main() {
       await delay(25)
     }
     assert(existsSync(partPath(id, 'observer-ready')), 'Ownership observer did not start')
+    assert(!existsSync(partPath(id, 'observer-failed')), 'Ownership observer failed during startup')
     appendFileSync(
       process.env.GITHUB_ENV,
       `PILOT_CASE=${id}\nPILOT_CASE_DIR=${caseRoot(id)}\nORCA_CI_BUN_CASE=${token}\n`
@@ -529,7 +535,10 @@ async function main() {
     return
   }
   if (operation === 'observe') {
-    return observe(id)
+    return observe(id).catch((error) => {
+      writeJson(partPath(id, 'observer-failed'), { error: error.message, stack: error.stack })
+      throw error
+    })
   }
   if (operation === 'start' || operation === 'end') {
     assert(['node', 'bun', 'artifact', 'node18'].includes(part))
