@@ -11,10 +11,8 @@ import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-
 import type { AgentSessionTurnActivity } from '../../shared/agent-session-wire'
 import { selectStructuredAgentTurnActivity } from '../../shared/native-chat-turn-activity'
 import { latestStructuredAgentSessionAssistantMessage } from '../../shared/structured-agent-session-latest-request'
-import {
-  isStructuredAgentSessionThinking,
-  statusStructuredAgentSessionToolCall
-} from '../../shared/structured-agent-session-live-turn'
+import { statusStructuredAgentSessionToolCall } from '../../shared/structured-agent-session-live-turn'
+import { nativeChatReasoningOpen } from '../../shared/native-chat-reasoning-row'
 import { openAgentSessionJournal } from '../native-chat/agent-session-journal/journal-store-factory'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -148,21 +146,22 @@ describe("a Codex subagent's rows on the parent's surfaces", () => {
     expect(JSON.stringify(rows)).toContain('pnpm test')
   })
 
-  it("does not read the child's reasoning as the parent thinking", async () => {
-    const { spawnChild, item, items } = await session()
+  it("reports the child's open reasoning as the child's, never as the parent thinking", async () => {
+    const { spawnChild, item, items, activities } = await session()
     spawnChild()
-    item(PARENT, 'item/completed', PARENT_TURN, {
-      type: 'agentMessage',
-      id: 'own-msg',
-      text: 'I asked a reviewer.'
-    })
-    item(CHILD, 'item/completed', CHILD_TURN, {
-      type: 'reasoning',
-      id: 'child-reasoning',
-      summary: ['Reading the diff']
-    })
+    const reasoning: CodexThreadItem = { type: 'reasoning', id: 'child-reasoning', summary: [] }
+    item(CHILD, 'item/started', CHILD_TURN, reasoning)
+    await items()
+    const open = activities.at(-1)
+    expect(open?.reasoning?.session).toBe(false)
+    expect(open?.reasoning?.subagents).toHaveLength(1)
+    expect(nativeChatReasoningOpen(open, PARENT_TURN)).toBe(false)
+    expect(nativeChatReasoningOpen(open, PARENT_TURN, open?.reasoning?.subagents[0])).toBe(true)
 
-    expect(isStructuredAgentSessionThinking(await items())).toBe(false)
+    item(CHILD, 'item/completed', CHILD_TURN, reasoning)
+    await items()
+    expect(nativeChatReasoningOpen(activities.at(-1), PARENT_TURN, 'any')).toBe(false)
+    expect(activities.at(-1)?.reasoning).toBeUndefined()
   })
 
   it("does not show the child's compaction as the parent's activity line", async () => {
@@ -176,10 +175,8 @@ describe("a Codex subagent's rows on the parent's surfaces", () => {
     expect(activities.map((activity) => activity?.text)).not.toContain(
       'Compacting the conversation'
     )
-    expect(selectStructuredAgentTurnActivity(rows, PARENT_TURN, activities.at(-1))).toEqual({
-      kind: 'description',
-      text: 'Coordinating with another agent'
-    })
+    // The spawn item's completion cleared its own copy; the child's compaction set none.
+    expect(selectStructuredAgentTurnActivity(rows, PARENT_TURN, activities.at(-1))).toBeNull()
     expect(
       rows.some((row) => row.body.kind === 'status' && row.body.text === 'Context compacted')
     ).toBe(true)

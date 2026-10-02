@@ -61,8 +61,15 @@ export { agentSessionBackgroundTasksEqual } from './agent-session-background-tas
 
 export type AgentSessionTurnActivity = {
   turnId: string
+  /** The provider's own words; '' when the host reports only open reasoning. */
   text: string
+  /** Who has a reasoning block or item open in this turn right now. Absent from older hosts and
+   *  when nothing is open. */
+  reasoning?: AgentSessionOpenReasoning
 }
+
+/** `subagents` names producer agentIds, the ids subagent sections are keyed by. */
+export type AgentSessionOpenReasoning = { session: boolean; subagents: string[] }
 
 export const AGENT_SESSION_ID_MAX_LENGTH = 512
 

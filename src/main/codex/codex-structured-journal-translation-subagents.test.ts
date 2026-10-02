@@ -117,10 +117,12 @@ describe('codex journal translation — subagents', () => {
     activities.length = 0
     deliverActivity(translator, subagentItem('started', 'child-1', '/root/read'))
 
-    expect(activities.at(-1)).toEqual({
+    expect(activities).toContainEqual({
       turnId: TURN_ID,
       text: 'Coordinating with another agent'
     })
+    // The item's own completion ends the copy it set.
+    expect(activities.at(-1)).toBeNull()
   })
 
   it('consumes thread/tokenUsage/updated instead of swallowing it as chrome', () => {

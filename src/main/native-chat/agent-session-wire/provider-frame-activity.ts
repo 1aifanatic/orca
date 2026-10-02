@@ -128,11 +128,40 @@ export function claudeProviderFrameActivity(kind: string, payload: unknown): Act
   return undefined
 }
 
-/** Retain only the current summary headline, never materialize the growing transcript. */
+/** The item a frame's activity copy speaks for. */
+function activityItemId(method: string, payload: unknown): unknown {
+  const source = record(payload)
+  return method === 'item/started' || method === 'item/completed'
+    ? record(source?.item)?.id
+    : source?.itemId
+}
+
+/** Retain only the current summary headline, never materialize the growing transcript. The line
+ *  belongs to the item that set it: that item's completion clears it, any other item's leaves it. */
 export function createCodexProviderActivityReader(): (
   method: string,
   payload: unknown
 ) => ActivityText {
+  const readHeadline = createCodexHeadlineReader()
+  let owner: unknown
+  return (method, payload) => {
+    if (method === 'item/completed') {
+      const itemId = activityItemId(method, payload)
+      if (owner === undefined || itemId !== owner) {
+        return undefined
+      }
+      owner = undefined
+      return null
+    }
+    const text = readHeadline(method, payload)
+    if (text !== undefined) {
+      owner = text ? activityItemId(method, payload) : undefined
+    }
+    return text
+  }
+}
+
+function createCodexHeadlineReader(): (method: string, payload: unknown) => ActivityText {
   let itemId: unknown
   let summaryIndex: unknown
   let headline = ''
