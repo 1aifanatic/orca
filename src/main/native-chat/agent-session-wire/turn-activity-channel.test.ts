@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionTurnActivity } from '../../../shared/agent-session-wire'
+import {
+  EMPTY_STRUCTURED_AGENT_SESSION,
+  reduceStructuredAgentSession,
+  type StructuredAgentSessionState
+} from '../../../shared/structured-agent-session-reducer'
+import { nativeChatReasoningOpen } from '../../../shared/native-chat-reasoning-row'
 import { createTurnActivityChannel, MAX_OPEN_REASONING_SUBAGENTS } from './turn-activity-channel'
 
 function channel() {
@@ -69,6 +75,79 @@ describe('the live turn activity channel', () => {
     expect(sent).toEqual([null, { turnId: 'turn-2', text: '', reasoning: OPEN }])
     activity.batch(() => {})
     expect(sent).toHaveLength(2)
+  })
+
+  it('sends a value the sink refused again on the next derive, even when it has not changed', () => {
+    const sent: (AgentSessionTurnActivity | null)[] = []
+    let full = true
+    const activity = createTurnActivityChannel({
+      setActivity: (next) => {
+        sent.push(next)
+        return full ? { accepted: false, reason: 'backpressure' } : { accepted: true }
+      }
+    })
+    activity.setReasoning('turn-1', OPEN)
+    full = false
+    activity.setReasoning('turn-1', OPEN)
+    activity.setReasoning('turn-1', OPEN)
+    expect(sent).toEqual([
+      { turnId: 'turn-1', text: '', reasoning: OPEN },
+      { turnId: 'turn-1', text: '', reasoning: OPEN }
+    ])
+  })
+
+  it("reaches a caught-up client's state through every change of who is reasoning", () => {
+    const page = {
+      sessionId: 's',
+      epoch: 'e',
+      direction: 'tail' as const,
+      items: [],
+      removedItemIds: [],
+      submissions: [],
+      window: {
+        oldest: { epoch: 'e', sequence: 1 },
+        newest: { epoch: 'e', sequence: 1 },
+        nextCursor: { epoch: 'e', sequence: 2 }
+      },
+      liveCursor: { epoch: 'e', sequence: 1 },
+      hasOlder: false,
+      hasNewer: false
+    }
+    let state: StructuredAgentSessionState = reduceStructuredAgentSession(
+      EMPTY_STRUCTURED_AGENT_SESSION,
+      { type: 'event', event: { type: 'snapshot', sessionId: 's', fence: 1, page } }
+    )
+    const activity = createTurnActivityChannel({
+      setActivity: (next) => {
+        state = reduceStructuredAgentSession(state, {
+          type: 'event',
+          event: {
+            type: 'batch',
+            sessionId: 's',
+            batch: { cursor: state.cursor!, items: [], removedItemIds: [], submissions: [] },
+            activity: next
+          }
+        })
+      }
+    })
+    const seen = () => [
+      nativeChatReasoningOpen(state.activity, 'turn-1'),
+      nativeChatReasoningOpen(state.activity, 'turn-1', 'agent-a')
+    ]
+    activity.setReasoning('turn-1', OPEN)
+    expect(seen()).toEqual([true, false])
+    activity.setReasoning('turn-1', { session: true, subagents: ['agent-a'] })
+    expect(seen()).toEqual([true, true])
+    activity.setReasoning('turn-1', { session: false, subagents: ['agent-a'] })
+    expect(seen()).toEqual([false, true])
+    activity.setReasoning('turn-1', CLOSED)
+    expect(seen()).toEqual([false, false])
+    activity.setText('turn-1', 'Running a command')
+    activity.setReasoning('turn-1', { session: false, subagents: ['agent-a'] })
+    expect(seen()).toEqual([false, true])
+    activity.setReasoning('turn-1', CLOSED)
+    expect(seen()).toEqual([false, false])
+    expect(state.activity?.text).toBe('Running a command')
   })
 
   it('names each subagent once, in a stable order, and boundedly', () => {

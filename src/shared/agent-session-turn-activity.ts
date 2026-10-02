@@ -15,7 +15,7 @@ export type AgentSessionOpenReasoning = { session: boolean; subagents: string[] 
 
 /** One equality for the host that decides what to publish and every client that decides what
  *  changed; null and absent both mean no activity. */
-export function agentSessionTurnActivitiesEqual(
+export function agentSessionTurnActivityEqual(
   a: AgentSessionTurnActivity | null | undefined,
   b: AgentSessionTurnActivity | null | undefined
 ): boolean {

@@ -1,5 +1,5 @@
 import {
-  agentSessionTurnActivitiesEqual,
+  agentSessionTurnActivityEqual,
   type AgentSessionOpenReasoning,
   type AgentSessionTurnActivity
 } from '../../../shared/agent-session-turn-activity'
@@ -9,6 +9,8 @@ import type { StructuredAgentSessionEventSink } from './structured-agent-session
 export const MAX_OPEN_REASONING_SUBAGENTS = 32
 
 const NOTHING_OPEN: AgentSessionOpenReasoning = { session: false, subagents: [] }
+/** Equal to no value, so the next derive sends whatever is current. */
+const UNSENT = Symbol('unsent')
 
 export type TurnActivityChannel = {
   /** The provider's words for the turn: '' or null clears them, undefined leaves them. */
@@ -34,7 +36,7 @@ export function createTurnActivityChannel(
   let turnId: string | null = null
   let text = ''
   let reasoning = NOTHING_OPEN
-  let published: AgentSessionTurnActivity | null = null
+  let published: AgentSessionTurnActivity | null | typeof UNSENT = null
   let batching = false
   /** Inside a batch: whether anything asked to publish, and whether any of it had to be sent. */
   let owed: { force: boolean } | null = null
@@ -55,9 +57,9 @@ export function createTurnActivityChannel(
       turnId !== null && (text || isOpen(reasoning))
         ? { turnId, text, ...(isOpen(reasoning) ? { reasoning } : {}) }
         : null
-    if (force || !agentSessionTurnActivitiesEqual(next, published)) {
-      published = next
-      sink.setActivity?.(next)
+    if (force || published === UNSENT || !agentSessionTurnActivityEqual(next, published)) {
+      // Only an admitted value counts as sent: one the full queue refused goes again on the next derive.
+      published = sink.setActivity?.(next)?.accepted === false ? UNSENT : next
     }
   }
 
