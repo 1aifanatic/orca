@@ -48,6 +48,13 @@ describe('reasoning disclosure', () => {
     expect(screen.getByRole('button')).toBe(trigger)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByTestId('markdown')).toHaveTextContent('More')
+    // Collapsed again by the user, it stays collapsed through the next streamed revision.
+    fireEvent.click(trigger)
+    rerender(
+      <NativeChatReasoningRow message={message} markdown={'Inspecting\nFinal'} turnIsWorking />
+    )
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('markdown')).not.toBeInTheDocument()
   })
 
   it.each(['', ' \n\t'])('draws nothing for blank reasoning %j', (markdown) => {
