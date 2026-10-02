@@ -2,6 +2,7 @@
  * The Store's one write for a migrated target: retiring the source rows a destination proved it
  * committed. Idempotent, so a retry after a crash before the journal moved finishes the same work.
  */
+import { orcadSourceFolderWorkspaceIds, repoBelongsToOrcadSource } from './orcad-source-ownership'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import { assertOrcadMigrationManifestDigest } from '../../orcad/orcad-migration-manifest-digest'
 import {
@@ -53,11 +54,10 @@ export class OrcadSourceRetirementPersistence {
     const target = manifest.source.sshTargetId
     const repoIds = new Set(manifest.payload.repositories.map((repo) => repo.id))
     const folderIds = new Set(manifest.payload.folderWorkspaces.map((workspace) => workspace.id))
+    const ownedFolderIds = orcadSourceFolderWorkspaceIds(state, target)
     if (
-      state.repos.some((repo) => repoIds.has(repo.id) && repo.connectionId === target) ||
-      state.folderWorkspaces.some(
-        (workspace) => folderIds.has(workspace.id) && workspace.connectionId === target
-      )
+      state.repos.some((repo) => repoIds.has(repo.id) && repoBelongsToOrcadSource(repo, target)) ||
+      [...folderIds].some((id) => ownedFolderIds.has(id))
     ) {
       throw new Error('orcad_migration_source_catalog_reappeared')
     }

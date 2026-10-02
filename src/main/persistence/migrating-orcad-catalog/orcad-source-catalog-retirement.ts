@@ -4,6 +4,7 @@
  */
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
+import { orcadSourceFolderWorkspaceIds, repoBelongsToOrcadSource } from './orcad-source-ownership'
 
 export function retireOrcadSourceCatalogState(
   state: StoreRuntimeState['state'],
@@ -12,19 +13,14 @@ export function retireOrcadSourceCatalogState(
   const repoIds = new Set(manifest.payload.repositories.map((repo) => repo.id))
   const folderIds = new Set(manifest.payload.folderWorkspaces.map((workspace) => workspace.id))
   const groupIds = new Set(manifest.payload.projectGroups.map((group) => group.id))
-  const groupConnectionById = new Map(
-    state.projectGroups.map((group) => [group.id, group.connectionId])
-  )
+  const targetId = manifest.source.sshTargetId
+  // Before any repo goes: a folder owned through the repos inside it would read as local after.
+  const ownedFolderIds = orcadSourceFolderWorkspaceIds(state, targetId)
   state.repos = state.repos.filter(
-    (repo) => !(repoIds.has(repo.id) && repo.connectionId === manifest.source.sshTargetId)
+    (repo) => !(repoIds.has(repo.id) && repoBelongsToOrcadSource(repo, targetId))
   )
   state.folderWorkspaces = state.folderWorkspaces.filter(
-    (workspace) =>
-      !(
-        folderIds.has(workspace.id) &&
-        (workspace.connectionId ?? groupConnectionById.get(workspace.projectGroupId) ?? null) ===
-          manifest.source.sshTargetId
-      )
+    (workspace) => !(folderIds.has(workspace.id) && ownedFolderIds.has(workspace.id))
   )
   removeUnreferencedSourceGroups(state, groupIds, manifest.source.sshTargetId)
 }
