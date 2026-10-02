@@ -34,3 +34,44 @@ test('search excerpts preserve highlighted matches inside Markdown', () => {
     '<mark>Privacy controls</mark>'
   )
 })
+
+test('unclosed angles avoid the HTML matcher without changing excerpt text', () => {
+  const input = '<'.repeat(8192)
+  const replace = String.prototype.replace
+  let tagMatcherCalls = 0
+  String.prototype.replace = function (pattern, ...args) {
+    if (pattern instanceof RegExp && pattern.source === '<[^>]+>' && pattern.flags === 'g') {
+      tagMatcherCalls += 1
+    }
+    return Reflect.apply(replace, this, [pattern, ...args])
+  }
+  try {
+    assert.equal(stripSearchExcerptMarkdown(input), input)
+  } finally {
+    String.prototype.replace = replace
+  }
+  assert.equal(tagMatcherCalls, 0)
+})
+
+test('tag guards preserve malformed markup, protected code and highlighted matches', () => {
+  const cases = [
+    ['<em>**bold**</em>', 'bold'],
+    ['<> **bold**', '<> bold'],
+    ['<<em>bold</em>', 'bold'],
+    ['<tag\nattr>hello</tag>', 'hello'],
+    ['`<em>**literal**</em>`', '<em>**literal**</em>'],
+    ['<mark>**highlight**</mark>', '<mark>highlight</mark>'],
+    ['<MARK>**highlight**</MARK>', '<MARK>highlight</MARK>'],
+    ['[<label](https://example.com/a>)', '<label'],
+    ['<a **bold**', '<a bold'],
+    ['<mark><<<</mark>', '<mark><<<</mark>'],
+    ['\\> <tag>text</tag>', '> text'],
+    ['plain > text', 'plain > text'],
+    ['<!>text', 'text'],
+    ['<><', '<><'],
+    ['<\0orca-search-code-99\0', '<']
+  ]
+  for (const [input, expected] of cases) {
+    assert.equal(stripSearchExcerptMarkdown(input), expected, input)
+  }
+})
