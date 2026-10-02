@@ -24,7 +24,10 @@ it('reveals the latest for a delivery Retry, a launch Retry and a queue Resume, 
   }
   const retryLaunch = (): number => order.push('launch')
   const { result } = renderHook(() => useStructuredNativeChatSubmitReveal(controller, retryLaunch))
-  result.current.messageListRef.current = { revealLatest: () => order.push('reveal') }
+  result.current.messageListRef.current = {
+    revealLatest: () => order.push('reveal'),
+    holdRevealLatest: () => () => order.push('reveal')
+  }
 
   act(() => result.current.retryDelivery('client-1'))
   act(() => result.current.retryLaunch())

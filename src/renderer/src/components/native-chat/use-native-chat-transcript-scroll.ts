@@ -56,6 +56,8 @@ export type NativeChatTranscriptScroll = {
   readerOpened: (row: string) => void
   /** The reader closed a row: follow again if only their opens had stopped it. */
   readerClosed: (row: string) => void
+  /** Wraps an act so it lapses if the reader acts first. */
+  untilReaderActs: (act: () => void) => () => void
 }
 
 export function useNativeChatTranscriptScroll({
@@ -93,7 +95,11 @@ export function useNativeChatTranscriptScroll({
   const previousDistanceFromEndRef = useRef(Number.POSITIVE_INFINITY)
 
   /** Applies a reader's act; true when the transcript follows its end afterwards. */
+  const readerActsRef = useRef(0)
   const follow = useCallback((event: FollowEvent): boolean => {
+    if (event.kind !== 'scroll' || !event.programmatic) {
+      readerActsRef.current += 1
+    }
     followRef.current = nextFollowState(followRef.current, event)
     return followRef.current.kind === 'following'
   }, [])
@@ -187,6 +193,15 @@ export function useNativeChatTranscriptScroll({
     [follow]
   )
 
+  const untilReaderActs = useCallback((act: () => void) => {
+    const acts = readerActsRef.current
+    return () => {
+      if (readerActsRef.current === acts) {
+        act()
+      }
+    }
+  }, [])
+
   useLayoutEffect(() => {
     const revealed = isVisible && !previousIsVisibleRef.current
     isVisibleRef.current = isVisible
@@ -239,6 +254,7 @@ export function useNativeChatTranscriptScroll({
     scrollToTop,
     scrollMessageToTop,
     readerOpened,
-    readerClosed
+    readerClosed,
+    untilReaderActs
   }
 }

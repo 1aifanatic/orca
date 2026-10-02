@@ -5,6 +5,7 @@ import { cleanup, render } from '@testing-library/react'
 import { useImperativeHandle } from 'react'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import type { NativeChatInteractiveSend } from './use-native-chat-interactive-send'
+import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 
 // The transcript and composer are stubbed: the wire under test is which of this
 // pane's sends tell the transcript to bring the latest into view.
@@ -21,8 +22,11 @@ vi.mock('./use-native-chat-retained-session', () => ({
   useNativeChatRetainedSession: () => stubs.session
 }))
 vi.mock('./NativeChatMessageList', () => ({
-  NativeChatMessageList: (props: { ref?: React.Ref<{ revealLatest: () => void }> }) => {
-    useImperativeHandle(props.ref, () => ({ revealLatest: stubs.revealLatest }))
+  NativeChatMessageList: (props: { ref?: React.Ref<NativeChatMessageListHandle> }) => {
+    useImperativeHandle(props.ref, () => ({
+      revealLatest: stubs.revealLatest,
+      holdRevealLatest: () => stubs.revealLatest
+    }))
     return null
   }
 }))
@@ -102,5 +106,25 @@ describe('NativeChatResolvedView sends', () => {
     expect(stubs.revealLatest).toHaveBeenCalledTimes(3)
     stubs.cardSend?.cancel()
     expect(stubs.revealLatest).toHaveBeenCalledTimes(3)
+  })
+
+  it('leaves the reader where they are when the terminal is gone and nothing is written', () => {
+    render(
+      <NativeChatResolvedView
+        paneKey="tab-reveal:leaf-reveal"
+        agent="claude"
+        sessionId="session-reveal"
+        transcriptPath={null}
+        isVisible
+        isFocusedGroup={false}
+        targetPtyId={null}
+        terminalTabId="tab-reveal"
+        ownsTabWideLaunchDraft={false}
+      />
+    )
+    stubs.cardSend?.sendAnswer({ questions: [] }, [])
+    stubs.cardSend?.sendRaw('1')
+    expect(stubs.cardSend).not.toBeNull()
+    expect(stubs.revealLatest).not.toHaveBeenCalled()
   })
 })

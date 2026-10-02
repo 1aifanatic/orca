@@ -124,18 +124,23 @@ export function NativeChatResolvedView({
   const { messageListRef, revealLatest } = useNativeChatRevealLatest()
   const interactiveSend = useMemo<NativeChatInteractiveSend>(
     () => ({
+      // Without a terminal nothing is written, so the reader stays put.
       sendAnswer: (...args) => {
-        revealLatest()
+        if (targetPtyId) {
+          revealLatest()
+        }
         return sendAnswer(...args)
       },
       sendRaw: (raw) => {
-        revealLatest()
+        if (targetPtyId) {
+          revealLatest()
+        }
         sendRaw(raw)
       },
       cancelPending,
       cancel
     }),
-    [cancel, cancelPending, revealLatest, sendAnswer, sendRaw]
+    [cancel, cancelPending, revealLatest, sendAnswer, sendRaw, targetPtyId]
   )
   const [workingInterrupted, setWorkingInterrupted] = useState(false)
   const previousWorkingEpochRef = useRef<number | null>(null)

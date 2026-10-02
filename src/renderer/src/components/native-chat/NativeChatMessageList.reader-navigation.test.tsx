@@ -170,6 +170,35 @@ describe('reader navigation', () => {
     expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull()
   })
 
+  it('drops a reveal held for a slow send once the reader scrolls away again', () => {
+    const handle = createRef<NativeChatMessageListHandle>()
+    const { container } = render(
+      <NativeChatMessageList
+        ref={handle}
+        session={session(transcript)}
+        isWorking
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+    paint(container)
+    scrollTranscript(container, 1000)
+    paint(container)
+    const lapsed = handle.current?.holdRevealLatest()
+    scrollTranscript(container, 600)
+    paint(container)
+    const scrollTop = scrollRoot(container).scrollTop
+    act(() => lapsed?.())
+    paint(container)
+    expect(scrollRoot(container).scrollTop).toBe(scrollTop)
+
+    // Anti-vacuous: one the reader leaves alone still lands on the end.
+    const kept = handle.current?.holdRevealLatest()
+    act(() => kept?.())
+    paint(container)
+    expect(distanceFromBottom(container)).toBe(0)
+  })
+
   it('leaves a tool run the reader opens where it is while the turn streams on', () => {
     const toolIndex = TRANSCRIPT_LENGTH
     const withTool: NativeChatMessage[] = [

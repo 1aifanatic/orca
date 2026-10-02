@@ -1,7 +1,7 @@
 // A structured pane's own submits outside the composer — retrying a delivery or a
 // failed start, answering a prompt, sending a queued message now, resuming the queue — each
 // bring the latest into view, wherever the reader had scrolled. An answer waits
-// for the host to accept it, as a composer send does; the others report no outcome.
+// for the host to accept it, unless the reader moved meanwhile; the others report no outcome.
 // The host delivering on its own (a mobile send, the queue draining) is not the
 // reader acting here, so it never moves them.
 
@@ -28,7 +28,7 @@ export function useStructuredNativeChatSubmitReveal(
   respond: StructuredController['respond']
   queuedMessages: StructuredAgentSessionQueuedMessagesController
 } {
-  const { messageListRef, revealLatest } = useNativeChatRevealLatest()
+  const { messageListRef, revealLatest, holdRevealLatest } = useNativeChatRevealLatest()
   const { respond, queuedMessages } = controller
   // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
   const retryRef = useRef(controller.retry)
@@ -48,14 +48,16 @@ export function useStructuredNativeChatSubmitReveal(
   }, [retryLaunch, revealLatest])
   const revealingRespond = useCallback<StructuredController['respond']>(
     async (...args) => {
+      // Held from the click: a reader who scrolls away while the host decides stays there.
+      const reveal = holdRevealLatest()
       const result = await respond(...args)
       // Null is a refused or failed answer: nothing was sent, so the reader stays put.
       if (result !== null) {
-        revealLatest()
+        reveal()
       }
       return result
     },
-    [respond, revealLatest]
+    [holdRevealLatest, respond]
   )
   const revealingQueue = useMemo<StructuredAgentSessionQueuedMessagesController>(
     () => ({

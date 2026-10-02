@@ -1,4 +1,4 @@
-import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
@@ -41,6 +41,7 @@ import { useNativeChatRailHistoryJump } from './use-native-chat-rail-history-jum
 import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll-input'
 import { NativeChatJumpControls } from './NativeChatJumpControls'
 import { useNativeChatReaderOpens } from './use-native-chat-reader-opens'
+import { useNativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 
 import type {
@@ -307,7 +308,7 @@ export function NativeChatMessageList({
     beginNavigation()
     scrollToBottom()
   }, [beginNavigation, scrollToBottom])
-  useImperativeHandle(ref, () => ({ revealLatest: jumpToLatest }), [jumpToLatest])
+  useNativeChatMessageListHandle(ref, jumpToLatest, transcriptScroll.untilReaderActs)
   const readerScrollInput = useMemo(
     () => nativeChatReaderScrollInputHandlers(beginNavigation),
     [beginNavigation]
