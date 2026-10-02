@@ -1,21 +1,40 @@
 import { createDecipheriv, createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { homedir, platform, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
+import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 import { ZCODE_PLAN_SITE_BASE_URLS } from '../../shared/zcode-plan-sites'
 
-const selectionSchema = z.object({
-  schemaVersion: z.literal(1),
-  config: z.object({
-    defaultModelSelection: z
+const selectionSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    config: z
       .object({
-        providerId: z.string().trim().min(1),
-        modelId: z.string().trim().min(1)
+        providerOrder: z.array(z.string().min(1)).optional(),
+        providerConfigRules: z.unknown(),
+        modelConfigRules: z.unknown(),
+        defaultModelSelection: z
+          .object({
+            providerId: z.string().trim().min(1),
+            modelId: z.string().trim().min(1),
+            options: z
+              .object({ reasoningLevel: z.string().trim().min(1).optional() })
+              .strict()
+              .optional()
+          })
+          .strict()
+          .optional()
       })
-      .optional()
+      .strict()
   })
-})
+  .strict()
+const MAX_V2_FILE_BYTES = 4 * 1024 * 1024
+function readV2File(path: string): string {
+  return readNodeFileSyncWithinLimit(path, MAX_V2_FILE_BYTES, {
+    regularFileOnly: true
+  }).buffer.toString('utf8')
+}
+
 const credentialSchema = z.record(z.string(), z.string())
 const sites = new Map([
   ['account:zai-individual-coding-plan', 'zai'],
@@ -87,7 +106,7 @@ export function readZcodeV2PlanCredential(
       : '') || join(base, '.zcode', 'v2', 'provider_config.json')
   let rawConfig: string
   try {
-    rawConfig = readFileSync(configPath, 'utf8')
+    rawConfig = readV2File(configPath)
   } catch (error) {
     return {
       status:
@@ -104,7 +123,7 @@ export function readZcodeV2PlanCredential(
       return { status: 'unavailable' }
     }
     const store = credentialSchema.parse(
-      JSON.parse(readFileSync(join(base, '.zcode', 'v2', 'credentials.json'), 'utf8'))
+      JSON.parse(readV2File(join(base, '.zcode', 'v2', 'credentials.json')))
     )
     const rawIdentity = store[`account-provider:${selection.providerId}:identity`]
     if (!rawIdentity) {

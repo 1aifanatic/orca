@@ -7,6 +7,8 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { buildSync } from 'esbuild'
+import { runProcess } from '../../shared/child-process/run-process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -256,4 +258,94 @@ describe('upstream-written ZCode v2 stores', () => {
       expect(result.session).toBeNull()
     }
   )
+})
+
+describe('external v2 file boundaries', () => {
+  it.each(['provider_config.json', 'credentials.json'])(
+    'refuses oversized %s without legacy fallback',
+    (name) => {
+      install()
+      legacy()
+      const path = join(dir, '.zcode', 'v2', name)
+      const record = JSON.parse(readFileSync(path, 'utf8'))
+      record['unrelated'] = 'x'.repeat(4 * 1024 * 1024)
+      writeFileSync(path, JSON.stringify(record))
+      expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe('error')
+    }
+  )
+
+  it.each(['provider_config.json', 'credentials.json'])('refuses a directory at %s', (name) => {
+    install()
+    const path = join(dir, '.zcode', 'v2', name)
+    rmSync(path)
+    mkdirSync(path)
+    expect(readZcodeV2PlanCredential(host).status).toBe('error')
+  })
+
+  it.skipIf(process.platform === 'win32').each([
+    { name: 'provider_config.json', replace: false },
+    { name: 'credentials.json', replace: false },
+    { name: 'provider_config.json', replace: true },
+    { name: 'credentials.json', replace: true }
+  ])(
+    'settles FIFO $name with replacement $replace in a timeout-fenced child',
+    async ({ name, replace }) => {
+      install()
+      const path = join(dir, '.zcode', 'v2', name)
+      const fifoPath = replace ? join(dir, 'replacement.fifo') : path
+      if (!replace) {
+        rmSync(path)
+      }
+      expect((await runProcess({ program: 'mkfifo', args: [fifoPath] })).code).toBe(0)
+      const bundle = buildSync({
+        entryPoints: [join(import.meta.dirname, 'zcode-v2-plan-credentials.ts')],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        write: false
+      }).outputFiles[0]!.text
+      const setup = replace
+        ? `const fs=require('node:fs'),originalStat=fs.statSync;fs.statSync=(path,...args)=>{const evidence=originalStat(path,...args);if(path===${JSON.stringify(path)})fs.renameSync(${JSON.stringify(fifoPath)},path);return evidence};`
+        : ''
+      const script = join(dir, 'read.cjs')
+      writeFileSync(
+        script,
+        `${bundle}\n${setup}\nconsole.log(module.exports.readZcodeV2PlanCredential(${JSON.stringify(host)}).status)`
+      )
+      const result = await runProcess({
+        program: process.execPath,
+        args: [script],
+        timeoutMs: 2000
+      })
+      expect(result.timedOut).toBe(false)
+      expect(result.code).toBe(0)
+      expect(result.stdout.trim()).toBe('error')
+    }
+  )
+
+  it.each([
+    { options: { reasoningLevel: 42 } },
+    { options: { reasoningLevel: '' } },
+    { options: { reasoningLevel: '  ' } },
+    { options: { extra: true } },
+    { extra: true },
+    { options: null }
+  ])('rejects upstream-invalid selection %j without legacy fallback', (changed) => {
+    install()
+    legacy()
+    const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    Object.assign(config.config.defaultModelSelection, changed)
+    writeFileSync(path, JSON.stringify(config))
+    expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe('error')
+  })
+
+  it('accepts a valid optional reasoning level', () => {
+    install()
+    const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    config.config.defaultModelSelection.options = { reasoningLevel: ' high ' }
+    writeFileSync(path, JSON.stringify(config))
+    expect(readZcodeV2PlanCredential(host).status).toBe('ok')
+  })
 })
