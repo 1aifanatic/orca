@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _resetSecretStoreForTests, setSecretStore } from '../../shared/secret-store'
+import {
+  _resetSecretStoreForTests,
+  getSecretStore,
+  setSecretStore
+} from '../../shared/secret-store'
 import { createEncryptedAntigravityAccountStore } from './native-account-store'
+import { AntigravityAccountService } from './native-account-service'
 import { credential, harness } from './native-account-test-fixtures'
 
 let dir: string
@@ -27,6 +32,49 @@ afterEach(() => {
 })
 
 describe('protected Antigravity account snapshots', () => {
+  it('preserves readable bytes when adding an account or refreshing a token exceeds the encrypted cap', async () => {
+    function paddedCredential(subject: string, bytes: number) {
+      const prefix = `${credential(subject).slice(0, -1)},"padding":"`
+      return `${prefix}${'x'.repeat(bytes - Buffer.byteLength(`${prefix}"}`))}"}`
+    }
+    const h = harness()
+    await h.service.addCurrentAccount()
+    const template = h.getVault().accounts[0]
+    const vault = {
+      selectedAccountId: null,
+      accounts: Array.from({ length: 52 }, (_, i) => ({
+        ...template,
+        id: `large-${i}`,
+        subject: `large-${i}`,
+        credentials: paddedCredential(`large-${i}`, 60000)
+      }))
+    }
+    const cap = 4 * 1024 * 1024
+    const encryptedSize = () => getSecretStore().encryptString(JSON.stringify(vault)).length
+    for (const account of vault.accounts.slice(0, -1)) {
+      const growth = Math.min(5000, Math.floor(((cap - encryptedSize() - 1024) * 3) / 4))
+      if (growth <= 0) {
+        break
+      }
+      account.credentials = paddedCredential(account.subject, 60000 + growth)
+    }
+    expect(encryptedSize()).toBeLessThanOrEqual(cap)
+    expect(cap - encryptedSize()).toBeLessThan(2000)
+    const path = join(dir, 'vault')
+    const store = createEncryptedAntigravityAccountStore(path)
+    store.write(vault)
+    const before = readFileSync(path)
+    const service = new AntigravityAccountService(store, h.backend)
+    h.setNative(paddedCredential('new-account', 60000))
+    await expect(service.addCurrentAccount()).rejects.toThrow('could not be saved')
+    expect(readFileSync(path)).toEqual(before)
+    expect(store.read().accounts).toHaveLength(52)
+    h.setNative(paddedCredential('large-51', 65000))
+    await expect(service.listAccounts()).rejects.toThrow('could not be saved')
+    expect(readFileSync(path)).toEqual(before)
+    expect(store.read().accounts).toHaveLength(52)
+  })
+
   it('persists a selected account with exact provider fields and private permissions across restart', async () => {
     const h = harness()
     const state = await h.service.addCurrentAccount()

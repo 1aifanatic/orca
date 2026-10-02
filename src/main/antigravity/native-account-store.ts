@@ -15,6 +15,8 @@ export type AntigravityAccountStore = {
   write(vault: AntigravityAccountVault): void
 }
 
+const MAX_VAULT_BYTES = 4 * 1024 * 1024
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -53,7 +55,7 @@ export function createEncryptedAntigravityAccountStore(path: string): Antigravit
         const stat = lstatSync(path)
         if (
           !stat.isFile() ||
-          stat.size > 4 * 1024 * 1024 ||
+          stat.size > MAX_VAULT_BYTES ||
           (process.platform !== 'win32' && (stat.mode & 0o077) !== 0)
         ) {
           throw new Error('unsafe vault')
@@ -94,7 +96,11 @@ export function createEncryptedAntigravityAccountStore(path: string): Antigravit
       requireProtection()
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
       try {
-        writeCredentialFileAtomic(path, getSecretStore().encryptString(JSON.stringify(vault)))
+        const encrypted = getSecretStore().encryptString(JSON.stringify(vault))
+        if (encrypted.length > MAX_VAULT_BYTES) {
+          throw new Error('vault exceeds readable size')
+        }
+        writeCredentialFileAtomic(path, encrypted)
         if (process.platform !== 'win32' && (statSync(path).mode & 0o077) !== 0) {
           throw new Error('unsafe permissions')
         }
