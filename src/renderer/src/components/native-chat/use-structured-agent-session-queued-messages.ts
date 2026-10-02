@@ -127,7 +127,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         if (!card || !composerScopeKey) {
           return
         }
-        appendNativeChatDraftNow(composerScopeKey, { text: card.text })
+        void appendNativeChatDraftNow(composerScopeKey, { text: card.text })
         const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
           'agentSession.queuedMessageDelete',
           'agentSession.queuedMessageDelete',

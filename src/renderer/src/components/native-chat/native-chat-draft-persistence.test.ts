@@ -9,6 +9,7 @@ import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
 import type * as NativeChatDraftCache from './native-chat-draft-cache'
+import { installLocalStorageNativeChatDrafts } from './native-chat-draft-store.test-support'
 
 const PREFIX = 'orca:nativeChatComposerDraft:v1:'
 const SCOPE = 'structured-agent-session-s1:pane'
@@ -31,6 +32,7 @@ let cache: DraftCache
 beforeEach(async () => {
   vi.useFakeTimers()
   localStorage.clear()
+  installLocalStorageNativeChatDrafts()
   cache = await relaunch()
 })
 
@@ -189,7 +191,7 @@ describe('composer draft persistence', () => {
       attachments: [{ id: 'w1', path: '/tmp/w.png' }]
     })
 
-    expect(result).toBe('persisted')
+    await expect(result).resolves.toBe('persisted')
     expect(saved(SCOPE)).toMatchObject({
       text: 'withdrawn',
       attachments: [{ id: 'w1', path: '/tmp/w.png' }]
@@ -198,16 +200,18 @@ describe('composer draft persistence', () => {
     expect(next.readNativeChatDraftCache(SCOPE)).toBe('withdrawn')
   })
 
-  it('restores only into an empty composer', () => {
+  it('restores only into an empty composer', async () => {
     cache.writeNativeChatDraftCache(SCOPE, 'typed since', 'after-pause')
 
-    expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).toBe(
+    await expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).resolves.toBe(
       'composer-not-empty'
     )
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typed since')
 
     cache.writeNativeChatDraftCache(SCOPE, '', 'now')
-    expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).toBe('persisted')
+    await expect(cache.restoreNativeChatDraftIfEmpty(SCOPE, { text: 'refused' })).resolves.toBe(
+      'persisted'
+    )
     expect(saved(SCOPE)?.text).toBe('refused')
   })
 
@@ -232,12 +236,14 @@ describe('composer draft persistence', () => {
     expect(next.nativeChatDraftKey({ paneKey: 'tab-1:leaf-1' })).not.toBe(before)
   })
 
-  it('keeps the draft in memory and reports memory-only when storage throws', () => {
+  it('keeps the draft in memory and reports memory-only when storage throws', async () => {
     vi.stubGlobal('localStorage', fullStorage())
 
     expect(() => cache.writeNativeChatDraftCache(SCOPE, 'typed', 'after-pause')).not.toThrow()
     expect(() => vi.advanceTimersByTime(300)).not.toThrow()
-    expect(cache.appendNativeChatDraftNow(SCOPE, { text: 'back' })).toBe('memory-only')
+    await expect(cache.appendNativeChatDraftNow(SCOPE, { text: 'back' })).resolves.toBe(
+      'memory-only'
+    )
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nback')
   })
 
@@ -246,7 +252,9 @@ describe('composer draft persistence', () => {
     const next = await relaunch()
 
     next.writeNativeChatDraftCache(SCOPE, 'typed', 'after-pause')
-    expect(next.appendNativeChatDraftNow(SCOPE, { text: 'back' })).toBe('memory-only')
+    await expect(next.appendNativeChatDraftNow(SCOPE, { text: 'back' })).resolves.toBe(
+      'memory-only'
+    )
     expect(next.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nback')
   })
 

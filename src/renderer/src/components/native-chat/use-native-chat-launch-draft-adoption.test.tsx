@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { installLocalStorageNativeChatDrafts } from './native-chat-draft-store.test-support'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -416,6 +417,7 @@ describe('a launch draft saved with its chat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    installLocalStorageNativeChatDrafts()
     mocks.storeState.nativeChatLaunchDraftByTabId = {}
   })
 

@@ -247,7 +247,7 @@ describe('NativeChatComposer', () => {
     )
   })
 
-  it('associates a delayed submit with its optimistic cache entry', () => {
+  it('associates a delayed submit with its optimistic cache entry', async () => {
     const onOptimisticSend = vi.fn(() => 'pending-1')
     render(
       <NativeChatComposer
@@ -259,7 +259,7 @@ describe('NativeChatComposer', () => {
       />
     )
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(onOptimisticSend).toHaveBeenCalledWith('hello', [])
     expect(mocks.trackPendingSend).toHaveBeenCalledWith(mocks.sendHandle, 'pending-1')
@@ -388,7 +388,7 @@ describe('NativeChatComposer', () => {
     expect(mocks.setDraft).toHaveBeenCalledWith('')
   })
 
-  it('disables Send and blocks a send while an image attachment is still pending', () => {
+  it('disables Send and blocks a send while an image attachment is still pending', async () => {
     mocks.imageAttachments = [{ id: 'image-1', path: '', pending: true }]
     render(
       <NativeChatComposer
@@ -401,14 +401,14 @@ describe('NativeChatComposer', () => {
 
     expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
     expect(mocks.sendNativeChatTypedCommand).not.toHaveBeenCalled()
     expect(mocks.sendNativeChatMessageWithImageAttachments).not.toHaveBeenCalled()
   })
 
-  it('enables Send and dispatches once a pending attachment resolves', () => {
+  it('enables Send and dispatches once a pending attachment resolves', async () => {
     mocks.imageAttachments = [{ id: 'image-1', path: '', pending: true }]
     const view = render(
       <NativeChatComposer
@@ -431,7 +431,7 @@ describe('NativeChatComposer', () => {
     )
     expect(mocks.fieldProps?.sendButtonDisabled).toBe(false)
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.sendNativeChatMessageWithImageAttachments).toHaveBeenCalledWith(
       'codex',
@@ -443,7 +443,7 @@ describe('NativeChatComposer', () => {
     )
   })
 
-  it('types Codex slash composer sends instead of pasting them', () => {
+  it('types Codex slash composer sends instead of pasting them', async () => {
     mocks.draft = '/status'
     render(
       <NativeChatComposer
@@ -454,13 +454,13 @@ describe('NativeChatComposer', () => {
       />
     )
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.sendNativeChatTypedCommand).toHaveBeenCalledWith({}, 'pty-1', '/status')
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
   })
 
-  it('keeps Codex skill sends pasted', () => {
+  it('keeps Codex skill sends pasted', async () => {
     mocks.draft = '$ref-oss'
     render(
       <NativeChatComposer
@@ -471,13 +471,13 @@ describe('NativeChatComposer', () => {
       />
     )
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.sendNativeChatMessage).toHaveBeenCalledWith({}, 'pty-1', '$ref-oss', undefined)
     expect(mocks.sendNativeChatTypedCommand).not.toHaveBeenCalled()
   })
 
-  it.each(['claude'] as const)('keeps %s slash composer sends pasted', (agent) => {
+  it.each(['claude'] as const)('keeps %s slash composer sends pasted', async (agent) => {
     mocks.draft = '/clear'
     render(
       <NativeChatComposer
@@ -488,13 +488,13 @@ describe('NativeChatComposer', () => {
       />
     )
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.sendNativeChatMessage).toHaveBeenCalledWith({}, 'pty-1', '/clear', undefined)
     expect(mocks.sendNativeChatTypedCommand).not.toHaveBeenCalled()
   })
 
-  it('retires the launch-draft seed once a send clears the TUI input line', () => {
+  it('retires the launch-draft seed once a send clears the TUI input line', async () => {
     render(
       <NativeChatComposer
         terminalTabId="tab-1"
@@ -505,7 +505,7 @@ describe('NativeChatComposer', () => {
     )
     expect(mocks.clearNativeChatLaunchDraft).not.toHaveBeenCalled()
 
-    act(() => mocks.fieldProps?.onSend?.())
+    await act(async () => mocks.fieldProps?.onSend?.())
 
     expect(mocks.clearNativeChatLaunchDraft).toHaveBeenCalledWith('tab-1')
   })

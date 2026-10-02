@@ -3,6 +3,11 @@ import type {
   NativeChatMessage,
   NativeChatTurnLifecycle
 } from '../../shared/native-chat-types'
+import type {
+  NativeChatDraftStoreResult,
+  PersistedNativeChatDraft,
+  SavedNativeChatDraft
+} from '../../shared/native-chat-draft-record'
 
 // notFound marks a not-yet-on-disk miss (retry-worthy) vs a real read/parse error (#8401).
 export type NativeChatReadSessionResult =
@@ -71,4 +76,22 @@ export type NativeChatApi = {
     args: NativeChatSubscribeArgs,
     onFrame: (frame: NativeChatSubscriptionFrame) => void
   ) => () => void
+  /** Composer drafts: kept by the main process on desktop, in browser storage in the web client. */
+  drafts: NativeChatDraftsApi
+}
+
+export type NativeChatDraftsApi = {
+  /** Every saved draft, oldest first. */
+  load: () => Promise<SavedNativeChatDraft[]>
+  /** The same, blocking; only for a renderer that needs drafts before `load` returned. */
+  loadSync: () => SavedNativeChatDraft[]
+  /** `null` clears. Resolves once the draft is on disk (or the write failed). */
+  write: (
+    scopeKey: string,
+    draft: PersistedNativeChatDraft | null
+  ) => Promise<NativeChatDraftStoreResult>
+  /** Another window changed a draft; only where several windows share one draft store. */
+  onExternalChange?: (
+    listener: (scopeKey: string, draft: PersistedNativeChatDraft | null) => void
+  ) => void
 }

@@ -68,6 +68,10 @@ vi.mock('../dictation/dictation-control-events', () => ({
 
 import { NativeChatComposer } from './NativeChatComposer'
 import {
+  installHeldNativeChatDrafts,
+  installLocalStorageNativeChatDrafts
+} from './native-chat-draft-store.test-support'
+import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
   nativeChatDraftKey,
@@ -144,6 +148,7 @@ beforeEach(() => {
       ui: { onFileDrop: () => vi.fn() }
     }
   })
+  installLocalStorageNativeChatDrafts()
 })
 
 afterEach(() => cleanup())
@@ -263,7 +268,7 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     fireEvent.compositionStart(input)
     changePrompt(input, 'abc안')
-    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
+    act(() => void appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     changePrompt(input, 'abc안녕')
     fireEvent.compositionEnd(input, { data: '안녕' })
 
@@ -279,7 +284,7 @@ describe('a withdrawn message put back during an IME composition', () => {
     changePrompt(input, 'abc')
     fireEvent.compositionStart(input)
     changePrompt(input, 'abc안')
-    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
+    act(() => void appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     fireEvent.compositionEnd(input, { data: '안' })
 
     changePrompt(input, 'abc안\n\nwithdrawn!')
@@ -303,7 +308,7 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     fireEvent.compositionStart(input)
     changePrompt(input, '안녕하')
-    act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
+    act(() => void appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
     await act(async () => {
       dispatch.resolve(PASS_THROUGH)
       await dispatch.promise
@@ -312,6 +317,51 @@ describe('a withdrawn message put back during an IME composition', () => {
 
     expect(promptValue(input)).toBe('하\n\nwithdrawn')
     expect(readNativeChatDraftCache(pane)).toBe('하\n\nwithdrawn')
+  })
+})
+
+// A crash after the host took the message must not bring it back as a draft, so the message is
+// handed over only once the cleared draft is saved; a slow or failed save never holds it back.
+describe('the clear at send', () => {
+  beforeEach(() => clearNativeChatDraftCacheForTests())
+
+  async function pressEnterOnTypedDraft(structured: NativeChatStructuredComposerTransport) {
+    const writes = installHeldNativeChatDrafts()
+    renderComposer(structured)
+    const input = textarea()
+    changePrompt(input, 'ship it')
+    await act(async () => pressEnter(input))
+    return { input, writes }
+  }
+
+  it('empties the box at Enter and hands the message over once the clear is saved', async () => {
+    const structured = transport()
+    const { input, writes } = await pressEnterOnTypedDraft(structured)
+
+    expect(promptValue(input)).toBe('')
+    expect(writes.at(-1)).toMatchObject({ scopeKey: draftKey, draft: null })
+    expect(structured.send).not.toHaveBeenCalled()
+
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+    expect(structured.send).toHaveBeenCalledOnce()
+  })
+
+  it('still sends when the clear could not be saved', async () => {
+    const structured = transport()
+    const { writes } = await pressEnterOnTypedDraft(structured)
+
+    await act(async () => writes.forEach((write) => write.settle('failed')))
+    expect(structured.send).toHaveBeenCalledOnce()
+  })
+
+  it('still sends, after a short wait, when saving the clear stalls', async () => {
+    const structured = transport()
+    await pressEnterOnTypedDraft(structured)
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)))
+    expect(structured.send).not.toHaveBeenCalled()
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)))
+    expect(structured.send).toHaveBeenCalledOnce()
   })
 })
 
@@ -425,7 +475,7 @@ describe('the draft saved to disk', () => {
       pressEnter(input)
       fireEvent.compositionStart(input)
       changePrompt(input, '안녕하')
-      act(() => appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
+      act(() => void appendNativeChatDraftNow(pane, { text: 'withdrawn' }))
       await act(async () => {
         dispatch.resolve(PASS_THROUGH)
         await dispatch.promise
@@ -501,7 +551,7 @@ describe('one chat shown in two panes', () => {
   it('shows text put back by a Stop in every pane', () => {
     const { first, second } = renderTwoPanes()
 
-    act(() => appendNativeChatDraftNow(draftKey, { text: 'withdrawn' }))
+    act(() => void appendNativeChatDraftNow(draftKey, { text: 'withdrawn' }))
 
     expect(promptValue(first)).toBe('withdrawn')
     expect(promptValue(second)).toBe('withdrawn')

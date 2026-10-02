@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { renderHook } from '@testing-library/react'
@@ -9,6 +9,7 @@ import {
   readNativeChatDraftAttachments
 } from './native-chat-draft-cache'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
+import { installLocalStorageNativeChatDrafts } from './native-chat-draft-store.test-support'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 
@@ -131,6 +132,7 @@ async function renderProbe(
 }
 
 describe('useNativeChatComposerAttachments', () => {
+  beforeEach(() => installLocalStorageNativeChatDrafts())
   afterEach(() => {
     runtimeTarget.remote = false
     clearNativeChatDraftCacheForTests()

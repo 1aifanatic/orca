@@ -35,7 +35,7 @@ function restoreWithdrawnMessages(
       continue
     }
     const blocks = entry.body.blocks
-    appendNativeChatDraftNow(composerScopeKey, {
+    void appendNativeChatDraftNow(composerScopeKey, {
       text: blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n'),
       attachments: blocks.flatMap((block, index) =>
         block.type === 'image-ref' && block.path

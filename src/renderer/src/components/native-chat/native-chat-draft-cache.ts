@@ -3,11 +3,9 @@ import type { JSONContent } from '@tiptap/react'
 // saved to disk (native-chat-draft-storage) so it survives quitting Orca. Views mirror it and
 // subscribe to changes, so typing in one pane shows in every other pane on the same chat.
 
+import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import {
-  NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX,
-  setBoundedScopeCacheEntry
-} from './native-chat-composer-scope-cache'
-import {
+  awaitNativeChatDraftSaved,
   isEmptyNativeChatDraft,
   loadPersistedNativeChatDrafts,
   observeOtherWindowNativeChatDrafts,
@@ -47,10 +45,8 @@ let observingOtherWindows = false
 function drafts(): Map<string, DraftEntry> {
   if (!hydrated) {
     hydrated = true
-    for (const [draftKey, draft] of loadPersistedNativeChatDrafts(
-      NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
-    )) {
-      draftCache.set(draftKey, draft)
+    for (const { scopeKey, draft } of loadPersistedNativeChatDrafts()) {
+      draftCache.set(scopeKey, draft)
     }
     if (!observingOtherWindows) {
       observingOtherWindows = true
@@ -78,7 +74,7 @@ function setEntry(draftKey: string, entry: DraftEntry): void {
     drafts().delete(draftKey)
   } else {
     setBoundedScopeCacheEntry(drafts(), draftKey, entry, {
-      onEvict: (evicted) => persistNativeChatDraftNow(evicted, null),
+      onEvict: (evicted) => void persistNativeChatDraftNow(evicted, null),
       inUse: (key) => changeListeners.has(key)
     })
   }
@@ -115,7 +111,7 @@ export function discardNativeChatDrafts(ended: {
     if (drafts().has(draftKey)) {
       setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS })
     }
-    persistNativeChatDraftNow(draftKey, null)
+    void persistNativeChatDraftNow(draftKey, null)
   }
 }
 
@@ -131,7 +127,7 @@ function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
     : null
 }
 
-function persistNow(draftKey: string): NativeChatDraftWriteResult {
+function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
   return persistNativeChatDraftNow(draftKey, persistedDraft(draftKey))
 }
 
@@ -147,10 +143,15 @@ export function writeNativeChatDraftCache(
 ): void {
   setEntry(draftKey, { ...readEntry(draftKey), text: draft })
   if (persist === 'now') {
-    persistNow(draftKey)
+    void persistNow(draftKey)
   } else {
     scheduleNativeChatDraftPersist(draftKey, persistedDraft(draftKey))
   }
+}
+
+/** Waits (briefly) until the chat's last write, such as the clear at send, is on disk. */
+export function awaitNativeChatDraftCleared(draftKey: string): Promise<void> {
+  return awaitNativeChatDraftSaved(draftKey)
 }
 
 export function readNativeChatDraftTuiInputSeed(
@@ -165,7 +166,7 @@ export function writeNativeChatDraftTuiInputSeed(
   seed: NativeChatTuiInputSeed
 ): void {
   setEntry(draftKey, { ...readEntry(draftKey), tuiInputSeed: seed })
-  persistNow(draftKey)
+  void persistNow(draftKey)
 }
 
 /** The tab's launch draft is gone (sent, resolved, closed), so no pane's input line holds it. */
@@ -175,7 +176,7 @@ export function forgetNativeChatTuiInputSeeds(terminalTabId: string): void {
     if (draftKey.startsWith(prefix) && entry.tuiInputSeed) {
       const { tuiInputSeed: _gone, ...rest } = entry
       setEntry(draftKey, rest)
-      persistNow(draftKey)
+      void persistNow(draftKey)
     }
   }
 }
@@ -191,7 +192,7 @@ function updateNativeChatDraftAttachments(
 ): void {
   const current = readEntry(draftKey)
   setEntry(draftKey, { ...current, attachments: update(current.attachments) })
-  persistNow(draftKey)
+  void persistNow(draftKey)
 }
 
 export function addNativeChatDraftAttachments(
@@ -243,7 +244,7 @@ export type NativeChatDraftContent = {
 export function appendNativeChatDraftNow(
   draftKey: string,
   content: NativeChatDraftContent
-): NativeChatDraftWriteResult {
+): Promise<NativeChatDraftWriteResult> {
   const attachments = content.attachments ?? []
   const current = readEntry(draftKey)
   if (content.text !== '') {
@@ -259,10 +260,10 @@ export function appendNativeChatDraftNow(
 }
 
 /** Puts content back only into an empty draft, so nothing the user typed since is touched. */
-export function restoreNativeChatDraftIfEmpty(
+export async function restoreNativeChatDraftIfEmpty(
   draftKey: string,
   content: NativeChatDraftContent
-): NativeChatDraftWriteResult | 'composer-not-empty' {
+): Promise<NativeChatDraftWriteResult | 'composer-not-empty'> {
   const current = readEntry(draftKey)
   if (current.text !== '' || current.attachments.length > 0) {
     return 'composer-not-empty'

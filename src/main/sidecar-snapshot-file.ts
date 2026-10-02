@@ -1,12 +1,13 @@
 // Why a sidecar next to orca-data.json: scan snapshots rewrite wholesale and can reach hundreds
 // of KB; folding them into orca-data.json would rewrite the whole state file per scan (the
 // githubCache sidecar precedent). Best-effort by design: a lost snapshot only costs a rescan.
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   durableWriteTempPath,
   removeStaleDurableWriteTempFiles,
-  writeFileDurable
+  writeFileDurable,
+  writeFileProcessDurable
 } from './durable-file-write'
 
 const queues = new Map<string, Promise<unknown>>()
@@ -43,7 +44,15 @@ export async function readSidecarSnapshot(file: string): Promise<unknown> {
   }
 }
 
-export async function writeSidecarSnapshot(file: string, payload: unknown): Promise<void> {
+/**
+ * `durability: 'process'` skips fsync: the write survives the app being killed but not a power
+ * loss, for sidecars written on a latency-sensitive path.
+ */
+export async function writeSidecarSnapshot(
+  file: string,
+  payload: unknown,
+  options: { durability?: 'power-loss' | 'process' } = {}
+): Promise<void> {
   let cleanup = staleTempCleanups.get(file)
   if (!cleanup) {
     cleanup = removeStaleDurableWriteTempFiles(file, { minimumAgeMs: STALE_TEMP_AGE_MS })
@@ -55,7 +64,13 @@ export async function writeSidecarSnapshot(file: string, payload: unknown): Prom
     })
   }
   await cleanup
-  await writeFileDurable(durableWriteTempPath(file), file, JSON.stringify(payload))
+  const write = options.durability === 'process' ? writeFileProcessDurable : writeFileDurable
+  await write(durableWriteTempPath(file), file, JSON.stringify(payload))
+}
+
+/** Delete a sidecar; a missing one is already removed. Run it inside the file's queue. */
+export async function removeSidecarSnapshot(file: string): Promise<void> {
+  await rm(file, { force: true })
 }
 
 export function _getSidecarSnapshotPendingFileCountForTests(): number {

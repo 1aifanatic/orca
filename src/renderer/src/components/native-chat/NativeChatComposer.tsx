@@ -263,6 +263,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     const sendPty = useNativeChatPtyComposerSend({
       agent,
+      draftKey,
       draft,
       imageAttachments,
       disabled,

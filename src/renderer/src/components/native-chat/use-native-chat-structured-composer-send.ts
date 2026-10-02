@@ -10,7 +10,10 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import { restoreNativeChatDraftIfEmpty } from './native-chat-draft-cache'
+import {
+  awaitNativeChatDraftCleared,
+  restoreNativeChatDraftIfEmpty
+} from './native-chat-draft-cache'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -71,7 +74,7 @@ export function useNativeChatStructuredComposerSend({
       // A refused message goes back, unless something was typed since.
       const putBack = (): void => {
         if (cleared) {
-          restoreNativeChatDraftIfEmpty(draftKey, {
+          void restoreNativeChatDraftIfEmpty(draftKey, {
             text,
             attachments: attachments.map(({ id, path, connectionId, location }) => ({
               id,
@@ -82,12 +85,17 @@ export function useNativeChatStructuredComposerSend({
           })
         }
       }
-      void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments, () => {
-        // Why first: the saved draft shares storage with the outbox entry this send appends, so a
-        // large draft still on disk could make that append, and the send, fail.
-        cleared = true
-        clearComposer()
-      })
+      void dispatchNativeChatStructuredComposerText(
+        structuredTransport,
+        text,
+        attachments,
+        async () => {
+          // Why awaited: once the message is out, a crash must not bring it back as a draft.
+          cleared = true
+          clearComposer()
+          await awaitNativeChatDraftCleared(draftKey)
+        }
+      )
         .then(
           ({ accepted, error }) => {
             structuredTransport.onError(error)

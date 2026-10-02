@@ -74,6 +74,7 @@ import {
 } from './native-chat-draft-cache'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import { useNativeChatDraft } from './use-native-chat-draft'
+import { installLocalStorageNativeChatDrafts } from './native-chat-draft-store.test-support'
 import {
   enqueueStructuredAgentSessionLaunchPrompt,
   readOutbox,
@@ -170,6 +171,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  installLocalStorageNativeChatDrafts()
   clearNativeChatDraftCacheForTests()
   mocks.read.submissions = []
   mocks.read.items = []
@@ -508,7 +510,7 @@ describe('an open composer', () => {
     const { result } = renderHook(() => useNativeChatDraft(PANE, notComposing))
     act(() => result.current.setDraft('typed'))
 
-    act(() => appendNativeChatDraftNow(PANE, { text: 'hello' }))
+    act(() => void appendNativeChatDraftNow(PANE, { text: 'hello' }))
 
     expect(result.current.draft).toBe('typed\n\nhello')
   })
@@ -516,7 +518,7 @@ describe('an open composer', () => {
   // An unsettled composition reaches the chat only when it settles; the put-back is saved already.
   it('keeps text put back mid-composition through the composed writes, even if it unmounts', () => {
     const { result, unmount } = renderHook(() => useNativeChatDraft(PANE, () => true))
-    act(() => appendNativeChatDraftNow(PANE, { text: 'hello' }))
+    act(() => void appendNativeChatDraftNow(PANE, { text: 'hello' }))
     act(() => result.current.setDraft('typed'))
 
     expect(result.current.draft).toBe('typed')
@@ -541,11 +543,12 @@ describe('an open composer', () => {
     )
     act(() => result.current.attachResolvedPaths(['/tmp/typed.png']))
 
-    act(() =>
-      appendNativeChatDraftNow(PANE, {
-        text: '',
-        attachments: [{ id: 'restored', path: '/tmp/shot.png' }]
-      })
+    act(
+      () =>
+        void appendNativeChatDraftNow(PANE, {
+          text: '',
+          attachments: [{ id: 'restored', path: '/tmp/shot.png' }]
+        })
     )
 
     expect(result.current.imageAttachments.map((attachment) => attachment.path)).toEqual([
