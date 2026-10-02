@@ -5,12 +5,14 @@
 // an earlier host process handed over and left unanswered as in doubt, and settles what it left
 // running — the crash boundary. That
 // needs no lease: provider history decides such a row later, under a won lease, in the attach. A
-// row an earlier process accepted and never handed over is the delivery loop's, which the open
-// wakes. Nothing here starts a provider child.
+// row an earlier process accepted and never handed over (it quit or crashed first) is settled here
+// too, before any reader, command or child sees it: a person's message is kept as a held card, the
+// rest rejected (`journal-leftover-send-hold.ts`). Nothing here starts a provider child.
 
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { holdJournalLeftoverSends } from '../agent-session-journal/journal-leftover-send-hold'
 import { openAgentSessionJournalWithRecovery } from './agent-session-journal-recovery'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -100,12 +102,22 @@ export async function openStructuredAgentSessionConversationJournal(
     deferPerSessionImport: options.deferPerSessionImport
   })
   try {
-    // A queued row found here is a leftover the delivery loop's first step rejects; a handed-over
-    // one is only doubt, which provider history decides under a won lease.
+    // A handed-over row found here is only doubt, which provider history decides under a won lease.
     await opened.journal.markPendingSubmissionsUnknown(fence)
   } catch (error) {
     deps.logger.warn('marking pending sends unknown on open failed', {
       scope: 'open-pending-unknown',
+      sessionId,
+      error
+    })
+  }
+  try {
+    // Before a Stop this open serves can withdraw one: a Stop never withdraws a card.
+    await holdJournalLeftoverSends(opened.journal, fence)
+  } catch (error) {
+    // The delivery loop's first step retries it, and hands nothing over until it lands.
+    deps.logger.warn('settling sends an earlier process left queued failed on open', {
+      scope: 'open-leftover-sends',
       sessionId,
       error
     })

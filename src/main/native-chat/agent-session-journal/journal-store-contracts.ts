@@ -7,6 +7,7 @@ import type {
   AgentJournalProducerLinkage,
   AgentJournalResetReason,
   AgentJournalRowAttribution,
+  AgentJournalSubmissionSource,
   AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
@@ -83,6 +84,8 @@ export type JournalSubmissionInput = {
   queuedMessageId?: string
   /** Who asked for this turn (`JournalSubmissionRow.origin`). */
   origin?: 'client' | 'host'
+  /** Which path sent it (`JournalSubmissionRow.source`). */
+  source?: AgentJournalSubmissionSource
 }
 
 /** A submission append that converts a queued draft, in one transaction. */

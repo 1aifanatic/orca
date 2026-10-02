@@ -60,6 +60,8 @@ export function sendStructuredAgentSessionTurn(
      *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
      *  prompt never set it. */
     userSend?: true
+    /** Which host-internal path sent it, when not a person (`AgentJournalSubmissionSource`). */
+    source?: 'launch' | 'mail' | 'continuation'
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {

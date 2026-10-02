@@ -177,6 +177,67 @@ describe('outbox queue delivery selection', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
+  // After a quit, the outbox sends an unconfirmed message again under its own id, to a host that
+  // does not queue, and the host has kept that message as a held card under the same id. Its reply
+  // is the send's own rejected record; the card is what says the host holds it.
+  it.each(['reply first', 'card first'] as const)(
+    'a send a restart kept as a card leaves the outbox with no Retry and no restore (%s)',
+    async (order) => {
+      let answer: (value: unknown) => void = () => undefined
+      mocks.call.mockImplementation(() => new Promise((resolve) => (answer = resolve)))
+      const view = renderHook(
+        (props: { queuedMessageIds: string[] }) =>
+          useStructuredAgentSessionOutbox({
+            sessionId: 'session-1',
+            target: LOCAL_TARGET,
+            fence: 1,
+            submissions: [],
+            composerScopeKey: 'kept-scope',
+            queueDelivery: { capability: 'unsupported', enabled: true },
+            queuedMessageIds: props.queuedMessageIds
+          }),
+        { initialProps: { queuedMessageIds: Array.of<string>() } }
+      )
+      expect(view.result.current.send('kept by the host')).toBe(true)
+      const id = (await sentParams()).envelope.clientOperationId
+      const rejectedReplay = {
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 2 },
+        value: {
+          clientMessageId: id,
+          submission: {
+            clientMessageId: id,
+            fence: 1,
+            payloadFingerprint: 'fp',
+            dispatchState: 'rejected',
+            providerItemId: null,
+            reason: 'Orca restarted before this message was sent.',
+            rejection: { kind: 'hostRestarted' },
+            submittedAt: 1,
+            resolvedAt: 2,
+            recovered: true,
+            handoverRecorded: true
+          }
+        }
+      }
+      if (order === 'reply first') {
+        await act(async () => answer(rejectedReplay))
+        await waitFor(() => expect(view.result.current.outbox[0]?.state).toBe('rejected'))
+        view.rerender({ queuedMessageIds: [id] })
+      } else {
+        view.rerender({ queuedMessageIds: [id] })
+        await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+        await act(async () => answer(rejectedReplay))
+      }
+      await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+      expect(readOutbox('session-1')).toEqual([])
+      expect(readNativeChatDraftCache('kept-scope')).toBe('')
+      expect(mocks.call).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it("Stop's local step never restores a queued send already in flight — its answer settles it", async () => {
     // The send is on its way; the Stop lands behind it, so the host may already hold
     // it as a paused card. Restoring it locally too would double the text.

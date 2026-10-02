@@ -117,7 +117,8 @@ export function NativeChatQueuedMessageCard({
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
-  onTurnOffQueueing: () => void
+  /** Absent when the host does not queue sends, so there is nothing to turn off. */
+  onTurnOffQueueing?: () => void
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card)
   const returned = card.state === 'returned'
@@ -201,12 +202,14 @@ export function NativeChatQueuedMessageCard({
             <Pencil />
             {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onTurnOffQueueing}>
-            {translate(
-              'components.native-chat.queuedMessages.turnOffQueueing',
-              'Turn off queueing'
-            )}
-          </DropdownMenuItem>
+          {onTurnOffQueueing ? (
+            <DropdownMenuItem onSelect={onTurnOffQueueing}>
+              {translate(
+                'components.native-chat.queuedMessages.turnOffQueueing',
+                'Turn off queueing'
+              )}
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>

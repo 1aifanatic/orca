@@ -61,10 +61,10 @@ type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
 }
 
-/** A conversation's handle closes with nothing queued: what is still queued when the chat closes,
- *  or the app quits, will not be handed over. Best effort: the next open's delivery loop rejects a
- *  leftover itself. `which` narrows it to the messages a close that did not complete closed.
- *  Resolves false when the rejection failed; the failure is reported, never thrown. */
+/** What is still queued when the chat closes will not be handed over. A quit is not a close: its
+ *  leftovers are kept by the next open (`journal-leftover-send-hold.ts`). Best effort: the next open
+ *  settles a leftover itself. `which` narrows it to the messages a close that did not complete
+ *  closed. Resolves false when the rejection failed; the failure is reported, never thrown. */
 export async function abandonQueuedStructuredAgentSessionMessages(
   deps: ConversationCloseDeps,
   sessionId: string,

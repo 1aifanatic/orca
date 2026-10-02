@@ -21,6 +21,7 @@ import {
   journalOpenRefusal
 } from '../agent-session-journal/journal-open-failure'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
+import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from '../agent-session-journal/queued-message-pause'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
   queuedMessageFingerprint,
@@ -116,7 +117,11 @@ export async function carryQueuedMessagesToClearReplacement(
         messageId: row.messageId,
         body: row.body,
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-        hostInstance: structuredAgentSessionHostInstance(),
+        // A send a restart kept stays held there too: no later message may release it.
+        hostInstance:
+          row.hostInstance === QUEUED_MESSAGE_HELD_ACROSS_RESTART
+            ? QUEUED_MESSAGE_HELD_ACROSS_RESTART
+            : structuredAgentSessionHostInstance(),
         carriedFrom: ctx.sessionId
       })
     }
@@ -223,6 +228,7 @@ export function sendQueuedStructuredAgentMessage(
             clientMessageId: submissionId,
             // The person asked for this turn, so it ends a Stop's pause once it starts.
             origin: 'client',
+            source: 'queue',
             payloadFingerprint: row.fingerprint,
             body: row.body,
             fence: ctx.fence,

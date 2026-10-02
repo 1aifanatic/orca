@@ -8,7 +8,8 @@
 // record to decide, so there is no loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
 // that arrives while a start holds the queue withdraw the queued messages before the handover that
 // would have written them. Stop and the conversation's close are the only other writers of a
-// queued message: a child's exit only ends the child, and this loop reads why.
+// queued message: a child's exit only ends the child, and this loop reads why. A message an
+// earlier host process left queued is never handed over: its next open keeps it as a held card.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -17,10 +18,8 @@ import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from '../../../shared/agent-session-failure-words'
+import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
+import { holdJournalLeftoverSends } from '../agent-session-journal/journal-leftover-send-hold'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   structuredAgentSessionStartFailure,
@@ -156,7 +155,7 @@ export class StructuredAgentSessionDeliveryLoop {
       await this.deps
         .serialize(sessionId, () => this.fail(sessionId, { startKey: null, cause }))
         .catch((failure: unknown) => {
-          // Rows left queued are rejected by the next open, or by the next loop an accept wakes.
+          // Rows left queued go to the next loop an accept wakes, or are settled by the next open.
           this.running.delete(sessionId)
           this.deps.logger.warn('recording a failed delivery failed', {
             scope: 'delivery-loop-fail',
@@ -173,12 +172,9 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!session || this.disposed) {
       return this.stop(sessionId)
     }
-    await session.journal.rejectQueuedSubmissions(
-      this.deps.conversationFence(sessionId),
-      agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), { surface: 'rejection' }),
-      // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
-      (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
-    )
+    // The open already did, unless its write failed: a row an earlier handle wrote is never handed
+    // over, whether it outlived a quit or a crash. A failure here throws, so none is.
+    await holdJournalLeftoverSends(session.journal, this.deps.conversationFence(sessionId))
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)

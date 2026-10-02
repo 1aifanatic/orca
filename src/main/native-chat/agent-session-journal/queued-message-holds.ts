@@ -4,6 +4,7 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { QueuedMessageHoldReason } from './queued-message-table'
+import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from './queued-message-pause'
 
 /** Hold waiting drafts from auto-sending. The hold retires with the row: consume
  *  and withdraw clear it in their own UPDATE. Returns how many rows it newly reached. */
@@ -30,19 +31,22 @@ export function holdQueuedMessages(
 /** Ends a restart's pause: waiting rows another host instance wrote are adopted
  *  into this one, the same fact the pause is derived from, so no second copy
  *  exists. Also clears a per-row 'stopped' hold an earlier build of the queue
- *  wrote, which this build only ever lifts. Returns how many rows it changed. */
+ *  wrote, which this build only ever lifts. `keepHeld` leaves the sends a restart
+ *  kept, which only an action on the queue releases. Returns how many rows it changed. */
 export function adoptQueuedMessages(
   db: Database.Database,
-  input: { sessionId: string; hostInstance: string }
+  input: { sessionId: string; hostInstance: string; keepHeld?: boolean }
 ): number {
+  const kept = input.keepHeld ? QUEUED_MESSAGE_HELD_ACROSS_RESTART : null
   return Number(
     db
       .prepare(
         `UPDATE queued_messages
          SET host_instance = ?, hold_reason = CASE WHEN hold_reason = 'stopped' THEN NULL ELSE hold_reason END
          WHERE session_id = ? AND state = 'waiting'
-           AND (host_instance <> ? OR hold_reason = 'stopped')`
+           AND (host_instance <> ? OR hold_reason = 'stopped')
+           AND (? IS NULL OR host_instance <> ?)`
       )
-      .run(input.hostInstance, input.sessionId, input.hostInstance).changes ?? 0
+      .run(input.hostInstance, input.sessionId, input.hostInstance, kept, kept).changes ?? 0
   )
 }

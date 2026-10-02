@@ -34,6 +34,7 @@ import {
   type QueuedMessageRow
 } from './queued-message-table'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
+import { moveQueuedMessages, type QueuedMessagePositionMove } from './queued-message-positions'
 import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
@@ -69,6 +70,10 @@ export class JournalQueuedMessages {
   private listed: { revision: number; rows: readonly QueuedMessageRow[] } | null = null
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {}
+
+  get sessionId(): string {
+    return this.deps.sessionId
+  }
 
   revision(): number {
     return this.changeRevision
@@ -174,13 +179,34 @@ export class JournalQueuedMessages {
   }
 
   /** Adopts waiting rows another host instance wrote into this one, ending a restart's pause.
-   *  Returns whether anything changed. */
-  adopt(hostInstance: string): Promise<boolean> {
+   *  `keepHeld` leaves the sends a restart kept (`adoptQueuedMessages`). Returns whether anything
+   *  changed. */
+  adopt(hostInstance: string, options: { keepHeld?: boolean } = {}): Promise<boolean> {
     const { sessionId } = this.deps
     return this.transact(
-      (db) => adoptQueuedMessages(db, { sessionId, hostInstance }),
+      (db) => adoptQueuedMessages(db, { sessionId, hostInstance, ...options }),
       (changed) => changed > 0
     ).then((changed) => changed > 0)
+  }
+
+  /** Inside the caller's journal-row transaction (`journal-leftover-send-hold.ts`): one kept send
+   *  becomes a card, and the cards ahead of the queue take the positions given. False when a card
+   *  by that id already exists, which then stands. */
+  holdInTransaction(
+    db: Database.Database,
+    input: {
+      card: Omit<Parameters<typeof insertQueuedMessage>[1], 'sessionId' | 'now'> | null
+      positions: readonly QueuedMessagePositionMove[]
+    }
+  ): boolean {
+    const { sessionId } = this.deps
+    this.changeRevision += moveQueuedMessages(db, sessionId, input.positions)
+    if (!input.card || getQueuedMessage(db, sessionId, input.card.messageId)) {
+      return false
+    }
+    insertQueuedMessage(db, { ...input.card, sessionId, now: this.deps.now() })
+    this.changeRevision++
+    return true
   }
 
   /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,

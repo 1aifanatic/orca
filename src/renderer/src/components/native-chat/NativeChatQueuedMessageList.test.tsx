@@ -46,7 +46,8 @@ function card(overrides: Partial<QueuedMessageCard> & { messageId: string }): Qu
 
 function controller(
   cards: QueuedMessageCard[],
-  pause: { reason: string } | null = null
+  pause: { reason: string } | null = null,
+  queueCapable = true
 ): StructuredAgentSessionQueuedMessagesController & {
   steer: ReturnType<typeof vi.fn>
   remove: ReturnType<typeof vi.fn>
@@ -55,6 +56,7 @@ function controller(
 } {
   return {
     cards,
+    queueCapable,
     pause,
     resume: vi.fn(async () => {}),
     resuming: false,
@@ -470,4 +472,32 @@ describe('NativeChatQueuedMessageList', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off queueing' }))
     expect(mocks.updateSettings).toHaveBeenCalledWith({ nativeChatQueueFollowUps: false })
   })
+
+  // A message a restart kept shows as a card even where the host does not queue sends; there the
+  // setting and the chord would do nothing, so neither is offered.
+  it.each([
+    { queueCapable: true, offered: true },
+    { queueCapable: false, offered: false }
+  ])(
+    'offers Turn off queueing and the steer chord only when the host queues sends ($queueCapable)',
+    async ({ queueCapable, offered }) => {
+      const owner = controller(
+        [card({ messageId: 'kept', hold: 'queue-paused' })],
+        { reason: 'restarted' },
+        queueCapable
+      )
+      renderList(owner)
+      fireEvent.focus(screen.getByRole('button', { name: 'Steer' }))
+      const hint = await screen.findAllByText('Submit without interrupting the model')
+      expect(hint[0]!.parentElement!.children).toHaveLength(offered ? 2 : 1)
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
+      expect(await screen.findByRole('menuitem', { name: 'Edit message' })).toBeTruthy()
+      expect(screen.queryByRole('menuitem', { name: 'Turn off queueing' }) !== null).toBe(offered)
+      // Resume, Delete and Edit work either way.
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Edit message' }))
+      expect(owner.edit).toHaveBeenCalledWith('kept')
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
+      expect(owner.resume).toHaveBeenCalled()
+    }
+  )
 })

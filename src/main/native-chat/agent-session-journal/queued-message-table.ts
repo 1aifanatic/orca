@@ -75,13 +75,15 @@ export function insertQueuedMessage(
     carriedFrom?: string
     queuedAt: AgentJournalCursor
     now: number
+    /** Absent: after every other card. */
+    position?: number
   }
 ): QueuedMessageRow {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the statement selects exactly one aliased numeric column; better-sqlite3 types rows as unknown.
   const highest = db
     .prepare('SELECT COALESCE(MAX(position), 0) AS p FROM queued_messages WHERE session_id = ?')
     .get(input.sessionId) as { p?: number } | undefined
-  const position = Number(highest?.p ?? 0) + 1
+  const position = input.position ?? Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
      VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`

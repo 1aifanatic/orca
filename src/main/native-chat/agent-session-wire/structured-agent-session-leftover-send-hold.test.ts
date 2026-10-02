@@ -1,0 +1,377 @@
+// A message the host accepted while the agent was starting, then Orca quit or crashed before handing
+// it over: the next open keeps it as a held card at the head of the queue, never sends it on its
+// own, and never lets a later message release it. Against the real host, store and journal.
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from '../agent-session-journal/queued-message-pause'
+import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
+import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { journalIdentityFor } from './structured-agent-session-attach'
+import { attachParamsForRecord } from './structured-agent-session-conversation-open'
+import {
+  createQueuedMessageTestRig,
+  eventually,
+  QUEUED_RIG_CALLER,
+  type QueuedMessageTestRig
+} from './structured-agent-session-queued-message-rig.test-fixture'
+import {
+  HOST_TEST_SESSION as SESSION,
+  hostTestMessage,
+  hostTestOperationId
+} from './structured-agent-session-host-test-data'
+
+const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+  surface: 'rejection'
+})
+
+let rig: QueuedMessageTestRig
+
+beforeEach(async () => {
+  rig = await createQueuedMessageTestRig({ restartable: true })
+})
+
+afterEach(async () => {
+  vi.restoreAllMocks()
+  await rig.dispose()
+})
+
+/** The exact request a client sends, so a test can send the same one again. */
+function sendRequest(text: string, delivery?: 'queue-if-active') {
+  const body = hostTestMessage(text)
+  const fields = { body, ...(delivery ? { delivery } : {}) }
+  return {
+    envelope: rig.envelope(fields, 'agentSession.send', hostTestOperationId()),
+    body,
+    ...(delivery ? { delivery } : {}),
+    userSend: true as const
+  }
+}
+
+/** Accepted while the agent is starting, and never handed over: its start never finishes. */
+async function acceptWhileStarting(
+  request: Parameters<QueuedMessageTestRig['host']['send']>[1]
+): Promise<string> {
+  // No child, so this send must start one.
+  await rig.host.close(SESSION, 'evict')
+  const startsBefore = rig.awaitStarted.mock.calls.length
+  rig.awaitStarted.mockImplementationOnce(() => new Promise<undefined>(() => undefined))
+  expect(await rig.host.send(QUEUED_RIG_CALLER, request)).toMatchObject({
+    ok: true,
+    value: { submission: { dispatchState: 'pending', handoverRecorded: true } }
+  })
+  await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+  return request.envelope.clientOperationId
+}
+
+function journal(): AgentSessionJournal {
+  const open = rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal
+  if (!open) {
+    throw new Error('the conversation is not open')
+  }
+  return open
+}
+
+function dispatchedTexts(): string[] {
+  return rig.dispatch.mock.calls.map(([input]) =>
+    input.body.blocks.map((block) => (block.type === 'text' ? block.text : '')).join('')
+  )
+}
+
+describe('a message accepted while the agent starts, then Orca stops', () => {
+  it.each([
+    { how: 'quit', restart: () => rig.quitRestartHostProcess() },
+    { how: 'crash', restart: async () => rig.crashRestartHostProcess() }
+  ])('is a held card after a $how, and its submission is rejected unseen', async ({ restart }) => {
+    const id = await acceptWhileStarting(sendRequest('hello after restart'))
+    await restart()
+
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(await rig.submission(id)).toMatchObject({
+      dispatchState: 'rejected',
+      ...HOST_RESTARTED,
+      origin: 'client',
+      source: 'person'
+    })
+    const [card] = journal().queuedMessages.list()
+    expect(card).toMatchObject({
+      messageId: id,
+      hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART,
+      body: hostTestMessage('hello after restart'),
+      queuedAt: { epoch: journal().epoch, sequence: expect.any(Number) }
+    })
+    // Nothing is sent on its own, however many times the chat reopens.
+    await rig.host.close(SESSION, 'evict')
+    rig.crashRestartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(rig.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('quit writes nothing for it: no closed-chat rejection, still queued until the next open', async () => {
+    const id = await acceptWhileStarting(sendRequest('kept through quit'))
+    await rig.quitRestartHostProcess()
+    // Read beside the host, without opening the chat through it: the row the quit left.
+    const leftover = await peekSubmission(id)
+    expect(leftover).toMatchObject({ dispatchState: 'pending', handoverRecorded: true })
+    expect(leftover?.handedOverAt).toBeUndefined()
+  })
+
+  it('keeps several in the order they were accepted, ahead of the cards already queued', async () => {
+    const first = await acceptWhileStarting(sendRequest('first'))
+    const second = sendRequest('second')
+    expect(await rig.host.send(QUEUED_RIG_CALLER, second)).toMatchObject({ ok: true })
+    await rig.crashRestartHostProcess()
+
+    expect(await rig.drafts()).toEqual([
+      { messageId: first, state: 'waiting' },
+      { messageId: second.envelope.clientOperationId, state: 'waiting' }
+    ])
+  })
+})
+
+describe('only an action on the queue releases a kept card', () => {
+  it('a later message is delivered alone; Resume then sends the kept one once', async () => {
+    const id = await acceptWhileStarting(sendRequest('the kept words'))
+    await rig.quitRestartHostProcess()
+
+    // The person types the same words again, as one who cannot see cards would.
+    const retyped = rig.send('the kept words')
+    await retyped.result
+    await eventually(async () =>
+      expect((await rig.submission(retyped.id))?.handedOverAt).toBeDefined()
+    )
+    await rig.settleAccepted(retyped.id, 'retyped')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(dispatchedTexts()).toEqual(['the kept words'])
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(id)).toBeDefined())
+    const handoff = await rig.handoff(id)
+    expect(handoff?.clientMessageId).not.toBe(id)
+    expect(handoff).toMatchObject({ origin: 'host', source: 'queue' })
+    await eventually(() => expect(dispatchedTexts()).toEqual(['the kept words', 'the kept words']))
+  })
+
+  it('Send now sends it at once, and Delete removes it', async () => {
+    const sent = await acceptWhileStarting(sendRequest('send me now'))
+    const deleted = sendRequest('delete me')
+    await rig.host.send(QUEUED_RIG_CALLER, deleted)
+    await rig.quitRestartHostProcess()
+
+    expect(await rig.deleteQueued(deleted.envelope.clientOperationId)).toMatchObject({
+      ok: true,
+      value: { deleted: true }
+    })
+    expect(await rig.sendNow(sent)).toMatchObject({
+      ok: true,
+      value: { submission: { queuedMessageId: sent, origin: 'client', source: 'queue' } }
+    })
+    await eventually(() => expect(dispatchedTexts()).toEqual(['send me now']))
+    expect(await rig.drafts()).toEqual([])
+  })
+
+  it('a Stop on the reopened chat leaves it kept: the open settles it before the Stop runs', async () => {
+    const id = await acceptWhileStarting(sendRequest('survives a stop'))
+    await rig.crashRestartHostProcess()
+
+    expect(await rig.stop()).toMatchObject({ ok: true })
+
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+  })
+})
+
+// The desktop's outbox keeps an unconfirmed send and sends it again, under the same id, once the
+// app is back. That replay meets the card the open made from the same send.
+describe('the same send arriving again after the restart', () => {
+  it('a client that never asked to queue is answered from its own record: one card, still held, nothing sent', async () => {
+    const request = sendRequest('sent again by the outbox')
+    const id = await acceptWhileStarting(request)
+    await rig.quitRestartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    const submissionsBefore = (await rig.host.journalSnapshot(SESSION)).submissions.length
+
+    const again = await rig.host.send(QUEUED_RIG_CALLER, request)
+
+    // Never the queued arm, which only a client that sent `delivery` can read; the card it sees
+    // under the same id is what tells it the host holds the message.
+    expect(again).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { clientMessageId: id, submission: { dispatchState: 'rejected', ...HOST_RESTARTED } }
+    })
+    expect(again.ok && 'queued' in again.value).toBe(false)
+    expect((await rig.host.journalSnapshot(SESSION)).submissions).toHaveLength(submissionsBefore)
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(rig.dispatch).not.toHaveBeenCalled()
+
+    // Retry on such a client sends the words under a new id: delivered once, the card still held.
+    const retried = rig.send('sent again by the outbox')
+    await retried.result
+    await eventually(async () =>
+      expect((await rig.submission(retried.id))?.handedOverAt).toBeDefined()
+    )
+    await rig.settleAccepted(retried.id, 'retried')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(dispatchedTexts()).toEqual(['sent again by the outbox'])
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+  })
+
+  it('a client that asked to queue is told the host holds it', async () => {
+    const request = sendRequest('queued-capable resend', 'queue-if-active')
+    const id = await acceptWhileStarting(request)
+    await rig.crashRestartHostProcess()
+
+    expect(await rig.host.send(QUEUED_RIG_CALLER, request)).toMatchObject({
+      ok: true,
+      value: { clientMessageId: id, queued: { messageId: id, state: 'waiting' } }
+    })
+    expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(rig.dispatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('what is not kept', () => {
+  it('orchestration mail and a send from no person are rejected, as before', async () => {
+    const { userSend: _person, ...mail } = sendRequest('mail')
+    await acceptWhileStarting({ ...mail, source: 'mail' })
+    await rig.crashRestartHostProcess()
+    expect(await rig.drafts()).toEqual([])
+    expect(await rig.submission(mail.envelope.clientOperationId)).toMatchObject({
+      dispatchState: 'rejected',
+      ...HOST_RESTARTED
+    })
+  })
+
+  it('a send whose card could not be written is rejected as before, and nothing stays queued', async () => {
+    const id = await acceptWhileStarting(sendRequest('card write fails'))
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(JournalQueuedMessages.prototype, 'holdInTransaction').mockImplementation(() => {
+      throw new Error('disk full')
+    })
+    rig.crashRestartHostProcess()
+
+    await eventually(async () =>
+      expect(await rig.submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        ...HOST_RESTARTED
+      })
+    )
+    expect(await rig.drafts()).toEqual([])
+    expect(warned).toHaveBeenCalledWith(
+      '[journal-open] keeping a send a restart interrupted failed:',
+      expect.objectContaining({ clientMessageId: id })
+    )
+  })
+
+  it('the delivery step keeps one the open could not settle, and hands nothing over', async () => {
+    const id = await acceptWhileStarting(sendRequest('open write failed'))
+    const resolve = AgentSessionJournal.prototype.resolveDispatch
+    // The open's keep and its plain-rejection fallback both fail.
+    let failures = 2
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(AgentSessionJournal.prototype, 'resolveDispatch').mockImplementation(function (
+      this: AgentSessionJournal,
+      ...args: Parameters<AgentSessionJournal['resolveDispatch']>
+    ) {
+      if (failures > 0 && args[0].clientMessageId === id) {
+        failures -= 1
+        return Promise.reject(new Error('disk busy'))
+      }
+      return resolve.apply(this, args)
+    })
+    await rig.quitRestartHostProcess()
+    // The open's write failed; a new send wakes the delivery loop, whose first step settles it.
+    const next = rig.send('wakes the loop')
+    await next.result
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: id, state: 'waiting' }])
+    )
+    await eventually(() => expect(dispatchedTexts()).toEqual(['wakes the loop']))
+    expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+  })
+})
+
+describe('/clear carries a kept card still held', () => {
+  it('a turn in the new conversation lifts the clear, never the restart', async () => {
+    const id = await acceptWhileStarting(sendRequest('carried through clear'))
+    await rig.quitRestartHostProcess()
+    expect(await rig.drafts()).toHaveLength(1)
+    const fields = { command: 'clear' as const }
+    const cleared = await rig.host.conversationCommand(QUEUED_RIG_CALLER, {
+      envelope: rig.envelope(fields, 'agentSession.conversationCommand', hostTestOperationId()),
+      ...fields
+    })
+    const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
+    if (!replacementId) {
+      throw new Error('expected a replacement session')
+    }
+    expect(await rig.drafts(replacementId)).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
+    const carried = rig.host.collaboratorsForTests().sessions.get(replacementId)?.journal
+    expect(carried?.queuedMessages.list()[0]?.hostInstance).toBe(QUEUED_MESSAGE_HELD_ACROSS_RESTART)
+
+    const body = hostTestMessage('first turn after the clear')
+    const turn = await rig.host.send(QUEUED_RIG_CALLER, {
+      envelope: {
+        sessionId: replacementId,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: 1,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.send',
+          sessionId: replacementId,
+          fields: { body }
+        })
+      },
+      body,
+      userSend: true
+    })
+    const turnId = turn.ok ? turn.value.clientMessageId : ''
+    await eventually(async () =>
+      expect(
+        (await rig.host.journalSnapshot(replacementId)).submissions.find(
+          (entry) => entry.clientMessageId === turnId
+        )?.handedOverAt
+      ).toBeDefined()
+    )
+    await rig.host.settleLateDispatch({
+      sessionId: replacementId,
+      clientMessageId: turnId,
+      providerIdentity: { provider: 'codex', threadId: 'thread-1', turnId: 'turn-x', ordinal: 0 }
+    })
+    await eventually(async () =>
+      expect(await rig.queuePause(replacementId)).toEqual({ reason: 'restarted' })
+    )
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await rig.drafts(replacementId)).toEqual([{ messageId: id, state: 'waiting' }])
+    expect(dispatchedTexts()).toEqual(['first turn after the clear'])
+  })
+})
+
+/** The submission as the quit left it, read from a journal opened beside the host's. */
+async function peekSubmission(id: string) {
+  const record = rig.store.getRecord(SESSION)!
+  const params = attachParamsForRecord(record, {
+    clientOperationId: 'peek',
+    expectedRuntimeFence: record.lease.runtimeFence
+  })
+  const peeked = await openAgentSessionJournal({
+    identity: journalIdentityFor(record, params),
+    database: openTestJournalHostDatabase(rig.root)
+  })
+  try {
+    return peeked.submission(id)
+  } finally {
+    await peeked.close()
+  }
+}

@@ -6,7 +6,8 @@
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened.
+//     started since this conversation opened; or a waiting card is a send a restart kept
+//     (`QUEUED_MESSAGE_HELD_ACROSS_RESTART`), which only Resume, Send now, Edit or Delete releases.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
@@ -14,6 +15,11 @@ import type { AgentJournalCursor } from '../../../shared/agent-session-journal-t
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
+
+/** The host instance of a card made from a send accepted before a quit or crash and never handed
+ *  over. Never a live process's id (a UUID), so it reads as another process's card everywhere; no
+ *  later message adopts it, since a surface that cannot show cards would otherwise send it twice. */
+export const QUEUED_MESSAGE_HELD_ACROSS_RESTART = 'held-across-restart'
 
 /** The latest Stop event, whatever its reason, and the latest Resume row, folded by the reducer. */
 export type JournalQueuePauseMarks = {
@@ -124,7 +130,13 @@ export function deriveQueuePauses(input: {
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
+  const keptAcrossRestart = waiting.some(
+    (card) => card.hostInstance === QUEUED_MESSAGE_HELD_ACROSS_RESTART
+  )
+  if (
+    keptAcrossRestart ||
+    (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance))
+  ) {
     // The process that wrote a card is gone: every card waits, whenever it was written.
     pauses.push({ reason: 'restarted', since: null })
   }

@@ -427,7 +427,21 @@ export type AgentJournalSubmission = {
   /** Host-only: who asked for this turn — a person over the client send RPC, or Orca itself.
    *  A person's turn is what ends a Stop's queue pause. */
   origin?: 'client' | 'host'
+  /** Host-only: which path sent it, so a restart knows which leftovers to keep as cards. */
+  source?: AgentJournalSubmissionSource
 }
+
+/** Which path sent a submission: a person's send (typed, or `/compact`), `agent.launch`'s first
+ *  prompt, orchestration mail, a restart continuation, or the queue handing off a card. */
+export type AgentJournalSubmissionSource = 'person' | 'launch' | 'mail' | 'continuation' | 'queue'
+
+export const AGENT_JOURNAL_SUBMISSION_SOURCES: readonly AgentJournalSubmissionSource[] = [
+  'person',
+  'launch',
+  'mail',
+  'continuation',
+  'queue'
+]
 
 /** Durable answer to "did my send land?", keyed by client message id. Only an
  *  `accepted` dispatch mints one, and it outlives the journal tail. */

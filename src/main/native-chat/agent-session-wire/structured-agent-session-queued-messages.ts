@@ -350,6 +350,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
           clientMessageId: submissionId,
           // The queue's own automatic send: it never ends a pause.
           origin: 'host',
+          source: 'queue',
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,

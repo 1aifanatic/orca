@@ -20,6 +20,7 @@ import {
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
   type AgentJournalProducerLinkage,
+  type AgentJournalSubmissionSource,
   type AgentJournalTurnScope,
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
@@ -134,6 +135,9 @@ export type JournalSubmissionRow = JournalRowBase & {
    *  continuation, a launch prompt, the queue's automatic drain. Absent on rows from before it
    *  was recorded. Older readers keep the key and ignore it. */
   origin?: JournalSubmissionOrigin
+  /** Which path sent it (`AgentJournalSubmissionSource`). Absent on rows from before it was
+   *  recorded. Older readers keep the key and ignore it. */
+  source?: AgentJournalSubmissionSource
 }
 
 export type JournalSubmissionOrigin = 'client' | 'host'

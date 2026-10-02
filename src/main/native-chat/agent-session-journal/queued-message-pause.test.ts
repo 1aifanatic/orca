@@ -24,6 +24,7 @@ import type { AgentSessionJournal } from './journal-store'
 import {
   deriveQueuePauses,
   nextSendableQueuedCard,
+  QUEUED_MESSAGE_HELD_ACROSS_RESTART,
   queuePauseHolding,
   resumableQueuePause
 } from './queued-message-pause'
@@ -515,6 +516,46 @@ describe("a restart's pause", () => {
       ['draft-legacy', HOST, null],
       ['draft-failed', HOST, 'send_failed']
     ])
+  })
+
+  it('a send a restart kept stays held after a person’s turn; adoption leaves it, Resume’s takes it', async () => {
+    const journal = await open()
+    await journal.queuedMessages.insert({
+      messageId: 'kept',
+      body: message('kept across a restart'),
+      fingerprint: 'fp-kept',
+      hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART
+    })
+    await journal.queuedMessages.insert({
+      messageId: 'foreign',
+      body: message('another process wrote this'),
+      fingerprint: 'fp-foreign',
+      hostInstance: 'proc-0'
+    })
+    const pausesAfterTurn = () =>
+      deriveQueuePauses({
+        epoch: journal.epoch,
+        marks: { latestStop: null, resumedSequence: 0 },
+        latestPersonTurnSequence: 9,
+        cards: journal.queuedMessages.list(),
+        hostInstance: HOST,
+        restartEnded: true
+      }).map((pause) => pause.reason)
+    expect(pausesAfterTurn()).toEqual(['restarted'])
+
+    expect(await journal.queuedMessages.adopt(HOST, { keepHeld: true })).toBe(true)
+    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.hostInstance])).toEqual([
+      ['kept', QUEUED_MESSAGE_HELD_ACROSS_RESTART],
+      ['foreign', HOST]
+    ])
+    expect(pausesAfterTurn()).toEqual(['restarted'])
+    // Only kept rows left: nothing to adopt, and no write.
+    const revision = journal.queuedMessages.revision()
+    expect(await journal.queuedMessages.adopt(HOST, { keepHeld: true })).toBe(false)
+    expect(journal.queuedMessages.revision()).toBe(revision)
+
+    expect(await journal.queuedMessages.adopt(HOST)).toBe(true)
+    expect(pausesAfterTurn()).toEqual([])
   })
 
   it('an adoption with nothing to adopt changes nothing and fires no commit notification', async () => {

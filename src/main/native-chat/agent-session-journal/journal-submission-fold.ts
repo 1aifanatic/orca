@@ -2,8 +2,10 @@
 // provider item an accepted message adopts.
 
 import {
+  AGENT_JOURNAL_SUBMISSION_SOURCES,
   AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalSubmission
+  type AgentJournalSubmission,
+  type AgentJournalSubmissionSource
 } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { journalRenderItem } from './journal-render-item'
@@ -30,7 +32,9 @@ export function applyJournalSubmission(
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }
       : {}),
-    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {})
+    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {}),
+    // An unknown stored source (a newer build's) is dropped, never the row.
+    ...(isAgentJournalSubmissionSource(row.source) ? { source: row.source } : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // A message handed over later belongs to no turn until its handover names one.
@@ -110,4 +114,8 @@ export function notePersonTurnAccepted(
       submission.acceptedSequence
     )
   }
+}
+
+function isAgentJournalSubmissionSource(value: unknown): value is AgentJournalSubmissionSource {
+  return AGENT_JOURNAL_SUBMISSION_SOURCES.some((source) => source === value)
 }
