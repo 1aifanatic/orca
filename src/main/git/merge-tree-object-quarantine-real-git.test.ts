@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import type * as NodeFsPromises from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { GIT_OBJECT_QUARANTINE_DIR_PREFIX } from '../../shared/git-object-quarantine'
 import {
   createDivergentRepoFixture,
   type DivergentRepoFixture
@@ -9,9 +11,32 @@ import {
   __resetPRConflictSummaryCachesForTests,
   getPRConflictSummary
 } from '../github/conflict-summary'
+import { __resetPRConflictSummaryDerivationCachesForTests } from '../github/conflict-summary-cache'
+import { getLocalGitCapabilityCache } from './git-capability-state'
 import { createLocalGitObjectQuarantine } from './local-git-object-quarantine'
 import { gitExecFileAsync } from './runner'
 import { deleteBranchAfterWorktreeRemoval } from './worktree-branch-removal'
+
+const scratchFoldersMade = vi.hoisted((): string[] => [])
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return {
+    ...actual,
+    mkdtemp: async (prefix: string) => {
+      const made = await actual.mkdtemp(prefix)
+      if (basename(made).startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)) {
+        scratchFoldersMade.push(made)
+      }
+      return made
+    }
+  }
+})
+
+/** Records what a first successful check teaches the host; the cold path has its own test. */
+function rememberMergeTreeWritesTrees(): void {
+  getLocalGitCapabilityCache().rememberSupported('merge-tree-write-tree')
+}
 
 // Why: every divergent `merge-tree --write-tree` used to leave unreachable loose objects in the
 // real store; enough of them keeps Git's auto-gc re-running forever on large repositories.
@@ -20,6 +45,8 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
 
   beforeEach(() => {
     __resetPRConflictSummaryCachesForTests()
+    rememberMergeTreeWritesTrees()
+    scratchFoldersMade.length = 0
     fixture = createDivergentRepoFixture()
   })
 
@@ -111,7 +138,7 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
 
     const first = await getPRConflictSummary(clone.clonePath, 'main', base, head)
     const packsAfterFirst = clone.packCount()
-    __resetPRConflictSummaryCachesForTests()
+    __resetPRConflictSummaryDerivationCachesForTests()
     const second = await getPRConflictSummary(clone.clonePath, 'main', base, head)
 
     expect(first?.files).toEqual(['shared.txt'])
@@ -120,6 +147,7 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
     expect(packsAfterFirst).toBeGreaterThan(packsBefore)
     expect(clone.packCount()).toBe(packsAfterFirst)
     expect(clone.looseObjectCount()).toBe(looseBefore)
+    expect(scratchFoldersMade).toHaveLength(2)
     expect(clone.scratchDirectories()).toEqual([])
   })
 
@@ -131,12 +159,29 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
 
     const online = await getPRConflictSummary(clone.clonePath, 'main', base, head)
     git('remote', 'set-url', 'origin', join(dirname(clone.clonePath), 'unreachable-origin'))
-    __resetPRConflictSummaryCachesForTests()
+    __resetPRConflictSummaryDerivationCachesForTests()
     const offline = await getPRConflictSummary(clone.clonePath, 'main', base, head)
 
     expect(online?.files).toEqual(['shared.txt'])
     expect(offline?.files).toEqual(['shared.txt'])
+    expect(scratchFoldersMade).toHaveLength(2)
     expect(clone.scratchDirectories()).toEqual([])
+  })
+
+  it('makes no scratch folder until a check shows this Git writes trees, then one per check', async () => {
+    __resetPRConflictSummaryCachesForTests()
+    const base = fixture.git(fixture.repoPath, 'rev-parse', 'main').trim()
+    const head = fixture.git(fixture.repoPath, 'rev-parse', 'feature-conflict').trim()
+
+    const first = await getPRConflictSummary(fixture.repoPath, 'main', base, head)
+    expect(scratchFoldersMade).toEqual([])
+    __resetPRConflictSummaryDerivationCachesForTests()
+    const second = await getPRConflictSummary(fixture.repoPath, 'main', base, head)
+
+    expect(first?.files).toEqual(['shared.txt'])
+    expect(second?.files).toEqual(['shared.txt'])
+    expect(scratchFoldersMade).toHaveLength(1)
+    expect(fixture.scratchDirectories()).toEqual([])
   })
 
   it('removes the scratch directory when the Git command fails', async () => {
@@ -188,6 +233,8 @@ describe('merge-tree quarantine keeps the object stores Git would otherwise see 
 
   beforeEach(() => {
     __resetPRConflictSummaryCachesForTests()
+    rememberMergeTreeWritesTrees()
+    scratchFoldersMade.length = 0
     fixture = createDivergentRepoFixture()
   })
 

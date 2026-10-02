@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // throttle window.
 
 const gitExecFileAsyncMock = vi.hoisted(() => vi.fn())
+const scratchFolderPrefixes = vi.hoisted((): string[] => [])
 
 vi.mock('../git/runner', () => ({ gitExecFileAsync: gitExecFileAsyncMock }))
 // Why: off Windows a WSL objects path is relative, so a real scratch dir would land in the cwd.
@@ -20,6 +21,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...actual,
     mkdtemp: async (prefix: string) => {
+      scratchFolderPrefixes.push(prefix)
       if (!isAbsolute(prefix)) {
         throw new Error('no object store in this test')
       }
@@ -28,13 +30,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   }
 })
 
+import { GIT_CAPABILITY_RETRY_INTERVAL_MS } from '../../shared/git-capability-cache'
+import { getLocalGitCapabilityCache } from '../git/git-capability-state'
 import { CONFLICT_SUMMARY_BASE_FETCH_WINDOW_MS } from './conflict-summary-cache'
 import { __resetPRConflictSummaryCachesForTests, getPRConflictSummary } from './conflict-summary'
 
 type GitResult = { stdout: string }
 type GitHandler = (argv: string[]) => Promise<GitResult>
 
-// Why its own key: the merge-tree object quarantine reads the common dir once per derivation.
+// Why its own key: once merge-tree is known to work, its quarantine reads the common dir per derivation.
 const COMMON_DIR_COMMAND = 'rev-parse --git-common-dir'
 
 const defaultHandlers: Record<string, GitHandler> = {
@@ -91,6 +95,7 @@ describe('getPRConflictSummary caching', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_750_000_000_000)
     gitExecFileAsyncMock.mockReset()
+    scratchFolderPrefixes.length = 0
     __resetPRConflictSummaryCachesForTests()
   })
 
@@ -104,14 +109,13 @@ describe('getPRConflictSummary caching', () => {
     const first = await deriveSummary()
     expect(first).toEqual(expectedSummary)
     expect(spawnCount('fetch')).toBe(1)
-    expect(spawnCount(COMMON_DIR_COMMAND)).toBe(1)
-    expect(spawnCount()).toBe(6)
+    expect(spawnCount()).toBe(5)
 
     const second = await deriveSummary()
     const third = await deriveSummary()
     expect(second).toEqual(expectedSummary)
     expect(third).toEqual(expectedSummary)
-    expect(spawnCount()).toBe(6)
+    expect(spawnCount()).toBe(5)
   })
 
   it('re-derives when headRefOid changes without re-fetching inside the throttle window', async () => {
@@ -178,7 +182,7 @@ describe('getPRConflictSummary caching', () => {
 
     expect(first).toEqual(expectedSummary)
     expect(second).toEqual(expectedSummary)
-    expect(spawnCount()).toBe(6)
+    expect(spawnCount()).toBe(5)
   })
 
   it('dedupes overlapping derivations after resolving the same live base tip', async () => {
@@ -291,7 +295,7 @@ describe('getPRConflictSummary caching', () => {
     const repeat = await deriveSummary()
     expect(repeat).toEqual(expectedSummary)
     expect(spawnCount('fetch')).toBe(1)
-    expect(spawnCount()).toBe(6)
+    expect(spawnCount()).toBe(5)
   })
 
   it("falls back to GitHub's baseRefOid when fetch and remote-tracking refs are unavailable", async () => {
@@ -327,12 +331,15 @@ describe('getPRConflictSummary caching', () => {
 
   it('preserves background admission across the complete WSL derivation chain', async () => {
     mockGitDispatch()
+    // Known support adds the quarantine's common-dir read to the chain.
+    getLocalGitCapabilityCache({ wslDistro: 'Ubuntu' }).rememberSupported('merge-tree-write-tree')
 
     await getPRConflictSummary('/repo-root', 'main', 'github-base-oid', 'head-oid-1', {
       wslDistro: 'Ubuntu',
       admissionTier: 'background'
     })
 
+    expect(spawnCount(COMMON_DIR_COMMAND)).toBe(1)
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(6)
     for (const [, options] of gitExecFileAsyncMock.mock.calls) {
       expect(options).toEqual(
@@ -393,6 +400,60 @@ describe('getPRConflictSummary caching', () => {
     expect(spawnCount('merge-tree')).toBe(1)
   })
 
+  it('makes no scratch folder for a Git that rejects merge-tree --write-tree, retries included', async () => {
+    // Git 2.25's exact rejection of both argument shapes.
+    const rejected = Object.assign(new Error('Command failed: git merge-tree --write-tree'), {
+      code: 129,
+      stdout: '',
+      stderr: 'usage: git merge-tree <base-tree> <branch1> <branch2>\n'
+    })
+    mockGitDispatch({ 'merge-tree': () => Promise.reject(rejected) })
+
+    await expect(deriveSummary('head-oid-1')).resolves.toBeUndefined()
+    vi.setSystemTime(1_750_000_000_000 + GIT_CAPABILITY_RETRY_INTERVAL_MS + 1_000)
+    await expect(deriveSummary('head-oid-2')).resolves.toBeUndefined()
+
+    expect(spawnCount('merge-tree')).toBe(2)
+    expect(spawnCount(COMMON_DIR_COMMAND)).toBe(0)
+    expect(scratchFolderPrefixes).toEqual([])
+    expect(gitExecFileAsyncMock.mock.calls.filter(([, options]) => options?.env)).toEqual([])
+  })
+
+  it('runs the first merge-tree as Git always has, then the next ones against a scratch store', async () => {
+    const commonDir = join(
+      realpathSync(mkdtempSync(join(tmpdir(), 'orca-conflict-summary-'))),
+      '.git'
+    )
+    mkdirSync(join(commonDir, 'objects'), { recursive: true })
+    try {
+      mockGitDispatch({ [COMMON_DIR_COMMAND]: async () => ({ stdout: `${commonDir}\n` }) })
+
+      await expect(deriveSummary('head-oid-1')).resolves.toEqual(expectedSummary)
+      expect(spawnCount(COMMON_DIR_COMMAND)).toBe(0)
+      expect(scratchFolderPrefixes).toEqual([])
+      await expect(deriveSummary('head-oid-2')).resolves.toEqual(expectedSummary)
+
+      const envs = gitExecFileAsyncMock.mock.calls
+        .filter(([argv]) => argv[0] === 'merge-tree')
+        .map(([argv, options]) => [argv.includes('--merge-base'), options?.env])
+      expect(envs).toEqual([
+        [true, undefined],
+        [
+          true,
+          expect.objectContaining({
+            GIT_OBJECT_DIRECTORY: expect.stringContaining(
+              join(commonDir, 'objects', 'tmp_objdir-orca-merge-tree-')
+            )
+          })
+        ]
+      ])
+      expect(scratchFolderPrefixes).toHaveLength(1)
+      expect(readdirSync(join(commonDir, 'objects'))).toEqual([])
+    } finally {
+      rmSync(join(commonDir, '..'), { recursive: true, force: true })
+    }
+  })
+
   it('runs the legacy merge-tree fallback against the scratch object store too', async () => {
     const commonDir = join(
       realpathSync(mkdtempSync(join(tmpdir(), 'orca-conflict-summary-'))),
@@ -410,17 +471,22 @@ describe('getPRConflictSummary caching', () => {
         }
       })
 
-      await expect(deriveSummary()).resolves.toEqual(expectedSummary)
+      // The first check learns that this Git writes trees; the next one is quarantined.
+      await expect(deriveSummary('head-oid-1')).resolves.toEqual(expectedSummary)
+      await expect(deriveSummary('head-oid-2')).resolves.toEqual(expectedSummary)
 
-      const legacy = gitExecFileAsyncMock.mock.calls.find(
+      const legacy = gitExecFileAsyncMock.mock.calls.filter(
         ([argv]) => argv[0] === 'merge-tree' && !argv.includes('--merge-base')
       )
-      expect(legacy?.[1]?.env).toMatchObject({
+      expect(legacy).toHaveLength(2)
+      expect(legacy[0]?.[1]?.env).toBeUndefined()
+      expect(legacy[1]?.[1]?.env).toMatchObject({
         GIT_OBJECT_DIRECTORY: expect.stringContaining(
           join(commonDir, 'objects', 'tmp_objdir-orca-merge-tree-')
         ),
         GIT_ALTERNATE_OBJECT_DIRECTORIES: join(commonDir, 'objects')
       })
+      expect(spawnCount('merge-tree')).toBe(3)
       expect(readdirSync(join(commonDir, 'objects'))).toEqual([])
     } finally {
       rmSync(join(commonDir, '..'), { recursive: true, force: true })

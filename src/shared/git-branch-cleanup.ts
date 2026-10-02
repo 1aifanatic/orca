@@ -123,7 +123,11 @@ async function branchMergesWithoutTreeChanges(
     try {
       return await capabilities.runWithFallback(
         'merge-tree-write-tree',
-        async () => (await runGit(args, { discardWrittenObjects: true })).stdout.trim() || null,
+        async () => {
+          // Why only once known supported: old Git would still get a scratch folder, and Git < 2.35 cannot prune a leftover one.
+          const discardWrittenObjects = capabilities.isKnownSupported('merge-tree-write-tree')
+          return (await runGit(args, { discardWrittenObjects })).stdout.trim() || null
+        },
         async () => null,
         isUnsupportedMergeTreeWriteTreeError
       )

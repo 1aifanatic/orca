@@ -30,7 +30,7 @@ export type GitObjectQuarantine = {
 
 // Why inside `objects/` with a `tmp_objdir` prefix: that is where Git puts its own
 // quarantine dirs, it is on the Git host for native, WSL and SSH alike, and
-// `git gc` expires stale `tmp_*` entries too.
+// `git gc` (2.35+) expires stale `tmp_*` dirs too.
 export const GIT_OBJECT_QUARANTINE_DIR_PREFIX = 'tmp_objdir-orca-merge-tree-'
 
 /** Decided by path syntax, not by platform: a Windows main process drives WSL Git. */
@@ -106,7 +106,7 @@ async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string
   const files = (await readdir(scratchPackDir).catch(() => [])).filter((file) =>
     file.startsWith('pack-')
   )
-  // Why `.idx` last: Git finds a pack through its index (Git's own migration order).
+  // Why `.idx` last: Git finds a pack through its index, so the rest must be in place first.
   const ordered = [
     ...files.filter((file) => !file.endsWith('.idx')),
     ...files.filter((file) => file.endsWith('.idx'))
@@ -119,6 +119,7 @@ async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string
       () => false
     )
     if (!exists) {
+      // Why no per-file catch: stopping at the first failure keeps an index from landing without its pack.
       await rename(path.join(scratchPackDir, file), target)
     }
   }
@@ -158,12 +159,11 @@ export function createGitObjectQuarantine(
           GIT_ALTERNATE_OBJECT_DIRECTORIES: alternates
         })
       } finally {
-        // Why stop at the first failure: an index must never be installed after its pack failed.
         await keepFetchedPacks(scratchHostPath, objects.hostPath).catch((error: unknown) => {
           console.warn('[git-object-quarantine] could not keep a fetched pack', error)
         })
         await removeTree(scratchHostPath).catch((error: unknown) => {
-          // Why: `git gc` prunes leftover `tmp_*` dirs; the check's result still stands.
+          // Why: callers quarantine only Git that writes trees (2.38+), whose `git gc` prunes leftover `tmp_*` dirs.
           console.warn(
             '[git-object-quarantine] could not remove scratch dir',
             scratchHostPath,

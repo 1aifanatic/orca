@@ -31,7 +31,13 @@ describe('relay branch cleanup runs merge-tree against a scratch object store (r
     return dispatcher.callRequest('git.removeWorktree', { worktreePath })
   }
 
+  // Why: the relay quarantines only once a check has shown its Git writes trees; that first check runs as Git always has.
+  async function learnMergeTreeSupportThrough(branch: string): Promise<void> {
+    await removeWorktreeFor(branch)
+  }
+
   it('still deletes a squash-merged branch through the scratch store', async () => {
+    await learnMergeTreeSupportThrough('feature-extra')
     const before = fixture.looseObjectCount()
 
     await expect(removeWorktreeFor('feature-squashed')).resolves.toEqual({})
@@ -43,6 +49,7 @@ describe('relay branch cleanup runs merge-tree against a scratch object store (r
 
   it('preserves a branch with unmerged changes without writing loose objects', async () => {
     const head = fixture.git(fixture.repoPath, 'rev-parse', 'feature-extra').trim()
+    await learnMergeTreeSupportThrough('feature-squashed')
     const before = fixture.looseObjectCount()
 
     await expect(removeWorktreeFor('feature-extra')).resolves.toEqual({
