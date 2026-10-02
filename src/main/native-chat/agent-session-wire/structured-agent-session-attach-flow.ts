@@ -15,7 +15,6 @@ import type {
   AgentSessionAttachResult,
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
-import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
@@ -64,6 +63,8 @@ export type AttachFlowInput = {
     acquiredOwner: boolean,
     providerChildPhase: StructuredAgentSessionProviderChildPhase
   ) => Promise<void> | void
+  /** Whether this host already runs the record's admitted writer: a re-attach, not an acquire. */
+  ownerAdmitted: (record: AgentSessionRecord) => boolean
   /** Host-owned provider sink, bound to the journal inside `onAttached`. */
   eventSink?: StructuredAgentSessionEventSink
   /** Stops acquisition-window events targeting the superseded journal. */
@@ -167,9 +168,9 @@ export async function performAttach(
       adapter: input.adapter,
       identity: journalIdentityFor(record, params),
       accountHome: record.accountHome,
-      ownerAlreadyAdmitted: agentSessionLeaseAdmitsWriter(record.lease)
+      ownerAlreadyAdmitted: input.ownerAdmitted(record)
     })
-    if (!agentSessionLeaseAdmitsWriter(record.lease)) {
+    if (!input.ownerAdmitted(record)) {
       const acquired = await withAgentSessionCreatePhase('acquire_owner', input.recordPhase, () =>
         acquireOwner(input, record)
       )

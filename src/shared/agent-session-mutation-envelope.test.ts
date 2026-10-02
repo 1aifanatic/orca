@@ -92,7 +92,26 @@ describe('agentSessionFingerprintConflict', () => {
 })
 
 describe('admitAgentSessionMutation', () => {
-  const base = { envelope: envelope(), hostFingerprint: 'f'.repeat(64), lease: LEASE }
+  const RUNS = { fence: 4, attemptInFlight: false, owner: { kind: 'runs' } } as const
+  const base = {
+    envelope: envelope(),
+    hostFingerprint: 'f'.repeat(64),
+    lease: LEASE,
+    ownerProof: RUNS
+  }
+
+  it('admits no writer the host does not run, whatever the stored claim says', () => {
+    // A release whose write failed leaves `live` stored behind a child the host watched exit.
+    for (const ownerProof of [
+      null,
+      { ...RUNS, owner: { kind: 'watched-exit', observedAt: 1, reason: null } } as const,
+      { ...RUNS, fence: 3 }
+    ]) {
+      expect(
+        admitAgentSessionMutation({ ...base, ownerProof, ledger: ADMIT('f'.repeat(64)) })
+      ).toMatchObject({ decision: 'refused', refusal: { code: 'agent_session_ownership_unknown' } })
+    }
+  })
 
   it('admits a first-time operation under a live lease at the expected fence', () => {
     expect(admitAgentSessionMutation({ ...base, ledger: ADMIT('f'.repeat(64)) }).decision).toBe(
@@ -136,6 +155,7 @@ describe('admitAgentSessionMutation', () => {
     const admission = admitAgentSessionMutation({
       ...base,
       lease: { ...LEASE, handoffStage: 'new-owner-proving' },
+      ownerProof: { ...RUNS, attemptInFlight: true },
       ledger: ADMIT('f'.repeat(64))
     })
     expect(admission).toMatchObject({

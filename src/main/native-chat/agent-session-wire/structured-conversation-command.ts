@@ -8,6 +8,7 @@ import type {
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
+import { structuredAgentSessionOwnerProofUnderSerialize } from './structured-agent-session-owner-proof'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
@@ -114,6 +115,7 @@ export function runStructuredConversationCommand(
       prepareSession: sendPreparation(context, envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
+      ownerProof: () => structuredAgentSessionOwnerProofUnderSerialize(context, sessionId),
       flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {

@@ -12,6 +12,7 @@ import {
   type AgentSessionMutationSessionPreparation
 } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
+import { structuredAgentSessionOwnerProofUnderSerialize } from './structured-agent-session-owner-proof'
 import type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-lifetime'
 import type {
   StructuredAgentSessionCaller,
@@ -67,6 +68,7 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(envelope.sessionId)?.journal,
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
+      ownerProof: () => structuredAgentSessionOwnerProofUnderSerialize(context, envelope.sessionId),
       flushStreamedEvents: context.flushStreamedEvents,
       providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
       now: () => context.now()

@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   adjudicateAgentSessionRestart,
-  agentSessionLeaseAdmitsWriter,
-  evaluateAgentSessionAcquisition,
   isProvenAliveProbe,
   isProvenDeadProbe,
   type AgentSessionOwnerProbe
 } from './agent-session-lease-adjudication'
+import { evaluateAgentSessionAcquisition } from './agent-session-lease-acquisition'
 import { normalizeLegacyHandoffLease } from './agent-session-legacy-handoff-lease'
 import type { AgentSessionLease } from './agent-session-record'
 
@@ -169,7 +168,7 @@ describe('acquisition compare-and-swap', () => {
       ownerProcess: null,
       claimStatus: 'reserved'
     })
-    expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-2')).toEqual({
+    expect(acquire(mid, INDETERMINATE, 'op-2')).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_conflict',
       details: { reason: 'handoffInFlight' }
@@ -177,6 +176,33 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-1')).toEqual({
       decision: 'retry-reservation',
       fence: 7
+    })
+  })
+
+  it("grants past another operation's reservation only once the probe proves it abandoned", () => {
+    // Acquisition runs under the session's serialize: another operation's reservation belongs to
+    // an attempt that ended, and a settlement whose write failed must not strand it.
+    const unused = lease({
+      handoffStage: 'new-owner-proving',
+      handoffOperationId: 'op-1',
+      ownerProcess: null,
+      claimStatus: 'reserved'
+    })
+    expect(acquire(unused, { outcome: 'reservation-unused' }, 'op-2')).toEqual({
+      decision: 'granted',
+      nextFence: 8
+    })
+    const spawned = lease({
+      handoffStage: 'new-owner-proving',
+      handoffOperationId: 'op-1',
+      claimStatus: 'reserved'
+    })
+    expect(acquire(spawned, { outcome: 'pid-absent' }, 'op-2')).toEqual({
+      decision: 'granted',
+      nextFence: 8
+    })
+    expect(acquire(spawned, MATCHED, 'op-2')).toMatchObject({
+      code: 'agent_session_operation_conflict'
     })
   })
 
@@ -338,14 +364,4 @@ describe('restart reconciliation', () => {
       })
     }
   )
-})
-
-describe('writer admission', () => {
-  it('admits a writer only when reconciled, settled, live, and holding a process', () => {
-    expect(agentSessionLeaseAdmitsWriter(lease())).toBe(true)
-    expect(agentSessionLeaseAdmitsWriter(lease({ unreconciled: true }))).toBe(false)
-    expect(agentSessionLeaseAdmitsWriter(lease({ handoffStage: 'new-owner-proving' }))).toBe(false)
-    expect(agentSessionLeaseAdmitsWriter(lease({ claimStatus: 'reserved' }))).toBe(false)
-    expect(agentSessionLeaseAdmitsWriter(lease({ ownerProcess: null }))).toBe(false)
-  })
 })

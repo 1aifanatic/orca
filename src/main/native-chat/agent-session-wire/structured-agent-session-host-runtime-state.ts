@@ -1,4 +1,9 @@
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
+import {
+  deriveAgentSessionLeaseState,
+  type AgentSessionHostProof,
+  type AgentSessionLeaseState
+} from '../../../shared/agent-session-lease-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   createDeferredStructuredAgentSessionEventSink,
@@ -6,16 +11,28 @@ import {
   type StructuredAgentSessionSinkBarrier
 } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
+import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
+import { structuredAgentSessionOwnerProof } from './structured-agent-session-owner-proof'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
+
+/** The host's own memory of its sessions, which owner proof is read from. */
+export type StructuredAgentSessionHostMemory = {
+  session: (sessionId: string) => StructuredAgentSessionHostSession | undefined
+  serialize: (sessionId: string, task: () => Promise<void>) => Promise<void>
+}
 
 export class StructuredAgentSessionHostRuntimeState {
   private readonly eventSinks = new Map<string, DeferredStructuredAgentSessionEventSink>()
+  /** Sessions an attach of this host's is acquiring. In memory only: a restart reconciles every
+   *  lease anyway, and an attempt that ends takes its entry with it. */
+  private readonly acquisitions = new Set<string>()
   private readonly leaseRenewer: StructuredAgentSessionLeaseRenewer
   private readonly onEventSinkFailure?: (sessionId: string, error: unknown) => void
 
   constructor(
     private readonly deps: StructuredAgentSessionHostDeps,
+    private readonly memory: StructuredAgentSessionHostMemory,
     onEventSinkFailure?: (sessionId: string, error: unknown) => void
   ) {
     this.onEventSinkFailure = onEventSinkFailure
@@ -23,6 +40,8 @@ export class StructuredAgentSessionHostRuntimeState {
       store: deps.store,
       probe: (record) => this.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
+      ownerProof: (record) => this.ownerProofFor(record),
+      serialize: memory.serialize,
       now: () => deps.now?.() ?? Date.now(),
       // Lease/ownership failures are transient and stay on the visible lease-error path.
       // Only deferred sink I/O failures are terminal and may force-close a provider.
@@ -128,6 +147,55 @@ export class StructuredAgentSessionHostRuntimeState {
       },
       sessionId
     )
+  }
+
+  /** Brackets one acquisition. Until it ends, readers outside the session's serialize derive the
+   *  lease as `acquiring`; an attach runs under serialize, so there is at most one per session. */
+  beginAcquisition(sessionId: string): () => void {
+    this.acquisitions.add(sessionId)
+    return () => this.acquisitions.delete(sessionId)
+  }
+
+  /** What memory proves about the session's owner; null when the session has no record. */
+  ownerProof(sessionId: string): AgentSessionHostProof | null {
+    const record = this.deps.store.getRecord(sessionId)
+    return record ? this.ownerProofFor(record) : null
+  }
+
+  ownerProofFor(record: AgentSessionRecord): AgentSessionHostProof {
+    return {
+      ...this.ownerProofForAttempt(record),
+      attemptInFlight: this.acquisitions.has(record.sessionId)
+    }
+  }
+
+  /** The proof as the acquiring attempt itself reads it: its own attempt is not one beside it. */
+  ownerProofForAttempt(record: AgentSessionRecord): AgentSessionHostProof {
+    return structuredAgentSessionOwnerProof({
+      lease: record.lease,
+      hostId: this.deps.store.hostId,
+      session: this.memory.session(record.sessionId),
+      attemptInFlight: false
+    })
+  }
+
+  /** The lease as memory proves it, for a reader that cannot wait on a probe. A create in flight
+   *  has no record yet and is `acquiring` all the same; null when there is neither. */
+  leaseState(sessionId: string): AgentSessionLeaseState | null {
+    const record = this.deps.store.getRecord(sessionId)
+    if (!record) {
+      return this.acquisitions.has(sessionId) ? { state: 'acquiring' } : null
+    }
+    return deriveAgentSessionLeaseState(record.lease, this.ownerProofFor(record))
+  }
+
+  /** Memory's proof, or a probe where memory has none: what a start and an acquisition decide on. */
+  async proveOwner(sessionId: string): Promise<AgentSessionHostProof | null> {
+    const known = this.ownerProof(sessionId)
+    if (!known || known.attemptInFlight || known.owner.kind === 'watched-exit') {
+      return known
+    }
+    return { ...known, owner: { kind: 'probed', probe: await this.probeOwner(sessionId) } }
   }
 
   probeOwner(sessionId: string): Promise<AgentSessionOwnerProbe> {

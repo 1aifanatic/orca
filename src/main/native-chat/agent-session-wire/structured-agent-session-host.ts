@@ -109,8 +109,9 @@ export class StructuredAgentSessionHost {
       (sessionId) => this.lifetime.conversation(sessionId),
       this.clientDelivery.readChildWork
     )
-    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, (sessionId, error) =>
-      this.eventRecovery.recoverAfterSinkFailure(sessionId, error)
+    const memory = { session: (id: string) => this.sessions.get(id), serialize: this.serialize }
+    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, memory, (id, error) =>
+      this.eventRecovery.recoverAfterSinkFailure(id, error)
     )
     this.reconcileLeases = createRestartReconciler({
       store: deps.store,
@@ -180,6 +181,8 @@ export class StructuredAgentSessionHost {
   private now = (): number => this.deps.now?.() ?? Date.now()
 
   hasSession = (sessionId: string): boolean => this.sessions.has(sessionId)
+  /** The session's lease as this host proves it now from memory; null without a record. */
+  leaseState = (sessionId: string) => this.runtimeState.leaseState(sessionId)
   sessionAgent = (sessionId: string) => this.deps.store.getRecord(sessionId)?.provider ?? null
 
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
