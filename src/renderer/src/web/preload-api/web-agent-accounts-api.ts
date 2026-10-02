@@ -24,7 +24,12 @@ export function createMiniMaxCredentialsApi(): NonNullable<
 }
 
 export function createZcodePlanCredentialsApi(): PreloadApi['zcodePlanCredentials'] {
-  const status = { apiKeyConfigured: false, zcodeCliConfigured: false, apiKeyProtection: null }
+  const status = {
+    detailsUnavailable: true,
+    apiKeyConfigured: false,
+    zcodeCliConfigured: false,
+    apiKeyProtection: null
+  }
   const unsupported = () =>
     Promise.reject(
       new Error(
