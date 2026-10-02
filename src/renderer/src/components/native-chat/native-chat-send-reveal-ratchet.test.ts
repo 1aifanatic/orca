@@ -10,7 +10,11 @@ it('reveals the latest from every file that sends a native chat message', () => 
   const dir = import.meta.dirname
   const senders = readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
-    .map((name) => ({ name, source: readFileSync(path.join(dir, name), 'utf8') }))
+    // Comments dropped, so only a real call counts.
+    .map((name) => ({
+      name,
+      source: readFileSync(path.join(dir, name), 'utf8').replace(/\/\/.*$/gm, '')
+    }))
     .filter(({ source }) => source.includes('emitNativeChatMessageSent('))
   const silent = senders
     .filter(({ name, source }) => !(name in EXEMPT) && !/\bonSubmitted\?\.\(\)/.test(source))

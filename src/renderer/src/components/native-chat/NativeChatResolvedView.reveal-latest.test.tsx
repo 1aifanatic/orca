@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { useImperativeHandle } from 'react'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
+import type { AskPrompt } from './native-chat-interactive-prompt'
 import type { NativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 
@@ -60,6 +61,10 @@ afterEach(() => {
   stubs.cardSend = null
 })
 
+const prompt: AskPrompt = {
+  questions: [{ question: 'Indent with?', multiSelect: false, options: [{ label: 'Tabs' }] }]
+}
+
 describe('NativeChatResolvedView sends', () => {
   it('brings the latest into view for a composer send and a prompt answer, not a Stop', () => {
     stubs.session = {
@@ -100,7 +105,10 @@ describe('NativeChatResolvedView sends', () => {
     stubs.composer?.onSubmitted?.()
     expect(stubs.revealLatest).toHaveBeenCalledOnce()
     // A question answer and an approval option, then Stop: only the answers are sends.
-    stubs.cardSend?.sendAnswer({ questions: [] }, [])
+    stubs.cardSend?.sendAnswer(prompt, [{ indices: [0] }])
+    expect(stubs.revealLatest).toHaveBeenCalledTimes(2)
+    // An empty answer writes nothing, so it moves nobody.
+    stubs.cardSend?.sendAnswer(prompt, [{ indices: [] }])
     expect(stubs.revealLatest).toHaveBeenCalledTimes(2)
     stubs.cardSend?.sendRaw('1')
     expect(stubs.revealLatest).toHaveBeenCalledTimes(3)
@@ -122,7 +130,7 @@ describe('NativeChatResolvedView sends', () => {
         ownsTabWideLaunchDraft={false}
       />
     )
-    stubs.cardSend?.sendAnswer({ questions: [] }, [])
+    stubs.cardSend?.sendAnswer(prompt, [{ indices: [0] }])
     stubs.cardSend?.sendRaw('1')
     expect(stubs.cardSend).not.toBeNull()
     expect(stubs.revealLatest).not.toHaveBeenCalled()

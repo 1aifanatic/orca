@@ -13,6 +13,7 @@ import { useNativeChatFontScale } from './use-native-chat-font-scale'
 import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
+import { hasAskAnswer } from './native-chat-interactive-prompt'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import {
   useNativeChatInteractiveSend,
@@ -124,12 +125,12 @@ export function NativeChatResolvedView({
   const { messageListRef, revealLatest } = useNativeChatRevealLatest()
   const interactiveSend = useMemo<NativeChatInteractiveSend>(
     () => ({
-      // Without a terminal nothing is written, so the reader stays put.
-      sendAnswer: (...args) => {
-        if (targetPtyId) {
+      // Only what is written moves the reader: no terminal, or an empty answer, writes nothing.
+      sendAnswer: (prompt, selections, onDeliverySettled) => {
+        if (targetPtyId && hasAskAnswer(prompt, selections)) {
           revealLatest()
         }
-        return sendAnswer(...args)
+        return sendAnswer(prompt, selections, onDeliverySettled)
       },
       sendRaw: (raw) => {
         if (targetPtyId) {
