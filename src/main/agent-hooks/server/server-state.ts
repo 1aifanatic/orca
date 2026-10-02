@@ -134,7 +134,9 @@ export abstract class AgentHookServerState {
   protected currentAuthorityObservations = new Map<string, AgentHookAuthorityEvidence>()
   protected legacyPaneKeyAliases = new Map<string, PaneKeyAliasEntry>()
   // Why: the execution host knows which live terminal exported a pane key and where it shows now.
-  protected terminalPaneResolver: ((paneKey: string) => string | undefined) | null = null
+  protected terminalPaneResolver:
+    | ((paneKey: string, connectionId?: string | null) => string | undefined)
+    | null = null
   // Why: indexed by every key the retirement fenced, so a re-attach on any of them
   // (owner, physical, or a deleted alias) finds the same record. Bounded like the maps
   // it mirrors; an evicted record simply degrades to lifting the key it was handed.

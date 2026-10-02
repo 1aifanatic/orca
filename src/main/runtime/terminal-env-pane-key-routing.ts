@@ -1,13 +1,5 @@
-/**
- * Routes an agent hook's pane key to the pane that shows its terminal now.
- *
- * A PTY's environment is fixed at spawn, so every hook its agent runs posts the `ORCA_PANE_KEY`
- * the host exported then. The PTY can outlive that pane: a terminal that survives an app restart
- * may be adopted into a tab with a new id. The execution host records the exported key with the
- * process (`envPaneKey`), so a posted key resolves to the terminal that carries it and from there
- * to the pane that terminal occupies now. The record dies with the process, so nothing here needs
- * a TTL, and nothing is persisted beside the store.
- */
+// A live PTY's environment is fixed at spawn, so its hooks post the pane key exported then even after
+// the terminal shows elsewhere; the host routes that key to the terminal's current pane.
 import { parsePaneKey } from '../../shared/stable-pane-id'
 
 export type EnvPaneKeyTerminal = {
@@ -15,6 +7,7 @@ export type EnvPaneKeyTerminal = {
   /** The terminal's current surface as recorded by the runtime. */
   paneKey: string | null
   envPaneKey?: string | null
+  connectionId: string | null
 }
 
 export type EnvPaneKeyRoutingSource<T extends EnvPaneKeyTerminal> = {
@@ -31,14 +24,19 @@ export type EnvPaneKeyRoutingSource<T extends EnvPaneKeyTerminal> = {
  */
 export function resolveTerminalPaneForEnvPaneKey<T extends EnvPaneKeyTerminal>(
   paneKey: string,
-  source: EnvPaneKeyRoutingSource<T>
+  source: EnvPaneKeyRoutingSource<T>,
+  /** The host the post arrived from; undefined trusts any. A key never crosses hosts. */
+  connectionId?: string | null
 ): string | undefined {
   if (!parsePaneKey(paneKey)) {
     return undefined
   }
   let carrier: T | undefined
   for (const terminal of source.terminals) {
-    if (terminal.paneKey !== paneKey && terminal.envPaneKey !== paneKey) {
+    if (
+      (terminal.paneKey !== paneKey && terminal.envPaneKey !== paneKey) ||
+      (connectionId !== undefined && terminal.connectionId !== connectionId)
+    ) {
       continue
     }
     if (!source.isLive(terminal)) {

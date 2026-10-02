@@ -218,11 +218,9 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     return this.legacyPaneKeyAliases.get(paneKey)?.stablePaneKey ?? paneKey
   }
 
-  /** Owner of a key a process posted. Only ingress consults the live terminal record: cleanup is
-   *  handed layout keys, and a dead layout key must never reach the pane its process moved to. */
-  protected resolveHookPaneKey(paneKey: string): string {
-    // Why first: the host's live terminal record outranks an alias minted under an older layout.
-    return this.terminalPaneResolver?.(paneKey) ?? this.resolvePaneKeyAlias(paneKey)
+  // Why ingress only: cleanup is handed layout keys, which must never reach the pane a process moved to.
+  protected resolveHookPaneKey(paneKey: string, connectionId: string | null): string {
+    return this.terminalPaneResolver?.(paneKey, connectionId) ?? this.resolvePaneKeyAlias(paneKey)
   }
 
   protected revokeHydratedAuthorityForPaneKeys(paneKeys: ReadonlySet<string>): boolean {
@@ -252,7 +250,8 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     }
     const record = body as Record<string, unknown>
     const rawPaneKey = typeof record.paneKey === 'string' ? record.paneKey.trim() : ''
-    const stablePaneKey = rawPaneKey ? this.resolveHookPaneKey(rawPaneKey) : rawPaneKey
+    // Local HTTP and spool posts come only from this machine's terminals.
+    const stablePaneKey = rawPaneKey ? this.resolveHookPaneKey(rawPaneKey, null) : rawPaneKey
     if (stablePaneKey === rawPaneKey) {
       return body
     }

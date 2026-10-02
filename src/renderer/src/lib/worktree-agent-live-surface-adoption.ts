@@ -1,3 +1,4 @@
+import { hasClosedTerminalTabRecord } from '../../../shared/closed-terminal-tab-tombstones'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { worktreeIdsEqual } from '../../../shared/worktree/id'
 import type { useAppStore } from '@/store'
@@ -94,8 +95,11 @@ function bindToRecordedSurface(
   }
   if (!tabExists(store, recorded.tabId)) {
     return (
-      !store.closedTerminalTabTombstonesByTabId[recorded.tabId] &&
-      bindLivePtyToExactSurface(store, worktreeId, recorded)
+      !hasClosedTerminalTabRecord(
+        store.closedTerminalTabTombstonesByTabId,
+        recorded.tabId,
+        worktreeId
+      ) && bindLivePtyToExactSurface(store, worktreeId, recorded)
     )
   }
   const heldPtyId = store.terminalLayoutsByTabId[recorded.tabId]?.ptyIdsByLeafId?.[pane.leafId]

@@ -76,6 +76,25 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     ).toEqual(expect.objectContaining({ entries: { [FRESH_PANE]: expect.anything() } }))
   })
 
+  it('keeps the spawn-key row when it is newer than the live pane’s own row', async () => {
+    await postHookEvent(
+      server,
+      buildBody(
+        { hook_event_name: 'UserPromptSubmit', prompt: 'older pane row' },
+        { paneKey: FRESH_PANE, tabId: 'tab-fresh' }
+      )
+    )
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await postFromSpawnedPane(server, 'newer from the process')
+
+    server.setTerminalPaneResolver(movedTerminal)
+    server.reconcileMovedTerminalPaneKeys([OLD_PANE])
+
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'newer from the process' })
+    ])
+  })
+
   it('drops the spawn-key row when the live pane already reports for itself', async () => {
     await postFromSpawnedPane(server, 'stale')
     await postHookEvent(

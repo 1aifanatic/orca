@@ -266,8 +266,8 @@ async function startOrcadRuntime(
       }
     }
   })
-  agentHookServer.setTerminalPaneResolver((paneKey) =>
-    runtime.resolveAgentHookTerminalPane(paneKey)
+  agentHookServer.setTerminalPaneResolver((paneKey, connectionId) =>
+    runtime.resolveAgentHookTerminalPane(paneKey, connectionId)
   )
 
   const { installOrcadSessionSearchService } = await import('./orcad-session-search')

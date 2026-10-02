@@ -425,12 +425,14 @@ spawn. The record dies with the process, so it needs no TTL.
 - **Ingress.** HTTP, spool-replay and relay posts resolve through
   `resolveHookPaneKey`: the runtime names the pane the live terminal carrying that
   key shows now (`terminal-env-pane-key-routing.ts`), then the alias table, then the
-  key itself. The runtime refuses to guess when the key already names a live pane,
+  key itself. Only a terminal on the host the post came from qualifies, and a local
+  record whose process was seen to exit does not. The runtime refuses to guess when the key already names a live pane,
   two live terminals exported it, or the terminal is mounted in more than one pane.
 - **Rows already filed under the exported key** move to the current pane when the
   runtime learns of the move (registration, graph sync, inventory), through the
   same cache move `transferPaneAuthority` uses but without minting an alias. If the
-  current pane already has its own row, the older one is dropped.
+  current pane already has its own row, the newer of the two wins, and the loser is
+  dropped by its own key, never through an alias.
 - **Cleanup is not routed.** Clears, dismissals and retirements are handed layout
   keys, so a dead layout key never reaches the pane its process moved to.
 - **Exit** clears rows under the exported key as well as the current pane, unless

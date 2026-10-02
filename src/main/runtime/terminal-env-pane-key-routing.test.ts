@@ -20,7 +20,7 @@ function source(terminals: Terminal[]) {
   }
 }
 
-const moved: Terminal = { ptyId: 'pty-1', paneKey: NEW, envPaneKey: OLD }
+const moved: Terminal = { ptyId: 'pty-1', paneKey: NEW, envPaneKey: OLD, connectionId: null }
 
 describe('resolveTerminalPaneForEnvPaneKey', () => {
   it('resolves an exported key to the pane its live terminal shows now', () => {
@@ -34,20 +34,29 @@ describe('resolveTerminalPaneForEnvPaneKey', () => {
   })
 
   it.each<[string, Terminal[]]>([
-    ['no terminal exported the key', [{ ptyId: 'pty-1', paneKey: NEW, envPaneKey: OTHER }]],
-    ['the terminal never moved', [{ ptyId: 'pty-1', paneKey: OLD, envPaneKey: OLD }]],
+    [
+      'no terminal exported the key',
+      [{ ptyId: 'pty-1', paneKey: NEW, envPaneKey: OTHER, connectionId: null }]
+    ],
+    [
+      'the terminal never moved',
+      [{ ptyId: 'pty-1', paneKey: OLD, envPaneKey: OLD, connectionId: null }]
+    ],
     ['the terminal exited', [{ ...moved, exited: true }]],
     [
       'another live terminal shows that pane now',
-      [moved, { ptyId: 'pty-2', paneKey: OLD, envPaneKey: OLD }]
+      [moved, { ptyId: 'pty-2', paneKey: OLD, envPaneKey: OLD, connectionId: null }]
     ],
     [
       'two live terminals exported the same key',
-      [moved, { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OLD }]
+      [moved, { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OLD, connectionId: null }]
     ],
     ['the terminal is mounted in more than one pane', [{ ...moved, mounted: [NEW, OTHER] }]],
     ['the terminal has no surface', [{ ...moved, paneKey: null }]],
-    ['a host predating the field reported none', [{ ptyId: 'pty-1', paneKey: NEW }]]
+    [
+      'a host predating the field reported none',
+      [{ ptyId: 'pty-1', paneKey: NEW, connectionId: null }]
+    ]
   ])('refuses to guess when %s', (_case, terminals) => {
     expect(resolveTerminalPaneForEnvPaneKey(OLD, source(terminals))).toBeUndefined()
   })
@@ -56,9 +65,19 @@ describe('resolveTerminalPaneForEnvPaneKey', () => {
     expect(
       resolveTerminalPaneForEnvPaneKey(
         OLD,
-        source([moved, { ptyId: 'pty-2', paneKey: OLD, envPaneKey: OLD, exited: true }])
+        source([
+          moved,
+          { ptyId: 'pty-2', paneKey: OLD, envPaneKey: OLD, connectionId: null, exited: true }
+        ])
       )
     ).toBe(NEW)
+  })
+
+  it('routes only posts from the host that runs the terminal', () => {
+    const remote: Terminal = { ...moved, connectionId: 'ssh-a' }
+    expect(resolveTerminalPaneForEnvPaneKey(OLD, source([remote]), 'ssh-a')).toBe(NEW)
+    expect(resolveTerminalPaneForEnvPaneKey(OLD, source([remote]), 'ssh-b')).toBeUndefined()
+    expect(resolveTerminalPaneForEnvPaneKey(OLD, source([remote]), null)).toBeUndefined()
   })
 
   it('rejects keys that are not stable pane keys', () => {
@@ -72,8 +91,8 @@ describe('collectMovedEnvPaneKeys', () => {
       collectMovedEnvPaneKeys(
         source([
           moved,
-          { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OTHER },
-          { ptyId: 'pty-3', paneKey: OTHER }
+          { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OTHER, connectionId: null },
+          { ptyId: 'pty-3', paneKey: OTHER, connectionId: null }
         ])
       )
     ).toEqual([OLD])

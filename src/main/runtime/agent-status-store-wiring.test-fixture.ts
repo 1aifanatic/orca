@@ -6,7 +6,7 @@ type WiredRuntime = {
   getTerminalWorktreeIdForPaneKey(paneKey: string): string | null
   scheduleMobileSessionTabsAgentStatusHeartbeatForWorktree(worktreeId: string): void
   touchMobileSessionTabsForWorktree(worktreeId: string): void
-  resolveAgentHookTerminalPane(paneKey: string): string | undefined
+  resolveAgentHookTerminalPane(paneKey: string, connectionId?: string | null): string | undefined
 }
 
 /**
@@ -52,8 +52,8 @@ export function makeAgentStatusStoreWiring(): {
         statusStore.reconcileMovedTerminalPaneKeys(envPaneKeys)
     },
     attach: (runtime) => {
-      statusStore.setTerminalPaneResolver((paneKey) =>
-        runtime.resolveAgentHookTerminalPane(paneKey)
+      statusStore.setTerminalPaneResolver((paneKey, connectionId) =>
+        runtime.resolveAgentHookTerminalPane(paneKey, connectionId)
       )
       const uninstall = installHookStatusSessionTabsRepublish(statusStore, () => runtime)
       return () => {

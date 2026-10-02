@@ -166,8 +166,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
   // Why: hooks post the key their PTY was spawned with; the runtime knows where that terminal is now.
-  agentHookServer.setTerminalPaneResolver((paneKey) =>
-    runtime.resolveAgentHookTerminalPane(paneKey)
+  agentHookServer.setTerminalPaneResolver((paneKey, connectionId) =>
+    runtime.resolveAgentHookTerminalPane(paneKey, connectionId)
   )
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)

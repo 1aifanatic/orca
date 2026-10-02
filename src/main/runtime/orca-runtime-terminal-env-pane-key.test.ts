@@ -148,6 +148,35 @@ describe('hook status follows a terminal that outlived its pane', () => {
     expect(statusPaneKeys()).toEqual([])
   })
 
+  it('stops routing once a local process exit is observed, even without a confirmed code', async () => {
+    await runtime.readInventory()
+    runtime.reattachInto(NEW_TAB, NEW_LEAF)
+    expect(runtime.resolveAgentHookTerminalPane(OLD_PANE)).toBe(NEW_PANE)
+
+    runtime.onPtyExit(PTY, -1, INCARNATION)
+
+    expect(runtime.resolveAgentHookTerminalPane(OLD_PANE)).toBeUndefined()
+  })
+
+  it('does not route a relay post from another host onto this terminal’s pane', async () => {
+    await runtime.readInventory()
+    runtime.reattachInto(NEW_TAB, NEW_LEAF)
+
+    wiring.statusStore.ingestRemote(
+      {
+        paneKey: OLD_PANE,
+        tabId: OLD_TAB,
+        worktreeId: WORKTREE,
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'other host', agentType: 'claude' }
+      },
+      'ssh-other'
+    )
+
+    expect(statusPaneKeys()).toEqual([OLD_PANE])
+  })
+
   it('keeps today’s behavior with a daemon or relay that predates the field', async () => {
     processes = listing()
     await runtime.readInventory()

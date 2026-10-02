@@ -361,7 +361,7 @@ describe('worktree agent activation gate', () => {
       'the user closed the recorded tab',
       (store) => {
         store.closedTerminalTabTombstonesByTabId['tab-live'] = {
-          closedAt: 1,
+          closedAt: Date.now(),
           worktreeId: WORKTREE_ID
         }
       }

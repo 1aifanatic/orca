@@ -88,8 +88,8 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
   }
 
   /** The pane a hook posting `paneKey` belongs to now; see terminal-env-pane-key-routing.ts. */
-  resolveAgentHookTerminalPane(paneKey: string): string | undefined {
-    return resolveTerminalPaneForEnvPaneKey(paneKey, this.envPaneKeyRoutingSource())
+  resolveAgentHookTerminalPane(paneKey: string, connectionId?: string | null): string | undefined {
+    return resolveTerminalPaneForEnvPaneKey(paneKey, this.envPaneKeyRoutingSource(), connectionId)
   }
 
   /** Hands the store every exported key whose terminal now shows another pane, so it moves the rows. */
@@ -107,8 +107,10 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     return {
       // Re-iterable: resolution walks the records once per candidate.
       terminals: { [Symbol.iterator]: () => this.ptysById.values() },
-      // Loss of contact with an SSH host is not death, so only a certified exit stops routing.
-      isLive: (pty) => this.getPtyLivenessVerdict(pty.ptyId)?.status !== 'exited',
+      // Loss of contact with an SSH host is not death; a disconnected local record is.
+      isLive: (pty) =>
+        this.getPtyLivenessVerdict(pty.ptyId)?.status !== 'exited' &&
+        (pty.connected || pty.connectionId !== null),
       currentPaneKeys: (pty) =>
         this.getLeavesForPty(pty.ptyId).map((leaf) => this.makeRuntimePaneKey(leaf))
     }
