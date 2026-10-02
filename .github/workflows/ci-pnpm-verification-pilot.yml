@@ -1,65 +1,860 @@
-name: pnpm verification cache pilot
-
+name: Sequential heavy preflight safety qualification
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
-  workflow_dispatch:
-
+  workflow_dispatch: {}
+concurrency:
+  group: sequential-heavy-safety-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
-
+  ORCA_SHARD_SOURCE_SHA: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  code_paths:
+    name: Native no-op joins and explicit selector fixtures
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    outputs:
+      static_analysis: ${{ steps.routing.outputs.static_analysis }}
+      typecheck: ${{ steps.routing.outputs.typecheck }}
+      git_compatibility: ${{ steps.routing.outputs.git_compatibility }}
+      codex_index_heal_contract: ${{ steps.routing.outputs.codex_index_heal_contract }}
+      xterm_patch_sync: ${{ steps.routing.outputs.xterm_patch_sync }}
+      shell_contracts: ${{ steps.routing.outputs.shell_contracts }}
+      test: ${{ steps.routing.outputs.test }}
+      orcad_browser: ${{ steps.routing.outputs.orcad_browser }}
+      mobile_web_app: ${{ steps.routing.outputs.mobile_web_app }}
+      cross-version-wire: ${{ steps.routing.outputs.cross-version-wire }}
+      managed_hook_node18: ${{ steps.routing.outputs.managed_hook_node18 }}
+      package: ${{ steps.routing.outputs.package }}
+      package_windows: ${{ steps.routing.outputs.package_windows }}
+      should_run: ${{ steps.routing.outputs.should_run }}
+      mobile_dependencies: ${{ steps.routing.outputs.mobile_dependencies }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+      - &a1
+        name: Hold the frozen safety driver outside source checkout
+        run: |-
+          mkdir -p "$RUNNER_TEMP/orca-heavy-safety"
+          printf '%s' 'aW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnCmltcG9ydCB7IGNyZWF0ZUhhc2ggfSBmcm9tICdub2RlOmNyeXB0bycKaW1wb3J0IHsgZXhpc3RzU3luYywgbWtkaXJTeW5jLCByZWFkRmlsZVN5bmMsIHdyaXRlRmlsZVN5bmMgfSBmcm9tICdub2RlOmZzJwppbXBvcnQgeyBqb2luLCByZXNvbHZlIH0gZnJvbSAnbm9kZTpwYXRoJwppbXBvcnQgeyBwYXRoVG9GaWxlVVJMIH0gZnJvbSAnbm9kZTp1cmwnCgpjb25zdCBoYXNoID0gKGJ5dGVzKSA9PiBjcmVhdGVIYXNoKCdzaGEyNTYnKS51cGRhdGUoYnl0ZXMpLmRpZ2VzdCgnaGV4JykKY29uc3QgZmF1bHRQYXRoID0gJ3NyYy9tYWluL2NpLXByZWZsaWdodC1jb21waWxlci1mYXVsdC50cycKY29uc3QgZmF1bHRTb3VyY2UgPSAnZXhwb3J0IGNvbnN0IGNpUXVhbGlmaWNhdGlvbkNvbXBpbGVyRmF1bHQ6IHN0cmluZyA9IDQyXG4nCmNvbnN0IG5vbmNlID0gJ29yY2Etc2VxdWVudGlhbC1oZWF2eS1jb250cm9sbGVkLXBvc3QtdjEnCmNvbnN0IHdyaXRlID0gKHBhdGgsIHZhbHVlKSA9PiB7CiAgbWtkaXJTeW5jKHJlc29sdmUocGF0aCwgJy4uJyksIHsgcmVjdXJzaXZlOiB0cnVlIH0pCiAgd3JpdGVGaWxlU3luYyhwYXRoLCBgJHtKU09OLnN0cmluZ2lmeSh2YWx1ZSwgbnVsbCwgMil9XG5gKQp9CgpleHBvcnQgZnVuY3Rpb24gdmFsaWRhdGVGb3JlZ3JvdW5kKGtpbmQsIHN0ZXBzLCBkaWFnbm9zdGljID0gJycpIHsKICBhc3NlcnQub2soWydjb21waWxlcl9mYWlsdXJlJywgJ3Bvc3RfZmFpbHVyZSddLmluY2x1ZGVzKGtpbmQpKQogIGFzc2VydC5lcXVhbChzdGVwc1snc3RhdGljLWNvbXBsZXRlJ10ub3V0Y29tZSwgJ3N1Y2Nlc3MnKQogIGFzc2VydC5lcXVhbChzdGVwc1snc3RhdGljLWNvbXBsZXRlJ10ub3V0cHV0cy5yZXN1bHQsICdzdWNjZXNzJykKICBhc3NlcnQuZXF1YWwoc3RlcHNbJ3VuaXQtcGxhbiddLm91dGNvbWUsICdzdWNjZXNzJykKICBpZiAoa2luZCA9PT0gJ2NvbXBpbGVyX2ZhaWx1cmUnKSB7CiAgICBhc3NlcnQuZXF1YWwoc3RlcHNbJ2NvbXBpbGVyLWNvbW1hbmQnXS5vdXRjb21lLCAnZmFpbHVyZScpCiAgICBhc3NlcnQubWF0Y2goc3RlcHNbJ2NvbXBpbGVyLWNvbW1hbmQnXS5vdXRwdXRzLmV4aXRfY29kZSwgL15bMS05XVxkKiQvKQogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWyd0eXBlY2hlY2stY29tcGxldGUnXS5vdXRjb21lLCAnc2tpcHBlZCcpCiAgICBhc3NlcnQuZXF1YWwoc3RlcHNbJ3R5cGVjaGVjay1jb21wbGV0ZSddLm91dHB1dHMucmVzdWx0LCB1bmRlZmluZWQpCiAgICBhc3NlcnQub2soCiAgICAgIGRpYWdub3N0aWMuc3BsaXQoJ1xuJykuc29tZSgobGluZSkgPT4gbGluZS5pbmNsdWRlcyhmYXVsdFBhdGgpICYmIGxpbmUuaW5jbHVkZXMoJ1RTMjMyMicpKSwKICAgICAgJ1RoZSBhY3R1YWwgY29tcGlsZXIgbXVzdCBkaWFnbm9zZSB0aGUgb3duZWQgaW5jbHVkZWQgc291cmNlIHdpdGggVFMyMzIyLicKICAgICkKICB9IGVsc2UgewogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWydjb21waWxlci1jb21tYW5kJ10ub3V0Y29tZSwgJ3N1Y2Nlc3MnKQogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWydjb21waWxlci1jb21tYW5kJ10ub3V0cHV0cy5leGl0X2NvZGUsICcwJykKICAgIGFzc2VydC5lcXVhbChzdGVwc1sndHlwZWNoZWNrLWNvbXBsZXRlJ10ub3V0Y29tZSwgJ3N1Y2Nlc3MnKQogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWyd0eXBlY2hlY2stY29tcGxldGUnXS5vdXRwdXRzLnJlc3VsdCwgJ3N1Y2Nlc3MnKQogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWydwb3N0LWZhdWx0J10ub3V0Y29tZSwgJ3N1Y2Nlc3MnKQogICAgYXNzZXJ0LmVxdWFsKHN0ZXBzWydwb3N0LWZhdWx0J10ub3V0cHV0cy5ub25jZSwgbm9uY2UpCiAgICBhc3NlcnQuZXF1YWwoc3RlcHNbJ3NlbGVjdGlvbi11cGxvYWQnXS5vdXRjb21lLCAnc3VjY2VzcycpCiAgfQp9CgpleHBvcnQgZnVuY3Rpb24gdmFsaWRhdGVOZWVkcyhuZWVkcywgcmVjZWlwdHMsIGNvbnRleHQpIHsKICBhc3NlcnQuZXF1YWwobmVlZHMuY29kZV9wYXRocy5yZXN1bHQsICdzdWNjZXNzJykKICBmb3IgKGNvbnN0IGZpZWxkIG9mIFsnc3RhdGljX2FuYWx5c2lzJywgJ3R5cGVjaGVjaycsICd0ZXN0JywgJ3BhY2thZ2UnLCAncGFja2FnZV93aW5kb3dzJ10pIHsKICAgIGFzc2VydC5lcXVhbChuZWVkcy5jb2RlX3BhdGhzLm91dHB1dHNbZmllbGRdLCAndHJ1ZScpCiAgfQogIGFzc2VydC5lcXVhbChyZWNlaXB0cy5ub29wcy5yb3V0aW5nRXZpZGVuY2UsICdleHBsaWNpdCBmaXh0dXJlOyBub3QgYWN0dWFsIFBSIGNsYXNzaWZpY2F0aW9uJykKICBhc3NlcnQuZXF1YWwocmVjZWlwdHMubm9vcHMubmF0aXZlSm9pbnMsICdwcm9kdWNlciBwaHlzaWNhbCBzdWNjZXNzIHJlcXVpcmVkIGV4dGVybmFsbHknKQogIGZvciAoY29uc3QgaWQgb2YgY29udGV4dC5ub29wSWRzKSB7CiAgICBhc3NlcnQuZXF1YWwocmVjZWlwdHMubm9vcHMuc3RlcHNbaWRdLm91dGNvbWUsICdzdWNjZXNzJykKICB9CiAgZm9yIChjb25zdCBraW5kIG9mIFsnY29tcGlsZXJfZmFpbHVyZScsICdwb3N0X2ZhaWx1cmUnXSkgewogICAgYXNzZXJ0LmVxdWFsKG5lZWRzW2tpbmRdLnJlc3VsdCwgJ2ZhaWx1cmUnKQogICAgYXNzZXJ0LmVxdWFsKG5lZWRzW2tpbmRdLm91dHB1dHMuZm9yZWdyb3VuZF9xdWFsaWZpZWQsICd0cnVlJykKICAgIGFzc2VydC5lcXVhbChuZWVkc1traW5kXS5vdXRwdXRzLnN0YXRpY19yZXN1bHQsICdzdWNjZXNzJykKICAgIGFzc2VydC5lcXVhbChyZWNlaXB0c1traW5kXS5xdWFsaWZpZWQsIHRydWUpCiAgICBhc3NlcnQuZXF1YWwocmVjZWlwdHNba2luZF0ua2luZCwga2luZCkKICAgIGFzc2VydC5lcXVhbChyZWNlaXB0c1traW5kXS5zb3VyY2VTaGEsIGNvbnRleHQuc291cmNlU2hhKQogICAgYXNzZXJ0LmRlZXBFcXVhbChyZWNlaXB0c1traW5kXS5wb2xpY3lIYXNoZXMsIGNvbnRleHQucGF0aHMpCiAgICBhc3NlcnQuZXF1YWwocmVjZWlwdHNba2luZF0udHJhY2tlZERyaWZ0U3RhdHVzLCAwKQogICAgdmFsaWRhdGVGb3JlZ3JvdW5kKGtpbmQsIHJlY2VpcHRzW2tpbmRdLnN0ZXBzLCByZWNlaXB0c1traW5kXS5kaWFnbm9zdGljKQogICAgZm9yIChjb25zdCBnYXRlIG9mIFsndW5pdCcsICdwYWNrYWdlJ10pIHsKICAgICAgYXNzZXJ0LmVxdWFsKG5lZWRzW2Ake2tpbmR9XyR7Z2F0ZX1gXS5yZXN1bHQsICdza2lwcGVkJykKICAgIH0KICB9CiAgYXNzZXJ0LmVxdWFsKG5lZWRzLmNvbXBpbGVyX2ZhaWx1cmUub3V0cHV0cy50eXBlY2hlY2tfcmVzdWx0LCAnYmxvY2tlZCcpCiAgYXNzZXJ0LmVxdWFsKG5lZWRzLnBvc3RfZmFpbHVyZS5vdXRwdXRzLnR5cGVjaGVja19yZXN1bHQsICdzdWNjZXNzJykKICBhc3NlcnQuZXF1YWwocmVjZWlwdHMuY29tcGlsZXJfZmFpbHVyZS5mYXVsdGVkV29ya3RyZWUsIHRydWUpCiAgYXNzZXJ0LmRlZXBFcXVhbChyZWNlaXB0cy5jb21waWxlcl9mYWlsdXJlLmZhdWx0LCB7CiAgICBwYXRoOiBmYXVsdFBhdGgsCiAgICBzaGEyNTY6IGhhc2goZmF1bHRTb3VyY2UpCiAgfSkKICBhc3NlcnQuZXF1YWwocmVjZWlwdHMucG9zdF9mYWlsdXJlLmZhdWx0ZWRXb3JrdHJlZSwgZmFsc2UpCiAgYXNzZXJ0LmVxdWFsKHJlY2VpcHRzLnBvc3RfZmFpbHVyZS5wb3N0RmF1bHROb25jZSwgbm9uY2UpCiAgZm9yIChjb25zdCByZWNvcmQgb2YgT2JqZWN0LnZhbHVlcyhyZWNlaXB0cykpIHsKICAgIGFzc2VydC5lcXVhbChyZWNvcmQud29ya2Zsb3dDb250ZXh0LnJ1bklkLCBwcm9jZXNzLmVudi5HSVRIVUJfUlVOX0lEKQogICAgYXNzZXJ0LmVxdWFsKHJlY29yZC53b3JrZmxvd0NvbnRleHQucnVuQXR0ZW1wdCwgcHJvY2Vzcy5lbnYuR0lUSFVCX1JVTl9BVFRFTVBUKQogICAgYXNzZXJ0LmVxdWFsKHJlY29yZC53b3JrZmxvd0NvbnRleHQud29ya2Zsb3dTaGEsIHByb2Nlc3MuZW52LkdJVEhVQl9XT1JLRkxPV19TSEEpCiAgfQp9CgpleHBvcnQgZnVuY3Rpb24gYWdncmVnYXRlRml4dHVyZXMoY29udGV4dCwgbmVlZHMpIHsKICBjb25zdCBwb3NpdGl2ZSA9IHsgQ09ERV9QQVRIUzogJ3N1Y2Nlc3MnLCBTSE9VTERfUlVOOiAndHJ1ZScsIEhFQVZZX1BSRUZMSUdIVDogJ3N1Y2Nlc3MnIH0KICBmb3IgKGNvbnN0IGZpZWxkIG9mIGNvbnRleHQuY2hlY2tKb2JzKSB7CiAgICBjb25zdCB2YXJpYWJsZSA9IGZpZWxkLnJlcGxhY2VBbGwoJy0nLCAnXycpLnRvVXBwZXJDYXNlKCkKICAgIHBvc2l0aXZlW3ZhcmlhYmxlXSA9ICdzdWNjZXNzJwogICAgcG9zaXRpdmVbYCR7dmFyaWFibGV9X1NIT1VMRF9SVU5gXSA9ICd0cnVlJwogIH0KICBjb25zdCBmYWlsdXJlID0gKGtpbmQpID0+ICh7CiAgICAuLi5wb3NpdGl2ZSwKICAgIEhFQVZZX1BSRUZMSUdIVDogbmVlZHNba2luZF0ucmVzdWx0LAogICAgU1RBVElDX0FOQUxZU0lTOiBuZWVkc1traW5kXS5vdXRwdXRzLnN0YXRpY19yZXN1bHQsCiAgICBUWVBFQ0hFQ0s6IG5lZWRzW2tpbmRdLm91dHB1dHMudHlwZWNoZWNrX3Jlc3VsdCwKICAgIFRFU1Q6IG5lZWRzW2Ake2tpbmR9X3VuaXRgXS5yZXN1bHQsCiAgICBQQUNLQUdFOiBuZWVkc1tgJHtraW5kfV9wYWNrYWdlYF0ucmVzdWx0CiAgfSkKICBjb25zdCBwb3N0ID0gZmFpbHVyZSgncG9zdF9mYWlsdXJlJykKICByZXR1cm4gWwogICAgeyBuYW1lOiAncG9zaXRpdmUgYWdncmVnYXRlIGZpeHR1cmUnLCBlbnY6IHBvc2l0aXZlLCBleHBlY3RlZDogMCB9LAogICAgewogICAgICBuYW1lOiAnb2JzZXJ2ZWQgY29tcGlsZXItZmFpbHVyZSBhZ2dyZWdhdGUgZml4dHVyZScsCiAgICAgIGVudjogZmFpbHVyZSgnY29tcGlsZXJfZmFpbHVyZScpLAogICAgICBleHBlY3RlZDogMQogICAgfSwKICAgIHsgbmFtZTogJ29ic2VydmVkIHBvc3QtZmFpbHVyZSBhZ2dyZWdhdGUgZml4dHVyZScsIGVudjogcG9zdCwgZXhwZWN0ZWQ6IDEgfSwKICAgIHsKICAgICAgbmFtZTogJ3Bvc3QtZmFpbHVyZSBwaHlzaWNhbC1ndWFyZCBuZWdhdGl2ZSBjb250cm9sJywKICAgICAgZW52OiB7IC4uLnBvc2l0aXZlLCBIRUFWWV9QUkVGTElHSFQ6IHBvc3QuSEVBVllfUFJFRkxJR0hUIH0sCiAgICAgIGV4cGVjdGVkOiAxCiAgICB9LAogICAgewogICAgICBuYW1lOiAnb25seSBwaHlzaWNhbCBndWFyZCByZW1vdmVkIGFjY2VwdHMgb3RoZXJ3aXNlLXN1Y2Nlc3NmdWwgcG9zdC1mYWlsdXJlIGZpeHR1cmUnLAogICAgICBlbnY6IHsgLi4ucG9zaXRpdmUsIEhFQVZZX1BSRUZMSUdIVDogcG9zdC5IRUFWWV9QUkVGTElHSFQgfSwKICAgICAgd2Vha2VuZWQ6IHRydWUsCiAgICAgIGV4cGVjdGVkOiAwCiAgICB9CiAgXQp9Cgpjb25zdCBbY29tbWFuZCwga2luZF0gPSBwcm9jZXNzLmFyZ3Yuc2xpY2UoMikKaWYgKGNvbW1hbmQpIHsKICBjb25zdCBkaXJlY3RvcnkgPSBqb2luKHByb2Nlc3MuZW52LlJVTk5FUl9URU1QLCAnb3JjYS1oZWF2eS1zYWZldHknKQogIGNvbnN0IGNvbnRleHQgPSBKU09OLnBhcnNlKHJlYWRGaWxlU3luYyhqb2luKGRpcmVjdG9yeSwgJ2NvbnRleHQuanNvbicpKSkKICBjb25zdCB3b3JrZmxvd0NvbnRleHQgPSB7CiAgICBydW5JZDogcHJvY2Vzcy5lbnYuR0lUSFVCX1JVTl9JRCwKICAgIHJ1bkF0dGVtcHQ6IHByb2Nlc3MuZW52LkdJVEhVQl9SVU5fQVRURU1QVCwKICAgIHdvcmtmbG93U2hhOiBwcm9jZXNzLmVudi5HSVRIVUJfV09SS0ZMT1dfU0hBLAogICAgc291cmNlV29ya2Zsb3dTaGE6IHByb2Nlc3MuZW52LkdJVEhVQl9TSEEsCiAgICBldmVudDogcHJvY2Vzcy5lbnYuR0lUSFVCX0VWRU5UX05BTUUKICB9CiAgYXNzZXJ0LmVxdWFsKHdvcmtmbG93Q29udGV4dC5ldmVudCwgJ3dvcmtmbG93X2Rpc3BhdGNoJykKICBpZiAoY29tbWFuZCA9PT0gJ25vb3BzJykgewogICAgY29uc3Qgc3RlcHMgPSBKU09OLnBhcnNlKHByb2Nlc3MuZW52LlNURVBTX0pTT04pCiAgICBmb3IgKGNvbnN0IGlkIG9mIGNvbnRleHQubm9vcElkcykgewogICAgICBhc3NlcnQuZXF1YWwoc3RlcHNbaWRdLm91dGNvbWUsICdzdWNjZXNzJykKICAgIH0KICAgIHdyaXRlKGpvaW4oZGlyZWN0b3J5LCAnbm9vcHMuanNvbicpLCB7CiAgICAgIHJvdXRpbmdFdmlkZW5jZTogJ2V4cGxpY2l0IGZpeHR1cmU7IG5vdCBhY3R1YWwgUFIgY2xhc3NpZmljYXRpb24nLAogICAgICBuYXRpdmVKb2luczogJ3Byb2R1Y2VyIHBoeXNpY2FsIHN1Y2Nlc3MgcmVxdWlyZWQgZXh0ZXJuYWxseScsCiAgICAgIHN0ZXBzLAogICAgICB3b3JrZmxvd0NvbnRleHQKICAgIH0pCiAgfSBlbHNlIHsKICAgIGNvbnN0IHsgcnVuUHJvY2Vzc1N5bmMgfSA9IGF3YWl0IGltcG9ydCgKICAgICAgcGF0aFRvRmlsZVVSTChqb2luKHByb2Nlc3MuY3dkKCksICdjb25maWcvc2NyaXB0cy9zY3JpcHQtY2hpbGQtcHJvY2Vzcy5tanMnKSkuaHJlZgogICAgKQogICAgY29uc3QgZ2l0ID0gKGFyZ3MpID0+IHsKICAgICAgY29uc3QgcmVzdWx0ID0gcnVuUHJvY2Vzc1N5bmMoeyBwcm9ncmFtOiAnZ2l0JywgYXJncywgdGltZW91dE1zOiAxMF8wMDAgfSkKICAgICAgYXNzZXJ0LmVxdWFsKHJlc3VsdC5jb2RlLCAwLCByZXN1bHQuc3RkZXJyKQogICAgICBhc3NlcnQuZXF1YWwocmVzdWx0Lm91dHB1dFRydW5jYXRlZCwgZmFsc2UpCiAgICAgIGFzc2VydC5lcXVhbChyZXN1bHQudGltZWRPdXQsIGZhbHNlKQogICAgICByZXR1cm4gcmVzdWx0LnN0ZG91dC50cmltKCkKICAgIH0KICAgIGFzc2VydC5lcXVhbChnaXQoWydyZXYtcGFyc2UnLCAnSEVBRCddKSwgY29udGV4dC5zb3VyY2VTaGEpCiAgICBjb25zdCBwb2xpY3lIYXNoZXMgPSBPYmplY3QuZnJvbUVudHJpZXMoCiAgICAgIE9iamVjdC5rZXlzKGNvbnRleHQucGF0aHMpLm1hcCgocGF0aCkgPT4gWwogICAgICAgIHBhdGgsCiAgICAgICAgZXhpc3RzU3luYyhwYXRoKSA/IGhhc2gocmVhZEZpbGVTeW5jKHBhdGgpKSA6IG51bGwKICAgICAgXSkKICAgICkKICAgIGFzc2VydC5kZWVwRXF1YWwocG9saWN5SGFzaGVzLCBjb250ZXh0LnBhdGhzKQogICAgYXNzZXJ0LmVxdWFsKGdpdChbJ2RpZmYnLCAnLS1uYW1lLW9ubHknLCAnSEVBRCddKSwgJycpCiAgICBpZiAoY29tbWFuZCA9PT0gJ2ZvcmVncm91bmQnKSB7CiAgICAgIGNvbnN0IGRpYWdub3N0aWMgPSByZWFkRmlsZVN5bmMoam9pbihkaXJlY3RvcnksICdjb21waWxlci5sb2cnKSwgJ3V0ZjgnKQogICAgICBhc3NlcnQub2soZGlhZ25vc3RpYy5sZW5ndGggPCAxNiAqIDEwMjQgKiAxMDI0KQogICAgICBjb25zdCBzdGVwcyA9IEpTT04ucGFyc2UocHJvY2Vzcy5lbnYuU1RFUFNfSlNPTikKICAgICAgdmFsaWRhdGVGb3JlZ3JvdW5kKGtpbmQsIHN0ZXBzLCBkaWFnbm9zdGljKQogICAgICBjb25zdCBmYXVsdGVkV29ya3RyZWUgPSBraW5kID09PSAnY29tcGlsZXJfZmFpbHVyZScKICAgICAgaWYgKGZhdWx0ZWRXb3JrdHJlZSkgewogICAgICAgIGFzc2VydC5lcXVhbChyZWFkRmlsZVN5bmMoZmF1bHRQYXRoLCAndXRmOCcpLCBmYXVsdFNvdXJjZSkKICAgICAgfSBlbHNlIHsKICAgICAgICBhc3NlcnQuZXF1YWwoZXhpc3RzU3luYyhmYXVsdFBhdGgpLCBmYWxzZSkKICAgICAgfQogICAgICBjb25zdCByZWNlaXB0ID0gewogICAgICAgIHF1YWxpZmllZDogdHJ1ZSwKICAgICAgICBraW5kLAogICAgICAgIHNvdXJjZVNoYTogY29udGV4dC5zb3VyY2VTaGEsCiAgICAgICAgcG9saWN5SGFzaGVzLAogICAgICAgIHRyYWNrZWREcmlmdFN0YXR1czogMCwKICAgICAgICBmYXVsdGVkV29ya3RyZWUsCiAgICAgICAgZmF1bHQ6IGZhdWx0ZWRXb3JrdHJlZSA/IHsgcGF0aDogZmF1bHRQYXRoLCBzaGEyNTY6IGhhc2goZmF1bHRTb3VyY2UpIH0gOiB1bmRlZmluZWQsCiAgICAgICAgcG9zdEZhdWx0Tm9uY2U6IGZhdWx0ZWRXb3JrdHJlZSA/IHVuZGVmaW5lZCA6IG5vbmNlLAogICAgICAgIHBvc3RPdXRjb21lOiBmYXVsdGVkV29ya3RyZWUKICAgICAgICAgID8gJ25vdCBhcHBsaWNhYmxlJwogICAgICAgICAgOiAncGVuZGluZzsgbmFtZWQgcmVhbCBwb3N0IG11c3QgZmFpbCBpbiBob3N0ZWQgam9iIGxvZ3MnLAogICAgICAgIHN0ZXBzLAogICAgICAgIGRpYWdub3N0aWMsCiAgICAgICAgY29tcGlsZXJIb3N0OiB7CiAgICAgICAgICB2ZXJzaW9uOiBwcm9jZXNzLnZlcnNpb24sCiAgICAgICAgICBleGVjdXRhYmxlOiBwcm9jZXNzLmV4ZWNQYXRoLAogICAgICAgICAgcGxhdGZvcm06IHByb2Nlc3MucGxhdGZvcm0sCiAgICAgICAgICBhcmNoOiBwcm9jZXNzLmFyY2gKICAgICAgICB9LAogICAgICAgIGNvbXBpbGVyVmVyc2lvbjogSlNPTi5wYXJzZShyZWFkRmlsZVN5bmMoJ25vZGVfbW9kdWxlcy90eXBlc2NyaXB0L3BhY2thZ2UuanNvbicpKS52ZXJzaW9uLAogICAgICAgIHBsYW5uZXJTaGEyNTY6IGhhc2gocmVhZEZpbGVTeW5jKCdjaS1zaGFyZHMvdW5pdC1zZWxlY3Rpb24uanNvbicpKSwKICAgICAgICBzaGFyZHM6IEpTT04ucGFyc2Uoc3RlcHNbJ3VuaXQtcGxhbiddLm91dHB1dHMuc2hhcmRzKSwKICAgICAgICB3b3JrZmxvd0NvbnRleHQKICAgICAgfQogICAgICB3cml0ZShqb2luKGRpcmVjdG9yeSwgYCR7a2luZH0uanNvbmApLCByZWNlaXB0KQogICAgICB3cml0ZUZpbGVTeW5jKHByb2Nlc3MuZW52LkdJVEhVQl9PVVRQVVQsICdxdWFsaWZpZWQ9dHJ1ZVxuJywgeyBmbGFnOiAnYScgfSkKICAgIH0gZWxzZSBpZiAoY29tbWFuZCA9PT0gJ2F1ZGl0JykgewogICAgICBjb25zdCByZWNlaXB0cyA9IE9iamVjdC5mcm9tRW50cmllcygKICAgICAgICBbJ25vb3BzJywgJ2NvbXBpbGVyX2ZhaWx1cmUnLCAncG9zdF9mYWlsdXJlJ10ubWFwKChuYW1lKSA9PiBbCiAgICAgICAgICBuYW1lLAogICAgICAgICAgSlNPTi5wYXJzZShyZWFkRmlsZVN5bmMoam9pbihkaXJlY3RvcnksICdhcnRpZmFjdHMnLCBgJHtuYW1lfS5qc29uYCkpKQogICAgICAgIF0pCiAgICAgICkKICAgICAgY29uc3QgbmVlZHMgPSBKU09OLnBhcnNlKHByb2Nlc3MuZW52Lk5FRURTX0pTT04pCiAgICAgIHZhbGlkYXRlTmVlZHMobmVlZHMsIHJlY2VpcHRzLCBjb250ZXh0KQogICAgICBjb25zdCByZXN1bHRzID0gYWdncmVnYXRlRml4dHVyZXMoY29udGV4dCwgbmVlZHMpLm1hcCgoZml4dHVyZSkgPT4gewogICAgICAgIGNvbnN0IHJ1biA9IGZpeHR1cmUud2Vha2VuZWQgPyBjb250ZXh0LndlYWtlbmVkQWdncmVnYXRlIDogY29udGV4dC5hZ2dyZWdhdGUKICAgICAgICBjb25zdCByZXN1bHQgPSBydW5Qcm9jZXNzU3luYyh7CiAgICAgICAgICBwcm9ncmFtOiAnYmFzaCcsCiAgICAgICAgICBhcmdzOiBbJy1lJywgJy1vJywgJ3BpcGVmYWlsJywgJy1jJywgcnVuXSwKICAgICAgICAgIGVudjogeyAuLi5wcm9jZXNzLmVudiwgLi4uZml4dHVyZS5lbnYgfSwKICAgICAgICAgIHRpbWVvdXRNczogMTBfMDAwCiAgICAgICAgfSkKICAgICAgICBhc3NlcnQuZXF1YWwocmVzdWx0LmNvZGUsIGZpeHR1cmUuZXhwZWN0ZWQsIGAke2ZpeHR1cmUubmFtZX06ICR7cmVzdWx0LnN0ZGVycn1gKQogICAgICAgIGFzc2VydC5lcXVhbChyZXN1bHQudGltZWRPdXQsIGZhbHNlKQogICAgICAgIGFzc2VydC5lcXVhbChyZXN1bHQub3V0cHV0VHJ1bmNhdGVkLCBmYWxzZSkKICAgICAgICByZXR1cm4geyAuLi5maXh0dXJlLCBhY3R1YWw6IHJlc3VsdC5jb2RlLCBzdGRvdXQ6IHJlc3VsdC5zdGRvdXQgfQogICAgICB9KQogICAgICB3cml0ZShqb2luKGRpcmVjdG9yeSwgJ2F1ZGl0Lmpzb24nKSwgewogICAgICAgIHF1YWxpZmllZDogdHJ1ZSwKICAgICAgICBzb3VyY2VTaGE6IGNvbnRleHQuc291cmNlU2hhLAogICAgICAgIHdvcmtmbG93Q29udGV4dCwKICAgICAgICBhY3R1YWxOZWVkczogbmVlZHMsCiAgICAgICAgd2Vha2VuZWRVbml0R2F0ZUFjdHVhbGx5QWRtaXR0ZWQ6IHRydWUsCiAgICAgICAgYWdncmVnYXRlRml4dHVyZXM6IHJlc3VsdHMsCiAgICAgICAgcGVuZGluZ0V4dGVybmFsUHJvb2Y6CiAgICAgICAgICAnQm90aCBuYW1lZCBuYXRpdmUgam9pbiBmYW1pbGllcyBhbmQgZGVsaWJlcmF0ZSBwb3N0IG5vbmNlL2ZhaWx1cmUgcmVxdWlyZSBhY3R1YWwgaG9zdGVkIHN0ZXAvbG9nIHZlcmlmaWNhdGlvbi4nLAogICAgICAgIGZ1bGxVbml0QW5kUGxhdGZvcm1UZXN0czogJ25vdCBydW4nCiAgICAgIH0pCiAgICAgIGNvbnNvbGUubG9nKAogICAgICAgICdCb3RoIGZhaWxlZCBoZWF2eSBqb2JzIHJlZnVzZWQgZ29vZCBhZG1pc3Npb25zOyB0aGUgd2Vha2VuZWQgdW5pdCBnYXRlIHdhcyBhZG1pdHRlZC4nCiAgICAgICkKICAgIH0gZWxzZSB7CiAgICAgIHRocm93IG5ldyBFcnJvcihgVW5rbm93biBjb21tYW5kOiAke2NvbW1hbmR9YCkKICAgIH0KICB9Cn0K' | base64 --decode > "$RUNNER_TEMP/orca-heavy-safety/safety.mjs"
+          printf '%s' 'eyJzb3VyY2VTaGEiOiJjYzczYzhlMWE3MmIwZTllZTljMjllNTc0NThjZTMwN2Y1ZjAxOWMyIiwiYmFzZVNoYSI6ImI5NGM3NWM0YmQ2YjFlNzQ1NGU2MTRiNDg5YzBmZmQ1OTE5NzBlYzAiLCJwYXRocyI6eyIuZ2l0aHViL3dvcmtmbG93cy9wci55bWwiOiJjZDc1NWM4ZTNmMTI1YzZhN2FmNTRmMjNiMDQ3OGU1NTc5OGUxMzcyZTQ3OWMyZTQzNTU5NmZjMmE3NDJhYWQ4IiwicGFja2FnZS5qc29uIjoiMzNjZTNjYmI5NzUwMGFmMDY5MGNjMzJiZDI2ZTYwZGI5ZmI3NjI4NjkyZmJkZWI3Yjk5ZTk4NTU3YWE5NjZmZiIsInBucG0tbG9jay55YW1sIjoiM2I1MGU2ODc1MDllYWM0NjA2YmRjNjBjZDg5MGU0NDg1ODYyYTRjNWZjZmNhNDQzMTdhYzg4MDJmNWE4NDljMSIsInBucG0td29ya3NwYWNlLnlhbWwiOiJjNmExNTFkMWI1ZDI3MzRiYzZiZTU0ZDQ4MTA0YTBhYTZhMThkYTBjZDIyZTNlNDc5OWM5OWZkOTY2NWY3ZDA0IiwiLm5wbXJjIjpudWxsLCIucG5wbWZpbGUuY2pzIjpudWxsLCIuZ2l0aHViL2FjdGlvbnMvaW5zdGFsbC1ub2RlLWRlcGVuZGVuY2llcy9hY3Rpb24ueW1sIjoiMGZjYTk1OTBiN2U2MjNmMzYxYmFlZjg1ZjVmODhmZTJlNjRiZTI3M2JjNWJjYTBkZTlkOTgzYzY3OGQ1MTQ4ZSIsIi5naXRodWIvYWN0aW9ucy9yZXN0b3JlLXBucG0tdmVyaWZpY2F0aW9uL2FjdGlvbi55bWwiOiI0Y2RhODRiNzRlYjgwNjMyNjJmYjQ2M2Q5Mjg5ZDJjOWUxOWQwMGMyYTg5Y2NkNGQ1NTliY2JlYWFkOTYwODVlIiwiLmdpdGh1Yi9hY3Rpb25zL2luc3RhbGwtbW9iaWxlLWRlcGVuZGVuY2llcy9hY3Rpb24ueW1sIjoiY2RiZDVjOTA1MjAxY2NkOGU4MzMyZjU1YTYxNzI5ZTkxODBkMDQ0YWIwOTI3ZjZjMWIzZmQzMGRhNjZiY2NlMiIsIi5naXRodWIvYWN0aW9ucy9wcmVwYXJlLW5hdGl2ZS1ydW50aW1lL2FjdGlvbi55bWwiOiI4MWIzNjhlMWI3ZGNiOTdmZGI3YWQ4ZjQ5OWNhNTNiNDhlNTkyMzM0YzYyZWM1YWUyYzA4N2NjMTJjODc5Y2M4IiwibW9iaWxlL3BhY2thZ2UuanNvbiI6ImM3ZDAzOThmYTRkYmRmM2RkZGQyZTBhODQ0ZWU0MWJhYWM5ZjVjYjExYmY3NzkzMjg5MzhkNTVjYzg5ZTIxODkiLCJtb2JpbGUvcG5wbS1sb2NrLnlhbWwiOiI2ZjA0MGNkZGY2NDdhNGY0NjRjNWJkYzU3M2U1OTcyZDcxMGZkNDJmN2VhZGFiZWMxYzc0ZTZmN2M0N2VlYTU5IiwibW9iaWxlL3BucG0td29ya3NwYWNlLnlhbWwiOiJlNmUyNDFkZWIyNjAwYTkwZTkyM2RiYTE5MzQ1MDljYWJkMTY5YzJjMWVkY2RiODY4OTcyZjJlMjcwOGNiMGZkIiwibW9iaWxlLy5ucG1yYyI6bnVsbCwiY29uZmlnL3NjcmlwdHMvcHItY29kZS1jaGFuZ2Utc2NvcGUubWpzIjoiZGY4MWUxMjFiZDM3ZWYwNTUwZTkyOGIyNTA1ZTljZmIxM2UyYjhlNDNiODAxMWYzYjNlNDc0NzFiODJmZDk5MiIsIi5naXRodWIvd29ya2Zsb3dzL3VuaXQtdGVzdHMueW1sIjoiNDIxZjM2NjJkZDkzNWJiMGU4YmI3ZTE0YTFlOGIwOGU0MmIzZmNiZmY5YjJlYWM3NDU5N2M1OGRlNDEzNzhlZiIsImNvbmZpZy9zY3JpcHRzL2NpLXVuaXQtcGxhbi5tanMiOiIzYTgxM2VhNjc1ZjVkY2ZmYmYwNjk5ZDc3YWMxYzhlOTdmNjY2MjUwZWE2YzE3MTY4Yzg2NTA5ZmM4YTcxYjU2IiwiY29uZmlnL3NjcmlwdHMvY2ktdW5pdC1maWxlcy5tanMiOiIxZjU3ZDgwMjU3ZjQ5ZDcwZjEzYjRkNjIzOGQyMmQ5MjhhYTBiZGU3N2U2YmIwMTNlZmI2ZGQzMmNiZDE4NDdiIiwiY29uZmlnL3NjcmlwdHMvY2ktdW5pdC1zZWxlY3Rpb24ubWpzIjoiNmRlMzQ2ZmQxZmE5MTM1YTUyMjAzZjFkZjgzOTY3MmRlNjI3M2ZiYjFlZjUzYTA4MmMxMWZjZjlhM2Q2MWYzYiIsImNvbmZpZy9zY3JpcHRzL2NpLXVuaXQtZGVwZW5kZW5jeS1ncmFwaC5tanMiOiJkZDNjNDMzM2NhY2NiMmE1Nzg1NjgwYjg1M2FlMTM3YmFhMzUyNGU4NjMxMjExOWU5ZjRlZTY3MGU4MGE3ZTk4IiwiY29uZmlnL3NjcmlwdHMvY2ktc2hhcmQtYXNzaWdubWVudC5tanMiOiJhN2I1N2ZmNjhiZGJmYWI5MDliNzUzYmMxMTdlZGJjYzBkYTIwMjliNTUyYWIxMTc2ZDgxNWIyZDIxNDJmNDliIiwiY29uZmlnL3NjcmlwdHMvY2ktc2hhcmQtdGltaW5ncy5qc29uIjoiYWNjMmMxY2RjOGU1ZTJlOTRiYWExNWMzNWYzMDJhOWQyZjE1ODgxMGIxODg3MTk3NGRhZWQ1ZjgzODNjYjg1OSIsImNvbmZpZy9zY3JpcHRzL3ByLXJlYWR5LWNoZWNrLXJldXNlLm1qcyI6Ijg0NzYwZDhlYmI5OTkyM2RlYmRkODE3OTZhMzIxNGI4N2NhNDIxOTY1NDA0YWJlOTNmYmQxYmZjZTZkZDIwMTkiLCJjb25maWcvc2NyaXB0cy9ydW4tdHlwZWNoZWNrLXByb2plY3RzLWluLXBhcmFsbGVsLm1qcyI6ImZlNzZmODZkZTIyZmFmODMxODM0OWIwMzcwMDFlMzc5YTUxMjhjMDUxYjJmZGZmOGYwMTk4NzliMWY5Mjg2ZTQiLCJjb25maWcvdHNjb25maWcubm9kZS5qc29uIjoiNTgwNjA4NTFhNjc3YjNkNTc5MDg1Nzk4N2M3NTExOTk0MDRjYjExMjEyZmY4NzJhMzFjNjZjZDdjOTcyZDgzNCIsImNvbmZpZy90c2NvbmZpZy50Yy5jbGkuanNvbiI6ImU0Njc4MTI4MmI3ZmNhMTZhYzczZDAwNTQ1MzRkYWE4ZjA1MjdkNWJhMjM4YjRlZTdkYTBiYzAwODYyODVjZDkiLCJjb25maWcvdHNjb25maWcudGMud2ViLmpzb24iOiJlOGE1ZjdmYWE2Y2VlNDM4OTk2OGQyOWFkNDE3MzU3Y2RjMWE5MDM5MTMzM2QwYzAwYTBiMDI3ZjExNzIzZThlIiwiY29uZmlnL3RzY29uZmlnLmNsaS5qc29uIjoiZDNjOTFmZWYwNTM3N2ZmNzYyZmQ1OTEyOThiOGJkMjAxY2RkZWVhYTYzOTFhNDM1NmM5YTllMDA3NjNmNjk3ZSIsImNvbmZpZy90c2NvbmZpZy53ZWIuanNvbiI6ImM4Yjc5ZDUxOTU0NGVkZDdmNjEzNGU2OGRhYTdmZDUwZmQ1Mjk3ZWJkYjFmMTA2NjEwNTRkNDc3NjAzNjM2NzIifSwiY2FuZGlkYXRlV29ya2Zsb3dTaGEyNTYiOiIxODFiNWRkMjExMDI3NGViZjZjOTA3MjQ2Mjc4YTY1ZGM0NWZiNDNjZGQyNzJmYTUzNTUwYzU2MjM5NGE4NzA2IiwiY2Vuc3VzUHJvb2YiOnsicnVuSWQiOiIzNzA2OTQ3Mjg4OCIsInJ1bkF0dGVtcHQiOiIxIiwic291cmNlU2hhIjoiY2M3M2M4ZTFhNzJiMGU5ZWU5YzI5ZTU3NDU4Y2UzMDdmNWYwMTljMiIsInF1YWxpZmljYXRpb25TaGEyNTYiOiI0NmJhZjlmNGY5ODgxYTc4MmU1YmVjNGFlMjk4OWJkYTIwZjgwMDgwYWU4NjVjYTY3YzdhNWJjMWUxMWQwMjRkIiwiZHJpdmVyU2hhMjU2IjoiMTBiMTg5ZDRmZTA1ZTEzMDU2MWEwYWNkOGZmOGZlZWI4ZjhhMjRmNTZjODMwY2ZiNGMyNDgxYWMwNjUxNjQ1MiIsImNvbXBpbGVySG9zdCI6eyJ2ZXJzaW9uIjoidjI0LjIxLjAiLCJleGVjdXRhYmxlIjoiL29wdC9ob3N0ZWR0b29sY2FjaGUvbm9kZS8yNC4yMS4wL2FybTY0L2Jpbi9ub2RlIiwicGxhdGZvcm0iOiJsaW51eCIsImFyY2giOiJhcm02NCJ9LCJjb21waWxlclZlcnNpb24iOiI3LjAuMiIsImNvdW50cyI6W3sic3RhdGUiOiJzZXBhcmF0ZS10YyIsImNvbXBpbGVyUHJvamVjdHMiOjMsImNvbXBpbGVyRmlsZXMiOlsxNDYxMiwxNDk0MiwzNTY4XSwidW5pdEZpbGVzIjoxMDQ3N30seyJzdGF0ZSI6InNoYXJlZC1yb290IiwiY29tcGlsZXJQcm9qZWN0cyI6MywiY29tcGlsZXJGaWxlcyI6WzE0NjEyLDE0OTQyLDM1NjhdLCJ1bml0RmlsZXMiOjEwNDc3fSx7InN0YXRlIjoic2hhcmVkLW1peGVkIiwiY29tcGlsZXJQcm9qZWN0cyI6MywiY29tcGlsZXJGaWxlcyI6WzE0NjEyLDE0OTQyLDM1NjhdLCJ1bml0RmlsZXMiOjEwNDc3fV0sInRpbWluZ0NsYWltIjpmYWxzZX0sIm5vb3BJZHMiOlsidGMtb25seS1yb290LWxpbnQiLCJ0Yy1vbmx5LW5hdGl2ZS1jb2RlLXF1YWxpdHkiLCJ0Yy1vbmx5LWNoYW5nZWQtY29kZS1xdWFsaXR5IiwidGMtb25seS1sb2NhbGl6YXRpb24tZXh0cmFjdGlvbiIsInRjLW9ubHktbG9jYWxpemF0aW9uLWNhdGFsb2dzIiwic3RhdGljLW9ubHktdW5pdC1wbGFuIl0sImNoZWNrSm9icyI6WyJzdGF0aWNfYW5hbHlzaXMiLCJ0eXBlY2hlY2siLCJnaXRfY29tcGF0aWJpbGl0eSIsImNvZGV4X2luZGV4X2hlYWxfY29udHJhY3QiLCJ4dGVybV9wYXRjaF9zeW5jIiwic2hlbGxfY29udHJhY3RzIiwidGVzdCIsIm9yY2FkX2Jyb3dzZXIiLCJtb2JpbGVfd2ViX2FwcCIsImNyb3NzLXZlcnNpb24td2lyZSIsIm1hbmFnZWRfaG9va19ub2RlMTgiLCJwYWNrYWdlIiwicGFja2FnZV93aW5kb3dzIl0sImFnZ3JlZ2F0ZSI6ImlmIFsgXCIkQ09ERV9QQVRIU1wiICE9IFwic3VjY2Vzc1wiIF07IHRoZW5cbiAgZXhpdCAxXG5maVxuaWYgWyBcIiRTSE9VTERfUlVOXCIgIT0gXCJ0cnVlXCIgXTsgdGhlblxuICBlY2hvIFwiRG9jcy1vbmx5IGNoYW5nZTsgZXhwZW5zaXZlIFBSIGNoZWNrcyBza2lwcGVkLlwiXG5maVxuZmFpbGVkPTBcbmlmIFsgXCIkU1RBVElDX0FOQUxZU0lTX1NIT1VMRF9SVU5cIiA9IHRydWUgXSB8fCBbIFwiJFRZUEVDSEVDS19TSE9VTERfUlVOXCIgPSB0cnVlIF07IHRoZW5cbiAgaWYgWyBcIiRIRUFWWV9QUkVGTElHSFRcIiAhPSBzdWNjZXNzIF07IHRoZW5cbiAgICBlY2hvIFwiU2VsZWN0ZWQgc3RhdGljL2NvbXBpbGVyIGpvYiBkaWQgbm90IHN1Y2NlZWQuXCJcbiAgICBleGl0IDFcbiAgZmlcbmVsaWYgWyBcIiRIRUFWWV9QUkVGTElHSFRcIiAhPSBza2lwcGVkIF07IHRoZW5cbiAgZWNobyBcIlVuc2VsZWN0ZWQgc3RhdGljL2NvbXBpbGVyIGpvYiBtdXN0IGJlIHNraXBwZWQuXCJcbiAgZXhpdCAxXG5maVxuXG5jaGVja19qb2IoKSB7XG4gIGxvY2FsIG5hbWU9XCIkMVwiIHJlc3VsdD1cIiQyXCIgc2hvdWxkPVwiJDNcIlxuICBpZiBbIFwiJHNob3VsZFwiID0gXCJ0cnVlXCIgXTsgdGhlblxuICAgIGlmIFsgXCIkcmVzdWx0XCIgIT0gXCJzdWNjZXNzXCIgXTsgdGhlblxuICAgICAgZWNobyBcIiRuYW1lOiBleHBlY3RlZCBzdWNjZXNzLCBnb3QgJHJlc3VsdFwiXG4gICAgICBmYWlsZWQ9MVxuICAgIGZpXG4gIGVsc2VcbiAgICBpZiBbIFwiJHJlc3VsdFwiICE9IFwic2tpcHBlZFwiIF07IHRoZW5cbiAgICAgIGVjaG8gXCIkbmFtZTogZXhwZWN0ZWQgc2tpcHBlZCwgZ290ICRyZXN1bHRcIlxuICAgICAgZmFpbGVkPTFcbiAgICBmaVxuICBmaVxufVxuIyBSZXF1aXJlIHN1Y2Nlc3Mgd2hlbiB0aGUgUFIgaGFzIGNvZGUtcmVsZXZhbnQgY2hhbmdlc1xuY2hlY2tfam9iIHN0YXRpY19hbmFseXNpcyBcIiRTVEFUSUNfQU5BTFlTSVNcIiBcIiRTVEFUSUNfQU5BTFlTSVNfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgdHlwZWNoZWNrIFwiJFRZUEVDSEVDS1wiIFwiJFRZUEVDSEVDS19TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBnaXRfY29tcGF0aWJpbGl0eSBcIiRHSVRfQ09NUEFUSUJJTElUWVwiIFwiJEdJVF9DT01QQVRJQklMSVRZX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIGNvZGV4X2luZGV4X2hlYWxfY29udHJhY3QgXCIkQ09ERVhfSU5ERVhfSEVBTF9DT05UUkFDVFwiIFwiJENPREVYX0lOREVYX0hFQUxfQ09OVFJBQ1RfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgeHRlcm1fcGF0Y2hfc3luYyBcIiRYVEVSTV9QQVRDSF9TWU5DXCIgXCIkWFRFUk1fUEFUQ0hfU1lOQ19TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBzaGVsbF9jb250cmFjdHMgXCIkU0hFTExfQ09OVFJBQ1RTXCIgXCIkU0hFTExfQ09OVFJBQ1RTX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIHRlc3QgXCIkVEVTVFwiIFwiJFRFU1RfU0hPVUxEX1JVTlwiXG5jaGVja19qb2Igb3JjYWRfYnJvd3NlciBcIiRPUkNBRF9CUk9XU0VSXCIgXCIkT1JDQURfQlJPV1NFUl9TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBtb2JpbGVfd2ViX2FwcCBcIiRNT0JJTEVfV0VCX0FQUFwiIFwiJE1PQklMRV9XRUJfQVBQX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIGNyb3NzLXZlcnNpb24td2lyZSBcIiRDUk9TU19WRVJTSU9OX1dJUkVcIiBcIiRDUk9TU19WRVJTSU9OX1dJUkVfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgbWFuYWdlZF9ob29rX25vZGUxOCBcIiRNQU5BR0VEX0hPT0tfTk9ERTE4XCIgXCIkTUFOQUdFRF9IT09LX05PREUxOF9TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBwYWNrYWdlIFwiJFBBQ0tBR0VcIiBcIiRQQUNLQUdFX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIHBhY2thZ2Vfd2luZG93cyBcIiRQQUNLQUdFX1dJTkRPV1NcIiBcIiRQQUNLQUdFX1dJTkRPV1NfU0hPVUxEX1JVTlwiXG5leGl0IFwiJGZhaWxlZFwiXG4iLCJ3ZWFrZW5lZEFnZ3JlZ2F0ZSI6ImlmIFsgXCIkQ09ERV9QQVRIU1wiICE9IFwic3VjY2Vzc1wiIF07IHRoZW5cbiAgZXhpdCAxXG5maVxuaWYgWyBcIiRTSE9VTERfUlVOXCIgIT0gXCJ0cnVlXCIgXTsgdGhlblxuICBlY2hvIFwiRG9jcy1vbmx5IGNoYW5nZTsgZXhwZW5zaXZlIFBSIGNoZWNrcyBza2lwcGVkLlwiXG5maVxuZmFpbGVkPTBcblxuY2hlY2tfam9iKCkge1xuICBsb2NhbCBuYW1lPVwiJDFcIiByZXN1bHQ9XCIkMlwiIHNob3VsZD1cIiQzXCJcbiAgaWYgWyBcIiRzaG91bGRcIiA9IFwidHJ1ZVwiIF07IHRoZW5cbiAgICBpZiBbIFwiJHJlc3VsdFwiICE9IFwic3VjY2Vzc1wiIF07IHRoZW5cbiAgICAgIGVjaG8gXCIkbmFtZTogZXhwZWN0ZWQgc3VjY2VzcywgZ290ICRyZXN1bHRcIlxuICAgICAgZmFpbGVkPTFcbiAgICBmaVxuICBlbHNlXG4gICAgaWYgWyBcIiRyZXN1bHRcIiAhPSBcInNraXBwZWRcIiBdOyB0aGVuXG4gICAgICBlY2hvIFwiJG5hbWU6IGV4cGVjdGVkIHNraXBwZWQsIGdvdCAkcmVzdWx0XCJcbiAgICAgIGZhaWxlZD0xXG4gICAgZmlcbiAgZmlcbn1cbiMgUmVxdWlyZSBzdWNjZXNzIHdoZW4gdGhlIFBSIGhhcyBjb2RlLXJlbGV2YW50IGNoYW5nZXNcbmNoZWNrX2pvYiBzdGF0aWNfYW5hbHlzaXMgXCIkU1RBVElDX0FOQUxZU0lTXCIgXCIkU1RBVElDX0FOQUxZU0lTX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIHR5cGVjaGVjayBcIiRUWVBFQ0hFQ0tcIiBcIiRUWVBFQ0hFQ0tfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgZ2l0X2NvbXBhdGliaWxpdHkgXCIkR0lUX0NPTVBBVElCSUxJVFlcIiBcIiRHSVRfQ09NUEFUSUJJTElUWV9TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBjb2RleF9pbmRleF9oZWFsX2NvbnRyYWN0IFwiJENPREVYX0lOREVYX0hFQUxfQ09OVFJBQ1RcIiBcIiRDT0RFWF9JTkRFWF9IRUFMX0NPTlRSQUNUX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIHh0ZXJtX3BhdGNoX3N5bmMgXCIkWFRFUk1fUEFUQ0hfU1lOQ1wiIFwiJFhURVJNX1BBVENIX1NZTkNfU0hPVUxEX1JVTlwiXG5jaGVja19qb2Igc2hlbGxfY29udHJhY3RzIFwiJFNIRUxMX0NPTlRSQUNUU1wiIFwiJFNIRUxMX0NPTlRSQUNUU19TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiB0ZXN0IFwiJFRFU1RcIiBcIiRURVNUX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIG9yY2FkX2Jyb3dzZXIgXCIkT1JDQURfQlJPV1NFUlwiIFwiJE9SQ0FEX0JST1dTRVJfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgbW9iaWxlX3dlYl9hcHAgXCIkTU9CSUxFX1dFQl9BUFBcIiBcIiRNT0JJTEVfV0VCX0FQUF9TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBjcm9zcy12ZXJzaW9uLXdpcmUgXCIkQ1JPU1NfVkVSU0lPTl9XSVJFXCIgXCIkQ1JPU1NfVkVSU0lPTl9XSVJFX1NIT1VMRF9SVU5cIlxuY2hlY2tfam9iIG1hbmFnZWRfaG9va19ub2RlMTggXCIkTUFOQUdFRF9IT09LX05PREUxOFwiIFwiJE1BTkFHRURfSE9PS19OT0RFMThfU0hPVUxEX1JVTlwiXG5jaGVja19qb2IgcGFja2FnZSBcIiRQQUNLQUdFXCIgXCIkUEFDS0FHRV9TSE9VTERfUlVOXCJcbmNoZWNrX2pvYiBwYWNrYWdlX3dpbmRvd3MgXCIkUEFDS0FHRV9XSU5ET1dTXCIgXCIkUEFDS0FHRV9XSU5ET1dTX1NIT1VMRF9SVU5cIlxuZXhpdCBcIiRmYWlsZWRcIlxuIiwiZXhwZWN0ZWRQb3N0Tm9uY2UiOiJvcmNhLXNlcXVlbnRpYWwtaGVhdnktY29udHJvbGxlZC1wb3N0LXYxIn0=' | base64 --decode > "$RUNNER_TEMP/orca-heavy-safety/context.json"
+      - id: selectors
+        run: |-
+          echo "tc_only_static=false" >> "$GITHUB_OUTPUT"
+          echo "static_only_type=false" >> "$GITHUB_OUTPUT"
+      - name: 'tc-only: Lint'
+        id: tc-only-root-lint
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm exec oxlint --format github
+        if: '!cancelled()'
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.tc_only_static }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - wait: tc-only-root-lint
+      - name: 'tc-only: Enforce focused code-quality plugins'
+        id: tc-only-native-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run audit:code-quality:native
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.tc_only_static }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - wait: tc-only-native-code-quality
+      - name: 'tc-only: Enforce changed-code quality'
+        id: tc-only-changed-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run check:code-quality:changed -- "${{ github.event.pull_request.base.sha }}"
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.tc_only_static }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - wait: tc-only-changed-code-quality
+      - name: 'tc-only: Verify localization extraction'
+        id: tc-only-localization-extraction
+        background: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.tc_only_static }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+        if: '!cancelled()'
+      - name: 'tc-only: Verify localization catalogs'
+        id: tc-only-localization-catalogs
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run verify:localization-catalogs
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.tc_only_static }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - wait:
+          - tc-only-localization-catalogs
+          - tc-only-localization-extraction
+      - name: 'static-only: Plan unit selection'
+        id: static-only-unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ steps.selectors.outputs.static_only_type }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          node config/scripts/ci-unit-plan.mjs
+        if: '!cancelled()'
+      - wait: static-only-unit-plan
+      - name: Require registered no-op bodies and publish labelled routing fixtures
+        id: routing
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |-
+          node "$RUNNER_TEMP/orca-heavy-safety/safety.mjs" noops
+          echo "static_analysis=true" >> "$GITHUB_OUTPUT"
+          echo "typecheck=true" >> "$GITHUB_OUTPUT"
+          echo "git_compatibility=true" >> "$GITHUB_OUTPUT"
+          echo "codex_index_heal_contract=true" >> "$GITHUB_OUTPUT"
+          echo "xterm_patch_sync=true" >> "$GITHUB_OUTPUT"
+          echo "shell_contracts=true" >> "$GITHUB_OUTPUT"
+          echo "test=true" >> "$GITHUB_OUTPUT"
+          echo "orcad_browser=true" >> "$GITHUB_OUTPUT"
+          echo "mobile_web_app=true" >> "$GITHUB_OUTPUT"
+          echo "cross-version-wire=true" >> "$GITHUB_OUTPUT"
+          echo "managed_hook_node18=true" >> "$GITHUB_OUTPUT"
+          echo "package=true" >> "$GITHUB_OUTPUT"
+          echo "package_windows=true" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+          echo "mobile_dependencies=false" >> "$GITHUB_OUTPUT"
+      - if: '!cancelled()'
+        uses: actions/upload-artifact@v7
+        with:
+          name: heavy-safety-noops-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-safety/noops.json
+          if-no-files-found: error
+          retention-days: 14
+  compiler_failure:
+    name: Controlled compiler failure
+    needs:
+      - code_paths
+    if: (needs.code_paths.outputs.static_analysis == 'true') || (needs.code_paths.outputs.typecheck == 'true')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - *a1
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies != 'true')
+        with:
+          native-runtime: node
+          node-version: '24'
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+        with:
+          native-runtime: node
+          node-version: '24'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.typecheck == 'true') && !(needs.code_paths.outputs.static_analysis == 'true')
+      - name: Lint
+        id: root-lint
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm exec oxlint --format github
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Reject low-evidence patterns
+        run: pnpm run audit:anti-slop
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        id: native-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run audit:code-quality:native
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce type-aware code-quality baseline
+        run: pnpm run audit:code-quality:type-aware
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+      - name: Enforce changed-code quality
+        id: changed-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run check:code-quality:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce React Doctor on changed lines
+        run: pnpm run check:react-doctor:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        run: pnpm run check:zustand-selector-fanout
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check reliability gate manifest
+        run: pnpm run check:reliability-gates
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce dead design-system classes
+        run: pnpm run check:dead-classes
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check VM runtime rollback compatibility
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce max-lines ratchet
+        run: pnpm run check:max-lines-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce ts-nocheck ratchet
+        run: pnpm run check:ts-nocheck-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce runtime Electron-import ratchet
+        run: pnpm run check:runtime-electron-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check Node runtime pin
+        run: pnpm run check:node-runtime-pin
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization extraction
+        id: localization-extraction
+        background: true
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+        if: '!cancelled()'
+      - name: Boot orcad and round-trip a terminal
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify the generated RPC params catalog
+        run: pnpm run verify:rpc-params-catalog
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify bundled skill guides
+        run: pnpm run verify:bundled-skill-guides
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify skill freshness manifest
+        run: pnpm run verify:skill-bundle-manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization catalogs
+        id: localization-catalogs
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run verify:localization-catalogs
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Verify localization coverage
+        run: pnpm run verify:localization-coverage
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check feature wall asset budget
+        run: pnpm check:feature-wall-assets
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify macOS entitlements
+        run: pnpm verify:macos-entitlements
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Require the selected static checks to pass
+        id: static-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Add one owned included source only after static success
+        run: |-
+          test ! -e src/main/ci-preflight-compiler-fault.ts
+          printf "%s\n" "export const ciQualificationCompilerFault: string = 42" > src/main/ci-preflight-compiler-fault.ts
+      - name: Restore the compiler and planner Node version
+        id: typecheck-node
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.typecheck == 'true')
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Cache TypeScript incremental state
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        if: needs.code_paths.outputs.typecheck == 'true'
+      - name: Plan unit selection
+        id: unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          node config/scripts/ci-unit-plan.mjs
+        if: '!cancelled()'
+      - run: |-
+          set +e
+          pnpm run typecheck > "$RUNNER_TEMP/orca-heavy-safety/compiler.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/orca-heavy-safety/compiler.log"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: compiler-command
+        name: Run the unchanged compiler command and retain its real status
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unit-selection-compiler_failure-attempt-${{ github.run_attempt }}
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: selection-upload
+      - name: Require the selected compiler and joined plan to pass
+        id: typecheck-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Require the exact foreground fault prerequisites
+        id: foreground-evidence
+        if: '!cancelled()'
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: node "$RUNNER_TEMP/orca-heavy-safety/safety.mjs" foreground compiler_failure
+      - if: '!cancelled()'
+        uses: actions/upload-artifact@v7
+        with:
+          name: heavy-safety-compiler_failure-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-safety/compiler_failure.json
+          if-no-files-found: error
+          retention-days: 14
+    permissions:
+      contents: read
+    timeout-minutes: 25
+    outputs:
+      static_result: ${{ steps.static-complete.outputs.result || 'blocked' }}
+      typecheck_result: ${{ steps.typecheck-complete.outputs.result || 'blocked' }}
+      shards: ${{ steps.unit-plan.outputs.shards }}
+      foreground_qualified: ${{ steps.foreground-evidence.outputs.qualified }}
+  compiler_failure_unit:
+    name: 'compiler_failure: good unit gate must skip'
+    needs:
+      - code_paths
+      - compiler_failure
+    if: |-
+      needs.code_paths.result == 'success' &&
+      !cancelled() && needs.code_paths.outputs.test == 'true' && needs.compiler_failure.result == 'success' && needs.compiler_failure.outputs.typecheck_result == 'success'
+      && needs.compiler_failure.outputs.static_result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - run: |-
+          echo "::error::A good downstream gate admitted a failed preflight"
+          exit 1
+  compiler_failure_package:
+    name: 'compiler_failure: good package gate must skip'
+    needs:
+      - code_paths
+      - compiler_failure
+    if: needs.code_paths.outputs.package == 'true'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - run: |-
+          echo "::error::A good downstream gate admitted a failed preflight"
+          exit 1
+  post_failure:
+    name: Controlled post failure
+    needs:
+      - code_paths
+    if: (needs.code_paths.outputs.static_analysis == 'true') || (needs.code_paths.outputs.typecheck == 'true')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - *a1
+      - name: Materialize the private post fault before dependency actions register posts
+        run: |-
+          mkdir -p .tmp/ci-preflight-post-fault
+          printf '%s' 'bmFtZTogQ29udHJvbGxlZCBsYXRlIHByZWZsaWdodCBmYWlsdXJlCmRlc2NyaXB0aW9uOiBUZW1wb3JhcnkgcXVhbGlmaWNhdGlvbiBhY3Rpb247IGl0cyBtYWluIHN1Y2NlZWRzIGFuZCBpdHMgcmVhbCBwb3N0IGRlbGliZXJhdGVseSBmYWlscy4KcnVuczoKICB1c2luZzogbm9kZTI0CiAgbWFpbjogbWFpbi5tanMKICBwb3N0OiBwb3N0Lm1qcwogIHBvc3QtaWY6IGFsd2F5cygpCg==' | base64 --decode > .tmp/ci-preflight-post-fault/action.yml
+          printf '%s' 'aW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnCmltcG9ydCB7IGFwcGVuZEZpbGVTeW5jIH0gZnJvbSAnbm9kZTpmcycKCmNvbnN0IG5vbmNlID0gJ29yY2Etc2VxdWVudGlhbC1oZWF2eS1jb250cm9sbGVkLXBvc3QtdjEnCmFzc2VydC5vayhwcm9jZXNzLmVudi5HSVRIVUJfU1RBVEUpCmFzc2VydC5vayhwcm9jZXNzLmVudi5HSVRIVUJfT1VUUFVUKQphcHBlbmRGaWxlU3luYyhwcm9jZXNzLmVudi5HSVRIVUJfU1RBVEUsIGBxdWFsaWZpY2F0aW9uX25vbmNlPSR7bm9uY2V9XG5gKQphcHBlbmRGaWxlU3luYyhwcm9jZXNzLmVudi5HSVRIVUJfT1VUUFVULCBgbm9uY2U9JHtub25jZX1cbmApCmNvbnNvbGUubG9nKCdDb250cm9sbGVkIHBvc3QgcmVnaXN0ZXJlZDsgZm9yZWdyb3VuZCBhY3Rpb24gc3VjY2VlZGVkLicpCg==' | base64 --decode > .tmp/ci-preflight-post-fault/main.mjs
+          printf '%s' 'aW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnCgpjb25zdCBub25jZSA9ICdvcmNhLXNlcXVlbnRpYWwtaGVhdnktY29udHJvbGxlZC1wb3N0LXYxJwphc3NlcnQuZXF1YWwocHJvY2Vzcy5lbnYuU1RBVEVfcXVhbGlmaWNhdGlvbl9ub25jZSwgbm9uY2UpCmNvbnNvbGUubG9nKGA6OmVycm9yOjoke25vbmNlfTogZGVsaWJlcmF0ZSBmYWlsdXJlIGFmdGVyIHN1Y2Nlc3NmdWwgaGVhdnkgY2hlY2twb2ludHNgKQpwcm9jZXNzLmV4aXRDb2RlID0gMQo=' | base64 --decode > .tmp/ci-preflight-post-fault/post.mjs
+      - name: Register deliberate late post failure
+        id: post-fault
+        uses: ./.tmp/ci-preflight-post-fault
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies != 'true')
+        with:
+          native-runtime: node
+          node-version: '24'
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+        with:
+          native-runtime: node
+          node-version: '24'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.typecheck == 'true') && !(needs.code_paths.outputs.static_analysis == 'true')
+      - name: Lint
+        id: root-lint
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm exec oxlint --format github
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Reject low-evidence patterns
+        run: pnpm run audit:anti-slop
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        id: native-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run audit:code-quality:native
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce type-aware code-quality baseline
+        run: pnpm run audit:code-quality:type-aware
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+      - name: Enforce changed-code quality
+        id: changed-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run check:code-quality:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce React Doctor on changed lines
+        run: pnpm run check:react-doctor:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        run: pnpm run check:zustand-selector-fanout
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check reliability gate manifest
+        run: pnpm run check:reliability-gates
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce dead design-system classes
+        run: pnpm run check:dead-classes
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check VM runtime rollback compatibility
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce max-lines ratchet
+        run: pnpm run check:max-lines-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce ts-nocheck ratchet
+        run: pnpm run check:ts-nocheck-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce runtime Electron-import ratchet
+        run: pnpm run check:runtime-electron-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check Node runtime pin
+        run: pnpm run check:node-runtime-pin
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization extraction
+        id: localization-extraction
+        background: true
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+        if: '!cancelled()'
+      - name: Boot orcad and round-trip a terminal
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify the generated RPC params catalog
+        run: pnpm run verify:rpc-params-catalog
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify bundled skill guides
+        run: pnpm run verify:bundled-skill-guides
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify skill freshness manifest
+        run: pnpm run verify:skill-bundle-manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization catalogs
+        id: localization-catalogs
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run verify:localization-catalogs
+        if: '!cancelled()'
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Verify localization coverage
+        run: pnpm run verify:localization-coverage
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check feature wall asset budget
+        run: pnpm check:feature-wall-assets
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify macOS entitlements
+        run: pnpm verify:macos-entitlements
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Require the selected static checks to pass
+        id: static-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Restore the compiler and planner Node version
+        id: typecheck-node
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.typecheck == 'true')
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Cache TypeScript incremental state
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        if: needs.code_paths.outputs.typecheck == 'true'
+      - name: Plan unit selection
+        id: unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          node config/scripts/ci-unit-plan.mjs
+        if: '!cancelled()'
+      - run: |-
+          set +e
+          pnpm run typecheck > "$RUNNER_TEMP/orca-heavy-safety/compiler.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/orca-heavy-safety/compiler.log"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: compiler-command
+        name: Run the unchanged compiler command and retain its real status
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unit-selection-post_failure-attempt-${{ github.run_attempt }}
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: selection-upload
+      - name: Require the selected compiler and joined plan to pass
+        id: typecheck-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Require the exact foreground fault prerequisites
+        id: foreground-evidence
+        if: '!cancelled()'
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: node "$RUNNER_TEMP/orca-heavy-safety/safety.mjs" foreground post_failure
+      - if: '!cancelled()'
+        uses: actions/upload-artifact@v7
+        with:
+          name: heavy-safety-post_failure-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-safety/post_failure.json
+          if-no-files-found: error
+          retention-days: 14
+    permissions:
+      contents: read
+    timeout-minutes: 25
+    outputs:
+      static_result: ${{ steps.static-complete.outputs.result || 'blocked' }}
+      typecheck_result: ${{ steps.typecheck-complete.outputs.result || 'blocked' }}
+      shards: ${{ steps.unit-plan.outputs.shards }}
+      foreground_qualified: ${{ steps.foreground-evidence.outputs.qualified }}
+  post_failure_unit:
+    name: 'post_failure: good unit gate must skip'
+    needs:
+      - code_paths
+      - post_failure
+    if: |-
+      needs.code_paths.result == 'success' &&
+      !cancelled() && needs.code_paths.outputs.test == 'true' && needs.post_failure.result == 'success' && needs.post_failure.outputs.typecheck_result == 'success'
+      && needs.post_failure.outputs.static_result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - run: |-
+          echo "::error::A good downstream gate admitted a failed preflight"
+          exit 1
+  post_failure_package:
+    name: 'post_failure: good package gate must skip'
+    needs:
+      - code_paths
+      - post_failure
+    if: needs.code_paths.outputs.package == 'true'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - run: |-
+          echo "::error::A good downstream gate admitted a failed preflight"
+          exit 1
+  unsafe_unit_canary_and_audit:
+    name: Weakened gate canary and exact observed failure audit
+    needs:
+      - code_paths
+      - compiler_failure
+      - compiler_failure_unit
+      - compiler_failure_package
+      - post_failure
+      - post_failure_unit
+      - post_failure_package
+    if: |-
+      needs.code_paths.result == 'success' &&
+      !cancelled() && needs.code_paths.outputs.test == 'true' && needs.post_failure.outputs.typecheck_result == 'success'
+      && needs.post_failure.outputs.static_result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+          fetch-depth: 2
+          persist-credentials: false
+      - *a1
+      - name: Download only this attempt’s real foreground and no-op receipts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: heavy-safety-*-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-safety/artifacts
+          merge-multiple: true
+      - name: Require failed physical jobs, skipped good admissions and unchanged aggregate rejection
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node "$RUNNER_TEMP/orca-heavy-safety/safety.mjs" audit
+      - if: '!cancelled()'
+        uses: actions/upload-artifact@v7
+        with:
+          name: heavy-safety-audit-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-safety/audit.json
+          if-no-files-found: error
+          retention-days: 14
