@@ -9,6 +9,8 @@ export type RendererRecoveryPromptFailure = RecoveryExhaustionCause
 export type RendererRecoveryPromptDeps = {
   recentRecoveryCount: number
   failure?: RendererRecoveryPromptFailure
+  /** Shown with failure 'low-commit'. */
+  availableCommitMB?: number
   isQuitting: () => boolean
   diagnose: () => InstallDirAclPoisonDiagnosis | null
   /** Re-checks spawn headroom so a launch-failed prompt can name the process limit. */
@@ -24,6 +26,7 @@ export async function presentRendererRecoveryPrompt(
 ): Promise<void> {
   const stalled = deps.failure === 'reload-stalled'
   const launchFailed = deps.failure === 'launch-failed'
+  const lowCommit = deps.failure === 'low-commit'
   if (deps.isQuitting()) {
     return
   }
@@ -31,7 +34,7 @@ export async function presentRendererRecoveryPrompt(
   const launchProbe = launchFailed ? await deps.probeLaunchCapacity?.() : undefined
   // Copying must preserve the only available recovery surface.
   while (!deps.isQuitting()) {
-    const diagnosis = deps.diagnose()
+    const diagnosis = lowCommit ? null : deps.diagnose()
     // Why no Restart button: relaunching needs a free process slot too, and app.relaunch fails silently without one.
     const buttons = [
       launchFailed
@@ -44,7 +47,9 @@ export async function presentRendererRecoveryPrompt(
     buttons.push(translateMain('rendererRecovery.quit', 'Quit'))
     const content = launchFailed
       ? describeLaunchFailure(deps.recentRecoveryCount, launchProbe, diagnosis)
-      : describeRendererCrash(stalled, deps.recentRecoveryCount, diagnosis)
+      : lowCommit
+        ? describeLowCommit(deps.availableCommitMB ?? 0)
+        : describeRendererCrash(stalled, deps.recentRecoveryCount, diagnosis)
     const { response } = await deps.showMessageBox({
       type: 'error',
       buttons,
@@ -68,6 +73,22 @@ export async function presentRendererRecoveryPrompt(
 }
 
 type PromptContent = { message: string; detail: string }
+
+function describeLowCommit(availableMB: number): PromptContent {
+  const recoveryDetail = translateMain(
+    'rendererRecovery.lowCommitDetail',
+    'Windows has only {{availableMB}} MB of memory left for apps, so the window ran out of memory again after reloading.',
+    { availableMB }
+  )
+  const advice = translateMain(
+    'rendererRecovery.lowCommitAdvice',
+    'Free memory by closing unused apps or Orca workspaces, or increase the Windows page file size, then click Reload.'
+  )
+  return {
+    message: translateMain('rendererRecovery.lowCommitMessage', 'Windows is out of memory.'),
+    detail: `${recoveryDetail}\n\n${advice}`
+  }
+}
 
 function describeLaunchFailure(
   attempts: number,
