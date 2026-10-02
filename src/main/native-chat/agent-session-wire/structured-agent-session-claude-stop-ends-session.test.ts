@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { readAgentJournalStopAnswer } from '../../../shared/agent-session-stop-answer'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
@@ -269,6 +270,17 @@ async function turnOutcome(): Promise<string | undefined> {
     ?.outcome
 }
 
+/** What each Stop's note records it did, and whether it names the latest Stop event. */
+async function stopAnswers(): Promise<{ answer: string; answersLatestStop: boolean }[]> {
+  const latest = host.collaboratorsForTests().sessions.get(SESSION)?.journal.stopMarks.latest()
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
+    const stop = readAgentJournalStopAnswer(item.body)
+    return stop
+      ? [{ answer: stop.answer, answersLatestStop: stop.eventAt === latest?.event.at }]
+      : []
+  })
+}
+
 async function statusTexts(): Promise<string[]> {
   await host.flushStreamedEvents(SESSION)
   return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
@@ -285,6 +297,8 @@ it('answers on the interrupt, ends the child once the stopped turn ends, and res
   // The Stop answered on the interrupt Claude took: the child waits for Claude to end the turn.
   expect(connection.closed).toBe(false)
   expect(await statusTexts()).toEqual(['Cancellation requested.'])
+  // The child's end is still owed to the Stop's next step.
+  expect(await stopAnswers()).toEqual([{ answer: 'end-owed', answersLatestStop: true }])
   const ended = Date.now()
   frame(connection, INTERRUPTED_RESULT)
   await laneDrained()
@@ -422,6 +436,7 @@ it('ends the child at once when Claude refuses the interrupt, and says only that
   const texts = await statusTexts()
   expect(texts).toContain('Cancellation requested.')
   expect(texts.some((text) => text.includes("didn't stop"))).toBe(false)
+  expect(await stopAnswers()).toEqual([{ answer: 'end-owed', answersLatestStop: true }])
 })
 
 it('ends the child when the interrupt fails, with no unconfirmed row', async () => {

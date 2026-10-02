@@ -16,6 +16,7 @@ import {
   fakeCodex
 } from '../../codex/codex-structured-session-adapter-fixture'
 import { codexTurnLifecycleFake } from '../../codex/codex-turn-lifecycle-fake'
+import { readAgentJournalStopAnswer } from '../../../shared/agent-session-stop-answer'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -136,7 +137,13 @@ async function journalRows() {
   return {
     statuses: items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : [])),
     turns: items.flatMap((item) => (item.body.kind === 'turn' ? [item.body.state] : [])),
-    outcomes: items.flatMap((item) => (item.body.kind === 'turn' ? [item.body.outcome] : []))
+    outcomes: items.flatMap((item) => (item.body.kind === 'turn' ? [item.body.outcome] : [])),
+    // What each Stop's note records it did; every one here answers the Stop's own event.
+    answers: items.flatMap((item) => {
+      const stop = readAgentJournalStopAnswer(item.body)
+      const event = host['sessions'].get(SESSION)?.journal.stopMarks.latest()?.event
+      return stop ? [stop.eventAt === event?.at ? stop.answer : 'another event'] : []
+    })
   }
 }
 
@@ -203,6 +210,7 @@ describe('a Codex Stop that Codex answered', () => {
       await host.flushStreamedEvents(SESSION)
 
       expect((await journalRows()).statuses).toEqual(['Cancellation requested.'])
+      expect((await journalRows()).answers).toEqual(['took'])
       expect(stopped).toMatchObject({ ok: true, value: { cancelled: true } })
       // Codex's background terminals live in its child, so a Stop it took keeps the child.
       expect(childEndedByStop()).toBe(false)
@@ -235,25 +243,41 @@ describe('a Codex Stop whose interrupt failed', () => {
       expect(rows.turns).toEqual(['interrupted'])
       expect(rows.outcomes).toEqual(['cancellation'])
       expect(rows.statuses).toEqual(['Cancellation requested.'])
+      expect(rows.answers).toEqual(['took'])
     }
   )
 
-  it('says Codex did not stop when a Stop naming the running turn could not prove the exit', async () => {
-    await runningTurn()
-    codex.routes['turn/interrupt'] = () => {
-      throw interruptFailure('internal error')
+  it.each([
+    [
+      'declined: Codex could not submit it',
+      'internal error',
+      "Codex didn't stop: failed to interrupt turn: channel closed.",
+      'declined'
+    ],
+    [
+      'unconfirmed: Codex never answered',
+      'unanswered',
+      'Cancellation was not confirmed.',
+      'interrupt-unconfirmed'
+    ]
+  ] as const)(
+    'says the Stop did not take when one naming the running turn could not prove the exit, %s',
+    async (_case, failure, status, answer) => {
+      await runningTurn()
+      codex.routes['turn/interrupt'] = () => {
+        throw interruptFailure(failure)
+      }
+      disposeSession.mockResolvedValueOnce(false)
+
+      const stopped = await stop('turn-1')
+      await host.flushStreamedEvents(SESSION)
+
+      expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+      expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
+      expect((await journalRows()).statuses).toEqual([status])
+      expect((await journalRows()).answers).toEqual([answer])
     }
-    disposeSession.mockResolvedValueOnce(false)
-
-    const stopped = await stop('turn-1')
-    await host.flushStreamedEvents(SESSION)
-
-    expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
-    expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
-    expect((await journalRows()).statuses).toEqual([
-      "Codex didn't stop: failed to interrupt turn: channel closed."
-    ])
-  })
+  )
 
   it.each([
     ['naming no turn', undefined],
@@ -281,11 +305,11 @@ describe('a Codex Stop whose interrupt failed', () => {
 
   // Codex marks the turn ended before it writes the frame, so its refusal can come first.
   it.each([
-    ['naming no turn', undefined],
-    ['naming its turn', 'turn-1']
+    ['naming no turn', undefined, ['no-effect']],
+    ['naming its turn', 'turn-1', []]
   ] as const)(
     "keeps the child when Codex's refusal arrives before the turn's end, %s",
-    async (_case, turnId) => {
+    async (_case, turnId, answers) => {
       await runningTurn()
       codex.routes['turn/interrupt'] = () => {
         setTimeout(() => turns.end('completed'), 2)
@@ -300,6 +324,8 @@ describe('a Codex Stop whose interrupt failed', () => {
       expect(childEndedByStop()).toBe(false)
       expect(codex.connections.at(-1)?.closed).toBe(false)
       expect((await journalRows()).outcomes).toEqual(['success'])
+      // A Stop that stopped nothing says so; one naming a turn that ended writes no row.
+      expect((await journalRows()).answers).toEqual(answers)
     }
   )
 
