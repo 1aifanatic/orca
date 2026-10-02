@@ -14999,7 +14999,7 @@
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
         "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}.",
-        "previousExitUnverifiable": "Es posible que {{agent}} siga en ejecución desde antes. Sus mensajes se enviarán cuando se detenga."
+        "previousExitUnverifiable": "Es posible que {{agent}} siga en ejecución desde antes. Orca sigue comprobándolo y enviará sus mensajes cuando se detenga."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
@@ -15037,7 +15037,7 @@
         "answerFirst": "Responda primero a la pregunta o aprobación.",
         "backgroundTasksRunning": "Todavía hay tareas en segundo plano en ejecución.",
         "waitForBackgroundTasks": "Espere a que terminen las tareas en segundo plano.",
-        "messagesUnsettled": "Un mensaje que envió antes todavía no ha llegado.",
+        "messagesUnsettled": "Un mensaje que envió antes todavía no está confirmado.",
         "settleEarlierMessage": "Espere a que se entregue su mensaje anterior o vuelva a intentarlo.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
@@ -15100,7 +15100,7 @@
         "commands": "Comandos",
         "skills": "Habilidades",
         "loadingSkills": "Cargando habilidades…",
-        "skillsUnavailableHost": "Las habilidades no están disponibles aquí",
+        "skillsUnavailableHost": "Las habilidades no están disponibles en los chats SSH",
         "skillsLoadFailed": "No se pudieron cargar las habilidades",
         "retrySkills": "Reintentar",
         "skillCommandCollision": "También es un nombre de habilidad - el agente decide",

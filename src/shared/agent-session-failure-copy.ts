@@ -82,7 +82,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
   providerRetrying: '{{agent}} hit a temporary problem and is retrying.',
   providerRetryingQuoted: '{{agent}} is retrying: {{detail}}.',
   previousExitUnverifiable:
-    '{{agent}} may still be running from before. Your messages will send once it stops.'
+    '{{agent}} may still be running from before. Orca keeps checking and will send your messages once it stops.'
 } as const
 
 export type AgentSessionFailureCopyId = keyof typeof AGENT_SESSION_FAILURE_COPY

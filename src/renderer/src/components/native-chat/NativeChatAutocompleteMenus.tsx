@@ -75,7 +75,7 @@ export const NativeChatPickerMenu = memo(function NativeChatPickerMenu({
             {autocomplete.skillErrorKind === 'unavailable'
               ? translate(
                   'components.native-chat.composer.skillsUnavailableHost',
-                  "Skills aren't available here"
+                  "Skills aren't available in SSH chats"
                 )
               : translate(
                   'components.native-chat.composer.skillsLoadFailed',

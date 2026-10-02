@@ -122,7 +122,10 @@ export function backgroundTaskStateWord(state: RunState): string {
     case 'idle':
       return translate('components.native-chat.backgroundTasks.stateIdle', 'stopped')
     case 'unverifiable':
-      return translate('components.native-chat.backgroundTasks.stateUnverifiable', 'unknown')
+      return translate(
+        'components.native-chat.backgroundTasks.stateUnverifiable',
+        'no recent update'
+      )
   }
 }
 
@@ -131,19 +134,26 @@ export function backgroundTaskStateReason(state: RunState): string | null {
   switch (state) {
     case 'waiting':
       return translate('components.native-chat.backgroundTasks.reasonWaiting', 'needs approval')
-    case 'unverifiable':
-      return translate(
-        'components.native-chat.backgroundTasks.reasonUnverifiable',
-        'no recent update'
-      )
     case 'blocked':
       return translate('components.native-chat.backgroundTasks.reasonBlocked', 'failed')
     case 'working':
     case 'monitoring':
     case 'done':
     case 'idle':
+    case 'unverifiable':
+      // `unverifiable`'s state word already says it.
       return null
   }
+}
+
+/** The state word after a count ("2 agents …"), where "no recent update" does not read. */
+export function backgroundTaskStateCountWord(state: RunState): string {
+  return state === 'unverifiable'
+    ? translate(
+        'components.native-chat.backgroundTasks.stateUnverifiableCount',
+        'status unavailable'
+      )
+    : backgroundTaskStateWord(state)
 }
 
 function tokenScaleText(value: number): string {

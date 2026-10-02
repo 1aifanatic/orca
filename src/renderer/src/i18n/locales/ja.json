@@ -17401,7 +17401,7 @@
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
-        "previousExitUnverifiable": "以前の {{agent}} がまだ実行中の可能性があります。停止するとメッセージが送信されます。"
+        "previousExitUnverifiable": "以前の {{agent}} がまだ実行中の可能性があります。Orca は確認を続け、停止したらメッセージを送信します。"
       },
       "writeNotice": {
         "notDoneReadHistory": "このチャットの履歴を読み込めませんでした。",
@@ -17439,7 +17439,7 @@
         "answerFirst": "先に質問または承認に回答してください。",
         "backgroundTasksRunning": "バックグラウンドタスクがまだ実行中です。",
         "waitForBackgroundTasks": "バックグラウンドタスクが終わるまでお待ちください。",
-        "messagesUnsettled": "以前に送信したメッセージがまだ届いていません。",
+        "messagesUnsettled": "以前に送信したメッセージはまだ確認されていません。",
         "settleEarlierMessage": "以前のメッセージが届くまで待つか、再試行してください。",
         "optionRejected": "Agent はこの設定を受け入れませんでした。",
         "goalsUnsupported": "この Agent は目標に対応していません。",
@@ -17502,7 +17502,7 @@
         "commands": "コマンド",
         "skills": "スキル",
         "loadingSkills": "スキルを読み込み中…",
-        "skillsUnavailableHost": "ここではスキルを利用できません",
+        "skillsUnavailableHost": "SSH チャットではスキルを利用できません",
         "skillsLoadFailed": "スキルを読み込めませんでした",
         "retrySkills": "再試行",
         "skillCommandCollision": "スキル名でもあります - Agent が判断します",
@@ -17728,9 +17728,9 @@
         "stateBlocked": "ブロックされました",
         "stateDone": "終わり",
         "stateIdle": "止まった",
-        "stateUnverifiable": "不明",
+        "stateUnverifiable": "最近の更新なし",
+        "stateUnverifiableCount": "ステータス不明",
         "reasonWaiting": "承認が必要です",
-        "reasonUnverifiable": "最近の更新なし",
         "reasonBlocked": "失敗した",
         "groupAgents": "Agent",
         "groupShell": "シェル",
@@ -17756,12 +17756,12 @@
           "idle": "idle",
           "failed": "失敗した",
           "stopped": "止まった",
-          "unverifiable": "不明",
+          "unverifiable": "最近の更新なし",
           "workingCount": "{{value0}} は動作しています",
           "idleCount": "{{value0}} アイドル状態",
           "failedCount": "{{value0}} 件失敗",
           "stoppedCount": "{{value0}} が停止しました",
-          "unverifiableCount": "{{value0}} 件不明"
+          "unverifiableCount": "{{value0}} 件ステータス不明"
         },
         "startedOne": "1 人のサブ Agent を解雇しました",
         "startedN": "{{value0}} サブ Agent をキックオフしました",

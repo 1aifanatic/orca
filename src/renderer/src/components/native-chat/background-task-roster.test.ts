@@ -77,8 +77,8 @@ describe('backgroundTasksHeaderContent', () => {
     expect(
       header([agent('a', { state: 'unverifiable' }), agent('b', { state: 'unverifiable' })])
     ).toEqual({
-      segments: [{ text: '2 agents unknown', kind: 'agent' }],
-      detail: 'no recent update'
+      segments: [{ text: '2 agents status unavailable', kind: 'agent' }],
+      detail: null
     })
   })
 

@@ -50,7 +50,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   answerFirst: 'Answer the question or approval first.',
   backgroundTasksRunning: 'Background tasks are still running.',
   waitForBackgroundTasks: 'Wait for the background tasks to finish.',
-  messagesUnsettled: "A message you sent earlier hasn't gone through yet.",
+  messagesUnsettled: "A message you sent earlier isn't confirmed yet.",
   settleEarlierMessage: 'Wait for your earlier message to go through, or retry it.',
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",

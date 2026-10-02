@@ -280,7 +280,7 @@ it('holds the message with its reason while the exit stays unverifiable, and sen
     {
       kind: 'status',
       tone: 'warning',
-      text: 'Claude may still be running from before. Your messages will send once it stops.',
+      text: 'Claude may still be running from before. Orca keeps checking and will send your messages once it stops.',
       failure: { kind: 'previousExitUnverifiable' }
     }
   ])

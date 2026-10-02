@@ -17366,7 +17366,7 @@
         "providerRateLimited": "{{agent}} 已被限流，正在重试。",
         "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
         "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。",
-        "previousExitUnverifiable": "之前的 {{agent}} 可能仍在运行。它停止后，您的消息将会发送。"
+        "previousExitUnverifiable": "之前的 {{agent}} 可能仍在运行。Orca 会持续检查，并在它停止后发送您的消息。"
       },
       "writeNotice": {
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
@@ -17404,7 +17404,7 @@
         "answerFirst": "请先回答问题或审批。",
         "backgroundTasksRunning": "后台任务仍在运行。",
         "waitForBackgroundTasks": "请等待后台任务完成。",
-        "messagesUnsettled": "您之前发送的一条消息尚未送达。",
+        "messagesUnsettled": "您之前发送的一条消息尚未确认。",
         "settleEarlierMessage": "请等待之前的消息送达，或重试该消息。",
         "optionRejected": "智能体未接受此设置。",
         "goalsUnsupported": "此智能体不支持目标。",
@@ -17467,7 +17467,7 @@
         "commands": "命令",
         "skills": "技能",
         "loadingSkills": "正在加载技能…",
-        "skillsUnavailableHost": "此处无法使用技能",
+        "skillsUnavailableHost": "SSH 聊天中无法使用技能",
         "skillsLoadFailed": "无法加载技能",
         "retrySkills": "重试",
         "skillCommandCollision": "也是技能名称 — 由智能体决定",
@@ -17693,9 +17693,9 @@
         "stateBlocked": "被阻止",
         "stateDone": "完毕",
         "stateIdle": "停止了",
-        "stateUnverifiable": "未知",
+        "stateUnverifiable": "暂无近期更新",
+        "stateUnverifiableCount": "状态不可用",
         "reasonWaiting": "需要批准",
-        "reasonUnverifiable": "暂无近期更新",
         "reasonBlocked": "失败的",
         "groupAgents": "代理",
         "groupShell": "壳",
@@ -17721,12 +17721,12 @@
           "idle": "idle",
           "failed": "失败的",
           "stopped": "停止了",
-          "unverifiable": "未知",
+          "unverifiable": "暂无近期更新",
           "workingCount": "{{value0}} 工作",
           "idleCount": "{{value0}} 空闲",
           "failedCount": "{{value0}} 失败",
           "stoppedCount": "{{value0}} 已停止",
-          "unverifiableCount": "{{value0}} 未知"
+          "unverifiableCount": "{{value0}} 状态不可用"
         },
         "startedOne": "踢掉 1 个子代理",
         "startedN": "启动 {{value0}} 子代理",
