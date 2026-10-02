@@ -17616,6 +17616,7 @@
         "sending": "正在发送…"
       },
       "approval": {
+        "needsNewerOrca": "此请求需要更新版本的 Orca。",
         "title": "允许 {{value0}}？",
         "allow": "允许",
         "deny": "拒绝",

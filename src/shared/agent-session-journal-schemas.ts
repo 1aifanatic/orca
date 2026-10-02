@@ -166,13 +166,13 @@ const ApprovalMatchedAskRule = z.object({
   ruleContent: z.string().optional()
 })
 
-/** Open like blocks. An approval whose subject this build cannot draw shows its `detail`, which
- *  Orca's writers fill with the subject's text, so it is never approved unseen. */
-const ApprovalSubject = openDiscriminatedUnion(
-  z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('plan'), text: z.string().min(1), filePath: z.string().optional() })
-  ])
-)
+const KnownApprovalSubject = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('plan'), text: z.string().min(1), filePath: z.string().optional() })
+])
+export const AGENT_JOURNAL_APPROVAL_SUBJECT_KINDS = knownTags(KnownApprovalSubject)
+/** Open like blocks; a subject this build cannot draw is never approvable here
+ *  (agent-session-approval-subject.ts). */
+const ApprovalSubject = openDiscriminatedUnion(KnownApprovalSubject)
 
 const MessageBody = z.object({
   kind: z.literal('message'),

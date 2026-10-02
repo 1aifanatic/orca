@@ -17651,6 +17651,7 @@
         "sending": "送信中…"
       },
       "approval": {
+        "needsNewerOrca": "このリクエストには新しいバージョンの Orca が必要です。",
         "title": "{{value0}} を許可しますか?",
         "allow": "許可する",
         "deny": "拒否",

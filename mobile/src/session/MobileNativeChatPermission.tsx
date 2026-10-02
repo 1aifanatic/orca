@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { ShieldQuestion, X } from 'lucide-react-native'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import { isNewerApprovalSubject } from '../../../src/shared/agent-session-approval-subject'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 
 // Renders a detected agent permission ask as a card with tappable options.
@@ -23,6 +24,8 @@ function MobileNativeChatPermissionImpl({
   const [inFlight, setSubmitting] = useState(false)
   const submitting = inFlight || disabled
   const submittingRef = useRef(false)
+  // A newer Orca's subject: its detail is shown, and only the cancel that ends the turn answers.
+  const newerSubject = isNewerApprovalSubject(permission.subject)
   const hasContext = Boolean(
     permission.description ||
     permission.decisionReason ||
@@ -107,6 +110,11 @@ function MobileNativeChatPermissionImpl({
           ) : permission.detail ? (
             <Text style={styles.detail}>{permission.detail}</Text>
           ) : null}
+          {newerSubject ? (
+            <Text testID="native-chat-approval-needs-newer-orca" style={styles.detail}>
+              This request needs a newer version of Orca.
+            </Text>
+          ) : null}
         </ScrollView>
       ) : null}
       <View testID="native-chat-approval-actions" style={styles.options}>
@@ -119,11 +127,11 @@ function MobileNativeChatPermissionImpl({
                 styles.option,
                 isPrimary ? styles.optionPrimary : styles.optionSecondary,
                 pressed && !submitting && styles.optionPressed,
-                disabled && styles.disabled
+                (disabled || newerSubject) && styles.disabled
               ]}
               hitSlop={6}
               onPress={() => respond(option.send)}
-              disabled={submitting}
+              disabled={submitting || newerSubject}
             >
               <Text style={[styles.optionText, isPrimary && styles.optionTextPrimary]}>
                 {option.label}

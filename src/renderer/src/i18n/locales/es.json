@@ -15170,6 +15170,7 @@
         "sending": "Enviando…"
       },
       "approval": {
+        "needsNewerOrca": "Esta solicitud necesita una versión más reciente de Orca.",
         "title": "¿Permitir {{value0}}?",
         "allow": "Permitir",
         "deny": "Denegar"

@@ -17904,6 +17904,7 @@
         "reason": "Reason",
         "blockedPath": "Blocked path",
         "askRule": "Ask rule",
+        "needsNewerOrca": "This request needs a newer version of Orca.",
         "plan": {
           "file": "Plan file"
         }
