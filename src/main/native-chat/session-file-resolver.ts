@@ -9,14 +9,20 @@ import { isWslUncPath } from '../../shared/wsl-paths'
 import { walkSessionFiles } from '../ai-vault/session-scanner-discovery'
 import { OMP_SESSION_ARTIFACT_DIR_PATTERN } from '../ai-vault/session-scanner-omp-subagent-transcripts'
 import { resolveOmpSessionsDir } from '../ai-vault/omp-session-root'
+import {
+  ANTIGRAVITY_BRAIN_HOME_SEGMENTS,
+  antigravityTranscriptSegmentsInBrain
+} from '../ai-vault/session-scanner-antigravity-paths'
 import { resolveOrcaManagedCodexHomePath } from '../codex/codex-home-paths'
 import {
   findGrokChatHistoryBySessionId,
   resolveGrokSessionsDir
 } from '../../shared/grok-session-paths'
 import {
+  createWslTranscriptResolutionSnapshot,
   needsWslHostResolution,
   toHostReadableTranscriptPath,
+  wslAntigravityTranscriptPaths,
   wslCodexSessionsDirs
 } from './host-readable-transcript-path'
 import { findWslCodexSessionPath } from './wsl-codex-session-path-scan'
@@ -74,6 +80,8 @@ export type ResolveSessionFileOptions = {
   grokSessionsDir?: string
   /** Override the omp sessions root (`~/.omp/agent/sessions`). */
   ompSessionsDir?: string
+  /** Antigravity CLI brain root on the execution host. */
+  antigravityBrainDir?: string
   /** Authoritative transcript path reported by the agent hook
    *  (`providerSession.transcriptPath`). When set and the file exists, it is used
    *  directly — recent Claude Code names the transcript with a UUID that differs
@@ -185,6 +193,9 @@ async function resolveSessionFileById(
       signal
     )
   }
+  if (transcriptAgent === 'antigravity') {
+    return resolveAntigravitySessionFile(trimmedId, options.antigravityBrainDir, signal)
+  }
   if (transcriptAgent === 'grok') {
     return resolveGrokSessionFile(trimmedId, options.grokSessionsDir ?? grokSessionsDir(), signal)
   }
@@ -284,6 +295,52 @@ async function findCodexRolloutInDirs(
     }
   }
   // No hit and at least one root never scanned: "couldn't look", not "missing".
+  if (unavailable) {
+    throw unavailable
+  }
+  return null
+}
+
+async function resolveAntigravitySessionFile(
+  conversationId: string,
+  brainDirOverride: string | undefined,
+  signal?: AbortSignal
+): Promise<string | null> {
+  // A conversation id is one directory segment, never a caller-supplied path.
+  if (!/^[a-zA-Z0-9_-]+$/.test(conversationId)) {
+    return null
+  }
+  const hostHit = await toHostReadableTranscriptPath(
+    join(
+      brainDirOverride ?? join(homedir(), ...ANTIGRAVITY_BRAIN_HOME_SEGMENTS),
+      ...antigravityTranscriptSegmentsInBrain(conversationId)
+    ),
+    { signal }
+  )
+  if (hostHit || brainDirOverride) {
+    return hostHit
+  }
+  if (process.platform !== 'win32') {
+    return null
+  }
+  // Why: enumerating WSL homes spawns wsl.exe, so only pay it after the host misses,
+  // and once per attempt — Chat re-resolves every few seconds until the file appears.
+  signal?.throwIfAborted()
+  const wslSnapshot = await createWslTranscriptResolutionSnapshot()
+  signal?.throwIfAborted()
+  let unavailable: WslTranscriptFsError | undefined
+  for (const candidate of await wslAntigravityTranscriptPaths(conversationId, { wslSnapshot })) {
+    try {
+      const hit = await toHostReadableTranscriptPath(candidate, { signal, wslSnapshot })
+      if (hit) {
+        return hit
+      }
+    } catch (error) {
+      signal?.throwIfAborted()
+      // Why: one stalled distro must not hide another distro's hit.
+      unavailable = wslTranscriptFsRefusal(error)
+    }
+  }
   if (unavailable) {
     throw unavailable
   }
