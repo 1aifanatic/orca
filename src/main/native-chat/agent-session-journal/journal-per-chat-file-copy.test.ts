@@ -28,8 +28,7 @@ import {
   type PerChatJournalRepair
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { charBoundedBatches } from './journal-session-status-backfill'
-import { backfillJournalSessionStatus } from './journal-session-status-backfill'
+import { backfillJournalSessionStatus, charBoundedBatches } from './journal-session-status-backfill'
 import {
   deriveJournalSessionStatus,
   isUnsettledJournalSessionStatus
