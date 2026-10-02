@@ -200,7 +200,11 @@ export function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}
       recordCrashBreadcrumb('renderer_reload_requested', { ignoreCache })
   })
   state.mainWindow = window
-  const disposeGpuStallWatchdog = installRendererGpuStallWatchdog(window)
+  const disposeGpuStallWatchdog = installRendererGpuStallWatchdog(window, () =>
+    state.gpuCrashFallbackTracker.hasRecordedExactlyOneCrash()
+      ? state.gpuCrashFallbackTracker.windowSnapshot()
+      : []
+  )
   window.on('show', resumeSyntheticTitleSpinnerTimer)
   window.on('restore', resumeSyntheticTitleSpinnerTimer)
   window.on('hide', stopSyntheticTitleSpinnerTimer)

@@ -19,7 +19,8 @@ function createHarness(canPing: () => boolean = () => true) {
     pingRenderer: vi.fn(() => new Promise<void>((resolve) => (answer = resolve))),
     canPing: vi.fn(canPing),
     readRendererCpuSeconds: vi.fn((): number | null => 0),
-    readGpuPids: vi.fn(() => [4242]),
+    readGpuProcesses: vi.fn(() => [{ pid: 4242, creationTime: 1 }]),
+    readGpuCrashTimes: vi.fn((): readonly number[] => [0]),
     killProcess: vi.fn(),
     onGpuKilled: vi.fn(),
     now: () => clock
@@ -54,7 +55,7 @@ function createHarness(canPing: () => boolean = () => true) {
 }
 
 describe('renderer GPU stall watchdog', () => {
-  it('kills the GPU process when the renderer stops answering while idle', () => {
+  it('kills one qualified replacement after a GPU failure and an idle renderer stall', () => {
     const { deps, advance } = createHarness()
     advance(RENDERER_GPU_STALL_PING_INTERVAL_MS + RENDERER_GPU_STALL_TIMEOUT_MS)
     expect(deps.killProcess).toHaveBeenCalledWith(4242)
@@ -80,7 +81,7 @@ describe('renderer GPU stall watchdog', () => {
     expect(deps.killProcess).not.toHaveBeenCalled()
   })
 
-  it('kills a wedged replacement, then stops at the kill budget', () => {
+  it('attempts only one recovery per window', () => {
     const { deps, advance } = createHarness()
     advance(RENDERER_GPU_STALL_TIMEOUT_MS * (RENDERER_GPU_STALL_MAX_KILLS + 3))
     expect(deps.killProcess).toHaveBeenCalledTimes(RENDERER_GPU_STALL_MAX_KILLS)
@@ -114,12 +115,98 @@ describe('renderer GPU stall watchdog', () => {
     expect(deps.killProcess).not.toHaveBeenCalled()
   })
 
-  it('sends a fresh ping after a kill instead of re-arming the lost one', async () => {
+  it('does not re-arm recovery after the one permitted kill', async () => {
     const { deps, advance, advanceAnswering } = createHarness()
     advance(RENDERER_GPU_STALL_TIMEOUT_MS)
     // The first ping is lost for good; the recovered renderer answers new ones.
     deps.pingRenderer.mockImplementation(() => Promise.resolve())
     await advanceAnswering(RENDERER_GPU_STALL_TIMEOUT_MS * 4)
     expect(deps.killProcess).toHaveBeenCalledTimes(1)
+  })
+  it.each([null, Number.NaN, Infinity])(
+    'does not kill the GPU with unknown CPU usage (%s)',
+    (cpu) => {
+      const { deps, advance } = createHarness()
+      deps.readRendererCpuSeconds.mockReturnValue(cpu)
+      advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+      expect(deps.killProcess).not.toHaveBeenCalled()
+      expect(deps.pingRenderer).not.toHaveBeenCalled()
+    }
+  )
+
+  it('does not kill a healthy GPU for a renderer stall without a GPU failure', () => {
+    const { deps, advance } = createHarness()
+    deps.readGpuCrashTimes.mockReturnValue([])
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+
+  it('leaves a natural GPU crash burst to the existing fallback', () => {
+    const { deps, advance } = createHarness()
+    deps.readGpuCrashTimes.mockReturnValue([0, 500])
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+
+  it('does not act on a GPU failure outside the existing crash window', () => {
+    const { deps, sleep, advance } = createHarness()
+    sleep(40_000)
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+
+  it('does not kill several GPU processes when ownership is ambiguous', () => {
+    const { deps, advance } = createHarness()
+    deps.readGpuProcesses.mockReturnValue([
+      { pid: 4242, creationTime: 1 },
+      { pid: 4243, creationTime: 1 }
+    ])
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+
+  it('does not report success or repeat a failed kill attempt', () => {
+    const { deps, advance } = createHarness()
+    deps.killProcess.mockImplementation(() => {
+      throw new Error('permission denied')
+    })
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+    expect(deps.killProcess).toHaveBeenCalledOnce()
+    expect(deps.onGpuKilled).not.toHaveBeenCalled()
+  })
+
+  it('handles a ping that throws during renderer teardown', () => {
+    const { deps, advance } = createHarness()
+    deps.pingRenderer.mockImplementation(() => {
+      throw new Error('Object has been destroyed')
+    })
+    expect(() => advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)).not.toThrow()
+    expect(deps.killProcess).not.toHaveBeenCalled()
+  })
+  it.each([
+    { pid: 0, creationTime: 1 },
+    { pid: -1, creationTime: 1 },
+    { pid: Number.NaN, creationTime: 1 },
+    { pid: 4242, creationTime: 0 },
+    { pid: 4242, creationTime: Number.NaN }
+  ])(
+    'does not ping or kill a process with an invalid identity ($pid, $creationTime)',
+    (identity) => {
+      const { deps, advance } = createHarness()
+      deps.readGpuProcesses.mockReturnValue([identity])
+      advance(RENDERER_GPU_STALL_TIMEOUT_MS * 3)
+      expect(deps.pingRenderer).not.toHaveBeenCalled()
+      expect(deps.killProcess).not.toHaveBeenCalled()
+    }
+  )
+
+  it('does not inherit a timeout when a GPU PID is reused', () => {
+    const { deps, advance } = createHarness()
+    advance(RENDERER_GPU_STALL_PING_INTERVAL_MS)
+    deps.readGpuProcesses.mockReturnValue([{ pid: 4242, creationTime: 2 }])
+    advance(RENDERER_GPU_STALL_TIMEOUT_MS)
+    expect(deps.killProcess).not.toHaveBeenCalled()
+    advance(RENDERER_GPU_STALL_PING_INTERVAL_MS)
+    expect(deps.killProcess).toHaveBeenCalledWith(4242)
   })
 })
