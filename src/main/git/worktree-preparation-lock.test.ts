@@ -21,7 +21,8 @@ vi.mock('node:fs/promises', async (importOriginal) => ({
 import {
   lockWorktreePreparation,
   resolveWorktreePreparationLockPath,
-  unlockWorktreePreparation
+  unlockWorktreePreparation,
+  unlockWorktreePreparationAtPath
 } from './worktree-preparation-lock'
 
 const lockReason = 'orca-create-preparation:v1:123:exact-session'
@@ -71,16 +72,25 @@ describe('targeted preparation lock ownership', () => {
     expect(mocks.unlink).toHaveBeenCalledExactlyOnceWith(lockPath)
   })
 
-  it.each(['user lock\n', 'orca-create-preparation:v1:123:another-session\n'])(
-    'preserves a replacement owner: %s',
-    async (reason) => {
-      mocks.readFile.mockResolvedValueOnce(reason)
-      await expect(unlockWorktreePreparation('/final', lockReason, {})).rejects.toThrow(
-        'lock owner changed'
-      )
-      expect(mocks.unlink).not.toHaveBeenCalled()
-    }
-  )
+  it('reuses a verified administrative path and reads the owner again before unlinking', async () => {
+    await unlockWorktreePreparationAtPath(lockPath, lockReason)
+    expect(mocks.git).not.toHaveBeenCalled()
+    expect(mocks.readFile).toHaveBeenCalledExactlyOnceWith(lockPath, 'utf8')
+    expect(mocks.unlink).toHaveBeenCalledExactlyOnceWith(lockPath)
+  })
+
+  it.each([
+    'user lock\n',
+    'orca-create-preparation:v1:123:another-session\n',
+    lockReason,
+    `${lockReason}\n\n`
+  ])('preserves a replacement owner: %s', async (reason) => {
+    mocks.readFile.mockResolvedValueOnce(reason)
+    await expect(unlockWorktreePreparation('/final', lockReason, {})).rejects.toThrow(
+      'lock owner changed'
+    )
+    expect(mocks.unlink).not.toHaveBeenCalled()
+  })
 
   it.each(['ENOENT', 'EACCES'])(
     'preserves the checkout when marker ownership cannot be read: %s',
@@ -103,6 +113,19 @@ describe('targeted preparation lock ownership', () => {
       lockWorktreePreparation('/prepared', lockReason, { signal: controller.signal })
     ).rejects.toThrow()
     expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('honors cancellation during the ownership read before unlinking', async () => {
+    const controller = new AbortController()
+    const cancellation = new Error('unlock canceled')
+    mocks.readFile.mockImplementationOnce(async () => {
+      controller.abort(cancellation)
+      return `${lockReason}\n`
+    })
+    await expect(
+      unlockWorktreePreparationAtPath(lockPath, lockReason, controller.signal)
+    ).rejects.toBe(cancellation)
+    expect(mocks.unlink).not.toHaveBeenCalled()
   })
 })
 

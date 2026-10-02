@@ -520,7 +520,16 @@ describe('prepared worktree creation with real Git', () => {
       expect(entry).toBeDefined()
       takePreparation(entry)
       const finalPath = join(root, 'fresh-worktree')
-      await finalizePreparedWorktree(repoPath, entry.preparedPath, finalPath, 'fresh', 'main')
+      await finalizePreparedWorktree(
+        repoPath,
+        entry.preparedPath,
+        finalPath,
+        'fresh',
+        'main',
+        false,
+        {},
+        entry.lockReason
+      )
       expect(git(finalPath, ['status', '--porcelain'])).toBe('')
       expect(git(finalPath, ['symbolic-ref', '--short', 'HEAD'])).toBe('fresh')
       expect(await readFile(join(finalPath, 'version.txt'), 'utf8')).toBe('one\n')
@@ -644,7 +653,16 @@ describe('prepared worktree creation with real Git', () => {
     )
     expect(git(preparedPath, ['rev-parse', 'HEAD'])).not.toBe(localMainHead)
 
-    await finalizePreparedWorktree(repoPath, preparedPath, finalPath, 'feature/retargeted', 'main')
+    await finalizePreparedWorktree(
+      repoPath,
+      preparedPath,
+      finalPath,
+      'feature/retargeted',
+      'main',
+      false,
+      {},
+      createWorktreePreparationLockReason('retarget-test')
+    )
 
     expect(git(finalPath, ['rev-parse', 'HEAD'])).toBe(localMainHead)
     // A retarget that left stale files behind would be a wrong checkout, not just a slow one.
@@ -703,7 +721,10 @@ describe('prepared worktree creation with real Git', () => {
           preparedPath,
           finalPath,
           'feature/overlap',
-          'refs/remotes/origin/main'
+          'refs/remotes/origin/main',
+          false,
+          {},
+          createWorktreePreparationLockReason('fetch-overlap')
         )
         expect(git(finalPath, ['rev-parse', 'HEAD'])).toBe(refreshed)
         expect(await readFile(join(finalPath, 'version.txt'), 'utf8')).toBe('refreshed\n')
@@ -748,7 +769,9 @@ describe('prepared worktree creation with real Git', () => {
       finalPath,
       'feature/prepared',
       'main',
-      false
+      false,
+      {},
+      createWorktreePreparationLockReason('real-git-test')
     )
 
     expect(git(finalPath, ['rev-parse', 'HEAD'])).toBe(latestHead)

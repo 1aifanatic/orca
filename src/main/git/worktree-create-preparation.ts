@@ -23,6 +23,7 @@ import { runWithGitReadCacheInvalidation } from './status'
 import { invalidateWslLinkedWorktreeGitRouting } from './wsl-linked-worktree-git-routing'
 import {
   unlockWorktreePreparation,
+  unlockWorktreePreparationAtPath,
   verifyWorktreePreparationLock,
   verifyWorktreePreparationLockAtPath,
   WorktreePreparationLockOwnershipError
@@ -94,7 +95,7 @@ export async function discardPreparedWorktree(
   repoPath: string,
   worktreePath: string,
   options: GitWorktreeExecOptions = {},
-  expectedLockReason?: string
+  expectedLockReason: string
 ): Promise<void> {
   try {
     await runWithGitReadCacheInvalidation(() =>
@@ -109,7 +110,7 @@ export async function unlockPreparedWorktree(
   repoPath: string,
   worktreePath: string,
   options: GitWorktreeExecOptions = {},
-  expectedLockReason?: string
+  expectedLockReason: string
 ): Promise<void> {
   const cleanupGitOptions = {
     ...gitCleanupOptions(repoPath, options),
@@ -117,12 +118,7 @@ export async function unlockPreparedWorktree(
   }
   try {
     await runWithGitReadCacheInvalidation(async () => {
-      await (expectedLockReason === undefined
-        ? gitExecFileAsync(
-            [...windowsLongPathGitArgs(repoPath), 'worktree', 'unlock', worktreePath],
-            cleanupGitOptions
-          )
-        : unlockWorktreePreparation(worktreePath, expectedLockReason, cleanupGitOptions))
+      await unlockWorktreePreparation(worktreePath, expectedLockReason, cleanupGitOptions)
     })
   } finally {
     notifyPreparedWorktreeMutation(repoPath)
@@ -137,7 +133,7 @@ export async function finalizePreparedWorktree(
   baseBranch: string,
   refreshLocalBaseRef = false,
   options: AddWorktreeOptions = {},
-  expectedLockReason?: string
+  expectedLockReason: string
 ): Promise<AddWorktreeResult> {
   const finalizeGitOptions: AddWorktreeOptions = {
     ...options,
@@ -145,23 +141,13 @@ export async function finalizePreparedWorktree(
   }
   try {
     return await runWithGitReadCacheInvalidation(async () => {
-      const lockPath =
-        expectedLockReason === undefined
-          ? undefined
-          : await verifyWorktreePreparationLock(
-              preparedPath,
-              expectedLockReason,
-              finalizeGitOptions
-            )
-      const verifyOwnership = async (): Promise<void> => {
-        if (lockPath !== undefined && expectedLockReason !== undefined) {
-          await verifyWorktreePreparationLockAtPath(
-            lockPath,
-            expectedLockReason,
-            finalizeGitOptions.signal
-          )
-        }
-      }
+      const lockPath = await verifyWorktreePreparationLock(
+        preparedPath,
+        expectedLockReason,
+        finalizeGitOptions
+      )
+      const verifyOwnership = (): Promise<void> =>
+        verifyWorktreePreparationLockAtPath(lockPath, expectedLockReason, finalizeGitOptions.signal)
       const [targetResult, preparedResult] = await Promise.allSettled([
         (async () => {
           const baseContext = await resolveWorktreeAddBaseContext(
@@ -247,12 +233,11 @@ export async function finalizePreparedWorktree(
           finalizeGitOptions
         )
         await configurePushAutoSetupRemote(worktreePath, finalizeGitOptions)
-        await (expectedLockReason === undefined
-          ? gitExecFileAsync(
-              [...windowsLongPathGitArgs(repoPath), 'worktree', 'unlock', worktreePath],
-              gitExecOptions(repoPath, finalizeGitOptions)
-            )
-          : unlockWorktreePreparation(worktreePath, expectedLockReason, finalizeGitOptions))
+        await unlockWorktreePreparationAtPath(
+          lockPath,
+          expectedLockReason,
+          finalizeGitOptions.signal
+        )
       } catch (error) {
         if (!(error instanceof WorktreePreparationLockOwnershipError)) {
           await removeFailedFinalization(

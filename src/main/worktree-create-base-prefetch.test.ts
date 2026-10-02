@@ -19,7 +19,6 @@ vi.mock('./ipc/worktree-remote', () => ({
 }))
 
 import { prefetchWorktreeCreateBase } from './worktree-create-base-prefetch'
-import type { WorktreeCreatePreparationOptions } from './worktree-create-preparation'
 
 const repo = {
   id: 'repo-1',
@@ -206,8 +205,8 @@ describe('checkout and refresh overlap', () => {
       )
       let materialized = false
       const prepareCheckout = vi.fn(
-        async (_base: string, options?: WorktreeCreatePreparationOptions) => {
-          await options?.beforeMaterialization
+        async (_base: string, beforeMaterialization?: Promise<void>) => {
+          await beforeMaterialization
           materialized = true
         }
       )
@@ -222,9 +221,7 @@ describe('checkout and refresh overlap', () => {
         settled = true
       })
       await vi.waitFor(() =>
-        expect(prepareCheckout).toHaveBeenCalledWith('origin/main', {
-          beforeMaterialization: expect.any(Promise)
-        })
+        expect(prepareCheckout).toHaveBeenCalledWith('origin/main', expect.any(Promise))
       )
       expect(settled).toBe(false)
       expect(materialized).toBe(false)
@@ -333,12 +330,10 @@ describe('checkout and refresh overlap', () => {
     const error = new Error('offline')
     mocks.getOrStartRemoteTrackingBaseRefresh.mockRejectedValue(error)
     let materialized = false
-    const prepareCheckout = vi.fn(
-      async (_base: string, options?: WorktreeCreatePreparationOptions) => {
-        await options?.beforeMaterialization
-        materialized = true
-      }
-    )
+    const prepareCheckout = vi.fn(async (_base: string, beforeMaterialization?: Promise<void>) => {
+      await beforeMaterialization
+      materialized = true
+    })
     await expect(
       prefetchWorktreeCreateBase({
         repo,

@@ -321,7 +321,8 @@ describe('worktree create preparation registry', () => {
       expect.any(String),
       'refs/remotes/origin/main',
       expect.any(String),
-      { ...options, signal: expect.any(AbortSignal) }
+      { ...options, signal: expect.any(AbortSignal) },
+      undefined
     )
     expect(mocks.finalize).toHaveBeenCalledWith(
       repo.path,

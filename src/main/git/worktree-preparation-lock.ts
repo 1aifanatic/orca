@@ -89,7 +89,17 @@ export async function unlockWorktreePreparation(
   expectedLockReason: string,
   options: GitWorktreeExecOptions
 ): Promise<void> {
-  const lockPath = await verifyWorktreePreparationLock(worktreePath, expectedLockReason, options)
+  const lockPath = await readPreparationLockPath(worktreePath, options)
+  await unlockWorktreePreparationAtPath(lockPath, expectedLockReason, options.signal)
+}
+
+/** A move preserves the linked administration directory already verified by finalization. */
+export async function unlockWorktreePreparationAtPath(
+  lockPath: string,
+  expectedLockReason: string,
+  signal?: AbortSignal
+): Promise<void> {
+  await verifyWorktreePreparationLockAtPath(lockPath, expectedLockReason, signal)
   await unlink(lockPath).catch((error: unknown) => {
     throw new WorktreePreparationLockOwnershipError(error)
   })

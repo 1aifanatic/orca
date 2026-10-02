@@ -53,7 +53,8 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
       baseBranch: args.baseBranch,
       runtime: this,
       gitOptions: getWorktreeCreatePrefetchGitOptions(store, repo),
-      prepareCheckout: (base, options) => prepareWorktreeCreateForRepo(store, repo, base, options)
+      prepareCheckout: (base, beforeMaterialization) =>
+        prepareWorktreeCreateForRepo(store, repo, base, beforeMaterialization)
     })
   }
 }

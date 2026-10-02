@@ -56,7 +56,10 @@ it('creates and consumes its marker without worktree lock or unlock inventory sc
   await prepareWorktreeCreateCheckout(repo, prepared, 'main', reason)
   const lock = await git(prepared, ['rev-parse', '--git-path', 'locked'])
   expect(await readFile(lock, 'utf8')).toBe(`${reason}\n`)
+  spy.mockClear()
   await finalizePreparedWorktree(repo, prepared, final, 'feature', 'main', false, {}, reason)
+  expect(spy.mock.calls.filter(([args]) => args.includes('--git-path'))).toHaveLength(1)
+  expect(spy.mock.calls.filter(([args]) => args.includes('--git-common-dir'))).toHaveLength(1)
   expect(await git(final, ['symbolic-ref', '--short', 'HEAD'])).toBe('feature')
   expect(await git(final, ['status', '--porcelain'])).toBe('')
   expect(await readFile(join(final, 'tracked.txt'), 'utf8')).toBe('original\n')
@@ -196,26 +199,28 @@ it('claims the marker before materialization and preserves a competing owner aft
   expect(await readFile(join(prepared, 'tracked.txt'), 'utf8')).toBe('user checkout content\n')
 })
 
-it('preserves the finalized checkout when another owner replaces its marker during attachment', async () => {
-  const { repo, prepared, final } = await fixture()
-  const reason = createWorktreePreparationLockReason('replacement')
-  await prepareWorktreeCreateCheckout(repo, prepared, 'main', reason)
-  const lock = await git(prepared, ['rev-parse', '--git-path', 'locked'])
-  const run = runner.gitExecFileAsync
-  vi.spyOn(runner, 'gitExecFileAsync').mockImplementation(async (args, options) => {
-    const result = await run(args, options)
-    if (args.includes('checkout')) {
-      await writeFile(lock, 'manual finalized lock\n')
-    }
-    return result
-  })
-  await expect(
-    finalizePreparedWorktree(repo, prepared, final, 'feature', 'main', false, {}, reason)
-  ).rejects.toThrow('lock owner changed')
-  expect(await readFile(lock, 'utf8')).toBe('manual finalized lock\n')
-  expect(await readFile(join(final, 'tracked.txt'), 'utf8')).toBe('original\n')
-  expect(await git(final, ['symbolic-ref', '--short', 'HEAD'])).toBe('feature')
-})
+it.each(['checkout', 'push.autoSetupRemote'])(
+  'preserves the finalized checkout when its marker is replaced during %s',
+  async (command) => {
+    const { repo, prepared, final } = await fixture()
+    const reason = createWorktreePreparationLockReason('replacement')
+    await prepareWorktreeCreateCheckout(repo, prepared, 'main', reason)
+    const lock = await git(prepared, ['rev-parse', '--git-path', 'locked'])
+    const run = runner.gitExecFileAsync
+    vi.spyOn(runner, 'gitExecFileAsync').mockImplementation(async (args, options) => {
+      if (args.includes(command)) {
+        await writeFile(lock, 'manual finalized lock\n')
+      }
+      return run(args, options)
+    })
+    await expect(
+      finalizePreparedWorktree(repo, prepared, final, 'feature', 'main', false, {}, reason)
+    ).rejects.toThrow('lock owner changed')
+    expect(await readFile(lock, 'utf8')).toBe('manual finalized lock\n')
+    expect(await readFile(join(final, 'tracked.txt'), 'utf8')).toBe('original\n')
+    expect(await git(final, ['symbolic-ref', '--short', 'HEAD'])).toBe('feature')
+  }
+)
 
 it('leaves a replacement owner untouched before any reset, move, or branch attachment', async () => {
   const { repo, prepared, final } = await fixture()

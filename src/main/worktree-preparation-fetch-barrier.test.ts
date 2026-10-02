@@ -32,7 +32,7 @@ describe('prepared checkout shared fetch barrier', () => {
   it('passes initial materialization settlement separately from owning WSL Git options', async () => {
     mocks.getWorktreeOptions.mockReturnValue({ wslDistro: 'Ubuntu' })
     const fetch = deferredFetch()
-    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch)
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch.beforeMaterialization)
     const entry = listPreparations()[0]!
     expect(mocks.prepareCheckout).toHaveBeenCalledWith(
       repo.path,
@@ -55,7 +55,12 @@ describe('prepared checkout shared fetch barrier', () => {
         materializations++
       }
     )
-    const preparation = prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch)
+    const preparation = prepareWorktreeCreateForRepo(
+      store,
+      repo,
+      'origin/main',
+      fetch.beforeMaterialization
+    )
     await vi.waitFor(() => expect(mocks.prepareCheckout).toHaveBeenCalledOnce())
     const create = consume()
     await flushBackgroundWork()
@@ -75,7 +80,12 @@ describe('prepared checkout shared fetch barrier', () => {
     const entry = listPreparations()[0]!
     const oldReady = entry.ready
     const fetch = deferredFetch()
-    const preparation = prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch)
+    const preparation = prepareWorktreeCreateForRepo(
+      store,
+      repo,
+      'origin/main',
+      fetch.beforeMaterialization
+    )
     await vi.waitFor(() => expect(entry.ready).not.toBe(oldReady))
     const create = consume()
     await flushBackgroundWork()
@@ -96,7 +106,7 @@ describe('prepared checkout shared fetch barrier', () => {
       await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
       const entry = listPreparations()[0]!
       const settled = Promise.allSettled([
-        prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch)
+        prepareWorktreeCreateForRepo(store, repo, 'origin/main', fetch.beforeMaterialization)
       ])
       await vi.advanceTimersByTimeAsync(0)
       await vi.advanceTimersByTimeAsync(WORKTREE_CREATE_PREPARATION_TTL_MS)

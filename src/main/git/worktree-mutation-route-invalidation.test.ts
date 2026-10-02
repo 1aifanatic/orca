@@ -43,7 +43,8 @@ vi.mock('./worktree-preparation-lock', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreePreparationLock>()),
   lockWorktreePreparation: vi.fn(async () => '/owned-lock'),
   verifyWorktreePreparationLock: vi.fn(async () => '/owned-lock'),
-  verifyWorktreePreparationLockAtPath: vi.fn()
+  verifyWorktreePreparationLockAtPath: vi.fn(),
+  unlockWorktreePreparationAtPath: vi.fn()
 }))
 
 import { addWorktree } from './worktree-add'
@@ -128,7 +129,7 @@ describe('worktree mutations invalidate the WSL linked-worktree Git route', () =
   it('drops the route after a prepared worktree is discarded', async () => {
     seedWslLinkedWorktreeGitRoutingForTests(LINKED)
 
-    await discardPreparedWorktree(REPO, LINKED)
+    await discardPreparedWorktree(REPO, LINKED, {}, 'owner')
 
     expect(hasCachedHostRoute(LINKED)).toBe(false)
   })
@@ -166,7 +167,16 @@ describe('worktree mutations invalidate the WSL linked-worktree Git route', () =
     seedWslLinkedWorktreeGitRoutingForTests(PREPARED)
     seedWslLinkedWorktreeGitRoutingForTests(LINKED)
 
-    await finalizePreparedWorktree(REPO, PREPARED, LINKED, 'feature', 'origin/main')
+    await finalizePreparedWorktree(
+      REPO,
+      PREPARED,
+      LINKED,
+      'feature',
+      'origin/main',
+      false,
+      {},
+      'owner'
+    )
 
     expect(hasCachedHostRoute(PREPARED)).toBe(false)
     expect(hasCachedHostRoute(LINKED)).toBe(false)
@@ -182,7 +192,7 @@ describe('worktree mutations invalidate the WSL linked-worktree Git route', () =
     )
 
     await expect(
-      finalizePreparedWorktree(REPO, PREPARED, LINKED, 'feature', 'origin/main')
+      finalizePreparedWorktree(REPO, PREPARED, LINKED, 'feature', 'origin/main', false, {}, 'owner')
     ).rejects.toThrow('destination exists')
 
     expect(hasCachedHostRoute(PREPARED)).toBe(false)

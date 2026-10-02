@@ -6,7 +6,6 @@ import { getBaseRefDefault } from './git/repo'
 import { getSshGitProvider } from './providers/ssh-git-dispatch'
 import { prefetchRemoteWorktreeCreateBase } from './ipc/worktree-remote'
 import { resolveWorktreeCreateBase } from './worktree-create-base'
-import type { WorktreeCreatePreparationOptions } from './worktree-create-preparation'
 
 type WorktreeCreateBaseGitOptions = {
   wslDistro?: string
@@ -47,7 +46,7 @@ async function prefetchLocalWorktreeCreateBase(
   baseBranch: string | undefined,
   runtime: WorktreeCreateBasePrefetchRuntime,
   options: WorktreeCreateBaseGitOptions,
-  prepareLocalCheckout: (base: string, options?: WorktreeCreatePreparationOptions) => void
+  prepareLocalCheckout: (base: string, beforeMaterialization?: Promise<void>) => void
 ): Promise<string | undefined> {
   // Keep host-routed calls at their original arity so they stay on the runtime's default options.
   const optionArgs: [] | [WorktreeCreateBaseGitOptions] = options.wslDistro ? [options] : []
@@ -105,7 +104,7 @@ async function prefetchLocalWorktreeCreateBase(
           () => {},
           () => {}
         )
-        prepareLocalCheckout(resolvedBaseBranch, { beforeMaterialization })
+        prepareLocalCheckout(resolvedBaseBranch, beforeMaterialization)
       }
       await refresh
       return resolvedBaseBranch
@@ -130,7 +129,7 @@ export async function prefetchWorktreeCreateBase(args: {
   /** Routing for the project's Git host; required so a caller cannot silently
    *  warm up the wrong ref store — pass `{}` for host Git. */
   gitOptions: WorktreeCreateBaseGitOptions
-  prepareCheckout?: (base: string, options?: WorktreeCreatePreparationOptions) => Promise<void>
+  prepareCheckout?: (base: string, beforeMaterialization?: Promise<void>) => Promise<void>
 }): Promise<string | undefined> {
   if (isFolderRepo(args.repo)) {
     return undefined
@@ -145,11 +144,9 @@ export async function prefetchWorktreeCreateBase(args: {
   }
   const prepareCheckout = args.prepareCheckout
   let preparation: Promise<void> | undefined
-  const prepare = (base: string, options?: WorktreeCreatePreparationOptions): void => {
+  const prepare = (base: string, beforeMaterialization?: Promise<void>): void => {
     if (!preparation && prepareCheckout) {
-      preparation = Promise.resolve().then(() =>
-        options ? prepareCheckout(base, options) : prepareCheckout(base)
-      )
+      preparation = Promise.resolve().then(() => prepareCheckout(base, beforeMaterialization))
     }
     void preparation?.catch(() => {})
   }

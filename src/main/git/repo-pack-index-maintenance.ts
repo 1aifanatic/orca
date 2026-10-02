@@ -85,31 +85,18 @@ export async function maintainRepoPackIndex(
     ) {
       return outcome('unchanged')
     }
+    if (signal.aborted || !args.canWrite()) {
+      return outcome('deferred')
+    }
     const probe = await probeRepoPackIndexDirectory(directory, PACK_INDEX_THRESHOLD, signal)
     span.setAttribute('git.pack_index_pack_count_floor', probe.packCountFloor)
-    if (signal.aborted) {
+    if (signal.aborted || !args.canWrite()) {
       return outcome('deferred')
     }
     if (probe.protected) {
       return outcome('protected')
     }
     if (probe.packCountFloor < PACK_INDEX_THRESHOLD) {
-      return outcome('below_threshold')
-    }
-    if (signal.aborted) {
-      return outcome('deferred')
-    }
-    if (!args.canWrite()) {
-      return outcome('deferred')
-    }
-    const admitted = await probeRepoPackIndexDirectory(directory, PACK_INDEX_THRESHOLD, signal)
-    if (signal.aborted || !args.canWrite()) {
-      return outcome('deferred')
-    }
-    if (admitted.protected) {
-      return outcome('protected')
-    }
-    if (admitted.packCountFloor < PACK_INDEX_THRESHOLD) {
       return outcome('below_threshold')
     }
     const startedAt = Date.now()

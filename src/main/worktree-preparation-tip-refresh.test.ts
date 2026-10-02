@@ -10,7 +10,7 @@ import {
   WORKTREE_CREATE_PREPARATION_TTL_MS
 } from './worktree-create-preparation-pool'
 
-const refreshOptions = { beforeMaterialization: Promise.resolve() }
+const beforeMaterialization = Promise.resolve()
 
 function consume() {
   return consumePreparedWorktreeCreate({
@@ -27,7 +27,7 @@ describe('prepared checkout tip refresh', () => {
     mocks.getWorktreeOptions.mockReturnValue({ wslDistro: 'Ubuntu' })
     await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
     const entry = listPreparations()[0]!
-    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     expect(mocks.prepareCheckout).toHaveBeenCalledOnce()
     expect(mocks.refreshTip).toHaveBeenCalledWith(
       repo.path,
@@ -44,7 +44,7 @@ describe('prepared checkout tip refresh', () => {
     mocks.refreshTip.mockImplementationOnce(
       () => new Promise<void>((resolve) => (release = resolve))
     )
-    const refresh = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    const refresh = prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     await vi.waitFor(() => expect(mocks.refreshTip).toHaveBeenCalledOnce())
     const create = consume()
     await flushBackgroundWork()
@@ -60,7 +60,7 @@ describe('prepared checkout tip refresh', () => {
     expect(await consume()).toMatchObject({ status: 'hit' })
     mocks.computeWorkspaceRootAsync.mockClear()
     mocks.resolveBaseRef.mockClear()
-    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     expect(mocks.computeWorkspaceRootAsync).toHaveBeenCalledOnce()
     expect(mocks.resolveBaseRef).toHaveBeenCalledOnce()
     expect(mocks.refreshTip).not.toHaveBeenCalled()
@@ -81,7 +81,12 @@ describe('prepared checkout tip refresh', () => {
           })
         })
       })
-      const refresh = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+      const refresh = prepareWorktreeCreateForRepo(
+        store,
+        repo,
+        'origin/main',
+        beforeMaterialization
+      )
       const settled = Promise.allSettled([refresh])
       await vi.advanceTimersByTimeAsync(0)
       expect(signal?.aborted).toBe(false)
@@ -114,7 +119,7 @@ describe('prepared checkout tip refresh', () => {
       })
     })
     const settled = Promise.allSettled([
-      prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+      prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     ])
     await vi.waitFor(() => expect(mocks.refreshTip).toHaveBeenCalledOnce())
     for (const base of ['origin/one', 'origin/two', 'origin/three']) {
@@ -131,7 +136,7 @@ describe('prepared checkout tip refresh', () => {
     await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
     mocks.refreshTip.mockRejectedValueOnce(new WorktreePreparationLockOwnershipError())
     await expect(
-      prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+      prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     ).rejects.toThrow('lock owner changed')
     await flushBackgroundWork()
     expect(listPreparations()).toEqual([])
@@ -160,9 +165,9 @@ describe('prepared checkout tip refresh', () => {
       order.push('finalize')
       return {}
     })
-    const first = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    const first = prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     await vi.waitFor(() => expect(mocks.refreshTip).toHaveBeenCalledOnce())
-    const second = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    const second = prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     await flushBackgroundWork()
     const create = consume()
     await flushBackgroundWork()
@@ -184,9 +189,9 @@ describe('prepared checkout tip refresh', () => {
           rejectRefresh = reject
         })
     )
-    const first = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    const first = prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     await vi.waitFor(() => expect(mocks.refreshTip).toHaveBeenCalledOnce())
-    const second = prepareWorktreeCreateForRepo(store, repo, 'origin/main', refreshOptions)
+    const second = prepareWorktreeCreateForRepo(store, repo, 'origin/main', beforeMaterialization)
     await flushBackgroundWork()
     const create = consume()
     const settled = Promise.allSettled([first, second])

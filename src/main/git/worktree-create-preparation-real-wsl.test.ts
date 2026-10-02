@@ -4,10 +4,10 @@ import { expect, it } from 'vitest'
 import { createWorktreePreparationLockReason } from '../../shared/worktree/create-preparation'
 import { gitExecFileAsync } from './runner'
 import {
-  discardPreparedWorktree,
   finalizePreparedWorktree,
   prepareWorktreeCreateCheckout
 } from './worktree-create-preparation'
+import { removeWorktree } from './worktree-removal'
 
 // Opt in on Windows with a running distro; all Git commands use the production WSL router.
 const wslDistro = process.env.ORCA_TEST_WSL_DISTRO
@@ -61,7 +61,7 @@ it.skipIf(process.platform !== 'win32' || !wslDistro)(
         'refs/heads/main'
       )
       expect(await git(repoPath, ['worktree', 'list', '--porcelain'])).not.toContain('locked ')
-      await discardPreparedWorktree(repoPath, finalPath, options)
+      await removeWorktree(repoPath, finalPath, true, options)
       expect(
         (await git(repoPath, ['worktree', 'list', '--porcelain'])).match(/^worktree /gm)
       ).toHaveLength(1)

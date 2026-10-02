@@ -1,25 +1,8 @@
 import { worktreePreparationGit } from './git/worktree-create-git-executor'
-import { prepareWorktreeCreateCheckout } from './git/worktree-create-preparation'
 import { refreshPreparedWorktreeTip } from './git/worktree-preparation-tip-refresh'
 import { WorktreePreparationLockOwnershipError } from './git/worktree-preparation-lock'
 import type { PreparationEntry } from './worktree-create-preparation-pool'
 import { waitForPromiseWithSignal } from '../shared/abort-signal-reason'
-
-export function prepareCheckoutForEntry(
-  entry: PreparationEntry,
-  signal: AbortSignal,
-  beforeMaterialization?: Promise<void>
-): Promise<void> {
-  const barrierArgs: [] | [Promise<void>] = beforeMaterialization ? [beforeMaterialization] : []
-  return prepareWorktreeCreateCheckout(
-    entry.repoPath,
-    entry.preparedPath,
-    entry.canonicalBase,
-    entry.lockReason,
-    { ...entry.options, signal },
-    ...barrierArgs
-  )
-}
 
 /** Publish the refresh before yielding so a racing create waits for the same checkout. */
 export function queuePreparedWorktreeTipRefresh(

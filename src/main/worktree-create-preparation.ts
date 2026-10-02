@@ -73,11 +73,6 @@ type ConsumePreparedWorktreeArgs = {
   timing?: Pick<WorktreeCreateTimingRecorder, 'time'>
 }
 
-export type WorktreeCreatePreparationOptions = {
-  /** In-process fetch settlement, separate from execution-host Git options. */
-  beforeMaterialization?: Promise<void>
-}
-
 function canonicalBaseRef(
   repoPath: string,
   baseBranch: string,
@@ -93,10 +88,10 @@ export function prepareWorktreeCreateForRepo(
   store: Store,
   repo: Repo,
   baseBranch: string,
-  preparationOptions: WorktreeCreatePreparationOptions = {}
+  beforeMaterialization?: Promise<void>
 ): Promise<void> {
   return worktreePreparationGit.run(() =>
-    prepareWorktreeCreateInBackground(store, repo, baseBranch, preparationOptions)
+    prepareWorktreeCreateInBackground(store, repo, baseBranch, beforeMaterialization)
   )
 }
 
@@ -104,7 +99,7 @@ async function prepareWorktreeCreateInBackground(
   store: Store,
   repo: Repo,
   baseBranch: string,
-  preparationOptions: WorktreeCreatePreparationOptions
+  beforeMaterialization?: Promise<void>
 ): Promise<void> {
   if (repo.connectionId || isFolderRepo(repo)) {
     return
@@ -125,7 +120,7 @@ async function prepareWorktreeCreateInBackground(
     baseBranch,
     canonicalBase,
     options,
-    beforeMaterialization: preparationOptions.beforeMaterialization
+    beforeMaterialization
   })
 }
 

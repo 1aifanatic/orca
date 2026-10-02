@@ -8,11 +8,9 @@ import {
   createWorktreePreparationLockReason
 } from '../shared/worktree/create-preparation'
 import type { AddWorktreeOptions } from './git/worktree'
+import { prepareWorktreeCreateCheckout } from './git/worktree-create-preparation'
 import { WorktreePreparationLockOwnershipError } from './git/worktree-preparation-lock'
-import {
-  prepareCheckoutForEntry,
-  queuePreparedWorktreeTipRefresh
-} from './worktree-preparation-checkout'
+import { queuePreparedWorktreeTipRefresh } from './worktree-preparation-refresh-queue'
 import { toHostFilesystemPath } from './host-tree-removal'
 import { preparationEntryKey, preparationPathKey } from './worktree-create-preparation-claim'
 import {
@@ -74,10 +72,6 @@ const claims = new Set<PreparationClaim>()
 /** A prepared checkout is a create that is either in flight or imminent. */
 export function hasPendingPreparations(): boolean {
   return preparations.size > 0 || claims.size > 0 || hasPendingStalePreparationCleanup()
-}
-
-function pathOps(path: string): Pick<typeof posix, 'dirname' | 'join'> {
-  return isWindowsAbsolutePathLike(path) ? win32 : posix
 }
 
 function discardEntryInBackground(entry: PreparationEntry): void {
@@ -254,19 +248,16 @@ function startBackgroundPreparation({
   enforcePreparationLimit(repoPathKey, workspaceRootKey, wslDistro)
   const preparationId = `${process.pid}-${randomUUID()}`
   const lockReason = createWorktreePreparationLockReason(preparationId)
-  const preparationRoot = pathOps(workspaceRoot).join(
-    workspaceRoot,
-    WORKTREE_CREATE_PREPARATION_DIRECTORY
-  )
-  const preparedPath = pathOps(workspaceRoot).join(preparationRoot, preparationId)
+  const paths = isWindowsAbsolutePathLike(workspaceRoot) ? win32 : posix
+  const preparationRoot = paths.join(workspaceRoot, WORKTREE_CREATE_PREPARATION_DIRECTORY)
+  const preparedPath = paths.join(preparationRoot, preparationId)
   const controller = new AbortController()
   const signal = options.signal
     ? AbortSignal.any([options.signal, controller.signal])
     : controller.signal
-  const entry = {} as PreparationEntry
   const expiration = setTimeout(() => expireEntry(entry), WORKTREE_CREATE_PREPARATION_TTL_MS)
   expiration.unref()
-  Object.assign(entry, {
+  const entry: PreparationEntry = {
     key,
     repoPath,
     repoPathKey,
@@ -282,27 +273,35 @@ function startBackgroundPreparation({
     expiration,
     controller,
     checkoutStarted: false,
-    ready: (async () => {
-      await startStalePreparationCleanup(
-        preparationHostKey(repoPathKey, wslDistro),
+    ready: Promise.resolve()
+  }
+  entry.ready = (async () => {
+    await startStalePreparationCleanup(
+      preparationHostKey(repoPathKey, wslDistro),
+      repoPath,
+      options
+    )
+    signal.throwIfAborted()
+    await mkdir(toHostFilesystemPath(preparationRoot), { recursive: true })
+    signal.throwIfAborted()
+    // Already canonical, so the add re-resolves nothing.
+    entry.checkoutStarted = true
+    try {
+      await prepareWorktreeCreateCheckout(
         repoPath,
-        options
+        preparedPath,
+        canonicalBase,
+        lockReason,
+        { ...options, signal },
+        beforeMaterialization
       )
-      signal.throwIfAborted()
-      await mkdir(toHostFilesystemPath(preparationRoot), { recursive: true })
-      signal.throwIfAborted()
-      // Already canonical, so the add re-resolves nothing.
-      entry.checkoutStarted = true
-      try {
-        await prepareCheckoutForEntry(entry, signal, beforeMaterialization)
-      } catch (error) {
-        if (error instanceof WorktreePreparationLockOwnershipError) {
-          entry.checkoutStarted = false
-        }
-        throw error
+    } catch (error) {
+      if (error instanceof WorktreePreparationLockOwnershipError) {
+        entry.checkoutStarted = false
       }
-    })()
-  } satisfies PreparationEntry)
+      throw error
+    }
+  })()
   preparations.set(key, entry)
   void entry.ready.catch(() => {
     if (preparations.get(key) === entry) {

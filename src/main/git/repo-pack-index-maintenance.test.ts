@@ -85,7 +85,19 @@ describe('idle pack index maintenance', () => {
     const options = args()
     await maintainRepoPackIndex({ ...options, canWrite: () => false })
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
+    expect(opendirMock).not.toHaveBeenCalled()
     expect(options.attributes['git.pack_index_outcome']).toBe('deferred')
+    let idle = true
+    opendirMock.mockResolvedValueOnce({
+      async *[Symbol.asyncIterator]() {
+        yield* directory(PACK_INDEX_THRESHOLD)
+        idle = false
+      }
+    })
+    await expect(maintainRepoPackIndex({ ...args(), canWrite: () => idle })).resolves.toBe(
+      'deferred'
+    )
+    expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(2)
     await maintainRepoPackIndex(args())
     expect(gitExecFileAsyncMock.mock.lastCall?.[1]).not.toHaveProperty('signal')
   })
@@ -130,7 +142,8 @@ describe('idle pack index maintenance', () => {
       }
     })
     await expect(maintainRepoPackIndex(args())).resolves.toBe('written')
-    expect(produced).toBe(11_424 * 4 * 2)
+    expect(produced).toBe(11_424 * 4)
+    expect(opendirMock).toHaveBeenCalledOnce()
   })
 
   it('honours an explicit multi-pack-index opt-out before walking objects', async () => {
@@ -200,7 +213,7 @@ describe('idle pack index maintenance', () => {
     const options = args()
     await maintainRepoPackIndex(options)
     await expect(maintainRepoPackIndex(options)).resolves.toBe('unchanged')
-    expect(opendirMock).toHaveBeenCalledTimes(2)
+    expect(opendirMock).toHaveBeenCalledOnce()
     statMock.mockResolvedValue({ dev: 1n, ino: 2n, mtimeNs: 5n, ctimeNs: 6n })
     await expect(maintainRepoPackIndex(options)).resolves.toBe('written')
     const now = Date.now()
@@ -217,14 +230,29 @@ describe('idle pack index maintenance', () => {
     )
   })
 
-  it('protects metadata that appears after the first probe', async () => {
-    opendirMock.mockResolvedValueOnce(directory(PACK_INDEX_THRESHOLD)).mockResolvedValueOnce({
+  it('protects metadata discovered after the pack threshold during the final probe', async () => {
+    opendirMock.mockResolvedValueOnce({
       async *[Symbol.asyncIterator]() {
+        yield* directory(PACK_INDEX_THRESHOLD)
         yield { name: 'multi-pack-index-old.bitmap', isFile: () => true }
       }
     })
     const options = args()
     await expect(maintainRepoPackIndex(options)).resolves.toBe('protected')
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start the writer when the final probe is cancelled', async () => {
+    const controller = new AbortController()
+    opendirMock.mockResolvedValueOnce({
+      async *[Symbol.asyncIterator]() {
+        yield* directory(PACK_INDEX_THRESHOLD)
+        controller.abort()
+      }
+    })
+    const options = { ...args(), signal: controller.signal }
+    await expect(maintainRepoPackIndex(options)).resolves.toBe('deferred')
+    expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
+    expect(options.attributes['git.pack_index_pack_count_floor']).toBe(PACK_INDEX_THRESHOLD)
   })
 })
