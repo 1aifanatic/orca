@@ -83,7 +83,10 @@ describe('session search service registry', () => {
         await searchSessionService({ query: 'proof', filters: { agents: ['qoder'] } }, transport)
       ).toMatchObject({ kind: 'results', hits: [], page: { cursor: null, hasMore: false } })
       const client = createSessionSearchClient(
-        (_method, request) => searchSessionService(request, transport),
+        (method, request) =>
+          method === 'aiVault.searchStatus'
+            ? sessionSearchServiceStatus(request, transport)
+            : searchSessionService(request, transport),
         transport
       )
       await client.searchSessions({ query: 'proof', filters: { agents: ['qoder'] } })

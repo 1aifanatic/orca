@@ -1,10 +1,14 @@
-import { afterEach, expect, test } from 'vitest'
-import { createSessionSearchClient } from '../../../src/shared/ai-vault-search-client'
+import { afterEach, expect, test, vi } from 'vitest'
+import {
+  createSessionSearchClient,
+  unavailableSessionSearchStatus
+} from '../../../src/shared/ai-vault-search-client'
 import { searchResults, fakeSearchService } from '../../../src/shared/ai-vault-search-test-fixture'
 import {
   searchSessionService,
   setSessionSearchService
 } from '../../../src/main/ai-vault-search/session-search-service-registry'
+import { AI_VAULT_AGENTS } from '../../../src/shared/ai-vault-types'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
 afterEach(() => setSessionSearchService(null))
@@ -59,3 +63,63 @@ test('a pre-Qoder release can read current host search pages without losing othe
     true
   )
 })
+
+test.each(['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c'])(
+  'a current client narrows Qoder filters before calling the actual %s request parser',
+  async (ref) => {
+    const checkout = await materializeReleaseCheckout(ref)
+    const baseline = await importReleaseCheckoutModule(
+      checkout,
+      'src/shared/ai-vault-search-contract.ts'
+    )
+    const requestSchema = baseline.AiVaultSearchRequestSchema
+    if (
+      !requestSchema ||
+      typeof requestSchema !== 'object' ||
+      !('parse' in requestSchema) ||
+      typeof requestSchema.parse !== 'function'
+    ) {
+      throw new Error('Pinned host has no search request parser')
+    }
+    const call = vi.fn(async (method: string, request: Record<string, unknown>) => {
+      if (method === 'aiVault.searchStatus') {
+        return { ...unavailableSessionSearchStatus(), enabled: true, phase: 'current' }
+      }
+      requestSchema.parse(request)
+      return searchResults()
+    })
+    const within = { kind: 'workspace' as const, worktreeId: 'folder:/task-owned/folder' }
+    const client = createSessionSearchClient(call, 'relay')
+    expect(
+      await client.searchSessions({
+        query: 'proof',
+        filters: { agents: ['codex', 'qoder'] },
+        within
+      })
+    ).toMatchObject({ hits: [{ agent: 'codex' }] })
+    expect(call).toHaveBeenLastCalledWith(
+      'aiVault.searchSessions',
+      expect.objectContaining({
+        filters: { agents: ['codex'] },
+        within
+      })
+    )
+    call.mockClear()
+    expect(
+      await client.searchSessions({ query: 'proof', filters: { agents: ['qoder'] }, within })
+    ).toEqual({ kind: 'unavailable', reason: 'unsupported-agent' })
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(call).toHaveBeenCalledWith('aiVault.searchStatus', {})
+    if (ref.startsWith('b49')) {
+      expect(
+        await client.searchSessions({ query: 'proof', filters: { agents: [...AI_VAULT_AGENTS] } })
+      ).toMatchObject({ hits: [{ agent: 'codex' }] })
+      expect(call).toHaveBeenLastCalledWith(
+        'aiVault.searchSessions',
+        expect.objectContaining({
+          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+        })
+      )
+    }
+  }
+)

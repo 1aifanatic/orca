@@ -83,9 +83,10 @@ export async function sessionSearchServiceStatus(
 ): Promise<AiVaultSearchStatus> {
   AiVaultSearchStatusRequestSchema.parse(raw)
   return redactStatusForTransport(
-    AiVaultSearchStatusSchema.parse(
-      service ? await service.status() : unavailableSessionSearchStatus()
-    ),
+    AiVaultSearchStatusSchema.parse({
+      ...(service ? await service.status() : unavailableSessionSearchStatus()),
+      supportsQoderHistory: true
+    }),
     transport
   )
 }
