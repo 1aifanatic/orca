@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => {
   const settings: { zcodePlanSite: ZcodePlanSite } = { zcodePlanSite: 'zai' }
   return {
+    isWeb: vi.fn(() => false),
     getStatus: vi.fn(),
     saveApiKey: vi.fn(),
     clearApiKey: vi.fn(),
@@ -20,6 +21,8 @@ const mocks = vi.hoisted(() => {
     settings
   }
 })
+
+vi.mock('@/lib/web-client-location', () => ({ isWebClientLocation: mocks.isWeb }))
 
 vi.mock('@/lib/agent-catalog', () => ({
   AgentIcon: () => React.createElement('span', { 'data-testid': 'zcode-icon' })
@@ -51,6 +54,7 @@ import { ZcodePlanAccountsSection } from './ZcodePlanAccountsSection'
 
 describe('ZcodePlanAccountsSection', () => {
   beforeEach(() => {
+    mocks.isWeb.mockReturnValue(false)
     mocks.getStatus.mockResolvedValue({ apiKeyConfigured: false, zcodeCliConfigured: false })
     mocks.saveApiKey.mockResolvedValue({ apiKeyConfigured: true, zcodeCliConfigured: false })
     mocks.clearApiKey.mockResolvedValue({ apiKeyConfigured: false, zcodeCliConfigured: false })
@@ -74,6 +78,19 @@ describe('ZcodePlanAccountsSection', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+  })
+
+  it('disables site and secret editing on a paired web client', async () => {
+    mocks.isWeb.mockReturnValue(true)
+    render(<ZcodePlanAccountsSection />)
+    expect(
+      await screen.findByText(
+        'Change the plan site and API key in the desktop app on the computer running Orca.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeDisabled()
+    expect(screen.getByPlaceholderText('Paste your GLM Coding Plan API key')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('shows the unlinked state when neither an API key nor a CLI config exists', async () => {

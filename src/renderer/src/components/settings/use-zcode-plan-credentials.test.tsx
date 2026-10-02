@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ZcodePlanCredentialsStatus } from '../../../../shared/zcode-plan-sites'
+import { createZcodePlanCredentialsApi } from '../../web/preload-api/web-agent-accounts-api'
 import { useZcodePlanCredentials } from './use-zcode-plan-credentials'
 
 const mocks = vi.hoisted(() => ({ interaction: vi.fn(), success: vi.fn(), error: vi.fn() }))
@@ -83,4 +84,17 @@ describe('GLM credential mutation refresh races', () => {
       }
     }
   )
+  it('does not claim a web save succeeded or discard the key draft', async () => {
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { zcodePlanCredentials: createZcodePlanCredentialsApi() }
+    })
+    const { result } = renderHook(() => useZcodePlanCredentials(1))
+    await waitFor(() => expect(result.current.status).toEqual(unlinked))
+    act(() => result.current.setApiKeyDraft('synthetic-web-key'))
+    await act(() => result.current.saveApiKey())
+    expect(result.current.apiKeyDraft).toBe('synthetic-web-key')
+    expect(mocks.success).not.toHaveBeenCalled()
+    expect(mocks.error).toHaveBeenCalled()
+  })
 })

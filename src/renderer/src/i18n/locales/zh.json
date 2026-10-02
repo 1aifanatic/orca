@@ -12108,7 +12108,8 @@
           "keyHelp": "与编码工具使用同一把套餐 key（例如 Claude Code 将 ANTHROPIC_BASE_URL 指向对应站点）。切换上方站点会变更接收该 key 的主机。",
           "usageTitle": "套餐用量",
           "usageDescription": "已关联 Coding Plan 的实时配额窗口，随状态栏用量周期刷新。",
-          "planLevel": "套餐：{{value0}}"
+          "planLevel": "套餐：{{value0}}",
+          "hostOnly": "请在运行 Orca 的电脑上的桌面应用中更改套餐站点和 API 密钥。"
         }
       },
       "right": {

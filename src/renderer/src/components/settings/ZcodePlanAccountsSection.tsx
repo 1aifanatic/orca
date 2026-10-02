@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isWebClientLocation } from '@/lib/web-client-location'
 import { ExternalLink, Loader2, Lock, LockOpen, RefreshCw, ShieldCheck } from 'lucide-react'
 import { AgentIcon } from '@/lib/agent-catalog'
 import { translate } from '@/i18n/i18n'
@@ -51,12 +52,13 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false)
   const now = useNow(60_000)
 
+  const credentialEditable = !isWebClientLocation()
   const site = settings?.zcodePlanSite ?? 'zai'
   const consoleUrl = ZCODE_PLAN_SITE_CONSOLE_URLS[site]
   const apiKeyConfigured = status?.apiKeyConfigured === true
 
   const handleSiteChange = (value: string): void => {
-    if ((value !== 'zai' && value !== 'bigmodel') || value === site) {
+    if (!credentialEditable || (value !== 'zai' && value !== 'bigmodel') || value === site) {
       return
     }
     // Why: main invalidates and refreshes on this settings change, so no local refresh is needed.
@@ -189,6 +191,15 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
         </Button>
       </div>
 
+      {!credentialEditable ? (
+        <p className="text-xs text-muted-foreground">
+          {translate(
+            'auto.components.settings.ZcodePlanAccountsSection.hostOnly',
+            'Change the plan site and API key in the desktop app on the computer running Orca.'
+          )}
+        </p>
+      ) : null}
+
       <SearchableSetting
         title={translate(
           'auto.components.settings.ZcodePlanAccountsSection.siteTitle',
@@ -204,7 +215,11 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
         <Label htmlFor="zcode-plan-site">
           {translate('auto.components.settings.ZcodePlanAccountsSection.siteTitle', 'Plan site')}
         </Label>
-        <Select value={site} onValueChange={handleSiteChange} disabled={credentialBusy}>
+        <Select
+          value={site}
+          onValueChange={handleSiteChange}
+          disabled={credentialBusy || !credentialEditable}
+        >
           <SelectTrigger id="zcode-plan-site" size="sm" className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -254,7 +269,7 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
           <Input
             id="zcode-plan-api-key"
             type="password"
-            disabled={credentialBusy}
+            disabled={credentialBusy || !credentialEditable}
             value={apiKeyDraft}
             onChange={(e) => setApiKeyDraft(e.target.value)}
             placeholder={translate(
@@ -267,7 +282,7 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
           <Button
             size="xs"
             onClick={() => void saveApiKey()}
-            disabled={credentialBusy || !apiKeyDraft.trim()}
+            disabled={credentialBusy || !credentialEditable || !apiKeyDraft.trim()}
             className="shrink-0"
           >
             {credentialBusy ? <Loader2 className="size-3 animate-spin" /> : null}
@@ -280,7 +295,7 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
               variant="ghost"
               size="xs"
               onClick={() => void clearApiKey()}
-              disabled={credentialBusy}
+              disabled={credentialBusy || !credentialEditable}
               className="shrink-0"
             >
               {translate(
