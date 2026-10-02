@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import {
   createTrackedJournalOpener,
+  insertTestJournalRowJson,
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from './journal-host-database-test-support'
@@ -81,6 +82,27 @@ describe('a row from the rows alone', () => {
 
     expect(derived?.status ?? null).toEqual(byOpen)
     expect(readTestJournalSessionStatus(root, name)).toEqual(byOpen)
+  })
+
+  it('equals the row an open writes for a chat whose history is corrupt', async () => {
+    const journal = await open('corrupt')
+    await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](journal)
+    const tip = journal.cursor()
+    await journals.closeAll()
+    insertTestJournalRowJson(database().db, 'corrupt', tip.sequence + 1, '{"not a row"')
+    dropRow('corrupt')
+    const reopened = await open('corrupt')
+    reopened.backfillSessionStatus()
+    const byOpen = readTestJournalSessionStatus(root, 'corrupt')
+    await journals.closeAll()
+    dropRow('corrupt')
+
+    const derived = await backfillJournalSessionStatus(database(), 'corrupt')
+
+    // The rebuild the corruption owes decides the roster, so neither row counts it as live work.
+    expect(derived?.load.corrupt).toBe(true)
+    expect(byOpen?.liveChildWork).toBe(false)
+    expect(derived?.status ?? null).toEqual(byOpen)
   })
 
   it('folds a large chat a bounded part per task', async () => {
