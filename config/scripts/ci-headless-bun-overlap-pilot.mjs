@@ -41,13 +41,13 @@ const crossFiles = [
   'src/main/orcad/orcad-cross-runtime-daemon-adoption.integration.test.ts',
   'src/main/persistence/profile-state/profile-state-cross-runtime.integration.test.ts'
 ]
-const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds))
+export const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds))
 const digest = (value) => createHash('sha256').update(value).digest('hex')
-const stamp = () => process.hrtime.bigint().toString()
+export const stamp = () => process.hrtime.bigint().toString()
 const fileHash = (path) => digest(readFileSync(path))
-const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'))
+export const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'))
 
-function writeJson(path, value) {
+export function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true })
   const pending = `${path}.${process.pid}.pending`
   writeFileSync(pending, `${JSON.stringify(value, null, 2)}\n`)
@@ -56,7 +56,7 @@ function writeJson(path, value) {
 
 const inventory = (directory) => captureArtifactInventory(directory, root)
 
-function identity() {
+export function identity() {
   const env = process.env
   assert.equal(env.GITHUB_ACTIONS, 'true')
   assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch')
@@ -114,14 +114,14 @@ function identity() {
   }
 }
 
-const evidenceRoot = () =>
+export const evidenceRoot = () =>
   join(
     process.env.RUNNER_TEMP,
     `ci-headless-bun-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${process.arch}`
   )
 const caseRoot = (id) => join(evidenceRoot(), id)
 const plan = () => readJson(join(evidenceRoot(), 'plan.json'))
-const partPath = (id, part) => join(caseRoot(id), `${part}.json`)
+export const partPath = (id, part) => join(caseRoot(id), `${part}.json`)
 
 function sources() {
   const paths = readFileSync(process.env.PILOT_SOURCE_FILES, 'utf8').split('\0').filter(Boolean)
@@ -129,7 +129,7 @@ function sources() {
   return Object.fromEntries(paths.sort().map((path) => [path, fileHash(join(root, path))]))
 }
 
-function checkInputs(id, stage) {
+export function checkInputs(id, stage) {
   const expected = plan()
   assert.deepEqual(identity(), expected.identity)
   assert.equal(fileHash(process.execPath), expected.hostExecutableSha)
@@ -163,7 +163,7 @@ function generatedTestCaches() {
   )
 }
 
-function processRecord(pid) {
+export function processRecord(pid) {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
@@ -183,12 +183,12 @@ function processRecord(pid) {
   }
 }
 
-function live(record) {
+export function live(record) {
   const now = processRecord(record.pid)
   return now && now.started === record.started && !['Z', 'X'].includes(now.state)
 }
 
-function ancestors() {
+export function ancestors() {
   const result = new Set()
   let pid = process.pid
   while (pid > 1 && !result.has(pid)) {
@@ -198,7 +198,7 @@ function ancestors() {
   return result
 }
 
-function scanOwned(token, records) {
+export function scanOwned(token, records) {
   const known = new Map(records.map((record) => [record.pid, record]))
   for (const pid of readdirSync('/proc').filter((name) => /^\d+$/.test(name))) {
     const record = processRecord(pid)
@@ -224,7 +224,7 @@ function scanOwned(token, records) {
   return [...known.values()]
 }
 
-async function retire(records, excluded = ancestors()) {
+export async function retire(records, excluded = ancestors()) {
   const remaining = () => records.filter((record) => !excluded.has(record.pid) && live(record))
   const leaked = remaining()
   for (const signal of ['SIGTERM', 'SIGKILL']) {
@@ -248,7 +248,7 @@ async function retire(records, excluded = ancestors()) {
   return { cleanBefore: leaked.length === 0, leaked, verifiedExited: true }
 }
 
-async function observe(id) {
+export async function observe(id, onRecords, onCancel) {
   const begin = readJson(partPath(id, 'begin'))
   let records = []
   let cancelled = false
@@ -262,17 +262,19 @@ async function observe(id) {
   while (!cancelled && !existsSync(partPath(id, 'observer-stop'))) {
     records = scanOwned(begin.token, records)
     writeJson(partPath(id, 'owned-processes'), records)
+    onRecords?.(records)
     await delay(100)
   }
   records = scanOwned(begin.token, records)
   writeJson(partPath(id, 'owned-processes'), records)
   if (cancelled) {
+    records = onCancel?.(records) ?? records
     writeJson(partPath(id, 'cancel-cleanup'), await retire(records))
   }
   writeJson(partPath(id, 'observer-stopped'), { cancelled, at: stamp() })
 }
 
-async function stopObserver(id) {
+export async function stopObserver(id) {
   writeJson(partPath(id, 'observer-stop'), { at: stamp() })
   const observer = readJson(partPath(id, 'observer-ready'))
   const until = performance.now() + 5_000
@@ -496,6 +498,8 @@ async function main() {
   }
   assert(cases.includes(id))
   if (operation === 'begin') {
+    const negativeControl = process.env.PILOT_BUN_NEGATIVE_CONTROL
+    assert(!negativeControl || ['bun-failure', 'node-failure', 'cancel'].includes(negativeControl))
     assert(!existsSync(caseRoot(id)))
     const previous = cases[cases.indexOf(id) - 1]
     if (previous) {
@@ -515,7 +519,13 @@ async function main() {
     const { spawnProcess } = await import('./script-child-process.mjs')
     const child = spawnProcess({
       program: process.execPath,
-      args: [import.meta.filename, 'observe', id],
+      args: [
+        negativeControl
+          ? join(import.meta.dirname, 'ci-headless-bun-overlap-negative.mjs')
+          : import.meta.filename,
+        'observe',
+        id
+      ],
       env: { ...process.env, ORCA_CI_BUN_CASE: token },
       stdio: 'ignore',
       detached: true
