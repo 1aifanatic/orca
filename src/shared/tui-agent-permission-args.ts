@@ -28,7 +28,9 @@ const BYPASS_ARG_ALIASES: Partial<Record<TuiAgent, readonly string[]>> = {
     '--permission-mode=bypassPermissions'
   ],
   openclaude: ['--permission-mode bypassPermissions', '--permission-mode=bypassPermissions'],
-  codex: ['--yolo']
+  codex: ['--yolo'],
+  gemini: ['-y', '--approval-mode yolo', '--approval-mode=yolo'],
+  'qwen-code': ['--yolo', '-y', '--approval-mode=yolo']
 }
 
 function optionTokens(value: string, shell: AgentStartupShell): StartupCommandTokens {

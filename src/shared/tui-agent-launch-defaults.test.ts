@@ -83,6 +83,13 @@ describe('resolveTuiAgentLaunchArgs', () => {
     expect(resolveTuiAgentLaunchArgs(agent, { agentDefaultArgs: { [agent]: args } })).toBe(args)
   })
 
+  // `--search` is a long option, not `-s` with a value attached.
+  it('keeps Yolo beside Codex --search', () => {
+    expect(resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: '--search' } })).toBe(
+      `${CODEX_BYPASS} --search`
+    )
+  })
+
   // One settings string reaches POSIX, PowerShell and cmd hosts.
   it('treats an option any launch grammar sees as setting permissions', () => {
     expect(resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: '^-a never' } })).toBe(
@@ -259,7 +266,11 @@ describe('resolveAgentPermissionPosture', () => {
   it.each([
     ['codex', '--yolo'],
     ['claude', '--permission-mode bypassPermissions'],
-    ['claude', '--permission-mode=bypassPermissions']
+    ['claude', '--permission-mode=bypassPermissions'],
+    ['gemini', '-y'],
+    ['gemini', '--approval-mode yolo'],
+    ['qwen-code', '-y'],
+    ['qwen-code', '--yolo']
   ] as const)('reads the %s bypass alias %j as bypass', (agent, args) => {
     expect(
       resolveAgentPermissionPosture(
