@@ -3000,12 +3000,14 @@ export class PtyHandler {
               }
             )
           : undefined
+      const hostAgeMs = Math.max(0, Date.now() - managed.createdAt)
+      const agentSessionOwners = this.agentSessionOwners.listForPty(id)
       results.push({
         id,
         incarnationId: managed.incarnationId,
         cwd: managed.initialCwd,
         title,
-        hostAgeMs: Math.max(0, Date.now() - managed.createdAt),
+        hostAgeMs,
         paneBound: Boolean(managed.paneKey ?? managed.attachIdentity?.paneKey),
         ...(managed.ownerClientInstanceId
           ? { ownerClientInstanceId: managed.ownerClientInstanceId }
@@ -3013,9 +3015,7 @@ export class PtyHandler {
         ...(managed.worktreeId ? { worktreeId: managed.worktreeId } : {}),
         ...(managed.terminalHandle ? { terminalHandle: managed.terminalHandle } : {}),
         ...(foregroundProcessEvidence ? { foregroundProcessEvidence } : {}),
-        ...(this.agentSessionOwners.listForPty(id).length
-          ? { agentSessionOwners: this.agentSessionOwners.listForPty(id) }
-          : {})
+        ...(agentSessionOwners.length ? { agentSessionOwners } : {})
       })
     }
     return results
