@@ -495,16 +495,54 @@ describe('CodexSharedServerBanner', () => {
       await renderBanner()
       await advance(1_000)
       await act(async () => button('Learn more').click())
-      const inDialog = Array.from(
-        document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? []
-      ).find((candidate) => candidate.textContent?.trim() === 'Open new terminal')
-      await act(async () => inDialog?.click())
-      await advance(100)
+      await clickDialogOpenNewTerminal()
 
       expect(document.querySelector('[role="dialog"]')).toBeNull()
       expect(document.activeElement).toBe(newTerminal)
       expect(document.activeElement).not.toBe(xterm)
       newTerminal.remove()
+    })
+
+    async function clickDialogOpenNewTerminal(): Promise<void> {
+      const inDialog = Array.from(
+        document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? []
+      ).find((candidate) => candidate.textContent?.trim() === 'Open new terminal')
+      await act(async () => inDialog?.click())
+      await advance(100)
+    }
+
+    it('returns focus to this terminal when Open new terminal cannot open one', async () => {
+      setState({})
+      useAppStore.setState({ unifiedTabsByWorktree: {} })
+      const xterm = mountActiveTerminal()
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+      await act(async () => button('Learn more').click())
+
+      await clickDialogOpenNewTerminal()
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(xterm)
+    })
+
+    it('keeps the Learn more dialog open when this Codex ends, then returns focus', async () => {
+      setState({})
+      const xterm = mountActiveTerminal()
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+      await act(async () => button('Learn more').click())
+
+      setState({}, null)
+      await advance(100)
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+      expect(paneElement.textContent).toBe('')
+
+      await pressEscape()
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(xterm)
     })
 
     it('returns focus to the pane terminal after Stop server ends its Codex', async () => {

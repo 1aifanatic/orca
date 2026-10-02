@@ -71,7 +71,7 @@ function usePaneCodexSharedServerStatus(
 }
 
 /** Opens a new terminal where this tab lives; a new terminal's shell has Orca's codex wrapper. */
-function openTerminalBesideTab(terminalTabId: string): void {
+function openTerminalBesideTab(terminalTabId: string): boolean {
   const state = useAppStore.getState()
   const tab = Object.values(state.unifiedTabsByWorktree)
     .flat()
@@ -79,18 +79,19 @@ function openTerminalBesideTab(terminalTabId: string): void {
       (candidate) => candidate.contentType === 'terminal' && candidate.entityId === terminalTabId
     )
   if (!tab) {
-    return
+    return false
   }
   if (tab.worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
     revealFloatingWorkspacePanel(state)
     void createFloatingWorkspaceTerminalTab(state)
-    return
+    return true
   }
   // Why always: Activity can show this pane behind its own view even when its workspace is active.
   if (activateAndRevealWorkspace(tab.worktreeId) === false) {
-    return
+    return false
   }
   void useAppStore.getState().openNewTerminalTabInActiveWorkspace(tab.groupId)
+  return true
 }
 
 /** Reserves the banner's height at the top of its pane so the terminal refits below it. */
@@ -144,15 +145,15 @@ export function CodexSharedServerBanner({
     recheck
   )
   const [openDialog, setOpenDialog] = useState<'fix' | 'oldTerminal' | null>(null)
-  const fixOpen = openDialog === 'fix'
   // Why: neither dialog has a Radix trigger, so closing it would leave focus on document.body.
   const { captureReturnFocus, skipReturnFocus } = useModalReturnFocus(openDialog !== null)
   const showDialog = (dialog: 'fix' | 'oldTerminal'): void => {
     captureReturnFocus()
     setOpenDialog(dialog)
   }
-  // Why fixOpen keeps it: stopping the server ends this pane's Codex, which must not close the dialog.
-  if (!status && !fixOpen) {
+  // Why an open dialog keeps it: this pane's Codex can end mid-dialog (Stop server does it), and
+  // the dialog must still close normally so focus returns.
+  if (!status && openDialog === null) {
     return null
   }
   const { body, primaryAction } =
@@ -201,30 +202,33 @@ export function CodexSharedServerBanner({
   }
   return (
     <>
-      <CodexSharedServerBannerFrame
-        body={body}
-        primaryAction={primaryAction}
-        onDismiss={() => {
-          dismissedPtyIds.add(ptyId)
-          setDismissed(true)
-        }}
-        onDontShowAgain={() =>
-          void useAppStore.getState().updateSettings({ codexSharedServerWarning: false })
-        }
-      />
+      {status ? (
+        <CodexSharedServerBannerFrame
+          body={body}
+          primaryAction={primaryAction}
+          onDismiss={() => {
+            dismissedPtyIds.add(ptyId)
+            setDismissed(true)
+          }}
+          onDontShowAgain={() =>
+            void useAppStore.getState().updateSettings({ codexSharedServerWarning: false })
+          }
+        />
+      ) : null}
       <CodexOldTerminalDialog
         open={openDialog === 'oldTerminal'}
         onOpenChange={closeDialog}
         onOpenNewTerminal={() => {
-          // Why: the new terminal takes focus; don't pull it back to this pane.
-          skipReturnFocus()
+          // Why: a new terminal takes focus; only when none opens does focus return to this pane.
+          if (openTerminalBesideTab(tabId)) {
+            skipReturnFocus()
+          }
           setOpenDialog(null)
-          openTerminalBesideTab(tabId)
         }}
       />
       <CodexSharedServerFixDialog
         ptyId={ptyId}
-        open={fixOpen}
+        open={openDialog === 'fix'}
         onOpenChange={closeDialog}
         onServerStopped={() => setRecheck((count) => count + 1)}
       />
