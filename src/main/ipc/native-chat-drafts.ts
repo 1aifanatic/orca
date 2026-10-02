@@ -10,12 +10,14 @@ import {
 } from '../native-chat/native-chat-draft-store'
 import { isTrustedUIRenderer } from './ui'
 
-let store: NativeChatDraftStore | null = null
+// Why one per root: macOS keeps the app alive with no window, and a reopened window must find the
+// same store, with its failed writes still owed, rather than a second one reading the files anew.
+const stores = new Map<string, NativeChatDraftStore>()
 
 /** Drafts are the app window's own; no other renderer may read or write them. */
 export function registerNativeChatDraftHandlers(root: string): void {
-  const drafts = createNativeChatDraftStore(root)
-  store = drafts
+  const drafts = stores.get(root) ?? createNativeChatDraftStore(root)
+  stores.set(root, drafts)
   ipcMain.removeHandler('nativeChat:drafts:load')
   ipcMain.removeHandler('nativeChat:drafts:write')
   ipcMain.removeAllListeners('nativeChat:drafts:loadSync')
@@ -44,6 +46,6 @@ export function registerNativeChatDraftHandlers(root: string): void {
 }
 
 /** Lets drafts written just before quitting land before the app exits. */
-export function drainNativeChatDrafts(): Promise<void> {
-  return store?.drain() ?? Promise.resolve()
+export async function drainNativeChatDrafts(): Promise<void> {
+  await Promise.all(Array.from(stores.values(), (drafts) => drafts.drain()))
 }

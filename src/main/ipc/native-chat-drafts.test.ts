@@ -2,6 +2,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as SidecarSnapshotFile from '../sidecar-snapshot-file'
 
 const { handlers, listeners, ipcMainMock, isTrustedUIRendererMock } = vi.hoisted(() => {
   const handlerMap = new Map<string, (...args: unknown[]) => unknown>()
@@ -19,6 +20,13 @@ const { handlers, listeners, ipcMainMock, isTrustedUIRendererMock } = vi.hoisted
   }
 })
 
+const sidecar = vi.hoisted(() => ({ removeSidecarSnapshot: vi.fn() }))
+
+vi.mock('../sidecar-snapshot-file', async (importOriginal) => {
+  const actual = await importOriginal<typeof SidecarSnapshotFile>()
+  sidecar.removeSidecarSnapshot.mockImplementation(actual.removeSidecarSnapshot)
+  return { ...actual, removeSidecarSnapshot: sidecar.removeSidecarSnapshot }
+})
 vi.mock('electron', () => ({ ipcMain: ipcMainMock }))
 vi.mock('./ui', () => ({ isTrustedUIRenderer: isTrustedUIRendererMock }))
 
@@ -91,6 +99,24 @@ describe('native chat draft IPC', () => {
   it('refuses a write without a chat', async () => {
     expect(await invoke('nativeChat:drafts:write', trusted, { draft })).toBe('failed')
     expect(await invoke('nativeChat:drafts:write', trusted, null)).toBe('failed')
+  })
+
+  // macOS keeps Orca running with no window; reopening one registers the handlers again.
+  it('keeps the same store when the window is reopened, so a failed clear is still owed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await invoke('nativeChat:drafts:write', trusted, { scopeKey: 'session:s1', draft })
+    sidecar.removeSidecarSnapshot.mockRejectedValueOnce(
+      Object.assign(new Error('denied'), { code: 'EACCES' })
+    )
+    expect(
+      await invoke('nativeChat:drafts:write', trusted, { scopeKey: 'session:s1', draft: null })
+    ).toBe('failed')
+
+    registerNativeChatDraftHandlers(root)
+
+    expect(await invoke('nativeChat:drafts:load', trusted)).toEqual([])
+    await drainNativeChatDrafts()
+    expect(await readdir(root)).toEqual([])
   })
 
   it('lets a draft written just before quitting land before the app exits', async () => {

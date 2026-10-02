@@ -30,7 +30,7 @@ type Intent = { draft: PersistedNativeChatDraft | null; savedAt: number }
 
 type DraftFile =
   | ({ kind: 'draft'; scopeKey: string } & Saved)
-  /** Not JSON, or a version-1 file that is not a draft: nothing can ever read it. */
+  /** Not JSON, JSON with no newer version, or a version-1 file that is not a draft. */
   | { kind: 'garbage' }
   /** A newer build's draft, or a file that could not be read this time: never deleted. */
   | { kind: 'kept'; reason: string }
@@ -63,8 +63,11 @@ function classifyDraftFile(raw: string): DraftFile {
     return { kind: 'garbage' }
   }
   const v = typeof value === 'object' && value !== null && 'v' in value ? value.v : undefined
+  if (typeof v === 'number' && v > FILE_VERSION) {
+    return { kind: 'kept', reason: `version ${v}` }
+  }
   if (v !== FILE_VERSION) {
-    return { kind: 'kept', reason: typeof v === 'number' ? `version ${v}` : 'no version' }
+    return { kind: 'garbage' }
   }
   const scopeKey =
     typeof value === 'object' && value !== null && 'scopeKey' in value && value.scopeKey

@@ -188,6 +188,23 @@ describe('the native chat draft store', () => {
     )
   })
 
+  it('removes JSON files that carry no newer version', async () => {
+    const root = await freshRoot()
+    await createNativeChatDraftStore(root).write('session:s1', draft('mine'))
+    for (const [key, body] of [
+      ['session:empty', '{}'],
+      ['session:array', '[]'],
+      ['session:string', '"x"'],
+      ['session:older', JSON.stringify({ v: 0, scopeKey: 'session:older', text: 'old' })]
+    ]) {
+      await writeFile(join(root, fileOf(key)), body)
+    }
+
+    await createNativeChatDraftStore(root).load()
+
+    expect(await readdir(root)).toEqual([fileOf('session:s1')])
+  })
+
   // Deletions at load share the chat's queue, so a write made meanwhile always survives them.
   it('never deletes, at load, a draft written while loading', async () => {
     const root = await freshRoot()
