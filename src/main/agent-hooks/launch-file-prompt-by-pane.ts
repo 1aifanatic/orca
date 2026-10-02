@@ -1,4 +1,4 @@
-import { isLaunchFilePointer, type LaunchFile } from '../../shared/launch-prompt-file'
+import { opensLikeLaunchFilePointer, type LaunchFile } from '../../shared/launch-prompt-file'
 
 // Why bounded: an entry outlives its launch until newer ones push it out; the rename reads only a
 // prompt's opening, and a pane's rename runs within minutes of its launch.
@@ -27,8 +27,8 @@ export function rememberLaunchFilePrompt(
   }
 }
 
-/** The one place Orca reads a pane's reported prompt: a launch file's pointer reads as the prompt
- *  it points at, when this host kept it. */
+/** The one place Orca reads a pane's reported prompt or session title: a launch file's pointer,
+ *  whole or cut short, reads as the prompt it points at, when this host kept it. */
 export function launchPromptShownForPane(paneKey: string, prompt: string): string {
-  return isLaunchFilePointer(prompt) ? (promptByPane.get(paneKey) ?? prompt) : prompt
+  return opensLikeLaunchFilePointer(prompt) ? (promptByPane.get(paneKey) ?? prompt) : prompt
 }

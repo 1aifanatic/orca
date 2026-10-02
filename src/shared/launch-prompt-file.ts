@@ -47,6 +47,11 @@ export function isLaunchFilePointer(prompt: string): boolean {
   )
 }
 
+/** Whether text opens like Orca's pointer, as a session title cut from one does. */
+export function opensLikeLaunchFilePointer(text: string): boolean {
+  return text.trim().startsWith(POINTER_LEAD)
+}
+
 export function carryInLaunchFile(content: string): { prompt: string; launchFile: LaunchFile } {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   const placeholder = `orca-launch-file-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`

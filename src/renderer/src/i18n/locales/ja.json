@@ -534,6 +534,11 @@
                 }
               }
             },
+            "exited": {
+              "notice": {
+                "message": "Agent は起動時に終了したため、プロンプトを受け取っていません。プロンプトをコピーして、Agent をもう一度起動してください。"
+              }
+            },
             "unconfirmed": {
               "notice": {
                 "message": "Agent がプロンプトを受け取ったことを Orca で確認できませんでした。再送する前に Agent を確認してください。"

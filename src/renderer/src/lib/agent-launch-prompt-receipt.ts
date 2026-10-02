@@ -9,7 +9,7 @@ import { getSettingsForAgentTabRuntimeOwner, PTY_SPAWN_TIMEOUT_MS } from './agen
 
 type AppState = ReturnType<typeof useAppStore.getState>
 
-export type LaunchPromptReceipt = 'delivered' | 'not-delivered' | 'unconfirmed'
+export type LaunchPromptReceipt = 'delivered' | 'not-delivered' | 'agent-exited' | 'unconfirmed'
 
 /** How long a hook turn may still arrive after a read that could not tell. */
 const HOOK_GRACE_AFTER_UNKNOWN_READ_MS = 2000
@@ -41,8 +41,9 @@ async function readLaunchedAgentForeground(
  * a fresh read on the execution host that finds the launched agent, not its shell, in front of the
  * terminal (`readLaunchedAgentForeground`). A ready signal never counts on its own: it only times
  * that read, and bracketed paste turned off (`2004l`) revokes it. Not delivered when the PTY never
- * spawns (a refused launch file included), exits first, the tab closes, or the read finds the
- * shell. Unconfirmed when nothing proves either, as on a Windows host without hooks.
+ * spawns (a refused launch file included) or the tab closes. Agent exited when the PTY exits or
+ * the read finds the shell back in front: the agent had the prompt on its line and quit before
+ * reading it. Unconfirmed when nothing proves either, as on a Windows host without hooks.
  */
 export function waitForLaunchPromptReceipt(args: {
   tabId: string
@@ -78,7 +79,7 @@ export function waitForLaunchPromptReceipt(args: {
           if (foreground === 'agent') {
             finish('delivered')
           } else if (foreground === 'shell') {
-            finish('not-delivered')
+            finish('agent-exited')
           } else {
             timers.push(
               window.setTimeout(() => finish('unconfirmed'), HOOK_GRACE_AFTER_UNKNOWN_READ_MS)
@@ -101,8 +102,10 @@ export function waitForLaunchPromptReceipt(args: {
       if (ptyId && !boundPtyId) {
         boundPtyId = ptyId
         readAfterReadiness(ptyId)
-      } else if ((boundPtyId && !ptyId) || !tabExists(state, tabId)) {
+      } else if (!tabExists(state, tabId)) {
         finish('not-delivered')
+      } else if (boundPtyId && !ptyId) {
+        finish('agent-exited')
       }
     }
     unsubscribe = useAppStore.subscribe(observe)

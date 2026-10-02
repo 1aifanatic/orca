@@ -1,6 +1,9 @@
 import { createPasteReadinessTimeoutNotice } from '@/lib/launch-agent-paste-timeout-notice'
 import { waitForLaunchPromptReceipt } from '@/lib/agent-launch-prompt-receipt'
-import { showAgentLaunchPromptUnconfirmedNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
+import {
+  showAgentLaunchExitedNotice,
+  showAgentLaunchPromptUnconfirmedNotice
+} from '@/lib/agent-launch-prompt-not-delivered-notice'
 import {
   deliverLaunchPromptToAgentTab,
   seedNativeChatLaunchDraftForAgentTab,
@@ -65,12 +68,19 @@ export function deliverNewTabLaunchPrompt(args: {
     pasteDraftAfterLaunch === null
       ? waitForLaunchPromptReceipt({ tabId, agent, launchedAt: args.launchedAt }).then(
           (receipt) => {
-            if (receipt !== 'unconfirmed') {
-              return timeoutNotice.settle(receipt === 'delivered', args.onPromptDelivered)
+            switch (receipt) {
+              case 'delivered':
+              case 'not-delivered':
+                return timeoutNotice.settle(receipt === 'delivered', args.onPromptDelivered)
+              case 'agent-exited':
+                // Why its own words: the agent did not really start, so "paste it once ready" is wrong.
+                showAgentLaunchExitedNotice({ agent, prompt })
+                return { delivered: false, failureNotified: true }
+              case 'unconfirmed':
+                // The agent may have the prompt: say so, and never invite pasting it a second time.
+                showAgentLaunchPromptUnconfirmedNotice({ agent, prompt })
+                return { delivered: false, failureNotified: true }
             }
-            // The agent may have the prompt: say so, and never invite pasting it a second time.
-            showAgentLaunchPromptUnconfirmedNotice({ agent, prompt })
-            return { delivered: false, failureNotified: true }
           }
         )
       : deliverLaunchPromptToAgentTab({

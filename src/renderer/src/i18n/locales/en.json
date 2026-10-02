@@ -669,6 +669,11 @@
                 }
               }
             },
+            "exited": {
+              "notice": {
+                "message": "The agent exited at startup, before it received your prompt. Copy the prompt and start the agent again."
+              }
+            },
             "unconfirmed": {
               "notice": {
                 "message": "Orca couldn't confirm the agent received your prompt. Check the agent before sending it again."

@@ -92,12 +92,13 @@ describe('whether a prompt that rode the launch command reached the agent', () =
   })
 
   // Why: a shell back at its prompt looks ready too; readiness alone never counts.
-  it('is not delivered when the read finds the shell, however ready it looked', async () => {
+  // Why: the agent had the prompt on its line and quit at startup, before reading it.
+  it('reports the agent exited when the read finds the shell, however ready it looked', async () => {
     mocks.readForeground.mockResolvedValue('shell')
     mocks.setState({ agentStatusByPaneKey: { [PANE]: { updatedAt: 50 } } })
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
-    await expect(pending).resolves.toBe('not-delivered')
+    await expect(pending).resolves.toBe('agent-exited')
   })
 
   it('is unconfirmed when the host cannot tell and no hook turn arrives', async () => {
@@ -119,12 +120,12 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     await expect(pending).resolves.toBe('delivered')
   })
 
-  it('is not delivered when the PTY exits first', async () => {
+  it('reports the agent exited when the PTY exits first', async () => {
     mocks.readiness.mockReturnValue(new Promise(() => {}))
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
     mocks.setState({ ptyIdsByTabId: { 'tab-1': [] } })
-    await expect(pending).resolves.toBe('not-delivered')
+    await expect(pending).resolves.toBe('agent-exited')
   })
 
   it('is not delivered when the PTY never spawns, as when the host refused its launch file', async () => {

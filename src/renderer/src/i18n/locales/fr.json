@@ -633,6 +633,11 @@
                 }
               }
             },
+            "exited": {
+              "notice": {
+                "message": "L’agent s’est arrêté au démarrage, avant de recevoir votre prompt. Copiez le prompt et relancez l’agent."
+              }
+            },
             "unconfirmed": {
               "notice": {
                 "message": "Orca n’a pas pu confirmer que l’agent a reçu votre prompt. Vérifiez l’agent avant de le renvoyer."

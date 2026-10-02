@@ -423,6 +423,11 @@
                 }
               }
             },
+            "exited": {
+              "notice": {
+                "message": "El agente se cerró al iniciarse, antes de recibir tu prompt. Copia el prompt e inicia el agente de nuevo."
+              }
+            },
             "unconfirmed": {
               "notice": {
                 "message": "Orca no pudo confirmar que el agente recibió tu prompt. Revisa el agente antes de enviarlo de nuevo."

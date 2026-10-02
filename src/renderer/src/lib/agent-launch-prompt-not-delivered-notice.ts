@@ -48,6 +48,21 @@ export function showAgentLaunchPromptUnconfirmedNotice(args: {
 }
 
 /**
+ * The agent had the prompt on its command line but exited at startup, before it read it. It did
+ * not really start, so the user is handed the text to start it again with.
+ */
+export function showAgentLaunchExitedNotice(args: { agent: TuiAgent; prompt: string }): void {
+  showPromptCopyNotice(
+    translate(
+      'auto.lib.agent.launch.prompt.exited.notice.message',
+      'The agent exited at startup, before it received your prompt. Copy the prompt and start the agent again.'
+    ),
+    args.prompt
+  )
+  track('agent_error', { error_class: 'unknown', agent_kind: tuiAgentToAgentKind(args.agent) })
+}
+
+/**
  * The host refused to start the agent because it could not write the launch file that carries the
  * prompt. Nothing ran, so the user is handed the text to launch again with.
  */
