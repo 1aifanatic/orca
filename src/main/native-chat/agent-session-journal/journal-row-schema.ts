@@ -333,7 +333,7 @@ const ROW_CONTENT_CHECK_BY_KIND: Record<
     )
   }
 }
-const KNOWN_ROW_KINDS = new Map(Object.entries(ROW_CONTENT_CHECK_BY_KIND))
+export const KNOWN_ROW_KINDS = new Map(Object.entries(ROW_CONTENT_CHECK_BY_KIND))
 
 /** The fields every row keeps whatever its kind: its epoch, its place in it, its writer, its time. */
 function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
@@ -360,7 +360,7 @@ const MUTATION_CONTENT_CHECK_BY_KIND: Record<
   tombstone: (mutation) =>
     fieldsContent(typeof mutation.itemId === 'string' && Number.isInteger(mutation.revision))
 }
-const KNOWN_MUTATION_KINDS = new Map(Object.entries(MUTATION_CONTENT_CHECK_BY_KIND))
+export const KNOWN_MUTATION_KINDS = new Map(Object.entries(MUTATION_CONTENT_CHECK_BY_KIND))
 
 /** The kind first: a newer build's kind needs none of the fields this build's kinds have. */
 function lifecycleMutationContent(value: unknown): AgentJournalContentVerdict {
