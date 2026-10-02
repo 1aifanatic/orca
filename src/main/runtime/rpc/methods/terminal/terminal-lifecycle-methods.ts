@@ -88,6 +88,7 @@ export const TERMINAL_LIFECYCLE_METHODS = [
     handler: async (params, { runtime }) => ({
       split: await runtime.splitTerminal(params.terminal, {
         direction: params.direction,
+        ...(params.ratio !== undefined ? { ratio: params.ratio } : {}),
         command: params.command,
         env: params.env,
         telemetrySource: params.telemetrySource

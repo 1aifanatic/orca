@@ -138,6 +138,36 @@ describe('terminal RPC manifest characterization', () => {
     ).toEqual({ streamId: 1, terminal: 'term' })
   })
 
+  it.each([null, '', true, '0.85', 0, 1, -0.1, 1.1, Number.NaN, Infinity, -Infinity])(
+    'rejects malformed split ratio %s before invoking the runtime',
+    async (ratio) => {
+      const splitTerminal = vi.fn()
+      await expect(
+        invoke('terminal.split', { terminal: 'term', ratio }, { splitTerminal })
+      ).rejects.toThrow()
+      expect(splitTerminal).not.toHaveBeenCalled()
+    }
+  )
+
+  it('forwards a valid split ratio while omission keeps the legacy runtime options', async () => {
+    const splitTerminal = vi.fn().mockResolvedValue({ handle: 'term-new' })
+    await invoke('terminal.split', { terminal: 'term', ratio: 0.85 }, { splitTerminal })
+    expect(splitTerminal).toHaveBeenLastCalledWith('term', {
+      direction: undefined,
+      command: undefined,
+      env: undefined,
+      telemetrySource: undefined,
+      ratio: 0.85
+    })
+    await invoke('terminal.split', { terminal: 'term' }, { splitTerminal })
+    expect(splitTerminal).toHaveBeenLastCalledWith('term', {
+      direction: undefined,
+      command: undefined,
+      env: undefined,
+      telemetrySource: undefined
+    })
+  })
+
   it('returns execution-host authority from lifecycle handlers without reinterpretation', async () => {
     const pane = {
       handle: 'term-pane',
