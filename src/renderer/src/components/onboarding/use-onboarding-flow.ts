@@ -12,7 +12,6 @@ import { STEPS } from './use-onboarding-flow-types'
 import { persistStep, useCloseWith, usePersistCurrentStep } from './use-onboarding-flow-persistence'
 import { resolveOnboardingSettingsHydration } from './onboarding-settings-hydration'
 import { translate } from '@/i18n/i18n'
-import { resolveAgentPermissionModeSummary } from '../../../../shared/tui-agent-permissions'
 import { isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
 import {
   isSkippedStepIndex,
@@ -66,12 +65,7 @@ export function useOnboardingFlow(
       ? settings.defaultTuiAgent
       : null
   )
-  const [yoloPermissions, setYoloPermissions] = useState(
-    resolveAgentPermissionModeSummary({
-      agentDefaultArgs: settings?.agentDefaultArgs,
-      agentDefaultEnv: settings?.agentDefaultEnv
-    }) !== 'manual'
-  )
+  const [yoloPermissions, setYoloPermissions] = useState(settings?.agentPermissionMode !== 'ask')
   // Why: hydrate theme from saved settings so users who already chose one see it preselected.
   const [theme, setTheme] = useState<GlobalSettings['theme']>(settings?.theme ?? 'dark')
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
@@ -100,11 +94,7 @@ export function useOnboardingFlow(
     }
   }
   if (settings && !yoloPermissionsInteractedRef.current) {
-    const nextYoloPermissions =
-      resolveAgentPermissionModeSummary({
-        agentDefaultArgs: settings.agentDefaultArgs,
-        agentDefaultEnv: settings.agentDefaultEnv
-      }) !== 'manual'
+    const nextYoloPermissions = settings.agentPermissionMode !== 'ask'
     if (nextYoloPermissions !== yoloPermissions) {
       setYoloPermissions(nextYoloPermissions)
     }

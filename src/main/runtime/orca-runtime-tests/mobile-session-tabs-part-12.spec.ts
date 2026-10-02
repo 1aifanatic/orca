@@ -59,6 +59,7 @@ describe('OrcaRuntimeService', () => {
           disabledTuiAgents: [],
           agentCmdOverrides: { 'command-code': 'command-code --profile mobile' },
           agentDefaultArgs: { 'command-code': '--note "can\'t"' },
+          agentPermissionMode: 'ask' as const,
           localWindowsRuntimeDefault: { kind: 'windows-host' }
         })
       } as never)
@@ -105,6 +106,7 @@ describe('OrcaRuntimeService', () => {
           disabledTuiAgents: [],
           agentCmdOverrides: { 'command-code': 'command-code --profile mobile' },
           agentDefaultArgs: { 'command-code': '--note "can\'t"' },
+          agentPermissionMode: 'ask' as const,
           localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' }
         })
       } as never)
@@ -151,6 +153,7 @@ describe('OrcaRuntimeService', () => {
           disabledTuiAgents: [],
           agentCmdOverrides: { 'command-code': 'command-code --profile mobile' },
           agentDefaultArgs: { 'command-code': '--note "can\'t"' },
+          agentPermissionMode: 'ask' as const,
           localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' },
           terminalWindowsShell: 'cmd.exe'
         })

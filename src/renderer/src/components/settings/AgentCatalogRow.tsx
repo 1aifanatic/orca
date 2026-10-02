@@ -14,6 +14,9 @@ import {
   AgentDefaultArgsInput,
   AgentDefaultEnvInput
 } from './AgentLaunchDefaultsEditor'
+import { AgentPermissionOverrideControl } from './AgentPermissionControls'
+import type { AgentPermissionMode } from '../../../../shared/tui-agent-permissions'
+import type { AgentPermissionPosture } from '../../../../shared/tui-agent-launch-defaults'
 
 type AgentAvailability = 'enabled' | 'disabled'
 
@@ -74,6 +77,13 @@ export type AgentCatalogRowProps = {
   onSaveArgs: (value: string) => void
   onSaveEnv: (value: Record<string, string>) => void
   sessionSourceHome?: AgentSessionSourceHomeControl
+  /** Absent for agents with no permission flag to set. */
+  permission?: {
+    override: AgentPermissionMode | undefined
+    defaultMode: AgentPermissionMode
+    posture: AgentPermissionPosture
+    onChange: (choice: AgentPermissionMode | 'default') => void
+  }
 }
 
 export function AgentCatalogRow({
@@ -94,7 +104,8 @@ export function AgentCatalogRow({
   onSaveOverride,
   onSaveArgs,
   onSaveEnv,
-  sessionSourceHome
+  sessionSourceHome,
+  permission
 }: AgentCatalogRowProps): React.JSX.Element {
   const envSummary = stringifyAgentDefaultEnvDraft(envOverride)
   const defaultEnvSummary = stringifyAgentDefaultEnvDraft(defaultEnv)
@@ -116,6 +127,17 @@ export function AgentCatalogRow({
                 {translate('auto.components.settings.AgentsPane.8dc0192e48', 'Disabled')}
               </SettingsBadge>
             )}
+            {permission &&
+              permission.posture.effectiveBypass !== (permission.defaultMode === 'bypass') && (
+                <SettingsBadge tone="muted">
+                  {permission.posture.effectiveBypass
+                    ? translate('auto.components.settings.AgentsPane.agentPermissionsYolo', 'Yolo')
+                    : translate(
+                        'auto.components.settings.AgentsPane.agentPermissionsManual',
+                        'Manual'
+                      )}
+                </SettingsBadge>
+              )}
           </div>
           <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
             {cmdOverride ? (
@@ -216,6 +238,17 @@ export function AgentCatalogRow({
               onSaveArgs={onSaveArgs}
             />
           </div>
+          {permission && (
+            <div className="mt-2">
+              <AgentPermissionOverrideControl
+                agentLabel={label}
+                override={permission.override}
+                defaultMode={permission.defaultMode}
+                posture={permission.posture}
+                onChange={permission.onChange}
+              />
+            </div>
+          )}
           {(defaultEnvSummary || envSummary) && (
             <div className="mt-2">
               <AgentDefaultEnvInput

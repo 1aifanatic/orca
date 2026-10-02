@@ -1,4 +1,8 @@
 import {
+  composeTuiAgentLaunchArgsRecord,
+  composeTuiAgentLaunchEnvRecord
+} from '../shared/tui-agent-launch-defaults'
+import {
   closeTestStores,
   testState,
   createStore,
@@ -462,12 +466,14 @@ describe('Store', () => {
     )
     const store = await createStore()
 
-    expect(store.getSettings().agentDefaultArgs).toMatchObject({
+    expect(store.getSettings().agentPermissionMode).toBe('bypass')
+    expect(store.getSettings().agentPermissionModeOverrides).toEqual({})
+    expect(composeTuiAgentLaunchArgsRecord(store.getSettings())).toMatchObject({
       claude: '--dangerously-skip-permissions',
       codex: '--dangerously-bypass-approvals-and-sandbox',
       cursor: '--yolo'
     })
-    expect(store.getSettings().agentDefaultEnv).toMatchObject({
+    expect(composeTuiAgentLaunchEnvRecord(store.getSettings())).toMatchObject({
       goose: { GOOSE_MODE: 'auto' }
     })
     expect(store.getSettings().agentYoloDefaultsMigrated).toBe(true)
@@ -487,9 +493,35 @@ describe('Store', () => {
     )
     const store = await createStore()
 
-    expect(store.getSettings().agentDefaultArgs?.codex).toBe('')
-    expect(store.getSettings().agentDefaultEnv?.goose).toEqual({})
-    expect(store.getSettings().agentDefaultArgs?.claude).toBe('--dangerously-skip-permissions')
+    expect(store.getSettings().agentPermissionModeOverrides).toEqual({ codex: 'ask', goose: 'ask' })
+    const composed = composeTuiAgentLaunchArgsRecord(store.getSettings())
+    expect(composed.codex).toBe('')
+    expect(composeTuiAgentLaunchEnvRecord(store.getSettings()).goose).toEqual({})
+    expect(composed.claude).toBe('--dangerously-skip-permissions')
+  })
+
+  // #23853: Settings showed Yolo while Claude's own Arguments held no flag, so Claude prompted.
+  it('loads custom arguments without the flag as Manual for that agent and persists it', async () => {
+    writeFileSync(
+      join(testState.dir, 'orca-data.json'),
+      JSON.stringify({
+        settings: {
+          agentYoloDefaultsMigrated: true,
+          agentDefaultArgs: {
+            claude: '--model opus',
+            codex: '--dangerously-bypass-approvals-and-sandbox -m o3'
+          }
+        }
+      })
+    )
+    const store = await createStore()
+    store.flush()
+
+    const persisted = (readDataFile() as PersistedState).settings
+    expect(persisted.agentPermissionMode).toBe('ask')
+    expect(persisted.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })
+    expect(persisted.agentDefaultArgs?.claude).toBe('--model opus')
+    expect(persisted.agentDefaultArgs?.codex).toBe('-m o3')
   })
 
   it('removes unsupported TUI skip-permissions args from migrated profiles', async () => {
@@ -511,7 +543,7 @@ describe('Store', () => {
 
     expect(store.getSettings().agentDefaultArgs?.opencode).toBe('--model opencode/gpt-5')
     expect(store.getSettings().agentDefaultArgs?.kilo).toBe('')
-    expect(store.getSettings().agentDefaultArgs?.codex).toBe(
+    expect(composeTuiAgentLaunchArgsRecord(store.getSettings()).codex).toBe(
       '--dangerously-bypass-approvals-and-sandbox'
     )
     expect((readDataFile() as PersistedState).settings.agentDefaultArgs?.opencode).toBe(

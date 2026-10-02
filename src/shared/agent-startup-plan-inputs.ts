@@ -9,7 +9,12 @@ import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 export type AgentStartupSettings = Partial<
   Pick<
     GlobalSettings,
-    'agentCmdOverrides' | 'agentDefaultArgs' | 'agentDefaultEnv' | 'terminalWindowsShell'
+    | 'agentCmdOverrides'
+    | 'agentDefaultArgs'
+    | 'agentDefaultEnv'
+    | 'agentPermissionMode'
+    | 'agentPermissionModeOverrides'
+    | 'terminalWindowsShell'
   >
 >
 
@@ -54,10 +59,8 @@ export function resolveAgentStartupPlanInputs(args: {
     // A per-launch override wins over the Settings default; `null` is "no arguments", so this
     // tests for absence rather than falsiness.
     agentArgs:
-      args.agentArgs !== undefined
-        ? args.agentArgs
-        : resolveTuiAgentLaunchArgs(agent, settings.agentDefaultArgs),
-    agentEnv: resolveTuiAgentLaunchEnv(agent, settings.agentDefaultEnv),
+      args.agentArgs !== undefined ? args.agentArgs : resolveTuiAgentLaunchArgs(agent, settings),
+    agentEnv: resolveTuiAgentLaunchEnv(agent, settings),
     platform,
     shell: resolveLocalWindowsAgentStartupShell({
       platform,

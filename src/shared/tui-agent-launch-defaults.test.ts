@@ -1,109 +1,282 @@
 import { describe, expect, it } from 'vitest'
 import {
-  resolvedTuiAgentArgsBypassPermissions,
+  composeTuiAgentLaunchArgsRecord,
+  liftTuiAgentBypassArgs,
+  liftTuiAgentBypassEnv,
+  resolveAgentPermissionPosture,
+  resolveComposedTuiAgentLaunchArgs,
   resolveTuiAgentLaunchArgs,
-  tuiAgentArgsBypassPermissions
+  resolveTuiAgentLaunchEnv
 } from './tui-agent-launch-defaults'
 
-describe('tuiAgentArgsBypassPermissions', () => {
-  // The Agent Permissions toggle has no storage of its own: Yolo is the presence of the agent's
-  // bypass flag in the arguments string, wherever the user has written the rest of the field.
-  it.each([
-    ['claude', '--dangerously-skip-permissions', true],
-    ['claude', '--dangerously-skip-permissions --model Opus', true],
-    ['claude', '--model Opus --dangerously-skip-permissions', true],
-    ['claude', '', false],
-    ['claude', '--model Opus', false],
-    // A token boundary, so a longer flag that merely starts the same way is not a bypass.
-    ['claude', '--dangerously-skip-permissions-not-really', false],
-    [
-      'claude',
-      '--append-system-prompt "mention --dangerously-skip-permissions only as text"',
-      false
-    ],
-    ['claude', '-- --dangerously-skip-permissions', false],
-    ['codex', '--dangerously-bypass-approvals-and-sandbox --model gpt-5.6-sol', true],
-    ['codex', '--model gpt-5.6-sol', false],
-    ['codex', '--config "note=--dangerously-bypass-approvals-and-sandbox only as text"', false],
-    ['codex', '-- --dangerously-bypass-approvals-and-sandbox', false]
-  ] as const)('reads %s args %s as %s', (agent, args, expected) => {
-    expect(tuiAgentArgsBypassPermissions(agent, args, 'posix')).toBe(expected)
-  })
+const CLAUDE_BYPASS = '--dangerously-skip-permissions'
+const CODEX_BYPASS = '--dangerously-bypass-approvals-and-sandbox'
 
-  it('reads no bypass out of an absent or non-string value', () => {
-    expect(tuiAgentArgsBypassPermissions('claude', null, 'posix')).toBe(false)
-    expect(tuiAgentArgsBypassPermissions('claude', undefined, 'posix')).toBe(false)
-  })
-
-  it('uses the configured local Windows shell family', () => {
+describe('resolveTuiAgentLaunchArgs', () => {
+  it('puts the bypass flag in front of the extra arguments in Yolo', () => {
     expect(
-      resolvedTuiAgentArgsBypassPermissions(
+      resolveTuiAgentLaunchArgs('claude', { agentDefaultArgs: { claude: '--model opus' } })
+    ).toBe(`${CLAUDE_BYPASS} --model opus`)
+    expect(resolveTuiAgentLaunchArgs('claude', {})).toBe(CLAUDE_BYPASS)
+  })
+
+  // The bug behind #23853: custom Arguments used to *be* the permission setting, so typing a model
+  // into them silently turned Yolo off while the switch still read Yolo.
+  it('keeps the flag when the user adds their own arguments', () => {
+    expect(
+      resolveTuiAgentLaunchArgs('claude', {
+        agentPermissionMode: 'bypass',
+        agentDefaultArgs: { claude: '--model opus' }
+      })
+    ).toContain(CLAUDE_BYPASS)
+  })
+
+  it('leaves the flag off in Manual, globally or for one agent', () => {
+    expect(
+      resolveTuiAgentLaunchArgs('claude', {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { claude: '--model opus' }
+      })
+    ).toBe('--model opus')
+    expect(
+      resolveTuiAgentLaunchArgs('codex', {
+        agentPermissionMode: 'bypass',
+        agentPermissionModeOverrides: { codex: 'ask' }
+      })
+    ).toBe('')
+    expect(
+      resolveTuiAgentLaunchArgs('claude', {
+        agentPermissionMode: 'ask',
+        agentPermissionModeOverrides: { claude: 'bypass' }
+      })
+    ).toBe(CLAUDE_BYPASS)
+  })
+
+  it('does not repeat a flag the extra arguments already carry', () => {
+    expect(
+      resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: `-m o3 ${CODEX_BYPASS}` } })
+    ).toBe(`-m o3 ${CODEX_BYPASS}`)
+  })
+
+  // Codex refuses its bypass flag beside `-a`, so typed permission options decide on their own.
+  it('lets permission options typed into the arguments decide instead of the mode', () => {
+    expect(
+      resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: '-a on-request' } })
+    ).toBe('-a on-request')
+    expect(resolveTuiAgentLaunchArgs('claude', {}, '--permission-mode plan')).toBe(
+      '--permission-mode plan'
+    )
+    expect(
+      resolveTuiAgentLaunchArgs('claude', {}, '--append-system-prompt "--permission-mode plan"')
+    ).toBe(`${CLAUDE_BYPASS} --append-system-prompt "--permission-mode plan"`)
+  })
+
+  it('applies the mode to per-launch extra arguments, and null means none', () => {
+    const settings = { agentDefaultArgs: { codex: '--model stored' } }
+    expect(resolveTuiAgentLaunchArgs('codex', settings, '--model recipe')).toBe(
+      `${CODEX_BYPASS} --model recipe`
+    )
+    expect(resolveTuiAgentLaunchArgs('codex', settings, null)).toBe(CODEX_BYPASS)
+    expect(resolveTuiAgentLaunchArgs('codex', settings, undefined)).toBe(
+      `${CODEX_BYPASS} --model stored`
+    )
+  })
+
+  it('passes arguments through for an agent with no bypass flag', () => {
+    expect(resolveTuiAgentLaunchArgs('pi', { agentDefaultArgs: { pi: '--foo' } })).toBe('--foo')
+  })
+})
+
+describe('resolveTuiAgentLaunchEnv', () => {
+  it('applies an env-driven bypass under the user env in Yolo only', () => {
+    expect(resolveTuiAgentLaunchEnv('goose', { agentDefaultEnv: { goose: { A: '1' } } })).toEqual({
+      GOOSE_MODE: 'auto',
+      A: '1'
+    })
+    expect(
+      resolveTuiAgentLaunchEnv('goose', {
+        agentPermissionMode: 'ask',
+        agentDefaultEnv: { goose: { A: '1' } }
+      })
+    ).toEqual({ A: '1' })
+  })
+})
+
+describe('liftTuiAgentBypassArgs', () => {
+  it.each([
+    [CLAUDE_BYPASS, true, ''],
+    [`${CLAUDE_BYPASS} --model Opus`, true, '--model Opus'],
+    [`--model Opus ${CLAUDE_BYPASS}`, true, '--model Opus'],
+    [`--model Opus ${CLAUDE_BYPASS} --effort high`, true, '--model Opus --effort high'],
+    [`${CLAUDE_BYPASS} ${CLAUDE_BYPASS}`, true, ''],
+    ['', false, ''],
+    ['--model Opus', false, '--model Opus'],
+    [`${CLAUDE_BYPASS}-not-really`, false, `${CLAUDE_BYPASS}-not-really`],
+    [
+      `--append-system-prompt "mention ${CLAUDE_BYPASS} only as text"`,
+      false,
+      `--append-system-prompt "mention ${CLAUDE_BYPASS} only as text"`
+    ],
+    [`-- ${CLAUDE_BYPASS}`, false, `-- ${CLAUDE_BYPASS}`],
+    // The rest of the text keeps its own quoting byte for byte.
+    [
+      `${CLAUDE_BYPASS} --append-system-prompt 'be "brief"'`,
+      true,
+      `--append-system-prompt 'be "brief"'`
+    ]
+  ] as const)('lifts claude %j to bypass=%s with %j left', (args, bypass, extraArgs) => {
+    expect(liftTuiAgentBypassArgs('claude', args)).toEqual({ bypass, extraArgs })
+  })
+
+  it('lifts a multi-word bypass flag only as a whole', () => {
+    expect(liftTuiAgentBypassArgs('grok', '--permission-mode bypassPermissions -v')).toEqual({
+      bypass: true,
+      extraArgs: '-v'
+    })
+    expect(liftTuiAgentBypassArgs('grok', '--permission-mode plan')).toEqual({
+      bypass: false,
+      extraArgs: '--permission-mode plan'
+    })
+    expect(liftTuiAgentBypassArgs('continue', '--allow "*"')).toEqual({
+      bypass: true,
+      extraArgs: ''
+    })
+  })
+
+  it('leaves untokenizable text alone', () => {
+    expect(liftTuiAgentBypassArgs('codex', `"${CODEX_BYPASS}`)).toEqual({
+      bypass: false,
+      extraArgs: `"${CODEX_BYPASS}`
+    })
+  })
+})
+
+describe('liftTuiAgentBypassEnv', () => {
+  it('lifts the bypass env out and keeps the rest', () => {
+    expect(liftTuiAgentBypassEnv('goose', { GOOSE_MODE: 'auto', A: '1' })).toEqual({
+      bypass: true,
+      extraEnv: { A: '1' }
+    })
+    expect(liftTuiAgentBypassEnv('goose', { GOOSE_MODE: 'approve' })).toEqual({
+      bypass: false,
+      extraEnv: { GOOSE_MODE: 'approve' }
+    })
+  })
+})
+
+describe('resolveAgentPermissionPosture', () => {
+  it('reports the mode and no argument options for a plain profile', () => {
+    expect(resolveAgentPermissionPosture('claude', {}, 'darwin')).toEqual({
+      mode: 'bypass',
+      effectiveBypass: true,
+      argumentPermissionOptions: []
+    })
+    expect(
+      resolveAgentPermissionPosture('claude', { agentPermissionMode: 'ask' }, 'darwin')
+    ).toMatchObject({ mode: 'ask', effectiveBypass: false })
+  })
+
+  // Settings warns instead of letting the switch silently lose to free text.
+  it('reports a bypass flag typed into Arguments under Manual', () => {
+    expect(
+      resolveAgentPermissionPosture(
         'claude',
         {
-          agentDefaultArgs: { claude: '`--dangerously-skip-permissions' },
+          agentPermissionMode: 'ask',
+          agentDefaultArgs: { claude: `--model Opus ${CLAUDE_BYPASS}` }
+        },
+        'darwin'
+      )
+    ).toEqual({ mode: 'ask', effectiveBypass: true, argumentPermissionOptions: [CLAUDE_BYPASS] })
+  })
+
+  it('lists other permission options without treating them as bypass', () => {
+    expect(
+      resolveAgentPermissionPosture(
+        'claude',
+        { agentPermissionMode: 'ask', agentDefaultArgs: { claude: '--permission-mode=auto' } },
+        'darwin'
+      )
+    ).toEqual({
+      mode: 'ask',
+      effectiveBypass: false,
+      argumentPermissionOptions: ['--permission-mode=auto']
+    })
+    expect(
+      resolveAgentPermissionPosture(
+        'codex',
+        { agentPermissionMode: 'ask', agentDefaultArgs: { codex: '-a never -s workspace-write' } },
+        'darwin'
+      ).argumentPermissionOptions
+    ).toEqual(['-a', '-s'])
+  })
+
+  it('reports typed permission options overriding Yolo', () => {
+    expect(
+      resolveAgentPermissionPosture(
+        'codex',
+        { agentPermissionMode: 'bypass', agentDefaultArgs: { codex: '-a on-request' } },
+        'darwin'
+      )
+    ).toEqual({ mode: 'bypass', effectiveBypass: false, argumentPermissionOptions: ['-a'] })
+  })
+
+  it.each([
+    ['claude', `--append-system-prompt "mention ${CLAUDE_BYPASS} only as text"`],
+    ['claude', `-- ${CLAUDE_BYPASS}`],
+    ['codex', `--config "note=${CODEX_BYPASS} only as text"`],
+    ['codex', `-- ${CODEX_BYPASS}`],
+    ['codex', `"${CODEX_BYPASS}`]
+  ] as const)('does not authorize %s text %j', (agent, args) => {
+    expect(
+      resolveAgentPermissionPosture(
+        agent,
+        { agentPermissionMode: 'ask', agentDefaultArgs: { [agent]: args } },
+        'linux'
+      ).effectiveBypass
+    ).toBe(false)
+  })
+
+  it('reads typed arguments with the configured local Windows shell', () => {
+    expect(
+      resolveAgentPermissionPosture(
+        'claude',
+        {
+          agentPermissionMode: 'ask',
+          agentDefaultArgs: { claude: `\`${CLAUDE_BYPASS}` },
           terminalWindowsShell: 'powershell.exe'
         },
         'win32'
-      )
+      ).effectiveBypass
     ).toBe(true)
     expect(
-      resolvedTuiAgentArgsBypassPermissions(
+      resolveAgentPermissionPosture(
         'codex',
         {
-          agentDefaultArgs: { codex: '^--dangerously-bypass-approvals-and-sandbox' },
+          agentPermissionMode: 'ask',
+          agentDefaultArgs: { codex: `^${CODEX_BYPASS}` },
           terminalWindowsShell: 'cmd.exe'
         },
         'win32'
-      )
+      ).effectiveBypass
     ).toBe(true)
   })
-
-  it.each(['posix', 'powershell', 'cmd'] as const)(
-    'does not authorize quoted text or operands after -- on %s',
-    (shell) => {
-      expect(
-        tuiAgentArgsBypassPermissions(
-          'codex',
-          '--config "note=--dangerously-bypass-approvals-and-sandbox only as text"',
-          shell
-        )
-      ).toBe(false)
-      expect(
-        tuiAgentArgsBypassPermissions(
-          'codex',
-          '-- --dangerously-bypass-approvals-and-sandbox',
-          shell
-        )
-      ).toBe(false)
-    }
-  )
 })
 
-describe('resolvedTuiAgentArgsBypassPermissions', () => {
-  it('fails closed when the configured arguments cannot be tokenized', () => {
-    expect(
-      resolvedTuiAgentArgsBypassPermissions(
-        'codex',
-        { agentDefaultArgs: { codex: '"--dangerously-bypass-approvals-and-sandbox' } },
-        'linux'
-      )
-    ).toBe(false)
-  })
-})
-
-describe('resolveTuiAgentLaunchArgs', () => {
-  // A terminal launch still applies the whole configured string verbatim; only the structured
-  // route stopped reading it.
-  it('hands the configured arguments to a terminal launch unchanged', () => {
-    expect(
-      resolveTuiAgentLaunchArgs('claude', {
-        claude: '--dangerously-skip-permissions --model Opus'
-      })
-    ).toBe('--dangerously-skip-permissions --model Opus')
-  })
-
-  it('falls back to the agent default when nothing is configured', () => {
-    expect(resolveTuiAgentLaunchArgs('claude', {})).toBe('--dangerously-skip-permissions')
-    expect(resolveTuiAgentLaunchArgs('claude', { claude: '' })).toBe('')
+describe('launch-ready records', () => {
+  it('publishes every agent with its flag inline, and reads such a record back', () => {
+    const record = composeTuiAgentLaunchArgsRecord({
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { codex: 'ask' },
+      agentDefaultArgs: { claude: '--model opus', codex: '-m o3' }
+    })
+    expect(record.claude).toBe(`${CLAUDE_BYPASS} --model opus`)
+    expect(record.codex).toBe('-m o3')
+    expect(resolveComposedTuiAgentLaunchArgs('claude', record)).toBe(
+      `${CLAUDE_BYPASS} --model opus`
+    )
+    // A record that predates an agent meant "the shipped default" for it.
+    expect(resolveComposedTuiAgentLaunchArgs('claude', {})).toBe(CLAUDE_BYPASS)
+    expect(resolveComposedTuiAgentLaunchArgs('claude', { claude: '' })).toBe('')
   })
 })

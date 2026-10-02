@@ -454,6 +454,7 @@ describe('OrcaRuntimeService', () => {
         disabledTuiAgents: [],
         agentCmdOverrides: {},
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: { cursor: { CURSOR_PROFILE: 'captured' } }
       })
     }
@@ -491,6 +492,7 @@ describe('OrcaRuntimeService', () => {
         // Why: pin the arg here rather than inherit the shared yolo default, so
         // this test tracks Windows quoting and not an unrelated default's value.
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: {}
       })
     }
@@ -529,6 +531,7 @@ describe('OrcaRuntimeService', () => {
           disabledTuiAgents: [],
           agentCmdOverrides: {},
           agentDefaultArgs: { 'claude-agent-teams': '' },
+          agentPermissionMode: 'ask' as const,
           agentDefaultEnv: {}
         })
       })
@@ -559,6 +562,7 @@ describe('OrcaRuntimeService', () => {
         disabledTuiAgents: [],
         agentCmdOverrides: { cursor: 'cursor-agent --beta' },
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: {}
       })
     })
@@ -586,6 +590,7 @@ describe('OrcaRuntimeService', () => {
         disabledTuiAgents: [],
         agentCmdOverrides: { cursor: 'cursor-agent --beta' },
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: {}
       })
     })
@@ -616,6 +621,7 @@ describe('OrcaRuntimeService', () => {
         disabledTuiAgents: [],
         agentCmdOverrides: { cursor: 'cursor-agent --beta' },
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: {}
       })
     })
@@ -666,6 +672,7 @@ describe('OrcaRuntimeService', () => {
         disabledTuiAgents: [],
         agentCmdOverrides: {},
         agentDefaultArgs: { cursor: '--force' },
+        agentPermissionMode: 'ask' as const,
         agentDefaultEnv: {}
       })
     } as never)

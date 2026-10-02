@@ -21,6 +21,8 @@ import { normalizeTerminalCustomThemes } from '../../../../shared/terminal-custo
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
 import { readStoredWebRuntimeEnvironment } from '../web-runtime-environment'
 import { mergeSettings, mergeWebUIState } from './web-preference-normalization'
+import { isAgentPermissionMode } from '../../../../shared/tui-agent-permissions'
+import { liftComposedAgentLaunchProfile } from '../../../../shared/agent-launch-profile-lift'
 import { callRuntimeResult } from './web-runtime-calls'
 import { requireActiveEnvironmentOrNull, webRuntimeState } from './web-runtime-session'
 import { SETTINGS_STORAGE_KEY, UI_STORAGE_KEY, readJson, writeJson } from './web-storage'
@@ -39,7 +41,12 @@ export function getStoredSettings(): GlobalSettings {
     ...normalizeTerminalCursorStyleDefault(stored),
     ...normalizeOsc52ClipboardDefaultOn(stored),
     terminalCustomThemes: normalizeTerminalCustomThemes(stored.terminalCustomThemes),
-    uiLanguage: normalizeUiLanguage(stored.uiLanguage)
+    uiLanguage: normalizeUiLanguage(stored.uiLanguage),
+    // Why: blobs saved before the mode was typed carry the permission flag inside each agent's args.
+    ...(isAgentPermissionMode(stored.agentPermissionMode) ||
+    (stored.agentDefaultArgs === undefined && stored.agentDefaultEnv === undefined)
+      ? {}
+      : liftComposedAgentLaunchProfile(stored))
   }
   if (
     rawStoredSettings &&
@@ -55,7 +62,8 @@ export function getStoredSettings(): GlobalSettings {
       stored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers !==
         migratedStored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers ||
       stored.terminalCustomThemes !== migratedStored.terminalCustomThemes ||
-      stored.uiLanguage !== migratedStored.uiLanguage)
+      stored.uiLanguage !== migratedStored.uiLanguage ||
+      stored.agentPermissionMode !== migratedStored.agentPermissionMode)
   ) {
     try {
       const parsed = JSON.parse(rawStoredSettings) as unknown

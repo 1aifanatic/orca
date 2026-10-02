@@ -1,7 +1,11 @@
-import { TUI_AGENT_CONFIG } from './tui-agent-config'
+import { TUI_AGENT_CONFIG, isTuiAgent } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
 
-export type AgentPermissionMode = 'yolo' | 'manual' | 'mixed'
+/** Whether Orca launches an agent with its permission-bypass flag (`bypass`, shown as Yolo) or without it (`ask`). */
+export type AgentPermissionMode = 'bypass' | 'ask'
+
+/** What an untouched profile gets; Orca has shipped agents in Yolo by default. */
+export const DEFAULT_AGENT_PERMISSION_MODE: AgentPermissionMode = 'bypass'
 
 export const YOLO_TUI_AGENT_ARGS: Partial<Record<TuiAgent, string>> = {
   claude: '--dangerously-skip-permissions',
@@ -41,132 +45,81 @@ export const YOLO_TUI_AGENT_ENV: Partial<Record<TuiAgent, Record<string, string>
   goose: { GOOSE_MODE: 'auto' }
 }
 
-const PERMISSION_AGENT_IDS = Object.keys(TUI_AGENT_CONFIG).filter(
+export const PERMISSION_AGENT_IDS: readonly TuiAgent[] = Object.keys(TUI_AGENT_CONFIG).filter(
   (agent): agent is TuiAgent => agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
 )
 
-function normalizeArgs(value: string | null | undefined): string {
-  return value?.trim() ?? ''
+/**
+ * Option names that change an agent's permission posture, beyond the first word of its bypass
+ * flag. Used only to warn in Settings when free-text Arguments carry one.
+ */
+const EXTRA_PERMISSION_OPTION_NAMES: Partial<Record<TuiAgent, readonly string[]>> = {
+  claude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
+  'claude-agent-teams': ['--permission-mode', '--allow-dangerously-skip-permissions'],
+  openclaude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
+  codex: ['--yolo', '--ask-for-approval', '-a', '--sandbox', '-s', '--full-auto']
 }
 
-function sameEnv(
-  left: Record<string, string> | null | undefined,
-  right: Record<string, string> | null | undefined
-): boolean {
-  const leftEntries = Object.entries(left ?? {})
-  const rightEntries = Object.entries(right ?? {})
-  if (leftEntries.length !== rightEntries.length) {
-    return false
+/** The persisted permission settings; part of GlobalSettings. */
+export type AgentPermissionSettingsFields = {
+  /** Mode every agent launches with unless it has its own override. Absent only on profiles saved
+   *  before the mode was typed, which is what the load-time migration keys on. */
+  agentPermissionMode?: AgentPermissionMode
+  /** Agents whose permission mode differs from `agentPermissionMode`. */
+  agentPermissionModeOverrides?: Partial<Record<TuiAgent, AgentPermissionMode>>
+}
+
+export function isAgentPermissionMode(value: unknown): value is AgentPermissionMode {
+  return value === 'bypass' || value === 'ask'
+}
+
+export function agentHasPermissionMode(agent: TuiAgent): boolean {
+  return agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
+}
+
+export function normalizeAgentPermissionModeOverrides(
+  value: unknown
+): Partial<Record<TuiAgent, AgentPermissionMode>> {
+  const normalized: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
+  if (!value || typeof value !== 'object') {
+    return normalized
   }
-  return leftEntries.every(([name, value]) => right?.[name] === value)
-}
-
-function resolveAgentPermissionMode(args: string, yoloArgs: string): AgentPermissionMode {
-  if (!args) {
-    return 'manual'
+  for (const [agent, mode] of Object.entries(value)) {
+    if (isTuiAgent(agent) && isAgentPermissionMode(mode)) {
+      normalized[agent] = mode
+    }
   }
-  return args === yoloArgs ? 'yolo' : 'mixed'
+  return normalized
 }
 
-function resolveAgentEnvPermissionMode(
-  env: Record<string, string> | null | undefined,
-  yoloEnv: Record<string, string> | undefined
+/** The mode every agent without its own choice launches with. */
+export function resolveDefaultAgentPermissionMode(
+  settings: AgentPermissionSettingsFields | null | undefined
 ): AgentPermissionMode {
-  if (sameEnv(env, {})) {
-    return 'manual'
-  }
-  return sameEnv(env, yoloEnv) ? 'yolo' : 'mixed'
+  return isAgentPermissionMode(settings?.agentPermissionMode)
+    ? settings.agentPermissionMode
+    : DEFAULT_AGENT_PERMISSION_MODE
 }
 
-function combinePermissionModes(modes: AgentPermissionMode[]): AgentPermissionMode {
-  let sawYolo = false
-  let sawManual = false
-  let sawMixed = false
-
-  for (const mode of modes) {
-    if (mode === 'yolo') {
-      sawYolo = true
-    } else if (mode === 'manual') {
-      sawManual = true
-    } else {
-      sawMixed = true
-    }
-  }
-
-  if (sawMixed || (sawYolo && sawManual)) {
-    return 'mixed'
-  }
-  return sawYolo ? 'yolo' : 'manual'
+/** The agent's own choice if it has one, else the default every agent shares. */
+export function resolveAgentPermissionMode(
+  agent: TuiAgent,
+  settings: AgentPermissionSettingsFields | null | undefined
+): AgentPermissionMode {
+  const override = settings?.agentPermissionModeOverrides?.[agent]
+  return isAgentPermissionMode(override) ? override : resolveDefaultAgentPermissionMode(settings)
 }
 
-export function resolveTuiAgentPermissionMode(args: {
-  agent: TuiAgent
-  agentArgs?: string | null
-  agentEnv?: Record<string, string> | null
-}): AgentPermissionMode {
-  const modes: AgentPermissionMode[] = []
-  if (args.agent in YOLO_TUI_AGENT_ARGS) {
-    modes.push(
-      resolveAgentPermissionMode(
-        normalizeArgs(args.agentArgs),
-        YOLO_TUI_AGENT_ARGS[args.agent] ?? ''
-      )
-    )
-  }
-  if (args.agent in YOLO_TUI_AGENT_ENV) {
-    modes.push(resolveAgentEnvPermissionMode(args.agentEnv, YOLO_TUI_AGENT_ENV[args.agent]))
-  }
-
-  return combinePermissionModes(modes)
+/** The Settings switch: one mode for every agent, replacing any per-agent choice. */
+export function applyAgentPermissionModeToAll(
+  mode: AgentPermissionMode
+): Required<AgentPermissionSettingsFields> {
+  return { agentPermissionMode: mode, agentPermissionModeOverrides: {} }
 }
 
-export function resolveAgentPermissionModeSummary(args: {
-  agentDefaultArgs?: Partial<Record<TuiAgent, string>> | null
-  agentDefaultEnv?: Partial<Record<TuiAgent, Record<string, string>>> | null
-}): AgentPermissionMode {
-  const modes: AgentPermissionMode[] = []
-
-  for (const agent of PERMISSION_AGENT_IDS) {
-    modes.push(
-      resolveTuiAgentPermissionMode({
-        agent,
-        agentArgs: args.agentDefaultArgs?.[agent],
-        agentEnv: args.agentDefaultEnv?.[agent]
-      })
-    )
-  }
-
-  return combinePermissionModes(modes)
-}
-
-export function applyAgentPermissionMode(args: {
-  mode: Exclude<AgentPermissionMode, 'mixed'>
-  agentDefaultArgs?: Partial<Record<TuiAgent, string>> | null
-  agentDefaultEnv?: Partial<Record<TuiAgent, Record<string, string>>> | null
-}): {
-  agentDefaultArgs: Partial<Record<TuiAgent, string>>
-  agentDefaultEnv: Partial<Record<TuiAgent, Record<string, string>>>
-} {
-  const nextArgs = { ...args.agentDefaultArgs }
-  const nextEnv = { ...args.agentDefaultEnv }
-
-  for (const agent of PERMISSION_AGENT_IDS) {
-    if (agent in YOLO_TUI_AGENT_ARGS) {
-      const yoloArgs = YOLO_TUI_AGENT_ARGS[agent] ?? ''
-      const currentArgs = normalizeArgs(nextArgs[agent])
-      if (!currentArgs || currentArgs === yoloArgs) {
-        nextArgs[agent] = args.mode === 'yolo' ? yoloArgs : ''
-      }
-    }
-
-    if (agent in YOLO_TUI_AGENT_ENV) {
-      const yoloEnv = YOLO_TUI_AGENT_ENV[agent]
-      const currentEnv = nextEnv[agent]
-      if (sameEnv(currentEnv, {}) || sameEnv(currentEnv, yoloEnv)) {
-        nextEnv[agent] = args.mode === 'yolo' ? { ...yoloEnv } : {}
-      }
-    }
-  }
-
-  return { agentDefaultArgs: nextArgs, agentDefaultEnv: nextEnv }
+/** Option names in this agent's arguments that change its permission posture, in order. */
+export function agentPermissionOptionNames(agent: TuiAgent): readonly string[] {
+  const bypassName = YOLO_TUI_AGENT_ARGS[agent]?.split(/\s+/)[0]
+  const extra = EXTRA_PERMISSION_OPTION_NAMES[agent] ?? []
+  return bypassName && !extra.includes(bypassName) ? [bypassName, ...extra] : extra
 }

@@ -24,6 +24,11 @@ import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetr
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { RuntimeStore } from './runtime-store-contract'
+import {
+  composeTuiAgentLaunchArgsRecord,
+  composeTuiAgentLaunchEnvRecord
+} from '../../shared/tui-agent-launch-defaults'
+import { applyComposedAgentLaunchUpdate } from '../../shared/agent-launch-profile-lift'
 
 export type RuntimeClientSettings = Pick<
   GlobalSettings,
@@ -107,8 +112,9 @@ export class RuntimeClientSettingsController {
       defaultTuiAgent: settings.defaultTuiAgent ?? null,
       disabledTuiAgents: settings.disabledTuiAgents ?? [],
       agentCmdOverrides: settings.agentCmdOverrides ?? {},
-      agentDefaultArgs: settings.agentDefaultArgs ?? {},
-      agentDefaultEnv: settings.agentDefaultEnv ?? {},
+      // Why launch-ready: paired clients predate the typed permission mode and read the flag here.
+      agentDefaultArgs: composeTuiAgentLaunchArgsRecord(settings),
+      agentDefaultEnv: composeTuiAgentLaunchEnvRecord(settings),
       agentStatusHooksEnabled: settings.agentStatusHooksEnabled !== false,
       // Why projected: mobile's terminal Copy honours this, and a host predating
       // the setting sends no key, which the client reads as on (#19770).
@@ -154,7 +160,20 @@ export class RuntimeClientSettingsController {
     }
     const beforeSettings = this.store.getSettings()
     const before = beforeSettings.agentStatusHooksEnabled !== false
-    this.store.updateSettings(updates, { notifyListeners: true })
+    const { agentDefaultArgs, agentDefaultEnv, ...rest } = updates
+    this.store.updateSettings(
+      agentDefaultArgs !== undefined || agentDefaultEnv !== undefined
+        ? {
+            ...rest,
+            // Why: these arrive launch-ready (flag inline), the shape `get` publishes.
+            ...applyComposedAgentLaunchUpdate(beforeSettings, {
+              ...(agentDefaultArgs !== undefined ? { agentDefaultArgs } : {}),
+              ...(agentDefaultEnv !== undefined ? { agentDefaultEnv } : {})
+            })
+          }
+        : updates,
+      { notifyListeners: true }
+    )
     const settings = this.store.getSettings()
     if (updates.worktreeVisibilityDefaults !== undefined) {
       this.notifyReposChanged?.()
