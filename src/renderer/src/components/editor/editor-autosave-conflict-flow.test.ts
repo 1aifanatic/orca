@@ -131,7 +131,8 @@ describe('editor autosave changed-on-disk conflict flow', () => {
         filePath: '/repo/file.ts',
         content: 'user edit',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
     } finally {
       cleanup()
@@ -164,7 +165,8 @@ describe('editor autosave changed-on-disk conflict flow', () => {
         filePath: '/repo/file.ts',
         content: 'restored draft',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
     } finally {
       cleanup()
@@ -185,7 +187,8 @@ describe('editor autosave changed-on-disk conflict flow', () => {
         filePath: '/repo/file.ts',
         content: 'user version',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
       const file = store.getState().openFiles[0]
       expect(file?.isDirty).toBe(false)

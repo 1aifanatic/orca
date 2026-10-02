@@ -189,7 +189,8 @@ describe('attachEditorAutosaveController', () => {
         filePath: '/repo/file.ts',
         content: 'edited',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
       expect(store.getState().openFiles[0]?.isDirty).toBe(false)
       expect(store.getState().editorDrafts).toEqual({})
@@ -460,7 +461,8 @@ describe('attachEditorAutosaveController', () => {
         filePath: '/repo/file.md',
         content: 'pending rich edit',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
       expect(store.getState().openFiles[0]?.isDirty).toBe(false)
       expect(store.getState().editorDrafts).toEqual({})
@@ -744,7 +746,8 @@ describe('attachEditorAutosaveController', () => {
         filePath: '/repo/file.md',
         content: 'after save',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
       expect(store.getState().openFiles[0]?.isDirty).toBe(false)
     } finally {

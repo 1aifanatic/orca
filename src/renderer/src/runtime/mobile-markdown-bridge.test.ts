@@ -117,7 +117,8 @@ describe('mobile markdown bridge', () => {
         filePath: '/repo/README.md',
         content: 'mobile edit',
         connectionId: undefined,
-        expectedExecutionHostId: 'local'
+        expectedExecutionHostId: 'local',
+        savesOpenEditorFile: true
       })
       expect(response).toMatchObject({
         id: 'save-2',

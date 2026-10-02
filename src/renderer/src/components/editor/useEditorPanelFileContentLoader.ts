@@ -155,8 +155,8 @@ export function useEditorPanelFileContentLoader({
               throw new Error('External local files are not available for remote workspaces.')
             }
             if (!externalSshOwnerId) {
-              // Why: client-local external tabs need their main-process path grant
-              // refreshed because that authorization is only held in memory.
+              // Why: plain reads and saves no longer need it, but other file features
+              // (e.g. running a notebook) still check this in-memory grant.
               await window.api.fs.authorizeExternalPath({ targetPath: filePath })
               // Why: that grant covers the client path, so this read must stay off the
               // worktree's SSH host.

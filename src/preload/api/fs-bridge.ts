@@ -91,6 +91,7 @@ export const fsApi = {
       filePath: string
       content: string
       connectionId?: string
+      savesOpenEditorFile?: boolean
     } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:writeFile', args),
   createFile: (

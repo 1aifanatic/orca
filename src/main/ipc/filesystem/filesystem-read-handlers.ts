@@ -10,7 +10,7 @@ import type { DirEntry, MarkdownDocument } from '../../../shared/filesystem-entr
 import { sortDirEntries } from '../../../shared/file-name-sort'
 import { requireSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { resolveRegisteredWorktreePath } from '../registered-worktree-roots-cache'
-import { resolveAuthorizedPath } from '../filesystem-auth'
+import { resolveAuthorizedPath, resolveUserNamedPath } from '../filesystem-auth'
 import { isENOENT } from '../filesystem-path-containment'
 import { listMarkdownDocuments, markdownDocumentsFromRelativePaths } from '../markdown-documents'
 import { getLocalGitOptionsForRegisteredWorktree } from '../local-worktree-runtime-options'
@@ -83,7 +83,8 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
         const provider = requireSshFilesystemProvider(args.connectionId)
         return provider.readFile(args.filePath)
       }
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      // Why: a single-file read names its target directly, so it needs no grant outside projects.
+      const filePath = await resolveUserNamedPath(args.filePath, store)
       if (args.includeLocalLogMetadata === true) {
         return readLocalLogSnapshot(filePath)
       }
@@ -150,7 +151,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
         const result = await provider.stat(args.filePath)
         return { size: result.size, isDirectory: result.type === 'directory', mtime: result.mtime }
       }
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveUserNamedPath(args.filePath, store)
       const stats = await stat(filePath)
       return { size: stats.size, isDirectory: stats.isDirectory(), mtime: stats.mtimeMs }
     }
@@ -173,7 +174,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
             try {
               await (provider
                 ? provider.stat(filePath)
-                : stat(await resolveAuthorizedPath(filePath, store)))
+                : stat(await resolveUserNamedPath(filePath, store)))
               return true
             } catch (error) {
               if (isENOENT(error)) {
@@ -196,7 +197,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
           await provider.stat(args.filePath)
           return true
         }
-        const filePath = await resolveAuthorizedPath(args.filePath, store)
+        const filePath = await resolveUserNamedPath(args.filePath, store)
         await stat(filePath)
         return true
       } catch (error) {
