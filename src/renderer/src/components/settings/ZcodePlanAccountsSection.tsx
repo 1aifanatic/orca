@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { SearchableSetting } from './SearchableSetting'
 import { collectZcodeUsageWindows, ZcodeUsageWindowView } from './zcode-plan-usage-windows'
 import { useZcodePlanCredentials } from './use-zcode-plan-credentials'
+import { ZcodeCliSetupSection } from './ZcodeCliSetupSection'
 import { UnsealedCredentialNotice } from './UnsealedCredentialNotice'
 
 const SEARCH_KEYWORDS = [
@@ -329,6 +330,8 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
           )}
         </p>
       </SearchableSetting>
+
+      {credentialEditable ? <ZcodeCliSetupSection /> : null}
 
       {usageWindows.length > 0 ? (
         <SearchableSetting
