@@ -17,6 +17,10 @@ export const IMPORT_BATCH_ROWS = 512
 /** Row JSON per batch, in UTF-16 units: a batch of large rows is split, so each main-thread task
  *  handles about the same bytes (a quarter of a full batch of the seed's 2.3 KB rows). */
 export const IMPORT_BATCH_CHARS = 256 * 1024
+/** Row JSON per copy commit. Far above a page of ordinary rows (the seed's largest is 1.2 Mi, at
+ *  most 25 ms of main thread), so only a page of huge rows splits: every commit also rewrites a
+ *  fixed set of pages, so splitting ordinary pages means more checkpoints for the same rows. */
+export const IMPORT_COMMIT_CHARS = 2 * 1024 * 1024
 
 const SELECT_LEGACY_EPOCH = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
 const SELECT_LEGACY_TIP =

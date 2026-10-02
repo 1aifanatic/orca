@@ -50,6 +50,7 @@ import {
   foldLegacyJournal,
   IMPORT_BATCH_CHARS,
   IMPORT_BATCH_ROWS,
+  IMPORT_COMMIT_CHARS,
   legacyRowBatches,
   openLegacySource,
   readLegacyHead,
@@ -77,8 +78,10 @@ type PerSessionJournalImportDeps = {
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
   batchRows?: number
-  /** Row JSON per batch; see `IMPORT_BATCH_CHARS`. */
+  /** Row JSON per verify batch; see `IMPORT_BATCH_CHARS`. */
   batchChars?: number
+  /** Row JSON per copy commit; see `IMPORT_COMMIT_CHARS`. */
+  commitChars?: number
   /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
   yieldTask?: () => Promise<void>
 }
@@ -242,7 +245,7 @@ async function copyLegacyJournal(
   }
   let first = true
   const batches = legacyRowBatches(source, sessionId, epoch, batchRows)
-  for (const batch of charBoundedBatches(batches, batchChars)) {
+  for (const batch of charBoundedBatches(batches, input.commitChars ?? IMPORT_COMMIT_CHARS)) {
     if (!first) {
       await yieldTask()
     }

@@ -408,7 +408,7 @@ describe('each task’s share of a chat’s bytes (C3)', () => {
     expect(parts.map((part) => part.last)).toEqual([false, false, true])
   })
 
-  it('copies, verifies and folds a chat of large rows a part per task, not a whole page', async () => {
+  it('verifies and folds a chat of large rows a part per task, and copies its page in one commit', async () => {
     const { directory, rows } = await stageChat('session-large', manyItems)
     const database = openTestJournalHostDatabase(root)
     const batch = vi.spyOn(database, 'unsyncedTransaction')
@@ -416,10 +416,10 @@ describe('each task’s share of a chat’s bytes (C3)', () => {
 
     await importChat('session-large', directory, { batchChars: 1, yieldTask })
 
-    // One copy transaction per row (each row is over the share), after the leftover delete.
-    expect(batch).toHaveBeenCalledTimes(rows.length + 1)
-    // Each row's copy, both verify sides, and the publish.
-    expect(yieldTask.mock.calls.length).toBeGreaterThanOrEqual(3 * (rows.length - 1) + 1)
+    // The leftover delete, then the whole page in one commit: more commits mean more checkpoints.
+    expect(batch).toHaveBeenCalledTimes(2)
+    // Each row of both verify sides is a task of its own.
+    expect(yieldTask.mock.calls.length).toBeGreaterThanOrEqual(2 * (rows.length - 1) + 1)
 
     database.db.prepare('DELETE FROM journal_session_state').run()
     const folded = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
@@ -428,6 +428,16 @@ describe('each task’s share of a chat’s bytes (C3)', () => {
       yieldTask: folded
     })
     expect(folded.mock.calls.length).toBeGreaterThanOrEqual(rows.length - 1)
+  })
+
+  it('splits a copy commit only past its own share, so only a page of huge rows splits', async () => {
+    const { directory, rows } = await stageChat('session-huge', manyItems)
+    const database = openTestJournalHostDatabase(root)
+    const batch = vi.spyOn(database, 'unsyncedTransaction')
+
+    await importChat('session-huge', directory, { commitChars: 1 })
+
+    expect(batch).toHaveBeenCalledTimes(rows.length + 1)
   })
 })
 
