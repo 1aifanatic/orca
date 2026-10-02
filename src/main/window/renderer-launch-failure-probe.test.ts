@@ -9,6 +9,8 @@ vi.mock('../crash-reporting/durable-crash-breadcrumb', () => ({
   recordDurableCrashBreadcrumb: recordDurableCrashBreadcrumbMock
 }))
 
+import { withPlatform } from './createMainWindow-test-harness'
+
 import {
   classifyLaunchProbeError,
   probeRendererLaunchCapacity,
@@ -17,6 +19,10 @@ import {
 
 function spawnError(code: string): Error {
   return Object.assign(new Error(`spawn /bin/sh ${code}`), { code, errno: -35, syscall: 'spawn' })
+}
+
+function recordPosixFailure(now: number) {
+  return withPlatform('darwin', () => recordRendererLaunchFailureProbe({ exitCode: 1003 }, now))
 }
 
 describe('classifyLaunchProbeError', () => {
@@ -60,21 +66,28 @@ describe('probeRendererLaunchCapacity', () => {
     expect(runProcessMock).not.toHaveBeenCalled()
   })
 
+  it('records a skipped Windows probe without spawning a child', async () => {
+    await expect(
+      withPlatform('win32', () => recordRendererLaunchFailureProbe({ exitCode: 18 }, 100_000))
+    ).resolves.toBe('skipped')
+    expect(runProcessMock).not.toHaveBeenCalled()
+    expect(recordDurableCrashBreadcrumbMock).toHaveBeenCalledWith('renderer_launch_failed_probe', {
+      spawnError: 'skipped',
+      exitCode: 18
+    })
+  })
+
   it('never rejects when the breadcrumb write throws', async () => {
     runProcessMock.mockRejectedValue(spawnError('EAGAIN'))
     recordDurableCrashBreadcrumbMock.mockImplementation(() => {
       throw new Error('disk full')
     })
-    await expect(recordRendererLaunchFailureProbe({ exitCode: 1003 }, 90_000)).resolves.toBe(
-      'EAGAIN'
-    )
+    await expect(recordPosixFailure(90_000)).resolves.toBe('EAGAIN')
   })
 
   it('records the refused spawn as a durable breadcrumb', async () => {
     runProcessMock.mockRejectedValue(spawnError('EAGAIN'))
-    await expect(recordRendererLaunchFailureProbe({ exitCode: 1003 }, 10_000)).resolves.toBe(
-      'EAGAIN'
-    )
+    await expect(recordPosixFailure(10_000)).resolves.toBe('EAGAIN')
     expect(recordDurableCrashBreadcrumbMock).toHaveBeenCalledWith('renderer_launch_failed_probe', {
       spawnError: 'EAGAIN',
       exitCode: 1003
@@ -83,13 +96,13 @@ describe('probeRendererLaunchCapacity', () => {
 
   it('probes once for the duplicate render-process-gone of one failed launch', async () => {
     runProcessMock.mockRejectedValue(spawnError('EAGAIN'))
-    await recordRendererLaunchFailureProbe({ exitCode: 1003 }, 50_000)
-    await recordRendererLaunchFailureProbe({ exitCode: 1003 }, 50_010)
+    await recordPosixFailure(50_000)
+    await recordPosixFailure(50_010)
     expect(runProcessMock).toHaveBeenCalledOnce()
     expect(recordDurableCrashBreadcrumbMock).toHaveBeenCalledOnce()
 
     // The next backoff retry fails again: a fresh probe and breadcrumb.
-    await recordRendererLaunchFailureProbe({ exitCode: 1003 }, 50_250)
+    await recordPosixFailure(50_250)
     expect(runProcessMock).toHaveBeenCalledTimes(2)
     expect(recordDurableCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
   })
