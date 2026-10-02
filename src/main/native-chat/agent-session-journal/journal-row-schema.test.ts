@@ -421,7 +421,7 @@ describe('producer linkage on the persisted row', () => {
     expect(parsed.ok && 'agentId' in parsed.row).toBe(false)
   })
 
-  it('leaves a strict prompt shape able to parse, because linkage rides the row', () => {
+  it('parses a prompt shape with linkage on the row', () => {
     const question = {
       ...BASE,
       v: 3,
@@ -440,10 +440,9 @@ describe('producer linkage on the persisted row', () => {
     expect(parsed.ok).toBe(true)
   })
 
-  it('rejects the same row when linkage is put INSIDE the strict shape', () => {
-    // The positive control for the test above: proof the strictness it avoids is
-    // real, rather than the row parsing for some unrelated reason. This is why
-    // the bundle rides the row base and never a body.
+  it('reads the same row with linkage put INSIDE a prompt option, ignoring the key there', () => {
+    // Older builds read prompt options strictly and dropped the journal from such a row, which is
+    // why the bundle rides the row base and never a body. This build ignores and keeps the key.
     const smuggled = {
       ...BASE,
       v: 3,
@@ -457,6 +456,8 @@ describe('producer linkage on the persisted row', () => {
         resolution
       }
     }
-    expect(parseJournalRow(JSON.stringify(smuggled)).ok).toBe(false)
+    const parsed = parseJournalRow(JSON.stringify(smuggled))
+    expect(parsed.ok && parsed.row.kind === 'item' && parsed.row.body).toEqual(smuggled.body)
+    expect(parsed.ok && 'agentId' in parsed.row).toBe(false)
   })
 })

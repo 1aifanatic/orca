@@ -12,6 +12,13 @@
 // rule delete the journal from an unknown kind, so a new kind either ships its
 // reader first and is written only once no supported build lacks that reader,
 // or is written at a bumped `v`.
+//
+// Inside a known row the same holds a level down. A body or lifecycle mutation of a kind this
+// build does not know is UNREADABLE. An optional body field it cannot parse is dropped or makes
+// the row UNREADABLE, as the field declares (agent-session-journal-schemas.ts). Only a required
+// field that fails is damage, which the open repairs. Builds from before this rule delete the
+// journal from all three, so the same reader-first-or-`v` rule applies to a new body kind, and an
+// optional field never changes type: a new meaning is a new key.
 
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
@@ -24,15 +31,15 @@ import {
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
 import {
-  isAdmissibleAgentJournalItemBody,
-  isAdmissibleAgentJournalMessageBody
-} from '../../../shared/agent-session-journal-schemas'
-import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
+  readAgentJournalItemBody,
+  readAgentJournalMessageBody,
+  type AgentJournalContentVerdict
+} from '../../../shared/agent-session-journal-body-admission'
 import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
 
-/** Producer linkage rides the row BASE rather than the body: the two nested
- *  prompt shapes are `.strict()`, so an unknown key on a body would make the
- *  whole row parse as malformed. It is also deliberately not a `v` bump — an
+/** Producer linkage rides the row BASE rather than the body: older builds read
+ *  the two nested prompt shapes strictly, so an unknown key there made the whole
+ *  row parse as malformed. It is also deliberately not a `v` bump — an
  *  unknown `v` makes a row unreadable and latches the host read-only, while an
  *  unknown KEY is ignored below, so an older host reads a stamped row and
  *  behaves exactly as it does today. */
@@ -229,19 +236,16 @@ export function parseJournalRow(line: string): JournalRowParse {
       }
     }
   }
-  dropUnusableContextUsage(upcast)
-  if (isJournalRow(upcast)) {
+  const content = journalRowContent(upcast)
+  if (isReadableJournalRow(upcast, content)) {
     return { ok: true, row: upcast }
   }
-  // A newer build's kind is placed by the envelope every row keeps; one without it is damage.
-  const { kind } = upcast
-  const unknownKind = typeof kind === 'string' && kind !== '' && !KNOWN_ROW_KINDS.has(kind)
-  return { ok: false, unreadable: unknownKind && hasJournalRowEnvelope(upcast) }
+  return { ok: false, unreadable: content === 'unreadable' }
 }
 
 /** Linkage ids this build cannot trust, removed from a row it still keeps.
  *
- *  Deliberately NOT part of `isJournalRow`: rejecting a row there drops it from
+ *  Deliberately NOT part of `journalRowContent`: rejecting a row there drops it from
  *  the timeline, so a validator tightened against one bad field becomes a
  *  whole-store kill switch. Dropping the field degrades the row to the
  *  session's own agent — what every row said before linkage existed — while
@@ -278,28 +282,6 @@ function dropUnusableTurnScope(record: Record<string, unknown>): void {
   }
 }
 
-/** Context facts this build cannot read, removed from the turn row that carries
- *  them. Same reasoning as linkage: they are an annotation on the turn, and
- *  rejecting the row for them would truncate the journal from that row on. */
-function dropUnusableContextUsage(record: Record<string, unknown>): void {
-  const bodies = [
-    record.kind === 'item' ? record.body : undefined,
-    ...(record.kind === 'lifecycle-batch' && Array.isArray(record.mutations)
-      ? record.mutations.map((mutation) => (isPlainObject(mutation) ? mutation.body : undefined))
-      : [])
-  ]
-  for (const body of bodies) {
-    if (
-      isPlainObject(body) &&
-      body.kind === 'turn' &&
-      body.contextUsage !== undefined &&
-      !isAdmissibleAgentSessionContextUsage(body.contextUsage)
-    ) {
-      delete body.contextUsage
-    }
-  }
-}
-
 /** Read-time upcast chain. Each step raises a row exactly one version. */
 function upcastRow(record: Record<string, unknown>, version: number): Record<string, unknown> {
   let current = record
@@ -322,46 +304,85 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  Render BODIES are the exception and validate against the canonical deep
  *  schema — their nested shapes are dereferenced unguarded all the way to the
  *  rendered surface, so a JSON-valid corruption must fail here, not there. */
-function isJournalRow(record: Record<string, unknown>): record is JournalRow {
-  const fieldCheck = typeof record.kind === 'string' ? KNOWN_ROW_KINDS.get(record.kind) : undefined
-  return fieldCheck !== undefined && hasJournalRowEnvelope(record) && fieldCheck(record)
+function journalRowContent(record: Record<string, unknown>): AgentJournalContentVerdict {
+  if (!hasJournalRowEnvelope(record)) {
+    return 'malformed'
+  }
+  const { kind } = record
+  const contentCheck = typeof kind === 'string' ? KNOWN_ROW_KINDS.get(kind) : undefined
+  if (contentCheck) {
+    return contentCheck(record)
+  }
+  // A newer build's kind is placed by the envelope every row keeps.
+  return typeof kind === 'string' && kind !== '' ? 'unreadable' : 'malformed'
+}
+
+/** Narrows a record by the verdict `journalRowContent` gave that same record. */
+function isReadableJournalRow(
+  _record: Record<string, unknown>,
+  content: AgentJournalContentVerdict
+): _record is JournalRow {
+  return content === 'readable'
+}
+
+/** Fields first: a body is read only once the fields that place it hold. */
+function contentWhen(
+  fields: boolean,
+  content: () => AgentJournalContentVerdict
+): AgentJournalContentVerdict {
+  return fields ? content() : 'malformed'
 }
 
 /** Each kind's own fields, keyed by every kind the union holds: a kind without a check here fails
  *  to compile, never reads as a newer build's kind. */
-const ROW_FIELD_CHECK_BY_KIND: Record<
+const ROW_CONTENT_CHECK_BY_KIND: Record<
   JournalRow['kind'],
-  (record: Record<string, unknown>) => boolean
+  (record: Record<string, unknown>) => AgentJournalContentVerdict
 > = {
-  epoch: (record) => typeof record.reason === 'string' && isPlainObject(record.providerHandle),
+  epoch: (record) =>
+    contentWhen(
+      typeof record.reason === 'string' && isPlainObject(record.providerHandle),
+      () => 'readable'
+    ),
   item: (record) =>
-    typeof record.itemId === 'string' &&
-    Number.isInteger(record.revision) &&
-    isAdmissibleAgentJournalItemBody(record.body),
-  tombstone: (record) => typeof record.itemId === 'string' && Number.isInteger(record.revision),
+    contentWhen(typeof record.itemId === 'string' && Number.isInteger(record.revision), () =>
+      readAgentJournalItemBody(record.body)
+    ),
+  tombstone: (record) =>
+    contentWhen(
+      typeof record.itemId === 'string' && Number.isInteger(record.revision),
+      () => 'readable'
+    ),
   submission: (record) =>
-    typeof record.clientMessageId === 'string' &&
-    record.clientMessageId.length > 0 &&
-    typeof record.payloadFingerprint === 'string' &&
-    isPlainObject(record.providerHandle) &&
-    isAdmissibleAgentJournalMessageBody(record.body),
+    contentWhen(
+      typeof record.clientMessageId === 'string' &&
+        record.clientMessageId.length > 0 &&
+        typeof record.payloadFingerprint === 'string' &&
+        isPlainObject(record.providerHandle),
+      () => readAgentJournalMessageBody(record.body)
+    ),
   dispatch: (record) =>
-    typeof record.clientMessageId === 'string' &&
-    record.clientMessageId.length > 0 &&
-    typeof record.state === 'string' &&
-    record.state.length > 0 &&
-    (record.providerItemId === null || typeof record.providerItemId === 'string') &&
-    (record.reason === null || typeof record.reason === 'string'),
+    contentWhen(
+      typeof record.clientMessageId === 'string' &&
+        record.clientMessageId.length > 0 &&
+        typeof record.state === 'string' &&
+        record.state.length > 0 &&
+        (record.providerItemId === null || typeof record.providerItemId === 'string') &&
+        (record.reason === null || typeof record.reason === 'string'),
+      () => 'readable'
+    ),
   'lifecycle-batch': (record) =>
-    typeof record.settlementId === 'string' &&
-    record.settlementId.length > 0 &&
-    Array.isArray(record.mutations) &&
-    record.mutations.length > 0 &&
-    record.mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
-    Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES &&
-    record.mutations.every(isLifecycleMutation)
+    contentWhen(
+      typeof record.settlementId === 'string' &&
+        record.settlementId.length > 0 &&
+        Array.isArray(record.mutations) &&
+        record.mutations.length > 0 &&
+        record.mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
+        Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES,
+      () => lifecycleMutationsContent(record.mutations)
+    )
 }
-const KNOWN_ROW_KINDS = new Map(Object.entries(ROW_FIELD_CHECK_BY_KIND))
+const KNOWN_ROW_KINDS = new Map(Object.entries(ROW_CONTENT_CHECK_BY_KIND))
 
 /** The fields every row keeps whatever its kind: its epoch, its place in it, its writer, its time. */
 function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
@@ -375,18 +396,36 @@ function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
   )
 }
 
-function isLifecycleMutation(value: unknown): value is JournalLifecycleMutation {
+/** Each mutation kind's own fields, keyed like the row kinds and for the same reason. */
+const MUTATION_CONTENT_CHECK_BY_KIND: Record<
+  JournalLifecycleMutation['kind'],
+  (mutation: Record<string, unknown>) => AgentJournalContentVerdict
+> = {
+  item: (mutation) =>
+    contentWhen(Number.isInteger(mutation.revision), () => readAgentJournalItemBody(mutation.body)),
+  tombstone: (mutation) => contentWhen(Number.isInteger(mutation.revision), () => 'readable')
+}
+const KNOWN_MUTATION_KINDS = new Map(Object.entries(MUTATION_CONTENT_CHECK_BY_KIND))
+
+/** Damage anywhere is damage; otherwise a mutation a newer build wrote makes the batch unreadable. */
+function lifecycleMutationsContent(mutations: unknown): AgentJournalContentVerdict {
+  const verdicts = (Array.isArray(mutations) ? mutations : []).map(lifecycleMutationContent)
+  if (verdicts.includes('malformed')) {
+    return 'malformed'
+  }
+  return verdicts.includes('unreadable') ? 'unreadable' : 'readable'
+}
+
+function lifecycleMutationContent(value: unknown): AgentJournalContentVerdict {
   if (!isPlainObject(value) || typeof value.itemId !== 'string') {
-    return false
+    return 'malformed'
   }
-  if (value.kind === 'tombstone') {
-    return Number.isInteger(value.revision)
+  const { kind } = value
+  const contentCheck = typeof kind === 'string' ? KNOWN_MUTATION_KINDS.get(kind) : undefined
+  if (contentCheck) {
+    return contentCheck(value)
   }
-  return (
-    value.kind === 'item' &&
-    Number.isInteger(value.revision) &&
-    isAdmissibleAgentJournalItemBody(value.body)
-  )
+  return typeof kind === 'string' && kind !== '' ? 'unreadable' : 'malformed'
 }
 
 /** Approximate on-disk cost of a row, used for the per-session size bound. */
