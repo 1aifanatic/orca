@@ -3,8 +3,8 @@
 // Version 5 creates the status table empty, so after an upgrade every chat has no row until
 // something writes it. Rather than open each chat (its lease, settle and conversation), its rows are
 // folded a bounded part per task, as a replay folds them, then the row is derived and written in one
-// short transaction, only while the chat is still where the fold read it. The startup pass folds a
-// slice of chats and writes their rows in one transaction; the background copy writes one at a time.
+// short transaction, only while the chat is still where the fold read it. Callers fold chats one at a
+// time and write a slice of their rows in one transaction.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { JournalHostDatabase } from './journal-host-database'
@@ -61,20 +61,6 @@ type FoldOptions = {
   yieldTask?: () => Promise<void>
   /** Quit: the fold stops within one part and nothing is written. */
   signal?: AbortSignal
-}
-
-/** The chat's row and status: folded, then written alone. Null when something wrote the row or
- *  moved the chat first, or as `foldJournalSessionStatus` says. */
-export async function backfillJournalSessionStatus(
-  database: JournalHostDatabase,
-  sessionId: string,
-  options: FoldOptions = {}
-): Promise<{ load: JournalLoad; status: JournalSessionStatus } | null> {
-  const folded = await foldJournalSessionStatus(database, sessionId, options)
-  if (!folded || options.signal?.aborted) {
-    return null
-  }
-  return writeJournalSessionStatuses(database, [folded]).length > 0 ? folded : null
 }
 
 /** The chat's rows folded a part per task, as a replay folds them, and its status derived. Null when
