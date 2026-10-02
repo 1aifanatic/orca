@@ -28,7 +28,8 @@ import {
 } from '../../shared/opencode-installed-plugin'
 import {
   openCodeTuiPluginDirName,
-  writeOpenCodeTuiPlugin
+  writeOpenCodeTuiPlugin,
+  writeOpenCodeTuiPluginDirectory
 } from '../../shared/opencode-tui-plugin-install'
 
 export { getOpenCode2PluginSource, getOpenCodeFamilyPluginSource, getOpenCodePluginSource }
@@ -54,6 +55,7 @@ type OpenCodeHookVariant = {
   pluginSource: () => string
   /** Also install the module as an OpenCode 2 TUI plugin (never for forks without one). */
   installsTuiPlugin?: boolean
+  tuiOnlyDirectory?: string
 }
 
 // Why: session IDs may contain path separators and are hashed downstream; cap pathological input.
@@ -73,6 +75,7 @@ export class OpenCodeHookService {
   private readonly legacyHooksDir: string
   private readonly overlayDir: string
   private readonly installsTuiPlugin: boolean
+  private readonly tuiOnlyDirectory: string | undefined
 
   constructor(variant?: OpenCodeHookVariant | (() => string)) {
     const config: OpenCodeHookVariant =
@@ -92,6 +95,7 @@ export class OpenCodeHookService {
           })
     this.pluginSource = config.pluginSource
     this.installsTuiPlugin = config.installsTuiPlugin === true
+    this.tuiOnlyDirectory = config.tuiOnlyDirectory
     this.pluginFileName = config.pluginFileName
     this.legacyHooksDir = config.legacyHooksDir
     this.overlayDir = config.overlayDir
@@ -134,6 +138,9 @@ export class OpenCodeHookService {
   // Why: pre-1.4.209 Orca left a server()-only plugin here that OpenCode 2 rejects. Only helps
   // processes that load it later; a running OpenCode 2 service keeps its cached module until restarted.
   refreshLegacySharedPlugin(): void {
+    if (this.tuiOnlyDirectory) {
+      return
+    }
     const pluginsDir = join(this.getSharedConfigDir(), 'plugins')
     const pluginPath = join(pluginsDir, this.pluginFileName)
     try {
@@ -260,6 +267,7 @@ export class OpenCodeHookService {
             // Why: skip a user plugin sharing Orca's filename; mirroring it would let writePluginIntoOverlay clobber the user's file.
             if (
               pluginEntry.name === this.pluginFileName ||
+              pluginEntry.name === this.tuiOnlyDirectory ||
               (this.installsTuiPlugin &&
                 pluginEntry.name === openCodeTuiPluginDirName(this.pluginFileName))
             ) {
@@ -288,6 +296,10 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
+    if (this.tuiOnlyDirectory) {
+      writeOpenCodeTuiPluginDirectory(pluginsDir, this.tuiOnlyDirectory, source, 'overlay')
+      return
+    }
     this.writeTuiPlugin(pluginsDir, source, 'overlay')
     if (!isOverlayOpenCodePluginCurrent(pluginPath, source)) {
       writeOverlayOpenCodePluginAtomically(pluginPath, source)
@@ -299,6 +311,10 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
+    if (this.tuiOnlyDirectory) {
+      writeOpenCodeTuiPluginDirectory(pluginsDir, this.tuiOnlyDirectory, source)
+      return
+    }
     this.writeTuiPlugin(pluginsDir, source)
     if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
       writeCanonicalOpenCodePluginAtomically(pluginPath, source)
