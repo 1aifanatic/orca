@@ -135,7 +135,7 @@ describe("the document's frame on the page", () => {
         const transform = String(value)
         scales.push(/scale\(([^)]*)\)/.exec(transform)?.[1] ?? transform)
       }
-      write(name, value, priority)
+      write.call(style, name, value, priority)
     })
     // The fit's attempt ran and read the hidden host, and committed nothing.
     await framesUntil(() => widthsRead.includes(0))
