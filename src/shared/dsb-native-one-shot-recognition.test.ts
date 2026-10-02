@@ -16,6 +16,10 @@ describe('DeepSeek Build native one-shot identity exclusion', () => {
     'deepseek-build-agent.exe --print task',
     'deepseek-build-agent --single=task',
     'deepseek-build-agent -ptask',
+    'deepseek-build-agent -cp task',
+    'deepseek-build-agent -cptask',
+    'dsb agent -cp task',
+    'dsb run task',
     'deepseek-build-agent --resume saved-session --print task',
     'deepseek-build-agent --resume --prompt-file task.txt',
     'dsb --cwd folder agent --model deepseek-v4-flash --prompt-file task.txt',
@@ -36,7 +40,18 @@ describe('DeepSeek Build native one-shot identity exclusion', () => {
     'deepseek-build-agent --rules "use --prompt-file"',
     'deepseek-build-agent --system-prompt "run"',
     'dsb agent --model run',
-    'dsb agent --resume saved-session'
+    'dsb agent --resume saved-session',
+    'deepseek-build-agent run',
+    'dsb agent run',
+    'deepseek-build-agent --leader-socket run',
+    'deepseek-build-agent -mp',
+    'deepseek-build-agent -rp',
+    'deepseek-build-agent -sp',
+    'deepseek-build-agent -wp',
+    'deepseek-build-agent -cmp',
+    'deepseek-build-agent -crp',
+    'deepseek-build-agent -csp',
+    'deepseek-build-agent -cwp'
   ])('keeps interactive prompts and option values interactive: %s', (line) => {
     expect(recognizeAgentProcessFromCommandLine(line)?.agent).toBe('dsb')
   })

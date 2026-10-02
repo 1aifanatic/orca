@@ -42,7 +42,8 @@ const VALUE_OPTIONS = new Set([
   '--client-identifier',
   '--hunk-tracker-mode',
   '--installer',
-  '--debug-file'
+  '--debug-file',
+  '--leader-socket'
 ])
 
 const OPTIONAL_VALUE_OPTIONS = new Set(['--resume', '-r', '--worktree', '-w'])
@@ -72,6 +73,7 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
     commandIndex = tokens.indexOf(entrypoint, 1)
   }
   let forwardsNativeArgs = false
+  let outerCommandSeen = command === 'deepseek-build-agent'
   let outerSeparatorConsumed = false
   for (let index = commandIndex + 1; index < tokens.length; index += 1) {
     const token = tokens[index]
@@ -87,7 +89,7 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
       return false
     }
     const name = token.split('=', 1)[0]
-    if (ONE_SHOT_OPTIONS.has(name) || /^-p[^-]/.test(token)) {
+    if (ONE_SHOT_OPTIONS.has(name) || /^-c*p(?:[^-]|$)/.test(token)) {
       return true
     }
     if (VALUE_OPTIONS.has(name) && !token.includes('=')) {
@@ -106,11 +108,14 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
     if (token.startsWith('-')) {
       continue
     }
-    if (token === 'agent') {
-      forwardsNativeArgs = command !== 'deepseek-build-agent'
+    if (token === 'agent' && !outerCommandSeen) {
+      forwardsNativeArgs = true
+      outerCommandSeen = true
       continue
     }
-    return token === 'run'
+    if (!outerCommandSeen) {
+      return token === 'run'
+    }
   }
   return false
 }
