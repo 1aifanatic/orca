@@ -11,6 +11,12 @@
     "retrying": "Reintentando…"
   },
   "settings": {
+    "terminal": {
+      "optionLayoutAlt": "ABC o EE. UU. — Option envía secuencias Alt/Esc",
+      "optionLayoutCompose": "la distribución usa Option para escribir caracteres como @, €, [, ]",
+      "optionLayoutUnknown": "distribución desconocida — Option escribe caracteres (opción predeterminada segura)",
+      "optionShortcutHint": "Elige Ambos para los atajos con Option, Desactivado para acentos y símbolos, o Izquierda/Derecha para dedicar una tecla Option a cada uso."
+    },
     "appearance": {
       "language": {
         "title": "Idioma",
@@ -15537,5 +15543,12 @@
     "addTypedPath": "Add",
     "noDirectories": "No folders added yet.",
     "removePath": "Remove {{name}}"
+  },
+  "editor": {
+    "markdownPreview": {
+      "tooLarge": "El archivo supera el límite de vista previa de {{limit}}. Abre el archivo para ver su código fuente.",
+      "tooLargeInDiff": "El archivo supera el límite de vista previa de {{limit}}. Cambia al modo fuente para ver las diferencias.",
+      "renderAnyway": "Renderizar de todos modos"
+    }
   }
 }
