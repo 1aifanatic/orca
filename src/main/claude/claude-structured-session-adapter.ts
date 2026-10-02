@@ -106,12 +106,12 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       attempt.buffered.push(event)
       return
     }
-    const session = this.sessions.get(sessionId)
-    if (session?.connection === attempt.connection) {
-      // Every frame, streamed deltas included: what background work gives way to.
-      session.events?.noteProviderFrame?.()
-      event()
-    } else if (this.exits.get(sessionId)?.connection === attempt.connection) {
+    if (
+      this.sessions.get(sessionId)?.connection === attempt.connection ||
+      this.exits.get(sessionId)?.connection === attempt.connection
+    ) {
+      // Every frame, deltas the journal has not written included: what background work gives way to.
+      this.sessions.get(sessionId)?.events?.noteProviderFrame?.()
       event()
     }
   }
