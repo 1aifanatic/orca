@@ -131,66 +131,65 @@ export function createPtyForegroundProcessTracker(
         ? { anchorProcessId: anchor.pid, anchorProcessName: anchor.processName }
         : {})
     })
-      .then<string | void>(
-        ({ processName, processId, processStartTime, available, anchorPidForeign }) => {
-          if (args.isDead() || !available) {
-            return
-          }
-          if (!shouldCachePtyForeground(processName, staticName)) {
-            if (process.platform === 'win32' && fallbackIsShell && cachedAgentForeground !== null) {
-              // Job, not console: needs no console attachment, so no fork (#10857).
-              const verdict = judgeCachedAgentJobEvidence({
-                jobProcessIds: readWindowsPtyJobProcessIds(proc),
-                jobSupported: isWindowsPtyJobReadable(),
-                shellPid: ptyShellProcessId(proc) ?? proc.pid,
-                anchorProcessId: cachedAgentForeground.pid,
-                identityAgeMs: Date.now() - cachedAgentForeground.refreshedAt
-              })
-              // Unverifiable is never exit proof (ssh-execution-boundary.md): hold.
-              if (verdict === 'unavailable') {
-                return
-              }
-              if (verdict === 'unsupported') {
-                // No job to consult on this build, and the scan that got here was
-                // available and found no agent. Trust it, as every other platform
-                // does, rather than holding a dead name forever (#16059).
-                retireStaleForegroundIdentity()
-                return
-              }
-              if (verdict === 'confirmed' || verdict === 'recheck') {
-                if (anchorPidForeign === true) {
-                  // The scan proved the pid recycled to a non-agent: retire now.
-                  retireStaleForegroundIdentity()
-                  return
-                }
-                // The anchor pid is still in the job: the scan lost the row, not
-                // the agent. Restamp so a live agent never ages out (#9258).
-                cachedAgentForeground = { ...cachedAgentForeground, refreshedAt: Date.now() }
-                return
-              }
-              if (verdict === 'exited' || verdict === 'anchor-exited') {
-                // Safe mid-restart: an available scan already found no agent.
-                retireStaleForegroundIdentity()
-                return
-              }
-              // Unanchored superset evidence cannot tell a working agent from a
-              // leftover; the age bound settles it.
-              retireStaleForegroundIdentity({ onlyWhenAged: true })
+      .then<string | void>((resolution) => {
+        const { processName, processId, available, anchorPidForeign } = resolution
+        if (args.isDead() || !available) {
+          return
+        }
+        if (!shouldCachePtyForeground(processName, staticName)) {
+          if (process.platform === 'win32' && fallbackIsShell && cachedAgentForeground !== null) {
+            // Job, not console: needs no console attachment, so no fork (#10857).
+            const verdict = judgeCachedAgentJobEvidence({
+              jobProcessIds: readWindowsPtyJobProcessIds(proc),
+              jobSupported: isWindowsPtyJobReadable(),
+              shellPid: ptyShellProcessId(proc) ?? proc.pid,
+              anchorProcessId: cachedAgentForeground.pid,
+              identityAgeMs: Date.now() - cachedAgentForeground.refreshedAt
+            })
+            // Unverifiable is never exit proof (ssh-execution-boundary.md): hold.
+            if (verdict === 'unavailable') {
               return
             }
-            retireStaleForegroundIdentity()
+            if (verdict === 'unsupported') {
+              // No job to consult on this build, and the scan that got here was
+              // available and found no agent. Trust it, as every other platform
+              // does, rather than holding a dead name forever (#16059).
+              retireStaleForegroundIdentity()
+              return
+            }
+            if (verdict === 'confirmed' || verdict === 'recheck') {
+              if (anchorPidForeign === true) {
+                // The scan proved the pid recycled to a non-agent: retire now.
+                retireStaleForegroundIdentity()
+                return
+              }
+              // The anchor pid is still in the job: the scan lost the row, not
+              // the agent. Restamp so a live agent never ages out (#9258).
+              cachedAgentForeground = { ...cachedAgentForeground, refreshedAt: Date.now() }
+              return
+            }
+            if (verdict === 'exited' || verdict === 'anchor-exited') {
+              // Safe mid-restart: an available scan already found no agent.
+              retireStaleForegroundIdentity()
+              return
+            }
+            // Unanchored superset evidence cannot tell a working agent from a
+            // leftover; the age bound settles it.
+            retireStaleForegroundIdentity({ onlyWhenAged: true })
             return
           }
-          cachedAgentForeground = {
-            processName,
-            pid: processId ?? null,
-            processStartTime,
-            refreshedAt: Date.now()
-          }
-          startupAgentForeground = null
-          return processName
+          retireStaleForegroundIdentity()
+          return
         }
-      )
+        cachedAgentForeground = {
+          processName,
+          pid: processId ?? null,
+          processStartTime: resolution.processStartTime,
+          refreshedAt: Date.now()
+        }
+        startupAgentForeground = null
+        return processName
+      })
       .catch(() => {
         // Best-effort only: foreground enrichment must never affect PTY health.
       })
