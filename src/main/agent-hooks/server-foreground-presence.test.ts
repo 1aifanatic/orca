@@ -115,7 +115,11 @@ describe('host foreground ownership', () => {
   })
 
   it('keeps Pi resume identity whichever of discovery and session_start comes first', () => {
-    const session = { id: 'pi-session-1', transcriptPath: '/tmp/pi/session-1.jsonl' }
+    const session = {
+      key: 'session_id',
+      id: 'pi-session-1',
+      transcriptPath: '/tmp/pi/session-1.jsonl'
+    } as const
     for (const discoveryFirst of [true, false]) {
       const server = host()
       const sessionStart = () =>

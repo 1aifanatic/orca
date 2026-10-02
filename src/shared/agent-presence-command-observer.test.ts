@@ -1,8 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AgentPresenceCommandObserver } from './agent-presence-command-observer'
+import {
+  AgentPresenceCommandObserver,
+  type AgentPresenceObservationKind
+} from './agent-presence-command-observer'
 import { captureAgentForegroundIdentity } from './agent-foreground-identity'
 
 afterEach(() => vi.useRealTimers())
+const observeMock = () =>
+  vi.fn(
+    async (
+      _id: string,
+      _current: () => boolean,
+      _kind: AgentPresenceObservationKind,
+      _evidenceAtMs: number
+    ) => {}
+  )
 
 describe('one foreground observation per command', () => {
   it('costs zero while idle, coalesces markers, and stops after one cached resolver read', async () => {
@@ -30,7 +42,7 @@ describe('one foreground observation per command', () => {
 
   it('reads once per command and agent for evidence, and every command resets the key', async () => {
     vi.useFakeTimers()
-    const observe = vi.fn(async () => {})
+    const observe = observeMock()
     const observer = new AgentPresenceCommandObserver(observe)
     for (let i = 0; i < 20; i += 1) {
       observer.evidence('pane', 'claude')
@@ -53,7 +65,7 @@ describe('one foreground observation per command', () => {
 
   it('keeps a delayed launch read off the command slot and cancels it with the terminal', async () => {
     vi.useFakeTimers()
-    const observe = vi.fn(async () => {})
+    const observe = observeMock()
     const observer = new AgentPresenceCommandObserver(observe)
     observer.evidence('launched', 'codex', () => true, 1_000)
     await vi.advanceTimersByTimeAsync(500)

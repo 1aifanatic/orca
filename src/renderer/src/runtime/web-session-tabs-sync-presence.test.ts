@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
+import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
 import {
   applyWebSessionTabsSnapshot,
   shouldApplyWebSessionTabsSnapshot
@@ -29,7 +30,7 @@ function snapshot(
 ) {
   // The host publishes its owner beside the turn; `agentPresence` in `row` overrides it.
   const { agentPresence: rowPresence, ...turn } = row
-  const agentPresence =
+  const agentPresence: AgentProcessPresence | undefined =
     'agentPresence' in row ? rowPresence : { ...presence, ...(ended ? { ended: true } : {}) }
   return makeSnapshot(
     surfaces
