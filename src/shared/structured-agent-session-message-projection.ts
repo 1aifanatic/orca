@@ -1,15 +1,9 @@
-import type {
-  AgentJournalMessageItem,
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from './agent-session-journal-types'
+import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
-import { agentJournalItemPosition } from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
-import { structuredAgentSessionSendBodyFingerprint } from './structured-agent-session-mutation'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
@@ -19,46 +13,49 @@ export type StructuredAgentSessionMessageProjectionOptions = {
   /** Draw a message the host accepted and then rejected where the host recorded it, as not sent.
    *  Off for a client that hands such a message back to its composer instead. */
   rejectedInPlace: boolean
-}
-
-const outboxBodyFingerprints = new WeakMap<AgentJournalMessageItem, string>()
-
-function outboxBodyFingerprint(entry: StructuredAgentSessionOutboxEntry): string {
-  let fingerprint = outboxBodyFingerprints.get(entry.body)
-  if (fingerprint === undefined) {
-    fingerprint = structuredAgentSessionSendBodyFingerprint(entry.sessionId, entry.body)
-    outboxBodyFingerprints.set(entry.body, fingerprint)
-  }
-  return fingerprint
+  /** The queue's live cards: a rejected message one of them holds is drawn there, not here. */
+  queuedMessageIds?: readonly string[]
 }
 
 /**
- * The rejected submissions the host's history shows in place, by item id. A withdrawn one went
- * back to its sender; one the outbox still draws is drawn once, by the outbox; and one with a later
- * copy of the same body is superseded by it — earlier builds resent a rejected message under a new
- * id, so without this an update would surface every resent copy.
+ * The rejected submissions the host's history shows in place as not sent, by item id; `submissions`
+ * in submission order, as the client keeps them. A withdrawn one went back to its sender, and one
+ * the queue holds (a draft's hand-off, or a card under its id) is drawn as its card.
  */
-function rejectedShownInPlace(
+export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
-  outbox: readonly StructuredAgentSessionOutboxEntry[]
+  queuedMessageIds: readonly string[]
 ): Set<string> {
-  const shown = new Set<string>()
-  const outboxIds = new Set(outbox.map((entry) => entry.clientMessageId))
-  // Submissions arrive ordered by submission time. A withdrawn copy is hidden too, so it
+  const cards = new Set(queuedMessageIds)
+  // Each body's copies, as positions in submission order. A withdrawn one is hidden too, so it
   // supersedes nothing.
-  const lastCopy = new Map<string, number>()
+  const copies = new Map<string, { index: number; submittedAt: number }[]>()
   for (const [index, submission] of submissions.entries()) {
     if (!dispatchWasWithdrawn(submission)) {
-      lastCopy.set(submission.payloadFingerprint, index)
+      const copy = { index, submittedAt: submission.submittedAt }
+      const same = copies.get(submission.payloadFingerprint)
+      if (same) {
+        same.push(copy)
+      } else {
+        copies.set(submission.payloadFingerprint, [copy])
+      }
     }
   }
+  const shown = new Set<string>()
   for (const [index, submission] of submissions.entries()) {
+    const { resolvedAt } = submission
     if (
       submission.dispatchState !== 'rejected' ||
       dispatchWasWithdrawn(submission) ||
-      outboxIds.has(submission.clientMessageId) ||
-      (lastCopy.get(submission.payloadFingerprint) ?? index) > index ||
-      outbox.some((entry) => outboxBodyFingerprint(entry) === submission.payloadFingerprint)
+      submission.queuedMessageId !== undefined ||
+      cards.has(submission.clientMessageId) ||
+      // Collapses resends of a rejected message: past Retries resent it under a new id, and the
+      // host re-delivers its own messages under new ids. Only a later copy sent once the rejection
+      // was known counts, so a repeat sent before it is kept.
+      (resolvedAt !== null &&
+        (copies.get(submission.payloadFingerprint) ?? []).some(
+          (copy) => copy.index > index && copy.submittedAt >= resolvedAt
+        ))
     ) {
       continue
     }
@@ -82,17 +79,14 @@ export function projectStructuredAgentSessionMessages(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const inPlace = options.rejectedInPlace
-    ? rejectedShownInPlace(submissions, optimistic)
+    ? structuredAgentSessionRejectedShownInPlace(submissions, options.queuedMessageIds ?? [])
     : new Set<string>()
   const visibleItems: AgentJournalRenderItem[] = []
   const unsentItems: AgentJournalRenderItem[] = []
-  const refused = new Map<string, AgentJournalRenderItem>()
   for (const item of items) {
     if (inPlace.has(item.itemId)) {
       unsentItems.push(item)
-    } else if (rejected.has(item.itemId)) {
-      refused.set(item.itemId, item)
-    } else {
+    } else if (!rejected.has(item.itemId)) {
       visibleItems.push(item)
     }
   }
@@ -121,21 +115,15 @@ export function projectStructuredAgentSessionMessages(
     ...projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const })),
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
-      .map((entry): NativeChatMessage => {
-        const id = agentJournalSubmissionKey(entry.clientMessageId)
-        const recorded = refused.get(id)
-        return {
-          id,
-          role: 'user',
-          source: 'transcript',
-          timestamp: entry.queuedAt,
-          blocks: entry.body.blocks,
-          ...(entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry)
-            ? { unsent: true as const }
-            : {}),
-          // A send the journal recorded before refusing it keeps its place there.
-          ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
-        }
-      })
+      .map((entry): NativeChatMessage => ({
+        id: agentJournalSubmissionKey(entry.clientMessageId),
+        role: 'user',
+        source: 'transcript',
+        timestamp: entry.queuedAt,
+        blocks: entry.body.blocks,
+        ...(entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry)
+          ? { unsent: true as const }
+          : {})
+      }))
   ]
 }

@@ -12,11 +12,11 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
-/** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
- *  own and nothing queues behind it; only the user's Retry does. */
+/** `rejected`: settled as not delivered. The drain never sends it again and nothing queues behind
+ *  it. One the host refused unrecorded waits for the user's Retry; one it recorded only for the
+ *  journal, whose row then shows it (`structuredAgentSessionEntryRejectedByHost`). */
 export type StructuredAgentSessionOutboxState =
   | 'queued'
   | 'dispatching'
@@ -174,6 +174,14 @@ export function structuredAgentSessionEntryIdExpired(
   )
 }
 
+/** The host recorded this send and then rejected it: its journal row is the message from here. The
+ *  entry offers no Retry and draws it only until the journal carries it; a remount drops it. */
+export function structuredAgentSessionEntryRejectedByHost(
+  entry: StructuredAgentSessionOutboxEntry
+): boolean {
+  return entry.state === 'rejected' && entry.lastFailure?.kind === 'rejected'
+}
+
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
   refusal: AgentSessionWriteRefusal,
@@ -213,13 +221,9 @@ export function reconcileStructuredAgentSessionOutbox(
   const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
   return entries.flatMap((entry) => {
     const submission = settled.get(entry.clientMessageId)
-    if (submission?.dispatchState === 'accepted') {
-      return []
-    }
-    if (
-      submission?.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).category === 'withdrawn'
-    ) {
+    // Settled by the host: its history shows one delivered or rejected; a withdrawn one goes back
+    // to the composer.
+    if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'rejected') {
       return []
     }
     if (submission?.dispatchState === 'pending') {
@@ -229,21 +233,6 @@ export function reconcileStructuredAgentSessionOutbox(
       // The host has it, so no failure of an earlier attempt describes it now.
       const { lastFailure: _landed, ...landed } = entry
       return [{ ...landed, state: 'dispatching' as const }]
-    }
-    // Accepted, then not delivered — the agent never started, or its start was refused. The text
-    // and why stay here for the user's Retry, and nothing queues behind it. `unconfirmed` is how a
-    // remount reads an entry it left dispatching; the journal has since answered it.
-    if (
-      submission?.dispatchState === 'rejected' &&
-      (entry.state === 'dispatching' || entry.state === 'unconfirmed')
-    ) {
-      return [
-        {
-          ...entry,
-          state: 'rejected' as const,
-          lastFailure: structuredAgentSessionRejectedFailure(submission)
-        }
-      ]
     }
     if (
       submission?.dispatchState === 'unknown' &&

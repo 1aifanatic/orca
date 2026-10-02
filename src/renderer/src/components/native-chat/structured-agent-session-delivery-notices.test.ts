@@ -56,7 +56,9 @@ function texts(
 }
 
 describe('the notice on each message that did not go through', () => {
-  it('gives two failed messages each their own reason and their own Retry', () => {
+  // Recorded by the host, so sending it again is a new message: no Retry until the journal row
+  // takes it over.
+  it('gives two messages the host rejected each their own reason and no Retry', () => {
     const retry = vi.fn()
     const notices = structuredAgentSessionDeliveryNotices(
       [
@@ -90,8 +92,8 @@ describe('the notice on each message that did not go through', () => {
     expect(notices.get(agentJournalSubmissionKey('second'))?.text).toBe(
       'Claude never finished starting, so Orca stopped it.'
     )
-    notices.get(agentJournalSubmissionKey('second'))?.onRetry?.()
-    expect(retry).toHaveBeenCalledExactlyOnceWith('second')
+    expect(notices.get(agentJournalSubmissionKey('first'))?.onRetry).toBeUndefined()
+    expect(notices.get(agentJournalSubmissionKey('second'))?.onRetry).toBeUndefined()
   })
 
   it('chooses the words from the saved refusal on a refused message', () => {
@@ -223,39 +225,15 @@ describe('the notice on each message that did not go through', () => {
     expect(retry.mock.calls).toEqual([['refused'], ['rejected'], ['stuck']])
   })
 
-  // Beside its own Retry the resend step is the button; without one the words keep it.
-  it('leaves out sending again only where the message has its own Retry', () => {
-    const startFailed = (clientMessageId: string): StructuredAgentSessionOutboxEntry =>
-      entry(clientMessageId, {
-        state: 'rejected',
-        lastFailure: {
-          kind: 'rejected',
-          reason: 'Claude stopped before it finished starting. Send your message to try again.',
-          rejection: { kind: 'providerStartFailed' }
-        }
-      })
-    expect(texts([startFailed('first'), startFailed('second')])).toEqual({
-      [agentJournalSubmissionKey('first')]: 'Claude stopped before it finished starting.',
-      [agentJournalSubmissionKey('second')]: 'Claude stopped before it finished starting.'
-    })
-    expect(texts([entry('held', { outlivedStop: true }), startFailed('rejected')])).toMatchObject({
-      [agentJournalSubmissionKey('rejected')]:
-        'Claude stopped before it finished starting. Send your message to try again.'
-    })
-  })
-
+  // With no Retry beside it, the words keep the resend step.
   it.each([
     [
-      'notDelivered',
-      'This message was not delivered. Send it again to continue.',
-      'This message was not delivered.'
+      'providerStartFailed',
+      'Claude stopped before it finished starting. Send your message to try again.'
     ],
-    [
-      'hostFault',
-      "Orca ran into a problem, so this didn't go through. Try again.",
-      "Orca ran into a problem, so this didn't go through."
-    ]
-  ] as const)('leaves the step to the Retry beside a %s message', (kind, reason, shown) => {
+    ['notDelivered', 'This message was not delivered. Send it again to continue.'],
+    ['hostFault', "Orca ran into a problem, so this didn't go through. Try again."]
+  ] as const)('keeps the step in the words of a %s message the host rejected', (kind, reason) => {
     expect(
       texts([
         entry('rejected', {
@@ -263,7 +241,7 @@ describe('the notice on each message that did not go through', () => {
           lastFailure: { kind: 'rejected', reason, rejection: { kind } }
         })
       ])
-    ).toEqual({ [agentJournalSubmissionKey('rejected')]: shown })
+    ).toEqual({ [agentJournalSubmissionKey('rejected')]: reason })
   })
 
   // The journal holds the whole fact; the message's own copy keeps only its kind and attachment.
@@ -281,7 +259,7 @@ describe('the notice on each message that did not go through', () => {
     const recorded = (id: string, rejection: AgentSessionFailureFact): AgentJournalSubmission => ({
       clientMessageId: id,
       fence: 1,
-      payloadFingerprint: 'fingerprint',
+      payloadFingerprint: id,
       dispatchState: 'rejected',
       providerItemId: null,
       reason: "The agent couldn't be started.",
@@ -312,7 +290,8 @@ describe('the notice on each message that did not go through', () => {
       [
         'resumable',
         { kind: 'startFailed', refusal: { code: 'agent_session_ownership_unknown' } },
-        "Claude couldn't start."
+        // No Retry beside it, so the words keep the step.
+        "Claude couldn't start. Send your message to try again."
       ],
       [
         'provider',
@@ -392,7 +371,7 @@ describe('the notice on each message that did not go through', () => {
           {
             clientMessageId: 'recorded',
             fence: 1,
-            payloadFingerprint: 'fingerprint',
+            payloadFingerprint: 'recorded',
             dispatchState: 'rejected',
             providerItemId: null,
             reason,

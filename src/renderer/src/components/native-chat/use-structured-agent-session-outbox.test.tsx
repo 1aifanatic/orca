@@ -665,12 +665,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(retryParams?.retryUnknown).toBeUndefined()
   })
 
-  it('rotates a history-rejected unknown head so the queued tail can advance', async () => {
-    // oxlint-disable-next-line no-restricted-properties -- stubbing the global the generator reads, to pin ids in this test
-    vi.mocked(globalThis.crypto.randomUUID)
-      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-      .mockReturnValueOnce('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+  it('lets a history-rejected unknown head go to the journal so the queued tail advances', async () => {
     mocks.call
       .mockImplementationOnce(async (_target, _method, params) => {
         const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
@@ -681,11 +676,6 @@ describe('useStructuredAgentSessionOutbox', () => {
         const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
           .clientOperationId
         return acceptedResultFor(clientMessageId, 11)
-      })
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return acceptedResultFor(clientMessageId, 12)
       })
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
@@ -717,51 +707,40 @@ describe('useStructuredAgentSessionOutbox', () => {
       ]
     })
 
-    act(() => result.current.retry(firstId))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(3))
+    // The host's row shows the first as not sent; nothing resends it.
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    const retryParams = mocks.call.mock.calls[1]?.[2] as
-      | { envelope: { clientOperationId: string } }
-      | undefined
-    expect(retryParams?.envelope.clientOperationId).not.toBe(firstId)
+    expect(mocks.call.mock.calls[1]?.[2]).toMatchObject({ body: { blocks: [{ text: 'second' }] } })
+    expect(mocks.call.mock.calls[1]?.[2]).not.toMatchObject({
+      envelope: { clientOperationId: firstId }
+    })
   })
 
-  it('rotates the id after a refused write and delivers the message exactly once', async () => {
-    // oxlint-disable-next-line no-restricted-properties -- stubbing the global the generator reads, to pin ids in this test
-    vi.mocked(globalThis.crypto.randomUUID)
-      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-    const writeFailed = (clientMessageId: string) => ({
+  it('keeps a send its reply rejected without a Retry until the journal row takes it over', async () => {
+    const writeFailed = (clientMessageId: string): AgentJournalSubmission => ({
       clientMessageId,
       fence: 1,
       payloadFingerprint: 'fingerprint',
-      dispatchState: 'rejected' as const,
+      dispatchState: 'rejected',
       providerItemId: null,
       reason: 'provider_write_failed: broken pipe',
       submittedAt: 10,
       resolvedAt: 10
     })
-    mocks.call
-      .mockImplementationOnce(async (_target, _method, params) => ({
-        ok: true,
-        replayed: false,
-        fence: 1,
-        cursor: { epoch: 'epoch-1', sequence: 10 },
-        value: {
-          clientMessageId: (params as { envelope: { clientOperationId: string } }).envelope
-            .clientOperationId,
-          submission: writeFailed(
-            (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
-          )
-        }
-      }))
-      .mockImplementationOnce(async (_target, _method, params) =>
-        acceptedResultFor(
-          (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId,
-          11
+    mocks.call.mockImplementationOnce(async (_target, _method, params) => ({
+      ok: true,
+      replayed: false,
+      fence: 1,
+      cursor: { epoch: 'epoch-1', sequence: 10 },
+      value: {
+        clientMessageId: (params as { envelope: { clientOperationId: string } }).envelope
+          .clientOperationId,
+        submission: writeFailed(
+          (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
         )
-      )
-    const { result } = renderHook(
+      }
+    }))
+    const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
           sessionId: 'session-1',
@@ -776,24 +755,13 @@ describe('useStructuredAgentSessionOutbox', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
     const firstId = mocks.call.mock.calls[0]![2].envelope.clientOperationId as string
 
-    // A refused write is answered, not doubted: the entry parks with its rejection rather than
-    // under the "delivery is unconfirmed" banner. The disposition tests pin its words.
+    // Answered, not doubted: the entry draws the message, saying why, until the journal has it.
     await waitFor(() => expect(result.current.outbox[0]?.lastFailure?.kind).toBe('rejected'))
     expect(result.current.outbox[0]?.state).toBe('rejected')
 
-    // Retry immediately, before the journal subscription can publish the rejected row.
-    act(() => result.current.retry(firstId))
+    rerender({ submissions: [writeFailed(firstId)] })
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-
-    // Exactly one further delivery, under a new id, and with no `retryUnknown`:
-    // this is a first delivery of a new message, so it cannot duplicate.
-    expect(mocks.call).toHaveBeenCalledTimes(2)
-    const retryParams = mocks.call.mock.calls[1]?.[2] as {
-      envelope: { clientOperationId: string }
-      retryUnknown?: true
-    }
-    expect(retryParams.envelope.clientOperationId).not.toBe(firstId)
-    expect(retryParams.retryUnknown).toBeUndefined()
+    expect(mocks.call).toHaveBeenCalledOnce()
   })
 
   it('loads the new session outbox when a pane switches sessions', async () => {

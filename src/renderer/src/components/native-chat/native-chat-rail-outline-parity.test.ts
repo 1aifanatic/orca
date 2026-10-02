@@ -17,7 +17,7 @@ import { projectNativeChatTaskListFrames } from './native-chat-task-list-frames'
 import { omitNativeChatThreadGoalRows } from './native-chat-thread-goal-rows'
 import { buildNativeChatTranscriptSlots } from './native-chat-transcript-slots'
 import type { NativeChatTurnDiff } from './native-chat-turn-diffs'
-import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
+import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
 function row(sequence: number, body: AgentJournalItemBody, itemId = `item-${sequence}`) {
   return { itemId, revision: 1, sequence, observedAt: 1_000 + sequence, body }
@@ -65,11 +65,10 @@ const JOURNAL: AgentJournalRenderItem[] = [
   { ...user(12, [{ type: 'text', text: 'Observed earlier' }]), observedAt: 1_009.5 }
 ]
 
-/** The renderer's own path from journal items to rail items, as the list runs it. The outline
- *  lists no rejected message: the desktop draws those in place, and ticks them once loaded. */
+/** The renderer's own path from journal items to rail items, as the list runs it. */
 function loadedRailItems(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]) {
   const projected = createNativeChatMessageListProjection()(
-    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: false })
+    projectStructuredAgentSessionMessages(items, [], submissions)
   ).conversation
   const messages = omitNativeChatThreadGoalRows(projectNativeChatTaskListFrames(projected))
   let turn: string | undefined
@@ -94,9 +93,14 @@ function loadedRailItems(items: AgentJournalRenderItem[], submissions: AgentJour
 }
 
 describe('conversation outline parity with the loaded rail', () => {
+  // Except a rejected message: the desktop draws it in place and ticks it once loaded, while the
+  // host's outline, which older clients read too, leaves it out.
   it('lists exactly the user messages the transcript gives a rail tick, with the same ids and previews', () => {
     const outline = projectAgentSessionConversationOutline(JOURNAL, [REJECTED])
-    const loaded = loadedRailItems(JOURNAL, [REJECTED])
+    const rejectedId = agentJournalSubmissionKey(REJECTED.clientMessageId)
+    const loadedWithRejected = loadedRailItems(JOURNAL, [REJECTED])
+    expect(loadedWithRejected.filter((item) => item.id === rejectedId)).toHaveLength(1)
+    const loaded = loadedWithRejected.filter((item) => item.id !== rejectedId)
 
     expect(outline.map((entry) => entry.itemId)).toEqual(loaded.map((item) => item.id))
     expect(

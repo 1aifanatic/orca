@@ -259,7 +259,7 @@ describe('a message the host withdrew at a Stop', () => {
     expect(readNativeChatDraftCache(PANE)).toBe('hello\n\nhello')
   })
 
-  it('keeps a message refused for any other reason on its Retry, and gives nothing back', async () => {
+  it("leaves a message rejected for any other reason to the host's row, and gives nothing back", async () => {
     answerSendsPending()
     const { result, rerender } = renderOutbox()
     const id = await sendToHost(result, 'hello')
@@ -270,7 +270,7 @@ describe('a message the host withdrew at a Stop', () => {
       ]
     })
 
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
     expect(readNativeChatDraftCache(PANE)).toBe('')
   })
 

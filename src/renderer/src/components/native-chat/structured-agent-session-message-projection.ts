@@ -7,17 +7,18 @@ import { projectStructuredAgentSessionMessages as projectMessages } from '../../
 import { projectStructuredQuestionMessages } from './structured-agent-question-projection'
 
 /** The desktop's transcript: a message the host accepted and then rejected stays where it was
- *  sent, as not sent. */
+ *  sent, as not sent, unless a queued card holds it. */
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
   outbox: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
+  submissions: readonly AgentJournalSubmission[],
+  queuedMessageIds: readonly string[] = []
 ) {
   return projectMessages(
     items,
     outbox,
     submissions,
-    { rejectedInPlace: true },
+    { rejectedInPlace: true, queuedMessageIds },
     projectStructuredQuestionMessages
   )
 }

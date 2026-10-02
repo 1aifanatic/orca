@@ -88,7 +88,7 @@ describe('a send the host rejected because the agent never started', () => {
     localStorage.clear()
   })
 
-  it('names the cause on the message and keeps it for Retry', async () => {
+  it('names the cause on the message until the journal row takes it over', async () => {
     mocks.call.mockImplementationOnce(
       async (
         _target: unknown,
@@ -108,7 +108,7 @@ describe('a send the host rejected because the agent never started', () => {
     act(() => expect(result.current.send('hello')).toBe(true))
 
     await waitFor(() => expect(shownFailure(result.current.outbox[0])).toBe(REASON))
-    // Settled as not delivered: it waits for Retry and holds no later message up.
+    // Settled as not delivered: it holds no later message up.
     expect(result.current.error).toBeNull()
     expect(result.current.outbox[0]?.state).toBe('rejected')
   })
@@ -151,7 +151,7 @@ describe('a send the host rejected because the agent never started', () => {
     ])
   })
 
-  it('keeps a message the host accepted and then could not deliver, with its reason and Retry', async () => {
+  it('leaves a message the host accepted and then could not deliver to its journal row', async () => {
     const reason = "Codex couldn't restart: spawn codex ENOENT."
     mocks.call.mockImplementation(
       async (
@@ -180,19 +180,11 @@ describe('a send the host rejected because the agent never started', () => {
       submissions: [{ ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }]
     })
 
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
-    expect(shownFailure(result.current.outbox[0])).toBe(reason)
+    // The host's row shows it as not sent, with no Retry: nothing resends it.
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
     expect(result.current.error).toBeNull()
-
-    // Retry is a new message with the same text: a fresh id, sent once.
-    act(() => result.current.retry(id))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
-    const retried: {
-      envelope: { clientOperationId: string }
-      body: { blocks: { text?: string }[] }
-    } = mocks.call.mock.calls[1]![2]
-    expect(retried.envelope.clientOperationId).not.toBe(id)
-    expect(retried.body.blocks[0]?.text).toBe('hello')
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(mocks.call).toHaveBeenCalledOnce()
   })
 
   it('says nothing when a Stop withdrew the message', async () => {
@@ -233,7 +225,7 @@ describe('a send the host rejected because the agent never started', () => {
     expect(result.current.error).toBeNull()
   })
 
-  it('reads a message rejected while the chat was closed as not sent, and sends past it', async () => {
+  it('leaves a message rejected while the chat was closed to its journal row, and sends past it', async () => {
     const reason = "Codex couldn't restart: spawn codex ENOENT."
     mocks.call.mockImplementation(
       async (
@@ -269,15 +261,13 @@ describe('a send the host rejected because the agent never started', () => {
       })
     )
 
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
-    expect(shownFailure(result.current.outbox[0])).toBe(reason)
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
     act(() => expect(result.current.send('second')).toBe(true))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
-  // After a restart nothing in memory remembers the rejection, and its journal row may be older
-  // than the loaded page: the message's own state is what says a resend needs a new id.
-  it('retries a message rejected before a restart under a new id', async () => {
+  // After a restart its journal row may be older than the loaded page; that row still holds it.
+  it('leaves a message rejected before a restart to its journal row, loaded or not', async () => {
     const rejected = createStructuredAgentSessionOutboxEntry({
       clientMessageId: 'rejected-before-restart',
       sessionId: 'session-1',
@@ -296,9 +286,6 @@ describe('a send the host rejected because the agent never started', () => {
         }
       }
     ])
-    mocks.call.mockImplementation(async (_target, _method, params) =>
-      acceptedResultFor(String(params.envelope.clientOperationId))
-    )
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
         sessionId: 'session-1',
@@ -307,16 +294,13 @@ describe('a send the host rejected because the agent never started', () => {
         submissions: []
       })
     )
-    expect(result.current.outbox[0]?.state).toBe('rejected')
 
-    act(() => result.current.retry('rejected-before-restart'))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    const sentId: unknown = mocks.call.mock.calls[0]![2].envelope.clientOperationId
-    expect(sentId).not.toBe('rejected-before-restart')
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    expect(result.current.outbox).toEqual([])
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 
-  it('keeps the rejection when the journal settles the message before the send answers', async () => {
+  it('lets the journal settle the message when its rejection lands before the send answers', async () => {
     const reason = "Codex couldn't restart: spawn codex ENOENT."
     let answer: (value: unknown) => void = () => undefined
     mocks.call.mockImplementationOnce(
@@ -345,11 +329,11 @@ describe('a send the host rejected because the agent never started', () => {
     rerender({
       submissions: [{ ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }]
     })
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    // The late `pending` answer must not bring it back.
     await act(async () => answer(pendingResultFor(id)))
 
-    expect(result.current.outbox[0]?.state).toBe('rejected')
-    expect(shownFailure(result.current.outbox[0])).toBe(reason)
+    expect(result.current.outbox).toEqual([])
     expect(result.current.error).toBeNull()
   })
 })

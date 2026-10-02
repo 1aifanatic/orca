@@ -16,6 +16,7 @@ import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import {
   stageStructuredAgentSessionOutboxEntryForSend,
+  structuredAgentSessionEntryRejectedByHost,
   structuredAgentSessionSendRequest,
   updateStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -58,10 +59,13 @@ export function readMountedStructuredAgentSessionOutbox(
     options: { recoverDispatching: boolean }
   ) => StructuredAgentSessionOutboxEntry[]
 ): StructuredAgentSessionOutboxEntry[] {
-  return read(sessionId, { recoverDispatching: false }).map((entry) =>
-    entry.state === 'dispatching' && !hasInFlightLaunchDispatch(entry, fence)
-      ? { ...entry, state: 'unconfirmed' as const }
-      : entry
+  return read(sessionId, { recoverDispatching: false }).flatMap((entry) =>
+    // The host's history holds one it recorded and rejected, whether or not its page is loaded.
+    structuredAgentSessionEntryRejectedByHost(entry)
+      ? []
+      : entry.state === 'dispatching' && !hasInFlightLaunchDispatch(entry, fence)
+        ? [{ ...entry, state: 'unconfirmed' as const }]
+        : [entry]
   )
 }
 
