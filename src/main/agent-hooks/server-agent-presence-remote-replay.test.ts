@@ -13,7 +13,10 @@ import { createHookListenerState } from '../../shared/agent-hook-listener/listen
 const probe = vi.hoisted(() =>
   vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'live')
 )
-vi.mock('../../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
+vi.mock('../../shared/agent-process-presence-probe', () => ({
+  probeAgentProcessPresence: probe,
+  isSuspendedAgentProcess: vi.fn(async () => false)
+}))
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
 const owner = {
@@ -146,7 +149,8 @@ describe('execution host presence replay', () => {
     const { main, capture, relayHook } = await setup()
     await relayHook('SessionStart', 'a', owner.process)
     capture(owner.process)
-    expect(main.storedRow(PANE)?.agentPresence).toMatchObject(owner)
+    expect(main.getAgentOwner(PANE)?.presence).toMatchObject(owner)
+    expect(main.storedRow(PANE)).not.toHaveProperty('agentPresence')
     expect(main.storedRow(PANE)).not.toHaveProperty('agentPresenceFromExecutionHost')
   })
   it('keeps a later unidentified row when the old owner exit replays', async () => {
@@ -179,9 +183,9 @@ describe('execution host presence replay', () => {
     const staleLive = frames.at(-1)!
     probe.mockResolvedValue('exited')
     await relay.checkAgentPresence(PANE)
-    const exited = main.getStatusSnapshot()[0]?.agentPresence
+    const exited = main.getAgentOwner(PANE)?.presence
     main.ingestRemote({ ...staleLive, isReplay: true }, 'ssh-1')
-    expect(main.getStatusSnapshot()[0]?.agentPresence).toEqual(exited)
+    expect(main.getAgentOwner(PANE)?.presence).toEqual(exited)
     expect(exited?.ended).toBe(true)
   })
   it('does not accept host provenance from local hook or terminal bytes', async () => {
@@ -238,5 +242,60 @@ describe('execution host presence replay', () => {
     main.ingestRemote(mismatchedExit, 'ssh-1')
     main.ingestRemote({ ...mismatchedExit, isReplay: true }, 'ssh-1')
     expect(main.getStatusSnapshot()[0]?.agentPresence).toMatchObject(owner)
+  })
+  // Version adapter: an older relay still forwards Claude's hook-claimed exit, unstamped.
+  it('lets an old relay exit clear the turn it names, never mint one or end a host owner', () => {
+    const main = new InspectableServer()
+    servers.push(main)
+    const turn = {
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'folder-1',
+      source: 'claude',
+      hookEventName: 'Stop',
+      payload: { state: 'done', prompt: 'task', agentType: 'claude' }
+    }
+    const legacyExit = {
+      ...turn,
+      hookEventName: 'SessionEnd',
+      agentPresence: { ...owner, ended: true }
+    }
+    main.ingestRemote(legacyExit, 'ssh-1')
+    expect(main.getStatusSnapshot()).toEqual([])
+    main.ingestRemote(turn, 'ssh-1')
+    main.ingestRemote({ ...legacyExit, isReplay: true }, 'ssh-1')
+    expect(main.getStatusSnapshot()).toHaveLength(1)
+    main.ingestRemote(legacyExit, 'ssh-1')
+    expect(main.getStatusSnapshot()).toEqual([])
+    main.ingestRemote(turn, 'ssh-1')
+    main.ingestRemote(
+      { ...turn, agentPresence: { ...owner, observation: { epoch: 'host', sequence: 1 } } },
+      'ssh-1'
+    )
+    main.ingestRemote(legacyExit, 'ssh-1')
+    expect(main.getStatusSnapshot()).toHaveLength(1)
+    expect(main.getAgentOwner(PANE)?.presence.ended).toBeUndefined()
+  })
+
+  it('never lets an owner envelope restate a prompt into a retired pane', () => {
+    const main = new InspectableServer()
+    servers.push(main)
+    main.retirePaneAuthority(PANE)
+    main.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'folder-1',
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        hasExplicitPrompt: true,
+        providerSessionOnly: true,
+        agentPresence: { ...owner, observation: { epoch: 'host', sequence: 1 } },
+        payload: { state: 'working', prompt: 'old prompt', agentType: 'claude' }
+      },
+      'ssh-1'
+    )
+    expect(main.getStatusSnapshot()).toEqual([])
+    expect(main.getAgentOwner(PANE)).toBeUndefined()
   })
 })

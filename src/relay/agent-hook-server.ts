@@ -4,10 +4,9 @@ import type {
   RelayHookServerOptions,
   RelayHookServerStartOptions
 } from './agent-hook-server-options'
-import { admitAgentForeground } from '../shared/agent-foreground-admission'
 import { createRelayAgentPresenceObservation } from './relay-agent-presence-observation'
 import { handleRelayHookRequest } from './agent-hook-request'
-import { RelayAgentPresence } from './relay-agent-presence'
+import { admitRelayForegroundOwner, RelayAgentPresence } from './relay-agent-presence'
 import type { AgentProcessPresence } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -220,19 +219,13 @@ export class RelayAgentHookServer {
   ingestForegroundPresence(
     scope: Pick<AgentHookEventPayload, 'paneKey' | 'tabId' | 'worktreeId' | 'terminalHandle'>,
     presence: AgentProcessPresence
-  ): void {
-    const admitted = admitAgentForeground(
-      this.state.lastStatusByPaneKey.get(scope.paneKey),
+  ): Promise<void> {
+    return admitRelayForegroundOwner(
+      () => this.state.lastStatusByPaneKey.get(scope.paneKey),
+      scope,
       presence,
-      {
-        ...scope,
-        connectionId: null
-      }
+      (row) => this.applyEvent(row, undefined, undefined, undefined, { hostPresence: true })
     )
-    if (!admitted) {
-      return
-    }
-    this.applyEvent(admitted, undefined, undefined, undefined, { hostPresence: true })
   }
 
   checkAgentPresence(paneKey: string): Promise<void> {

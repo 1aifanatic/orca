@@ -96,3 +96,21 @@ export async function probeAgentProcessPresence(
   // Why: a suspended (Ctrl-Z) agent still exists but is not running in its terminal.
   return observed.stopped ? 'unverifiable' : 'live'
 }
+
+/** A stopped (Ctrl-Z) owner still exists but has handed its terminal to whatever runs in front. */
+export async function isSuspendedAgentProcess(
+  identity: AgentProcessIdentity,
+  read: (pid: number) => Promise<AgentProcessObservation> = readAgentProcess,
+  platform: NodeJS.Platform = process.platform
+): Promise<boolean> {
+  if (identity.platform !== platform) {
+    return false
+  }
+  const observed = await read(identity.pid).catch(() => ({ verdict: 'unverifiable' as const }))
+  return (
+    observed.verdict === 'live' &&
+    !observed.zombie &&
+    observed.stopped === true &&
+    observed.startTime === identity.startTime
+  )
+}

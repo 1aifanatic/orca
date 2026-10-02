@@ -23,6 +23,8 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
         incarnationId: PtyIncarnationId
         launchAgent: TuiAgent
       }
+      /** The provider handed back a surviving process rather than spawning one. */
+      reattached?: true
     },
     isWsl?: boolean
   ): void {
@@ -115,16 +117,21 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       this.scheduleAgentPresenceDiscovery(ptyId)
     }
     const providerReattachLaunchIdentity = binding?.providerReattachLaunchIdentity
-    if (
+    const restoredLaunch = Boolean(
       providerReattachLaunchIdentity &&
       paneKey &&
       binding.incarnationId === providerReattachLaunchIdentity.incarnationId &&
       pty.incarnationId === providerReattachLaunchIdentity.incarnationId &&
       pty.paneKey === paneKey &&
       isTuiAgent(providerReattachLaunchIdentity.launchAgent)
-    ) {
+    )
+    if (restoredLaunch && providerReattachLaunchIdentity) {
       // Why: daemon metadata owns the surviving process; its incarnation fence restores identity without minting renderer launch authority.
       pty.launchAgent = providerReattachLaunchIdentity.launchAgent
+    }
+    // Why: owners live only in memory, and a surviving agent announces no new command; one read
+    // per reattach re-derives what a restart forgot.
+    if (binding?.reattached || restoredLaunch) {
       void this.discoverAgentPresence(ptyId)
     }
     const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)

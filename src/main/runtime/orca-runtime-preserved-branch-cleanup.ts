@@ -11,6 +11,7 @@ import type {
 } from './runtime-terminal-contracts'
 import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-facts'
 import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
+import type { AgentPaneOwner } from '../../shared/agent-process-presence'
 import type { StructuredAgentSessionStatusSink } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { ObservedAgentStatusPaneIdentity } from '../ipc/agent-status-ipc-boundary'
 import type { AgentHookServer, AgentHookAuthorityAttestation } from '../agent-hooks/server'
@@ -99,6 +100,10 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
   protected readonly dropAgentStatusForWorktreeFn: ((worktreeId: string) => void) | null
 
   protected readonly onForegroundAgentPresence: AgentHookServer['ingestForegroundPresence'] | null
+
+  protected readonly getAgentOwnerFn: ((paneKey: string) => AgentPaneOwner | undefined) | null
+
+  protected readonly getAgentOwnersFn: (() => AgentPaneOwner[]) | null
 
   protected readonly checkHookAgentPresenceFn:
     | ((paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>)

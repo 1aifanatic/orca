@@ -18,6 +18,17 @@ export type AgentProcessPresence = {
 
 export type AgentProcessVerdict = 'live' | 'unverifiable' | 'exited'
 
+/** The execution host's record of the agent process owning a pane; independent of any turn row. */
+export type AgentPaneOwner = {
+  paneKey: string
+  connectionId: string | null
+  worktreeId?: string
+  tabId?: string
+  terminalHandle?: string
+  presence: AgentProcessPresence
+  receivedAt: number
+}
+
 export function readAgentProcessIdentity(value: unknown): AgentProcessIdentity | undefined {
   if (typeof value === 'string') {
     try {

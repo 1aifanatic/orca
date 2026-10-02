@@ -6,11 +6,10 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
   private readonly agentPresenceDiscovery = new Map<string, Promise<void>>()
 
   private hasAgentPresenceOwner(keys: Iterable<string>): boolean {
-    return [...keys].some((key) =>
-      this.getAgentProviderSessionRowsForPaneFn?.(key).some(
-        (row) => row.agentPresence?.process && !row.agentPresence.ended
-      )
-    )
+    return [...keys].some((key) => {
+      const presence = this.getAgentOwnerFn?.(key)?.presence
+      return Boolean(presence?.process && !presence.ended)
+    })
   }
 
   protected scheduleAgentPresenceDiscovery(ptyId: string): void {

@@ -119,6 +119,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
       agentHookServer.retirePaneAuthority(paneKey, undefined, options),
     onForegroundAgentPresence: (scope, presence) =>
       agentHookServer.ingestForegroundPresence(scope, presence),
+    getAgentOwner: (paneKey) => agentHookServer.getAgentOwner(paneKey),
+    getAgentOwners: () => agentHookServer.getAgentOwners(),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys, { kind: 'terminal-ended' }),

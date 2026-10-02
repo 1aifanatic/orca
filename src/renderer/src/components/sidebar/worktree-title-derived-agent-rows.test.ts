@@ -506,6 +506,32 @@ describe('hook-less agent rows identified by the foreground process', () => {
     }
   })
 
+  it('rows a pane the host recorded an owner for, with no turn and a shell title', () => {
+    // The renderer stops polling an owned pane, so its owner, not a stale read, must name it.
+    const rows = buildWorktreeAgentRows({
+      agentPresenceByPaneKey: {
+        [PANE_KEY]: {
+          presence: {
+            agent: 'aider',
+            process: { pid: 7, platform: 'linux', startTime: 'boot:7' }
+          },
+          receivedAt: 1,
+          connectionId: null
+        }
+      },
+      tabs: [makeTab('tab-1', { defaultTitle: 'Terminal 1' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: { 'tab-1': { 1: 'zsh' } },
+      ptyIdsByTabId: { 'tab-1': ['pty-agent'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+    expect(rows.map((row) => [row.paneKey, row.agentType, row.state])).toEqual([
+      [PANE_KEY, 'aider', 'idle']
+    ])
+  })
+
   it('scopes process evidence to its own pane inside a split', () => {
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1', { launchAgent: 'claude' })],

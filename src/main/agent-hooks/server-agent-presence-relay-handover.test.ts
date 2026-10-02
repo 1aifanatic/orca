@@ -14,7 +14,10 @@ vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }
 const probe = vi.hoisted(() =>
   vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'live')
 )
-vi.mock('../../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
+vi.mock('../../shared/agent-process-presence-probe', () => ({
+  probeAgentProcessPresence: probe,
+  isSuspendedAgentProcess: vi.fn(async () => false)
+}))
 
 const servers: { stop(): void }[] = []
 afterEach(() => {
@@ -117,14 +120,14 @@ describe('owner handover across execution hosts', () => {
       await rig.post('PreToolUse', 'nested', 4009)
       rig.capture(4009)
       rig.pump()
-      expect(rig.desktop.getStatusSnapshot()[0]?.agentPresence?.process?.pid).toBe(4001)
+      expect(rig.desktop.getAgentOwner(PANE)?.presence.process?.pid).toBe(4001)
       finish('exited')
       await check
       rig.pump()
-      expect(rig.desktop.getStatusSnapshot()[0]?.agentPresence?.ended).toBe(true)
+      expect(rig.desktop.getAgentOwner(PANE)?.presence.ended).toBe(true)
       rig.capture(4005)
       rig.pump()
-      expect(rig.desktop.getStatusSnapshot()[0]?.agentPresence?.process?.pid).toBe(4005)
+      expect(rig.desktop.getAgentOwner(PANE)?.presence.process?.pid).toBe(4005)
       expect(probe).toHaveBeenCalledTimes(1)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -182,7 +185,8 @@ describe('owner handover across execution hosts', () => {
         expect(after?.turnStartedAt).toBe(before?.turnStartedAt)
         expect(after?.stateStartedAt).toBe(before?.stateStartedAt)
         expect(after?.state).toBe(before?.state)
-        expect(events).toEqual([{ metadata: true, stateStartedAt: before?.stateStartedAt }])
+        // Turn subscribers (plugins, stats, notifications) never hear an owner observation.
+        expect(events).toEqual([])
         expect(rig.sent.at(-1)?.providerSessionOnly).toBe(true)
         expect(rig.sent.at(-1)?.source).toBe('claude')
       } finally {
@@ -207,7 +211,7 @@ describe('owner handover across execution hosts', () => {
     captureLocal(desktop, 4005)
     finish('exited')
     await check
-    expect(desktop.getStatusSnapshot()[0]?.agentPresence).toEqual(presence(4005))
+    expect(desktop.getAgentOwner(PANE)?.presence).toEqual(presence(4005))
 
     const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
     try {
@@ -220,7 +224,7 @@ describe('owner handover across execution hosts', () => {
       finish('exited')
       await pending
       rig.pump()
-      expect(rig.desktop.getStatusSnapshot()[0]?.agentPresence).toMatchObject(presence(4005))
+      expect(rig.desktop.getAgentOwner(PANE)?.presence).toMatchObject(presence(4005))
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

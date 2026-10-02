@@ -1,17 +1,25 @@
-import { admitAgentForeground } from '../../../shared/agent-foreground-admission'
+import { canAdmitAgentForeground } from '../../../shared/agent-foreground-admission'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import {
   isSameAgentProcess,
+  type AgentPaneOwner,
   type AgentProcessIdentity,
   type AgentProcessPresence,
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
-import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
+import {
+  isSuspendedAgentProcess,
+  probeAgentProcessPresence
+} from '../../../shared/agent-process-presence-probe'
 import { ownerDoubtFromHook } from '../../../shared/agent-hook-presence-transition'
-import type { EnrichedAgentHookEventPayload } from './server-types'
-import { isUncheckableAgentOwner } from './server-status-identity'
+import { isWslHookRelayConnectionId } from '../../../shared/wsl-hook-relay-contract'
 import { AgentHookServerLifecycle } from './server-lifecycle'
 import { AgentOwnerLivenessRecheck } from '../../../shared/agent-owner-liveness-recheck'
+
+type ForegroundScope = Pick<
+  AgentHookEventPayload,
+  'paneKey' | 'connectionId' | 'worktreeId' | 'tabId' | 'terminalHandle'
+>
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
   private windowsOwnerProbe?: (
@@ -25,7 +33,7 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     this.windowsOwnerProbe = probe
   }
 
-  // Why keyed by pane and owner: every hook rewrites the row, and one owner needs only one probe.
+  // Why keyed by pane and owner: evidence keeps arriving, and one owner needs only one probe.
   private readonly presenceChecks = new Map<
     string,
     {
@@ -35,9 +43,11 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
   >()
   private readonly ownerLivenessRecheck = new AgentOwnerLivenessRecheck({
     listLiveOwnerPaneKeys: () =>
-      [...this.state.lastStatusByPaneKey.values()]
-        .filter((row) => row.connectionId === null && this.hasVerifiableAgentProcess(row.paneKey))
-        .map((row) => row.paneKey),
+      [...this.agentOwnerByPaneKey.values()]
+        .filter(
+          (owner) => owner.connectionId === null && owner.presence.process && !owner.presence.ended
+        )
+        .map((owner) => owner.paneKey),
     checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
   })
 
@@ -50,59 +60,54 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     super.stop()
   }
 
-  ingestForegroundPresence(
-    scope: Pick<
-      AgentHookEventPayload,
-      'paneKey' | 'connectionId' | 'worktreeId' | 'tabId' | 'terminalHandle'
-    >,
-    presence: AgentProcessPresence
-  ): void {
+  /** The execution host's own foreground capture; the only local writer of an owner. */
+  ingestForegroundPresence(scope: ForegroundScope, presence: AgentProcessPresence): Promise<void> {
+    const paneKey = this.resolvePaneKeyAlias(scope.paneKey)
+    if (this.isOwnerFenced(scope.paneKey) || isWslHookRelayConnectionId(scope.connectionId)) {
+      return Promise.resolve()
+    }
+    const recorded = this.agentOwnerByPaneKey.get(paneKey)
+    const admit = (suspended: boolean): void => {
+      if (
+        this.agentOwnerByPaneKey.get(paneKey) !== recorded ||
+        this.isOwnerFenced(scope.paneKey) ||
+        !canAdmitAgentForeground(recorded, presence, scope, suspended)
+      ) {
+        return
+      }
+      this.writeAgentOwner(paneKey, {
+        ...scope,
+        paneKey,
+        presence: { agent: presence.agent, process: presence.process },
+        receivedAt: Math.max(Date.now(), (recorded?.receivedAt ?? -1) + 1)
+      })
+    }
+    const recordedProcess = recorded?.presence.ended ? undefined : recorded?.presence.process
+    // Why: only a different process in front can doubt a live owner, and only a stop proves it yielded.
     if (
-      this.closedAgentStatusPaneKeys.has(scope.paneKey) ||
-      this.isClosedAgentStatusTabForPaneKey(scope.paneKey)
+      !recordedProcess ||
+      !presence.process ||
+      isSameAgentProcess(recordedProcess, presence.process)
     ) {
-      return
+      admit(false)
+      return Promise.resolve()
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Every server store write attaches receipt and turn clocks.
-    const before = this.state.lastStatusByPaneKey.get(scope.paneKey) as
-      | EnrichedAgentHookEventPayload
-      | undefined
-    const admitted = admitAgentForeground(before, presence, scope)
-    if (!admitted) {
-      return
-    }
-    const now = Date.now()
-    const enriched = {
-      ...(before && !before.providerSessionOnly && !before.agentPresence?.ended
-        ? { ...before, ...admitted, receivedAt: now }
-        : this.attachStatusTiming(admitted, now)),
-      observation: this.stampObservation({ ...admitted, providerSessionOnly: true }, 'process', now)
-    }
-    if (!this.writeLegacyStatusRow(enriched)) {
-      return
-    }
-    this.commitStatusRowMutation(before, enriched)
-    this.scheduleStatusPersist()
-    this.notifyStatusChangeListeners()
-    this.emitEnrichedStatus({ ...enriched, providerSessionOnly: true })
+    return isSuspendedAgentProcess(recordedProcess)
+      .catch(() => false)
+      .then(admit)
   }
 
   /** Idle and exit hooks trigger exact-owner checks. */
   checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {
-    const doubt = ownerDoubtFromHook(event, row)
-    if (doubt) {
+    if (ownerDoubtFromHook(event, this.getAgentOwner(row.paneKey)?.presence)) {
       void this.checkAgentPresence(row.paneKey)
     }
   }
 
   /** Whether this pane's owner carries a process identity that its execution host can check. */
   hasVerifiableAgentProcess(paneKey: string): boolean {
-    const row = this.state.lastStatusByPaneKey.get(this.resolvePaneKeyAlias(paneKey))
-    // A pane with no row has no owner to check.
-    if (!row?.agentPresence?.process || row.agentPresence.ended) {
-      return false
-    }
-    return !isUncheckableAgentOwner(row)
+    const presence = this.getAgentOwner(paneKey)?.presence
+    return Boolean(presence?.process && !presence.ended)
   }
 
   /** Checks the recorded process without granting ownership to the triggering event. */
@@ -111,24 +116,22 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     expectedProcess?: AgentProcessIdentity
   ): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
-    const row = this.state.lastStatusByPaneKey.get(resolved)
+    const recorded = this.agentOwnerByPaneKey.get(resolved)
+    const presence = recorded?.presence
     if (expectedProcess) {
-      const recorded = row?.agentPresence
-      if (!recorded?.process || !isSameAgentProcess(recorded.process, expectedProcess)) {
+      if (!presence?.process || !isSameAgentProcess(presence.process, expectedProcess)) {
         return Promise.resolve('unverifiable')
       }
-      if (recorded.ended) {
+      if (presence.ended) {
         return Promise.resolve('exited')
       }
     }
-    const presence = row?.agentPresence
     const owner = presence?.process
-    // Why: an ended owner already published its exit; an unidentified or uncheckable owner is
-    // left to the legacy rules.
-    if (!row || !presence || !owner || presence.ended || isUncheckableAgentOwner(row)) {
+    // Why: an ended owner already published its exit.
+    if (!recorded || !presence || !owner || presence.ended) {
       return Promise.resolve(null)
     }
-    if (row.connectionId !== null) {
+    if (recorded.connectionId !== null) {
       return Promise.resolve('unverifiable')
     }
     const pending = this.presenceChecks.get(resolved)
@@ -146,20 +149,13 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     entry.check = probe
       .catch(() => 'unverifiable' as const)
       .then((verdict) => {
-        // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.
-        const current = this.state.lastStatusByPaneKey.get(resolved) as
-          | EnrichedAgentHookEventPayload
-          | undefined
-        const currentOwner = current?.agentPresence
-        if (
-          !current ||
-          !currentOwner?.process ||
-          !isSameAgentProcess(currentOwner.process, owner)
-        ) {
+        // Why: fence on the owner, not the record object — a newer capture can replace it mid-probe.
+        const current: AgentPaneOwner | undefined = this.agentOwnerByPaneKey.get(resolved)
+        const currentProcess = current?.presence.process
+        if (!currentProcess || !isSameAgentProcess(currentProcess, owner)) {
           return 'unverifiable' as const
         }
-        if (verdict !== 'exited' || currentOwner.ended) {
+        if (verdict !== 'exited' || current.presence.ended) {
           return verdict
         }
         this.reconcileEndedProcessForPaneKeys([resolved], {

@@ -1,31 +1,26 @@
-import { isNewTurnEvent } from './agent-hook-listener/provider-event-routing'
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
+import type { AgentProcessPresence } from './agent-process-presence'
 
 /** Hooks can prompt a check, but cannot provide a successor process. */
 export function ownerDoubtFromHook(
   incoming: AgentHookEventPayload,
-  row: AgentHookEventPayload
+  owner: AgentProcessPresence | undefined
 ): boolean {
   return Boolean(
-    row.agentPresence?.process &&
-    !row.agentPresence.ended &&
+    owner?.process &&
+    !owner.ended &&
     (incoming.hookEventName === 'SessionEnd' || incoming.payload.state !== 'working')
   )
 }
 
-/** A pane has one owning agent; only the owner's own proven process can end it. */
+/** The relay's replay cache carries the pane's owner on each row; hook bytes never grant or end it. */
 export function transitionHookPresence(
   incoming: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload | undefined {
   if (previous?.agentPresence?.ended) {
-    return !incoming.isReplay &&
-      (incoming.source
-        ? isNewTurnEvent(incoming.source, incoming.hookEventName)
-        : incoming.payload.state === 'working')
-      ? { ...incoming, agentPresence: undefined }
-      : undefined
+    // Why: a replay restates the ended owner's own history; a live hook is a turn of whatever runs now.
+    return incoming.isReplay ? undefined : { ...incoming, agentPresence: undefined }
   }
-  // Hook bytes never grant or end ownership, including hooks from nested agents.
   return { ...incoming, agentPresence: previous?.agentPresence }
 }

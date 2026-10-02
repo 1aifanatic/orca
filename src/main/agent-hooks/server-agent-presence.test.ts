@@ -11,7 +11,10 @@ vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }
 const probe = vi.hoisted(() =>
   vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'unverifiable')
 )
-vi.mock('../../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
+vi.mock('../../shared/agent-process-presence-probe', () => ({
+  probeAgentProcessPresence: probe,
+  isSuspendedAgentProcess: vi.fn(async () => false)
+}))
 const servers: AgentHookServer[] = []
 afterEach(() => {
   for (const server of servers.splice(0)) {
@@ -110,14 +113,16 @@ describe('host-owned hook presence', () => {
     expect(visible(server)).toBe(false)
   })
 
-  it('does not resurrect an ended process on a late Stop', async () => {
+  it('treats a hook after the owner exited as a turn of whatever runs now', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
     capture(server)
     probe.mockResolvedValueOnce('exited')
-    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
-    await hook(server, 'Stop')
+    expect(await server.checkAgentPresence(PANE)).toBe('exited')
     expect(visible(server)).toBe(false)
+    await hook(server, 'Stop')
+    expect(visible(server)).toBe(true)
+    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
   })
 
   it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {
@@ -248,7 +253,7 @@ describe('host-owned hook presence', () => {
     expect(identified.hasVerifiableAgentProcess(PANE)).toBe(false)
   })
 
-  it('checks each pane once after replaying its spooled hooks', async () => {
+  it('never probes from spooled hooks an owner this runtime has not re-derived', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'orca-presence-spool-'))
     const first = new AgentHookServer()
     servers.push(first)
@@ -283,7 +288,8 @@ describe('host-owned hook presence', () => {
     const restarted = new AgentHookServer()
     servers.push(restarted)
     await restarted.start({ env: 'production', userDataPath })
-    expect(probe).toHaveBeenCalledOnce()
+    expect(probe).not.toHaveBeenCalled()
+    expect(restarted.getAgentOwner(PANE)).toBeUndefined()
   })
 
   it('keeps unanswered reads and clears only a positive process exit', async () => {

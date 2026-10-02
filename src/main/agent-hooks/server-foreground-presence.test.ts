@@ -3,16 +3,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
 import { PANE } from './server.test-fixtures'
 import type { AgentHookEventPayload } from '../../shared/agent-hook-listener/listener-event'
+import { projectPluginAgentStatusChangedPayload } from '../plugins/plugin-agent-status-event'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
 const probe = vi.hoisted(() =>
   vi.fn(async (): Promise<'live' | 'exited' | 'unverifiable'> => 'unverifiable')
 )
-vi.mock('../../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
+const suspended = vi.hoisted(() => vi.fn(async (): Promise<boolean> => false))
+vi.mock('../../shared/agent-process-presence-probe', () => ({
+  probeAgentProcessPresence: probe,
+  isSuspendedAgentProcess: suspended
+}))
 const owner = {
   agent: 'codex',
   process: { pid: 42, platform: 'linux', startTime: 'boot:42' }
+} as const
+const successor = {
+  agent: 'claude',
+  process: { pid: 43, platform: 'linux', startTime: 'boot:43' }
 } as const
 const scope = { paneKey: PANE, connectionId: null, tabId: 'tab-1', worktreeId: 'folder-1' }
 class Host extends AgentHookServer {
@@ -30,6 +39,14 @@ class Host extends AgentHookServer {
     this.recordCurrentAuthorityObservation(payload)
     this.applyNormalizedStatus(payload)
   }
+  alias(legacy: string, stable: string): void {
+    this.legacyPaneKeyAliases.set(legacy, {
+      stablePaneKey: stable,
+      ptyId: 'pty-1',
+      updatedAt: Date.now(),
+      authorityVerified: true
+    })
+  }
 }
 const hosts: Host[] = []
 function host() {
@@ -42,10 +59,12 @@ afterEach(() => {
   vi.useRealTimers()
   probe.mockReset()
   probe.mockResolvedValue('unverifiable')
+  suspended.mockReset()
+  suspended.mockResolvedValue(false)
 })
 
 describe('host foreground ownership', () => {
-  it('keeps a permission turn and its evidence clock while publishing only identity', () => {
+  it('keeps a permission turn and its evidence clock; turn subscribers never see the owner', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
     const server = host()
@@ -60,10 +79,100 @@ describe('host foreground ownership', () => {
       prompt: 'Approve?',
       agentPresence: owner,
       evidenceObservedAt: before.evidenceObservedAt,
-      stateStartedAt: before.stateStartedAt
+      stateStartedAt: before.stateStartedAt,
+      receivedAt: before.receivedAt
     })
     expect(server.getStatusSnapshot()[0].providerSessionOnly).not.toBe(true)
-    expect(published.mock.lastCall?.[0].providerSessionOnly).toBe(true)
+    expect(published).not.toHaveBeenCalled()
+  })
+
+  it('records a hookless owner without minting a turn, and plugins hear nothing', () => {
+    const server = host()
+    const plugin = vi.fn()
+    server.subscribeEnrichedStatus((enriched) => {
+      const payload = projectPluginAgentStatusChangedPayload(enriched)
+      if (payload) {
+        plugin(payload)
+      }
+    })
+    const changes = vi.fn()
+    server.subscribeStatusChanges(changes)
+    server.ingestForegroundPresence(scope, owner)
+    expect(server.getStatusSnapshot()).toEqual([])
+    expect(server.getAgentOwner(PANE)).toMatchObject({ paneKey: PANE, presence: owner })
+    expect(plugin).not.toHaveBeenCalled()
+    expect(changes).toHaveBeenCalledWith([])
+    expect(server.serialized()).toMatchObject({ entries: {} })
+  })
+
+  it('keeps the owner when its turn is dismissed', () => {
+    const server = host()
+    server.turn()
+    server.ingestForegroundPresence(scope, owner)
+    server.dropStatusEntry(PANE)
+    expect(server.getStatusSnapshot()).toEqual([])
+    expect(server.getAgentOwner(PANE)?.presence).toEqual(owner)
+  })
+
+  it('keeps Pi resume identity whichever of discovery and session_start comes first', () => {
+    const session = { id: 'pi-session-1', transcriptPath: '/tmp/pi/session-1.jsonl' }
+    for (const discoveryFirst of [true, false]) {
+      const server = host()
+      const sessionStart = () =>
+        server.turn({
+          source: 'pi',
+          hookEventName: 'session_start',
+          providerSession: session,
+          providerSessionOnly: true,
+          payload: { agentType: 'pi', state: 'done', prompt: '' }
+        })
+      if (discoveryFirst) {
+        server.ingestForegroundPresence(scope, { ...owner, agent: 'pi' })
+        sessionStart()
+      } else {
+        sessionStart()
+        server.ingestForegroundPresence(scope, { ...owner, agent: 'pi' })
+      }
+      expect(server.getProviderSessionIdentities()).toEqual([
+        expect.objectContaining({ paneKey: PANE, sessionId: 'pi-session-1' })
+      ])
+      expect(server.getAgentOwner(PANE)?.presence.agent).toBe('pi')
+    }
+  })
+
+  it('admits an owner seen under a legacy alias on its stable pane, so it can be checked', async () => {
+    const server = host()
+    server.alias('tab-1:1', PANE)
+    server.ingestForegroundPresence({ ...scope, paneKey: 'tab-1:1' }, owner)
+    expect(server.getAgentOwner(PANE)?.presence).toEqual(owner)
+    expect(server.hasVerifiableAgentProcess('tab-1:1')).toBe(true)
+    probe.mockResolvedValue('exited')
+    expect(await server.checkAgentPresence('tab-1:1')).toBe('exited')
+    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
+  })
+
+  it('replaces a stopped owner with the agent now in front, never a running one', async () => {
+    const server = host()
+    server.ingestForegroundPresence(scope, owner)
+    await server.ingestForegroundPresence(scope, successor)
+    expect(server.getAgentOwner(PANE)?.presence).toEqual(owner)
+    suspended.mockResolvedValue(true)
+    const released = vi.fn()
+    server.setAgentPresenceReleaseListener(released)
+    await server.ingestForegroundPresence(scope, successor)
+    expect(suspended).toHaveBeenLastCalledWith(owner.process)
+    expect(server.getAgentOwner(PANE)?.presence).toEqual(successor)
+    expect(released).toHaveBeenCalledWith({ paneKey: PANE, process: owner.process })
+  })
+
+  it('releases an owner that has no turn when its terminal ends', () => {
+    const server = host()
+    const released = vi.fn()
+    server.setAgentPresenceReleaseListener(released)
+    server.ingestForegroundPresence(scope, owner)
+    expect(server.reconcileEndedProcessForPaneKeys([PANE], { kind: 'terminal-ended' })).toBe(1)
+    expect(server.getAgentOwner(PANE)).toBeUndefined()
+    expect(released).toHaveBeenCalledWith({ paneKey: PANE, process: owner.process })
   })
 
   it('keeps an unknown owner on command-authority revocation and clears only proven exit', async () => {
@@ -71,10 +180,11 @@ describe('host foreground ownership', () => {
     server.ingestForegroundPresence(scope, owner)
     server.retirePaneAuthority(PANE, undefined, { authorityOnly: true })
     expect(await server.checkAgentPresence(PANE)).toBe('unverifiable')
-    expect(server.getStatusSnapshot()[0].agentPresence).toEqual(owner)
+    expect(server.getAgentOwner(PANE)?.presence).toEqual(owner)
     probe.mockResolvedValue('exited')
     expect(await server.checkAgentPresence(PANE)).toBe('exited')
-    expect(server.getStatusSnapshot()[0]?.agentPresence?.ended).toBe(true)
+    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
+    expect(server.getStatusSnapshot()).toEqual([])
   })
 
   it('revokes launch authority without losing the owner or persisting a stale token', () => {
@@ -91,6 +201,7 @@ describe('host foreground ownership', () => {
     expect(server.getCurrentAuthorityObservations()).toEqual([])
     expect(server.getStatusSnapshot()[0]?.agentPresence).toEqual(owner)
     expect(server.serialized()).not.toHaveProperty(`entries.${PANE}.launchTokenHash`)
+    expect(server.serialized()).not.toHaveProperty(`entries.${PANE}.agentPresence`)
     expect(server.serialized()).not.toHaveProperty(`authorityCommitments.${PANE}`)
   })
 
@@ -105,7 +216,7 @@ describe('host foreground ownership', () => {
     expect(probe).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(probe).toHaveBeenCalledExactlyOnceWith(owner.process)
-    expect(server.getStatusSnapshot()[0]?.agentPresence?.ended).toBe(true)
+    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
   })
 
   it('does not let a late capture resurrect a closed pane', () => {
@@ -113,5 +224,6 @@ describe('host foreground ownership', () => {
     server.retirePaneAuthority(PANE)
     server.ingestForegroundPresence(scope, owner)
     expect(server.getStatusSnapshot()).toEqual([])
+    expect(server.getAgentOwner(PANE)).toBeUndefined()
   })
 })

@@ -1,7 +1,15 @@
 import { ownerDoubtFromHook } from '../shared/agent-hook-presence-transition'
 import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listener-event'
-import { isSameAgentProcess, type AgentProcessIdentity } from '../shared/agent-process-presence'
-import { probeAgentProcessPresence } from '../shared/agent-process-presence-probe'
+import { canAdmitAgentForeground } from '../shared/agent-foreground-admission'
+import {
+  isSameAgentProcess,
+  type AgentProcessIdentity,
+  type AgentProcessPresence
+} from '../shared/agent-process-presence'
+import {
+  isSuspendedAgentProcess,
+  probeAgentProcessPresence
+} from '../shared/agent-process-presence-probe'
 import { AgentOwnerLivenessRecheck } from '../shared/agent-owner-liveness-recheck'
 
 type PendingCheck = {
@@ -38,7 +46,7 @@ export class RelayAgentPresence {
     if (row.agentPresence?.process && !row.agentPresence.ended) {
       this.ownerLivenessRecheck.noteLiveOwner()
     }
-    const doubted = doubt ? ownerDoubtFromHook(incoming, row) : undefined
+    const doubted = doubt && ownerDoubtFromHook(incoming, row.agentPresence)
     if (doubted) {
       return this.host.checkOwner(row.paneKey)
     }
@@ -93,4 +101,78 @@ export class RelayAgentPresence {
     this.pending.set(row.paneKey, entry)
     return entry.check
   }
+}
+
+/** A live owner that a different foreground process now doubts; only a stop proves it yielded. */
+function doubtedRelayOwner(
+  before: AgentHookEventPayload | undefined,
+  presence: AgentProcessPresence
+): AgentProcessIdentity | undefined {
+  const recorded = before?.agentPresence
+  const process = recorded?.ended ? undefined : recorded?.process
+  return process && presence.process && !isSameAgentProcess(process, presence.process)
+    ? process
+    : undefined
+}
+
+/** The replay-cache row for an owner this host's foreground capture admits, or undefined. */
+function relayForegroundOwnerRow(
+  before: AgentHookEventPayload | undefined,
+  scope: Pick<AgentHookEventPayload, 'paneKey' | 'tabId' | 'worktreeId' | 'terminalHandle'>,
+  presence: AgentProcessPresence,
+  recordedSuspended: boolean
+): AgentHookEventPayload | undefined {
+  const recorded = before?.agentPresence
+  if (
+    !canAdmitAgentForeground(
+      before && {
+        presence: recorded,
+        connectionId: before.connectionId,
+        worktreeId: before.worktreeId
+      },
+      presence,
+      { connectionId: null, worktreeId: scope.worktreeId },
+      recordedSuspended
+    )
+  ) {
+    return undefined
+  }
+  // Why: the cache encodes an owner on its row; a turn keeps its fields, an ended owner's resume
+  // identity stays with that owner.
+  const carried = before && !recorded?.ended ? before : undefined
+  return carried && !carried.providerSessionOnly
+    ? { ...carried, ...scope, agentPresence: presence }
+    : {
+        ...scope,
+        connectionId: null,
+        agentPresence: presence,
+        payload: carried?.payload ?? { state: 'done', prompt: '', agentType: presence.agent },
+        providerSessionOnly: true,
+        ...(carried?.providerSession ? { providerSession: carried.providerSession } : {})
+      }
+}
+
+/** The relay host's own capture: admits synchronously unless a live owner must first prove it stopped. */
+export function admitRelayForegroundOwner(
+  current: () => AgentHookEventPayload | undefined,
+  scope: Pick<AgentHookEventPayload, 'paneKey' | 'tabId' | 'worktreeId' | 'terminalHandle'>,
+  presence: AgentProcessPresence,
+  apply: (row: AgentHookEventPayload) => void
+): Promise<void> {
+  const before = current()
+  const admit = (suspended: boolean): void => {
+    const row =
+      current() === before ? relayForegroundOwnerRow(before, scope, presence, suspended) : undefined
+    if (row) {
+      apply(row)
+    }
+  }
+  const doubted = doubtedRelayOwner(before, presence)
+  if (!doubted) {
+    admit(false)
+    return Promise.resolve()
+  }
+  return isSuspendedAgentProcess(doubted)
+    .catch(() => false)
+    .then(admit)
 }

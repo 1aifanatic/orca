@@ -80,6 +80,9 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     for (const row of retiredRows) {
       this.commitStatusRowMutation(row, undefined)
     }
+    for (const key of paneKeys) {
+      this.writeAgentOwner(key, undefined)
+    }
     if (hadStatus || authorityChanged) {
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()

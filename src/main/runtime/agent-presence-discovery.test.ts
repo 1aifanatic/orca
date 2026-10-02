@@ -23,7 +23,13 @@ function fixture() {
   let rows: AgentStatusIpcPayload[] = []
   const runtime = new OrcaRuntimeService(null, undefined, {
     onForegroundAgentPresence: publish,
-    getAgentProviderSessionRowsForPane: () => rows
+    getAgentProviderSessionRowsForPane: () => rows,
+    getAgentOwner: (key: string) => {
+      const row = rows.find((entry) => entry.paneKey === key && entry.agentPresence)
+      return row?.agentPresence
+        ? { paneKey: key, connectionId: null, presence: row.agentPresence, receivedAt: 1 }
+        : undefined
+    }
   })
   runtimes.push(runtime)
   const controller = {
@@ -125,5 +131,22 @@ describe('runtime foreground admission', () => {
     }
     await vi.advanceTimersByTimeAsync(2_000)
     expect(f.capture).not.toHaveBeenCalled()
+  })
+
+  it('re-derives a surviving owner with one read when a terminal is reattached', async () => {
+    const f = fixture()
+    const reattachedLeaf = '22222222-2222-4222-8222-222222222222'
+    f.runtime.registerPty('reattached', 'folder', null, {
+      tabId: 'tab-2',
+      leafId: reattachedLeaf,
+      reattached: true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(f.capture).toHaveBeenCalledExactlyOnceWith('reattached')
+    expect(f.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ paneKey: makePaneKey('tab-2', reattachedLeaf) }),
+      owner
+    )
   })
 })

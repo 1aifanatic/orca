@@ -1,36 +1,38 @@
-import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
 import { isSameAgentProcess, type AgentProcessPresence } from './agent-process-presence'
+import { worktreeIdsEqual } from './worktree/id'
 
-/** Both execution hosts use this rule; discovery carries identity without inventing a turn. */
-export function admitAgentForeground(
-  before: AgentHookEventPayload | undefined,
+type RecordedOwner = {
+  presence?: AgentProcessPresence
+  connectionId: string | null
+  worktreeId?: string
+}
+
+/** Both execution hosts use this rule; it decides ownership and never touches a turn. */
+export function canAdmitAgentForeground(
+  recorded: RecordedOwner | undefined,
   presence: AgentProcessPresence,
-  scope: Pick<
-    AgentHookEventPayload,
-    'paneKey' | 'connectionId' | 'worktreeId' | 'tabId' | 'terminalHandle'
-  >
-): AgentHookEventPayload | undefined {
+  scope: { connectionId: string | null; worktreeId?: string },
+  /** This host just proved the recorded owner stopped (Ctrl-Z); the new process holds the terminal. */
+  recordedSuspended = false
+): boolean {
   if (!presence.process || presence.ended) {
-    return undefined
+    return false
+  }
+  const owner = recorded?.presence?.process
+  if (!recorded || !owner) {
+    return true
   }
   if (
-    before &&
-    (before.connectionId !== scope.connectionId || before.worktreeId !== scope.worktreeId)
+    recorded.connectionId !== scope.connectionId ||
+    (recorded.worktreeId &&
+      scope.worktreeId &&
+      !worktreeIdsEqual(recorded.worktreeId, scope.worktreeId))
   ) {
-    return undefined
+    return false
   }
-  const recorded = before?.agentPresence
-  if (recorded?.process) {
-    if (!recorded.ended || isSameAgentProcess(recorded.process, presence.process)) {
-      return undefined
-    }
+  if (isSameAgentProcess(owner, presence.process)) {
+    return false
   }
-  const sameTurn = before && !recorded?.ended && !before.providerSessionOnly
-  return {
-    ...(sameTurn ? before : {}),
-    ...scope,
-    agentPresence: presence,
-    payload: sameTurn ? before.payload : { state: 'done', prompt: '', agentType: presence.agent },
-    ...(sameTurn ? {} : { providerSessionOnly: true })
-  }
+  // A running owner is never replaced; only an ended or a stopped one yields its terminal.
+  return recorded.presence?.ended === true || recordedSuspended
 }

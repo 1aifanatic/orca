@@ -1,5 +1,3 @@
-import { transitionHookPresence } from '../../../shared/agent-hook-presence-transition'
-import { isSameAgentProcess } from '../../../shared/agent-process-presence'
 import {
   reconcileRemoteCodexState,
   markCodexLeadTurnInterrupted
@@ -30,43 +28,23 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
     const incoming = this.withLiveLaunchToken(event)
-    // Why: a relay already chose the live owner on its own host; re-deciding against a record it
-    // replaced would pin the pane to an owner this desktop can never check. Exits still need our
-    // fence, except the host-stamped replay of the relay's own settled exit.
-    const relayOwner = incoming.connectionId !== null ? incoming.agentPresence : undefined
+    // Why: a turn row never stores an owner; only a relay's own host may record one, beside it.
+    const {
+      authorityRestartId,
+      agentPresence: claimedOwner,
+      agentPresenceFromExecutionHost,
+      ...payload
+    } = incoming
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-    const stored = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
+    const stored = this.state.lastStatusByPaneKey.get(payload.paneKey) as
       | EnrichedAgentHookEventPayload
       | undefined
-    // An old owner exit must not retire a later unidentified turn.
-    if (relayOwner?.ended && stored && !stored.agentPresence?.process) {
-      return undefined
-    }
-    const relayDecided = Boolean(incoming.agentPresenceFromExecutionHost && relayOwner?.process)
-    const transitioned = relayDecided ? incoming : transitionHookPresence(incoming, stored)
-    if (!transitioned) {
-      return undefined
-    }
-    // Host provenance describes this admission, never the stored row.
-    const { authorityRestartId, agentPresenceFromExecutionHost, ...payload } = {
-      ...incoming,
-      ...transitioned
-    }
-    if (!this.canWriteLegacyStatusRow(payload)) {
-      return undefined
-    }
-    // Why: the execution host already replaced this owner; the mirrored row is a dead process's, not a parent turn.
-    const hostOwner = agentPresenceFromExecutionHost && payload.agentPresence?.process
-    const replacesStaleOwner = Boolean(
-      hostOwner &&
-      stored?.agentPresence?.process &&
-      !isSameAgentProcess(stored.agentPresence.process, hostOwner)
-    )
-    if (payload.agentPresence?.ended && !replacesStaleOwner) {
-      this.reconcileEndedProcessForPaneKeys([payload.paneKey], {
-        kind: 'owner-exited',
-        presence: payload.agentPresence
-      })
+    const replacesStaleOwner =
+      agentPresenceFromExecutionHost && claimedOwner
+        ? this.applyRemoteOwner(payload, claimedOwner)
+        : false
+    // Why: an exit claim carries no turn; the owner record above already settled what it proves.
+    if (claimedOwner?.ended || !this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }
     if (payload.hookEventName === 'UserPromptSubmit') {
@@ -103,23 +81,9 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     if (terminalOwnedPayload.providerSessionOnly) {
       // Why: identity-only rows survive replay but must not emit prompt telemetry or a fabricated status.
       onAccepted?.()
-      const identityPayload =
-        previous && !previous.providerSessionOnly && !previous.agentPresence?.ended
-          ? {
-              ...previous,
-              agentPresence: terminalOwnedPayload.agentPresence,
-              providerSession: terminalOwnedPayload.providerSession ?? previous.providerSession
-            }
-          : terminalOwnedPayload
       const enriched = {
-        ...this.attachStatusTiming(
-          identityPayload,
-          now,
-          previous && !previous.providerSessionOnly
-            ? (previous.evidenceObservedAt ?? previous.receivedAt)
-            : undefined
-        ),
-        observation: this.stampObservation(identityPayload, origin, now)
+        ...this.attachStatusTiming(terminalOwnedPayload, now),
+        observation: this.stampObservation(terminalOwnedPayload, origin, now)
       }
       this.clearAssistantMessageRetry(enriched.paneKey)
       this.runtimeObservedStatusPaneKeys.delete(enriched.paneKey)
@@ -129,7 +93,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       this.commitStatusRowMutation(rowBefore, enriched)
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
-      this.emitEnrichedStatus({ ...enriched, providerSessionOnly: true })
+      this.emitEnrichedStatus(enriched)
       return enriched
     }
     const stateReconciledPayload =
