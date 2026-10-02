@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as WindowsShortPath from '../windows/windows-short-path'
 
 const mocks = vi.hoisted(() => ({
   runProcess: vi.fn(),
@@ -17,7 +18,8 @@ vi.mock('../codex-cli/command', () => ({
   resolveCodexCommand: () => '/opt/codex/bin/codex',
   withCliRuntimeOnPath: (_path: string, env: NodeJS.ProcessEnv) => env
 }))
-vi.mock('../windows/windows-short-path', () => ({
+vi.mock('../windows/windows-short-path', async (importOriginal) => ({
+  ...(await importOriginal<typeof WindowsShortPath>()),
   resolveWindowsShortPath: mocks.resolveWindowsShortPath
 }))
 
