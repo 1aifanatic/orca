@@ -289,6 +289,25 @@ describe('AntigravityHookService', () => {
     })
   })
 
+  it('preserves the installed core and config when publishing the Windows reader fails', () => {
+    withPlatform('win32', () => {
+      const service = new AntigravityHookService()
+      expect(service.install().state).toBe('installed')
+      const hookDir = join(homeDir, '.orca', 'agent-hooks')
+      const readerPath = join(hookDir, 'antigravity-hook-post.cjs')
+      const corePath = join(hookDir, 'antigravity-hook.cmd')
+      const configPath = join(homeDir, '.gemini', 'config', 'hooks.json')
+      writeFileSync(corePath, 'previous installed core')
+      const previousConfig = readFileSync(configPath, 'utf8')
+      rmSync(readerPath)
+      mkdirSync(readerPath)
+
+      expect(() => service.install()).toThrow()
+      expect(readFileSync(corePath, 'utf8')).toBe('previous installed core')
+      expect(readFileSync(configPath, 'utf8')).toBe(previousConfig)
+    })
+  })
+
   it('restores the owned Windows reader and resolves the current runtime on refresh', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     try {

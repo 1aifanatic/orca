@@ -174,12 +174,14 @@ export class AntigravityHookService {
       createAntigravityManagedCommandMatcher()
     )
     const runtimePath = process.platform === 'win32' ? this.getWindowsRuntimePath() : undefined
-    writeManagedScript(scriptPath, getManagedScript('local', runtimePath))
     if (process.platform === 'win32') {
       writeManagedScript(
         getSharedManagedScriptPath('antigravity-hook-post.cjs'),
         WINDOWS_ANTIGRAVITY_JSON_POST_SCRIPT
       )
+    }
+    writeManagedScript(scriptPath, getManagedScript('local', runtimePath))
+    if (process.platform === 'win32') {
       // Why: Antigravity wraps hook commands in cmd.exe. Keeping event env
       // setup inside event-specific .cmd files avoids nested hooks.json quotes.
       for (const event of ANTIGRAVITY_EVENTS) {
