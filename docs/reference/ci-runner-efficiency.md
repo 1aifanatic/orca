@@ -140,9 +140,10 @@ setup. These are warm-policy setup measurements, not workflow or billing savings
 
 The shared installer consequently skips root-only Linux x64/ARM64 store restores
 on PRs. It still installs and checks every package through pnpm. Mixed mobile and
-custom lockfile sets, other architectures, Mac behavior, verification/native caches,
+custom lockfile sets, other architectures, verification/native caches,
 main store writers and release installation policies keep their existing behavior.
-The measured Windows exceptions remain. No new periodic job or cache is added.
+The measured Windows exceptions remain. Mac restores were retained at this stage;
+the following comparison supersedes that policy. No periodic job or cache is added.
 
 ## October 2 macOS root store comparison
 
