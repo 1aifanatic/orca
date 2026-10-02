@@ -200,13 +200,12 @@ async function startOrcadRuntime(
     statusHooksEnabled: isAgentStatusHooksEnabled(profileStore.getSettings())
   })
 
-  registerCleanup(
-    profileStore.onSettingsChanged((updates, settings) => {
-      if ('agentStatusHooksEnabled' in updates) {
-        agentHookServer.setStatusHooksEnabled(isAgentStatusHooksEnabled(settings))
-      }
-    })
-  )
+  const removeStatusHookSettingsListener = profileStore.onSettingsChanged((updates, settings) => {
+    if ('agentStatusHooksEnabled' in updates) {
+      agentHookServer.setStatusHooksEnabled(isAgentStatusHooksEnabled(settings))
+    }
+  })
+  registerCleanup(async () => removeStatusHookSettingsListener())
 
   // Why before the runtime and the PTY handlers: `setLocalPtyProvider` installs the daemon
   // adapter as THE local provider, and the registry's contract is that it lands before
