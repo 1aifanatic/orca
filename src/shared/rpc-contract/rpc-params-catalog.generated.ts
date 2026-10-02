@@ -23,7 +23,6 @@ import {
   PairingProvisionRelayParamsSchema
 } from '../mobile-relay-credential-contract'
 import { MobileWebBundleChunkParamsSchema } from '../mobile-web-bundle/bundle-rpc-contract'
-import { OrcadTerminalCensusParamsSchema } from '../orcad-terminal-census'
 import { pluginConsentRequestSchema } from '../plugins/plugin-consent-request'
 import {
   AccountsUnsubscribeParams,
@@ -380,6 +379,7 @@ import {
   InboxParams,
   ReplyParams,
   ResetParams,
+  SessionAddressParams,
   TaskCreateParams,
   TaskListParams
 } from './orchestration-params'
@@ -987,8 +987,8 @@ export const RPC_PARAMS_BY_METHOD = {
   'notifications.testPush': null,
   'notifications.unregisterPush': null,
   'notifications.unsubscribe': NotificationUnsubscribeParams,
-  'orcad.terminalCensus': OrcadTerminalCensusParamsSchema,
   'orchestration.ask': AskParams,
+  'orchestration.callerShow': null,
   'orchestration.check': CheckParams,
   'orchestration.dispatch': DispatchParams,
   'orchestration.dispatchShow': DispatchShowParams,
@@ -1016,6 +1016,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'orchestration.runShow': RunShowParams,
   'orchestration.runStop': RunStopParams,
   'orchestration.runUse': RunUseParams,
+  'orchestration.sessionAddress': SessionAddressParams,
   'orchestration.taskCreate': TaskCreateParams,
   'orchestration.taskList': TaskListParams,
   'orchestration.workerAbandon': WorkerDispatchParams,
