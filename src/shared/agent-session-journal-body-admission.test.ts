@@ -3,152 +3,136 @@ import {
   readAgentJournalItemBody,
   readAgentJournalMessageBody
 } from './agent-session-journal-body-admission'
-import { unclassifiedOptionalFacts } from './agent-session-journal-optional-facts'
-import {
-  AgentJournalItemBodySchema,
-  AgentJournalMessageBodySchema
-} from './agent-session-journal-schemas'
 
 const RESOLUTION = { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+const QUESTION_ENTRY = {
+  id: 'q-1',
+  question: 'Which lane?',
+  multiSelect: false,
+  options: [{ id: 'o-1', label: 'First' }],
+  freeTextQuestionId: 'q-1-other'
+}
 const QUESTION = {
   kind: 'question',
   question: 'Which lane?',
   options: [{ id: 'o-1', label: 'First' }],
-  questions: [
-    {
-      id: 'q-1',
-      question: 'Which lane?',
-      multiSelect: false,
-      options: [{ id: 'o-1', label: 'First' }],
-      freeTextQuestionId: 'q-1-other'
-    }
-  ],
+  questions: [QUESTION_ENTRY],
   resolution: RESOLUTION
+}
+const PLAN_APPROVAL = {
+  kind: 'approval',
+  title: 'Approve the plan?',
+  detail: null,
+  options: [{ id: 'yes', label: 'Yes' }],
+  resolution: RESOLUTION,
+  subject: { kind: 'plan', text: 'Step one' }
 }
 const TURN_STATUS = {
   kind: 'status',
   text: 'Turn started',
   turnLifecycle: { turnId: 't-1', state: 'running', startedAt: 5 }
 }
-
-/** Reads a copy, so each case starts from the same body; returns the verdict and what is left. */
-function read(body: Record<string, unknown>) {
-  const copy = structuredClone(body)
-  return { verdict: readAgentJournalItemBody(copy), body: copy }
+const GOAL = {
+  objective: 'Ship it',
+  status: 'active',
+  tokenBudget: null,
+  tokensUsed: 1,
+  timeUsedSeconds: 1,
+  createdAt: 1,
+  updatedAt: 1
 }
 
-it('gives every optional field a body can hold a policy', () => {
-  expect(unclassifiedOptionalFacts(AgentJournalItemBodySchema)).toEqual([])
-  expect(unclassifiedOptionalFacts(AgentJournalMessageBodySchema)).toEqual([])
-})
-
-describe('a body of a kind this build does not know', () => {
-  it('is unreadable and left as it was', () => {
-    const body = { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }
-    expect(read(body)).toEqual({ verdict: 'unreadable', body })
-  })
-
+describe('a body this build reads', () => {
   it.each([
-    ['no kind', { text: 'x' }],
-    ['an empty kind', { kind: '' }],
-    ['a kind that is not a string', { kind: 7 }]
-  ])('is damage with %s', (_name, body) => {
-    expect(read(body).verdict).toBe('malformed')
-  })
-
-  it.each([null, 'status', [{ kind: 'status' }]])('is damage when the body is %j', (body) => {
-    expect(readAgentJournalItemBody(body)).toBe('malformed')
-  })
-})
-
-describe('an optional fact this build cannot parse', () => {
-  it.each([
-    ['a negative turn duration', { kind: 'turn', turnId: 't', state: 'done', durationMs: -1 }],
-    ['a null turn start', { kind: 'turn', turnId: 't', state: 'done', startedAt: null }],
-    ['a failure fact with no kind', { kind: 'status', text: 'Failed', failure: { kind: '' } }],
+    ['a question', QUESTION],
+    ['a plan approval', PLAN_APPROVAL],
+    ['a turn lifecycle', TURN_STATUS],
+    ['a goal change', { kind: 'status', text: 'Goal', threadGoal: { state: 'set', goal: GOAL } }],
     [
-      'context facts of a later shape',
-      { kind: 'turn', turnId: 't', state: 'done', contextUsage: 1 }
+      'a key it does not know, in a prompt option too',
+      { ...QUESTION, next: 1, options: [{ id: 'o-1', label: 'First', shortcut: 'f' }] }
     ],
     [
-      'a tool call id that is only spaces',
-      { kind: 'tool-call', name: 'Read', state: 'done', callId: ' ' }
-    ]
-  ])('drops %s and keeps the row', (_name, body) => {
-    const { verdict, body: left } = read(body)
-    expect(verdict).toBe('readable')
-    const dropped = Object.keys(body).filter((key) => !(key in left))
-    expect(dropped).toHaveLength(1)
-    expect(left).toEqual(
-      Object.fromEntries(Object.entries(body).filter(([key]) => key !== dropped[0]))
-    )
-  })
-
-  it('drops a broken annotation nested in a block, an option and a turn lifecycle, and keeps them', () => {
-    const message = {
-      kind: 'message',
-      role: 'assistant',
-      blocks: [{ type: 'text', text: 'hi', tone: 5 }]
-    }
-    expect(read(message)).toEqual({
-      verdict: 'readable',
-      body: { ...message, blocks: [{ type: 'text', text: 'hi' }] }
-    })
-    const question = { ...QUESTION, options: [{ id: 'o-1', label: 'First', description: 3 }] }
-    expect(read(question)).toEqual({
-      verdict: 'readable',
-      body: { ...question, options: [{ id: 'o-1', label: 'First' }] }
-    })
-    const status = {
-      ...TURN_STATUS,
-      turnLifecycle: { ...TURN_STATUS.turnLifecycle, startedAt: 'x' }
-    }
-    expect(read(status)).toEqual({
-      verdict: 'readable',
-      body: { ...status, turnLifecycle: { turnId: 't-1', state: 'running' } }
-    })
-  })
-
-  it.each([
-    ['a question list that is not a list', { ...QUESTION, questions: null }],
-    ['a question with no free-text id string', { ...QUESTION, freeTextQuestionId: 4 }],
-    ['a turn lifecycle with no turn', { ...TURN_STATUS, turnLifecycle: { state: 'running' } }],
-    ['a goal change with no goal', { kind: 'status', text: 'Goal', threadGoal: { state: 'set' } }],
+      'a block type it does not know',
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'chart' }] }
+    ],
     [
-      'a plan approval with no plan',
-      {
-        kind: 'approval',
-        title: 'Approve the plan?',
-        detail: null,
-        options: [{ id: 'yes', label: 'Yes' }],
-        resolution: RESOLUTION,
-        subject: { kind: 'plan' }
-      }
-    ]
-  ])('makes the row unreadable, not damaged, for must-understand %s', (_name, body) => {
-    expect(read(body)).toEqual({ verdict: 'unreadable', body })
+      'a goal state it does not know',
+      { kind: 'status', text: 'Goal', threadGoal: { state: 'paused' } }
+    ],
+    ['a turn state it does not know', { kind: 'turn', turnId: 't', state: 'handed-off' }]
+  ])('is readable: %s', (_name, body) => {
+    expect(readAgentJournalItemBody(body)).toBe('readable')
   })
 })
 
-describe('a field this build does not know', () => {
-  it('is ignored and kept, in a prompt option too', () => {
-    const body = { ...QUESTION, options: [{ id: 'o-1', label: 'First', shortcut: 'f' }], next: 1 }
-    expect(read(body)).toEqual({ verdict: 'readable', body })
-  })
-})
-
-describe('a required field that fails', () => {
+describe("a value outside a closed set this build knows: a newer build's", () => {
   it.each([
+    ['a body kind', { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }],
+    ['a nested literal', { ...PLAN_APPROVAL, subject: { kind: 'diff', path: 'a.ts' } }],
+    [
+      'a nested discriminant',
+      { kind: 'turn', turnId: 't', state: 'done', contextUsage: { used: { kind: 'measured' } } }
+    ],
+    ['one beside damage', { ...PLAN_APPROVAL, title: 5, subject: { kind: 'diff' } }]
+  ])('is unreadable: %s', (_name, body) => {
+    expect(readAgentJournalItemBody(body)).toBe('unreadable')
+  })
+})
+
+describe('anything else that fails: damage', () => {
+  it.each([
+    ['a body that is not an object', null],
+    ['a body that is a list', [{ kind: 'status' }]],
+    ['no kind', { text: 'x' }],
+    ['an empty kind', { kind: '' }],
+    ['a kind that is not a string', { kind: 7 }],
+    [
+      'a nested literal that is not a string',
+      { ...PLAN_APPROVAL, subject: { kind: 5, text: 'x' } }
+    ],
+    ['questions that are not a list', { ...QUESTION, questions: null }],
+    [
+      'a multi-select flag that is not a boolean',
+      { ...QUESTION, questions: [{ ...QUESTION_ENTRY, multiSelect: 'yes' }] }
+    ],
+    [
+      'a question option with no id',
+      { ...QUESTION, questions: [{ ...QUESTION_ENTRY, options: [{ label: 'First' }] }] }
+    ],
+    ['a free-text question id that is not a string', { ...QUESTION, freeTextQuestionId: 4 }],
+    ['a turn lifecycle with no turn', { ...TURN_STATUS, turnLifecycle: { state: 'running' } }],
+    [
+      'a turn lifecycle whose turn is a number',
+      { ...TURN_STATUS, turnLifecycle: { turnId: 7, state: 'running' } }
+    ],
+    [
+      'a goal with no token count',
+      {
+        kind: 'status',
+        text: 'Goal',
+        threadGoal: { state: 'set', goal: { ...GOAL, tokensUsed: null } }
+      }
+    ],
+    ['a goal change with no goal', { kind: 'status', text: 'Goal', threadGoal: { state: 'set' } }],
+    ['an empty plan', { ...PLAN_APPROVAL, subject: { kind: 'plan', text: '' } }],
     ['question options that are not a list', { ...QUESTION, options: null }],
     ['a question without its resolution', { ...QUESTION, resolution: undefined }],
     ['a diff whose patch is broken', { kind: 'diff', path: 'a.ts', patch: { head: 'x' } }],
     ['a turn with no state', { kind: 'turn', turnId: 't' }],
+    ['a negative turn duration', { kind: 'turn', turnId: 't', state: 'done', durationMs: -1 }],
+    ['a failure fact with no kind', { kind: 'status', text: 'Failed', failure: { kind: '' } }],
+    [
+      'a tool call id that is only spaces',
+      { kind: 'tool-call', name: 'Read', state: 'done', callId: ' ' }
+    ],
     [
       'a known block missing its text',
       { kind: 'message', role: 'user', blocks: [{ type: 'text' }] }
-    ]
-  ])('is damage: %s', (_name, body) => {
-    expect(read(body).verdict).toBe('malformed')
+    ],
+    ['a block type that is not a string', { kind: 'message', role: 'user', blocks: [{ type: 5 }] }]
+  ])('is malformed: %s', (_name, body) => {
+    expect(readAgentJournalItemBody(body)).toBe('malformed')
   })
 })
 
@@ -159,5 +143,8 @@ describe("a submission's body", () => {
     )
     expect(readAgentJournalMessageBody({ kind: 'voice-note', clip: 'x' })).toBe('unreadable')
     expect(readAgentJournalMessageBody({ kind: 'status', text: 'x' })).toBe('malformed')
+    expect(
+      readAgentJournalMessageBody({ kind: 'message', role: 'user', blocks: [{ type: 'text' }] })
+    ).toBe('malformed')
   })
 })

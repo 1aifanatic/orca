@@ -1,7 +1,7 @@
-// Inside a row of a known kind, what this build cannot read is never repaired away unless it is
-// damage: a body or mutation of a newer kind, or a must-understand fact it cannot parse, latches
-// the chat read-only with every row kept as it was; an annotation it cannot parse costs only that
-// annotation. A required field that fails is still damage, repaired as before.
+// Inside a row of a known kind, what a newer build wrote is never repaired away: a mutation of a
+// newer kind, or a body holding a value outside a closed set this build knows, latches the chat
+// read-only with every row kept as it was, even beside damage. Anything else that fails is damage,
+// repaired as before.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -88,7 +88,27 @@ function itemRow(epoch: string, itemId: string, body: Record<string, unknown>) {
   }
 }
 
+function batchRow(epoch: string, mutations: Record<string, unknown>[]) {
+  return {
+    v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+    epoch,
+    fence: 1,
+    ts: 5_000,
+    kind: 'lifecycle-batch',
+    settlementId: 'settle-1',
+    mutations
+  }
+}
+
 const NEWER_BODY = { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }
+const PLAN_APPROVAL = {
+  kind: 'approval',
+  title: 'Approve the plan?',
+  detail: null,
+  options: [{ id: 'yes', label: 'Yes' }],
+  resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null },
+  subject: { kind: 'plan', text: 'Step one' }
+}
 
 async function expectReadOnlyAndKept(written: { seq: number; rowJson: string }[]) {
   const journal = await open()
@@ -121,23 +141,15 @@ describe("a newer build's content inside a known row", () => {
     ]
   ])('latches read-only on a lifecycle mutation %s', async (_name, mutation) => {
     const { written } = await journalWith((epoch) => [
-      {
-        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-        epoch,
-        fence: 1,
-        ts: 5_000,
-        kind: 'lifecycle-batch',
-        settlementId: 'settle-1',
-        mutations: [
-          {
-            kind: 'item',
-            itemId: 'codex:thread-1:turn-1:3',
-            revision: 1,
-            body: { kind: 'status', text: 'ok' }
-          },
-          mutation
-        ]
-      }
+      batchRow(epoch, [
+        {
+          kind: 'item',
+          itemId: 'codex:thread-1:turn-1:3',
+          revision: 1,
+          body: { kind: 'status', text: 'ok' }
+        },
+        mutation
+      ])
     ])
     await expectReadOnlyAndKept(written)
   })
@@ -159,61 +171,77 @@ describe("a newer build's content inside a known row", () => {
     await expectReadOnlyAndKept(written)
   })
 
-  it('latches read-only on a must-understand fact it cannot parse', async () => {
+  it('latches read-only on a newer value of a nested closed set', async () => {
     const { written } = await journalWith((epoch) => [
-      itemRow(epoch, 'codex:thread-1:turn-1:2', {
-        kind: 'status',
-        text: 'Turn started',
-        turnLifecycle: { turnId: 7, state: 'running' }
-      })
+      itemRow(epoch, 'codex:thread-1:turn-1:2', { ...PLAN_APPROVAL, subject: { kind: 'diff' } })
     ])
+    await expectReadOnlyAndKept(written)
+  })
+
+  it('latches read-only on a newer mutation kind that carries no item id', async () => {
+    const { written } = await journalWith((epoch) => [
+      batchRow(epoch, [{ kind: 'turn-settle', turnId: 'turn-1', outcome: 'done' }])
+    ])
+    await expectReadOnlyAndKept(written)
+  })
+
+  it.each([
+    [
+      'a body',
+      (epoch: string) =>
+        itemRow(epoch, 'codex:thread-1:turn-1:2', {
+          ...PLAN_APPROVAL,
+          title: 5,
+          subject: { kind: 'diff' }
+        })
+    ],
+    [
+      'a row',
+      (epoch: string) => ({
+        ...itemRow(epoch, 'codex:thread-1:turn-1:2', NEWER_BODY),
+        revision: 'x'
+      })
+    ],
+    [
+      'a batch',
+      (epoch: string) =>
+        batchRow(epoch, [
+          { kind: 'item', itemId: 'codex:thread-1:turn-1:3', revision: 1, body: { kind: 'diff' } },
+          { kind: 'pin' }
+        ])
+    ]
+  ])('latches read-only when damage sits beside newer content in %s', async (_where, row) => {
+    const { written } = await journalWith((epoch) => [row(epoch)])
     await expectReadOnlyAndKept(written)
   })
 })
 
-describe('an annotation this build cannot parse', () => {
-  it('costs only the annotation: the chat stays writable, nothing is deleted or rewritten', async () => {
-    const { written } = await journalWith((epoch) => [
-      itemRow(epoch, 'codex:thread-1:turn-1:2', {
-        kind: 'turn',
-        turnId: 'turn-1',
-        state: 'done',
-        durationMs: null,
-        outcome: 3
-      })
-    ])
-    const journal = await open()
-    expect(journal.isReadOnly).toBe(false)
-    expect(journal.repair).toEqual({ malformedRows: 0 })
-    const items = journal.snapshot().items
-    expect(items.map((entry) => entry.itemId)).toEqual([
-      'codex:thread-1:turn-1:0',
-      'codex:thread-1:turn-1:1',
-      'codex:thread-1:turn-1:2',
-      'codex:thread-1:turn-1:9'
-    ])
-    expect(items[2]?.body).toEqual({ kind: 'turn', turnId: 'turn-1', state: 'done' })
-    await journals.closeAll()
-    expect(stored()).toEqual(written)
-  })
-})
-
-describe('a required field that fails', () => {
-  it('is still damage: the open deletes from that row and discloses the repair', async () => {
-    const { written } = await journalWith((epoch) => [
-      itemRow(epoch, 'codex:thread-1:turn-1:2', {
-        kind: 'diff',
-        path: 'a.ts',
-        patch: { head: 'x' }
-      })
-    ])
-    const journal = await open()
-    expect(journal.isReadOnly).toBe(false)
-    expect(journal.repair).toEqual({ malformedRows: 1 })
-    await journals.closeAll()
-    const after = stored()
-    expect(after.slice(0, 3)).toEqual(written.slice(0, 3))
-    expect(after.some((row) => row.rowJson.includes('"diff"'))).toBe(false)
-    expect(after.some((row) => row.rowJson.includes('"after"'))).toBe(false)
-  })
+describe('damage', () => {
+  it.each([
+    ['a broken required field', { kind: 'diff', path: 'a.ts', patch: { head: 'x' } }],
+    [
+      'a broken optional value',
+      { kind: 'turn', turnId: 'turn-1', state: 'done', durationMs: null }
+    ],
+    [
+      'a turn lifecycle whose turn is a number',
+      { kind: 'status', text: 'Turn started', turnLifecycle: { turnId: 7, state: 'running' } }
+    ],
+    ['an empty plan', { ...PLAN_APPROVAL, subject: { kind: 'plan', text: '' } }]
+  ])(
+    'is repaired as before, from %s: the open deletes from that row and says so',
+    async (_name, body) => {
+      const { written } = await journalWith((epoch) => [
+        itemRow(epoch, 'codex:thread-1:turn-1:2', body)
+      ])
+      const journal = await open()
+      expect(journal.isReadOnly).toBe(false)
+      expect(journal.repair).toEqual({ malformedRows: 1 })
+      await journals.closeAll()
+      const after = stored()
+      expect(after.slice(0, 3)).toEqual(written.slice(0, 3))
+      expect(after.some((row) => row.rowJson.includes('codex:thread-1:turn-1:2'))).toBe(false)
+      expect(after.some((row) => row.rowJson.includes('"after"'))).toBe(false)
+    }
+  )
 })

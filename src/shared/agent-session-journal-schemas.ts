@@ -13,15 +13,15 @@
 // and unknown object keys pass — a same-version row written by a slightly
 // newer build must not be misread as malformed (see journal-row-schema.ts).
 //
-// What a persisted body this build cannot fully read means is decided per field, here: a body
-// `kind` it does not know is a newer build's, so the chat reads read-only; every optional field
-// is declared droppable or must-understand (agent-session-journal-optional-facts.ts); a required
-// field that fails is damage. A new optional field picks its policy; changing what a field holds
-// is a new key, never a new type under the old one.
+// A newer writer extends a body only by new keys, new values in a closed set (a kind, a
+// discriminant, a literal), or a bumped row `v`, never by changing a field's type. A value outside
+// a closed set reads as a newer build's, so the chat goes read-only and nothing is deleted
+// (agent-session-journal-body-admission.ts); any other failure is damage. A new value of an open
+// string (turn, resolution, tool or goal `state`, a block `type`) reads as-is in older builds, so
+// it must be safe for them there or ride a bumped `v`.
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
-import { droppableFact, mustUnderstandFact } from './agent-session-journal-optional-facts'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -44,10 +44,10 @@ const ProviderFrame = z.object({
 })
 
 const ToolMetadata = {
-  mcpIdentity: droppableFact(z.object({ server: z.string(), tool: z.string() })),
-  exitCode: droppableFact(z.number().int()),
-  durationMs: droppableFact(z.number().nonnegative()),
-  webSearchResults: droppableFact(z.array(z.object({ title: z.string(), url: z.string() })))
+  mcpIdentity: z.object({ server: z.string(), tool: z.string() }).optional(),
+  exitCode: z.number().int().optional(),
+  durationMs: z.number().nonnegative().optional(),
+  webSearchResults: z.array(z.object({ title: z.string(), url: z.string() })).optional()
 }
 
 const KNOWN_BLOCK_TYPES = new Set([
@@ -70,9 +70,9 @@ const SubagentEntry = z.object({
   id: z.string(),
   label: z.string(),
   state: z.string().min(1),
-  tokens: droppableFact(z.number()),
-  startedAt: droppableFact(z.number()),
-  settledAt: droppableFact(z.number())
+  tokens: z.number().optional(),
+  startedAt: z.number().optional(),
+  settledAt: z.number().optional()
 })
 
 /** Renderers select blocks by `type` equality and skip what they cannot draw,
@@ -83,29 +83,29 @@ const Block = z.union([
     z.object({
       type: z.literal('text'),
       text: z.string(),
-      presentation: droppableFact(z.string()),
-      tone: droppableFact(z.string()),
-      providerFrame: droppableFact(ProviderFrame)
+      presentation: z.string().optional(),
+      tone: z.string().optional(),
+      providerFrame: ProviderFrame.optional()
     }),
     // `input: undefined` loses its key under JSON.stringify, so a persisted
     // canonical tool call may lack it entirely.
     z.object({
       type: z.literal('tool-call'),
       name: z.string(),
-      input: droppableFact(z.unknown()),
-      callId: droppableFact(ProviderCallId),
+      input: z.unknown().optional(),
+      callId: ProviderCallId.optional(),
       ...ToolMetadata
     }),
     z.object({
       type: z.literal('tool-result'),
       output: z.string(),
-      isError: droppableFact(z.boolean())
+      isError: z.boolean().optional()
     }),
     z.object({
       type: z.literal('image-ref'),
-      path: droppableFact(z.string()),
-      url: droppableFact(z.string()),
-      alt: droppableFact(z.string())
+      path: z.string().optional(),
+      url: z.string().optional(),
+      alt: z.string().optional()
     }),
     z.object({
       type: z.literal('subagent-group'),
@@ -121,13 +121,13 @@ const Block = z.union([
       kind: z.string().min(1),
       label: z.string(),
       state: z.string().min(1),
-      parentToolUseId: droppableFact(z.string()),
-      summary: droppableFact(z.string()),
-      error: droppableFact(z.string()),
-      outputFile: droppableFact(z.string()),
-      tokens: droppableFact(z.number()),
-      startedAt: droppableFact(z.number()),
-      settledAt: droppableFact(z.number())
+      parentToolUseId: z.string().optional(),
+      summary: z.string().optional(),
+      error: z.string().optional(),
+      outputFile: z.string().optional(),
+      tokens: z.number().optional(),
+      startedAt: z.number().optional(),
+      settledAt: z.number().optional()
     })
   ]),
   z.object({ type: z.string() }).refine((block) => !KNOWN_BLOCK_TYPES.has(block.type))
@@ -136,31 +136,30 @@ const Block = z.union([
 const PromptOption = z.object({
   id: z.string(),
   label: z.string(),
-  description: droppableFact(z.string())
+  description: z.string().optional()
 })
 
 const Question = z.object({
   id: z.string(),
   question: z.string(),
-  header: droppableFact(z.string()),
+  header: z.string().optional(),
   multiSelect: z.boolean(),
   options: z.array(PromptOption),
-  // Where an answer's free text goes: dropped, it would go under no question.
-  freeTextQuestionId: mustUnderstandFact(z.string())
+  freeTextQuestionId: z.string().optional()
 })
 
 const Resolution = z.object({
   state: z.string().min(1),
   selectedOptionId: z.string().nullable(),
-  answers: droppableFact(
-    z.array(
+  answers: z
+    .array(
       z.object({
         questionId: z.string(),
         optionIds: z.array(z.string()),
         other: z.string().optional()
       })
     )
-  ),
+    .optional(),
   resolvedBy: z.string().nullable(),
   resolvedAt: z.number().nullable()
 })
@@ -174,16 +173,16 @@ const ApprovalMatchedAskRule = z.object({
 const ApprovalSubject = z.object({
   kind: z.literal('plan'),
   text: z.string().min(1),
-  filePath: droppableFact(z.string())
+  filePath: z.string().optional()
 })
 
-export const AgentJournalMessageBodySchema = z.object({
+const MessageBody = z.object({
   kind: z.literal('message'),
   role: z.string().min(1),
   blocks: z.array(Block),
   // Open like roles: a send mode a newer build writes must not turn the row malformed.
-  sentAs: droppableFact(z.string().min(1)),
-  command: droppableFact(z.object({ name: z.string().min(1) }))
+  sentAs: z.string().min(1).optional(),
+  command: z.object({ name: z.string().min(1) }).optional()
 })
 
 const ThreadGoal = z.object({
@@ -214,28 +213,27 @@ const FailureFact = z.object({
 })
 
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
-  AgentJournalMessageBodySchema,
+  MessageBody,
   z.object({
     kind: z.literal('tool-call'),
     ...ToolMetadata,
     name: z.string(),
     // See the tool-call block: the key itself is lost when `input` is undefined.
-    input: droppableFact(z.unknown()),
-    callId: droppableFact(ProviderCallId),
+    input: z.unknown().optional(),
+    callId: ProviderCallId.optional(),
     state: z.string().min(1),
-    output: droppableFact(BoundedPayload)
+    output: BoundedPayload.optional()
   }),
   z.object({ kind: z.literal('diff'), path: z.string(), patch: BoundedPayload }),
   z.object({
     kind: z.literal('approval'),
     title: z.string(),
-    displayName: droppableFact(z.string()),
-    description: droppableFact(z.string()),
-    decisionReason: droppableFact(z.string()),
-    blockedPath: droppableFact(z.string()),
-    matchedAskRule: droppableFact(ApprovalMatchedAskRule),
-    // The plan being approved: approving without it would approve what the person never saw.
-    subject: mustUnderstandFact(ApprovalSubject),
+    displayName: z.string().optional(),
+    description: z.string().optional(),
+    decisionReason: z.string().optional(),
+    blockedPath: z.string().optional(),
+    matchedAskRule: ApprovalMatchedAskRule.optional(),
+    subject: ApprovalSubject.optional(),
     detail: z.string().nullable(),
     options: z.array(PromptOption),
     resolution: Resolution
@@ -244,33 +242,30 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
     kind: z.literal('question'),
     question: z.string(),
     options: z.array(PromptOption),
-    // What an answer is shaped by: dropped, an answer would go to questions nobody was asked.
-    questions: mustUnderstandFact(z.array(Question)),
-    freeTextQuestionId: mustUnderstandFact(z.string()),
+    questions: z.array(Question).optional(),
+    freeTextQuestionId: z.string().optional(),
     resolution: Resolution
   }),
   z.object({
     kind: z.literal('status'),
     text: z.string(),
-    presentation: droppableFact(z.string()),
-    tone: droppableFact(z.string()),
-    // A turn's start or end and a goal's change: the host settles turns and answers goal edits
-    // from them, so a fold without one would write from a wrong state.
-    turnLifecycle: mustUnderstandFact(
-      z.object({
+    presentation: z.string().optional(),
+    tone: z.string().optional(),
+    turnLifecycle: z
+      .object({
         turnId: z.string(),
         state: z.string().min(1),
-        outcome: droppableFact(z.string().min(1)),
-        userItemId: droppableFact(z.string().min(1)),
-        startedAt: droppableFact(z.number().finite().positive()),
-        requestedAt: droppableFact(z.number().finite().positive()),
-        completedAt: droppableFact(z.number().finite().positive()),
-        durationMs: droppableFact(z.number().finite().nonnegative())
+        outcome: z.string().min(1).optional(),
+        userItemId: z.string().min(1).optional(),
+        startedAt: z.number().finite().positive().optional(),
+        requestedAt: z.number().finite().positive().optional(),
+        completedAt: z.number().finite().positive().optional(),
+        durationMs: z.number().finite().nonnegative().optional()
       })
-    ),
-    providerFrame: droppableFact(ProviderFrame),
-    threadGoal: mustUnderstandFact(ThreadGoalState),
-    failure: droppableFact(FailureFact)
+      .optional(),
+    providerFrame: ProviderFrame.optional(),
+    threadGoal: ThreadGoalState.optional(),
+    failure: FailureFact.optional()
   }),
   z.object({
     kind: z.literal('turn'),
@@ -279,14 +274,14 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
     // Open like `state`: a verdict a newer build writes must not turn the row
     // malformed. `readAgentJournalTurnOutcome` is where an unplaceable one
     // becomes unknown rather than an arm a caller would act on.
-    outcome: droppableFact(z.string().min(1)),
-    userItemId: droppableFact(z.string().min(1)),
-    startedAt: droppableFact(z.number().finite().positive()),
-    requestedAt: droppableFact(z.number().finite().positive()),
-    completedAt: droppableFact(z.number().finite().positive()),
-    durationMs: droppableFact(z.number().finite().nonnegative()),
-    contextUsage: droppableFact(AgentSessionContextUsageSchema),
-    providerTurnId: droppableFact(z.string().min(1))
+    outcome: z.string().min(1).optional(),
+    userItemId: z.string().min(1).optional(),
+    startedAt: z.number().finite().positive().optional(),
+    requestedAt: z.number().finite().positive().optional(),
+    completedAt: z.number().finite().positive().optional(),
+    durationMs: z.number().finite().nonnegative().optional(),
+    contextUsage: AgentSessionContextUsageSchema.optional(),
+    providerTurnId: z.string().min(1).optional()
   })
 ])
 
@@ -353,7 +348,7 @@ export function isAdmissibleAgentJournalItemBody(value: unknown): value is Agent
 export function isAdmissibleAgentJournalMessageBody(
   value: unknown
 ): value is AgentJournalMessageItem {
-  return AgentJournalMessageBodySchema.safeParse(value).success
+  return MessageBody.safeParse(value).success
 }
 
 export function isAdmissibleAgentJournalRenderItem(
@@ -374,9 +369,7 @@ export function isAdmissibleAgentJournalSubmission(
 type Admits<T extends true> = T
 export type CanonicalJournalTypesAreAdmissible = [
   Admits<AgentJournalItemBody extends z.input<typeof AgentJournalItemBodySchema> ? true : false>,
-  Admits<
-    AgentJournalMessageItem extends z.input<typeof AgentJournalMessageBodySchema> ? true : false
-  >,
+  Admits<AgentJournalMessageItem extends z.input<typeof MessageBody> ? true : false>,
   Admits<
     AgentJournalRenderItem extends z.input<typeof AgentJournalRenderItemSchema> ? true : false
   >,
