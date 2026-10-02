@@ -30,10 +30,12 @@ export type StructuredLaunchState = StructuredLaunchRecoveryState & {
   /** The host's refusal behind the last failed attempt, worded beside Retry; the toast stays
    *  generic. Absent when the failure named none. */
   failure?: AgentSessionWriteRefusal
+  /** When the last attempt failed; absent after a reload, which only restores the lifecycle. */
+  failedAt?: number
   selection: StructuredLaunchSelection
 }
 
-export type StructuredAgentLaunchStatus = 'idle' | 'pending' | 'unknown'
+export type StructuredAgentLaunchStatus = 'idle' | 'pending' | 'unknown' | 'failed'
 export type StructuredAgentSessionLaunchLifecycle =
   | 'pending'
   | 'visibility-unknown'
@@ -135,7 +137,9 @@ export function structuredLaunchStates(): IterableIterator<StructuredLaunchState
   return pendingStructuredLaunchesByIdentity.values()
 }
 
-function launchStateLifecycle(state: StructuredLaunchState): StructuredAgentSessionLaunchLifecycle {
+export function launchStateLifecycle(
+  state: StructuredLaunchState
+): StructuredAgentSessionLaunchLifecycle {
   if (state.cancelled || state.callers.outcome === 'cancelled') {
     return 'cancelled'
   }
@@ -320,21 +324,4 @@ export function retireAbsentStructuredAgentSessionLaunchCancellationTombstones(
     notifyStructuredLaunchListeners()
   }
   return changed
-}
-
-export function getStructuredAgentLaunchStatus(
-  worktreeId: string,
-  agent: AgentSessionHandleProvider
-): StructuredAgentLaunchStatus {
-  // Any launch for this pair, including adopted conversations, means a chat is starting here.
-  const states = [
-    getStructuredLaunchState(structuredLaunchIdentity(worktreeId, agent)),
-    ...[...pendingStructuredLaunchesByIdentity.entries()]
-      .filter(([identity]) => identity.startsWith(`${agent}:${worktreeId}:resume:`))
-      .map(([, state]) => state)
-  ].filter((state): state is StructuredLaunchState => Boolean(state))
-  if (states.length === 0) {
-    return 'idle'
-  }
-  return states.some((state) => state.visibilityUnknown) ? 'unknown' : 'pending'
 }

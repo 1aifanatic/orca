@@ -28,6 +28,11 @@ import {
   structuredAgentSessionDatedMainAgent,
   structuredAgentSessionRowStateStartedAt
 } from '../../../../shared/structured-agent-session-status-started-at'
+import { agentMainAgentVerdict } from '../../../../shared/agent-main-agent-verdict'
+import {
+  getStructuredLaunchStateBySessionId,
+  useStructuredAgentSessionLaunchLifecycle
+} from '@/lib/structured-agent-session-launch-registry'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { useAppStore } from '@/store'
 import { getActiveRuntimeTarget, type RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
@@ -102,16 +107,58 @@ function childWorkFor(summary: AgentSessionStatusSummary): {
   return subagents ? { subagents } : {}
 }
 
+/** A start the host refused leaves it no session to publish, so the launch's own failure is the
+ *  row: the same failed verdict the host publishes for a send the agent's start refused. */
+function projectFailedStart(tab: StructuredTab, paneKey: string): void {
+  const store = useAppStore.getState()
+  const current = store.agentStatusByPaneKey?.[paneKey]
+  if (
+    current?.state === 'done' &&
+    agentMainAgentVerdict(current) === 'failure' &&
+    current.agentType === tab.agentSessionAgent &&
+    current.terminalTitle === tab.label &&
+    current.tabId === tab.id &&
+    current.worktreeId === tab.worktreeId
+  ) {
+    return
+  }
+  // A reload keeps no failure time; the tab's creation precedes any earlier acknowledgement of it.
+  const failedAt = getStructuredLaunchStateBySessionId(tab.entityId)?.failedAt ?? tab.createdAt
+  const { state, mainAgent } = structuredAgentSessionAgentStatus({
+    status: 'idle',
+    turnOutcome: 'failure'
+  })
+  store.setAgentStatus(
+    paneKey,
+    {
+      state,
+      mainAgent: { ...mainAgent, stateStartedAt: failedAt },
+      interrupted: false,
+      prompt: '',
+      agentType: tab.agentSessionAgent,
+      sessionBoundary: false
+    },
+    tab.label,
+    // Read from the launch record just now, so its freshness runs from here, not from the failure.
+    { updatedAt: Date.now(), stateStartedAt: failedAt },
+    { tabId: tab.id, worktreeId: tab.worktreeId },
+    { terminalResumeEligible: false }
+  )
+}
+
 function projectStatus(
   tab: StructuredTab,
   summary: AgentSessionStatusSummary | null,
-  observation: 'live' | 'unverifiable'
+  observation: 'live' | 'unverifiable',
+  launchFailed: boolean
 ): void {
   const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
   const store = useAppStore.getState()
   // No persisted turn yet (or nothing known): the row shows no agent status at all.
   if (!summary?.status) {
-    if (store.agentStatusByPaneKey?.[paneKey]) {
+    if (launchFailed) {
+      projectFailedStart(tab, paneKey)
+    } else if (store.agentStatusByPaneKey?.[paneKey]) {
       store.removeAgentStatus(paneKey)
     }
     return
@@ -217,9 +264,11 @@ function StructuredAgentSessionStatusProjection({ tab }: { tab: StructuredTab })
     [environmentId]
   )
   const { summary, observation } = useStructuredAgentSessionStatusSummary(tab.entityId, target)
+  const launchFailed =
+    useStructuredAgentSessionLaunchLifecycle(tab.worktreeId, tab.entityId) === 'failed'
   useEffect(() => {
-    projectStatus(tab, summary, observation)
-  }, [summary, observation, tab])
+    projectStatus(tab, summary, observation, launchFailed)
+  }, [summary, observation, tab, launchFailed])
   useEffect(
     () => () =>
       useAppStore.getState().removeAgentStatus(structuredAgentSessionPaneKey(tab.id, tab.entityId)),

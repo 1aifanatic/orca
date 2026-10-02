@@ -45,7 +45,6 @@ import { applyStructuredLaunchHeldOptions } from './structured-agent-session-lau
 
 export type { StructuredAgentLaunchOptions, StructuredAgentLaunchReceipt }
 export {
-  getStructuredAgentLaunchStatus,
   getStructuredAgentSessionLaunchLifecycle,
   getStructuredAgentSessionLaunchResumes,
   hasStructuredAgentSessionLaunchCancellationTombstone,
@@ -58,7 +57,7 @@ export {
   type StructuredAgentLaunchStatus,
   type StructuredAgentSessionLaunchLifecycle
 } from './structured-agent-session-launch-registry'
-export { useStructuredAgentLaunchStatus } from './structured-agent-session-launch-status'
+export * from './structured-agent-session-launch-status'
 export { useStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 
 type StructuredLaunchStateResult = {
@@ -142,6 +141,7 @@ function trackLaunchSettlement(
       }
       // The host's message is for its log; the Retry line words the refusal itself.
       const failure = structuredLaunchFailure(error)
+      state.failedAt = Date.now()
       if (failure) {
         state.failure = failure
       } else {
@@ -180,6 +180,7 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
   }
   resetStructuredLaunchCallers(state)
   delete state.failure
+  delete state.failedAt
   state.callers.outcome = 'pending'
   // A new create seeds from the settings of now; picks held through the failure still apply.
   state.selection = { ...state.selection, seed: state.intent.seedOptions }
