@@ -13,10 +13,10 @@ import { Store } from '../persistence/loading-store/store'
 import {
   abortOrcadMigrationCutover,
   commitOrcadMigrationDestination,
-  ORCAD_MIGRATION_DESTINATION_UNSUPPORTED,
   stageOrcadMigrationDestination,
   type OrcadMigrationCutoverContext
 } from './orcad-migration-cutover-coordinator'
+import { ORCAD_MIGRATION_DESTINATION_UNSUPPORTED } from './orcad-migration-catalog-client'
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
 import { fenceOrcadMigrationSource } from './orcad-migration-source-fence'
 import { SshTargetOrcadClaims } from './ssh-target-orcad-claims'

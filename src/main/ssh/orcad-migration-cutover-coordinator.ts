@@ -21,6 +21,7 @@ import type {
   OrcadMigrationSourceCutoverPhase
 } from '../../shared/orcad-migration-source-cutover'
 import { resolveDurableOrcadCatalogMutation } from './orcad-catalog-durable-mutation'
+import { ORCAD_MIGRATION_DESTINATION_UNSUPPORTED } from './orcad-migration-catalog-client'
 import {
   listOrcadMigrationSourceCutovers,
   removeOrcadMigrationSourceCutover,
@@ -44,9 +45,6 @@ export type OrcadMigrationDestinationCatalog = {
     request: OrcadMigrationSnapshotChunkRequest
   ) => Promise<OrcadMigrationSnapshotChunkResult>
 }
-
-/** The T6-9 client's definite refusal: the destination has no catalog migration at all. */
-export const ORCAD_MIGRATION_DESTINATION_UNSUPPORTED = 'orcad_migration_destination_unsupported'
 
 export type OrcadMigrationCutoverContext = {
   userDataPath: string
