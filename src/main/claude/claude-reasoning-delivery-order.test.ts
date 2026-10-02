@@ -34,7 +34,7 @@ async function clientViews() {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'claude',
-      providerHandle: { kind: 'claude', sessionId: 'claude-session' }
+      providerHandle: { kind: 'claude', sessionId: 'claude-session', leafUuid: null }
     },
     database: openTestJournalHostDatabase(root),
     now: () => 1_000
