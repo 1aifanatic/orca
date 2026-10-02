@@ -70,6 +70,29 @@ describe('fetchClaudeRateLimits extra usage', () => {
     restorePlatform()
   })
 
+  it.each([null, 42])(
+    'preserves valid quota when API money currency is malformed: %s',
+    async (currency) => {
+      vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValueOnce(
+        JSON.stringify({
+          claudeAiOauth: { accessToken: 'oauth-token', expiresAt: Date.now() + 60_000 }
+        })
+      )
+      netFetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            five_hour: { utilization: 10 },
+            spend: { enabled: true, balance: { amount_minor: 1200, exponent: 2, currency } }
+          }),
+          { status: 200 }
+        )
+      )
+      const result = await fetchClaudeRateLimits({ authPreparation: oauthPrep() })
+      expect(result).toMatchObject({ status: 'ok', session: { usedPercent: 10 } })
+      expect(result.extraUsage ?? null).toBeNull()
+    }
+  )
+
   it('maps the usage-credits spend object into a capped balance in major units', async () => {
     vi.mocked(readActiveClaudeKeychainCredentialsStrict).mockResolvedValueOnce(
       JSON.stringify({

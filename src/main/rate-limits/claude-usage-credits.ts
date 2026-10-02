@@ -61,11 +61,15 @@ function mapSpend(spend: ClaudeOAuthSpend | undefined): ExtraUsageBalance | null
   if (!spend) {
     return null
   }
-  const currencies = [spend.used, spend.limit, spend.cap?.money, spend.balance].flatMap((money) =>
-    typeof money === 'object' && money?.currency !== undefined
-      ? [money.currency.trim().toUpperCase()]
-      : []
-  )
+  const currencies: string[] = []
+  for (const money of [spend.used, spend.limit, spend.cap?.money, spend.balance]) {
+    if (money && typeof money === 'object' && money.currency !== undefined) {
+      if (typeof money.currency !== 'string') {
+        return null
+      }
+      currencies.push(money.currency.trim().toUpperCase())
+    }
+  }
   if (currencies.some((currency) => !/^[A-Z]{3}$/.test(currency)) || new Set(currencies).size > 1) {
     return null
   }
