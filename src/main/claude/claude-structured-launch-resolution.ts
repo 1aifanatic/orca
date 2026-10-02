@@ -197,8 +197,9 @@ function claudeChildEnv(
   )
 }
 
-/** The env a `--version` probe runs with: the launch's own PATH and shims, and no credential at
- *  all, since asking a CLI its version needs none. */
+/** The env a `--version` probe runs with: the launch's own env, PATH and shims included, minus the
+ *  Claude auth variables, auth-like custom headers and an inherited CLAUDE_CONFIG_DIR, which asking
+ *  a version needs none of. Everything else is what this same binary receives at launch anyway. */
 export function claudeProbeEnv(sources: ClaudeChildEnvSources): Record<string, string> {
   return applyClaudeEnvPatch(
     claudeChildEnv(sources, true),
