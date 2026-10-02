@@ -100,8 +100,10 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
     }
   })
 
-  it('names a launch file under a home with an apostrophe, accents, CJK and `%`', async () => {
-    const home = join(dir, "O'Brien José 张伟 100%")
+  // Why ASCII only: this harness decodes piped input in cmd's startup code page (see the corpus
+  // case above), so accents and CJK in the path arrive garbled here though cmd split it right.
+  it('names a launch file under a home with an apostrophe, a space and `%`', async () => {
+    const home = join(dir, "O'Brien Smith 100%")
     mkdirSync(home)
     const plan = planLaunchForTest({
       agent: 'claude',
