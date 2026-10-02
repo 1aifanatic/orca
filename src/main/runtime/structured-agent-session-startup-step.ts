@@ -6,6 +6,7 @@
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import { orderOnScreenStructuredAgentSessionsFirst } from '../../shared/saved-on-screen-structured-agent-sessions'
 import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import type {
@@ -47,7 +48,8 @@ export async function runStructuredAgentSessionStartupStep(
   // After the settle, which it waits for; commands never wait on it. Latched on the host, so a
   // second startup pass starts no second copy.
   host.startPerChatFileCopy?.({ listedIds, isRuntimeChatWorkActive })
-  return background
+  // The rows the window shows at launch fill first.
+  return orderOnScreenStructuredAgentSessionsFirst(background, savedSession)
 }
 
 /** The chats with a tab, for the startup step and the tab restore alike: the host's persisted tab

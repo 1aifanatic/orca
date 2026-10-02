@@ -34,13 +34,13 @@ vi.mock(
     const actual = await importOriginal<typeof StatusBackfillModule>()
     return {
       ...actual,
-      backfillJournalSessionStatus: async (
-        ...args: Parameters<typeof actual.backfillJournalSessionStatus>
+      foldJournalSessionStatus: async (
+        ...args: Parameters<typeof actual.foldJournalSessionStatus>
       ) => {
         if (failingDerives.has(args[1])) {
           throw new Error('EACCES: permission denied')
         }
-        return actual.backfillJournalSessionStatus(...args)
+        return actual.foldJournalSessionStatus(...args)
       }
     }
   }

@@ -676,6 +676,7 @@ describe('a recovery that never answers', () => {
       restoreListed,
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
+      isListed: () => true,
       isDisposed: () => false,
       recoveryBudgetMs: 20
     })
@@ -760,6 +761,7 @@ describe('a stored status no settle here can clear (R2A-4)', () => {
       restoreListed: vi.fn(async () => undefined),
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
+      isListed: () => true,
       isDisposed: () => false
     })
     const record = agentSessionRecordFixture()

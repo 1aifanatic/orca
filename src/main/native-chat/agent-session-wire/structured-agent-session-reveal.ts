@@ -136,6 +136,7 @@ export function createStructuredAgentSessionHostRestore(
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
+    isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
   const perChatFileCopy = createStructuredAgentSessionPerChatFileCopyControl({
