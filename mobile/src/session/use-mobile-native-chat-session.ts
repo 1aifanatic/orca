@@ -217,6 +217,9 @@ export function useMobileNativeChatSession(args: {
           setLoadingEarlier(false)
           beforeOffsetRef.current = null
         }
+        if (!applied.pending) {
+          setError(undefined)
+        }
         setRead({ client, identity, status: applied.pending ? 'awaiting-transcript' : 'ready' })
       }
     )
@@ -260,7 +263,13 @@ export function useMobileNativeChatSession(args: {
         // The read is `z.unknown()` because the reply is a union, so an accepted success can still
         // carry no result at all, or null; `'error' in` throws on either.
         const payload = accepted.value
-        if (payload === null || typeof payload !== 'object') {
+        if (
+          payload === null ||
+          typeof payload !== 'object' ||
+          !('messages' in payload) ||
+          !Array.isArray(payload.messages) ||
+          ('pending' in payload && payload.pending === true)
+        ) {
           return
         }
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: main cast this payload unread; the reader hands back the same result.
@@ -287,6 +296,8 @@ export function useMobileNativeChatSession(args: {
           setList(result.messages)
           setHasMore(result.messages.length >= nextLimit)
         }
+        setError(undefined)
+        setRead({ client, identity, status: 'ready' })
       } catch {
         // Nothing awaits this page, so a rejected request — a transport drop, or the client
         // abandoning it at teardown — would otherwise reach the document as an unhandled
@@ -303,7 +314,7 @@ export function useMobileNativeChatSession(args: {
         }
       }
     })()
-  }, [client, agent, sessionId, transcriptPath, hasMore, setList])
+  }, [client, agent, sessionId, transcriptPath, hasMore, identity, setList])
 
   // Held for any unsettled read, not just an in-flight one: a stream error or a
   // dropped client would otherwise trade the conversation for an error card.
