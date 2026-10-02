@@ -1,20 +1,15 @@
-// Writing the status row a chat already in the host's database is missing.
+// Writing the status row a chat already in the host's database is missing, without opening it.
 //
 // Version 5 creates the status table empty, so after an upgrade every chat has no row until
-// something writes it. Startup selects the chats to settle from rows, so one a crash left mid-turn
-// and that nobody opens would never be settled. The background copy fills these in, a chat at a
-// time, inside that chat's serialize: the chat folded a batch per task, then only the derive and
-// the write in one short transaction, as a per-chat file's copy writes its row from its own fold.
+// something writes it. Rather than open each chat (its lease, settle and conversation), its rows are
+// folded a bounded part per task, as a replay folds them, then the row is derived and written in one
+// short transaction, only while the chat is still where the fold read it. The startup pass and the
+// background copy both write missing rows through this one function.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
-import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
 import { startJournalRowFold, type JournalLoad } from './journal-open'
-import {
-  charBoundedBatches,
-  IMPORT_BATCH_CHARS,
-  IMPORT_BATCH_ROWS
-} from './journal-per-session-source'
+import { IMPORT_BATCH_ROWS } from './journal-per-session-source'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
 import { readJournalRowsAfter, readJournalSessionEpoch, readJournalTip } from './journal-row-table'
 import {
@@ -24,49 +19,57 @@ import {
   type JournalSessionStatus
 } from './journal-session-state'
 
-// The give-up's input is built here as `journalStatusInput` builds it.
-const SELECT_WITHOUT_STATUS = `SELECT s.session_id AS session_id FROM journal_sessions s
-WHERE NOT EXISTS (SELECT 1 FROM journal_session_state st WHERE st.session_id = s.session_id)
-AND NOT EXISTS (SELECT 1 FROM journal_background_failures f
-  WHERE f.session_id = s.session_id AND f.step = 'status' AND f.app_version = ?
-  AND f.input = s.epoch || ':' || (SELECT ifnull(max(r.seq), 0) FROM journal_rows r
-    WHERE r.session_id = s.session_id AND r.epoch = s.epoch))`
+/** Row JSON per part, in UTF-16 units: a page of large rows is split, so each main-thread task
+ *  handles about the same bytes (a quarter of a full page of the seed's 2.3 KB rows). */
+export const IMPORT_BATCH_CHARS = 256 * 1024
 
-/** Every chat in the host's database with no status row, but one whose row failed for good on
- *  the rows it holds now, under this app version (journal-background-failures.ts). */
-export function readJournalSessionIdsWithoutStatus(
-  db: Database.Database,
-  appVersion: string
-): string[] {
-  return db
-    .prepare(SELECT_WITHOUT_STATUS)
-    .all(appVersion)
-    .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
+/** Each batch split so no part holds more than `maxChars` of row JSON; a larger row is a part alone.
+ *  Only a batch's last part keeps its `last`. */
+export function* charBoundedBatches<Row extends { rowJson: string }>(
+  batches: Iterable<{ rows: Row[]; last: boolean }>,
+  maxChars = IMPORT_BATCH_CHARS
+): Generator<{ rows: Row[]; last: boolean }> {
+  for (const batch of batches) {
+    let part: Row[] = []
+    let chars = 0
+    for (const row of batch.rows) {
+      if (part.length > 0 && chars + row.rowJson.length > maxChars) {
+        yield { rows: part, last: false }
+        part = []
+        chars = 0
+      }
+      part.push(row)
+      chars += row.rowJson.length
+    }
+    yield { rows: part, last: batch.last }
+  }
 }
 
-/** What a give-up of the chat's status row is keyed to: its epoch and tip. */
-export function journalStatusInput(db: Database.Database, sessionId: string): string | null {
-  const epoch = readJournalSessionEpoch(db, sessionId)
-  return epoch === null ? null : `${epoch}:${readJournalTip(db, sessionId, epoch)}`
-}
-
-/** The chat's row: its rows folded a batch per task, as a replay folds them, then the row derived
+/** The chat's row: its rows folded a part per task, as a replay folds them, then the row derived
  *  and written in one short transaction, only while the chat is still where the fold read it. Null
- *  when something wrote the row or the chat first, the chat has no journal, or quit stopped it. */
+ *  when something wrote the row or the chat first, the chat has no epoch in this database (it is
+ *  still in a per-chat file), the database or the chat's rows are a newer build's, or `signal`
+ *  aborted, which is checked before each part. */
 export async function backfillJournalSessionStatus(
   database: JournalHostDatabase,
   sessionId: string,
   {
     batchRows = IMPORT_BATCH_ROWS,
     batchChars = IMPORT_BATCH_CHARS,
-    yieldTask = () => yieldToEventLoop()
+    yieldTask = () => yieldToEventLoop(),
+    signal
   }: {
     batchRows?: number
     batchChars?: number
-    /** Ends each batch's task: the next macrotask by default; the background copy paces here. */
+    /** Ends each part's task: the next macrotask by default; a background job paces here. */
     yieldTask?: () => Promise<void>
+    /** Quit: the fold stops within one part and nothing is written. */
+    signal?: AbortSignal
   } = {}
 ): Promise<{ load: JournalLoad; status: JournalSessionStatus } | null> {
+  if (database.readOnly) {
+    return null
+  }
   const epoch = readJournalSessionEpoch(database.db, sessionId)
   if (epoch === null || hasJournalSessionStatus(database.db, sessionId)) {
     return null
@@ -78,7 +81,7 @@ export async function backfillJournalSessionStatus(
     repairedFrom: pendingJournalRepairSequence(database.db, sessionId, epoch)
   })
   for (let afterSeq = Number.MIN_SAFE_INTEGER; ;) {
-    if (database.importsAborted) {
+    if (signal?.aborted) {
       return null
     }
     const rows = readJournalRowsAfter(database.db, sessionId, epoch, afterSeq, batchRows)
@@ -91,6 +94,9 @@ export async function backfillJournalSessionStatus(
         break
       }
       await yieldTask()
+      if (signal?.aborted) {
+        return null
+      }
     }
     if (!folding || rows.length < batchRows || !last) {
       break
@@ -98,7 +104,14 @@ export async function backfillJournalSessionStatus(
     afterSeq = last.seq
     await yieldTask()
   }
+  if (signal?.aborted) {
+    return null
+  }
   const load = fold.finish()
+  // A newer build's rows: as an open of it does, this build writes nothing for the chat.
+  if (load.readOnly) {
+    return null
+  }
   return database.transaction((db) => {
     if (
       hasJournalSessionStatus(db, sessionId) ||

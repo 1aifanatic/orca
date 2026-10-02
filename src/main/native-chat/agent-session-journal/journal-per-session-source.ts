@@ -9,14 +9,12 @@ import { startJournalRowFold, type JournalLoad } from './journal-open'
 import { legacyJournalDatabaseFile } from './journal-paths'
 import type { PerSessionJournalHead } from './journal-per-session-reimport'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
+import { charBoundedBatches } from './journal-session-status-backfill'
 
 /** The newest per-chat file shape any build wrote. */
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
 /** Rows per batch: at most 31 ms per batch copying the largest real chat (68 MB, 3.3 KB rows). */
 export const IMPORT_BATCH_ROWS = 512
-/** Row JSON per batch, in UTF-16 units: a batch of large rows is split, so each main-thread task
- *  handles about the same bytes (a quarter of a full batch of the seed's 2.3 KB rows). */
-export const IMPORT_BATCH_CHARS = 256 * 1024
 /** Row JSON per copy commit. Far above a page of ordinary rows (the seed's largest is 1.2 Mi, at
  *  most 25 ms of main thread), so only a page of huge rows splits: every commit also rewrites a
  *  fixed set of pages, so splitting ordinary pages means more checkpoints for the same rows. */
@@ -99,28 +97,6 @@ export function readLegacyHead(
   }
   const tip = source.prepare(SELECT_LEGACY_TIP).get(sessionId, epoch)?.tip
   return { epoch, tip: typeof tip === 'number' ? tip : 0 }
-}
-
-/** Each batch split so no part holds more than `maxChars` of row JSON; a larger row is a part alone.
- *  Only a batch's last part keeps its `last`. */
-export function* charBoundedBatches<Row extends ImportedRow>(
-  batches: Iterable<{ rows: Row[]; last: boolean }>,
-  maxChars = IMPORT_BATCH_CHARS
-): Generator<{ rows: Row[]; last: boolean }> {
-  for (const batch of batches) {
-    let part: Row[] = []
-    let chars = 0
-    for (const row of batch.rows) {
-      if (part.length > 0 && chars + row.rowJson.length > maxChars) {
-        yield { rows: part, last: false }
-        part = []
-        chars = 0
-      }
-      part.push(row)
-      chars += row.rowJson.length
-    }
-    yield { rows: part, last: batch.last }
-  }
 }
 
 /** The file's rows, one bounded page per batch, read as each batch is written. */

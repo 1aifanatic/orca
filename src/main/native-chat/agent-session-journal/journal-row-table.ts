@@ -10,6 +10,7 @@ import { serializeJournalRow, type JournalRow } from './journal-row-schema'
 export type JournalStoredRow = { epoch: string; seq: number; ts: number; rowJson: string }
 
 const SELECT_EPOCH = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
+const SELECT_TIP = 'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const PUBLISH_SESSION_EPOCH = `INSERT INTO journal_sessions (session_id, workspace_id, epoch)
 VALUES (?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
@@ -20,7 +21,6 @@ const SELECT_ROWS_AFTER = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER_LIMITED = `${SELECT_ROWS_AFTER} LIMIT ?`
 const DELETE_SUFFIX = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq >= ?'
-const SELECT_TIP = 'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_EPOCH = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_UNPUBLISHED = `DELETE FROM journal_rows WHERE rowid IN (
   SELECT rowid FROM journal_rows WHERE session_id = ?

@@ -15,11 +15,11 @@ import {
   isUnsettledJournalSessionStatus,
   type JournalSessionStatus
 } from '../agent-session-journal/journal-session-state'
+import { backfillJournalSessionStatus } from '../agent-session-journal/journal-session-status-backfill'
 import {
-  backfillJournalSessionStatus,
   journalStatusInput,
   readJournalSessionIdsWithoutStatus
-} from '../agent-session-journal/journal-session-status-backfill'
+} from '../agent-session-journal/journal-session-status-owed'
 import type { PerChatFileCopyDeps } from './structured-agent-session-per-chat-file-copy'
 
 export type StatusBackfillStep = 'backfilled' | 'skipped' | 'done'
@@ -96,7 +96,10 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
     if (deps.isDisposed() || deps.database.importsAborted || deps.openJournal(sessionId)) {
       return false
     }
-    const written = await backfillJournalSessionStatus(deps.database, sessionId, { yieldTask })
+    const written = await backfillJournalSessionStatus(deps.database, sessionId, {
+      yieldTask,
+      signal: deps.database.importsSignal
+    })
     if (written) {
       await settleWrittenChat(deps, sessionId, written)
     }

@@ -45,10 +45,9 @@ import {
   type PerSessionImportPlan,
   type PerSessionJournalHead
 } from './journal-per-session-reimport'
+import { charBoundedBatches, IMPORT_BATCH_CHARS } from './journal-session-status-backfill'
 import {
-  charBoundedBatches,
   foldLegacyJournal,
-  IMPORT_BATCH_CHARS,
   IMPORT_BATCH_ROWS,
   IMPORT_COMMIT_CHARS,
   legacyRowBatches,

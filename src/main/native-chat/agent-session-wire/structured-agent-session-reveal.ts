@@ -150,7 +150,13 @@ export function createStructuredAgentSessionHostRestore(
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },
-    restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
+    // The listed chats the tab list left to it: rows derived without an open first, then the rest.
+    restoreReadableSessions: (sessionIds) =>
+      gate.run(async () =>
+        restorer.restore(
+          sessionIds === undefined ? undefined : await startup.deriveMissingStatuses(sessionIds)
+        )
+      ),
     ...startup,
     startPerChatFileCopy: perChatFileCopy.start,
     stopPerChatFileCopy: perChatFileCopy.stop

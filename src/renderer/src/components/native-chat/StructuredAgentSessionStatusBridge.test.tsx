@@ -30,12 +30,25 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/store', async () => {
   const { createTestStore } = await import('@/store/slices/store-test-helpers')
   const useAppStore = createTestStore()
-  const { setAgentStatus, removeAgentStatus } = useAppStore.getState()
+  const { setAgentStatus, removeAgentStatus, transactAgentStatuses } = useAppStore.getState()
   useAppStore.setState({
     setAgentStatus: (...args) => {
       mocks.setAgentStatus(...args)
       setAgentStatus(...args)
     },
+    // The bridge writes rows through one transaction per tick; each applied row is one write.
+    transactAgentStatuses: (operation) =>
+      transactAgentStatuses((transaction) =>
+        operation({
+          ...transaction,
+          apply: (update) => {
+            if (update.kind !== 'providerSession') {
+              mocks.setAgentStatus(update.paneKey, update.payload)
+            }
+            return transaction.apply(update)
+          }
+        })
+      ),
     removeAgentStatus: (paneKey) => {
       mocks.removeAgentStatus(paneKey)
       removeAgentStatus(paneKey)
@@ -164,7 +177,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(feed().target).toEqual({ kind: 'local' })
     expect(mocks.subscribeTranscript).not.toHaveBeenCalled()
 
-    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [summary()] }))
 
     expect(statuses()).toEqual([
       expect.objectContaining({
@@ -188,7 +201,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
     const updatedAt = Date.now() - 30 * 60 * 1000 - 1
-    act(() => feed().emit({ type: 'status', session: summary({ updatedAt }) }))
+    await act(async () => feed().emit({ type: 'status', session: summary({ updatedAt }) }))
     const entry = statuses()[0]
     expect(entry).toEqual(expect.objectContaining({ state: 'working', structuredHostOwned: true }))
     expect(isExplicitAgentStatusFresh(entry, Date.now(), 30 * 60 * 1000)).toBe(true)
@@ -197,9 +210,9 @@ describe('StructuredAgentSessionStatusBridge', () => {
   it('clears host-held evidence when the status stream disconnects', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'status', session: summary() }))
+    await act(async () => feed().emit({ type: 'status', session: summary() }))
     expect(statuses()).toHaveLength(1)
-    act(() => feed().emit({ type: 'end' }))
+    await act(async () => feed().emit({ type: 'end' }))
     expect(statuses()).toHaveLength(1)
     expect(statuses()[0]).not.toHaveProperty('structuredHostOwned')
   })
@@ -207,15 +220,17 @@ describe('StructuredAgentSessionStatusBridge', () => {
   it('maps each host status onto the sidebar agent state', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [summary()] }))
     expect(statuses()).toEqual([expect.objectContaining({ state: 'working' })])
 
-    act(() => feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: 2 }) }))
+    await act(async () =>
+      feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: 2 }) })
+    )
     expect(statuses()).toEqual([
       expect.objectContaining({ state: 'done', sessionBoundary: false, stateStartedAt: 2 })
     ])
 
-    act(() =>
+    await act(async () =>
       feed().emit({ type: 'status', session: summary({ status: 'attention', updatedAt: 3 }) })
     )
     expect(statuses()).toEqual([expect.objectContaining({ state: 'blocked' })])
@@ -225,7 +240,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -262,7 +277,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
 
     // An unchanged roster must not rewrite the store.
     const writes = mocks.setAgentStatus.mock.calls.length
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -282,7 +297,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     )
     expect(mocks.setAgentStatus.mock.calls.length).toBe(writes)
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -299,7 +314,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     ])
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -317,7 +332,9 @@ describe('StructuredAgentSessionStatusBridge', () => {
     ).toBe('unverifiable')
 
     // A summary without tasks ends the fan-out: children clear with it.
-    act(() => feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: 4 }) }))
+    await act(async () =>
+      feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: 4 }) })
+    )
     expect(statuses()).toEqual([expect.objectContaining({ subagents: undefined })])
   })
 
@@ -327,7 +344,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -346,7 +363,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       expect.objectContaining({ state: 'working', workingMode: undefined, stateStartedAt: 1 })
     ])
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -364,7 +381,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       expect.objectContaining({ state: 'working', workingMode: 'monitoring', stateStartedAt: 2 })
     ])
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -388,7 +405,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -404,7 +421,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       expect.objectContaining({ state: 'working', workingMode: 'monitoring', stateStartedAt: 1 })
     ])
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -430,7 +447,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
     const before = Date.now()
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -458,23 +475,25 @@ describe('StructuredAgentSessionStatusBridge', () => {
         tab: structuredTab as never,
         parentIsFresh
       })[0]?.state
-    act(() => feed().emit({ type: 'snapshot', sessions: [live] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [live] }))
     expect(childState()).toBe('unverifiable')
     parentIsFresh = true
     expect(childState()).toBe('working')
-    act(() => feed().emit({ type: 'end' }))
+    await act(async () => feed().emit({ type: 'end' }))
     expect(childState()).toBe('unverifiable')
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledTimes(2))
-    act(() => feed(1).emit({ type: 'snapshot', sessions: [] }))
+    await act(async () => feed(1).emit({ type: 'snapshot', sessions: [] }))
     expect(childState()).toBe('unverifiable')
-    act(() => feed(1).emit({ type: 'status', session: live }))
+    await act(async () => feed(1).emit({ type: 'status', session: live }))
     expect(childState()).toBe('working')
     parentIsFresh = false
     expect(childState()).toBe('unverifiable')
     const writes = mocks.setAgentStatus.mock.calls.length
-    act(() => feed(1).emit({ type: 'status', session: live }))
+    await act(async () => feed(1).emit({ type: 'status', session: live }))
     expect(mocks.setAgentStatus).toHaveBeenCalledTimes(writes)
-    act(() => feed(1).emit({ type: 'status', session: summary({ backgroundTasks: [] }) }))
+    await act(async () =>
+      feed(1).emit({ type: 'status', session: summary({ backgroundTasks: [] }) })
+    )
     expect(childState()).toBeUndefined()
   })
 
@@ -482,7 +501,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -505,7 +524,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     ])
 
     // The tool line describes live work, so a settled turn that omits it must clear it.
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -527,7 +546,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(statuses()[0]?.toolInput).toBeUndefined()
 
     // Only the message moves here, so the row updates only if the guard compares it.
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -547,20 +566,20 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() => feed().emit({ type: 'snapshot', sessions: [summary({ status: null })] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [summary({ status: null })] }))
     expect(mocks.setAgentStatus).not.toHaveBeenCalled()
 
-    act(() => feed().emit({ type: 'status', session: summary({ updatedAt: 2 }) }))
+    await act(async () => feed().emit({ type: 'status', session: summary({ updatedAt: 2 }) }))
     expect(statuses()).toEqual([expect.objectContaining({ state: 'working' })])
   })
 
   it('keeps the status map reference stable for repeated equal summaries', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [summary()] }))
     const before = mocks.store?.getState().agentStatusByPaneKey
 
-    act(() => {
+    await act(async () => {
       for (let repeat = 0; repeat < 10; repeat += 1) {
         feed().emit({ type: 'status', session: summary() })
       }
@@ -579,7 +598,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
       render(<StructuredAgentSessionStatusBridge />)
       await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-      act(() =>
+      await act(async () =>
         feed().emit({
           type: 'snapshot',
           sessions: [summary({ status: 'idle', updatedAt: now - 100 })]
@@ -593,7 +612,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
           updatedAt: now - 100
         })
       ])
-      act(() =>
+      await act(async () =>
         feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: now - 50 }) })
       )
       expect(statuses()).toEqual([
@@ -608,8 +627,8 @@ describe('StructuredAgentSessionStatusBridge', () => {
   it('preserves the working age when host metadata advances during the same turn', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'status', session: summary({ updatedAt: 100 }) }))
-    act(() =>
+    await act(async () => feed().emit({ type: 'status', session: summary({ updatedAt: 100 }) }))
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({ updatedAt: 200, providerSession: { ...providerSession, id: 'new-id' } })
@@ -623,15 +642,15 @@ describe('StructuredAgentSessionStatusBridge', () => {
   it('accepts an authoritative older journal age after a host upgrade reconnect', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'status', session: summary({ updatedAt: 800 }) }))
-    act(() =>
+    await act(async () => feed().emit({ type: 'status', session: summary({ updatedAt: 800 }) }))
+    await act(async () =>
       feed().emit({ type: 'snapshot', sessions: [summary({ status: 'idle', updatedAt: 900 })] })
     )
     const paneKey = statuses()[0].paneKey
     const history = statuses()[0].stateHistory
     const acknowledged = { [paneKey]: 950 }
     mocks.store?.setState({ acknowledgedAgentsByPaneKey: acknowledged })
-    act(() =>
+    await act(async () =>
       feed().emit({ type: 'snapshot', sessions: [summary({ status: 'idle', updatedAt: 200 })] })
     )
     expect(statuses()).toEqual([
@@ -641,7 +660,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     const calls = mocks.setAgentStatus.mock.calls.length
     expect(statuses()[0].stateHistory).toBe(history)
     expect(mocks.store?.getState().acknowledgedAgentsByPaneKey).toBe(acknowledged)
-    act(() =>
+    await act(async () =>
       feed().emit({ type: 'snapshot', sessions: [summary({ status: 'idle', updatedAt: 200 })] })
     )
     expect(mocks.store?.getState().agentStatusByPaneKey).toBe(before)
@@ -651,10 +670,10 @@ describe('StructuredAgentSessionStatusBridge', () => {
   it('drops the status and the feed when the last structured tab closes', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+    await act(async () => feed().emit({ type: 'snapshot', sessions: [summary()] }))
     expect(statuses()).toHaveLength(1)
 
-    act(() => mocks.store?.setState({ unifiedTabsByWorktree: { 'wt-1': [] } }))
+    await act(async () => mocks.store?.setState({ unifiedTabsByWorktree: { 'wt-1': [] } }))
 
     expect(statuses()).toEqual([])
     await waitFor(() => expect(mocks.unsubscribe).toHaveBeenCalledOnce())
@@ -667,7 +686,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       await act(() => Promise.resolve())
       expect(mocks.subscribeStatus).toHaveBeenCalledOnce()
 
-      act(() => feed().emit({ type: 'end' }))
+      await act(async () => feed().emit({ type: 'end' }))
       await act(() => vi.advanceTimersByTimeAsync(300))
 
       expect(mocks.unsubscribe).toHaveBeenCalledOnce()
@@ -707,7 +726,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<PhaseProbe />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -717,7 +736,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     )
     const rendersWhileStarting = executions.length
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -729,7 +748,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     )
     expect(executions).toHaveLength(rendersWhileStarting)
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -740,7 +759,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     )
     expect(executions).toHaveLength(rendersWhileStarting)
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -750,7 +769,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     )
     expect(executions.at(-1)?.phase).toBe('ready')
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -774,7 +793,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     }
     render(<PhaseProbe />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -784,7 +803,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     )
     expect(executions.at(-1)?.childKey).toBe(1)
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({
@@ -819,7 +838,7 @@ describe('the main agent fact the bridge writes', () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'snapshot',
         sessions: [
@@ -841,7 +860,7 @@ describe('the main agent fact the bridge writes', () => {
     ])
 
     // The shell drains: the row settles, the main agent was done all along, so its clock holds.
-    act(() =>
+    await act(async () =>
       feed().emit({
         type: 'status',
         session: summary({ status: 'idle', updatedAt: 2, turnOutcome: 'cancellation' })

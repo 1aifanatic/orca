@@ -14,7 +14,8 @@ import {
   JournalImportMismatchError,
   journalOpenRefusalError
 } from './journal-open-failure'
-import { charBoundedBatches, type ImportBatch } from './journal-per-session-source'
+import type { ImportBatch } from './journal-per-session-source'
+import { charBoundedBatches } from './journal-session-status-backfill'
 import { readJournalRowsAfter } from './journal-row-table'
 
 /** Throws once quit has stopped imports: before every batch, so a stop waits at most one. */

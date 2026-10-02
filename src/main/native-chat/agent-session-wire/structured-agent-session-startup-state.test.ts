@@ -315,8 +315,9 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     const background = await startup(rig, listed)
 
     const unlisted = ['session-crashed-closed']
+    // The rowless chat's row comes from its rows alone: it is never opened.
     expect(opened(rig, [...listed, ...unlisted]).toSorted()).toEqual(
-      ['session-crashed', ...unlisted, 'session-rowless', 'session-uncopied'].toSorted()
+      ['session-crashed', ...unlisted, 'session-uncopied'].toSorted()
     )
     expect(background.toSorted()).toEqual(['session-rowless', 'session-uncopied'].toSorted())
     expect(latestRestTestStatus(rig, 'session-draft')).toMatchObject({ status: 'idle' })
@@ -341,8 +342,11 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
       expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ status: 'idle' })
     }
 
-    // Its open wrote the missing status back.
-    expect(readTestJournalSessionStatus(rig.root, 'session-rowless')).not.toBeNull()
+    // The missing status was written back, and its row published, with no open.
+    expect(readTestJournalSessionStatus(rig.root, 'session-rowless')).toMatchObject({
+      lifecycle: 'idle'
+    })
+    expect(latestRestTestStatus(rig, 'session-rowless')).toMatchObject({ status: 'idle' })
 
     // The next boot finds nothing to settle and nothing without a status (T4b).
     await rig.crash()
