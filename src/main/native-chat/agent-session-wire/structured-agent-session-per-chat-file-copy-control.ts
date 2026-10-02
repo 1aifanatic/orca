@@ -41,7 +41,8 @@ export type PerChatFileCopyStart = {
  *  at teardown. */
 export function createStructuredAgentSessionPerChatFileCopyControl(
   base: Omit<PerChatFileCopyDeps, 'listedIds' | 'isStartupChatWorkActive'> & {
-    /** The host's own startup chat work: the settle step, or a history restore running. */
+    /** The host's own startup chat work: the settle step, the startup status pass, or a history
+     *  restore running. */
     isHostChatWorkActive: () => boolean
   }
 ): { start: (input: PerChatFileCopyStart) => void; stop: () => Promise<void> } {

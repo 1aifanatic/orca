@@ -7,7 +7,7 @@
 // chat, and any other ends the job for this launch. One pace holds every task the job runs to a
 // share of the main thread (structured-agent-session-per-chat-file-copy-pace.ts). A run waits while
 // startup chat work is in flight (startup restoration not yet settled, a tab listing, a history
-// restore, the settle step), re-derived before every run and every chat. It takes no time at all
+// restore, the settle step, the startup status pass), re-derived before every run and every chat. It takes no time at all
 // while a send is in flight or within a quiet period of any chat's last provider frame
 // (structured-agent-session-per-chat-file-copy-activity.ts). What is owed is derived
 // from the files on disk, so nothing stored can disagree with it
@@ -67,7 +67,7 @@ export type PerChatFileCopyDeps = {
   /** The chats with a tab, in tab order: copied first. */
   listedIds: readonly string[]
   /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
-   *  restore, or the settle step. */
+   *  restore, the settle step, or the startup status pass. */
   isStartupChatWorkActive: () => boolean
   /** Sends in flight and provider frames: the copy takes no main-thread time while the chats work. */
   chatWork: StructuredAgentSessionChatWork

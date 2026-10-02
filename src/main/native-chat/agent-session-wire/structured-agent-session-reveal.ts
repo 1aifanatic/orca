@@ -147,7 +147,8 @@ export function createStructuredAgentSessionHostRestore(
     settleClosedChat: startup.settleClosedChat,
     chatWork: chatStatus.chatWork,
     canSettle,
-    isHostChatWorkActive: () => startup.isSettling() || restorer.isRestoring,
+    isHostChatWorkActive: () =>
+      startup.isSettling() || startup.isDeriving() || restorer.isRestoring,
     isDisposed: rest.isDisposed,
     logger: deps.logger,
     now: () => deps.now?.() ?? Date.now(),
