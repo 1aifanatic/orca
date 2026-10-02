@@ -22,7 +22,6 @@ import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import { sameOrcadActivationRecord } from './orcad-activation-transaction'
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
 import {
   resolveOrcadActivationReadinessTimeout,
   withOrcadActivationLock
@@ -58,7 +57,6 @@ export type OrcadRollbackResult =
   | { outcome: 'failed'; code: string; reason: string }
 
 export async function rollbackOrcad(input: OrcadRollbackOptions): Promise<OrcadRollbackResult> {
-  assertPosixOrcadHost(input.host)
   const options = {
     ...input,
     readinessTimeoutMs: resolveOrcadActivationReadinessTimeout(

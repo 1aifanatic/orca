@@ -14,7 +14,6 @@ import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import type { OrcadActivationVerdict } from './orcad-activation-gate'
 import type { OrcadTerminalCensus } from './orcad-update-plan'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
 import { installOrcadBundle } from './orcad-remote-install'
 import { getAppEnvironment } from '../../shared/app-environment'
 import type { ServerTarget } from '../../shared/node-runtime-pin'
@@ -62,7 +61,6 @@ export type OrcadDeployResult =
 
 /** Activate on a healthy verdict; retain changed candidate state for explicit recovery. */
 export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeployResult> {
-  assertPosixOrcadHost(input.host)
   const target =
     input.target ??
     (input.localOrcadDir

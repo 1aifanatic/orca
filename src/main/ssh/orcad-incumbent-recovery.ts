@@ -6,6 +6,7 @@
  * when the change provably carries no terminals — the slot exposed RPC, so a pre-launch census
  * cannot vouch for it.
  */
+import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { ORCAD_STATE_SNAPSHOT_DIR } from './orcad-activation-record'
@@ -98,7 +99,12 @@ async function decideChangedStateRestore(
     // Read-only, so a lost answer is just "changed".
     const comparison = await execOrcadRemote(
       options,
-      compareOrcadStateSnapshotCommand(options.host, options.userDataDir, snapshotDir)
+      compareOrcadStateSnapshotCommand(
+        options.host,
+        options.userDataDir,
+        snapshotDir,
+        orcadRemoteBaseDir(options.host, options.remoteHome)
+      )
     ).catch(() => '')
     if (orcadSnapshotIsUnchanged(comparison)) {
       return 'unchanged'
@@ -143,9 +149,14 @@ async function restoreState(options: OrcadSlotOptions, state: OrcadSnapshotVerdi
       ? restoreOrcadStateSnapshotCommand(
           options.host,
           options.userDataDir,
-          orcadSnapshotPath(options, state.dirName)
+          orcadSnapshotPath(options, state.dirName),
+          orcadRemoteBaseDir(options.host, options.remoteHome)
         )
-      : clearOrcadStateSnapshotMembersCommand(options.host, options.userDataDir)
+      : clearOrcadStateSnapshotMembersCommand(
+          options.host,
+          options.userDataDir,
+          orcadRemoteBaseDir(options.host, options.remoteHome)
+        )
   const restored = parseOrcadSnapshotRestore(await execOrcadRemote(options, command))
   if (restored !== 'restored') {
     throw new Error(`The prelaunch state could not be restored (${restored}).`)

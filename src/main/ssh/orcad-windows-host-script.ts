@@ -24,6 +24,10 @@ import {
   ORCAD_STOP_REQUESTS_CAPABILITY
 } from '../../shared/orcad-stop-request'
 import {
+  ORCAD_WINDOWS_HOST_STATE_OPS,
+  type OrcadWindowsHostStateOp
+} from './orcad-windows-host-state-ops'
+import {
   ORCAD_READINESS_FILENAME,
   ORCAD_READINESS_MAX_BYTES,
   ORCAD_WINDOWS_PROCESS_FILENAME
@@ -48,6 +52,8 @@ export type OrcadWindowsHostOp =
   | 'record-publish'
   | 'slot-runtime'
   | 'remove-file'
+  | 'remove-tree'
+  | OrcadWindowsHostStateOp
 
 const text = JSON.stringify
 
@@ -187,6 +193,11 @@ const ops = {
     answer('')
   },
 
+  'remove-tree'(target) {
+    fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 })
+    answer('')
+  },
+
   // The node.exe a slot's marker names; with clear-stop-request, also drops a stale request.
   'slot-runtime'(slotDir, mode) {
     let sha
@@ -202,6 +213,7 @@ const ops = {
   }
 }
 
+${ORCAD_WINDOWS_HOST_STATE_OPS}
 const run = Object.hasOwn(ops, op) ? ops[op] : null
 if (!run) {
   process.stderr.write('unknown orcad host op: ' + String(op) + '\\n')

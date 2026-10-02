@@ -1,4 +1,5 @@
 /** The locked, journaled half of `rollbackOrcad`. */
+import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 import { randomUUID } from 'node:crypto'
 import type { OrcadRollbackOptions, OrcadRollbackResult } from './orcad-remote-rollback'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
@@ -58,7 +59,14 @@ async function stateWritesSinceActivation(options: OrcadRollbackOptions): Promis
     return null
   }
   const newest = parseNewestStateMtimeSeconds(
-    await execOrEmpty(options, newestStateMtimeCommand(options.host, options.userDataDir))
+    await execOrEmpty(
+      options,
+      newestStateMtimeCommand(
+        options.host,
+        options.userDataDir,
+        orcadRemoteBaseDir(options.host, options.remoteHome)
+      )
+    )
   )
   return newest === null ? null : newest >= activatedAtSeconds
 }
@@ -73,7 +81,11 @@ export async function rollbackOrcadLocked(
     ? parseOrcadSnapshotPresence(
         await execOrEmpty(
           options,
-          probeOrcadStateSnapshotCommand(options.host, orcadSnapshotPath(options, snapshot.dirName))
+          probeOrcadStateSnapshotCommand(
+            options.host,
+            orcadSnapshotPath(options, snapshot.dirName),
+            orcadRemoteBaseDir(options.host, options.remoteHome)
+          )
         )
       )
     : 'absent'
@@ -145,7 +157,8 @@ export async function rollbackOrcadLocked(
       captureOrcadStateSnapshotCommand(
         options.host,
         options.userDataDir,
-        orcadSnapshotPath(options, transaction.rescue.dirName)
+        orcadSnapshotPath(options, transaction.rescue.dirName),
+        orcadRemoteBaseDir(options.host, options.remoteHome)
       )
     )
   )
@@ -169,7 +182,8 @@ export async function rollbackOrcadLocked(
       restoreOrcadStateSnapshotCommand(
         options.host,
         options.userDataDir,
-        orcadSnapshotPath(options, snapshot.dirName)
+        orcadSnapshotPath(options, snapshot.dirName),
+        orcadRemoteBaseDir(options.host, options.remoteHome)
       )
     )
   )

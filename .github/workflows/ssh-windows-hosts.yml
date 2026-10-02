@@ -33,6 +33,7 @@ on:
       - 'src/shared/windows-breakaway-launch*.ts'
       - '!src/**/*.test.ts'
       - 'src/main/ssh/ssh-relay-windows-host-lane.test.ts'
+      - 'src/main/ssh/orcad-windows-host-lane.test.ts'
       - 'config/ci/windows-ssh-provider/**'
       - '.github/workflows/ssh-windows-hosts.yml'
   workflow_dispatch:
@@ -118,7 +119,7 @@ jobs:
           $receipts=Join-Path $pwd '.build/ssh-windows-host-receipts'
           New-Item -ItemType Directory -Force -Path $receipts | Out-Null
           $cells=@($env:CELLS -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})
-          if(-not $cells.Count){$cells=@('pinned-cmd','pinned-powershell','legacy-opt-out')}
+          if(-not $cells.Count){$cells=@('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell')}
           $archive=''
           if('${{ matrix.server }}' -eq 'preview'){
             $archive=Join-Path $env:RUNNER_TEMP 'preview-${{ matrix.archive }}'

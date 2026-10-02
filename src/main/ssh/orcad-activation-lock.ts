@@ -15,7 +15,8 @@ import { acquireInstallLock, RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install
 import { probeInstallLockExistsCommand } from './ssh-relay-install-lock-commands'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { removeRemoteFileCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
-import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
   ORCAD_ACTIVATION_TRANSACTION_DIRNAME,
   ORCAD_ACTIVATION_TRANSACTION_FILENAME
@@ -147,8 +148,22 @@ function releaseActivationFence(
   // Journal first: a release cut short must leave a lock without a journal, never the reverse.
   const journal = joinRemotePath(options.host, lockRoot, ORCAD_ACTIVATION_TRANSACTION_FILENAME)
   // Why no signal: a cancelled run must still be able to drop a fence it proved unnecessary.
+  const target = withoutAbortSignal(options)
+  if (isWindowsRemoteHost(options.host)) {
+    // `&&` does not parse under a PowerShell DefaultShell, so the two steps are two execs.
+    const baseDir = orcadRemoteBaseDir(options.host, options.remoteHome)
+    return execOrcadRemote(
+      target,
+      orcadWindowsHostOpCommand(options.host, baseDir, 'remove-file', [journal])
+    ).then(() =>
+      execOrcadRemote(
+        target,
+        orcadWindowsHostOpCommand(options.host, baseDir, 'remove-tree', [lockRoot])
+      ).then(() => undefined)
+    )
+  }
   return execOrcadRemote(
-    withoutAbortSignal(options),
+    target,
     `${removeRemoteFileCommand(options.host, journal)} && ${removeRemoteTreeCommand(options.host, lockRoot)}`
   ).then(() => undefined)
 }
