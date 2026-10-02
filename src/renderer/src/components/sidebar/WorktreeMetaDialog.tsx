@@ -58,11 +58,9 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
   const modalData = useAppStore((s) => s.modalData)
   const closeModal = useAppStore((s) => s.closeModal)
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
-  const submitShortcutLabel = getScreenSubmitShortcutLabel()
   const commentIme = useImeEnterGestureOwnership()
 
-  const isEditMeta = activeModal === 'edit-meta'
-  const isOpen = isEditMeta
+  const isOpen = activeModal === 'edit-meta'
 
   const worktreeId = typeof modalData.worktreeId === 'string' ? modalData.worktreeId : ''
   const executionHostId =
@@ -177,11 +175,11 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
   const setCommentTextareaRef = useCallback(
     (textarea: HTMLTextAreaElement | null) => {
       textareaRef.current = textarea
-      if (textarea && isEditMeta) {
+      if (textarea && isOpen) {
         resizeCommentTextarea(textarea)
       }
     },
-    [isEditMeta]
+    [isOpen]
   )
 
   const handleCommentChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -308,12 +306,15 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
     [commentIme, handleSave]
   )
 
-  const handleIssueKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleSave()
-    }
-  }
+  const handleIssueKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        handleSave()
+      }
+    },
+    [handleSave]
+  )
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -412,7 +413,7 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
                 'auto.components.sidebar.WorktreeMetaDialog.7f0be5e9a6',
                 'Supports **markdown** — bold, lists, `code`, links. Press Enter or'
               )}{' '}
-              {submitShortcutLabel}{' '}
+              {getScreenSubmitShortcutLabel()}{' '}
               {translate(
                 'auto.components.sidebar.WorktreeMetaDialog.b48c271d39',
                 'to save, Shift+Enter for a new line.'
