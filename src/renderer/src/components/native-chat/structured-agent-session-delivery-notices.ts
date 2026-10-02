@@ -10,7 +10,8 @@
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
 // is a failed start's, the fact its loaded row states, says only that it was not sent: the row
-// already says why.
+// already says why. One the outbox no longer holds is drawn from the host's history and gets the
+// same words, with no Retry: sending it again is a new message.
 
 import {
   readAgentSessionFailureFact,
@@ -33,7 +34,11 @@ import {
   structuredAgentSessionEntryHeldForRetry
 } from '../../../../shared/structured-agent-session-outbox-admission'
 import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
-import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
+import {
+  structuredAgentSessionAttemptFailureParts,
+  structuredAgentSessionRejectionParts
+} from '../../../../shared/structured-agent-session-send-disposition'
+import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
@@ -129,8 +134,26 @@ function deliveryNoticeText(
   )
 }
 
+function hostRejectionNoticeText(
+  submission: AgentJournalSubmission,
+  agentName: string,
+  startFailures: readonly AgentSessionFailureFact[]
+): string {
+  if (agentSessionFailureStatedByStartRow(submission.rejection, startFailures)) {
+    return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
+  }
+  return agentSessionWriteNoticeText(
+    structuredAgentSessionRejectionParts(
+      submission.reason,
+      'send',
+      readWholeAgentSessionFailureFact(submission.rejection),
+      { agentName }
+    )
+  )
+}
+
 /** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
- *  agent, for the words. */
+ *  agent, for the words. A rejection the transcript does not draw has a notice nothing reads. */
 export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   agentName: string,
@@ -170,6 +193,14 @@ export function structuredAgentSessionDeliveryNotices(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
       )
+    }
+  }
+  const inOutbox = new Set(outbox.map((entry) => entry.clientMessageId))
+  for (const submission of rejected.values()) {
+    if (!inOutbox.has(submission.clientMessageId) && !dispatchWasWithdrawn(submission)) {
+      notices.set(agentJournalSubmissionKey(submission.clientMessageId), {
+        text: hostRejectionNoticeText(submission, agentName, startFailures)
+      })
     }
   }
   return notices

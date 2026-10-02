@@ -17,7 +17,7 @@ import { projectNativeChatTaskListFrames } from './native-chat-task-list-frames'
 import { omitNativeChatThreadGoalRows } from './native-chat-thread-goal-rows'
 import { buildNativeChatTranscriptSlots } from './native-chat-transcript-slots'
 import type { NativeChatTurnDiff } from './native-chat-turn-diffs'
-import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 
 function row(sequence: number, body: AgentJournalItemBody, itemId = `item-${sequence}`) {
   return { itemId, revision: 1, sequence, observedAt: 1_000 + sequence, body }
@@ -65,10 +65,11 @@ const JOURNAL: AgentJournalRenderItem[] = [
   { ...user(12, [{ type: 'text', text: 'Observed earlier' }]), observedAt: 1_009.5 }
 ]
 
-/** The renderer's own path from journal items to rail items, as the list runs it. */
+/** The renderer's own path from journal items to rail items, as the list runs it. The outline
+ *  lists no rejected message: the desktop draws those in place, and ticks them once loaded. */
 function loadedRailItems(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]) {
   const projected = createNativeChatMessageListProjection()(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: false })
   ).conversation
   const messages = omitNativeChatThreadGoalRows(projectNativeChatTaskListFrames(projected))
   let turn: string | undefined

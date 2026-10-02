@@ -1,3 +1,4 @@
+import type { AgentJournalMessageItem } from './agent-session-journal-types'
 import { sha256 } from './sha256'
 
 function canonicalize(value: unknown): string {
@@ -24,6 +25,19 @@ export function structuredAgentSessionPayloadFingerprint(input: {
     )
   )
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/** The body-only hash a send's submission row stores: what the reducer recomputes to alias a
+ *  provider echo onto its submission, so it must never include control fields. */
+export function structuredAgentSessionSendBodyFingerprint(
+  sessionId: string,
+  body: AgentJournalMessageItem
+): string {
+  return structuredAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId,
+    fields: { body }
+  })
 }
 
 export function structuredAgentSessionDomainFingerprint(input: {

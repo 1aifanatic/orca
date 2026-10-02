@@ -31,15 +31,6 @@ function item(index: number): AgentJournalRenderItem {
 }
 
 describe('structured agent session message projection', () => {
-  it('does not render a rejected host submission as a sent user message', () => {
-    const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
-    const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
-    const acceptedItem = item(1)
-    expect(
-      projectStructuredAgentSessionMessages([refusedItem, acceptedItem], [], [rejected])
-    ).toMatchObject([{ id: acceptedItem.itemId, role: 'user' }])
-  })
-
   it('keeps a refused local draft available through its outbox', () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
