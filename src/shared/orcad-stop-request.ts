@@ -14,6 +14,8 @@ export const ORCAD_MANAGED_STOP_REQUEST_PREFIX = '.orcad-managed-stop-request'
 export const ORCAD_MANAGED_STOP_REQUEST_MAX_BYTES = 32 * 1024
 export const ORCAD_STOP_RECEIPTS_DIRNAME = 'orcad-stop-receipts'
 export const ORCAD_COMPLETE_MANAGED_STOP_FLAG = '--complete-managed-stop'
+/** Names a staged request file instead of inline JSON; Windows hosts never put the JSON on argv. */
+export const ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG = '--request-file'
 
 /** One orcad process: its PID, start time, and the instance lock record it published. */
 export const OrcadManagedStopInstanceSchema = z.strictObject({

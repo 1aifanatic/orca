@@ -30,6 +30,7 @@ on:
       - 'config/scripts/relay-windows-process-tree-staging.mjs'
       - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
       - 'src/shared/relay-windows-breakaway-launch.ts'
+      - 'src/shared/windows-breakaway-launch*.ts'
       - '!src/**/*.test.ts'
       - 'src/main/ssh/ssh-relay-windows-host-lane.test.ts'
       - 'config/ci/windows-ssh-provider/**'

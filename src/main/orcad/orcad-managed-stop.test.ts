@@ -178,6 +178,24 @@ describe('completing a managed stop', () => {
       'invalid_arguments'
     )
   })
+
+  it('reads the request from a staged file instead of argv', async () => {
+    const { lock, request } = running()
+    const staged = join(lock.path, '..', 'staged-request.json')
+    writeFileSync(staged, JSON.stringify(request))
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const completion = await runOrcadManagedStopCommand(
+      ['--complete-managed-stop', '--request-file', staged],
+      options({ probeProcess: () => 'missing' })
+    )
+    expect(completion).toMatchObject({
+      transactionId: request.transactionId,
+      verdict: 'exited'
+    })
+    await expect(
+      runOrcadManagedStopCommand(['--complete-managed-stop', '--request-file'])
+    ).rejects.toThrow('invalid_arguments')
+  })
 })
 
 describe('managed stops that retire the daemon', () => {

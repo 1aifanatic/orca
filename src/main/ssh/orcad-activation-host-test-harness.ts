@@ -18,6 +18,11 @@ const MIGRATION = '|migrated-by-new'
 
 export type CrashMode = 'before' | 'after'
 
+/** The one-shot readiness read, or the launch loop's host-side wait. */
+export function isReadinessRead(command: string): boolean {
+  return command.startsWith('head -c ') || command.includes('orcad_readiness_wait')
+}
+
 export class FakeOrcadHost {
   record: string | null = null
   journal: string | null = null
@@ -168,7 +173,7 @@ export class FakeOrcadHost {
         return '9999'
       })
     }
-    if (command.startsWith('head -c ') && version) {
+    if (isReadinessRead(command) && version) {
       return this.alive.has(version) ? readyLine(version) : ''
     }
     if (command.includes('echo PRESENT') && snapshot) {

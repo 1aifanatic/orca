@@ -103,10 +103,10 @@ describe('orcad host record files', () => {
     expect(String(mockExec.mock.calls.at(-1)?.[1])).toContain('rm -f')
   })
 
-  it('refuses Windows hosts, which the orcad lifecycle does not support', async () => {
+  it('refuses a Windows read that names no pinned node.exe to run it', async () => {
     await expect(
       readBoundedOrcadRemoteRecord({ conn, host: windows }, 'C:/r.json', 64)
-    ).rejects.toThrow()
+    ).rejects.toThrow('pinned node.exe')
     expect(mockExec).not.toHaveBeenCalled()
   })
 })

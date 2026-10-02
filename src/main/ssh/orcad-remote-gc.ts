@@ -27,6 +27,7 @@ import {
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
 import { readOrcadGcTransactionPins } from './orcad-gc-transaction-pins'
+import { assertPosixOrcadHost } from './orcad-remote-host-support'
 
 export type OrcadGcOptions = {
   conn: SshConnection
@@ -52,6 +53,8 @@ export type OrcadGcOptions = {
 }
 
 export async function gcOldOrcadVersions(options: OrcadGcOptions): Promise<void> {
+  // Windows liveness answers now, but GC there (one probe per pass, not per dir) is not built yet.
+  assertPosixOrcadHost(options.host)
   const transaction = await readOrcadGcTransactionPins(options)
   if (transaction.state === 'keep-all') {
     console.warn('[orcad-gc] An activation transaction is unreadable or unjournaled; skipping GC.')
