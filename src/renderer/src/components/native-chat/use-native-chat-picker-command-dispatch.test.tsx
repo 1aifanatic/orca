@@ -4,17 +4,10 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_HISTORY } from './native-chat-composer-state'
 import {
-  addNativeChatDraftAttachments,
-  clearNativeChatDraftAttachments,
   clearNativeChatDraftCacheForTests,
-  readNativeChatDraftAttachments,
-  readNativeChatDraftCache,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
-import {
-  installHeldNativeChatDrafts,
-  installNativeChatDrafts
-} from './native-chat-draft-store.test-support'
+import { installNativeChatDrafts } from './native-chat-draft-store.test-support'
 
 const sendNativeChatMessage = vi.fn()
 const sendNativeChatTypedCommand = vi.fn()
@@ -42,10 +35,7 @@ const COMMAND = {
 
 const DRAFT_KEY = 'pane:tab-1:leaf-1'
 
-function renderDispatch(
-  agent: 'codex' | 'claude' | 'openclaude',
-  trackPendingSend: (handle: { cancel: () => void }) => void = vi.fn()
-) {
+function renderDispatch(agent: 'codex' | 'claude' | 'openclaude') {
   return renderHook(() =>
     useNativeChatPickerCommandDispatch({
       agent,
@@ -54,14 +44,14 @@ function renderDispatch(
       isDispatchingSessionOption: false,
       resolveTarget: () => ({ settings: {}, ptyId: 'pty-1' }),
       sessionOptionsSurface: null,
-      trackPendingSend,
+      trackPendingSend: vi.fn(),
       setHistory: vi.fn((update) => update(EMPTY_HISTORY)),
       // As the composer's draft hook does: a clear is saved at once.
       setDraft: (value: string) => writeNativeChatDraftCache(DRAFT_KEY, value, 'now'),
       setCaret: vi.fn(),
       setActiveSuggestion: vi.fn(),
       clearSkillOrigin: vi.fn(),
-      clearImageAttachments: () => clearNativeChatDraftAttachments(DRAFT_KEY),
+      clearImageAttachments: vi.fn(),
       setNotice: vi.fn()
     })
   )
@@ -73,88 +63,67 @@ describe('useNativeChatPickerCommandDispatch', () => {
     const handle = { cancel: vi.fn(), settleAfterMs: 0 }
     sendNativeChatMessage.mockReturnValue(handle)
     sendNativeChatTypedCommand.mockReturnValue(handle)
-    installNativeChatDrafts({
-      load: async () => [],
-      loadSync: () => [],
-      write: async () => 'persisted'
-    })
   })
 
-  afterEach(() => clearNativeChatDraftCacheForTests())
+  afterEach(async () => {
+    // Lets each send's draft save land in its own test.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    clearNativeChatDraftCacheForTests()
+  })
 
-  it('types Codex autocomplete commands', async () => {
+  it('types Codex autocomplete commands', () => {
     const hook = renderDispatch('codex')
-    await act(async () => hook.result.current(COMMAND))
+    act(() => hook.result.current(COMMAND))
 
     expect(sendNativeChatTypedCommand).toHaveBeenCalledWith({}, 'pty-1', '/status')
     expect(sendNativeChatMessage).not.toHaveBeenCalled()
   })
 
-  it.each(['claude', 'openclaude'] as const)(
-    'keeps %s autocomplete commands pasted',
-    async (agent) => {
-      const hook = renderDispatch(agent)
-      await act(async () => hook.result.current(COMMAND))
+  it.each(['claude', 'openclaude'] as const)('keeps %s autocomplete commands pasted', (agent) => {
+    const hook = renderDispatch(agent)
+    act(() => hook.result.current(COMMAND))
 
-      expect(sendNativeChatMessage).toHaveBeenCalledWith({}, 'pty-1', '/status')
-      expect(sendNativeChatTypedCommand).not.toHaveBeenCalled()
-    }
-  )
+    expect(sendNativeChatMessage).toHaveBeenCalledWith({}, 'pty-1', '/status')
+    expect(sendNativeChatTypedCommand).not.toHaveBeenCalled()
+  })
 })
 
-// A command picked from the menu goes out like a typed message: its clear is saved first.
+// A command picked from the menu goes out like a typed one: its clear is saved once the
+// terminal write ran, so a crash before then restores it unsent.
 describe('a command picked from the menu', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    sendNativeChatTypedCommand.mockReturnValue({ cancel: vi.fn(), settleAfterMs: 0 })
+  afterEach(async () => {
+    // Lets each send's draft save land in its own test.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    clearNativeChatDraftCacheForTests()
   })
 
-  afterEach(() => clearNativeChatDraftCacheForTests())
-
-  it('is written to the terminal only once the cleared draft is saved', async () => {
-    const writes = installHeldNativeChatDrafts()
+  it('keeps its text saved until the terminal write ran', async () => {
+    const saved: unknown[] = []
+    installNativeChatDrafts({
+      load: async () => [],
+      loadSync: () => [],
+      write: async (_scopeKey, draft) => {
+        saved.push(draft?.text ?? null)
+        return 'persisted'
+      }
+    })
+    let finish = () => {}
+    sendNativeChatTypedCommand.mockReturnValue({
+      cancel: vi.fn(),
+      settleAfterMs: 0,
+      settled: new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
     writeNativeChatDraftCache(DRAFT_KEY, '/sta', 'now')
-    writes.shift()?.settle('persisted')
     const hook = renderDispatch('codex')
 
     act(() => hook.result.current(COMMAND))
-    expect(writes.at(-1)).toMatchObject({ scopeKey: DRAFT_KEY, draft: null })
     await Promise.resolve()
-    expect(sendNativeChatTypedCommand).not.toHaveBeenCalled()
-
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
     expect(sendNativeChatTypedCommand).toHaveBeenCalledWith({}, 'pty-1', '/status')
-  })
+    expect(saved).toEqual(['/sta'])
 
-  it('goes back into the box, unsent, when Stop comes while its clear is saved', async () => {
-    const writes = installHeldNativeChatDrafts()
-    const tracked: { cancel: () => void }[] = []
-    const hook = renderDispatch('codex', (handle) => tracked.push(handle))
-
-    act(() => hook.result.current(COMMAND))
-    tracked.forEach((handle) => handle.cancel())
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
-
-    expect(sendNativeChatTypedCommand).not.toHaveBeenCalled()
-    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('/status')
-  })
-
-  it('puts the image chips back with it, as the other send paths do', async () => {
-    const writes = installHeldNativeChatDrafts()
-    addNativeChatDraftAttachments(DRAFT_KEY, [
-      { id: 'shot', path: '/tmp/shot.png', location: 'local' },
-      { id: 'saving', path: '', pending: true }
-    ])
-    const tracked: { cancel: () => void }[] = []
-    const hook = renderDispatch('codex', (handle) => tracked.push(handle))
-
-    act(() => hook.result.current(COMMAND))
-    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([])
-    tracked.forEach((handle) => handle.cancel())
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
-
-    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([
-      { id: 'shot', path: '/tmp/shot.png', location: 'local' }
-    ])
+    finish()
+    await vi.waitFor(() => expect(saved).toEqual(['/sta', null]))
   })
 })

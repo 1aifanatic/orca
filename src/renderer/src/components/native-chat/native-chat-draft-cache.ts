@@ -6,6 +6,7 @@ import type { JSONContent } from '@tiptap/react'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import {
   awaitNativeChatDraftSaved,
+  hasPendingNativeChatDraftPersist,
   isEmptyNativeChatDraft,
   loadPersistedNativeChatDrafts,
   observeOtherWindowNativeChatDrafts,
@@ -127,15 +128,56 @@ function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
     : null
 }
 
+// Chats whose box is being cleared for a send; that clear is saved once the host has the message.
+const clearingForSend = new Set<string>()
+const sendsAwaitingHost = new Map<string, number>()
+
 function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
+  if (clearingForSend.has(draftKey)) {
+    return Promise.resolve('memory-only')
+  }
   return persistNativeChatDraftNow(draftKey, persistedDraft(draftKey))
+}
+
+/**
+ * Empties the chat's box for a send (`clear`) without saving that, so a crash before the host has
+ * the message restores it unsent. Returns `save`, to call once the host accepted, refused or lost
+ * the message: it saves the draft as it is then, keeping whatever was typed since Enter. With
+ * several sends in flight on one chat, the last to settle saves.
+ */
+export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
+  // The message typed just before Enter may still be waiting for its pause; it is what is saved.
+  if (hasPendingNativeChatDraftPersist(draftKey)) {
+    void persistNow(draftKey)
+  }
+  sendsAwaitingHost.set(draftKey, (sendsAwaitingHost.get(draftKey) ?? 0) + 1)
+  clearingForSend.add(draftKey)
+  try {
+    clear()
+  } finally {
+    clearingForSend.delete(draftKey)
+  }
+  let saved = false
+  return () => {
+    if (saved) {
+      return
+    }
+    saved = true
+    const awaiting = (sendsAwaitingHost.get(draftKey) ?? 1) - 1
+    if (awaiting > 0) {
+      sendsAwaitingHost.set(draftKey, awaiting)
+      return
+    }
+    sendsAwaitingHost.delete(draftKey)
+    void persistNow(draftKey)
+  }
 }
 
 export function readNativeChatDraftCache(draftKey: string): string {
   return readEntry(draftKey).text
 }
 
-/** Typing waits for a pause; a clear (at send) is written at once, even if a put-back remains. */
+/** Typing waits for a pause; a clear is written at once (a send's, once the host has it). */
 export function writeNativeChatDraftCache(
   draftKey: string,
   draft: string,
@@ -149,7 +191,7 @@ export function writeNativeChatDraftCache(
   }
 }
 
-/** Waits (briefly) until the chat's last write, such as the clear at send, is written. */
+/** Waits (briefly) until the chat's last write is saved. */
 export function awaitNativeChatDraftWritten(draftKey: string): Promise<void> {
   return awaitNativeChatDraftSaved(draftKey)
 }
@@ -167,16 +209,6 @@ export function writeNativeChatDraftTuiInputSeed(
 ): void {
   setEntry(draftKey, { ...readEntry(draftKey), tuiInputSeed: seed })
   void persistNow(draftKey)
-}
-
-/** Every pane of the tab whose input line Orca seeded, with that seed. */
-export function readNativeChatTuiInputSeeds(
-  terminalTabId: string
-): [draftKey: string, seed: NativeChatTuiInputSeed][] {
-  const prefix = nativeChatDraftKey({ paneKey: `${terminalTabId}:` })
-  return Array.from(drafts()).flatMap(([draftKey, { tuiInputSeed }]) =>
-    draftKey.startsWith(prefix) && tuiInputSeed ? [[draftKey, tuiInputSeed]] : []
-  )
 }
 
 /** The tab's launch draft is gone (sent, resolved, closed), so no pane's input line holds it. */
@@ -309,6 +341,7 @@ const documentCache = new Map<string, { text: string; document: JSONContent }>()
 
 /** Clears memory and the saved drafts on disk. */
 export function clearNativeChatDraftCacheForTests(): void {
+  sendsAwaitingHost.clear()
   draftCache.clear()
   documentCache.clear()
   hydrated = false

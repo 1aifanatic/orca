@@ -19,41 +19,15 @@ import type { NativeChatPickerState } from './use-native-chat-picker-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
 import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-types'
-import {
-  appendNativeChatDraftNow,
-  readNativeChatTuiInputSeeds,
-  writeNativeChatDraftTuiInputSeed,
-  type NativeChatDraftAttachment
-} from './native-chat-draft-cache'
-import {
-  nativeChatDraftAttachmentsOf,
-  writeToPtyAfterDraftClear
-} from './native-chat-send-after-draft-clear'
-
-// The agent's input line keeps the launch text until a send's write replaces it. A send cancelled
-// before writing leaves it there, so the launch draft and its saved seeds come back with the
-// message, and the resend still replaces the line.
-function takeNativeChatLaunchDraft(terminalTabId: string): () => void {
-  const state = useAppStore.getState()
-  const launchDraft = state.nativeChatLaunchDraftByTabId[terminalTabId]
-  const seeds = readNativeChatTuiInputSeeds(terminalTabId)
-  state.clearNativeChatLaunchDraft(terminalTabId)
-  return () => {
-    if (launchDraft) {
-      useAppStore.getState().seedNativeChatLaunchDraft(launchDraft)
-    }
-    for (const [draftKey, seed] of seeds) {
-      writeNativeChatDraftTuiInputSeed(draftKey, seed)
-    }
-  }
-}
+import { clearNativeChatDraftForSend } from './native-chat-draft-cache'
+import { saveNativeChatDraftAfterPtyWrite } from './native-chat-draft-save-after-send'
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
-  /** The chat's draft (`nativeChatDraftKey`); its clear is saved before the PTY write. */
+  /** The chat's draft (`nativeChatDraftKey`); its clear is saved once the terminal has the message. */
   draftKey: string
   draft: string
-  imageAttachments: readonly NativeChatDraftAttachment[]
+  imageAttachments: readonly { path: string }[]
   disabled: boolean
   isDispatchingSessionOption: boolean
   launchDraft?: NativeChatLaunchDraft | null
@@ -112,58 +86,55 @@ export function useNativeChatPtyComposerSend(args: {
             }
           }
         : launchSendOptions
-    if (classification === 'chat') {
-      pendingId = args.onOptimisticSend?.(text, imagePaths)
+    let pendingHandle: NativeChatSendHandle | null = null
+    // Why: slash-like text must not silently drop its attached images.
+    if (classification !== 'chat' && imagePaths.length === 0) {
+      pendingHandle =
+        args.agent === 'codex' && isSlashCommandDraft(text)
+          ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
+          : sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
+    } else if (imagePaths.length > 0) {
+      pendingHandle = sendNativeChatMessageWithImageAttachments(
+        args.agent,
+        target.settings,
+        target.ptyId,
+        text,
+        imagePaths,
+        sendOptions
+      )
+    } else if (text.trim().length > 0) {
+      pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
+    } else {
+      submitNativeChatPrompt(target.settings, target.ptyId)
     }
-    args.setHistory((previous) => pushHistory(previous, text))
-    args.setDraft('')
-    args.setCaret(0)
-    args.clearSkillOrigin()
-    args.clearImageAttachments()
-    args.setNotice(null)
-    const restoreLaunchDraft = takeNativeChatLaunchDraft(args.terminalTabId)
-    const write = (): NativeChatSendHandle | null => {
-      let pendingHandle: NativeChatSendHandle | null = null
-      // Why: slash-like text must not silently drop its attached images.
-      if (classification !== 'chat' && imagePaths.length === 0) {
-        pendingHandle =
-          args.agent === 'codex' && isSlashCommandDraft(text)
-            ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
-            : sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
-      } else if (imagePaths.length > 0) {
-        pendingHandle = sendNativeChatMessageWithImageAttachments(
-          args.agent,
-          target.settings,
-          target.ptyId,
-          text,
-          imagePaths,
-          sendOptions
-        )
-      } else if (text.trim().length > 0) {
-        pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
-      } else {
-        submitNativeChatPrompt(target.settings, target.ptyId)
+    if (classification !== 'chat') {
+      if (pendingHandle) {
+        args.trackPendingSend(pendingHandle)
       }
       if (classification === 'command') {
         args.onSlashCommand?.(text.trim())
         args.sessionOptionsSurface?.recordOutgoingCommand(text.trim())
       }
-      emitNativeChatMessageSent({
-        agent: args.agent,
-        runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
-      })
-      return pendingHandle
-    }
-    const attachments = nativeChatDraftAttachmentsOf(args.imageAttachments)
-    void writeToPtyAfterDraftClear({
-      draftKey: args.draftKey,
-      trackPendingSend: args.trackPendingSend,
-      pendingId,
-      write,
-      putBack: () => {
-        restoreLaunchDraft()
-        void appendNativeChatDraftNow(args.draftKey, { text, attachments })
+    } else {
+      pendingId = args.onOptimisticSend?.(text, imagePaths)
+      if (pendingHandle) {
+        args.trackPendingSend(pendingHandle, pendingId)
       }
+    }
+    emitNativeChatMessageSent({
+      agent: args.agent,
+      runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
     })
+    args.setHistory((previous) => pushHistory(previous, text))
+    // The box empties now; its saved draft keeps the message until the terminal has it.
+    const saveDraft = clearNativeChatDraftForSend(args.draftKey, () => {
+      args.setDraft('')
+      args.setCaret(0)
+      args.clearSkillOrigin()
+      args.clearImageAttachments()
+      args.setNotice(null)
+      useAppStore.getState().clearNativeChatLaunchDraft(args.terminalTabId)
+    })
+    saveNativeChatDraftAfterPtyWrite(pendingHandle, saveDraft)
   }, [args])
 }

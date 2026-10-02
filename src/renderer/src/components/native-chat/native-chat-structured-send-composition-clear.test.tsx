@@ -68,9 +68,13 @@ vi.mock('../dictation/dictation-control-events', () => ({
 
 import { NativeChatComposer } from './NativeChatComposer'
 import {
-  installHeldNativeChatDrafts,
-  installLocalStorageNativeChatDrafts
+  installLocalStorageNativeChatDrafts,
+  installNativeChatDrafts
 } from './native-chat-draft-store.test-support'
+import {
+  appendStructuredAgentSessionOutboxMessage,
+  commitStructuredAgentSessionOutbox
+} from './structured-agent-session-outbox-storage'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
@@ -320,62 +324,83 @@ describe('a withdrawn message put back during an IME composition', () => {
   })
 })
 
-// A crash after the host took the message must not bring it back as a draft, so the message is
-// handed over only once the cleared draft is saved; a slow or failed save never holds it back.
-describe('the clear at send', () => {
+// A crash before the host has the message must restore it unsent, and one after must not bring it
+// back, so the box's clear is saved only once the host has it.
+describe('the saved draft at send', () => {
   beforeEach(() => clearNativeChatDraftCacheForTests())
 
-  async function pressEnterOnTypedDraft(structured: NativeChatStructuredComposerTransport) {
-    const writes = installHeldNativeChatDrafts()
-    renderComposer(structured)
-    const input = textarea()
-    changePrompt(input, 'ship it')
-    await act(async () => pressEnter(input))
-    return { input, writes }
+  function savedText(): string | null {
+    const raw = localStorage.getItem(
+      `orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`
+    )
+    return raw ? JSON.parse(raw).text : null
   }
 
-  it('empties the box at Enter and hands the message over once the clear is saved', async () => {
+  // The real outbox, so the test can play the host taking the message.
+  function outboxTransport(): NativeChatStructuredComposerTransport {
     const structured = transport()
-    const { input, writes } = await pressEnterOnTypedDraft(structured)
+    structured.send = vi.fn(
+      (text: string) =>
+        appendStructuredAgentSessionOutboxMessage(structured.sessionId, text) !== null
+    )
+    return structured
+  }
 
-    expect(promptValue(input)).toBe('')
-    expect(writes.at(-1)).toMatchObject({ scopeKey: draftKey, draft: null })
-    expect(structured.send).not.toHaveBeenCalled()
-
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
-    expect(structured.send).toHaveBeenCalledOnce()
-  })
-
-  // As if Stop had come before Enter: nothing goes out, and the message is back in the box.
-  it('sends nothing, and puts the message back, when Escape comes while the clear is saved', async () => {
-    const structured = transport()
-    const { input, writes } = await pressEnterOnTypedDraft(structured)
-
+  function hostTakes(structured: NativeChatStructuredComposerTransport): void {
     act(() => {
-      fireEvent.keyDown(input, { key: 'Escape' })
+      commitStructuredAgentSessionOutbox(structured.sessionId, [])
     })
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
+  }
 
-    expect(structured.send).not.toHaveBeenCalled()
+  async function sendTyped(structured: NativeChatStructuredComposerTransport, text: string) {
+    renderComposer(structured)
+    const input = textarea()
+    changePrompt(input, text)
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    await act(async () => pressEnter(input))
+    return input
+  }
+
+  it('keeps the message saved until the host has it, then saves the empty box', async () => {
+    const structured = outboxTransport()
+    const input = await sendTyped(structured, 'ship it')
+
+    expect(structured.send).toHaveBeenCalledOnce()
+    expect(promptValue(input)).toBe('')
+    expect(savedText()).toBe('ship it')
+
+    hostTakes(structured)
+    await act(async () => {})
+    expect(savedText()).toBeNull()
+  })
+
+  it('keeps what was typed after Enter when the host takes the message', async () => {
+    const structured = outboxTransport()
+    const input = await sendTyped(structured, 'ship it')
+
+    changePrompt(input, 'and then')
+    hostTakes(structured)
+    await act(async () => {})
+
+    expect(savedText()).toBe('and then')
+  })
+
+  it('leaves the saved message alone, and puts it back in the box, when the send is refused', async () => {
+    const drafts = installLocalStorageNativeChatDrafts()
+    const saves: (string | null)[] = []
+    installNativeChatDrafts({
+      ...drafts,
+      write: (scopeKey, draft) => {
+        saves.push(draft?.text ?? null)
+        return drafts.write(scopeKey, draft)
+      }
+    })
+    const structured = transport({ send: vi.fn(() => false) })
+    const input = await sendTyped(structured, 'ship it')
+
     expect(promptValue(input)).toBe('ship it')
-  })
-
-  it('still sends when the clear could not be saved', async () => {
-    const structured = transport()
-    const { writes } = await pressEnterOnTypedDraft(structured)
-
-    await act(async () => writes.forEach((write) => write.settle('failed')))
-    expect(structured.send).toHaveBeenCalledOnce()
-  })
-
-  it('still sends, after a short wait, when saving the clear stalls', async () => {
-    const structured = transport()
-    await pressEnterOnTypedDraft(structured)
-
-    await act(() => new Promise((resolve) => setTimeout(resolve, 150)))
-    expect(structured.send).not.toHaveBeenCalled()
-    await act(() => new Promise((resolve) => setTimeout(resolve, 150)))
-    expect(structured.send).toHaveBeenCalledOnce()
+    expect(savedText()).toBe('ship it')
+    expect(saves).not.toContain(null)
   })
 })
 
@@ -394,30 +419,6 @@ describe('the draft saved to disk', () => {
     await act(async () => pressEnter(input))
 
     expect(localStorage.getItem(key)).toBeNull()
-  })
-
-  // The saved draft and the outbox entry share storage; a large draft must not crowd out the send.
-  it('frees the saved draft before the message is handed over, and puts it back if refused', async () => {
-    const saved = (): string | null =>
-      localStorage.getItem(`orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`)
-    const seenBySend: (string | null)[] = []
-    const structured = transport({
-      send: vi.fn(() => {
-        seenBySend.push(saved())
-        return false
-      })
-    })
-    renderComposer(structured)
-    const input = textarea()
-    changePrompt(input, 'a long message')
-    act(() => window.dispatchEvent(new Event('pagehide')))
-    expect(saved()).not.toBeNull()
-
-    await act(async () => pressEnter(input))
-
-    expect(seenBySend).toEqual([null])
-    expect(promptValue(input)).toBe('a long message')
-    expect(JSON.parse(saved() ?? 'null')).toMatchObject({ text: 'a long message' })
   })
 
   // Sending would hand the agent a path to nothing; the chip says so and Send waits for its removal.

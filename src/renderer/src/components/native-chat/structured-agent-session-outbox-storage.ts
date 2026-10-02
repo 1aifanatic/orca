@@ -82,10 +82,58 @@ export function resetUndeliveredStructuredAgentSessionOutboxForTests(): void {
   undeliveredSessions.clear()
 }
 
+// Sends waiting for their entries to leave the outbox: the host took them, or they were withdrawn
+// or dropped. Every change to an outbox is written here, so each one is checked.
+const entryWatchers = new Map<string, Set<{ ids: Set<string>; settle: () => void }>>()
+
+/** The ids of the session's outbox entries now, to tell which a send is about to add. */
+export function structuredAgentSessionOutboxEntryIds(sessionId: string): Set<string> {
+  return new Set(getStructuredAgentSessionOutbox(sessionId).map((entry) => entry.clientMessageId))
+}
+
+/** Settles once the session's outbox holds none of the entries added since `before`. */
+export function whenStructuredAgentSessionOutboxEntriesLeave(
+  sessionId: string,
+  before: ReadonlySet<string>
+): Promise<void> {
+  const ids = new Set(
+    Array.from(structuredAgentSessionOutboxEntryIds(sessionId)).filter((id) => !before.has(id))
+  )
+  if (ids.size === 0) {
+    return Promise.resolve()
+  }
+  return new Promise((settle) => {
+    const watchers = entryWatchers.get(sessionId) ?? new Set()
+    entryWatchers.set(sessionId, watchers)
+    watchers.add({ ids, settle })
+  })
+}
+
+function settleEntryWatchers(
+  sessionId: string,
+  entries: readonly StructuredAgentSessionOutboxEntry[]
+): void {
+  const watchers = entryWatchers.get(sessionId)
+  if (!watchers) {
+    return
+  }
+  const remaining = new Set(entries.map((entry) => entry.clientMessageId))
+  for (const watcher of watchers) {
+    if (!Array.from(watcher.ids).some((id) => remaining.has(id))) {
+      watchers.delete(watcher)
+      watcher.settle()
+    }
+  }
+  if (watchers.size === 0) {
+    entryWatchers.delete(sessionId)
+  }
+}
+
 export function writeOutbox(
   sessionId: string,
   entries: readonly StructuredAgentSessionOutboxEntry[]
 ): boolean {
+  settleEntryWatchers(sessionId, entries)
   try {
     if (entries.length === 0) {
       localStorage.removeItem(storageKey(sessionId))

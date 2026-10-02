@@ -5,7 +5,8 @@ import { performance } from 'node:perf_hooks'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createNativeChatDraftStore, type NativeChatDraftStore } from './native-chat-draft-store'
 
-// How long a send waits for its clear: the main-process half of the wait (the IPC hop is not here).
+// How long a draft write takes in the main process (the IPC hop is not here): the save after a
+// send, and the bounded wait a queued message's take-back does before deleting the host's copy.
 const ITERATIONS = 1000
 const BUDGET_P50_MS = 2
 const BUDGET_P99_MS = 20

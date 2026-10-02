@@ -258,8 +258,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       clearSkillOrigin,
       setHistory,
       setDraft,
-      setCaret,
-      trackPendingSend
+      setCaret
     })
 
     const sendPty = useNativeChatPtyComposerSend({

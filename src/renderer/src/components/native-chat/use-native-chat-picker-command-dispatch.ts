@@ -17,15 +17,12 @@ import {
 } from './native-chat-composer-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
-import { appendNativeChatDraftNow, readNativeChatDraftAttachments } from './native-chat-draft-cache'
-import {
-  nativeChatDraftAttachmentsOf,
-  writeToPtyAfterDraftClear
-} from './native-chat-send-after-draft-clear'
+import { clearNativeChatDraftForSend } from './native-chat-draft-cache'
+import { saveNativeChatDraftAfterPtyWrite } from './native-chat-draft-save-after-send'
 
 export function useNativeChatPickerCommandDispatch(args: {
   agent: AgentType
-  /** The chat's draft (`nativeChatDraftKey`); its clear is saved before the PTY write. */
+  /** The chat's draft (`nativeChatDraftKey`); its clear is saved once the terminal has the command. */
   draftKey: string
   disabled: boolean
   isDispatchingSessionOption: boolean
@@ -65,41 +62,32 @@ export function useNativeChatPickerCommandDispatch(args: {
       if (!target || disabled || isDispatchingSessionOption) {
         return
       }
+      const handle =
+        agent === 'codex'
+          ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
+          : sendNativeChatMessage(target.settings, target.ptyId, text)
+      trackPendingSend(handle)
       emitNativeChatPickerItemAccepted({ agent, itemKind: 'command' })
       // Why: picker dispatch is a catalog-verified command send; it must leave
       // the same telemetry and composer state as the typed path — including
       // disarming attachments, or a stale image rides the next prompt.
       emitNativeChatSendClassified({ agent, outcome: 'command' })
-      // The box's settled image chips, put back with the command if its send is cancelled.
-      const attachments = nativeChatDraftAttachmentsOf(
-        readNativeChatDraftAttachments(draftKey).filter((chip) => !chip.pending)
-      )
-      setHistory((previous) => pushHistory(previous, text))
-      setDraft('')
-      setCaret(0)
-      setActiveSuggestion(0)
-      clearSkillOrigin()
-      clearImageAttachments()
-      setNotice(null)
-      // After the clear above, so the write waits for it.
-      void writeToPtyAfterDraftClear({
-        draftKey,
-        trackPendingSend,
-        write: () => {
-          const handle =
-            agent === 'codex'
-              ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
-              : sendNativeChatMessage(target.settings, target.ptyId, text)
-          onSlashCommand?.(text)
-          sessionOptionsSurface?.recordOutgoingCommand(text)
-          emitNativeChatMessageSent({
-            agent,
-            runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
-          })
-          return handle
-        },
-        putBack: () => void appendNativeChatDraftNow(draftKey, { text, attachments })
+      onSlashCommand?.(text)
+      sessionOptionsSurface?.recordOutgoingCommand(text)
+      emitNativeChatMessageSent({
+        agent,
+        runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
       })
+      setHistory((previous) => pushHistory(previous, text))
+      const saveDraft = clearNativeChatDraftForSend(draftKey, () => {
+        setDraft('')
+        setCaret(0)
+        setActiveSuggestion(0)
+        clearSkillOrigin()
+        clearImageAttachments()
+        setNotice(null)
+      })
+      saveNativeChatDraftAfterPtyWrite(handle, saveDraft)
     },
     [
       agent,

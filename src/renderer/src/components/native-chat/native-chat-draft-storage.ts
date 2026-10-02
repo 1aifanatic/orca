@@ -1,10 +1,9 @@
 // Saved copy of the composer drafts, so a half-typed message survives quitting Orca. Typing is
-// saved after a short pause and flushed when the page hides or unloads; a clear or a put-back is
-// saved at once. On desktop the main process confirms each write once the file op returned, and a
-// send waits (up to a bound) for its clear, so a crash after Enter cannot bring sent text back,
-// except when that save failed or outlasted the bound, and for host commands, which still clear
-// once the host accepts them. The web client keeps browser storage, which reaches disk on the
-// browser's own delay, so a browser crash can.
+// saved after a short pause and flushed when the page hides or unloads; a put-back is saved at
+// once. A send's clear is saved only once the host has the message (native-chat-draft-cache), so
+// a crash before that restores the unsent text and a crash after it cannot bring it back. On
+// desktop the main process confirms each write once the file op returned; the web client keeps
+// browser storage, which reaches disk on the browser's own delay, so a browser crash can.
 
 import type {
   NativeChatDraftStoreResult,
@@ -24,8 +23,8 @@ export { isEmptyNativeChatDraft } from '../../../../shared/native-chat-draft-rec
 export type NativeChatDraftWriteResult = 'persisted' | 'memory-only'
 
 const TYPING_PERSIST_DELAY_MS = 300
-// Why bounded: saving is bookkeeping; a stalled disk must never hold a message back.
-const SEND_WAIT_FOR_CLEAR_MS = 250
+// Why bounded: saving is bookkeeping; a stalled disk must never hold the user's action back.
+const SAVE_WAIT_BOUND_MS = 250
 
 const pendingDrafts = new Map<string, PersistedNativeChatDraft | null>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -82,9 +81,9 @@ export function persistNativeChatDraftNow(
 }
 
 /**
- * Settles once the newest write asked for this draft is written to its file, or after a short
- * bound. A send waits here for its clear, so a crash after it cannot bring the sent text back,
- * unless that write failed or outlasted the bound; both are logged, and the send goes ahead.
+ * Settles once the newest write asked for this draft is written, or after a short bound. A queued
+ * message taken back into the box waits here before the host's copy is deleted; a failed or
+ * slow write is logged, and the delete goes ahead.
  */
 export async function awaitNativeChatDraftSaved(scopeKey: string): Promise<void> {
   const write = latestWrites.get(scopeKey)
@@ -95,13 +94,18 @@ export async function awaitNativeChatDraftSaved(scopeKey: string): Promise<void>
   const outcome = await Promise.race([
     write,
     new Promise<'timed out'>((resolve) => {
-      timer = setTimeout(() => resolve('timed out'), SEND_WAIT_FOR_CLEAR_MS)
+      timer = setTimeout(() => resolve('timed out'), SAVE_WAIT_BOUND_MS)
     })
   ])
   clearTimeout(timer)
   if (outcome === 'failed' || outcome === 'timed out') {
     console.warn('[native-chat] draft not saved before going on', { scopeKey, reason: outcome })
   }
+}
+
+/** Whether typing for this draft is still waiting for its pause to be saved. */
+export function hasPendingNativeChatDraftPersist(scopeKey: string): boolean {
+  return pendingDrafts.has(scopeKey)
 }
 
 export function flushNativeChatDraftPersists(): void {

@@ -10,12 +10,15 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import { appendNativeChatDraftNow, restoreNativeChatDraftIfEmpty } from './native-chat-draft-cache'
 import {
-  awaitDraftClearBeforeSend,
-  nativeChatDraftAttachmentsOf
-} from './native-chat-send-after-draft-clear'
-import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
+  clearNativeChatDraftForSend,
+  restoreNativeChatDraftIfEmpty
+} from './native-chat-draft-cache'
+import { nativeChatDraftAttachmentsOf } from './native-chat-draft-save-after-send'
+import {
+  structuredAgentSessionOutboxEntryIds,
+  whenStructuredAgentSessionOutboxEntriesLeave
+} from './structured-agent-session-outbox-storage'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -29,8 +32,6 @@ export type UseNativeChatStructuredComposerSendArgs = {
   setHistory: (updater: (previous: HistoryState) => HistoryState) => void
   setDraft: (value: string) => void
   setCaret: (caret: number) => void
-  /** Lets a Stop, Escape or pane swap cancel a send still waiting for its clear to be written. */
-  trackPendingSend: NativeChatSendLifecycle['trackPendingSend']
 }
 
 /** Send through the structured journal transport (the PTY path has its own sibling hook). A
@@ -46,8 +47,7 @@ export function useNativeChatStructuredComposerSend({
   clearSkillOrigin,
   setHistory,
   setDraft,
-  setCaret,
-  trackPendingSend
+  setCaret
 }: UseNativeChatStructuredComposerSendArgs): (
   text: string,
   attachments?: readonly NativeChatComposerImageAttachment[]
@@ -76,30 +76,40 @@ export function useNativeChatStructuredComposerSend({
         clearImageAttachments()
       }
       let cleared = false
-      const content = { text, attachments: nativeChatDraftAttachmentsOf(attachments) }
-      // A refused message goes back, unless something was typed since.
+      let saveDraft = (): void => {}
+      let outboxBefore: ReadonlySet<string> = new Set()
+      // A refused message goes back, unless something was typed since. Its saved copy was never
+      // cleared, so saving the draft afterwards keeps what the box shows.
       const putBack = (): void => {
         if (cleared) {
-          void restoreNativeChatDraftIfEmpty(draftKey, content)
+          void restoreNativeChatDraftIfEmpty(draftKey, {
+            text,
+            attachments: nativeChatDraftAttachmentsOf(attachments)
+          })
         }
+        saveDraft()
       }
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments, () => {
-        // Why awaited: once the message is out, a crash must not bring it back as a draft.
+        // The box empties now; its saved draft keeps the message until the host has it, so a
+        // crash before then restores it unsent, and a crash after cannot bring it back.
         cleared = true
-        clearComposer()
-        return awaitDraftClearBeforeSend(draftKey, trackPendingSend)
+        outboxBefore = structuredAgentSessionOutboxEntryIds(structuredTransport.sessionId)
+        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer)
       })
         .then(
-          ({ accepted, error, cancelled }) => {
-            if (cancelled) {
-              // As if Stop had come before Enter: the message is back in the box.
-              void appendNativeChatDraftNow(draftKey, content)
-              return
-            }
+          ({ accepted, error }) => {
             structuredTransport.onError(error)
             if (!accepted) {
               putBack()
               return
+            }
+            // The host has it once its outbox entry is gone: accepted, withdrawn back into the
+            // box, or dropped.
+            if (cleared) {
+              void whenStructuredAgentSessionOutboxEntriesLeave(
+                structuredTransport.sessionId,
+                outboxBefore
+              ).then(saveDraft)
             }
             emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
             // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
@@ -138,8 +148,7 @@ export function useNativeChatStructuredComposerSend({
       setCaret,
       setDraft,
       setHistory,
-      structuredTransport,
-      trackPendingSend
+      structuredTransport
     ]
   )
 }

@@ -1,28 +1,24 @@
 // @vitest-environment happy-dom
-import { act, renderHook } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentType } from '../../../../shared/agent-status-types'
-import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type { NativeChatSendClassification } from '../../../../shared/native-chat-slash-commands'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
-import { useNativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import { sendNativeChatMessage } from './native-chat-runtime-send'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 import {
   clearNativeChatDraftCacheForTests,
-  forgetNativeChatTuiInputSeeds,
-  readNativeChatDraftAttachments,
-  readNativeChatDraftCache,
-  readNativeChatDraftTuiInputSeed,
-  writeNativeChatDraftCache,
-  writeNativeChatDraftTuiInputSeed
+  writeNativeChatDraftCache
 } from './native-chat-draft-cache'
-import {
-  installHeldNativeChatDrafts,
-  installNativeChatDrafts
-} from './native-chat-draft-store.test-support'
+import { installNativeChatDrafts } from './native-chat-draft-store.test-support'
 
-const handle = vi.hoisted(() => ({ cancel: () => {}, settleAfterMs: 0 }))
+const handle = vi.hoisted(() => {
+  const sendHandle: { cancel: () => void; settleAfterMs: number; settled?: Promise<void> } = {
+    cancel: () => {},
+    settleAfterMs: 0
+  }
+  return sendHandle
+})
 vi.mock('./native-chat-runtime-send', () => ({
   sendNativeChatMessage: vi.fn(() => handle),
   sendNativeChatTypedCommand: vi.fn(() => handle),
@@ -31,122 +27,74 @@ vi.mock('./native-chat-runtime-send', () => ({
 vi.mock('./native-chat-runtime-image-send', () => ({
   sendNativeChatMessageWithImageAttachments: vi.fn(() => handle)
 }))
-const launchDrafts = vi.hoisted(() => {
-  const byTabId: Record<string, NativeChatLaunchDraft> = {}
-  return { byTabId }
-})
 vi.mock('../../store', () => ({
-  useAppStore: {
-    getState: () => ({
-      nativeChatLaunchDraftByTabId: launchDrafts.byTabId,
-      // As the store does: dropping the launch draft forgets its saved seeds too.
-      clearNativeChatLaunchDraft: (tabId: string) => {
-        forgetNativeChatTuiInputSeeds(tabId)
-        delete launchDrafts.byTabId[tabId]
-      },
-      seedNativeChatLaunchDraft: (draft: NativeChatLaunchDraft) => {
-        launchDrafts.byTabId[draft.tabId] = draft
-      }
-    })
-  }
+  useAppStore: { getState: () => ({ clearNativeChatLaunchDraft: vi.fn() }) }
 }))
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
 
 const DRAFT_KEY = 'pane:tab:leaf'
 
-function press(
+function send(
   agent: AgentType,
   classification: NativeChatSendClassification,
   draft: string,
-  imagePaths: string[] = [],
-  launchDraft: NativeChatLaunchDraft | null = null
+  imagePaths: string[] = []
 ) {
-  const callbacks = {
-    rejected: vi.fn(),
-    unconfirmed: vi.fn(),
-    setDraft: vi.fn(),
-    canceled: vi.fn(),
-    cancelPendingSends: () => {},
-    swapPane: () => {}
-  }
-  const { result, rerender } = renderHook(
-    ({ ptyId }: { ptyId: string }) => {
-      // The composer's real lifecycle: Stop, Escape and a pane swap cancel what it tracks.
-      const lifecycle = useNativeChatSendLifecycle('tab', ptyId, callbacks.canceled)
-      const sendPty = useNativeChatPtyComposerSend({
-        agent,
-        draftKey: DRAFT_KEY,
-        draft,
-        imageAttachments: imagePaths.map((path, index) => ({
-          id: `image-${index}`,
-          path,
-          location: 'local' as const
-        })),
-        disabled: false,
-        isDispatchingSessionOption: false,
-        launchDraft,
-        launchDraftResolved: launchDraft === null,
-        resolveTarget: () => ({ ptyId: 'pty', settings: null }),
-        classifySend: () => classification,
-        onOptimisticSend: () => 'pending-1',
-        optimisticSendOutcome: {
-          reject: callbacks.rejected,
-          holdUnconfirmed: callbacks.unconfirmed
-        },
-        sessionOptionsSurface: null,
-        terminalTabId: 'tab',
-        trackPendingSend: lifecycle.trackPendingSend,
-        setHistory: vi.fn(),
-        // As the composer's draft hook does: a clear is saved at once.
-        setDraft: (value) => {
-          callbacks.setDraft(value)
-          writeNativeChatDraftCache(DRAFT_KEY, value, 'now')
-        },
-        setCaret: vi.fn(),
-        clearSkillOrigin: vi.fn(),
-        clearImageAttachments: vi.fn(),
-        setNotice: vi.fn()
-      })
-      return { sendPty, cancelPendingSends: lifecycle.cancelPendingSends }
-    },
-    { initialProps: { ptyId: 'pty' } }
+  const callbacks = { rejected: vi.fn(), unconfirmed: vi.fn() }
+  const { result } = renderHook(() =>
+    useNativeChatPtyComposerSend({
+      agent,
+      draftKey: DRAFT_KEY,
+      draft,
+      imageAttachments: imagePaths.map((path) => ({ path })),
+      disabled: false,
+      isDispatchingSessionOption: false,
+      launchDraftResolved: true,
+      resolveTarget: () => ({ ptyId: 'pty', settings: null }),
+      classifySend: () => classification,
+      onOptimisticSend: () => 'pending-1',
+      optimisticSendOutcome: { reject: callbacks.rejected, holdUnconfirmed: callbacks.unconfirmed },
+      sessionOptionsSurface: null,
+      terminalTabId: 'tab',
+      trackPendingSend: vi.fn(),
+      setHistory: vi.fn(),
+      // As the composer's draft hook does: a clear is saved at once.
+      setDraft: (value: string) => writeNativeChatDraftCache(DRAFT_KEY, value, 'now'),
+      setCaret: vi.fn(),
+      clearSkillOrigin: vi.fn(),
+      clearImageAttachments: vi.fn(),
+      setNotice: vi.fn()
+    })
   )
-  callbacks.cancelPendingSends = () => result.current.cancelPendingSends()
-  callbacks.swapPane = () => rerender({ ptyId: 'other-pty' })
-  result.current.sendPty()
+  result.current()
   return callbacks
 }
 
-/** Presses Enter and waits for the write to the terminal, which follows the saved clear. */
-async function send(...args: Parameters<typeof press>) {
-  const callbacks = press(...args)
-  await vi.waitFor(() =>
-    expect(
-      vi.mocked(sendNativeChatMessage).mock.calls.length +
-        vi.mocked(sendNativeChatMessageWithImageAttachments).mock.calls.length
-    ).toBe(1)
-  )
-  return callbacks
-}
+let saved: unknown[] = []
 
 beforeEach(() => {
   vi.mocked(sendNativeChatMessage).mockClear()
   vi.mocked(sendNativeChatMessageWithImageAttachments).mockClear()
+  saved = []
   installNativeChatDrafts({
     load: async () => [],
     loadSync: () => [],
-    write: async () => 'persisted'
+    write: async (_scopeKey, draft) => {
+      saved.push(draft?.text ?? null)
+      return 'persisted'
+    }
   })
 })
 
-afterEach(() => {
-  launchDrafts.byTabId = {}
+afterEach(async () => {
+  handle.settled = undefined
+  // Lets each send's draft save land in its own test.
+  await new Promise((resolve) => setTimeout(resolve, 0))
   clearNativeChatDraftCacheForTests()
-  vi.useRealTimers()
 })
 
-it('routes a Claude chat send outcome to its own pending echo', async () => {
-  const callbacks = await send('claude', 'chat', 'hello')
+it('routes a Claude chat send outcome to its own pending echo', () => {
+  const callbacks = send('claude', 'chat', 'hello')
   const options = vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]
   options?.onWriteRejected?.()
   options?.onWriteUnconfirmed?.()
@@ -154,8 +102,8 @@ it('routes a Claude chat send outcome to its own pending echo', async () => {
   expect(callbacks.unconfirmed).toHaveBeenCalledWith('pending-1')
 })
 
-it('routes a Claude image send outcome to its own pending echo', async () => {
-  const callbacks = await send('claude', 'chat', 'look', ['/tmp/shot.png'])
+it('routes a Claude image send outcome to its own pending echo', () => {
+  const callbacks = send('claude', 'chat', 'look', ['/tmp/shot.png'])
   vi.mocked(sendNativeChatMessageWithImageAttachments).mock.calls[0]?.[5]?.onWriteRejected?.()
   expect(callbacks.rejected).toHaveBeenCalledWith('pending-1')
 })
@@ -163,130 +111,71 @@ it('routes a Claude image send outcome to its own pending echo', async () => {
 it.each([
   ['codex', 'chat', 'hello'],
   ['claude', 'command', '/compact']
-] as const)(
-  'leaves a %s %s send on the unobserved write path',
-  async (agent, classification, draft) => {
-    await send(agent, classification, draft)
-    expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.onWriteRejected).toBeUndefined()
-  }
-)
+] as const)('leaves a %s %s send on the unobserved write path', (agent, classification, draft) => {
+  send(agent, classification, draft)
+  expect(vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.onWriteRejected).toBeUndefined()
+})
 
-// A crash after the agent took the message must not bring it back as a draft, so the cleared
-// draft is on disk before the message is written to the terminal.
+// A crash before the agent has the message must restore it unsent, and one after must not bring
+// it back, so the box's clear is saved only once the terminal write ran.
 describe('the saved draft at send', () => {
-  it('empties the box at Enter and writes to the terminal only once the clear is saved', async () => {
-    const writes = installHeldNativeChatDrafts()
+  function writeRuns(): () => void {
+    let finish = () => {}
+    handle.settled = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    return finish
+  }
+
+  it('keeps the message saved until the terminal write ran, then saves the empty box', async () => {
     writeNativeChatDraftCache(DRAFT_KEY, 'hello', 'now')
-    writes.shift()?.settle('persisted')
+    const finish = writeRuns()
 
-    const callbacks = press('codex', 'chat', 'hello')
-
-    expect(callbacks.setDraft).toHaveBeenCalledWith('')
-    expect(writes).toEqual([expect.objectContaining({ scopeKey: DRAFT_KEY, draft: null })])
+    send('codex', 'chat', 'hello')
     await Promise.resolve()
-    expect(sendNativeChatMessage).not.toHaveBeenCalled()
 
-    writes[0]?.settle('persisted')
-    await vi.waitFor(() => expect(sendNativeChatMessage).toHaveBeenCalledOnce())
-  })
-
-  it('still sends when the clear could not be saved', async () => {
-    const writes = installHeldNativeChatDrafts()
-    press('codex', 'chat', 'hello')
-
-    writes[0]?.settle('failed')
-    await vi.waitFor(() => expect(sendNativeChatMessage).toHaveBeenCalledOnce())
-  })
-
-  it('still sends, after a short wait, when saving the clear stalls', async () => {
-    vi.useFakeTimers()
-    installHeldNativeChatDrafts()
-    press('codex', 'chat', 'hello')
-
-    await vi.advanceTimersByTimeAsync(200)
-    expect(sendNativeChatMessage).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(50)
     expect(sendNativeChatMessage).toHaveBeenCalledOnce()
+    expect(saved).toEqual(['hello'])
+    finish()
+    await vi.waitFor(() => expect(saved).toEqual(['hello', null]))
   })
 
-  it('sends nothing, drops the bubble and puts the message back when Stop comes meanwhile', async () => {
-    const writes = installHeldNativeChatDrafts()
-    const callbacks = press('claude', 'chat', 'look', ['/tmp/shot.png'])
+  it('keeps what was typed after Enter when it saves', async () => {
+    writeNativeChatDraftCache(DRAFT_KEY, 'hello', 'now')
+    const finish = writeRuns()
+    send('codex', 'chat', 'hello')
 
-    act(() => callbacks.cancelPendingSends())
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
+    writeNativeChatDraftCache(DRAFT_KEY, 'next thought', 'after-pause')
+    finish()
 
-    expect(sendNativeChatMessageWithImageAttachments).not.toHaveBeenCalled()
-    expect(callbacks.canceled).toHaveBeenCalledWith('pending-1')
-    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('look')
-    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([
-      { id: 'image-0', path: '/tmp/shot.png', location: 'local' }
-    ])
+    await vi.waitFor(() => expect(saved.at(-1)).toBe('next thought'))
+    expect(saved).not.toContain(null)
   })
 
-  it('sends nothing when the pane swaps to another terminal meanwhile', async () => {
-    const writes = installHeldNativeChatDrafts()
-    const callbacks = press('codex', 'chat', 'hello')
+  it('saves the message typed just before Enter that was still waiting for its pause', async () => {
+    writeNativeChatDraftCache(DRAFT_KEY, 'hello', 'after-pause')
+    const finish = writeRuns()
 
-    act(() => callbacks.swapPane())
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
+    send('codex', 'chat', 'hello')
 
-    expect(sendNativeChatMessage).not.toHaveBeenCalled()
-    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('hello')
+    expect(saved).toEqual(['hello'])
+    finish()
+    await vi.waitFor(() => expect(saved).toEqual(['hello', null]))
   })
 
-  // The wait's own entry is gone once the write happened; only the write's entry is cancelled.
-  it('cancels a written message once, as before, when Stop comes later', async () => {
-    handle.settleAfterMs = 10_000
-    const callbacks = await send('claude', 'chat', 'hello')
+  it('saves only once the last of several sends in flight has reached the terminal', async () => {
+    writeNativeChatDraftCache(DRAFT_KEY, 'first', 'now')
+    const finishFirst = writeRuns()
+    send('codex', 'chat', 'first')
+    writeNativeChatDraftCache(DRAFT_KEY, 'second', 'now')
+    const finishSecond = writeRuns()
+    send('codex', 'chat', 'second')
 
-    act(() => callbacks.cancelPendingSends())
-    handle.settleAfterMs = 0
+    finishFirst()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(saved).not.toContain(null)
 
-    expect(callbacks.canceled).toHaveBeenCalledOnce()
-    expect(callbacks.canceled).toHaveBeenCalledWith('pending-1')
-  })
-
-  // The agent's input line still holds the launch text, so the resend must replace it again.
-  it("brings back a cancelled first send's launch draft and input-line seed", async () => {
-    const launchDraft = {
-      tabId: 'tab',
-      agent: 'claude' as const,
-      text: 'Fix #12',
-      createdAt: 1,
-      adopted: true
-    }
-    const seed = { agent: 'claude' as const, text: 'Fix #12', createdAt: 1 }
-    launchDrafts.byTabId.tab = launchDraft
-    writeNativeChatDraftTuiInputSeed(DRAFT_KEY, seed)
-    writeNativeChatDraftCache(DRAFT_KEY, 'Fix #12, and the tests', 'now')
-    const writes = installHeldNativeChatDrafts()
-    const callbacks = press('claude', 'chat', 'Fix #12, and the tests', [], launchDraft)
-    expect(launchDrafts.byTabId.tab).toBeUndefined()
-
-    act(() => callbacks.cancelPendingSends())
-    await act(async () => writes.forEach((write) => write.settle('persisted')))
-
-    expect(sendNativeChatMessage).not.toHaveBeenCalled()
-    expect(launchDrafts.byTabId.tab).toEqual(launchDraft)
-    expect(readNativeChatDraftTuiInputSeed(DRAFT_KEY)).toEqual(seed)
-    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('Fix #12, and the tests')
-  })
-
-  it('drops the launch draft for good once the send is written', async () => {
-    const launchDraft = {
-      tabId: 'tab',
-      agent: 'claude' as const,
-      text: 'Fix #12',
-      createdAt: 1,
-      adopted: true
-    }
-    launchDrafts.byTabId.tab = launchDraft
-    writeNativeChatDraftTuiInputSeed(DRAFT_KEY, { agent: 'claude', text: 'Fix #12', createdAt: 1 })
-
-    await send('claude', 'chat', 'Fix #12, and the tests', [], launchDraft)
-
-    expect(launchDrafts.byTabId.tab).toBeUndefined()
-    expect(readNativeChatDraftTuiInputSeed(DRAFT_KEY)).toBeUndefined()
+    finishSecond()
+    await vi.waitFor(() => expect(saved.at(-1)).toBeNull())
   })
 })
