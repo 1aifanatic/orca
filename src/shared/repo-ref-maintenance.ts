@@ -309,6 +309,11 @@ export class RepoRefMaintenance {
     }
     if (this.now() < this.phases.refDueAt(key)) {
       span.setAttribute('repo.maintenance_outcome', 'index_only' satisfies RefMaintenanceOutcome)
+      // Keep the arm for its ref phase; the write that armed it may have left loose refs.
+      if (!this.disposed && !this.tracked.has(key)) {
+        this.tracked.set(key, tracked)
+        this.schedule(key, tracked, this.phases.refDueAt(key) - this.now())
+      }
       return
     }
     const refsDirectory = await tracked.target.resolveRefsDirectory(signal)

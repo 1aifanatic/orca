@@ -76,6 +76,19 @@ describe('independent idle pack-index scheduling', () => {
     expect(PACK_INDEX_MAINTENANCE_COOLDOWN_MS).toBeLessThan(REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
   })
 
+  it('keeps an index-only arm until its ref cooldown ends without needing another fetch', async () => {
+    const { maintenance, target, resolveRefsDirectory, maintainPackIndex } = fixture()
+    maintenance.arm(target)
+    await advance(maintenance, QUIET_MS)
+    await advance(maintenance, PACK_INDEX_MAINTENANCE_COOLDOWN_MS)
+    maintenance.arm(target)
+    await advance(maintenance, QUIET_MS)
+    expect(maintainPackIndex).toHaveBeenCalledTimes(2)
+    expect(resolveRefsDirectory).toHaveBeenCalledTimes(1)
+    await advance(maintenance, REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
+    expect(resolveRefsDirectory).toHaveBeenCalledTimes(2)
+  })
+
   it('retries a failed index sooner without re-probing healthy refs', async () => {
     const { maintenance, target, maintainPackIndex, resolveRefsDirectory } = fixture()
     target.maintainPackIndex = vi.fn(async () => 'failed' as const)
