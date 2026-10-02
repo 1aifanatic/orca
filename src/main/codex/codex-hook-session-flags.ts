@@ -35,7 +35,7 @@ const POSIX_SPELLING: TomlSpelling = { string: (value) => JSON.stringify(value),
 // native arguments, and npm's codex.cmd re-parses the line in cmd.exe, which
 // expands %VAR% and treats an unquoted `<`/`>` as a redirect. A value with a
 // space and none of those is wrapped in quotes whole by every Windows host.
-// Why ASCII only: cmd.exe reads the published flag file in the console code page.
+// Why ASCII only: npm's codex.cmd re-reads the flag in cmd.exe's console code page.
 const WINDOWS_UNSAFE = /['"%]|[^\x20-\x7e]/
 const WINDOWS_SPELLING: TomlSpelling = {
   string: (value) => (WINDOWS_UNSAFE.test(value) ? null : `'${value}'`),
