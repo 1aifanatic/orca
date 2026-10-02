@@ -292,10 +292,9 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       // Why: null lets the fetcher fall back to the main process's inherited
       // CODEX_HOME before ~/.codex. Nested Orca launches can inherit the
       // managed home, restarting the background OAuth conflict (#5370), so
-      // pin this non-interactive lane to the native home explicitly.
-      if (hasRecordedLegacySharedCodexPane()) {
-        this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
-      }
+      // pin this non-interactive lane to the native home explicitly. Entering
+      // it carries the retired mirror first, so the poll never uses a staler token.
+      this.reconcileLegacySharedHomeForRetainedPanes()
       return { kind: 'ready', codexHomePath: getSystemCodexHomePath() }
     }
     this.syncForCurrentSelection()
