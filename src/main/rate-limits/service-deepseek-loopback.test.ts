@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import { rmSync } from 'node:fs'
+import * as secureFile from '../../shared/secure-file'
 import { setMainHttpClient } from '../network/http-client'
 import { DeepSeekCredentials } from '../deepseek/deepseek-credentials'
 import {
@@ -30,6 +31,7 @@ describe('production DeepSeek service against a task-only loopback API', () => {
     authorization: string | undefined
   }[]
   let port: number
+  let dispatchedRequests: number
 
   beforeEach(async () => {
     installDeepSeekTestSecretStore()
@@ -42,6 +44,7 @@ describe('production DeepSeek service against a task-only loopback API', () => {
     hold = false
     held = null
     requests = []
+    dispatchedRequests = 0
     server = createServer((request, response) => {
       requests.push({
         path: request.url,
@@ -67,6 +70,7 @@ describe('production DeepSeek service against a task-only loopback API', () => {
     setMainHttpClient({
       fetch: (url, options) => {
         expect(url).toBe(DEEPSEEK_BALANCE_URL)
+        dispatchedRequests += 1
         return globalThis.fetch(`http://127.0.0.1:${port}/user/balance`, options)
       },
       proxySession: () => null
@@ -78,6 +82,7 @@ describe('production DeepSeek service against a task-only loopback API', () => {
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
     rmSync(fixture.directory, { recursive: true, force: true })
+    vi.restoreAllMocks()
   })
 
   it('executes the protected production credential/service/HTTP path and publishes only monetary data', async () => {
@@ -180,6 +185,59 @@ describe('production DeepSeek service against a task-only loopback API', () => {
     service.stop()
     await pending
     expect(service.getState().deepseek?.balance).toBeUndefined()
+  })
+
+  it('cancels a saved-key follow-up when the host stops before the pending request settles', async () => {
+    hold = true
+    const read = vi.spyOn(fixture.credentials, 'read')
+    const pending = service.refreshDeepSeekBalance()
+    await vi.waitFor(() => expect(held).not.toBeNull())
+    service.saveDeepSeekApiKey('fixture-host', 'sk-fixture-replacement')
+    const updates: unknown[] = []
+    service.onStateChange((state) => updates.push(state))
+    service.stop()
+    await pending
+    await Promise.resolve()
+    expect(dispatchedRequests).toBe(1)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(updates).toEqual([])
+    expect(service.getState().deepseek).toBeNull()
+  })
+
+  it('polls the saved replacement when the host remains active', async () => {
+    hold = true
+    const pending = service.refreshDeepSeekBalance()
+    await vi.waitFor(() => expect(held).not.toBeNull())
+    service.saveDeepSeekApiKey('fixture-host', 'sk-fixture-replacement')
+    payload = { ...DEEPSEEK_FIXTURE_BALANCE, is_available: false }
+    hold = false
+    if (!held) {
+      throw new Error('Expected an in-flight fixture response')
+    }
+    held.end(JSON.stringify(DEEPSEEK_FIXTURE_BALANCE))
+    await pending
+    await vi.waitFor(() => expect(service.getState().deepseek?.balance).toEqual(payload))
+    expect(dispatchedRequests).toBe(2)
+    expect(requests[1]?.authorization).toBe('Bearer sk-fixture-replacement')
+  })
+
+  it('clears the old balance when a failed permission restriction already published the replacement', async () => {
+    await service.refreshDeepSeekBalance()
+    const revision = fixture.credentials.revision()
+    const durableWrite = secureFile.writeSecureFile
+    vi.spyOn(secureFile, 'writeSecureFile').mockImplementationOnce((...args) => {
+      expect(durableWrite(...args)).toBe(true)
+      return false
+    })
+    expect(() => service.saveDeepSeekApiKey('fixture-host', 'sk-fixture-replacement')).toThrow(
+      'DeepSeek API key could not be saved in protected storage'
+    )
+    expect(fixture.credentials.revision()).not.toBe(revision)
+    expect(service.getState().deepseek).toBeNull()
+    expect(service.getState().deepseekAccount?.configured).toBe(true)
+    expect(JSON.stringify(service.getState())).not.toContain('sk-fixture-replacement')
+    await Promise.resolve()
+    expect(dispatchedRequests).toBe(1)
   })
 
   it('refuses redirects at the real HTTP transport without forwarding a credential', async () => {

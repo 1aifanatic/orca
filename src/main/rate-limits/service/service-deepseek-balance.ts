@@ -34,9 +34,18 @@ export abstract class RateLimitServiceDeepSeekBalance extends RateLimitServiceFe
     if (!this.deepseekCredentials) {
       throw new Error('DeepSeek accounts are unsupported on this host')
     }
-    const status = this.deepseekCredentials.save(ownerId, apiKey)
-    this.invalidateDeepSeekBalance()
-    return status
+    const revision = this.deepseekCredentials.revision()
+    let saved = false
+    try {
+      const status = this.deepseekCredentials.save(ownerId, apiKey)
+      saved = true
+      return status
+    } finally {
+      // A failed permission restriction can still publish the replacement ciphertext.
+      if (saved || revision !== this.deepseekCredentials.revision()) {
+        this.invalidateDeepSeekBalance(saved)
+      }
+    }
   }
 
   removeDeepSeekApiKey(ownerId: string): ReturnType<DeepSeekCredentials['getStatus']> {
@@ -60,17 +69,36 @@ export abstract class RateLimitServiceDeepSeekBalance extends RateLimitServiceFe
     return this.deepseekFetch
   }
 
-  private invalidateDeepSeekBalance(): void {
+  private invalidateDeepSeekBalance(refresh = true): void {
     this.deepseekGeneration += 1
     this.updateState({ ...this.state, deepseek: null })
+    if (!refresh) {
+      return
+    }
+    const generation = this.deepseekGeneration
+    const abortGeneration = this.fetchAbortGeneration
     // A superseded request must finish before the new credential is polled.
     const pending = this.deepseekFetch ?? Promise.resolve()
-    void pending.then(() => this.refreshDeepSeekBalance()).catch(() => undefined)
+    void pending
+      .then(() => {
+        if (
+          generation === this.deepseekGeneration &&
+          abortGeneration === this.fetchAbortGeneration
+        ) {
+          return this.refreshDeepSeekBalance()
+        }
+        return undefined
+      })
+      .catch(() => undefined)
   }
 
   private async runDeepSeekBalanceCycle(signal?: AbortSignal): Promise<RateLimitState> {
+    if (signal?.aborted) {
+      return this.getState()
+    }
     const credentials = this.deepseekCredentials
     const generation = this.deepseekGeneration
+    const abortGeneration = this.fetchAbortGeneration
     const revision = credentials?.revision()
     const previous = revision === this.deepseekRevision ? this.state.deepseek : null
     if (revision !== this.deepseekRevision) {
@@ -94,13 +122,16 @@ export abstract class RateLimitServiceDeepSeekBalance extends RateLimitServiceFe
         )
       }
     }
+    if (
+      signal?.aborted ||
+      generation !== this.deepseekGeneration ||
+      abortGeneration !== this.fetchAbortGeneration
+    ) {
+      return this.getState()
+    }
     if (revision !== credentials?.revision()) {
       this.updateState({ ...this.state, deepseek: null })
-    } else if (
-      !signal?.aborted &&
-      generation === this.deepseekGeneration &&
-      revision === credentials?.revision()
-    ) {
+    } else {
       this.trackActiveFailureStreak('deepseek', fresh)
       this.updateState({ ...this.state, deepseek: this.applyStalePolicy(fresh, previous) })
     }
