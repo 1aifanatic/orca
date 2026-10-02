@@ -165,6 +165,14 @@ describe('liftTuiAgentBypassArgs', () => {
     })
   })
 
+  // POSIX parses this but reads the backslash as escaping the space, hiding the flag.
+  it('lifts the flag after a Windows path that POSIX mis-splits', () => {
+    expect(liftTuiAgentBypassArgs('claude', `--settings C:\\cfg\\ ${CLAUDE_BYPASS}`)).toEqual({
+      bypass: true,
+      extraArgs: '--settings C:\\cfg\\'
+    })
+  })
+
   it('lifts a multi-word bypass flag only as a whole', () => {
     expect(liftTuiAgentBypassArgs('grok', '--permission-mode bypassPermissions -v')).toEqual({
       bypass: true,

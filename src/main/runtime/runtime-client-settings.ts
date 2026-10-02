@@ -103,6 +103,26 @@ export class RuntimeClientSettingsController {
     private readonly notifyReposChanged: (() => void) | undefined = undefined
   ) {}
 
+  // Why cached per snapshot: get() also serves single-flag reads on every agent launch.
+  private composedAgentLaunchCache = new WeakMap<
+    object,
+    Pick<RuntimeClientSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>
+  >()
+
+  private composedAgentLaunchRecords(
+    settings: ReturnType<RuntimeStore['getSettings']>
+  ): Pick<RuntimeClientSettings, 'agentDefaultArgs' | 'agentDefaultEnv'> {
+    let records = this.composedAgentLaunchCache.get(settings)
+    if (!records) {
+      records = {
+        agentDefaultArgs: composeTuiAgentLaunchArgsRecord(settings),
+        agentDefaultEnv: composeTuiAgentLaunchEnvRecord(settings)
+      }
+      this.composedAgentLaunchCache.set(settings, records)
+    }
+    return records
+  }
+
   get(): RuntimeClientSettings {
     if (!this.store?.getSettings) {
       throw new Error('runtime_unavailable')
@@ -113,8 +133,7 @@ export class RuntimeClientSettingsController {
       disabledTuiAgents: settings.disabledTuiAgents ?? [],
       agentCmdOverrides: settings.agentCmdOverrides ?? {},
       // Why launch-ready: paired clients predate the typed permission mode and read the flag here.
-      agentDefaultArgs: composeTuiAgentLaunchArgsRecord(settings),
-      agentDefaultEnv: composeTuiAgentLaunchEnvRecord(settings),
+      ...this.composedAgentLaunchRecords(settings),
       agentStatusHooksEnabled: settings.agentStatusHooksEnabled !== false,
       // Why projected: mobile's terminal Copy honours this, and a host predating
       // the setting sends no key, which the client reads as on (#19770).

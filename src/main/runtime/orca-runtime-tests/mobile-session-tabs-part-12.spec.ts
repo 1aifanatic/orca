@@ -41,6 +41,7 @@ describe('OrcaRuntimeService', () => {
   it('uses portable Unix quoting for mobile agent launch commands in WSL project runtimes', async () => {
     await withPlatform('win32', async () => {
       const spawn = vi.fn().mockResolvedValue({ id: 'pty-agent' })
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only these store members on this launch path.
       const runtime = new OrcaRuntimeService({
         ...store,
         getProjects: () => [
@@ -88,6 +89,7 @@ describe('OrcaRuntimeService', () => {
   it('keeps PowerShell quoting for mobile agent launch commands in Windows host runtimes', async () => {
     await withPlatform('win32', async () => {
       const spawn = vi.fn().mockResolvedValue({ id: 'pty-agent' })
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only these store members on this launch path.
       const runtime = new OrcaRuntimeService({
         ...store,
         getProjects: () => [
@@ -135,6 +137,7 @@ describe('OrcaRuntimeService', () => {
   it('uses cmd.exe quoting for mobile agent launch commands in local Windows host runtimes', async () => {
     await withPlatform('win32', async () => {
       const spawn = vi.fn().mockResolvedValue({ id: 'pty-agent-cmd' })
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only these store members on this launch path.
       const runtime = new OrcaRuntimeService({
         ...store,
         getProjects: () => [

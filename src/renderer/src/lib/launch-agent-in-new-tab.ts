@@ -182,7 +182,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       promptDelivery,
       pastePromptAfterReady: pasteDraftAfterLaunch,
       submitPastedPrompt,
-      // Omitted args let the host compose its own; caller args go out with this client's mode.
+      // Caller args go out with this client's mode, like the prompt launch's prebuilt command.
       ...(agentArgs !== undefined ? { agentArgs: effectiveAgentArgs } : {}),
       // Why: omission means terminal locally, but would let a paired host apply
       // its own default; send the client's resolved terminal choice explicitly.

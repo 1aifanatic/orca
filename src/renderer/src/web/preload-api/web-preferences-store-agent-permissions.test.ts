@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SETTINGS_STORAGE_KEY } from './web-storage'
 
-const runtimeMock = vi.hoisted(() => ({
-  reply: {} as Record<string, unknown>,
-  environment: null as { id: string } | null
-}))
+const runtimeMock = vi.hoisted(() => {
+  const state: { reply: Record<string, unknown>; environment: { id: string } | null } = {
+    reply: {},
+    environment: null
+  }
+  return state
+})
 
 vi.mock('./web-runtime-calls', () => ({
   callRuntimeResult: vi.fn(async () => ({ settings: runtimeMock.reply }))
@@ -61,6 +64,20 @@ describe('web stored settings agent permissions', () => {
     const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
     expect(saved.agentPermissionMode).toBe('bypass')
     expect(getStoredSettings()).toEqual(settings)
+  })
+
+  // An older build shipped a shorter Devin bypass; the web blob must read it as Yolo too.
+  it('reads the older Devin bypass as Yolo', async () => {
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ agentDefaultArgs: { devin: '--permission-mode bypass' } })
+    )
+    const { getStoredSettings } = await import('./web-preferences-store')
+
+    const settings = getStoredSettings()
+
+    expect(settings.agentPermissionModeOverrides?.devin).toBeUndefined()
+    expect(settings.agentDefaultArgs?.devin).toBe('')
   })
 
   it('gives a fresh client the Yolo default', async () => {

@@ -38,6 +38,10 @@ export function liftComposedAgentLaunchProfile(
   composed: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>> | null | undefined
 ): AgentLaunchProfile {
   const composedArgs = normalizeTuiAgentArgsRecord(composed?.agentDefaultArgs)
+  // An older build shipped this shorter Devin bypass; it meant the same thing.
+  if (composedArgs.devin === '--permission-mode bypass') {
+    composedArgs.devin = YOLO_TUI_AGENT_ARGS.devin
+  }
   const composedEnv = normalizeTuiAgentEnvRecord(composed?.agentDefaultEnv)
   const agentDefaultArgs = { ...composedArgs }
   const agentDefaultEnv = { ...composedEnv }

@@ -134,9 +134,6 @@ function migrateAgentYoloDefaults(
 ): Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentYoloDefaultsMigrated'> {
   const existingArgs = normalizeTuiAgentArgsRecord(settings?.agentDefaultArgs)
   const existingEnv = normalizeTuiAgentEnvRecord(settings?.agentDefaultEnv)
-  if (existingArgs.devin === '--permission-mode bypass') {
-    existingArgs.devin = YOLO_TUI_AGENT_ARGS.devin
-  }
   // Agents missing from an older build's profile stay manual; command-override users owned theirs.
   const commandOverrides = settings?.agentCmdOverrides ?? {}
   const keepManual = (agent: TuiAgent): boolean =>

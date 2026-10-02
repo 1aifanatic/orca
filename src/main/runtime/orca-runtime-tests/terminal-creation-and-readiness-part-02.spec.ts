@@ -665,6 +665,7 @@ describe('OrcaRuntimeService', () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-bg' })
     const folderWorkspace = makeFolderWorkspace({ folderPath })
     const projectGroup = makeFolderProjectGroup({ parentPath: folderPath })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only these store members on this launch path.
     const runtime = new OrcaRuntimeService({
       ...createFolderWorkspaceRuntimeStore(folderWorkspace, projectGroup),
       getSettings: () => ({

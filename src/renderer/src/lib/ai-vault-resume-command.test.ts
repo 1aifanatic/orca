@@ -28,6 +28,7 @@ function makeState(args: {
   localWindowsRuntimePreference?: RuntimePreference
   terminalWindowsShell?: string
 }): AiVaultResumeCommandState {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resume command reads only these AppState fields.
   return {
     activeRepoId: 'repo-1',
     activeWorktreeId: 'repo-1::worktree-1',

@@ -10,6 +10,7 @@ import { buildAiVaultResumeCopyCommandForWorktree } from './ai-vault-resume-comm
 type ResumeShellState = Parameters<typeof buildAiVaultResumeCopyCommandForWorktree>[0]['state']
 
 function makeState(worktreeHostId?: string): ResumeShellState {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resume shell reads only these AppState fields.
   return {
     activeRepoId: 'repo-1',
     activeWorktreeId: 'repo-1::worktree-1',

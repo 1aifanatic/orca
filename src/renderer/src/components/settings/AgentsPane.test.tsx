@@ -471,6 +471,7 @@ describe('AgentsPane', () => {
   it('shows the stored default on the switch and applies a choice to every agent', () => {
     const onChange = vi.fn()
     const element = AgentPermissionsSetting({ mode: 'ask', exceptions: [], onChange })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: AgentPermissionsSetting passes these props to its segmented control.
     const props = element.props.children.props.action.props as {
       value: string
       onChange: (value: 'bypass' | 'ask') => void

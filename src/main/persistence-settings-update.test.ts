@@ -517,6 +517,7 @@ describe('Store', () => {
     const store = await createStore()
     store.flush()
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: readDataFile returns the JSON the store just wrote in this shape.
     const persisted = (readDataFile() as PersistedState).settings
     expect(persisted.agentPermissionMode).toBe('ask')
     expect(persisted.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })

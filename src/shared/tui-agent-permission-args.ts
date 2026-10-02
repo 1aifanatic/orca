@@ -14,6 +14,7 @@ import {
   type StartupCommandTokens
 } from './tui-agent-startup-shell'
 import type { AgentLaunchProfileSettings } from './tui-agent-launch-defaults'
+import type { CommandTokenSpan } from './commit-message-prompt'
 import type { TuiAgent } from './tui-agent'
 import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 
@@ -86,8 +87,17 @@ function isPermissionOption(token: string, name: string): boolean {
 }
 
 /** Permission-changing options in these arguments, under any launch grammar, in order. */
+const optionNameCache = new Map<TuiAgent, readonly string[]>()
+
 function argumentPermissionOptions(agent: TuiAgent, args: string): string[] {
-  const names = agentPermissionOptionNames(agent)
+  let names = optionNameCache.get(agent)
+  if (!names) {
+    names = agentPermissionOptionNames(agent)
+    optionNameCache.set(agent, names)
+  }
+  if (!args.trim()) {
+    return []
+  }
   const found: string[] = []
   for (const shell of LAUNCH_GRAMMARS) {
     const tokens = optionTokens(args, shell)
@@ -109,6 +119,30 @@ export function tuiAgentArgsSetPermissions(
 }
 
 /**
+ * Finds the flag under POSIX, else PowerShell grammar (Windows paths like `C:\dir\` mis-split
+ * under POSIX); cmd only when neither parses, since cmd would read inside single quotes.
+ */
+function findBypassFlag(
+  text: string,
+  flag: readonly string[]
+): { tokens: { tokens: string[]; spans: CommandTokenSpan[] }; at: number } | null {
+  let parsed = false
+  for (const shell of ['posix', 'powershell'] as const) {
+    const tokens = optionTokens(text, shell)
+    if (tokens.ok) {
+      parsed = true
+      const at = findTokenSequence(tokens.tokens, flag)
+      if (at !== -1) {
+        return { tokens, at }
+      }
+    }
+  }
+  const cmd = parsed ? null : optionTokens(text, 'cmd')
+  const at = cmd?.ok ? findTokenSequence(cmd.tokens, flag) : -1
+  return cmd?.ok && at !== -1 ? { tokens: cmd, at } : null
+}
+
+/**
  * Splits the bypass flag out of arguments saved before the mode was typed, keeping the rest's quoting.
  * Text that still sets permissions keeps the flag: a launch adds none beside it, so lifting would drop it.
  */
@@ -121,16 +155,11 @@ export function liftTuiAgentBypassArgs(
   let text = original
   let bypass = false
   while (flag.length > 0 && text) {
-    // Why the fallback: a Windows path like "C:\dir\" only parses under the Windows grammars.
-    const tokens = [
-      optionTokens(text, 'posix'),
-      optionTokens(text, 'powershell'),
-      optionTokens(text, 'cmd')
-    ].find((candidate) => candidate.ok)
-    const at = tokens?.ok ? findTokenSequence(tokens.tokens, flag) : -1
-    if (!tokens?.ok || at === -1) {
+    const found = findBypassFlag(text, flag)
+    if (!found) {
       break
     }
+    const { tokens, at } = found
     bypass = true
     const before = text.slice(0, tokens.spans[at].start).trimEnd()
     const after = text.slice(tokens.spans[at + flag.length - 1].end).trimStart()
