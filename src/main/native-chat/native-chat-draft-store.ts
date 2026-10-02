@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import {
   readSidecarSnapshot,
   removeSidecarSnapshot,
@@ -73,10 +74,17 @@ export function createNativeChatDraftStore(root: string): NativeChatDraftStore {
 
   const ready = (async () => {
     const found: ({ scopeKey: string; file: string } & Saved)[] = []
-    // Temp files a crash left mid-write are swept by the next write of their draft.
-    for (const name of (await readdir(root).catch(() => [])).filter((entry) =>
-      entry.endsWith('.json')
-    )) {
+    const names = await readdir(root).catch(() => [])
+    // Temp files a killed run left mid-write; this run's own are never swept.
+    const interrupted = new Set(
+      names.filter((name) => name.endsWith('.tmp')).map((name) => name.split('.json.')[0])
+    )
+    await Promise.all(
+      Array.from(interrupted, (hash) =>
+        removeStaleDurableWriteTempFiles(join(root, `${hash}.json`))
+      )
+    )
+    for (const name of names.filter((entry) => entry.endsWith('.json'))) {
       const file = join(root, name)
       const parsed = parseDraftFile(await readSidecarSnapshot(file))
       if (parsed) {

@@ -155,6 +155,17 @@ describe('the native chat draft store', () => {
     expect((await readdir(root)).filter((name) => name === 'broken.json')).toEqual([])
   })
 
+  it('sweeps temp files a killed run left mid-write', async () => {
+    const root = await freshRoot()
+    await createNativeChatDraftStore(root).write('session:s1', draft('hello'))
+    const [saved] = await readdir(root)
+    await writeFile(join(root, `${saved}.99999.1.ab.tmp`), '{"partial')
+
+    await createNativeChatDraftStore(root).load()
+
+    expect(await readdir(root)).toEqual([saved])
+  })
+
   it('keeps only the newest drafts past the bound', async () => {
     const root = await freshRoot()
     const store = createNativeChatDraftStore(root)
