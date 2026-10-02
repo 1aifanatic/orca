@@ -92,7 +92,9 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
         timeoutMs: 90000
       })
       expect(generated.code).toBe(0)
-      expect(await readFile(join(workspace, 'proof.txt'), 'utf8')).toBe('QODER_MANAGED_PROOF')
+      expect((await readFile(join(workspace, 'proof.txt'), 'utf8')).trim()).toBe(
+        'QODER_MANAGED_PROOF'
+      )
       const session = statuses.find((s) => s.event === 'SessionStart')?.session
       expect(session).toBeTruthy()
       if (!session) {
