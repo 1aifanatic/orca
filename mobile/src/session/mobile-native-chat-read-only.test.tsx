@@ -120,6 +120,7 @@ function overlayElement(
   } as unknown as MobileNativeChatController
   return createElement(MobileNativeChatOverlay, {
     controller,
+    onOpenFile: vi.fn(),
     images: {} as never,
     onMicPress: vi.fn(),
     micActive: false,
@@ -139,7 +140,8 @@ function chatViewProps(element: ReturnType<typeof createElement>): Record<string
   act(() => {
     renderer = create(element)
   })
-  const props = renderer!.root.findByType('ChatView' as never).props
+  const [view] = renderer!.root.findAll((node) => String(node.type) === 'ChatView')
+  const props: Record<string, unknown> = view!.props
   act(() => renderer?.unmount())
   renderer = null
   return props
