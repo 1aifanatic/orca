@@ -115,7 +115,7 @@ export class StructuredAgentSessionStatusFeed {
   private readonly projections = new StructuredAgentSessionJournalProjections()
   readonly working = new StructuredAgentSessionWorkingChats(
     () => this.deps.sessions,
-    this.published
+    (sessionId) => this.statusState(sessionId)?.owesWork === true
   )
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}

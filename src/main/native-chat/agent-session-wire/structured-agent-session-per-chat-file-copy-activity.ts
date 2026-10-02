@@ -1,5 +1,6 @@
-// The background copy takes no main-thread time while any chat works: a turn running, or a send
-// in flight (the host's status feed says which, for every provider). It starts no chat then, nor
+// The background copy takes no main-thread time while any chat works: a turn running (a prompt it
+// waits on included), or a send in flight (the projection behind the host's status feed says
+// which, for every provider). It starts no chat then, nor
 // until the chats have been quiet for a while, and a chat whose copy is under way when one starts
 // working stops at its next batch, publishing nothing and staying owed.
 
@@ -7,9 +8,9 @@
  *  user reads its answer and sends again, short enough that an idle host soon resumes. */
 export const PER_CHAT_FILE_COPY_QUIET_MS = 5_000
 
-/** The host's chats' work, from its status feed's `working`. */
+/** The host's chats' work, from the projection's `owesWork` behind its status feed. */
 export type StructuredAgentSessionChatWork = {
-  /** A chat this host holds open has a turn running or a send in flight. */
+  /** A chat this host holds open has a turn running, even under a prompt, or a send in flight. */
   live: () => boolean
   /** Calls `listener` each time one starts or stops working; returns the unsubscribe. */
   onWork: (listener: () => void) => () => void

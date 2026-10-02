@@ -125,6 +125,10 @@ export function importPerSessionJournal(input: ImportInput): Promise<PerSessionJ
 }
 
 async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> {
+  // A copy stopped before its turn (behind another import of the chat) opens nothing.
+  if (input.signal) {
+    assertImportNotAborted(input.database, input.identity.sessionId, input.signal)
+  }
   const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
   if (!existsSync(sourcePath)) {
     return { outcome: 'absent' }
@@ -281,8 +285,8 @@ async function copyLegacyJournal(
     charBoundedBatches(legacyRowBatches(source, sessionId, epoch, batchRows), batchChars)
   )
   await yieldTask()
-  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   assertImportNotAborted(input.database, sessionId, input.signal)
+  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
     if (repair) {

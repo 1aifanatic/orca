@@ -45,9 +45,9 @@ export async function copyPerChatFileUnderSerialize(
     signal
   })
   // An older build left it with work: settled now, from the copy's fold, so no later startup
-  // opens it. A failed settle is not a failed copy: startup settles the row the copy wrote.
+  // opens it. A failed or stopped settle is not a failed copy: startup settles the row it wrote.
   const { load, status } = result
-  if (!open && load && status) {
+  if (!open && load && status && !signal.aborted) {
     await settleWrittenChat(deps, sessionId, { load, status })
   }
   return result.outcome === 'imported'

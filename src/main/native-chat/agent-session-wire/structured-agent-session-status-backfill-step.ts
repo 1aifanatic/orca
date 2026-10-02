@@ -103,7 +103,8 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
       yieldTask,
       signal
     })
-    if (written) {
+    // A stopped settle leaves the row to startup's settle, as a failed one does.
+    if (written && !signal.aborted) {
       await settleWrittenChat(deps, sessionId, written)
     }
     return written !== null

@@ -10,7 +10,12 @@ import {
 } from '../agent-session-journal/journal-host-database-test-support'
 import { legacyJournalDatabaseFile } from '../agent-session-journal/journal-paths'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
-import { hasJournalSessionStatus } from '../agent-session-journal/journal-session-state'
+import { openLegacySource } from '../agent-session-journal/journal-per-session-source'
+import type * as SessionState from '../agent-session-journal/journal-session-state'
+import {
+  deriveJournalSessionStatus,
+  hasJournalSessionStatus
+} from '../agent-session-journal/journal-session-state'
 import {
   PER_CHAT_FILE_COPY_QUIET_MS,
   StructuredAgentSessionPerChatFileCopyActivity
@@ -29,6 +34,11 @@ import {
   type LiveTestChat
 } from './structured-agent-session-per-chat-file-copy-test-rig'
 import { restTestChat } from './structured-agent-session-rest-test-rig'
+
+vi.mock('../agent-session-journal/journal-session-state', async (importOriginal) => {
+  const actual = await importOriginal<typeof SessionState>()
+  return { ...actual, deriveJournalSessionStatus: vi.fn(actual.deriveJournalSessionStatus) }
+})
 
 const rigs: CopyTestRig[] = []
 
@@ -124,15 +134,29 @@ const published = (rig: CopyTestRig, sessionId: string) =>
 
 describe('a chat working on the same host (G3)', () => {
   it.each([
-    ['streams a turn', (live: LiveTestChat) => live.streamTurn()],
-    ['has a send in flight', (live: LiveTestChat) => live.sendUnanswered()]
-  ] as const)('starts no chat while one %s', async (_case, work) => {
+    ['streams a turn', (live: LiveTestChat) => live.streamTurn(), 'working'],
+    ['has a send in flight', (live: LiveTestChat) => live.sendUnanswered(), 'working'],
+    [
+      'waits on an approval inside a running turn',
+      async (live: LiveTestChat) => {
+        await live.streamTurn()
+        await live.askUnderTurn()
+      },
+      'attention'
+    ]
+  ] as const)('starts no chat while one %s', async (_case, work, row) => {
     const { rig, live } = await oldChatsAndALiveOne()
     const importJournal = rowPerBatchImport()
     const job = copyJob(rig, { importJournal })
     await work(live)
+    const rows = rig.statusEvents.flatMap((event) =>
+      event.type === 'status' && event.session.sessionId === 'session-live'
+        ? [event.session.status]
+        : []
+    )
+    expect(rows.at(-1)).toBe(row)
 
-    for (let tick = 0; tick < 5; tick += 1) {
+    for (let tick = 0; tick < 2 * (PER_CHAT_FILE_COPY_QUIET_MS / 1_000); tick += 1) {
       rig.copyClock.now += 1_000
       await job.tick()
     }
@@ -251,17 +275,25 @@ describe('a chat working on the same host (G3)', () => {
       const { rig, live, statusBefore } = await oldChatsAndALiveOne()
       const inFile = Object.fromEntries(OLD.map((id) => [id, storedInFile(rig, id)]))
       let stoppedAt = 0
+      let derivesAtStop = 0
       const importJournal = vi.fn((input: Parameters<typeof importPerSessionJournal>[0]) =>
         rowPerBatchImport(async (yields) => {
           if (stoppedAt === 0 && yields === at) {
             stoppedAt = yields
             await live.streamTurn()
+            derivesAtStop = vi.mocked(deriveJournalSessionStatus).mock.calls.length
           }
         })(input)
       )
       const job = copyJob(rig, { importJournal })
       await job.tick()
       expect(stoppedAt).toBe(at)
+      if (at < boundaries) {
+        // Nothing after the stop, the status derive before the publish included.
+        expect(vi.mocked(deriveJournalSessionStatus).mock.calls.length, `boundary ${at}`).toBe(
+          derivesAtStop
+        )
+      }
       // Past the publish the copy is whole, and the chat it stopped is copied.
       const filesLeft = at < boundaries ? OLD.length : OLD.length - 1
       expect(await perChatFilesLeft(rig), `boundary ${at} of ${boundaries}`).toBe(filesLeft)
@@ -280,6 +312,74 @@ describe('a chat working on the same host (G3)', () => {
       }
     }
   }, 60_000)
+
+  it('opens no old file when a chat started working between the gate and the chat', async () => {
+    const { rig, live } = await oldChatsAndALiveOne()
+    const openSource = vi.fn(openLegacySource)
+    const importJournal = rowPerBatchImport()
+    let probes = 0
+    const job = copyJob(rig, {
+      importJournal: (input) => importJournal({ ...input, openSource }),
+      // The disk probe, after the walk: a turn starts while it runs.
+      freeBytes: async () => {
+        probes += 1
+        if (probes === 1) {
+          await live.streamTurn()
+        }
+        return null
+      }
+    })
+
+    await job.tick()
+
+    expect(probes).toBe(1)
+    expect(openSource).not.toHaveBeenCalled()
+    expect(await perChatFilesLeft(rig)).toBe(OLD.length)
+    expect(failuresRecorded(rig)).toEqual({ n: 0 })
+
+    await live.endTurn()
+    rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS
+    await job.tick()
+    expect(await perChatFilesLeft(rig)).toBe(0)
+    expect(openSource).toHaveBeenCalled()
+  })
+
+  it('leaves the settle of a chat it copied to startup when a chat starts working after the publish', async () => {
+    const rig = await createCopyTestRig()
+    rigs.push(rig)
+    // A chat a crash cut mid-turn, now in its old file.
+    const crashed = await openLiveChat(rig, 'session-crashed')
+    await crashed.streamTurn()
+    await rig.crash()
+    moveToPerChatFiles(rig, ['session-crashed'])
+    await rig.boot()
+    const live = await openLiveChat(rig, 'session-live')
+    const deps = copyJobDeps(rig)
+    let published = false
+    const importJournal = vi.fn((input: Parameters<typeof importPerSessionJournal>[0]) =>
+      rowPerBatchImport(async () => {
+        // The importer's last task boundary, after the publish.
+        if (
+          !published &&
+          openTestJournalHostDatabase(rig.root)
+            .db.prepare("SELECT 1 FROM journal_sessions WHERE session_id = 'session-crashed'")
+            .get()
+        ) {
+          published = true
+          await live.streamTurn()
+        }
+      })(input)
+    )
+    const job = copyJob(rig, { ...deps, importJournal })
+
+    await job.tick()
+
+    expect(published).toBe(true)
+    expect(await perChatFilesLeft(rig)).toBe(0)
+    expect(deps.settleClosedChat).not.toHaveBeenCalled()
+    // Startup settles the row the copy wrote.
+    expect(statusRow(rig, 'session-crashed')).toMatchObject({ lifecycle: 'running' })
+  })
 
   it('stops a missing status row the same way, writing nothing, and writes it once quiet', async () => {
     const rig = await createCopyTestRig()

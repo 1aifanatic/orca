@@ -173,6 +173,8 @@ export async function runToEnd(
 /** A chat open on the rig's host whose provider streams a turn, or takes a send it never answers. */
 export type LiveTestChat = {
   streamTurn: () => Promise<void>
+  /** An approval the running turn waits on: the row reads `attention`, the turn still runs. */
+  askUnderTurn: () => Promise<void>
   endTurn: () => Promise<void>
   sendUnanswered: () => Promise<void>
 }
@@ -198,6 +200,14 @@ export async function openLiveChat(rig: RestTestRig, sessionId: string): Promise
       turnId = `turn-live-${ordinal}`
       await provider((id) => ({ kind: 'turn', turnId: id, state: 'running' }))
     },
+    askUnderTurn: () =>
+      provider(() => ({
+        kind: 'approval',
+        title: 'Run command?',
+        detail: null,
+        options: [{ id: 'yes', label: 'Allow' }],
+        resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+      })),
     endTurn: () =>
       provider((id) => ({ kind: 'turn', turnId: id, state: 'completed', outcome: 'success' })),
     sendUnanswered: async () => {

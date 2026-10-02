@@ -40,6 +40,7 @@ import { copyPerChatFileUnderSerialize } from './structured-agent-session-per-ch
 import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import {
   StructuredAgentSessionPerChatFileCopyActivity,
+  type PerChatFileCopyChat,
   type StructuredAgentSessionChatWork
 } from './structured-agent-session-per-chat-file-copy-activity'
 import { StructuredAgentSessionPerChatFileQueue } from './structured-agent-session-per-chat-file-queue'
@@ -68,7 +69,8 @@ export type PerChatFileCopyDeps = {
   /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
    *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
-  /** A chat has a turn running or a send in flight: the copy takes no main-thread time then. */
+  /** A chat has a turn running (under a prompt too) or a send in flight: the copy takes no
+   *  main-thread time then. */
   chatWork: StructuredAgentSessionChatWork
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The chat's journal, when it is open on this host. */
@@ -206,7 +208,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       workspaceId: record.location.workspaceId,
       sessionId
     })
-    const chat = this.forChat()
+    let chat: PerChatFileCopyChat | null = null
     try {
       const file = this.fileOwedCopy(sessionId, legacyDirectory)
       if (!file) {
@@ -223,22 +225,24 @@ export class StructuredAgentSessionPerChatFileCopy {
         this.count('noRoom')
         return 'skipped'
       }
+      // After the walk and the disk probe: the gate is checked again as the chat's signal is taken.
+      const { signal } = (chat = this.forChat())
       await this.inChat(sessionId, async (yieldTask) => {
         if (!this.stopped()) {
-          const copy = { yieldTask, signal: chat.signal }
+          const copy = { yieldTask, signal }
           this.count(await copyPerChatFileUnderSerialize(this.deps, record, legacyDirectory, copy))
         }
       })
       return 'copied'
     } catch (error) {
-      if (chat.stoppedByWork()) {
+      if (chat?.stoppedByWork()) {
         // Not a failure: tried again first once the chats are quiet.
         this.queue.defer(record)
         return 'stop'
       }
       return this.onFailure(record, legacyDirectory, error)
     } finally {
-      chat.release()
+      chat?.release()
     }
   }
 

@@ -100,7 +100,7 @@ export class StructuredAgentSessionClientDelivery {
   publishRestored = (sessionId: string): void =>
     this.statusFeed.publish(sessionId, undefined, { replay: true })
 
-  /** Whether a chat this host holds open is working, and each time one starts or stops. */
+  /** Whether a chat this host holds open owes work, and each time one may start or stop. */
   readonly chatWork: StructuredAgentSessionChatWork = {
     live: () => this.statusFeed.working.any(),
     onWork: (listener) => this.statusFeed.working.onWork(listener)
