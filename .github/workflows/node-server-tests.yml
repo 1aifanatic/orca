@@ -802,7 +802,7 @@ jobs:
         shell: bash
         env:
           ORCA_CI_BUN_PHASE: relay
-        run: node config/scripts/ci-headless-bun-overlap-negative.mjs await-cancel
+        run: exec node config/scripts/ci-headless-bun-overlap-negative.mjs await-cancel
       - name: Report simultaneous actual builders and detached-child cancellation readiness
         id: cancel-readiness
         background: true
@@ -884,7 +884,9 @@ jobs:
       - name: Restore only owned fault bytes and retain fresh owned exit evidence
         if: always() && steps.plan.outcome == 'success'
         shell: bash
-        run: node config/scripts/ci-headless-bun-overlap-negative.mjs collect
+        env:
+          ORCA_CI_BUN_CASE: ''
+        run: exec env -u ORCA_CI_BUN_CASE node config/scripts/ci-headless-bun-overlap-negative.mjs collect
       - name: Keep actual negative-control logs and partial evidence
         if: always()
         uses: actions/upload-artifact@v7

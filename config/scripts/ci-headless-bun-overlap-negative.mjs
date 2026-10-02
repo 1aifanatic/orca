@@ -442,6 +442,40 @@ async function awaitCancellation() {
   throw new Error('Incomplete cancellation: root did not cancel during the bounded control wait')
 }
 
+async function waitCancellationDisposition() {
+  const limitMilliseconds = 15_000
+  const until = performance.now() + limitMilliseconds
+  const relay = optional('signal-relay-ready')
+  assert(relay, 'Incomplete cancellation: relay readiness missing')
+  writeJson(partPath(id, 'cancel-collector-wait'), {
+    complete: false,
+    limitMilliseconds,
+    at: stamp()
+  })
+  while (performance.now() < until) {
+    const incomplete = optional('cancellation-incomplete')
+    assert(!incomplete, `Incomplete cancellation relay: ${incomplete?.error}`)
+    const stopped = optional('observer-stopped')
+    assert(stopped?.cancelled !== false, 'Observer exited without a cancellation disposition')
+    if (
+      optional('termination-received') &&
+      stopped?.cancelled === true &&
+      optional('cancel-cleanup')?.verifiedExited === true &&
+      optional('cancellation-exit-proof') &&
+      !live(relay.identity)
+    ) {
+      writeJson(partPath(id, 'cancel-collector-wait'), {
+        complete: true,
+        limitMilliseconds,
+        at: stamp()
+      })
+      return
+    }
+    await delay(25)
+  }
+  throw new Error('Incomplete cancellation: relay disposition or exit missed the collector bound')
+}
+
 async function collect() {
   const evidence = {
     control,
@@ -454,7 +488,8 @@ async function collect() {
   writeJson(partPath(id, 'negative-evidence'), evidence)
   const errors = []
   try {
-    if (control === 'cancel' && optional('observer-stopped')?.cancelled === true) {
+    if (control === 'cancel') {
+      await waitCancellationDisposition()
       Object.assign(evidence, await cancelledEvidence())
     } else {
       evidence.cleanup = await stopObserver(id)
