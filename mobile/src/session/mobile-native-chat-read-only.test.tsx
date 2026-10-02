@@ -121,7 +121,13 @@ function overlayElement(
   return createElement(MobileNativeChatOverlay, {
     controller,
     onOpenFile: vi.fn(),
-    images: {} as never,
+    images: {
+      attachments: [],
+      isAttaching: false,
+      attachImage: vi.fn(async () => {}),
+      removeAttachment: vi.fn(),
+      sendNativeChat: vi.fn(async () => true)
+    },
     onMicPress: vi.fn(),
     micActive: false,
     dictationMode: 'toggle',

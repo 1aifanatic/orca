@@ -31,22 +31,21 @@ export function readAgentJournalMessageBody(body: unknown): AgentJournalContentV
  *  changed one. A plain union's branches are all searched: each in the body schemas pairs a
  *  discriminated union with an open fallback, whose failure is never a closed-set one. */
 function isOutsideClosedSet(issue: z.core.$ZodIssue): boolean {
-  switch (issue.code) {
-    case 'invalid_value':
-      return (
-        issue.values.some((known) => typeof known === 'string') && isNewClosedSetValue(issue.input)
-      )
-    case 'invalid_union':
-      if (issue.discriminator !== undefined) {
-        return isPlainObject(issue.input) && isNewClosedSetValue(issue.input[issue.discriminator])
-      }
-      return issue.errors.some((branch) => branch.some(isOutsideClosedSet))
-    case 'invalid_key':
-    case 'invalid_element':
-      return issue.issues.some(isOutsideClosedSet)
-    default:
-      return false
+  if (issue.code === 'invalid_value') {
+    return (
+      issue.values.some((known) => typeof known === 'string') && isNewClosedSetValue(issue.input)
+    )
   }
+  if (issue.code === 'invalid_union') {
+    if (issue.discriminator !== undefined) {
+      return isPlainObject(issue.input) && isNewClosedSetValue(issue.input[issue.discriminator])
+    }
+    return issue.errors.some((branch) => branch.some(isOutsideClosedSet))
+  }
+  if (issue.code === 'invalid_key' || issue.code === 'invalid_element') {
+    return issue.issues.some(isOutsideClosedSet)
+  }
+  return false
 }
 
 function isNewClosedSetValue(value: unknown): boolean {
