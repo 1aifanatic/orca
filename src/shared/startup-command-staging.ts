@@ -33,9 +33,9 @@ export type StartupCommandStaging = {
   failure?: string
 }
 
-// Why only these type a short line as is: Orca's portable quoting is verified literal in these. Any
-// other shell (tcsh, nu, xonsh, pwsh...) runs an agent launch line Orca built through `/bin/sh`
-// instead; a command the user wrote for that shell is typed as it always was.
+// Why only these type any short line as is: Orca's portable quoting is verified literal in these. Any
+// other shell (tcsh, nu, xonsh, pwsh...) runs an agent launch line Orca built through `/bin/sh` when
+// it holds anything but plain characters; a command the user wrote for that shell is typed as it was.
 const STAGING_SHELLS = new Set(['bash', 'zsh', 'sh', 'dash', 'fish', 'ksh', 'mksh'])
 
 // Why not ksh: it runs a sourced file's commands in the shell's own process group, so Ctrl-Z could
@@ -62,15 +62,16 @@ export function shouldStageStartupCommand(args: {
     return false
   }
   const shellName = stagingShellName(args.shellPath)
+  const needsStaging = startupLineNeedsStaging(args.command)
   if (shellName === null) {
-    // Why every length: Orca's POSIX quoting is literal only in the shells above (tcsh doubles a
-    // quoted backslash and expands `!!`), so another shell only ever sees the script's inert path.
-    return args.orcaBuiltLine === true
+    // Why these characters: tcsh doubles a quoted backslash and expands `!!`, and nu cannot read
+    // `'\''`. A plain line is typed so the agent is the shell's own job, where the paste guard finds it.
+    return (
+      args.orcaBuiltLine === true &&
+      (needsStaging || /[!\\"`$]/.test(stripSubmitTerminator(args.command)))
+    )
   }
-  return (
-    startupLineNeedsStaging(args.command) &&
-    (SOURCING_SHELLS.has(shellName) || args.orcaBuiltLine === true)
-  )
+  return needsStaging && (SOURCING_SHELLS.has(shellName) || args.orcaBuiltLine === true)
 }
 
 /** Whether a line is too long or multi-line to type as it is, in a shell that can source a script. */

@@ -146,6 +146,38 @@ describe('stageStartupCommand', () => {
     }
   )
 
+  // Why: behind `/bin/sh` the agent is not the shell's own job, and a pasted prompt waits on that.
+  it.each([['/bin/tcsh'], ['/usr/bin/nu'], [undefined]])(
+    'types a short plain Orca-built line as is for a shell that cannot source it (%s)',
+    (shellPath) => {
+      const command = `claude '--dangerously-skip-permissions' '--model' 'claude-opus-5-5[1m]'`
+      expect(
+        stageStartupCommand({
+          command,
+          shellPath,
+          orcaBuiltLine: true,
+          platform: 'darwin',
+          directory
+        })
+      ).toEqual({ command, delivery: 'typed' })
+      expect(readdirSync(directory)).toEqual([])
+    }
+  )
+
+  it.each([[`claude 'it'\\''s'`], ['claude "x"'], ["claude '$HOME'"], ["claude 'a`b'"]])(
+    'stages a short Orca-built line tcsh would not read literally: %s',
+    (command) => {
+      const staged = stageStartupCommand({
+        command,
+        shellPath: '/bin/tcsh',
+        orcaBuiltLine: true,
+        platform: 'darwin',
+        directory
+      })
+      expect(staged.command).toBe(`/bin/sh '${staged.scriptPath}'`)
+    }
+  )
+
   it('types a short Orca-built line in a shell that reads its quoting literally', () => {
     const command = `claude 'wow!! great'`
     expect(
