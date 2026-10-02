@@ -82,7 +82,9 @@ export function NativeChatStructuredSession(
     isVisible: props.isVisible,
     rootRef,
     composerRef,
-    terminalPaneActions: props.contextMenuActions
+    terminalPaneActions: props.contextMenuActions,
+    sessionId: props.sessionId,
+    target: props.target
   })
   const session = useMemo<NativeChatLiveSession>(
     () => ({
