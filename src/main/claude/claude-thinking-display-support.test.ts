@@ -6,10 +6,15 @@ const UNKNOWN_FLAG = new Error(
   "claude stream-json exited (code 1): error: unknown option '--thinking-display'"
 )
 
-function supportWith(probe: (command: string) => Promise<string | null>) {
+type Probe = (
+  command: string,
+  launch: { cwd: string; env: Record<string, string> }
+) => Promise<string | null>
+
+function supportWith(probe: Probe) {
   const calls = vi.fn(probe)
   const support = createClaudeThinkingDisplaySupport({
-    probe: (command, launch) => calls(command, launch),
+    probe: calls,
     keyOf: async (command, cwd) => `${command}\n${cwd}`,
     budgetMs: 20
   })
