@@ -27,10 +27,33 @@ describe('buildParcelWatcherIgnoreOptions', () => {
     expect(plainPaths.length).toBeLessThanOrEqual(MACOS_FSEVENTS_EXCLUSION_PATH_LIMIT)
     expect(option).toEqual(WATCHER_IGNORE_DIRS.slice(0, MACOS_FSEVENTS_EXCLUSION_PATH_LIMIT))
     const fallbackRegex = new RegExp(options.ignoreGlobs?.[0] ?? '(?!)')
-    for (const dir of WATCHER_IGNORE_DIRS.slice(MACOS_FSEVENTS_EXCLUSION_PATH_LIMIT)) {
+    for (const dir of WATCHER_IGNORE_DIRS) {
+      expect(fallbackRegex.test(dir)).toBe(true)
+      expect(fallbackRegex.test(`${dir}/file.ts`)).toBe(true)
+      expect(fallbackRegex.test(`packages/app/${dir}`)).toBe(true)
       expect(fallbackRegex.test(`packages/app/${dir}/file.ts`)).toBe(true)
     }
+    expect(fallbackRegex.test('packages/app/node_modules-cache/file.ts')).toBe(false)
+    expect(fallbackRegex.test('packages/app/.github/workflows/check.yml')).toBe(false)
+    expect(fallbackRegex.test('project\\node_modules/file.ts')).toBe(false)
     expect(options.ignoreGlobs?.[0]).not.toContain('?!')
+  })
+
+  it('filters nested macOS directories when all names fit in daemon exclusions', () => {
+    setPlatform('darwin')
+    const options = buildParcelWatcherIgnoreOptions(['node_modules', '.cache'])
+    expect(options.ignore).toEqual(['node_modules', '.cache'])
+    const regex = new RegExp(options.ignoreGlobs?.[0] ?? '(?!)')
+    expect(regex.test('packages/app/node_modules/file.js')).toBe(true)
+    expect(regex.test('packages/app/.cache/file.js')).toBe(true)
+    expect(regex.test('packages/app/xcache/file.js')).toBe(false)
+  })
+
+  it('keeps an empty ignore list empty', () => {
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      setPlatform(platform)
+      expect(buildParcelWatcherIgnoreOptions([])).toEqual({})
+    }
   })
 
   it('uses one lookahead-free native regex for nested ignores on Linux/Windows', () => {
