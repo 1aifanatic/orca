@@ -36,7 +36,7 @@ import {
 } from './claude-structured-session-exit-lifecycle'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-window'
-import { drainClaudeChildWork } from './claude-child-work-evidence'
+import { claudePromptCardWritten, drainClaudeChildWork } from './claude-child-work-evidence'
 import {
   answerClaudeStructuredPrompt,
   cancelClaudeStructuredTurn,
@@ -159,7 +159,13 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     session?.translator?.handle(event)
     this.deps.onEvent?.(event)
     this.publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)
+    // A subagent's card holds it waiting only once its row is written: its wait goes out after.
+    void claudePromptCardWritten(session, event)?.then(() => this.drainChildWork(event.sessionId))
   }
+
+  /** The session's child work as it stands now, outside any frame. */
+  private drainChildWork = (sessionId: string): void =>
+    this.publishChildWork(sessionId, this.sessions.get(sessionId))
 
   /** After the journal handled the frame, which republished the parent's own row: the host never
    *  holds a child record ahead of the rows that frame wrote, and never before its parent. */
@@ -207,8 +213,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     request: R,
     settle: (request: R) => Promise<void>
   ): Promise<void> => {
-    const free = () =>
-      this.publishChildWork(request.sessionId, this.sessions.get(request.sessionId))
+    const free = () => this.drainChildWork(request.sessionId)
     const commit = async (): Promise<void> => {
       free()
       await request.commit()

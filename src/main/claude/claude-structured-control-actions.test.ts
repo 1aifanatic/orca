@@ -241,7 +241,8 @@ describe('answerClaudePrompt', () => {
         resolve: resolvePrompt,
         handOver: () => () => {},
         cancel: () => ({ accepted: true }),
-        holdsOpen: () => false
+        openCards: () => [][Symbol.iterator](),
+        whenWritten: () => undefined
       },
       currentTurnId: null,
       commandTurnId: null,

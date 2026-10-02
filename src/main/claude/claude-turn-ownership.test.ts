@@ -97,7 +97,8 @@ function sessionHoldingTurn(turnId: string | null): ReturnType<typeof sessionFor
       resolve: vi.fn(),
       handOver: () => () => {},
       cancel: () => ({ accepted: true }),
-      holdsOpen: () => false
+      openCards: () => [][Symbol.iterator](),
+      whenWritten: () => undefined
     },
     currentTurnId: turnId,
     commandTurnId: null,

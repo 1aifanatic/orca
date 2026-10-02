@@ -304,9 +304,11 @@ reader does not mistake them for drift:
   first.
 - In the structured lane a child's pending prompt also makes the session
   `attention`, which reads as the main agent's own `blocked`: one needs-input
-  state whoever asked, so the child's own `waiting` record never reaches the
-  row. A Claude subagent stops waiting before the host records its card
-  answered or dismissed, so its record never outlasts the `attention`.
+  state whoever asked. A Claude subagent reads `waiting` only while the
+  journal holds its card pending: from after the card's row is written until
+  just before anyone closes it, so every publish that shows the child waiting
+  also shows the session's `attention`, and the row never reads `waiting` for
+  a Claude subagent's request.
 - The Codex hook lane drops its roster on a root `Stop` when it tracks no
   child transcripts, so a still-running or still-asking child stops holding
   the row.

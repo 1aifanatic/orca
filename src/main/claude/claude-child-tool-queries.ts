@@ -46,16 +46,13 @@ export function claudeChildToolQueries(deps: {
       const { agentId } = deps.linkage.settledLinkageFor(parentToolUseId).linkage
       return { agentId: agentId ?? parentToolUseId, openTool }
     },
+    // The provider names the asker when it can; otherwise the gated call's owner is the asker.
     promptProducer: (prompt) => {
-      const ownerRef = deps.toolOrigins.childOwnerRef(prompt.toolUseId)
-      const owner = ownerRef === null ? null : deps.linkage.settledLinkageFor(ownerRef).linkage
-      if (prompt.agentId === undefined) {
-        return owner ?? {}
+      if (prompt.agentId !== undefined) {
+        return deps.linkage.linkageForAgent(prompt.agentId)
       }
-      // The provider names the asker; the gated call's linkage stands only when it names the same.
-      return owner?.agentId === prompt.agentId
-        ? owner
-        : deps.linkage.linkageForAgent(prompt.agentId)
+      const ownerRef = deps.toolOrigins.childOwnerRef(prompt.toolUseId)
+      return ownerRef === null ? {} : deps.linkage.settledLinkageFor(ownerRef).linkage
     }
   }
 }

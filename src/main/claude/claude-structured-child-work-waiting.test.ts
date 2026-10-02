@@ -1,30 +1,12 @@
 // A Claude subagent blocked on a permission request, replayed from a capture of the real CLI
-// through the real adapter into the host's child records. Every status publish also lands on a
-// second host fed the same evidence with no subagent ever waiting, as the producer was before: the
-// parent row must not tell the two apart.
+// through the real adapter into the host's child records. The parent row, with production's write
+// timing, is pinned in `claude-subagent-request-parent-row.test.ts`.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { isDeepStrictEqual } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalProducerLinkage,
-  type AgentJournalRenderItem,
-  type AgentJournalResolution
-} from '../../shared/agent-session-journal-types'
-import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
-import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
-import { projectStructuredAgentSessionStatusSummary } from '../../shared/structured-agent-session-projection'
-import type { AgentHookServer } from '../agent-hooks/server'
-import {
-  hostWithParent,
-  parent,
-  producer,
-  system,
-  toolUse
-} from './claude-child-work-producer-harness.test-fixture'
+import type { AgentJournalProducerLinkage } from '../../shared/agent-session-journal-types'
+import { producer, system, toolUse } from './claude-child-work-producer-harness.test-fixture'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 import { PROVIDER_SESSION_ID, type FakeConnection } from './claude-structured-session-test-support'
 
@@ -73,104 +55,15 @@ function requestFromWire(
   )
 }
 
-type ParentRow = Pick<
-  AgentStatusIpcPayload,
-  'state' | 'workingMode' | 'mainAgent' | 'stateStartedAt'
->
-
-function parentRowOf(host: AgentHookServer): ParentRow | undefined {
-  const row = host.getStatusSnapshot()[0]
-  return (
-    row && {
-      state: row.state,
-      workingMode: row.workingMode,
-      mainAgent: row.mainAgent,
-      stateStartedAt: row.stateStartedAt
-    }
-  )
-}
-
-/** The same evidence from a producer that never reads a subagent waiting. */
-function withoutWaits(evidence: AgentChildWorkEvidence[]): AgentChildWorkEvidence[] {
-  return evidence.map((edge) =>
-    edge.type === 'live' && edge.child.state === 'waiting'
-      ? { ...edge, child: { ...edge.child, state: 'working' } }
-      : edge
-  )
-}
-
-/** A session past startup, so no startup frame drains child work for the step under test. Its
- *  status is published as the feed publishes it: after every child-work delivery, and wherever a
- *  journal publication would land. */
+/** A session past startup, so no startup frame drains child work for the step under test. */
 async function startedProducer() {
-  const host = hostWithParent()
-  const unwaitedHost = hostWithParent()
-  const publishes: { row?: ParentRow; unwaited?: ParentRow; childWaiting: boolean }[] = []
-  const journal: { items: () => AgentJournalRenderItem[]; now: () => number } = {
-    items: () => [],
-    now: () => 0
-  }
-  const publish = (): void => {
-    const summary = projectStructuredAgentSessionStatusSummary(journal.items())
-    if (summary.status === null) {
-      return
-    }
-    for (const target of [host, unwaitedHost]) {
-      target.ingestStructuredStatus(
-        {
-          ...summary,
-          status: summary.status,
-          sessionId: parent.sessionId,
-          workspaceId: parent.workspaceId,
-          agent: 'claude',
-          hostExecutionOwned: true,
-          updatedAt: journal.now()
-        },
-        parent
-      )
-    }
-    publishes.push({
-      row: parentRowOf(host),
-      unwaited: parentRowOf(unwaitedHost),
-      childWaiting: host.getStructuredChildWork(parent).some((child) => child.state === 'waiting')
-    })
-  }
-  const harness = await producer(host, (evidence) => {
-    unwaitedHost.ingestStructuredChildWork(parent, withoutWaits(evidence), 'claude')
-    publish()
-  })
-  journal.items = harness.journalItems
-  journal.now = harness.now
+  const harness = await producer()
   await harness.adapter.awaitStarted('session-1')
   await new Promise((resolve) => setTimeout(resolve, 0))
-  /** Publishes where the two hosts' parent rows differed. */
-  const divergences = () =>
-    publishes.filter((entry) => !isDeepStrictEqual(entry.row, entry.unwaited))
-  return { ...harness, host, publish, publishes, divergences }
+  return harness
 }
 
 type Harness = Awaited<ReturnType<typeof startedProducer>>
-
-/** What `commit` writes: the host's own record of the card, then the status publish its journal
- *  commit delivers before the adapter resumes. */
-function hostRecordsCard(
-  harness: Harness,
-  resolution: Pick<AgentJournalResolution, 'state' | 'selectedOptionId'>
-): void {
-  const card = harness
-    .journalItems()
-    .find((item) => item.body.kind === 'approval' && item.body.resolution.state === 'pending')
-  const identity = card && parseAgentJournalItemKey(card.itemId)
-  if (card?.body.kind !== 'approval' || !identity) {
-    throw new Error('no pending card to record')
-  }
-  harness.journal.appendItem(
-    identity,
-    { ...card.body, resolution: { ...resolution, resolvedBy: 'client-1', resolvedAt: 1 } },
-    { turnScope: card.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE }
-  )
-  harness.publish()
-}
 
 /** Replays a capture up to its permission request and raises it, as the SDK would. */
 async function askedAt(name: string, options: { withoutAgentId?: boolean } = {}) {
@@ -181,7 +74,6 @@ async function askedAt(name: string, options: { withoutAgentId?: boolean } = {})
     harness.send({ ...frame, session_id: PROVIDER_SESSION_ID })
   }
   requestFromWire(harness.claude.connections[0]!, events[request]!.frame, options)
-  harness.publish()
   return harness
 }
 
@@ -229,8 +121,7 @@ async function replay(name: string, options: { withoutAgentId?: boolean } = {}) 
         kind: 'approval',
         response: { kind: 'option', optionId },
         fence: 7,
-        commit: async () =>
-          hostRecordsCard(harness, { state: 'resolved', selectedOptionId: optionId })
+        commit: async () => undefined
       })
       label = behavior
     } else if (from === 'orca') {
@@ -239,7 +130,6 @@ async function replay(name: string, options: { withoutAgentId?: boolean } = {}) 
     } else {
       send({ ...frame, session_id: PROVIDER_SESSION_ID })
     }
-    harness.publish()
     const record = subagent()
     timeline.push(`${label} -> ${record ? `${record.membership} ${record.state}` : 'none'}`)
   }
@@ -278,36 +168,25 @@ describe('a Claude subagent waiting on a permission request', () => {
     })
   })
 
-  it('reads the parent row as before while its subagent asks: blocked, dated by the request', async () => {
+  it('names the asking subagent on its prompt row and reads it waiting', async () => {
     const harness = await askedAt('fg-allow')
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     // The prompt row names the subagent that raised it, as its other rows do.
     expect(approval?.agentId).toBe(subagentTaskId('fg-allow'))
     expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
-    // One needs-input state whoever asked, its clock the request's own.
-    expect(harness.publishes.at(-1)?.row).toMatchObject({
-      state: 'blocked',
-      stateStartedAt: approval?.observedAt,
-      mainAgent: { state: 'blocked', stateStartedAt: approval?.observedAt }
-    })
-    expect(harness.divergences()).toEqual([])
   })
 
   it('names the subagent on its prompt row through the tool call when the CLI does not', async () => {
     const harness = await askedAt('fg-allow', { withoutAgentId: true })
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     expect(approval?.agentId).toBe(subagentTaskId('fg-allow'))
-    expect(harness.publishes.at(-1)?.row?.state).toBe('blocked')
+    expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
   })
 
-  it("keeps the parent row blocked when the session's own agent asks", async () => {
+  it("files the session's own request under no subagent", async () => {
     const harness = await askedAt('main-allow')
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     expect(approval?.agentId).toBeUndefined()
-    expect(harness.publishes.at(-1)?.row).toMatchObject({
-      state: 'blocked',
-      mainAgent: { state: 'blocked' }
-    })
   })
 
   it('goes back to working when the request is denied', async () => {
@@ -332,11 +211,10 @@ describe('a Claude subagent waiting on a permission request', () => {
       itemId: boundCard(harness, 'fg-allow'),
       fence: 7,
       answer,
-      commit: async () => hostRecordsCard(harness, { state: 'cancelled', selectedOptionId: null })
+      commit: async () => undefined
     })
     // Without an answer Claude still holds the request; the card the user closed holds no one.
     expect(harness.byDescription('Touch probe file')?.state).toBe('working')
-    expect(harness.divergences()).toEqual([])
   })
 
   it('waits again when the host fails to record the answer', async () => {
@@ -353,7 +231,6 @@ describe('a Claude subagent waiting on a permission request', () => {
     })
     await expect(answered).rejects.toThrow('journal write failed')
     expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
-    expect(harness.divergences()).toEqual([])
   })
 
   it('stops waiting when an interrupt cancels the request, then settles cancelled', async () => {
@@ -437,28 +314,9 @@ describe('a Claude subagent waiting on a permission request', () => {
   })
 })
 
-describe("the parent row while a subagent's request is open", () => {
-  it.each(['fg-allow', 'fg-deny', 'fg-interrupt', 'bg-allow'])(
-    'reads at every status publish of %s what it read before subagents waited',
-    async (name) => {
-      const { publishes, divergences } = await replay(name)
-      expect(publishes.some((entry) => entry.childWaiting)).toBe(true)
-      expect(divergences()).toEqual([])
-    }
-  )
-
-  it('keeps an answered request in the rows of the subagent that asked', async () => {
-    const { journalItems } = await replay('fg-allow')
-    expect(journalItems().find((item) => item.body.kind === 'approval')).toMatchObject({
-      agentId: subagentTaskId('fg-allow'),
-      body: { resolution: { state: 'resolved', selectedOptionId: 'allow' } }
-    })
-  })
-})
-
 describe("a nested subagent's prompt row", () => {
   /** Root spawns agent-a, which spawns agent-n; agent-n's own Bash call is read when `toolCall`. */
-  async function nested(toolCall: 'before' | 'after') {
+  async function nested(toolCall: 'before' | 'after', asker = 'agent-n') {
     const harness = await startedProducer()
     const spawn = (id: string, taskId: string, parentRef: string | null) => [
       toolUse(id, 'Agent', { description: taskId, prompt: 'go' }, parentRef),
@@ -481,7 +339,7 @@ describe("a nested subagent's prompt row", () => {
     }
     invokeCanUseTool(harness.claude.connections[0]!, 'Bash', 'req-n', 'toolu_bash_n', {
       input: { command: 'touch n' },
-      agentID: 'agent-n'
+      agentID: asker
     })
     harness.send(toolUse('toolu_read_n', 'Read', { file_path: 'n' }, 'toolu_n'))
     return harness
@@ -508,4 +366,14 @@ describe("a nested subagent's prompt row", () => {
       expect(approval).toMatchObject({ agentId: 'agent-n', parentAgentId: 'agent-a' })
     }
   )
+
+  it("files the request under the agent the provider names when the gated call is another's", async () => {
+    const harness = await nested('before', 'agent-a')
+    const items = harness.journalItems()
+    const approval = items.find((item) => item.body.kind === 'approval')
+    const askerRow = items.find(
+      (item) => item.body.kind === 'tool-call' && item.agentId === 'agent-a'
+    )
+    expect(linkageOf(approval)).toEqual(linkageOf(askerRow))
+  })
 })

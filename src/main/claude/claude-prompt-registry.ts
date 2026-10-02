@@ -66,15 +66,6 @@ function questionId(question: Record<string, unknown>, index: number): string {
   )
 }
 
-/** The subagent that raised a request: the one the provider names, or, from a CLI that names none,
- *  the child that owns the tool call it gates. Null when the session's own agent asked. */
-export function claudePromptAskingChild(
-  prompt: Pick<ClaudePendingPrompt, 'agentId' | 'toolUseId'>,
-  ownerOf: ((toolUseId: string) => string | null) | undefined
-): string | null {
-  return prompt.agentId ?? ownerOf?.(prompt.toolUseId) ?? null
-}
-
 /** Session-local callback ownership; none of this state is reconstructed from the transcript. */
 export class ClaudePromptRegistry {
   private readonly prompts = new Map<string, ClaudePendingPrompt>()
@@ -114,13 +105,10 @@ export class ClaudePromptRegistry {
     return prompt
   }
 
-  /** Every request the provider is still blocked on with no answer underway. */
-  *unclaimed(): IterableIterator<ClaudePendingPrompt> {
-    for (const prompt of this.prompts.values()) {
-      if (!this.claims.has(prompt)) {
-        yield prompt
-      }
-    }
+  /** An answer to the request is underway: it is about to close. */
+  answering(promptKey: string): boolean {
+    const prompt = this.prompts.get(promptKey)
+    return prompt !== undefined && this.claims.has(prompt)
   }
 
   /** True only if the prompt was still pending; lets abort and answer settle once. */

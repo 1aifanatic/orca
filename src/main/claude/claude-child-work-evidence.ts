@@ -10,8 +10,7 @@ import type {
   AgentChildWorkLiveObservation
 } from '../../shared/agent-status-child-work-evidence'
 import { taskText, taskUsageTotalTokens } from './claude-background-task-frames'
-import { claudePromptAskingChild } from './claude-prompt-registry'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 import { deriveToolInputPreview } from '../../shared/agent-hook-listener/tool-input-preview'
 import {
   claudeToolResults,
@@ -111,22 +110,29 @@ export function claudeChildOperation(
   ]
 }
 
-/** The children blocked on a request the user can still answer: its card open, no answer underway.
- *  A card the host already closed frees its child first, so a waiting child always sits beside a
- *  pending prompt row and its parent reads that prompt, never the child's wait. */
+/** The subagents whose card the journal holds pending with no answer underway: a card is the one
+ *  record of an open request, so a waiting child always sits beside a pending card and its parent
+ *  reads that card, never the child's wait. */
 function claudeWaitingChildIds(
   session: Pick<ClaudeSession, 'prompts' | 'translator'>
 ): Set<string> {
   const waiting = new Set<string>()
-  for (const prompt of session.prompts.unclaimed()) {
-    const childId = session.translator?.journalPrompts.holdsOpen(prompt.promptKey)
-      ? claudePromptAskingChild(prompt, session.translator.childToolOwner)
-      : null
-    if (childId !== null) {
-      waiting.add(childId)
+  for (const card of session.translator?.journalPrompts.openCards() ?? []) {
+    if (!session.prompts.answering(card.promptKey)) {
+      waiting.add(card.asker)
     }
   }
   return waiting
+}
+
+/** Settles once the card a prompt event raised is written, for a sink that writes it later. */
+export function claudePromptCardWritten(
+  session: Pick<ClaudeSession, 'translator'> | null | undefined,
+  event: ClaudeStructuredSessionEvent
+): Promise<void> | undefined {
+  return event.type === 'prompt'
+    ? session?.translator?.journalPrompts.whenWritten(event.prompt.promptKey)
+    : undefined
 }
 
 /** Everything one frame (or a close) said about the session's child work, owners named. */
@@ -138,7 +144,7 @@ export function drainClaudeChildWork(
   if (!session) {
     return []
   }
-  // Re-derived from the open requests on every drain, so no wait outlives its request.
+  // Re-derived from the open cards on every drain, so no wait outlives its card.
   session.childWork.observeWaiting(claudeWaitingChildIds(session))
   return [
     ...withClaudeChildWorkOwners(
