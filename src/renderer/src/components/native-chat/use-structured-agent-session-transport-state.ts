@@ -39,10 +39,6 @@ export function useStructuredAgentSessionTransportState(
     },
     turnId
   )
-  const backgroundTasks = structuredSessionBackgroundTasksView(
-    enabled ? state.backgroundTasks : null,
-    turnId
-  )
   return {
     readOnly,
     journalItems,
@@ -56,8 +52,9 @@ export function useStructuredAgentSessionTransportState(
     // null = no drafts or no claim; the projection treats both as an empty list.
     queuedMessages: (enabled ? state.queuedMessages : null) ?? null,
     queuePause: (enabled ? state.queuePause : null) ?? null,
-    backgroundTasks: readOnly
-      ? { ...backgroundTasks, supportsStop: false, supportsStopAll: false }
-      : backgroundTasks
+    backgroundTasks: structuredSessionBackgroundTasksView(
+      enabled ? state.backgroundTasks : null,
+      turnId
+    )
   }
 }

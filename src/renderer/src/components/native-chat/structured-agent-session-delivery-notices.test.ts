@@ -56,6 +56,27 @@ function texts(
 }
 
 describe('the notice on each message that did not go through', () => {
+  it('in a read-only chat says only that the message was not sent, with no Retry that cannot land', () => {
+    const outbox = [
+      entry('refused', {
+        state: 'rejected',
+        lastFailure: { kind: 'rejected', reason: 'Chats were saved by a newer Orca.' }
+      })
+    ]
+    const notices = structuredAgentSessionDeliveryNotices(
+      outbox,
+      'Claude',
+      () => {},
+      [],
+      [],
+      new Set(['refused']),
+      true
+    )
+    expect(notices.get(agentJournalSubmissionKey('refused'))).toEqual({
+      text: 'Your message was not sent.'
+    })
+  })
+
   it('gives two failed messages each their own reason and their own Retry', () => {
     const retry = vi.fn()
     const notices = structuredAgentSessionDeliveryNotices(

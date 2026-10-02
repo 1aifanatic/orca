@@ -169,7 +169,8 @@ export function NativeChatQuestionCard({
               <button
                 key={i}
                 type="button"
-                disabled={locked}
+                // Moving between questions sends nothing, so a read-only card still shows each one.
+                disabled={isSubmitting}
                 onClick={() => setIndex(i)}
                 className={cn(
                   'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium disabled:pointer-events-none',

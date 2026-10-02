@@ -19,9 +19,10 @@
 // and nothing is deleted (agent-session-journal-body-admission.ts); the one exception is a turn's
 // context usage, which is dropped (journal-row-unusable-annotations.ts). Any other failure is
 // damage. A new value of an open string (turn, resolution, tool or goal `state`, a block `type`)
-// is no newer build's: older builds read it as-is, a rewind keeps only the states it knows
-// (structured-rewind-journal-body.ts), and history pages carry no row `v`, so older clients see
-// it too. Such a value must be safe for every older build.
+// is no newer build's: older builds read it as-is, except that their rewind replaces an unknown
+// turn, tool or resolution state with a placeholder row and turns an unknown block into a text
+// block of its raw JSON (structured-rewind-journal-body.ts); a goal state is kept. History pages
+// carry no row `v`, so older clients see it too. Such a value must be safe for every older build.
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'

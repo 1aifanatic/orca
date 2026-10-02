@@ -247,10 +247,9 @@ function NativeChatSessionOptionPickersInner({
   if (!surface || !model) {
     return null
   }
-  const request = disabled ? null : pickerRequest
-  const requestedModelSequence = request?.id === model.id ? request.sequence : null
-  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === request?.id)
-    ? (request?.sequence ?? null)
+  const requestedModelSequence = pickerRequest?.id === model.id ? pickerRequest.sequence : null
+  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === pickerRequest?.id)
+    ? (pickerRequest?.sequence ?? null)
     : null
 
   const setOption = (descriptor: SessionOptionDescriptor, value: SessionOptionValue): void => {
@@ -272,7 +271,8 @@ function NativeChatSessionOptionPickersInner({
     <div className="flex min-w-0 items-center gap-0.5">
       <DropdownMenu
         key={`model:${requestedModelSequence ?? 'idle'}`}
-        defaultOpen={requestedModelSequence !== null}
+        // Keyed by the request alone: a lock lifting must not remount, and so reopen, an old one.
+        defaultOpen={!disabled && requestedModelSequence !== null}
       >
         <PickerTrigger
           label={nativeChatModelPillLabel(model)}
@@ -296,7 +296,7 @@ function NativeChatSessionOptionPickersInner({
       {options.length > 0 ? (
         <DropdownMenu
           key={`options:${requestedOptionsSequence ?? 'idle'}`}
-          defaultOpen={requestedOptionsSequence !== null}
+          defaultOpen={!disabled && requestedOptionsSequence !== null}
         >
           <PickerTrigger
             label={nativeChatOptionsPillLabel(options)}

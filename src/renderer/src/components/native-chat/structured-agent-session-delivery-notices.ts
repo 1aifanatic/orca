@@ -140,7 +140,9 @@ export function structuredAgentSessionDeliveryNotices(
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
-  failedHere: ReadonlySet<string>
+  failedHere: ReadonlySet<string>,
+  /** The host refuses every write: the composer already says why, and no Retry can land. */
+  readOnly = false
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -158,14 +160,17 @@ export function structuredAgentSessionDeliveryNotices(
       entry.clientMessageId === held
     ) {
       // Its own Retry is the step, so the words leave out sending again.
-      const retryControl = stalledFrom === -1 || index <= stalledFrom
-      const text = deliveryNoticeText(
-        entry,
-        { agentName, retryControl },
-        rejected.get(entry.clientMessageId),
-        startFailures,
-        failedHere
-      )
+      const retryControl = !readOnly && (stalledFrom === -1 || index <= stalledFrom)
+      const text =
+        readOnly && entry.lastFailure
+          ? agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
+          : deliveryNoticeText(
+              entry,
+              { agentName, retryControl },
+              rejected.get(entry.clientMessageId),
+              startFailures,
+              failedHere
+            )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }

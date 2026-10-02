@@ -38,7 +38,6 @@ function openTurn(readOnly?: AgentSessionReadOnlyReason): StructuredAgentSession
         resolvedAt: null
       }
     ],
-    backgroundTasks: { state: 'monitoring', tasks: [], supportsTaskStop: true },
     ...(readOnly ? { readOnly } : {})
   }
 }
@@ -52,14 +51,12 @@ it('a read-only chat has the words for why, no turn and no work, as its host pro
   expect(readOnly).toMatchObject({
     readOnly: 'Saved by a newer Orca. Update Orca to continue this chat.',
     turnId: null,
-    isWorking: false,
-    backgroundTasks: { supportsStop: false, supportsStopAll: false }
+    isWorking: false
   })
   expect(transport(openTurn())).toMatchObject({
     readOnly: undefined,
     turnId: 'turn-1',
-    isWorking: true,
-    backgroundTasks: { supportsStop: true }
+    isWorking: true
   })
 })
 
