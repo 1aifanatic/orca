@@ -71,7 +71,8 @@ export type JournalLifecycleBatchInput = {
   fence: number
   recovered?: true
   /** Rejects the sends still queued with this first, in the same append: a failed start's row
-   *  follows the messages it failed, and no reader meets one without the other. */
+   *  follows the messages it failed, and no reader meets one without the other. With none still
+   *  queued, the batch is not written either. */
   rejectsQueued?: AgentJournalDispatchRejection
 }
 

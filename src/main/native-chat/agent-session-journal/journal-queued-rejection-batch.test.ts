@@ -109,3 +109,21 @@ it('writes neither when the row cannot be written', async () => {
   expect(journal.cursor().sequence).toBe(before)
   expect(journal.submissions().map((entry) => entry.dispatchState)).toEqual(['pending'])
 })
+
+// A Stop that reaches the lane first takes the message back; the failed start then failed no one.
+it('writes nothing when a Stop withdrew every queued message first', async () => {
+  const journal = await openWithQueued('first')
+  const withdrawal = agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
+    surface: 'rejection'
+  })
+
+  await Promise.all([
+    journal.rejectQueuedSubmissions(0, withdrawal),
+    journal.appendLifecycleBatch(startFailureBatch())
+  ])
+
+  expect(journal.submissions()[0]?.rejection).toEqual({ kind: 'cancelled' })
+  expect(journal.snapshot().items.map((item) => item.itemId)).toEqual([
+    agentJournalSubmissionKey('first')
+  ])
+})
