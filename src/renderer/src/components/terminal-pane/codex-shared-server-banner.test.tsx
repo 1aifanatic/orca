@@ -404,4 +404,131 @@ describe('CodexSharedServerBanner', () => {
       expect(openNewTerminal).not.toHaveBeenCalled()
     })
   })
+
+  describe('returning focus when a dialog closes', () => {
+    // Why a real xterm textarea: the dialogs have no trigger, so only the hook can restore focus.
+    function mountActiveTerminal(): HTMLTextAreaElement {
+      useAppStore.setState({
+        activeWorktreeId: 'wt-1',
+        activeTabType: 'terminal',
+        activeTabIdByWorktree: { 'wt-1': TAB_ID },
+        terminalLayoutsByTabId: {
+          [TAB_ID]: { root: null, activeLeafId: LEAF_ID, expandedLeafId: null }
+        }
+      })
+      const tab = document.createElement('div')
+      tab.dataset.terminalTabId = TAB_ID
+      const leaf = document.createElement('div')
+      leaf.dataset.leafId = LEAF_ID
+      const xterm = document.createElement('textarea')
+      xterm.className = 'xterm-helper-textarea'
+      leaf.append(xterm)
+      tab.append(leaf)
+      document.body.append(tab)
+      xterm.focus()
+      return xterm
+    }
+
+    async function pressEscape(): Promise<void> {
+      await act(async () => {
+        ;(document.activeElement ?? document.body).dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+        )
+      })
+      await advance(100)
+    }
+
+    afterEach(() => {
+      document.querySelector('[data-terminal-tab-id]')?.remove()
+    })
+
+    it.each([
+      ['Fix', JOINED, 'Fix'],
+      ['old-terminal Learn more', OLD_TAB_JOINED, 'Learn more']
+    ])(
+      'returns focus to the terminal after Esc closes the %s dialog',
+      async (_l, status, label) => {
+        setState({})
+        isCodexOnSharedServer.mockResolvedValue(status)
+        const xterm = mountActiveTerminal()
+        await renderBanner()
+        await advance(1_000)
+        await act(async () => button(label).click())
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+        expect(document.activeElement).not.toBe(xterm)
+
+        await pressEscape()
+
+        expect(document.querySelector('[role="dialog"]')).toBeNull()
+        expect(document.activeElement).toBe(xterm)
+      }
+    )
+
+    it('leaves focus in the new terminal after Open new terminal', async () => {
+      setState({})
+      const xterm = mountActiveTerminal()
+      const newTerminal = document.createElement('textarea')
+      document.body.append(newTerminal)
+      useAppStore.setState({
+        unifiedTabsByWorktree: {
+          'wt-1': [
+            {
+              id: 'unified-1',
+              entityId: TAB_ID,
+              groupId: 'group-1',
+              worktreeId: 'wt-1',
+              contentType: 'terminal',
+              label: 'Terminal',
+              customLabel: null,
+              color: null,
+              sortOrder: 0,
+              createdAt: 0
+            }
+          ]
+        },
+        openNewTerminalTabInActiveWorkspace: vi.fn(() => {
+          newTerminal.focus()
+          return Promise.resolve()
+        })
+      })
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+      await act(async () => button('Learn more').click())
+      const inDialog = Array.from(
+        document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? []
+      ).find((candidate) => candidate.textContent?.trim() === 'Open new terminal')
+      await act(async () => inDialog?.click())
+      await advance(100)
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(newTerminal)
+      expect(document.activeElement).not.toBe(xterm)
+      newTerminal.remove()
+    })
+
+    it('returns focus to the pane terminal after Stop server ends its Codex', async () => {
+      setState({})
+      const xterm = mountActiveTerminal()
+      await renderBanner()
+      await advance(1_000)
+      await act(async () => button('Fix').click())
+      await act(async () => button('Turn off').click())
+      await act(async () => button('Stop server').click())
+      isCodexOnSharedServer.mockResolvedValue(NOT_JOINED)
+      const confirm = Array.from(document.querySelectorAll('button')).filter(
+        (candidate) => candidate.textContent?.trim() === 'Stop server'
+      )
+      await act(async () => confirm.at(-1)?.click())
+      await advance(20_000)
+      expect(stopCodexSharedServer).toHaveBeenCalledWith(ptyId)
+      expect(document.body.textContent).toContain('Stopped')
+
+      await pressEscape()
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(paneElement.textContent).toBe('')
+      expect(document.activeElement).toBe(xterm)
+    })
+  })
 })

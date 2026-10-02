@@ -10,6 +10,7 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { createFloatingWorkspaceTerminalTab } from '@/lib/floating-workspace-tab-creation'
 import { revealFloatingWorkspacePanel } from '@/lib/floating-workspace-panel-reveal'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
+import { useModalReturnFocus } from '@/hooks/useModalReturnFocus'
 import { CodexOldTerminalDialog } from './CodexOldTerminalDialog'
 import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
 import { retireCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
@@ -144,6 +145,12 @@ export function CodexSharedServerBanner({
   )
   const [openDialog, setOpenDialog] = useState<'fix' | 'oldTerminal' | null>(null)
   const fixOpen = openDialog === 'fix'
+  // Why: neither dialog has a Radix trigger, so closing it would leave focus on document.body.
+  const { captureReturnFocus, skipReturnFocus } = useModalReturnFocus(openDialog !== null)
+  const showDialog = (dialog: 'fix' | 'oldTerminal'): void => {
+    captureReturnFocus()
+    setOpenDialog(dialog)
+  }
   // Why fixOpen keeps it: stopping the server ends this pane's Codex, which must not close the dialog.
   if (!status && !fixOpen) {
     return null
@@ -157,7 +164,7 @@ export function CodexSharedServerBanner({
                 'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
                 'This terminal was opened before Orca started giving each Codex its own server.'
               )}{' '}
-              <LearnMoreLink onClick={() => setOpenDialog('oldTerminal')} />
+              <LearnMoreLink onClick={() => showDialog('oldTerminal')} />
             </>
           ),
           primaryAction: (
@@ -178,11 +185,11 @@ export function CodexSharedServerBanner({
                 'terminal.codexSharedServerBanner.body',
                 'Sessions may end unexpectedly, and agent status may be wrong.'
               )}{' '}
-              <LearnMoreLink onClick={() => setOpenDialog('fix')} />
+              <LearnMoreLink onClick={() => showDialog('fix')} />
             </>
           ),
           primaryAction: (
-            <Button type="button" variant="outline" size="xs" onClick={() => setOpenDialog('fix')}>
+            <Button type="button" variant="outline" size="xs" onClick={() => showDialog('fix')}>
               {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
             </Button>
           )
@@ -209,6 +216,8 @@ export function CodexSharedServerBanner({
         open={openDialog === 'oldTerminal'}
         onOpenChange={closeDialog}
         onOpenNewTerminal={() => {
+          // Why: the new terminal takes focus; don't pull it back to this pane.
+          skipReturnFocus()
           setOpenDialog(null)
           openTerminalBesideTab(tabId)
         }}
