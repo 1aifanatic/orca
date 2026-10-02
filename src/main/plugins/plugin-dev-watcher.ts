@@ -7,6 +7,7 @@ import {
   type WatcherProcessSubscription
 } from '../ipc/parcel-watcher-process'
 import { resolveWatcherRootPaths } from '../ipc/watcher-event-root-path-rewrite'
+import { watcherDirectoryIdentity } from '../ipc/watcher-directory-identity'
 
 // Deleted roots can reject unsubscribe after the native stream has stopped.
 function releaseSubscription(subscription: WatcherProcessSubscription): void {
@@ -23,7 +24,8 @@ function addPluginRootParent(parentNames: Map<string, Set<string>>, root: string
 type PluginRootBinding = { physicalRoot: string; identity: string }
 
 function pluginRootBinding(physicalRoot: string, entry: BigIntStats): PluginRootBinding | null {
-  return entry.isDirectory() ? { physicalRoot, identity: `${entry.dev}:${entry.ino}` } : null
+  const identity = watcherDirectoryIdentity(entry)
+  return identity === null ? null : { physicalRoot, identity }
 }
 
 function readPluginRootBindingSync(physicalRoot: string): PluginRootBinding | null {

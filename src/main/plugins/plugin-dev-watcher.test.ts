@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from 'node:path'
 import { statSync } from 'node:fs'
 import type * as Fs from 'node:fs'
-import { mkdir, realpath, rename, rm, stat, symlink } from 'node:fs/promises'
+import { mkdir, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import type * as FsPromises from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -427,6 +427,105 @@ describe('PluginDevWatcher', () => {
       }
     }
   )
+
+  it('detects inode-less replacement using full-precision birth time', async () => {
+    aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-inode-less-')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+    const path = aliasedRoot.realRoot
+    const birthtimeNs = 9_007_199_254_740_992n
+    const initial = Object.assign(statSync(path, { bigint: true }), {
+      dev: 1n,
+      ino: 0n,
+      birthtimeNs
+    })
+    const replacement = Object.assign(statSync(path, { bigint: true }), {
+      dev: 1n,
+      ino: 0n,
+      birthtimeNs: birthtimeNs + 1n
+    })
+    vi.mocked(statSync).mockReturnValueOnce(initial)
+    vi.mocked(stat)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(replacement)
+      .mockResolvedValueOnce(replacement)
+    const { watcher } = startDevWatcher(undefined, undefined, [path])
+
+    expect(await watcher.checkRootBindings()).toBe(false)
+    expect(await watcher.checkRootBindings()).toBe(true)
+    expect(await watcher.checkRootBindings()).toBe(false)
+  })
+
+  it('distinguishes an inode ID from the same birth time on an inode-less replacement', async () => {
+    aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-identity-domain-')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+    const path = aliasedRoot.realRoot
+    const initial = Object.assign(statSync(path, { bigint: true }), {
+      dev: 1n,
+      ino: 77n,
+      birthtimeNs: 1n
+    })
+    const replacement = Object.assign(statSync(path, { bigint: true }), {
+      dev: 1n,
+      ino: 0n,
+      birthtimeNs: 77n
+    })
+    vi.mocked(statSync).mockReturnValueOnce(initial)
+    vi.mocked(stat).mockResolvedValue(replacement)
+    const { watcher } = startDevWatcher(undefined, undefined, [path])
+    expect(await watcher.checkRootBindings()).toBe(true)
+    expect(await watcher.checkRootBindings()).toBe(false)
+  })
+
+  it.each([0n, 77n])(
+    'keeps timestamp edits from refreshing a healthy root with inode %s',
+    async (ino) => {
+      aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-edited-binding-')
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+      const path = aliasedRoot.realRoot
+      const initial = Object.assign(statSync(path, { bigint: true }), {
+        dev: 1n,
+        ino,
+        birthtimeNs: 1n
+      })
+      const edited = Object.assign(statSync(path, { bigint: true }), {
+        dev: 1n,
+        ino,
+        birthtimeNs: ino === 0n ? 1n : 2n,
+        mtimeNs: initial.mtimeNs + 1n,
+        ctimeNs: initial.ctimeNs + 1n
+      })
+      vi.mocked(statSync).mockReturnValueOnce(initial)
+      vi.mocked(stat).mockResolvedValue(edited)
+      vi.useFakeTimers()
+      const lifecycle = new PluginServiceHousekeeping()
+      housekeeping = lifecycle
+      const checkBindings = vi.spyOn(PluginDevWatcher.prototype, 'checkRootBindings')
+      const refresh = vi.fn(() => lifecycle.sync(options))
+      const options = { enabled: true, devPaths: [path], refresh, reapIdle: vi.fn() }
+      lifecycle.sync(options)
+      await Promise.resolve()
+      for (let tick = 0; tick < 3; tick += 1) {
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(checkBindings).toHaveBeenCalledTimes(tick + 1)
+        await expect(checkBindings.mock.results[tick]?.value).resolves.toBe(false)
+      }
+      expect(refresh).not.toHaveBeenCalled()
+      expect(subscribeMock).toHaveBeenCalledOnce()
+      expect(pluginRootSubscription().unsubscribe).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(1)
+    }
+  )
+
+  it('keeps a missing root unavailable while a file occupies its path', async () => {
+    aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-file-binding-')
+    const path = join(aliasedRoot.realRoot, 'demo')
+    const { watcher } = startDevWatcher(undefined, undefined, [path])
+    await writeFile(path, '')
+    expect(await watcher.checkRootBindings()).toBe(false)
+    await rm(path)
+    await mkdir(path)
+    expect(await watcher.checkRootBindings()).toBe(true)
+  })
 
   it('detects missing and restored roots once per transition', async () => {
     aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-missing-binding-')
