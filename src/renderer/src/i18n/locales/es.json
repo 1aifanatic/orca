@@ -15120,6 +15120,7 @@
       },
       "state": {
         "loading": {
+          "label": "Cargando chat",
           "title": "Cargando conversación…",
           "subtitle": "Leyendo la transcripción del agente."
         },

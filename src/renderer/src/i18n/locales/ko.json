@@ -17601,6 +17601,7 @@
       },
       "state": {
         "loading": {
+          "label": "채팅 로드 중",
           "title": "대화 로드 중…",
           "subtitle": "agent 기록을 읽는 중입니다."
         },

@@ -4,6 +4,7 @@
 // tree to one switch.
 
 import type { NativeChatSession } from '../../../../shared/native-chat-types'
+import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
 
 /** The mutually-exclusive surfaces the chat view can show. `ready` and
  *  `working` both render the message list; `working` additionally shows the
@@ -53,4 +54,23 @@ export function selectNativeChatViewState(
   // Empty wins over a transient 'working' hook so a just-toggled, pre-session
   // pane shows a clear empty state instead of a spinner over nothing.
   return { kind: 'empty' }
+}
+
+/**
+ * Whether a structured chat's history is still unknown: not empty, just not read yet. A chat this
+ * pane started as a new conversation has nothing to read; a cancelled launch reads nothing either,
+ * so neither holds the pane.
+ */
+export function structuredChatFirstReadPending(
+  launch: {
+    launch?: { kind: 'new' | 'resume' }
+    lifecycle: StructuredAgentSessionLaunchLifecycle | null
+    transportEnabled: boolean
+  },
+  readStatus: 'idle' | 'loading' | 'ready' | 'error'
+): boolean {
+  if (launch.launch?.kind === 'new') {
+    return false
+  }
+  return launch.transportEnabled ? readStatus !== 'ready' : launch.lifecycle !== 'cancelled'
 }

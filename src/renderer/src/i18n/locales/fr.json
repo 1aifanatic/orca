@@ -17665,6 +17665,7 @@
       },
       "state": {
         "loading": {
+          "label": "Chargement du chat",
           "title": "Chargement de la conversation…",
           "subtitle": "Lecture de la transcription de l'agent."
         },

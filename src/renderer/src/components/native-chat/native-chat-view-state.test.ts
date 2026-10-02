@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { NativeChatMessage, NativeChatSession } from '../../../../shared/native-chat-types'
-import { selectNativeChatViewState } from './native-chat-view-state'
+import { selectNativeChatViewState, structuredChatFirstReadPending } from './native-chat-view-state'
 
 const message: NativeChatMessage = {
   id: 'a',
@@ -101,5 +101,29 @@ describe('selectNativeChatViewState', () => {
       kind: 'ready',
       isWorking: true
     })
+  })
+})
+
+describe('structuredChatFirstReadPending', () => {
+  const reopened = { lifecycle: null, transportEnabled: true }
+
+  it('holds a reopened chat until its first read settles', () => {
+    expect(structuredChatFirstReadPending(reopened, 'idle')).toBe(true)
+    expect(structuredChatFirstReadPending(reopened, 'loading')).toBe(true)
+    expect(structuredChatFirstReadPending(reopened, 'ready')).toBe(false)
+  })
+
+  it('holds a resume whose launch has not published, since its history is unread', () => {
+    const resume = { launch: { kind: 'resume' as const }, transportEnabled: false }
+    expect(structuredChatFirstReadPending({ ...resume, lifecycle: 'pending' }, 'ready')).toBe(true)
+    expect(structuredChatFirstReadPending({ ...resume, lifecycle: 'failed' }, 'ready')).toBe(true)
+  })
+
+  it('never holds a chat this pane started new, nor a cancelled launch', () => {
+    const fresh = { launch: { kind: 'new' as const }, lifecycle: null, transportEnabled: true }
+    expect(structuredChatFirstReadPending(fresh, 'idle')).toBe(false)
+    expect(
+      structuredChatFirstReadPending({ lifecycle: 'cancelled', transportEnabled: false }, 'ready')
+    ).toBe(false)
   })
 })

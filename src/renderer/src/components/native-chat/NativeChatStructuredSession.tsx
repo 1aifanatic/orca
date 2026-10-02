@@ -6,9 +6,10 @@ import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
+import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
-import { selectNativeChatViewState } from './native-chat-view-state'
+import { selectNativeChatViewState, structuredChatFirstReadPending } from './native-chat-view-state'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useNativeChatFontScale } from './use-native-chat-font-scale'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
@@ -84,10 +85,7 @@ export function NativeChatStructuredSession(
     sessionId: props.sessionId,
     target: props.target
   })
-  // Unknown, not empty, until the first read settles; a chat started here has nothing to read.
-  const firstReadPending =
-    provisionalLaunch.launch?.kind !== 'new' &&
-    (!provisionalLaunch.transportEnabled || controller.status !== 'ready')
+  const firstReadPending = structuredChatFirstReadPending(provisionalLaunch, controller.status)
   const session = useMemo<NativeChatLiveSession>(
     () => ({
       messages: controller.messages,
@@ -270,8 +268,9 @@ export function NativeChatStructuredSession(
       className="flex h-full min-h-0 w-full flex-col bg-background focus:outline-none"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {/* A blank pane while the first read runs: no text for a state that passes on its own. */}
-        {viewState.kind === 'loading' ? null : viewState.kind === 'error' ? (
+        {viewState.kind === 'loading' ? (
+          <NativeChatLoadingCue />
+        ) : viewState.kind === 'error' ? (
           <NativeChatEmptyState
             kind="error"
             retrying={!readFailure?.final}

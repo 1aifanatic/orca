@@ -27,6 +27,10 @@ import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 const START_A_CHAT = 'Start a chat with Codex'
 const LOADING_TEXT = /Loading conversation|Reading the agent transcript/
 
+function loadingCue(): HTMLElement | null {
+  return document.querySelector('[data-native-chat-loading-cue="true"]')
+}
+
 function sessionView(): React.JSX.Element {
   return (
     <NativeChatStructuredSession
@@ -48,19 +52,22 @@ describe('NativeChatStructuredSession before its first read settles', () => {
   })
 
   it.each(['idle', 'loading'] as const)(
-    'leaves a reopened chat blank while its read is %s, with no loading text and no empty state',
+    'shows a reopened chat only a textless loading cue while its read is %s',
     (status) => {
       mocks.messages = []
       mocks.status = status
       render(sessionView())
 
+      const cue = screen.getByRole('status', { name: 'Loading chat' })
+      expect(cue).toBe(loadingCue())
+      expect(cue.textContent).toBe('')
       expect(screen.queryAllByText(LOADING_TEXT)).toHaveLength(0)
       expect(screen.queryByText(START_A_CHAT)).toBeNull()
       expect(screen.getByTestId('structured-composer')).toBeTruthy()
     }
   )
 
-  it('shows the empty state once the read settles with nothing in it', () => {
+  it('drops the cue for the empty state once the read settles with nothing in it', () => {
     mocks.messages = []
     mocks.status = 'idle'
     const { rerender } = render(sessionView())
@@ -69,6 +76,25 @@ describe('NativeChatStructuredSession before its first read settles', () => {
     mocks.status = 'ready'
     rerender(sessionView())
     expect(screen.getByText(START_A_CHAT)).toBeTruthy()
+    expect(loadingCue()).toBeNull()
+  })
+
+  it('shows no cue over a transcript, even while a read is still loading', () => {
+    mocks.status = 'loading'
+    render(sessionView())
+
+    expect(screen.getByTestId('message-list')).toBeTruthy()
+    expect(loadingCue()).toBeNull()
+  })
+
+  it('does not hold a cancelled resume on the cue', () => {
+    mocks.messages = []
+    mocks.launchLifecycle = 'cancelled'
+    mocks.launchResumes = true
+    mocks.status = 'ready'
+    render(sessionView())
+
+    expect(loadingCue()).toBeNull()
   })
 
   it('keeps a chat this view started on its empty state through publish and the first read', () => {
@@ -85,6 +111,7 @@ describe('NativeChatStructuredSession before its first read settles', () => {
       rerender(sessionView())
       expect(screen.getByText(START_A_CHAT)).toBeTruthy()
       expect(screen.queryAllByText(LOADING_TEXT)).toHaveLength(0)
+      expect(loadingCue()).toBeNull()
     }
   })
 
@@ -97,5 +124,6 @@ describe('NativeChatStructuredSession before its first read settles', () => {
 
     expect(screen.queryByText(START_A_CHAT)).toBeNull()
     expect(screen.queryAllByText(LOADING_TEXT)).toHaveLength(0)
+    expect(loadingCue()).not.toBeNull()
   })
 })

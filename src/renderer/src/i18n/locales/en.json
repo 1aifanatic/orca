@@ -17833,6 +17833,7 @@
       },
       "state": {
         "loading": {
+          "label": "Loading chat",
           "title": "Loading conversation…",
           "subtitle": "Reading the agent transcript."
         },
