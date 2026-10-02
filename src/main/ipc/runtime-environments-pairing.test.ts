@@ -152,13 +152,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       'runtimeEnvironments:retryConnectionsNow',
       'runtimeEnvironments:getStatus',
       'runtimeEnvironments:call',
-      'runtimeEnvironments:linkSshAccess',
-      'runtimeEnvironments:unlinkSshAccess',
-      'runtimeEnvironments:createOrcadSshHost',
-      'runtimeEnvironments:resumeOrcadSshHost',
-      'runtimeEnvironments:listPendingOrcadSshProvisioning',
-      'runtimeEnvironments:deployOrcad',
-      'runtimeEnvironments:getOrcadStatus',
       'runtimeEnvironments:subscribe',
       'runtimeEnvironments:unsubscribe'
     ])
@@ -185,13 +178,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       'runtimeEnvironments:call',
       'runtimeEnvironments:subscribe',
       'runtimeEnvironments:unsubscribe',
-      'runtimeEnvironments:linkSshAccess',
-      'runtimeEnvironments:unlinkSshAccess',
-      'runtimeEnvironments:deployOrcad',
-      'runtimeEnvironments:getOrcadStatus',
-      'runtimeEnvironments:createOrcadSshHost',
-      'runtimeEnvironments:resumeOrcadSshHost',
-      'runtimeEnvironments:listPendingOrcadSshProvisioning',
       'runtimeEnvironments:retryConnectionsNow'
     ])
     expect(removeAllListenersMock).toHaveBeenCalledWith('runtimeEnvironments:subscriptionBinary')

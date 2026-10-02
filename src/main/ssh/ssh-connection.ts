@@ -109,7 +109,6 @@ import {
 import type { FileUploadSession } from '../providers/types'
 import { openSshSessionChannelWithRetry, waitForSshChannelOpen } from './ssh-channel-open'
 import { withTimeout } from '../../shared/promise-timeout-fallback'
-import { isEphemeralRuntimeSshOwner } from '../../shared/managed-orcad-ssh-owner'
 export type { SshConnectionCallbacks } from './ssh-connection-utils'
 
 type HostKeyTrustSources = {
@@ -1373,7 +1372,7 @@ export class SshConnection {
         hostKeyStoreFile: boundSshHostKeyStoreFile() ?? undefined,
         strictHostKeyChecking: hostKeyResolved?.strictHostKeyChecking ?? 'ask',
         isHostKeyAlias,
-        isEphemeralRuntimeTarget: isEphemeralRuntimeSshOwner(this.target.owner),
+        isEphemeralRuntimeTarget: this.target.owner?.type === 'on-demand-runtime',
         siteConfigSuppressed,
         // A file that EXISTS and will not open is the absence of evidence, not evidence of a new
         // host — the entry that would have said "this key changed" may be in it. An ABSENT file is

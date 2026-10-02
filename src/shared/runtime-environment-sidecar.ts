@@ -6,7 +6,6 @@ import { readNodeFileSyncWithinLimit } from './node-bounded-file-reader'
 import { RuntimeEnvironmentReconciliationRecordSchema } from './runtime-environment-reconciliation-record'
 import {
   KnownRuntimeEnvironmentSchema,
-  OrcadDeploymentLinkSchema,
   RuntimeAccessEndpointSchema,
   RuntimeSshAccessLinkSchema,
   RuntimeSshAccessOperationSchema,
@@ -36,8 +35,6 @@ const SidecarEntrySchema = z.object({
   runtimeId: z.string().min(1).optional(),
   sshAccess: SidecarSshAccessSchema.optional(),
   pendingSshAccessOperation: RuntimeSshAccessOperationSchema.optional(),
-  // The managed deployment's tunnel; its loopback endpoint is the persisted pairing itself.
-  orcadDeployment: OrcadDeploymentLinkSchema.optional(),
   // Keeps the overlaid pairing revision monotonic after the access that raised it is removed.
   pairingRevisionFloor: z.number().finite().optional(),
   reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
@@ -142,7 +139,6 @@ export function overlayRuntimeEnvironmentSidecar(
     ...(entry.pendingSshAccessOperation
       ? { pendingSshAccessOperation: entry.pendingSshAccessOperation }
       : {}),
-    ...(entry.orcadDeployment ? { orcadDeployment: entry.orcadDeployment } : {}),
     ...(entry.reconciliation ? { reconciliation: entry.reconciliation } : {})
   })
   return overlaid.success ? overlaid.data : base
@@ -170,7 +166,6 @@ export function writeRuntimeEnvironmentSidecarEntry(
     ((entry.runtimeId !== undefined && environment.runtimeId === null) ||
       entry.sshAccess !== undefined ||
       entry.pendingSshAccessOperation !== undefined ||
-      entry.orcadDeployment !== undefined ||
       entry.reconciliation !== undefined ||
       (entry.pairingRevisionFloor ?? basePairingRevision) > basePairingRevision)
   if (entry && hasState) {
