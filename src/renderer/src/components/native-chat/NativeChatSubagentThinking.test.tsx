@@ -6,7 +6,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NativeChatSubagentEntries } from './NativeChatSubagentRun'
 import { NativeChatSubagentSectionHead } from './NativeChatSubagentSectionHead'
-import { NativeChatReasoningOpenContext } from './NativeChatSubagentThinking'
+import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-context'
 
 afterEach(cleanup)
 

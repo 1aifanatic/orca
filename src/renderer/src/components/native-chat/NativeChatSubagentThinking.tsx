@@ -1,11 +1,6 @@
-import { createContext, useContext } from 'react'
+import { useContext } from 'react'
 import { translate } from '@/i18n/i18n'
-
-/** The host's live "reasoning open" gate for the transcript: the session's own agent without an
- *  id, else that subagent. A context because roster entries draw deep inside message rows. */
-export const NativeChatReasoningOpenContext = createContext<(agentId?: string) => boolean>(
-  () => false
-)
+import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-context'
 
 /** "Thinking" beside a subagent's name while the host reports its reasoning open, in the words and
  *  tone the turn's own activity line uses for the same fact. */

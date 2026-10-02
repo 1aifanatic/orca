@@ -13,7 +13,7 @@ import { NativeChatAwaitingInputRow } from './NativeChatAwaitingInputRow'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import type { NativeChatTurnActivity } from '../../../../shared/native-chat-turn-activity'
 import { NativeChatTurnActivityLine } from './NativeChatTurnActivityLine'
-import { NativeChatReasoningOpenContext } from './NativeChatSubagentThinking'
+import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-context'
 import {
   NativeChatDisclosureContext,
   useNativeChatDisclosures

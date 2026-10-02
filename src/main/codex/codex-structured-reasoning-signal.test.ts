@@ -53,11 +53,13 @@ describe("Codex's open reasoning, as the host reports it live", () => {
   it('closes when the turn completes or the provider exits', () => {
     const settled = turn()
     settled.item('item/started', 'reasoning', 'r-1')
+    expect(settled.latest()?.reasoning?.session).toBe(true)
     settled.translator.handle(notification('turn/completed', { turn: { id: TURN_ID } }))
     expect(settled.latest()).toBeNull()
 
     const exited = turn()
     exited.item('item/started', 'reasoning', 'r-1')
+    expect(exited.latest()?.reasoning?.session).toBe(true)
     exited.translator.handle({ type: 'ended', sessionId: SESSION_ID, reason: 'exit' })
     expect(exited.latest()).toBeNull()
   })
@@ -65,6 +67,8 @@ describe("Codex's open reasoning, as the host reports it live", () => {
   it('closes when the bounded live set evicts the item', () => {
     const { item, latest } = turn()
     item('item/started', 'reasoning', 'r-1')
+    item('item/started', 'agentMessage', 'm-first')
+    expect(latest()?.reasoning?.session).toBe(true)
     for (let index = 0; index < MAX_CODEX_ACTIVE_ITEMS; index += 1) {
       item('item/started', 'agentMessage', `m-${index}`)
     }
