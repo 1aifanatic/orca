@@ -212,19 +212,25 @@ export class CursorAcpJournal {
         throw new Error('Cursor ACP updated an unknown tool')
       }
       const state =
-        tool.status === 'completed' ? 'completed' : tool.status === 'failed' ? 'failed' : 'running'
+        tool.status === undefined
+          ? (previous?.body.state ?? 'running')
+          : tool.status === 'completed'
+            ? 'completed'
+            : tool.status === 'failed'
+              ? 'failed'
+              : 'running'
       const body: AgentJournalToolCallItem = {
         kind: 'tool-call',
         name: tool.title ?? previous?.body.name ?? 'Cursor tool',
         input:
-          tool.rawInput === undefined
+          tool.rawInput == null
             ? (previous?.body.input ?? {})
             : boundToolInput(tool.rawInput, DEFAULT_JOURNAL_PAYLOAD_LIMITS),
         callId: tool.toolCallId,
         state,
         ...(previous?.body.output ? { output: previous.body.output } : {})
       }
-      if (tool.rawOutput !== undefined || tool.content !== undefined) {
+      if (tool.rawOutput != null || tool.content != null) {
         body.output = boundPayload(
           JSON.stringify(tool.rawOutput ?? tool.content),
           DEFAULT_JOURNAL_PAYLOAD_LIMITS

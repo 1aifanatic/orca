@@ -1,168 +1,48 @@
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { ClaudePromptRegistry } from '../claude/claude-prompt-registry'
-import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import type {
-  AgentJournalApprovalItem,
-  AgentJournalQuestionItem,
-  AgentJournalItemIdentity
-} from '../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { cancelledJournalPromptBody } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
 import {
-  AgentSessionPromptAnswerRejectedError,
-  AgentSessionPromptUnavailableError
-} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../shared/agent-session-journal-item-key'
+import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { AgentSessionPromptUnavailableError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CursorAcpConnection, CursorAcpHandlers } from './cursor-acp-connection'
-import type { AgentSessionPromptResponse } from '../../shared/agent-session-question-answer'
-
-const id = z.string().min(1).max(512)
-const text = z.string().max(64 * 1024)
-const label = z.string().max(512)
-const questionsSchema = z.object({
-  toolCallId: id,
-  title: text.optional(),
-  questions: z
-    .array(
-      z.object({
-        id,
-        prompt: text,
-        options: z.array(z.object({ id, label })).min(1).max(64),
-        allowMultiple: z.boolean().optional()
-      })
-    )
-    .min(1)
-    .max(4)
-})
-const permissionSchema = z.object({
-  sessionId: id,
-  toolCall: z.object({ toolCallId: id, title: text.optional() }).passthrough(),
-  options: z
-    .array(
-      z.object({
-        optionId: id,
-        name: label,
-        kind: z.enum(['allow_once', 'allow_always', 'reject_once', 'reject_always'])
-      })
-    )
-    .min(1)
-    .max(16)
-})
-const planSchema = z.object({
-  toolCallId: id,
-  name: text.optional(),
-  overview: text.optional(),
-  plan: text
-})
-const pending = {
-  state: 'pending',
-  selectedOptionId: null,
-  resolvedBy: null,
-  resolvedAt: null
-} as const
-
-type Presentation = {
-  body: AgentJournalApprovalItem | AgentJournalQuestionItem
-  reply: (response: AgentSessionPromptResponse) => unknown
-}
-
-function presentRequest(method: string, params: unknown, sessionId: string): Presentation {
-  if (method === 'session/request_permission') {
-    const request = permissionSchema.parse(params)
-    if (request.sessionId !== sessionId) {
-      throw new Error('Permission request belongs to another Cursor session')
-    }
-    return {
-      body: {
-        kind: 'approval',
-        title: request.toolCall.title ?? 'Cursor tool permission',
-        detail: null,
-        options: request.options.map((option) => ({ id: option.optionId, label: option.name })),
-        resolution: { ...pending }
-      },
-      reply: (response) => {
-        if (
-          response.kind !== 'option' ||
-          !request.options.some((option) => option.optionId === response.optionId)
-        ) {
-          throw new AgentSessionPromptAnswerRejectedError(
-            'Cursor permission requires an offered option'
-          )
-        }
-        return { outcome: { outcome: 'selected', optionId: response.optionId } }
-      }
-    }
-  }
-  if (method === 'cursor/create_plan') {
-    const request = planSchema.parse(params)
-    return {
-      body: {
-        kind: 'approval',
-        title: request.name ?? 'Review Cursor plan',
-        detail: request.overview ?? null,
-        subject: { kind: 'plan', text: request.plan },
-        options: [
-          { id: 'accept', label: 'Approve plan' },
-          { id: 'reject', label: 'Keep planning' }
-        ],
-        resolution: { ...pending }
-      },
-      reply: (response) => {
-        if (response.kind !== 'option' || !['accept', 'reject'].includes(response.optionId)) {
-          throw new AgentSessionPromptAnswerRejectedError(
-            'Cursor plan requires approval or rejection'
-          )
-        }
-        return { outcome: { outcome: response.optionId === 'accept' ? 'accepted' : 'rejected' } }
-      }
-    }
-  }
-  const request = questionsSchema.parse(params)
-  return {
-    body: {
-      kind: 'question',
-      question: request.title ?? 'Cursor needs your input',
-      options: [],
-      questions: request.questions.map((question) => ({
-        id: question.id,
-        question: question.prompt,
-        options: question.options.map((option) => ({ id: option.id, label: option.label })),
-        multiSelect: question.allowMultiple ?? false
-      })),
-      resolution: { ...pending }
-    },
-    reply: (response) => {
-      if (response.kind !== 'answers' || response.answers.length !== request.questions.length) {
-        throw new AgentSessionPromptAnswerRejectedError(
-          'Cursor requires an answer for every question'
-        )
-      }
-      const answers = request.questions.map((question) => {
-        const matches = response.answers.filter((answer) => answer.questionId === question.id)
-        const answer = matches.length === 1 ? matches[0] : undefined
-        if (
-          !answer ||
-          answer.other ||
-          answer.optionIds.length === 0 ||
-          (!question.allowMultiple && answer.optionIds.length !== 1) ||
-          new Set(answer.optionIds).size !== answer.optionIds.length ||
-          answer.optionIds.some(
-            (optionId) => !question.options.some((option) => option.id === optionId)
-          )
-        ) {
-          throw new AgentSessionPromptAnswerRejectedError(
-            'Cursor question answer does not match its offered choices'
-          )
-        }
-        return { questionId: question.id, selectedOptionIds: answer.optionIds }
-      })
-      return { outcome: { outcome: 'answered', answers } }
-    }
-  }
-}
+import { presentRequest, type Presentation } from './cursor-acp-prompt-presentation'
 
 export class CursorAcpPrompts {
   private readonly claims = new ClaudePromptRegistry()
   private readonly presentations = new Map<string, Presentation>()
+  private cancellationSignal: AbortSignal | null = null
+  private readonly cancelPermissions = (): void => {
+    let failed = false
+    for (const [itemId, presentation] of this.presentations) {
+      if (!presentation.cancel) {
+        continue
+      }
+      const found = this.claims.find(itemId)
+      if (!found || !this.claims.cancel(found.prompt.requestId)) {
+        continue
+      }
+      this.presentations.delete(itemId)
+      try {
+        const identity = parseAgentJournalItemKey(itemId)
+        const body = cancelledJournalPromptBody(presentation.body)
+        if (identity && body) {
+          this.append(identity, body)
+        }
+      } catch {
+        failed = true
+      } finally {
+        presentation.cancel()
+      }
+    }
+    if (failed) {
+      void this.connection().close()
+    }
+  }
 
   constructor(
     private readonly connection: () => CursorAcpConnection,
@@ -218,6 +98,18 @@ export class CursorAcpPrompts {
       )
       return false
     }
+    if (request.method === 'session/request_permission') {
+      const signal = this.connection().permissionCancellation.signal
+      if (signal.aborted) {
+        this.connection().respond(request.id, { outcome: { outcome: 'cancelled' } })
+        return false
+      }
+      if (this.cancellationSignal !== signal) {
+        this.cancellationSignal?.removeEventListener('abort', this.cancelPermissions)
+        this.cancellationSignal = signal
+        signal.addEventListener('abort', this.cancelPermissions, { once: true })
+      }
+    }
     if (this.presentations.size >= 64) {
       throw new Error('Cursor ACP pending prompt limit exceeded')
     }
@@ -243,6 +135,12 @@ export class CursorAcpPrompts {
     const reply = presentation.reply
     this.presentations.set(itemId, {
       ...presentation,
+      ...(request.method === 'session/request_permission'
+        ? {
+            cancel: () =>
+              this.connection().respond(request.id, { outcome: { outcome: 'cancelled' } })
+          }
+        : {}),
       reply: (response) => ({ id: request.id, result: reply(response) })
     })
     this.claims.bindJournalItemId(itemId, key)
@@ -276,6 +174,8 @@ export class CursorAcpPrompts {
   }
 
   clear(): void {
+    this.cancellationSignal?.removeEventListener('abort', this.cancelPermissions)
+    this.cancellationSignal = null
     this.claims.clear()
     this.presentations.clear()
   }

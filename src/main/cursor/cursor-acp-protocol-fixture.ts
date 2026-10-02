@@ -7,6 +7,16 @@ const update = (sessionId, text) => send({ method: 'session/update', params: {
 }})
 let pending
 let approvedPrompt
+let permissionPending = false
+let cancelled = false
+const control = (value) => {
+  if (process.env.CURSOR_ACP_FIXTURE_CONTROL_LOG) require('node:fs').appendFileSync(process.env.CURSOR_ACP_FIXTURE_CONTROL_LOG, JSON.stringify(value) + '\n')
+}
+if (process.env.CURSOR_ACP_FIXTURE_CONTROL_LOG) {
+  const home = process.env.ORCA_E2E_HOME_DIR
+  if (!home || process.env.HOME !== home || process.env.USERPROFILE !== home || process.env.CURSOR_CONFIG_DIR !== require('node:path').join(home, '.cursor') || process.env.ORCA_BACKGROUND_LAUNCH !== '1' || process.env.ORCA_DISABLE_CODEX_TRUST_RPC !== '1') throw new Error('Fixture child escaped private background launch policy')
+  control({ method: 'fixture/bootstrap', homeIsolated: true })
+}
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const frame = JSON.parse(line)
   if (process.env.CURSOR_ACP_FIXTURE_LOG && ['session/new', 'session/load'].includes(frame.method)) {
@@ -31,10 +41,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (frame.method === 'session/prompt') {
     pending = frame
+    cancelled = false
     const text = frame.params.prompt[0].text
     if (text === 'cancel') return update(frame.params.sessionId, 'fixture running')
     if (text === 'approval') {
       approvedPrompt = frame
+      permissionPending = true
       send({ method: 'session/update', params: { sessionId: frame.params.sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'tool-1', title: 'Fixture tool', status: 'pending' } } })
       return send({ id: 'permission-1', method: 'session/request_permission', params: {
         sessionId: frame.params.sessionId, toolCall: { toolCallId: 'tool-1', title: 'Fixture tool' },
@@ -45,9 +57,21 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     else update(frame.params.sessionId, text)
     return send({ id: frame.id, result: { stopReason: 'end_turn' } })
   }
-  if (frame.method === 'session/cancel' && process.env.FIXTURE_IGNORE_CANCEL) return
-  if (frame.method === 'session/cancel') return send({ id: pending.id, result: { stopReason: 'cancelled' } })
+  if (frame.method === 'session/cancel') {
+    cancelled = true
+    control({ method: 'session/cancel' })
+    if (process.env.FIXTURE_IGNORE_CANCEL || permissionPending) return
+    return send({ id: pending.id, result: { stopReason: 'cancelled' } })
+  }
   if (frame.id === 'permission-1') {
+    if (!permissionPending) return process.exit(5)
+    permissionPending = false
+    const outcome = frame.result?.outcome?.outcome
+    control({ method: 'permission/response', outcome })
+    if (outcome === 'cancelled' && cancelled) {
+      if (process.env.FIXTURE_IGNORE_CANCEL) return
+      return send({ id: approvedPrompt.id, result: { stopReason: 'cancelled' } })
+    }
     send({ method: 'session/update', params: { sessionId: approvedPrompt.params.sessionId,
       update: { sessionUpdate: 'tool_call_update', toolCallId: 'tool-1', status: 'completed' }
     }})

@@ -65,6 +65,7 @@ export class CursorAcpSession {
     if (this.currentPhase !== 'ready' || this.connection.closed) {
       throw new Error('Cursor ACP session cannot take another prompt')
     }
+    this.connection.permissionCancellation.beginTurn()
     this.currentPhase = 'prompting'
     const pending = this.connection
       .request(
@@ -109,6 +110,7 @@ export class CursorAcpSession {
     if (this.currentPhase === 'prompting') {
       this.currentPhase = 'cancelling'
       this.connection.notify('session/cancel', { sessionId: this.sessionId })
+      this.connection.permissionCancellation.cancel()
     }
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {

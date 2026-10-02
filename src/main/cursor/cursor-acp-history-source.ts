@@ -1,5 +1,7 @@
+import { readAuthorizedDocPreviewFile } from '../../shared/doc-preview-file-access'
+import { withTimeout } from '../../shared/promise-timeout-fallback'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
-import { realpath, readFile, stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 
@@ -9,11 +11,43 @@ const metadataSchema = z.object({
 })
 
 /** ACP stores are separate from Cursor's terminal chats; never substitute one for the other. */
-export async function resolveCursorAcpHistorySource(input: {
+type CursorAcpHistorySourceInput = {
   accountHomePath: string
   providerSessionId: string
   cwd: string
-}): Promise<string | null> {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+export async function resolveCursorAcpHistorySource(
+  input: CursorAcpHistorySourceInput
+): Promise<string | null> {
+  if (input.signal?.aborted) {
+    return null
+  }
+  const work = withTimeout(
+    resolveOwnedCursorAcpHistorySource(input),
+    Math.min(2000, Math.max(1, input.timeoutMs ?? 2000)),
+    null
+  )
+  if (!input.signal) {
+    return work
+  }
+  let cancel = () => {}
+  const aborted = new Promise<null>((resolve) => {
+    cancel = () => resolve(null)
+  })
+  input.signal.addEventListener('abort', cancel, { once: true })
+  try {
+    return await Promise.race([work, aborted])
+  } finally {
+    input.signal.removeEventListener('abort', cancel)
+  }
+}
+
+async function resolveOwnedCursorAcpHistorySource(
+  input: CursorAcpHistorySourceInput
+): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{1,512}$/.test(input.providerSessionId) || !isAbsolute(input.cwd)) {
     return null
   }
@@ -36,7 +70,19 @@ export async function resolveCursorAcpHistorySource(input: {
     ) {
       return null
     }
-    const saved = metadataSchema.safeParse(JSON.parse(await readFile(metadata, 'utf8')))
+    const opened = await readAuthorizedDocPreviewFile({
+      boundaryPath: ownedDirectory,
+      entryPath: metadata,
+      implicitRootPath: null,
+      authorizedRootPaths: [],
+      targetPath: metadata,
+      maxTextBytes: 64 * 1024,
+      maxBinaryBytes: 64 * 1024
+    })
+    if (opened.isBinary || input.signal?.aborted) {
+      return null
+    }
+    const saved = metadataSchema.safeParse(JSON.parse(opened.content))
     if (
       !saved.success ||
       normalizeRuntimePathForComparison(resolve(saved.data.cwd)) !==

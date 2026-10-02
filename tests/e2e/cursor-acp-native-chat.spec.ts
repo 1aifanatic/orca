@@ -57,6 +57,7 @@ test('Cursor ACP fixture Chat preserves history and loads the exact session afte
   const restart = createRestartSession(testInfo)
   const providerScript = join(restart.userDataDir, 'cursor-acp-fixture.cjs')
   const providerLog = join(restart.userDataDir, 'cursor-acp-fixture-identity.jsonl')
+  const controlLog = join(restart.userDataDir, 'cursor-acp-fixture-control.jsonl')
   writeFileSync(providerScript, ACP_FIXTURE)
   const profile = getE2ECompletedOnboardingProfile()
   writeFileSync(
@@ -71,7 +72,12 @@ test('Cursor ACP fixture Chat preserves history and loads the exact session afte
         agentCmdOverrides: {
           cursor: `${JSON.stringify(process.execPath)} ${JSON.stringify(providerScript)}`
         },
-        agentDefaultEnv: { cursor: { CURSOR_ACP_FIXTURE_LOG: providerLog } }
+        agentDefaultEnv: {
+          cursor: {
+            CURSOR_ACP_FIXTURE_LOG: providerLog,
+            CURSOR_ACP_FIXTURE_CONTROL_LOG: controlLog
+          }
+        }
       }
     })
   )
@@ -101,6 +107,10 @@ test('Cursor ACP fixture Chat preserves history and loads the exact session afte
       return response.result
     }, params)
     expect(z.object({ ok: z.literal(true) }).parse(result).ok).toBe(true)
+    expect(JSON.parse(readFileSync(controlLog, 'utf8').trim())).toEqual({
+      method: 'fixture/bootstrap',
+      homeIsolated: true
+    })
     await first.page.getByText('Cursor Chat', { exact: true }).first().click()
     const root = first.page.locator('[data-native-chat-root="true"]')
     await expect(root).toBeVisible()
@@ -242,6 +252,61 @@ test('Cursor ACP fixture Chat preserves history and loads the exact session afte
       'data-native-chat-working',
       'false'
     )
+    await sendFromComposer(second.page, 'approval')
+    await expect(allow).toBeVisible()
+    const stopBefore = testInfo.outputPath('cursor-acp-stop-before.png')
+    await cdpProof(second.page, stopBefore)
+    await testInfo.attach('Cursor protocol fixture pending approval before Stop', {
+      path: stopBefore,
+      contentType: 'image/png'
+    })
+    await second.page
+      .locator('[data-native-chat-root="true"]')
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click()
+    await expect(second.page.locator('[data-native-chat-root="true"]')).toHaveAttribute(
+      'data-native-chat-working',
+      'false'
+    )
+    await expect(allow).not.toBeVisible()
+    const stopAfter = testInfo.outputPath('cursor-acp-stop-after.png')
+    await cdpProof(second.page, stopAfter)
+    await testInfo.attach('Cursor protocol fixture cancelled approval after Stop', {
+      path: stopAfter,
+      contentType: 'image/png'
+    })
+    const controls = readFileSync(controlLog, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) =>
+        z
+          .object({
+            method: z.string(),
+            outcome: z.string().optional(),
+            homeIsolated: z.boolean().optional()
+          })
+          .parse(JSON.parse(line))
+      )
+    expect(controls.filter((frame) => frame.method === 'fixture/bootstrap')).toHaveLength(3)
+    expect(
+      controls
+        .filter((frame) => frame.method === 'permission/response')
+        .map((frame) => frame.outcome)
+    ).toEqual(['selected', 'cancelled'])
+    expect(controls.slice(-2)).toEqual([
+      { method: 'session/cancel' },
+      { method: 'permission/response', outcome: 'cancelled' }
+    ])
+    const stopTrace = testInfo.outputPath('cursor-acp-stop-control.jsonl')
+    copyFileSync(controlLog, stopTrace)
+    await testInfo.attach('Cursor protocol fixture Stop and mandatory cancelled response', {
+      path: stopTrace,
+      contentType: 'application/jsonl'
+    })
+    await sendFromComposer(second.page, 'Protocol fixture after stopped approval')
+    await expect(
+      second.page.getByText('Protocol fixture after stopped approval', { exact: true })
+    ).toHaveCount(2)
   } finally {
     if (active) {
       await restart.close(active)

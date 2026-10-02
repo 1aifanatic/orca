@@ -1,3 +1,7 @@
+import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
+import { structuredAgentBaseEnvironment } from '../runtime/structured-agent-shell-environment'
+import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
+import type { GlobalSettings } from '../../shared/global-settings-types'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +27,21 @@ export function cursorStructuredAccountHome(launchEnv: NodeJS.ProcessEnv): strin
       ? join(launchEnv.XDG_CONFIG_HOME.trim(), 'cursor')
       : join(launchEnv.HOME?.trim() || launchEnv.USERPROFILE?.trim() || homedir(), '.cursor'))
   )
+}
+
+export async function resolveCursorStructuredAccountHome(
+  overlay: Record<string, string>,
+  settings: Pick<
+    GlobalSettings,
+    'nativeChatInheritShellEnvironment' | 'nativeChatShellEnvironmentVariables'
+  >,
+  resolveEnvironment = resolveLoginShellEnvironment
+): Promise<string> {
+  const base = structuredAgentBaseEnvironment({
+    shellEnv: await resolveEnvironment(),
+    policy: nativeChatShellEnvironmentPolicy(settings)
+  })
+  return cursorStructuredAccountHome({ ...base, ...overlay })
 }
 
 export function createCursorStructuredLaunchResolver(deps: {

@@ -1,3 +1,4 @@
+import { CursorAcpPermissionCancellation } from './cursor-acp-permission-cancellation'
 import { z } from 'zod'
 import { NDJSON_MAX_LINE_BYTES } from '../../shared/main-process-ndjson-framer'
 import { providerDiagnostic, withProviderDiagnostic } from '../../shared/agent-session-failure'
@@ -28,6 +29,7 @@ const initializeSchema = z
 export type CursorAcpCapabilities = z.infer<typeof initializeSchema>['agentCapabilities']
 export type CursorAcpConnection = CodexAppServerConnection & {
   readonly capabilities: CursorAcpCapabilities
+  readonly permissionCancellation: CursorAcpPermissionCancellation
 }
 export type CursorAcpLaunch = CodexAppServerLaunch
 export type CursorAcpHandlers = CodexAppServerConnectionHandlers
@@ -95,5 +97,8 @@ export async function openCursorAcpConnection(
         providerDiagnostic(stderr.trim().slice(0, 400), 'log')
       )
   })
-  return Object.assign(connection, { capabilities })
+  return Object.assign(connection, {
+    capabilities,
+    permissionCancellation: new CursorAcpPermissionCancellation()
+  })
 }

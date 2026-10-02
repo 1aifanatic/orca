@@ -4,7 +4,7 @@ import { OrcaRuntimeWithGetWorktreePs } from './orca-runtime-get-worktree-ps'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
 import { supportsCursorStructuredLocation } from '../cursor/cursor-structured-session-adapter'
-import { cursorStructuredAccountHome } from '../cursor/cursor-structured-launch-resolution'
+import { resolveCursorStructuredAccountHome } from '../cursor/cursor-structured-launch-resolution'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { resolveStructuredAgentSessionCreateSupport } from '../native-chat/structured-agent-session-create-support'
 import {
@@ -103,7 +103,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }): Promise<AgentSessionAttachParams> {
     if (input.agent === 'cursor') {
       return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) =>
-        cursorStructuredAccountHome(launchEnv)
+        resolveCursorStructuredAccountHome(launchEnv, this.requireStore().getSettings())
       )
     }
     if (input.agent === 'claude') {
@@ -141,7 +141,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       this.requireStore().getSettings().agentDefaultEnv
     )
     if (agent === 'cursor') {
-      return { variable: 'CURSOR_CONFIG_DIR', path: cursorStructuredAccountHome(launchEnv) }
+      return {
+        variable: 'CURSOR_CONFIG_DIR',
+        path: await resolveCursorStructuredAccountHome(launchEnv, this.requireStore().getSettings())
+      }
     }
     if (agent === 'claude') {
       return {
