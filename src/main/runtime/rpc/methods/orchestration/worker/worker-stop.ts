@@ -135,7 +135,7 @@ export const ORCHESTRATION_WORKER_STOP_METHODS = [
           await runtime.ensureStructuredAgentSessionHost().catch((error: unknown) => {
             runtime.structuredAgentSessionLogger.warn(
               'installing the structured host before a worker stop failed',
-              { scope: 'worker-stop-host-install', handle, error }
+              { scope: 'worker-stop-host-install', dispatchId: params.dispatch, error }
             )
           })
         }
