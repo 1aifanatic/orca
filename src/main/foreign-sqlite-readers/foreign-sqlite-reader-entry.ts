@@ -1,9 +1,9 @@
 import { parentPort } from 'node:worker_threads'
-import type { OpenCodeSqliteWorkerRequest } from './session-scanner-opencode-sqlite-worker-protocol'
-import { handleOpenCodeSqliteRequest } from './session-scanner-opencode-sqlite-dispatch'
+import type { OpenCodeSqliteWorkerRequest } from '../ai-vault/session-scanner-opencode-sqlite-worker-protocol'
+import { handleOpenCodeSqliteRequest } from '../ai-vault/session-scanner-opencode-sqlite-dispatch'
 
 if (!parentPort) {
-  throw new Error('OpenCode SQLite worker must run with a parent port.')
+  throw new Error('Foreign SQLite reader worker must run with a parent port.')
 }
 const port = parentPort
 
@@ -17,7 +17,7 @@ port.on('message', (request: OpenCodeSqliteWorkerRequest) => {
       port.postMessage({
         id: request.id,
         ok: false,
-        error: 'OpenCode SQLite worker result could not be serialized.'
+        error: 'Foreign SQLite reader result could not be serialized.'
       })
     }
   })
