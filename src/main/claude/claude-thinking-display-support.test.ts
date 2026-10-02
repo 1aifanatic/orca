@@ -11,11 +11,15 @@ type Probe = (
   launch: { cwd: string; env: Record<string, string>; timeoutMs: number }
 ) => Promise<string | null>
 
-function supportWith(probe: Probe, budgetMs = 20) {
+function supportWith(
+  probe: Probe,
+  budgetMs = 20,
+  keyOf = async (command: string, cwd: string): Promise<string | null> => `${command}\n${cwd}`
+) {
   const calls = vi.fn(probe)
   const support = createClaudeThinkingDisplaySupport({
     probe: calls,
-    keyOf: async (command, cwd) => `${command}\n${cwd}`,
+    keyOf,
     budgetMs,
     now: () => performance.now()
   })
@@ -116,5 +120,40 @@ describe('the thinking-display flag a launch passes', () => {
     support.observeExit(LAUNCH, new Error("error: unknown option '--thinking'"))
     await new Promise((resolve) => setTimeout(resolve, 0))
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({ 'thinking-display': 'summarized' })
+  })
+
+  it('spends the budget finding the binary too, and caches nothing when that runs out', async () => {
+    let slow = true
+    const { support, calls } = supportWith(
+      async () => '2.1.280',
+      30,
+      async (command, cwd) => {
+        if (slow) {
+          await new Promise((resolve) => setTimeout(resolve, 1_000))
+        }
+        return `${command}\n${cwd}`
+      }
+    )
+    const started = performance.now()
+    await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(calls).not.toHaveBeenCalled()
+    slow = false
+    await expect(support.argsFor(LAUNCH)).resolves.toEqual({ 'thinking-display': 'summarized' })
+  })
+
+  it('forgets the binaries launched least recently, not the ones in use', async () => {
+    const { support, calls } = supportWith(async () => '2.1.280')
+    const at = (index: number) => ({ ...LAUNCH, cwd: `/repo-${index}` })
+    for (let index = 1; index <= 32; index += 1) {
+      await support.argsFor(at(index))
+    }
+    await support.argsFor(at(1))
+    await support.argsFor(at(33))
+    expect(calls).toHaveBeenCalledTimes(33)
+    await support.argsFor(at(1))
+    expect(calls).toHaveBeenCalledTimes(33)
+    await support.argsFor(at(2))
+    expect(calls).toHaveBeenCalledTimes(34)
   })
 })

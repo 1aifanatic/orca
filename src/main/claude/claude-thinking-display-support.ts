@@ -16,8 +16,8 @@ const PROBE_KILL_AFTER_MS = 10_000
 /** Commander's refusal, exactly: any other startup failure says nothing about the flag. */
 const UNKNOWN_FLAG_DIAGNOSTIC = "unknown option '--thinking-display'"
 
-// One entry per binary per workspace it launched in.
-const MAX_REMEMBERED = 16
+// One small entry per binary per workspace it launched in; enough for every worktree in active use.
+const MAX_REMEMBERED = 32
 
 const SUMMARIZED: Readonly<Record<string, string>> = { 'thinking-display': 'summarized' }
 
@@ -52,6 +52,20 @@ async function claudeBinaryKey(command: string, cwd: string): Promise<string | n
     return `${target}\n${(await stat(target)).mtimeMs}\n${cwd}`
   } catch {
     return null
+  }
+}
+
+/** The promise's value if it settles within `ms`, else undefined. */
+async function within<T>(pending: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), Math.max(0, ms))
+    timer.unref?.()
+  })
+  try {
+    return await Promise.race([pending, expired])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -106,26 +120,24 @@ export function createClaudeThinkingDisplaySupport(
 
   return {
     argsFor: async (launch) => {
-      const key = await deps.keyOf(launch.command, launch.cwd)
-      if (key === null) {
+      // The launch never waits longer than the budget, finding the binary included.
+      const deadline = deps.now() + deps.budgetMs
+      const key = await within(deps.keyOf(launch.command, launch.cwd), deps.budgetMs)
+      if (key === undefined || key === null) {
         return {}
       }
-      if (!known.has(key)) {
-        const running = probing.get(key) ?? probe(key, launch)
-        // The budget is the probe's, not each launch's: one already past it is not waited on again.
-        const remainingMs = running.startedAt + deps.budgetMs - deps.now()
-        if (remainingMs > 0) {
-          let timer: ReturnType<typeof setTimeout> | undefined
-          await Promise.race([
-            running.settled,
-            new Promise<void>((resolve) => {
-              timer = setTimeout(resolve, remainingMs)
-              timer.unref?.()
-            })
-          ])
-          clearTimeout(timer)
-        }
+      const supported = known.get(key)
+      if (supported !== undefined) {
+        // Read as used: the bound drops the binaries launched least recently.
+        remember(key, supported)
+        return supported ? SUMMARIZED : {}
       }
+      const running = probing.get(key) ?? probe(key, launch)
+      // The probe's own budget, too: one already past it is not waited on again.
+      await within(
+        running.settled,
+        Math.min(running.startedAt + deps.budgetMs, deadline) - deps.now()
+      )
       return known.get(key) === true ? SUMMARIZED : {}
     },
     observeExit: (launch, error) => {
