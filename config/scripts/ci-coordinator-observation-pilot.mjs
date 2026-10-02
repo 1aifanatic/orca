@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 
 if (process.platform !== 'linux') {
   throw new Error('Coordinator observation pilot requires Linux')
@@ -146,7 +147,12 @@ try {
       if (hash(JSON.stringify(cases.map((test) => test.name).sort())) !== expectedNames) {
         throw new Error('Original test identities changed')
       }
-      const durationLine = log.split('\n').find((line) => /Duration\s+[\d.]+s/.test(line))
+      const durationLine = stripVTControlCharacters(log)
+        .split('\n')
+        .find((line) => /Duration\s+[\d.]+s/.test(line))
+      if (!durationLine) {
+        throw new Error('Missing Vitest duration footer')
+      }
       const phasesMs = Object.fromEntries(
         [
           ...durationLine.matchAll(/(transform|setup|import|tests|environment)\s+([\d.]+)(ms|s)/g)
