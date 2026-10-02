@@ -67,7 +67,7 @@ it('parses each leased row once with exact complete payload, serialized key orde
     registrationId: 'phone',
     hostFingerprint: 'host',
     notification: input,
-    expiresAt: row.expires_at,
+    expiresAt: 1_300_000,
     lease: expect.any(String),
     attempts: 1
   })
