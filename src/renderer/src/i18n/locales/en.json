@@ -122,7 +122,6 @@
     "markdownPreview": {
       "tooLarge": "File is larger than the {{limit}} preview limit. Open the file to view its source.",
       "tooLargeInDiff": "File is larger than the {{limit}} preview limit. Switch to source mode to view the diff.",
-      "renderAnyway": "Render anyway",
       "blockTooLarge": "This block is too large to render. Open source view to read it.",
       "largeNotice": "Large preview. Use source view to copy the complete document. PDF export is unavailable.",
       "processingFailed": "This document cannot be rendered within the preview limits. Open source view to read the complete file.",

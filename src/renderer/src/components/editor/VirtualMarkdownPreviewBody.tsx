@@ -7,7 +7,7 @@ import {
   useState,
   type RefObject
 } from 'react'
-import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Components } from 'react-markdown'
 import { translate } from '@/i18n/i18n'
 import { scrollTopCache } from '@/lib/scroll-cache'
@@ -22,16 +22,29 @@ import {
   setActiveMarkdownPreviewSearchMatch,
   type MarkdownPreviewSearchInstance
 } from './markdown-preview-search'
-import {
-  MARKDOWN_PREVIEW_MAX_REQUESTED_BLOCKS,
-  type MarkdownPreviewDocument,
-  type MarkdownPreviewDocumentMatch,
-  type MarkdownPreviewRenderedBlock
+import type {
+  MarkdownPreviewDocument,
+  MarkdownPreviewDocumentMatch,
+  MarkdownPreviewRenderedBlock
 } from './markdown-preview-document-types'
+import {
+  MARKDOWN_PREVIEW_OVERSCAN,
+  markdownPreviewMinimumRowHeight,
+  markdownPreviewViewportIndices,
+  markdownPreviewRequestIndices
+} from './markdown-preview-viewport-budget'
+import { useMarkdownPreviewBodyLayout } from './use-markdown-preview-body-layout'
 import { useMarkdownPreviewScrollAnchor } from './use-markdown-preview-scroll-anchor'
 import type { MarkdownPreviewDocumentClient } from './markdown-preview-document-client'
 
-export type VirtualMarkdownPreviewNavigation = { anchor: (id: string) => boolean }
+type PreviewReveal = { index: number } & (
+  | { kind: 'anchor'; id: string }
+  | { kind: 'source'; line: number }
+)
+export type VirtualMarkdownPreviewNavigation = {
+  anchor: (id: string) => boolean
+  sourceLine: (line: number) => boolean
+}
 const RenderedBlock = memo(function RenderedBlock({
   block,
   components
@@ -73,10 +86,15 @@ export function VirtualMarkdownPreviewBody({
     client: MarkdownPreviewDocumentClient
     blocks: MarkdownPreviewRenderedBlock[]
   } | null>(null)
-  const [anchor, setAnchor] = useState<{ id: string; index: number } | null>(null)
+  const [anchor, setAnchor] = useState<PreviewReveal | null>(null)
   const virtualBodyRef = useRef<HTMLDivElement>(null)
   const pendingHighlight = useRef<Range[]>([])
-  const completedAnchor = useRef<{ id: string; index: number } | null>(null)
+  const completedAnchor = useRef<PreviewReveal | null>(null)
+  const completedSearch = useRef<{
+    client: MarkdownPreviewDocumentClient
+    match: MarkdownPreviewDocumentMatch
+    query: string
+  } | null>(null)
   const activeMatch = matches[activeMatchIndex]
   const annotationLine = Number(activeAnnotationBlockKey?.split(':')[1]?.split('-')[0])
   const pinnedAnnotationIndex = Number.isInteger(annotationLine)
@@ -87,22 +105,19 @@ export function VirtualMarkdownPreviewBody({
           (block.sourceEndLine ?? block.sourceLine) >= annotationLine
       )
     : -1
+  const layout = useMarkdownPreviewBodyLayout(virtualBodyRef, rootRef)
+  const minimumRowHeight = markdownPreviewMinimumRowHeight(layout.height)
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: document.blocks.length,
     getScrollElement: () => rootRef.current,
-    estimateSize: (index) => document.blocks[index].estimate,
+    estimateSize: (index) => Math.max(minimumRowHeight, document.blocks[index].estimate),
     getItemKey: (index) => index,
     initialOffset: () => scrollTopCache.get(scrollCacheKey) ?? 0,
-    scrollMargin: virtualBodyRef.current?.offsetTop ?? 0,
-    overscan: 3,
-    rangeExtractor: (range) => {
-      const indices = defaultRangeExtractor(range)
-      if (pinnedAnnotationIndex >= 0 && !indices.includes(pinnedAnnotationIndex)) {
-        indices.push(pinnedAnnotationIndex)
-      }
-      return indices.sort((a, b) => a - b).slice(0, MARKDOWN_PREVIEW_MAX_REQUESTED_BLOCKS)
-    }
+    scrollMargin: layout.margin,
+    overscan: MARKDOWN_PREVIEW_OVERSCAN,
+    rangeExtractor: (range) => markdownPreviewViewportIndices(range, pinnedAnnotationIndex)
   })
+  useEffect(() => virtualizer.measure(), [minimumRowHeight, virtualizer])
   useMarkdownPreviewScrollAnchor({ blocks: document.blocks, rootRef, virtualizer, scrollCacheKey })
   const anchorBlocks = useMemo(
     () =>
@@ -112,7 +127,10 @@ export function VirtualMarkdownPreviewBody({
     [document]
   )
   const rows = virtualizer.getVirtualItems()
-  const indicesKey = rows.map((row) => row.index).join(',')
+  const indicesKey = markdownPreviewRequestIndices(
+    rows.map((row) => row.index),
+    [activeMatch?.block ?? -1, anchor?.index ?? -1, pinnedAnnotationIndex]
+  ).join(',')
   useEffect(() => {
     let current = true
     const indices = indicesKey ? indicesKey.split(',').map(Number) : []
@@ -139,11 +157,25 @@ export function VirtualMarkdownPreviewBody({
           return false
         }
         virtualizer.scrollToIndex(index, { align: 'start' })
-        setAnchor({ id, index })
+        setAnchor({ kind: 'anchor', id, index })
+        return true
+      },
+      sourceLine: (line) => {
+        const index = document.blocks.findIndex(
+          (block) =>
+            block.sourceLine !== null &&
+            block.sourceLine <= line &&
+            (block.sourceEndLine ?? block.sourceLine) >= line
+        )
+        if (index === -1) {
+          return false
+        }
+        virtualizer.scrollToIndex(index, { align: 'center' })
+        setAnchor({ kind: 'source', line, index })
         return true
       }
     }),
-    [anchorBlocks, virtualizer]
+    [anchorBlocks, document, virtualizer]
   )
   useEffect(() => {
     if (activeMatch) {
@@ -167,8 +199,13 @@ export function VirtualMarkdownPreviewBody({
       return
     }
     const target =
-      [...block.querySelectorAll<HTMLElement>('[id]')].find((node) => node.id === anchor.id) ??
-      block
+      (anchor.kind === 'anchor'
+        ? [...block.querySelectorAll<HTMLElement>('[id]')].find((node) => node.id === anchor.id)
+        : [...block.querySelectorAll<HTMLElement>('[data-source-line][data-source-end-line]')].find(
+            (node) =>
+              Number(node.dataset.sourceLine) <= anchor.line &&
+              Number(node.dataset.sourceEndLine) >= anchor.line
+          )) ?? block
     container.scrollTo({ top: getMarkdownPreviewAnchorScrollTop(container, target) })
     target.focus({ preventScroll: true })
     completedAnchor.current = anchor
@@ -183,13 +220,25 @@ export function VirtualMarkdownPreviewBody({
       : null
     clearMarkdownPreviewSearchHighlights(searchInstance)
     pendingHighlight.current = block
-      ? applyMarkdownPreviewSearchHighlights(searchInstance, block, query)
+      ? applyMarkdownPreviewSearchHighlights(searchInstance, block, query, { documentOnly: true })
       : []
     setActiveMarkdownPreviewSearchMatch(
       searchInstance,
       pendingHighlight.current,
-      activeMatch?.occurrence ?? -1
+      activeMatch?.occurrence ?? -1,
+      { scrollIntoView: false }
     )
+    const range = pendingHighlight.current[activeMatch?.occurrence ?? -1]
+    if (
+      activeMatch &&
+      range &&
+      (completedSearch.current?.client !== client ||
+        completedSearch.current.match !== activeMatch ||
+        completedSearch.current.query !== query)
+    ) {
+      range.startContainer.parentElement?.scrollIntoView({ block: 'center', inline: 'nearest' })
+      completedSearch.current = { client, match: activeMatch, query }
+    }
     return () => {
       pendingHighlight.current = []
       clearMarkdownPreviewSearchHighlights(searchInstance)
@@ -216,7 +265,7 @@ export function VirtualMarkdownPreviewBody({
             className="absolute left-0 top-0 w-full flow-root"
             style={{
               transform: `translateY(${row.start - virtualizer.options.scrollMargin}px)`,
-              minHeight: block ? undefined : row.size
+              minHeight: block ? minimumRowHeight : Math.max(minimumRowHeight, row.size)
             }}
           >
             {block?.oversized ? (

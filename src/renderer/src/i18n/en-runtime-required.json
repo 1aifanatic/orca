@@ -2942,9 +2942,7 @@
     }
   },
   "editor": {
-    "markdownPreview": {
-      "renderAnyway": "Render anyway"
-    }
+    "markdownPreview": {}
   },
   "fileExplorer": {
     "root": {

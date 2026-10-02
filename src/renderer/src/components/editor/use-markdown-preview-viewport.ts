@@ -164,6 +164,12 @@ export function useMarkdownPreviewViewport({
     [bodyRef, rootRef, largeNavigationRef, largePreview]
   )
 
+  const scrollToSourceLine = useCallback(
+    (line: number): boolean =>
+      largePreview ? (largeNavigationRef?.current?.sourceLine(line) ?? false) : false,
+    [largeNavigationRef, largePreview]
+  )
+
   const navigateToTableOfContentsItem = useCallback(
     (id: string): void => {
       scrollToAnchor(id)
@@ -278,6 +284,7 @@ export function useMarkdownPreviewViewport({
     clearCopiedReviewNoteResetTimer,
     setRootRef,
     scrollToAnchor,
+    scrollToSourceLine,
     navigateToTableOfContentsItem
   }
 }

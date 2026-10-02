@@ -98,6 +98,25 @@ function nestHeadings(headings: MarkdownTocItem[]): MarkdownTocItem[] {
   return roots
 }
 
+function sourceBounds(node: Nodes): { sourceLine: number | null; sourceEndLine: number | null } {
+  if (node.position) {
+    return { sourceLine: node.position.start.line, sourceEndLine: node.position.end.line }
+  }
+  const children = 'children' in node ? node.children.map(sourceBounds) : []
+  const starts = children.flatMap((child) => (child.sourceLine === null ? [] : [child.sourceLine]))
+  const ends = children.flatMap((child) =>
+    child.sourceEndLine === null ? [] : [child.sourceEndLine]
+  )
+  return {
+    sourceLine: starts.length
+      ? starts.reduce((minimum, line) => Math.min(minimum, line), Infinity)
+      : null,
+    sourceEndLine: ends.length
+      ? ends.reduce((maximum, line) => Math.max(maximum, line), -Infinity)
+      : null
+  }
+}
+
 export function parseMarkdownPreviewDocument(content: string): {
   tree: Root
   document: MarkdownPreviewDocument
@@ -124,8 +143,7 @@ export function parseMarkdownPreviewDocument(content: string): {
       index,
       anchors,
       estimate: Math.min(1200, Math.max(40, Math.ceil(textLength / 90) * 24 + 32)),
-      sourceLine: node.position?.start.line ?? null,
-      sourceEndLine: node.position?.end.line ?? null
+      ...sourceBounds(node)
     }
   })
   return { tree, document: { blocks, toc: nestHeadings(headings) } }

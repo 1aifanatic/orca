@@ -8,7 +8,6 @@ export function MarkdownPreviewSizeGate({
   isDiff = false,
   children
 }: {
-  previewTabId: string
   content: string
   isDiff?: boolean
   children: React.ReactNode

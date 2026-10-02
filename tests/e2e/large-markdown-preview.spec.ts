@@ -132,10 +132,18 @@ test('large preview renders bounded rows with global navigation and Find', async
   await composer.fill('Review the large document heading')
   await preview.getByRole('link', { name: 'Jump to end', exact: true }).click()
   await expect(composer).toHaveCount(1)
-  await composer.press('Escape')
+  await composer.press('Enter')
   await expect(composer).toHaveCount(0)
 
   await expect(preview.getByRole('heading', { name: 'Destination', exact: true })).toBeVisible()
+  await expect(preview.getByText('UniqueEndMarker', { exact: true })).toBeVisible()
+  await expect(annotatedHeading).toHaveCount(0)
+  await orcaPage.getByRole('button', { name: 'Jump to first review note', exact: true }).click()
+  await expect(annotatedHeading).toBeVisible()
+  await expect(
+    preview.getByText('Review the large document heading', { exact: true })
+  ).toBeVisible()
+  await preview.getByRole('link', { name: 'Jump to end', exact: true }).click()
   await expect(preview.getByText('UniqueEndMarker', { exact: true })).toBeVisible()
   await preview.focus()
   await orcaPage.keyboard.press(process.platform === 'darwin' ? 'Meta+f' : 'Control+f')
@@ -153,6 +161,15 @@ test('large preview renders bounded rows with global navigation and Find', async
   })
   await expect(preview.getByRole('heading', { name: 'Section 1500', exact: true })).toBeVisible()
   await orcaPage.screenshot({ path: path.join(proofDirectory, 'find-offscreen.png') })
+  await preview.evaluate((element) => {
+    element.scrollTop += 1000
+  })
+  const manualScroll = await preview.evaluate((element) => element.scrollTop)
+  await orcaPage.waitForTimeout(500)
+  expect(await preview.evaluate((element) => element.scrollTop)).toBe(manualScroll)
+  await expect(
+    preview.getByRole('heading', { name: 'Section 1500', exact: true })
+  ).not.toBeVisible()
   await orcaPage.getByRole('button', { name: 'Close search', exact: true }).click()
   expect(await preview.locator('*').count()).toBeLessThan(4000)
   await orcaPage.getByRole('button', { name: 'Table of Contents', exact: true }).click()

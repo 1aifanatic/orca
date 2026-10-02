@@ -30,7 +30,9 @@ function collectTextNodes(node: Root | Root['children'][number], values: string[
     return
   }
   if (node.type === 'text') {
-    values.push(node.value)
+    if (node.value.trim()) {
+      values.push(node.value)
+    }
   } else if ('children' in node) {
     for (const child of node.children) {
       collectTextNodes(child, values)

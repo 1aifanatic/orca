@@ -18420,7 +18420,6 @@
     "markdownPreview": {
       "tooLarge": "文件超过 {{limit}} 预览限制。请打开文件查看源代码。",
       "tooLargeInDiff": "文件超过 {{limit}} 预览限制。请切换到源代码模式查看差异。",
-      "renderAnyway": "仍然渲染",
       "blockTooLarge": "此区块过大，无法渲染。请打开源代码视图阅读。",
       "largeNotice": "大型预览。请使用源代码视图复制完整文档。PDF 导出不可用。",
       "processingFailed": "此文档超出了预览限制。请打开源代码视图阅读完整文件。",
