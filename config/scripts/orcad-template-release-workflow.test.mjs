@@ -174,8 +174,9 @@ describe('orcad template release wiring (design D2)', () => {
       // status function gets, so each one must override it and check its own needs instead.
       const condition = releaseCut.jobs[name].if
       expect(condition, name).toContain('!cancelled()')
-      for (const need of needsOf(name).filter((need) => need !== 'orcad-template')) {
-        if (need === 'cut') continue
+      for (const need of needsOf(name).filter(
+        (need) => need !== 'orcad-template' && need !== 'cut'
+      )) {
         expect(condition, `${name} -> ${need}`).toContain(`needs.${need}.result == 'success'`)
       }
     }
