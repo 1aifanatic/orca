@@ -1,151 +1,82 @@
-name: Warm shared CI caches
-
+name: Headless detector comparison
 on:
-  schedule:
-    - cron: '41 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/install-node-dependencies/**'
-      - '.github/actions/prepare-native-runtime/**'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.npmrc'
-      - '.pnpmfile.cjs'
-      - 'config/tsconfig*.json'
-      - 'config/scripts/ensure-native-runtime.mjs'
-      - 'config/scripts/rebuild-native-deps.mjs'
-      - 'config/scripts/node-pty-job-ownership.cjs'
-      - 'config/scripts/windows-pe-machine.cjs'
-      - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
-      - 'config/scripts/windows-process-tree-creation-time.cjs'
-      - 'config/scripts/install-electron-package-binary.mjs'
-      - 'config/scripts/electron-platform-path.mjs'
-      - 'config/scripts/zip-extractor-command.mjs'
-      - 'src/shared/zip-extractor-command.ts'
-      - 'config/scripts/shared-electron-dist-cache.mjs'
-      - 'config/scripts/space-sharing-copy.mjs'
-      - 'config/patches/node-pty@1.1.0.patch'
-      - 'config/patches/@vscode__windows-process-tree@0.8.0.patch'
-      - 'native/windows-registry/**'
-  pull_request:
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'config/scripts/ci-cache-warmup-workflow.test.mjs'
-
 permissions:
   contents: read
-
 concurrency:
-  group: ci-cache-warmup-${{ github.event.pull_request.number || github.ref }}
-  # Hourly retries must let an active warmer finish publishing its caches.
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
-
+  group: headless-detector-comparison-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  warm:
+  compare:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      # Default-branch caches can be restored by every PR; PR caches cannot.
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-
-      - uses: ./.github/actions/prepare-git-compatibility
-
-      - name: Cache TypeScript incremental state
-        id: typecheck-cache
-        uses: actions/cache@v5
-        with:
-          path: config/*.tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.sha }}
-          restore-keys: |
-            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
-
-      - name: Refresh TypeScript state for this commit
-        if: steps.typecheck-cache.outputs.cache-hit != 'true'
-        run: pnpm run typecheck
-
-  warm-linux-arm:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-windows:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+        treatment: [baseline, candidate]
+        path: [forced, graph]
+        replicate: [1, 2, 3]
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Prepare the changed-file evidence
+        env:
+          CASE: ${{ matrix.path }}
+        run: |
+          node -e 'const fs=require("node:fs"); fs.writeFileSync("detector-changes", (process.env.CASE === "forced" ? "package.json" : "src/main/menu/register-app-menu.ts") + "\0")'
+      - name: Start the measured interval
+        run: node -e 'require("node:fs").writeFileSync("detector-start", process.hrtime.bigint().toString())'
+      - uses: actions/setup-node@v6
+        if: matrix.treatment == 'candidate'
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Probe before installation
+        id: scope
+        if: matrix.treatment == 'candidate'
+        run: |
+          test ! -d node_modules
+          node config/scripts/node-server-change-scope.mjs detector-changes --defer-graph --full-qualification
+          cp "$GITHUB_OUTPUT" detector-output
       - uses: ./.github/actions/install-node-dependencies
+        if: matrix.treatment == 'baseline' || steps.scope.outputs.graph_required == 'true'
+      - name: Run installed analysis
+        if: matrix.treatment == 'baseline' || steps.scope.outputs.graph_required == 'true'
+        env:
+          TREATMENT: ${{ matrix.treatment }}
+        run: |
+          if [ "$TREATMENT" = baseline ]; then
+            node config/scripts/node-server-change-scope.baseline.mjs detector-changes --full-qualification
+          else
+            node config/scripts/node-server-change-scope.mjs detector-changes --full-qualification
+          fi
+          cp "$GITHUB_OUTPUT" detector-output
+      - name: Stop timing and check the verdict
+        env:
+          CASE: ${{ matrix.path }}
+          TREATMENT: ${{ matrix.treatment }}
+          REPLICATE: ${{ matrix.replicate }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import assert from 'node:assert/strict'
+          const elapsedMs = Number(process.hrtime.bigint() - BigInt(readFileSync('detector-start', 'utf8'))) / 1e6
+          const fields = Object.fromEntries(readFileSync('detector-output', 'utf8').trim().split('\n').map(line => {
+            const boundary = line.indexOf('=')
+            return [line.slice(0, boundary), line.slice(boundary + 1)]
+          }))
+          assert.equal(fields.should_run, process.env.CASE === 'forced' ? 'true' : 'false')
+          assert.equal(fields.qualification, 'true')
+          assert.deepEqual(JSON.parse(fields.runners), ['ubuntu-22.04', 'ubuntu-24.04-arm', 'macos-14', 'macos-15-intel', 'windows-2022', 'windows-11-arm'])
+          const result = { treatment: process.env.TREATMENT, path: process.env.CASE, replicate: process.env.REPLICATE, elapsedMs, fields, node: process.version, image: process.env.ImageVersion }
+          writeFileSync('detector-measurement.json', JSON.stringify(result, null, 2))
+          console.log(JSON.stringify(result))
+          JS
+      - uses: actions/upload-artifact@v7
         with:
-          native-runtime: node
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-linux-package-fixtures:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: daemon-shutdown-descendants
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: headless-serve-shutdown
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: cli-launch-contract
-          save-cache: ${{ github.event_name != 'pull_request' }}
+          name: detector-${{ matrix.treatment }}-${{ matrix.path }}-${{ matrix.replicate }}
+          path: detector-measurement.json
+          retention-days: 7
