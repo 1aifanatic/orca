@@ -115,6 +115,30 @@ describe('terminal.ensureAgentSession from a client that echoes the host owner l
     expect(olderLaunch?.agentSessionClaim).toEqual(currentLaunch?.agentSessionClaim)
   })
 
+  it('resolves an unlabelled session saved before the label from its own transcript path', async () => {
+    const { createTerminal, dispatcher } = createRuntime()
+    const transcriptPath = `/Users/example/.codex/sessions/2026/09/30/rollout-2026-09-30T00-00-00-${SESSION_ID}.jsonl`
+    const locator = { key: 'session_id', id: SESSION_ID, transcriptPath }
+
+    const older = await ensure(dispatcher, {
+      ...olderClientWake('claude', 'claude', { agentArgs: '--claude-only' }),
+      providerSession: locator
+    })
+    const current = await ensure(dispatcher, {
+      ...olderClientWake('codex', 'codex'),
+      providerSession: locator
+    })
+
+    expect(older).toMatchObject({ ok: true })
+    expect(current).toMatchObject({ ok: true })
+    const [olderLaunch, currentLaunch] = createTerminal.mock.calls.map((call) => call[1])
+    expect(olderLaunch).toMatchObject({
+      launchAgent: 'codex',
+      command: `codex '--codex-host-default' 'resume' '${SESSION_ID}'`
+    })
+    expect(olderLaunch?.agentSessionClaim).toEqual(currentLaunch?.agentSessionClaim)
+  })
+
   it('keeps every other provider-session field strict', async () => {
     const { createTerminal, dispatcher } = createRuntime()
 

@@ -119,6 +119,26 @@ describe('owned resume record', () => {
     expect(sameResumeTarget('codex', owned, 'codex', undefined)).toBe(false)
   })
 
+  it('reads an unlabelled session owner from its own transcript layout, after the label', () => {
+    const id = '0195f2ce-1111-4000-8000-000000000001'
+    const codexPath = `/h/.codex/sessions/2026/09/30/rollout-2026-09-30T00-00-00-${id}.jsonl`
+    const claudePath = `/h/.claude/projects/-repo/${id}.jsonl`
+    const session = (transcriptPath?: string) => ({
+      key: 'session_id' as const,
+      id,
+      ...(transcriptPath ? { transcriptPath } : {})
+    })
+    expect(resolveResumeAgent('claude', session(codexPath))).toBe('codex')
+    expect(resolveResumeAgent('codex', session(claudePath))).toBe('claude')
+    expect(resolveResumeAgent('claude', session())).toBe('claude')
+    expect(resolveResumeAgent('claude', session(codexPath.replace(id, 'other')))).toBe('claude')
+    expect(
+      resolveResumeAgent('codex', { ...session(claudePath), resumeIdentity: { agent: 'codex' } })
+    ).toBe('codex')
+    expect(sameResumeTarget('claude', session(codexPath), 'codex', locator)).toBe(false)
+    expect(sameResumeTarget('claude', session(codexPath), 'codex', { ...locator, id })).toBe(true)
+  })
+
   it('projects a validated locator for older strict RPC decoders', () => {
     const session = decodeHookResumeSession(locator, 'codex', null)!
     expect(ProviderSession.parse(providerSessionForResumeRequest(session))).toEqual(locator)

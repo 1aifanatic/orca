@@ -243,3 +243,133 @@ describe('launch settings across the resume-identity upgrade', () => {
     expect(wake(record)).toBe(expected)
   })
 })
+
+// Records origin/main saved for a nested agent before resume identity existed: the pane shows
+// one agent while the saved session (id + transcript path) is the nested agent's. The capture
+// functions used here are unchanged from origin/main.
+const CODEX_ROLLOUT = `/Users/example/codex-runtime-home/home/sessions/2026/09/30/rollout-2026-09-30T00-00-00-${CODEX_ID}.jsonl`
+const CLAUDE_TRANSCRIPT = `/Users/example/.claude/projects/-Users-example-repo/${CLAUDE_ID}.jsonl`
+const CODEX_WITH_CURRENT_SETTINGS = `/opt/settings/codex '--settings-arg' 'resume' '${CODEX_ID}'`
+
+function showMainEraSession(
+  displayAgent: 'claude' | 'codex',
+  providerSession: SleepingAgentSessionRecord['providerSession']
+): void {
+  const store = currentStore()
+  store.setState({ tabsByWorktree: { 'wt-1': [makeTab({ id: 'tab-1', worktreeId: 'wt-1' })] } })
+  store
+    .getState()
+    .registerAgentLaunchConfig(
+      PANE,
+      { agentCommand: `/opt/custom/${displayAgent} --display-only`, agentArgs: '', agentEnv: {} },
+      { agentType: displayAgent }
+    )
+  store
+    .getState()
+    .setAgentStatus(
+      PANE,
+      { agentType: displayAgent, state: 'working', prompt: 'finish the task' },
+      undefined,
+      { updatedAt: Date.now() - 5000 },
+      { tabId: 'tab-1', worktreeId: 'wt-1', connectionId: null },
+      { providerSession }
+    )
+}
+
+/** Quit, then restart: the saved hook row is reaped before any workspace opens. */
+function quitAndRestart(): SleepingAgentSessionRecord {
+  currentStore().getState().captureAllSleepingAgentSessions('quit')
+  const persisted = JSON.parse(
+    JSON.stringify(currentStore().getState().sleepingAgentSessionsByPaneKey)
+  )
+  const store = resetStore()
+  const restored = sleepingAgentSessionsByPaneKeySchema.parse(persisted)
+  const record = restored?.[PANE]
+  if (!restored || !record) {
+    throw new Error('Sleeping record was discarded')
+  }
+  store.setState({ sleepingAgentSessionsByPaneKey: restored })
+  return record
+}
+
+function sleepWorktree(): SleepingAgentSessionRecord {
+  currentStore().getState().captureSleepingAgentSessionsByWorktree('wt-1')
+  const record = currentStore().getState().sleepingAgentSessionsByPaneKey[PANE]
+  if (!record) {
+    throw new Error('Sleeping record was not captured')
+  }
+  return record
+}
+
+describe('records saved before resume identity, owned by their transcript path', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetStore()
+  })
+
+  it('cold-restores a quit Claude pane holding a nested Codex session in Codex', () => {
+    showMainEraSession('claude', {
+      key: 'session_id',
+      id: CODEX_ID,
+      transcriptPath: CODEX_ROLLOUT
+    })
+    const record = quitAndRestart()
+
+    expect(record.providerSession.resumeIdentity).toBeUndefined()
+    expect(coldRestore()).toMatchObject({
+      command: CODEX_WITH_CURRENT_SETTINGS,
+      env: { FROM_SETTINGS: '1' }
+    })
+  })
+
+  it('wakes a slept Claude pane holding a nested Codex session in Codex', () => {
+    showMainEraSession('claude', {
+      key: 'session_id',
+      id: CODEX_ID,
+      transcriptPath: CODEX_ROLLOUT
+    })
+    const record = sleepWorktree()
+
+    expect(record.agent).toBe('claude')
+    expect(wake(record)).toBe(CODEX_WITH_CURRENT_SETTINGS)
+  })
+
+  it('wakes a Codex pane holding a nested Claude session in Claude', () => {
+    showMainEraSession('codex', {
+      key: 'session_id',
+      id: CLAUDE_ID,
+      transcriptPath: CLAUDE_TRANSCRIPT
+    })
+
+    expect(wake(sleepWorktree())).toBe(
+      `/opt/settings/claude '--settings-arg' '--resume' '${CLAUDE_ID}'`
+    )
+  })
+
+  it('keeps the display agent when the session has no transcript path, as before', () => {
+    showMainEraSession('claude', { key: 'session_id', id: CODEX_ID })
+
+    expect(wake(sleepWorktree())).toBe(`/opt/custom/claude --display-only '--resume' '${CODEX_ID}'`)
+  })
+
+  it('keeps the display agent when the path names another session', () => {
+    showMainEraSession('claude', {
+      key: 'session_id',
+      id: CODEX_ID,
+      transcriptPath: CODEX_ROLLOUT.replace(CODEX_ID, CLAUDE_ID)
+    })
+
+    expect(wake(sleepWorktree())).toBe(`/opt/custom/claude --display-only '--resume' '${CODEX_ID}'`)
+  })
+
+  it('lets the owner label win over the transcript path', () => {
+    showMainEraSession('claude', {
+      key: 'session_id',
+      id: CODEX_ID,
+      transcriptPath: CODEX_ROLLOUT,
+      resumeIdentity: { agent: 'claude' }
+    })
+
+    expect(wake(sleepWorktree())).toBe(`/opt/custom/claude --display-only '--resume' '${CODEX_ID}'`)
+  })
+})

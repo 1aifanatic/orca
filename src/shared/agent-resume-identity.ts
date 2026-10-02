@@ -1,6 +1,7 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
 import type { AgentType } from './agent-status-types'
 import { isRetainedSessionRemnant } from './agent-hook-presence-transition'
+import { transcriptLayoutAgent } from './agent-transcript-layout'
 import { normalizedKnownAgentType } from './agent-status-identity'
 import {
   agentProviderSessionsEqual,
@@ -73,12 +74,13 @@ export function inheritAgentResumeIdentity(
   }
 }
 
-/** The hook route owns the session; older unlabelled records retain their display agent. */
+/** The hook route owns the session; an unlabelled record falls back to its own transcript path's
+ *  layout (records saved before the label existed), then to its display agent. */
 export function resolveResumeAgent<T extends string | undefined>(
   displayAgent: T,
   session: AgentProviderSessionMetadata
 ): T | AgentResumeIdentity['agent'] {
-  return session.resumeIdentity?.agent ?? displayAgent
+  return session.resumeIdentity?.agent ?? transcriptLayoutAgent(session) ?? displayAgent
 }
 
 /** Dedupe and claims compare the agent each side would resume, never a display label. */
