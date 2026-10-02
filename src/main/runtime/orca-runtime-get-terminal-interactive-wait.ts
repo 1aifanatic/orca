@@ -14,6 +14,7 @@ import { selectExactWorkerProviderSession } from './orchestration/worker-provide
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { OrchestrationError } from './orchestration/orchestration-error'
+import { resolveConfiguredWorkerAgent } from './orchestration/configured-worker-agent-selector'
 
 export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAdoptTerminalOrphansFromInventory {
   async getTerminalInteractiveWait(
@@ -176,6 +177,10 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
       observedAfter,
       statuses: this.getAgentStatusSnapshotFn?.() ?? []
     })
+  }
+
+  resolveOrchestrationAgentLauncher(selector: string): TuiAgent | undefined {
+    return resolveConfiguredWorkerAgent(selector, this.store?.getSettings().agentCmdOverrides ?? {})
   }
 
   validateOrchestrationAgentLauncher(agent: TuiAgent): void {
