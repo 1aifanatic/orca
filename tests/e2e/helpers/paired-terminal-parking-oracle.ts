@@ -196,6 +196,7 @@ export async function runPairedTerminalParkingOracle(
       page,
       remoteTabs.map((tab) => tab.tabId)
     )
+    console.log('[paired-retention-memory]', JSON.stringify({ baseline, after, maxLagMs }))
     expect(after.bufferCells).toBeLessThanOrEqual(baseline.bufferCells * MAX_RETAINED_CELL_FRACTION)
     expect(after.mountedTargetManagers).toBe(1)
     expect(maxLagMs).toBeLessThan(MAX_EVICTION_LAG_MS)
