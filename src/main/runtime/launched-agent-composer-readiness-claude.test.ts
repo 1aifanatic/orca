@@ -265,6 +265,77 @@ describe('what holds a launched agent’s terminal', () => {
         runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
       ).resolves.toBe('shell')
     })
+
+    // A tcsh or nu launch line runs the agent from `/bin/sh '<script>'`, which leads the terminal's
+    // foreground group with the agent a member of it, so the scan names `sh`.
+    const shLeadsClaude = (capturedAgeMs: number, agentCommand: string) => {
+      const row = (pid: number, ppid: number, stat: string, command: string): ProcessTableRow => ({
+        pid,
+        ppid,
+        pgid: 40210,
+        tpgid: 40210,
+        stat,
+        tty: 'ttys007',
+        startTime: 'Fri Oct  2 09:30:01 2026',
+        command
+      })
+      return {
+        foregroundProcess: 'sh',
+        hasChildProcesses: true,
+        foregroundProcessEvidence: resolveRemoteForegroundEvidence(
+          { rootPid: 40100, fallbackProcess: 'sh' },
+          {
+            ptyId: TRANSCRIPT_PANE_PTY_ID,
+            ptyIncarnationId: 'inc-1',
+            authorityGeneration: 'gen-1',
+            observationEpoch: 1,
+            capturedAgeMs,
+            platform: 'darwin'
+          },
+          [
+            { ...row(40100, 40090, 'Ss', '-tcsh'), pgid: 40100 },
+            row(40210, 40100, 'S+', '/bin/sh /tmp/orca-launch/run.sh'),
+            row(40211, 40210, 'S+', agentCommand)
+          ]
+        )
+      }
+    }
+
+    it.each([
+      [
+        'finds the launched agent behind the sh that leads its group',
+        0,
+        '/opt/bin/claude',
+        'agent'
+      ],
+      // Older than the quiet a ready signal needs, it may predate the agent's exit.
+      [
+        'takes the fresh read over an observation too old to trust',
+        1_500,
+        '/opt/bin/claude',
+        'shell'
+      ],
+      ['takes the fresh read when the group holds another agent', 0, '/opt/bin/codex', 'shell']
+    ] as const)('%s', async (_label, capturedAgeMs, agentCommand, found) => {
+      const inspection = shLeadsClaude(capturedAgeMs, agentCommand)
+      // Presence precondition: the observation is live and names the agent in the group.
+      expect(inspection.foregroundProcessEvidence).toMatchObject({
+        verdict: 'live',
+        processName: expect.any(String)
+      })
+      const { runtime } = await createTranscriptPane({
+        paneTitle: 'Terminal',
+        foregroundProcess: 'sh',
+        processInspection: inspection,
+        confirmedForegroundProcess: 'sh',
+        launchAgent: 'claude',
+        data: ''
+      })
+
+      await expect(
+        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+      ).resolves.toBe(found)
+    })
   })
 
   // The scan names the pane's shell for an agent it cannot recognize (an npm agent as `node.exe`),
