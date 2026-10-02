@@ -305,6 +305,11 @@ const besideShareDocument = {
   documentPath: '\\\\nas\\notes\\todo.md'
 }
 
+const besideAccentedShareDocument = {
+  kind: 'document-resource',
+  documentPath: '\\\\n\u00e1s\\notes\\todo.md'
+}
+
 describe('automatic image loads on a network share', () => {
   beforeEach(() => {
     fsCalls.length = 0
@@ -338,16 +343,12 @@ describe('automatic image loads on a network share', () => {
     expect(fsCalls.filter((call) => call.includes('other'))).toEqual([])
   })
 
-  it.each(['\\\\nas\\notes\\x.png', '\\\\NAS\\Notes\\img\\y.png', '//nas/notes/z.png'])(
-    'reads %s beside a document opened from that same share',
-    async (target) => {
-      await expect(
-        resolveLocalFileRequestPath(target, besideShareDocument, shareProjectStore)
-      ).resolves.toBeTruthy()
-    }
-  )
-
+  // Why beside a share document too: a host spelled with a look-alike (U+212A KELVIN SIGN, an NFD
+  // accent) can pass a case-folded folder comparison, so no share is loaded outside a project.
   it.each([
+    '\\\\nas\\notes\\x.png',
+    '\\\\NAS\\Notes\\img\\y.png',
+    '//nas/notes/z.png',
     '\\\\nas\\other\\x.png',
     '\\\\evil\\notes\\x.png',
     '\\\\nas\\notes-evil\\x.png',
@@ -355,6 +356,31 @@ describe('automatic image loads on a network share', () => {
   ])('refuses %s beside a share document without touching any share', async (target) => {
     await expect(
       resolveLocalFileRequestPath(target, besideShareDocument, shareProjectStore)
+    ).rejects.toThrow('Access denied')
+    expect(fsCalls).toEqual([])
+  })
+
+  it.each(['\\\\bac\u212Aup\\notes\\x.png', '//bac\u212Aup/notes/x.png'])(
+    'refuses the KELVIN SIGN host spelling %s beside a document on \\\\backup without touching it',
+    async (target) => {
+      await expect(
+        resolveLocalFileRequestPath(
+          target,
+          { kind: 'document-resource', documentPath: '\\\\backup\\notes\\todo.md' },
+          shareProjectStore
+        )
+      ).rejects.toThrow('Access denied')
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it('refuses an NFD spelling of an accented share host beside a document on it, without touching it', async () => {
+    await expect(
+      resolveLocalFileRequestPath(
+        '\\\\na\u0301s\\notes\\x.png',
+        besideAccentedShareDocument,
+        shareProjectStore
+      )
     ).rejects.toThrow('Access denied')
     expect(fsCalls).toEqual([])
   })

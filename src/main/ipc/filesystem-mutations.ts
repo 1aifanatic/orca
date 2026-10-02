@@ -5,6 +5,7 @@ import { basename, dirname } from 'node:path'
 import type { Store } from '../persistence'
 import {
   resolveDesktopAuthorizedPath,
+  resolveLocalRenamePaths,
   resolveLocalRequestPath
 } from './local-file-access-resolution'
 import type { LocalFileAccess } from '../../shared/local-file-access'
@@ -117,9 +118,13 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // symlink dangling. newPath must also preserve its leaf so we don't
       // accidentally write into a symlinked destination name.
       // Outside every project, a document the user opened may still be renamed in its own folder.
-      const oldPath = await resolveLocalRequestPath(args.oldPath, args.access, store, 'rename-from')
-      const newPath = await resolveLocalRequestPath(args.newPath, args.access, store, 'rename-to')
-      await renameLocalPathSerializedByDestination(oldPath, newPath)
+      const { from, to } = await resolveLocalRenamePaths(
+        args.oldPath,
+        args.newPath,
+        args.access,
+        store
+      )
+      await renameLocalPathSerializedByDestination(from, to)
     }
   )
 

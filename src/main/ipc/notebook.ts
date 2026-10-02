@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { ipcMain, type WebContents } from 'electron'
 import type { Store } from '../persistence'
@@ -72,8 +73,9 @@ export function registerNotebookHandlers(store: Store): void {
   ipcMain.handle(
     'notebook:startKernel',
     async (event, args: { filePath: string; python: string }): Promise<KernelStartResult> => {
-      // Why: run from the notebook's folder so relative imports and data paths resolve as on disk.
-      const cwd = dirname(await resolveUserNamedRegularFile(args.filePath, store))
+      // Why the real file's folder: relative imports and data paths resolve as on disk, even when
+      // the notebook was opened through a link.
+      const cwd = dirname(await realpath(await resolveUserNamedRegularFile(args.filePath, store)))
       const owner = event.sender
       const kernels = kernelsOf(owner)
       kernels.get(args.filePath)?.shutdown()

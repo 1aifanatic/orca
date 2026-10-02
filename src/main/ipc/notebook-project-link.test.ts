@@ -80,3 +80,23 @@ it.skipIf(process.platform === 'win32')(
     )
   }
 )
+
+it.skipIf(process.platform === 'win32')(
+  'runs a linked notebook outside every project in its real folder, as before',
+  async () => {
+    const notes = join(base, 'notes')
+    await mkdir(join(notes, 'analysis'), { recursive: true })
+    await writeFile(join(notes, 'analysis', 'real.ipynb'), '{}')
+    await symlink(join(notes, 'analysis', 'real.ipynb'), join(notes, 'nb.ipynb'))
+    const owner = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false })
+
+    await handlers.get('notebook:startKernel')!(
+      { sender: owner },
+      { filePath: join(notes, 'nb.ipynb'), python: '/py' }
+    )
+
+    expect(startNotebookKernelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: join(notes, 'analysis') })
+    )
+  }
+)

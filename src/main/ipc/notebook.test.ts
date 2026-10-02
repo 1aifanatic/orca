@@ -3,6 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as NodeFsPromises from 'node:fs/promises'
 import type { KernelFrame } from '../../shared/notebook-kernel-types'
 
 const handlers = new Map<string, (event: unknown, args: unknown) => unknown>()
@@ -22,6 +23,14 @@ vi.mock('./local-file-access-resolution', () => ({
   resolveDesktopAuthorizedPath: resolveAuthorizedPathMock
 }))
 vi.mock('../notebook/notebook-kernel', () => ({ startNotebookKernel: startNotebookKernelMock }))
+// Why: the mocked resolver returns made-up `/real/...` paths, which stand for real files already.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return {
+    ...actual,
+    realpath: async (path: string) => (path.startsWith('/real/') ? path : actual.realpath(path))
+  }
+})
 
 import { registerNotebookHandlers } from './notebook'
 import type { Store } from '../persistence'

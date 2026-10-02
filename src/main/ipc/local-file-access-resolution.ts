@@ -72,9 +72,9 @@ function isRefusedAutomaticLoadPath(filePath: string): boolean {
 
 /**
  * A file a document references (an image, typically) beyond what the default check allows: one in
- * the document's own folder, like the common markdown-preview rule, on a network share too when the
- * document is on it. A target outside the folder is refused by its path text before any
- * filesystem call; a symlink inside the folder is still resolved by the folder check.
+ * the document's own folder, like the common markdown-preview rule. A target outside the folder,
+ * or a network share, is refused by its path text before any filesystem call; a symlink inside the
+ * folder is still resolved by the folder check.
  */
 async function resolveDocumentResourcePath(
   targetPath: string,
@@ -93,9 +93,7 @@ async function resolveDocumentResourcePath(
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   const documentFolder = dirname(resolve(documentPath))
-  // Why the folder text check comes first: it refuses every host and share but the document's
-  // own (compared case-insensitively on Windows) before a filesystem call could reach one.
-  if (!isDescendantOrEqual(resolvedTarget, documentFolder)) {
+  if (isNetworkSharePath(resolvedTarget) || !isDescendantOrEqual(resolvedTarget, documentFolder)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   const realTarget = resolve(await realpath(resolvedTarget))
@@ -268,12 +266,44 @@ export async function resolveLocalRequestPath(
   store: Store,
   operation: LocalRequestOperation
 ): Promise<string> {
+  return (await resolveLocalRequest(targetPath, access, store, operation)).path
+}
+
+/**
+ * Both paths of a desktop rename. A source allowed only as the opened document (outside every
+ * project) gets its new name directly in that document's folder, even inside a project, so the
+ * Undo, declared from the new name, can move it back.
+ */
+export async function resolveLocalRenamePaths(
+  oldPath: string,
+  newPath: string,
+  access: unknown,
+  store: Store
+): Promise<{ from: string; to: string }> {
+  const source = await resolveLocalRequest(oldPath, access, store, 'rename-from')
+  const fileAccess = parseLocalFileAccess(access)
+  const to =
+    source.byKindRule && fileAccess?.kind === 'document-folder'
+      ? await resolveDocumentFolderPath(newPath, fileAccess.documentPath, { rename: true })
+      : await resolveLocalRequestPath(newPath, access, store, 'rename-to')
+  return { from: source.path, to }
+}
+
+async function resolveLocalRequest(
+  targetPath: string,
+  access: unknown,
+  store: Store,
+  operation: LocalRequestOperation
+): Promise<{ path: string; byKindRule: boolean }> {
   // Why the leaf is kept: a rename acts on a link itself, never on what it points to.
   const options = { preserveSymlink: operation === 'rename-from' || operation === 'rename-to' }
   const fileAccess = parseLocalFileAccess(access)
   const kindRule = fileAccess && declaredKindRule(fileAccess, operation, store)
   if (!fileAccess || !kindRule) {
-    return resolveDesktopAuthorizedPath(targetPath, store, options)
+    return {
+      path: await resolveDesktopAuthorizedPath(targetPath, store, options),
+      byKindRule: false
+    }
   }
   if (typeof targetPath !== 'string') {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
@@ -288,12 +318,12 @@ export async function resolveLocalRequestPath(
     () => undefined
   )
   if (insideRoots === undefined) {
-    return kindRule(targetPath)
+    return { path: await kindRule(targetPath), byKindRule: true }
   }
   if (automaticLoad && isRefusedAutomaticLoadPath(insideRoots)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  return insideRoots
+  return { path: insideRoots, byKindRule: false }
 }
 
 /** A desktop read/stat request; no declared access means roots only. */

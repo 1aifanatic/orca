@@ -142,6 +142,29 @@ describe('renaming a document the user opened outside every project', () => {
     expect(await readdir(join(docFolder, 'archive'))).toEqual([])
   })
 
+  it('refuses moving it into a project, where its Undo would be refused', async () => {
+    const project = join(docFolder, 'proj')
+    await mkdir(project)
+    projectPaths = [project]
+    invalidateAuthorizedRootsCache()
+
+    expect(
+      await settles(
+        call('fs:rename', {
+          oldPath: note,
+          newPath: join(project, 'note.md'),
+          access: documentFolder(note)
+        })
+      )
+    ).toBe('denied')
+    expect(await readdir(project)).toEqual([])
+
+    const renamed = join(docFolder, 'renamed.md')
+    await call('fs:rename', { oldPath: note, newPath: renamed, access: documentFolder(note) })
+    await call('fs:rename', { oldPath: renamed, newPath: note, access: documentFolder(renamed) })
+    expect((await readdir(docFolder)).sort()).toEqual(['note.md', 'proj'])
+  })
+
   it.skipIf(process.platform === 'win32')(
     'refuses a new name through a linked subfolder that leads out',
     async () => {
