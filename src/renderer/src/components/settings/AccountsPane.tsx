@@ -21,6 +21,7 @@ import {
   getAccountsGeminiSearchEntries,
   getAccountsCursorSearchEntries,
   getAccountsGrokSearchEntries,
+  getAccountsDeepSeekSearchEntries,
   getAccountsLocationSearchEntries,
   getAccountsMiniMaxSearchEntries,
   getAccountsOpencodeSearchEntries,
@@ -37,6 +38,9 @@ import {
   providerAccountIsActiveInView,
   providerAccountMatchesView
 } from './provider-account-visibility'
+import { DeepSeekAccountsSection } from './DeepSeekAccountsSection'
+import { getDeepSeekAccountScope } from '@/runtime/deepseek-account-scope'
+import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import { GrokAccountsSection } from './GrokAccountsSection'
 import { CursorAccountsSection } from './CursorAccountsSection'
 import type {
@@ -103,6 +107,18 @@ export function AccountsPane({
   // Why: with a Remote Orca Server active the server owns provider accounts
   // (see #7973); every list/select/remove below must scope to it, not host/WSL.
   const isRemoteAccountScope = hasRemoteProviderAccountOwner(settings)
+  const activeWorkspaceHostId = useAppStore((s) => s.activeWorkspaceExecutionHostId)
+  const deepseekScope = getDeepSeekAccountScope(
+    settings,
+    activeWorkspaceHostId,
+    getRendererAppPlatform()
+  )
+  const deepseekScopeLabel = deepseekScope.environmentId
+    ? (runtimeEnvironments.find((environment) => environment.id === deepseekScope.environmentId)
+        ?.name ?? deepseekScope.environmentId)
+    : activeWorkspaceHostId?.startsWith('ssh:')
+      ? translate('deepseek.accounts.sshHost', 'SSH host')
+      : localAccountRuntime.label
   const activeRuntimeEnvironmentId = settings.activeRuntimeEnvironmentId?.trim() || null
   // Why: keep the real name separate from the prose fallback below; the scope
   // label must not interpolate the fallback.
@@ -370,6 +386,14 @@ export function AccountsPane({
     clearMiniMaxCookie
   }
   const visibleSections = [
+    matchesSettingsSearch(searchQuery, getAccountsDeepSeekSearchEntries()) ? (
+      <DeepSeekAccountsSection
+        key={`deepseek:${deepseekScope.environmentId ?? 'local'}:${localAccountRuntime.runtime}:${activeWorkspaceHostId ?? 'local'}`}
+        environmentId={deepseekScope.environmentId}
+        unsupportedRuntime={deepseekScope.unsupported}
+        scopeLabel={deepseekScopeLabel}
+      />
+    ) : null,
     wslSupportedPlatform &&
     !isRemoteAccountScope &&
     matchesSettingsSearch(searchQuery, getAccountsLocationSearchEntries())

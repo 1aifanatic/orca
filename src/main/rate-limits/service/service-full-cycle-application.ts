@@ -37,7 +37,8 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
       grokResultPromise,
       cursorResultPromise,
       zcodeResultPromise,
-      antigravityResultPromise
+      antigravityResultPromise,
+      deepseekResultPromise
     } = prepared
     if (signal.aborted) {
       return
@@ -193,7 +194,8 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
       grokResultPromise,
       cursorResultPromise,
       zcodeResultPromise,
-      antigravityResultPromise
+      antigravityResultPromise,
+      deepseekResultPromise
     ])
     if (signal.aborted) {
       return

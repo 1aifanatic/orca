@@ -10,7 +10,7 @@ import { fetchAntigravityRateLimits } from '../antigravity-usage-fetcher'
 import { fetchMiniMaxRateLimits } from '../minimax/minimax-fetcher'
 import { createHash } from 'node:crypto'
 import { fetchOpenCodeGoUsage } from '../opencode-go-usage-source-selection'
-import { RateLimitServiceFetchPolicy } from './service-fetch-policy'
+import { RateLimitServiceDeepSeekBalance } from './service-deepseek-balance'
 import type { SettledProviderResult } from './service-sibling-provider-result'
 import type {
   ClaudeRuntimeAuthPreparation,
@@ -48,9 +48,10 @@ export type FetchAllCyclePrepared = {
   cursorResultPromise: Promise<SettledProviderResult>
   zcodeResultPromise: Promise<SettledProviderResult>
   antigravityResultPromise: Promise<SettledProviderResult>
+  deepseekResultPromise: Promise<unknown>
 }
 
-export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServiceFetchPolicy {
+export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServiceDeepSeekBalance {
   protected async prepareFetchAllCycle(
     signal: AbortSignal,
     options?: { force?: boolean }
@@ -58,6 +59,7 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     if (signal.aborted) {
       return null
     }
+    const deepseekResultPromise = this.refreshDeepSeekBalance(signal)
     const claudeTarget = this.claudeFetchTarget
     // Why: capture before the resolver await so an account switch during it invalidates both the snapshot and the state apply.
     const claudeGeneration = this.claudeFetchGeneration
@@ -250,7 +252,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       grokResultPromise,
       cursorResultPromise,
       zcodeResultPromise,
-      antigravityResultPromise
+      antigravityResultPromise,
+      deepseekResultPromise
     }
   }
 }

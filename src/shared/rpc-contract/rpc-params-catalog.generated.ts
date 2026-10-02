@@ -137,6 +137,7 @@ import {
   SetValue,
   TypeText
 } from './computer-schemas-params'
+import { DeepSeekAccountOwnerParams, SaveDeepSeekApiKeyParams } from './deepseek-account-params'
 import {
   AttachParams as AttachParamsOfEmulatorParams,
   AxParams,
@@ -559,9 +560,13 @@ export const RPC_PARAMS_BY_METHOD = {
   'accounts.addClaudeFromConfigDir': AddClaudeFromConfigDirParams,
   'accounts.addCodexFromHome': AddCodexFromHomeParams,
   'accounts.consumeCodexResetCredit': ConsumeCodexResetCreditParams,
+  'accounts.deepSeekStatus': null,
   'accounts.list': ListAccountsParams,
+  'accounts.refreshDeepSeek': DeepSeekAccountOwnerParams,
   'accounts.removeClaude': RemoveAccountParams,
   'accounts.removeCodex': RemoveAccountParams,
+  'accounts.removeDeepSeekApiKey': DeepSeekAccountOwnerParams,
+  'accounts.saveDeepSeekApiKey': SaveDeepSeekApiKeyParams,
   'accounts.selectClaude': SelectAccountParams,
   'accounts.selectCodex': SelectAccountParams,
   'accounts.selectCodexForTarget': SelectCodexAccountForTargetParams,
