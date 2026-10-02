@@ -7,6 +7,12 @@ import {
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import {
+  clearPersistedNativeChatDraftsForTests,
+  flushPersistedNativeChatDrafts,
+  persistNativeChatDraftPart,
+  readPersistedNativeChatDraft
+} from './native-chat-draft-storage'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 
@@ -222,7 +228,16 @@ const attachmentCache = new Map<string, NativeChatComposerImageAttachment[]>()
 export function readNativeChatAttachmentCache(
   scopeKey: string
 ): NativeChatComposerImageAttachment[] {
-  return [...(attachmentCache.get(scopeKey) ?? [])]
+  const cached = attachmentCache.get(scopeKey)
+  if (cached) {
+    return [...cached]
+  }
+  // Not held this run (a reload): read back the settled chips the draft saved.
+  const persisted = readPersistedNativeChatDraft(scopeKey)?.attachments ?? []
+  if (persisted.length > 0) {
+    setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...persisted])
+  }
+  return [...persisted]
 }
 
 function writeNativeChatAttachmentCache(
@@ -239,10 +254,22 @@ function writeNativeChatAttachmentCache(
     .map(({ previewUrl: _previewUrl, ...attachment }) => attachment)
   if (attachments.length === 0) {
     attachmentCache.delete(scopeKey)
+    persistNativeChatDraftPart(scopeKey, { attachments: [] }, 'immediate')
     return
   }
   // LRU-bounded so pending attachments for permanently-removed panes can't accumulate.
   setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...attachments])
+  persistNativeChatDraftPart(
+    scopeKey,
+    {
+      attachments: attachments.map(({ id, path, connectionId }) => ({
+        id,
+        path,
+        ...(connectionId ? { connectionId } : {})
+      }))
+    },
+    'deferred'
+  )
 }
 
 // Only a write from outside the composer notifies; its own writes already hold the chips.
@@ -263,6 +290,8 @@ export function appendNativeChatAttachmentCache(
     ...readNativeChatAttachmentCache(scopeKey),
     ...appended
   ])
+  // Saved now: the copy it came from goes right after this.
+  flushPersistedNativeChatDrafts()
   appendListeners.get(scopeKey)?.forEach((listener) => listener(appended))
 }
 
@@ -283,4 +312,5 @@ function subscribeToNativeChatAttachmentAppend(
 
 export function clearNativeChatAttachmentCacheForTests(): void {
   attachmentCache.clear()
+  clearPersistedNativeChatDraftsForTests()
 }
