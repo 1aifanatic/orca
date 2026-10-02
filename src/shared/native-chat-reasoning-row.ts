@@ -8,33 +8,28 @@ import { normalizeSubagentState } from './native-chat-subagent-summary'
 import { formatNativeChatDuration } from './native-chat-turn-status'
 import type { NativeChatMessage, NativeChatSubagentEntry } from './native-chat-types'
 
-/** Whether the host reports reasoning open right now in the live turn: for the session's own agent
- *  without `agentId`, else for that subagent. The one gate every live "Thinking" reads; a host that
- *  sends no signal (an older one) reports nothing open. */
-export function nativeChatReasoningOpen(
-  activity: AgentSessionTurnActivity | null | undefined,
-  liveTurnId: string | null,
-  agentId?: string
-): boolean {
-  return nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
-}
-
-/** What the gate answers for one activity, as a key that changes only when some answer does, so a
- *  client rebuilds the gate (and everything reading it) only then. '' when nothing is open. */
+/** What the host's live reasoning gate answers for one activity, as a key that changes only when
+ *  some answer does, so a client rebuilds the gate (and everything reading it) only then. Only the
+ *  live turn's reasoning counts; '' when nothing is open, including from a host that sends no
+ *  signal (an older one). */
 export function nativeChatReasoningGateKey(
   activity: AgentSessionTurnActivity | null | undefined,
   liveTurnId: string | null
 ): string {
   const reasoning = liveTurnId && activity?.turnId === liveTurnId ? activity.reasoning : undefined
-  return reasoning ? JSON.stringify([reasoning.session, [...reasoning.subagents].sort()]) : ''
+  return reasoning
+    ? JSON.stringify([reasoning.session, [...(reasoning.subagents ?? [])].sort()])
+    : ''
 }
 
-const NOTHING_OPEN = (): boolean => false
+/** The gate when nothing is open, for callers without a host signal. */
+export const NATIVE_CHAT_NOTHING_REASONING_OPEN = (_agentId?: string): boolean => false
 
-/** The gate a key answers with. */
+/** The gate a key answers with: the session's own agent without `agentId`, else that subagent. The
+ *  one rule every live "Thinking" reads. */
 export function nativeChatReasoningGate(key: string): (agentId?: string) => boolean {
   if (!key) {
-    return NOTHING_OPEN
+    return NATIVE_CHAT_NOTHING_REASONING_OPEN
   }
   const parsed: unknown = JSON.parse(key)
   const [session, ids] = Array.isArray(parsed) ? parsed : []

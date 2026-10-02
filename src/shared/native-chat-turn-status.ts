@@ -76,7 +76,7 @@ export type NativeChatLiveTurnIndicator = {
   /** The session's own agent has reasoning open now: `isReasoningOpen()`. */
   thinking: boolean
   activityText: string | null
-  /** The host's live reasoning gate for the live turn (`nativeChatReasoningOpen`), per row scope. */
+  /** The host's live reasoning gate for the live turn (`nativeChatReasoningGate`), per row scope. */
   isReasoningOpen?: (agentId?: string) => boolean
 }
 

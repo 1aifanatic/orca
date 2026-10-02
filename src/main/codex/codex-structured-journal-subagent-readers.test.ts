@@ -12,7 +12,11 @@ import type { AgentSessionTurnActivity } from '../../shared/agent-session-wire'
 import { selectStructuredAgentTurnActivity } from '../../shared/native-chat-turn-activity'
 import { latestStructuredAgentSessionAssistantMessage } from '../../shared/structured-agent-session-latest-request'
 import { statusStructuredAgentSessionToolCall } from '../../shared/structured-agent-session-live-turn'
-import { nativeChatReasoningOpen } from '../../shared/native-chat-reasoning-row'
+import {
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey
+} from '../../shared/native-chat-reasoning-row'
+import type { AgentSessionTurnActivity as LiveActivity } from '../../shared/agent-session-turn-activity'
 import { openAgentSessionJournal } from '../native-chat/agent-session-journal/journal-store-factory'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -20,6 +24,13 @@ import { createCodexJournalTranslator } from './codex-structured-journal-transla
 import type { CodexThreadItem } from './codex-thread-item-identity'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+
+/** The host's live reasoning gate, as a client reads it. */
+const reasoningOpen = (
+  activity: LiveActivity | null | undefined,
+  liveTurnId: string | null,
+  agentId?: string
+): boolean => nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
 
 const SESSION = 'session-codex-children'
 const PARENT = 'thread-parent'
@@ -155,12 +166,12 @@ describe("a Codex subagent's rows on the parent's surfaces", () => {
     const open = activities.at(-1)
     expect(open?.reasoning?.session).toBe(false)
     expect(open?.reasoning?.subagents).toHaveLength(1)
-    expect(nativeChatReasoningOpen(open, PARENT_TURN)).toBe(false)
-    expect(nativeChatReasoningOpen(open, PARENT_TURN, open?.reasoning?.subagents[0])).toBe(true)
+    expect(reasoningOpen(open, PARENT_TURN)).toBe(false)
+    expect(reasoningOpen(open, PARENT_TURN, open?.reasoning?.subagents[0])).toBe(true)
 
     item(CHILD, 'item/completed', CHILD_TURN, reasoning)
     await items()
-    expect(nativeChatReasoningOpen(activities.at(-1), PARENT_TURN, 'any')).toBe(false)
+    expect(reasoningOpen(activities.at(-1), PARENT_TURN, 'any')).toBe(false)
     expect(activities.at(-1)?.reasoning).toBeUndefined()
   })
 

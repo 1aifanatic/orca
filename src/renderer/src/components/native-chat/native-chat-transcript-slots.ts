@@ -21,7 +21,10 @@ import {
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
-import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-reasoning-row'
+import {
+  isNativeChatReasoningUnderway,
+  NATIVE_CHAT_NOTHING_REASONING_OPEN
+} from '../../../../shared/native-chat-reasoning-row'
 import {
   estimateNativeChatRowHeight,
   nativeChatRowContentMetrics
@@ -99,11 +102,9 @@ export type NativeChatTranscriptSlotsInput = {
   lifecycleWorking: boolean
   subagentSections?: NativeChatSubagentSections
   subagentChoices?: NativeChatSubagentChoices
-  /** The host's live reasoning gate (`nativeChatReasoningOpen`) for the live turn. */
+  /** The host's live reasoning gate (`nativeChatReasoningGate`) for the live turn. */
   isReasoningOpen?: (agentId?: string) => boolean
 }
-
-const NO_OPEN_REASONING = (): boolean => false
 
 export function buildNativeChatTranscriptSlots(
   input: NativeChatTranscriptSlotsInput
@@ -120,7 +121,7 @@ export function buildNativeChatTranscriptSlots(
     lifecycleWorking,
     subagentSections: sections = NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
     subagentChoices: choices = NO_NATIVE_CHAT_SUBAGENT_CHOICES,
-    isReasoningOpen = NO_OPEN_REASONING
+    isReasoningOpen = NATIVE_CHAT_NOTHING_REASONING_OPEN
   } = input
   // One pass to decide what each row draws, then the fold over those readings —
   // so "is this the answer" and "does this row render prose" cannot disagree.

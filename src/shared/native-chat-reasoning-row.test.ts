@@ -4,29 +4,39 @@ import {
   isNativeChatSubagentThinking,
   nativeChatReasoningGate,
   nativeChatReasoningGateKey,
-  nativeChatReasoningOpen,
   nativeChatReasoningHeadline,
   nativeChatReasoningHeadlineText
 } from './native-chat-reasoning-row'
+
+const reasoningOpen = (
+  activity: Parameters<typeof nativeChatReasoningGateKey>[0],
+  liveTurnId: string | null,
+  agentId?: string
+) => nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
 
 describe('the live reasoning gate', () => {
   const open = { turnId: 'turn-1', text: '', reasoning: { session: true, subagents: ['task-1'] } }
 
   it("answers per scope: the session's own agent, or one subagent by its id", () => {
-    expect(nativeChatReasoningOpen(open, 'turn-1')).toBe(true)
-    expect(nativeChatReasoningOpen(open, 'turn-1', 'task-1')).toBe(true)
-    expect(nativeChatReasoningOpen(open, 'turn-1', 'task-2')).toBe(false)
+    expect(reasoningOpen(open, 'turn-1')).toBe(true)
+    expect(reasoningOpen(open, 'turn-1', 'task-1')).toBe(true)
+    expect(reasoningOpen(open, 'turn-1', 'task-2')).toBe(false)
     const childOnly = { ...open, reasoning: { session: false, subagents: ['task-1'] } }
-    expect(nativeChatReasoningOpen(childOnly, 'turn-1')).toBe(false)
+    expect(reasoningOpen(childOnly, 'turn-1')).toBe(false)
+  })
+
+  it('reads reasoning that lists no subagents as only what it says about the session', () => {
+    // A peer may omit the list; the reducer's equality tolerates that the same way.
+    const partial = JSON.parse('{"turnId":"turn-1","text":"","reasoning":{"session":true}}')
+    expect(reasoningOpen(partial, 'turn-1')).toBe(true)
+    expect(reasoningOpen(partial, 'turn-1', 'task-1')).toBe(false)
   })
 
   it('reports nothing for another turn, no live turn, or a host that sends no signal', () => {
-    expect(nativeChatReasoningOpen(open, 'turn-2')).toBe(false)
-    expect(nativeChatReasoningOpen(open, null)).toBe(false)
-    expect(nativeChatReasoningOpen({ turnId: 'turn-1', text: 'Running a command' }, 'turn-1')).toBe(
-      false
-    )
-    expect(nativeChatReasoningOpen(null, 'turn-1')).toBe(false)
+    expect(reasoningOpen(open, 'turn-2')).toBe(false)
+    expect(reasoningOpen(open, null)).toBe(false)
+    expect(reasoningOpen({ turnId: 'turn-1', text: 'Running a command' }, 'turn-1')).toBe(false)
+    expect(reasoningOpen(null, 'turn-1')).toBe(false)
   })
 })
 

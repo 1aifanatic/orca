@@ -4,9 +4,20 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import type { AgentSessionTurnActivity } from '../../shared/agent-session-wire'
-import { nativeChatReasoningOpen } from '../../shared/native-chat-reasoning-row'
+import {
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey
+} from '../../shared/native-chat-reasoning-row'
+import type { AgentSessionTurnActivity as LiveActivity } from '../../shared/agent-session-turn-activity'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
+
+/** The host's live reasoning gate, as a client reads it. */
+const reasoningOpen = (
+  activity: LiveActivity | null | undefined,
+  liveTurnId: string | null,
+  agentId?: string
+): boolean => nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
 
 const PARENT = '00000000-0000-4000-8000-000000000001'
 const CHILD = '00000000-0000-4000-8000-000000000002'
@@ -80,8 +91,8 @@ describe("a Codex helper thread's reasoning (captured, Codex 0.159)", () => {
 
     const open = step(on(CHILD, 'item/started', { turnId: CHILD_TURN, item: childReasoning }))
     expect(open?.reasoning).toEqual({ session: false, subagents: [CHILD] })
-    expect(nativeChatReasoningOpen(open, PARENT_TURN)).toBe(false)
-    expect(nativeChatReasoningOpen(open, PARENT_TURN, CHILD)).toBe(true)
+    expect(reasoningOpen(open, PARENT_TURN)).toBe(false)
+    expect(reasoningOpen(open, PARENT_TURN, CHILD)).toBe(true)
 
     const closed = step(on(CHILD, 'item/completed', { turnId: CHILD_TURN, item: childReasoning }))
     expect(closed?.reasoning).toBeUndefined()

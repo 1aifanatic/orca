@@ -13,6 +13,7 @@ import { NativeChatAwaitingInputRow } from './NativeChatAwaitingInputRow'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import type { NativeChatTurnActivity } from '../../../../shared/native-chat-turn-activity'
 import { NativeChatTurnActivityLine } from './NativeChatTurnActivityLine'
+import { NATIVE_CHAT_NOTHING_REASONING_OPEN } from '../../../../shared/native-chat-reasoning-row'
 import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-context'
 import {
   NativeChatDisclosureContext,
@@ -66,8 +67,6 @@ type NativeChatNavigationRequest =
   | { kind: 'diff'; target: NativeChatDiffReveal }
   | { kind: 'rail'; messageId: string; requestId: number }
 
-const NO_OPEN_REASONING = (): boolean => false
-
 export function NativeChatMessageList({
   session,
   journalItems,
@@ -85,7 +84,7 @@ export function NativeChatMessageList({
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
-  isReasoningOpen = NO_OPEN_REASONING,
+  isReasoningOpen = NATIVE_CHAT_NOTHING_REASONING_OPEN,
   runtimeContext
 }: {
   session: NativeChatLiveSession

@@ -5,8 +5,19 @@ import {
   reduceStructuredAgentSession,
   type StructuredAgentSessionState
 } from '../../../shared/structured-agent-session-reducer'
-import { nativeChatReasoningOpen } from '../../../shared/native-chat-reasoning-row'
+import {
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey
+} from '../../../shared/native-chat-reasoning-row'
+import type { AgentSessionTurnActivity as LiveActivity } from '../../../shared/agent-session-turn-activity'
 import { createTurnActivityChannel, MAX_OPEN_REASONING_SUBAGENTS } from './turn-activity-channel'
+
+/** The host's live reasoning gate, as a client reads it. */
+const reasoningOpen = (
+  activity: LiveActivity | null | undefined,
+  liveTurnId: string | null,
+  agentId?: string
+): boolean => nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
 
 function channel() {
   const sent: (AgentSessionTurnActivity | null)[] = []
@@ -112,8 +123,8 @@ describe('the live turn activity channel', () => {
       }
     })
     const seen = () => [
-      nativeChatReasoningOpen(state.activity, 'turn-1'),
-      nativeChatReasoningOpen(state.activity, 'turn-1', 'agent-a')
+      reasoningOpen(state.activity, 'turn-1'),
+      reasoningOpen(state.activity, 'turn-1', 'agent-a')
     ]
     activity.setReasoning('turn-1', OPEN)
     expect(seen()).toEqual([true, false])

@@ -4,7 +4,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { nativeChatReasoningOpen } from '../../shared/native-chat-reasoning-row'
+import {
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey
+} from '../../shared/native-chat-reasoning-row'
+import type { AgentSessionTurnActivity as LiveActivity } from '../../shared/agent-session-turn-activity'
 import { activeStructuredAgentSessionTurnId } from '../../shared/structured-agent-session-live-turn'
 import {
   EMPTY_STRUCTURED_AGENT_SESSION,
@@ -17,6 +21,13 @@ import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/ag
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { AgentSessionSubscribers } from '../native-chat/agent-session-wire/structured-agent-session-subscribers'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
+
+/** The host's live reasoning gate, as a client reads it. */
+const reasoningOpen = (
+  activity: LiveActivity | null | undefined,
+  liveTurnId: string | null,
+  agentId?: string
+): boolean => nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -68,7 +79,7 @@ async function clientViews() {
           item.body.role === 'reasoning' &&
           item.body.state === 'running'
       )
-      if (live && running && !nativeChatReasoningOpen(state.activity, live)) {
+      if (live && running && !reasoningOpen(state.activity, live)) {
         shownOpenWithGateShut.push(state.items.length)
       }
     }

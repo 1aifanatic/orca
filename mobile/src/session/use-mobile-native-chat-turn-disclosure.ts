@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
+import { NATIVE_CHAT_NOTHING_REASONING_OPEN } from '../../../src/shared/native-chat-reasoning-row'
 import {
   nativeChatMessagesWaitingBehindLiveTurn,
   nativeChatTurnMembership,
@@ -31,8 +32,6 @@ export type MobileNativeChatTurnRow = {
   reasoningOpen: boolean
 }
 
-const NO_OPEN_REASONING = (): boolean => false
-
 /** Owns the transcript's per-turn status rows and their disclosure state, and
  *  resolves what one list row needs. Bridge-lane chats pass `enabled: false` and
  *  keep their single three-dot working indicator instead. */
@@ -44,7 +43,7 @@ export function useMobileNativeChatTurnDisclosure({
   settledTurns,
   turnJournal = null,
   thinking = false,
-  isReasoningOpen = NO_OPEN_REASONING,
+  isReasoningOpen = NATIVE_CHAT_NOTHING_REASONING_OPEN,
   activityText = null,
   scopeKey
 }: {
