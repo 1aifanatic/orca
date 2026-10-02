@@ -10,7 +10,7 @@ import { __clearSelfWriteRegistryForTests } from './editor-self-write-registry'
 vi.mock('@/lib/connection-context', () => ({ getConnectionIdForFile: () => null }))
 
 function createEditorStore(): StoreApi<AppState> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/consistent-type-assertions, typescript/no-explicit-any -- SAFETY: the editor save path reads only the slice and fields built here.
   return createStore<any>()((...args: any[]) => ({
     settings: { editorAutoSave: false },
     repos: [],

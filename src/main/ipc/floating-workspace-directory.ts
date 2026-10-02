@@ -104,7 +104,7 @@ export async function resolveFloatingTerminalCwd(
 }
 
 export async function trustFloatingWorkspaceDirectory(
-  store: Store,
+  store: Pick<Store, 'getSettings' | 'updateSettings'>,
   dirPath: string
 ): Promise<void> {
   const resolvedDir = resolveFloatingWorkspaceInput(dirPath)

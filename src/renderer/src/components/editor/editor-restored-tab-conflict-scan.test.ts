@@ -33,12 +33,15 @@ function createEditorStore(): StoreApi<AppState> {
 function openRestoredDirtyTab(
   store: StoreApi<AppState>,
   filePath: string,
-  baselineContent: string
+  baselineContent: string,
+  owner: { relativePath: string; worktreeId: string } = {
+    relativePath: filePath.slice(1),
+    worktreeId: 'wt-1'
+  }
 ): void {
   store.getState().openFile({
     filePath,
-    relativePath: filePath.slice(1),
-    worktreeId: 'wt-1',
+    ...owner,
     language: 'typescript',
     mode: 'edit'
   })
@@ -260,14 +263,10 @@ describe('attachRestoredTabConflictScan', () => {
     mocks.pathExists.mockResolvedValue(true)
     mocks.getConnectionIdForFile.mockReturnValue(null)
     const store = createEditorStore()
-    openRestoredDirtyTab(store, '/Users/me/notes.txt', 'original baseline')
-    store.setState({
-      openFiles: store.getState().openFiles.map((file) => ({
-        ...file,
-        relativePath: 'notes.txt',
-        worktreeId: FLOATING_TERMINAL_WORKTREE_ID
-      }))
-    } as never)
+    openRestoredDirtyTab(store, '/Users/me/notes.txt', 'original baseline', {
+      relativePath: 'notes.txt',
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID
+    })
 
     const detach = attachRestoredTabConflictScan(store)
     try {

@@ -179,7 +179,7 @@ export function useEditorPanelFileContentLoader({
         }
         let pending = inFlightFileReads.get(key)
         if (!pending) {
-          const promise = readRuntimeFileContent({
+          const promise: Promise<FileContent> = readRuntimeFileContent({
             settings: readSettings,
             filePath,
             relativePath: readRelativePath,
@@ -188,7 +188,7 @@ export function useEditorPanelFileContentLoader({
             expectedExternalSshTargetId: restoredOpenFile?.externalSshTargetId,
             includeLocalLogMetadata: isLiveTailLogTab,
             access
-          }) as Promise<FileContent>
+          })
           pending = { externalEventGeneration: options?.externalEventGeneration, promise }
           inFlightFileReads.set(key, pending)
           queueMicrotask(() => {

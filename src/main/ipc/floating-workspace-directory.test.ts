@@ -90,7 +90,7 @@ describe('floating workspace directory', () => {
     await mkdir(selectedDir)
     const canonicalSelectedDir = await realpath(selectedDir)
 
-    await trustFloatingWorkspaceDirectory(store as never, selectedDir)
+    await trustFloatingWorkspaceDirectory(store, selectedDir)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([canonicalSelectedDir])
 
@@ -112,7 +112,7 @@ describe('floating workspace directory', () => {
     await symlinkDirectory(originalTarget, selectedLink)
     const canonicalOriginalTarget = await realpath(originalTarget)
 
-    await trustFloatingWorkspaceDirectory(store as never, selectedLink)
+    await trustFloatingWorkspaceDirectory(store, selectedLink)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([canonicalOriginalTarget])
 
@@ -138,7 +138,7 @@ describe('floating workspace directory', () => {
       floatingTerminalTrustedCwds: [missingTrustedDir]
     })
 
-    await trustFloatingWorkspaceDirectory(store as never, selectedDir)
+    await trustFloatingWorkspaceDirectory(store, selectedDir)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([
       missingTrustedDir,

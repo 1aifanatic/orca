@@ -116,9 +116,7 @@ async function renderProbe(args: {
 beforeEach(() => {
   mocks.stat.mockReset().mockResolvedValue(undefined)
   mocks.resolveNativeChatAttachmentOwnerForWorktree.mockReset().mockReturnValue({ kind: 'local' })
-  window.api = {
-    fs: { stat: mocks.stat }
-  } as unknown as Window['api']
+  vi.stubGlobal('api', { fs: { stat: mocks.stat } })
 })
 
 afterEach(() => {

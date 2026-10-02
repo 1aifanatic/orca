@@ -244,7 +244,7 @@ async function readCurrentContent(
 async function readFileContent(file: OpenFile): Promise<string> {
   const connectionId = getConnectionIdForFile(file.worktreeId, file.filePath) ?? undefined
   const state = useAppStore.getState()
-  const result = (await readRuntimeFileContent({
+  const result: FileContent = await readRuntimeFileContent({
     settings: settingsForRuntimeOwner(state.settings, file.runtimeEnvironmentId),
     filePath: file.filePath,
     relativePath: file.relativePath,
@@ -252,7 +252,7 @@ async function readFileContent(file: OpenFile): Promise<string> {
     connectionId,
     expectedExternalSshTargetId: file.externalSshTargetId,
     access: editorTabFileAccess(state, file)
-  })) as FileContent
+  })
   if (result.isBinary) {
     throw new Error('binary_file')
   }

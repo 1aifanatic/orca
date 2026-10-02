@@ -95,7 +95,7 @@ describe('remote sibling editor content routing', () => {
 
   beforeEach(() => {
     latestFileContents = {}
-    ;(window as unknown as { api: unknown }).api = { fs: {} }
+    vi.stubGlobal('api', { fs: {} })
     mocks.readRuntimeFileContent.mockReset()
     mocks.findWorkspaceFileRoute.mockReset()
     mocks.findWorkspaceFileRoute.mockReturnValue(null)

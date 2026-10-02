@@ -10,7 +10,10 @@ vi.mock('node:path', async () => {
   return { ...actual.win32, default: actual.win32 }
 })
 
-const { fsCalls } = vi.hoisted(() => ({ fsCalls: [] as string[] }))
+const { fsCalls } = vi.hoisted(() => {
+  const calls: string[] = []
+  return { fsCalls: calls }
+})
 
 vi.mock('node:fs/promises', () => {
   const record = (name: string) =>
