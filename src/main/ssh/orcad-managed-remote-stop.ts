@@ -7,9 +7,12 @@
  */
 import { randomUUID } from 'node:crypto'
 import { shellEscape } from './ssh-connection-utils'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
-import { parseOrcadReadinessOutput, readOrcadReadinessCommand } from './orcad-remote-launch'
+import { readOrcadReadinessCommand } from './orcad-remote-launch'
+import {
+  orcadReadinessWaitCommand,
+  parseOrcadReadinessWaitOutput
+} from './orcad-remote-readiness-wait'
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import { readBoundedOrcadRemoteRecord } from './orcad-remote-record-file'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
@@ -51,10 +54,16 @@ export async function readRemoteOrcadManagedStopTarget(
   options: OrcadSlotOptions,
   version: string
 ): Promise<OrcadManagedStopTarget> {
-  assertPosixOrcadHost(options.host)
   const slotDir = orcadSlotDir(options, version)
-  const readiness = parseOrcadReadinessOutput(
-    await execOrcadRemote(options, readOrcadReadinessCommand(options.host, slotDir))
+  // Windows reads it through the host script's wait op with no wait; POSIX keeps `head`.
+  const readiness = parseOrcadReadinessWaitOutput(
+    options.host,
+    await execOrcadRemote(
+      options,
+      isWindowsRemoteHost(options.host)
+        ? orcadReadinessWaitCommand(options.host, slotDir, 0)
+        : readOrcadReadinessCommand(options.host, slotDir)
+    )
   )
   if (readiness.state !== 'ready' || !readiness.readiness.health) {
     return refused(

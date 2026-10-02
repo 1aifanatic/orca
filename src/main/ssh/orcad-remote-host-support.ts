@@ -3,8 +3,9 @@
  * discovered at runtime.
  *
  * The install transaction is host-agnostic — it is the relay's, and the relay runs on
- * Windows. Deploy, rollback and their recovery run on Windows through the host script
- * (`orcad-windows-host-script.ts`); managed stop, decommission and GC do not yet, and refuse.
+ * Windows. Every managed-orcad operation runs on Windows through the host script
+ * (`orcad-windows-host-script.ts`); the guard below remains only on POSIX command builders
+ * that the Windows paths never call.
  */
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
@@ -12,9 +13,8 @@ export class OrcadRemoteLaunchUnsupportedError extends Error {
   readonly code = 'orcad_remote_launch_unsupported_host'
   constructor(hostLabel: string) {
     super(
-      `Deploying orcad to a ${hostLabel} host is not implemented. The install transaction is ` +
-        'host-agnostic, but managed stop, decommission and version GC are POSIX-only. ' +
-        'Use the relay for this host.'
+      `This orcad command does not run on a ${hostLabel} host. The install transaction is ` +
+        'host-agnostic, but this step is a POSIX command with a separate Windows path.'
     )
     this.name = 'OrcadRemoteLaunchUnsupportedError'
   }

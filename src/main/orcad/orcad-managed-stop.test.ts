@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   OrcadManagedStopCompletionSchema,
@@ -88,13 +88,29 @@ describe('managed stop requests', () => {
     for (const mismatch of [
       { ...request, version: '0.9.0' },
       { ...request, runtimeId: 'runtime-2' },
-      { ...request, instance: { ...request.instance, pid: request.instance.pid + 1 } }
+      { ...request, instance: { ...request.instance, pid: request.instance.pid + 1 } },
+      {
+        ...request,
+        instance: { ...request.instance, lockPath: `${request.instance.lockPath}.old` }
+      }
     ]) {
       writeFileSync(path, JSON.stringify(mismatch))
       expect(() => validateOrcadManagedStopRequest(context(request), path)).toThrow(
         'identity_mismatch'
       )
     }
+  })
+
+  it('accepts the same lock path spelled differently, as a Windows client sends it', () => {
+    const { request } = running()
+    const path = orcadManagedStopRequestPath(request.instance)
+    const { lockPath } = request.instance
+    // `/` separators and a `.` segment: the same file, not the same string.
+    const respelled = `${dirname(lockPath)}/./${basename(lockPath)}`.replaceAll(sep, '/')
+    expect(respelled).not.toBe(lockPath)
+    const sent = { ...request, instance: { ...request.instance, lockPath: respelled } }
+    writeFileSync(path, JSON.stringify(sent))
+    expect(validateOrcadManagedStopRequest(context(request), path)).toEqual(sent)
   })
 
   it('refuses a request once the instance lock names another holder', () => {

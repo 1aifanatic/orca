@@ -1,6 +1,6 @@
 // Managed orcad on a real Win32-OpenSSH host, one cell per DefaultShell: resolve the context
-// (pinned node.exe, host script), deploy and activate, prove readiness and liveness, stop through
-// the slot's request file, and prove exit. config/ci/windows-ssh-provider/invoke-pinned-relay-cells.ps1
+// (pinned node.exe, host script), deploy and activate, prove readiness and liveness, decommission
+// through the instance-bound stop request, prove exit, and run a GC pass. config/ci/windows-ssh-provider/invoke-pinned-relay-cells.ps1
 // provisions the account and runs this file for `orcad-*` cells; ssh-windows-hosts.yml runs that.
 //
 // Run: ORCA_RUN_SSH_WINDOWS_HOST=1 ORCA_SSH_WINDOWS_HOST_CELL=<descriptor.json> pnpm test <this file>
@@ -18,7 +18,10 @@ import {
 import { resolveOrcadRemoteContext } from './orcad-remote-context'
 import { deployOrcad } from './orcad-remote-deploy'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
-import { orcadSlotDir, stopOrcadSlot, type OrcadSlotOptions } from './orcad-recovery-slot'
+import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
+import { decommissionRemoteOrcad } from './orcad-remote-stop'
+import { readOrcadActivationRecord } from './orcad-activation-record-store'
+import { gcOldOrcadVersions } from './orcad-remote-gc'
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import {
   isWindowsOrcadCellId,
@@ -46,7 +49,7 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
   })
 
   it(
-    'deploys, serves, stops by request and exits',
+    'deploys, serves, decommissions by request and exits',
     async () => {
       const descriptor = readWindowsHostCellDescriptor(process.env.ORCA_SSH_WINDOWS_HOST_CELL ?? '')
       if (!isWindowsOrcadCellId(descriptor.cell)) {
@@ -86,8 +89,27 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
             await execOrcadRemote(options, orcadLivenessProbeCommand(options.host, slotDir))
           )
         expect(await liveness()).toBe('LIVE')
-        receipt.stop = await stopOrcadSlot(options, slotDir, false)
-        expect(receipt.stop).toBe('stopped')
+        // Decommission stops it by the instance-bound request orcad itself completes and proves.
+        const record = await readOrcadActivationRecord(options)
+        receipt.decommission = await decommissionRemoteOrcad({
+          ...options,
+          record,
+          census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null }
+        })
+        // The message carries the refusal code and reason, which toMatchObject's diff omits.
+        expect(receipt.decommission, JSON.stringify(receipt.decommission)).toMatchObject({
+          outcome: 'decommissioned',
+          version: deployed.fullVersion
+        })
+        expect(await liveness()).toBe('DEAD')
+        // A GC pass after decommission must leave the recorded previous slot in place.
+        await gcOldOrcadVersions({
+          conn,
+          host: options.host,
+          remoteHome: options.remoteHome,
+          currentDirAbsPath: slotDir,
+          record: await readOrcadActivationRecord(options)
+        })
         expect(await liveness()).toBe('DEAD')
 
         const commands = exec.mock.calls.map(([command]) => String(command))

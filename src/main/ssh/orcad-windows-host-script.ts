@@ -38,6 +38,7 @@ export const ORCAD_RECORD_PRESENT_MARKER = '__ORCAD_RECORD_PRESENT__'
 export const ORCAD_BUILD_HASH_MARKER = '__ORCAD_BUILD_HASH__'
 export const ORCAD_WINDOWS_READINESS_MARKER = '__ORCAD_READINESS__'
 export const ORCAD_WINDOWS_RUNTIME_MARKER = '__ORCAD_RUNTIME__'
+export const ORCAD_WINDOWS_LIVENESS_MANY_MARKER = '__ORCAD_LIVENESS__'
 /** A slot whose marker names no usable runtime; the POSIX selector exits the same way. */
 export const ORCAD_WINDOWS_RUNTIME_MISSING_EXIT = 78
 /** The record exists but cannot be read within its bound. */
@@ -45,6 +46,7 @@ export const ORCAD_WINDOWS_RECORD_UNREADABLE_EXIT = 65
 
 export type OrcadWindowsHostOp =
   | 'liveness'
+  | 'liveness-many'
   | 'stop'
   | 'readiness-wait'
   | 'build-hash'
@@ -105,6 +107,16 @@ const ops = {
     const record = orcadRecord(dir)
     const state = record ? orcadState(dir, record) : 'unknown'
     answer(state === 'alive' ? 'LIVE' : state === 'dead' ? 'DEAD' : 'UNKNOWN')
+  },
+
+  // One process for a whole GC pass: a node.exe per version dir is the burst EDR scores.
+  'liveness-many'(...dirs) {
+    const states = dirs.map((dir) => {
+      const record = orcadRecord(dir)
+      const state = record ? orcadState(dir, record) : 'unknown'
+      return state === 'alive' ? 'LIVE' : state === 'dead' ? 'DEAD' : 'UNKNOWN'
+    })
+    answer(${text(`${ORCAD_WINDOWS_LIVENESS_MANY_MARKER} `)} + states.join(',') + '\\n')
   },
 
   // Never a signal: on Windows that is TerminateProcess, which skips the durable shutdown.
