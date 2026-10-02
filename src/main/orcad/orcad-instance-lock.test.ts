@@ -191,17 +191,21 @@ describe('acquireOrcadInstanceLock', () => {
     }
   )
 
-  it.runIf(process.platform !== 'win32')('refuses a data root owned by another uid', () => {
-    const root = makeRoot()
-    // /tmp itself is root-owned and sticky on every supported platform, so it stands in for
-    // "a data root this process does not own" without needing privileges to create one.
-    expect(() => acquireOrcadInstanceLock('/tmp', hooks())).toThrow(
-      expect.objectContaining({ code: 'orcad_data_root_wrong_owner' })
-    )
-    // And the private root this test made is still acceptable, so the refusal is about
-    // ownership rather than a blanket rejection.
-    expect(acquireOrcadInstanceLock(root, hooks()).record.identity).toBe('uid-1000')
-  })
+  // Not as root: root owns /tmp, so "a root this process does not own" has no stand-in there.
+  it.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
+    'refuses a data root owned by another uid',
+    () => {
+      const root = makeRoot()
+      // /tmp itself is root-owned and sticky on every supported platform, so it stands in for
+      // "a data root this process does not own" without needing privileges to create one.
+      expect(() => acquireOrcadInstanceLock('/tmp', hooks())).toThrow(
+        expect.objectContaining({ code: 'orcad_data_root_wrong_owner' })
+      )
+      // And the private root this test made is still acceptable, so the refusal is about
+      // ownership rather than a blanket rejection.
+      expect(acquireOrcadInstanceLock(root, hooks()).record.identity).toBe('uid-1000')
+    }
+  )
 
   it('leaves the terminal daemon alone: the lock covers only the runtime role', () => {
     const root = makeRoot()
