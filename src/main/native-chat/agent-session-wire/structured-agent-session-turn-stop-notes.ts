@@ -2,10 +2,7 @@
 // by the turn's id whether it still runs or has ended, and keyed by it, so a repeated Stop rewrites
 // the one row instead of adding one.
 
-import type {
-  AgentJournalItemBody,
-  AgentJournalTurnScope
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalTurnScope } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
@@ -36,13 +33,4 @@ export function structuredAgentSessionNamedTurnScope(
     .snapshot()
     .items.findLast((item) => readAgentJournalTurn(item.body)?.turnId === turnId)
   return turn ? { kind: 'turn', turnItemId: turn.itemId } : null
-}
-
-/** A Stop's note saying it did not take: the agent refused it, or it went unconfirmed. */
-export function stopNoteTookNoEffect(body: AgentJournalItemBody | null | undefined): boolean {
-  if (body?.kind !== 'status' || !('failure' in body)) {
-    return false
-  }
-  const kind = body.failure?.kind
-  return kind === 'stopRefused' || kind === 'cancelUnconfirmed'
 }

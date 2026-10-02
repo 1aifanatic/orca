@@ -29,7 +29,7 @@ describe('a Codex Stop that names no turn', () => {
     const rig = await codexTurnLifecycleRig()
     await openedTurn(rig)
 
-    await expect(stop(rig, () => null)).resolves.toEqual({ cancelled: true })
+    await expect(stop(rig, () => null)).resolves.toEqual({ cancelled: true, turnId: 'turn-1' })
     expect(rig.interrupts().map((call) => call.params?.turnId)).toEqual(['turn-1'])
   })
 

@@ -20,6 +20,9 @@ export type StructuredAgentSessionStopWindDown = {
   stoppedAt: number
   /** The note the Stop wrote, which a failed wind-down revises. */
   stopNote: AgentJournalItemIdentity
+  /** Closes the Stop's settle once the child's end is proven, or binds the turn running on after
+   *  an end that failed: until then, what ends is the Stop's. */
+  settled?: (failedOn?: string) => void
 }
 
 /**
@@ -37,6 +40,7 @@ export async function endStoppedStructuredAgentSession(
   stopChild: () => Promise<void>,
   onError: (error: unknown) => void
 ): Promise<void> {
+  let failedOn: string | undefined
   try {
     if (windDown.waitsForProvider) {
       await ctx.adapter.awaitStoppedRequestEnd?.(ctx.sessionId, windDown.stoppedAt)
@@ -44,7 +48,10 @@ export async function endStoppedStructuredAgentSession(
     await stopChild()
   } catch (error) {
     onError(error)
+    failedOn = ctx.journal.activeTurnId() ?? undefined
     await reviseStopNoteUnconfirmed(ctx, windDown.stopNote).catch(onError)
+  } finally {
+    windDown.settled?.(failedOn)
   }
 }
 

@@ -1,9 +1,9 @@
-// The host's "Stopping…": published on the session's status from the moment a person's Stop takes
-// effect until the work it stopped ends, or the Stop answers that it stopped nothing. Derived from
-// the journal on every publish, so it clears by itself. Driven through the real host and its status
+// The host's "Stopping…": published on the session's status while a person's Stop is still
+// settling, and then while the turn it stopped, or failed to stop, still runs, until that turn ends.
+// A Stop that settles having stopped nothing ends it. Driven through the real host and its status
 // feed, with turn rows named as Codex writes them.
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -182,7 +182,7 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
     }
   )
 
-  it('reads Stopping again when a later press of the same Stop takes', async () => {
+  it('keeps Stopping through a repeat press of a refused Stop, which writes no second event', async () => {
     const { status } = await runningTurn()
     rig.cancelTurn.mockImplementationOnce(async () => ({ cancelled: false }))
     expect(await rig.stop()).toMatchObject({ ok: true })
@@ -191,31 +191,8 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
 
     expect(await rig.stop()).toMatchObject({ ok: true })
 
-    // That press wrote no second event: its answer alone tells.
     expect(journal().stopMarks.latest()).toEqual(refusedStop)
     await eventually(() => expect(status()).toMatchObject({ stopping: true }))
-  })
-
-  it('keeps the row of a press that took when a repeat press is refused', async () => {
-    const { status } = await runningTurn()
-    let answer: (outcome: AgentSessionCancelOutcome) => void = () => undefined
-    rig.cancelTurn.mockImplementationOnce(
-      () => new Promise<AgentSessionCancelOutcome>((resolve) => (answer = resolve))
-    )
-    const first = rig.stop()
-    await eventually(() => expect(status()).toMatchObject({ stopping: true }))
-    // Queued behind the first on the session's lane, it reaches an agent already stopping.
-    rig.cancelTurn.mockImplementationOnce(refused)
-    const repeat = rig.stop()
-
-    answer({ cancelled: true })
-    expect(await first).toMatchObject({ ok: true })
-    expect(await repeat).toMatchObject({ ok: true })
-
-    // One row per turn: the refusal never overwrites the answer that took.
-    await eventually(() => expect(rig.cancelTurn).toHaveBeenCalledTimes(2))
-    expect(stopAnswers()).toEqual(['took'])
-    expect(status()).toMatchObject({ status: 'working', stopping: true })
   })
 
   // The newest turn record is the stopped one until the next send's turn opens; it no longer runs.
@@ -231,6 +208,8 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
         await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
         expect(await namedStop('turn-1')).toMatchObject({ ok: true })
       } else {
+        // The provider's answer names the turn the send opened, which the Stop waited for.
+        rig.cancelTurn.mockResolvedValueOnce({ cancelled: true, turnId: 'turn-1' })
         expect(await rig.stop()).toMatchObject({ ok: true })
         await rig.settleAccepted(stopped, 'stopped')
         await turn('turn-1', stopped, 'running')
@@ -262,45 +241,61 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
 })
 
 describe('a Stop pressed before its send opened a turn', () => {
-  it('reads Stopping through the turn that send opens, until that turn ends', async () => {
+  /** A Stop pressed before the send's turn showed, which opens while the Stop waits for it. */
+  async function stopAsTheTurnOpens(answer: AgentSessionCancelOutcome, killFails?: true) {
     rig = await createQueuedMessageTestRig()
+    if (killFails) {
+      rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    }
     const sent = await rig.workingSend()
     const status = watchStatus()
-
+    rig.cancelTurn.mockImplementationOnce(async () => {
+      await rig.settleAccepted(sent, 'sent')
+      await turn('turn-1', sent, 'running')
+      return answer
+    })
     expect(await rig.stop()).toMatchObject({ ok: true })
     expect(journal().stopMarks.latest()?.event).not.toHaveProperty('turnId')
+    return { sent, status }
+  }
+
+  it('ends the turn its interrupt took at the settle, and Stopping with it', async () => {
+    const { status } = await stopAsTheTurnOpens({ cancelled: true, turnId: 'turn-1' })
+
+    expect(journal().activeTurnId()).toBeNull()
+    await eventually(() => expect(status()?.status).toBe('idle'))
+    expect(status()).not.toHaveProperty('stopping')
+  })
+
+  it('holds Stopping through the turn a Stop that failed could not stop, until that turn ends', async () => {
+    // The agent refused, and its process could not be ended either.
+    const { sent, status } = await stopAsTheTurnOpens({ cancelled: false, refusal: {} }, true)
+
     await eventually(() => expect(status()).toMatchObject({ status: 'working', stopping: true }))
-
-    await rig.settleAccepted(sent, 'sent')
-    await turn('turn-1', sent, 'running')
-    await eventually(() => expect(journal().activeTurnId()).toBe('turn-1'))
-    expect(status()).toMatchObject({ status: 'working', stopping: true })
-
     await turn('turn-1', sent, 'interrupted')
     await eventually(() => expect(status()?.status).toBe('idle'))
     expect(status()).not.toHaveProperty('stopping')
   })
 
-  it("reads the stopped send's turn and a later one from the turn record, never walking the journal for it", async () => {
+  it('reads Stopping while the Stop settles, and Working once it settles having stopped nothing', async () => {
     rig = await createQueuedMessageTestRig()
-    const stopped = await rig.workingSend()
+    const sent = await rig.workingSend()
     const status = watchStatus()
-    expect(await rig.stop()).toMatchObject({ ok: true })
-    await rig.settleAccepted(stopped, 'stopped')
-    const walk = vi.spyOn(journal().stopMarks, 'personStopDecides')
+    const answer = Promise.withResolvers<AgentSessionCancelOutcome>()
+    rig.cancelTurn.mockImplementationOnce(() => answer.promise)
 
-    await turn('turn-1', stopped, 'running')
+    const stopped = rig.stop()
     await eventually(() => expect(status()).toMatchObject({ status: 'working', stopping: true }))
-    await turn('turn-1', stopped, 'interrupted')
-    await eventually(() => expect(status()?.status).toBe('idle'))
-    const later = await rig.workingSend()
-    await rig.settleAccepted(later, 'later')
-    await turn('turn-2', later, 'running')
+    answer.resolve({ cancelled: false })
+    expect(await stopped).toMatchObject({ ok: true })
+
+    // The settle's close writes no row of its own; it still reaches the status.
     await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
     expect(status()).not.toHaveProperty('stopping')
-
-    // Only the no-turn case may walk: a running turn's opener comes from its own record.
-    expect(walk.mock.calls.filter(([turnId]) => turnId !== null)).toEqual([])
+    await rig.settleAccepted(sent, 'sent')
+    await turn('turn-1', sent, 'running')
+    await eventually(() => expect(journal().activeTurnId()).toBe('turn-1'))
+    expect(status()).not.toHaveProperty('stopping')
   })
 
   it('reads a send made after the Stop as Working', async () => {

@@ -107,7 +107,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the snapshot, Stop marks, activity clock, read-only flag and cursor served here.
       const journal = {
         snapshot: () => ({ items }),
-        stopMarks: { latest: () => null },
+        stopMarks: { latest: () => null, revision: () => 0 },
         lastActivityAt: () => 1,
         isReadOnly: false,
         cursor: () => ({ epoch: 1, sequence: (sequence += 1) })
@@ -198,7 +198,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,
-      stopMarks: { latest: () => null },
+      stopMarks: { latest: () => null, revision: () => 0 },
       cursor: () => ({ epoch: 1, sequence: 1 }),
       snapshot: () => ({
         items: [

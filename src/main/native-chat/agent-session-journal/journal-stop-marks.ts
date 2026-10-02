@@ -1,19 +1,35 @@
 // What the journal answers about its Stops beyond the queue's pause: the latest Stop event, which
-// the turn-end rule reads (`journal-stop-turn-end.ts`), and whether a person's still decides.
+// the turn-end rule reads (`journal-stop-turn-end.ts`), whether a person's still decides, and what
+// a person's Stop that named no turn binds while and after it settles.
 
 import type { JournalReducerState } from './journal-reducer'
 import {
+  beginJournalStopSettle,
   latestAcceptedSendUnopened,
-  personStopDecidesOpenedTurn,
   personStopDecidesTurn,
   type JournalLatestStop
 } from './journal-stop-turn-end'
+import type { JournalStopSettle } from './queued-message-pause'
 
 export class JournalStopMarks {
-  constructor(private readonly deps: { state: () => JournalReducerState }) {}
+  // Bumped on each settle edge: readers cached per commit see an edge that wrote no row.
+  private settleRevision = 0
+
+  constructor(
+    private readonly deps: {
+      state: () => JournalReducerState
+      /** A settle opened or closed: what readers derive from it changed, as after a commit. */
+      changed?: () => void
+    }
+  ) {}
 
   latest(): JournalLatestStop | null {
     return this.deps.state().queuePauseMarks.latestStop
+  }
+
+  /** Changes whenever a settle opens or closes. */
+  revision(): number {
+    return this.settleRevision
   }
 
   /** `latestAcceptedSendUnopened`: the latest accepted send's turn row may still be on its way. */
@@ -22,12 +38,33 @@ export class JournalStopMarks {
   }
 
   /** `personStopDecidesTurn`: a person's Stop decides how turn `turnId` ends. */
-  personStopDecides(turnId: string | null, endedAt?: number, openedBy?: string): boolean {
-    return personStopDecidesTurn(this.deps.state(), turnId, endedAt, openedBy)
+  personStopDecides(turnId: string | null, endedAt?: number): boolean {
+    return personStopDecidesTurn(this.deps.state(), turnId, endedAt)
   }
 
-  /** `personStopDecidesOpenedTurn`: the same, for a turn record the caller already read. */
-  personStopDecidesOpenedTurn(turnId: string, userItemId: string | undefined): boolean {
-    return personStopDecidesOpenedTurn(this.deps.state(), turnId, userItemId)
+  /** `beginJournalStopSettle`: a turn that ends from here until `settled` is the Stop's. */
+  beginSettle(): JournalStopSettle | null {
+    const settle = beginJournalStopSettle(this.deps.state())
+    if (settle) {
+      this.edge()
+    }
+    return settle
+  }
+
+  /** Closes a settle `beginSettle` opened, binding `turnId` when the Stop stopped one. */
+  settled(settle: JournalStopSettle | null, turnId?: string): void {
+    if (!settle) {
+      return
+    }
+    settle.settling = false
+    if (turnId !== undefined) {
+      settle.turnId = turnId
+    }
+    this.edge()
+  }
+
+  private edge(): void {
+    this.settleRevision += 1
+    this.deps.changed?.()
   }
 }

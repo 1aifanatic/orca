@@ -34,7 +34,7 @@ async function wiredSession() {
     isReadOnly: false,
     lastActivityAt: () => 1,
     // No Stop was ever pressed here.
-    stopMarks: { latest: () => null },
+    stopMarks: { latest: () => null, revision: () => 0 },
     snapshot: () => ({
       items: [...run.journalItems.values()]
         .sort((a, b) => a.sequence - b.sequence)

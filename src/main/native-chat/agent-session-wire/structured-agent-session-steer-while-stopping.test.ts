@@ -115,6 +115,41 @@ describe("a message sent while a person's Stop ends the turn", () => {
     await eventually(() => expect(rig.dispatch.mock.calls.length).toBe(dispatched + 1))
   })
 
+  // A Stop pressed before the turn showed holds a later send only while it settles; settling
+  // having stopped nothing hands it over, and the turn that then opens is not the Stop's.
+  it('hands over a send made after a Stop that stopped nothing, with no Stopping flip', async () => {
+    rig = await createQueuedMessageTestRig()
+    const first = await rig.workingSend()
+    const seen: (true | undefined)[] = []
+    rig.host.subscribeStatus({
+      id: 'flips',
+      emit: (event) => {
+        if (event.type === 'status' && event.session.sessionId === HOST_TEST_SESSION) {
+          seen.push(event.session.stopping)
+        }
+      }
+    })
+    const answer = Promise.withResolvers<{ cancelled: boolean }>()
+    rig.cancelTurn.mockImplementationOnce(() => answer.promise)
+    const stopped = rig.stop()
+    await eventually(() => expect(seen.at(-1)).toBe(true))
+    const dispatched = rig.dispatch.mock.calls.length
+
+    // Accepted on the session's lane behind the Stop, so it lands once the Stop settles.
+    const later = rig.send('sent before the turn opened')
+    answer.resolve({ cancelled: false })
+    expect(await stopped).toMatchObject({ ok: true })
+    expect(await later.result).toMatchObject({ ok: true })
+
+    await eventually(() => expect(rig.dispatch.mock.calls.length).toBe(dispatched + 1))
+    await rig.settleAccepted(first, 'first')
+    await turn('turn-1', first, 'running')
+    await laneDrained()
+    expect(seen.at(-1)).toBeUndefined()
+    // Once Stopping ended it never came back.
+    expect(seen.slice(seen.lastIndexOf(true) + 1)).not.toContain(true)
+  })
+
   // The delivery step that judged the send waits on the child's start outside the session's lane.
   it('holds a send that a Stop overtook while its delivery step waited on the agent', async () => {
     rig = await createQueuedMessageTestRig()

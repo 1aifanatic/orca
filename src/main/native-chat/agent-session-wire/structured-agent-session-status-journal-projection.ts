@@ -16,6 +16,8 @@ export type StructuredAgentSessionJournalProjection = {
   sequence: number
   readOnly: boolean
   fence: number | undefined
+  /** The Stop marks' settle revision: a settle edge writes no row, so it is a key of its own. */
+  stopRevision: number
   state: StructuredAgentSessionStatusState
   /** Null for an unreadable journal, which says nothing about the user's turns. */
   acceptedSendKey: string | null
@@ -39,13 +41,15 @@ export class StructuredAgentSessionJournalProjections {
     const readOnly = journal.isReadOnly
     // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
     const fence = record?.lease.runtimeFence
+    const stopRevision = journal.stopMarks.revision()
     let projection = this.byJournal.get(journal)
     if (
       !projection ||
       projection.epoch !== cursor.epoch ||
       projection.sequence !== cursor.sequence ||
       projection.readOnly !== readOnly ||
-      projection.fence !== fence
+      projection.fence !== fence ||
+      projection.stopRevision !== stopRevision
     ) {
       // A journalled submission bumps `lastSequence`, so the send-time working
       // signal reaches the cache; the lease fence does not, hence the extra key.
@@ -54,6 +58,7 @@ export class StructuredAgentSessionJournalProjections {
         ...cursor,
         readOnly,
         fence,
+        stopRevision,
         state: projectStructuredAgentSessionStatusState(
           snapshot?.items ?? [],
           snapshot?.submissions ?? [],

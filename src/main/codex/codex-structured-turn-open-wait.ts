@@ -14,8 +14,8 @@ import {
 export const CODEX_TURN_OPEN_WAIT_MS = 5_000
 
 export type CodexTurnOpenWaits = {
-  /** Resolves once `turnId` opens or can no longer, and after `withinMs` at the latest. */
-  wait: (turnId: string, withinMs: number) => Promise<void>
+  /** Resolves once `turnId` opens or can no longer (true), or after `withinMs` (false). */
+  wait: (turnId: string, withinMs: number) => Promise<boolean>
   /** Ends the waits a notification on the session's own thread answers. */
   observe: (threadId: string, method: string, params: unknown) => void
   /** Ends every wait: the child that would open their turns is gone. */
@@ -23,23 +23,23 @@ export type CodexTurnOpenWaits = {
 }
 
 export function createCodexTurnOpenWaits(): CodexTurnOpenWaits {
-  const waits = new Map<() => void, string>()
+  const waits = new Map<(answered: boolean) => void, string>()
   const release = (turnId?: string): void => {
     for (const [endWait, waitedTurnId] of waits) {
       if (turnId === undefined || waitedTurnId === turnId) {
-        endWait()
+        endWait(true)
       }
     }
   }
   return {
     wait: (turnId, withinMs) =>
-      new Promise<void>((resolve) => {
-        const endWait = (): void => {
+      new Promise<boolean>((resolve) => {
+        const endWait = (answered: boolean): void => {
           clearTimeout(bound)
           waits.delete(endWait)
-          resolve()
+          resolve(answered)
         }
-        const bound = setTimeout(endWait, withinMs)
+        const bound = setTimeout(() => endWait(false), withinMs)
         // A Stop's wait must never be what keeps the process alive at quit.
         bound.unref?.()
         waits.set(endWait, turnId)
@@ -61,21 +61,25 @@ export function createCodexTurnOpenWaits(): CodexTurnOpenWaits {
   }
 }
 
+/** What a Stop or a send finds to act on: a turn running, or one Codex answered a send into that
+ *  has not opened in time and may still open; null when neither. */
+export type CodexStopTarget = { turnId: string } | { opening: string } | null
+
 /**
  * The turn a Stop or a send names: the latest Codex reported started and not ended, or else the
- * one Codex answered a send into, once it opens. Null when none is running and that one ends, the
- * thread stops running or the child exits first, or the wait runs out; each such turn is waited
- * for once.
+ * one Codex answered a send into, once it opens. `opening` when the wait runs out first. Null when
+ * none is running and that one ends, the thread stops running or the child exits first; each such
+ * turn is waited for once.
  */
-export async function codexRunningOrOpeningTurn(session: {
+export async function codexStopTarget(session: {
   threadId: string
   activeTurnIds?: ReadonlySet<string>
   dispatchEchoes: Pick<CodexDispatchEchoes, 'answeredUnopenedTurn' | 'leftUnopened'>
   turnOpenWaits: Pick<CodexTurnOpenWaits, 'wait'>
-}): Promise<string | null> {
+}): Promise<CodexStopTarget> {
   const running = [...(session.activeTurnIds ?? [])].at(-1)
   if (running) {
-    return running
+    return { turnId: running }
   }
   const answered = session.dispatchEchoes.answeredUnopenedTurn(
     session.threadId,
@@ -85,12 +89,20 @@ export async function codexRunningOrOpeningTurn(session: {
     return null
   }
   // Codex refuses an interrupt, and before 0.148 a steer, until it opens the turn.
-  await session.turnOpenWaits.wait(answered, CODEX_TURN_OPEN_WAIT_MS)
+  const settled = await session.turnOpenWaits.wait(answered, CODEX_TURN_OPEN_WAIT_MS)
   if (session.activeTurnIds?.has(answered)) {
-    return answered
+    return { turnId: answered }
   }
   // Before 0.148 a turn that fails before it starts reports no end; one that opens later is still
   // found running.
   session.dispatchEchoes.leftUnopened(session.threadId, answered)
-  return null
+  return settled ? null : { opening: answered }
+}
+
+/** `codexStopTarget`'s running or opened turn, for a send. */
+export async function codexRunningOrOpeningTurn(
+  session: Parameters<typeof codexStopTarget>[0]
+): Promise<string | null> {
+  const target = await codexStopTarget(session)
+  return target !== null && 'turnId' in target ? target.turnId : null
 }

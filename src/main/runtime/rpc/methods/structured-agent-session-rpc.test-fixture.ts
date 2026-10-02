@@ -106,7 +106,7 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
             isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
-            stopMarks: { latest: () => null },
+            stopMarks: { latest: () => null, revision: () => 0 },
             snapshot: () => ({ items: STATUS_ITEMS })
           } as unknown as AgentSessionJournal,
           params: {

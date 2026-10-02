@@ -1,5 +1,6 @@
-// "Stopping…" read straight off a journal: it holds from a person's Stop until the work it stopped
-// ends, whatever the Stop's answer, and reads only the journal's tail to tell.
+// "Stopping…" read straight off a journal: it holds while a person's Stop settles, and then while
+// the turn it named or its settle bound still runs, whatever the Stop's answer. It reads only the
+// journal's tail to tell.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -24,7 +25,7 @@ let root: string
 let journal: AgentSessionJournal
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'orca-stopping-answers-'))
+  root = await mkdtemp(join(tmpdir(), 'orca-stopping-journal-'))
   journal = await journals.open({
     identity: {
       sessionId: 'session-1',
@@ -110,5 +111,35 @@ describe("a person's Stop's Stopping", () => {
     )
     expect(structuredAgentSessionStopping(journal, counted)).toBe(true)
     expect(lowestRead).toBe(turnIndex)
+  })
+
+  it('holds while a Stop that named no turn settles, and after only for the turn it bound', async () => {
+    await journal.appendStopEvent({ reason: 'user-stop' }, FENCE)
+    const settle = journal.stopMarks.beginSettle()
+    expect(stopping()).toBe(true)
+
+    journal.stopMarks.settled(settle)
+    expect(stopping()).toBe(false)
+    await turn('turn-1', 'running')
+    expect(stopping()).toBe(false)
+
+    journal.stopMarks.settled(journal.stopMarks.beginSettle(), 'turn-1')
+    expect(stopping()).toBe(true)
+  })
+
+  it('tells readers of each settle edge, which writes no row', async () => {
+    await journal.appendStopEvent({ reason: 'user-stop' }, FENCE)
+    const before = journal.stopMarks.revision()
+    let told = 0
+    journal.observeCommits(() => {
+      told += 1
+    })
+    const cursor = journal.cursor()
+
+    journal.stopMarks.settled(journal.stopMarks.beginSettle())
+
+    expect(journal.stopMarks.revision()).toBe(before + 2)
+    expect(told).toBe(2)
+    expect(journal.cursor()).toEqual(cursor)
   })
 })
