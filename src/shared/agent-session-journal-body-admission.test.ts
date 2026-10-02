@@ -49,8 +49,13 @@ describe('a body this build reads', () => {
     ['a turn lifecycle', TURN_STATUS],
     ['a goal change', { kind: 'status', text: 'Goal', threadGoal: { state: 'set', goal: GOAL } }],
     [
-      'a key it does not know, in a prompt option too',
-      { ...QUESTION, next: 1, options: [{ id: 'o-1', label: 'First', shortcut: 'f' }] }
+      'a key it does not know, in a question and an option too',
+      {
+        ...QUESTION,
+        next: 1,
+        options: [{ id: 'o-1', label: 'First', shortcut: 'f' }],
+        questions: [{ ...QUESTION_ENTRY, hint: 'Pick one' }]
+      }
     ],
     [
       'a block type it does not know',
