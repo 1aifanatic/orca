@@ -2,6 +2,7 @@ import { statSync, watch, type FSWatcher } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Event as ParcelWatcherEvent } from '@parcel/watcher'
+import { watcherDirectoryIdentity } from './watcher-directory-identity'
 
 export type ShallowWatcherSubscription = {
   unsubscribe: () => Promise<void>
@@ -117,7 +118,7 @@ export function startShallowWatcher(
   const directoryIdentitySync = (parent: string): string | null => {
     try {
       const entry = statSync(join(rootPath, parent), { bigint: true })
-      return entry.isDirectory() ? `${entry.dev}:${entry.ino}` : null
+      return watcherDirectoryIdentity(entry)
     } catch {
       return null
     }
@@ -126,7 +127,7 @@ export function startShallowWatcher(
   const directoryIdentity = async (parent: string): Promise<string | null> => {
     try {
       const entry = await stat(join(rootPath, parent), { bigint: true })
-      return entry.isDirectory() ? `${entry.dev}:${entry.ino}` : null
+      return watcherDirectoryIdentity(entry)
     } catch {
       return null
     }

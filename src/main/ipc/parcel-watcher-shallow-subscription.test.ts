@@ -314,6 +314,83 @@ describe('shallow watcher subscription', () => {
     }
   )
 
+  it.each(['', 'logs'])(
+    'recovers an inode-less %s replacement while ignoring ordinary timestamp changes',
+    async (parent) => {
+      vi.useFakeTimers()
+      const root = await mkdtemp(join(tmpdir(), 'orca-shallow-inode-less-'))
+      const directory = join(root, parent)
+      const previousDirectory = join(dirname(directory), `${basename(directory)}-previous`)
+      let subscription: ReturnType<typeof startShallowWatcher> | undefined
+      try {
+        if (parent) {
+          await mkdir(directory)
+        }
+        const previousBirthtime = 9_007_199_254_740_995n
+        const nextBirthtime = previousBirthtime + 1n
+        const previousIdentity = { dev: 1n, ino: 0n, birthtimeNs: previousBirthtime }
+        const nextIdentity = { ...previousIdentity, birthtimeNs: nextBirthtime }
+        const previous = Object.assign(statSync(directory, { bigint: true }), previousIdentity)
+        const healthy = Object.assign(statSync(directory, { bigint: true }), previousIdentity, {
+          mtimeNs: previous.mtimeNs + 1n,
+          ctimeNs: previous.ctimeNs + 1n
+        })
+        const replacement = Object.assign(statSync(directory, { bigint: true }), nextIdentity)
+        const healthyReplacement = Object.assign(
+          statSync(directory, { bigint: true }),
+          nextIdentity,
+          {
+            mtimeNs: replacement.mtimeNs + 1n,
+            ctimeNs: replacement.ctimeNs + 1n
+          }
+        )
+        vi.mocked(statSync).mockClear()
+        vi.mocked(stat).mockClear()
+        vi.mocked(statSync).mockReturnValueOnce(previous)
+        vi.mocked(stat)
+          .mockResolvedValueOnce(healthy)
+          .mockResolvedValueOnce(replacement)
+          .mockResolvedValueOnce(healthyReplacement)
+        const events: string[] = []
+        subscription = startShallowWatcher(
+          root,
+          [join(parent, 'HEAD')],
+          (nextEvents) => events.push(...nextEvents.map((event) => event.path)),
+          (error) => {
+            throw error
+          }
+        )
+        const firstWatcher = watcherState.get(directory)?.watcher
+        const oldClosed = vi.fn()
+        firstWatcher?.on('close', oldClosed)
+        expect(firstWatcher).toBeDefined()
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(watcherState.get(directory)?.watcher).toBe(firstWatcher)
+        expect(events).toEqual([])
+        expect(oldClosed).not.toHaveBeenCalled()
+
+        await rename(directory, previousDirectory)
+        await mkdir(directory)
+        await vi.advanceTimersByTimeAsync(30_000)
+        const replacementWatcher = watcherState.get(directory)?.watcher
+        expect(replacementWatcher).not.toBe(firstWatcher)
+        expect(oldClosed).toHaveBeenCalledOnce()
+        expect(events).toEqual([join(directory, 'HEAD')])
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(watcherState.get(directory)?.watcher).toBe(replacementWatcher)
+        expect(events).toEqual([join(directory, 'HEAD')])
+        events.length = 0
+        emit(directory, 'HEAD')
+        expect(events).toEqual([join(directory, 'HEAD')])
+      } finally {
+        await subscription?.unsubscribe()
+        vi.useRealTimers()
+        await rm(root, { recursive: true, force: true })
+        await rm(previousDirectory, { recursive: true, force: true })
+      }
+    }
+  )
+
   it('resyncs included files when an initially missing directory becomes watchable', async () => {
     vi.useFakeTimers()
     const root = await mkdtemp(join(tmpdir(), 'orca-shallow-watcher-'))
