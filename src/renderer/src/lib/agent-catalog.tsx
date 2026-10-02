@@ -3,6 +3,8 @@ import type React from 'react'
 import { ClaudeIcon, DroidIcon, OpenAIIcon } from '@/components/status-bar/icons'
 import openClaudeLogoUrl from '../../../../resources/openclaude-logo.png?url'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import type { TerminalAgent } from '../../../shared/terminal-agent'
+import { formatAgentTypeLabel } from '../../../shared/agent-type-label'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import {
   AgentLetterIcon,
@@ -349,15 +351,15 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
 // Why: tests and a few legacy call sites still import a catalog snapshot.
 export const AGENT_CATALOG: AgentCatalogEntry[] = getAgentCatalog()
 
-export function getAgentLabel(agent: TuiAgent): string {
-  return getAgentCatalog().find((entry) => entry.id === agent)?.label ?? agent
+export function getAgentLabel(agent: TerminalAgent): string {
+  return getAgentCatalog().find((entry) => entry.id === agent)?.label ?? formatAgentTypeLabel(agent)
 }
 
 export function AgentIcon({
   agent,
   size = 14
 }: {
-  agent: TuiAgent | null | undefined
+  agent: TerminalAgent | null | undefined
   size?: number
 }): React.JSX.Element {
   // Why: render a neutral question-mark glyph when the agent identity is not
@@ -391,10 +393,7 @@ export function AgentIcon({
   if (agent === 'copilot') {
     return <CopilotIcon size={size} />
   }
-  if (agent === 'opencode') {
-    return <OpenCodeIcon size={size} />
-  }
-  if (agent === 'opencode2') {
+  if (agent === 'opencode' || agent === 'opencode2') {
     return <OpenCodeIcon size={size} />
   }
   const catalogEntry = getAgentCatalog().find((a) => a.id === agent)
@@ -432,6 +431,6 @@ export function AgentIcon({
       />
     )
   }
-  const label = catalogEntry?.label ?? agent
+  const label = getAgentLabel(agent)
   return <AgentLetterIcon letter={label.charAt(0).toUpperCase()} size={size} />
 }
