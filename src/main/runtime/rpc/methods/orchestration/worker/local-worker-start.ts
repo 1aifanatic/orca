@@ -1,3 +1,4 @@
+import { probeWorkerOpenCodeModelLaunchSupport } from './worker-opencode-model-preflight'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { describeTerminalWaitBlockedReason } from '../../../../../../shared/terminal-wait-blocked-reason-legacy-alias'
 import type { OrchestrationDb } from '../../../../orchestration/db'
@@ -54,7 +55,36 @@ export async function startLocalWorker(args: {
   const coordinatorPane = coordinator?.paneKey ?? null
   const requestedWorktree = params.worktree ?? 'current'
   const createsWorktree = requestedWorktree === 'new-child' || requestedWorktree === 'new-top-level'
-  const { agent, launch } = prepareLocalWorkerStart({ params, createsWorktree, runtime })
+  const selectedAgent = params.agent
+    ? runtime.resolveOrchestrationAgentLauncher(params.agent)
+    : undefined
+  let openCodeModelLaunchSupported = false
+  if (selectedAgent === 'opencode' && params.model) {
+    const callerWorkspaceId = await resolveDispatchCallerWorktreeId(
+      runtime,
+      params.from,
+      callerSession
+    )
+    const creationParent = createsWorktree
+      ? await runtime.showManagedWorktree(`id:${callerWorkspaceId}`)
+      : undefined
+    openCodeModelLaunchSupported = await probeWorkerOpenCodeModelLaunchSupport(
+      runtime,
+      params,
+      createsWorktree
+        ? { repo: params.repo ?? creationParent?.repoId }
+        : {
+            worktree:
+              requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree
+          }
+    )
+  }
+  const { agent, launch } = prepareLocalWorkerStart({
+    params,
+    createsWorktree,
+    runtime,
+    openCodeModelLaunchSupported
+  })
 
   const coordinatorWorktreeId = await resolveDispatchCallerWorktreeId(
     runtime,

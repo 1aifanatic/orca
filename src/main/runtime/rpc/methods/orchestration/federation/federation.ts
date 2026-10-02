@@ -1,3 +1,4 @@
+import { prepareFederationWorkerLaunchOnHost } from '../worker/worker-opencode-model-preflight'
 import type { TuiAgent } from '../../../../../../shared/tui-agent'
 import { describeTerminalWaitBlockedReason } from '../../../../../../shared/terminal-wait-blocked-reason-legacy-alias'
 import {
@@ -21,7 +22,6 @@ import {
 } from './federation-setup'
 import { FederationAttachStartParams } from './federation-start-schema'
 import { failFederatedAttachmentWithReceipt } from './federation-start-receipt'
-import { prepareFederationAttachmentWorkerStart } from '../worker/worker-start-validation'
 import {
   isWorkerStartTimeoutWithinTimerLimit,
   resolveWorkerStartReadinessTimeoutMs
@@ -54,7 +54,7 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
         )
       }
       const createsWorktree = params.worktree === 'new-top-level'
-      const { agent, launch } = prepareFederationAttachmentWorkerStart({
+      const { agent, launch } = await prepareFederationWorkerLaunchOnHost({
         params,
         createsWorktree,
         runtime
