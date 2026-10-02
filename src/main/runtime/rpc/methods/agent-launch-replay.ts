@@ -29,15 +29,10 @@ import type { AgentLaunchParams } from './agent-launch-schemas'
 
 /** Remote replay needs the paired-device subject because its bearer credential can rotate. */
 export function agentLaunchOperationCallerKey(
-  context: Pick<RpcContext, 'pairedDeviceId' | 'clientKind' | 'trustedLocalCallerId'>
+  context: Pick<RpcContext, 'pairedDeviceId' | 'clientKind'>
 ): string {
   if (context.clientKind === undefined) {
     return 'trusted-local:runtime'
-  }
-  // The desktop renderer is in-process like the CLI, but advertises capabilities as a client.
-  const trustedLocalCallerId = context.trustedLocalCallerId?.trim()
-  if (trustedLocalCallerId) {
-    return `trusted-local:${trustedLocalCallerId}`
   }
   const pairedDeviceId = context.pairedDeviceId?.trim()
   if (!pairedDeviceId) {

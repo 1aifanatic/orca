@@ -337,8 +337,7 @@ async function createTerminalSurface(
     worktreeId,
     agent: intent.agent,
     ...(startupPrompt ? { startupPrompt } : {}),
-    ...terminalLaunchInputs(intent),
-    ...(intent.viewMode ? { viewMode: intent.viewMode } : {})
+    ...terminalLaunchInputs(intent)
   })
   return {
     outcome: {

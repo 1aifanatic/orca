@@ -78,7 +78,6 @@ export function registerRuntimeHandlers(runtime: OrcaRuntimeService): void {
         },
         {
           clientId: 'desktop-renderer',
-          trustedLocalCallerId: 'desktop-renderer',
           clientKind: 'runtime',
           connectionId: desktopSenders.connectionIdFor(event.sender),
           clientCapabilities: DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES
@@ -121,7 +120,6 @@ export function registerRuntimeHandlers(runtime: OrcaRuntimeService): void {
         {
           signal: controller.signal,
           clientId: 'desktop-renderer',
-          trustedLocalCallerId: 'desktop-renderer',
           clientKind: 'runtime',
           connectionId,
           clientCapabilities: DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES

@@ -103,12 +103,6 @@ export const AgentLaunchFields = z.object({
     }, 'Malformed launch pane key')
     .optional(),
   /**
-   * How a terminal launch in an existing workspace first shows its tab, so the tab opens as the
-   * caller would have opened it. Presentation only; a chat and a new workspace's startup terminal
-   * ignore it, and an older host strips it.
-   */
-  viewMode: z.enum(['terminal', 'chat']).optional(),
-  /**
    * The id of the chat session a structured launch creates, minted by the caller so it knows which
    * conversation it started before the reply arrives. Refused when a session with this id already
    * exists. Ignored when the launch settles as a terminal; the outcome's `sessionId` says which

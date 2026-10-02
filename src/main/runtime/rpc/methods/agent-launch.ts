@@ -105,7 +105,6 @@ async function agentLaunchIntent(
     ...(params.cwd ? { cwd: params.cwd } : {}),
     ...(params.launchSource ? { launchSource: params.launchSource } : {}),
     ...(params.paneKey ? { paneKey: params.paneKey } : {}),
-    ...(params.viewMode ? { viewMode: params.viewMode } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {})
   }
 }

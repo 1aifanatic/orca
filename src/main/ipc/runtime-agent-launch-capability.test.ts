@@ -12,8 +12,6 @@ import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../shared/agent-launch-runti
 type AdvertisedClient = {
   clientKind?: 'mobile' | 'runtime'
   clientCapabilities?: readonly RuntimeCapability[]
-  trustedLocalCallerId?: string
-  pairedDeviceId?: string
 }
 
 const { handlers, advertised } = vi.hoisted(
@@ -59,7 +57,6 @@ vi.mock('../runtime/rpc/dispatcher', () => ({
 
 const { registerRuntimeHandlers } = await import('./runtime')
 const { supportsAgentLaunch } = await import('../runtime/rpc/methods/agent-launch')
-const { agentLaunchOperationCallerKey } = await import('../runtime/rpc/methods/agent-launch-replay')
 
 function rendererEvent() {
   const mainFrame = {}
@@ -128,21 +125,5 @@ describe('desktop renderer reaching agent.launch on its own main process', () =>
       onlyAdvertisedClient(advertised.unary).clientCapabilities
     )
     expect(supportsAgentLaunch(streaming)).toBe(true)
-  })
-
-  // Why: the desktop has no paired device, so without its own host-set identity every
-  // replay-protected launch it sent was refused with agent_session_identity_required.
-  it('gives a replay-protected launch a caller identity of its own', () => {
-    invoke('runtime:call', {
-      method: 'agent.launchReplay',
-      params: { agent: 'claude', target: { kind: 'existing', worktree: 'id:wt-7' } }
-    })
-
-    const client = onlyAdvertisedClient(advertised.unary)
-    expect(agentLaunchOperationCallerKey(client)).toBe('trusted-local:desktop-renderer')
-    // Negative control: the same client kind with no host-set identity is still refused.
-    expect(() =>
-      agentLaunchOperationCallerKey({ clientKind: client.clientKind, pairedDeviceId: undefined })
-    ).toThrow('agent_session_identity_required')
   })
 })
