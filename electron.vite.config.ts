@@ -238,8 +238,8 @@ export const electronViteConfig: UserConfig = {
           ),
           'stt-worker': resolve('src/main/speech/stt-worker.ts'),
           'warp-theme-parser-worker': resolve('src/main/warp-themes/warp-theme-parser-worker.ts'),
-          'session-scanner-opencode-sqlite-worker-entry': resolve(
-            'src/main/ai-vault/session-scanner-opencode-sqlite-worker-entry.ts'
+          'foreign-sqlite-reader-entry': resolve(
+            'src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry.ts'
           ),
           'session-scanner-worker-entry': resolve(
             'src/main/ai-vault/session-scanner-worker-entry.ts'
