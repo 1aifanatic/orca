@@ -11,6 +11,7 @@ import { ownerDoubtFromHook } from '../../../shared/agent-hook-presence-transiti
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isUncheckableAgentOwner } from './server-status-identity'
 import { AgentHookServerLifecycle } from './server-lifecycle'
+import { AgentOwnerLivenessRecheck } from '../../../shared/agent-owner-liveness-recheck'
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
   private windowsOwnerProbe?: (
@@ -32,6 +33,22 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       check: Promise<AgentProcessVerdict | null>
     }
   >()
+  private readonly ownerLivenessRecheck = new AgentOwnerLivenessRecheck({
+    listLiveOwnerPaneKeys: () =>
+      [...this.state.lastStatusByPaneKey.values()]
+        .filter((row) => row.connectionId === null && this.hasVerifiableAgentProcess(row.paneKey))
+        .map((row) => row.paneKey),
+    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+  })
+
+  protected noteLiveAgentOwner(): void {
+    this.ownerLivenessRecheck.noteLiveOwner()
+  }
+
+  stop(): void {
+    this.ownerLivenessRecheck.stop()
+    super.stop()
+  }
 
   ingestForegroundPresence(
     scope: Pick<

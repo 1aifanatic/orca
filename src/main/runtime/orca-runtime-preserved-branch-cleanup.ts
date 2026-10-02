@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { AgentPresenceCommandObserver } from '../../shared/agent-presence-command-observer'
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
 import { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import type { IPtyProvider } from '../providers/types'
@@ -45,6 +46,9 @@ import { ClaudeAgentTeamsService } from './claude-agent-teams-service'
 import { teardownFolderWorkspacePtys } from './folder-workspace-pty-teardown'
 
 export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTerminalDrivers {
+  protected readonly agentPresenceCommands = new AgentPresenceCommandObserver((id, current) =>
+    this.discoverAgentPresence(id, current)
+  )
   protected readonly preservedBranchCleanup = new RuntimePreservedBranchCleanup(() =>
     this.store ? this.requireStore() : null
   )

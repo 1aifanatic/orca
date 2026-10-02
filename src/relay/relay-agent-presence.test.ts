@@ -29,6 +29,7 @@ vi.mock('./agent-hook-result-retry-scheduler', async (importOriginal) => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   retryHosts.length = 0
   probe.mockReset()
   probe.mockResolvedValue('unverifiable')
@@ -37,6 +38,34 @@ afterEach(() => {
 const paneKey = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
 
 describe('relay process presence', () => {
+  it('registers hookless discovery with the shared two-second owner check', async () => {
+    vi.useFakeTimers()
+    const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
+    const server = new RelayAgentHookServer({ endpointDir: '/unused-hook-endpoint', forward })
+    const owner = {
+      agent: 'codex',
+      process: { pid: 42, platform: 'linux', startTime: 'boot:42' }
+    } as const
+    try {
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(probe).not.toHaveBeenCalled()
+      server.ingestForegroundPresence({ paneKey, tabId: 'tab-1', worktreeId: 'folder' }, owner)
+      probe.mockResolvedValue('exited')
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(probe).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(probe).toHaveBeenCalledExactlyOnceWith(owner.process)
+      expect(forward.mock.lastCall?.[0]).toMatchObject({
+        providerSessionOnly: true,
+        agentPresence: { ...owner, ended: true }
+      })
+      await vi.advanceTimersByTimeAsync(4_000)
+      expect(probe).toHaveBeenCalledTimes(1)
+    } finally {
+      server.stop()
+    }
+  })
+
   it('keeps unavailable reads, preserves resume, and publishes a real exit without a window', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'relay-presence-'))
     const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()

@@ -98,18 +98,33 @@ describe('host process ownership mirror', () => {
     stop()
   })
 
-  it('keeps a finished row and its read state when the owner exits in a live terminal', () => {
+  it('drops the exited owner row like a confirmed shell return, keeping its read cutoff', () => {
     const store = createTestStore()
     store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
     store.getState().setAgentStatus(paneKey, { state: 'done', prompt: 'task', agentType: 'claude' })
-    store.setState({ acknowledgedAgentsByPaneKey: { [paneKey]: Date.now() } })
+    store.setState({ activityClearedAtByPaneKey: { [paneKey]: 5 } })
     store.getState().recordAgentPresence(paneKey, {
       presence: { ...presence, ended: true },
       receivedAt: 11,
       connectionId: null
     })
-    expect(store.getState().agentStatusByPaneKey[paneKey]?.state).toBe('done')
-    expect(store.getState().acknowledgedAgentsByPaneKey[paneKey]).toBeDefined()
+    expect(store.getState().agentStatusByPaneKey[paneKey]).toBeUndefined()
+    expect(store.getState().retainedAgentsByPaneKey[paneKey]).toBeUndefined()
+    expect(store.getState().activityClearedAtByPaneKey[paneKey]).toBe(5)
+  })
+
+  it("keeps another agent's row when an owner exits", () => {
+    const store = createTestStore()
+    store.getState().recordAgentPresence(paneKey, { presence, receivedAt: 10, connectionId: null })
+    store
+      .getState()
+      .setAgentStatus(paneKey, { state: 'working', prompt: 'task', agentType: 'codex' })
+    store.getState().recordAgentPresence(paneKey, {
+      presence: { ...presence, ended: true },
+      receivedAt: 11,
+      connectionId: null
+    })
+    expect(store.getState().agentStatusByPaneKey[paneKey]?.agentType).toBe('codex')
   })
 
   it('ends an exited owner history on the pane event that proves the shell is back', () => {

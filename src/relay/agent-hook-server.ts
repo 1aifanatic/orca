@@ -48,11 +48,7 @@ import { buildRelayHookEnvelope, hookBodyEnv, hookBodyVersion } from './agent-ho
 import { AgentHookResultRetryScheduler } from './agent-hook-result-retry-scheduler'
 import { selectReplayableCachedPanes } from './agent-hook-cached-pane-status'
 
-export type {
-  RelayHookForward,
-  RelayHookServerOptions,
-  RelayHookServerStartOptions
-} from './agent-hook-server-options'
+export type * from './agent-hook-server-options'
 export class RelayAgentHookServer {
   private server: ReturnType<typeof createServer> | null = null
   private port = 0
@@ -78,7 +74,10 @@ export class RelayAgentHookServer {
   private preferredPort: number
   private portFallbackApplied = false
   private readonly observePresence = createRelayAgentPresenceObservation()
-  private readonly presenceChecks = new RelayAgentPresence()
+  private readonly presenceChecks = new RelayAgentPresence({
+    rows: () => this.state.lastStatusByPaneKey.values(),
+    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+  })
 
   private retryScheduler: AgentHookResultRetryScheduler
 
@@ -183,6 +182,7 @@ export class RelayAgentHookServer {
   }
 
   stop(): void {
+    this.presenceChecks.stop()
     this.server?.close()
     this.server = null
     this.port = 0
@@ -304,7 +304,7 @@ export class RelayAgentHookServer {
         retryScheduler: this.retryScheduler,
         lastEnvelopeMetaByPaneKey: this.lastEnvelopeMetaByPaneKey,
         forward: this.forward,
-        checkAgentPresence: (key) => this.checkAgentPresence(key),
+        presenceChecks: this.presenceChecks,
         onAgentEvidence: this.onAgentEvidence
       },
       incoming,

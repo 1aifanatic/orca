@@ -1,12 +1,8 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
-import { AgentPresenceCommandObserver } from '../../shared/agent-presence-command-observer'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 
 export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithControllerKnowsPtyIsLive {
-  protected readonly agentPresenceCommands = new AgentPresenceCommandObserver((id, current) =>
-    this.discoverAgentPresence(id, current)
-  )
   private readonly agentPresenceDiscovery = new Map<string, Promise<void>>()
 
   private hasAgentPresenceOwner(keys: Iterable<string>): boolean {

@@ -1,6 +1,8 @@
+import { ownerDoubtFromHook } from '../shared/agent-hook-presence-transition'
 import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listener-event'
 import { isSameAgentProcess, type AgentProcessIdentity } from '../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../shared/agent-process-presence-probe'
+import { AgentOwnerLivenessRecheck } from '../shared/agent-owner-liveness-recheck'
 
 type PendingCheck = {
   owner: AgentProcessIdentity
@@ -10,6 +12,42 @@ type PendingCheck = {
 export class RelayAgentPresence {
   // Why keyed by pane and owner: every hook rewrites the row, and one owner needs only one probe.
   private readonly pending = new Map<string, PendingCheck>()
+  private readonly ownerLivenessRecheck: AgentOwnerLivenessRecheck
+
+  constructor(
+    private readonly host: {
+      rows: () => Iterable<AgentHookEventPayload>
+      checkOwner: (paneKey: string) => Promise<void>
+    }
+  ) {
+    this.ownerLivenessRecheck = new AgentOwnerLivenessRecheck({
+      listLiveOwnerPaneKeys: () =>
+        [...host.rows()]
+          .filter((row) => row.agentPresence?.process && !row.agentPresence.ended)
+          .map((row) => row.paneKey),
+      checkOwner: (paneKey) => host.checkOwner(paneKey)
+    })
+  }
+
+  /** Register accepted owners with the shared clock; hook evidence may also request a check. */
+  observeHook(
+    incoming: AgentHookEventPayload,
+    row: AgentHookEventPayload,
+    doubt: boolean
+  ): Promise<void> | undefined {
+    if (row.agentPresence?.process && !row.agentPresence.ended) {
+      this.ownerLivenessRecheck.noteLiveOwner()
+    }
+    const doubted = doubt ? ownerDoubtFromHook(incoming, row) : undefined
+    if (doubted) {
+      return this.host.checkOwner(row.paneKey)
+    }
+    return undefined
+  }
+
+  stop(): void {
+    this.ownerLivenessRecheck.stop()
+  }
 
   /** Publish only proven exit of the currently recorded owner. */
   check(

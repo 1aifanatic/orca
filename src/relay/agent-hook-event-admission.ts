@@ -1,7 +1,5 @@
-import {
-  ownerDoubtFromHook,
-  transitionHookPresence
-} from '../shared/agent-hook-presence-transition'
+import { transitionHookPresence } from '../shared/agent-hook-presence-transition'
+import type { RelayAgentPresence } from './relay-agent-presence'
 import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listener-event'
 import type { HookListenerState } from '../shared/agent-hook-listener/listener-state'
 import type { AgentHookSource } from '../shared/agent-hook-relay'
@@ -22,7 +20,7 @@ type RelayEventHost = {
     { source?: AgentHookSource; env?: string; version?: string }
   >
   forward: RelayHookForward
-  checkAgentPresence: (paneKey: string) => Promise<void>
+  presenceChecks: RelayAgentPresence
   onAgentEvidence?: (paneKey: string) => void
 }
 export type RelayEventOptions = {
@@ -85,12 +83,13 @@ export function applyRelayAgentEvent(
       { isReplay: options.isReplay }
     )
   )
-  const doubt =
-    options.hostPresence || options.checkPresence === false
-      ? undefined
-      : ownerDoubtFromHook(incoming, event)
-  if (doubt) {
-    void host.checkAgentPresence(event.paneKey).then(() => host.onAgentEvidence?.(event.paneKey))
+  const check = host.presenceChecks.observeHook(
+    incoming,
+    event,
+    !options.hostPresence && options.checkPresence !== false
+  )
+  if (check) {
+    void check.then(() => host.onAgentEvidence?.(event.paneKey))
   } else if (!options.hostPresence && options.checkPresence !== false) {
     host.onAgentEvidence?.(event.paneKey)
   }
