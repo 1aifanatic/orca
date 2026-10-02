@@ -8,6 +8,7 @@ import { gitExecFileAsync } from './runner'
 import {
   getErrorCode,
   gitExecOptions,
+  WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS,
   type GitWorktreeExecOptions
 } from './worktree-operation-options'
 import { performDiscardPreparedWorktree } from './worktree-preparation-discard'
@@ -62,11 +63,11 @@ export function addLockedWorktreePreparation(
   }
   return withLocalGitCapabilityCacheForExecution(
     { cwd: repoPath, wslDistro: options.wslDistro, signal: options.signal },
-    (capabilities) =>
-      capabilities.runWithFallback(
+    async (capabilities) => {
+      const initiallyAbsent = await isAbsent(worktreePath, options)
+      return capabilities.runWithFallback(
         'worktree-add-lock-reason',
         async () => {
-          const initiallyAbsent = await isAbsent(worktreePath, options)
           let added = false
           try {
             await add(['--lock', '--reason', lockReason])
@@ -90,10 +91,29 @@ export function addLockedWorktreePreparation(
           }
         },
         async () => {
-          await add([])
-          return lockWorktreePreparation(worktreePath, lockReason, options)
+          let added = false
+          try {
+            await add([])
+            added = true
+            return await lockWorktreePreparation(worktreePath, lockReason, options)
+          } catch (error) {
+            if (
+              added &&
+              initiallyAbsent &&
+              !(error instanceof WorktreePreparationLockOwnershipError)
+            ) {
+              // Single force reclaims our unlocked add while preserving any competing lock.
+              await performDiscardPreparedWorktree(repoPath, worktreePath, {
+                ...options,
+                signal: undefined,
+                timeout: WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS
+              }).catch(() => {})
+            }
+            throw error
+          }
         },
         isUnsupportedWorktreeAddLockReasonError
       )
+    }
   )
 }

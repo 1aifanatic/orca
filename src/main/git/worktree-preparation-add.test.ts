@@ -25,6 +25,7 @@ vi.mock('./worktree-preparation-discard', () => ({ performDiscardPreparedWorktre
 import { addLockedWorktreePreparation } from './worktree-preparation-add'
 import { clearGitCapabilityStateForTests, getLocalGitCapabilityCache } from './git-capability-state'
 import { WorktreePreparationLockOwnershipError } from './worktree-preparation-lock'
+import { WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS } from './worktree-operation-options'
 import {
   resetWslLinkedWorktreeGitRoutingForTests,
   seedWslLinkedWorktreeGitRoutingForTests
@@ -78,6 +79,109 @@ it('falls back once on the old-Git reason rejection and caches the absence', asy
   ])
   expect(mocks.lock.mock.calls.map(([path]) => path)).toEqual(['/prepared', '/second'])
   expect(mocks.verify).not.toHaveBeenCalled()
+  expect(mocks.discard).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['first', 'cancellation'],
+  ['cached', 'cancellation'],
+  ['first', 'path probe'],
+  ['cached', 'path probe'],
+  ['first', 'marker write'],
+  ['cached', 'marker write']
+])('cleans its successful %s fallback add after a %s failure', async (fallback, failureKind) => {
+  const controller = new AbortController()
+  const options = {
+    signal: controller.signal,
+    timeout: 180_000,
+    wslDistro: 'Ubuntu',
+    admissionTier: 'background' as const
+  }
+  if (fallback === 'cached') {
+    getLocalGitCapabilityCache(options).rememberUnsupported('worktree-add-lock-reason')
+  } else {
+    mocks.git.mockRejectedValueOnce(unsupported)
+  }
+  const failure = new Error(`${failureKind} failed after registration`)
+  mocks.lock.mockImplementationOnce(async () => {
+    if (failureKind === 'cancellation') {
+      controller.abort(failure)
+    }
+    throw failure
+  })
+  await expect(prepare('/prepared', options)).rejects.toBe(failure)
+  expect(mocks.discard).toHaveBeenCalledExactlyOnceWith('/repo', '/prepared', {
+    ...options,
+    signal: undefined,
+    timeout: WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS
+  })
+  expect(mocks.lstat).toHaveBeenCalled()
+  expect(options.timeout).toBe(180_000)
+  expect(options.signal).toBe(controller.signal)
+})
+
+it('preserves the original lock failure when bounded fallback cleanup also fails', async () => {
+  getLocalGitCapabilityCache().rememberUnsupported('worktree-add-lock-reason')
+  const failure = new Error('lock path unavailable')
+  mocks.lock.mockRejectedValueOnce(failure)
+  mocks.discard.mockRejectedValueOnce(new Error('cleanup unavailable'))
+  await expect(prepare()).rejects.toBe(failure)
+  expect(mocks.discard).toHaveBeenCalledOnce()
+})
+
+it.each(['first', 'cached'])(
+  'preserves a pre-existing target after %s fallback locking fails',
+  async (fallback) => {
+    if (fallback === 'cached') {
+      getLocalGitCapabilityCache().rememberUnsupported('worktree-add-lock-reason')
+    } else {
+      mocks.git.mockRejectedValueOnce(unsupported)
+    }
+    mocks.lstat.mockResolvedValue({})
+    const failure = new Error('marker write denied')
+    mocks.lock.mockRejectedValueOnce(failure)
+    await expect(prepare()).rejects.toBe(failure)
+    expect(mocks.discard).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['first', 'cached'])(
+  'preserves a competing marker during %s fallback locking',
+  async (fallback) => {
+    if (fallback === 'cached') {
+      getLocalGitCapabilityCache().rememberUnsupported('worktree-add-lock-reason')
+    } else {
+      mocks.git.mockRejectedValueOnce(unsupported)
+    }
+    mocks.lock.mockRejectedValueOnce(new WorktreePreparationLockOwnershipError())
+    await expect(prepare()).rejects.toThrow('lock owner changed')
+    expect(mocks.discard).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['first', 'cached'])(
+  'preserves an incomplete or rejected %s fallback add',
+  async (fallback) => {
+    if (fallback === 'cached') {
+      getLocalGitCapabilityCache().rememberUnsupported('worktree-add-lock-reason')
+    } else {
+      mocks.git.mockRejectedValueOnce(unsupported)
+    }
+    const failure = new Error('add did not complete')
+    mocks.git.mockRejectedValueOnce(failure)
+    await expect(prepare()).rejects.toBe(failure)
+    expect(mocks.lock).not.toHaveBeenCalled()
+    expect(mocks.discard).not.toHaveBeenCalled()
+  }
+)
+
+it('fails closed before a cached fallback add if the target cannot be inspected', async () => {
+  getLocalGitCapabilityCache().rememberUnsupported('worktree-add-lock-reason')
+  const failure = Object.assign(new Error('target unavailable'), { code: 'EACCES' })
+  mocks.lstat.mockRejectedValueOnce(failure)
+  await expect(prepare()).rejects.toBe(failure)
+  expect(mocks.git).not.toHaveBeenCalled()
+  expect(mocks.lock).not.toHaveBeenCalled()
   expect(mocks.discard).not.toHaveBeenCalled()
 })
 
