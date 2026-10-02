@@ -1,6 +1,7 @@
 import type { PathExistenceResult } from '../../shared/path-existence-batch'
 import { ipcRenderer } from 'electron'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
+import type { LocalFileAccess } from '../../shared/local-file-access'
 import type { RuntimeUploadFileStreamRequest } from '../../shared/runtime-upload-staging-contract'
 import type { SearchResult } from '../../shared/code-search-types'
 import type { FsChangedPayload } from '../../shared/filesystem-entry-types'
@@ -27,6 +28,7 @@ export const fsApi = {
     filePath: string
     connectionId?: string
     includeLocalLogMetadata?: boolean
+    access?: LocalFileAccess
   }): Promise<{
     content: string
     isBinary: boolean
@@ -91,6 +93,7 @@ export const fsApi = {
       filePath: string
       content: string
       connectionId?: string
+      access?: LocalFileAccess
     } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:writeFile', args),
   createFile: (
@@ -123,14 +126,18 @@ export const fsApi = {
   stat: (args: {
     filePath: string
     connectionId?: string
+    access?: LocalFileAccess
   }): Promise<{ size: number; isDirectory: boolean; mtime: number }> =>
     ipcRenderer.invoke('fs:stat', args),
   pathsExist: (args: {
     filePaths: string[]
     connectionId?: string
   }): Promise<PathExistenceResult[]> => ipcRenderer.invoke('fs:pathsExist', args),
-  pathExists: (args: { filePath: string; connectionId?: string }): Promise<boolean> =>
-    ipcRenderer.invoke('fs:pathExists', args),
+  pathExists: (args: {
+    filePath: string
+    connectionId?: string
+    access?: LocalFileAccess
+  }): Promise<boolean> => ipcRenderer.invoke('fs:pathExists', args),
   listFiles: (args: {
     rootPath: string
     connectionId?: string

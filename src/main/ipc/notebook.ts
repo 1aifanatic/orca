@@ -1,7 +1,10 @@
 import { dirname } from 'node:path'
 import { ipcMain, type WebContents } from 'electron'
 import type { Store } from '../persistence'
-import { resolveAuthorizedPath } from './filesystem-auth'
+import {
+  resolveDesktopAuthorizedPath,
+  resolveUserNamedRegularFile
+} from './filesystem-request-shape'
 import { startNotebookKernel, type NotebookKernel } from '../notebook/notebook-kernel'
 import {
   createNotebookVenv,
@@ -44,6 +47,8 @@ function kernelsOf(owner: WebContents): Map<string, NotebookKernel> {
   return kernels
 }
 
+// Why the notebook path is user-named, not root-checked: it is an open tab, and it only picks the
+// kernel's cwd and the venv folder.
 export function registerNotebookHandlers(store: Store): void {
   ipcMain.handle(
     'notebook:listPythonEnvironments',
@@ -51,7 +56,7 @@ export function registerNotebookHandlers(store: Store): void {
       _event,
       args: { filePath: string; rootPath: string | null; runWorkspaceInterpreters: boolean }
     ): Promise<PythonEnvironments> => {
-      await resolveAuthorizedPath(args.filePath, store)
+      await resolveUserNamedRegularFile(args.filePath)
       // Why the unresolved path: rootPath is in the same (possibly symlinked) form, e.g. /tmp.
       return listPythonEnvironments(args.filePath, args.rootPath, {
         runWorkspaceInterpreters: args.runWorkspaceInterpreters === true
@@ -68,7 +73,7 @@ export function registerNotebookHandlers(store: Store): void {
     'notebook:startKernel',
     async (event, args: { filePath: string; python: string }): Promise<KernelStartResult> => {
       // Why: run from the notebook's folder so relative imports and data paths resolve as on disk.
-      const cwd = dirname(await resolveAuthorizedPath(args.filePath, store))
+      const cwd = dirname(await resolveUserNamedRegularFile(args.filePath))
       const owner = event.sender
       const kernels = kernelsOf(owner)
       kernels.get(args.filePath)?.shutdown()
@@ -106,9 +111,9 @@ export function registerNotebookHandlers(store: Store): void {
       _event,
       args: { filePath: string; rootPath: string | null; python: string }
     ): Promise<CreateVenvResult> => {
-      await resolveAuthorizedPath(args.filePath, store)
+      await resolveUserNamedRegularFile(args.filePath)
       if (args.rootPath) {
-        await resolveAuthorizedPath(args.rootPath, store)
+        await resolveDesktopAuthorizedPath(args.rootPath, store)
       }
       return createNotebookVenv(args.python, notebookVenvParent(args.filePath, args.rootPath))
     }

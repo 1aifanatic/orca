@@ -3,7 +3,7 @@ import { constants } from 'node:fs'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import type { Store } from '../persistence'
-import { resolveAuthorizedPath } from './filesystem-auth'
+import { resolveDesktopAuthorizedPath } from './filesystem-request-shape'
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { resolveLocalDroppedPathsForAgent } from './dropped-path-resolution'
 import { importExternalPathsSsh } from './filesystem-import-ssh'
@@ -49,7 +49,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
         const provider = requireSshFilesystemProvider(args.connectionId)
         return provider.createFile(args.filePath)
       }
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveDesktopAuthorizedPath(args.filePath, store)
       await mkdir(dirname(filePath), { recursive: true })
       try {
         // Use the 'wx' flag for atomic create-if-not-exists, avoiding TOCTOU races
@@ -76,7 +76,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
         const provider = requireSshFilesystemProvider(args.connectionId)
         return provider.createDir(args.dirPath)
       }
-      const dirPath = await resolveAuthorizedPath(args.dirPath, store)
+      const dirPath = await resolveDesktopAuthorizedPath(args.dirPath, store)
       await assertNotExists(dirPath)
       await mkdir(dirPath, { recursive: true })
     }
@@ -107,8 +107,12 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // target file (potentially elsewhere in the worktree) and leave the
       // symlink dangling. newPath must also preserve its leaf so we don't
       // accidentally write into a symlinked destination name.
-      const oldPath = await resolveAuthorizedPath(args.oldPath, store, { preserveSymlink: true })
-      const newPath = await resolveAuthorizedPath(args.newPath, store, { preserveSymlink: true })
+      const oldPath = await resolveDesktopAuthorizedPath(args.oldPath, store, {
+        preserveSymlink: true
+      })
+      const newPath = await resolveDesktopAuthorizedPath(args.newPath, store, {
+        preserveSymlink: true
+      })
       await renameLocalPathSerializedByDestination(oldPath, newPath)
     }
   )
@@ -133,10 +137,10 @@ export function registerFilesystemMutationHandlers(store: Store): void {
         const provider = requireSshFilesystemProvider(args.connectionId)
         return provider.copy(args.sourcePath, args.destinationPath)
       }
-      const sourcePath = await resolveAuthorizedPath(args.sourcePath, store, {
+      const sourcePath = await resolveDesktopAuthorizedPath(args.sourcePath, store, {
         preserveSymlink: true
       })
-      const destinationPath = await resolveAuthorizedPath(args.destinationPath, store, {
+      const destinationPath = await resolveDesktopAuthorizedPath(args.destinationPath, store, {
         preserveSymlink: true
       })
       await mkdir(dirname(destinationPath), { recursive: true })
@@ -180,7 +184,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // destination is outside allowed roots, the entire import fails.
       // This only applies to local imports — remote paths are authorized by
       // the SSH connection boundary (see importExternalPathsSsh).
-      const resolvedDest = await resolveAuthorizedPath(args.destDir, store)
+      const resolvedDest = await resolveDesktopAuthorizedPath(args.destDir, store)
 
       const results: ImportItemResult[] = []
       const reservedNames = new Set<string>()

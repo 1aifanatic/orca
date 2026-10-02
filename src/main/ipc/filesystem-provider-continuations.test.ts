@@ -22,8 +22,19 @@ const mocks = vi.hoisted(() => ({
   resolveAuthorizedPath: vi.fn(),
   tryDeleteWslUncPath: vi.fn()
 }))
-vi.mock('electron', () => ({ ipcMain: { handle: mocks.handle }, shell: mocks }))
-vi.mock('node:fs/promises', () => ({ lstat: mocks.lstat, writeFile: mocks.writeFile }))
+vi.mock('electron', () => ({
+  app: { getPath: () => '/orca-test-user-data' },
+  ipcMain: { handle: mocks.handle },
+  shell: mocks
+}))
+vi.mock('node:fs/promises', () => ({
+  lstat: mocks.lstat,
+  writeFile: mocks.writeFile,
+  // Why: the write target doesn't exist yet, so the regular-file probe has nothing to refuse.
+  open: vi.fn(async () => {
+    throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' })
+  })
+}))
 vi.mock('./filesystem-auth', () => ({
   authorizeExternalPath: vi.fn(),
   resolveAuthorizedPath: mocks.resolveAuthorizedPath

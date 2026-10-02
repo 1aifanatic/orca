@@ -18,7 +18,9 @@ vi.mock('electron', () => ({
 
 vi.mock('node:fs', () => ({ watch: watchMock }))
 
-vi.mock('./filesystem-auth', () => ({ resolveAuthorizedPath: resolveAuthorizedPathMock }))
+vi.mock('./filesystem-request-shape', () => ({
+  resolveUserNamedRegularFile: resolveAuthorizedPathMock
+}))
 
 vi.mock('../ai-vault/local-log-tail-reader', () => ({
   readLocalLogTailRange: readRangeMock
@@ -64,7 +66,7 @@ beforeEach(() => {
   watchMock.mockReset()
   resolveAuthorizedPathMock.mockReset().mockImplementation(async (path: string) => path)
   readRangeMock.mockReset()
-  registerLocalLogTailHandlers({} as never)
+  registerLocalLogTailHandlers()
 })
 
 afterEach(() => {
@@ -87,7 +89,7 @@ describe('local log tail IPC', () => {
     )
     emitChange?.('change')
 
-    expect(resolveAuthorizedPathMock).toHaveBeenCalledWith('/logs/session.jsonl', expect.anything())
+    expect(resolveAuthorizedPathMock).toHaveBeenCalledWith('/logs/session.jsonl')
     expect(watchMock).toHaveBeenCalledWith('/logs/session.jsonl', expect.any(Function))
     expect(sender.send).toHaveBeenCalledWith('fs:localLogTailChanged', {
       subscriptionId: 'tail-1',

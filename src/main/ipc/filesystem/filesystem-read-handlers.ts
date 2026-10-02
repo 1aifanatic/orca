@@ -9,7 +9,11 @@ import type { DirEntry, MarkdownDocument } from '../../../shared/filesystem-entr
 import { sortDirEntries } from '../../../shared/file-name-sort'
 import { requireSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { resolveRegisteredWorktreePath } from '../registered-worktree-roots-cache'
-import { resolveAuthorizedPath } from '../filesystem-auth'
+import type { LocalFileAccess } from '../../../shared/local-file-access'
+import {
+  resolveDesktopAuthorizedPath,
+  resolveLocalFileRequestPath
+} from '../filesystem-request-shape'
 import { isENOENT } from '../filesystem-path-containment'
 import { listMarkdownDocuments, markdownDocumentsFromRelativePaths } from '../markdown-documents'
 import { getLocalGitOptionsForRegisteredWorktree } from '../local-worktree-runtime-options'
@@ -38,7 +42,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
           // Why: re-sort locally — the remote relay may be an older build with lexicographic ordering.
           return sortDirEntries(await provider.readDir(args.dirPath))
         }
-        const dirPath = await resolveAuthorizedPath(args.dirPath, store)
+        const dirPath = await resolveDesktopAuthorizedPath(args.dirPath, store)
         throwSite = 'readdir'
         const entries = await readdir(dirPath, { withFileTypes: true })
         const mapped = entries.map((entry) => ({
@@ -66,13 +70,18 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
     'fs:readFile',
     async (
       _event,
-      args: { filePath: string; connectionId?: string; includeLocalLogMetadata?: boolean }
+      args: {
+        filePath: string
+        connectionId?: string
+        includeLocalLogMetadata?: boolean
+        access?: LocalFileAccess
+      }
     ): Promise<LocalFileContent> => {
       if (args.connectionId) {
         const provider = requireSshFilesystemProvider(args.connectionId)
         return provider.readFile(args.filePath)
       }
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
       return args.includeLocalLogMetadata === true
         ? readLocalLogSnapshot(filePath)
         : readLocalFileContent(filePath)
@@ -102,14 +111,14 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
     'fs:stat',
     async (
       _event,
-      args: { filePath: string; connectionId?: string }
+      args: { filePath: string; connectionId?: string; access?: LocalFileAccess }
     ): Promise<{ size: number; isDirectory: boolean; mtime: number }> => {
       if (args.connectionId) {
         const provider = requireSshFilesystemProvider(args.connectionId)
         const result = await provider.stat(args.filePath)
         return { size: result.size, isDirectory: result.type === 'directory', mtime: result.mtime }
       }
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
       const stats = await stat(filePath)
       return { size: stats.size, isDirectory: stats.isDirectory(), mtime: stats.mtimeMs }
     }
@@ -132,7 +141,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
             try {
               await (provider
                 ? provider.stat(filePath)
-                : stat(await resolveAuthorizedPath(filePath, store)))
+                : stat(await resolveDesktopAuthorizedPath(filePath, store)))
               return true
             } catch (error) {
               if (isENOENT(error)) {
@@ -148,14 +157,17 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
 
   ipcMain.handle(
     'fs:pathExists',
-    async (_event, args: { filePath: string; connectionId?: string }): Promise<boolean> => {
+    async (
+      _event,
+      args: { filePath: string; connectionId?: string; access?: LocalFileAccess }
+    ): Promise<boolean> => {
       try {
         if (args.connectionId) {
           const provider = requireSshFilesystemProvider(args.connectionId)
           await provider.stat(args.filePath)
           return true
         }
-        const filePath = await resolveAuthorizedPath(args.filePath, store)
+        const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
         await stat(filePath)
         return true
       } catch (error) {

@@ -99,9 +99,12 @@ export async function authorizeExternalPathOutsideAllowedRoots(
  */
 type AllowedRootsSnapshot = { get: () => readonly string[] }
 
-function createAllowedRootsSnapshot(store: Store): AllowedRootsSnapshot {
+function createAllowedRootsSnapshot(
+  store: Store,
+  extraRoots: readonly string[] = []
+): AllowedRootsSnapshot {
   let roots: readonly string[] | undefined
-  return { get: () => (roots ??= getAllowedRoots(store)) }
+  return { get: () => (roots ??= [...getAllowedRoots(store), ...extraRoots]) }
 }
 
 export function isPathAllowed(
@@ -128,6 +131,8 @@ export type ResolveAuthorizedPathOptions = {
    * Canonicalize the parent but preserve the leaf so delete/rename target the symlink itself, not its destination (which may live outside allowed roots).
    */
   preserveSymlink?: boolean
+  /** Roots only the desktop window may use (never runtime RPC), checked like any other root. */
+  extraRoots?: readonly string[]
 }
 
 export async function resolveAuthorizedPath(
@@ -138,7 +143,7 @@ export async function resolveAuthorizedPath(
   const resolvedTarget = resolve(targetPath)
   // Why: the roots depend only on store state, not on the candidate path, so one snapshot serves
   // every authorization below; each candidate is still checked against it in full.
-  const allowedRoots = createAllowedRootsSnapshot(store)
+  const allowedRoots = createAllowedRootsSnapshot(store, options.extraRoots)
   if (!(await isPathAllowedIncludingRegisteredWorktrees(resolvedTarget, store, { allowedRoots }))) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }

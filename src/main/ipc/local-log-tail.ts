@@ -1,6 +1,5 @@
 import { ipcMain, type WebContents } from 'electron'
 import { watch, type FSWatcher } from 'node:fs'
-import type { Store } from '../persistence'
 import type {
   LocalLogTailChangedPayload,
   LocalLogTailReadArgs,
@@ -8,7 +7,7 @@ import type {
   LocalLogTailWatchArgs
 } from '../../shared/local-log-tail-types'
 import { readLocalLogTailRange } from '../ai-vault/local-log-tail-reader'
-import { resolveAuthorizedPath } from './filesystem-auth'
+import { resolveUserNamedRegularFile } from './filesystem-request-shape'
 import { abortWhenRendererGone } from './renderer-lifetime-abort'
 
 type TailSenderOwner = {
@@ -95,11 +94,7 @@ function validateSubscriptionId(value: unknown): string {
   return value
 }
 
-async function startWatch(
-  sender: WebContents,
-  args: LocalLogTailWatchArgs,
-  store: Store
-): Promise<void> {
+async function startWatch(sender: WebContents, args: LocalLogTailWatchArgs): Promise<void> {
   const subscriptionId = validateSubscriptionId(args.subscriptionId)
   if (sender.isDestroyed()) {
     return
@@ -109,7 +104,7 @@ async function startWatch(
   const pending = Symbol(subscriptionId)
   owner.pending.set(key, pending)
   try {
-    const filePath = await resolveAuthorizedPath(args.filePath, store)
+    const filePath = await resolveUserNamedRegularFile(args.filePath)
     if (
       sender.isDestroyed() ||
       owner.signal.aborted ||
@@ -143,17 +138,17 @@ async function startWatch(
   }
 }
 
-export function registerLocalLogTailHandlers(store: Store): void {
+export function registerLocalLogTailHandlers(): void {
   ipcMain.handle(
     'fs:readLocalLogTail',
     async (_event, args: LocalLogTailReadArgs): Promise<LocalLogTailReadResult> => {
-      const filePath = await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveUserNamedRegularFile(args.filePath)
       return readLocalLogTailRange(filePath, args.fromByteOffset, args.expectedIdentity)
     }
   )
 
   ipcMain.handle('fs:startLocalLogTail', (event, args: LocalLogTailWatchArgs): Promise<void> =>
-    startWatch(event.sender, args, store)
+    startWatch(event.sender, args)
   )
 
   ipcMain.handle('fs:stopLocalLogTail', (event, args: { subscriptionId: string }): void => {

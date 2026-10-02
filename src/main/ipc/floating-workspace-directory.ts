@@ -68,8 +68,13 @@ function isTrustedFloatingWorkspaceDirectory(
   return getTrustedFloatingWorkspaceDirectories(settings).has(path.resolve(canonicalDirPath))
 }
 
+/** The app-owned folder floating markdown documents are created in; a desktop-only root. */
+export function getDefaultFloatingWorkspacePath(): string {
+  return path.join(app.getPath('userData'), FLOATING_WORKSPACE_DIRNAME)
+}
+
 export async function ensureDefaultFloatingWorkspacePath(): Promise<string> {
-  const cwd = path.join(app.getPath('userData'), FLOATING_WORKSPACE_DIRNAME)
+  const cwd = getDefaultFloatingWorkspacePath()
   await mkdir(cwd, { recursive: true })
   // Why: the default floating workspace lives outside repo roots by design;
   // authorize only this app-owned directory instead of widening access to ~.

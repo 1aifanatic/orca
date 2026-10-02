@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KernelFrame } from '../../shared/notebook-kernel-types'
 
@@ -14,11 +17,15 @@ vi.mock('electron', () => ({
       handlers.set(channel, handler)
   }
 }))
-vi.mock('./filesystem-auth', () => ({ resolveAuthorizedPath: resolveAuthorizedPathMock }))
+vi.mock('./filesystem-request-shape', () => ({
+  resolveUserNamedRegularFile: resolveAuthorizedPathMock,
+  resolveDesktopAuthorizedPath: resolveAuthorizedPathMock
+}))
 vi.mock('../notebook/notebook-kernel', () => ({ startNotebookKernel: startNotebookKernelMock }))
 
 import { registerNotebookHandlers } from './notebook'
 import type { Store } from '../persistence'
+import type * as RequestShape from './filesystem-request-shape'
 
 function fakeKernel() {
   let onFrame: (frame: KernelFrame) => void = () => {}
@@ -103,5 +110,27 @@ describe('notebook IPC', () => {
     )
     expect(second.kernel.execute).toHaveBeenCalledWith('x')
     expect(first.kernel.execute).not.toHaveBeenCalled()
+  })
+
+  it('starts a kernel for a notebook outside every project, and refuses a relative path', async () => {
+    const actual = await vi.importActual<typeof RequestShape>('./filesystem-request-shape')
+    resolveAuthorizedPathMock.mockImplementation(actual.resolveUserNamedRegularFile)
+    const folder = await mkdtemp(join(await realpath(tmpdir()), 'orca-notebook-'))
+    try {
+      const notebook = join(folder, 'analysis.ipynb')
+      await writeFile(notebook, '{}')
+      fakeKernel()
+      const start = handlers.get('notebook:startKernel')!
+
+      await expect(
+        start({ sender: fakeOwner() }, { filePath: notebook, python: '/py' })
+      ).resolves.toEqual({ status: 'ready' })
+      expect(startNotebookKernelMock).toHaveBeenCalledWith(expect.objectContaining({ cwd: folder }))
+      await expect(
+        start({ sender: fakeOwner() }, { filePath: 'analysis.ipynb', python: '/py' })
+      ).rejects.toThrow('absolute path')
+    } finally {
+      await rm(folder, { recursive: true, force: true })
+    }
   })
 })

@@ -17,6 +17,7 @@ import type {
   LocalLogTailWatchArgs
 } from '../../shared/local-log-tail-types'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
+import type { LocalFileAccess } from '../../shared/local-file-access'
 import type {
   CreateVenvResult,
   KernelFrameEvent,
@@ -42,6 +43,7 @@ export type FilesystemApi = {
       filePath: string
       connectionId?: string
       includeLocalLogMetadata?: boolean
+      access?: LocalFileAccess
     }) => Promise<{
       content: string
       isBinary: boolean
@@ -88,6 +90,7 @@ export type FilesystemApi = {
         filePath: string
         content: string
         connectionId?: string
+        access?: LocalFileAccess
       } & SshMutationExpectation
     ) => Promise<void>
     createFile: (
@@ -128,12 +131,17 @@ export type FilesystemApi = {
     stat: (args: {
       filePath: string
       connectionId?: string
+      access?: LocalFileAccess
     }) => Promise<{ size: number; isDirectory: boolean; mtime: number }>
     pathsExist?: (args: {
       filePaths: string[]
       connectionId?: string
     }) => Promise<PathExistenceResult[]>
-    pathExists: (args: { filePath: string; connectionId?: string }) => Promise<boolean>
+    pathExists: (args: {
+      filePath: string
+      connectionId?: string
+      access?: LocalFileAccess
+    }) => Promise<boolean>
     listFiles: (args: {
       rootPath: string
       connectionId?: string

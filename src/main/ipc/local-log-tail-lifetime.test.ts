@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
     handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler)
   }
 }))
-vi.mock('./filesystem-auth', () => ({ resolveAuthorizedPath: authorize }))
+vi.mock('./filesystem-request-shape', () => ({ resolveUserNamedRegularFile: authorize }))
 import {
   closeAllLocalLogTailWatchers,
   getActiveLocalLogTailWatcherCount,
@@ -41,8 +41,7 @@ beforeEach(async () => {
   filePath = join(directory, 'fixture.log')
   await writeFile(filePath, 'test\n')
   authorize.mockReset().mockResolvedValue(filePath)
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization is mocked; the handler never reads Store in this isolated fixture.
-  registerLocalLogTailHandlers({} as never)
+  registerLocalLogTailHandlers()
 })
 afterEach(async () => {
   closeAllLocalLogTailWatchers()
