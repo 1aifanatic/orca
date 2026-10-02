@@ -3,10 +3,12 @@
 // stops at its next batch when one starts, and the copy goes on once the chats have been quiet.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import Database from '../../sqlite/sync-database'
 import {
   closeTestJournalHostDatabases,
   openTestJournalHostDatabase
 } from '../agent-session-journal/journal-host-database-test-support'
+import { legacyJournalDatabaseFile } from '../agent-session-journal/journal-paths'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { hasJournalSessionStatus } from '../agent-session-journal/journal-session-state'
 import {
@@ -14,6 +16,7 @@ import {
   StructuredAgentSessionPerChatFileCopyActivity
 } from './structured-agent-session-per-chat-file-copy-activity'
 import {
+  COPY_TEST_WORKSPACE,
   copyJob,
   copyJobDeps,
   createChats,
@@ -38,17 +41,54 @@ afterEach(async () => {
 
 const OLD = ['session-old-0', 'session-old-1']
 
-/** Two chats in their old files, and a chat open on the host that has not worked yet. */
-async function oldChatsAndALiveOne(): Promise<{ rig: CopyTestRig; live: LiveTestChat }> {
+/** Two chats in their old files, with the status rows they had before, and a chat open on the
+ *  host that has not worked yet. */
+async function oldChatsAndALiveOne(): Promise<{
+  rig: CopyTestRig
+  live: LiveTestChat
+  statusBefore: Record<string, unknown>
+}> {
   const rig = await createCopyTestRig()
   rigs.push(rig)
   await createChats(rig, OLD, { listed: false })
   await rig.crash()
+  const statusBefore = Object.fromEntries(OLD.map((id) => [id, statusRow(rig, id)]))
   moveToPerChatFiles(rig, OLD)
   await rig.boot()
   const live = await openLiveChat(rig, 'session-live')
   expect(rig.host['clientDelivery'].chatWork.live()).toBe(false)
-  return { rig, live }
+  return { rig, live, statusBefore }
+}
+
+const statusRow = (rig: CopyTestRig, sessionId: string) =>
+  openTestJournalHostDatabase(rig.root)
+    .db.prepare('SELECT * FROM journal_session_state WHERE session_id = ?')
+    .get(sessionId)
+
+/** The chat's epochs and every row of any epoch, as stored in `db`. */
+function storedChat(db: Pick<Database, 'prepare'>, sessionId: string) {
+  return {
+    epochs: db.prepare('SELECT epoch FROM journal_sessions WHERE session_id = ?').all(sessionId),
+    rows: db
+      .prepare(
+        'SELECT epoch, seq, ts, row_json FROM journal_rows WHERE session_id = ? ORDER BY epoch, seq'
+      )
+      .all(sessionId)
+  }
+}
+
+/** The chat as its old file holds it. */
+function storedInFile(rig: CopyTestRig, sessionId: string) {
+  const directory = openTestJournalHostDatabase(rig.root).legacyDirectoryFor({
+    sessionId,
+    workspaceId: COPY_TEST_WORKSPACE
+  })
+  const file = new Database(legacyJournalDatabaseFile(directory), { readonly: true })
+  try {
+    return storedChat(file, sessionId)
+  } finally {
+    file.close()
+  }
 }
 
 /** The real importer, a row per batch so a chat takes several, counted. */
@@ -193,12 +233,61 @@ describe('a chat working on the same host (G3)', () => {
     }
   )
 
+  it('leaves nothing half-copied, whichever of a chat’s task boundaries a chat starting work stops it at', async () => {
+    // Every boundary of one chat's copy: between copy batches, between verify batches, before the
+    // publish, and the last, after it.
+    const probe = await oldChatsAndALiveOne()
+    const counted: Record<string, number> = {}
+    const counting = vi.fn((input: Parameters<typeof importPerSessionJournal>[0]) =>
+      rowPerBatchImport(async (yields) => {
+        counted[input.identity.sessionId] = yields
+      })(input)
+    )
+    await copyJob(probe.rig, { importJournal: counting }).tick()
+    const boundaries = counted[OLD[0]]
+    expect(boundaries).toBeGreaterThan(4)
+
+    for (let at = 1; at <= boundaries; at += 1) {
+      const { rig, live, statusBefore } = await oldChatsAndALiveOne()
+      const inFile = Object.fromEntries(OLD.map((id) => [id, storedInFile(rig, id)]))
+      let stoppedAt = 0
+      const importJournal = vi.fn((input: Parameters<typeof importPerSessionJournal>[0]) =>
+        rowPerBatchImport(async (yields) => {
+          if (stoppedAt === 0 && yields === at) {
+            stoppedAt = yields
+            await live.streamTurn()
+          }
+        })(input)
+      )
+      const job = copyJob(rig, { importJournal })
+      await job.tick()
+      expect(stoppedAt).toBe(at)
+      // Past the publish the copy is whole, and the chat it stopped is copied.
+      const filesLeft = at < boundaries ? OLD.length : OLD.length - 1
+      expect(await perChatFilesLeft(rig), `boundary ${at} of ${boundaries}`).toBe(filesLeft)
+
+      await live.endTurn()
+      rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS
+      await job.tick()
+
+      expect(await perChatFilesLeft(rig)).toBe(0)
+      for (const sessionId of OLD) {
+        // Exactly the file's rows, once, under its one epoch, with the chat's status row.
+        const copied = storedChat(openTestJournalHostDatabase(rig.root).db, sessionId)
+        expect(copied, `stopped at boundary ${at}`).toEqual(inFile[sessionId])
+        expect(copied.epochs).toHaveLength(1)
+        expect(statusRow(rig, sessionId)).toEqual(statusBefore[sessionId])
+      }
+    }
+  }, 60_000)
+
   it('stops a missing status row the same way, writing nothing, and writes it once quiet', async () => {
     const rig = await createCopyTestRig()
     rigs.push(rig)
     // A fold long enough to take more than one task.
     await restTestChat(rig, 'session-rowless', { listed: false, message: 'x'.repeat(600_000) })
     await rig.crash()
+    const before = statusRow(rig, 'session-rowless')
     openTestJournalHostDatabase(rig.root)
       .db.prepare("DELETE FROM journal_session_state WHERE session_id = 'session-rowless'")
       .run()
@@ -241,9 +330,8 @@ describe('a chat working on the same host (G3)', () => {
     await job.tick()
 
     expect(job.isFinished).toBe(true)
-    expect(
-      hasJournalSessionStatus(openTestJournalHostDatabase(rig.root).db, 'session-rowless')
-    ).toBe(true)
+    // The row a whole fold writes, once.
+    expect(statusRow(rig, 'session-rowless')).toEqual(before)
   })
 })
 

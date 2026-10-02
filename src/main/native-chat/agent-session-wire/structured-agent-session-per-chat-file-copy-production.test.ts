@@ -36,6 +36,9 @@ afterEach(async () => {
   closeTestJournalHostDatabases()
 })
 
+/** Each chat's timeline as the host served it before the crash. */
+const historyBeforeCrash = new Map<string, unknown>()
+
 /** A listed chat the startup restore opened from its old file, and an unlisted one, both still
  *  in their files. */
 async function restoredAndUnlisted(): Promise<CopyTestRig> {
@@ -43,6 +46,10 @@ async function restoredAndUnlisted(): Promise<CopyTestRig> {
   rigs.push(rig)
   await createChats(rig, ['session-listed'])
   await createChats(rig, ['session-unlisted'], { listed: false })
+  for (const sessionId of ['session-listed', 'session-unlisted']) {
+    await rig.host.flushStreamedEvents(sessionId)
+    historyBeforeCrash.set(sessionId, (await rig.host.journalSnapshot(sessionId)).items)
+  }
   await rig.crash()
   moveToPerChatFiles(rig, ['session-listed', 'session-unlisted'])
   await rig.boot()
@@ -162,6 +169,34 @@ describe('a chat streaming on the host the copy runs on (G3)', () => {
       interval: 100
     })
     expect(restoredJournal(rig).importPending).toBe(false)
+  }, 30_000)
+
+  it('never starts a chat while the chats never go quiet, and every chat still opens whole', async () => {
+    const rig = await restoredAndUnlisted()
+    const live = await openLiveChat(rig, 'session-live')
+    // A turn that streams for the whole test.
+    await live.streamTurn()
+    const deps = copyJobDeps(rig)
+    const inChat = vi.spyOn(deps.pace!, 'inChat')
+    const job = new StructuredAgentSessionPerChatFileCopy(deps)
+
+    for (let tick = 0; tick < 120; tick += 1) {
+      rig.copyClock.now += 1_000
+      await job.tick()
+    }
+
+    expect(rig.host['clientDelivery'].chatWork.live()).toBe(true)
+    expect(inChat).not.toHaveBeenCalled()
+    expect(await perChatFilesLeft(rig)).toBe(2)
+    // The read path a chat not yet copied takes today: the restored chat from its preview, the
+    // closed one through its first use's own copy.
+    for (const sessionId of ['session-listed', 'session-unlisted']) {
+      expect(historyBeforeCrash.get(sessionId)).not.toEqual([])
+      expect((await rig.host.journalSnapshot(sessionId)).items, sessionId).toEqual(
+        historyBeforeCrash.get(sessionId)
+      )
+    }
+    expect(inChat).not.toHaveBeenCalled()
   }, 30_000)
 
   it('stops a restored chat’s owed import at its next batch, still owed, when one starts', async () => {
