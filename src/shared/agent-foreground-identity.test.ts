@@ -59,19 +59,21 @@ describe('execution-host foreground identity', () => {
     }
   )
 
-  it('matches the local Darwin snapshot against the exact UTC identity', async () => {
-    const started = new Date(2026, 8, 29, 12, 34, 56)
-    const exact = started.toUTCString().replace(',', '').replace(' GMT', '')
-    const read = vi.fn(async () => ({ ...live, startTime: exact }))
-    const observed = {
-      available: true,
-      processName: 'codex',
-      processId: 42,
-      processStartTime: started.toString().slice(0, 24)
-    }
-    expect(
-      await captureAgentForegroundIdentity(async () => observed, read, 'darwin')
-    ).toMatchObject({ process: { pid: 42, startTime: exact } })
+  it('matches a Darwin table row and identity read printed on the same UTC, C-locale clock', async () => {
+    // Both reads pin TZ=UTC0 and C time names; ps pads a one-digit day with a space.
+    const read = vi.fn(async () => ({ ...live, startTime: 'Fri Oct  2 10:50:02 2026' }))
+    const observe = (processStartTime: string) =>
+      captureAgentForegroundIdentity(
+        async () => ({ available: true, processName: 'codex', processId: 42, processStartTime }),
+        read,
+        'darwin'
+      )
+    expect(await observe('Fri Oct  2 10:50:02 2026')).toMatchObject({
+      process: { pid: 42, startTime: 'Fri Oct  2 10:50:02 2026' }
+    })
+    // A recycled pid one second apart, and a localized row the pinned table can no longer print.
+    expect(await observe('Fri Oct  2 10:50:03 2026')).toBeUndefined()
+    expect(await observe('五 10月/ 2 10:50:02 2026')).toBeUndefined()
   })
 
   it.each([undefined, '99'])(

@@ -26,6 +26,15 @@ const execFile = promisify(execFileCb)
 // `ps` bounded while staying out of reach of a host that is merely busy.
 export const PS_TIMEOUT_MS = 15_000
 
+/**
+ * Why: `ps` prints lstart in the caller's zone and LC_TIME, and the identity read compares it with
+ * a UTC, C-locale read. Pin only time; LC_ALL=C would also rewrite non-ASCII command text.
+ */
+export function processTableEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const { LC_ALL, ...rest } = env
+  return { ...rest, ...(LC_ALL ? { LC_CTYPE: LC_ALL } : {}), LC_TIME: 'C', TZ: 'UTC0' }
+}
+
 type ProcessTableCapture = {
   lenient: () => ProcessTableRow[]
   strict: () => ProcessTableRow[]
@@ -147,7 +156,8 @@ async function captureProcessTable(args: readonly string[]): Promise<string> {
     ;({ stdout } = await execFile('ps', [...args], {
       encoding: 'utf-8',
       timeout: PS_TIMEOUT_MS,
-      maxBuffer: PS_MAX_BUFFER_BYTES
+      maxBuffer: PS_MAX_BUFFER_BYTES,
+      env: processTableEnv()
     }))
   } catch (error) {
     // A ceiling hit is truncation, not absence: name it in the domain vocabulary.

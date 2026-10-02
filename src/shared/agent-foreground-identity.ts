@@ -7,8 +7,14 @@ export type AgentForegroundObservation = {
   processName: string | null
   /** The process supplying the name; absent for fallback or ambiguous names. */
   processId?: number
-  /** Same snapshot: Linux start ticks, Darwin local lstart, or Windows creation milliseconds. */
+  /** Same snapshot: Linux start ticks, Darwin UTC C-locale lstart, or Windows creation milliseconds. */
   processStartTime?: string
+}
+
+/** Both sides are macOS lstart printed with TZ=UTC0 and C time names. */
+function sameUtcStartTime(table: string, probe: string): boolean {
+  const at = Date.parse(`${table} UTC`)
+  return Number.isFinite(at) && at === Date.parse(`${probe} UTC`)
 }
 
 /** A name-only fallback cannot own a terminal, even if it names a known agent. */
@@ -41,8 +47,7 @@ export async function captureAgentForegroundIdentity(
     const matches =
       platform === 'linux'
         ? before.startTime.endsWith(`:${observed.processStartTime}`)
-        : Number.isFinite(Date.parse(observed.processStartTime)) &&
-          Date.parse(observed.processStartTime) === Date.parse(`${before.startTime} UTC`)
+        : sameUtcStartTime(observed.processStartTime, before.startTime)
     if (!matches) {
       return undefined
     }
