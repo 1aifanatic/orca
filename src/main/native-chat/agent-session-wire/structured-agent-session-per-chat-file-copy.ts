@@ -258,11 +258,9 @@ export class StructuredAgentSessionPerChatFileCopy {
     const { sessionId } = record
     const open = this.deps.openJournal(sessionId)
     if (open?.importPending) {
-      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue,
-      // unpaced and not charged to the copy.
-      this.pace.pause()
-      await open.whenImported()
-      this.pace.begin()
+      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue
+      // and paced like any other.
+      await open.whenImported({ yieldTask })
       this.count('copied')
       return
     }
