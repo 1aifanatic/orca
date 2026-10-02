@@ -7,6 +7,7 @@ import {
 } from '@/lib/markdown-review-notes'
 import type { MarkdownDocument } from '../../../../shared/filesystem-entry-types'
 import { createMarkdownDocumentIndex } from './markdown-doc-links'
+import { exceedsMarkdownRichModeSizeLimit } from './markdown-rich-size-limit'
 import { extractFrontMatter } from './markdown-frontmatter'
 import { previewHasAnnotationBlockKey } from './markdown-preview-annotation-shortcut'
 import { selectMarkdownTableOfContents } from './markdown-toc-visibility-gate'
@@ -21,7 +22,8 @@ export function useMarkdownPreviewFoundation({
   sourceRuntimeEnvironmentId,
   showTableOfContents,
   markdownDocuments,
-  markdownAnnotationsEnabled
+  markdownAnnotationsEnabled,
+  largePreview = false
 }: {
   content: string
   filePath: string
@@ -30,6 +32,7 @@ export function useMarkdownPreviewFoundation({
   sourceRuntimeEnvironmentId: string | null | undefined
   showTableOfContents: boolean
   markdownDocuments: MarkdownDocument[]
+  largePreview?: boolean
   markdownAnnotationsEnabled: boolean
 }) {
   const source = useMarkdownPreviewSourceFoundation({
@@ -37,7 +40,8 @@ export function useMarkdownPreviewFoundation({
     filePath,
     sourceFileId,
     sourceWorktreeId,
-    sourceRuntimeEnvironmentId
+    sourceRuntimeEnvironmentId,
+    prewarmImages: !largePreview
   })
   const {
     rootRef,
@@ -50,7 +54,11 @@ export function useMarkdownPreviewFoundation({
 
   const frontMatter = useMemo(() => extractFrontMatter(renderedContent), [renderedContent])
   const tableOfContentsItems = useMemo(
-    () => selectMarkdownTableOfContents(showTableOfContents, renderedContent),
+    () =>
+      selectMarkdownTableOfContents(
+        showTableOfContents && !exceedsMarkdownRichModeSizeLimit(renderedContent),
+        renderedContent
+      ),
     [renderedContent, showTableOfContents]
   )
   const markdownDocumentIndex = useMemo(

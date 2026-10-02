@@ -2941,6 +2941,11 @@
       "title": "Agent dashboard"
     }
   },
+  "editor": {
+    "markdownPreview": {
+      "renderAnyway": "Render anyway"
+    }
+  },
   "fileExplorer": {
     "root": {
       "omittedFiles": "Files omitted by sparse checkout are not searched.",
