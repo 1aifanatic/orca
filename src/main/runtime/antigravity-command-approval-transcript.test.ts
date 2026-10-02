@@ -83,3 +83,15 @@ it.each([
   )
   expect(wiring.statusStore.getStatusSnapshot()[0].interactivePrompt).toBeUndefined()
 })
+
+it('recognizes the actual macOS 1.2.14 Claude command permission grid', async () => {
+  const { ruledScreenLines } = await finalReplayFrame(
+    'antigravity-macos-1-2-14-command-approval',
+    159,
+    69
+  )
+  expect(isAntigravityCommandApprovalScreen(ruledScreenLines)).toBe(true)
+  expect(
+    evaluateAgentStateRules('antigravity', { readScreenLines: () => ruledScreenLines })
+  ).toMatchObject({ state: 'hold' })
+})
