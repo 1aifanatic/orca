@@ -265,13 +265,28 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
     }
   }
 
-  /** Version adapter, removable once the supported relay floor stamps exits on its own host: an
-   *  older relay's hook-claimed exit may clear the pane's turn, never mint one, and never end an
-   *  owner this side recorded. */
-  protected applyLegacyRelayExitClaim(paneKey: string, presence: AgentProcessPresence): void {
+  /** An exit claim (a session-end hook, or an older relay's hook-claimed exit) ends that agent's
+   *  turn when no live owner can be checked instead, as main does; it never mints, revives or
+   *  re-dates a turn. A live owner is checked rather than trusted. */
+  protected applyExitClaim(
+    paneKey: string,
+    presence: AgentProcessPresence,
+    session: AgentHookEventPayload['providerSession']
+  ): void {
+    const owner = this.agentOwnerByPaneKey.get(paneKey)
+    if (owner && !owner.presence.ended) {
+      void this.checkAgentPresence(paneKey)
+      return
+    }
     const row = this.state.lastStatusByPaneKey.get(paneKey)
-    // Why: the claim names its agent, so it cannot end another agent's turn (a nested run's exit).
-    if (row?.payload.agentType !== presence.agent || this.agentOwnerByPaneKey.has(paneKey)) {
+    // Why agent and session: a nested run (even of the same agent) must not end another's turn.
+    if (
+      !row ||
+      row.providerSessionOnly ||
+      row.payload.agentType !== presence.agent ||
+      !session ||
+      row.providerSession?.id !== session.id
+    ) {
       return
     }
     this.reconcileEndedProcessForPaneKeys([paneKey], { kind: 'owner-exited', presence })

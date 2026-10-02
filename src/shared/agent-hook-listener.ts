@@ -23,6 +23,53 @@ import {
   trackOpenCodePaneLaunchToken
 } from './agent-hook-listener/opencode-session-registry'
 import { readString } from './agent-hook-listener/tool-input-preview'
+/** Session-end reasons that end the agent's process; /clear and /resume keep it running. */
+const SESSION_END_EXIT_REASONS = new Set([
+  'prompt_input_exit',
+  'logout',
+  'other',
+  'bypass_permissions_disabled'
+])
+
+/** A session end that its provider reports as no turn state, for a reason that ends the process,
+ *  becomes an exit claim: never a row. With no live host owner (tmux, WSL) it ends that agent's
+ *  turn as main does; it never mints, revives or re-dates one. The payload only fills the shape. */
+function sessionEndClaim(
+  eventName: unknown,
+  hookPayload: Record<string, unknown>,
+  scope: Pick<AgentHookEventPayload, 'paneKey' | 'tabId' | 'worktreeId'> & {
+    source: AgentHookSource
+    payload?: AgentHookEventPayload['payload']
+    providerSession?: AgentHookEventPayload['providerSession']
+  }
+): AgentHookEventPayload | null {
+  const reason = readString(hookPayload, 'reason')
+  if (
+    eventName !== 'SessionEnd' ||
+    readString(hookPayload, 'agent_id') ||
+    reason === undefined ||
+    !SESSION_END_EXIT_REASONS.has(reason)
+  ) {
+    return null
+  }
+  const payload =
+    scope.payload ??
+    normalizeAgentStatusPayload({ state: 'done', prompt: '', agentType: scope.source })
+  return payload
+    ? {
+        paneKey: scope.paneKey,
+        source: scope.source,
+        tabId: scope.tabId,
+        worktreeId: scope.worktreeId,
+        connectionId: null,
+        hookEventName: 'SessionEnd',
+        ...(scope.providerSession ? { providerSession: scope.providerSession } : {}),
+        agentPresence: { agent: scope.source, ended: true },
+        payload
+      }
+    : null
+}
+
 /** Canonical transport-agnostic normalization entry shared by main and relay listeners. */
 export function normalizeHookPayload(
   state: HookListenerState,
@@ -162,7 +209,14 @@ export function normalizeHookPayload(
   const restoredUnconfirmed =
     source === 'claude' && state.claudeUnconfirmedRestoredStatusPaneKeys.delete(paneKey)
   if (!transportPayload) {
-    return null
+    return sessionEndClaim(eventName, hookPayloadRecord, {
+      paneKey,
+      source,
+      tabId,
+      worktreeId,
+      payload: previousStatus?.payload,
+      providerSession: providerSession ?? undefined
+    })
   }
   const grokActiveTurn = source === 'grok' ? state.grokActiveTurnByPaneKey.get(paneKey) : undefined
 

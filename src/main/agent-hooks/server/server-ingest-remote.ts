@@ -149,7 +149,7 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
     const remoteOwner = remotePresence.agentPresence
     if (remoteOwner?.ended && !remotePresence.agentPresenceFromExecutionHost) {
       if (envelope.isReplay !== true) {
-        this.applyLegacyRelayExitClaim(paneKey, remoteOwner)
+        this.applyExitClaim(paneKey, remoteOwner, providerSession)
       }
       return
     }

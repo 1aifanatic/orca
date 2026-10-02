@@ -90,16 +90,29 @@ function visible(server: AgentHookServer): boolean {
 }
 
 describe('host-owned hook presence', () => {
-  it('clears the status once the exact check proves the exit, without a renderer', async () => {
+  it('checks the owner on an exit hook and clears once the check proves the exit', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
     capture(server)
     expect(visible(server)).toBe(true)
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    // A live owner is checked, never trusted: an exit hook runs while the process still lives.
+    expect(visible(server)).toBe(true)
     probe.mockResolvedValueOnce('exited')
     await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
-    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
+    await vi.waitFor(() => expect(visible(server)).toBe(false))
+  })
+
+  it('ends its own turn on an exit hook when no owner can be checked (tmux, WSL)', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart')
+    await hook(server, 'UserPromptSubmit')
+    expect(state(server)).toBe('working')
+    await hook(server, 'SessionEnd', 'session-a', 'clear')
     expect(visible(server)).toBe(true)
-    await server.checkAgentPresence(PANE)
+    await hook(server, 'SessionEnd', 'other-session', 'prompt_input_exit')
+    expect(visible(server)).toBe(true)
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
     expect(visible(server)).toBe(false)
   })
 
@@ -125,10 +138,7 @@ describe('host-owned hook presence', () => {
     expect(state(server)).toBe('working')
     probe.mockResolvedValueOnce('exited')
     await hook(server, 'SessionEnd', 'session-b', 'prompt_input_exit')
-    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
-    expect(visible(server)).toBe(true)
-    await server.checkAgentPresence(PANE)
-    expect(visible(server)).toBe(false)
+    await vi.waitFor(() => expect(visible(server)).toBe(false))
   })
 
   it('treats a hook after the owner exited as a turn of whatever runs now', async () => {
@@ -157,19 +167,19 @@ describe('host-owned hook presence', () => {
     expect(state(server)).toBe('working')
     probe.mockResolvedValueOnce('exited')
     await hook(server, 'SessionEnd', 'outer', 'other')
-    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
-    expect(visible(server)).toBe(true)
-    await server.checkAgentPresence(PANE)
-    expect(visible(server)).toBe(false)
+    await vi.waitFor(() => expect(visible(server)).toBe(false))
   })
 
-  it('never ends a pane from a SessionEnd without a process identity', async () => {
+  it('ends only the turn of the session that exits; the outer agent reports on', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart', 'outer', undefined, null)
     await hook(server, 'UserPromptSubmit', 'outer', undefined, null)
+    await hook(server, 'SessionEnd', 'nested', 'other', null)
+    expect(state(server)).toBe('working')
+    // A nested run whose SessionStart took over the row ends that row, not the outer agent.
     await hook(server, 'SessionStart', 'nested', undefined, null)
     await hook(server, 'SessionEnd', 'nested', 'other', null)
-    expect(visible(server)).toBe(true)
+    expect(visible(server)).toBe(false)
     await hook(server, 'PostToolUse', 'outer', undefined, null)
     expect(state(server)).toBe('working')
   })
@@ -179,7 +189,6 @@ describe('host-owned hook presence', () => {
     await hook(server, 'UserPromptSubmit', 'outer', undefined, null)
     await hook(server, 'SessionStart', 'nested', undefined, 4002)
     await hook(server, 'SessionEnd', 'nested', 'other', 4002)
-    expect(visible(server)).toBe(true)
     await hook(server, 'PostToolUse', 'outer', undefined, null)
     expect(state(server)).toBe('working')
     expect(await server.checkAgentPresence(PANE)).toBeNull()
@@ -237,7 +246,8 @@ describe('host-owned hook presence', () => {
     await hook(server, 'SessionStart', 'nested', undefined, 4002)
     await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
     await hook(server, 'SessionEnd', 'nested', 'other', 4002)
-    expect(visible(server)).toBe(true)
+    // A working Codex turn survives; an idle one the nested run took over ends with that run.
+    expect(visible(server)).toBe(_label === 'working')
     expect(before).not.toBeNull()
     expect(await server.checkAgentPresence(PANE)).toBeNull()
   })

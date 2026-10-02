@@ -43,8 +43,14 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       agentPresenceFromExecutionHost && claimedOwner
         ? this.applyRemoteOwner(payload, claimedOwner)
         : false
-    // Why: an exit claim carries no turn; the owner record above already settled what it proves.
-    if (claimedOwner?.ended || !this.canWriteLegacyStatusRow(payload)) {
+    // Why: an exit claim carries no turn; the owner record above settled a host-proved one.
+    if (claimedOwner?.ended) {
+      if (!agentPresenceFromExecutionHost) {
+        this.applyExitClaim(payload.paneKey, claimedOwner, payload.providerSession)
+      }
+      return undefined
+    }
+    if (!this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }
     if (payload.hookEventName === 'UserPromptSubmit') {

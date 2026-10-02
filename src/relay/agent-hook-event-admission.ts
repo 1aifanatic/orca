@@ -44,9 +44,18 @@ export function applyRelayAgentEvent(
   source ??= meta?.source
   env ??= meta?.env
   version ??= meta?.version
-  const transitioned = options.hostPresence
-    ? incoming
-    : transitionHookPresence(incoming, host.state.lastStatusByPaneKey.get(incoming.paneKey))
+  const cached = host.state.lastStatusByPaneKey.get(incoming.paneKey)
+  // Why: an exit claim is never a row here either. A live owner is checked; otherwise the desktop
+  // decides it against its own turn, so it is forwarded without touching the replay cache.
+  if (!options.hostPresence && incoming.agentPresence?.ended && !incoming.agentPresence.process) {
+    if (cached?.agentPresence?.process && !cached.agentPresence.ended) {
+      void host.presenceChecks.observeHook(incoming, cached, true)
+    } else if (!host.isPaneSurfaceRetired(incoming.paneKey)) {
+      host.forward(buildRelayHookEnvelope(incoming, source, env, version, options))
+    }
+    return undefined
+  }
+  const transitioned = options.hostPresence ? incoming : transitionHookPresence(incoming, cached)
   if (!transitioned) {
     return undefined
   }

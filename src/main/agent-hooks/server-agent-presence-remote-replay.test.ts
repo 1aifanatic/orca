@@ -252,6 +252,7 @@ describe('execution host presence replay', () => {
       tabId: 'tab-1',
       worktreeId: 'folder-1',
       source: 'claude',
+      providerSession: { key: 'session_id', id: 'session-a' },
       hookEventName: 'Stop',
       payload: { state: 'done', prompt: 'task', agentType: 'claude' }
     }
@@ -260,20 +261,26 @@ describe('execution host presence replay', () => {
       hookEventName: 'SessionEnd',
       agentPresence: { ...owner, ended: true }
     }
+    const live = () => main.getStatusSnapshot().filter((row) => !row.providerSessionOnly)
     main.ingestRemote(legacyExit, 'ssh-1')
     expect(main.getStatusSnapshot()).toEqual([])
     main.ingestRemote(turn, 'ssh-1')
     main.ingestRemote({ ...legacyExit, isReplay: true }, 'ssh-1')
-    expect(main.getStatusSnapshot()).toHaveLength(1)
+    expect(live()).toHaveLength(1)
+    main.ingestRemote(
+      { ...legacyExit, providerSession: { key: 'session_id', id: 'other' } },
+      'ssh-1'
+    )
+    expect(live()).toHaveLength(1)
     main.ingestRemote(legacyExit, 'ssh-1')
-    expect(main.getStatusSnapshot()).toEqual([])
+    expect(live()).toEqual([])
     main.ingestRemote(turn, 'ssh-1')
     main.ingestRemote(
       { ...turn, agentPresence: { ...owner, observation: { epoch: 'host', sequence: 1 } } },
       'ssh-1'
     )
     main.ingestRemote(legacyExit, 'ssh-1')
-    expect(main.getStatusSnapshot()).toHaveLength(1)
+    expect(live()).toHaveLength(1)
     expect(main.getAgentOwner(PANE)?.presence.ended).toBeUndefined()
   })
 

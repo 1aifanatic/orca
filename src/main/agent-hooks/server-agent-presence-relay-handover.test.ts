@@ -264,4 +264,24 @@ describe('owner handover across execution hosts', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('ends a remote turn on its exit hook when the remote host has no owner (tmux, WSL)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
+    try {
+      const rig = await relayRig(dir)
+      await rig.post('UserPromptSubmit', 'a', 4001)
+      rig.pump()
+      const live = () => rig.desktop.getStatusSnapshot().filter((row) => !row.providerSessionOnly)
+      expect(live()).toHaveLength(1)
+      await rig.post('SessionEnd', 'nested', 4002, { reason: 'other' })
+      rig.pump()
+      expect(live()).toHaveLength(1)
+      await rig.post('SessionEnd', 'a', 4001, { reason: 'prompt_input_exit' })
+      rig.pump()
+      expect(live()).toEqual([])
+      expect(rig.desktop.getAgentOwner(PANE)).toBeUndefined()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
