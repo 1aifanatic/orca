@@ -69,9 +69,38 @@ test('tag guards preserve malformed markup, protected code and highlighted match
     ['plain > text', 'plain > text'],
     ['<!>text', 'text'],
     ['<><', '<><'],
-    ['<\0orca-search-code-99\0', '<']
+    ['<\0orca-search-code-99\0', '<'],
+    ['Use <mark>[**unclosed**</mark>', 'Use <mark>[unclosed</mark>'],
+    ['<span>[<em>text</em></span>', '[text'],
+    ['Use `[**literal**` and **emphasis**', 'Use [**literal** and emphasis'],
+    ['![<mark>alt</mark>](url)', '<mark>alt</mark>'],
+    ['[[path]]', 'path'],
+    ['[label][ref]', 'label'],
+    [']', ']']
   ]
   for (const [input, expected] of cases) {
     assert.equal(stripSearchExcerptMarkdown(input), expected, input)
   }
+})
+
+test('unclosed brackets avoid link matchers without changing excerpt text', () => {
+  const input = '['.repeat(4096)
+  const replace = String.prototype.replace
+  let linkMatcherCalls = 0
+  String.prototype.replace = function (pattern, ...args) {
+    if (
+      pattern instanceof RegExp &&
+      pattern.source.includes('\\[') &&
+      pattern.source.includes('\\]')
+    ) {
+      linkMatcherCalls += 1
+    }
+    return Reflect.apply(replace, this, [pattern, ...args])
+  }
+  try {
+    assert.equal(stripSearchExcerptMarkdown(input), input)
+  } finally {
+    String.prototype.replace = replace
+  }
+  assert.equal(linkMatcherCalls, 0)
 })
