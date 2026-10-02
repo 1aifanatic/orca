@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { claudeUnwrittenUserMessageError } from '../../claude/claude-agent-sdk-user-message-queue'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import {
@@ -592,6 +593,29 @@ it('sends a held message as soon as the old child exits after its retry gave up,
   expect(connection.closeCount).toBe(3)
   expect(resumed.closed).toBe(false)
   expect(owedWindDown()).toBeUndefined()
+})
+
+it("keeps the person's Stop as the cut turn's end when the old child exits late, writing no Stop of its own", async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  closeUnprovenFor(connection, 2)
+  // No interrupted result: only the stop that lands ends the turn the Stop cut.
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await send('Carry on.')
+  await eventually(async () => expect(await waitRows()).toHaveLength(1))
+  await laneDrained()
+  const journal = host['sessions'].get(SESSION)!.journal
+  const personStop = journal.stopMarks.latest()
+  expect(personStop).toMatchObject({ event: { reason: 'user-stop' } })
+
+  connection.handlers.onExitAfterClose?.()
+  await resumedWith(connection, 'Carry on.')
+
+  expect(journal.stopMarks.latest()).toEqual(personStop)
+  await host.flushStreamedEvents(SESSION)
+  const { items } = await host.journalSnapshot(SESSION)
+  const cut = readAgentJournalTurn(items.find((item) => item.body.kind === 'turn')?.body)
+  expect(cut).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
 })
 
 it('finishes an owed stop as soon as the old child exits with nothing waiting, starting no agent', async () => {
