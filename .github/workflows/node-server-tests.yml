@@ -42,6 +42,10 @@ on:
       - '.github/workflows/node-server-tests.yml'
   workflow_dispatch:
     inputs:
+      bun_overlap_pilot:
+        description: Run only the temporary two-architecture Bun overlap comparison
+        type: boolean
+        default: false
       build_template:
         description: Also merge every lane's slot into the desktop orcad template artifact
         type: boolean
@@ -65,14 +69,15 @@ permissions:
 
 # Main pushes must finish detection before they can supersede relevant qualification.
 concurrency:
-  group: node-server-${{ (inputs.build_template || github.event_name == 'push') && format('run-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !inputs.build_template && github.event_name != 'push' }}
+  group: node-server-${{ inputs.bun_overlap_pilot && format('bun-pilot-{0}', github.run_id) || (inputs.build_template || github.event_name == 'push') && format('run-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !inputs.bun_overlap_pilot && !inputs.build_template && github.event_name != 'push' }}
 
 jobs:
   changes:
     if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.draft != true)
+      !inputs.bun_overlap_pilot &&
+      (      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.draft != true))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -136,7 +141,7 @@ jobs:
     # A draft carries no platform verdict; readiness re-triggers this workflow. Spelled against
     # the event name so the push and schedule paths do not rest on a null property comparison.
     if: >-
-      ${{ !cancelled() && needs.changes.outputs.should_run != 'false' &&
+      ${{ !inputs.bun_overlap_pilot && !cancelled() && needs.changes.outputs.should_run != 'false' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft != true) }}
     strategy:
       fail-fast: false
@@ -244,7 +249,7 @@ jobs:
       cancel-in-progress: ${{ github.event_name == 'push' && !inputs.build_template && inputs.ref == '' }}
     # A failed smoke already blocks qualification; missing scope still selects every platform.
     if: >-
-      ${{ !cancelled() && needs.persistence.result == 'success' &&
+      ${{ !inputs.bun_overlap_pilot && !cancelled() && needs.persistence.result == 'success' &&
       needs.changes.outputs.should_run != 'false' &&
       needs.changes.outputs.qualification != 'false' }}
     strategy:
@@ -312,7 +317,7 @@ jobs:
       cancel-in-progress: ${{ github.event_name == 'push' && !inputs.build_template && inputs.ref == '' }}
     # A failed smoke already blocks qualification; missing scope still selects every platform.
     if: >-
-      ${{ !cancelled() && needs.persistence.result == 'success' &&
+      ${{ !inputs.bun_overlap_pilot && !cancelled() && needs.persistence.result == 'success' &&
       needs.changes.outputs.should_run != 'false' &&
       needs.changes.outputs.qualification != 'false' }}
     runs-on: ubuntu-22.04
@@ -367,7 +372,7 @@ jobs:
       cancel-in-progress: ${{ github.event_name == 'push' && !inputs.build_template && inputs.ref == '' }}
     # A failed smoke already blocks qualification; missing scope still selects every platform.
     if: >-
-      ${{ !cancelled() && needs.persistence.result == 'success' &&
+      ${{ !inputs.bun_overlap_pilot && !cancelled() && needs.persistence.result == 'success' &&
       needs.changes.outputs.should_run != 'false' &&
       needs.changes.outputs.qualification != 'false' }}
     strategy:
@@ -423,7 +428,7 @@ jobs:
   desktop_template:
     needs: [persistence, linux_glibc_floor, linux_glibc217_compat, linux_musl]
     if: >-
-      ${{ !cancelled() && inputs.build_template &&
+      ${{ !inputs.bun_overlap_pilot && !cancelled() && inputs.build_template &&
       needs.persistence.result == 'success' && needs.linux_glibc_floor.result == 'success' &&
       needs.linux_glibc217_compat.result == 'success' && needs.linux_musl.result == 'success' }}
     runs-on: ubuntu-latest
@@ -470,3 +475,236 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           overwrite: true
+
+  bun_overlap_comparison:
+    if: github.event_name == 'workflow_dispatch' && inputs.bun_overlap_pilot
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        id: dependencies
+        with:
+          native-runtime: none
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v6
+        if: runner.arch == 'X64'
+        with:
+          node-version: '18'
+          package-manager-cache: false
+      - name: Keep the actual Node 18 executable for each X64 arm
+        if: runner.arch == 'X64'
+        shell: bash
+        run: |
+          echo "PILOT_NODE18_EXECUTABLE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
+          echo "PILOT_NODE18_VERSION=$(node --version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          package-manager-cache: false
+      - name: Normalize historical Git objects and capture fixed pilot inputs
+        shell: bash
+        env:
+          BUN_ORCAD_COMMIT: f4092c06d639ee13ad446261dcabc78b27a21fbc
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          git fetch --no-tags --depth=1 origin "$BUN_ORCAD_COMMIT" 2>&1 | tee "$RUNNER_TEMP/bun-git-normalization.log"
+          test "$(git rev-parse "$BUN_ORCAD_COMMIT")" = "$BUN_ORCAD_COMMIT"
+          git ls-files -z -- src config native tests package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs .github/actions .github/workflows/node-server-tests.yml > "$RUNNER_TEMP/bun-pilot-source-files"
+          {
+            echo "PILOT_SOURCE_SHA=$(git rev-parse HEAD)"
+            echo "PILOT_TREE_SHA=$(git rev-parse 'HEAD^{tree}')"
+            echo "PILOT_SOURCE_FILES=$RUNNER_TEMP/bun-pilot-source-files"
+            echo "PILOT_PNPM_VERSION=$(pnpm --version)"
+            echo "PILOT_HOST_NODE_VERSION=$(node --version)"
+            echo "PILOT_BUN_VERSION=$(bun --version)"
+            echo "PILOT_COMPILER_VERSION=$(c++ --version | head -1)"
+            echo "PILOT_KERNEL=$(uname -srmo)"
+            echo "PILOT_CPU=$(getconf _NPROCESSORS_ONLN)"
+          } >> "$GITHUB_ENV"
+      - name: Record the four-arm comparison plan and shared inventories
+        id: plan
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs init
+
+      - name: Begin A1 serial arm with fresh owned outputs
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs begin A1
+      - name: Start current Node preparation A1
+        shell: bash
+        run: &node_start node config/scripts/ci-headless-bun-overlap-pilot.mjs start "$PILOT_CASE" node
+      - uses: ./.github/actions/prepare-orcad-prebuilds
+      - name: Build current Node artifact A1
+        shell: bash
+        run: &node_build |
+          set +e
+          pnpm build:orcad 2>&1 | tee "$PILOT_CASE_DIR/node-build.log"
+          status=$?
+          set -e
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs end "$PILOT_CASE" node "$status"
+      - name: Build historical Bun artifact A1
+        id: bun-a1
+        shell: bash
+        run: &bun_build |
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs start "$PILOT_CASE" bun
+          set +e
+          bash -e -o pipefail <<'BUN_BUILD' 2>&1 | tee "$PILOT_CASE_DIR/bun-build.log"
+          BUN_ORCAD_COMMIT=f4092c06d639ee13ad446261dcabc78b27a21fbc
+          git fetch --no-tags --depth=1 origin "$BUN_ORCAD_COMMIT"
+          git worktree add --detach "$RUNNER_TEMP/bun-orcad-source" "$BUN_ORCAD_COMMIT"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/bun-orcad-source/node_modules"
+          node "$RUNNER_TEMP/bun-orcad-source/config/scripts/build-orcad-bun.mjs" --out-dir "$RUNNER_TEMP/bun-orcad"
+          BUN_BUILD
+          status=$?
+          set -e
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs end "$PILOT_CASE" bun "$status"
+          echo "slot=$RUNNER_TEMP/bun-orcad" >> "$GITHUB_OUTPUT"
+          echo "executable=$(command -v bun)" >> "$GITHUB_OUTPUT"
+      - name: End A1 preparation interval
+        shell: bash
+        run: &ready node config/scripts/ci-headless-bun-overlap-pilot.mjs ready "$PILOT_CASE"
+      - name: Test actual A1 artifact and cross-runtime contracts
+        shell: bash
+        env:
+          ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-a1.outputs.slot }}
+          BUN_EXECUTABLE: ${{ steps.bun-a1.outputs.executable }}
+        run: &artifact_test |
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs start "$PILOT_CASE" artifact
+          set +e
+          pnpm test:node-server --artifact --cross-runtime 2>&1 | tee "$PILOT_CASE_DIR/artifact.log"
+          status=$?
+          set -e
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs end "$PILOT_CASE" artifact "$status"
+      - name: Verify actual Node 18 loading and pinned handoff A1
+        if: runner.arch == 'X64'
+        shell: bash
+        run: &node18_test |
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs start "$PILOT_CASE" node18
+          "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-smoke-load-check
+          "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-profile-state-preflight 00000000-0000-4000-8000-000000000018 | tee "$PILOT_CASE_DIR/node18-preflight.json"
+          "$PILOT_NODE18_EXECUTABLE" -e "const r=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(r.runtime!=='node'||!/^24\./.test(r.runtimeVersion))process.exit(1)" "$PILOT_CASE_DIR/node18-preflight.json"
+          node config/scripts/ci-headless-bun-overlap-pilot.mjs end "$PILOT_CASE" node18 0
+      - name: Qualify A1 evidence and owned process exit
+        shell: bash
+        run: &finish node config/scripts/ci-headless-bun-overlap-pilot.mjs finish "$PILOT_CASE"
+
+      - name: Begin B1 overlap arm with fresh owned outputs
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs begin B1
+      - name: Build historical Bun artifact B1
+        id: bun-b1
+        background: true
+        shell: bash
+        run: *bun_build
+      - name: Start current Node preparation B1
+        shell: bash
+        run: *node_start
+      - uses: ./.github/actions/prepare-orcad-prebuilds
+      - name: Build current Node artifact B1
+        shell: bash
+        run: *node_build
+      - wait: bun-b1
+      - name: End B1 preparation interval after native join
+        shell: bash
+        run: *ready
+      - name: Test actual B1 artifact and cross-runtime contracts
+        shell: bash
+        env:
+          ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-b1.outputs.slot }}
+          BUN_EXECUTABLE: ${{ steps.bun-b1.outputs.executable }}
+        run: *artifact_test
+      - name: Verify actual Node 18 loading and pinned handoff B1
+        if: runner.arch == 'X64'
+        shell: bash
+        run: *node18_test
+      - name: Qualify B1 evidence and owned process exit
+        shell: bash
+        run: *finish
+
+      - name: Begin B2 overlap arm with fresh owned outputs
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs begin B2
+      - name: Build historical Bun artifact B2
+        id: bun-b2
+        background: true
+        shell: bash
+        run: *bun_build
+      - name: Start current Node preparation B2
+        shell: bash
+        run: *node_start
+      - uses: ./.github/actions/prepare-orcad-prebuilds
+      - name: Build current Node artifact B2
+        shell: bash
+        run: *node_build
+      - wait: bun-b2
+      - name: End B2 preparation interval after native join
+        shell: bash
+        run: *ready
+      - name: Test actual B2 artifact and cross-runtime contracts
+        shell: bash
+        env:
+          ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-b2.outputs.slot }}
+          BUN_EXECUTABLE: ${{ steps.bun-b2.outputs.executable }}
+        run: *artifact_test
+      - name: Verify actual Node 18 loading and pinned handoff B2
+        if: runner.arch == 'X64'
+        shell: bash
+        run: *node18_test
+      - name: Qualify B2 evidence and owned process exit
+        shell: bash
+        run: *finish
+
+      - name: Begin A2 serial arm with fresh owned outputs
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs begin A2
+      - name: Start current Node preparation A2
+        shell: bash
+        run: *node_start
+      - uses: ./.github/actions/prepare-orcad-prebuilds
+      - name: Build current Node artifact A2
+        shell: bash
+        run: *node_build
+      - name: Build historical Bun artifact A2
+        id: bun-a2
+        shell: bash
+        run: *bun_build
+      - name: End A2 preparation interval
+        shell: bash
+        run: *ready
+      - name: Test actual A2 artifact and cross-runtime contracts
+        shell: bash
+        env:
+          ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-a2.outputs.slot }}
+          BUN_EXECUTABLE: ${{ steps.bun-a2.outputs.executable }}
+        run: *artifact_test
+      - name: Verify actual Node 18 loading and pinned handoff A2
+        if: runner.arch == 'X64'
+        shell: bash
+        run: *node18_test
+      - name: Qualify A2 evidence and owned process exit
+        shell: bash
+        run: *finish
+
+      - name: Collect all successful or incomplete evidence
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs collect
+      - name: Keep actual logs, inventories, phase records and comparison receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-overlap-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-headless-bun-*
+          if-no-files-found: error
+          retention-days: 7
