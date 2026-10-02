@@ -1,6 +1,8 @@
 // The first launch after the upgrade to stored status: listed chats with history here and no status
 // row get their rows from their rows alone, before the tab listing answers. The seed that follows
 // then publishes them, and the settle takes any a gone process left with work, as on every launch.
+// Listed chats whose history is still in a per-chat file are restored now too, by the restart
+// restore's own open, which settles and publishes them; the restore after the listing skips them.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import {
@@ -12,6 +14,8 @@ import {
   readJournalSessionStatuses,
   type StoredJournalSessionStatus
 } from '../agent-session-journal/journal-session-state'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
 import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-session-startup-state'
 
 // Rows per transaction: one commit per chat rewrites the same table and index pages each time.
@@ -28,7 +32,9 @@ const TASK_BUDGET_MS = 16
  */
 export async function catchUpMissingStatuses(
   deps: StructuredAgentSessionStartupStateDeps,
-  listedIds: readonly string[]
+  listedIds: readonly string[],
+  /** The startup settle's one budgeted recovery pass; answers the leases it left unverified. */
+  recover: () => Promise<ReadonlySet<string>>
 ): Promise<StoredJournalSessionStatus[] | null> {
   const database = deps.openDeps.journalDatabase
   if (database.readOnly) {
@@ -37,14 +43,16 @@ export async function catchUpMissingStatuses(
   try {
     const stored = readJournalSessionStatuses(database.db, listedIds)
     const missing = stored.flatMap(({ sessionId, status }) => (status ? [] : [sessionId]))
-    // Every listed chat has its row: no fold, no yield, no transaction.
-    if (missing.length === 0) {
+    const inFiles = listedInPerChatFiles(deps, listedIds, stored)
+    // Every listed chat has its row: no fold, no yield, no transaction, no open.
+    if (missing.length === 0 && inFiles.length === 0) {
       return stored
     }
-    const written = await foldAndWrite(deps, missing)
+    const written = missing.length > 0 ? await foldAndWrite(deps, missing) : new Map()
     if (!written) {
       return null
     }
+    await restoreFromPerChatFiles(deps, inFiles, recover)
     return stored.map((row) => {
       const status = written.get(row.sessionId)
       return status ? { ...row, status } : row
@@ -142,5 +150,50 @@ function writeBatch(
       error
     })
     return []
+  }
+}
+
+/** Listed chats with no epoch here whose history is still in a per-chat file. */
+function listedInPerChatFiles(
+  deps: StructuredAgentSessionStartupStateDeps,
+  listedIds: readonly string[],
+  stored: readonly StoredJournalSessionStatus[]
+): AgentSessionRecord[] {
+  const inDatabase = new Set(stored.map(({ sessionId }) => sessionId))
+  return listedIds.flatMap((sessionId) => {
+    const record = inDatabase.has(sessionId) ? null : deps.openDeps.store.getRecord(sessionId)
+    return record &&
+      deps.canSettle(record) &&
+      !deps.hasSession(sessionId) &&
+      hasHistoryOutsideJournalDatabase(deps.openDeps.journalDatabase, record)
+      ? [record]
+      : []
+  })
+}
+
+/**
+ * Their restore, now rather than after the listing: the restart restore's per-chat worker opens
+ * each one from its file, settles what a gone process left and publishes its status, one at a time,
+ * a failed chat costing only itself. A lease whose recovery outlasted its budget is not recovered
+ * again beside it; its chat opens unverified, as in the settle.
+ */
+async function restoreFromPerChatFiles(
+  deps: StructuredAgentSessionStartupStateDeps,
+  records: AgentSessionRecord[],
+  recover: () => Promise<ReadonlySet<string>>
+): Promise<void> {
+  if (records.length === 0 || deps.isDisposed()) {
+    return
+  }
+  try {
+    const outlasted = await recover()
+    await deps.restoreListed(records, (sessionId) =>
+      outlasted.has(sessionId) ? Promise.resolve(true) : deps.resolveRecovery(sessionId)
+    )
+  } catch (error) {
+    deps.openDeps.logger.warn('restoring chats still in per-chat files at startup failed', {
+      scope: 'startup-status-catch-up',
+      error
+    })
   }
 }

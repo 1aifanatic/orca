@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as JournalSessionStateModule from '../agent-session-journal/journal-session-state'
 import type * as JournalRecoveryModule from './agent-session-journal-recovery'
+import type * as PerSessionImportModule from '../agent-session-journal/journal-per-session-import'
 import {
   closeTestJournalHostDatabases,
   insertTestJournalRowJson,
@@ -24,6 +25,7 @@ import {
   latestRestTestStatus,
   restTestOpens
 } from './structured-agent-session-rest-test-observations'
+import { moveRestTestChatToPerChatFile } from './structured-agent-session-rest-test-per-chat-file'
 
 // The listed chats' stored-status read fails once, when set: the catch-up's own read.
 const reads = vi.hoisted(() => {
@@ -67,11 +69,39 @@ vi.mock('./agent-session-journal-recovery', async (importOriginal) => {
   }
 })
 
+// Each preview of a chat still in its per-chat file, and the chats whose file reads as damaged.
+const previews = vi.hoisted(() => {
+  const seen: { sessionIds: string[]; damaged: Set<string> } = {
+    sessionIds: [],
+    damaged: new Set()
+  }
+  return seen
+})
+
+vi.mock('../agent-session-journal/journal-per-session-import', async (importOriginal) => {
+  const actual = await importOriginal<typeof PerSessionImportModule>()
+  return {
+    ...actual,
+    previewPerSessionJournal: async (
+      ...args: Parameters<typeof actual.previewPerSessionJournal>
+    ) => {
+      const { sessionId } = args[0].identity
+      previews.sessionIds.push(sessionId)
+      if (previews.damaged.has(sessionId)) {
+        throw new Error('file is not a database')
+      }
+      return actual.previewPerSessionJournal(...args)
+    }
+  }
+})
+
 const rigs: RestTestRig[] = []
 
 afterEach(async () => {
   reads.failNext = false
   rebuilds.sessionIds.length = 0
+  previews.sessionIds.length = 0
+  previews.damaged.clear()
   for (const rig of rigs.splice(0)) {
     await rig.dispose()
   }
@@ -313,5 +343,66 @@ describe('listed chats with no stored status after the upgrade', () => {
     expect(readTestJournalSessionStatus(rig.root, 'session-crashed')).toMatchObject({
       lifecycle: 'idle'
     })
+  })
+
+  it('restores a listed chat still in its per-chat file before the listing answers, read once', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-file', { message: 'asked session-file' })
+    await restTestChat(rig, 'session-closed-file', { message: 'asked', listed: false })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    await moveRestTestChatToPerChatFile(rig, 'session-file')
+    await moveRestTestChatToPerChatFile(rig, 'session-closed-file')
+    await rig.boot()
+
+    const background = await startup(rig)
+
+    // Restored from its file by the time the listing answers: open, settled and published.
+    expect(rig.host.hasSession('session-file')).toBe(true)
+    expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({
+      latestPrompt: 'asked session-file'
+    })
+    // The restore after the listing skips it: one preview, one open.
+    await rig.host.restoreReadableSessions(background)
+    expect(previews.sessionIds.filter((id) => id === 'session-file')).toEqual(['session-file'])
+    expect(restTestOpens(rig, 'session-file')).toBe(1)
+    // One with no tab waits for its first use.
+    expect(rig.host.hasSession('session-closed-file')).toBe(false)
+    expect(previews.sessionIds).not.toContain('session-closed-file')
+    expect(latestRestTestStatus(rig, 'session-closed-file')).toBeUndefined()
+  })
+
+  it('isolates a damaged per-chat file and a missing one: the others restore and startup goes on', async () => {
+    const rig = await newRig()
+    for (const sessionId of ['session-damaged', 'session-missing', 'session-file']) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+    }
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    await moveRestTestChatToPerChatFile(rig, 'session-damaged')
+    await moveRestTestChatToPerChatFile(rig, 'session-file')
+    // Its file is gone too: nothing of it anywhere but its record and tab.
+    for (const table of ['journal_rows', 'journal_sessions', 'journal_session_state']) {
+      openTestJournalHostDatabase(rig.root)
+        .db.prepare(`DELETE FROM ${table} WHERE session_id = ?`)
+        .run('session-missing')
+    }
+    previews.damaged.add('session-damaged')
+    await rig.boot()
+    const warn = vi.spyOn(rig.host.deps.logger, 'warn')
+
+    const background = await startup(rig)
+
+    expect(listedIds(rig)).toEqual(['session-damaged', 'session-missing', 'session-file'])
+    expect(rig.host.hasSession('session-file')).toBe(true)
+    expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({ status: 'idle' })
+    expect(warn).toHaveBeenCalledWith(
+      'restoring a chat for reading failed',
+      expect.objectContaining({ sessionId: 'session-damaged' })
+    )
+    expect(rig.host.hasSession('session-damaged')).toBe(false)
+    // Both files stay the restore's after the listing, which skips the open one; the chat with no
+    // file anywhere has nothing to read, and is listed all the same.
+    expect(background).toEqual(['session-damaged', 'session-file'])
   })
 })

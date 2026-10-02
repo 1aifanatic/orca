@@ -127,6 +127,8 @@ function deps(
   return stand as unknown as StructuredAgentSessionStartupStateDeps
 }
 
+const noRecovery = async (): Promise<ReadonlySet<string>> => new Set()
+
 const yields = () => trace.events.filter((event) => event === 'yield').length
 const folds = () => trace.events.filter((event) => event.startsWith('fold:'))
 
@@ -138,7 +140,7 @@ describe('the startup status catch-up', () => {
     const transaction = vi.spyOn(stand.openDeps.journalDatabase, 'transaction')
     trace.events = []
 
-    const stored = await catchUpMissingStatuses(stand, ids)
+    const stored = await catchUpMissingStatuses(stand, ids, noRecovery)
 
     // No fold, no yield, no transaction; the seed reads what this read.
     expect(folds()).toEqual([])
@@ -155,7 +157,7 @@ describe('the startup status catch-up', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => (clock += 3))
     trace.events = []
 
-    const stored = await catchUpMissingStatuses(deps(), ids)
+    const stored = await catchUpMissingStatuses(deps(), ids, noRecovery)
 
     expect(folds()).toHaveLength(ids.length)
     expect(yields()).toBeGreaterThan(0)
@@ -182,14 +184,14 @@ describe('the startup status catch-up', () => {
     const stand = deps(disposed)
     const transaction = vi.spyOn(stand.openDeps.journalDatabase, 'transaction')
 
-    expect(await catchUpMissingStatuses(stand, ids)).toBeNull()
+    expect(await catchUpMissingStatuses(stand, ids, noRecovery)).toBeNull()
 
     expect(transaction).not.toHaveBeenCalled()
     expect(ids.some((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(false)
 
     trace.afterFold = null
     disposed.value = false
-    await catchUpMissingStatuses(deps(), ids)
+    await catchUpMissingStatuses(deps(), ids, noRecovery)
     expect(ids.every((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(true)
   })
 

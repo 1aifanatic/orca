@@ -85,11 +85,14 @@ export function createStructuredAgentSessionStartupState(
   let caughtUp: { listedIds: readonly string[]; stored: StoredJournalSessionStatus[] } | null = null
   let settling: Promise<void> | null = null
   let settled = false
+  // One budgeted pass over the leases a crash left `recovering`, for whichever needs it first.
+  let recovering: Promise<ReadonlySet<string>> | null = null
+  const recover = () => (recovering ??= resolveRecoveringLeases(deps))
   return {
     catchUpMissingStatuses: async (listedIds) => {
       catchingUp += 1
       try {
-        const stored = await catchUpMissingStatuses(deps, listedIds)
+        const stored = await catchUpMissingStatuses(deps, listedIds, recover)
         caughtUp = stored ? { listedIds, stored } : null
       } finally {
         catchingUp -= 1
@@ -101,7 +104,7 @@ export function createStructuredAgentSessionStartupState(
       return seedStoredStatuses(deps, listedIds, read)
     },
     settleOwedSessions: (listedIds) => {
-      settling ??= settleOwedSessions(deps, listedIds).finally(() => {
+      settling ??= settleOwedSessions(deps, listedIds, recover).finally(() => {
         settled = true
       })
       return settling
@@ -167,14 +170,15 @@ function seedStoredStatuses(
 
 async function settleOwedSessions(
   deps: StructuredAgentSessionStartupStateDeps,
-  listedIds: readonly string[]
+  listedIds: readonly string[],
+  recover: () => Promise<ReadonlySet<string>>
 ): Promise<void> {
   try {
     const database = deps.openDeps.journalDatabase
     if (database.readOnly) {
       return
     }
-    const outlasted = await resolveRecoveringLeases(deps)
+    const outlasted = await recover()
     const listedOrder = new Map(listedIds.map((sessionId, index) => [sessionId, index]))
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
@@ -254,7 +258,7 @@ function dropUnreachableStatus(
  *  is stopped and its death recorded, so the settle below reads one verdict per turn. */
 async function resolveRecoveringLeases(
   deps: StructuredAgentSessionStartupStateDeps
-): Promise<Set<string>> {
+): Promise<ReadonlySet<string>> {
   const recovering = deps.openDeps.store
     .listRecords()
     .filter((record) => record.lease.handoffStage === 'recovering')

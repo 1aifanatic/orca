@@ -1,6 +1,7 @@
 // The chat tab list a client asks for at startup answers from records and the tab table. It waits
 // for no chat's history; each chat's history is read after the answer.
 
+import { rm, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
@@ -20,6 +21,8 @@ import {
   latestRestTestStatus,
   restTestOpens
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-observations'
+import { moveRestTestChatToPerChatFile } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-per-chat-file'
+import { legacyJournalDatabaseFile } from '../native-chat/agent-session-journal/journal-paths'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
@@ -175,6 +178,41 @@ describe('listing chat tabs at startup', () => {
       expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ latestPrompt: sessionId })
       expect(restTestOpens(rig, sessionId)).toBe(0)
     }
+  })
+
+  it('lists chats still in per-chat files, restored before the answer, a damaged or missing file included', async () => {
+    const ids = ['session-file', 'session-damaged', 'session-missing']
+    for (const sessionId of ids) {
+      await restTestChat(rig, sessionId, { message: sessionId })
+    }
+    await rig.crash()
+    await moveRestTestChatToPerChatFile(rig, 'session-file')
+    await moveRestTestChatToPerChatFile(rig, 'session-damaged')
+    const damaged = legacyJournalDatabaseFile(
+      openTestJournalHostDatabase(rig.root).legacyDirectoryFor({
+        workspaceId: rig.store.getRecord('session-damaged')!.location.workspaceId,
+        sessionId: 'session-damaged'
+      })
+    )
+    await writeFile(damaged, 'not a database')
+    await rm(`${damaged}-wal`, { force: true })
+    for (const table of ['journal_rows', 'journal_sessions', 'journal_session_state']) {
+      openTestJournalHostDatabase(rig.root)
+        .db.prepare(`DELETE FROM ${table} WHERE session_id = ?`)
+        .run('session-missing')
+    }
+    await rig.boot()
+    vi.spyOn(rig.host.deps.logger, 'warn').mockImplementation(() => undefined)
+    const { listAll } = restartedRuntime()
+
+    expect(await within(listAll())).toEqual(ids)
+
+    // Restored from its file before the answer; the others are listed and block nothing.
+    expect(rig.host.hasSession('session-file')).toBe(true)
+    expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({
+      latestPrompt: 'session-file'
+    })
+    expect(rig.host.hasSession('session-damaged')).toBe(false)
   })
 
   it.each(['listAll', 'subscribeAll'] as const)(
