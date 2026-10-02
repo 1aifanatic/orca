@@ -7,6 +7,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
@@ -28,6 +29,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const journals = createTrackedJournalOpener()
 
@@ -61,6 +63,7 @@ let root: string
 let recoveryCapsule: TrackedTestRecoveryCapsule
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
+let log: ReturnType<typeof recordingProductionStructuredAgentSessionLogger>
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let releaseAcquisition: Mock<NonNullable<StructuredAgentSessionAdapter['releaseAcquisition']>>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
@@ -151,7 +154,9 @@ beforeEach(async () => {
   setOption = vi.fn(async () => undefined)
   store = await openTestAgentSessionRecordStore(root)
   recoveryCapsule = new TrackedTestRecoveryCapsule(root)
+  log = recordingProductionStructuredAgentSessionLogger()
   host = new StructuredAgentSessionHost({
+    logger: log.logger,
     store,
     adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(root),
@@ -185,6 +190,12 @@ export function replaceHostTestState(next: {
   host = next.host
 }
 
+/** Serves `records` as the session's child records through the status sink, as the host's store
+ *  does. Call before `attach`: only the attach's publish carries the address a row lands under. */
+export function serveHostTestChildWork(records: () => AgentChildWorkView[]): void {
+  host.deps.statusSink = { publish: () => {}, forget: () => {}, readChildWork: records }
+}
+
 /** The live per-test state. Read it in a `beforeEach` so a suite's test bodies
  *  keep using bare `host` / `store` / `dispatch` exactly as they did when this
  *  setup was inline. */
@@ -193,6 +204,8 @@ export function hostTestState() {
     root,
     store,
     host,
+    /** Every entry the beforeEach host logged; a host a test builds itself logs elsewhere. */
+    log,
     acquire,
     releaseAcquisition,
     dispatch,
