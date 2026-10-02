@@ -17417,7 +17417,7 @@
         "historyUnavailable": "Orca は現在このチャットの履歴を開けませんでした。",
         "savedByNewerOrca": "チャットは新しいバージョンの Orca で保存されました。",
         "updateOrcaToKeepUsing": "引き続き使用するには、Orca を更新してください。",
-        "chatReadOnlyNewerOrca": "このチャットは新しいバージョンの Orca で保存されたため、ここでは読み取り専用です。",
+        "chatSavedByNewerOrca": "新しいバージョンの Orca で保存されました。",
         "updateOrcaToContinueChat": "このチャットを続けるには、Orca を更新してください。",
         "unsupported": "このチャットを実行している Orca はこの操作に対応していません。Orca を更新してから、もう一度お試しください。",
         "unreachable": "Orca は Agent に接続できませんでした。",

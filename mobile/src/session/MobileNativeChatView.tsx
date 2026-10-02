@@ -35,7 +35,6 @@ import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { MobileNativeChatPromptCard } from './MobileNativeChatPromptCard'
-import { MobileNativeChatComposerNotices } from './MobileNativeChatComposerNotices'
 import { NO_QUEUED_SLOT, type MobileQueuedSlotProps } from './use-mobile-native-chat-queued-slot'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
@@ -43,9 +42,10 @@ import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeCh
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
 
-/** Why the composer input is locked: the transport is disconnected, or the
- *  terminal subscription has not acknowledged its input lease yet. */
-export type MobileNativeChatInputLockReason = 'disconnected' | 'waiting'
+/** Why the composer input is locked: the transport is disconnected, the
+ *  terminal subscription has not acknowledged its input lease yet, or the host
+ *  keeps the chat read-only. */
+export type MobileNativeChatInputLockReason = 'disconnected' | 'waiting' | 'read-only'
 
 type Props = MobileQueuedSlotProps & {
   /** Raw transcript, only for telling "still loading" from "loaded and empty". */
@@ -110,7 +110,7 @@ type Props = MobileQueuedSlotProps & {
   sendErrorMessage?: string | null
   /** Clears `sendErrorMessage` once a later send is accepted. */
   onClearSendError?: () => void
-  /** Why the host keeps this chat read-only, shown above the composer before any send. */
+  /** Why the host keeps this chat read-only: the placeholder of a `read-only` lock. */
   readOnlyNotice?: string | null
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
@@ -421,10 +421,16 @@ export function MobileNativeChatView({
           </Pressable>
         ) : null}
       </View>
-      <MobileNativeChatComposerNotices
-        readOnlyNotice={readOnlyNotice}
-        sendErrorMessage={sendErrorMessage}
-      />
+      {sendErrorMessage ? (
+        // This banner is the only channel for a send failure — announce it.
+        <View
+          style={styles.sendError}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
+          <Text style={styles.sendErrorText}>{sendErrorMessage}</Text>
+        </View>
+      ) : null}
       <MobileNativeChatComposer
         structuredCommands={
           structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined
@@ -451,7 +457,9 @@ export function MobileNativeChatView({
             ? 'Reconnecting…'
             : lockReason === 'waiting'
               ? 'Waiting for terminal…'
-              : 'Message, @files, /commands'
+              : lockReason === 'read-only' && readOnlyNotice
+                ? readOnlyNotice
+                : 'Message, @files, /commands'
         }
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}

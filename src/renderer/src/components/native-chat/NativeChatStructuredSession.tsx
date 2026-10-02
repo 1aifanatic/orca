@@ -31,6 +31,7 @@ import { structuredAgentSessionReadFailureNotice } from './structured-agent-sess
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { agentSessionReadOnlyText } from './agent-session-write-notice-text'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 
@@ -160,7 +161,9 @@ export function NativeChatStructuredSession(
     rootRef,
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
-  const prompt = controller.prompts[0] ?? null
+  const readOnlyText = agentSessionReadOnlyText(controller.readOnly)
+  // A read-only chat refuses every answer, so the composer says why in place of a prompt card.
+  const prompt = readOnlyText ? null : (controller.prompts[0] ?? null)
   const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
   const approval = approvalBody
     ? {
@@ -325,7 +328,6 @@ export function NativeChatStructuredSession(
           viewState.kind === 'error' || !readFailure?.named ? controller.error : readFailure.text
         }
         reconnecting={viewState.kind !== 'error' && readFailure !== null && !readFailure.named}
-        readOnly={controller.readOnly}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}
@@ -394,7 +396,8 @@ export function NativeChatStructuredSession(
           paneKey={paneKey}
           targetPtyId={null}
           agent={props.agent}
-          canSend={!prompt}
+          canSend={!readOnlyText}
+          lockReason={readOnlyText}
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
           steerQueued={controller.queuedMessages.steerNewest}

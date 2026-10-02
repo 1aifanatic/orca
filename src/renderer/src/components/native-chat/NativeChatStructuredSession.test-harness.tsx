@@ -85,6 +85,8 @@ export function createStructuredSessionMocks() {
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
+      canSend?: boolean
+      lockReason?: string
       launchSeed?: NativeChatLaunchSeed
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean

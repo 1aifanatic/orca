@@ -32,9 +32,9 @@ import {
 
 /**
  * A host that keeps a chat read-only now says why on every whole page (`page.readOnly`), and this
- * build keeps a body of a kind it does not know read-only instead of deleting from it. Both meet
- * builds that predate them: an older client is sent the new field (Rule 1), and an older host
- * opens a journal holding a newer body kind.
+ * build keeps a body holding a value outside a closed set it knows (a body kind, a nested literal)
+ * read-only instead of deleting from it. Both meet builds that predate them: an older client is
+ * sent the new field (Rule 1), and an older host opens a journal holding such a body.
  */
 const SUITE_TIMEOUT_MS = 180_000
 // A main build that shares this one's host database and schema version, so a downgrade to it opens
@@ -43,7 +43,7 @@ const WRITABLE_BASELINE_REF = '3727100cc9dbcea6201f8a3e506676a3c4b53b18'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
 
 const IDENTITY: AgentSessionJournalIdentity = {
-  sessionId: 'session-read-only-notice',
+  sessionId: 'session-read-only',
   workspaceId: 'ws-1',
   hostId: 'host-1',
   agent: 'codex',
@@ -56,7 +56,7 @@ let directory: string
 const journals = createTrackedJournalOpener()
 
 beforeAll(() => {
-  directory = mkdtempSync(join(tmpdir(), 'orca-read-only-notice-xv-'))
+  directory = mkdtempSync(join(tmpdir(), 'orca-read-only-xv-'))
 })
 
 afterAll(async () => {
@@ -74,8 +74,20 @@ function releaseExport<T>(module: Record<string, unknown>, name: string): T {
   return value as T
 }
 
-/** This build's journal of one item, then a body of a kind this build does not know: closed. */
-async function journalWithNewerBody(): Promise<{ rows: string[]; newer: string }> {
+const NEWER_BODY_KIND = { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }
+const NEWER_NESTED_LITERAL = {
+  kind: 'approval',
+  title: 'Approve the change?',
+  detail: null,
+  options: [{ id: 'yes', label: 'Yes' }],
+  resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null },
+  subject: { kind: 'diff', path: 'a.ts' }
+}
+
+/** This build's journal of one item, then `body` as a newer build wrote it: closed. */
+async function journalWithNewerBody(
+  body: Record<string, unknown> = NEWER_BODY_KIND
+): Promise<{ rows: string[]; newer: string }> {
   const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
   await journal.appendItem(
     { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 0 },
@@ -92,7 +104,7 @@ async function journalWithNewerBody(): Promise<{ rows: string[]; newer: string }
     ts: 2_000,
     itemId: 'codex:thread-1:turn-1:1',
     revision: 1,
-    body: { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }
+    body
   })
   await journals.closeAll()
   insertTestJournalRowJson(
@@ -172,12 +184,15 @@ describe('a chat a newer Orca saved, across versions', () => {
   // Why a new body kind ships its reader first, or rides a bumped `v`: this build keeps one and goes
   // read-only, but a build from before deletes the journal from it. Move the pinned build to the
   // first release with this rule, and the older build keeps the row too.
-  it(
-    "this build keeps a newer build's body kind and goes read-only; a build before it deletes it",
-    async () => {
+  it.each([
+    ['body kind', NEWER_BODY_KIND],
+    ['nested literal', NEWER_NESTED_LITERAL]
+  ])(
+    "this build keeps a newer build's %s and goes read-only; a build before it deletes it",
+    async (_value, body) => {
       rmSync(directory, { recursive: true, force: true })
-      directory = mkdtempSync(join(tmpdir(), 'orca-read-only-notice-xv-'))
-      const { rows, newer } = await journalWithNewerBody()
+      directory = mkdtempSync(join(tmpdir(), 'orca-read-only-xv-'))
+      const { rows, newer } = await journalWithNewerBody(body)
       const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
       expect(reopened.isReadOnly).toBe(true)
       await journals.closeAll()

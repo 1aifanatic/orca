@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 
 const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted(async () =>
   (await import('./NativeChatStructuredSession.test-harness')).createStructuredSessionMocks()
@@ -28,8 +29,21 @@ afterEach(() => {
   resetStructuredSessionMocks()
 })
 
-const NOTICE =
-  "This chat was saved by a newer Orca, so it's read-only here. Update Orca to continue this chat."
+const REASON = 'Saved by a newer Orca. Update Orca to continue this chat.'
+
+const PENDING_APPROVAL: AgentJournalRenderItem = {
+  itemId: 'approval-item',
+  revision: 1,
+  sequence: 1,
+  observedAt: 1,
+  body: {
+    kind: 'approval',
+    title: 'Allow command?',
+    detail: 'pnpm test',
+    options: [{ id: 'allow', label: 'Allow' }],
+    resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+  }
+}
 
 function renderSession() {
   return render(
@@ -44,18 +58,22 @@ function renderSession() {
   )
 }
 
-it('says up front that a newer Orca saved the chat and that updating continues it', () => {
+it('locks the composer with the reason as its placeholder, in place of a card it would refuse', () => {
   mocks.readOnly = 'written-by-newer-orca'
+  mocks.promptItems = [PENDING_APPROVAL]
   renderSession()
-  expect(screen.getByText(NOTICE).getAttribute('role')).toBe('status')
+  expect(screen.getByTestId('structured-composer')).toBeTruthy()
+  expect(mocks.composerProps).toMatchObject({ canSend: false, lockReason: REASON })
+  expect(document.querySelector('[data-native-chat-approval-card-mock]')).toBeNull()
+  expect(screen.queryByText(REASON)).toBeNull()
 })
 
-it('says nothing on a writable chat, or for a reason this client cannot word', () => {
+it('leaves the composer open on a writable chat, or for a reason this client cannot word', () => {
   renderSession()
-  expect(screen.queryByText(/saved by a newer Orca/)).toBeNull()
+  expect(mocks.composerProps).toMatchObject({ canSend: true, lockReason: undefined })
   cleanup()
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: stands in for an arm a newer host could publish, which this build's type cannot name.
   mocks.readOnly = 'a-later-reason' as 'written-by-newer-orca'
   renderSession()
-  expect(screen.queryByText(/saved by a newer Orca/)).toBeNull()
+  expect(mocks.composerProps).toMatchObject({ canSend: true, lockReason: undefined })
 })

@@ -79,7 +79,8 @@ type Overrides = {
   streaming?: string | null
   sendErrorMessage?: string | null
   onClearSendError?: () => void
-  inputLockReason?: 'disconnected' | 'waiting' | null
+  inputLockReason?: 'disconnected' | 'waiting' | 'read-only' | null
+  readOnlyNotice?: string | null
   onSend?: (text: string) => Promise<boolean>
   pending?: Parameters<typeof MobileNativeChatView>[0]['pending']
   structuredActivityUi?: boolean
@@ -673,6 +674,22 @@ describe('MobileNativeChatView', () => {
 
       expect(composer().props.disabled).toBe(false)
       expect(composer().props.placeholder).toBe('Message, @files, /commands')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("locks a read-only chat's composer with the host's reason as its placeholder", async () => {
+    vi.useFakeTimers()
+    try {
+      const reason = 'Saved by a newer Orca. Update Orca to continue this chat.'
+      await render({ inputLockReason: 'read-only', readOnlyNotice: reason })
+      await act(async () => {
+        vi.advanceTimersByTime(600)
+      })
+
+      expect(composer().props.disabled).toBe(true)
+      expect(composer().props.placeholder).toBe(reason)
     } finally {
       vi.useRealTimers()
     }

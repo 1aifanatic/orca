@@ -2838,7 +2838,7 @@
         "backgroundTasksRunning": "Background tasks are still running.",
         "capacity": "Orca has received too many requests in the last day.",
         "chatNotFound": "The Orca running this chat has no record of it.",
-        "chatReadOnlyNewerOrca": "This chat was saved by a newer Orca, so it's read-only here.",
+        "chatSavedByNewerOrca": "Saved by a newer Orca.",
         "clearUnfinished": "The last /clear didn't finish.",
         "commandRunning": "A /compact or /clear is still running.",
         "conversationCleared": "This conversation has been cleared.",

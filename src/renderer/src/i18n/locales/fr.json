@@ -17481,7 +17481,7 @@
         "historyUnavailable": "Orca n'a pas pu ouvrir l'historique de ce chat pour le moment.",
         "savedByNewerOrca": "Les chats ont été enregistrés par une version plus récente d'Orca.",
         "updateOrcaToKeepUsing": "Mettez à jour Orca pour continuer à les utiliser.",
-        "chatReadOnlyNewerOrca": "Ce chat a été enregistré par une version plus récente d'Orca ; il est donc en lecture seule ici.",
+        "chatSavedByNewerOrca": "Enregistré par une version plus récente d'Orca.",
         "updateOrcaToContinueChat": "Mettez à jour Orca pour poursuivre ce chat.",
         "unsupported": "L'instance d'Orca qui exécute ce chat ne le prend pas en charge. Mettez Orca à jour, puis réessayez.",
         "unreachable": "Orca n'a pas pu joindre l'agent.",

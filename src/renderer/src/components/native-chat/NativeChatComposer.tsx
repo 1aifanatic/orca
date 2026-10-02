@@ -57,6 +57,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       targetPtyId,
       agent,
       canSend = true,
+      lockReason,
       isWorking = false,
       onStop,
       onOptimisticSend,
@@ -366,6 +367,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         disabled={disabled}
         hasPty={hasPty}
         canSend={canSend}
+        lockReason={lockReason}
         autocomplete={autocomplete}
         activeSuggestion={activeSuggestion}
         notice={notice}

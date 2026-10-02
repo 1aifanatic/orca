@@ -1,5 +1,6 @@
-// The host says why it keeps a chat read-only on every whole page it serves, so a client can say
-// it before a send is refused: a hydration page, a history page, and a catch-up's reset alike.
+// The host says why it keeps a chat read-only on every whole page it serves, so a client can lock
+// its composer before a send is refused: a hydration page, a history page, and a catch-up's reset
+// alike.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -53,14 +54,16 @@ function open(): Promise<AgentSessionJournal> {
   return journals.open({ identity: IDENTITY, stateDirectory: root })
 }
 
-/** A chat of one item, reopened after a newer build appended `row` at the next sequence. */
-async function reopenedAfter(row: (epoch: string) => Record<string, unknown>) {
+/** A chat of `texts`, reopened after a newer build appended `row` at the next sequence. */
+async function reopenedAfter(row: (epoch: string) => Record<string, unknown>, texts = ['before']) {
   const journal = await open()
-  await journal.appendItem(
-    { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal: 0 },
-    { kind: 'status', text: 'before' },
-    { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-  )
+  for (const [ordinal, text] of texts.entries()) {
+    await journal.appendItem(
+      { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal },
+      { kind: 'status', text },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+  }
   const seq = journal.cursor().sequence + 1
   const epoch = journal.epoch
   await journals.closeAll()
@@ -106,8 +109,7 @@ function attachedClientNotice(journal: AgentSessionJournal): string | null {
   return parts ? agentSessionWriteNoticeEnglish(parts) : null
 }
 
-const NOTICE =
-  "This chat was saved by a newer Orca, so it's read-only here. Update Orca to continue this chat."
+const NOTICE = 'Saved by a newer Orca. Update Orca to continue this chat.'
 
 const ITEM = { v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION, kind: 'item', itemId: 'x', revision: 1 }
 

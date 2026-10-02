@@ -13,6 +13,6 @@ export function agentSessionReadOnlyNoticeParts(
   reason: AgentSessionReadOnlyReason | undefined
 ): AgentSessionWriteNoticeSentence[] | null {
   return reason === 'written-by-newer-orca'
-    ? ['chatReadOnlyNewerOrca', 'updateOrcaToContinueChat']
+    ? ['chatSavedByNewerOrca', 'updateOrcaToContinueChat']
     : null
 }
