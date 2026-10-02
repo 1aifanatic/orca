@@ -216,9 +216,14 @@ describe('linuxOomKillDetails', () => {
   })
 
   it('clears Orca when the host counter moved but its readable cgroup counter did not', () => {
-    const details = linuxOomKillDetails({ vmstatOomKill: 0, cgroupOomKill: 0 }, 5_000, {
-      vmstatOomKill: 1,
-      cgroupOomKill: 0
+    const before = {
+      vmstatOomKill: 0,
+      cgroupOomKill: 0,
+      daemonSharesCgroup: true
+    }
+    const details = linuxOomKillDetails(before, 5_000, {
+      ...before,
+      vmstatOomKill: 1
     })
     expect(details).toMatchObject({
       linuxOomKillHostDelta: 1,
@@ -226,6 +231,55 @@ describe('linuxOomKillDetails', () => {
       linuxOomKillVerdict: 'oom-kill-outside-orca-cgroups'
     })
     expect(details).not.toHaveProperty('linuxOomKillScope')
+  })
+
+  it('clears Orca and the daemon scope when the compared daemon counter did not move', () => {
+    const before = {
+      vmstatOomKill: 5,
+      cgroupOomKill: 0,
+      daemonSharesCgroup: false,
+      daemonCgroupPath: DAEMON_SCOPE,
+      daemonCgroupOomKill: 0
+    }
+    expect(linuxOomKillDetails(before, 5_000, { ...before, vmstatOomKill: 6 })).toMatchObject({
+      linuxOomKillDaemonCgroupDelta: 0,
+      linuxOomKillVerdict: 'oom-kill-outside-orca-cgroups'
+    })
+  })
+
+  it('leaves the kill unattributed when the baseline never saw the daemon', () => {
+    expect(
+      linuxOomKillDetails({ vmstatOomKill: 0, cgroupOomKill: 0 }, 5_000, {
+        vmstatOomKill: 1,
+        cgroupOomKill: 0
+      })
+    ).toMatchObject({ linuxOomKillVerdict: 'host-oom-kill-unattributed' })
+  })
+
+  it('leaves the kill unattributed when a daemon scope appeared after the baseline', () => {
+    const details = linuxOomKillDetails({ vmstatOomKill: 0, cgroupOomKill: 0 }, 5_000, {
+      vmstatOomKill: 1,
+      cgroupOomKill: 0,
+      daemonSharesCgroup: false,
+      daemonCgroupPath: DAEMON_SCOPE,
+      daemonCgroupOomKill: 0
+    })
+    expect(details).not.toHaveProperty('linuxOomKillDaemonCgroupDelta')
+    expect(details).toMatchObject({
+      linuxOomKillVerdict: 'host-oom-kill-unattributed'
+    })
+  })
+
+  it('leaves the kill unattributed when a shared daemon moved into its own scope', () => {
+    expect(
+      linuxOomKillDetails({ vmstatOomKill: 0, cgroupOomKill: 0, daemonSharesCgroup: true }, 5_000, {
+        vmstatOomKill: 1,
+        cgroupOomKill: 0,
+        daemonSharesCgroup: false,
+        daemonCgroupPath: DAEMON_SCOPE,
+        daemonCgroupOomKill: 0
+      })
+    ).toMatchObject({ linuxOomKillVerdict: 'host-oom-kill-unattributed' })
   })
 
   it('names a kill in the terminal daemon scope as a daemon-cgroup kill', () => {
@@ -332,7 +386,12 @@ describe('preGoneLinuxOomKillDetails', () => {
   })
 
   it('reads the baseline daemon scope by path after the OOM-killed daemon pid is gone', async () => {
-    const state = { hostKills: 0, cgroupKills: 0, daemonCgroup: DAEMON_SCOPE, daemonKills: 0 }
+    const state = {
+      hostKills: 0,
+      cgroupKills: 0,
+      daemonCgroup: DAEMON_SCOPE,
+      daemonKills: 0
+    }
     setLinuxOomKillFileReaderForTest(fakeHost(state), 'linux')
     setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
     await samplePreGoneSystemMemory(10_000)
@@ -362,7 +421,9 @@ describe('preGoneLinuxOomKillDetails', () => {
     daemonScopeRemoved = true
     const details = preGoneLinuxOomKillDetails(10_050)
     expect(details).not.toHaveProperty('linuxOomKillDaemonCgroupDelta')
-    expect(details).toMatchObject({ linuxOomKillVerdict: 'host-oom-kill-unattributed' })
+    expect(details).toMatchObject({
+      linuxOomKillVerdict: 'host-oom-kill-unattributed'
+    })
   })
 
   it('is empty off Linux', async () => {

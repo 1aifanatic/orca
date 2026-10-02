@@ -198,7 +198,7 @@ function oomKillVerdict(
   vmstatDelta: number | undefined,
   cgroupDelta: number | undefined,
   daemonCgroupDelta: number | undefined,
-  daemonScopeUncompared: boolean
+  daemonCovered: boolean
 ): LinuxOomKillVerdict {
   // Why Orca's cgroup first: renderers live there, while a host kill may be anyone's.
   if ((cgroupDelta ?? 0) > 0) {
@@ -211,7 +211,7 @@ function oomKillVerdict(
     return 'no-kernel-oom-kill'
   }
   // Why: the kernel bumps the victim's memcg on every OOM kill, so a still counter clears that cgroup.
-  return cgroupDelta === 0 && !daemonScopeUncompared
+  return cgroupDelta === 0 && daemonCovered
     ? 'oom-kill-outside-orca-cgroups'
     : 'host-oom-kill-unattributed'
 }
@@ -269,10 +269,11 @@ export function linuxOomKillDetails(
   if (current.daemonSharesCgroup !== undefined) {
     details.linuxOomKillDaemonSharesCgroup = current.daemonSharesCgroup
   }
-  // Why: a separate daemon scope that cannot be compared may hold the kill, so nothing is cleared.
-  const daemonScopeUncompared =
-    baseline.daemonCgroupPath !== undefined && daemonCgroupDelta === undefined
-  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta, daemonScopeUncompared)
+  // Why: an unknown or uncompared daemon scope may hold the kill, so only a checked one is cleared.
+  const daemonCovered =
+    daemonCgroupDelta === 0 ||
+    (baseline.daemonSharesCgroup === true && current.daemonCgroupPath === undefined)
+  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta, daemonCovered)
   details.linuxOomKillVerdict = verdict
   const scope = verdict === 'orca-cgroup-oom-kill' ? oomKillScope(baseline, current) : undefined
   if (scope) {
