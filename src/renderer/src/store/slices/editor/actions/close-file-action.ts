@@ -62,7 +62,7 @@ export function createCloseFileAction(
           const worktreeId = closedFile?.worktreeId ?? s.activeWorktreeId
           const worktreeFiles = worktreeId
             ? newFiles.filter((f) => f.worktreeId === worktreeId)
-            : newFiles
+            : []
           if (worktreeFiles.length === 0) {
             newActiveId = null
           } else {

@@ -110,4 +110,30 @@ describe('closeFile when activeFileId is not an open file', () => {
     expect(state.unifiedTabsByWorktree[WT] ?? []).toEqual([])
     expect(state.activeFileId).toBeNull()
   })
+
+  it('does not select another worktree file after close-all clears the active worktree', () => {
+    const store = createTestStore()
+    seed(
+      store,
+      ['/a', '/b', '/a'],
+      [
+        ['t-a1', '/a'],
+        ['t-b', '/b'],
+        ['t-a2', '/a']
+      ],
+      't-a1',
+      ['t-a2', 't-a1']
+    )
+    const closable = store.getState().openFiles.filter((f) => f.worktreeId === WT)
+
+    for (const file of closable) {
+      store.getState().closeFile(file.id)
+    }
+
+    const state = store.getState()
+    expect(state.openFiles.map((f) => f.id)).toEqual(['/other'])
+    expect(state.unifiedTabsByWorktree[WT] ?? []).toEqual([])
+    expect(state.activeWorktreeId).toBeNull()
+    expect(state.activeFileId).toBeNull()
+  })
 })
