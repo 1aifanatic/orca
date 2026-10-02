@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
+import type { AgentProcessPresence } from '../../../src/shared/agent-process-presence'
 import { resolveMobileNativeChat } from './mobile-native-chat-eligibility'
 import { resolveMobileTerminalTabAgentId } from './mobile-terminal-tab-agent'
 
+// The host publishes its owner beside the turn (`tab.agentPresence`), never inside `agentStatus`.
 function tab(ended?: true) {
   const agentStatus: AgentStatusEntry = {
     state: 'done',
@@ -12,14 +14,20 @@ function tab(ended?: true) {
     stateStartedAt: 1,
     stateHistory: [],
     agentType: 'claude',
-    providerSession: { key: 'session_id', id: 'session' },
-    agentPresence: {
-      agent: 'claude',
-      process: { pid: 42, platform: 'linux', startTime: 'boot:42' },
-      ...(ended ? { ended } : {})
-    }
+    providerSession: { key: 'session_id', id: 'session' }
   }
-  return { type: 'terminal', title: 'claude', launchAgent: 'claude' as const, agentStatus }
+  const agentPresence: AgentProcessPresence | undefined = {
+    agent: 'claude',
+    process: { pid: 42, platform: 'linux', startTime: 'boot:42' },
+    ...(ended ? { ended } : {})
+  }
+  return {
+    type: 'terminal',
+    title: 'claude',
+    launchAgent: 'claude' as const,
+    agentStatus,
+    agentPresence
+  }
 }
 describe('host process presence on mobile', () => {
   it('retains an idle owner under a shell title', () => {
@@ -34,14 +42,19 @@ describe('host process presence on mobile', () => {
   it('shows a hookless agent started after the owner exited, as it would without presence', () => {
     const successor = { ...tab(true), title: 'aider' }
     expect(resolveMobileTerminalTabAgentId(successor)).toBe('aider')
-    const withoutPresence = { ...successor, agentStatus: undefined, launchAgent: undefined }
+    const withoutPresence = {
+      ...successor,
+      agentStatus: undefined,
+      agentPresence: undefined,
+      launchAgent: undefined
+    }
     expect(resolveMobileTerminalTabAgentId(withoutPresence)).toBe('aider')
   })
   it('keeps old-host and unidentified rows on the legacy path', () => {
     const legacy = tab()
-    delete legacy.agentStatus.agentPresence
+    legacy.agentPresence = undefined
     expect(resolveMobileNativeChat(legacy)?.agent).toBe('claude')
-    legacy.agentStatus.agentPresence = { agent: 'claude', ended: true }
+    legacy.agentPresence = { agent: 'claude', ended: true }
     expect(resolveMobileTerminalTabAgentId(legacy)).toBe('claude')
   })
 })
