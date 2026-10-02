@@ -44,8 +44,16 @@ type CodexHookFlagDerivation = {
   transient: boolean
 }
 
-let carriable: { scriptPath: string; command: Promise<string | null>; retryAt: number } | null =
-  null
+/** The hook command a flag can carry, or why there is none. */
+type CarriableHookCommand =
+  | { command: string; failure: null; transient: false }
+  | { command: null; failure: string; transient: boolean }
+
+let carriable: {
+  scriptPath: string
+  answer: Promise<CarriableHookCommand>
+  retryAt: number
+} | null = null
 
 /** Never throws. `canPublish` is checked right before the write: Codex hooks may have turned off meanwhile. */
 export async function deriveCodexHookFlagEntry(
@@ -78,10 +86,11 @@ export async function deriveCodexHookFlagEntry(
     if (tooOld) {
       return failed(tooOld)
     }
-    const hookCommand = await resolveCarriableHookCommand()
-    if (!hookCommand) {
-      return failed('The hook script path cannot be carried in a Codex flag on this machine', true)
+    const carried = await resolveCarriableHookCommand()
+    if (carried.command === null) {
+      return failed(carried.failure, carried.transient)
     }
+    const hookCommand = carried.command
     const published = readCodexHookFlagEntry(codexVersion)
     if (published && codexHookSessionFlagDefines(published.flag, hookCommand)) {
       return done(published)
@@ -121,39 +130,58 @@ function isTransient(error: unknown): boolean {
  * re-derived. Null while this build's definition is unknown: then nothing is pruned.
  */
 export async function readCodexHookFlagCheck(): Promise<((flag: string) => boolean) | null> {
-  const hookCommand = await resolveCarriableHookCommand()
+  const hookCommand = (await resolveCarriableHookCommand()).command
   return hookCommand === null ? null : (flag) => codexHookSessionFlagDefines(flag, hookCommand)
+}
+
+/** Why no flag can carry Orca's hook on this machine, for status; null when one can. */
+export async function readCodexHookFlagUncarriable(): Promise<string | null> {
+  return (await resolveCarriableHookCommand()).failure
 }
 
 /**
  * The hook command a flag can carry. On Windows the flag holds no `"`, so a
  * profile path that needs the quoted cmd.exe spelling ("C:\Users\John Smith")
- * is carried by its 8.3 name, which the bare spelling accepts. Null when the
+ * is carried by its 8.3 name, which the bare spelling accepts. None when the
  * volume keeps no short names: those launches carry no hook, never an unapproved one.
  */
 // Why remembered: the script path is fixed for the process, and on Windows the 8.3 lookup spawns cmd.exe.
-async function resolveCarriableHookCommand(): Promise<string | null> {
+async function resolveCarriableHookCommand(): Promise<CarriableHookCommand> {
   const scriptPath = getManagedScriptPath()
   if (carriable?.scriptPath === scriptPath && Date.now() < carriable.retryAt) {
-    return carriable.command
+    return carriable.answer
   }
-  const command = lookupCarriableHookCommand(scriptPath).catch(() => null)
-  const current = { scriptPath, command, retryAt: Number.POSITIVE_INFINITY }
+  const answer = lookupCarriableHookCommand(scriptPath)
+  const current = { scriptPath, answer, retryAt: Number.POSITIVE_INFINITY }
   carriable = current
-  if ((await command) === null) {
+  if ((await answer).transient) {
     current.retryAt = Date.now() + UNCARRIABLE_RETRY_MS
   }
-  return command
+  return answer
 }
 
-async function lookupCarriableHookCommand(scriptPath: string): Promise<string | null> {
+async function lookupCarriableHookCommand(scriptPath: string): Promise<CarriableHookCommand> {
   const command = getManagedCommand(scriptPath)
   if (buildCodexHookDefinitionFlag(command)) {
-    return command
+    return { command, failure: null, transient: false }
   }
-  const shortPath = await resolveWindowsShortPath(scriptPath)
-  const shortCommand = shortPath ? getManagedCommand(shortPath) : null
-  return shortCommand && buildCodexHookDefinitionFlag(shortCommand) ? shortCommand : null
+  const shortPath = await resolveWindowsShortPath(scriptPath).catch(() => null)
+  if (shortPath === null) {
+    return {
+      command: null,
+      failure: `Codex status could not look up a short (8.3) name for ${scriptPath}`,
+      transient: true
+    }
+  }
+  const shortCommand = getManagedCommand(shortPath)
+  // Why "off": with no short name, cmd.exe answers the long path itself.
+  return buildCodexHookDefinitionFlag(shortCommand)
+    ? { command: shortCommand, failure: null, transient: false }
+    : {
+        command: null,
+        failure: `Codex status needs a short (8.3) name for ${scriptPath}; this volume has 8.3 names off`,
+        transient: false
+      }
 }
 
 /**

@@ -130,6 +130,8 @@
     "../src/main/codex/codex-cmd-hook-flag-gate.ts",
     "../src/main/codex/codex-hook-flag-table.ts",
     "../src/main/codex/codex-hook-flag-sync.ts",
+    "../src/main/codex/codex-folder-watch.ts",
+    "../src/main/codex/codex-requested-binary.ts",
     "../src/main/codex/codex-hook-session-flags.ts",
     "../src/main/codex/codex-hook-session-trust.ts",
     "../src/main/codex/codex-hook-session-flag-lookup.ts",

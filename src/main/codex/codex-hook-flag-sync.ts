@@ -1,6 +1,6 @@
-import { watch as watchFs, type FSWatcher } from 'node:fs'
+import { watch as watchFs } from 'node:fs'
 import { realpath, stat } from 'node:fs/promises'
-import { basename, isAbsolute } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { resolveCodexCommand } from '../codex-cli/command'
 import { writeManagedScript } from '../agent-hooks/installer-utils'
@@ -14,14 +14,16 @@ import {
   pruneCodexHookFlagEntries,
   readCodexHookFlagEntry,
   removeCodexHookFlagTable,
-  fromMsysPath,
   resolveCodexProbePath,
   takeCodexHookFlagRequests
 } from './codex-hook-flag-table'
+import { createFolderWatch, type FolderWatch, type WatchFolder } from './codex-folder-watch'
+import { admitRequestedCodexPath } from './codex-requested-binary'
 import {
   _internals as derivationInternals,
   deriveCodexHookFlagEntry,
   readCodexHookFlagCheck,
+  readCodexHookFlagUncarriable,
   readCodexTooOldForHookFlag,
   readCodexVersion
 } from './codex-hook-session-trust'
@@ -30,20 +32,22 @@ import {
  * Keeps Orca's Codex hook flag table true to the setting and to the codex
  * binaries in use. One never-throwing function, called at app start, on the
  * setting changing, on each native pane spawn, on Orca-side launch prep and
- * resume, and when a launch leaves a request in the table. Each call reads the
+ * resume, when a launch leaves a request in the table, and when the folder
+ * holding Orca's codex changes, as an update does. Each call reads the
  * setting then; a derivation runs only for a binary whose fingerprint changed
  * since its last answer, so a call that finds nothing new spawns nothing.
  */
 
-// Why a short debounce: a burst of launches shares one sync.
-const WATCH_DEBOUNCE_MS = 100
+// Why a short settle: a burst of launches shares one sync.
+const TABLE_SETTLE_MS = 100
+// Why longer: an update rewrites its folder in a burst, and a sync mid-burst could probe a half-installed codex.
+const BINARY_SETTLE_MS = 1_000
 // Why a cap: one entry per Codex version ever seen would otherwise accumulate.
 const MAX_TABLE_ENTRIES = 8
 // Why retried soon: a timeout at a loaded boot must not cost status until a restart.
 const TRANSIENT_FAILURE_RETRY_MS = 60_000
 const MISSING = 'missing'
 
-type WatchTable = (path: string, onChange: () => void) => FSWatcher
 type Known = {
   fingerprint: string
   version: string | null
@@ -52,7 +56,7 @@ type Known = {
   failures: Map<string, { retryAt: number }>
 }
 
-let config: { isEnabled: () => boolean; watch: WatchTable } | null = null
+let config: { isEnabled: () => boolean; watch: WatchFolder } | null = null
 // Why: the CLI's process has no store; its toggle passes the setting it just saved.
 let intent = false
 // Why keyed by path: a fingerprint change (update, reinstall) re-derives that binary only.
@@ -62,25 +66,30 @@ const pendingPaths = new Set<string>()
 let running: Promise<void> | null = null
 let rerun = false
 let spawnSyncScheduled = false
-let watcher: FSWatcher | null = null
-let debounce: ReturnType<typeof setTimeout> | null = null
+let tableWatch: FolderWatch | null = null
+let binaryWatch: FolderWatch | null = null
 
 /** App start, main process only: the settings reader, and the first sync once PATH is hydrated. */
 export function startCodexHookFlagSync(options: {
   isEnabled: () => boolean
   /** Shell PATH hydration, which resolving the codex command needs. */
   pathReady?: Promise<unknown>
-  watch?: WatchTable
+  watch?: WatchFolder
 }): () => void {
   config = {
     isEnabled: options.isEnabled,
     watch: options.watch ?? ((path, onChange) => watchFs(path, onChange))
   }
+  const sync = (): void => void syncCodexHookFlags()
+  tableWatch = createFolderWatch(config.watch, sync, TABLE_SETTLE_MS)
+  binaryWatch = createFolderWatch(config.watch, sync, BINARY_SETTLE_MS)
   // Why whatever the setting: every native cmd pane's macro calls it, and without the table it is inert.
   ensureCodexCmdHookFlagGate()
   void syncCodexHookFlags({ after: options.pathReady })
   return () => {
-    closeWatcher()
+    closeWatches()
+    tableWatch = null
+    binaryWatch = null
     config = null
   }
 }
@@ -100,7 +109,7 @@ export function syncCodexHookFlags(
       return Promise.resolve()
     }
     if (!isEnabledNow()) {
-      closeWatcher()
+      closeWatches()
       known = new Map()
       pendingPaths.clear()
       removeCodexHookFlagTable()
@@ -112,7 +121,8 @@ export function syncCodexHookFlags(
       // Why no derivation in the CLI's process: the app derives at its next start.
       return Promise.resolve()
     }
-    watchTable()
+    // Why not fatal when it fails: every pane spawn syncs, and the next sync watches again.
+    tableWatch?.follow([getCodexHookFlagTablePath()])
     if (options.codexPath) {
       pendingPaths.add(options.codexPath)
     }
@@ -170,7 +180,7 @@ export async function learnCodexHookFlagVersion(): Promise<void> {
     fingerprint: await fingerprintCodex(codexPath),
     version,
     failure: version
-      ? readCodexTooOldForHookFlag(version)
+      ? (readCodexTooOldForHookFlag(version) ?? (await readCodexHookFlagUncarriable()))
       : `${codexPath} did not report its version`,
     failures: new Map()
   })
@@ -211,6 +221,7 @@ async function runUntilSettled(): Promise<void> {
 
 async function syncOnce(): Promise<void> {
   const mainPath = resolveCodexCommand()
+  await watchCodexBinary(mainPath)
   const targets = new Map<string, Set<string>>([[mainPath, new Set()]])
   const target = (path: string): Set<string> => {
     const requested = targets.get(path) ?? new Set<string>()
@@ -222,8 +233,10 @@ async function syncOnce(): Promise<void> {
   }
   pendingPaths.clear()
   for (const request of takeCodexHookFlagRequests()) {
-    // Why main's codex for a request without a usable path: cmd.exe cannot name its binary.
-    target(readRequestedCodexPath(request.codexPath) ?? mainPath).add(request.codexVersion)
+    // Why main's codex otherwise: cmd.exe cannot name its binary, and main runs no path it did not find.
+    target(admitRequestedCodexPath(request.codexPath, mainPath) ?? mainPath).add(
+      request.codexVersion
+    )
   }
   await Promise.all([...targets].map(([path, requested]) => syncBinary(path, requested)))
   const isCurrent = await readCodexHookFlagCheck()
@@ -291,51 +304,32 @@ async function fingerprintCodex(codexPath: string): Promise<string> {
   }
 }
 
-// Why a codex-named absolute path only: the request file is text any launch may write.
-function readRequestedCodexPath(requested: string | null): string | null {
-  const codexPath = requested ? fromMsysPath(requested) : null
-  const probePath = codexPath && isAbsolute(codexPath) ? resolveCodexProbePath(codexPath) : null
-  return probePath && /^codex(\.(exe|cmd))?$/i.test(basename(probePath)) ? probePath : null
-}
-
-function watchTable(): void {
-  if (watcher || !config) {
-    return
+// Why both folders: a brew or winget update relinks the PATH entry, npm or a standalone one rewrites the target.
+async function watchCodexBinary(mainPath: string): Promise<void> {
+  const folders = isAbsolute(mainPath) ? [dirname(mainPath)] : []
+  // Why not on Windows: a watch holds its folder open, and an updater replacing that folder would fail.
+  const realPath =
+    folders.length > 0 && process.platform !== 'win32'
+      ? await realpath(mainPath).catch(() => null)
+      : null
+  if (realPath) {
+    folders.push(dirname(realPath))
   }
-  try {
-    // Why any event: macOS can report a burst under the directory's own name, or none.
-    const opened = config.watch(getCodexHookFlagTablePath(), () => {
-      debounce ??= setTimeout(() => {
-        debounce = null
-        void syncCodexHookFlags()
-      }, WATCH_DEBOUNCE_MS)
-    })
-    opened.on('error', (error) => {
-      // Why not fatal: every pane spawn syncs, and the next sync opens a new watch.
-      console.warn('[codex-hook-session] Codex hook flag request watch failed:', error)
-      if (watcher === opened) {
-        closeWatcher()
-      }
-    })
-    opened.unref()
-    watcher = opened
-  } catch (error) {
-    console.warn('[codex-hook-session] could not watch Codex hook flag requests:', error)
+  if (isEnabledNow() && codexHookFlagTableExists()) {
+    binaryWatch?.follow(folders)
   }
 }
 
-function closeWatcher(): void {
-  watcher?.close()
-  watcher = null
-  if (debounce) {
-    clearTimeout(debounce)
-    debounce = null
-  }
+function closeWatches(): void {
+  tableWatch?.close()
+  binaryWatch?.close()
 }
 
 export const _internals = {
   resetForTesting(): void {
-    closeWatcher()
+    closeWatches()
+    tableWatch = null
+    binaryWatch = null
     config = null
     intent = false
     known = new Map()

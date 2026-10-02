@@ -6,11 +6,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as CodexHookFlagTable from './codex-hook-flag-table'
 
@@ -116,7 +118,7 @@ function versionCalls(): string[] {
 describe('syncCodexHookFlags', () => {
   let root: string
   let enabled: boolean
-  let watchers: { watcher: FakeWatcher; fire: () => void }[]
+  let watchers: { path: string; watcher: FakeWatcher; fire: () => void }[]
   let stop: () => void = () => {}
 
   function writeBinary(path: string, content = 'codex'): string {
@@ -125,9 +127,9 @@ describe('syncCodexHookFlags', () => {
     return path
   }
 
-  function fakeWatch(onChange: () => void = () => {}): FSWatcher {
+  function fakeWatch(path = '', onChange: () => void = () => {}): FSWatcher {
     const watcher = new FakeWatcher()
-    watchers.push({ watcher, fire: onChange })
+    watchers.push({ path, watcher, fire: onChange })
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the code under test calls only on/close/unref, which FakeWatcher implements.
     return watcher as unknown as FSWatcher
   }
@@ -136,13 +138,17 @@ describe('syncCodexHookFlags', () => {
     stop = startCodexHookFlagSync({
       isEnabled: () => enabled,
       pathReady,
-      watch: (_path, onChange) => fakeWatch(onChange)
+      watch: (path, onChange) => fakeWatch(path, onChange)
     })
     return syncCodexHookFlagsWithin(5_000)
   }
 
   const table = () => getCodexHookFlagTablePath()
   const entryFor = (version: string) => readCodexHookFlagEntry(version)
+  const openWatches = (path: string) =>
+    watchers.filter((watch) => watch.path === path && !watch.watcher.closed)
+  // Why: a request is served only for a codex in a folder on main's own PATH.
+  const putOnPath = (...folders: string[]) => vi.stubEnv('PATH', folders.join(delimiter))
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-sync-'))
@@ -331,6 +337,7 @@ describe('syncCodexHookFlags', () => {
     writeBinary(join(npm, 'codex.ps1'))
     const cmd = writeBinary(join(npm, 'codex.cmd'))
     versions.set(cmd, 'codex-cli 0.150.1')
+    putOnPath(npm)
     // Why a BOM: PowerShell 5.1's Set-Content -Encoding UTF8 writes one.
     writeFileSync(join(table(), 'codex-cli 0.150.1.request'), `﻿${join(npm, 'codex.ps1')}\r\n`)
 
@@ -363,22 +370,94 @@ describe('syncCodexHookFlags', () => {
     await start()
     const pane = writeBinary(join(root, 'pane', 'codex'))
     versions.set(pane, 'codex-cli 0.150.1')
+    putOnPath(join(root, 'pane'))
     writeFileSync(join(table(), 'codex-cli 0.150.1.request'), `${pane}\n`)
 
     // Why no name: macOS reports a burst under the directory's own name, or none.
-    watchers[0].fire()
+    openWatches(table())[0].fire()
 
     await vi.waitFor(() => expect(entryFor('codex-cli 0.150.1')).not.toBeNull())
   })
 
   it('drops a failed watch and opens a new one at the next sync', async () => {
     await start()
-    watchers[0].watcher.emit('error', new Error('watch lost'))
-    expect(watchers[0].watcher.closed).toBe(true)
+    const [lost] = openWatches(table())
+    lost.watcher.emit('error', new Error('watch lost'))
+    expect(lost.watcher.closed).toBe(true)
 
     await syncCodexHookFlags()
 
-    expect(watchers).toHaveLength(2)
+    expect(openWatches(table())).toHaveLength(1)
+    expect(watchers.filter((watch) => watch.path === table())).toHaveLength(2)
+  })
+
+  // Why AL3: a request is text any process can write, and the path it names is run.
+  it("never runs a requested codex outside main's PATH, and serves one on it", async () => {
+    await start()
+    const evil = writeBinary(join(root, 'evil', 'codex'))
+    versions.set(evil, 'codex-cli 0.150.1')
+    const onPath = writeBinary(join(root, 'mise', 'shims', 'codex'))
+    versions.set(onPath, 'codex-cli 0.150.1')
+    writeFileSync(join(table(), 'codex-cli 0.150.1.request'), `${evil}\n`)
+
+    await syncCodexHookFlags()
+    expect(versionCalls()).not.toContain(evil)
+    expect(entryFor('codex-cli 0.150.1')).toBeNull()
+
+    putOnPath(join(root, 'mise', 'shims'))
+    writeFileSync(join(table(), 'codex-cli 0.150.1.request'), `${onPath}\n`)
+    await syncCodexHookFlags()
+
+    expect(versionCalls()).toContain(onPath)
+    expect(versionCalls()).not.toContain(evil)
+    expect(entryFor('codex-cli 0.150.1')).not.toBeNull()
+  })
+
+  // Why AL2: the first launch after an update otherwise runs its whole session without status.
+  it("publishes an updated codex's entry with no launch, when its folder changes", async () => {
+    const real = writeBinary(join(root, 'lib', 'codex', 'codex.js'))
+    rmSync(mocks.state.mainPath)
+    symlinkSync(real, mocks.state.mainPath)
+    await start()
+    // Why realpath: the temp folder itself sits behind a symlink on macOS.
+    const target = dirname(realpathSync(real))
+    expect(openWatches(join(root, 'bin'))).toHaveLength(1)
+    expect(openWatches(target)).toHaveLength(1)
+
+    writeBinary(real, 'codex, updated')
+    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
+    openWatches(target)[0].fire()
+
+    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
+      timeout: 5_000
+    })
+  })
+
+  it('keeps one watch per folder, follows a moved or replaced codex, and closes them when hooks turn off', async () => {
+    await start()
+    const bin = join(root, 'bin')
+    await syncCodexHookFlags()
+    await syncCodexHookFlags()
+    expect(openWatches(bin)).toHaveLength(1)
+
+    // Why: a folder an update replaced under the same name needs a new watch.
+    rmSync(bin, { recursive: true })
+    mocks.state.mainPath = writeBinary(join(bin, 'codex'))
+    versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
+    await syncCodexHookFlags()
+    expect(openWatches(bin)).toHaveLength(1)
+    expect(watchers.filter((watch) => watch.path === bin)).toHaveLength(2)
+
+    const moved = writeBinary(join(root, 'brew', 'codex'))
+    versions.set(moved, 'codex-cli 0.159.2')
+    mocks.state.mainPath = moved
+    await syncCodexHookFlags()
+    expect(openWatches(bin)).toHaveLength(0)
+    expect(openWatches(join(root, 'brew'))).toHaveLength(1)
+
+    enabled = false
+    await syncCodexHookFlags()
+    expect(watchers.every((watch) => watch.watcher.closed)).toBe(true)
   })
 
   it('never throws on a request that is a directory', async () => {
@@ -472,7 +551,7 @@ describe('syncCodexHookFlags', () => {
         }
         return enabled
       },
-      watch: (_path, onChange) => fakeWatch(onChange)
+      watch: (path, onChange) => fakeWatch(path, onChange)
     })
     const first = syncCodexHookFlagsWithin(5_000)
     await vi.waitFor(() => expect(mocks.runCodexAppServerSession).toHaveBeenCalled())
@@ -545,7 +624,7 @@ describe('syncCodexHookFlags', () => {
 
   it('returns from a bounded wait while a sync is still running', async () => {
     mocks.runCodexAppServerSession.mockImplementation(() => new Promise(() => {}))
-    startCodexHookFlagSync({ isEnabled: () => enabled, watch: () => fakeWatch() })
+    startCodexHookFlagSync({ isEnabled: () => enabled, watch: (path) => fakeWatch(path) })
 
     const started = Date.now()
     await syncCodexHookFlagsWithin(50)
@@ -624,6 +703,29 @@ describe('syncCodexHookFlags', () => {
 
       expect(cmdCalls()).toBe(lookups)
       expect(versionCalls()).toEqual([])
+    })
+
+    // Why AL4: with 8.3 names off, cmd.exe answers the long path, and status must say why there is no flag.
+    it('reports a profile path that needs an 8.3 name this volume does not keep', async () => {
+      shortPath = () => getManagedScriptPath()
+      await start()
+
+      expect(getKnownCodexHookFlag()?.failure).toBe(
+        `Codex status needs a short (8.3) name for ${getManagedScriptPath()}; this volume has 8.3 names off`
+      )
+      expect(mocks.runCodexAppServerSession).not.toHaveBeenCalled()
+    })
+
+    it("tells the CLI's status the same", async () => {
+      mkdirSync(dirname(getManagedScriptPath()), { recursive: true })
+      writeFileSync(getManagedScriptPath(), 'x')
+      shortPath = () => getManagedScriptPath()
+
+      await learnCodexHookFlagVersion()
+
+      expect(getKnownCodexHookFlag()?.failure).toBe(
+        `Codex status needs a short (8.3) name for ${getManagedScriptPath()}; this volume has 8.3 names off`
+      )
     })
 
     // Why S3: a definition the lookup failed to learn proves no entry stale.
