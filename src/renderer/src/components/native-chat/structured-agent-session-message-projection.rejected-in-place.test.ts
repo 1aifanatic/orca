@@ -23,7 +23,11 @@ import { projectStructuredAgentSessionMessages } from './structured-agent-sessio
 const SESSION = 'session-1'
 
 function body(text: string) {
-  return { kind: 'message' as const, role: 'user' as const, blocks: [{ type: 'text', text }] }
+  return {
+    kind: 'message' as const,
+    role: 'user' as const,
+    blocks: [{ type: 'text' as const, text }]
+  }
 }
 
 function fingerprint(text: string): string {
