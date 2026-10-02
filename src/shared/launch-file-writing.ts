@@ -191,8 +191,8 @@ export function spawnNeedsWslLaunchDirectory(args: {
 /**
  * The write site's launch file for a spawn. A WSL session writes it into the distro, and refuses
  * when the distro directory is unknown: a Windows path means nothing to an agent in the distro. A
- * line is not refused here: with no directory the host types it as is, which is the delivery the
- * plan chose, from the same probe, for a distro whose folder is unusable.
+ * line is not refused here: with no directory the host types it as is, main's delivery, unless the
+ * launch asked to refuse it (`UnstageableLine`); a plan made in main read the same probe.
  */
 export function writeSpawnLaunchFile(args: {
   launchFile?: LaunchFile

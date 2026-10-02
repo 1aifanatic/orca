@@ -6,7 +6,7 @@ const base = { agent: 'claude' as const, cmdOverrides: {} }
 
 describe('the one launch-prompt decision every launch path builds through', () => {
   // Why: the composer, phone quick commands and background sessions call the builder directly.
-  it('points a single-line Windows prompt past the typed budget at a launch file', () => {
+  it('points a single-line cmd prompt past cmd’s 8,191-character line at a launch file', () => {
     const prompt = 'y'.repeat(9_000)
     const plan = planLaunchForTest({ ...base, prompt, platform: 'win32', shell: 'cmd' })
     expect(plan?.launchFile?.content).toBe(prompt)

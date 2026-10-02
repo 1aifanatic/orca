@@ -154,7 +154,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
   }
   const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(store, worktreeId)
   const hostPublishesTab = isWebRuntimeSessionActive(runtimeEnvironmentId)
-  const { startupPlan, launchFile, pasteDraftAfterLaunch, submitPastedPrompt } =
+  const { startupPlan, launchFile, unstageableLine, pasteDraftAfterLaunch, submitPastedPrompt } =
     planLaunchAgentStartupPrompt({
       base: startupPlanBase,
       prompt: trimmedPrompt,
@@ -274,11 +274,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     ...(hasPrompt && pasteDraftAfterLaunch === null && promptDelivery !== 'draft'
       ? { launchPrompt: trimmedPrompt }
       : {}),
-    // Why: main pasted a submit-after-ready prompt, so a line the host cannot stage is refused
-    // with the prompt to copy rather than typed raw. Temporary until these move to agent.launch.
-    ...(hasPrompt && pasteDraftAfterLaunch === null && promptDelivery === 'submit-after-ready'
-      ? { unstageableLine: 'refuse' as const }
-      : {}),
+    ...(unstageableLine ? { unstageableLine } : {}),
     // Why: Command Code has no prompt-submit hook, so a prompt its launch line submits seeds working.
     ...(agent === 'command-code' &&
     hasPrompt &&

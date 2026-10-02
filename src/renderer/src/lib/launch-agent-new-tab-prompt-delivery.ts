@@ -77,6 +77,11 @@ export function deliverNewTabLaunchPrompt(args: {
                 showAgentLaunchExitedNotice({ agent, prompt })
                 return { delivered: false, failureNotified: true }
               case 'unconfirmed':
+                // Why silent when nothing waits on it: main reported nothing for such a launch, and
+                // a host that cannot prove the agent (Windows without hooks) would raise it every time.
+                if (promptDelivery !== 'submit-after-ready') {
+                  return { delivered: false, failureNotified: false }
+                }
                 // The agent may have the prompt: say so, and never invite pasting it a second time.
                 showAgentLaunchPromptUnconfirmedNotice({ agent, prompt })
                 return { delivered: false, failureNotified: true }

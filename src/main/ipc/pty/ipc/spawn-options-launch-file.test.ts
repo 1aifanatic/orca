@@ -33,7 +33,7 @@ async function spawnOptionsFor(
 }
 
 describe('renderer pty spawn: launch file', () => {
-  const command = `claude 'The full task is in the file "${LAUNCH_FILE.placeholder}".'`
+  const command = `claude 'The full task is in the file \`${LAUNCH_FILE.placeholder}\`.'`
 
   it('hands the provider the launch file its command names', async () => {
     const options = await spawnOptionsFor(

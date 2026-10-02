@@ -86,16 +86,16 @@ export function parseLaunchFile(value: unknown): LaunchFile | undefined {
 }
 
 /**
- * What a caller wants for an agent line too long or multi-line to type when the host cannot stage
- * it (its staging folder is unusable): `type` it as is, main's delivery where main typed the line,
- * or `refuse` it, for a caller whose prompt main pasted, so the user is handed the prompt instead of
- * a raw line that can leave the shell waiting. Absent means `type`, which is also what a host that
- * predates the field does.
+ * What a launch wants for an agent line too long or multi-line to type when the host cannot stage
+ * it (its staging folder is unusable): `refuse` it, for a caller whose prompt main pasted, so the
+ * user is handed the prompt instead of a raw line that can leave the shell waiting. Absent, the
+ * host types the line as is, main's delivery where main typed it, as a host that predates the
+ * field does. Set by the carry rule (`carryLaunchPrompt`), never by a caller.
  */
-export type UnstageableLine = 'type' | 'refuse'
+export type UnstageableLine = 'refuse'
 
 export function parseUnstageableLine(value: unknown): UnstageableLine | undefined {
-  return value === 'type' || value === 'refuse' ? value : undefined
+  return value === 'refuse' ? value : undefined
 }
 
 export const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
@@ -113,7 +113,7 @@ export function describeLaunchFileUnavailable(
   return `Orca could not write ${what} (${reason}), so the agent was not started. [${LAUNCH_FILE_UNAVAILABLE_CODE}]`
 }
 
-/** Also matches the `launch_file_unavailable: <reason>` form earlier builds sent. */
+/** Matched by its code, wherever in the message a host or the IPC layer put it. */
 export function isLaunchFileUnavailableMessage(message: string): boolean {
   return message.includes(LAUNCH_FILE_UNAVAILABLE_CODE)
 }

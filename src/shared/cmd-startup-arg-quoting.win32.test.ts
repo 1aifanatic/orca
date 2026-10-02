@@ -54,12 +54,16 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
     expect(await typeIntoCmd(`"${shim}" ${quoteStartupArg(prompt, 'cmd')}`)).toEqual([prompt])
   })
 
-  it.each(WINDOWS_ARGUMENT_CORPUS.filter(({ value }) => value !== ''))(
-    'delivers $name unchanged',
-    async ({ value }) => {
-      expect(await typeIntoCmd(`"${shim}" ${quoteStartupArg(value, 'cmd')}`)).toEqual([value])
-    }
-  )
+  // Why ASCII only: this harness pipes the line in, which cmd decodes in its startup code page
+  // whatever `chcp` says, while a pane's typed input arrives as UTF-16. The carry rule leaves a
+  // non-ASCII prompt on cmd to main's delivery (`windowsLaunchLineVerdict`), as it is unmeasured.
+  it.each(
+    WINDOWS_ARGUMENT_CORPUS.filter(
+      ({ value }) => value !== '' && [...value].every((char) => char.charCodeAt(0) <= 0x7f)
+    )
+  )('delivers $name unchanged', async ({ value }) => {
+    expect(await typeIntoCmd(`"${shim}" ${quoteStartupArg(value, 'cmd')}`)).toEqual([value])
+  })
 
   it('never lets a multi-line prompt reach cmd as commands: the line names a launch file', async () => {
     const marker = join(dir, 'pwned.txt')
@@ -84,9 +88,11 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
     try {
       const typed = written.command ?? ''
       expect(typed).not.toMatch(/[\r\n]/)
-      const args = await typeIntoCmd(typed)
-      expect(args).toHaveLength(1)
-      expect(args[0]).toContain(written.path)
+      // Claude's read grant for the file's folder, then the pointer naming the file, whole.
+      expect(await typeIntoCmd(typed)).toEqual([
+        `--add-dir=${written.directory}`,
+        expect.stringContaining(written.path)
+      ])
       expect(readFileSync(written.path, 'utf8')).toBe(prompt)
       expect(existsSync(marker)).toBe(false)
     } finally {
@@ -115,9 +121,10 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
       baseDirectory: home
     })
     try {
-      const args = await typeIntoCmd(written.command ?? '')
-      expect(args).toHaveLength(1)
-      expect(args[0]).toContain(written.path)
+      expect(await typeIntoCmd(written.command ?? '')).toEqual([
+        `--add-dir=${written.directory}`,
+        expect.stringContaining(written.path)
+      ])
     } finally {
       removeLaunchFile(written)
     }

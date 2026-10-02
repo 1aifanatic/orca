@@ -419,14 +419,13 @@ describe('launchWorkItemDirect', () => {
       platform: 'win32',
       isRemote: false
     })
-    // Windows shells have no bracketed paste, so a multi-line draft is never typed onto the launch
-    // line; it is pasted into the agent's own composer instead.
+    // Why (final review P3-2): a short multi-line draft was measured exact on PowerShell's line, so
+    // it is prefilled there, as main typed it; only a measured damage pastes it.
     const startup = mocks.activateAndRevealWorktree.mock.calls[0]?.[1]?.startup
-    expect(startup?.command).not.toContain('Linked Linear issue')
-    const pasted: string = startup?.draftPrompt ?? ''
-    expect(pasted).toContain(expectedDraft)
-    expect(pasted).not.toContain('The distinctive Linear body text is here.')
-    expect(pasted).not.toContain('--- BEGIN LINKED WORK ITEM CONTEXT ---')
+    expect(startup?.command).toContain('Linked Linear issue: ENG-42')
+    expect(startup?.command).not.toContain('The distinctive Linear body text is here.')
+    expect(startup?.command).not.toContain('--- BEGIN LINKED WORK ITEM CONTEXT ---')
+    expect(startup?.draftPrompt).toBeUndefined()
   })
 
   it('seeds the chat-composer launch draft for a GitHub issue draft launch', async () => {
@@ -523,10 +522,19 @@ describe('launchWorkItemDirect', () => {
     ).resolves.toBe(true)
 
     expect(buildAgentDraftLaunchPlan).not.toHaveBeenCalled()
-    // The explicit prompt is submitted by the launch line, never pasted into the running agent.
-    expect(pasteDraftWhenAgentReady).not.toHaveBeenCalled()
+    // Why (final review P1-1): on a Windows host nothing can confirm a prompt the line carried, so
+    // a work item's submit-after-ready prompt is pasted once the agent runs, as main did.
+    expect(pasteDraftWhenAgentReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tabId: 'tab-1',
+        content: 'Use this explicit user prompt.',
+        agent: 'claude',
+        submit: true,
+        forcePaste: true
+      })
+    )
     const startup = mocks.activateAndRevealWorktree.mock.calls.at(-1)?.[1]?.startup
-    expect(startup?.command).toContain('Use this explicit user prompt.')
+    expect(startup?.command).not.toContain('Use this explicit user prompt.')
     expect(startup?.command).not.toContain('generated Linear source')
     expect(mocks.seedNativeChatLaunchPrompt).toHaveBeenCalledWith({
       tabId: 'tab-1',

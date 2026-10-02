@@ -67,18 +67,23 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
     expect(plan('fix the "foo bar" bug', 'posix')?.launchFile).toBeUndefined()
   })
 
-  it('pastes a PowerShell draft holding `"` or ending in `\\` instead of prefilling it', () => {
-    const draft = (text: string) =>
+  // Why (final review P3-2): one measured predicate judges a draft's line as it judges a prompt's.
+  // A measured damage pastes the draft; an unmeasured line (PowerShell `"`, which the pane's
+  // PowerShell decides) is typed as main typed it.
+  it('pastes a Windows draft only where its line was measured to damage it', () => {
+    const draft = (text: string, shell: AgentStartupShell) =>
       buildAgentDraftLaunchPlan({
         agent: 'claude',
         draft: text,
         cmdOverrides: {},
         platform: 'win32',
-        shell: 'powershell'
+        shell
       })
-    expect(draft('say "hi"')).toBeNull()
-    expect(draft('see C:\\dir\\')).toBeNull()
-    expect(draft('say hi')?.launchCommand).toBe("claude --prefill 'say hi'")
+    expect(draft('line one\nline two', 'cmd')).toBeNull()
+    expect(draft('say\thi', 'cmd')).toBeNull()
+    expect(draft('say "hi"', 'powershell')?.launchCommand).toBe(`claude --prefill 'say "hi"'`)
+    expect(draft('line one\nline two', 'powershell')?.launchCommand).toContain('line two')
+    expect(draft('say hi', 'powershell')?.launchCommand).toBe("claude --prefill 'say hi'")
   })
 
   it('points at the file with no double quote in the sentence', () => {
@@ -114,12 +119,9 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
   })
 
   it('says in plain words why a Windows shell draft was not launched', () => {
-    expect(windowsDraftRefusal('line one\nline two', 'powershell')).toMatch(
-      /Windows shell would break this draft on the agent's command line \(it has a line break or other control character, or on PowerShell a double quote, a %NAME% pair or a trailing backslash\), so the agent was not started/
+    expect(windowsDraftRefusal('claude', 'win32')).toMatch(
+      /Windows shell would break this draft on the agent's command line, so the agent was not started/
     )
-    expect(windowsDraftRefusal('see C:\\dir\\', 'powershell')).not.toBeNull()
-    expect(windowsDraftRefusal('say "hi"', 'powershell')).not.toBeNull()
-    expect(windowsDraftRefusal('say "hi"', 'cmd')).toBeNull()
-    expect(windowsDraftRefusal('line one\nline two', 'posix')).toBeNull()
+    expect(windowsDraftRefusal('claude', 'darwin')).toBeNull()
   })
 })

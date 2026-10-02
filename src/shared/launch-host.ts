@@ -24,7 +24,8 @@ export type LaunchHost = {
   /** Whether the host writes a launch file the agent can read, and stages a long line, both in one
    *  folder. A paired Orca may be older, an SSH Windows host's relay may run its panes in WSL (its
    *  OpenSSH default shell, which this client cannot see), and a host may find that folder
-   *  unwritable. Such a host gets the line within its typed budget, or the paste, instead. */
+   *  unwritable. Such a host gets the line (within its typed budget where it types raw, or by its
+   *  Windows shell's verdict), or the paste, instead. */
   takesLaunchFile: boolean
   /** The shell a local Windows pane is spawned as, which the line is judged and quoted by: a WSL
    *  pane runs the distro's POSIX shell whatever the Windows setting, and the PowerShell decides

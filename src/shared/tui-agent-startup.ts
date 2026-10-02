@@ -14,10 +14,10 @@ import type { LaunchHost } from './launch-host'
 import {
   carryLaunchPrompt,
   launchFileDirectoryGrant,
-  windowsShellDamagesPrompt,
   type LaunchPromptPaste,
   type LaunchPromptPlan
 } from './launch-prompt-carry'
+import { windowsLaunchLineVerdict } from './windows-launch-line'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import { buildSleepingAgentLaunchConfig } from './sleeping-agent-launch-config'
@@ -220,11 +220,13 @@ function buildPlanWithPromptOnLine(
 /**
  * Whether this agent's prompt rides the launch command rather than the live PTY.
  *
- * The same question `planLaunchPrompt` answers with any outcome but `paste-after-ready`, asked
- * before a command exists — a caller deciding how to deliver a prompt has to know which half it is
- * getting while it is still choosing what to create. Derived from the one injection table rather
- * than restating it, and pinned against the builder for every agent by
- * `tui-agent-prompt-transport.test.ts`, so the two cannot answer differently.
+ * Whether the agent's CLI can take its prompt on argv at all, asked before a command exists: a
+ * caller deciding how to deliver a prompt has to know which half it may get while it is still
+ * choosing what to create. Derived from the one injection table rather than restating it, and pinned
+ * against the builder for every agent by `tui-agent-prompt-transport.test.ts`. `planLaunchPrompt`
+ * can still leave such a prompt for the paste (a file the agent is not known to read, a host that
+ * cannot write its staging folder, a caller whose paste main used on a Windows host); a `false`
+ * here is always the paste.
  *
  * Every mode but `stdin-after-start` folds the prompt into argv — that is what argv is FOR, so
  * multi-line and special-character text reaches the CLI as one argument instead of keystrokes.
@@ -284,16 +286,20 @@ export function buildAgentDraftLaunchPlan(args: {
     agentCommand: baseCommand.commandWithoutSessionOptions
   })
   let plan: AgentDraftLaunchPlan | null = null
-  // Why: the shell would damage the draft (see windowsShellDamagesPrompt); callers paste it into
-  // the agent instead, and a pointer sentence is no draft to edit.
-  if (config.draftPromptFlag && windowsShellDamagesPrompt(trimmed, shell)) {
-    return null
-  }
   if (config.draftPromptFlag) {
-    const quoted = quoteStartupArg(trimmed, shell)
+    const draftLine = `${launchCommand} ${config.draftPromptFlag} ${quoteStartupArg(trimmed, shell)}`
+    // Why: a line the Windows shell was measured to damage is no draft to edit, and a pointer
+    // sentence is none either, so callers paste it into the agent; an unmeasured line is typed as
+    // main typed it. The pane's PowerShell is not known here.
+    if (
+      platform === 'win32' &&
+      windowsLaunchLineVerdict(trimmed, draftLine, shell, null) === 'damaged'
+    ) {
+      return null
+    }
     plan = {
       agent,
-      launchCommand: `${launchCommand} ${config.draftPromptFlag} ${quoted}`,
+      launchCommand: draftLine,
       expectedProcess: config.expectedProcess,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),

@@ -19,7 +19,7 @@ export const ptyStreamAndSerializationApi = {
   readLaunchedAgentForeground: (
     id: string,
     agent: string
-  ): Promise<'agent' | 'shell' | 'unknown'> =>
+  ): Promise<'launched-agent' | 'other' | 'shell' | 'unknown'> =>
     ipcRenderer.invoke('pty:readLaunchedAgentForeground', { id, agent }),
   isCodexOnSharedServer: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('pty:isCodexOnSharedServer', { id }),

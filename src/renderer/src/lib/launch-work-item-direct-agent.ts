@@ -18,7 +18,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat/native-chat-launch-session-options'
 import type { PersistedNativeChatSessionOptions } from '../../../shared/native-chat-session-options'
-import type { LaunchFile } from '../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../shared/launch-prompt-file'
 import type { LaunchHost } from '../../../shared/launch-host'
 
 export function buildDirectWorkItemAgentStartupPlan(args: {
@@ -49,6 +49,8 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
   launchFile?: LaunchFile
   /** The submitted prompt the launch command carries (on its line or in `launchFile`). */
   launchPrompt?: string
+  /** The rule's wish for a line the host cannot stage, sent with the spawn. */
+  unstageableLine?: UnstageableLine
   /** The launch command carries the content (a native draft or a submitted prompt); no paste runs. */
   promptOnLaunchCommand: boolean
   startupPlanFailed: boolean
@@ -95,6 +97,7 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
         return {
           startupPlan: planned.plan,
           launchPrompt: args.draftContent,
+          ...(planned.unstageableLine ? { unstageableLine: planned.unstageableLine } : {}),
           promptOnLaunchCommand: true,
           startupPlanFailed: false
         }
@@ -175,7 +178,11 @@ export function buildDirectWorkItemStartupOpts(
   launchDraftText?: string,
   /** What the launch command carries: its launch file, and the submitted prompt (see
    *  `PtyPaneStartup.launchPrompt`). */
-  carried: { launchFile?: LaunchFile; launchPrompt?: string } = {}
+  carried: {
+    launchFile?: LaunchFile
+    launchPrompt?: string
+    unstageableLine?: UnstageableLine
+  } = {}
 ): {
   startup?: {
     command: string
@@ -188,6 +195,7 @@ export function buildDirectWorkItemStartupOpts(
     startupCommandDelivery?: StartupCommandDelivery
     launchFile?: LaunchFile
     launchPrompt?: string
+    unstageableLine?: UnstageableLine
     telemetry?: AgentStartedTelemetry
   }
 } {
@@ -212,6 +220,7 @@ export function buildDirectWorkItemStartupOpts(
         : {}),
       ...(carried.launchFile ? { launchFile: carried.launchFile } : {}),
       ...(carried.launchPrompt ? { launchPrompt: carried.launchPrompt } : {}),
+      ...(carried.unstageableLine ? { unstageableLine: carried.unstageableLine } : {}),
       ...(telemetry ? { telemetry } : {})
     }
   }

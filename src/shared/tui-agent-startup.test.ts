@@ -149,7 +149,6 @@ describe('tui agent startup plans', () => {
     expect(plan?.launchCommand).toContain('line one\nline two')
   })
 
-  // Why: a Windows host stages nothing, so Git Bash would get the raw line break typed.
   // Why: measured, a multi-line line arrives whole in Git Bash, as main typed it.
   it('keeps a multi-line prompt on a Git Bash line on a Windows host', () => {
     const plan = planLaunchForTest({

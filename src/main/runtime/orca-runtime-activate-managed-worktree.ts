@@ -36,9 +36,11 @@ import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisio
 import { readFreshComposerHold } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import {
-  readLaunchedAgentForeground,
+  asLaunchedAgentForeground,
+  readTerminalForegroundVerdict,
   type LaunchedAgentForeground
 } from './launched-agent-foreground'
+import type { TerminalForegroundVerdict } from './terminal-foreground-group'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -251,10 +253,20 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
   }
 
   /** What holds the terminal a launch started its agent in, read fresh from the execution host. */
-  readLaunchedAgentForeground(ptyId: string, agent: TuiAgent): Promise<LaunchedAgentForeground> {
+  async readLaunchedAgentForeground(
+    ptyId: string,
+    agent: TuiAgent
+  ): Promise<LaunchedAgentForeground> {
+    return asLaunchedAgentForeground(await this.readTerminalForegroundVerdict(ptyId, agent))
+  }
+
+  readTerminalForegroundVerdict(
+    ptyId: string,
+    agent: TuiAgent
+  ): Promise<TerminalForegroundVerdict> {
     const pty = this.ptysById.get(ptyId)
     const remote = !!pty?.connectionId
-    return readLaunchedAgentForeground(
+    return readTerminalForegroundVerdict(
       this.ptyController,
       // A local WSL pane still runs on a Windows host, whose process reads cannot see into it.
       {

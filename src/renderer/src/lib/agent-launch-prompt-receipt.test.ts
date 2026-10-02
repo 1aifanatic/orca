@@ -33,8 +33,7 @@ const mocks = vi.hoisted(() => {
       state = empty()
     },
     readiness: vi.fn(),
-    readForeground: vi.fn(),
-    foregroundName: vi.fn()
+    readForeground: vi.fn()
   }
 })
 
@@ -61,18 +60,12 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     mocks.reset()
     mocks.setState({ tabsByWorktree: { 'wt-1': [{ id: 'tab-1' }] } })
     mocks.readiness.mockReset().mockResolvedValue(true)
-    mocks.readForeground.mockReset().mockResolvedValue('agent')
-    mocks.foregroundName.mockReset().mockResolvedValue('claude')
+    mocks.readForeground.mockReset().mockResolvedValue('launched-agent')
     // Timers go through globalThis at call time, so fake timers reach them.
     vi.stubGlobal('window', {
       setTimeout: (handler: () => void, ms: number) => globalThis.setTimeout(handler, ms),
       clearTimeout: (timer: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(timer),
-      api: {
-        pty: {
-          readLaunchedAgentForeground: mocks.readForeground,
-          getForegroundProcess: mocks.foregroundName
-        }
-      }
+      api: { pty: { readLaunchedAgentForeground: mocks.readForeground } }
     })
   })
 
@@ -104,7 +97,7 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     vi.useFakeTimers()
     let ready: () => void = () => {}
     mocks.readiness.mockReturnValue(new Promise<void>((resolve) => (ready = resolve)))
-    mocks.readForeground.mockResolvedValueOnce('agent').mockResolvedValue('shell')
+    mocks.readForeground.mockResolvedValueOnce('launched-agent').mockResolvedValue('shell')
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
     await vi.advanceTimersByTimeAsync(250)
@@ -122,23 +115,17 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     // The shell's startup file runs `sleep` in front, then the shell draws its prompt (and looks
     // ready) before it runs the launch line, then the agent starts.
     mocks.readForeground
-      .mockResolvedValueOnce('agent')
+      .mockResolvedValueOnce('other')
       .mockResolvedValueOnce('shell')
       .mockResolvedValueOnce('shell')
       .mockResolvedValueOnce('shell')
-      .mockResolvedValue('agent')
-    mocks.foregroundName
-      .mockResolvedValueOnce('sleep')
-      .mockResolvedValueOnce('zsh')
-      .mockResolvedValueOnce('zsh')
-      .mockResolvedValueOnce('zsh')
-      .mockResolvedValue('claude')
+      .mockResolvedValue('launched-agent')
     mocks.setState({ agentStatusByPaneKey: { [PANE]: { updatedAt: 50 } } })
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
     await vi.advanceTimersByTimeAsync(100)
     ready()
-    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(10_000)
     await expect(pending).resolves.toBe('delivered')
     expect(mocks.readForeground.mock.calls.length).toBeGreaterThanOrEqual(5)
   })
@@ -146,15 +133,40 @@ describe('whether a prompt that rode the launch command reached the agent', () =
   it('is unconfirmed, never exited, when the shell stays in front with no sign the agent ran', async () => {
     vi.useFakeTimers()
     mocks.readForeground.mockResolvedValue('shell')
-    mocks.foregroundName.mockResolvedValue('zsh')
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
     let settled: string | null = null
     void pending.then((value) => (settled = value))
     await vi.advanceTimersByTimeAsync(29_000)
     expect(settled).toBeNull()
-    await vi.advanceTimersByTimeAsync(1_500)
+    await vi.advanceTimersByTimeAsync(2_500)
     expect(settled).toBe('unconfirmed')
+    // Why: each read forks a `ps`; backed off, the whole wait costs a few dozen, not 120.
+    expect(mocks.readForeground.mock.calls.length).toBeLessThanOrEqual(20)
+  })
+
+  // Why: #24257's predicate finds an agent behind a wrapper or a command override as another
+  // process; once the agent looks ready that counts as delivered, as before.
+  it('is delivered on another process in front once the agent looks ready', async () => {
+    mocks.readForeground.mockResolvedValue('other')
+    const pending = receipt()
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    await expect(pending).resolves.toBe('delivered')
+  })
+
+  it('does not count another process as the agent having run', async () => {
+    vi.useFakeTimers()
+    let ready: () => void = () => {}
+    mocks.readiness.mockReturnValue(new Promise<void>((resolve) => (ready = resolve)))
+    mocks.readForeground.mockResolvedValueOnce('other').mockResolvedValue('shell')
+    const pending = receipt()
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    await vi.advanceTimersByTimeAsync(300)
+    ready()
+    let settled: string | null = null
+    void pending.then((value) => (settled = value))
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(settled).toBeNull()
   })
 
   it('is unconfirmed when the host cannot tell and no hook turn arrives', async () => {
@@ -207,5 +219,23 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     const pending = receipt()
     mocks.setState({ tabsByWorktree: { 'wt-1': [] } })
     await expect(pending).resolves.toBe('not-delivered')
+  })
+
+  // Why (final review P3-3): the launch seeds Command Code's working row from its own prompt.
+  it('does not take Command Code’s seeded status row as its turn', async () => {
+    vi.useFakeTimers()
+    mocks.readiness.mockReturnValue(new Promise(() => {}))
+    mocks.readForeground.mockResolvedValue('shell')
+    const pending = waitForLaunchPromptReceipt({
+      tabId: 'tab-1',
+      agent: 'command-code',
+      launchedAt: 100
+    })
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    mocks.setState({ agentStatusByPaneKey: { [PANE]: { updatedAt: 150 } } })
+    let settled: string | null = null
+    void pending.then((value) => (settled = value))
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(settled).toBeNull()
   })
 })

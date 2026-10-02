@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { describeLaunchHost, type WindowsPowerShell } from './launch-host'
 import { planLaunchPrompt } from './tui-agent-startup'
+import { windowsLaunchLineVerdict } from './windows-launch-line'
 import type { AgentStartupShell } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
 
@@ -160,6 +161,29 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
     }
   })
 
+  // Why (Windows CI): no QA row carried a non-ASCII prompt into cmd, and the piped-stdin harness
+  // garbles it, so cmd leaves one to main's delivery; PowerShell and Git Bash rows are unchanged.
+  it('leaves a non-ASCII prompt on cmd to main’s delivery', () => {
+    const planned = (shell: AgentStartupShell, paste: 'once-agent-runs' | 'never') =>
+      planLaunchPrompt({
+        agent: 'claude',
+        prompt: '日本語 café',
+        cmdOverrides: {},
+        platform: 'win32',
+        shell,
+        host: windowsHost('pwsh.exe'),
+        paste
+      })?.carry
+    expect(planned('cmd', 'never')).toBe('on-line')
+    expect(planned('cmd', 'once-agent-runs')).toBe('paste-after-ready')
+    expect(windowsLaunchLineVerdict('日本語 café', "claude '日本語 café'", 'cmd', null)).toBe(
+      'uncertain'
+    )
+    expect(windowsLaunchLineVerdict('日本語 café', "claude '日本語 café'", 'posix', null)).toBe(
+      'exact'
+    )
+  })
+
   it('leaves another control byte, never measured, to main’s delivery', () => {
     const planned = (paste: 'once-agent-runs' | 'when-host-proves-agent') =>
       planLaunchPrompt({
@@ -175,16 +199,17 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
     expect(planned('when-host-proves-agent')).toBe('on-line')
   })
 
-  // Why: an AI button's prompt was pasted on main, so only a line measured exact replaces that
-  // paste; measured damage and the unmeasured both keep main's paste.
+  // Why: an AI button's prompt was pasted on main, which ran the action on that paste. A Windows
+  // host cannot prove the agent in front to confirm a carried prompt, so every row keeps the paste,
+  // even one the shell carries exactly (final review P1-1).
   it.each<[AgentStartupShell, Row, 'on-line' | 'paste-after-ready']>([
     ['cmd', 'ml5', 'paste-after-ready'],
-    ['cmd', 'pq', 'on-line'],
-    ['powershell', 'ml5', 'on-line'],
+    ['cmd', 'pq', 'paste-after-ready'],
+    ['powershell', 'ml5', 'paste-after-ready'],
     ['powershell', 'ml9k', 'paste-after-ready'],
     ['powershell', 'pq', 'paste-after-ready'],
-    ['powershell', 'p20k', 'on-line'],
-    ['posix', 'ml9k', 'on-line'],
+    ['powershell', 'p20k', 'paste-after-ready'],
+    ['posix', 'ml9k', 'paste-after-ready'],
     ['posix', 'p20k', 'paste-after-ready']
   ])('an AI button on %s with %s gets %s', (shell, row, expected) => {
     const planned = planLaunchPrompt({

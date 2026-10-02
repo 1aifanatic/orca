@@ -289,7 +289,7 @@ async function deliverAgentStartupToTerminal(
   // live session and submitted. Wait until the agent owns the PTY before writing.
   if (startup.pastePromptAfterReady) {
     const prompt = startup.pastePromptAfterReady
-    // Why: an argv agent's prompt left for paste (a WSL line too long to type, a paired host) waits
+    // Why: an argv agent's prompt left for paste (a paired host's line past its typed budget) waits
     // for the agent's composer and lands as one bracketed paste, not raw keys once the process shows.
     const delivered = agentPromptRidesLaunchCommand(startup.agent)
       ? await pasteDraftToAgentPtyWhenReady({

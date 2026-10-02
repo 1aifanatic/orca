@@ -126,6 +126,35 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
   })
 })
 
+// Why (final review P2-2): main pasted a work item's submitted prompt, so like an AI button its
+// line asks the host to refuse, not type raw, when the host cannot stage it.
+describe('a work item whose prompt rides the launch line', () => {
+  it('asks the host to refuse a line it cannot stage, through to the queued startup', () => {
+    const preparation = buildDirectWorkItemAgentStartupPlan({
+      host: {
+        paired: false,
+        provesAgentInFront: true,
+        takesLaunchFile: true,
+        windowsPaneShell: null
+      },
+      agent: 'codex',
+      draftContent: `Review issue 42\n${'x'.repeat(2_000)}`,
+      promptDelivery: 'submit-after-ready',
+      settings,
+      launchPlatform: 'darwin'
+    })
+    expect(preparation.unstageableLine).toBe('refuse')
+    const opts = buildDirectWorkItemStartupOpts(
+      'codex',
+      preparation.startupPlan,
+      'task_page',
+      undefined,
+      preparation
+    )
+    expect(opts.startup?.unstageableLine).toBe('refuse')
+  })
+})
+
 describe('notifyDirectWorkItemAgentStartTimeout', () => {
   it('toasts the paste hint and records the startup timeout', () => {
     notifyDirectWorkItemAgentStartTimeout('codex', true)

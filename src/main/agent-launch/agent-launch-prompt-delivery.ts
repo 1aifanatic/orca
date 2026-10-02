@@ -13,8 +13,9 @@
  * argv has no readiness race, so it carries the prompt wherever the agent's CLI takes a prompt
  * argument (`agentPromptRidesLaunchCommand`). Where it rides is decided once, where the line is built
  * (`carryLaunchPrompt`): on the line, which the host stages when it is too long or multi-line to
- * type, or in a launch file the line points at. Only a prompt that needs a file an agent is not
- * known to read is left for the paste, and the surface reports that back.
+ * type, or in a launch file the line points at. A prompt the rule leaves for the paste (an agent
+ * not known to read a launch file, or a host that cannot write its staging folder) is pasted, and
+ * the surface reports that back.
  */
 
 import type {

@@ -4,7 +4,7 @@ import { getConnectionId } from '@/lib/connection-context'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
-import type { LaunchFile } from '../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../shared/launch-prompt-file'
 import type {
   AgentSessionLaunchPlan,
   planAgentSessionLaunch
@@ -21,6 +21,7 @@ export type DirectWorkItemAgentLaunchPreparation = {
   startupPlan: ReturnType<typeof buildDirectWorkItemStartup>['startupPlan']
   launchFile?: LaunchFile
   launchPrompt?: string
+  unstageableLine?: UnstageableLine
   promptOnLaunchCommand: boolean
   startupPlanFailed: boolean
   structuredLaunch: boolean
@@ -74,26 +75,32 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
         // Non-critical: activation still has the explicit startup below.
       })
   }
-  const { startupPlan, launchFile, launchPrompt, promptOnLaunchCommand, startupPlanFailed } =
-    buildDirectWorkItemStartup({
-      agent: effectiveAgent,
-      agentArgs: args.agentArgs,
-      draftContent: args.draftContent,
-      promptDelivery: args.promptDelivery,
-      settings: args.settings,
-      launchPlatform: args.launchPlatform,
-      launchConnectionId,
-      worktreePath: args.worktreePath,
-      repoProjectRuntime:
-        launchConnectionId === null
-          ? (getLocalProjectExecutionRuntimeContext(
-              args.latestStore,
-              args.worktreeId,
-              CLIENT_PLATFORM
-            ) ?? args.repoProjectRuntime)
-          : undefined,
-      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(args.latestStore, args.worktreeId)
-    })
+  const {
+    startupPlan,
+    launchFile,
+    launchPrompt,
+    unstageableLine,
+    promptOnLaunchCommand,
+    startupPlanFailed
+  } = buildDirectWorkItemStartup({
+    agent: effectiveAgent,
+    agentArgs: args.agentArgs,
+    draftContent: args.draftContent,
+    promptDelivery: args.promptDelivery,
+    settings: args.settings,
+    launchPlatform: args.launchPlatform,
+    launchConnectionId,
+    worktreePath: args.worktreePath,
+    repoProjectRuntime:
+      launchConnectionId === null
+        ? (getLocalProjectExecutionRuntimeContext(
+            args.latestStore,
+            args.worktreeId,
+            CLIENT_PLATFORM
+          ) ?? args.repoProjectRuntime)
+        : undefined,
+    runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(args.latestStore, args.worktreeId)
+  })
 
   const plan =
     effectiveAgent === null
@@ -114,6 +121,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
     startupPlan,
     ...(launchFile ? { launchFile } : {}),
     ...(launchPrompt ? { launchPrompt } : {}),
+    ...(unstageableLine ? { unstageableLine } : {}),
     promptOnLaunchCommand,
     startupPlanFailed,
     structuredLaunch,

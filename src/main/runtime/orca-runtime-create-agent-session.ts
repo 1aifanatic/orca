@@ -26,7 +26,6 @@ import {
   launchPromptNeedsPasteRefusal,
   windowsDraftRefusal
 } from '../../shared/launch-prompt-carry'
-import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 import { probedThisOrcaLaunchHost } from './this-orca-launch-host'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
@@ -174,10 +173,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       if (request.promptDelivery === 'draft') {
         startup = buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' })
         if (!startup) {
-          const refusal = windowsDraftRefusal(
-            request.prompt ?? '',
-            resolveStartupShell(startupArgs.platform, startupArgs.shell)
-          )
+          const refusal = windowsDraftRefusal(request.agent, startupArgs.platform)
           throw new Error(refusal ?? 'agent_session_identity_required')
         }
       } else {

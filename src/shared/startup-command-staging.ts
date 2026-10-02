@@ -39,9 +39,11 @@ export type StartupCommandStaging = {
   scriptPath?: string
   /** Why staging failed, for the host's log. */
   failure?: string
-  /** The failed write's folder was unusable before it (this host's temp folder, unwritable), which
-   *  the launch's plan also saw, so it chose main's typed line; otherwise the folder looked usable
-   *  (a WSL distro's, found by its probe) and the write still failed. */
+  /** The failed write's folder fails its writable check now (this host's temp folder), so the host
+   *  types the line as main typed it; a plan made in main checked the same folder and planned for
+   *  that. Otherwise the folder looked usable (a WSL distro's found by its probe, or a temp folder
+   *  that passes the check, as when the disk is full) and the write still failed: a race, refused.
+   *  A temp folder that turns unwritable between the plan and the spawn reads as unusable here. */
   folderUnusable?: true
 }
 

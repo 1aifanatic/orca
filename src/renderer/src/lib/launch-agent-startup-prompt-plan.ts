@@ -5,13 +5,15 @@ import {
   type AgentStartupPlan,
   type AgentStartupPlanInputs
 } from '@/lib/tui-agent-startup'
-import type { LaunchFile } from '../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../shared/launch-prompt-file'
 import type { LaunchHost } from '../../../shared/launch-host'
 
 export type LaunchAgentStartupPromptPlan = {
   startupPlan: AgentStartupPlan | null
   /** Written by the host before it types the launch line naming it. */
   launchFile?: LaunchFile
+  /** The rule's wish for a line the host cannot stage, sent with the spawn. */
+  unstageableLine?: UnstageableLine
   /** Text to paste once the TUI is ready; null when the launch command already carries it. */
   pasteDraftAfterLaunch: string | null
   submitPastedPrompt: boolean
@@ -84,8 +86,14 @@ export function planLaunchAgentStartupPrompt(args: {
   }
   switch (planned.carry) {
     case 'none':
-    case 'on-line':
       return { startupPlan: planned.plan, pasteDraftAfterLaunch: null, submitPastedPrompt: false }
+    case 'on-line':
+      return {
+        startupPlan: planned.plan,
+        ...(planned.unstageableLine ? { unstageableLine: planned.unstageableLine } : {}),
+        pasteDraftAfterLaunch: null,
+        submitPastedPrompt: false
+      }
     case 'launch-file':
       return {
         startupPlan: planned.plan,

@@ -67,11 +67,20 @@ function shellVerdict(line: string, shell: AgentStartupShell): WindowsLineVerdic
     }
     return bytes >= WINDOWS_POWERSHELL_MULTI_LINE_DAMAGED_BYTES ? 'damaged' : 'uncertain'
   }
-  // Git Bash (and a WSL shell): POSIX quoting arrived whole.
+  // Git Bash: POSIX quoting arrived whole. A WSL pane never reaches this check.
   if (line.length <= WINDOWS_POSIX_LINE_EXACT_MAX_CHARS) {
     return 'exact'
   }
   return line.length >= WINDOWS_POSIX_LINE_DAMAGED_CHARS ? 'damaged' : 'uncertain'
+}
+
+function hasNonAscii(line: string): boolean {
+  for (let i = 0; i < line.length; i += 1) {
+    if (line.charCodeAt(i) > 0x7f) {
+      return true
+    }
+  }
+  return false
 }
 
 function withUnmeasuredKeys(verdict: WindowsLineVerdict, unmeasured: boolean): WindowsLineVerdict {
@@ -82,7 +91,7 @@ export function windowsLaunchLineVerdict(
   prompt: string,
   line: string,
   shell: AgentStartupShell,
-  /** The PowerShell the pane is spawned as (`LaunchHost.windowsPowerShell`), when known. */
+  /** The PowerShell the pane is spawned as (from `LaunchHost.windowsPaneShell`), when known. */
   windowsPowerShell: WindowsPowerShell | null
 ): WindowsLineVerdict {
   const keys = keyBytes(line)
@@ -91,7 +100,10 @@ export function windowsLaunchLineVerdict(
   if (keys.tabOrReturn && shell !== 'powershell') {
     return 'damaged'
   }
-  const verdict = withUnmeasuredKeys(shellVerdict(line, shell), keys.unmeasured)
+  // Not measured: a non-ASCII prompt typed into cmd (Orca's cmd panes run `chcp 65001`, as main's
+  // do, but no QA row carried one), so main's delivery decides.
+  const unmeasured = keys.unmeasured || (shell === 'cmd' && hasNonAscii(line))
+  const verdict = withUnmeasuredKeys(shellVerdict(line, shell), unmeasured)
   const legacyArgsDamage = prompt.includes('"') || prompt.endsWith('\\')
   if (shell === 'cmd' || !launchesThroughCmdShim(line)) {
     if (shell !== 'powershell' || verdict !== 'exact' || !legacyArgsDamage) {

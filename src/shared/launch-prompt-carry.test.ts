@@ -131,10 +131,11 @@ describe('a host that types the line raw', () => {
     expect(plan('gemini', prompt, { platform: 'win32', shell: 'cmd' })?.carry).toBe('on-line')
   })
 
-  // Why: main pastes an AI button's or notes send's prompt once the agent runs, so the agent's
-  // history shows the user's text; a pointer replaces only a line main would type damaged.
+  // Why: main pastes an AI button's or notes send's prompt once the agent runs, and runs the action
+  // on that paste; a Windows host cannot prove the agent in front to confirm a carried prompt, so
+  // even a short exact line is pasted there (final review P1-1).
   it.each<TuiAgent>(['claude', 'codex'])(
-    'pastes what a Windows line cannot carry for a caller whose paste main used, for %s',
+    'pastes every prompt on a Windows host for a caller whose paste main used, for %s',
     (agent) => {
       const paste = 'once-agent-runs' as const
       const multiLine = 'fix the build\nthen run the tests'
@@ -145,8 +146,10 @@ describe('a host that types the line raw', () => {
         'paste-after-ready'
       )
       expect(plan(agent, 'fix it', { platform: 'win32', shell: 'cmd', paste })?.carry).toBe(
-        'on-line'
+        'paste-after-ready'
       )
+      // A host that proves the agent keeps the exact line for the same caller.
+      expect(plan(agent, 'fix it', { platform: 'darwin', paste })?.carry).toBe('on-line')
       const typed = plan(agent, multiLine, { platform: 'win32', shell: 'cmd' })
       expect(typed?.carry).toBe('launch-file')
     }

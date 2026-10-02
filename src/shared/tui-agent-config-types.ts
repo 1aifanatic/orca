@@ -36,7 +36,7 @@ export type TuiAgentConfig = {
    *  following positional prompt as a second directory. */
   launchFileDirectoryFlag?: '--add-dir'
   /** Measured reading its launch file (through `launchFileDirectoryFlag` when set) without asking.
-   *  Any other agent keeps the paste after ready for a prompt that would need one. */
+   *  Any other agent gets the caller's paste for a prompt that would need one, or else the line. */
   readsLaunchFile?: boolean
   /** Native CLI flag that seeds the input without submitting (e.g. Claude's `--prefill <text>`); preferred over the paste-after-ready path. */
   draftPromptFlag?: string

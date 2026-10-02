@@ -27,13 +27,13 @@ vi.mock('@/lib/telemetry', () => ({ track: vi.fn(), tuiAgentToAgentKind: vi.fn()
 
 import { deliverNewTabLaunchPrompt } from './launch-agent-new-tab-prompt-delivery'
 
-function deliver() {
+function deliver(promptDelivery: 'submit-after-ready' | 'auto-submit' = 'submit-after-ready') {
   return deliverNewTabLaunchPrompt({
     worktreeId: 'wt-1',
     tabId: 'tab-1',
     agent: 'claude',
     prompt: 'fix the failing checks',
-    promptDelivery: 'submit-after-ready',
+    promptDelivery,
     pasteDraftAfterLaunch: null,
     submitPastedPrompt: false,
     promptInLaunchFile: false,
@@ -63,5 +63,20 @@ describe('the notice for a prompt the launch line carried', () => {
     await expect(deliver()).resolves.toMatchObject({ delivered: false })
     expect(mocks.notDelivered).toHaveBeenCalled()
     expect(mocks.exited).not.toHaveBeenCalled()
+  })
+
+  // Why (final review P1-1): main reported nothing for a launch nothing waits on, and a Windows host
+  // without hooks can never confirm one, so that notice would follow every such launch.
+  it('stays silent for an unconfirmed prompt nothing waits on, and says so when an action waits', async () => {
+    mocks.receipt.mockResolvedValue('unconfirmed')
+    deliver('auto-submit')
+    await vi.waitFor(() => expect(mocks.receipt).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(mocks.unconfirmed).not.toHaveBeenCalled()
+    await expect(deliver('submit-after-ready')).resolves.toEqual({
+      delivered: false,
+      failureNotified: true
+    })
+    expect(mocks.unconfirmed).toHaveBeenCalledTimes(1)
   })
 })

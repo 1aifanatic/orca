@@ -3,45 +3,27 @@ import {
   MAX_LINE_PROMPT_BYTES,
   carryInLaunchFile,
   launchFileDirectoryPlaceholder,
-  type LaunchFile
+  type LaunchFile,
+  type UnstageableLine
 } from './launch-prompt-file'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import {
-  isPosixStartupShell,
   quoteStartupArg,
   resolveStartupShell,
   type AgentStartupShell
 } from './tui-agent-startup-shell'
-import { hasControlByte, typedStartupLineFits } from './typed-startup-line'
+import { typedStartupLineFits } from './typed-startup-line'
 import type { TuiAgent } from './tui-agent'
 import type { LaunchHost } from './launch-host'
 import { windowsLaunchLineVerdict } from './windows-launch-line'
 
-/**
- * Whether a Windows shell would damage `prompt` as one quoted argument. No quoting keeps a control
- * byte literal: cmd types the line and a line break submits it early. PowerShell runs a short line
- * from its argv, so its damage is the hand-off to the agent (measured): legacy argument passing (5.1
- * always, 7.x into a `.cmd` shim) splits at an inner `"` and turns a trailing `\` into `"`, and a
- * shim's cmd.exe expands `%NAME%`; a lone `%` stays literal.
- */
-export function windowsShellDamagesPrompt(prompt: string, shell: AgentStartupShell): boolean {
-  if (isPosixStartupShell(shell)) {
-    return false
-  }
-  return (
-    hasControlByte(prompt) ||
-    (shell === 'powershell' &&
-      (prompt.includes('"') || /%[^%]+%/.test(prompt) || prompt.endsWith('\\')))
-  )
-}
-
-/** Why a prefill draft could not be launched, in the user's words, when the Windows shell is why. */
-export function windowsDraftRefusal(draft: string, shell: AgentStartupShell): string | null {
-  return windowsShellDamagesPrompt(draft.trim(), shell)
-    ? "The host's Windows shell would break this draft on the agent's command line (it has a line " +
-        'break or other control character, or on PowerShell a double quote, a %NAME% pair or a ' +
-        'trailing backslash), so the agent was not started. Start it without the draft and paste ' +
-        'the draft once it opens.'
+/** Why a prefill draft could not be launched, in the user's words: on a Windows host the only
+ *  reason a flag-prefilled draft builds no line is the shell's measured damage
+ *  (`windowsLaunchLineVerdict`) or the line's length. */
+export function windowsDraftRefusal(agent: TuiAgent, platform: NodeJS.Platform): string | null {
+  return platform === 'win32' && TUI_AGENT_CONFIG[agent].draftPromptFlag
+    ? "The host's Windows shell would break this draft on the agent's command line, so the agent " +
+        'was not started. Start it without the draft and paste the draft once it opens.'
     : null
 }
 
@@ -51,7 +33,12 @@ export function windowsDraftRefusal(draft: string, shell: AgentStartupShell): st
  */
 export type LaunchPromptPlan<P> =
   | { carry: 'none'; plan: P }
-  | { carry: 'on-line'; plan: P }
+  | {
+      carry: 'on-line'
+      plan: P
+      /** Sent with the spawn: the line is refused, not typed raw, if the host cannot stage it. */
+      unstageableLine?: UnstageableLine
+    }
   | { carry: 'launch-file'; plan: P; launchFile: LaunchFile }
   | { carry: 'paste-after-ready'; cleanPlan: P; text: string }
 
@@ -65,9 +52,8 @@ export function launchPromptNeedsPasteRefusal(
   return TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'
     ? `${agent} takes its prompt only after it starts, so no ${created} was created. Start the ` +
         'agent and paste the prompt once it opens.'
-    : `${agent} cannot take this prompt on its command line here (too long, or broken by the ` +
-        `host's Windows shell), so no ${created} was created. Start the agent without it and ` +
-        'paste the prompt once it opens.'
+    : `${agent} cannot take this prompt on its command line here (it is too long for it), so no ` +
+        `${created} was created. Start the agent without it and paste the prompt once it opens.`
 }
 
 /**
@@ -93,14 +79,16 @@ export type CarriedPlanArgs = {
   paste: LaunchPromptPaste
 }
 
-export function agentReadsLaunchFile(agent: TuiAgent): boolean {
+function agentReadsLaunchFile(agent: TuiAgent): boolean {
   return TUI_AGENT_CONFIG[agent].readsLaunchFile === true
 }
 
 const utf8 = new TextEncoder()
 
 /**
- * The one carry rule. The prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
+ * The one carry rule. A caller that acts once its prompt is sent, on a host that cannot prove the
+ * agent is in front (Windows), gets main's paste: nothing there could confirm a carried prompt.
+ * Otherwise the prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
  * stages it when it is long or multi-line, and a Windows host types it when its shell was measured
  * carrying such a line exactly (`windowsLaunchLineVerdict`); an unmeasured one does what main does
  * on the caller's path. When the line cannot (past the argv ceiling, measured damaged by a Windows
@@ -133,12 +121,24 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (mode === 'stdin-after-start') {
     return pasteAfterReady()
   }
+  // Why: a host that cannot prove the agent is in front cannot confirm a carried prompt either, so
+  // a caller that acts once its prompt is sent (AI buttons, notes) gets main's paste and its verdict.
+  if (args.paste === 'once-agent-runs' && !args.host.provesAgentInFront) {
+    return pasteAfterReady()
+  }
+  // Why from the caller's paste: main pasted this caller's prompts, so a line the host cannot stage
+  // is refused with the prompt to copy rather than typed raw.
+  const onLine = (plan: P): LaunchPromptPlan<P> => ({
+    carry: 'on-line',
+    plan,
+    ...(args.paste === 'once-agent-runs' ? { unstageableLine: 'refuse' as const } : {})
+  })
   const pasteReachesAgent =
     args.paste === 'once-agent-runs' ||
     (args.paste === 'when-host-proves-agent' && args.host.provesAgentInFront)
   const lineOrPaste = (): LaunchPromptPlan<P> | null => {
     const plan = pasteReachesAgent ? null : buildLine(args)
-    return plan ? { carry: 'on-line', plan } : pasteAfterReady()
+    return plan ? onLine(plan) : pasteAfterReady()
   }
   const viaLaunchFile = (): LaunchPromptPlan<P> | null => {
     // Why paste first: main pastes this caller's prompts, so the agent gets the user's text; a
@@ -168,7 +168,7 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   }
   // Hermes's line never holds the text.
   if (readsEnv) {
-    return { carry: 'on-line', plan }
+    return onLine(plan)
   }
   const paneShell = args.host.windowsPaneShell
   // Why not for a WSL pane: it runs the distro's POSIX shell, which the host stages into.
@@ -192,7 +192,7 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (windowsLine === 'uncertain' && args.paste === 'once-agent-runs') {
     return pasteAfterReady()
   }
-  return { carry: 'on-line', plan }
+  return onLine(plan)
 }
 
 /** The host writes the path inside this line's quoting, so the file carries which one it is. */

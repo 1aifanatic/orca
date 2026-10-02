@@ -127,8 +127,8 @@ describePosix('daemon startup command staging', () => {
     )
   })
 
-  // Why (stack QA 2a): the plan saw the same unusable folder and chose main's delivery, the line
-  // typed as is; refusing it made a 5-line prompt worse than main.
+  // Why (stack QA 2a): main's delivery for an unusable folder is the line typed as is; refusing it
+  // made a 5-line prompt worse than main.
   it('types an agent line as is when the temp folder is unusable', async () => {
     vi.stubEnv('TMPDIR', join(tempDir, 'missing'))
     const command = `claude 'one\ntwo'`

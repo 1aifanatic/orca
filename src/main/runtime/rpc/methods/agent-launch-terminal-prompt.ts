@@ -9,8 +9,9 @@
  *
  * This is the half the launch command cannot serve. An argv agent's prompt rides that command, on
  * the line or in a launch file (`carryLaunchPrompt`), so no readiness race exists for it. What
- * reaches here is a `stdin-after-start` agent, whose CLI accepts no such argument; a prompt that
- * needs a launch file its agent is not known to read; and a reused terminal, whose process was
+ * reaches here is a `stdin-after-start` agent, whose CLI accepts no such argument; a prompt the rule
+ * leaves for the paste (an agent not known to read a launch file, or a host that cannot write its
+ * staging folder); and a reused terminal, whose process was
  * already running before this launch existed. Readiness is `waitForLaunchedAgentComposer`, the one
  * the worker start uses.
  *

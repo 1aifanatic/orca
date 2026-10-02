@@ -26,8 +26,8 @@ export type AgentLaunchSurfaceFactory = {
     agent: TuiAgent
     options?: Readonly<Record<string, unknown>>
     /** Offered only for an agent whose CLI takes the prompt on argv. It rides the launch command
-     *  unless it needs a launch file the agent is not known to read; `promptRodeLaunchCommand`
-     *  reports which happened. */
+     *  unless `carryLaunchPrompt` leaves it for the paste; `promptRodeLaunchCommand` reports which
+     *  happened. */
     startupPrompt?: string
     /** Replaces the settings default for this launch only; `null` means no arguments at all. */
     agentArgs?: string | null
@@ -60,8 +60,8 @@ export type AgentLaunchSurfaceFactory = {
    * Writes the launch text into a terminal agent's live PTY, answering whether it landed.
    *
    * The other half of `startupPrompt`, for the cases the launch command cannot serve: a
-   * `stdin-after-start` agent, whose CLI takes no prompt argument; a prompt needing a launch file
-   * the agent is not known to read; and a reused terminal, whose process was already running before this launch existed. `false` for every failure, on the same rule the structured
+   * `stdin-after-start` agent, whose CLI takes no prompt argument; a prompt `carryLaunchPrompt`
+   * leaves for the paste; and a reused terminal, whose process was already running before this launch existed. `false` for every failure, on the same rule the structured
    * twin follows — a launch whose agent is running must not fail because its text did not land.
    */
   deliverTerminalPrompt?(args: {
