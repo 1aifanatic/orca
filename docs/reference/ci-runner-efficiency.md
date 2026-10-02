@@ -1290,6 +1290,30 @@ a packet during the drain, a missing peer factory or local description, a broken
 packet counter and a hung renderer. The original assertions and deadlines caught
 each fault. The normal package gate runs the uninstrumented fixture.
 
+## Remote resync fixture: keep coalesced frames in one decoder pass
+
+The first [full PR run](https://github.com/stablyai/orca/actions/runs/36971375340)
+passed both package jobs but failed one remote-workspace ordering assertion:
+it observed revisions `[2, 3]` where the fixture expected `[3]`. The decoder can
+yield between two frames after its four-millisecond work budget. Under slow
+scheduling, the first response's promise can publish revision 2 before the
+second frame's revision 3 notification is dispatched.
+
+The fixture now holds its delivery clock at the actual timestamp from multiplexer
+construction through the first coalesced-buffer delivery, following the existing
+decoder test pattern. It restores the clock before asynchronous assertions and
+again before disposal. All four source/order cases retain their exact cache,
+publication, client-identity and follow-up-read assertions. Production decoding,
+its fairness budget and remote messages are unchanged.
+
+Normal focused runs passed all 18 tests. Advancing the clock by four milliseconds
+per call reproduced `[2, 3]` in both original response-first cases; the fixed
+fixture passed all 18 under the same control. Removing the freeze reproduced both
+failures. Bypassing the production read-safety guard still caused `[3, 2]` rollback
+in all four ordering cases and eight failing tests overall. All controls preserved
+the same 18 test identities. This corrects a reproducible fixture assumption;
+one CI failure does not establish a failure-rate reduction.
+
 ## Windows server cache metadata: retain the current key
 
 The bounded 50-head main sample ending at 8ff6296 contained no root package
