@@ -192,7 +192,8 @@ export function installMainWindowFocusLifecycle(args: {
       return
     }
     const launchFailed = details.reason === 'launch-failed'
-    const launchRetryDelayMs = launchFailed ? launchFailureBackoff.nextDelayMs() : null
+    const useLaunchBackoff = launchFailed && process.platform !== 'win32'
+    const launchRetryDelayMs = useLaunchBackoff ? launchFailureBackoff.nextDelayMs() : null
     const goneAt = Date.now()
     // Why read at gone time: the sampler's next tick would see commit the corpse just released.
     const lowCommit = lowCommitOomGate.assess(details, goneAt)
@@ -220,7 +221,7 @@ export function installMainWindowFocusLifecycle(args: {
         return
       }
       // Why outside the breaker: a refused spawn is not a crash loop; its own bounded backoff owns the budget.
-      if (launchFailed) {
+      if (useLaunchBackoff) {
         const subject = { details, recentRecoveryCount: launchFailureBackoff.attempts() }
         if (launchRetryDelayMs === null) {
           recoveryReloadWatchdog.escalate(subject, 'launch-failed')
@@ -236,7 +237,7 @@ export function installMainWindowFocusLifecycle(args: {
         // recovery reload too — unwatched, one that stalls leaves a blank window and no further prompt.
         recoveryReloadWatchdog.escalate(
           { details, recentRecoveryCount: recovery.recentRecoveryCount },
-          'crash-loop'
+          launchFailed ? 'launch-failed' : 'crash-loop'
         )
         return
       }

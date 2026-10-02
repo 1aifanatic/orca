@@ -101,7 +101,7 @@ function describeLaunchFailure(
   )
   const retried = translateMain(
     'rendererRecovery.launchFailedDetail',
-    'Orca retried {{recoveryCount}} times over about two minutes.',
+    'Orca retried {{recoveryCount}} times without success.',
     { recoveryCount: attempts }
   )
   const cause =

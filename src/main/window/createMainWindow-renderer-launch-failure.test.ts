@@ -24,7 +24,11 @@ vi.mock('../browser/browser-client-page-renderer-runtime', async () => {
 import { createMainWindow } from './createMainWindow'
 import type { CreateMainWindowOptions } from './main-window-contracts'
 import { shouldRecoverRendererAfterProcessGone } from '../crash-reporting/process-gone-classification'
-import { browserWindowMock, resetMainWindowMocks } from './createMainWindow-test-harness'
+import {
+  browserWindowMock,
+  resetMainWindowMocks,
+  withPlatform
+} from './createMainWindow-test-harness'
 import { RENDERER_LAUNCH_FAILURE_RETRY_DELAYS_MS } from './renderer-launch-failure-backoff'
 
 // macOS LAUNCH_RESULT_FAILURE: posix_spawn of the Renderer helper failed (field: EAGAIN, per-user process limit).
@@ -35,7 +39,7 @@ const CRASHED: Electron.RenderProcessGoneDetails = { reason: 'crashed', exitCode
  * Field shape (v1.4.218, bundle F0C6NHQF4C8): while the OS refuses spawns, every load emits launch-failed and then
  * rejects ERR_FAILED within ~10ms, before any did-finish-load. Once headroom returns the same webContents loads.
  */
-function createSpawnRefusingWindow() {
+function createSpawnRefusingWindow(platform: NodeJS.Platform = 'darwin') {
   const handlers: Record<string, (...args: any[]) => void> = {}
   const spawn = { refused: true }
   const webContents = {
@@ -56,7 +60,9 @@ function createSpawnRefusingWindow() {
       queueMicrotask(() => handlers['did-finish-load']?.())
       return Promise.resolve()
     }
-    queueMicrotask(() => handlers['render-process-gone']?.({}, LAUNCH_FAILED))
+    queueMicrotask(() =>
+      withPlatform(platform, () => handlers['render-process-gone']?.({}, LAUNCH_FAILED))
+    )
     return Promise.reject(
       new Error("ERR_FAILED (-2) loading 'file:///opt/orca/renderer/index.html'")
     )
@@ -201,6 +207,17 @@ describe('renderer launch-failed recovery', () => {
     await vi.advanceTimersByTimeAsync(999)
     expect(load).toHaveBeenCalledTimes(2)
     expect(onRendererRecoveryExhausted).not.toHaveBeenCalled()
+  })
+
+  it('keeps Windows launch failures on the short recovery schedule', async () => {
+    const { load } = createSpawnRefusingWindow('win32')
+    const { onRendererRecoveryExhausted } = open()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(load).toHaveBeenCalledTimes(4)
+    expect(onRendererRecoveryExhausted).toHaveBeenCalledOnce()
+    expect(onRendererRecoveryExhausted).toHaveBeenCalledWith(
+      expect.objectContaining({ cause: 'launch-failed', recentRecoveryCount: 3 })
+    )
   })
 
   it('keeps the crash-loop breaker for renderers that actually crash', async () => {

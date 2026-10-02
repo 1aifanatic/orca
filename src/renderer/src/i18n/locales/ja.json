@@ -18511,7 +18511,7 @@
     "crashLoopMessage": "アプリウィンドウが繰り返しクラッシュし、自動的にリロードされなくなりました。",
     "tryAgain": "再試行",
     "launchFailedMessage": "Orca はウィンドウを描画するプロセスを起動できませんでした。",
-    "launchFailedDetail": "Orca は約 2 分間に {{recoveryCount}} 回再試行しました。",
+    "launchFailedDetail": "Orca は {{recoveryCount}} 回再試行しましたが、成功しませんでした。",
     "processLimitDetail": "ユーザーアカウントのプロセス数が上限に達したため、システムが新しいプロセスの作成を拒否しました。暴走したターミナル、開発サーバー、Agent が原因であることがよくあります。いくつか終了してから「再試行」をクリックしてください。",
     "launchFailedGenericDetail": "システムが起動を拒否しました。メモリを空けるか他のアプリを終了してから「再試行」をクリックしてください。繰り返し発生する場合は Orca を再インストールしてください。"
   },
