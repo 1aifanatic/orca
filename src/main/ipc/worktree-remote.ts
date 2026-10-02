@@ -2,6 +2,7 @@
 // Why: worktree create helpers (local + remote) split out of worktrees.ts; the cohesive create flow runs this file just over the per-file line limit.
 
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
+import { wslDistroForCommand } from '../git/command-runner/git-command-resolution'
 import { getRepoHostedReviewExecutionHostId } from '../source-control/hosted-review-execution-host'
 import type { BrowserWindow } from 'electron'
 import { posix, win32 } from 'node:path'
@@ -1968,7 +1969,8 @@ export async function createRemoteWorktree(
     ) {
       // Why: only OLD relays (pre-allowlist-removal) throw these; surface an upgrade message. Remove after version floor moves (docs/relay-fs-allowlist-removal.md).
       throw new Error(
-        `Older relay reported an authorization error; please reconnect to deploy the latest relay. (${err.message})`
+        `Older relay reported an authorization error; please reconnect to deploy the latest relay. (${err.message})`,
+        { cause: err }
       )
     }
     throw err
@@ -2214,7 +2216,10 @@ async function performLocalWorktreeCreate(
   )
   const localGitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const localWorktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
-  timing.recordExecutionHost(localWorktreeGitOptions.wslDistro ? 'wsl' : 'local')
+  // Why the routing rule: a \\wsl.localhost repo runs Git in WSL even without a WSL project runtime.
+  timing.recordExecutionHost(
+    wslDistroForCommand(localGitExecOptions.cwd, localGitExecOptions.wslDistro) ? 'wsl' : 'local'
+  )
   const hasLocalWorktreeGitOptions = Object.keys(localWorktreeGitOptions).length > 0
   const localWorktreeGitOptionArgs: [] | [{ wslDistro?: string }] = hasLocalWorktreeGitOptions
     ? [localWorktreeGitOptions]

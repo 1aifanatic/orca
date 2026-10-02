@@ -23,7 +23,7 @@ import {
   createLocalWorktree,
   notifyWorktreesChanged
 } from '../../worktree-remote'
-import { track } from '../../../telemetry/client'
+import { isTelemetryEnabled, track } from '../../../telemetry/client'
 import { classifyWorkspaceCreateError } from '../../workspace-create-error-classifier'
 import { getCohortAtEmit } from '../../../telemetry/cohort-classifier'
 import { adoptProvisionedRootSshCheckout } from '../../../provisioned-root-ssh-adoption'
@@ -52,9 +52,10 @@ async function trackWorkspaceCreated(
     track('workspace_created', props)
     return
   }
-  // SSH would need a remote round trip, so only local and WSL repos are probed.
+  // SSH would need a remote round trip, so only local and WSL repos are probed; with telemetry
+  // off the repo's .git is not read at all.
   const postCheckoutHook =
-    timing.executionHost === 'local' || timing.executionHost === 'wsl'
+    isTelemetryEnabled() && (timing.executionHost === 'local' || timing.executionHost === 'wsl')
       ? await probePostCheckoutHookPresence(repoPath)
       : undefined
   track('workspace_created', {
@@ -124,7 +125,7 @@ export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): voi
             error_class: classifyWorkspaceCreateError(error),
             ...getCohortAtEmit(),
             ...(concurrentCreates !== undefined
-              ? workspaceCreateFailureFields(timing, { concurrentCreates })
+              ? workspaceCreateFailureFields(timing, { concurrentCreates, error })
               : {})
           })
           throw error

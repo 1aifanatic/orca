@@ -86,11 +86,11 @@ export function workspaceCreateTimingFields(
 /** Event fields for a failed create: where it died and how long it had run. */
 export function workspaceCreateFailureFields(
   recorder: Pick<WorktreeCreateTimingRecorder, 'failedPhase' | 'finish'>,
-  context: { concurrentCreates: number }
+  context: { concurrentCreates: number; error: unknown }
 ): WorkspaceCreateFailureFields {
   const timing = recorder.finish()
   return {
-    failed_phase: recorder.failedPhase() ?? 'untimed',
+    failed_phase: recorder.failedPhase(context.error) ?? 'untimed',
     total_ms: Math.round(timing.totalDurationMs),
     ...(timing.executionHost ? { execution_host: timing.executionHost } : {}),
     concurrent_creates: context.concurrentCreates

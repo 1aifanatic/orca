@@ -90,14 +90,14 @@ describe('workspaceCreateFailureFields', () => {
     let now = 0
     const recorder = createWorktreeCreateTimingRecorder(() => now)
     recorder.recordExecutionHost('ssh')
-    await recorder
+    const error = await recorder
       .time('git_worktree_add', async () => {
         now = 4_200
         throw new Error('fatal: could not create work tree dir /Users/alice/x')
       })
-      .catch(() => undefined)
+      .catch((caught: unknown) => caught)
 
-    const fields = workspaceCreateFailureFields(recorder, { concurrentCreates: 3 })
+    const fields = workspaceCreateFailureFields(recorder, { concurrentCreates: 3, error })
 
     expect(fields).toEqual({
       failed_phase: 'git_worktree_add',
@@ -116,9 +116,10 @@ describe('workspaceCreateFailureFields', () => {
 
   it('reports untimed when the create failed outside every phase', () => {
     const recorder = createWorktreeCreateTimingRecorder(() => 0)
-    expect(workspaceCreateFailureFields(recorder, { concurrentCreates: 0 }).failed_phase).toBe(
-      'untimed'
-    )
+    expect(
+      workspaceCreateFailureFields(recorder, { concurrentCreates: 0, error: new Error('x') })
+        .failed_phase
+    ).toBe('untimed')
   })
 })
 

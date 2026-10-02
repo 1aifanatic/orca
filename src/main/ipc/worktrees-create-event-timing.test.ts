@@ -4,13 +4,15 @@ import {
   getActiveMultiplexerMock,
   getSshGitProviderMock,
   gitExecFileAsyncMock,
-  listWorktreesMock
+  listWorktreesMock,
+  setPlatform
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 
-const { trackMock, probeHookMock } = vi.hoisted(() => ({
+const { trackMock, probeHookMock, telemetryEnabledMock } = vi.hoisted(() => ({
   trackMock: vi.fn<(name: string, props: Record<string, unknown>) => void>(),
-  probeHookMock: vi.fn()
+  probeHookMock: vi.fn(),
+  telemetryEnabledMock: vi.fn(() => true)
 }))
 
 vi.mock('electron', async () =>
@@ -95,7 +97,10 @@ vi.mock('../runtime/worktree-teardown', async () =>
 )
 vi.mock('./pty', async () => (await import('./worktrees-test-module-mocks')).ptyModuleMock())
 
-vi.mock('../telemetry/client', () => ({ track: trackMock }))
+vi.mock('../telemetry/client', () => ({
+  track: trackMock,
+  isTelemetryEnabled: telemetryEnabledMock
+}))
 vi.mock('../git/post-checkout-hook-presence', () => ({
   probePostCheckoutHookPresence: probeHookMock
 }))
@@ -147,6 +152,8 @@ describe('worktrees:create event timing fields', () => {
     setupWorktreeHandlers()
     trackMock.mockReset()
     probeHookMock.mockReset()
+    telemetryEnabledMock.mockReset()
+    telemetryEnabledMock.mockReturnValue(true)
   })
 
   it('sends timing after the create returns, without any further git work', async () => {
@@ -185,6 +192,36 @@ describe('worktrees:create event timing fields', () => {
     // Nothing that names the repo, the branch or a path rides along.
     expect(JSON.stringify(props)).not.toMatch(/workspace|wt|repo-1/)
   })
+
+  it('does not read the repo for hooks when telemetry is off', async () => {
+    useRepo(makeRepo({}))
+    useLocalListing()
+    telemetryEnabledMock.mockReturnValue(false)
+
+    await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+    await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
+
+    expect(probeHookMock).not.toHaveBeenCalled()
+    expect(trackedEvent('workspace_created')).not.toHaveProperty('post_checkout_hook')
+  })
+
+  it.each([
+    { repoPath: '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo', host: 'wsl' },
+    { repoPath: '/workspace/repo', host: 'local' }
+  ])(
+    'labels $repoPath as $host from where Git runs, with no WSL project runtime',
+    async ({ repoPath, host }) => {
+      setPlatform('win32')
+      useRepo(makeRepo({ path: repoPath }))
+      useLocalListing()
+      probeHookMock.mockResolvedValue('absent')
+
+      await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+      await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
+
+      expect(trackedEvent('workspace_created')).toMatchObject({ execution_host: host })
+    }
+  )
 
   it('records an SSH create without probing the remote for hooks', async () => {
     useRepo(makeRepo({ path: '/remote/repo', executionHostId: 'ssh:target-a' }))

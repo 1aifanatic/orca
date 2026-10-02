@@ -8,14 +8,16 @@ import type { WorktreeCreatePhase } from '../shared/worktree/create-timing-vocab
 
 type TimingClock = () => number
 
+const MAX_CAUSE_DEPTH = 5
+
 export type WorktreeCreateTimingRecorder = {
   time<T>(phase: WorktreeCreatePhase, operation: () => Promise<T>): Promise<T>
   timeSync<T>(phase: WorktreeCreatePhase, operation: () => T): T
   recordPreparedCheckout(outcome: PreparedCheckoutOutcome): void
   recordExecutionHost(host: WorktreeCreateExecutionHost): void
   recordWorktreeCount(count: number): void
-  /** The phase a failed create died in; undefined when it failed outside every timed phase. */
-  failedPhase(): WorktreeCreatePhase | undefined
+  /** The outermost phase this error (or one in its cause chain) propagated out of; undefined when none did. */
+  failedPhase(error: unknown): WorktreeCreatePhase | undefined
   finish(): WorktreeCreateTiming
 }
 
@@ -48,52 +50,39 @@ export function createWorktreeCreateTimingRecorder(
   let preparedCheckout: PreparedCheckoutOutcome | undefined
   let executionHost: WorktreeCreateExecutionHost | undefined
   let worktreeCount: number | undefined
-  // Sequence numbers order phase starts against failures without trusting clock resolution.
-  let sequence = 0
-  let failure: { phase: WorktreeCreatePhase; sequence: number } | undefined
+  // Keyed by the thrown value, so a caught failure or a concurrent sibling cannot be misattributed.
+  const phaseByError = new WeakMap<object, WorktreeCreatePhase>()
 
   const recordPhase = (phase: WorktreeCreatePhase, operationStartedAt: number): void => {
     phases.push(createPhase(phase, operationStartedAt, clock(), startedAt))
   }
-  const beginPhase = (): number => {
-    // A new phase starting means any earlier failure was caught and the create moved on.
-    failure = undefined
-    return ++sequence
-  }
-  const endPhase = (phase: WorktreeCreatePhase, phaseSequence: number, threw: boolean): void => {
-    if (threw) {
-      // An enclosing phase that rethrows is the more accurate place to name than its inner step.
-      failure = { phase, sequence: ++sequence }
-    } else if (failure && phaseSequence < failure.sequence) {
-      // An enclosing phase that survived an inner failure (e.g. a prepared-checkout fallback).
-      failure = undefined
+  const recordFailure = (phase: WorktreeCreatePhase, error: unknown): void => {
+    // Outer phases settle after inner ones, so overwriting leaves the outermost that rethrew.
+    if (typeof error === 'object' && error !== null) {
+      phaseByError.set(error, phase)
     }
   }
 
   return {
     async time<T>(phase: WorktreeCreatePhase, operation: () => Promise<T>): Promise<T> {
       const operationStartedAt = clock()
-      const phaseSequence = beginPhase()
-      let threw = true
       try {
-        const result = await operation()
-        threw = false
-        return result
+        return await operation()
+      } catch (error) {
+        recordFailure(phase, error)
+        throw error
       } finally {
-        endPhase(phase, phaseSequence, threw)
         recordPhase(phase, operationStartedAt)
       }
     },
     timeSync<T>(phase: WorktreeCreatePhase, operation: () => T): T {
       const operationStartedAt = clock()
-      const phaseSequence = beginPhase()
-      let threw = true
       try {
-        const result = operation()
-        threw = false
-        return result
+        return operation()
+      } catch (error) {
+        recordFailure(phase, error)
+        throw error
       } finally {
-        endPhase(phase, phaseSequence, threw)
         recordPhase(phase, operationStartedAt)
       }
     },
@@ -106,8 +95,20 @@ export function createWorktreeCreateTimingRecorder(
     recordWorktreeCount(count: number): void {
       worktreeCount = count
     },
-    failedPhase() {
-      return failure?.phase
+    failedPhase(error: unknown) {
+      // Bounded so a cyclic cause chain cannot loop.
+      let current = error
+      for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+        if (typeof current !== 'object' || current === null) {
+          return undefined
+        }
+        const phase = phaseByError.get(current)
+        if (phase) {
+          return phase
+        }
+        current = current instanceof Error ? current.cause : undefined
+      }
+      return undefined
     },
     finish() {
       return {

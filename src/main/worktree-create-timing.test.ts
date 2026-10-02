@@ -33,16 +33,25 @@ describe('createWorktreeCreateTimingRecorder', () => {
   })
 
   describe('failedPhase', () => {
+    function captureRejection(promise: Promise<unknown>): Promise<unknown> {
+      return promise.then(
+        () => {
+          throw new Error('expected a rejection')
+        },
+        (error: unknown) => error
+      )
+    }
+
     it('names the phase whose operation threw', async () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
       await recorder.time('resolve_name', async () => undefined)
-      await expect(
+      const error = await captureRejection(
         recorder.time('git_worktree_add', async () => {
           throw new Error('boom')
         })
-      ).rejects.toThrow('boom')
+      )
 
-      expect(recorder.failedPhase()).toBe('git_worktree_add')
+      expect(recorder.failedPhase(error)).toBe('git_worktree_add')
       // The phase that threw is still timed.
       expect(recorder.finish().phases.map((phase) => phase.phase)).toEqual([
         'resolve_name',
@@ -50,26 +59,27 @@ describe('createWorktreeCreateTimingRecorder', () => {
       ])
     })
 
-    it('is undefined when every phase succeeded', async () => {
+    it('is undefined for an error no phase threw', async () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
       await recorder.time('git_worktree_add', async () => undefined)
-      expect(recorder.failedPhase()).toBeUndefined()
+      expect(recorder.failedPhase(new Error('outside'))).toBeUndefined()
+      expect(recorder.failedPhase('not an object')).toBeUndefined()
     })
 
-    it('names the enclosing phase when an inner failure propagates through it', async () => {
+    it('names the outermost phase an error propagated through', async () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
-      await expect(
+      const error = await captureRejection(
         recorder.time('git_worktree_add', () =>
           recorder.time('prepared_checkout_wait', async () => {
             throw new Error('prepare failed')
           })
         )
-      ).rejects.toThrow('prepare failed')
+      )
 
-      expect(recorder.failedPhase()).toBe('git_worktree_add')
+      expect(recorder.failedPhase(error)).toBe('git_worktree_add')
     })
 
-    it('forgets an inner failure the enclosing phase recovered from', async () => {
+    it('reports untimed for a later throw after an inner failure was caught', async () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
       await recorder.time('git_worktree_add', async () => {
         await recorder
@@ -79,30 +89,65 @@ describe('createWorktreeCreateTimingRecorder', () => {
           .catch(() => undefined)
       })
 
-      expect(recorder.failedPhase()).toBeUndefined()
+      expect(recorder.failedPhase(new Error('later, outside every phase'))).toBeUndefined()
     })
 
-    it('forgets a caught failure once a later phase starts', async () => {
+    it('names the rejecting phase when a concurrent sibling settles later', async () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
-      await recorder
-        .time('create_symlinks', async () => {
-          throw new Error('symlink failed')
-        })
-        .catch(() => undefined)
-      await recorder.time('prepare_setup', async () => undefined)
+      let resolveSibling: () => void = () => {}
+      const sibling = recorder.time(
+        'resolve_worktreeinclude',
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSibling = resolve
+          })
+      )
+      const error = await captureRejection(
+        Promise.all([
+          recorder.time('resolve_shared_directories', async () => {
+            throw new Error('shared dirs failed')
+          }),
+          sibling
+        ])
+      )
+      resolveSibling()
+      await sibling
 
-      expect(recorder.failedPhase()).toBeUndefined()
+      expect(recorder.failedPhase(error)).toBe('resolve_shared_directories')
+    })
+
+    it('follows the cause chain of an error wrapped outside the phase', async () => {
+      const recorder = createWorktreeCreateTimingRecorder(() => 0)
+      const inner = await captureRejection(
+        recorder.time('git_worktree_add', async () => {
+          throw new Error('old relay')
+        })
+      )
+
+      expect(recorder.failedPhase(new Error('wrapped', { cause: inner }))).toBe('git_worktree_add')
+    })
+
+    it('stops walking a cyclic cause chain', () => {
+      const recorder = createWorktreeCreateTimingRecorder(() => 0)
+      const first = new Error('first')
+      const second = new Error('second', { cause: first })
+      first.cause = second
+
+      expect(recorder.failedPhase(first)).toBeUndefined()
     })
 
     it('names a sync phase that threw', () => {
       const recorder = createWorktreeCreateTimingRecorder(() => 0)
-      expect(() =>
+      let error: unknown
+      try {
         recorder.timeSync('persist_metadata', () => {
           throw new Error('disk full')
         })
-      ).toThrow('disk full')
+      } catch (caught) {
+        error = caught
+      }
 
-      expect(recorder.failedPhase()).toBe('persist_metadata')
+      expect(recorder.failedPhase(error)).toBe('persist_metadata')
     })
   })
 })
