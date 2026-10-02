@@ -133,7 +133,11 @@ async function fenceOrResume(
     (environment) => environment.orcadDeployment?.sshTargetId === target.id
   )
   if (converted) {
-    return refuse('live', 'orcad_migration_already_managed', 'This SSH host is already a managed server.')
+    return refuse(
+      'live',
+      'orcad_migration_already_managed',
+      'This SSH host is already a managed server.'
+    )
   }
   const store = targetStore.getOrcadMigrationSource()
   // Asked while the relay still answers; the fence re-checks leases once it holds.
