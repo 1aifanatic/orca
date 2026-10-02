@@ -1,11 +1,22 @@
 // The runtime's share of startup chat work: startup restoration until its first try has settled,
-// tab listings in flight, and the history restore a listing owes until it has started. The
-// background copy of old chat files waits while any of it runs. Each is cleared in the same code
-// that does the work, so nothing here can strand.
+// the first tab listing until it has answered, tab listings in flight, and the history restore a
+// listing owes until it has started. The background copy of old chat files waits while any of it
+// runs, so it never competes with the first paint. Each is cleared in the same code that does the
+// work, so nothing here can strand; the first listing alone has a bounded wait.
+
+/** How long the copy waits for a first tab listing to answer: a host no client lists (an orcad no
+ *  client attaches to, a headless host) still copies. Past a slow first window's paint. */
+export const STARTUP_FIRST_LISTING_WAIT_MS = 60_000
 
 export class StructuredAgentSessionStartupChatWork {
   private restorationPrepared = false
   private listings = 0
+  private listed = false
+  private readonly startedAt: number
+
+  constructor(private readonly now: () => number = () => Date.now()) {
+    this.startedAt = now()
+  }
   /** The history restore a tab restore owes, until a caller that answered with its list starts it. */
   private owedRestore: (() => void) | null = null
   private restoreStarting = false
@@ -25,6 +36,7 @@ export class StructuredAgentSessionStartupChatWork {
     this.listings += 1
     try {
       await listing()
+      this.listed = true
     } finally {
       this.listings -= 1
     }
@@ -51,6 +63,7 @@ export class StructuredAgentSessionStartupChatWork {
 
   isActive = (): boolean =>
     !this.restorationPrepared ||
+    (!this.listed && this.now() - this.startedAt < STARTUP_FIRST_LISTING_WAIT_MS) ||
     this.listings > 0 ||
     this.restoreStarting ||
     this.owedRestore !== null
