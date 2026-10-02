@@ -61,6 +61,14 @@ function mapSpend(spend: ClaudeOAuthSpend | undefined): ExtraUsageBalance | null
   if (!spend) {
     return null
   }
+  const currencies = [spend.used, spend.limit, spend.cap?.money, spend.balance].flatMap((money) =>
+    typeof money === 'object' && money?.currency !== undefined
+      ? [money.currency.trim().toUpperCase()]
+      : []
+  )
+  if (currencies.some((currency) => !/^[A-Z]{3}$/.test(currency)) || new Set(currencies).size > 1) {
+    return null
+  }
   const spent = moneyToMajor(spend.used)
   const spendLimit = moneyToMajor(spend.limit) ?? moneyToMajor(spend.cap?.money)
   const balance = moneyToMajor(spend.balance)
@@ -77,8 +85,7 @@ function mapSpend(spend: ClaudeOAuthSpend | undefined): ExtraUsageBalance | null
   return {
     balance,
     unit: 'currency',
-    currencyCode:
-      spend.used?.currency ?? spend.limit?.currency ?? spend.cap?.money?.currency ?? 'USD',
+    currencyCode: currencies[0] ?? 'USD',
     enabled: spend.enabled === true,
     disabledReason: spend.disabled_reason ?? null,
     spent,
