@@ -164,17 +164,30 @@ describe('rowless listed chats after an upgrade', () => {
     const derivedCount = () =>
       ids.filter((sessionId) => readTestJournalSessionStatus(rig.root, sessionId) !== null).length
 
+    let ticks = 0
+    let ticking = true
+    const tick = (): void => {
+      if (ticking) {
+        ticks += 1
+        setImmediate(tick)
+      }
+    }
+    setImmediate(tick)
+
     const pass = rig.host.restoreReadableSessions(background)
     await new Promise((resolve) => setImmediate(resolve))
     const before = derivedCount()
     const sent = await sendRestTestMessage(rig, 'session-send', 'during the pass')
     const after = derivedCount()
     await pass
+    ticking = false
 
     expect(sent).toMatchObject({ ok: true })
     expect(after - before).toBeLessThanOrEqual(1)
     expect(after).toBeLessThan(ids.length)
     expect(derivedCount()).toBe(ids.length)
+    // Each long chat folds over several tasks, not one.
+    expect(ticks).toBeGreaterThanOrEqual(2 * ids.length)
   }, 120_000)
 
   it('gives each short chat its own task, so a send waits for at most one', async () => {
