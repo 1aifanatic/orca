@@ -112,7 +112,8 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
       adapter: {
         historyFilePath: ({ identity }) => rig.adapter.historyFilePath(identity.sessionId)
       },
-      journalDatabase: database
+      journalDatabase: database,
+      logger: rig.host.deps.logger
     },
     canSettle,
     seedStatus: () => undefined,
