@@ -180,14 +180,14 @@ export async function resolveOpenCodeGoApiKey(input: {
   settingsOverride?: string
   environment?: NodeJS.ProcessEnv
 }): Promise<OpenCodeGoApiKeyResolution> {
+  const override = trimmedKey(input.settingsOverride)
+  if (override) {
+    return { status: 'found', key: override, tier: 'settings' }
+  }
   const environment = input.environment ?? { ...process.env }
   if (!input.environment) {
     restoreManagedDataAccountEnvironment(environment)
     Object.assign(environment, getManagedDataAccountService().launchEnvironment('opencode'))
-  }
-  const override = trimmedKey(input.settingsOverride)
-  if (override) {
-    return { status: 'found', key: override, tier: 'settings' }
   }
   const fromDatabase = await readOpenCodeCredentialDatabaseGoKey(environment)
   if (fromDatabase) {

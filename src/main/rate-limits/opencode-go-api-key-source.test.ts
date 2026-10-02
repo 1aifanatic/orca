@@ -12,10 +12,10 @@ import {
 
 const selectedAccount = vi.hoisted(() => {
   const environment: NodeJS.ProcessEnv = {}
-  return { environment }
+  return { environment, launchEnvironment: vi.fn(() => environment) }
 })
 vi.mock('../managed-data-accounts/service', () => ({
-  getManagedDataAccountService: () => ({ launchEnvironment: () => selectedAccount.environment })
+  getManagedDataAccountService: () => ({ launchEnvironment: selectedAccount.launchEnvironment })
 }))
 
 // Placeholder values only — a real key must never reach a fixture.
@@ -71,6 +71,8 @@ describe('resolveOpenCodeGoApiKey', () => {
   }
 
   beforeEach(() => {
+    selectedAccount.launchEnvironment.mockReset()
+    selectedAccount.launchEnvironment.mockImplementation(() => selectedAccount.environment)
     originalEnvironment = Object.fromEntries(ENVIRONMENT_KEYS.map((key) => [key, process.env[key]]))
     for (const key of ENVIRONMENT_KEYS) {
       delete process.env[key]
@@ -203,6 +205,29 @@ describe('resolveOpenCodeGoApiKey', () => {
     // OpenCode's global-roots.ts falls back to os.homedir() + .local/share even on Windows.
     expect(getOpenCodeAuthFilePath({}, '/home/person')).toBe(
       join('/home/person', '.local', 'share', 'opencode', 'auth.json')
+    )
+  })
+
+  it('uses an explicit settings override before malformed account metadata', async () => {
+    selectedAccount.launchEnvironment.mockImplementation(() => {
+      JSON.parse('{malformed account metadata')
+      return selectedAccount.environment
+    })
+    await expect(resolveOpenCodeGoApiKey({ settingsOverride: SETTINGS_KEY })).resolves.toEqual({
+      status: 'found',
+      key: SETTINGS_KEY,
+      tier: 'settings'
+    })
+    expect(selectedAccount.launchEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('refuses unknown account identity without falling back to the host key', async () => {
+    process.env.OPENCODE_API_KEY = ENVIRONMENT_KEY
+    selectedAccount.launchEnvironment.mockImplementation(() => {
+      throw new Error('Selected account identity is unavailable')
+    })
+    await expect(resolveOpenCodeGoApiKey({ settingsOverride: ' ' })).rejects.toThrow(
+      'Selected account identity is unavailable'
     )
   })
 
