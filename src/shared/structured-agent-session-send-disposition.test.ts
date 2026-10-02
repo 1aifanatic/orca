@@ -19,9 +19,9 @@ import {
 } from './structured-agent-session-send-disposition'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from './structured-agent-session-outbox-reconcile'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 
 const entry: StructuredAgentSessionOutboxEntry = createStructuredAgentSessionOutboxEntry({

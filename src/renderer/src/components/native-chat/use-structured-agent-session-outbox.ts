@@ -153,13 +153,11 @@ export function useStructuredAgentSessionOutbox(args: {
     ])
     const next = reconcileStructuredAgentSessionOutboxWithQueue(current, submissions, journalItems)
     const admittedInFlight = journalAnswersInFlightSend(submissions, inFlightIdRef.current)
-    if (
-      admittedInFlight ||
-      next.some((entry, index) => entry !== current[index]) ||
-      next.length !== current.length
-    ) {
+    // The reconcile returns `current` itself when no entry changed, so a batch that changes
+    // nothing writes nothing.
+    if (admittedInFlight || next !== current) {
       restoreWithdrawn.byHost(current, submissions)
-      commitStructuredAgentSessionOutbox(sessionId, next)
+      commitStructuredAgentSessionOutbox(sessionId, [...next])
     }
     // Keyed on the entry actually in flight, which is no longer always the head: the journal
     // owning it outranks a send promise that has not settled, so release single-flight and make

@@ -1,11 +1,6 @@
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import { readWholeAgentSessionFailureFact } from './agent-session-failure'
-import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from './agent-session-journal-types'
+import type { AgentJournalMessageItem } from './agent-session-journal-types'
 import {
   parseAgentSessionWriteFailure,
   type AgentSessionWriteFailure,
@@ -16,14 +11,13 @@ import {
   agentSessionRefusalOperationState
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
-import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
 /** `rejected`: settled as not delivered. The drain never sends it again and nothing queues behind
  *  it. One the host refused unrecorded waits for the user's Retry. One it recorded leaves once the
- *  client holds its rejected submission: the host places that row at the rejection, so the newest
- *  page carries it, and until then the user may Dismiss it. */
+ *  row that draws it is loaded (`structured-agent-session-outbox-reconcile`); until then the user
+ *  may Dismiss it, and it owes no delivery. */
 export type StructuredAgentSessionOutboxState =
   | 'queued'
   | 'dispatching'
@@ -219,56 +213,6 @@ export function requeueStructuredAgentSessionSendRefusal(
     lastAttemptAt: null,
     retryAfterUnknownSubmittedAt: null
   }
-}
-
-export function reconcileStructuredAgentSessionOutbox(
-  entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[],
-  /** The loaded journal rows: a rejected message leaves only once the row that draws it is here. */
-  items: readonly AgentJournalRenderItem[]
-): StructuredAgentSessionOutboxEntry[] {
-  const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
-  let loaded: Set<string> | undefined
-  return entries.flatMap((entry) => {
-    const submission = settled.get(entry.clientMessageId)
-    // Settled by the host: its history shows one delivered; a withdrawn one goes back to the
-    // composer.
-    if (submission?.dispatchState === 'accepted' || dispatchWasWithdrawn(submission)) {
-      return []
-    }
-    if (submission?.dispatchState === 'rejected') {
-      // Its row draws it once loaded; until then the entry does, as the host recorded it. An older
-      // host leaves that row where it was sent, which may be outside the loaded window.
-      loaded ??= new Set(items.map((item) => item.itemId))
-      if (loaded.has(agentJournalSubmissionKey(entry.clientMessageId))) {
-        return []
-      }
-      const lastFailure = structuredAgentSessionRejectedFailure(submission)
-      return [
-        structuredAgentSessionEntryRejectedByHost(entry)
-          ? entry
-          : { ...entry, state: 'rejected' as const, lastFailure }
-      ]
-    }
-    if (submission?.dispatchState === 'pending') {
-      if (entry.state === 'dispatching') {
-        return [entry]
-      }
-      // The host has it, so no failure of an earlier attempt describes it now.
-      const { lastFailure: _landed, ...landed } = entry
-      return [{ ...landed, state: 'dispatching' as const }]
-    }
-    if (
-      submission?.dispatchState === 'unknown' &&
-      entry.retryAfterUnknownSubmittedAt !== -1 &&
-      entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
-    ) {
-      // In doubt now, not failed: the probe's resend decides it, as for any unconfirmed send.
-      const { lastFailure: _superseded, ...inDoubt } = entry
-      return [{ ...inDoubt, state: 'unconfirmed' as const }]
-    }
-    return [entry]
-  })
 }
 
 export function parseStructuredAgentSessionOutboxEntry(
