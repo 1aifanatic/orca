@@ -7086,7 +7086,7 @@
             "shellEnvCopy": "Codex 및 Claude 채팅은 터미널과 마찬가지로 로그인 셸이 내보내는 모든 변수를 가지고 시작합니다. 끄면 전달할 변수를 선택할 수 있습니다.",
             "shellEnvToggleLabel": "셸 환경 사용 전환",
             "structuredTitle": "업데이트된 구조화된 기본 채팅 사용",
-            "structuredCopy": "Codex와 Claude를 위한 호스트 소유의 구조화된 채팅 런타임을 선택하세요. 끄기는 기존 터미널 지원 채팅 경로를 유지합니다.",
+            "structuredCopy": "새 Codex 및 Claude 에이전트를 구조화된 채팅으로 엽니다. 끄면 터미널 지원 채팅으로 엽니다. 이미 있는 채팅은 그대로 유지됩니다.",
             "structuredScope": "현재는 로컬 세션만 가능합니다. WSL 및 원격 실행 호스트(SSH 포함)는 계속해서 터미널 채팅을 사용하며 Orca가 프로세스 시작 시간을 읽을 수 없으면 Windows는 이 채팅을 사용합니다.",
             "structuredToggleLabel": "업데이트된 구조화된 기본 채팅 전환",
             "resumeTitle": "다시 시작한 후 작업 중인 채팅을 자동으로 재개합니다.",
@@ -17331,6 +17331,12 @@
       }
     },
     "native-chat": {
+      "contextMenu": {
+        "copyOrcaSessionId": "Orca 세션 ID 복사",
+        "orcaSessionIdCopied": "Orca 세션 ID를 복사했습니다",
+        "orcaSessionIdCopyFailed": "Orca 세션 ID를 복사하지 못했습니다",
+        "orcaSessionIdTooltip": "이 채팅에 대한 Orca의 ID로, 에이전트 CLI 자체의 세션 ID와는 별개입니다. 에이전트는 Orca를 통해 서로를 가리킬 때 이 ID를 사용합니다."
+      },
       "failureWords": {
         "theAgent": "에이전트",
         "providerStartFailed": "{{agent}}이(가) 시작을 마치기 전에 중지되었습니다.",
