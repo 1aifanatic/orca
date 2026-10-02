@@ -1,9 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { sendRemoteRuntimeRequest } from '../../shared/remote-runtime-client'
-import {
-  ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
-  REMOTE_RUNTIME_SHARED_CONTROL_CAPABILITY
-} from '../../shared/protocol-version'
+import { REMOTE_RUNTIME_SHARED_CONTROL_CAPABILITY } from '../../shared/protocol-version'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import {
   getPreferredPairingOffer,
   type KnownRuntimeEnvironment
@@ -23,6 +21,7 @@ import {
 } from './runtime-environment-capability-evidence'
 import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environment-manual-disconnect'
 import { runtimeEnvironmentChangedFailure } from './runtime-environment-revision-guard'
+import { resolveManagedRuntimeEnvironment } from './runtime-environment-managed-tunnel'
 
 export function createRuntimeEnvironmentStatusOwner(
   userDataPath: string,
@@ -43,6 +42,13 @@ export function createRuntimeEnvironmentStatusOwner(
       const incarnation = getRuntimeEnvironmentCapabilityIncarnation(environment.id)
       const isCurrent = (): boolean =>
         getRuntimeEnvironmentCapabilityIncarnation(environment.id) === incarnation
+      if (environment.connectionDependency === 'ssh-tunnel') {
+        await resolveManagedRuntimeEnvironment(userDataPath, environment.id)
+        if (!isCurrent()) {
+          return runtimeEnvironmentChangedFailure(environment, 'status.get')
+        }
+        signal.throwIfAborted()
+      }
       evidence = captureRuntimeEnvironmentCapabilityEvidence(environment.id, pairing)
       const response = await (transport.isReady() &&
       getAcceptedRuntimeEnvironmentCapabilityOutcome(environment.id, pairing, null)?.kind ===
