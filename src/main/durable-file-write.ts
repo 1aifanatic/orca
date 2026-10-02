@@ -174,11 +174,14 @@ export async function writeFileProcessDurable(
   finalPath: string,
   payload: string
 ): Promise<void> {
+  let renamed = false
   try {
     await writeFile(tmpPath, payload, { mode: 0o600 })
-    await renameFileWithWindowsRetryAsync(tmpPath, finalPath)
+    renamed = await renameFileWithWindowsRetryAsync(tmpPath, finalPath)
   } finally {
-    await rm(tmpPath, { force: true }).catch(() => {})
+    if (!renamed) {
+      await rm(tmpPath, { force: true }).catch(() => {})
+    }
   }
 }
 

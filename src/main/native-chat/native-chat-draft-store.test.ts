@@ -1,9 +1,11 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { build } from 'esbuild'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
+import { withSidecarSnapshotQueue } from '../sidecar-snapshot-file'
 import { createNativeChatDraftStore } from './native-chat-draft-store'
 
 const roots: string[] = []
@@ -17,6 +19,7 @@ async function freshRoot(): Promise<string> {
 }
 
 const draft = (text: string) => ({ text, attachments: [] })
+const fileOf = (scopeKey: string) => `${createHash('sha256').update(scopeKey).digest('hex')}.json`
 
 // A renderer that sends, then the app is killed: the clear it was told had landed must hold.
 const CHILD_SOURCE = `
@@ -164,6 +167,64 @@ describe('the native chat draft store', () => {
     await createNativeChatDraftStore(root).load()
 
     expect(await readdir(root)).toEqual([saved])
+  })
+
+  // A downgrade, or a file that can't be read right now, must not cost the user a draft.
+  it("keeps a newer build's drafts and files it could not read", async () => {
+    const root = await freshRoot()
+    const store = createNativeChatDraftStore(root)
+    await store.write('session:s1', draft('mine'))
+    const newer = { v: 2, scopeKey: 'session:s2', savedAt: 1, text: 'from a newer build' }
+    await writeFile(join(root, fileOf('session:s2')), JSON.stringify(newer))
+    // A directory where a file should be: reading it fails with something other than ENOENT.
+    await mkdir(join(root, fileOf('session:s3')))
+    await writeFile(join(root, fileOf('session:s4')), JSON.stringify({ v: 1, scopeKey: 7 }))
+
+    expect(await createNativeChatDraftStore(root).load()).toEqual([
+      { scopeKey: 'session:s1', draft: draft('mine') }
+    ])
+    expect((await readdir(root)).sort()).toEqual(
+      [fileOf('session:s1'), fileOf('session:s2'), fileOf('session:s3')].sort()
+    )
+  })
+
+  // Deletions at load share the chat's queue, so a write made meanwhile always survives them.
+  it('never deletes, at load, a draft written while loading', async () => {
+    const root = await freshRoot()
+    const seed = createNativeChatDraftStore(root)
+    for (let index = 0; index < 130; index += 1) {
+      await seed.write(`session:${index}`, draft(`draft-${index}`))
+      if (index < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+    }
+    await writeFile(join(root, fileOf('session:garbage')), '{not json')
+
+    // Hold both chats' queues so load reads the old files, then the writes land, then load decides.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    void withSidecarSnapshotQueue(join(root, fileOf('session:0')), () => held)
+    void withSidecarSnapshotQueue(join(root, fileOf('session:garbage')), () => held)
+    const store = createNativeChatDraftStore(root)
+    const oldest = store.write('session:0', draft('typed after relaunch'))
+    const overGarbage = store.write('session:garbage', draft('typed over garbage'))
+    const loaded = store.load()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    release()
+    await loaded
+
+    expect(await oldest).toBe('persisted')
+    expect(await overGarbage).toBe('persisted')
+    const next = new Map(
+      (await createNativeChatDraftStore(root).load()).map(({ scopeKey, draft }) => [
+        scopeKey,
+        draft
+      ])
+    )
+    expect(next.get('session:0')).toEqual(draft('typed after relaunch'))
+    expect(next.get('session:garbage')).toEqual(draft('typed over garbage'))
   })
 
   it('keeps only the newest drafts past the bound', async () => {
