@@ -20,8 +20,7 @@ import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
 import type {
   StructuredAgentSessionEndedEvent,
-  StructuredAgentSessionExitAfterCloseEvent,
-  StructuredAgentSessionStopCause
+  StructuredAgentSessionExitAfterCloseEvent
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type {
@@ -111,8 +110,6 @@ export type CodexSession = {
   /** First observed child exit survives rejected settlement admission. */
   exitObservedAt?: number
   requestedClose: boolean
-  /** Who asked for the requested close in flight, carried onto its `ended`. */
-  closeStopCause?: StructuredAgentSessionStopCause
   fence: number
   acquisitionGeneration: string
   threadId: string

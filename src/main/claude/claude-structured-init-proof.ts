@@ -1,5 +1,5 @@
 import { CLAUDE_DEFAULT_SETTING_SOURCES } from './claude-structured-launch-resolution'
-import type { ClaudeAuthDiagnostic } from './claude-structured-session-state'
+import type { ClaudeAuthDiagnostic, ClaudeSession } from './claude-structured-session-state'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 
 export type ClaudeInitObservation = {
@@ -65,6 +65,17 @@ export function readClaudeCapabilities(
     }
   }
   return observed
+}
+
+/** Every turn opens with an init frame naming the model the CLI is actually running; set_model
+ *  answers success for a model it never resolves, so this report is the session's only adoption
+ *  evidence. */
+export function observeClaudeInitFacts(session: ClaudeSession, init: ClaudeInitObservation): void {
+  if (init.model) {
+    session.reportedOptions.model = init.model
+    session.reportedModelMutation = session.optionMutationSequence
+  }
+  session.capabilities = readClaudeCapabilities(session.capabilities, init.message)
 }
 
 export function claudeInitializationAuthError(

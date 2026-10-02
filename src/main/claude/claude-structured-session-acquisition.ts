@@ -11,7 +11,7 @@ import { resolveClaudeReplayTurn } from './claude-replay-turn-resolution'
 import { claudeSessionStateEndsTurn } from './claude-session-state-turn-over'
 import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import {
-  readClaudeCapabilities,
+  observeClaudeInitFacts,
   readClaudeFrameString,
   readClaudeInit
 } from './claude-structured-init-proof'
@@ -100,15 +100,8 @@ export async function acquireClaudeSession({
     }
     if (init) {
       initProof.resolve(init)
-      // Every turn opens with an init frame naming the model the CLI is actually
-      // running; set_model answers success for a model it never resolves, so this
-      // report is the session's only adoption evidence.
-      if (liveSession && init.model) {
-        liveSession.reportedOptions.model = init.model
-        liveSession.reportedModelMutation = liveSession.optionMutationSequence
-      }
       if (liveSession) {
-        liveSession.capabilities = readClaudeCapabilities(liveSession.capabilities, init.message)
+        observeClaudeInitFacts(liveSession, init)
       }
     }
     observedLeafUuid = readClaudeTranscriptEntryUuid(message) ?? observedLeafUuid
@@ -145,6 +138,7 @@ export async function acquireClaudeSession({
         message,
         ...(startsTurn ? { startsTurn: true } : {}),
         ...(requestedAt === null || requestedAt === undefined ? {} : { requestedAt }),
+        ...(turnOrigin?.clientMessageId ? { clientMessageId: turnOrigin.clientMessageId } : {}),
         ...observedAt
       })
     )

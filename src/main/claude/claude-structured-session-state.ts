@@ -7,8 +7,7 @@ import type {
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type {
   StructuredAgentSessionExitAfterCloseEvent,
-  StructuredAgentSessionStartedEvent,
-  StructuredAgentSessionStopCause
+  StructuredAgentSessionStartedEvent
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type {
   ClaudeStreamJsonConnection,
@@ -51,6 +50,8 @@ export type ClaudeStructuredSessionEvent =
       /** Submission instant of the dispatch this replay acknowledged; the origin
        *  of the turn it opens. Absent when the host cannot name a send. */
       requestedAt?: number
+      /** The submission this replay acknowledged, which opens the turn. */
+      clientMessageId?: string
       /** Host clock at receipt; stamped on turn boundaries only. */
       observedAt?: number
     }
@@ -76,8 +77,6 @@ export type ClaudeStructuredSessionEvent =
       failure?: SubmissionRejectionFact
       /** Present for first-hand child exits so the host can fence recovery. */
       cause?: 'unexpected-exit' | 'requested-close'
-      /** Who asked for a close; the translator settles the open turn with it. */
-      stopCause?: StructuredAgentSessionStopCause
       fence?: number
       acquisitionGeneration?: string
       /** Host clock when the end was observed. */
