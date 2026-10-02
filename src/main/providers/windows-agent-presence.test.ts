@@ -11,12 +11,17 @@ vi.mock('../windows/windows-process-table', () => ({
   readWindowsProcessCreationTime: native.creation
 }))
 vi.mock('./windows-pty-job-membership', () => ({ readWindowsPtyJobProcessIds: native.members }))
+const consoleAttached = vi.hoisted(() => vi.fn())
+vi.mock('./windows-console-attached-processes', () => ({
+  readWindowsConsoleAttachedProcessIds: consoleAttached
+}))
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 beforeEach(() => {
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
   vi.stubEnv('ORCA_WINDOWS_AGENT_PRESENCE_PROOF', '1')
   native.creation.mockReset().mockReturnValue(100)
   native.members.mockReset().mockReturnValue(new Set([10, 42]))
+  consoleAttached.mockReset().mockResolvedValue(new Set([10, 42]))
 })
 afterEach(() => {
   Object.defineProperty(process, 'platform', platform)
@@ -45,6 +50,14 @@ describe('per-PTY Windows job exit proof', () => {
     expect(await captureWindowsAgentPresence(proc, observation)).toMatchObject({ process: owner })
     expect(native.creation.mock.calls).toEqual([[42], [42]])
     expect(native.members).toHaveBeenCalledTimes(2)
+  })
+  it('refuses a job member detached from this console (Start-Process), once per capture', async () => {
+    consoleAttached.mockResolvedValue(new Set([10]))
+    expect(await captureWindowsAgentPresence(proc, observation)).toBeUndefined()
+    consoleAttached.mockResolvedValue(null)
+    expect(await captureWindowsAgentPresence(proc, observation)).toBeUndefined()
+    expect(consoleAttached).toHaveBeenCalledTimes(2)
+    expect(consoleAttached).toHaveBeenCalledWith(10)
   })
   it('refuses a reused cached PID and a job that becomes unprovable during capture', async () => {
     native.creation.mockReturnValue(101)
