@@ -17465,7 +17465,7 @@
         "providerRateLimited": "{{agent}} est limité en débit et réessaie.",
         "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
         "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}.",
-        "previousExitUnverifiable": "Orca n'a pas pu confirmer que le processus précédent de {{agent}} s'est arrêté. Les messages attendent d'être envoyés jusqu'à ce qu'Orca confirme son arrêt."
+        "previousExitUnverifiable": "L'exécution précédente de {{agent}} est peut-être toujours en cours. Vos messages seront envoyés dès qu'elle s'arrêtera."
       },
       "writeNotice": {
         "notDoneReadHistory": "L'historique de ce chat n'a pas pu être chargé.",
@@ -17487,9 +17487,9 @@
         "historyUnavailable": "Orca n'a pas pu ouvrir l'historique de ce chat pour le moment.",
         "savedByNewerOrca": "Les chats ont été enregistrés par une version plus récente d'Orca.",
         "updateOrcaToKeepUsing": "Mettez à jour Orca pour continuer à les utiliser.",
-        "unsupported": "L'instance d'Orca qui exécute ce chat ne le prend pas en charge. Mettez Orca à jour, puis réessayez.",
+        "unsupported": "Cela nécessite une version plus récente d'Orca sur l'ordinateur qui exécute ce chat. Mettez Orca à jour sur cet ordinateur, puis réessayez.",
         "unreachable": "Orca n'a pas pu joindre l'agent.",
-        "recordFailed": "Orca n'a pas pu l'enregistrer dans l'historique de ce chat.",
+        "recordFailed": "Orca n'a pas pu enregistrer ceci dans l'historique du chat.",
         "conversationCleared": "Cette conversation a été effacée.",
         "openCurrentConversation": "Ouvrez la conversation actuelle pour continuer.",
         "clearUnfinished": "Le dernier /clear ne s'est pas terminé.",
@@ -17503,19 +17503,19 @@
         "answerFirst": "Répondez d'abord à la question ou à la demande d'approbation.",
         "backgroundTasksRunning": "Des tâches en arrière-plan sont encore en cours.",
         "waitForBackgroundTasks": "Attendez la fin des tâches en arrière-plan.",
-        "messagesUnsettled": "Un message que vous avez envoyé plus tôt n'a pas encore été confirmé.",
+        "messagesUnsettled": "Un message que vous avez envoyé plus tôt n'est pas encore passé.",
         "settleEarlierMessage": "Attendez que votre message précédent soit transmis, ou renvoyez-le.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",
-        "ownerUnproven": "Orca n'a pas confirmé l'arrêt de l'agent précédent de ce chat.",
+        "ownerUnproven": "L'agent précédent de ce chat est peut-être encore en cours d'exécution.",
         "reopenChat": "Rouvrez le chat pour vérifier à nouveau.",
         "terminalAgentHoldsChat": "Ce chat est encore ouvert dans un agent de terminal.",
         "quitTerminalAgent": "Quittez cet agent pour continuer le chat ici.",
         "hostReconciling": "Orca vérifie encore ce chat après son redémarrage.",
         "waitMoment": "Patientez un instant.",
         "recordUnreadable": "Orca n'a pas pu lire l'état enregistré de ce chat.",
-        "chatNotFound": "L'instance d'Orca qui exécute ce chat n'en a aucune trace.",
+        "chatNotFound": "Orca ne trouve pas ce chat.",
         "startNewChat": "Démarrez un nouveau chat pour continuer.",
         "tryAgain": "Réessayez."
       },
@@ -17536,8 +17536,8 @@
         "skills": "Skills",
         "loadingSkills": "Chargement des skills...",
         "skillsLoaded": "Skills chargées",
-        "skillsUnavailableHost": "Les skills sont indisponibles pour cet hôte",
-        "skillsLoadFailed": "Impossible de charger les skills depuis cet hôte",
+        "skillsUnavailableHost": "Les skills ne sont pas disponibles ici",
+        "skillsLoadFailed": "Impossible de charger les skills",
         "retrySkills": "Réessayer",
         "skillCommandCollision": "Aussi un nom de skill - l'agent décide",
         "skillMultipleSources": "{{sourceCount}} sources - l'agent décide",
@@ -17679,7 +17679,7 @@
         "error": {
           "title": "Impossible de charger la conversation",
           "subtitle": "La transcription n'a pas pu être lue. Rebasculez sur le terminal pour continuer à travailler.",
-          "retryingSubtitle": "La transcription n'a pas pu être lue. Orca continue d'essayer de la charger.",
+          "retryingSubtitle": "Orca continue d'essayer de charger ce chat.",
           "keepsTrying": "Orca continue d'essayer de le charger."
         },
         "reconnecting": "Reconnexion à ce chat…",
@@ -17792,9 +17792,9 @@
         "stateBlocked": "bloqué",
         "stateDone": "fait",
         "stateIdle": "arrêté",
-        "stateUnverifiable": "invérifiable",
+        "stateUnverifiable": "inconnu",
         "reasonWaiting": "a besoin d'approbation",
-        "reasonUnverifiable": "aucun contact",
+        "reasonUnverifiable": "aucune mise à jour récente",
         "reasonBlocked": "échoué",
         "groupAgents": "Agents",
         "groupShell": "Coquille",
@@ -17820,12 +17820,12 @@
           "idle": "idle",
           "failed": "échoué",
           "stopped": "arrêté",
-          "unverifiable": "invérifiable",
+          "unverifiable": "inconnu",
           "workingCount": "{{value0}} fonctionne",
           "idleCount": "{{value0}} inactif",
           "failedCount": "{{value0}} a échoué",
           "stoppedCount": "{{value0}} arrêté",
-          "unverifiableCount": "{{value0}} invérifiable"
+          "unverifiableCount": "{{value0}} inconnu"
         },
         "startedOne": "A lancé 1 sous-agent",
         "startedN": "Lancement des sous-agents {{value0}}",
@@ -17893,6 +17893,10 @@
         "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
         "queuePaused": "File d'attente en pause",
         "resume": "Reprendre"
+      },
+      "outbox": {
+        "saveFailed": "Impossible d'enregistrer votre message. Réessayez.",
+        "redeliveryRefused": "Impossible de confirmer l'envoi de votre message. Vérifiez le chat avant de le renvoyer."
       }
     },
     "tab": {

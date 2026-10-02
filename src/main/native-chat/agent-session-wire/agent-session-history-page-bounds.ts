@@ -46,17 +46,13 @@ export function submissionBytesByItemId(
   return bytes
 }
 
-export function oversizedHistoryItem(
-  item: AgentJournalRenderItem,
-  byteLength: number
-): AgentJournalRenderItem {
+export const OVERSIZED_HISTORY_ITEM_TEXT = 'This part of the chat was too large to show.'
+
+export function oversizedHistoryItem(item: AgentJournalRenderItem): AgentJournalRenderItem {
   return {
     ...item,
     itemId: boundJournalKeyComponent(item.itemId),
-    body: {
-      kind: 'status',
-      text: `[Orca: item truncated — ${byteLength} bytes exceeds the history page budget]`
-    }
+    body: { kind: 'status', text: OVERSIZED_HISTORY_ITEM_TEXT }
   }
 }
 
@@ -72,7 +68,7 @@ export function boundHistoryItemsByBytes(
   for (const group of ordered) {
     const bytes = group.reduce((sum, item) => sum + historyEntryBytes(item, submissionBytes), 0)
     if (kept.length === 0 && bytes > maxBytes) {
-      kept.push(group.map((item) => oversizedHistoryItem(item, bytes)))
+      kept.push(group.map((item) => oversizedHistoryItem(item)))
       break
     }
     if (total + bytes > maxBytes) {

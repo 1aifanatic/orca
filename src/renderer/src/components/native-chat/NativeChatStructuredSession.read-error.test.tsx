@@ -53,9 +53,7 @@ it('says a failed read with no refusal keeps retrying, and adds nothing of the h
   renderPane()
 
   expect(screen.getByText('Could not load conversation')).toBeTruthy()
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeTruthy()
+  expect(screen.getByText('Orca keeps trying to load this chat.')).toBeTruthy()
   expect(screen.queryByText(/history couldn't be loaded/)).toBeNull()
   expect(screen.queryByText(/Toggle back to the terminal/)).toBeNull()
 })
@@ -84,7 +82,7 @@ it("names a history that couldn't open right now once, and that the pane keeps t
   expect(screen.queryByText('Could not load conversation')).toBeNull()
   // The title already says the history didn't open, so the line under it says only the retrying.
   expect(screen.getByText('Orca keeps trying to load it.')).toBeTruthy()
-  expect(screen.queryByText(/could not be read/)).toBeNull()
+  expect(screen.queryByText(/load this chat/)).toBeNull()
   expect(screen.queryByText(/Try again/)).toBeNull()
 })
 
@@ -100,7 +98,7 @@ it("says only that it keeps trying under a code's own words that the history did
 
   expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
   expect(screen.getByText('Orca keeps trying to load it.')).toBeTruthy()
-  expect(screen.queryByText(/could not be read/)).toBeNull()
+  expect(screen.queryByText(/load this chat/)).toBeNull()
 })
 
 it('keeps the whole retrying line under a newer Orca\'s words, which name no one chat for "it"', () => {
@@ -111,9 +109,7 @@ it('keeps the whole retrying line under a newer Orca\'s words, which name no one
   renderPane()
 
   expect(screen.getByText(/^Chats were saved by a newer Orca\./)).toBeTruthy()
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeTruthy()
+  expect(screen.getByText('Orca keeps trying to load this chat.')).toBeTruthy()
 })
 
 it('says only that it is reconnecting, not as an error, when a failure names nothing', () => {

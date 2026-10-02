@@ -4,6 +4,7 @@ import {
   boundHistoryItemsByBytes,
   historyEntryBytes,
   newestWholeSequenceGroups,
+  OVERSIZED_HISTORY_ITEM_TEXT,
   oversizedHistoryItem
 } from './agent-session-history-page-bounds'
 
@@ -50,7 +51,7 @@ function referenceBoundHistoryItemsByBytes(
   for (const group of ordered) {
     const bytes = group.reduce((sum, item) => sum + historyEntryBytes(item, submissionBytes), 0)
     if (kept.length === 0 && bytes > maxBytes) {
-      kept.push(group.map((item) => oversizedHistoryItem(item, bytes)))
+      kept.push(group.map((item) => oversizedHistoryItem(item)))
       break
     }
     if (total + bytes > maxBytes) {
@@ -153,7 +154,8 @@ it('matches eager byte bounding at every budget boundary in both directions', ()
             ).toEqual(expected)
             if (
               actual.items.some(
-                (entry) => entry.body.kind === 'status' && /truncated/.test(entry.body.text)
+                (entry) =>
+                  entry.body.kind === 'status' && entry.body.text === OVERSIZED_HISTORY_ITEM_TEXT
               )
             ) {
               truncatedCases += 1

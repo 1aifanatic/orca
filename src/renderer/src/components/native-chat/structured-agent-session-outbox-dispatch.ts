@@ -24,6 +24,7 @@ import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
+import { structuredAgentSessionOutboxSaveFailedText } from './structured-agent-session-outbox-error-text'
 import {
   getStructuredAgentLaunchPromptDispatch,
   shareStructuredAgentLaunchPromptDispatch
@@ -111,7 +112,7 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
           (entry) => ({ ...entry, lastFailure: { kind: 'failed' } })
         )
       )
-      args.setError('Message could not be saved to the outbox')
+      args.setError(structuredAgentSessionOutboxSaveFailedText())
       return false
     }
     // No `finally` release below: `applyDisposition` frees single-flight as part of the state

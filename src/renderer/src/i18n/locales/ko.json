@@ -17401,7 +17401,7 @@
         "providerRateLimited": "{{agent}}이(가) 속도 제한에 걸려 다시 시도하고 있습니다.",
         "providerRetrying": "{{agent}}에 일시적인 문제가 발생하여 다시 시도하고 있습니다.",
         "providerRetryingQuoted": "{{agent}}이(가) 다시 시도하고 있습니다: {{detail}}.",
-        "previousExitUnverifiable": "Orca가 {{agent}}의 이전 프로세스가 종료되었는지 확인하지 못했습니다. Orca가 종료를 확인할 때까지 메시지는 전송을 기다립니다."
+        "previousExitUnverifiable": "이전에 실행된 {{agent}}이(가) 아직 실행 중일 수 있습니다. 중지되면 메시지가 전송됩니다."
       },
       "writeNotice": {
         "notDoneReadHistory": "이 채팅의 기록을 불러오지 못했습니다.",
@@ -17423,9 +17423,9 @@
         "historyUnavailable": "Orca가 지금 이 채팅의 기록을 열지 못했습니다.",
         "savedByNewerOrca": "채팅이 최신 버전의 Orca에서 저장되었습니다.",
         "updateOrcaToKeepUsing": "계속 사용하려면 Orca를 업데이트하세요.",
-        "unsupported": "이 채팅을 실행 중인 Orca가 이 기능을 지원하지 않습니다. Orca를 업데이트한 후 다시 시도하세요.",
+        "unsupported": "이 채팅을 실행 중인 컴퓨터에 최신 버전의 Orca가 필요합니다. 해당 컴퓨터에서 Orca를 업데이트한 후 다시 시도하세요.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
-        "recordFailed": "Orca가 이 채팅의 기록에 저장하지 못했습니다.",
+        "recordFailed": "Orca가 이 내용을 채팅 기록에 저장하지 못했습니다.",
         "conversationCleared": "이 대화는 지워졌습니다.",
         "openCurrentConversation": "계속하려면 현재 대화를 여세요.",
         "clearUnfinished": "마지막 /clear가 완료되지 않았습니다.",
@@ -17439,19 +17439,19 @@
         "answerFirst": "먼저 질문 또는 승인에 응답하세요.",
         "backgroundTasksRunning": "백그라운드 작업이 아직 실행 중입니다.",
         "waitForBackgroundTasks": "백그라운드 작업이 끝날 때까지 기다리세요.",
-        "messagesUnsettled": "앞서 보낸 메시지가 아직 확인되지 않았습니다.",
+        "messagesUnsettled": "앞서 보낸 메시지가 아직 전달되지 않았습니다.",
         "settleEarlierMessage": "앞서 보낸 메시지가 전달될 때까지 기다리거나 다시 시도하세요.",
         "optionRejected": "에이전트가 이 설정을 받아들이지 않았습니다.",
         "goalsUnsupported": "이 에이전트는 목표를 지원하지 않습니다.",
         "agentRefused": "에이전트가 이를 거부했습니다.",
-        "ownerUnproven": "Orca가 이 채팅의 이전 에이전트가 중지되었는지 아직 확인하지 못했습니다.",
+        "ownerUnproven": "이 채팅의 이전 에이전트가 아직 실행 중일 수 있습니다.",
         "reopenChat": "다시 확인하려면 채팅을 다시 여세요.",
         "terminalAgentHoldsChat": "이 채팅은 아직 터미널 에이전트에서 열려 있습니다.",
         "quitTerminalAgent": "여기에서 채팅을 계속하려면 해당 에이전트를 종료하세요.",
         "hostReconciling": "Orca가 다시 시작된 후 이 채팅을 아직 확인하고 있습니다.",
         "waitMoment": "잠시 기다리세요.",
         "recordUnreadable": "Orca가 이 채팅의 저장된 상태를 읽지 못했습니다.",
-        "chatNotFound": "이 채팅을 실행하는 Orca에 이 채팅의 기록이 없습니다.",
+        "chatNotFound": "Orca에서 이 채팅을 찾을 수 없습니다.",
         "startNewChat": "계속하려면 새 채팅을 시작하세요.",
         "tryAgain": "다시 시도하세요."
       },
@@ -17502,8 +17502,8 @@
         "commands": "명령어",
         "skills": "스킬",
         "loadingSkills": "스킬 로딩 중…",
-        "skillsUnavailableHost": "이 호스트에서는 스킬을 사용할 수 없습니다",
-        "skillsLoadFailed": "이 호스트에서 스킬을 불러올 수 없습니다",
+        "skillsUnavailableHost": "여기에서는 스킬을 사용할 수 없습니다",
+        "skillsLoadFailed": "스킬을 불러올 수 없습니다",
         "retrySkills": "재시도",
         "skillCommandCollision": "스킬 이름이기도 합니다 - 에이전트가 결정합니다",
         "skillMultipleSources": "{{sourceCount}}개 소스 - 에이전트가 해결합니다",
@@ -17615,7 +17615,7 @@
         "error": {
           "title": "대화를 로드할 수 없습니다.",
           "subtitle": "스크립트를 읽을 수 없습니다. 계속 작업하려면 terminal로 다시 전환하세요.",
-          "retryingSubtitle": "스크립트를 읽을 수 없습니다. Orca가 계속 다시 불러오기를 시도합니다.",
+          "retryingSubtitle": "Orca가 이 채팅을 계속 다시 불러오려고 시도합니다.",
           "keepsTrying": "Orca가 계속 다시 불러오기를 시도합니다."
         },
         "reconnecting": "이 채팅에 다시 연결하는 중…",
@@ -17728,9 +17728,9 @@
         "stateBlocked": "막힌",
         "stateDone": "완료",
         "stateIdle": "중지됨",
-        "stateUnverifiable": "검증할 수 없는",
+        "stateUnverifiable": "알 수 없음",
         "reasonWaiting": "승인이 필요합니다",
-        "reasonUnverifiable": "연락 없음",
+        "reasonUnverifiable": "최근 업데이트 없음",
         "reasonBlocked": "실패한",
         "groupAgents": "에이전트",
         "groupShell": "셸",
@@ -17756,12 +17756,12 @@
           "idle": "idle",
           "failed": "실패한",
           "stopped": "중지됨",
-          "unverifiable": "검증할 수 없는",
+          "unverifiable": "알 수 없음",
           "workingCount": "{{value0}} 작업 중",
           "idleCount": "{{value0}} 유휴",
           "failedCount": "{{value0}} 실패",
           "stoppedCount": "{{value0}} 중지됨",
-          "unverifiableCount": "{{value0}} 확인할 수 없음"
+          "unverifiableCount": "{{value0}} 알 수 없음"
         },
         "startedOne": "서브에이전트 1명 추방",
         "startedN": "{{value0}} 하위 에이전트가 시작되었습니다.",
@@ -17829,6 +17829,10 @@
         "queuePausedCleared": "대화를 지워서 대기열이 일시 중지되었습니다",
         "queuePaused": "대기열이 일시 중지되었습니다",
         "resume": "재개"
+      },
+      "outbox": {
+        "saveFailed": "메시지를 저장할 수 없습니다. 다시 시도하세요.",
+        "redeliveryRefused": "메시지가 전송되었는지 확인할 수 없습니다. 다시 보내기 전에 채팅을 확인하세요."
       }
     },
     "tab": {

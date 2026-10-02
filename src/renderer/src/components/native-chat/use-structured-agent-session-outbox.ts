@@ -26,6 +26,10 @@ import {
   subscribeToStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 import {
+  structuredAgentSessionOutboxSaveFailedText,
+  structuredAgentSessionSendDispositionErrorText
+} from './structured-agent-session-outbox-error-text'
+import {
   dispatchStructuredAgentSessionOutboxEntry,
   readMountedStructuredAgentSessionOutbox,
   requeueInterruptedStructuredAgentSessionDispatches
@@ -180,7 +184,9 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
-      setError(disposition.error)
+      setError(
+        disposition.error ? structuredAgentSessionSendDispositionErrorText(disposition.error) : null
+      )
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
@@ -266,7 +272,7 @@ export function useStructuredAgentSessionOutbox(args: {
       }
       // Whether it asks to be queued is decided when it first goes out.
       if (!appendStructuredAgentSessionOutboxMessage(sessionId, text, attachments)) {
-        setError('Message could not be saved to the outbox')
+        setError(structuredAgentSessionOutboxSaveFailedText())
         return false
       }
       setError(null)

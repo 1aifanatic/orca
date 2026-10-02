@@ -106,7 +106,7 @@ describe('NativeChatPickerMenu', () => {
       />
     )
 
-    expect(screen.getAllByText('Could not load skills from this host')).toHaveLength(2)
+    expect(screen.getAllByText("Couldn't load skills")).toHaveLength(2)
     expect(screen.queryByText('Loading skills...')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledOnce()

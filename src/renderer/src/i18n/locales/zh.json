@@ -17366,7 +17366,7 @@
         "providerRateLimited": "{{agent}} 已被限流，正在重试。",
         "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
         "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。",
-        "previousExitUnverifiable": "Orca 无法确认 {{agent}} 的上一个进程已结束。在 Orca 确认其已结束之前，消息会等待发送。"
+        "previousExitUnverifiable": "之前的 {{agent}} 可能仍在运行。它停止后，您的消息将会发送。"
       },
       "writeNotice": {
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
@@ -17388,9 +17388,9 @@
         "historyUnavailable": "Orca 目前无法打开此聊天的历史记录。",
         "savedByNewerOrca": "这些聊天由更新版本的 Orca 保存。",
         "updateOrcaToKeepUsing": "请更新 Orca 以继续使用这些聊天。",
-        "unsupported": "运行此聊天的 Orca 不支持此操作。请更新 Orca 后重试。",
+        "unsupported": "运行此聊天的计算机需要更新版本的 Orca。请在该计算机上更新 Orca 后重试。",
         "unreachable": "Orca 无法连接到智能体。",
-        "recordFailed": "Orca 无法将其记录到此聊天的历史记录中。",
+        "recordFailed": "Orca 无法将此内容保存到聊天历史记录中。",
         "conversationCleared": "此对话已被清除。",
         "openCurrentConversation": "请打开当前对话以继续。",
         "clearUnfinished": "上一次 /clear 未完成。",
@@ -17404,19 +17404,19 @@
         "answerFirst": "请先回答问题或审批。",
         "backgroundTasksRunning": "后台任务仍在运行。",
         "waitForBackgroundTasks": "请等待后台任务完成。",
-        "messagesUnsettled": "您之前发送的一条消息尚未确认。",
+        "messagesUnsettled": "您之前发送的一条消息尚未送达。",
         "settleEarlierMessage": "请等待之前的消息送达，或重试该消息。",
         "optionRejected": "智能体未接受此设置。",
         "goalsUnsupported": "此智能体不支持目标。",
         "agentRefused": "智能体拒绝了此请求。",
-        "ownerUnproven": "Orca 尚未确认此聊天之前的智能体已停止。",
+        "ownerUnproven": "此聊天之前的智能体可能仍在运行。",
         "reopenChat": "请重新打开聊天以再次检查。",
         "terminalAgentHoldsChat": "此聊天仍在终端智能体中打开。",
         "quitTerminalAgent": "请退出该智能体，以便在此处继续聊天。",
         "hostReconciling": "Orca 重启后仍在检查此聊天。",
         "waitMoment": "请稍候。",
         "recordUnreadable": "Orca 无法读取此聊天的已保存状态。",
-        "chatNotFound": "运行此聊天的 Orca 没有此聊天的记录。",
+        "chatNotFound": "Orca 找不到此聊天。",
         "startNewChat": "请开始新的聊天以继续。",
         "tryAgain": "请重试。"
       },
@@ -17467,8 +17467,8 @@
         "commands": "命令",
         "skills": "技能",
         "loadingSkills": "正在加载技能…",
-        "skillsUnavailableHost": "此主机上无法使用技能",
-        "skillsLoadFailed": "无法从此主机加载技能",
+        "skillsUnavailableHost": "此处无法使用技能",
+        "skillsLoadFailed": "无法加载技能",
         "retrySkills": "重试",
         "skillCommandCollision": "也是技能名称 — 由智能体决定",
         "skillMultipleSources": "{{sourceCount}} 个来源 — 由智能体处理",
@@ -17580,7 +17580,7 @@
         "error": {
           "title": "无法加载对话",
           "subtitle": "无法读取记录。请切回终端继续工作。",
-          "retryingSubtitle": "无法读取记录。Orca 会继续尝试加载。",
+          "retryingSubtitle": "Orca 会继续尝试加载此聊天。",
           "keepsTrying": "Orca 会继续尝试加载。"
         },
         "reconnecting": "正在重新连接此聊天…",
@@ -17693,9 +17693,9 @@
         "stateBlocked": "被阻止",
         "stateDone": "完毕",
         "stateIdle": "停止了",
-        "stateUnverifiable": "无法验证的",
+        "stateUnverifiable": "未知",
         "reasonWaiting": "需要批准",
-        "reasonUnverifiable": "没有联系",
+        "reasonUnverifiable": "暂无近期更新",
         "reasonBlocked": "失败的",
         "groupAgents": "代理",
         "groupShell": "壳",
@@ -17721,12 +17721,12 @@
           "idle": "idle",
           "failed": "失败的",
           "stopped": "停止了",
-          "unverifiable": "无法验证的",
+          "unverifiable": "未知",
           "workingCount": "{{value0}} 工作",
           "idleCount": "{{value0}} 空闲",
           "failedCount": "{{value0}} 失败",
           "stoppedCount": "{{value0}} 已停止",
-          "unverifiableCount": "{{value0}} 无法验证"
+          "unverifiableCount": "{{value0}} 未知"
         },
         "startedOne": "踢掉 1 个子代理",
         "startedN": "启动 {{value0}} 子代理",
@@ -17794,6 +17794,10 @@
         "queuePausedCleared": "清除对话后，队列已暂停",
         "queuePaused": "队列已暂停",
         "resume": "继续"
+      },
+      "outbox": {
+        "saveFailed": "无法保存您的消息。请重试。",
+        "redeliveryRefused": "无法确认您的消息是否已发送。请先查看聊天，再重新发送。"
       }
     },
     "tab": {

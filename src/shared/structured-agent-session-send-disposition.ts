@@ -30,10 +30,15 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 
+/** A send outcome the composer reports itself; each surface words it. */
+export type StructuredAgentSessionSendDispositionError =
+  /** A retry of a message whose delivery was never confirmed, which the host will not send again. */
+  'redeliveryRefused'
+
 export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
-  error: string | null
+  error: StructuredAgentSessionSendDispositionError | null
 }
 
 type SendDispositionInput = {
@@ -247,7 +252,7 @@ export function disposeStructuredAgentSessionSendResult(
   if (refusedRedelivery(input.entry, submission)) {
     return {
       entries: dropEntry(input),
-      error: 'Message delivery is unconfirmed and Orca will not send it again'
+      error: 'redeliveryRefused'
     }
   }
   if (submission.dispatchState === 'accepted') {

@@ -122,7 +122,7 @@ export function backgroundTaskStateWord(state: RunState): string {
     case 'idle':
       return translate('components.native-chat.backgroundTasks.stateIdle', 'stopped')
     case 'unverifiable':
-      return translate('components.native-chat.backgroundTasks.stateUnverifiable', 'unverifiable')
+      return translate('components.native-chat.backgroundTasks.stateUnverifiable', 'unknown')
   }
 }
 
@@ -132,7 +132,10 @@ export function backgroundTaskStateReason(state: RunState): string | null {
     case 'waiting':
       return translate('components.native-chat.backgroundTasks.reasonWaiting', 'needs approval')
     case 'unverifiable':
-      return translate('components.native-chat.backgroundTasks.reasonUnverifiable', 'no contact')
+      return translate(
+        'components.native-chat.backgroundTasks.reasonUnverifiable',
+        'no recent update'
+      )
     case 'blocked':
       return translate('components.native-chat.backgroundTasks.reasonBlocked', 'failed')
     case 'working':

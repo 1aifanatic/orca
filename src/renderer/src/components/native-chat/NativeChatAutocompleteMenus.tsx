@@ -75,11 +75,11 @@ export const NativeChatPickerMenu = memo(function NativeChatPickerMenu({
             {autocomplete.skillErrorKind === 'unavailable'
               ? translate(
                   'components.native-chat.composer.skillsUnavailableHost',
-                  'Skills are unavailable for this host'
+                  "Skills aren't available here"
                 )
               : translate(
                   'components.native-chat.composer.skillsLoadFailed',
-                  'Could not load skills from this host'
+                  "Couldn't load skills"
                 )}
           </span>
           {autocomplete.skillErrorKind !== 'unavailable' ? (
@@ -114,10 +114,7 @@ export const NativeChatPickerMenu = memo(function NativeChatPickerMenu({
         {autocomplete.skillStatus === 'loading'
           ? translate('components.native-chat.composer.loadingSkills', 'Loading skills...')
           : autocomplete.skillStatus === 'error'
-            ? translate(
-                'components.native-chat.composer.skillsLoadFailed',
-                'Could not load skills from this host'
-              )
+            ? translate('components.native-chat.composer.skillsLoadFailed', "Couldn't load skills")
             : emptyText
               ? emptyText
               : autocomplete.skillsEnabled

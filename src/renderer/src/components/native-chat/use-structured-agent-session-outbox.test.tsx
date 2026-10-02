@@ -414,10 +414,10 @@ describe('useStructuredAgentSessionOutbox', () => {
       throw new Error('storage full')
     })
     act(() => expect(result.current.send('tail that cannot be saved')).toBe(false))
-    expect(result.current.error).toBe('Message could not be saved to the outbox')
+    expect(result.current.error).toBe("Couldn't save your message. Try again.")
 
     rerender({ submissions: [{ ...pendingResultFor(id, 10).value.submission }] })
-    expect(result.current.error).toBe('Message could not be saved to the outbox')
+    expect(result.current.error).toBe("Couldn't save your message. Try again.")
     setItem.mockRestore()
   })
 
@@ -503,7 +503,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
     expect(sent).toContain('second')
     expect(result.current.error).toBe(
-      'Message delivery is unconfirmed and Orca will not send it again'
+      "Couldn't confirm your message was sent. Check the chat before sending it again."
     )
   })
 

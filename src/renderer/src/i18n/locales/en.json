@@ -17556,7 +17556,7 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "Orca couldn't confirm {{agent}}'s previous process ended. Messages wait to be sent until Orca confirms it has ended."
+        "previousExitUnverifiable": "{{agent}} may still be running from before. Your messages will send once it stops."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17578,9 +17578,9 @@
         "historyUnavailable": "Orca couldn't open this chat's history right now.",
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "updateOrcaToKeepUsing": "Update Orca to keep using them.",
-        "unsupported": "The Orca running this chat doesn't support this. Update Orca, then try again.",
+        "unsupported": "This needs a newer Orca on the computer running this chat. Update Orca there, then try again.",
         "unreachable": "Orca couldn't reach the agent.",
-        "recordFailed": "Orca couldn't record it in this chat's history.",
+        "recordFailed": "Orca couldn't save this to the chat's history.",
         "conversationCleared": "This conversation has been cleared.",
         "openCurrentConversation": "Open the current conversation to continue.",
         "clearUnfinished": "The last /clear didn't finish.",
@@ -17594,19 +17594,19 @@
         "answerFirst": "Answer the question or approval first.",
         "backgroundTasksRunning": "Background tasks are still running.",
         "waitForBackgroundTasks": "Wait for the background tasks to finish.",
-        "messagesUnsettled": "A message you sent earlier hasn't been confirmed yet.",
+        "messagesUnsettled": "A message you sent earlier hasn't gone through yet.",
         "settleEarlierMessage": "Wait for your earlier message to go through, or retry it.",
         "optionRejected": "The agent didn't accept this setting.",
         "goalsUnsupported": "This agent doesn't support goals.",
         "agentRefused": "The agent turned this down.",
-        "ownerUnproven": "Orca hasn't confirmed that this chat's previous agent stopped.",
+        "ownerUnproven": "The previous agent in this chat may still be running.",
         "reopenChat": "Reopen the chat to check again.",
         "terminalAgentHoldsChat": "This chat is still open in a terminal agent.",
         "quitTerminalAgent": "Quit that agent to continue the chat here.",
         "hostReconciling": "Orca is still checking on this chat after restarting.",
         "waitMoment": "Wait a moment.",
         "recordUnreadable": "Orca couldn't read this chat's saved state.",
-        "chatNotFound": "The Orca running this chat has no record of it.",
+        "chatNotFound": "Orca can't find this chat.",
         "startNewChat": "Start a new chat to continue.",
         "tryAgain": "Try again."
       },
@@ -17661,8 +17661,8 @@
         "skills": "Skills",
         "loadingSkills": "Loading skills...",
         "skillsLoaded": "Skills loaded",
-        "skillsUnavailableHost": "Skills are unavailable for this host",
-        "skillsLoadFailed": "Could not load skills from this host",
+        "skillsUnavailableHost": "Skills aren't available here",
+        "skillsLoadFailed": "Couldn't load skills",
         "retrySkills": "Retry",
         "skillCommandCollision": "Also a skill name - agent decides",
         "skillMultipleSources": "{{sourceCount}} sources - agent resolves",
@@ -17824,9 +17824,9 @@
         "stateBlocked": "blocked",
         "stateDone": "done",
         "stateIdle": "stopped",
-        "stateUnverifiable": "unverifiable",
+        "stateUnverifiable": "unknown",
         "reasonWaiting": "needs approval",
-        "reasonUnverifiable": "no contact",
+        "reasonUnverifiable": "no recent update",
         "reasonBlocked": "failed",
         "groupAgents": "Agents",
         "groupShell": "Shell",
@@ -17847,7 +17847,7 @@
         "error": {
           "title": "Could not load conversation",
           "subtitle": "The transcript could not be read. Toggle back to the terminal to keep working.",
-          "retryingSubtitle": "The transcript could not be read. Orca keeps trying to load it.",
+          "retryingSubtitle": "Orca keeps trying to load this chat.",
           "keepsTrying": "Orca keeps trying to load it."
         },
         "reconnecting": "Reconnecting to this chat…",
@@ -17911,12 +17911,12 @@
           "idle": "idle",
           "failed": "failed",
           "stopped": "stopped",
-          "unverifiable": "unverifiable",
+          "unverifiable": "unknown",
           "workingCount": "{{value0}} working",
           "idleCount": "{{value0}} idle",
           "failedCount": "{{value0}} failed",
           "stoppedCount": "{{value0}} stopped",
-          "unverifiableCount": "{{value0}} unverifiable"
+          "unverifiableCount": "{{value0}} unknown"
         },
         "startedOne": "Kicked off 1 subagent",
         "startedN": "Kicked off {{value0}} subagents",
@@ -17990,6 +17990,10 @@
         "queuePausedCleared": "Queue paused after you cleared the conversation",
         "queuePaused": "Queue paused",
         "resume": "Resume"
+      },
+      "outbox": {
+        "saveFailed": "Couldn't save your message. Try again.",
+        "redeliveryRefused": "Couldn't confirm your message was sent. Check the chat before sending it again."
       }
     },
     "tab": {

@@ -19,9 +19,7 @@ it('keeps pointing the terminal-backed chat back to its terminal when a read fai
 
 it('tells the structured chat its read keeps retrying', () => {
   render(<NativeChatEmptyState kind="error" retrying />)
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeInTheDocument()
+  expect(screen.getByText('Orca keeps trying to load this chat.')).toBeInTheDocument()
 })
 
 it('shows the host message in place of the terminal-backed default', () => {
@@ -43,9 +41,7 @@ it("says the structured chat's own words for the failure once, as the title, abo
     'font-medium'
   )
   expect(screen.queryByText('Could not load conversation')).toBeNull()
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeInTheDocument()
+  expect(screen.getByText('Orca keeps trying to load this chat.')).toBeInTheDocument()
 })
 
 it('says a failure no retry gets past in its one line, with nothing of trying again', () => {

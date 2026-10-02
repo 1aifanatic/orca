@@ -23,10 +23,9 @@ export type JournalRepairDisclosure = {
 }
 
 /** Disclosed when a repair skipped a row it could not read. */
-export function journalRepairDisclosure(input: { malformedRows: number }): JournalRepairDisclosure {
-  const lines = `${input.malformedRows} journal line${input.malformedRows === 1 ? '' : 's'}`
+export function journalRepairDisclosure(): JournalRepairDisclosure {
   return {
     identity: JOURNAL_REPAIR_DISCLOSURE_IDENTITY,
-    body: { kind: 'status', text: `${lines} could not be read` }
+    body: { kind: 'status', text: "Part of this chat's history couldn't be loaded." }
   }
 }
