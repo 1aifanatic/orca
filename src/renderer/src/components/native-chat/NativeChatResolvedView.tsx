@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useAppStore } from '../../store'
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
-import { useNativeChatPaneDraftTranscript } from './use-native-chat-draft-sent-history'
-import { nativeChatDraftKey } from './native-chat-draft-cache'
 import { useNativeChatRetainedSession } from './use-native-chat-retained-session'
 import { isNativeChatTranscriptUnsettled } from './native-chat-live-session-contract'
 import { selectNativeChatViewState } from './native-chat-view-state'
@@ -94,11 +92,6 @@ export function NativeChatResolvedView({
     // flushed would re-offer a prompt the user already submitted.
     transcriptLoading: isNativeChatTranscriptUnsettled(session.readPhase)
   })
-  useNativeChatPaneDraftTranscript(
-    nativeChatDraftKey({ paneKey }),
-    session.readPhase,
-    session.messages
-  )
   // The live-session merge reconciles hooks with replayable transcript turn
   // boundaries; all working consumers must use that one lifecycle decision.
   const liveWorking = session.status === 'working'

@@ -3,7 +3,6 @@
 // put-back is saved at once, so a crash right after Enter cannot bring back text already sent.
 
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import type { NativeChatLaunchDraftTurnBaseline } from './native-chat-launch-draft-resolution'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 
 /**
@@ -28,27 +27,11 @@ function isAttachmentLocation(value: unknown): value is NativeChatDraftAttachmen
 /** Launch text Orca typed into a terminal agent's input line, which still holds it. */
 export type NativeChatTuiInputSeed = { agent: TuiAgent; text: string; createdAt: number }
 
-/**
- * The newest message the host had accepted in the chat, in host order, as this client saw it when
- * the draft was saved; `sequence` 0 when it had seen none. A message the host accepted after it
- * with the draft's own content was sent from this draft, even if the draft's clear never landed.
- */
-export type NativeChatDraftSentBaseline = { epoch: string; sequence: number }
-
 export type PersistedNativeChatDraft = {
   text: string
   attachments: readonly NativeChatDraftAttachment[]
   tuiInputSeed?: NativeChatTuiInputSeed
-  sentBaseline?: NativeChatDraftSentBaseline
-  /** A chat over a terminal agent: its transcript's user turns as seen when the draft was saved. */
-  transcriptBaseline?: NativeChatLaunchDraftTurnBaseline
 }
-
-/** What a chat's view has seen of its history, saved with the draft as it is written. */
-export type NativeChatDraftHistoryBaseline = Pick<
-  PersistedNativeChatDraft,
-  'sentBaseline' | 'transcriptBaseline'
->
 
 export function isEmptyNativeChatDraft(draft: PersistedNativeChatDraft): boolean {
   return draft.text === '' && draft.attachments.length === 0 && !draft.tuiInputSeed
@@ -211,29 +194,6 @@ function parseTuiInputSeed(value: unknown): { tuiInputSeed?: NativeChatTuiInputS
     : {}
 }
 
-function parseSentBaseline(value: unknown): { sentBaseline?: NativeChatDraftSentBaseline } {
-  if (!isRecord(value)) {
-    return {}
-  }
-  const { epoch, sequence } = value
-  return typeof epoch === 'string' && typeof sequence === 'number'
-    ? { sentBaseline: { epoch, sequence } }
-    : {}
-}
-
-function parseTranscriptBaseline(value: unknown): {
-  transcriptBaseline?: NativeChatLaunchDraftTurnBaseline
-} {
-  if (!isRecord(value)) {
-    return {}
-  }
-  const { userTurnCount, lastUserTurnId } = value
-  return typeof userTurnCount === 'number' &&
-    (typeof lastUserTurnId === 'string' || lastUserTurnId === null)
-    ? { transcriptBaseline: { userTurnCount, lastUserTurnId } }
-    : {}
-}
-
 function parseStoredDraft(
   raw: string | null
 ): (PersistedNativeChatDraft & { savedAt: number }) | null {
@@ -245,7 +205,7 @@ function parseStoredDraft(
     if (!isRecord(value)) {
       return null
     }
-    const { text, attachments, tuiInputSeed, sentBaseline, transcriptBaseline, savedAt } = value
+    const { text, attachments, tuiInputSeed, savedAt } = value
     if (typeof text !== 'string' || !Array.isArray(attachments)) {
       return null
     }
@@ -254,9 +214,7 @@ function parseStoredDraft(
       attachments: attachments
         .map(parseAttachment)
         .filter((attachment): attachment is NativeChatDraftAttachment => attachment !== null),
-      ...parseTuiInputSeed(tuiInputSeed),
-      ...parseSentBaseline(sentBaseline),
-      ...parseTranscriptBaseline(transcriptBaseline)
+      ...parseTuiInputSeed(tuiInputSeed)
     }
     return isEmptyNativeChatDraft(draft)
       ? null

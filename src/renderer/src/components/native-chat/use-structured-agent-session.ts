@@ -28,7 +28,6 @@ import {
 } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
-import { useNativeChatDraftSentHistory } from './use-native-chat-draft-sent-history'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisional-launch'
@@ -90,7 +89,6 @@ export function useStructuredAgentSession(args: {
   })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
-  useNativeChatDraftSentHistory(composerScopeKey, state, transportEnabled)
   const {
     conversationCommands,
     optionSnapshot,
