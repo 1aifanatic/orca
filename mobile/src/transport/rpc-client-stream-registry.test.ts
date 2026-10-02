@@ -260,6 +260,66 @@ describe('RpcClientStreamRegistry', () => {
     }
   )
 
+  describe.each([
+    ['browser.screencast', 'browser.screencast.unsubscribe', { page: 'page-1' }],
+    ['runtime.clientEvents.subscribe', 'runtime.clientEvents.unsubscribe', null],
+    ['session.tabs.subscribe', 'session.tabs.unsubscribe', { worktree: 'wt-1' }]
+  ])('canceled %s delivery', (method, cleanup, params) => {
+    it('ignores late scrollback and terminal registration while waiting for host cleanup', () => {
+      const { registry, sent } = createRegistry()
+      const events: unknown[] = []
+      registry.subscribe(method, params, (event) => events.push(event))()
+      const request = sent[0]!
+
+      expect(
+        registry.handleResponse({
+          id: request.id,
+          ok: true,
+          result: { type: 'scrollback', serialized: 'late' }
+        })
+      ).toBe(true)
+      registry.handleResponse(streamingResponse(request.id, { type: 'subscribed', streamId: 41 }))
+      registry.handleBinary(terminalOutput(41, 'late'))
+      expect(events).toEqual([])
+      expect(registry.size()).toBe(1)
+      expect(sent).toHaveLength(1)
+
+      registry.handleResponse(
+        streamingResponse(
+          request.id,
+          method === 'session.tabs.subscribe'
+            ? { type: 'snapshot', tabs: [] }
+            : { type: 'ready', subscriptionId: 'late-host-id' }
+        )
+      )
+      expect(sent[1]).toMatchObject({
+        method: cleanup,
+        params:
+          method === 'session.tabs.subscribe'
+            ? { worktree: 'wt-1', subscriptionId: request.id }
+            : { subscriptionId: 'late-host-id' }
+      })
+      expect(registry.size()).toBe(0)
+      expect(events).toEqual([])
+    })
+
+    it('drops an unsent canceled stream without replay or host cleanup', () => {
+      const { registry, sent, setState } = createRegistry('connecting')
+      const events: unknown[] = []
+      const dispose = registry.subscribe(method, params, (event) => events.push(event))
+
+      dispose()
+      dispose()
+      registry.markForReplay()
+      setState('connected')
+      registry.replayAfterAuthentication()
+
+      expect(sent).toEqual([])
+      expect(events).toEqual([])
+      expect(registry.size()).toBe(0)
+    })
+  })
+
   it('holds a session tabs unsubscribe again after a reconnect replays the stream', () => {
     const { registry, sent } = createRegistry()
     const dispose = registry.subscribe('session.tabs.subscribe', { worktree: 'wt-1' }, () => {})
