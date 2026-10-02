@@ -1,10 +1,11 @@
 /**
  * Converting a relay-hosted SSH target that holds Orca state into a managed orcad server:
- * fence the source, deploy and pair the server, then stage and commit the dormant catalog.
+ * fence the source, deploy and pair the server, stage and commit the dormant catalog, then
+ * retire the source.
  *
  * Every step is keyed by the journal, so calling this again after a crash or lost contact resumes
  * the same migration instead of starting another. The source stays authoritative until the
- * destination proves its commit; retiring the source is a separate, later step.
+ * destination proves its commit, and only then is retired.
  */
 import { randomUUID } from 'node:crypto'
 import type { OrcadManagedConversionResult } from '../../shared/orcad-managed-runtime'
@@ -32,6 +33,7 @@ import {
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { createManagedOrcadEnvironment } from './orcad-runtime-deployment'
+import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
 import { hasRegisteredDirectSshAuthority } from './ssh-target-registry'
 
 export type OrcadManagedConversionArgs = {
@@ -93,8 +95,20 @@ export async function convertSshTargetToManagedOrcad(
   if (committed.phase !== 'destination-committed' && committed.phase !== 'source-retired') {
     throw new Error(`orcad_migration_commit_not_proven:${committed.phase}`)
   }
+  await runTargetLifecycle(fenced.sshTargetId, () =>
+    retireOrcadMigrationSource(
+      {
+        userDataPath,
+        store: targetStore.getOrcadMigrationSource(),
+        environment: marked,
+        now: args.now,
+        signal: args.signal
+      },
+      committed.migrationId
+    )
+  )
   return {
-    outcome: 'committed',
+    outcome: 'converted',
     environment: redactRuntimeEnvironment(marked),
     migrationId: committed.migrationId
   }
@@ -114,6 +128,12 @@ async function fenceOrResume(
   const existing = resolveOrcadMigrationFence(userDataPath, target)
   if (existing.state === 'fenced') {
     return existing.cutover
+  }
+  const converted = listEnvironments(userDataPath).some(
+    (environment) => environment.orcadDeployment?.sshTargetId === target.id
+  )
+  if (converted) {
+    return refuse('live', 'orcad_migration_already_managed', 'This SSH host is already a managed server.')
   }
   const store = targetStore.getOrcadMigrationSource()
   // Asked while the relay still answers; the fence re-checks leases once it holds.

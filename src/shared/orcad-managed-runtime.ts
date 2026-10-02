@@ -106,7 +106,8 @@ export type OrcadManagedRuntimeStatus = {
 
 export type OrcadManagedConversionResult =
   | {
-      outcome: 'committed'
+      /** Committed on the server and retired from the SSH host. */
+      outcome: 'converted'
       environment: PublicKnownRuntimeEnvironment
       migrationId: string
     }

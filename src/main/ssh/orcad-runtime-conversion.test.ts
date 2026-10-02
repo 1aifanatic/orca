@@ -104,20 +104,27 @@ const convert = (listRelayPtyIds: (() => Promise<string[] | null>) | null = asyn
   })
 
 describe('converting an SSH host into a managed server', () => {
-  it('fences, deploys, marks the server, then commits the catalog exactly once', async () => {
+  it('fences, deploys, marks the server, commits once, then retires the source', async () => {
     const result = await convert()
-    expect(result).toMatchObject({ outcome: 'committed' })
+    expect(result).toMatchObject({ outcome: 'converted' })
     expect(releaseDirectSession).toHaveBeenCalledWith(TARGET.id)
     expect(mocks.deploy).toHaveBeenCalledWith(
       userDataPath,
       expect.objectContaining({ migration: true })
     )
-    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.phase).toBe('destination-committed')
     const [environment] = listEnvironments(userDataPath)
     expect(environment?.orcadMigratedAt).toBe('2026-10-02T00:00:00.000Z')
     expect(destination.commits).toBe(1)
-    // Retiring the source is the next step; until then it keeps every row.
-    expect(store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
+    expect(store.getRepos()).toEqual([])
+    // The journal compacts once the server matches it; the fenced target stays for the tunnel.
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
+    expect(getManagedOrcadOwnerEnvironmentId(store.getSshTarget(TARGET.id)?.owner)).toBe(
+      environment?.id
+    )
+    await expect(convert()).resolves.toMatchObject({
+      outcome: 'refused',
+      code: 'orcad_migration_already_managed'
+    })
   })
 
   it('refuses before touching the host while terminals run or cannot be counted', async () => {
@@ -142,10 +149,10 @@ describe('converting an SSH host into a managed server', () => {
     const [fenced] = listOrcadMigrationSourceCutovers(userDataPath)
     expect(fenced?.phase).toBe('source-fenced')
     await expect(convert(null)).resolves.toMatchObject({
-      outcome: 'committed',
+      outcome: 'converted',
       migrationId: fenced?.migrationId
     })
-    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
+    expect(destination.commits).toBe(1)
   })
 
   it('resumes after a lost commit reply without committing twice', async () => {
@@ -167,8 +174,9 @@ describe('converting an SSH host into a managed server', () => {
     await expect(convert()).rejects.toThrow('socket closed')
     expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.phase).toBe('destination-staged')
     reachable = true
-    await expect(convert(null)).resolves.toMatchObject({ outcome: 'committed' })
+    await expect(convert(null)).resolves.toMatchObject({ outcome: 'converted' })
     expect(destination.commits).toBe(1)
-    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.phase).toBe('destination-committed')
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
+    expect(store.getRepos()).toEqual([])
   })
 })
