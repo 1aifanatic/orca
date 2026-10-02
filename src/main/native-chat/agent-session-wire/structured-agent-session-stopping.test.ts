@@ -240,6 +240,69 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
   })
 })
 
+describe('a Stop that failed before the turn it meant to stop opened', () => {
+  /** Its end, with no verdict of its own, read off the journal. */
+  function turnEnd(turnId: string) {
+    return journal()
+      .snapshot()
+      .items.map((item) => item.body)
+      .find((body) => body.kind === 'turn' && body.turnId === turnId)
+  }
+
+  async function failedBeforeTheTurn(options: { stopEndsSession?: true; restartable?: true } = {}) {
+    rig = await createQueuedMessageTestRig(options)
+    const sent = await rig.workingSend()
+    const status = watchStatus()
+    if (!options.stopEndsSession) {
+      // Codex could not reach a turn still able to open.
+      rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: { turnMayOpen: true } })
+    }
+    // The process could not be ended either.
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    // A Stop that ends its session ends the child on the session's next step.
+    await rig.host['tasks'].serialize(HOST_TEST_SESSION, async () => {})
+    expect(journal().activeTurnId()).toBeNull()
+    return { sent, status }
+  }
+
+  it.each([
+    ['Codex, refused, then its kill failed', {}],
+    ['Claude-like, whose kill failed before the echo', { stopEndsSession: true as const }]
+  ])(
+    'reads Stopping through the turn that then opens, whose own end stays its own: %s',
+    async (_, options) => {
+      const { sent, status } = await failedBeforeTheTurn(options)
+      await eventually(() => expect(status()).toMatchObject({ status: 'working', stopping: true }))
+
+      await rig.settleAccepted(sent, 'sent')
+      await turn('turn-1', sent, 'running')
+      await eventually(() => expect(journal().activeTurnId()).toBe('turn-1'))
+      expect(status()).toMatchObject({ status: 'working', stopping: true })
+      await turn('turn-1', sent, 'interrupted')
+      await eventually(() => expect(status()?.status).toBe('idle'))
+
+      expect(status()).not.toHaveProperty('stopping')
+      expect(turnEnd('turn-1')).toMatchObject({ state: 'interrupted' })
+      expect(turnEnd('turn-1')).not.toHaveProperty('outcome')
+    }
+  )
+
+  it("never reads Stopping on a send's turn handed over after it", async () => {
+    // A later send needs a child again once the failed end is retried.
+    const { sent, status } = await failedBeforeTheTurn({ restartable: true })
+    await rig.settleRejected(sent, 'no turn for this one')
+    await eventually(() => expect(status()?.status).not.toBe('working'))
+
+    const later = await rig.workingSend()
+    await rig.settleAccepted(later, 'later')
+    await turn('turn-2', later, 'running')
+
+    await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+    expect(status()).not.toHaveProperty('stopping')
+  })
+})
+
 describe("a Stop's settle edge", () => {
   // It writes no row: it republishes the status and wakes the handover, and is no activity.
   it('republishes Stopping without counting as activity', async () => {

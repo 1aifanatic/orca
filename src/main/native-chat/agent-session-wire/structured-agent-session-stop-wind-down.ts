@@ -11,6 +11,8 @@ import {
 } from '../../../shared/agent-session-journal-types'
 import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import type { JournalStopFailedOn } from '../agent-session-journal/queued-message-pause'
+import { structuredAgentSessionFailedStopMark } from './structured-agent-session-stopping'
 
 /** What a Stop that ends the provider's session leaves its next serialized step: whether the
  *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
@@ -23,7 +25,7 @@ export type StructuredAgentSessionStopWindDown = {
   /** Closes the Stop's settle once the wind-down finishes, whether or not the child's exit was
    *  proven, marking the turn running on after an end that failed (`JournalStopSettle.failedOn`):
    *  until then, what ends is the Stop's. */
-  settled?: (failedOn?: string) => void
+  settled?: (failedOn?: JournalStopFailedOn) => void
 }
 
 /**
@@ -41,7 +43,7 @@ export async function endStoppedStructuredAgentSession(
   stopChild: () => Promise<void>,
   onError: (error: unknown) => void
 ): Promise<void> {
-  let failedOn: string | undefined
+  let failedOn: JournalStopFailedOn | undefined
   try {
     if (windDown.waitsForProvider) {
       await ctx.adapter.awaitStoppedRequestEnd?.(ctx.sessionId, windDown.stoppedAt)
@@ -49,7 +51,7 @@ export async function endStoppedStructuredAgentSession(
     await stopChild()
   } catch (error) {
     onError(error)
-    failedOn = ctx.journal.activeTurnId() ?? undefined
+    failedOn = structuredAgentSessionFailedStopMark(ctx.journal)
     await reviseStopNoteUnconfirmed(ctx, windDown.stopNote).catch(onError)
   } finally {
     windDown.settled?.(failedOn)

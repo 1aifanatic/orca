@@ -25,6 +25,8 @@ import {
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import { runningTurnLifecycleRevisions } from './structured-agent-session-stale-turn-verdict'
 import type { StructuredAgentSessionStopWindDown } from './structured-agent-session-stop-wind-down'
+import type { JournalStopFailedOn } from '../agent-session-journal/queued-message-pause'
+import { structuredAgentSessionFailedStopMark } from './structured-agent-session-stopping'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain.
@@ -105,7 +107,11 @@ async function endStoppedTurnAtSettle(ctx: AgentSessionTurnContext, turnId: stri
 }
 
 /** What the Stop's settle binds: the turn it stopped, and whether its wind-down closes it. */
-type StopSettleBinding = { turnId?: string; failedOn?: string; closedByWindDown?: true }
+type StopSettleBinding = {
+  turnId?: string
+  failedOn?: JournalStopFailedOn
+  closedByWindDown?: true
+}
 
 export async function performCancel(
   ctx: AgentSessionTurnContext,
@@ -121,7 +127,7 @@ export async function performCancel(
   const settle = input.opensSettle ? ctx.journal.stopMarks.beginSettle() : null
   const binding: StopSettleBinding = {}
   // A wind-down that failed with work running on marks that work's turn, as a failed Stop does.
-  const close = (failedOn?: string): void =>
+  const close = (failedOn?: JournalStopFailedOn): void =>
     ctx.journal.stopMarks.settled(settle, binding.turnId, binding.failedOn ?? failedOn)
   try {
     return await cancelAndNote(ctx, input, binding, close)
@@ -162,7 +168,7 @@ async function cancelAndNote(
   ctx: AgentSessionTurnContext,
   input: PerformCancelInput,
   binding: StopSettleBinding,
-  closeSettle: (failedOn?: string) => void
+  closeSettle: (failedOn?: JournalStopFailedOn) => void
 ): Promise<TurnOutcome<AgentSessionCancelResult>> {
   let cancelled = false
   let note: AgentJournalStatusItem | null = {
@@ -310,7 +316,7 @@ async function cancelAndNote(
     binding.turnId = stoppedTurn ?? stoppedTurnId ?? undefined
   } else if (interruptFailed) {
     // A Stop that failed reads "Stopping…" through the turn it could not stop; its end stays its own.
-    binding.failedOn = ctx.journal.activeTurnId() ?? undefined
+    binding.failedOn = structuredAgentSessionFailedStopMark(ctx.journal)
   }
   if (taken === true && stoppedTurn !== undefined && !binding.closedByWindDown && !input.scope) {
     await endStoppedTurnAtSettle(ctx, stoppedTurn)

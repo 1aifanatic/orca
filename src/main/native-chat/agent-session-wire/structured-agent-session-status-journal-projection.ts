@@ -67,7 +67,9 @@ export class StructuredAgentSessionJournalProjections {
         acceptedSendKey: snapshot
           ? newestAcceptedSendKey(cursor.epoch, snapshot.submissions ?? [])
           : null,
-        stopping: snapshot ? structuredAgentSessionStopping(journal, snapshot.items) : false
+        stopping: snapshot
+          ? structuredAgentSessionStopping(journal, snapshot.items, snapshot.submissions ?? [])
+          : false
       }
       this.byJournal.set(journal, projection)
     }
