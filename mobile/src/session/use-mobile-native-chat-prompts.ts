@@ -33,7 +33,7 @@ export function useMobileNativeChatPrompts(args: {
           lastAssistantMessage: status.lastAssistantMessage,
           toolName: status.toolName,
           toolInput: status.toolInput
-        }) ?? parseApprovalFromStatus(status.interactivePrompt))
+        }) ?? parseApprovalFromStatus(status.interactivePrompt, status.agentType))
       : null
   const question =
     blocked && status && !permission ? parseAgentQuestion(status.lastAssistantMessage ?? '') : null

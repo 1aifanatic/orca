@@ -55,3 +55,7 @@ export function resolveNativeChatTranscriptAgent(
   }
   return null
 }
+
+export function nativeChatApprovalAcceptKey(agent: string | null | undefined): string {
+  return resolveNativeChatTranscriptAgent(agent) === 'opencode' ? '\r' : '1'
+}
