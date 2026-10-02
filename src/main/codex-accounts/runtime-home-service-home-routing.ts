@@ -1,4 +1,5 @@
-import { posix as pathPosix } from 'node:path'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, join, posix as pathPosix } from 'node:path'
 import { parseWslUncPath, toLinuxPath, toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { getDefaultWslDistro, getWslHome } from '../wsl'
@@ -21,6 +22,7 @@ import {
 } from '../codex/codex-pane-account-registry'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
 import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
+import { writeFileAtomicallyIfUnchanged } from './fs-utils'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type { CodexRateLimitHomeResolution } from './runtime-home-service-types'
 import { CodexRuntimeHomeManagedHome } from './runtime-home-service-managed-home'
@@ -171,6 +173,41 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
     syncLegacySharedCodexConfigForRetainedPanes()
   }
 
+  // Why: Windows ran the system default only on the mirror, so a login made in
+  // Orca while ~/.codex had none (a null seed) exists nowhere else. Copy it into
+  // an empty ~/.codex once; the first decision, copied or not, ends the one-shot.
+  protected copyMirrorLoginIntoEmptySystemHome(): void {
+    if (process.platform !== 'win32') {
+      return
+    }
+    try {
+      const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
+      const runtimeAuthPath = this.getRuntimeAuthPath()
+      if (
+        provenance.kind !== 'committed' ||
+        provenance.provenance.owner !== 'system-default' ||
+        provenance.provenance.authJson !== null ||
+        !existsSync(runtimeAuthPath)
+      ) {
+        return
+      }
+      const runtimeAuth = readFileSync(runtimeAuthPath, 'utf-8')
+      const systemAuthPath = join(getSystemCodexHomePath(), 'auth.json')
+      mkdirSync(dirname(systemAuthPath), { recursive: true, mode: 0o700 })
+      const copied = writeFileAtomicallyIfUnchanged(systemAuthPath, null, runtimeAuth, {
+        mode: 0o600
+      })
+      // Why even when declined: a null seed would let a later ~/.codex logout
+      // pull this stale login in; the seed also keeps retained panes in step (#5370).
+      this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
+      if (copied) {
+        this.captureSystemDefaultSnapshot({ force: true })
+      }
+    } catch (error) {
+      console.warn('[codex-runtime-home] Failed to copy the mirror login into ~/.codex:', error)
+    }
+  }
+
   /** Preserve refreshed auth from retained legacy WSL panes before restart. */
   async syncActiveWslSelectionsBeforeRestart(): Promise<void> {
     if (process.platform !== 'win32') {
@@ -285,6 +322,7 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       // CODEX_HOME before ~/.codex. Nested Orca launches can inherit the
       // managed home, restarting the background OAuth conflict (#5370), so
       // pin this non-interactive lane to the native home explicitly.
+      this.copyMirrorLoginIntoEmptySystemHome()
       if (hasRecordedLegacySharedCodexPane()) {
         this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
       }

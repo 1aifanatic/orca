@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAuthJson,
@@ -135,5 +136,51 @@ describe('copying a login made inside Orca into an empty ~/.codex on Windows', (
     await launchOnRealHome('darwin')
 
     expect(existsSync(getSystemCodexAuthPath())).toBe(false)
+  })
+  it("does not pull Orca's login in after a later logout when ~/.codex had its own", async () => {
+    await launchOnMirror()
+    writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
+    const ownLogin = createCodexAuthJson('other@example.com', 'acct-other', 'own')
+    writeFileSync(getSystemCodexAuthPath(), ownLogin, 'utf-8')
+    await launchOnRealHome()
+    // Retained panes on the mirror follow ~/.codex, as on old mirror launches.
+    expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(ownLogin)
+    rmSync(getSystemCodexAuthPath())
+
+    await launchOnRealHome()
+
+    expect(existsSync(getSystemCodexAuthPath())).toBe(false)
+  })
+
+  it('stays one-shot when the snapshot after the copy fails', async () => {
+    await launchOnMirror()
+    writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
+    const snapshotPath = join(
+      testState.userDataDir,
+      'codex-runtime-home',
+      'system-default-auth.json'
+    )
+    rmSync(snapshotPath, { force: true })
+    mkdirSync(join(snapshotPath, 'blocked'), { recursive: true })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await launchOnRealHome()
+
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(paneLogin)
+    expect(JSON.parse(readFileSync(getSharedRuntimeAuthProvenancePath(), 'utf-8'))).toEqual({
+      owner: 'system-default',
+      authJson: paneLogin
+    })
+  })
+
+  it('copies it before a usage poll reads ~/.codex', async () => {
+    await launchOnMirror()
+    writeFileSync(getRuntimeCodexAuthPath(), paneLogin, 'utf-8')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const service = await createService(createSettings({ realHomeRoutable: true }))
+
+    expect(service.prepareForRateLimitFetch()).toMatchObject({ kind: 'ready' })
+
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(paneLogin)
   })
 })
