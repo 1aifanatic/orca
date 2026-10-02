@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import type SyncDatabase from '../sqlite/sync-database'
 import { columnExists, tableExists } from '../opencode-usage/schema-helpers'
 import { asRecord, parseJsonObject } from '../ai-vault/session-scanner-values'
-import { opencodeMessageBlocks } from './transcript-opencode-part-blocks'
+import { opencodeMessages } from './transcript-opencode-part-blocks'
+import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type {
   OpenCodeTranscriptPage,
   OpenCodeTranscriptSignal,
@@ -52,7 +53,7 @@ export function readOpenCode2TranscriptSignal(
   }
 }
 
-function messageItem(value: unknown): OpenCodeTranscriptItem | null {
+function messageItems(value: unknown): OpenCodeTranscriptItem[] {
   const row = asRecord(value)
   if (typeof row?.data !== 'string') {
     throw new Error('OpenCode transcript message exceeds its byte limit')
@@ -69,6 +70,7 @@ function messageItem(value: unknown): OpenCodeTranscriptItem | null {
     throw new Error('OpenCode transcript message exceeds its byte limit')
   }
   const messageId = row.id
+  const messageCursor = row.cursor
   const updatedAt = row.time_updated
   const record = parseJsonObject(row.data)
   if (!record) {
@@ -121,7 +123,7 @@ function messageItem(value: unknown): OpenCodeTranscriptItem | null {
       }
     ]
   })
-  const blocks = opencodeMessageBlocks(parts)
+  const blocks: NativeChatBlock[] = []
   const error = asRecord(record.error)
   if (typeof error?.message === 'string') {
     blocks.push({ type: 'text', text: error.message })
@@ -130,25 +132,28 @@ function messageItem(value: unknown): OpenCodeTranscriptItem | null {
     blocks.push({ type: 'text', text: 'Conversation interrupted' })
   }
   if (
-    blocks.length === 0 ||
-    (row.type !== 'user' &&
-      row.type !== 'assistant' &&
-      row.type !== 'system' &&
-      row.type !== 'idle')
+    row.type !== 'user' &&
+    row.type !== 'assistant' &&
+    row.type !== 'system' &&
+    row.type !== 'idle'
   ) {
-    return null
+    return []
   }
-  return {
-    rowid: row.cursor,
-    fingerprint: `${updatedAt}:${createHash('sha256').update(row.data).digest('hex')}`,
-    message: {
+  const messages = opencodeMessages(
+    {
       id: `opencode:${row.id}`,
       role: row.type === 'idle' ? 'system' : row.type,
-      blocks,
-      timestamp: row.time_created,
-      source: 'transcript'
-    }
-  }
+      timestamp: row.time_created
+    },
+    parts,
+    blocks
+  )
+  const fingerprint = `${updatedAt}:${createHash('sha256').update(row.data).digest('hex')}`
+  return messages.toReversed().map((message) => ({
+    rowid: messageCursor,
+    fingerprint,
+    message
+  }))
 }
 
 export function readOpenCode2TranscriptPage(
@@ -186,11 +191,9 @@ export function readOpenCode2TranscriptPage(
       if (++scannedRows > MAX_SCAN_ROWS || bytes > MAX_PAGE_BYTES) {
         throw new Error('OpenCode transcript page exceeds its read limit')
       }
-      const item = messageItem(value)
+      const mapped = messageItems(value)
       cursor = row.cursor
-      if (item) {
-        items.push(item)
-      }
+      items.push(...mapped)
       if (items.length >= limit) {
         hasMore =
           db

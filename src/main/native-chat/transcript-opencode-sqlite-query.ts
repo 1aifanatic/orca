@@ -9,7 +9,7 @@ import type SyncDatabase from '../sqlite/sync-database'
 
 type BindValue = SyncDatabase.BindValue
 type SqliteStatement = SyncDatabase.Statement
-import { opencodeMessageBlocks } from './transcript-opencode-part-blocks'
+import { opencodeMessages } from './transcript-opencode-part-blocks'
 // Cursors are opaque provider order: SQLite rowid in v1, session sequence in v2.
 
 export type OpenCodeTranscriptItem = {
@@ -165,8 +165,16 @@ export function readOpenCodeTranscriptPage(args: {
         break
       }
     }
-    const overshot = collected.length > limit
-    const trimmed = overshot ? collected.slice(0, limit) : collected
+    let retained = Math.min(limit, collected.length)
+    // A raw-row cursor cannot resume inside a reasoning/answer pair.
+    while (
+      retained < collected.length &&
+      collected[retained].rowid === collected[retained - 1].rowid
+    ) {
+      retained++
+    }
+    const overshot = retained < collected.length
+    const trimmed = overshot ? collected.slice(0, retained) : collected
     const items = trimmed.toReversed()
     return {
       items,
@@ -231,23 +239,23 @@ function mapMessageRows(
   const items: OpenCodeTranscriptItem[] = []
   for (const row of rows) {
     const partList = partsByMessage.get(row.id) ?? []
-    const blocks = opencodeMessageBlocks(partList)
-    if (blocks.length === 0) {
-      continue
-    }
     const record = parseJsonObject(row.data)
     const role = extractString(record?.role)
-    items.push({
-      rowid: row.message_rowid,
-      fingerprint: `${row.time_updated}:${partList.length}:${maxPartTimeUpdated(partList)}`,
-      message: {
+    const messages = opencodeMessages(
+      {
         id: row.id,
         role: role === 'user' ? 'user' : role === 'assistant' ? 'assistant' : 'system',
-        blocks,
-        timestamp: Number.isFinite(row.time_created) ? row.time_created : null,
-        source: 'transcript'
-      }
-    })
+        timestamp: Number.isFinite(row.time_created) ? row.time_created : null
+      },
+      partList
+    )
+    for (const message of messages.toReversed()) {
+      items.push({
+        rowid: row.message_rowid,
+        fingerprint: `${row.time_updated}:${partList.length}:${maxPartTimeUpdated(partList)}`,
+        message
+      })
+    }
   }
   return items
 }
