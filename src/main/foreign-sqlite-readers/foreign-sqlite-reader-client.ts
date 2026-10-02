@@ -32,7 +32,7 @@ type LaneSettings = {
   idleTeardownMs: number
 }
 
-/** One reader's thread plus its in-flight reads, keyed by database path. */
+/** One reader's thread plus its in-flight reads, keyed by what they read. */
 export class ForeignSqliteReaderLane<T> {
   private readonly queue: WorkerThreadRequestQueue<
     ForeignSqliteReaderRequest,
@@ -68,19 +68,19 @@ export class ForeignSqliteReaderLane<T> {
 
   /**
    * Read one database on this reader's thread.
-   * @param path - Database path; concurrent reads of it share one request.
+   * @param key - Concurrent reads with one key share a request, so it must cover every input the result depends on.
    * @param buildRequest - Builds the request around the queue's correlation id.
    * @returns The parsed value, or the reader's failure value if the worker cannot answer.
    */
-  read(path: string, buildRequest: (id: number) => ForeignSqliteReaderRequest): Promise<T> {
-    const pending = this.inFlight.get(path)
+  read(key: string, buildRequest: (id: number) => ForeignSqliteReaderRequest): Promise<T> {
+    const pending = this.inFlight.get(key)
     if (pending) {
       return pending
     }
     const read = this.dispatch(buildRequest).finally(() => {
-      this.inFlight.delete(path)
+      this.inFlight.delete(key)
     })
-    this.inFlight.set(path, read)
+    this.inFlight.set(key, read)
     return read
   }
 
@@ -140,6 +140,7 @@ export class ForeignSqliteReaderClient {
    * @returns The reader's result; its failure value when the worker cannot answer.
    */
   readCursorProfile(dbPath: string): Promise<CursorDesktopProfileReadResult> {
+    // The request is the path alone, so the path is the whole key.
     return this.cursorProfile.read(dbPath, (id) => ({ id, kind: 'cursorProfile', dbPath }))
   }
 

@@ -232,4 +232,23 @@ describe('ForeignSqliteReaderLane', () => {
     await expect(reads[0]).resolves.toBe('first')
     lane.dispose()
   })
+
+  it('shares in-flight reads by the caller key, not the database path', () => {
+    const workers: FakeWorker[] = []
+    const lane = new ForeignSqliteReaderLane(
+      'cursorProfile',
+      (value) => value,
+      () => 'failed',
+      { workerFactory: fakeFactory(workers), log() {}, timeoutMs: 60_000, idleTeardownMs: 30_000 }
+    )
+    const request = (id: number): ForeignSqliteReaderRequest => ({
+      id,
+      kind: 'cursorProfile',
+      dbPath: '/same.db'
+    })
+    const first = lane.read('/same.db#a', request)
+    expect(lane.read('/same.db#b', request)).not.toBe(first)
+    expect(lane.read('/same.db#a', request)).toBe(first)
+    lane.dispose()
+  })
 })
