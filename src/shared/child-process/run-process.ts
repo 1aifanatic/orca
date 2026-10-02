@@ -71,8 +71,12 @@ export function spawnProcess(spec: ProcessSpec): ChildProcessWithoutNullStreams 
  *
  * Never rejects on a non-zero exit — the exit code is data. Rejects only when
  * the process could not be started at all.
+ * Tail capture keeps final diagnostics without changing termination policy.
  */
-export function runProcess(spec: ProcessSpec): Promise<ProcessResult> {
+export function runProcess(
+  spec: ProcessSpec,
+  outputCapture: 'head' | 'tail' = 'head'
+): Promise<ProcessResult> {
   if (spec.signal?.aborted) {
     spec.onChildTerminated?.()
     return Promise.resolve({ code: null, signal: null, stdout: '', stderr: '', timedOut: false })
@@ -90,8 +94,8 @@ export function runProcess(spec: ProcessSpec): Promise<ProcessResult> {
       return
     }
 
-    const stdout = createOutputSink(maxOutputBytes)
-    const stderr = createOutputSink(maxOutputBytes)
+    const stdout = createOutputSink(maxOutputBytes, outputCapture)
+    const stderr = createOutputSink(maxOutputBytes, outputCapture)
     let timedOut = false
     let settled = false
     let barrierStopping = false

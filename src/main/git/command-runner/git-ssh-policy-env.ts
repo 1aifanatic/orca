@@ -15,6 +15,8 @@ import { acquireGitAdmission } from './git-subprocess-admission'
 export type { GitSshPolicyMode } from '../../../shared/git-ssh-policy-env'
 
 const CORE_SSH_COMMAND_PROBE_TIMEOUT_MS = 2500
+// Cold WSL starts and login rc files need the environment probe's startup budget.
+const WSL_CORE_SSH_COMMAND_PROBE_TIMEOUT_MS = 10_000
 
 export async function buildNetworkSshPolicyEnv(
   options: GitExecOptions,
@@ -49,7 +51,10 @@ export async function buildNetworkSshPolicyEnv(
       cwd: resolved.cwd,
       encoding: 'utf-8',
       maxBuffer: DEFAULT_GIT_MAX_BUFFER,
-      timeout: CORE_SSH_COMMAND_PROBE_TIMEOUT_MS,
+      timeout: Math.min(
+        options.timeout && options.timeout > 0 ? options.timeout : Infinity,
+        resolved.wsl ? WSL_CORE_SSH_COMMAND_PROBE_TIMEOUT_MS : CORE_SSH_COMMAND_PROBE_TIMEOUT_MS
+      ),
       env: promptEnv,
       signal: options.signal,
       onChildTerminated: reportTerminated

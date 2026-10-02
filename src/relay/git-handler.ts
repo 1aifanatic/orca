@@ -220,6 +220,8 @@ export class GitHandler {
           cwd: expandTilde(cwd),
           env,
           signal: context?.signal,
+          maxBuffer: 4096,
+          outputCapture: 'tail',
           observeStderr: (chunk) => {
             for (const line of chunk.toString('utf8').split(/[\r\n]+/)) {
               const match = line.match(/^([\w\s]+):\s+(\d+)%/)
@@ -235,7 +237,7 @@ export class GitHandler {
         },
         undefined
       )
-      return { stdout: result.stdout.slice(-4096), stderr: result.stderr.slice(-4096) }
+      return result
     } catch (error) {
       if (context?.signal?.aborted) {
         throw error

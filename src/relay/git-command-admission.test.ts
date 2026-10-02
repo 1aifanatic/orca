@@ -93,6 +93,41 @@ describe('relay Git command ownership', () => {
     })
   })
 
+  it('allows truncated diagnostic tails without terminating a successful clone', async () => {
+    capture.mockImplementationOnce(async (spec: ProcessSpec, mode: string) => {
+      expect(mode).toBe('tail')
+      expect(spec).toMatchObject({ maxOutputBytes: 4096, killOnOutputLimit: false })
+      spec.onChildTerminated?.()
+      return { ...success, outputTruncated: true }
+    })
+    await expect(
+      runGitToTermination(
+        ['clone', '--progress', 'source', 'target'],
+        { cwd: '/repo', maxBuffer: 4096, outputCapture: 'tail' },
+        undefined
+      )
+    ).resolves.toEqual({ stdout: 'result', stderr: '' })
+    expect(scheduler.snapshot().budgets.network.baseUsed).toBe(0)
+  })
+
+  it.each([
+    { code: 128, timedOut: false, signal: null, message: 'fatal: repository unavailable' },
+    { code: null, timedOut: true, signal: 'SIGTERM', message: 'git clone timed out.' }
+  ])('preserves a noisy clone failure or deadline: $message', async (failure) => {
+    capture.mockImplementationOnce(async (spec: ProcessSpec) => {
+      spec.onChildTerminated?.()
+      return {
+        ...success,
+        ...failure,
+        stderr: 'fatal: repository unavailable',
+        outputTruncated: true
+      }
+    })
+    await expect(
+      runGitToTermination(['clone'], { cwd: '/repo', outputCapture: 'tail' }, undefined)
+    ).rejects.toMatchObject({ code: failure.code, message: failure.message })
+  })
+
   it('returns captured bytes without round-tripping through UTF-8', async () => {
     const bytes = Buffer.from([0, 255, 254, 128, 65])
     capture.mockImplementationOnce(async (spec: ProcessSpec) => {

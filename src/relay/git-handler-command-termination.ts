@@ -24,6 +24,7 @@ type GitTerminationOptions = {
   maxBuffer?: number
   signal?: AbortSignal
   captureStdoutAsBytes?: boolean
+  outputCapture?: 'tail'
   observeStderr?: ProcessTerminationBarrier['observeStderr']
 }
 
@@ -38,32 +39,36 @@ export async function runGitToTermination(
     signal: options.signal
   })
   // A rejected capture can precede child termination; the child owns the grant.
-  const result = await runProcess({
-    program: 'git',
-    args,
-    cwd: options.cwd,
-    env: options.env,
-    timeoutMs: gitCommandTimeoutMs(args, options.timeout) ?? null,
-    maxOutputBytes: options.maxBuffer ?? MAX_GIT_BUFFER,
-    captureStdoutAsBytes: options.captureStdoutAsBytes,
-    killOnOutputLimit: true,
-    signal: options.signal,
-    terminationBarrier: options.observeStderr
-      ? {
-          observeStderr: options.observeStderr,
-          signal: signalProcessTree,
-          force: forceTerminateProcessTree
-        }
-      : true,
-    onChildTerminated: grant.release,
-    ...(stdin === undefined ? {} : { input: stdin })
-  })
+  const result = await runProcess(
+    {
+      program: 'git',
+      args,
+      cwd: options.cwd,
+      env: options.env,
+      timeoutMs: gitCommandTimeoutMs(args, options.timeout) ?? null,
+      maxOutputBytes: options.maxBuffer ?? MAX_GIT_BUFFER,
+      captureStdoutAsBytes: options.captureStdoutAsBytes,
+      killOnOutputLimit: options.outputCapture !== 'tail',
+      signal: options.signal,
+      terminationBarrier: options.observeStderr
+        ? {
+            observeStderr: options.observeStderr,
+            signal: signalProcessTree,
+            force: forceTerminateProcessTree
+          }
+        : true,
+      onChildTerminated: grant.release,
+      ...(stdin === undefined ? {} : { input: stdin })
+    },
+    options.outputCapture
+  )
+  const outputExceeded = result.outputTruncated === true && options.outputCapture !== 'tail'
   if (
     result.code === 0 &&
     !result.signal &&
     !result.timedOut &&
     !options.signal?.aborted &&
-    !result.outputTruncated
+    !outputExceeded
   ) {
     return {
       stdout: result.stdout,
@@ -72,7 +77,7 @@ export async function runGitToTermination(
     }
   }
   const error = new Error(
-    result.outputTruncated
+    outputExceeded
       ? 'git output exceeded maxBuffer.'
       : result.timedOut
         ? `git ${args[0] ?? 'command'} timed out.`
@@ -84,7 +89,7 @@ export async function runGitToTermination(
     error.name = 'AbortError'
   }
   throw Object.assign(error, {
-    code: result.outputTruncated ? 'ENOBUFS' : result.code,
+    code: outputExceeded ? 'ENOBUFS' : result.code,
     timedOut: result.timedOut,
     killed: result.timedOut || result.signal !== null || options.signal?.aborted === true,
     signal: result.signal,
