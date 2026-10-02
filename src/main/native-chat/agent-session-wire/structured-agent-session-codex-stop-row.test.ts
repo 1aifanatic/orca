@@ -358,13 +358,12 @@ describe('a Codex Stop whose interrupt failed', () => {
     }
     await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))
 
-    const stopping = stop()
-    // Codex goes idle without opening the turn it answered the send into.
-    setTimeout(
+    // Codex goes idle without opening the turn it answered the send into, whenever the Stop waits.
+    const idle = setInterval(
       () => notify('thread/status/changed', { threadId: THREAD, status: { type: 'idle' } }),
-      20
+      10
     )
-    const stopped = await stopping
+    const stopped = await stop().finally(() => clearInterval(idle))
     await host.flushStreamedEvents(SESSION)
 
     expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
