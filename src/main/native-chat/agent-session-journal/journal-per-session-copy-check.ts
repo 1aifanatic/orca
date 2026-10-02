@@ -14,7 +14,7 @@ import {
   JournalImportMismatchError,
   journalOpenRefusalError
 } from './journal-open-failure'
-import type { ImportBatch } from './journal-per-session-source'
+import { charBoundedBatches, type ImportBatch } from './journal-per-session-source'
 import { readJournalRowsAfter } from './journal-row-table'
 
 /** Throws once quit has stopped imports: before every batch, so a stop waits at most one. */
@@ -31,6 +31,7 @@ type CopyCheckInput = {
   /** The sequence a pending repair in the file left free, as the publish will store it. */
   repairedFrom: number | null
   batchRows: number
+  batchChars: number
   /** Where the copy came from, for the log line. */
   legacyDirectory: string
   /** Ends each batch's task. */
@@ -51,7 +52,11 @@ export async function verifyCopiedJournal(
     epoch: input.epoch,
     repairedFrom: input.repairedFrom
   })
-  const got = await readCopyFacts(input, copiedBatches(input), fold)
+  const got = await readCopyFacts(
+    input,
+    charBoundedBatches(copiedBatches(input), input.batchChars),
+    fold
+  )
   if (want === got) {
     return fold.finish()
   }

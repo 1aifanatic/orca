@@ -46,7 +46,9 @@ import {
   type PerSessionJournalHead
 } from './journal-per-session-reimport'
 import {
+  charBoundedBatches,
   foldLegacyJournal,
+  IMPORT_BATCH_CHARS,
   IMPORT_BATCH_ROWS,
   legacyRowBatches,
   openLegacySource,
@@ -75,6 +77,8 @@ type PerSessionJournalImportDeps = {
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
   batchRows?: number
+  /** Row JSON per batch; see `IMPORT_BATCH_CHARS`. */
+  batchChars?: number
   /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
   yieldTask?: () => Promise<void>
 }
@@ -224,6 +228,7 @@ async function copyLegacyJournal(
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
+  const batchChars = input.batchChars ?? IMPORT_BATCH_CHARS
   const yieldTask = input.yieldTask ?? yieldToEventLoop
   // What an earlier try that stopped midway left, a batch per task as the copy's own rows go in.
   for (let deleted = batchRows; deleted === batchRows;) {
@@ -236,7 +241,8 @@ async function copyLegacyJournal(
     }
   }
   let first = true
-  for (const batch of legacyRowBatches(source, sessionId, epoch, batchRows)) {
+  const batches = legacyRowBatches(source, sessionId, epoch, batchRows)
+  for (const batch of charBoundedBatches(batches, batchChars)) {
     if (!first) {
       await yieldTask()
     }
@@ -261,10 +267,11 @@ async function copyLegacyJournal(
       epoch,
       repairedFrom: repair?.epoch === epoch ? Number(repair.content_from) : null,
       batchRows,
+      batchChars,
       legacyDirectory: input.legacyDirectory,
       yieldTask
     },
-    legacyRowBatches(source, sessionId, epoch, batchRows)
+    charBoundedBatches(legacyRowBatches(source, sessionId, epoch, batchRows), batchChars)
   )
   const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   assertImportNotAborted(input.database, sessionId)

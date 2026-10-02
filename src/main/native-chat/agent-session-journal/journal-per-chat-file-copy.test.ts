@@ -28,6 +28,7 @@ import {
   type PerChatJournalRepair
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
+import { charBoundedBatches } from './journal-per-session-source'
 import { backfillJournalSessionStatus } from './journal-session-status-backfill'
 import {
   deriveJournalSessionStatus,
@@ -355,6 +356,44 @@ describe('each task’s end, paced by the background copy (C3)', () => {
 
     expect(written).not.toBeNull()
     expect(yieldTask.mock.calls.length).toBeGreaterThan(1)
+  })
+})
+
+describe('each task’s share of a chat’s bytes (C3)', () => {
+  it('splits a batch so no part holds more than its share of row JSON; a larger row goes alone', () => {
+    const row = (seq: number, size: number) => ({ seq, ts: seq, rowJson: 'x'.repeat(size) })
+
+    const parts = [
+      ...charBoundedBatches(
+        [{ rows: [row(1, 40), row(2, 40), row(3, 300), row(4, 40), row(5, 40)], last: true }],
+        100
+      )
+    ]
+
+    expect(parts.map((part) => part.rows.map((r) => r.seq))).toEqual([[1, 2], [3], [4, 5]])
+    expect(parts.map((part) => part.last)).toEqual([false, false, true])
+  })
+
+  it('copies, verifies and folds a chat of large rows a part per task, not a whole page', async () => {
+    const { directory, rows } = await stageChat('session-large', manyItems)
+    const database = openTestJournalHostDatabase(root)
+    const batch = vi.spyOn(database, 'unsyncedTransaction')
+    const yieldTask = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
+
+    await importChat('session-large', directory, { batchChars: 1, yieldTask })
+
+    // One copy transaction per row (each row is over the share), after the leftover delete.
+    expect(batch).toHaveBeenCalledTimes(rows.length + 1)
+    // Each row's copy, both verify sides, and the publish.
+    expect(yieldTask.mock.calls.length).toBeGreaterThanOrEqual(3 * (rows.length - 1) + 1)
+
+    database.db.prepare('DELETE FROM journal_session_state').run()
+    const folded = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
+    await backfillJournalSessionStatus(database, 'session-large', {
+      batchChars: 1,
+      yieldTask: folded
+    })
+    expect(folded.mock.calls.length).toBeGreaterThanOrEqual(rows.length - 1)
   })
 })
 

@@ -10,7 +10,11 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
 import { startJournalRowFold, type JournalLoad } from './journal-open'
-import { IMPORT_BATCH_ROWS } from './journal-per-session-source'
+import {
+  charBoundedBatches,
+  IMPORT_BATCH_CHARS,
+  IMPORT_BATCH_ROWS
+} from './journal-per-session-source'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
 import { readJournalRowsAfter, readJournalSessionEpoch, readJournalTip } from './journal-row-table'
 import {
@@ -54,9 +58,11 @@ export async function backfillJournalSessionStatus(
   sessionId: string,
   {
     batchRows = IMPORT_BATCH_ROWS,
+    batchChars = IMPORT_BATCH_CHARS,
     yieldTask = () => yieldToEventLoop()
   }: {
     batchRows?: number
+    batchChars?: number
     /** Ends each batch's task: the next macrotask by default; the background copy paces here. */
     yieldTask?: () => Promise<void>
   } = {}
@@ -77,11 +83,19 @@ export async function backfillJournalSessionStatus(
     }
     const rows = readJournalRowsAfter(database.db, sessionId, epoch, afterSeq, batchRows)
     const last = rows.at(-1)
-    if (!rows.every(fold.add) || rows.length < batchRows || !last) {
+    let folding = true
+    for (const part of charBoundedBatches([{ rows, last: true }], batchChars)) {
+      folding = part.rows.every(fold.add)
+      // A part per task: a long chat's whole replay in one task holds up every other chat.
+      if (!folding || part.last) {
+        break
+      }
+      await yieldTask()
+    }
+    if (!folding || rows.length < batchRows || !last) {
       break
     }
     afterSeq = last.seq
-    // A batch per task: a long chat's whole replay in one task holds up every other chat.
     await yieldTask()
   }
   const load = fold.finish()

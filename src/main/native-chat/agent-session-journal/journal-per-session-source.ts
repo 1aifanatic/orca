@@ -14,6 +14,9 @@ import { pendingJournalRepairSequence } from './journal-repair-marker'
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
 /** Rows per batch: at most 31 ms per batch copying the largest real chat (68 MB, 3.3 KB rows). */
 export const IMPORT_BATCH_ROWS = 512
+/** Row JSON per batch, in UTF-16 units: a batch of large rows is split, so each main-thread task
+ *  handles about the same bytes (a quarter of a full batch of the seed's 2.3 KB rows). */
+export const IMPORT_BATCH_CHARS = 256 * 1024
 
 const SELECT_LEGACY_EPOCH = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
 const SELECT_LEGACY_TIP =
@@ -94,6 +97,28 @@ export function readLegacyHead(
   return { epoch, tip: typeof tip === 'number' ? tip : 0 }
 }
 
+/** Each batch split so no part holds more than `maxChars` of row JSON; a larger row is a part alone.
+ *  Only a batch's last part keeps its `last`. */
+export function* charBoundedBatches<Row extends ImportedRow>(
+  batches: Iterable<{ rows: Row[]; last: boolean }>,
+  maxChars = IMPORT_BATCH_CHARS
+): Generator<{ rows: Row[]; last: boolean }> {
+  for (const batch of batches) {
+    let part: Row[] = []
+    let chars = 0
+    for (const row of batch.rows) {
+      if (part.length > 0 && chars + row.rowJson.length > maxChars) {
+        yield { rows: part, last: false }
+        part = []
+        chars = 0
+      }
+      part.push(row)
+      chars += row.rowJson.length
+    }
+    yield { rows: part, last: batch.last }
+  }
+}
+
 /** The file's rows, one bounded page per batch, read as each batch is written. */
 export function* legacyRowBatches(
   source: Database.Database,
@@ -139,7 +164,8 @@ export async function foldLegacyJournal(
       : null
   })
   let first = true
-  for (const batch of legacyRowBatches(source, sessionId, legacy.epoch, IMPORT_BATCH_ROWS)) {
+  const batches = legacyRowBatches(source, sessionId, legacy.epoch, IMPORT_BATCH_ROWS)
+  for (const batch of charBoundedBatches(batches)) {
     // A batch per turn: a large chat's file read in one task holds up everything else at startup.
     if (!first) {
       await yieldToEventLoop()
