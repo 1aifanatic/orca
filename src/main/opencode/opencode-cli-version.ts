@@ -11,6 +11,7 @@ export type OpenCodeCliVersionProbe = {
   env: NodeJS.ProcessEnv
   cwd?: string
   hostIdentity?: string
+  execute?: () => Promise<{ code: number | null; timedOut: boolean; stdout: string }>
 }
 
 const probes = new Map<string, { expiresAt: number; result: Promise<OpenCodeCliCapabilities> }>()
@@ -48,19 +49,21 @@ async function runVersionProbe(options: OpenCodeCliVersionProbe): Promise<OpenCo
     const pathKey = process.platform === 'win32' && options.env.Path !== undefined ? 'Path' : 'PATH'
     const executableDir = path.dirname(options.executablePath)
     const inheritedPath = options.env[pathKey]
-    const result = await runProcess({
-      program: options.executablePath,
-      args: ['--version'],
-      cwd: options.cwd,
-      env: {
-        ...options.env,
-        [pathKey]: inheritedPath
-          ? `${executableDir}${path.delimiter}${inheritedPath}`
-          : executableDir
-      },
-      timeoutMs: 5_000,
-      maxOutputBytes: 4_096
-    })
+    const result = options.execute
+      ? await options.execute()
+      : await runProcess({
+          program: options.executablePath,
+          args: ['--version'],
+          cwd: options.cwd,
+          env: {
+            ...options.env,
+            [pathKey]: inheritedPath
+              ? `${executableDir}${path.delimiter}${inheritedPath}`
+              : executableDir
+          },
+          timeoutMs: 5_000,
+          maxOutputBytes: 4_096
+        })
     return getOpenCodeCliCapabilities(result.code === 0 && !result.timedOut ? result.stdout : null)
   } catch {
     return getOpenCodeCliCapabilities(null)
