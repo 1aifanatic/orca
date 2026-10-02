@@ -86,7 +86,11 @@ export function ManagedDataAccountsSection({
   const command = `orca account add --agent ${provider}`
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold">{provider === 'opencode' ? 'OpenCode' : 'Devin'}</h3>
+      <h3 className="text-sm font-semibold">
+        {provider === 'opencode'
+          ? translate('auto.lib.agent.catalog.e7a4ca5103', 'OpenCode')
+          : translate('auto.lib.agent.catalog.fc80296033', 'Devin')}
+      </h3>
       <p className="text-xs text-muted-foreground">
         {translate(
           'accounts.managedData.description',
