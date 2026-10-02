@@ -286,5 +286,8 @@ describe('a delete that fails after Git dropped the registration', () => {
 
     expect(await listRows()).toEqual([mainWorktree])
     expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
   })
 })
