@@ -1215,3 +1215,83 @@ This avoids the observed discarded installation. It does not remove the next
 scheduled run or its repeated successful lanes, and pending replacement still
 applies regardless of the cancellation expression. The bounded 20-run sample
 contains this collision; it does not establish a recurring or whole-CI saving.
+
+## Daemon shutdown fixture: remove build tools after compilation
+
+The fixture now removes compiler, Python, npm and node-gyp build caches in the
+same Docker layer that installs node-pty. It restores the base image's manual
+package marks, keeps procps and util-linux, and retains the packages owning the
+shared libraries used by Node and the actually loaded PTY addon. This extends
+the [official Node image's package-ownership approach](https://github.com/nodejs/docker-node/blob/main/22/bookworm-slim/Dockerfile)
+to native addons. Dependency checks and a real PTY spawn fail the build if cleanup
+breaks the runtime.
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/36969120786)
+used Ubuntu x64, Docker 28.0.4 and the same resolved Node 22.23.3 base digest for
+both images. All 3,418 common entries under `/usr/local` retained their bytes,
+modes and symlink targets; all seven resolved runtime libraries matched. Only
+two directory-only Python paths disappeared. The 52 removed Debian packages
+were build dependencies; retained package versions stayed identical.
+
+| Image payload      | Baseline      | Candidate     | Reduction |
+| ------------------ | ------------- | ------------- | --------- |
+| Docker archive     | 714,643,456 B | 329,967,616 B | 53.8%     |
+| Compressed archive | 205,819,558 B | 91,888,840 B  | 55.4%     |
+
+Each timed arm started a separate Docker daemon with an empty image store,
+decompressed the archive, loaded it, rebuilt from its inline cache and ran the
+unchanged descendant/canary shutdown check. Every provisioning layer was cached.
+
+| Pair/order         | Baseline | Candidate | Saving  |
+| ------------------ | -------- | --------- | ------- |
+| 1: baseline first  | 16.320 s | 10.198 s  | 6.122 s |
+| 2: candidate first | 16.389 s | 10.141 s  | 6.248 s |
+| 3: baseline first  | 16.351 s | 10.223 s  | 6.129 s |
+| Median             | 16.351 s | 10.198 s  | 6.153 s |
+
+Median decompression fell from 1.059 to 0.493 seconds and loading from 10.723 to
+5.125 seconds. Cached rebuild and shutdown times stayed close. Both seed images
+and all six restored consumers passed the original shutdown/canary assertions;
+both deliberate no-op disposal controls failed with the descendant still live.
+Byte and retained-directory mode faults also failed the inventory comparator.
+All six owned daemons stopped gracefully without a forced kill.
+
+These private daemons used separate classic overlay2 stores and the untouched
+host containerd service. Production storage settings were not captured, the
+filesystem cache was not flushed, and network transfer is excluded. Production
+restores overlap dependency installation, so this 37.6% fixture-sequence saving
+does not establish a six-second PR wall-time improvement. Single cold image
+builds took 19.313 and 22.623 seconds. The Dockerfile change creates one new
+fixture key; the existing main warmer seeds it after merge.
+
+## WebRTC egress fixture: avoid GPU initialization for the data channel
+
+The Linux-only probe disables hardware acceleration before Electron readiness.
+It still creates two independent processes/profiles, a real data channel, offer
+and local description, and checks the exact proxy and UDP policy. The three-second
+host observation, 500 ms drain and 20/30/45-second deadlines remain unchanged.
+
+Two fresh Ubuntu x64 runners compared three alternating pairs each, with identical
+phase instrumentation. The [first trial](https://github.com/stablyai/orca/actions/runs/36967511524)
+started with the baseline; the [second trial](https://github.com/stablyai/orca/actions/runs/36969120786)
+started with the candidate. Their first baseline peer constructors took 4.059
+and 2.546 seconds and logged the GPU command-buffer error seen in an earlier
+package timeout. In the second trial, that baseline delay followed the cold
+candidate's 2.3 ms constructor. Every candidate constructor took 2.0–2.6 ms.
+
+Typical process time stayed near 8.3 seconds: baseline/candidate medians were
+8.288/8.273 seconds in the first trial and 8.298/8.380 in the reverse trial.
+The evidence supports removing an avoidable startup delay, without a measured
+typical throughput gain or an estimate of future timeout frequency.
+
+All 12 full case invocations preserved actual unprotected UDP and zero protected
+UDP. Both trials rejected seven faults: missing policy, a packet at 2.9 seconds,
+a packet during the drain, a missing peer factory or local description, a broken
+packet counter and a hung renderer. The original assertions and deadlines caught
+each fault. The normal package gate runs the uninstrumented fixture.
+
+## Windows server cache metadata: retain the current key
+
+The bounded 50-head main sample ending at 8ff6296 contained no root package
+metadata changes. Removing app-version metadata from the Windows server cache
+key would not improve reuse in that sample, so the key remains unchanged.
