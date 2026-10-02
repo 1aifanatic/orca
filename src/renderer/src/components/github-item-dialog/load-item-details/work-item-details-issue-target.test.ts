@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import {
   getWorkItemDetailsCacheKey,
   invalidateWorkItemDetailsCacheByMatch,
@@ -19,6 +20,13 @@ const keyArgs = {
 }
 const ORIGIN = { owner: 'fork-owner', repo: 'widgets', host: 'github.com' }
 const UPSTREAM = { owner: 'upstream-owner', repo: 'widgets', host: 'github.com' }
+const LOCAL_SOURCE: TaskSourceContext = {
+  kind: 'task-source',
+  provider: 'github',
+  projectId: 'project-1',
+  hostId: 'local',
+  repoId: 'repo-1'
+}
 
 describe('issue detail cache repository identity', () => {
   it('separates equal issue numbers across origin and upstream', () => {
@@ -27,13 +35,35 @@ describe('issue detail cache repository identity', () => {
     )
   })
 
-  it('keeps an opened issue key stable when another window changes the selector', () => {
-    expect(getWorkItemDetailsCacheKey({ ...keyArgs, ownerRepo: ORIGIN })).toBe(
-      getWorkItemDetailsCacheKey({
-        ...keyArgs,
-        issueSourcePreference: 'upstream',
-        ownerRepo: ORIGIN
-      })
+  it.each([undefined, LOCAL_SOURCE])(
+    'keeps a local opened issue key stable when another window changes the selector: %j',
+    (sourceContext) => {
+      expect(getWorkItemDetailsCacheKey({ ...keyArgs, ownerRepo: ORIGIN, sourceContext })).toBe(
+        getWorkItemDetailsCacheKey({
+          ...keyArgs,
+          issueSourcePreference: 'upstream',
+          ownerRepo: ORIGIN,
+          sourceContext
+        })
+      )
+    }
+  )
+
+  it('keeps RPC detail caches scoped to the preference used by their existing lookup', () => {
+    const sourceContext: TaskSourceContext = {
+      kind: 'task-source',
+      provider: 'github',
+      projectId: 'project-1',
+      hostId: 'runtime:env-1',
+      repoId: 'runtime-repo'
+    }
+    const args = { ...keyArgs, ownerRepo: ORIGIN, sourceContext }
+
+    expect(getWorkItemDetailsCacheKey(args)).not.toBe(
+      getWorkItemDetailsCacheKey({ ...args, issueSourcePreference: 'upstream' })
+    )
+    expect(getWorkItemDetailsCacheKey(args)).toBe(
+      getWorkItemDetailsCacheKey({ ...args, ownerRepo: null })
     )
   })
 

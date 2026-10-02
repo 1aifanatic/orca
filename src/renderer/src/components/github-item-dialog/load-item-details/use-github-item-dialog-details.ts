@@ -77,6 +77,7 @@ export function useGitHubItemDialogDetails({
       repoPath: repoPath ?? '',
       repoId: effectiveRepoId,
       issueSourcePreference,
+      sourceContext,
       sourceCacheScope:
         sourceContext?.provider === 'github' ? getTaskSourceCacheScope(sourceContext) : null,
       type: workItem.type,

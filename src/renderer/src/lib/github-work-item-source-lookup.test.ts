@@ -41,7 +41,8 @@ describe('GitHub source lookup routing', () => {
         repoId: 'renderer-repo',
         sourceContext: runtimeSourceContext,
         number: 42,
-        type: 'issue'
+        type: 'issue',
+        ownerRepo: { owner: 'fork-owner', repo: 'widgets', host: 'github.com' }
       })
     ).resolves.toBeNull()
 
