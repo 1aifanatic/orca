@@ -83,7 +83,13 @@ describeBinaryCompatibility('real Git binary compatibility', () => {
     }
     const pending = execFileAsync(binary!, args, {
       cwd: repoPath,
-      env: env ? { ...process.env, ...env } : undefined,
+      env: {
+        ...process.env,
+        HOME: repoPath,
+        XDG_CONFIG_HOME: repoPath,
+        GIT_CONFIG_NOSYSTEM: '1',
+        ...env
+      },
       maxBuffer: 2 * 1024 * 1024
     })
     if (stdin !== undefined) {

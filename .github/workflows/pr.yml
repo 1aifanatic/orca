@@ -429,6 +429,7 @@ jobs:
           pids=()
           (
             ORCA_GIT_COMPAT_BINARY="$HOME/.cache/orca-git-compat/git-2.25.5/git" \
+              GIT_EXEC_PATH="$HOME/.cache/orca-git-compat/git-2.25.5" \
               ORCA_GIT_COMPAT_VERSION="2.25.5" \
               pnpm exec vitest run --config config/vitest.config.ts \
               src/shared/git-binary-compatibility.test.ts \

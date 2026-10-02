@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GitCapabilityCache } from '../../shared/git-capability-cache'
 import { isWorktreeCreatePreparation } from '../../shared/worktree/create-preparation'
 import { parseWorktreeList } from '../../shared/git-worktree-porcelain-parser'
@@ -29,6 +29,12 @@ import { readRelayWorktreeList } from '../../relay/git-handler-worktree-list'
 
 const execFileAsync = promisify(execFile)
 const image = process.env.ORCA_GIT_COMPAT_IMAGE
+const binary = process.env.ORCA_GIT_COMPAT_BINARY ?? 'git'
+const expectedVersion = process.env.ORCA_GIT_COMPAT_VERSION
+const dockerUser =
+  typeof process.getuid === 'function' && typeof process.getgid === 'function'
+    ? ['--user', `${process.getuid()}:${process.getgid()}`]
+    : []
 let root = ''
 let repo = ''
 let checkout = ''
@@ -41,6 +47,7 @@ async function git(args: string[], cwd = repo): Promise<{ stdout: string; stderr
           'run',
           '--rm',
           '--network=none',
+          ...dockerUser,
           '-v',
           `${root}:${root}`,
           '-w',
@@ -52,7 +59,11 @@ async function git(args: string[], cwd = repo): Promise<{ stdout: string; stderr
         ],
         { maxBuffer: 2 * 1024 * 1024 }
       )
-    : execFileAsync('git', args, { cwd, maxBuffer: 2 * 1024 * 1024 })
+    : execFileAsync(binary, args, {
+        cwd,
+        env: { ...process.env, HOME: root, XDG_CONFIG_HOME: root, GIT_CONFIG_NOSYSTEM: '1' },
+        maxBuffer: 2 * 1024 * 1024
+      })
 }
 
 const relay: GitExec = (args, cwd) => git(args, cwd)
@@ -69,6 +80,14 @@ async function initializeRepo(cwd: string): Promise<void> {
   await git(['add', 'seed'], cwd)
   await git(['commit', '-qm', 'seed'], cwd)
 }
+
+beforeAll(async () => {
+  const { stdout } = await execFileAsync(
+    image ? 'docker' : binary,
+    image ? ['run', '--rm', '--network=none', ...dockerUser, image, '--version'] : ['--version']
+  )
+  expect(stdout).toContain(expectedVersion ? `git version ${expectedVersion}` : 'git version ')
+})
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'orca-worktree-safety-')))
