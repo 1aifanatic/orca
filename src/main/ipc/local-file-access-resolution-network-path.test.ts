@@ -23,6 +23,10 @@ vi.mock('node:fs/promises', () => {
         return { isFile: () => true, isDirectory: () => false }
       }
       // A project image that is really a link to a device name.
+      if (String(target).endsWith('share-link.png')) {
+        // A local image that is really a link onto a network share.
+        return '\\\\nas\\pics\\shot.png'
+      }
       return String(target).endsWith('dev-link.png') ? 'C:\\repo\\CON.png' : target
     })
   return { realpath: record('realpath'), stat: record('stat'), open: record('open') }
@@ -136,7 +140,16 @@ describe('Windows reserved device names in automatic image loads', () => {
     'C:\\Users\\me\\notes\\com1.jpg',
     'C:\\Users\\me\\notes\\Lpt9 .gif',
     'C:\\Users\\me\\notes\\aux..png',
-    'C:\\Users\\me\\notes\\CON.tar.png'
+    'C:\\Users\\me\\notes\\CON.tar.png',
+    'C:\\Users\\me\\notes\\NUL:.png',
+    'C:\\Users\\me\\notes\\COM1:.png',
+    'C:\\Users\\me\\notes\\NUL:stream.png',
+    'C:\\Users\\me\\notes\\CONIN$.png',
+    'C:\\Users\\me\\notes\\CONOUT$',
+    'C:\\Users\\me\\notes\\clock$.jpg',
+    'C:\\Users\\me\\notes\\COM0.png',
+    'C:\\Users\\me\\notes\\LPT0.png',
+    'C:\\Users\\me\\notes\\com¹.png'
   ]
 
   it.each(deviceTargets)('refuses %s as a chat image without touching it', async (target) => {
@@ -235,6 +248,12 @@ describe('automatic image loads on a network share', () => {
         shareProjectStore
       )
     ).resolves.toBe(image)
+  })
+
+  it('refuses a local link that leads onto a share outside every project', async () => {
+    await expect(
+      resolveLocalFileRequestPath('C:\\Users\\me\\share-link.png', CHAT_IMAGE, store)
+    ).rejects.toThrow('Access denied')
   })
 
   it('refuses a share image outside every project without touching the share', async () => {

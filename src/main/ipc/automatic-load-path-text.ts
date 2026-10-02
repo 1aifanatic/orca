@@ -7,9 +7,13 @@ function usesWindowsPaths(): boolean {
   return sep === '\\'
 }
 
-const WINDOWS_RESERVED_DEVICE_STEM = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])$/i
+const WINDOWS_RESERVED_DEVICE_STEM =
+  /^(?:con|prn|aux|nul|conin\$|conout\$|clock\$|com[0-9¹²³]|lpt[0-9¹²³])$/i
 
-/** `NUL.png`, `com1 .jpg`, `Aux.` name a Windows device, not a file, whatever the extension. */
+/**
+ * `NUL.png`, `com1 .jpg`, `Aux.`, `NUL:stream.png` name a Windows device, not a file, whatever the
+ * extension or alternate data stream (`:`).
+ */
 export function isWindowsReservedDeviceName(filePath: string): boolean {
   if (!usesWindowsPaths()) {
     return false
@@ -17,7 +21,7 @@ export function isWindowsReservedDeviceName(filePath: string): boolean {
   const stem =
     basename(filePath)
       .replace(/[. ]+$/, '')
-      .split('.')[0] ?? ''
+      .split(/[.:]/)[0] ?? ''
   return WINDOWS_RESERVED_DEVICE_STEM.test(stem.replace(/ +$/, ''))
 }
 
