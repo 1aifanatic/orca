@@ -13,9 +13,8 @@ import type {
   StructuredAgentSessionSinkAdmission
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { cancelledJournalPromptBody } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
-import type { CodexThreadItem, CodexTurnOrdinals } from './codex-structured-item-translation'
+import type { CodexTurnOrdinals } from './codex-structured-item-translation'
 import type { CodexStructuredItemStreams } from './codex-structured-item-streams'
-import type { CodexHelperName } from './codex-collab-agent-item-translation'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 import { codexCommandOutlivesTurn } from './codex-command-lifecycle'
 import {
@@ -25,17 +24,7 @@ import {
 import { appendCodexLifecycleMutations } from './codex-structured-journal-sink'
 import { codexActiveItemBody, interruptedCodexItemBody } from './codex-unfinished-item-body'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
-
-export type CodexActiveJournalItem = {
-  threadId: string
-  turnId: string | null
-  identity: AgentJournalItemIdentity
-  item: CodexThreadItem
-  /** Names the helpers a collab call acted on, so a settled revision keeps naming them. */
-  helperName?: CodexHelperName
-  /** Host clock at item/started, for a row whose first write comes later. */
-  startedAt?: number
-}
+import type { CodexActiveJournalItem } from './codex-structured-journal-contracts'
 
 export type CodexPendingJournalPrompt = {
   threadId: string

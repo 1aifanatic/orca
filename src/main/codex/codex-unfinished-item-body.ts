@@ -10,7 +10,7 @@ import {
   codexStreamingJournalItem,
   type CodexJournalItem
 } from './codex-structured-item-translation'
-import type { CodexActiveJournalItem } from './codex-structured-journal-settlement'
+import type { CodexActiveJournalItem } from './codex-structured-journal-contracts'
 
 /** What an item still open is built from, whoever ends it — its turn, its provider, the bounded
  *  live set, or a completion that carried nothing: the text streamed so far when there is any,

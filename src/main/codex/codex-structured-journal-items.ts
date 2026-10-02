@@ -15,6 +15,7 @@ import type { CodexHelperName } from './codex-collab-agent-item-translation'
 import { boundStreamItem, codexStructuredItemKey } from './codex-structured-item-stream-bounds'
 import { codexCommandOutlivesTurn } from './codex-command-lifecycle'
 import type {
+  CodexActiveJournalItem,
   CodexItemTranslation,
   CodexJournalTranslationAdmission,
   CodexJournalTranslatorDeps
@@ -27,7 +28,6 @@ import {
   MAX_CODEX_IDENTITY_ENTRIES
 } from './codex-structured-journal-limits'
 import { appendCodexLifecycleItem, publishCodexLifecycle } from './codex-structured-journal-sink'
-import type { CodexActiveJournalItem } from './codex-structured-journal-settlement'
 import { readCodexJournalString } from './codex-structured-journal-translation-values'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import { readCodexDispatchEcho } from './codex-structured-dispatch-echo'
