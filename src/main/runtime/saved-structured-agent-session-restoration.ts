@@ -41,3 +41,34 @@ export function collectSavedStructuredAgentSessionIds(
   }
   return selected
 }
+
+/**
+ * The chats a launch shows first, those whose tab is active in its worktree, the active worktree's
+ * first, ahead of the rest in their given order. Any agent: this orders, it restores nothing.
+ */
+export function orderOnScreenStructuredAgentSessionsFirst(
+  sessionIds: readonly string[],
+  session: WorkspaceSessionState | null
+): string[] {
+  const tabsById = new Map(
+    Object.values(session?.unifiedTabs ?? {})
+      .flat()
+      .map((tab) => [tab.id, tab])
+  )
+  const activeByWorktree = session?.activeTabIdByWorktree ?? {}
+  const activeWorktree = session?.activeWorktreeId ?? null
+  const activeTabIds = [
+    ...(activeWorktree ? [activeByWorktree[activeWorktree]] : []),
+    ...Object.values(activeByWorktree)
+  ]
+  const listed = new Set(sessionIds)
+  const first = new Set<string>()
+  for (const tabId of activeTabIds) {
+    const tab = typeof tabId === 'string' ? tabsById.get(tabId) : undefined
+    const local = !tab?.executionHostId || tab.executionHostId === LOCAL_EXECUTION_HOST_ID
+    if (tab?.contentType === 'agent-session' && local && listed.has(tab.entityId)) {
+      first.add(tab.entityId)
+    }
+  }
+  return [...first, ...sessionIds.filter((sessionId) => !first.has(sessionId))]
+}

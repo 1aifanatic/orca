@@ -5,7 +5,10 @@
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
+import {
+  collectSavedStructuredAgentSessionIds,
+  orderOnScreenStructuredAgentSessionsFirst
+} from './saved-structured-agent-session-restoration'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import type {
   StartupStepOutcome,
@@ -39,7 +42,8 @@ export async function runStructuredAgentSessionStartupStep(
   const background = host.seedStoredStatuses(listedIds)
   // Not awaited here: the tab list and paint never wait on it; chat commands do.
   onSettling(host.settleOwedSessions(listedIds))
-  return background
+  // The rows the window shows at launch fill first.
+  return orderOnScreenStructuredAgentSessionsFirst(background, savedSession)
 }
 
 /** The chats with a tab, for the startup step and the tab restore alike: the host's persisted tab
