@@ -3,7 +3,7 @@
 // A Stop that settles having stopped nothing ends it. Driven through the real host and its status
 // feed, with turn rows named as Codex writes them.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -240,6 +240,26 @@ describe("a person's Stop reads Stopping until the work it stopped ends", () => 
   })
 })
 
+describe("a Stop's settle edge", () => {
+  // It writes no row: it republishes the status and wakes the handover, and is no activity.
+  it('republishes Stopping without counting as activity', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    const status = watchStatus()
+    await journal().appendStopEvent({ reason: 'user-stop' }, fence())
+    await eventually(() => expect(status()).toMatchObject({ status: 'working' }))
+    const sessions = rig.host.collaboratorsForTests().sessions
+    const touch = vi.spyOn(sessions, 'touch')
+
+    const settle = journal().stopMarks.beginSettle()
+    await eventually(() => expect(status()).toMatchObject({ stopping: true }))
+    journal().stopMarks.settled(settle)
+    await eventually(() => expect(status()).not.toHaveProperty('stopping'))
+
+    expect(touch).not.toHaveBeenCalled()
+  })
+})
+
 describe('a Stop pressed before its send opened a turn', () => {
   /** A Stop pressed before the send's turn showed, which opens while the Stop waits for it. */
   async function stopAsTheTurnOpens(answer: AgentSessionCancelOutcome, killFails?: true) {
@@ -275,6 +295,13 @@ describe('a Stop pressed before its send opened a turn', () => {
     await turn('turn-1', sent, 'interrupted')
     await eventually(() => expect(status()?.status).toBe('idle'))
     expect(status()).not.toHaveProperty('stopping')
+    // The Stop never stopped it: its own end, with no verdict, reads as a failure, not theirs.
+    const ended = journal()
+      .snapshot()
+      .items.map((item) => item.body)
+      .find((body) => body.kind === 'turn' && body.turnId === 'turn-1')
+    expect(ended).toMatchObject({ state: 'interrupted' })
+    expect(ended).not.toHaveProperty('outcome')
   })
 
   it('reads Stopping while the Stop settles, and Working once it settles having stopped nothing', async () => {

@@ -127,19 +127,24 @@ describe("a person's Stop's Stopping", () => {
     expect(stopping()).toBe(true)
   })
 
-  it('tells readers of each settle edge, which writes no row', async () => {
+  it('tells its settle readers of each edge, which writes no row and so is no commit', async () => {
     await journal.appendStopEvent({ reason: 'user-stop' }, FENCE)
     const before = journal.stopMarks.revision()
-    let told = 0
+    let commits = 0
+    let edges = 0
     journal.observeCommits(() => {
-      told += 1
+      commits += 1
+    })
+    journal.stopMarks.observeSettleEdges(() => {
+      edges += 1
     })
     const cursor = journal.cursor()
 
     journal.stopMarks.settled(journal.stopMarks.beginSettle())
 
     expect(journal.stopMarks.revision()).toBe(before + 2)
-    expect(told).toBe(2)
+    expect(edges).toBe(2)
+    expect(commits).toBe(0)
     expect(journal.cursor()).toEqual(cursor)
   })
 })

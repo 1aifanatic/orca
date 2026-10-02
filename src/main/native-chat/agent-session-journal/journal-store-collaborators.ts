@@ -94,7 +94,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   return {
     epochController,
     queuedMessages,
-    stopMarks: new JournalStopMarks({ state: host.state, changed: host.notifyCommitted }),
+    stopMarks: new JournalStopMarks({ state: host.state }),
     // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
     // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
     restore: () =>

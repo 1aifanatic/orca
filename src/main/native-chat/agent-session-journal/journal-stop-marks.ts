@@ -14,14 +14,15 @@ import type { JournalStopSettle } from './queued-message-pause'
 export class JournalStopMarks {
   // Bumped on each settle edge: readers cached per commit see an edge that wrote no row.
   private settleRevision = 0
+  private onSettleEdge: (() => void) | null = null
 
-  constructor(
-    private readonly deps: {
-      state: () => JournalReducerState
-      /** A settle opened or closed: what readers derive from it changed, as after a commit. */
-      changed?: () => void
-    }
-  ) {}
+  constructor(private readonly deps: { state: () => JournalReducerState }) {}
+
+  /** Told of each settle edge, which writes no row, so it is no commit: it moves only what reads
+   *  the settle. One listener: a later call replaces it. It must not throw. */
+  observeSettleEdges(listener: () => void): void {
+    this.onSettleEdge = listener
+  }
 
   latest(): JournalLatestStop | null {
     return this.deps.state().queuePauseMarks.latestStop
@@ -51,20 +52,23 @@ export class JournalStopMarks {
     return settle
   }
 
-  /** Closes a settle `beginSettle` opened, binding `turnId` when the Stop stopped one. */
-  settled(settle: JournalStopSettle | null, turnId?: string): void {
+  /** Closes a settle `beginSettle` opened, binding `turnId` when the Stop stopped one, or marking
+   *  `failedOn` (display only) when it failed to stop that turn. */
+  settled(settle: JournalStopSettle | null, turnId?: string, failedOn?: string): void {
     if (!settle) {
       return
     }
     settle.settling = false
     if (turnId !== undefined) {
       settle.turnId = turnId
+    } else if (failedOn !== undefined) {
+      settle.failedOn = failedOn
     }
     this.edge()
   }
 
   private edge(): void {
     this.settleRevision += 1
-    this.deps.changed?.()
+    this.onSettleEdge?.()
   }
 }

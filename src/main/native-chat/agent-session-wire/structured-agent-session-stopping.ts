@@ -10,7 +10,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import { stopIsAPersons } from '../agent-session-journal/journal-stop-turn-end'
 
 /** Whether the latest person's Stop is still settling, or is bound to the turn running now: the
- *  one it named, or the one its settle bound. */
+ *  one it named, the one its settle bound, or the one it failed to stop. */
 export function structuredAgentSessionStopping(
   journal: Pick<AgentSessionJournal, 'stopMarks'>,
   items: readonly AgentJournalRenderItem[]
@@ -22,6 +22,6 @@ export function structuredAgentSessionStopping(
   if (stop.settle?.settling === true) {
     return true
   }
-  const bound = stop.event.turnId ?? stop.settle?.turnId
+  const bound = stop.event.turnId ?? stop.settle?.turnId ?? stop.settle?.failedOn
   return bound !== undefined && bound === activeStructuredAgentSessionTurnId(items)
 }

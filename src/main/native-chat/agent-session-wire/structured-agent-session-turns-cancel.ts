@@ -105,7 +105,7 @@ async function endStoppedTurnAtSettle(ctx: AgentSessionTurnContext, turnId: stri
 }
 
 /** What the Stop's settle binds: the turn it stopped, and whether its wind-down closes it. */
-type StopSettleBinding = { turnId?: string; closedByWindDown?: true }
+type StopSettleBinding = { turnId?: string; failedOn?: string; closedByWindDown?: true }
 
 export async function performCancel(
   ctx: AgentSessionTurnContext,
@@ -120,9 +120,9 @@ export async function performCancel(
   // A person's Stop that named no turn binds what ends while it settles (`beginJournalStopSettle`).
   const settle = input.opensSettle ? ctx.journal.stopMarks.beginSettle() : null
   const binding: StopSettleBinding = {}
-  // A wind-down that failed with work running on binds that work's turn, as a failed Stop does.
+  // A wind-down that failed with work running on marks that work's turn, as a failed Stop does.
   const close = (failedOn?: string): void =>
-    ctx.journal.stopMarks.settled(settle, binding.turnId ?? failedOn)
+    ctx.journal.stopMarks.settled(settle, binding.turnId, binding.failedOn ?? failedOn)
   try {
     return await cancelAndNote(ctx, input, binding, close)
   } finally {
@@ -309,8 +309,8 @@ async function cancelAndNote(
   if (cancelled) {
     binding.turnId = stoppedTurn ?? stoppedTurnId ?? undefined
   } else if (interruptFailed) {
-    // A Stop that failed still holds the turn it could not stop, until that turn ends.
-    binding.turnId = ctx.journal.activeTurnId() ?? undefined
+    // A Stop that failed reads "Stopping…" through the turn it could not stop; its end stays its own.
+    binding.failedOn = ctx.journal.activeTurnId() ?? undefined
   }
   if (taken === true && stoppedTurn !== undefined && !binding.closedByWindDown && !input.scope) {
     await endStoppedTurnAtSettle(ctx, stoppedTurn)

@@ -150,6 +150,23 @@ describe("a message sent while a person's Stop ends the turn", () => {
     expect(seen.slice(seen.lastIndexOf(true) + 1)).not.toContain(true)
   })
 
+  // A settle edge writes no row, so nothing else wakes the handover once it closes.
+  it('hands a held send over when the Stop settles with no row after it', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    await journal().appendStopEvent({ reason: 'user-stop' }, 1)
+    const settle = journal().stopMarks.beginSettle()
+    const later = rig.send('sent while the Stop settles')
+    expect(await later.result).toMatchObject({ ok: true })
+    await laneDrained()
+    const dispatched = rig.dispatch.mock.calls.length
+    expect((await rig.submission(later.id))?.handedOverAt).toBeUndefined()
+
+    journal().stopMarks.settled(settle)
+
+    await eventually(() => expect(rig.dispatch.mock.calls.length).toBe(dispatched + 1))
+  })
+
   // The delivery step that judged the send waits on the child's start outside the session's lane.
   it('holds a send that a Stop overtook while its delivery step waited on the agent', async () => {
     rig = await createQueuedMessageTestRig()
