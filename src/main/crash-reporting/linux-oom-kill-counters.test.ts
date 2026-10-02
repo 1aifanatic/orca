@@ -15,7 +15,12 @@ import { setSwapVolumeFreeSpaceReaderForTest } from './swap-volume-free-space'
 // Paths and contents as read on Ubuntu 24.04 (WSL2 kernel 6.18) during the scan-35 repro.
 const SCOPE = '/user.slice/user-1000.slice/user@1000.service/app.slice/orca.scope'
 
-function fakeHost(state: { hostKills: number; cgroupKills: number; memoryMax?: string }) {
+function fakeHost(state: {
+  hostKills: number
+  cgroupKills: number
+  memoryMax?: string
+  sliceOomEvents?: number
+}) {
   return (path: string): string | undefined => {
     switch (path) {
       case '/proc/vmstat':
@@ -28,6 +33,8 @@ function fakeHost(state: { hostKills: number; cgroupKills: number; memoryMax?: s
         return 'max\n'
       case '/sys/fs/cgroup/user.slice/user-1000.slice/memory.max':
         return state.memoryMax ?? 'max\n'
+      case '/sys/fs/cgroup/user.slice/user-1000.slice/memory.events':
+        return `low 0\nhigh 0\nmax 40\noom ${state.sliceOomEvents ?? 0}\noom_kill 0\n`
       case '/proc/pressure/memory':
         return 'some avg10=42.50 avg60=10.00 avg300=2.00 total=1\nfull avg10=30.00 avg60=0 avg300=0 total=1\n'
       default:
@@ -48,13 +55,19 @@ describe('readLinuxOomKillCounters', () => {
 
   it('reads host and cgroup counters, PSI, and the nearest ancestor memory limit', () => {
     setLinuxOomKillFileReaderForTest(
-      fakeHost({ hostKills: 3, cgroupKills: 1, memoryMax: `${8 * 1024 * 1024 * 1024}\n` }),
+      fakeHost({
+        hostKills: 3,
+        cgroupKills: 1,
+        memoryMax: `${8 * 1024 * 1024 * 1024}\n`,
+        sliceOomEvents: 2
+      }),
       'linux'
     )
     expect(readLinuxOomKillCounters()).toEqual({
       vmstatOomKill: 3,
       cgroupOomKill: 1,
       cgroupMemoryMaxMB: 8192,
+      memoryLimitOomEvents: 2,
       memoryPressureSomeAvg10: 42.5
     })
   })
@@ -65,32 +78,92 @@ describe('readLinuxOomKillCounters', () => {
       (path) => (path === '/proc/self/cgroup' ? '4:memory:/user.slice\n' : host(path)),
       'linux'
     )
-    expect(readLinuxOomKillCounters()).toEqual({ vmstatOomKill: 2, memoryPressureSomeAvg10: 42.5 })
+    expect(readLinuxOomKillCounters()).toEqual({
+      vmstatOomKill: 2,
+      memoryPressureSomeAvg10: 42.5
+    })
   })
 })
 
 describe('linuxOomKillDetails', () => {
-  it('names an Orca cgroup kill even when the host counter also moved', () => {
+  it('names a memcg-limit kill of an Orca process even when the host counter also moved', () => {
     expect(
       linuxOomKillDetails(
-        { vmstatOomKill: 5, cgroupOomKill: 0, memoryPressureSomeAvg10: 61 },
+        {
+          vmstatOomKill: 5,
+          cgroupOomKill: 0,
+          cgroupMemoryMaxMB: 600,
+          memoryLimitOomEvents: 3,
+          memoryPressureSomeAvg10: 61
+        },
         12_000,
-        { vmstatOomKill: 6, cgroupOomKill: 1, cgroupMemoryMaxMB: 600 }
+        {
+          vmstatOomKill: 6,
+          cgroupOomKill: 1,
+          cgroupMemoryMaxMB: 600,
+          memoryLimitOomEvents: 4
+        }
       )
     ).toEqual({
       linuxOomKillBaselineAgeMs: 12_000,
       linuxOomKillHostDelta: 1,
       linuxOomKillCgroupDelta: 1,
-      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
+      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillScope: 'memcg-limit',
       linuxCgroupMemoryMaxMB: 600,
       linuxMemoryPressurePreGoneSomeAvg10: 61
     })
   })
 
-  it('reports a host-only kill when Orca has no readable cgroup counter', () => {
+  it('scopes an Orca process kill as global when no memory limit was reached', () => {
+    expect(
+      linuxOomKillDetails({ vmstatOomKill: 5, cgroupOomKill: 0 }, 5_000, {
+        vmstatOomKill: 6,
+        cgroupOomKill: 1
+      })
+    ).toMatchObject({
+      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillScope: 'global'
+    })
+    expect(
+      linuxOomKillDetails(
+        {
+          vmstatOomKill: 5,
+          cgroupOomKill: 0,
+          cgroupMemoryMaxMB: 8192,
+          memoryLimitOomEvents: 2
+        },
+        5_000,
+        {
+          vmstatOomKill: 6,
+          cgroupOomKill: 1,
+          cgroupMemoryMaxMB: 8192,
+          memoryLimitOomEvents: 2
+        }
+      )
+    ).toMatchObject({
+      linuxOomKillVerdict: 'orca-process-oom-kill',
+      linuxOomKillScope: 'global'
+    })
+  })
+
+  it('clears Orca when the host counter moved but its readable cgroup counter did not', () => {
+    const details = linuxOomKillDetails({ vmstatOomKill: 0, cgroupOomKill: 0 }, 5_000, {
+      vmstatOomKill: 1,
+      cgroupOomKill: 0
+    })
+    expect(details).toMatchObject({
+      linuxOomKillHostDelta: 1,
+      linuxOomKillCgroupDelta: 0,
+      linuxOomKillVerdict: 'oom-kill-outside-orca'
+    })
+    expect(details).not.toHaveProperty('linuxOomKillScope')
+  })
+
+  it('leaves a host-only kill unattributed when Orca has no readable cgroup counter', () => {
     expect(linuxOomKillDetails({ vmstatOomKill: 0 }, 5_000, { vmstatOomKill: 1 })).toMatchObject({
       linuxOomKillHostDelta: 1,
-      linuxOomKillVerdict: 'host-oom-kill'
+      linuxOomKillVerdict: 'host-oom-kill-unattributed'
     })
   })
 
@@ -111,7 +184,10 @@ describe('linuxOomKillDetails', () => {
 describe('preGoneLinuxOomKillDetails', () => {
   beforeEach(() => {
     resetPreGoneSystemMemorySamplingForTest()
-    setSystemMemoryInfoReaderForTest(() => ({ total: 16_000 * 1024, available: 4_000 * 1024 }))
+    setSystemMemoryInfoReaderForTest(() => ({
+      total: 16_000 * 1024,
+      available: 4_000 * 1024
+    }))
     setSwapVolumeFreeSpaceReaderForTest(vi.fn(async () => undefined))
   })
 
@@ -137,7 +213,7 @@ describe('preGoneLinuxOomKillDetails', () => {
     expect(preGoneLinuxOomKillDetails(20_050)).toMatchObject({
       linuxOomKillBaselineAgeMs: 10_050,
       linuxOomKillCgroupDelta: 1,
-      linuxOomKillVerdict: 'orca-cgroup-oom-kill'
+      linuxOomKillVerdict: 'orca-process-oom-kill'
     })
   })
 

@@ -18,6 +18,8 @@ export type LinuxOomKillCounters = {
   cgroupOomKill?: number
   /** Nearest memory.max at or above Orca's cgroup; undefined when unlimited. */
   cgroupMemoryMaxMB?: number
+  /** memory.events `oom` (limit reached) of the cgroup owning that memory.max. */
+  memoryLimitOomEvents?: number
   /** PSI `some avg10` from /proc/pressure/memory, percent. */
   memoryPressureSomeAvg10?: number
 }
@@ -54,14 +56,14 @@ function ownCgroupPath(): string | undefined {
   return match?.[1]
 }
 
-function nearestMemoryMaxMB(cgroupPath: string): number | undefined {
+function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } | undefined {
   // Why walk up: uwsm/systemd usually puts the limit on a parent slice, not the app scope.
   const segments = cgroupPath.split('/').filter(Boolean)
   for (let depth = segments.length; depth >= 0; depth--) {
     const dir = `/sys/fs/cgroup/${segments.slice(0, depth).join('/')}`.replace(/\/$/, '')
     const raw = fileReader(`${dir}/memory.max`)?.trim()
     if (raw && /^\d+$/.test(raw)) {
-      return Math.round(Number(raw) / (1024 * 1024))
+      return { dir, maxMB: Math.round(Number(raw) / (1024 * 1024)) }
     }
   }
   return undefined
@@ -78,7 +80,12 @@ export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
   if (cgroupPath) {
     const dir = `/sys/fs/cgroup${cgroupPath === '/' ? '' : cgroupPath}`
     counters.cgroupOomKill = keyedCounter(fileReader(`${dir}/memory.events`), 'oom_kill')
-    counters.cgroupMemoryMaxMB = nearestMemoryMaxMB(cgroupPath)
+    const limit = nearestMemoryLimit(cgroupPath)
+    if (limit) {
+      counters.cgroupMemoryMaxMB = limit.maxMB
+      // Why the limit owner's file: `oom` propagates up from the limited memcg, not down to Orca's leaf.
+      counters.memoryLimitOomEvents = keyedCounter(fileReader(`${limit.dir}/memory.events`), 'oom')
+    }
   }
   const avg10 = fileReader('/proc/pressure/memory')?.match(/^some avg10=([\d.]+)/m)?.[1]
   if (avg10 !== undefined) {
@@ -87,7 +94,14 @@ export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
   return counters
 }
 
-export type LinuxOomKillVerdict = 'orca-cgroup-oom-kill' | 'host-oom-kill' | 'no-kernel-oom-kill'
+export type LinuxOomKillVerdict =
+  | 'orca-process-oom-kill'
+  | 'oom-kill-outside-orca'
+  | 'host-oom-kill-unattributed'
+  | 'no-kernel-oom-kill'
+
+/** Which OOM killed the Orca process: a memory.max above Orca, or the global (system-wide) one. */
+export type LinuxOomKillScope = 'memcg-limit' | 'global'
 
 function counterDelta(before: number | undefined, after: number | undefined): number | undefined {
   return before === undefined || after === undefined ? undefined : Math.max(0, after - before)
@@ -99,9 +113,27 @@ function oomKillVerdict(
 ): LinuxOomKillVerdict {
   // Why cgroup first: it counts only Orca's own processes, while a host kill may be anyone's.
   if ((cgroupDelta ?? 0) > 0) {
-    return 'orca-cgroup-oom-kill'
+    return 'orca-process-oom-kill'
   }
-  return (vmstatDelta ?? 0) > 0 ? 'host-oom-kill' : 'no-kernel-oom-kill'
+  if ((vmstatDelta ?? 0) === 0) {
+    return 'no-kernel-oom-kill'
+  }
+  // Why: the kernel bumps the victim's memcg on every OOM kill, so a still cgroup counter clears Orca.
+  return cgroupDelta === 0 ? 'oom-kill-outside-orca' : 'host-oom-kill-unattributed'
+}
+
+function oomKillScope(
+  baseline: LinuxOomKillCounters,
+  current: LinuxOomKillCounters
+): LinuxOomKillScope | undefined {
+  if (current.cgroupMemoryMaxMB === undefined) {
+    return 'global'
+  }
+  const limitOomDelta = counterDelta(baseline.memoryLimitOomEvents, current.memoryLimitOomEvents)
+  if (limitOomDelta === undefined) {
+    return undefined
+  }
+  return limitOomDelta > 0 ? 'memcg-limit' : 'global'
 }
 
 /**
@@ -119,14 +151,21 @@ export function linuxOomKillDetails(
   if (vmstatDelta === undefined && cgroupDelta === undefined) {
     return {}
   }
-  const details: CrashReportDetails = { linuxOomKillBaselineAgeMs: Math.max(0, baselineAgeMs) }
+  const details: CrashReportDetails = {
+    linuxOomKillBaselineAgeMs: Math.max(0, baselineAgeMs)
+  }
   if (vmstatDelta !== undefined) {
     details.linuxOomKillHostDelta = vmstatDelta
   }
   if (cgroupDelta !== undefined) {
     details.linuxOomKillCgroupDelta = cgroupDelta
   }
-  details.linuxOomKillVerdict = oomKillVerdict(vmstatDelta, cgroupDelta)
+  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta)
+  details.linuxOomKillVerdict = verdict
+  const scope = verdict === 'orca-process-oom-kill' ? oomKillScope(baseline, current) : undefined
+  if (scope) {
+    details.linuxOomKillScope = scope
+  }
   if (current.cgroupMemoryMaxMB !== undefined) {
     details.linuxCgroupMemoryMaxMB = current.cgroupMemoryMaxMB
   }
