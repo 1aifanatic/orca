@@ -58,3 +58,23 @@ it('uses target POSIX grammar for an escaped-space guest executable', () => {
     resolveConfiguredWorkerAgent('opencode-private', { opencode: command }, 'win32')
   ).toBeUndefined()
 })
+
+it('refuses an assignment without an executable', () => {
+  expect(
+    resolveConfiguredWorkerAgent(
+      'opencode-private',
+      { opencode: 'FOO=/tmp/opencode-private' },
+      'linux'
+    )
+  ).toBeUndefined()
+})
+it('uses the actual native Windows Git Bash grammar', () => {
+  expect(
+    resolveConfiguredWorkerAgent(
+      'opencode-private',
+      { opencode: '/c/Agent\\ Directory/opencode-private.exe' },
+      'win32',
+      'posix'
+    )
+  ).toBe('opencode')
+})
