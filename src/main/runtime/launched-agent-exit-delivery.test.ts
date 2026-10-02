@@ -8,10 +8,48 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
+import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 import { readLaunchedAgentForeground } from './launched-agent-foreground'
+import type * as TerminalForegroundGroup from './terminal-foreground-group'
 import { waitForWorktreeStartupDraft } from './runtime-worktree-startup-readiness'
 
 const PTY_ID = 'pty-1'
+
+// What `ps` limited to the pane's terminal answers; the verdict over it stays the real one.
+const paneTerminal = vi.hoisted(() => {
+  const state: { rows: ProcessTableRow[] | null } = { rows: null }
+  return state
+})
+vi.mock('./terminal-foreground-group', async (importOriginal) => ({
+  ...(await importOriginal<typeof TerminalForegroundGroup>()),
+  readTerminalProcessRows: vi.fn(async () => paneTerminal.rows)
+}))
+
+/** A macOS pane under `login` whose terminal `group` holds, with `jobs` launched from its zsh. */
+function loginPane(
+  group: number,
+  jobs: { pid: number; command: string }[] = []
+): ProcessTableRow[] {
+  return [
+    {
+      pid: 100,
+      ppid: 1,
+      pgid: 100,
+      tpgid: group,
+      stat: 'Ss',
+      command: '/usr/bin/login -flpq user'
+    },
+    { pid: 101, ppid: 100, pgid: 101, tpgid: group, stat: 'S', command: '-zsh' },
+    ...jobs.map(({ pid, command }) => ({
+      pid,
+      ppid: 101,
+      pgid: pid,
+      tpgid: group,
+      stat: 'S+',
+      command
+    }))
+  ]
+}
 const SHELL_HANDOFF = '\x1b[?2004l'
 
 /** zsh's prompt, the launch line it runs, then its prompt again once that command exited. */
@@ -35,6 +73,8 @@ type HostAnswers = {
   host: { remote: boolean; windows: boolean }
   cached: string | null
   scanned: string | null
+  /** The pane terminal's processes, for a local macOS or Linux host. */
+  rows?: ProcessTableRow[]
   shellAlone: boolean
 }
 
@@ -74,6 +114,7 @@ const HOSTS: [string, HostAnswers, () => string[]][] = [
       host: { remote: false, windows: false },
       cached: 'python3',
       scanned: 'zsh',
+      rows: loginPane(101),
       shellAlone: false
     },
     zshRunsLaunchLineThatExits
@@ -81,6 +122,7 @@ const HOSTS: [string, HostAnswers, () => string[]][] = [
 ]
 
 function launchedPane(answers: HostAnswers) {
+  paneTerminal.rows = answers.rows ?? null
   const listeners = new Set<(data: string) => void>()
   const subscribe = (_ptyId: string, listener: (data: string) => void) => {
     listeners.add(listener)
@@ -89,7 +131,8 @@ function launchedPane(answers: HostAnswers) {
   const controller = {
     getForegroundProcess: async () => answers.cached,
     confirmForegroundProcess: async () => answers.scanned,
-    confirmShellForeground: async () => answers.shellAlone
+    confirmShellForeground: async () => answers.shellAlone,
+    listProcesses: async () => [{ id: PTY_ID, rootProcessId: 100, cwd: '/repo', title: 'zsh' }]
   }
   const readForeground = (ptyId: string) =>
     readLaunchedAgentForeground(controller, answers.host, ptyId, answers.agent ?? 'claude')
@@ -187,6 +230,7 @@ describe('a launch prompt after the launched agent exits at startup', () => {
       host: { remote: false, windows: false },
       cached: 'claude',
       scanned: 'claude',
+      rows: loginPane(200, [{ pid: 200, command: '/opt/bin/claude' }]),
       shellAlone: false
     })
     const delivery = deliverTerminalAgentLaunchPrompt({

@@ -99,6 +99,7 @@ async function launchStub(stub: keyof typeof STUBS, readyTimeoutMs: number) {
     getForegroundProcess: async () => tracker.getForegroundProcess(),
     confirmForegroundProcess: () => tracker.confirmForegroundProcess(),
     confirmShellForeground: () => tracker.confirmShellForeground(),
+    listProcesses: async () => [{ id: PTY_ID, rootProcessId: proc.pid, cwd: home, title: 'zsh' }],
     inspectProcess: async () => {
       const snapshot = await getStrictProcessTableSnapshotWithAge()
       return {
