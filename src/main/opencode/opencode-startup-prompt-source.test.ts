@@ -21,6 +21,11 @@ let setup: PluginModule['default']['setup']
 let claim: ReturnType<typeof vi.fn>
 
 class Editor extends EventEmitter {
+  traits: { owner: string; role: string; capture: string[]; status?: string } = {
+    owner: 'opencode',
+    role: 'prompt',
+    capture: ['tab']
+  }
   plainText = ''
   focused = true
   insertText(text: string) {
@@ -79,6 +84,50 @@ afterEach(() => {
 })
 
 describe('installed-version native prompt intent plugin', () => {
+  it.each(['dialog', 'shell', 'autocomplete'])('does not populate a %s editor', async (kind) => {
+    const f = fixture()
+    if (kind === 'dialog') {
+      f.editor.traits.role = 'dialog'
+    }
+    if (kind === 'shell') {
+      f.editor.traits.status = 'SHELL'
+    }
+    if (kind === 'autocomplete') {
+      f.editor.traits.capture = ['escape', 'navigate', 'submit', 'tab']
+    }
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(f.editor.plainText).toBe('')
+    expect(claim).not.toHaveBeenCalled()
+    expect(f.dispatch).not.toHaveBeenCalled()
+    await dispose()
+  })
+  it('retries only explicitly pending admission, then submits once', async () => {
+    claim.mockResolvedValueOnce({ ok: true, json: async () => ({ allowed: false, pending: true }) })
+    const f = fixture()
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.waitFor(() => expect(claim).toHaveBeenCalledTimes(1))
+    expect(f.dispatch).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledTimes(1))
+    expect(claim).toHaveBeenCalledTimes(2)
+    await dispose()
+  })
+
+  it('cancels pending admission on input without retrying a consumed denial', async () => {
+    claim.mockResolvedValue({ ok: true, json: async () => ({ allowed: false, pending: true }) })
+    const f = fixture()
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.waitFor(() => expect(claim).toHaveBeenCalledTimes(1))
+    f.input.emit('keypress', { name: 'x' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(claim).toHaveBeenCalledTimes(1)
+    expect(f.dispatch).not.toHaveBeenCalled()
+    await dispose()
+  })
+
   it('preserves typing that predates plugin setup without requesting owner permission', async () => {
     const f = fixture()
     f.editor.replace('early typing')

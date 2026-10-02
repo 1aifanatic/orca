@@ -35,6 +35,31 @@ describe('execution-owned startup prompt claims', () => {
     }
   })
 
+  it('keeps pending admission bounded and never recreates canceled or consumed claims', () => {
+    let now = 0
+    const claims = new OpenCodeStartupPromptClaims(() => now)
+    claims.register('waiting', 'hash', () => 'pending')
+    expect(claims.claim({ nonce: 'waiting', digest: 'hash' })).toBe('pending')
+    expect(claims.claim({ nonce: 'waiting', digest: 'hash' })).toBe('pending')
+    expect(claims.admit('waiting', () => ({ freshSpawn: true, firstUserInputAt: null }))).toBe(true)
+    expect(claims.claim({ nonce: 'waiting', digest: 'hash' })).toBe(true)
+    expect(claims.admit('waiting', () => ({ freshSpawn: true, firstUserInputAt: null }))).toBe(
+      false
+    )
+    claims.register('canceled', 'hash', () => 'pending')
+    claims.cancel('canceled')
+    expect(claims.admit('canceled', () => ({ freshSpawn: true, firstUserInputAt: null }))).toBe(
+      false
+    )
+    claims.register('expired', 'hash', () => 'pending')
+    now = 20000
+    expect(claims.claim({ nonce: 'expired', digest: 'hash' })).toBe(false)
+    expect(claims.admit('expired', () => ({ freshSpawn: true, firstUserInputAt: null }))).toBe(
+      false
+    )
+    claims.clear()
+  })
+
   it('bounds pending claims and reclaims expired capacity without timers', () => {
     let now = 0
     const claims = new OpenCodeStartupPromptClaims(() => now)

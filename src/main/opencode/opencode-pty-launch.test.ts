@@ -34,24 +34,38 @@ const plan: LocalPtyLaunchPlan = {
   launchWslDistro: null
 }
 
-vi.mock('../agent-hooks/server', () => ({
-  agentHookServer: { endpointFilePath: '/private/endpoint.env' }
-}))
+const hookServer = vi.hoisted(() => {
+  const server: { endpointFilePath: string | null } = { endpointFilePath: '/private/endpoint.env' }
+  return server
+})
+vi.mock('../agent-hooks/server', () => ({ agentHookServer: hookServer }))
+const reserve = vi.hoisted(() => vi.fn(() => true))
+vi.mock('./opencode-startup-prompt-owner', () => ({ reserveOpenCodeStartupPrompt: reserve }))
 
 async function prepare(options: Parameters<typeof prepareOpenCodePtyLaunch>[0]) {
   return (await prepareOpenCodePtyLaunch(options)).env
 }
 
 const probe = vi.hoisted(() => vi.fn())
+const install = vi.hoisted(() => vi.fn())
+vi.mock('./opencode-startup-prompt-installer', () => ({
+  installOpenCodeStartupPromptForLaunch: install
+}))
 vi.mock('./opencode-launch-capabilities', () => ({ probeOpenCodeLaunchCapabilities: probe }))
 
-beforeEach(() => probe.mockReset())
+beforeEach(() => {
+  probe.mockReset()
+  reserve.mockReset().mockReturnValue(true)
+  install.mockReset()
+  hookServer.endpointFilePath = '/private/endpoint.env'
+})
 afterEach(() => vi.unstubAllEnvs())
 
 describe('execution-host OpenCode launch preparation', () => {
   it('removes only the automatic verified v2 prompt argument, retaining explicit run and manual flags', async () => {
     probe.mockResolvedValue(getOpenCodeCliCapabilities('2.0.16'))
     const env = {
+      ORCA_AGENT_LAUNCH_TOKEN: 'admitted-launch',
       [OPENCODE_STARTUP_PROMPT_SHA256_ENV]: createHash('sha256').update('task').digest('hex'),
       [OPENCODE_STARTUP_PROMPT_BODY_ENV]: 'task',
       [OPENCODE_STARTUP_PROMPT_SHELL_ENV]: 'posix'
@@ -74,6 +88,37 @@ describe('execution-host OpenCode launch preparation', () => {
         .command
     ).toBe("opencode --prompt 'task'")
   })
+  it.each(['endpoint', 'installer', 'capacity', 'identity'])(
+    'keeps the editable brief when automatic preparation lacks %s',
+    async (failure) => {
+      probe.mockResolvedValue(getOpenCodeCliCapabilities('2.0.16'))
+      if (failure === 'endpoint') {
+        hookServer.endpointFilePath = null
+      }
+      if (failure === 'installer') {
+        install.mockImplementation((env) => {
+          delete env.ORCA_OPENCODE_STARTUP_PROMPT_NONCE
+        })
+      }
+      if (failure === 'capacity') {
+        reserve.mockReturnValue(false)
+      }
+      const original = "opencode --standalone --prompt 'task'"
+      const result = await prepareOpenCodePtyLaunch({
+        command: original,
+        envToDelete: [],
+        isFreshLaunch: true,
+        env: {
+          ...(failure === 'identity' ? {} : { ORCA_AGENT_LAUNCH_TOKEN: 'admitted-launch' }),
+          [OPENCODE_STARTUP_PROMPT_SHA256_ENV]: createHash('sha256').update('task').digest('hex'),
+          [OPENCODE_STARTUP_PROMPT_BODY_ENV]: 'task',
+          [OPENCODE_STARTUP_PROMPT_SHELL_ENV]: 'posix'
+        }
+      })
+      expect(result.command).toBe(original)
+      expect(result.env).not.toHaveProperty('ORCA_OPENCODE_STARTUP_PROMPT_NONCE')
+    }
+  )
   it.each(['1.1.23', '2.0.16', '2.0.17', 'unknown'])(
     'gates native intent against the executing %s capability',
     async (version) => {
@@ -83,6 +128,7 @@ describe('execution-host OpenCode launch preparation', () => {
       const env = await prepare({
         command: 'opencode --prompt task',
         env: {
+          ORCA_AGENT_LAUNCH_TOKEN: 'admitted-launch',
           [OPENCODE_STARTUP_PROMPT_SHA256_ENV]: fingerprint,
           [OPENCODE_STARTUP_PROMPT_BODY_ENV]: 'task',
           [OPENCODE_STARTUP_PROMPT_SHELL_ENV]: 'posix'

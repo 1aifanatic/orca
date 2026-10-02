@@ -21,7 +21,8 @@ async function claimStartupPrompt(nonce, digest, endpoint) {
     body: JSON.stringify({ nonce, digest }), signal: AbortSignal.timeout(1000)
   });
   if (!response.ok) return false;
-  return (await response.json()).allowed === true;
+  const result = await response.json();
+  return result.allowed === true ? true : result.pending === true ? "pending" : false;
 }
 async function submitStartupPrompt(ctx) {
   const noop = async () => {};
@@ -41,6 +42,9 @@ async function submitStartupPrompt(ctx) {
   });
   if (memory.settled) return noop;
   let timer, editor, seen = false, disposed = false, createHash, claimed = false, claiming = false, populated = false;
+  const isComposer = (candidate) => candidate?.traits?.owner === "opencode" &&
+    candidate.traits.role === "prompt" && !candidate.traits.status &&
+    candidate.traits.capture?.length === 1 && candidate.traits.capture[0] === "tab";
   const matches = (candidate) => typeof candidate?.plainText === "string" &&
     createHash("sha256").update(candidate.plainText).digest("hex") === digest;
   const cleanup = () => {
@@ -68,6 +72,7 @@ async function submitStartupPrompt(ctx) {
       try {
         if (Date.now() >= memory.expiresAt || ctx.ui.router.current()?.type !== "home") return settle();
         const current = ctx.renderer.currentFocusedEditor;
+        if (!isComposer(current)) { if (seen) settle(); return; }
         if (editor !== current) {
           if (seen) return settle();
           editor?.off("line-info-change", changed);
@@ -85,12 +90,13 @@ async function submitStartupPrompt(ctx) {
           claiming = true;
           const allowed = await claimStartupPrompt(nonce, digest, endpoint);
           claiming = false;
+          if (allowed === "pending") return;
           if (!allowed) return settle();
           claimed = true;
         }
         if (disposed || memory.settled || Date.now() >= memory.expiresAt ||
             ctx.ui.router.current()?.type !== "home" || ctx.renderer.currentFocusedEditor !== editor ||
-            !editor.focused || editor.plainText !== (populated ? prompt : "")) return settle();
+            !editor.focused || !isComposer(editor) || editor.plainText !== (populated ? prompt : "")) return settle();
         if (!populated) {
           populated = true;
           editor.insertText(prompt);

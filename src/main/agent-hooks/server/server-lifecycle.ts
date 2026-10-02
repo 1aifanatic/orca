@@ -11,13 +11,12 @@ import { readRequestBody } from '../../../shared/agent-hook-listener/request-bod
 import { resolveHookSource } from '../../../shared/agent-hook-listener/source-routing'
 import { HOOK_REQUEST_SLOWLORIS_MS } from '../../../shared/agent-hook-listener/listener-limits'
 import { isHookRequestTruncatedError } from '../../../shared/agent-hook-transport-interference'
-import { drainAgentHookSpool, type SpoolRecord } from '../../../shared/agent-hook-spool'
 import { clearAllListenerCaches } from '../../../shared/agent-hook-listener/listener-state'
 import { trackEmptyPaneKeyHook } from './server-transport-rules'
-import { AgentHookServerRuntimeEnv } from './server-runtime-env'
+import { AgentHookServerStatusHookLifecycle } from './server-status-hook-lifecycle'
 import { OPENCODE_STARTUP_PROMPT_CLAIM_PATH } from '../../../shared/opencode-startup-prompt'
 
-export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv {
+export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHookLifecycle {
   /** Start the loopback listener after hydration and spool replay have settled. */
   async start(options?: {
     env?: string
@@ -26,6 +25,9 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     statusHooksEnabled?: boolean
   }): Promise<void> {
     if (this.server) {
+      if (options?.statusHooksEnabled !== undefined) {
+        this.setStatusHooksEnabled(options.statusHooksEnabled)
+      }
       return
     }
     this.statusHooksEnabled = options?.statusHooksEnabled !== false
@@ -40,30 +42,8 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     this.token = randomUUID()
     this.endpointFileWritten = false
     this.lastWrittenJson = null
-    if (this.statusHooksEnabled && !this.ownerStateInitialized) {
-      // Why: hydrate before binding the listener so an early hook POST runs against a populated map.
-      if (this.lastStatusFilePath) {
-        this.hydrateLastStatusFromDisk()
-      }
-      this.captureHydratedAuthorityCommitments()
-      // Drain before binding the listener so replay cannot race a live hook during startup.
-      if (this.endpointDir) {
-        const replayedPaneKeys = new Set<string>()
-        drainAgentHookSpool({
-          endpointDir: this.endpointDir,
-          getPersistedLaunchTokenHash: (paneKey) =>
-            this.hydratedLaunchTokenHashByPaneKey.get(this.resolvePaneKeyAlias(paneKey)),
-          ingest: (record: SpoolRecord) => {
-            this.ingestSpoolRecord(record)
-            replayedPaneKeys.add(this.resolvePaneKeyAlias(record.paneKey))
-          }
-        })
-        // Why: the owner may have died while Orca was down; check each replayed pane once.
-        for (const paneKey of replayedPaneKeys) {
-          void this.checkAgentPresence(paneKey)
-        }
-      }
-      this.ownerStateInitialized = true
+    if (this.statusHooksEnabled) {
+      this.initializeStatusHookOwner()
     }
     const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       if (req.method !== 'POST') {
@@ -89,7 +69,13 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
         const body = await readRequestBody(req)
         if (pathname === OPENCODE_STARTUP_PROMPT_CLAIM_PATH) {
           res.writeHead(200, { 'content-type': 'application/json' })
-          res.end(JSON.stringify({ allowed: this.onStartupPromptClaim?.(body) === true }))
+          const claim = this.onStartupPromptClaim?.(body)
+          res.end(
+            JSON.stringify({
+              allowed: claim === true,
+              ...(claim === 'pending' ? { pending: true } : {})
+            })
+          )
           return
         }
         if (!this.statusHooksEnabled) {

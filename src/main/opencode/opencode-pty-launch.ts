@@ -22,6 +22,8 @@ const intentKeys = [
 
 import { deleteRequestedEnvKeys } from '../ipc/pty/host-env/path'
 import { probeOpenCodeLaunchCapabilities } from './opencode-launch-capabilities'
+import { reserveOpenCodeStartupPrompt } from './opencode-startup-prompt-owner'
+import { installOpenCodeStartupPromptForLaunch } from './opencode-startup-prompt-installer'
 
 export async function prepareOpenCodePtyLaunch(options: {
   command: string | undefined
@@ -70,11 +72,15 @@ export async function prepareOpenCodePtyLaunch(options: {
   if (!capabilities || capabilities.pluginApi === 'unknown') {
     return { env, command }
   }
-  const launchEnv = { ...env, ORCA_OPENCODE_PLUGIN_API: capabilities.pluginApi }
+  const launchEnv: Record<string, string> = {
+    ...env,
+    ORCA_OPENCODE_PLUGIN_API: capabilities.pluginApi
+  }
   options.envToDelete.splice(options.envToDelete.indexOf('ORCA_OPENCODE_PLUGIN_API'), 1)
   if (
     capabilities.promptMode === 'prefill' &&
     !options.wsl &&
+    launchEnv.ORCA_AGENT_LAUNCH_TOKEN &&
     requestedPrompt &&
     body &&
     command &&
@@ -92,13 +98,21 @@ export async function prepareOpenCodePtyLaunch(options: {
       !parsed.spans[last].divergesFromShell &&
       !parsed.spans[last - 1].divergesFromShell
     ) {
-      command = command.slice(0, parsed.spans[last - 1].start).trimEnd()
       const endpoint = agentHookServer.endpointFilePath
       if (endpoint) {
         launchEnv[OPENCODE_STARTUP_PROMPT_SHA256_ENV] = requestedPrompt
         launchEnv[OPENCODE_STARTUP_PROMPT_BODY_ENV] = body
         launchEnv[OPENCODE_STARTUP_PROMPT_NONCE_ENV] = randomUUID()
         launchEnv[OPENCODE_STARTUP_PROMPT_ENDPOINT_ENV] = endpoint
+        installOpenCodeStartupPromptForLaunch(launchEnv, false)
+        const nonce = launchEnv[OPENCODE_STARTUP_PROMPT_NONCE_ENV]
+        if (nonce && reserveOpenCodeStartupPrompt(nonce, requestedPrompt)) {
+          command = command.slice(0, parsed.spans[last - 1].start).trimEnd()
+        } else {
+          for (const key of intentKeys) {
+            delete launchEnv[key]
+          }
+        }
         for (const key of intentKeys) {
           if (launchEnv[key]) {
             options.envToDelete.splice(options.envToDelete.indexOf(key), 1)
