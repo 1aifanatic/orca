@@ -23,6 +23,7 @@ import {
   PairingProvisionRelayParamsSchema
 } from '../mobile-relay-credential-contract'
 import { MobileWebBundleChunkParamsSchema } from '../mobile-web-bundle/bundle-rpc-contract'
+import { OrcadMigrationSnapshotChunkRequestSchema } from '../orcad-migration-scrollback'
 import { OrcadTerminalCensusParamsSchema } from '../orcad-terminal-census'
 import { pluginConsentRequestSchema } from '../plugins/plugin-consent-request'
 import {
@@ -353,6 +354,7 @@ import {
   NotificationUnsubscribeParams,
   NotificationsSubscribeParams
 } from './notifications-params'
+import { OrcadMigrationCatalogParams } from './orcad-migration-params'
 import {
   FederationDispatchParams,
   FederationFleetSnapshotParams,
@@ -988,6 +990,12 @@ export const RPC_PARAMS_BY_METHOD = {
   'notifications.testPush': null,
   'notifications.unregisterPush': null,
   'notifications.unsubscribe': NotificationUnsubscribeParams,
+  'orcad.migration.abortCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.catalogState': OrcadMigrationCatalogParams,
+  'orcad.migration.commitCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.importCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.stageCatalog': OrcadMigrationCatalogParams,
+  'orcad.migration.stageSnapshotChunk': OrcadMigrationSnapshotChunkRequestSchema,
   'orcad.terminalCensus': OrcadTerminalCensusParamsSchema,
   'orchestration.ask': AskParams,
   'orchestration.callerShow': null,
