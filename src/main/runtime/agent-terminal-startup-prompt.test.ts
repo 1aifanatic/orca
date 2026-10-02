@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
-import { carryInLaunchFile } from '../../shared/launch-prompt-file'
+import { MAX_LINE_PROMPT_BYTES, carryInLaunchFile } from '../../shared/launch-prompt-file'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -79,7 +79,7 @@ describe('a terminal create that is handed a launch prompt', () => {
 
   it('hands a prompt past the argv ceiling to the host as a launch file', async () => {
     const { runtime, spawn } = runtimeWithAgentLaunch()
-    const prompt = 'x'.repeat(20_000)
+    const prompt = 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1)
 
     await runtime.createTerminal('id:wt-1', { startupAgent: 'claude', startupPrompt: prompt })
 
@@ -108,7 +108,7 @@ describe('a terminal create that is handed a launch prompt', () => {
 
     await runtime.createTerminal('id:wt-1', {
       startupAgent: 'gemini',
-      startupPrompt: 'x'.repeat(30_000),
+      startupPrompt: 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1),
       onStartupPromptCarry
     })
 

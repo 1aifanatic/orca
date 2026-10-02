@@ -4,6 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { MAX_LINE_PROMPT_BYTES } from '../../../shared/launch-prompt-file'
 import {
   callerProfileCases,
   type AgentLaunchCallerProfile
@@ -222,17 +223,20 @@ describe('agent launch caller prompt transport', () => {
   })
 
   // The bug class the explicit carry outcome removes: a plan that exists but does not carry the
-  // prompt was treated as delivered, and the prompt was dropped.
+  // prompt was treated as delivered, and the prompt was dropped. Why Claude and Codex too: main
+  // pastes an AI button's prompt, so the agent gets the user's text, never a launch-file pointer.
   it.each([
-    ['past the argv ceiling', 'x'.repeat(20_000), 'darwin' as const],
-    ['a Windows-damaged prompt', 'say "hi"', 'win32' as const]
-  ])(
-    'pastes %s for an agent not measured reading a launch file, and waits for that paste',
-    async (_label, prompt, launchPlatform) => {
+    ['past the argv ceiling', 'gemini', 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1), 'darwin'],
+    ['a Windows-damaged prompt', 'gemini', 'say "hi"', 'win32'],
+    ['past the argv ceiling', 'claude', 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1), 'darwin'],
+    ['a multi-line Windows prompt', 'codex', 'Fix the checks.\nThen push.', 'win32']
+  ] as const)(
+    'pastes %s for %s, and waits for that paste',
+    async (_label, agent, prompt, launchPlatform) => {
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
       const result = launchAgentInNewTab({
-        agent: 'gemini',
+        agent,
         worktreeId: 'wt-1',
         prompt,
         promptDelivery: 'submit-after-ready',
@@ -252,6 +256,23 @@ describe('agent launch caller prompt transport', () => {
       expect(queuedStartupPayload(store)?.launchFile).toBeUndefined()
     }
   )
+
+  it('stages a 20 KB AI-button prompt on the agent’s own line on a POSIX host', async () => {
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+    const prompt = `Session context:\n${'w'.repeat(20_000)}`
+
+    launchAgentInNewTab({
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      prompt,
+      promptDelivery: 'submit-after-ready',
+      launchPlatform: 'darwin'
+    })
+
+    expect(queuedStartupCommand(store)).toContain('w'.repeat(100))
+    expect(queuedStartupPayload(store)?.launchFile).toBeUndefined()
+    expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
+  })
 
   it('mirrors an argv-carried draft into the chat composer', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')

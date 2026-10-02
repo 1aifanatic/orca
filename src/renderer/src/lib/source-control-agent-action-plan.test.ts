@@ -42,17 +42,33 @@ describe('planSourceControlAgentActionLaunch', () => {
     expect(result.ok && result.caveat).toContain('PATH')
   })
 
-  it('says an input past the argv ceiling goes in a private file, not on the command line', () => {
+  it('says a typed input past the argv ceiling goes in a private file, and an AI button pastes it', () => {
+    const plan = (promptDelivery: 'submit-after-ready' | 'auto-submit') =>
+      planSourceControlAgentActionLaunch({
+        agent: 'codex',
+        commandInput: 'z'.repeat(200_000),
+        promptDelivery,
+        detectedAgents: ['codex'],
+        platform: 'linux'
+      })
+
+    const typed = plan('auto-submit')
+    expect(typed.ok && typed.summary).toContain('private file')
+    expect(typed.ok && typed.summary).not.toContain('included in the launch command')
+    const button = plan('submit-after-ready')
+    expect(button.ok && button.delivery).toBe('paste-submit')
+  })
+
+  it('carries a 20 KB AI-button input on the command line of a POSIX host', () => {
     const result = planSourceControlAgentActionLaunch({
       agent: 'codex',
-      commandInput: 'z'.repeat(200_000),
+      commandInput: 'z'.repeat(20_000),
       promptDelivery: 'submit-after-ready',
       detectedAgents: ['codex'],
-      platform: 'linux'
+      platform: 'darwin'
     })
 
-    expect(result.ok && result.summary).toContain('private file')
-    expect(result.ok && result.summary).not.toContain('included in the launch command')
+    expect(result.ok && result.delivery).toBe('argv')
   })
 
   // Why: main pastes an AI button's prompt on Windows, so the agent's history shows the user's

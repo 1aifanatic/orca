@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { planLaunchForTest } from './launch-prompt-plan.test-fixture'
+import { MAX_LINE_PROMPT_BYTES } from './launch-prompt-file'
 
 const base = { agent: 'claude' as const, cmdOverrides: {} }
 
@@ -13,7 +14,7 @@ describe('the one launch-prompt decision every launch path builds through', () =
   })
 
   it('points a prompt past the argv ceiling at a launch file on a POSIX host too', () => {
-    const prompt = 'z'.repeat(20_000)
+    const prompt = 'z'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     expect(planLaunchForTest({ ...base, prompt, platform: 'linux' })?.launchFile?.content).toBe(
       prompt
     )
@@ -43,7 +44,7 @@ describe('the one launch-prompt decision every launch path builds through', () =
     const typed = planLaunchForTest({ ...base, platform: 'linux', prompt: 'one\ntwo' })
     expect(typed?.launchCommand).toContain('two')
     expect(typed?.pasteAfterReady).toBeNull()
-    const huge = 'c'.repeat(20_000)
+    const huge = 'c'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     const pointed = planLaunchForTest({ ...base, platform: 'linux', prompt: huge })
     expect(pointed?.launchFile?.content).toBe(huge)
     expect(pointed?.pasteAfterReady).toBeNull()

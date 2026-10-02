@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_INLINE_LAUNCH_PROMPT_CHARS, carryInLaunchFile } from './launch-prompt-file'
+import { MAX_LINE_PROMPT_BYTES, carryInLaunchFile } from './launch-prompt-file'
 import { planLaunchPrompt, type AgentLaunchPromptArgs } from './tui-agent-startup'
 import type { TuiAgent } from './tui-agent'
 import { RUNTIME_CAPABILITIES } from './protocol-version'
@@ -58,7 +58,7 @@ describe('where a launch prompt rides', () => {
   it.each<TuiAgent>(['claude', 'codex'])(
     'points %s at a launch file past the argv ceiling, with the full text in the file',
     (agent) => {
-      const prompt = `${'y'.repeat(MAX_INLINE_LAUNCH_PROMPT_CHARS)}z`
+      const prompt = `${'y'.repeat(MAX_LINE_PROMPT_BYTES)}z`
       const planned = plan(agent, prompt)
       if (planned?.carry !== 'launch-file') {
         throw new Error(`expected a launch file, got ${planned?.carry}`)
@@ -71,7 +71,7 @@ describe('where a launch prompt rides', () => {
 
   // The bug class this outcome removes: a plan that exists but does not carry the prompt.
   it('leaves a file-sized prompt for the paste for an agent not measured reading the file', () => {
-    const prompt = 'g'.repeat(MAX_INLINE_LAUNCH_PROMPT_CHARS + 1)
+    const prompt = 'g'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     const planned = plan('gemini', prompt)
     if (planned?.carry !== 'paste-after-ready') {
       throw new Error(`expected the paste, got ${planned?.carry}`)
@@ -83,7 +83,7 @@ describe('where a launch prompt rides', () => {
   // Why: main started such an agent with the whole prompt on its line; a caller with no paste
   // (agentSession.create, a phone quick command) must not refuse it now.
   it('keeps a file-sized prompt on the line for a caller that cannot paste', () => {
-    const prompt = 'g'.repeat(MAX_INLINE_LAUNCH_PROMPT_CHARS + 1)
+    const prompt = 'g'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     const planned = plan('gemini', prompt, { paste: 'never' })
     expect(planned?.carry).toBe('on-line')
     expect(planned?.carry === 'on-line' && planned.plan.launchCommand).toContain('gggg')
@@ -169,9 +169,19 @@ describe('a host that types the line raw', () => {
     expect(plan('gemini', 'say "hi"', extra)?.carry).toBe('on-line')
   })
 
-  it('still points Claude at a file past the argv ceiling on a POSIX host, whatever the paste', () => {
-    const planned = plan('claude', 'y'.repeat(20_000), { paste: 'once-agent-runs' })
-    expect(planned?.carry).toBe('launch-file')
+  // Why: a 20 KB Fix-checks prompt on macOS arrives as the user's text, never a pointer.
+  it('stages a long POSIX prompt on the line, and past the ceiling pastes where main pasted', () => {
+    expect(plan('claude', 'y'.repeat(20_000), { paste: 'once-agent-runs' })?.carry).toBe('on-line')
+    const huge = 'y'.repeat(MAX_LINE_PROMPT_BYTES + 1)
+    expect(plan('claude', huge, { paste: 'once-agent-runs' })?.carry).toBe('paste-after-ready')
+    expect(plan('claude', huge)?.carry).toBe('launch-file')
+  })
+
+  it('measures the argv ceiling in UTF-8 bytes, not characters', () => {
+    // 99,999 bytes in 33,333 three-byte characters.
+    const underCeiling = '日'.repeat(Math.floor(MAX_LINE_PROMPT_BYTES / 3))
+    expect(plan('claude', underCeiling)?.carry).toBe('on-line')
+    expect(plan('claude', '日'.repeat(MAX_LINE_PROMPT_BYTES / 3 + 1))?.carry).toBe('launch-file')
   })
 
   // Why: a host that cannot prove the agent holds its terminal refuses a paste (#24257), so the
@@ -184,12 +194,13 @@ describe('a host that types the line raw', () => {
     }
     const prompt = 'fix the build\nthen run the tests'
     expect(plan('gemini', prompt, extra)?.carry).toBe('on-line')
-    expect(plan('gemini', 'y'.repeat(20_000), extra)?.carry).toBe('on-line')
-    expect(plan('claude', 'y'.repeat(20_000), extra)?.carry).toBe('launch-file')
+    const huge = 'y'.repeat(MAX_LINE_PROMPT_BYTES + 1)
+    expect(plan('gemini', huge, extra)?.carry).toBe('on-line')
+    expect(plan('claude', huge, extra)?.carry).toBe('launch-file')
     expect(plan('aider', prompt, extra)?.carry).toBe('paste-after-ready')
     // An AI button's paste is main's, which ran in WSL too.
     const button = { ...extra, paste: 'once-agent-runs' as const }
-    expect(plan('gemini', 'y'.repeat(20_000), button)?.carry).toBe('paste-after-ready')
+    expect(plan('gemini', huge, button)?.carry).toBe('paste-after-ready')
   })
 
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {

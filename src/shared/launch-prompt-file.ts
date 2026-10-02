@@ -6,8 +6,9 @@
 
 import type { AgentStartupShell } from './tui-agent-startup-shell'
 
-/** Keeps agent argv comfortably below the lowest practical OS command-line limit. */
-export const MAX_INLINE_LAUNCH_PROMPT_CHARS = 16_384
+/** UTF-8 bytes a launch line carries to the agent's argv exactly (measured through staging in real
+ *  shells); under Linux's 131,072-byte cap on one argument. */
+export const MAX_LINE_PROMPT_BYTES = 100_000
 
 /** Content the host that owns the PTY writes to a private file before anything names it. */
 export type LaunchFile = {

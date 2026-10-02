@@ -23,7 +23,11 @@ import * as pty from 'node-pty'
 import { afterAll, describe, expect, it } from 'vitest'
 import { resolveFishBinary } from './fish-binary-requirement'
 import { writeLaunchFile, type WrittenLaunchFile } from './launch-file-writing'
-import { buildLaunchFilePointer, carryInLaunchFile } from './launch-prompt-file'
+import {
+  MAX_LINE_PROMPT_BYTES,
+  buildLaunchFilePointer,
+  carryInLaunchFile
+} from './launch-prompt-file'
 import { stageStartupCommand } from './startup-command-staging'
 import { buildStartupCommandSubmission } from './startup-command-submission'
 import { quoteStartupArg } from './tui-agent-startup-shell'
@@ -71,6 +75,18 @@ afterAll(() => {
   rmSync(SANDBOX, { recursive: true, force: true })
 })
 
+/** Exactly `bytes` of UTF-8: the hostile characters, line breaks, and two-, three- and four-byte
+ *  characters. */
+function utf8PromptOfBytes(bytes: number): string {
+  const encoder = new TextEncoder()
+  const unit = `${HOSTILE}\nčé 日本語 🙂\n`
+  let prompt = ''
+  while (encoder.encode(prompt + unit).byteLength <= bytes) {
+    prompt += unit
+  }
+  return prompt + 'x'.repeat(bytes - encoder.encode(prompt).byteLength)
+}
+
 const HOSTILE = `it's "quoted" $HOME \`id\` $(id) \\\\server\\share %PATH% !! #`
 
 const PROMPTS: [string, string][] = [
@@ -79,7 +95,9 @@ const PROMPTS: [string, string][] = [
   ['a 5 KB prompt', `${HOSTILE} ${'y'.repeat(5000)}`],
   ['a multi-line prompt with a trailing newline', `first line\n${HOSTILE}\n\nlast line\n`],
   // Why: typed raw, a line editor reads the TAB as completion and mangles the argument.
-  ['a prompt with a tab', 'before\tafter']
+  ['a prompt with a tab', 'before\tafter'],
+  // Why: the most a launch line carries before its prompt moves to a launch file or the paste.
+  ['a 100,000-byte multi-line UTF-8 prompt', utf8PromptOfBytes(MAX_LINE_PROMPT_BYTES)]
 ]
 
 type AgentRun = { argv: string; pgid: number; foregroundPgid: number; shellPid: number }

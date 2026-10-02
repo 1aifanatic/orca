@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { MAX_LINE_PROMPT_BYTES } from '../../../shared/launch-prompt-file'
 
 const mockCreateTab = vi.fn()
 const mockQueueTabStartupCommand = vi.fn()
@@ -310,8 +311,8 @@ describe('launchAgentInNewTab', () => {
     launchAgentInNewTab({
       agent: 'codex',
       worktreeId: 'wt-1',
-      prompt: 'y'.repeat(20_000),
-      promptDelivery: 'submit-after-ready'
+      prompt: 'y'.repeat(MAX_LINE_PROMPT_BYTES + 1),
+      promptDelivery: 'auto-submit'
     })
 
     expect(mockQueueTabStartupCommand.mock.calls[0]?.[1]?.launchFile).toBeDefined()
@@ -841,21 +842,17 @@ describe('launchAgentInNewTab', () => {
     expect(mockToastMessage).not.toHaveBeenCalled()
   })
 
-  it('hands a prompt past the argv ceiling to the host as a launch file the command points at', async () => {
+  it('hands a typed prompt past the argv ceiling to the host as a launch file the command points at', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-    const prompt = `Session context:\n${'x'.repeat(20_000)}`
+    const prompt = `Session context:\n${'x'.repeat(MAX_LINE_PROMPT_BYTES)}`
 
-    const result = launchAgentInNewTab({
+    launchAgentInNewTab({
       agent: 'codex',
       worktreeId: 'wt-1',
       prompt,
-      promptDelivery: 'submit-after-ready'
+      promptDelivery: 'auto-submit'
     })
 
-    await expect(result?.promptDeliveryResult).resolves.toEqual({
-      delivered: true,
-      failureNotified: false
-    })
     expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
     const queued = mockQueueTabStartupCommand.mock.calls[0]?.[1]
     // Handed back to copy if the host refuses to write the file.

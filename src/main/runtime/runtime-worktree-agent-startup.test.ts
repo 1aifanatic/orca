@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import { tuiAgentToAgentKind } from '../../shared/agent-kind'
+import { MAX_LINE_PROMPT_BYTES } from '../../shared/launch-prompt-file'
 
 const mocks = vi.hoisted(() => ({
   detectRemoteAgents: vi.fn(),
@@ -127,7 +128,7 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
   })
 
   it('hands a prompt past the argv ceiling to the host as a launch file', () => {
-    const prompt = 'x'.repeat(20_000)
+    const prompt = 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     const result = build(prompt)
     expect(result.startup.launchFile?.content).toBe(prompt)
     expect(result.startup.command).toContain(result.startup.launchFile?.placeholder)
@@ -141,7 +142,7 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
   })
 
   it('leaves a prompt needing a file the agent is not known to read as the follow-up paste', () => {
-    const prompt = 'x'.repeat(20_000)
+    const prompt = 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1)
     const result = buildWorktreeStartupForAgent({
       repo: makeRepo({}),
       settings,
@@ -160,7 +161,7 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
       repo: makeRepo({}),
       settings,
       agent: 'gemini',
-      prompt: 'x'.repeat(20_000),
+      prompt: 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1),
       getLaunchPlatform: () => 'linux',
       toSessionOptions: () => undefined,
       onPromptCarry

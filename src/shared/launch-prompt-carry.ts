@@ -1,6 +1,6 @@
 /** Where a launch prompt rides: decided once here, for every launch path, and switched on by each. */
 import {
-  MAX_INLINE_LAUNCH_PROMPT_CHARS,
+  MAX_LINE_PROMPT_BYTES,
   carryInLaunchFile,
   launchFileDirectoryPlaceholder,
   type LaunchFile
@@ -96,6 +96,8 @@ export function agentReadsLaunchFile(agent: TuiAgent): boolean {
   return TUI_AGENT_CONFIG[agent].readsLaunchFile === true
 }
 
+const utf8 = new TextEncoder()
+
 /** cmd.exe's documented line cap, the smallest of the Windows shells Orca types into. */
 export const WINDOWS_TYPED_LINE_MAX_CHARS = 8191
 
@@ -116,10 +118,10 @@ function windowsLineCarriesExactly(prompt: string, line: string, shell: AgentSta
  * The one carry rule. The prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
  * stages it when it is long or multi-line, and a Windows host types it when its shell carries the
  * text exactly. When the line cannot (past the argv ceiling, damaged by a Windows shell, past a
- * paired host's typed budget), it rides a launch file, which goes only to an agent measured reading
- * one, on a host that writes it; on Windows, a caller whose paste main used gets that paste first.
- * Failing a file it is pasted once the agent is ready, unless the caller's paste cannot reach the
- * agent on this host: then the line carries it, as main typed it.
+ * paired host's typed budget), a caller whose paste main used gets that paste, so the agent receives
+ * the user's text. Otherwise it rides a launch file, which goes only to an agent measured reading
+ * one, on a host that writes it. Failing a file it is pasted once the agent is ready, unless the
+ * caller's paste cannot reach the agent on this host: then the line carries it, as main typed it.
  */
 export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchCommand: string }>(
   args: A,
@@ -152,10 +154,9 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
     return plan ? { carry: 'on-line', plan } : pasteAfterReady()
   }
   const viaLaunchFile = (): LaunchPromptPlan<P> | null => {
-    // Why paste first on Windows: main pastes this caller's prompts, so the agent gets the user's
-    // text; there a pointer would replace nearly every generated (multi-line) prompt. Temporary,
-    // until the agent's own argv carries multi-line text past cmd without a shim re-parsing it.
-    if (args.paste === 'once-agent-runs' && args.platform === 'win32') {
+    // Why paste first: main pastes this caller's prompts, so the agent gets the user's text; a
+    // pointer replaces only a line main would have typed damaged or cut.
+    if (args.paste === 'once-agent-runs') {
       return pasteAfterReady()
     }
     // Why: an agent not measured reading the file would stop on an approval or refuse the path.
@@ -168,7 +169,7 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
       plan && { carry: 'launch-file', plan, launchFile: withQuoting(pointer.launchFile, shell) }
     )
   }
-  if (text.length > MAX_INLINE_LAUNCH_PROMPT_CHARS) {
+  if (utf8.encode(text).byteLength > MAX_LINE_PROMPT_BYTES) {
     return viaLaunchFile()
   }
   const plan = buildLine(args)

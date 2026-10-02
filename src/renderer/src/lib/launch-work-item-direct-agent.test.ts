@@ -19,6 +19,7 @@ import {
   notifyDirectWorkItemAgentStartTimeout
 } from './launch-work-item-direct-agent'
 import type { AgentStartupPlan } from './tui-agent-startup'
+import { MAX_LINE_PROMPT_BYTES } from '../../../shared/launch-prompt-file'
 
 describe('buildDirectWorkItemStartupOpts', () => {
   it('preserves Codex startup command delivery for linked work-item launches', () => {
@@ -191,18 +192,21 @@ describe('buildDirectWorkItemAgentStartupPlan submitted prompts', () => {
   // The bug class the explicit carry outcome removes: a plan that exists but does not carry the
   // prompt was reported as on the launch command, so no paste ran and the prompt was dropped.
   it('leaves a file-sized prompt for the paste for an agent not measured reading the file', () => {
-    const result = submit('gemini', 'g'.repeat(20_000))
+    const result = submit('gemini', 'g'.repeat(MAX_LINE_PROMPT_BYTES + 1))
     expect(result.promptOnLaunchCommand).toBe(false)
     expect(result.startupPlan?.launchCommand).not.toContain('gggg')
     expect(result.launchFile).toBeUndefined()
   })
 
-  it('hands Claude the same prompt in a launch file, with the prompt to copy if refused', () => {
-    const prompt = 'c'.repeat(20_000)
-    const result = submit('claude', prompt)
-    expect(result.promptOnLaunchCommand).toBe(true)
-    expect(result.launchFile?.content).toBe(prompt)
-    expect(result.launchPrompt).toBe(prompt)
+  // Why: main pastes a work item's prompt, so past the argv ceiling Claude gets the user's text.
+  it('stages a long prompt on Claude’s line and pastes one past the argv ceiling', () => {
+    const long = submit('claude', 'c'.repeat(20_000))
+    expect(long.promptOnLaunchCommand).toBe(true)
+    expect(long.launchFile).toBeUndefined()
+    const huge = submit('claude', 'c'.repeat(MAX_LINE_PROMPT_BYTES + 1))
+    expect(huge.promptOnLaunchCommand).toBe(false)
+    expect(huge.launchFile).toBeUndefined()
+    expect(huge.startupPlan?.launchCommand).not.toContain('cccc')
   })
 
   it('pastes on a paired host what its line cannot carry typed', () => {
