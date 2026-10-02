@@ -29,7 +29,7 @@ export function registerOrcadRuntimeLifecycleHandlers(options: {
   )
 }
 
-export function requiredString(value: unknown, label: string): string {
+function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${label} is required.`)
   }

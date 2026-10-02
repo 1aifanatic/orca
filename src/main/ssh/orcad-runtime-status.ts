@@ -6,8 +6,6 @@ import {
   requireManagedOrcadEnvironment,
   resolveLinkedOrcadContext
 } from './orcad-managed-runtime-context'
-import { readManagedOrcadUpdateDeferral } from './orcad-managed-update-deferrals'
-import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
 
 /** Read-only: what the host's activation record and journal say, without repairing either. */
 export async function getManagedOrcadRuntimeStatus(
@@ -32,9 +30,7 @@ export async function getManagedOrcadRuntimeStatus(
       previousVersion: record.previous,
       activatedAt: record.activatedAt,
       rollbackAvailable: Boolean(record.previous && record.snapshot),
-      recovery: transaction ? managedRecoveryStatus(transaction) : null,
-      terminals: await collectManagedTerminalCensus(userDataPath, environment, record),
-      deferredUpdate: readManagedOrcadUpdateDeferral(environment.id)
+      recovery: transaction ? managedRecoveryStatus(transaction) : null
     }
   })
 }

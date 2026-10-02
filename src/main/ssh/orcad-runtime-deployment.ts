@@ -28,7 +28,8 @@ import { tunneledOrcadPairingCode } from './orcad-tunneled-pairing'
 import { hasRegisteredDirectSshAuthority } from './ssh-target-registry'
 import {
   isForceableOrcadDeferral,
-  managedOrcadSlot,
+  MANAGED_ORCAD_LEGACY_NODE_PATH,
+  ORCAD_BIND_HOST,
   probeManagedOrcadReadiness,
   requireManagedOrcadInfrastructure
 } from './orcad-managed-runtime-context'
@@ -69,7 +70,16 @@ export async function createManagedOrcadEnvironment(
     try {
       const connection = await connectionManager.connect(claimed)
       let context = await resolveOrcadRemoteContext(claimed, connection, args.signal)
-      const slot = managedOrcadSlot(context, ORCAD_MANAGED_REMOTE_PORT, args.signal)
+      const slot = {
+        conn: context.connection,
+        host: context.host,
+        remoteHome: context.remoteHome,
+        nodePath: MANAGED_ORCAD_LEGACY_NODE_PATH,
+        userDataDir: context.userDataDir,
+        bindHost: ORCAD_BIND_HOST,
+        port: ORCAD_MANAGED_REMOTE_PORT,
+        signal: args.signal
+      }
       const recovery = await recoverInterruptedOrcadActivation(slot)
       if (recovery.outcome === 'pending' || recovery.outcome === 'refused') {
         throw new Error(recovery.reason)

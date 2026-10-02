@@ -46,13 +46,6 @@ vi.mock('./orcad-artifact-materializer', () => ({
 }))
 vi.mock('./orcad-local-build-hash', () => ({ computeLocalOrcadBuildHash: () => 'build-hash' }))
 vi.mock('./orcad-active-readiness', () => ({ probeActiveOrcadReadiness: mocks.probe }))
-vi.mock('./orcad-terminal-census-client', () => ({
-  collectManagedTerminalCensus: async () => ({
-    liveSessions: 0,
-    startedSinceActivation: 0,
-    daemonProtocolVersion: 39
-  })
-}))
 vi.mock('./orcad-managed-tunnel', () => ({
   startOrcadManagedTunnel: mocks.startTunnel,
   ensureOrcadManagedTunnel: mocks.ensureTunnel,
@@ -337,9 +330,7 @@ describe('getManagedOrcadRuntimeStatus', () => {
         phase: 'candidate-ready',
         version: '0.2.0+def',
         startedAt: 'then'
-      },
-      terminals: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 39 },
-      deferredUpdate: null
+      }
     })
     expect(mocks.recover).toHaveBeenCalledTimes(1)
   })

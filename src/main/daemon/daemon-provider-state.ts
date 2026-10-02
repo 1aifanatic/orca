@@ -11,7 +11,7 @@ import {
   getMacDaemonTccAttributionHealth,
   type MacDaemonTccAttributionHealth
 } from './daemon-tcc-attribution'
-import { PROTOCOL_VERSION, type DaemonSessionInfo, type SessionInfo } from './types'
+import { PROTOCOL_VERSION, type SessionInfo } from './types'
 import type { DaemonIdleRetirementResult } from './daemon-pty-runtime-state'
 
 let spawner: DaemonSpawner | null = null
@@ -147,12 +147,6 @@ export async function listLiveDaemonPtyIds(): Promise<string[] | null> {
 
 /** Returns null unless every daemon generation supplied an authoritative session inventory. */
 export async function listLiveDaemonSessions(): Promise<SessionInfo[] | null> {
-  const sessions = await listLiveDaemonSessionsWithProtocol()
-  return sessions?.map(({ protocolVersion: _protocolVersion, ...session }) => session) ?? null
-}
-
-/** Like listLiveDaemonSessions, with the protocol of the daemon generation owning each session. */
-export async function listLiveDaemonSessionsWithProtocol(): Promise<DaemonSessionInfo[] | null> {
   if (!adapter) {
     return null
   }
@@ -161,12 +155,7 @@ export async function listLiveDaemonSessionsWithProtocol(): Promise<DaemonSessio
       ? adapter.getAllAdapters()
       : [adapter]
   const inventories = await Promise.allSettled(
-    adapters.map(async (daemonAdapter) =>
-      (await daemonAdapter.listSessions()).map((session) => ({
-        ...session,
-        protocolVersion: daemonAdapter.protocolVersion
-      }))
-    )
+    adapters.map((daemonAdapter) => daemonAdapter.listSessions())
   )
   if (inventories.some((inventory) => inventory.status === 'rejected')) {
     return null

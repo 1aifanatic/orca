@@ -17,11 +17,3 @@ export const OrcadTerminalCensusSchema = z.object({
 })
 
 export type OrcadTerminalCensus = z.infer<typeof OrcadTerminalCensusSchema>
-
-/** RPC a managed orcad answers with its census; clients call it only when advertised. */
-export const ORCAD_TERMINAL_CENSUS_METHOD = 'orcad.terminalCensus'
-
-export const OrcadTerminalCensusParamsSchema = z.object({
-  /** The active version's activation time, epoch ms; sessions created at or after it count. */
-  activatedAt: z.number().finite().nonnegative()
-})
