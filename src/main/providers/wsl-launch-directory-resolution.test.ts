@@ -3,7 +3,8 @@ import { createLocalPtyLaunchPlan, resolveLocalPtyWslDistro } from './local-pty-
 import type { LocalPtyProviderOptions } from './local-pty-provider-types'
 import type { PtySpawnOptions } from './types'
 import {
-  forgetWslLaunchDirectoryAfterRefusal,
+  noteWslLaunchDirectoryRefusal,
+  wslLaunchDirectoryKnownBroken,
   resolveSpawnWslLaunchDirectory,
   resolveWslLaunchDirectory,
   WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS
@@ -82,21 +83,38 @@ describe('resolveWslLaunchDirectory', () => {
     }
   })
 
-  // Why (stack QA P8-2): a folder found once and broken later must not be written into forever.
-  it('asks the distro again after a write into the found folder was refused', async () => {
-    runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
-    const found = await resolveWslLaunchDirectory('Void')
-    forgetWslLaunchDirectoryAfterRefusal(found, new Error('EACCES'))
-    await resolveWslLaunchDirectory('Void')
-    expect(runWslProcess).toHaveBeenCalledTimes(1)
-    forgetWslLaunchDirectoryAfterRefusal(
-      found,
-      new Error(
-        'Orca could not write it (EEXIST), so the agent was not started. [launch_file_unavailable]'
+  // Why (stack QA P8-2): a folder found once and broken later must not be written into forever,
+  // and the next launch is planned without it until the distro is asked again.
+  it('counts a folder broken after a refused write, then asks the distro again', async () => {
+    vi.useFakeTimers()
+    try {
+      runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
+      const found = await resolveWslLaunchDirectory('Void')
+      noteWslLaunchDirectoryRefusal(found, new Error('EACCES'))
+      expect(wslLaunchDirectoryKnownBroken('Void')).toBe(false)
+      noteWslLaunchDirectoryRefusal(
+        found,
+        new Error(
+          'Orca could not write it (EEXIST), so the agent was not started. [launch_file_unavailable]'
+        )
       )
-    )
-    await resolveWslLaunchDirectory('Void')
-    expect(runWslProcess).toHaveBeenCalledTimes(2)
+      expect(wslLaunchDirectoryKnownBroken('Void')).toBe(true)
+      await expect(resolveWslLaunchDirectory('Void')).resolves.toBeUndefined()
+      expect(runWslProcess).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS)
+      expect(wslLaunchDirectoryKnownBroken('Void')).toBe(false)
+      await expect(resolveWslLaunchDirectory('Void')).resolves.toMatchObject({ distro: 'Void' })
+      expect(runWslProcess).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('counts a distro whose probe failed broken, for planning', async () => {
+    runWslProcess.mockResolvedValue(answers('', 1))
+    await resolveWslLaunchDirectory('Mint')
+    await Promise.resolve()
+    expect(wslLaunchDirectoryKnownBroken('Mint')).toBe(true)
   })
 
   it('probes only for a spawn that needs the directory', async () => {

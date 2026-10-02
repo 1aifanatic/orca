@@ -218,6 +218,28 @@ describe('a host that types the line raw', () => {
     expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')
   })
 
+  // Why: a host that cannot write its staging folder types a long line raw, so the plan picks
+  // main's delivery up front: the paste where main pasted, the line where main typed it.
+  it('plans a host that cannot stage for main’s delivery, not a staged line or a file', () => {
+    const extra = {
+      platform: 'linux' as const,
+      host: {
+        paired: false,
+        provesAgentInFront: true,
+        takesLaunchFile: false,
+        windowsPaneShell: null
+      }
+    }
+    const long = 'y'.repeat(20_000)
+    expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')
+    expect(plan('claude', long, { ...extra, paste: 'once-agent-runs' })?.carry).toBe(
+      'paste-after-ready'
+    )
+    expect(plan('claude', long, extra)?.carry).toBe('paste-after-ready')
+    expect(plan('codex', 'first line\nsecond line', extra)?.carry).toBe('paste-after-ready')
+    expect(plan('claude', long, { ...extra, paste: 'never' })?.carry).toBe('on-line')
+  })
+
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {
     const extra = {
       platform: 'linux' as const,

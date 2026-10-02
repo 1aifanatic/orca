@@ -21,9 +21,10 @@ export type LaunchHost = {
   /** Whether the host can prove the launched agent holds its terminal before a paste
    *  (`launched-agent-foreground`). A Windows host cannot, so #24257's guarded paste is refused. */
   provesAgentInFront: boolean
-  /** Whether the host writes a launch file the agent can read. A paired Orca may be older, and an
-   *  SSH Windows host's relay may run its panes in WSL (its OpenSSH default shell, which this client
-   *  cannot see), where it writes none. Such a host gets the line or the paste instead. */
+  /** Whether the host writes a launch file the agent can read, and stages a long line, both in one
+   *  folder. A paired Orca may be older, an SSH Windows host's relay may run its panes in WSL (its
+   *  OpenSSH default shell, which this client cannot see), and a host may find that folder
+   *  unwritable. Such a host gets the line within its typed budget, or the paste, instead. */
   takesLaunchFile: boolean
   /** The shell a local Windows pane is spawned as, which the line is judged and quoted by: a WSL
    *  pane runs the distro's POSIX shell whatever the Windows setting, and the PowerShell decides
@@ -80,12 +81,17 @@ export function describeLaunchHost(args: {
   paired: boolean
   /** `spawnedWindowsShell` on this machine, which a launch elsewhere does not use. */
   windowsPaneShell?: WindowsPaneShell | null
+  /** Whether the host can write the folder its staged lines and launch files go in. */
+  writesLaunchArtifacts?: boolean
 }): LaunchHost {
   const runsElsewhere = args.isRemote || args.paired
   return {
     paired: args.paired,
     provesAgentInFront: (runsElsewhere ? args.launchPlatform : args.hostPlatform) !== 'win32',
-    takesLaunchFile: !args.paired && !(args.isRemote && args.launchPlatform === 'win32'),
+    takesLaunchFile:
+      !args.paired &&
+      !(args.isRemote && args.launchPlatform === 'win32') &&
+      args.writesLaunchArtifacts !== false,
     windowsPaneShell:
       runsElsewhere || args.launchPlatform !== 'win32' ? null : (args.windowsPaneShell ?? null)
   }

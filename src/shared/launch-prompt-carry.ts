@@ -104,10 +104,11 @@ const utf8 = new TextEncoder()
  * stages it when it is long or multi-line, and a Windows host types it when its shell was measured
  * carrying such a line exactly (`windowsLaunchLineVerdict`); an unmeasured one does what main does
  * on the caller's path. When the line cannot (past the argv ceiling, measured damaged by a Windows
- * shell, past a paired host's typed budget), a caller whose paste main used gets that paste, so the
- * agent receives the user's text. Otherwise it rides a launch file, which goes only to an agent measured reading
- * one, on a host that writes it. Failing a file it is pasted once the agent is ready, unless the
- * caller's paste cannot reach the agent on this host: then the line carries it, as main typed it.
+ * shell, past the typed budget of a paired host or one that cannot write its staging folder), a
+ * caller whose paste main used gets that paste, so the agent receives the user's text. Otherwise it
+ * rides a launch file, which goes only to an agent measured reading one, on a host that writes it.
+ * Failing a file it is pasted once the agent is ready, unless the caller's paste cannot reach the
+ * agent on this host: then the line carries it, as main typed it.
  */
 export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchCommand: string }>(
   args: A,
@@ -180,11 +181,11 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
           paneShell === 'powershell.exe' || paneShell === 'pwsh.exe' ? paneShell : null
         )
       : 'exact'
-  // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
-  if (
-    windowsLine === 'damaged' ||
-    (args.host.paired && !typedStartupLineFits(plan.launchCommand))
-  ) {
+  // Why #24257's typed budget: an older paired host, or a host that cannot write its staging
+  // folder, types the line raw, truncated past it.
+  const stagesOnHost = args.platform !== 'win32' || paneShell === 'wsl.exe'
+  const typesRaw = args.host.paired || (!args.host.takesLaunchFile && stagesOnHost)
+  if (windowsLine === 'damaged' || (typesRaw && !typedStartupLineFits(plan.launchCommand))) {
     return viaLaunchFile()
   }
   // Why: unmeasured, so this path does what main does: its paste, or the line it typed.

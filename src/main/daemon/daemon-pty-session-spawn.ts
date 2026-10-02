@@ -18,10 +18,8 @@ import { getRecoveredHistorySeedSegments } from './terminal-history-seed-segment
 import { AGENT_SESSION_CLAIM_DAEMON_PROTOCOL_VERSION, type CreateOrAttachResult } from './types'
 import { normalizeWslColdRestoreCwd } from './wsl-cold-restore-cwd'
 import { resolveWslSessionContext } from './wsl-session-context'
-import {
-  forgetWslLaunchDirectoryAfterRefusal,
-  resolveSpawnWslLaunchDirectory
-} from '../providers/wsl-launch-directory-resolution'
+import { noteLaunchArtifactRefusal } from '../providers/local-launch-artifact-directory'
+import { resolveSpawnWslLaunchDirectory } from '../providers/wsl-launch-directory-resolution'
 import { resolveSafePtyDefaultCwd } from '../providers/pty-default-cwd'
 import { resolveUnixShellPath } from '../providers/local-pty-utils'
 import type { PtySpawnOptions, PtySpawnResult } from '../providers/types'
@@ -265,7 +263,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     try {
       result = await this.createOrAttachSpawn(context, context.historySeedSegments)
     } catch (error) {
-      forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
+      noteLaunchArtifactRefusal({ wslDistro, wslLaunchDirectory }, error)
       throw error
     }
     if (result.isNew && !attachOnly) {

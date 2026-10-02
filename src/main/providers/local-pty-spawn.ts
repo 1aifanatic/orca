@@ -30,10 +30,8 @@ import {
   writeSpawnLaunchFile,
   type WrittenLaunchFile
 } from '../../shared/launch-file-writing'
-import {
-  forgetWslLaunchDirectoryAfterRefusal,
-  resolveSpawnWslLaunchDirectory
-} from './wsl-launch-directory-resolution'
+import { resolveSpawnWslLaunchDirectory } from './wsl-launch-directory-resolution'
+import { noteLaunchArtifactRefusal } from './local-launch-artifact-directory'
 
 export async function spawnLocalPty(
   args: PtySpawnOptions,
@@ -69,7 +67,7 @@ export async function spawnLocalPty(
       wslDirectory: wslLaunchDirectory
     })
   } catch (error) {
-    forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
+    noteLaunchArtifactRefusal({ wslDistro, wslLaunchDirectory }, error)
     throw error
   }
   args = {
@@ -84,7 +82,7 @@ export async function spawnLocalPty(
     return await spawnFreshLocalPty(args, getOptions, reattachId, launchFile)
   } catch (error) {
     removeLaunchFile(launchFile)
-    forgetWslLaunchDirectoryAfterRefusal(wslLaunchDirectory, error)
+    noteLaunchArtifactRefusal({ wslDistro, wslLaunchDirectory }, error)
     throw error
   }
 }

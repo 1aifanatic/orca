@@ -275,7 +275,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
         launchPlatform: platform,
         isRemote,
         settings,
-        windowsShellOverride: opts.shellOverride
+        windowsShellOverride: opts.shellOverride,
+        workspacePath: workspace.path
       }),
       paste: opts.onStartupPromptCarry ? 'when-host-proves-agent' : 'never'
     })

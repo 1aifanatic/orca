@@ -11,6 +11,8 @@ import { runWslProcess } from '../wsl/wsl-runner'
 const ORCA_CACHE_RELATIVE = '.cache/orca'
 
 const probes = new Map<string, Promise<WslLaunchDirectory | undefined>>()
+/** Distros whose folder a probe or a write found broken, until the failure TTL lets them retry. */
+const failedDistros = new Set<string>()
 
 /** A failed probe is answered from memory this long, so a broken distro does not cost every spawn
  *  a `wsl.exe` round trip, yet a distro that comes back is found again. */
@@ -41,8 +43,8 @@ export function resolveSpawnWslLaunchDirectory(
  * The distro directory a WSL spawn's staged line and launch file are written to, and the login
  * shell the pane runs, which decides how a staged line is sourced; undefined when the distro cannot
  * be asked, and the write site then refuses a launch that needs one. Probed once per distro; a
- * success is kept until a write into it fails (`forgetWslLaunchDirectoryAfterRefusal`), a failure
- * for `WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS`.
+ * success is kept until a write into it fails (`noteWslLaunchDirectoryRefusal`), a failure for
+ * `WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS`.
  */
 export async function resolveWslLaunchDirectory(
   distro: string | null | undefined
@@ -56,26 +58,41 @@ export async function resolveWslLaunchDirectory(
     probes.set(distro, probe)
     const pending = probe
     void pending.then((found) => {
-      if (!found) {
-        setTimeout(() => {
-          if (probes.get(distro) === pending) {
-            probes.delete(distro)
-          }
-        }, WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS).unref?.()
+      if (found) {
+        failedDistros.delete(distro)
+      } else {
+        rememberFailure(distro, pending)
       }
     })
   }
   return await probe
 }
 
-/** A spawn into this directory was refused: forget it, so the next launch asks the distro again
- *  rather than writing into a folder that stopped working. */
-export function forgetWslLaunchDirectoryAfterRefusal(
+function rememberFailure(distro: string, pending: Promise<WslLaunchDirectory | undefined>): void {
+  failedDistros.add(distro)
+  setTimeout(() => {
+    if (probes.get(distro) === pending) {
+      probes.delete(distro)
+      failedDistros.delete(distro)
+    }
+  }, WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS).unref?.()
+}
+
+/** Whether the distro's folder is known broken, so a launch is planned without writing there. */
+export function wslLaunchDirectoryKnownBroken(distro: string): boolean {
+  return failedDistros.has(distro)
+}
+
+/** A spawn into this directory was refused: count it broken until the failure TTL, so the next
+ *  launch is planned without it and a later one asks the distro again. */
+export function noteWslLaunchDirectoryRefusal(
   directory: WslLaunchDirectory | undefined,
   error: unknown
 ): void {
   if (directory && isLaunchFileRefusal(error)) {
-    probes.delete(directory.distro)
+    const pending = Promise.resolve(undefined)
+    probes.set(directory.distro, pending)
+    rememberFailure(directory.distro, pending)
   }
 }
 
