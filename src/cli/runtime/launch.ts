@@ -14,8 +14,8 @@ import {
   superviseForegroundServe
 } from './serve-update-supervisor'
 import { RuntimeClientError } from './types'
-import { SERVE_RUNTIME_ENV, selectServeRuntime } from './serve-runtime-selection'
-import { orcadTemplateCandidates, serveWithOrcad } from './serve-orcad-launch'
+import { SERVE_RUNTIME_ENV } from '../../shared/orcad-local-serve-selection'
+import { resolveLocalServeRuntime, serveWithOrcad } from './serve-orcad-launch'
 import { waitForRecipeJson } from './serve-recipe-json'
 
 const USER_NAMESPACE_PROBE_TIMEOUT_MS = 2_000
@@ -100,11 +100,10 @@ async function serveWithSelectedRuntime(
   executable: string,
   args: ServeOrcaAppArgs
 ): Promise<number> {
-  const selection = await selectServeRuntime({
-    env: process.env,
-    platform: process.platform,
+  const selection = await resolveLocalServeRuntime({
+    executable,
+    appRoot: resolveAppRoot(),
     userDataPath: getDefaultUserDataPath(),
-    templateDirs: orcadTemplateCandidates(resolveAppRoot()),
     usesMacUpdateHandoff: args.recipeJson !== true && getMacAppBundlePath(executable) !== null
   })
   if (selection.kind === 'orcad') {

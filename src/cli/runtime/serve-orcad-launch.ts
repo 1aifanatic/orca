@@ -1,17 +1,61 @@
-/** `orca serve` on this machine's orcad slot; see `serve-runtime-selection.ts` for when. */
+/**
+ * `orca serve` on this machine's orcad slot. Whether to (and the slot itself) is decided
+ * app-side by `src/main/orcad/orcad-local-serve-selection.ts`; the CLI only asks and runs.
+ */
 import { dirname, join } from 'node:path'
+import { runProcess } from '../../shared/child-process/run-process'
+import {
+  ORCAD_LOCAL_SERVE_SELECTION_ENTRY,
+  ORCAD_LOCAL_SERVE_SELECTION_FLAGS as FLAGS,
+  parseServeRuntimeSelection,
+  type ServeRuntimeSelection
+} from '../../shared/orcad-local-serve-selection'
 import type { ServeOrcaAppArgs } from './launch'
-import type { ServeRuntimeSelection } from './serve-runtime-selection'
 import { waitForRecipeJson } from './serve-recipe-json'
 import { superviseForegroundServe } from './serve-update-supervisor'
 
 type SupervisorArgs = Parameters<typeof superviseForegroundServe>[0]
 
-export function orcadTemplateCandidates(appRoot: string): string[] {
-  return [
-    ...(process.resourcesPath ? [join(process.resourcesPath, 'orcad-template')] : []),
-    join(appRoot, 'out', 'orcad-template')
-  ]
+/** A first run may download and verify the pinned Node; bound it well past that. */
+const SELECTION_TIMEOUT_MS = 10 * 60_000
+
+/** Asks the app's own entry, run on the app's executable as plain Node, which host to serve on. */
+export async function resolveLocalServeRuntime(
+  options: {
+    executable: string
+    appRoot: string
+    userDataPath: string
+    usesMacUpdateHandoff: boolean
+  },
+  run: typeof runProcess = runProcess
+): Promise<ServeRuntimeSelection> {
+  const entry = join(options.appRoot, 'out', 'main', `${ORCAD_LOCAL_SERVE_SELECTION_ENTRY}.js`)
+  try {
+    const result = await run({
+      program: options.executable,
+      args: [
+        entry,
+        FLAGS.userData,
+        options.userDataPath,
+        FLAGS.appRoot,
+        options.appRoot,
+        ...(options.usesMacUpdateHandoff ? [FLAGS.macUpdateHandoff] : [])
+      ],
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      timeoutMs: SELECTION_TIMEOUT_MS
+    })
+    return (
+      parseServeRuntimeSelection(result.stdout) ?? {
+        kind: 'electron',
+        reason: `the app did not answer which serve host to use (exit ${String(result.code)})`
+      }
+    )
+  } catch (error) {
+    return {
+      kind: 'electron',
+      reason: `the app could not check orcad: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
 }
 
 /** Electron serve binds every interface (`exposeNetworkByDefault`); orcad does it on request. */

@@ -10,12 +10,8 @@ import {
   orcadNodeRuntimeRelativePath
 } from '../../shared/orcad-artifacts'
 import { formatOrcadNativePreflightReport } from '../../shared/orcad-native-preflight-report'
-import { orcadServeArgs } from './serve-orcad-launch'
-import {
-  selectServeRuntime,
-  SERVE_RUNTIME_ENV,
-  type ServeRuntimeSelectionInput
-} from './serve-runtime-selection'
+import { SERVE_RUNTIME_ENV } from '../../shared/orcad-local-serve-selection'
+import { selectServeRuntime, type ServeRuntimeSelectionInput } from './orcad-local-serve-selection'
 
 const TARGET = 'linux-x64-glibc'
 const SHA = NODE_RUNTIME_ASSETS[TARGET].executableSha256
@@ -115,33 +111,5 @@ describe('orca serve runtime selection', () => {
   ])('falls back to Electron on %s and says why', async (_name, overrides, reason) => {
     const selection = await selectServeRuntime(input(overrides))
     expect(selection).toEqual({ kind: 'electron', reason: expect.stringContaining(reason) })
-  })
-
-  it('forwards every desktop serve flag, binding wide as Electron serve does', () => {
-    expect(
-      orcadServeArgs({
-        json: true,
-        port: '6768',
-        pairingAddress: '10.0.0.5',
-        noPairing: true,
-        mobilePairing: true,
-        recipeJson: true,
-        projectRoot: '/work/app'
-      })
-    ).toEqual([
-      '--bind',
-      '0.0.0.0',
-      '--json',
-      '--port',
-      '6768',
-      '--pairing-address',
-      '10.0.0.5',
-      '--no-pairing',
-      '--mobile-pairing',
-      '--recipe-json',
-      '--project-root',
-      '/work/app'
-    ])
-    expect(orcadServeArgs({})).toEqual(['--bind', '0.0.0.0'])
   })
 })

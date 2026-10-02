@@ -1,5 +1,7 @@
 /**
  * Which host runs `orca serve`: orcad on this machine's packaged slot, or Electron `--serve`.
+ * App-side on purpose: the CLI runs it through `orcad-local-serve-selection-entry.ts`, so the
+ * CLI bundle never carries the materializers.
  *
  * Opt-in while orcad serve is new: `ORCA_SERVE_RUNTIME=orcad`. Anything that stops orcad from
  * serving this machine (no slot for the target, no pinned Node, a native module it cannot load,
@@ -16,18 +18,16 @@ import {
   ORCAD_NATIVE_PREFLIGHT_FLAG,
   parseOrcadNativePreflightReport
 } from '../../shared/orcad-native-preflight-report'
-import { resolveBundledOrcadRuntime } from '../../main/orcad/orcad-bundled-runtime'
-import { detectNativeHostAbi, nativeSlotName } from '../../main/orcad/native-host-abi'
-import { materializeOrcadArtifact } from '../../main/ssh/orcad-artifact-materializer'
-import { materializeCachedNodeRuntime } from '../../main/ssh/pinned-runtime-materializer'
+import {
+  SERVE_RUNTIME_ENV,
+  type ServeRuntimeSelection
+} from '../../shared/orcad-local-serve-selection'
+import { resolveBundledOrcadRuntime } from './orcad-bundled-runtime'
+import { detectNativeHostAbi, nativeSlotName } from './native-host-abi'
+import { materializeOrcadArtifact } from '../ssh/orcad-artifact-materializer'
+import { materializeCachedNodeRuntime } from '../ssh/pinned-runtime-materializer'
 
-export const SERVE_RUNTIME_ENV = 'ORCA_SERVE_RUNTIME'
 const NATIVE_PREFLIGHT_TIMEOUT_MS = 30_000
-
-export type ServeRuntimeSelection =
-  | { kind: 'orcad'; runtime: string; entry: string; version: string }
-  /** `reason` is null when orcad was not asked for, so nothing is printed. */
-  | { kind: 'electron'; reason: string | null }
 
 export type ServeRuntimeSelectionInput = {
   env: NodeJS.ProcessEnv
