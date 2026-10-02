@@ -1,5 +1,4 @@
 import { resolve, dirname, basename } from 'node:path'
-import { realpathSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import type { Store } from '../persistence'
 import { getAllowedRoots } from './filesystem-allowed-roots'
@@ -18,85 +17,7 @@ export { isENOENT } from './filesystem-path-containment'
 
 export const PATH_ACCESS_DENIED_MESSAGE =
   'Access denied: path resolves outside allowed directories. If this blocks a legitimate workflow, please file a GitHub issue.'
-// Why: authorized external paths accumulate all session; LRU-bound the set. Safe to evict because every caller re-authorizes before operating.
-export const AUTHORIZED_EXTERNAL_PATHS_MAX = 4096
-const authorizedExternalPaths = new Set<string>()
-
-function rememberAuthorizedExternalPath(path: string): void {
-  // Delete-then-add makes re-authorized paths most-recent so LRU eviction sheds only the oldest untouched entries.
-  authorizedExternalPaths.delete(path)
-  authorizedExternalPaths.add(path)
-  while (authorizedExternalPaths.size > AUTHORIZED_EXTERNAL_PATHS_MAX) {
-    const oldest = authorizedExternalPaths.keys().next().value
-    if (oldest === undefined) {
-      break
-    }
-    authorizedExternalPaths.delete(oldest)
-  }
-}
-
-export function authorizeExternalPath(targetPath: string): void {
-  const resolvedTarget = resolve(targetPath)
-  rememberAuthorizedExternalPath(resolvedTarget)
-  try {
-    // Why: macOS canonicalizes /tmp to /private/tmp during read authorization.
-    rememberAuthorizedExternalPath(realpathSync(resolvedTarget))
-  } catch {}
-}
-
-/**
- * Re-derives a restored editor tab's grant without widening any project. A path inside a project in
- * any spelling — as named, or through the real path of any ancestor folder — gets at most its named
- * spelling, never its realpath, so a project symlink's outside target is never granted.
- */
-export async function authorizeExternalPathOutsideAllowedRoots(
-  targetPath: string,
-  store: Store
-): Promise<void> {
-  const resolvedTarget = resolve(targetPath)
-  await ensureAuthorizedRootsCache(store)
-  const roots = getAllowedRoots(store)
-  const isInsideRoot = (path: string, candidateRoots: readonly string[]): boolean =>
-    candidateRoots.some((root) => isDescendantOrEqual(path, root)) ||
-    isRegisteredWorktreePath(path, store)
-  if (isInsideRoot(resolvedTarget, roots)) {
-    return
-  }
-  const realRoots = await Promise.all(
-    roots.map((root) => normalizeExistingPath(root).catch(() => root))
-  )
-  const rootSpellings = [...roots, ...realRoots]
-  // Why every ancestor: past an escaping directory symlink the real path has left the project, so
-  // only a higher ancestor's real path shows the named path entered it. The leaf is skipped: a file
-  // that links into a project is not a project path.
-  for (let ancestor = dirname(resolvedTarget); ; ancestor = dirname(ancestor)) {
-    let realAncestor: string | null = null
-    try {
-      realAncestor = resolve(await realpath(ancestor))
-    } catch (error) {
-      if (!isENOENT(error)) {
-        // Why fail closed: an unresolvable ancestor can't prove the path stays outside every project.
-        rememberAuthorizedExternalPath(resolvedTarget)
-        return
-      }
-    }
-    if (realAncestor !== null && isInsideRoot(realAncestor, rootSpellings)) {
-      rememberAuthorizedExternalPath(resolvedTarget)
-      return
-    }
-    if (dirname(ancestor) === ancestor) {
-      break
-    }
-  }
-  authorizeExternalPath(resolvedTarget)
-}
-
-/**
- * One allowed-root list shared by every check in a single authorization.
- *
- * Lazy so a path already covered by an external grant still builds nothing at all, the way it did
- * before the list was hoisted out of the individual checks.
- */
+/** One allowed-root list shared by every check in a single authorization, built on first use. */
 type AllowedRootsSnapshot = { get: () => readonly string[] }
 
 function createAllowedRootsSnapshot(
@@ -113,14 +34,6 @@ export function isPathAllowed(
   allowedRoots?: AllowedRootsSnapshot
 ): boolean {
   const resolvedTarget = resolve(targetPath)
-  if (authorizedExternalPaths.has(resolvedTarget)) {
-    return true
-  }
-  for (const authorizedPath of authorizedExternalPaths) {
-    if (isDescendantOrEqual(resolvedTarget, authorizedPath)) {
-      return true
-    }
-  }
   return (allowedRoots?.get() ?? getAllowedRoots(store)).some((root) =>
     isDescendantOrEqual(resolvedTarget, root)
   )

@@ -93,10 +93,9 @@ type ProbeProps = {
   gitStatusByWorktree?: Record<string, GitStatusEntry[]>
 }
 
-const authorizeExternalPath = vi.fn()
 // Why: opening any liveTail tab arms useLocalLogTail's change subscription.
 const onLocalLogTailChanged = vi.fn(() => () => {})
-const fsApi = { authorizeExternalPath, onLocalLogTailChanged }
+const fsApi = { onLocalLogTailChanged }
 let latestFileContents: Record<string, FileContent> = {}
 let latestDiffContents: Record<string, DiffContent> = {}
 let latestReloadContent: (file: OpenFile) => void = () => {}
@@ -140,8 +139,6 @@ describe('useEditorPanelContentState', () => {
   beforeEach(() => {
     latestFileContents = {}
     latestDiffContents = {}
-    authorizeExternalPath.mockReset()
-    authorizeExternalPath.mockResolvedValue(undefined)
     onLocalLogTailChanged.mockClear()
     ;(window as unknown as { api: unknown }).api = { fs: fsApi }
     mocks.readRuntimeFileContent.mockReset()
@@ -259,8 +256,6 @@ describe('useEditorPanelContentState', () => {
     })
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# remote'))
-    // Why: the client-local grant must not be requested for a remote-owned path.
-    expect(authorizeExternalPath).not.toHaveBeenCalled()
     expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
       expect.objectContaining({
         filePath: '/work/reports/audit.md',
@@ -287,10 +282,13 @@ describe('useEditorPanelContentState', () => {
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('log line'))
     // Why: AI Vault only surfaces client-local logs, so the worktree's SSH target must
-    // not capture this read — it stays a granted client-local path.
-    expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: logPath })
+    // not capture this read — it stays a user-named client-local path.
     expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: undefined, includeLocalLogMetadata: true })
+      expect.objectContaining({
+        connectionId: undefined,
+        includeLocalLogMetadata: true,
+        access: { kind: 'user-file' }
+      })
     )
   })
 

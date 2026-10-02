@@ -18,7 +18,6 @@ type WindowStub = {
     fs: {
       readFile: ReturnType<typeof vi.fn>
       writeFile: ReturnType<typeof vi.fn>
-      authorizeExternalPath: ReturnType<typeof vi.fn>
     }
   }
 }
@@ -27,12 +26,10 @@ let mobileMarkdownHandler: ((request: RuntimeMobileMarkdownRequest) => void) | n
 
 export function setupWindow({
   readFile,
-  writeFile = vi.fn().mockResolvedValue(undefined),
-  authorizeExternalPath = vi.fn().mockResolvedValue(undefined)
+  writeFile = vi.fn().mockResolvedValue(undefined)
 }: {
   readFile: ReturnType<typeof vi.fn>
   writeFile?: ReturnType<typeof vi.fn>
-  authorizeExternalPath?: ReturnType<typeof vi.fn>
 }): { responses: unknown[] } {
   const eventTarget = new EventTarget()
   const responses: unknown[] = []
@@ -53,7 +50,7 @@ export function setupWindow({
         },
         respondMobileMarkdownRequest: vi.fn((response) => responses.push(response))
       },
-      fs: { readFile, writeFile, authorizeExternalPath }
+      fs: { readFile, writeFile }
     }
   } satisfies WindowStub)
   return { responses }

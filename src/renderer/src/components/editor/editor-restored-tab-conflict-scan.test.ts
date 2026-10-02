@@ -9,8 +9,7 @@ import { getDiskBaselineSignature } from './diff-content-signature'
 const mocks = vi.hoisted(() => ({
   readRuntimeFileContent: vi.fn(),
   getConnectionIdForFile: vi.fn(),
-  pathExists: vi.fn(),
-  authorizeExternalPath: vi.fn()
+  pathExists: vi.fn()
 }))
 
 vi.mock('@/runtime/runtime-file-client', () => ({
@@ -20,16 +19,13 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
   settingsForRuntimeOwner: () => null
 }))
 vi.mock('@/lib/connection-context', () => ({
-  getConnectionIdForFile: mocks.getConnectionIdForFile,
-  isWorktreeConnectionResolved: () => true
+  getConnectionIdForFile: mocks.getConnectionIdForFile
 }))
 
 function createEditorStore(): StoreApi<AppState> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createStore<any>()((...args: any[]) => ({
     settings: {},
-    worktreesByRepo: {},
-    folderWorkspaces: [],
     ...createEditorSlice(...(args as Parameters<typeof createEditorSlice>))
   })) as unknown as StoreApi<AppState>
 }
@@ -67,13 +63,7 @@ describe('attachRestoredTabConflictScan', () => {
     mocks.getConnectionIdForFile.mockReturnValue(undefined)
     mocks.pathExists.mockReset()
     mocks.pathExists.mockResolvedValue(true)
-    mocks.authorizeExternalPath.mockReset()
-    mocks.authorizeExternalPath.mockResolvedValue(undefined)
-    vi.stubGlobal('window', {
-      api: {
-        fs: { pathExists: mocks.pathExists, authorizeExternalPath: mocks.authorizeExternalPath }
-      }
-    })
+    vi.stubGlobal('window', { api: { fs: { pathExists: mocks.pathExists } } })
   })
 
   afterEach(() => {
@@ -261,12 +251,13 @@ describe('attachRestoredTabConflictScan', () => {
     }
   })
 
-  it('grants a restored dirty floating-workspace tab before verifying it', async () => {
-    // Why: without the grant the read is denied forever and the tab's autosave never resumes.
+  it('verifies a restored dirty floating-workspace tab as the file the user named', async () => {
+    mocks.readRuntimeFileContent.mockRejectedValueOnce(new Error('ENOENT'))
     mocks.readRuntimeFileContent.mockResolvedValue({
       content: 'original baseline',
       isBinary: false
     })
+    mocks.pathExists.mockResolvedValue(true)
     mocks.getConnectionIdForFile.mockReturnValue(null)
     const store = createEditorStore()
     openRestoredDirtyTab(store, '/Users/me/notes.txt', 'original baseline')
@@ -278,23 +269,14 @@ describe('attachRestoredTabConflictScan', () => {
       }))
     } as never)
 
-    let finishGrant: () => void = () => {}
-    mocks.authorizeExternalPath.mockImplementation(
-      () => new Promise<void>((resolve) => (finishGrant = resolve))
-    )
-
     const detach = attachRestoredTabConflictScan(store)
     try {
       await vi.advanceTimersByTimeAsync(10)
-      expect(mocks.authorizeExternalPath).toHaveBeenCalledWith({
-        targetPath: '/Users/me/notes.txt',
-        skipIfInsideAllowedRoots: true
-      })
-      expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
-
-      finishGrant()
-      await vi.advanceTimersByTimeAsync(10)
-      expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
+      expect(mocks.pathExists).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/Users/me/notes.txt', access: { kind: 'user-file' } })
+      )
+      await vi.advanceTimersByTimeAsync(2_100)
+      expect(mocks.readRuntimeFileContent).toHaveBeenLastCalledWith(
         expect.objectContaining({ filePath: '/Users/me/notes.txt', access: { kind: 'user-file' } })
       )
       expect(store.getState().openFiles[0]?.pendingDiskBaselineVerification).toBeUndefined()
@@ -303,19 +285,21 @@ describe('attachRestoredTabConflictScan', () => {
     }
   })
 
-  it('does not grant a restored dirty project tab', async () => {
+  it('verifies a restored dirty project tab inside its root', async () => {
     mocks.readRuntimeFileContent.mockResolvedValue({
       content: 'original baseline',
       isBinary: false
     })
+    mocks.getConnectionIdForFile.mockReturnValue(null)
     const store = createEditorStore()
     openRestoredDirtyTab(store, '/repo/file.ts', 'original baseline')
 
     const detach = attachRestoredTabConflictScan(store)
     try {
       await vi.advanceTimersByTimeAsync(10)
-      expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
-      expect(mocks.authorizeExternalPath).not.toHaveBeenCalled()
+      expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/repo/file.ts', access: undefined })
+      )
     } finally {
       detach()
     }

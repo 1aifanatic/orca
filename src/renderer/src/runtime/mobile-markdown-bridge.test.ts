@@ -64,7 +64,7 @@ describe('mobile markdown bridge', () => {
     }
   })
 
-  it('grants a restored floating-workspace tab before reading it for mobile', async () => {
+  it('reads a restored floating-workspace tab for a paired client as user-named', async () => {
     useAppStore.getState().openFile({
       filePath: '/Users/me/notes.md',
       relativePath: 'notes.md',
@@ -72,37 +72,43 @@ describe('mobile markdown bridge', () => {
       language: 'markdown',
       mode: 'edit'
     })
-    const tabId = useAppStore.getState().openFiles[0]!.id
+    const tabId = useAppStore.getState().openFiles[0]?.id ?? ''
     const readFile = vi.fn().mockResolvedValue({ content: '# notes', isBinary: false })
-    let finishGrant: () => void = () => {}
-    const authorizeExternalPath = vi.fn(
-      () => new Promise<void>((resolve) => (finishGrant = resolve))
-    )
-    setupWindow({ readFile, authorizeExternalPath })
+    setupWindow({ readFile })
     const detach = attachMobileMarkdownBridge()
 
     try {
-      const response = sendRequest({
+      const response = await sendRequest({
         id: 'read-floating',
         operation: 'read',
         worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
         tabId
       })
-      await new Promise((resolve) => setTimeout(resolve, 5))
-      expect(authorizeExternalPath).toHaveBeenCalledWith({
-        targetPath: '/Users/me/notes.md',
-        skipIfInsideAllowedRoots: true
-      })
-      expect(readFile).not.toHaveBeenCalled()
 
-      finishGrant()
-      expect(await response).toMatchObject({
-        ok: true,
-        result: { content: '# notes', source: 'file' }
-      })
+      expect(response).toMatchObject({ ok: true, result: { content: '# notes', source: 'file' } })
       expect(readFile).toHaveBeenCalledWith(
         expect.objectContaining({ filePath: '/Users/me/notes.md', access: { kind: 'user-file' } })
       )
+    } finally {
+      detach()
+    }
+  })
+
+  it('reads a project tab for a paired client inside its root', async () => {
+    openMarkdownFile()
+    const readFile = vi.fn().mockResolvedValue({ content: 'disk', isBinary: false })
+    setupWindow({ readFile })
+    const detach = attachMobileMarkdownBridge()
+
+    try {
+      await sendRequest({
+        id: 'read-project',
+        operation: 'read',
+        worktreeId: 'wt-1',
+        tabId: 'tab-md'
+      })
+
+      expect(readFile.mock.calls[0]?.[0]).not.toHaveProperty('access')
     } finally {
       detach()
     }

@@ -123,11 +123,6 @@ export type FilesystemApi = {
         recursive?: boolean
       } & SshMutationExpectation
     ) => Promise<void>
-    authorizeExternalPath: (args: {
-      targetPath: string
-      /** Restored editor tabs: no grant inside a project, and never a project symlink's target. */
-      skipIfInsideAllowedRoots?: boolean
-    }) => Promise<void>
     stat: (args: {
       filePath: string
       connectionId?: string

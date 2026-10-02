@@ -44,7 +44,6 @@ vi.mock('../wsl', () => ({
 }))
 
 vi.mock('./filesystem-auth', () => ({
-  authorizeExternalPath: vi.fn(async (value: string) => value),
   resolveAuthorizedPath: resolveAuthorizedPathMock
 }))
 

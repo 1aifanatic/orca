@@ -221,10 +221,6 @@ export function useAttachmentDropState(input: AttachmentDropStateInput) {
           return
         }
         try {
-          await window.api.fs.authorizeExternalPath({ targetPath: filePath })
-          if (!mountedRef.current) {
-            return
-          }
           const stat = await window.api.fs.stat({ filePath, access: userNamedFileAccess() })
           results.push({
             status: 'imported',

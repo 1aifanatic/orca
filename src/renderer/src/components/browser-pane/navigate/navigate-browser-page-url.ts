@@ -2,11 +2,7 @@ import { detectLanguage } from '@/lib/language-detect'
 import { getConnectionId } from '@/lib/connection-context'
 import { isPathInsideWorktree, toWorktreeRelativePath } from '@/lib/terminal-links'
 import { useAppStore } from '@/store'
-import {
-  isRemoteRuntimeFileOperation,
-  statRuntimePath,
-  type RuntimeFileOperationArgs
-} from '@/runtime/runtime-file-client'
+import { statRuntimePath, type RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import {
   normalizeBrowserNavigationUrl,
   redactKagiSessionToken
@@ -107,9 +103,6 @@ export function navigateBrowserPageToUrl({
           worktreeId,
           worktreePath: activeWorktree?.path,
           connectionId: undefined
-        }
-        if (!isRemoteRuntimeFileOperation(fileContext, notebookPath)) {
-          await window.api.fs.authorizeExternalPath({ targetPath: notebookPath })
         }
         const stat = await statRuntimePath(fileContext, notebookPath, userNamedFileAccess())
         if (stat.isDirectory) {

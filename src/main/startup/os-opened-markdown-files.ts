@@ -2,7 +2,6 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
-import { authorizeExternalPath } from '../ipc/filesystem-auth'
 import { ensureDefaultFloatingWorkspacePath } from '../ipc/floating-workspace-directory'
 import { isMarkdownDocumentName, markdownDocumentFromFilePath } from '../ipc/markdown-documents'
 
@@ -130,7 +129,7 @@ export class OsOpenedMarkdownFileState {
 
 /**
  * Turns OS-handed paths into the same `MarkdownDocument` shape the floating workspace's own
- * file picker produces, authorizing each one for the renderer's later read.
+ * file picker produces; the floating tab then reads each one as a user-named file.
  */
 export async function resolveOpenedMarkdownDocuments(
   filePaths: readonly string[]
@@ -143,14 +142,13 @@ export async function resolveOpenedMarkdownDocuments(
   for (const filePath of filePaths) {
     try {
       // Why: the shell can hand over a bundle directory named `*.md`, or a path already
-      // deleted by the time we resolve. Authorize only something that is really a file.
+      // deleted by the time we resolve. Open only something that is really a file.
       if (!(await stat(filePath)).isFile()) {
         continue
       }
     } catch {
       continue
     }
-    authorizeExternalPath(filePath)
     documents.push(
       markdownDocumentFromFilePath(floatingRoot, filePath, {
         outsideRootRelativePath: 'basename'

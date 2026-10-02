@@ -55,7 +55,6 @@ vi.mock('./useLocalLogTail', () => ({ useLocalLogTail: vi.fn() }))
 
 import { useEditorPanelContentState } from './useEditorPanelContentState'
 
-const authorizeExternalPath = vi.fn()
 let latestFileContents: Record<string, FileContent> = {}
 
 function createFloatingFile(filePath: string, overrides: Partial<OpenFile> = {}): OpenFile {
@@ -89,9 +88,8 @@ describe('restored client-local editor tabs', () => {
 
   beforeEach(() => {
     latestFileContents = {}
-    authorizeExternalPath.mockReset()
-    authorizeExternalPath.mockResolvedValue(undefined)
-    ;(window as unknown as { api: unknown }).api = { fs: { authorizeExternalPath } }
+    // Why an empty fs API: restoring must read with nothing re-granted or prepared first.
+    ;(window as unknown as { api: unknown }).api = { fs: {} }
     mocks.readRuntimeFileContent.mockReset()
     mocks.readRuntimeFileContent.mockResolvedValue({ content: '# local', isBinary: false })
     mocks.findWorkspaceFileRoute.mockReset()
@@ -111,32 +109,16 @@ describe('restored client-local editor tabs', () => {
     container?.remove()
   })
 
-  // The notebook kernel and environment handlers authorize the same filePath.
+  // The notebook kernel and environment handlers check the same file path as user-named.
   it.each(['/Users/me/notes.txt', '/Users/me/analysis.ipynb'])(
-    're-grants %s and waits for the grant before reading it after a restart',
+    'reads %s as the file the user named after a restart',
     async (filePath) => {
-      let finishGrant: () => void = () => {}
-      authorizeExternalPath.mockImplementation(
-        () => new Promise<void>((resolve) => (finishGrant = resolve))
-      )
       const activeFile = createFloatingFile(filePath)
 
       await act(async () => root?.render(<HookProbe activeFile={activeFile} />))
 
-      await vi.waitFor(() =>
-        expect(authorizeExternalPath).toHaveBeenCalledWith({
-          targetPath: filePath,
-          skipIfInsideAllowedRoots: true
-        })
-      )
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      })
-      expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
-
-      await act(async () => finishGrant())
-
       await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
+      expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
       expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
         expect.objectContaining({
           filePath,
@@ -147,7 +129,7 @@ describe('restored client-local editor tabs', () => {
     }
   )
 
-  it('re-authorizes a client-local tab stored outside its own project', async () => {
+  it('reads a local tab stored outside its own project as user-named', async () => {
     const filePath = '/Users/me/notes/audit.md'
     const activeFile = createFloatingFile(filePath, {
       relativePath: filePath,
@@ -157,13 +139,12 @@ describe('restored client-local editor tabs', () => {
     await act(async () => root?.render(<HookProbe activeFile={activeFile} />))
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
-    expect(authorizeExternalPath).toHaveBeenCalledWith({
-      targetPath: filePath,
-      skipIfInsideAllowedRoots: true
-    })
+    expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
+      expect.objectContaining({ filePath, access: { kind: 'user-file' } })
+    )
   })
 
-  it('does not grant a project tab that its authorized root already covers', async () => {
+  it('keeps a project tab inside its root', async () => {
     const activeFile = createFloatingFile('/Users/me/project/README.md', {
       relativePath: 'README.md',
       worktreeId: 'repo::/Users/me/project'
@@ -172,6 +153,8 @@ describe('restored client-local editor tabs', () => {
     await act(async () => root?.render(<HookProbe activeFile={activeFile} />))
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
-    expect(authorizeExternalPath).not.toHaveBeenCalled()
+    expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
+      expect.objectContaining({ access: undefined })
+    )
   })
 })

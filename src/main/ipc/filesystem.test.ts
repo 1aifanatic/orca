@@ -84,6 +84,13 @@ describe('registerFilesystemHandlers', () => {
     invalidateAuthorizedRootsCache()
   })
 
+  it('registers no channel that remembers a path grant', () => {
+    registerFilesystemHandlers(store as never)
+
+    expect(handlers.has('fs:readFile')).toBe(true)
+    expect(handlers.has('fs:authorizeExternalPath')).toBe(false)
+  })
+
   it('re-sorts SSH provider listings directories-first in natural order', async () => {
     // Why: the remote relay may be an older build that still sorts lexicographically.
     getSshFilesystemProviderMock.mockReturnValueOnce({

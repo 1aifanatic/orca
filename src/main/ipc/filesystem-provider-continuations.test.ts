@@ -36,7 +36,6 @@ vi.mock('node:fs/promises', () => ({
   })
 }))
 vi.mock('./filesystem-auth', () => ({
-  authorizeExternalPath: vi.fn(),
   resolveAuthorizedPath: mocks.resolveAuthorizedPath
 }))
 vi.mock('./filesystem-mutations', () => ({ registerFilesystemMutationHandlers: vi.fn() }))

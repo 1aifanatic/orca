@@ -9,7 +9,7 @@ import {
 } from './terminal-link-handlers-test-harness'
 
 const doubles = createTerminalLinkTestDoubles()
-const { storeState, deps, openFileMock, statMock, authorizeExternalPathMock } = doubles
+const { storeState, deps, openFileMock, statMock } = doubles
 
 vi.mock('@/store', () => ({
   useAppStore: {
@@ -55,19 +55,6 @@ describe('openDetectedFilePath on a path it cannot verify', () => {
     await flushAsyncWork()
 
     expect(onOpenFailure).toHaveBeenCalledTimes(1)
-    expect(onOpenFailure.mock.calls[0][0]).toEqual({ verdict: 'unverifiable', error })
-  })
-
-  it('reports a refused path authorization as unverifiable', async () => {
-    setPlatform('Macintosh')
-    const error = new Error('Path is outside the allowed roots')
-    authorizeExternalPathMock.mockRejectedValueOnce(error)
-    const onOpenFailure = vi.fn<OnOpenFailure>()
-
-    openDetectedFilePath('/tmp/src/denied.md', null, null, { ...deps, onOpenFailure })
-    await flushAsyncWork()
-
-    expect(statMock).not.toHaveBeenCalled()
     expect(onOpenFailure.mock.calls[0][0]).toEqual({ verdict: 'unverifiable', error })
   })
 

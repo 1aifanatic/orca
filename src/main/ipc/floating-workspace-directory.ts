@@ -5,7 +5,6 @@ import { app } from 'electron'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { FloatingTerminalCwdRequest } from '../../shared/ui-chrome-types'
 import type { Store } from '../persistence'
-import { authorizeExternalPath } from './filesystem-auth'
 
 const FLOATING_WORKSPACE_DIRNAME = 'floating-workspace'
 
@@ -76,9 +75,6 @@ export function getDefaultFloatingWorkspacePath(): string {
 export async function ensureDefaultFloatingWorkspacePath(): Promise<string> {
   const cwd = getDefaultFloatingWorkspacePath()
   await mkdir(cwd, { recursive: true })
-  // Why: the default floating workspace lives outside repo roots by design;
-  // authorize only this app-owned directory instead of widening access to ~.
-  authorizeExternalPath(cwd)
   return cwd
 }
 
@@ -99,17 +95,15 @@ export async function resolveFloatingTerminalCwd(
     return ensureDefaultFloatingWorkspacePath()
   }
 
+  // Why: only picker-approved directories may become the cwd, so arbitrary settings text can't.
   if (isTrustedFloatingWorkspaceDirectory(canonicalCwd, store.getSettings())) {
-    // Why: picker-approved directories are persisted as explicit grants, so a
-    // restart can restore file creation access without trusting arbitrary text.
-    authorizeExternalPath(canonicalCwd)
     return canonicalCwd
   }
 
   return args?.requireTrusted === true ? ensureDefaultFloatingWorkspacePath() : cwd
 }
 
-export async function grantFloatingWorkspaceDirectory(
+export async function trustFloatingWorkspaceDirectory(
   store: Store,
   dirPath: string
 ): Promise<void> {
@@ -118,7 +112,6 @@ export async function grantFloatingWorkspaceDirectory(
   if (!canonicalDir) {
     return
   }
-  authorizeExternalPath(canonicalDir)
   const trustedDirectories = await getPreservedTrustedFloatingWorkspaceDirectories(
     store.getSettings()
   )

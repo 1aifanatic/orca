@@ -8,7 +8,6 @@ import { joinPath } from '@/lib/path'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import {
   importExternalPathsToRuntime,
-  isRemoteRuntimeFileOperation,
   statRuntimePath,
   type RuntimeFileOperationArgs
 } from '@/runtime/runtime-file-client'
@@ -161,11 +160,6 @@ export function useGlobalFileDrop(): void {
       for (const filePath of data.paths) {
         void (async () => {
           try {
-            const isRemoteRuntimePath = isRemoteRuntimeFileOperation(fileContext, filePath)
-            // Why: remote paths don't need local auth — the relay/runtime is the security boundary.
-            if (!connectionId && !isRemoteRuntimePath) {
-              await window.api.fs.authorizeExternalPath({ targetPath: filePath })
-            }
             const stat = await statRuntimePath(fileContext, filePath, userNamedFileAccess())
             if (stat.isDirectory) {
               return
@@ -192,7 +186,7 @@ export function useGlobalFileDrop(): void {
               mode: 'edit'
             })
           } catch {
-            // Ignore files that cannot be authorized or stat'd.
+            // Ignore files that cannot be stat'd.
           }
         })()
       }

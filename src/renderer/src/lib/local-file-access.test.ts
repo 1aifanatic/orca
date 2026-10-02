@@ -146,6 +146,7 @@ const USER_NAMED_ACCESS_IMPORTERS = [
   'components/browser-pane/navigate/navigate-browser-page-url.ts',
   'components/native-chat/NativeChatImageAttachmentPreview.tsx',
   'components/native-chat/NativeChatTranscriptChrome.tsx',
+  'components/native-chat/use-native-chat-external-attachments.ts',
   'components/sidebar/useSidebarProjectDrop.ts',
   'components/tab-bar/tab-create-entry-absolute-file.ts',
   'components/terminal-pane/terminal-file-open-routing.ts',

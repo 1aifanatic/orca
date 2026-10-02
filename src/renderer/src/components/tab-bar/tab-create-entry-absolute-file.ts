@@ -10,7 +10,6 @@ import { userNamedFileAccess } from '@/lib/local-file-access'
 
 type AbsoluteFileOperations = {
   assertAbsolutePathAllowed: () => void
-  authorizeExternalPath: (args: { targetPath: string }) => Promise<void>
   openFile: (
     file: Omit<OpenFile, 'id' | 'isDirty'>,
     options?: { preview?: boolean; targetGroupId?: string }
@@ -28,8 +27,6 @@ export async function openAbsoluteTabEntryFile(args: {
   worktreePath: string
 }): Promise<void> {
   const filePath = validateNewTabEntryAbsolutePath(args.filePath, args.localPlatform)
-  args.operations.assertAbsolutePathAllowed()
-  await args.operations.authorizeExternalPath({ targetPath: filePath })
   args.operations.assertAbsolutePathAllowed()
   let stat: Awaited<ReturnType<typeof statRuntimePath>>
   try {

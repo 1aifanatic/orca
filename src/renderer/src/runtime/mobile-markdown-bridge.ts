@@ -8,7 +8,6 @@ import {
 import { flushPendingEditorChange } from '@/components/editor/editor-pending-flush'
 import { getConnectionIdForFile } from '@/lib/connection-context'
 import { editorTabFileAccess } from '@/lib/local-file-access'
-import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
 import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import { readRuntimeFileContent } from './runtime-file-client'
@@ -245,11 +244,6 @@ async function readCurrentContent(
 async function readFileContent(file: OpenFile): Promise<string> {
   const connectionId = getConnectionIdForFile(file.worktreeId, file.filePath) ?? undefined
   const state = useAppStore.getState()
-  // Why: a paired client can read a restored tab the desktop editor never loaded.
-  const pathGrant = refreshEditorTabExternalPathGrant(state, file)
-  if (pathGrant) {
-    await pathGrant
-  }
   const result = (await readRuntimeFileContent({
     settings: settingsForRuntimeOwner(state.settings, file.runtimeEnvironmentId),
     filePath: file.filePath,
