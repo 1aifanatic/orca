@@ -28,7 +28,11 @@ import {
   type PerChatJournalRepair
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { backfillJournalSessionStatus, charBoundedBatches } from './journal-session-status-backfill'
+import {
+  charBoundedBatches,
+  foldJournalSessionStatus,
+  writeJournalSessionStatuses
+} from './journal-session-status-backfill'
 import {
   deriveJournalSessionStatus,
   isUnsettledJournalSessionStatus
@@ -137,6 +141,16 @@ afterEach(async () => {
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
+
+/** A missing status row folded and written, as the copy's missing-row phase does. */
+async function foldAndWriteStatus(
+  database: Parameters<typeof foldJournalSessionStatus>[0],
+  sessionId: string,
+  options: Parameters<typeof foldJournalSessionStatus>[2]
+) {
+  const folded = await foldJournalSessionStatus(database, sessionId, options)
+  return folded ? (writeJournalSessionStatuses(database, [folded])[0] ?? null) : null
+}
 
 describe('the status a copy publishes (T3, T3b, T3c)', () => {
   it.each(JOURNAL_SESSION_STATE_CASES)(
@@ -347,7 +361,7 @@ describe('each task’s end, paced by the background copy (C3)', () => {
     database.db.prepare('DELETE FROM journal_session_state').run()
     const yieldTask = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
 
-    const written = await backfillJournalSessionStatus(database, 'session-rowless', {
+    const written = await foldAndWriteStatus(database, 'session-rowless', {
       batchRows: 2,
       yieldTask
     })
@@ -421,7 +435,7 @@ describe('each task’s share of a chat’s bytes (C3)', () => {
 
     database.db.prepare('DELETE FROM journal_session_state').run()
     const folded = vi.fn(() => new Promise<void>((resolve) => setImmediate(resolve)))
-    await backfillJournalSessionStatus(database, 'session-large', {
+    await foldAndWriteStatus(database, 'session-large', {
       batchChars: 1,
       yieldTask: folded
     })
