@@ -24,16 +24,14 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..')
 const bundlePath = path.join(__dirname, 'parcel-watcher-process.bundle.cjs')
 if (isMainThread) {
   const clientSrc = path.join(REPO_ROOT, 'src', 'main', 'ipc', 'parcel-watcher-process.ts')
-  if (
-    !fs.existsSync(bundlePath) ||
-    fs.statSync(bundlePath).mtimeMs < fs.statSync(clientSrc).mtimeMs
-  ) {
-    require('node:child_process').execSync(
-      `npx esbuild ${JSON.stringify(clientSrc)} --bundle --platform=node --format=cjs ` +
-        `--external:electron --external:@parcel/watcher --outfile=${JSON.stringify(bundlePath)}`,
-      { cwd: REPO_ROOT, stdio: 'inherit' }
-    )
-  }
+  require('esbuild').buildSync({
+    entryPoints: [clientSrc],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    external: ['electron', '@parcel/watcher'],
+    outfile: bundlePath
+  })
   const entry = path.join(process.cwd(), 'out', 'main', 'parcel-watcher-process-entry.js')
   if (!fs.existsSync(entry)) {
     process.stderr.write(
