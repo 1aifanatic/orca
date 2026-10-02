@@ -3,8 +3,8 @@
 // Version 5 creates the status table empty, so after an upgrade every chat has no row until
 // something writes it. Rather than open each chat (its lease, settle and conversation), its rows are
 // folded a bounded part per task, as a replay folds them, then the row is derived and written in one
-// short transaction, only while the chat is still where the fold read it. The startup pass and the
-// background copy both write missing rows through this one function.
+// short transaction, only while the chat is still where the fold read it. The startup pass folds a
+// slice of chats and writes their rows in one transaction; the background copy writes one at a time.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { JournalHostDatabase } from './journal-host-database'
@@ -45,12 +45,43 @@ export function* charBoundedBatches<Row extends { rowJson: string }>(
   }
 }
 
-/** The chat's row: its rows folded a part per task, as a replay folds them, then the row derived
- *  and written in one short transaction, only while the chat is still where the fold read it. Null
- *  when something wrote the row or the chat first, the chat has no epoch in this database (it is
- *  still in a per-chat file), the database or the chat's rows are a newer build's, or `signal`
- *  aborted, which is checked before each part. */
+/** A chat's status folded from its rows, and where the fold read them. */
+export type FoldedJournalSessionStatus = {
+  sessionId: string
+  epoch: string
+  tip: number
+  load: JournalLoad
+  status: JournalSessionStatus
+}
+
+type FoldOptions = {
+  batchRows?: number
+  batchChars?: number
+  /** Ends each part's task: the next macrotask by default; a background job paces here. */
+  yieldTask?: () => Promise<void>
+  /** Quit: the fold stops within one part and nothing is written. */
+  signal?: AbortSignal
+}
+
+/** The chat's row and status: folded, then written alone. Null when something wrote the row or
+ *  moved the chat first, or as `foldJournalSessionStatus` says. */
 export async function backfillJournalSessionStatus(
+  database: JournalHostDatabase,
+  sessionId: string,
+  options: FoldOptions = {}
+): Promise<{ load: JournalLoad; status: JournalSessionStatus } | null> {
+  const folded = await foldJournalSessionStatus(database, sessionId, options)
+  if (!folded || options.signal?.aborted) {
+    return null
+  }
+  return writeJournalSessionStatuses(database, [folded]).length > 0 ? folded : null
+}
+
+/** The chat's rows folded a part per task, as a replay folds them, and its status derived. Null when
+ *  the chat already has a row, has no epoch in this database (it is still in a per-chat file), the
+ *  database or the chat's rows are a newer build's, or `signal` aborted, which is checked before each
+ *  part. Writes nothing. */
+export async function foldJournalSessionStatus(
   database: JournalHostDatabase,
   sessionId: string,
   {
@@ -58,15 +89,8 @@ export async function backfillJournalSessionStatus(
     batchChars = IMPORT_BATCH_CHARS,
     yieldTask = () => yieldToEventLoop(),
     signal
-  }: {
-    batchRows?: number
-    batchChars?: number
-    /** Ends each part's task: the next macrotask by default; a background job paces here. */
-    yieldTask?: () => Promise<void>
-    /** Quit: the fold stops within one part and nothing is written. */
-    signal?: AbortSignal
-  } = {}
-): Promise<{ load: JournalLoad; status: JournalSessionStatus } | null> {
+  }: FoldOptions = {}
+): Promise<FoldedJournalSessionStatus | null> {
   if (database.readOnly) {
     return null
   }
@@ -112,16 +136,30 @@ export async function backfillJournalSessionStatus(
   if (load.readOnly) {
     return null
   }
-  return database.transaction((db) => {
-    if (
-      hasJournalSessionStatus(db, sessionId) ||
-      readJournalSessionEpoch(db, sessionId) !== epoch ||
-      readJournalTip(db, sessionId, epoch) !== tip
-    ) {
-      return null
-    }
-    const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
-    writeJournalSessionStatus(db, sessionId, status)
-    return { load, status }
-  })
+  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
+  return { sessionId, epoch, tip, load, status }
+}
+
+/** Every folded chat's row in ONE transaction, each only while it still has no row and its rows are
+ *  where its fold read them. Answers the chats written; a chat skipped is left to its open. */
+export function writeJournalSessionStatuses(
+  database: JournalHostDatabase,
+  folded: readonly FoldedJournalSessionStatus[]
+): FoldedJournalSessionStatus[] {
+  if (folded.length === 0) {
+    return []
+  }
+  return database.transaction((db) =>
+    folded.filter(({ sessionId, epoch, tip, status }) => {
+      if (
+        hasJournalSessionStatus(db, sessionId) ||
+        readJournalSessionEpoch(db, sessionId) !== epoch ||
+        readJournalTip(db, sessionId, epoch) !== tip
+      ) {
+        return false
+      }
+      writeJournalSessionStatus(db, sessionId, status)
+      return true
+    })
+  )
 }

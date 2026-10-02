@@ -9,11 +9,17 @@ import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-
 import {
   createTrackedJournalOpener,
   insertTestJournalRowJson,
+  publishTestJournalEpoch,
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from './journal-host-database-test-support'
 import * as JournalOpen from './journal-open'
-import { backfillJournalSessionStatus } from './journal-session-status-backfill'
+import {
+  backfillJournalSessionStatus,
+  foldJournalSessionStatus,
+  writeJournalSessionStatuses,
+  type FoldedJournalSessionStatus
+} from './journal-session-status-backfill'
 import {
   CORPUS_FENCE,
   JOURNAL_SESSION_STATE_CASES,
@@ -190,5 +196,69 @@ describe('a row from the rows alone', () => {
     expect(row).not.toBeNull()
     // A row already there is never rewritten.
     expect(await backfillJournalSessionStatus(database(), 'moving')).toBeNull()
+  })
+
+  it('writes a whole batch in one transaction, each row the row an open writes', async () => {
+    const byOpen = new Map<string, unknown>()
+    for (const name of JOURNAL_SESSION_STATE_CASES) {
+      await JOURNAL_SESSION_STATE_CORPUS[name](await open(name))
+    }
+    await journals.closeAll()
+    for (const name of JOURNAL_SESSION_STATE_CASES) {
+      dropRow(name)
+      ;(await open(name)).backfillSessionStatus()
+      byOpen.set(name, readTestJournalSessionStatus(root, name))
+      await journals.closeAll()
+      dropRow(name)
+    }
+    const folded: FoldedJournalSessionStatus[] = []
+    for (const name of JOURNAL_SESSION_STATE_CASES) {
+      folded.push((await foldJournalSessionStatus(database(), name))!)
+    }
+    const transaction = vi.spyOn(database(), 'transaction')
+
+    const written = writeJournalSessionStatuses(database(), folded)
+
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(written.map(({ sessionId }) => sessionId)).toEqual([...JOURNAL_SESSION_STATE_CASES])
+    for (const name of JOURNAL_SESSION_STATE_CASES) {
+      expect(readTestJournalSessionStatus(root, name)).toEqual(byOpen.get(name))
+    }
+  })
+
+  it('skips only the chats in a batch that moved, got a row or a new history since their fold', async () => {
+    const ids = ['steady', 'appended', 'rowed', 'replaced']
+    const journalsById = new Map<string, AgentSessionJournal>()
+    for (const sessionId of ids) {
+      const journal = await open(sessionId)
+      await JOURNAL_SESSION_STATE_CORPUS.settled(journal)
+      journalsById.set(sessionId, journal)
+      dropRow(sessionId)
+    }
+    const folded: FoldedJournalSessionStatus[] = []
+    for (const sessionId of ids) {
+      folded.push((await foldJournalSessionStatus(database(), sessionId))!)
+    }
+    // Between the fold and the batch's write: a send lands, an open writes the row, a rebuild
+    // starts a new history.
+    await journalsById
+      .get('appended')!
+      .appendItem(
+        { provider: 'orca', clientMessageId: 'late' },
+        { kind: 'status', text: 'late' },
+        { fence: CORPUS_FENCE, turnScope: { kind: 'thread' } }
+      )
+    dropRow('appended')
+    journalsById.get('rowed')!.backfillSessionStatus()
+    const rowedBefore = readTestJournalSessionStatus(root, 'rowed')
+    publishTestJournalEpoch(database().db, 'replaced', 'epoch-replaced-later')
+
+    const written = writeJournalSessionStatuses(database(), folded)
+
+    expect(written.map(({ sessionId }) => sessionId)).toEqual(['steady'])
+    expect(readTestJournalSessionStatus(root, 'steady')).toEqual(folded[0]!.status)
+    expect(readTestJournalSessionStatus(root, 'appended')).toBeNull()
+    expect(readTestJournalSessionStatus(root, 'rowed')).toEqual(rowedBefore)
+    expect(readTestJournalSessionStatus(root, 'replaced')).toBeNull()
   })
 })
