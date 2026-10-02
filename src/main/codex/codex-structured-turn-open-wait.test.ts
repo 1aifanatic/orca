@@ -15,6 +15,7 @@ type Rig = Awaited<ReturnType<typeof codexTurnLifecycleRig>>
 
 const ADMITTED = { state: 'admitted' }
 const REFUSED = { cancelled: false }
+const MAY_OPEN = { cancelled: false, refusal: { turnMayOpen: true } }
 
 const stop = (rig: Rig) => rig.adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })
 
@@ -94,15 +95,17 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     expect(rig.interrupts()).toEqual([])
   })
 
+  // The turn neither opened nor ended, and its send is still owed: no press calls that nothing.
   it.each(['idle', 'systemError'])(
-    'stops nothing when Codex reports the thread %s',
+    'answers refused, on the first press and on a second alike, when Codex reports the thread %s',
     async (type) => {
       const rig = await codexTurnLifecycleRig()
       const { stopping } = await waitingStop(rig)
 
       rig.notify('thread/status/changed', { threadId: CODEX_TEST_THREAD_ID, status: { type } })
 
-      expect(await settledWithin(stopping)).toEqual(REFUSED)
+      expect(await settledWithin(stopping)).toEqual(MAY_OPEN)
+      expect(await settledWithin(stop(rig), 0)).toEqual(MAY_OPEN)
       expect(rig.interrupts()).toEqual([])
     }
   )

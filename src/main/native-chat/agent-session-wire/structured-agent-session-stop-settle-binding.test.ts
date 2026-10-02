@@ -20,6 +20,13 @@ let rig: QueuedMessageTestRig
 
 afterEach(() => rig.dispose())
 
+const LATER: AgentJournalItemIdentity = {
+  provider: 'codex',
+  threadId: 'thread-1',
+  turnId: 'turn-later',
+  ordinal: 1000
+}
+
 const OPENED: AgentJournalItemIdentity = {
   provider: 'codex',
   threadId: 'thread-1',
@@ -152,5 +159,39 @@ describe("a person's close pressed before its send's turn showed", () => {
       .map((item) => readAgentJournalTurn(item.body))
       .find((entry) => entry?.turnId === 'turn-opened')
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+  })
+
+  // A /clear stops the agent as the person's close and keeps the conversation, so the close's
+  // settle must have closed by the time a later turn ends.
+  it('binds no turn that ends on its own after a close the conversation outlived', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    await rig.host['lifetime'].stopAgent(HOST_TEST_SESSION, { cause: 'user-close' })
+    expect(journal().stopMarks.latest()?.event).toMatchObject({ reason: 'user-close' })
+    expect(journal().stopMarks.latest()?.event).not.toHaveProperty('turnId')
+
+    await journal().appendItem(
+      LATER,
+      { kind: 'turn', turnId: 'turn-later', state: 'running', startedAt: Date.now() },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await journal().appendItem(
+      LATER,
+      {
+        kind: 'turn',
+        turnId: 'turn-later',
+        state: 'interrupted',
+        startedAt: Date.now(),
+        completedAt: Date.now() + 5
+      },
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+
+    const later = journal()
+      .snapshot()
+      .items.map((item) => readAgentJournalTurn(item.body))
+      .find((turn) => turn?.turnId === 'turn-later')
+    expect(later).toMatchObject({ state: 'interrupted' })
+    expect(later).not.toHaveProperty('outcome')
   })
 })
