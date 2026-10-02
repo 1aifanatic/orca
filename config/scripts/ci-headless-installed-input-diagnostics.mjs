@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, lstatSync, openSync, readSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 
 export function capturePnpmWorkspaceState({ root, prefix, installed, writeJson }) {
@@ -68,4 +76,46 @@ export function installedInputChanges(expected, actual) {
           }
         ]
   })
+}
+
+export function captureCompilerCacheWarmup({
+  stage,
+  root,
+  directory,
+  installed,
+  sources,
+  identity,
+  writeJson
+}) {
+  const current = { identity, sources, installed }
+  capturePnpmWorkspaceState({
+    root,
+    prefix: join(directory, `pnpm-workspace-state-${stage}`),
+    installed,
+    writeJson
+  })
+  writeJson(join(directory, `${stage}.json`), current)
+  if (stage === 'before') {
+    return
+  }
+  assert.equal(stage, 'after')
+  const previous = JSON.parse(readFileSync(join(directory, 'before.json'), 'utf8'))
+  const changes = installedInputChanges(previous.installed, installed)
+  const proof = {
+    before: { sha256: previous.installed.sha256, count: previous.installed.count },
+    after: { sha256: installed.sha256, count: installed.count },
+    changes
+  }
+  writeJson(join(directory, 'diff.json'), proof)
+  assert.deepEqual(identity, previous.identity, 'Native warmup changed runner identity')
+  assert.deepEqual(sources, previous.sources, 'Native warmup changed source inputs')
+  for (const change of changes) {
+    assert.equal(change.change, 'added', 'Native warmup changed a pre-existing installed input')
+    assert.match(
+      change.path,
+      /^\.\/\.pnpm\/node-gyp@12\.3\.0\/node_modules\/node-gyp\/gyp\/pylib\/(?:gyp|gyp\/generator|packaging)\/__pycache__(?:\/[^/]+\.cpython-\d+\.pyc)?$/
+    )
+    assert.equal(change.current.type, change.path.endsWith('__pycache__') ? 'directory' : 'file')
+  }
+  return proof
 }

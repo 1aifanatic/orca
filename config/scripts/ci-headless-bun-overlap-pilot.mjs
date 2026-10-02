@@ -3,11 +3,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
-  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -17,8 +14,10 @@ import { dirname, join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { NODE_RUNTIME_ASSETS, NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
+import { captureArtifactInventory } from './ci-headless-artifact-inventory.mjs'
 import {
   capturePnpmWorkspaceState,
+  captureCompilerCacheWarmup,
   installedInputChanges
 } from './ci-headless-installed-input-diagnostics.mjs'
 
@@ -51,33 +50,7 @@ function writeJson(path, value) {
   renameSync(pending, path)
 }
 
-function inventory(directory) {
-  const entries = []
-  function walk(path, relative) {
-    if (
-      directory === join(root, 'node_modules') &&
-      ['./.vite', './.vite-temp'].includes(relative)
-    ) {
-      return
-    }
-    const stat = lstatSync(path)
-    const entry = { path: relative, mode: stat.mode & 0o777 }
-    if (stat.isSymbolicLink()) {
-      entries.push({ ...entry, type: 'symlink', target: readlinkSync(path) })
-    } else if (stat.isDirectory()) {
-      entries.push({ ...entry, type: 'directory' })
-      for (const name of readdirSync(path).sort()) {
-        walk(join(path, name), `${relative}/${name}`)
-      }
-    } else if (stat.isFile()) {
-      entries.push({ ...entry, type: 'file', sha256: fileHash(path) })
-    } else {
-      throw new Error(`Unsupported inventory entry: ${path}`)
-    }
-  }
-  walk(directory, '.')
-  return { sha256: digest(JSON.stringify(entries)), count: entries.length, entries }
-}
+const inventory = (directory) => captureArtifactInventory(directory, root)
 
 function identity() {
   const env = process.env
@@ -422,8 +395,22 @@ async function artifactProof() {
 async function main() {
   const [operation, id, part, status] = process.argv.slice(2)
   identity()
+  const warmupInputs = () => ({
+    root,
+    directory: `${evidenceRoot()}-compiler-warmup`,
+    installed: inventory(join(root, 'node_modules')),
+    sources: sources(),
+    identity: { ...identity(), hostExecutableSha: fileHash(process.execPath) },
+    writeJson
+  })
+  if (operation === 'warmup-before') {
+    captureCompilerCacheWarmup({ stage: 'before', ...warmupInputs() })
+    return
+  }
   if (operation === 'init') {
     assert(!existsSync(evidenceRoot()))
+    const compilerCacheWarmup = captureCompilerCacheWarmup({ stage: 'after', ...warmupInputs() })
+    await resetOutputs()
     for (const path of currentRoots) {
       assert(!existsSync(join(root, path)), `Warm output: ${path}`)
     }
@@ -446,6 +433,7 @@ async function main() {
       sources: source,
       sourceDigest: digest(JSON.stringify(source)),
       normalizedGitObjectsBeforeTiming: historicalSha,
+      compilerCacheWarmup,
       gitNormalizationLogSha: fileHash(join(process.env.RUNNER_TEMP, 'bun-git-normalization.log')),
       eventPolicy: 'workflow_dispatch install policy; every measured arm shares it',
       coldRoots: [...currentRoots, '$RUNNER_TEMP/bun-orcad-source', '$RUNNER_TEMP/bun-orcad'],

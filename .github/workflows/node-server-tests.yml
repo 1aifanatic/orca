@@ -481,7 +481,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-22.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -533,6 +533,14 @@ jobs:
             echo "PILOT_KERNEL=$(uname -srmo)"
             echo "PILOT_CPU=$(getconf _NPROCESSORS_ONLN)"
           } >> "$GITHUB_ENV"
+      - name: Capture every installed input before native warmup
+        run: node config/scripts/ci-headless-bun-overlap-pilot.mjs warmup-before
+      - name: Warm identical Python compiler caches outside the comparison
+        uses: ./.github/actions/prepare-orcad-prebuilds
+      - name: Verify the warmup left tracked inputs unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
       - name: Record the four-arm comparison plan and shared inventories
         id: plan
         shell: bash
