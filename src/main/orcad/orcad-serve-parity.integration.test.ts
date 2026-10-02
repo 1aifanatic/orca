@@ -3,13 +3,11 @@
  * first, desktop-serve flag parity on stdout (the readiness contract), and the shared-profile
  * refusal while the desktop app holds the profile.
  */
-import { existsSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runProcess, spawnProcess } from '../../shared/child-process/run-process'
-import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
-import { readDaemonPidRecord } from '../daemon/daemon-endpoint-incarnation'
 import { ORCAD_NODE_RUNTIME_MARKER_FILENAME } from '../../shared/orcad-artifacts'
 import {
   ORCAD_NATIVE_PREFLIGHT_FLAG,
@@ -19,6 +17,12 @@ import { ORCAD_LOCK_FILE_NAME } from './orcad-instance-lock'
 import { resolveBundledOrcadRuntime } from './orcad-bundled-runtime'
 import { skipForMissingInputs } from './orcad-node-slot-fixture'
 import { buildDaemonSessionClient } from './orcad-daemon-session-client-fixture'
+import {
+  killAndAwaitExit,
+  killChildAndWait,
+  killProfileDaemons,
+  removeTestRoot
+} from './orcad-daemon-teardown-fixture'
 
 const slotDir = resolve('out/orcad')
 const runtime = existsSync(join(slotDir, ORCAD_NODE_RUNTIME_MARKER_FILENAME))
@@ -27,37 +31,13 @@ const runtime = existsSync(join(slotDir, ORCAD_NODE_RUNTIME_MARKER_FILENAME))
 const skip = skipForMissingInputs('artifact', runtime ? [] : ['a Node orcad slot in out/orcad'])
 const roots: string[] = []
 
-afterEach(() => {
+afterEach(async () => {
   for (const root of roots.splice(0)) {
-    // The terminal daemon outlives orcad by design; on Windows its open files pin the profile.
-    stopProfileDaemons(root)
-    removeTreeSync(root)
+    // The terminal daemon outlives orcad by design; it must be gone before its profile is.
+    await killProfileDaemons(root)
+    await removeTestRoot(root)
   }
 })
-
-function stopProfileDaemons(userData: string): void {
-  const daemonDir = join(userData, 'daemon')
-  for (const name of existsSync(daemonDir) ? readdirSync(daemonDir) : []) {
-    const pid = /^daemon-v\d+\.pid$/u.test(name)
-      ? readDaemonPidRecord(join(daemonDir, name))?.pid
-      : undefined
-    try {
-      if (pid) {
-        process.kill(pid, 'SIGKILL')
-      }
-    } catch {}
-  }
-}
-
-/** Kills a serve child and waits until it has really exited, so nothing holds its files. */
-async function killAndWait(child: ReturnType<typeof spawnProcess>): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return
-  }
-  const exited = new Promise((settle) => child.once('exit', settle))
-  child.kill('SIGKILL')
-  await exited
-}
 
 /** Without Vitest's markers: daemon-entry.js does not start its server under VITEST. */
 function serveEnv(userData: string): NodeJS.ProcessEnv {
@@ -126,7 +106,7 @@ describe.skipIf(skip)('orca serve on orcad', () => {
       // Anything after the recipe line would break a reader of this contract.
       await new Promise((settle) => setTimeout(settle, 1_000))
     } finally {
-      await killAndWait(child)
+      await killChildAndWait(child)
     }
     const lines = stdout.split('\n').filter(Boolean)
     expect(lines, stderr).toHaveLength(1)
@@ -196,9 +176,7 @@ describe.skipIf(skip)('orca serve on orcad', () => {
       } finally {
         await stopServe(userData)
         if (daemonPid) {
-          try {
-            process.kill(daemonPid, 'SIGKILL')
-          } catch {}
+          await killAndAwaitExit([daemonPid])
           daemonPid = null
         }
       }

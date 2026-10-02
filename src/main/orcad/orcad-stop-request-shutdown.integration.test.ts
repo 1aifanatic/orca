@@ -6,15 +6,18 @@
  * server notices the file, shuts down cleanly (exit 0, lock released) before the 15 s
  * deadline, and published an instance lock carrying a real process start time.
  */
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { ORCAD_NODE_RUNTIME_MARKER_FILENAME } from '../../shared/orcad-artifacts'
 import { ORCAD_STOP_REQUEST_FILENAME } from '../../shared/orcad-stop-request'
-import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
-import { readDaemonPidRecord } from '../daemon/daemon-endpoint-incarnation'
+import {
+  killChildAndWait,
+  killProfileDaemons,
+  removeTestRoot
+} from './orcad-daemon-teardown-fixture'
 import { parseOrcadReadinessOutput } from '../ssh/orcad-remote-launch'
 import { ORCAD_LOCK_FILE_NAME, readOrcadInstanceLockRecord } from './orcad-instance-lock'
 import { ORCAD_SHUTDOWN_DEADLINE_MS } from './orcad-lifecycle'
@@ -48,24 +51,14 @@ function hostEnv(userData: string): NodeJS.ProcessEnv {
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const child of children.splice(0)) {
-    child.kill('SIGKILL')
-  }
-  // The terminal daemon deliberately outlives orcad; only its pid file names it.
-  const daemonDir = join(root, 'data', 'daemon')
-  for (const name of existsSync(daemonDir) ? readdirSync(daemonDir) : []) {
-    const pid = /^daemon-v\d+\.pid$/u.test(name)
-      ? readDaemonPidRecord(join(daemonDir, name))?.pid
-      : undefined
-    try {
-      if (pid) {
-        process.kill(pid, 'SIGKILL')
-      }
-    } catch {}
+    await killChildAndWait(child)
   }
   if (root) {
-    removeTreeSync(root)
+    // The terminal daemon deliberately outlives orcad; it must be gone before its profile is.
+    await killProfileDaemons(join(root, 'data'))
+    await removeTestRoot(root)
   }
 })
 
