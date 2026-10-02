@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -11,6 +11,8 @@ import {
 import { nodeServerTestPaths } from './node-server-test-paths.mjs'
 import { ORCAD_CHILD_ENTRY_POINTS } from './orcad-entry-build.mjs'
 import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
+import { runProcessSync } from './script-child-process.mjs'
+import { NODE_SERVER_RUNNERS } from './node-server-qualification.mjs'
 
 const temporaryDirs = []
 afterEach(() => {
@@ -83,10 +85,87 @@ it.each([
   'config/patches/node-pty@1.1.0.patch',
   'native/windows-registry/src/addon.cc',
   '.github/actions/install-node-dependencies/action.yml',
+  '.github/actions/restore-pnpm-verification/action.yml',
+  '.github/actions/prepare-native-runtime/action.yml',
+  '.github/actions/prepare-orcad-prebuilds/action.yml',
   '.github/workflows/node-server-tests.yml',
   'src/main/persistence/profile-state/new-worker.ts'
 ])('always selects build, native and dynamically opened inputs: %s', async (file) => {
   expect((await classifyNodeServerChanges([file], async () => new Set())).shouldRun).toBe(true)
+})
+
+it('defers uncertain paths without issuing a qualification verdict', async () => {
+  const result = await classifyNodeServerChanges(
+    ['src/renderer/src/example.ts'],
+    async () => {
+      throw new Error('graph must not run before installation')
+    },
+    { deferGraph: true }
+  )
+  expect(result.graphRequired).toBe(true)
+  expect(result.shouldRun).toBeUndefined()
+})
+
+it.each([
+  { files: [], deferred: true, expected: 'should_run=true' },
+  { files: ['package.json'], deferred: true, expected: 'should_run=true' },
+  {
+    files: ['src/main/persistence/profile-state/profile-state-windows.ts'],
+    deferred: true,
+    fullQualification: false,
+    qualification: false,
+    runners: ['ubuntu-22.04', 'windows-2022', 'windows-11-arm'],
+    expected: 'should_run=true'
+  },
+  {
+    files: ['src/main/persistence/profile-state/profile-state-windows.ts'],
+    deferred: true,
+    expected: 'should_run=true'
+  },
+  {
+    files: ['src/main/providers/provider-windows.ts'],
+    deferred: true,
+    fullQualification: false,
+    expected: 'should_run=true'
+  },
+  { files: ['src/renderer/src/example.ts'], deferred: true, expected: 'graph_required=true' },
+  { files: ['src/renderer/src/example.ts'], deferred: false, expected: 'should_run=true' }
+])('fails closed or requests dependencies in an uninstalled checkout: %j', (scenario) => {
+  const root = moduleTree(
+    Object.fromEntries(
+      ['node-server-change-scope', 'node-server-test-paths', 'node-server-qualification'].map(
+        (name) => [
+          `config/scripts/${name}.mjs`,
+          readFileSync(new URL(`./${name}.mjs`, import.meta.url), 'utf8')
+        ]
+      )
+    )
+  )
+  const changes = join(root, 'changes')
+  const stepOutput = join(root, 'step-output')
+  writeFileSync(changes, scenario.files.map((file) => `${file}\0`).join(''))
+  const result = runProcessSync({
+    program: process.execPath,
+    args: [
+      realpathSync(join(root, 'config/scripts/node-server-change-scope.mjs')),
+      changes,
+      ...(scenario.fullQualification === false ? [] : ['--full-qualification']),
+      ...(scenario.deferred ? ['--defer-graph'] : [])
+    ],
+    cwd: root,
+    env: { ...process.env, GITHUB_OUTPUT: stepOutput },
+    timeoutMs: 5_000
+  })
+  expect(result.code).toBe(0)
+  const output = readFileSync(stepOutput, 'utf8')
+  expect(output).toContain(scenario.expected)
+  if (scenario.expected === 'graph_required=true') {
+    expect(output).not.toContain('should_run=')
+    expect(output).not.toContain('runners=')
+  } else {
+    expect(output).toContain(`qualification=${scenario.qualification !== false}`)
+    expect(output).toContain(`runners=${JSON.stringify(scenario.runners ?? NODE_SERVER_RUNNERS)}`)
+  }
 })
 
 describe('the actual Bun build and profile-test dependency graph', () => {
@@ -112,6 +191,8 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     'src/main/worker-thread-entry-path.ts',
     'config/scripts/zip-extractor-command.mjs',
     'config/scripts/windows-process-tree-gyp-rebuild.mjs',
+    'config/scripts/relay-windows-process-tree-prepared-addon.mjs',
+    'config/scripts/orcad-windows-prebuild-cache.mjs',
     'config/scripts/profile-state-worker-smoke.mjs',
     'config/scripts/vitest-host-ports-setup.ts',
     'tests/e2e/daemon-running-work-probe.unit.test.ts'
@@ -130,16 +211,22 @@ describe('the actual Bun build and profile-test dependency graph', () => {
   })
 })
 
-it('keeps all ten platform jobs and runs them when detection is skipped or fails', () => {
+it('keeps every platform job and runs them when detection is skipped or fails', () => {
   const workflow = parse(
     readFileSync(new URL('../../.github/workflows/node-server-tests.yml', import.meta.url), 'utf8')
   )
   expect(workflow.on).toHaveProperty('workflow_dispatch')
-  expect(workflow.jobs.changes.if).toBe("github.event_name == 'pull_request'")
+  expect(workflow.jobs.changes.if).toBe(
+    "github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft != true)"
+  )
   expect(workflow.jobs.changes.steps[0].with['fetch-depth']).toBe(2)
   expect(workflow.jobs.changes.steps[0].with['persist-credentials']).toBe(false)
   const detect = workflow.jobs.changes.steps.find((step) => step.id === 'scope')
   expect(detect.run).toContain('git diff --name-only --no-renames -z HEAD^1 HEAD')
+  expect(detect.env.PUSH_BASE).toBe('${{ github.event.before }}')
+  expect(detect.run).toContain('git fetch --no-tags --depth=1 origin "$PUSH_BASE"')
+  expect(detect.run).toContain('git diff --name-only --no-renames -z "$PUSH_BASE" HEAD')
+  expect(detect.run).toContain('node-server-changes" --defer-graph --full-qualification')
   expect(workflow.on.pull_request.types).toContain('ready_for_review')
   expect(workflow.on.schedule).toHaveLength(1)
   // A pull request may qualify one platform, so the merged commit must re-qualify all six.
