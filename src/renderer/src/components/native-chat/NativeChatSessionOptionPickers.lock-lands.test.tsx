@@ -10,7 +10,7 @@ import { NativeChatSessionOptionPickers } from './NativeChatSessionOptionPickers
 
 const surface = {
   getSnapshot: vi.fn(() => []),
-  setOption: vi.fn(async () => ({ ok: true })),
+  setOption: vi.fn(),
   invokeAction: vi.fn(),
   subscribe: vi.fn(() => vi.fn())
 }
