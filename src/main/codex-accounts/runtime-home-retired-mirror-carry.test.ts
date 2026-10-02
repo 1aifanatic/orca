@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { createSettings } from './runtime-home-settings-test-fixtures'
 import {
   createCodexAuthJson,
+  createManagedAuth,
   createStore,
   getRuntimeCodexAuthPath,
   getRuntimeCodexHomePath,
@@ -319,6 +320,132 @@ describe('retiring the Windows system-default mirror', () => {
     expect(readFileSync(join(getSystemCodexHomePath(), 'config.toml'), 'utf-8')).toContain(
       '[mcp_servers.pane]'
     )
+  })
+
+  it("carries MCP credentials when ~/.codex later logged into the pane's account", async () => {
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'pane'),
+      'utf-8'
+    )
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'outside'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'my-mcp', 'utf-8')
+
+    await upgradeToRealHome()
+
+    expect(readFileSync(join(getSystemCodexHomePath(), '.credentials.json'), 'utf-8')).toBe(
+      'my-mcp'
+    )
+  })
+
+  it('keeps MCP credentials of a pane that re-logged into another account', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('other@example.com', 'acct-other', 'pane'),
+      'utf-8'
+    )
+    writeFileSync(join(getRuntimeCodexHomePath(), '.credentials.json'), 'other-mcp', 'utf-8')
+
+    await upgradeToRealHome()
+
+    expect(existsSync(join(getSystemCodexHomePath(), '.credentials.json'))).toBe(false)
+  })
+
+  it('carries the mirror before a usage poll reads ~/.codex', async () => {
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    const refreshed = createCodexAuthJson('me@example.com', 'acct-me', 'refreshed')
+    writeFileSync(getRuntimeCodexAuthPath(), refreshed, 'utf-8')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const service = await createService(createSettings({ realHomeRoutable: true }))
+
+    expect(service.prepareForRateLimitFetch()).toEqual({
+      kind: 'ready',
+      codexHomePath: getSystemCodexHomePath()
+    })
+    expect(readFileSync(getSystemCodexAuthPath(), 'utf-8')).toBe(refreshed)
+  })
+
+  it("keeps a retained pane's login in step while the carry is still incomplete", async () => {
+    writeFileSync(join(getSystemCodexHomePath(), 'config.toml'), 'model = "gpt-5"\n', 'utf-8')
+    writeFileSync(
+      getSystemCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'seeded'),
+      'utf-8'
+    )
+    await launchOnMirror()
+    const mirrorConfigPath = join(getRuntimeCodexHomePath(), 'config.toml')
+    writeFileSync(
+      mirrorConfigPath,
+      `${readFileSync(mirrorConfigPath, 'utf-8')}\n[mcp_servers.pane]\ncommand = "pane-mcp"\n`,
+      'utf-8'
+    )
+    const refreshedOutside = createCodexAuthJson('me@example.com', 'acct-me', 'outside')
+    writeFileSync(getSystemCodexAuthPath(), refreshedOutside, 'utf-8')
+    concurrentEdit.path = join(getSystemCodexHomePath(), 'config.toml')
+
+    await upgradeToRealHome()
+
+    expect(JSON.parse(readFileSync(getMarkerPath(), 'utf-8')).completed).not.toContain('tables')
+    expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(refreshedOutside)
+  })
+
+  it.each([
+    ['a custom CODEX_HOME', (): Partial<GlobalSettings> => ({})],
+    [
+      'a managed account selection',
+      (): Partial<GlobalSettings> & { realHomeRoutable: boolean } => ({
+        realHomeRoutable: true,
+        activeCodexManagedAccountId: 'account-1',
+        activeCodexManagedAccountIdsByRuntime: { host: 'account-1', wsl: {} },
+        codexManagedAccounts: [
+          {
+            id: 'account-1',
+            email: 'managed@example.com',
+            managedHomePath: createManagedAuth(
+              testState.userDataDir,
+              'account-1',
+              createCodexAuthJson('managed@example.com', 'acct-managed', 'managed')
+            ),
+            providerAccountId: 'acct-managed',
+            workspaceLabel: null,
+            workspaceAccountId: 'acct-managed',
+            createdAt: 1,
+            updatedAt: 1,
+            lastAuthenticatedAt: 1
+          }
+        ]
+      })
+    ]
+  ])('never carries on Windows for %s', async (_label, overrides) => {
+    await launchOnMirror()
+    writeFileSync(
+      getRuntimeCodexAuthPath(),
+      createCodexAuthJson('me@example.com', 'acct-me', 'pane'),
+      'utf-8'
+    )
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const service = await createService(createSettings(overrides()))
+
+    service.reconcileLegacySharedHomeForRetainedPanes()
+
+    expect(existsSync(getMarkerPath())).toBe(false)
+    expect(existsSync(getSystemCodexAuthPath())).toBe(false)
   })
 
   it('runs once: a later mirror-lane launch does not reopen the migration', async () => {
