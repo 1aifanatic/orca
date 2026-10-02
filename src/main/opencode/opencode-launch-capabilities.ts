@@ -1,3 +1,4 @@
+import { parseWslUncPath, toLinuxPath } from '../../shared/wsl-paths'
 import {
   getFirstCommandToken,
   getCommandTokenPathBasename
@@ -41,25 +42,36 @@ export async function probeOpenCodeLaunchCapabilities(options: {
   }
   if (options.wsl) {
     const guestEnv: Record<string, string> = {}
-    for (const key of [
-      'OPENCODE_CONFIG_DIR',
-      'ORCA_OPENCODE_CONFIG_DIR',
-      'OPENCODE_DISABLE_AUTOUPDATE'
-    ]) {
-      const value = options.env[key]
-      if (value !== undefined) {
-        guestEnv[key] = value
+    const wslEnv = options.env.WSLENV
+    if (wslEnv) {
+      guestEnv.WSLENV = wslEnv
+      for (const token of wslEnv.split(':')) {
+        const [key, flags = ''] = token.split('/')
+        if (!key || flags.includes('w') || ['PATH', 'HOME', 'TMP', 'TEMP'].includes(key)) {
+          continue
+        }
+        const value = options.env[key]
+        if (value !== undefined) {
+          guestEnv[key] = value
+        }
       }
     }
-    const distro = options.wsl.distro
+    const wslPath = options.cwd ? parseWslUncPath(options.cwd) : null
+    const cwd = options.cwd ? (wslPath?.linuxPath ?? toLinuxPath(options.cwd)) : undefined
+    if (cwd !== undefined && !cwd.startsWith('/')) {
+      return getOpenCodeCliCapabilities(null)
+    }
+    const distro = wslPath?.distro ?? options.wsl.distro
     return probeOpenCodeCliVersion({
       executablePath: executable,
       env: guestEnv,
+      cwd,
       hostIdentity: `${options.hostIdentity ?? 'local'}:wsl:${distro ?? 'default'}`,
       execute: () =>
         runWslProcess({
           distro,
           loginPath: 'preferred',
+          cwd,
           program: executable,
           args: ['--version'],
           env: guestEnv,
