@@ -98,12 +98,12 @@ it('bounds oversized payloads, encoded bodies, absent endpoints and stalled HTTP
     ORCA_PANE_KEY: 'proof-pane'
   }
   try {
-    for (const shape of ['oversized', 'encoded-oversized', 'no-endpoint', 'hung-http']) {
+    for (const payloadCase of ['oversized', 'encoded-oversized', 'no-endpoint', 'hung-http']) {
       const before = requests
       const child = spawnProcess({
         program: process.execPath,
         args: [script],
-        env: shape === 'no-endpoint' ? { ...env, ORCA_AGENT_HOOK_PORT: '' } : env
+        env: payloadCase === 'no-endpoint' ? { ...env, ORCA_AGENT_HOOK_PORT: '' } : env
       })
       child.stdin.on('error', () => {})
       let output = ''
@@ -118,23 +118,23 @@ it('bounds oversized payloads, encoded bodies, absent endpoints and stalled HTTP
         child.once('close', resolve)
         child.once('error', reject)
       })
-      if (shape !== 'no-endpoint') {
+      if (payloadCase !== 'no-endpoint') {
         child.stdin.write(
           JSON.stringify({
             text:
-              shape === 'oversized'
+              payloadCase === 'oversized'
                 ? 'x'.repeat(1_000_001)
-                : shape === 'encoded-oversized'
+                : payloadCase === 'encoded-oversized'
                   ? '日'.repeat(150_000)
                   : 'hung-request'
           })
         )
       }
-      expect(await closed, shape).toBe(0)
+      expect(await closed, payloadCase).toBe(0)
       clearTimeout(timer)
       child.stdin.destroy()
-      expect(output, shape).toBe('')
-      expect(requests - before, shape).toBe(shape === 'hung-http' ? 1 : 0)
+      expect(output, payloadCase).toBe('')
+      expect(requests - before, payloadCase).toBe(payloadCase === 'hung-http' ? 1 : 0)
     }
   } finally {
     server.closeAllConnections()
