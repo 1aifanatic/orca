@@ -75,6 +75,13 @@ import {
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
+/** What these hooks render with: the journal's submissions, and the rows loaded so far. */
+type OutboxProps = { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }
+
+function outboxProps(submissions: AgentJournalSubmission[]): OutboxProps {
+  return { submissions }
+}
+
 const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
 const SESSION = 'session-1'
@@ -131,7 +138,7 @@ function answerSendsPending(): void {
 
 function renderOutbox(composerScopeKey: string | null = PANE) {
   return renderHook(
-    (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+    (props: OutboxProps) =>
       useStructuredAgentSessionOutbox({
         journalItems: props.rows ?? NO_JOURNAL_ITEMS,
         sessionId: SESSION,
@@ -140,7 +147,7 @@ function renderOutbox(composerScopeKey: string | null = PANE) {
         submissions: props.submissions,
         ...(composerScopeKey ? { composerScopeKey } : {})
       }),
-    { initialProps: { submissions: NONE } }
+    { initialProps: outboxProps(NONE) }
   )
 }
 

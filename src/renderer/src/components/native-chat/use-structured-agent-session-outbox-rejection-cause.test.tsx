@@ -33,6 +33,13 @@ import {
   writeOutbox
 } from './structured-agent-session-outbox-storage'
 
+/** What these hooks render with: the journal's submissions, and the rows loaded so far. */
+type OutboxProps = { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }
+
+function outboxProps(submissions: AgentJournalSubmission[]): OutboxProps {
+  return { submissions }
+}
+
 const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
@@ -175,7 +182,7 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -183,7 +190,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: NO_SUBMISSIONS } }
+      { initialProps: outboxProps(NO_SUBMISSIONS) }
     )
 
     act(() => expect(result.current.send('hello')).toBe(true))
@@ -214,7 +221,7 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -222,7 +229,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: NO_SUBMISSIONS } }
+      { initialProps: outboxProps(NO_SUBMISSIONS) }
     )
 
     act(() => expect(result.current.send('hello')).toBe(true))
@@ -350,7 +357,7 @@ describe('a send the host rejected because the agent never started', () => {
   it('drops a message rejected before a restart once the journal says so, from storage too', async () => {
     writeOutbox('session-1', [rejectedBeforeRestart()])
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -358,7 +365,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: NO_SUBMISSIONS } }
+      { initialProps: outboxProps(NO_SUBMISSIONS) }
     )
     expect(result.current.outbox).toHaveLength(1)
 
@@ -395,7 +402,7 @@ describe('a send the host rejected because the agent never started', () => {
       }
     ]
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -403,7 +410,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: rejected } }
+      { initialProps: outboxProps(rejected) }
     )
 
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
@@ -444,7 +451,7 @@ describe('a send the host rejected because the agent never started', () => {
       })
     )
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -452,7 +459,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: NO_SUBMISSIONS } }
+      { initialProps: outboxProps(NO_SUBMISSIONS) }
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
@@ -479,7 +486,7 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+      (props: OutboxProps) =>
         useStructuredAgentSessionOutbox({
           journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
@@ -487,7 +494,7 @@ describe('a send the host rejected because the agent never started', () => {
           fence: 1,
           submissions: props.submissions
         }),
-      { initialProps: { submissions: NO_SUBMISSIONS } }
+      { initialProps: outboxProps(NO_SUBMISSIONS) }
     )
 
     act(() => expect(result.current.send('hello')).toBe(true))
