@@ -18,12 +18,12 @@ import {
   agentSessionRefusalReference,
   type AgentSessionRefusalReference
 } from '../../../shared/agent-session-wire-refusals'
-import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import {
   agentSessionSendSubmission,
   type AgentSessionMutationEnvelope,
   type AgentSessionMutationResult,
-  type AgentSessionSendResult
+  type AgentSessionSendResult,
+  type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
