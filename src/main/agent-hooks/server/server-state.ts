@@ -92,7 +92,7 @@ export abstract class AgentHookServerState {
   protected env = 'production'
   protected onAgentStatus: ServerAgentStatusListener = null
   protected onClaudeStatusLine: ServerStatusLineListener = null
-  protected onStartupPromptClaim: ((body: unknown) => boolean) | null = null
+  protected onStartupPromptClaim: ((body: unknown) => boolean | 'pending') | null = null
   protected clearStartupPromptClaims: (() => void) | null = null
   protected statusHooksEnabled = true
   protected onPaneStatusCleared: PaneStatusClearListener | null = null

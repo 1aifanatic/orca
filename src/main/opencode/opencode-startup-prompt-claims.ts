@@ -3,7 +3,7 @@ import type { TerminalRunFacts } from '../runtime/terminal-run-facts'
 type PromptClaim = {
   digest: string
   expiresAt: number
-  readOwner: () => TerminalRunFacts | null
+  readOwner: () => TerminalRunFacts | 'pending' | null
   cleanup: () => void
   expiry: ReturnType<typeof setTimeout>
 }
@@ -35,6 +35,17 @@ export class OpenCodeStartupPromptClaims {
     return true
   }
 
+  admit(nonce: string, readOwner: PromptClaim['readOwner'], cleanup = () => {}): boolean {
+    const pending = this.pending.get(nonce)
+    if (!pending || pending.expiresAt <= this.now()) {
+      this.cancel(nonce)
+      return false
+    }
+    pending.readOwner = readOwner
+    pending.cleanup = cleanup
+    return true
+  }
+
   cancel(nonce: string): void {
     const pending = this.pending.get(nonce)
     this.pending.delete(nonce)
@@ -50,21 +61,25 @@ export class OpenCodeStartupPromptClaims {
     }
   }
 
-  claim(body: unknown): boolean {
+  claim(body: unknown): boolean | 'pending' {
     if (!body || typeof body !== 'object' || !('nonce' in body) || typeof body.nonce !== 'string') {
       return false
     }
     const pending = this.pending.get(body.nonce)
-    this.cancel(body.nonce)
     if (
       !pending ||
       pending.expiresAt <= this.now() ||
       !('digest' in body) ||
       body.digest !== pending.digest
     ) {
+      this.cancel(body.nonce)
       return false
     }
     const owner = pending.readOwner()
+    if (owner === 'pending') {
+      return 'pending'
+    }
+    this.cancel(body.nonce)
     return owner?.freshSpawn === true && owner.firstUserInputAt === null
   }
 }
