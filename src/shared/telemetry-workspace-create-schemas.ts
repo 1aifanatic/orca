@@ -29,7 +29,7 @@ export const POST_CHECKOUT_HOOK_PRESENCE_VALUES = [
   'unknown'
 ] as const
 
-const phaseDurationShape = {
+const phaseDurationProperties = {
   resolve_name_ms: durationMsSchema,
   refresh_base_ref_ms: durationMsSchema,
   git_worktree_add_ms: durationMsSchema,
@@ -48,20 +48,20 @@ const phaseDurationShape = {
 
 // Compile-time: one duration key per timed phase, no more and no fewer.
 type _PhaseKeys = `${WorktreeCreatePhase}_ms`
-type _PhaseShapeKeys = keyof typeof phaseDurationShape
-type _PhaseShapeSync = [_PhaseKeys] extends [_PhaseShapeKeys]
-  ? [_PhaseShapeKeys] extends [_PhaseKeys]
+type _PhaseDurationKeys = keyof typeof phaseDurationProperties
+type _PhaseDurationSync = [_PhaseKeys] extends [_PhaseDurationKeys]
+  ? [_PhaseDurationKeys] extends [_PhaseKeys]
     ? true
     : never
   : never
-const _phaseShapeSyncCheck: _PhaseShapeSync = true
-void _phaseShapeSyncCheck
+const _phaseDurationSyncCheck: _PhaseDurationSync = true
+void _phaseDurationSyncCheck
 
-export const workspaceCreateTimingShape = {
+export const workspaceCreatedTimingProperties = {
   total_ms: durationMsSchema,
   /** Wall-clock time no timed phase covers. */
   unattributed_ms: durationMsSchema,
-  ...phaseDurationShape,
+  ...phaseDurationProperties,
   prepared_checkout: z.enum(['hit', 'miss']).optional(),
   /** Hit only: the prepared checkout had to be reset onto a different ref first. */
   prepared_checkout_retargeted: z.boolean().optional(),
@@ -76,7 +76,7 @@ export const workspaceCreateTimingShape = {
 /** `untimed` = the create failed outside every timed phase. */
 export const WORKSPACE_CREATE_FAILED_PHASE_VALUES = [...WORKTREE_CREATE_PHASES, 'untimed'] as const
 
-export const workspaceCreateFailureShape = {
+export const workspaceCreateFailedProperties = {
   failed_phase: z.enum(WORKSPACE_CREATE_FAILED_PHASE_VALUES).optional(),
   /** Elapsed time from the start of the create to the failure. */
   total_ms: durationMsSchema,

@@ -10,7 +10,7 @@ import {
   bucketNestedRepoTelemetryCount
 } from './nested-repo-telemetry'
 import { nthRepoAddedSchema } from './telemetry-app-event-schemas'
-import { workspaceCreateFailureShape } from './telemetry-workspace-create-schemas'
+import { workspaceCreateFailedProperties } from './telemetry-workspace-create-schemas'
 import {
   addRepoDefaultCheckoutHandoffReasonSchema,
   addRepoDefaultCheckoutHandoffResultSchema,
@@ -64,7 +64,7 @@ export const workspaceCreateFailedSchema = z
     source: workspaceSourceSchema,
     error_class: workspaceCreateErrorClassSchema,
     nth_repo_added: nthRepoAddedSchema,
-    ...workspaceCreateFailureShape
+    ...workspaceCreateFailedProperties
   })
   .strict()
 

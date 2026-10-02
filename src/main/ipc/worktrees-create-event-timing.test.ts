@@ -270,13 +270,12 @@ describe('worktrees:create event timing fields', () => {
     const provider = useSshProvider()
     provider.addWorktree.mockRejectedValue(new Error('Path outside authorized workspace: /x'))
 
-    const caught: unknown = await handlers['worktrees:create'](null, {
-      repoId: 'repo-1',
-      name: 'wt'
-    }).then(
-      () => undefined,
-      (error: unknown) => error
-    )
+    let caught: unknown
+    try {
+      await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+    } catch (error) {
+      caught = error
+    }
 
     expect(caught).toBeInstanceOf(Error)
     expect(caught instanceof Error && caught.message).toMatch(/^Older relay reported/)

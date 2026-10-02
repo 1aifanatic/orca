@@ -20,7 +20,7 @@ import {
   requestKindSchema,
   workspaceSourceSchema
 } from './telemetry-property-schemas'
-import { workspaceCreateTimingShape } from './telemetry-workspace-create-schemas'
+import { workspaceCreatedTimingProperties } from './telemetry-workspace-create-schemas'
 
 // ── Per-event schemas ───────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export const workspaceCreatedSchema = z
     source: workspaceSourceSchema,
     from_existing_branch: z.boolean(),
     nth_repo_added: nthRepoAddedSchema,
-    ...workspaceCreateTimingShape
+    ...workspaceCreatedTimingProperties
   })
   .strict()
 

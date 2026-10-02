@@ -7,15 +7,19 @@ import {
 import type {
   POST_CHECKOUT_HOOK_PRESENCE_VALUES,
   WORKTREE_COUNT_BUCKETS,
-  workspaceCreateFailureShape,
-  workspaceCreateTimingShape
+  workspaceCreateFailedProperties,
+  workspaceCreatedTimingProperties
 } from '../../../../shared/telemetry-workspace-create-schemas'
 import type { WorktreeCreateTimingRecorder } from '../../../worktree-create-timing'
 import { worktreeCreateUnattributedMs } from '../../../observability/instrumentation'
 
-type ShapeProps<S extends z.ZodRawShape> = { [K in keyof S]?: z.infer<S[K]> }
-export type WorkspaceCreateTimingFields = ShapeProps<typeof workspaceCreateTimingShape>
-export type WorkspaceCreateFailureFields = ShapeProps<typeof workspaceCreateFailureShape>
+type OptionalEventFields<P extends Record<string, z.ZodType>> = { [K in keyof P]?: z.infer<P[K]> }
+export type WorkspaceCreateTimingFields = OptionalEventFields<
+  typeof workspaceCreatedTimingProperties
+>
+export type WorkspaceCreateFailureFields = OptionalEventFields<
+  typeof workspaceCreateFailedProperties
+>
 type WorktreeCountBucket = (typeof WORKTREE_COUNT_BUCKETS)[number]
 type PostCheckoutHookPresence = (typeof POST_CHECKOUT_HOOK_PRESENCE_VALUES)[number]
 
