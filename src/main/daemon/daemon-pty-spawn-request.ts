@@ -111,7 +111,9 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
         throw new Error('client_disconnected')
       }
       // Why refuse: an older daemon (a same-id respawn routed to it) would drop the file and type
-      // a line naming it. The refusal reaches the user with the prompt to copy.
+      // a line naming it. The refusal reaches the user with the prompt to copy. Temporary: main
+      // pastes here, but a paste needs a second, prompt-less plan and a guarded paste at every
+      // spawn site; only sessions an older daemon still holds route here, and they end when closed.
       if (
         !context.attachOnly &&
         opts.launchFile &&
