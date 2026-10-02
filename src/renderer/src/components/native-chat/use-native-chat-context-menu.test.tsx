@@ -205,7 +205,7 @@ describe('useNativeChatContextMenu', () => {
       await vi.waitFor(() => expect(toasts.success).toHaveBeenCalledWith('Orca session ID copied'))
       expect(writeClipboardText).toHaveBeenCalledWith(orcaSessionId)
       expect(tooltips.list.map(childrenText)).toContain(
-        "Orca's ID for this chat, separate from agent CLIs' own session IDs. Agents use it to refer to each other through Orca."
+        "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
       )
     })
 

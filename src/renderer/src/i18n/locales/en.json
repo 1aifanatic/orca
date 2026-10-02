@@ -17953,7 +17953,7 @@
         "copyOrcaSessionId": "Copy Orca Session ID",
         "orcaSessionIdCopied": "Orca session ID copied",
         "orcaSessionIdCopyFailed": "Unable to copy Orca session ID",
-        "orcaSessionIdTooltip": "Orca's ID for this chat, separate from agent CLIs' own session IDs. Agents use it to refer to each other through Orca."
+        "orcaSessionIdTooltip": "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",

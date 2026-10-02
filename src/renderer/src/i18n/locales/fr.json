@@ -17399,7 +17399,7 @@
         "copyOrcaSessionId": "Copier l'ID de session Orca",
         "orcaSessionIdCopied": "ID de session Orca copié",
         "orcaSessionIdCopyFailed": "Impossible de copier l'ID de session Orca",
-        "orcaSessionIdTooltip": "L'ID qu'Orca attribue à ce chat, distinct des ID de session propres aux CLI des agents. Les agents l'utilisent pour se désigner entre eux via Orca."
+        "orcaSessionIdTooltip": "L'ID qu'Orca attribue à ce chat, distinct de l'ID de session propre à la CLI de l'agent. Les agents l'utilisent pour se désigner entre eux via Orca."
       },
       "failureWords": {
         "theAgent": "L'agent",
