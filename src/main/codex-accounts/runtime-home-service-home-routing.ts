@@ -21,6 +21,7 @@ import {
 } from '../codex/codex-pane-account-registry'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
 import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
+import { resolveCodexSharedSettingsNotice } from './codex-shared-settings-notice'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type { CodexRateLimitHomeResolution } from './runtime-home-service-types'
 import { CodexRuntimeHomeManagedHome } from './runtime-home-service-managed-home'
@@ -171,12 +172,19 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
     syncLegacySharedCodexConfigForRetainedPanes()
   }
 
-  // Why: copies only while the recorded baseline is null (Orca's copy's login never
-  // came from ~/.codex); recording it as the baseline, copied or not, ends that.
-  protected copyMirrorLoginIntoEmptySystemHome(): void {
+  // Why: launch prep and the usage poll are where Windows' system default first
+  // runs on ~/.codex instead of the mirror; both one-shots settle here.
+  protected finishWindowsMoveToSystemHome(): void {
     if (process.platform !== 'win32') {
       return
     }
+    this.copyMirrorLoginIntoEmptySystemHome()
+    this.recordSharedSettingsNoticeOnce()
+  }
+
+  // Why: copies only while the recorded baseline is null (Orca's copy's login never
+  // came from ~/.codex); recording it as the baseline, copied or not, ends that.
+  private copyMirrorLoginIntoEmptySystemHome(): void {
     try {
       const provenance = this.resolveSharedRuntimeAuthProvenanceStatus()
       const runtimeAuth = this.readRuntimeAuthForProvenance()
@@ -197,6 +205,24 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       }
     } catch (error) {
       console.warn('[codex-runtime-home] Failed to copy the mirror login into ~/.codex:', error)
+    }
+  }
+
+  // Why: everything but the login stays behind in the mirror; the verdict is
+  // persisted once so the renderer can explain that after any restart.
+  private recordSharedSettingsNoticeOnce(): void {
+    try {
+      if (this.store.getUI().codexSharedSettingsNotice !== undefined) {
+        return
+      }
+      this.store.updateUI({
+        codexSharedSettingsNotice: resolveCodexSharedSettingsNotice(
+          this.getRuntimeHomePath(),
+          getSystemCodexHomePath()
+        )
+      })
+    } catch (error) {
+      console.warn('[codex-runtime-home] Failed to decide the shared-settings notice:', error)
     }
   }
 
@@ -310,7 +336,7 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       this.clearSelfContainedManagedSelection(selfContainedAccount)
     }
     if (this.isHostSystemDefaultRealHome()) {
-      this.copyMirrorLoginIntoEmptySystemHome()
+      this.finishWindowsMoveToSystemHome()
       if (hasRecordedLegacySharedCodexPane()) {
         this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
       }

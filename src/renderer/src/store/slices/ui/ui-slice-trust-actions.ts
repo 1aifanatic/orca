@@ -148,6 +148,15 @@ export function createUiTrustActions(set: UISliceSet, _get: UISliceGet): Partial
         }
         window.api.ui.set({ codexTerminalServerIsolationNoticeSeen: true }).catch(console.error)
         return { codexTerminalServerIsolationNoticeSeen: true }
+      }),
+    codexSharedSettingsNotice: null,
+    clearCodexSharedSettingsNotice: () =>
+      set((s) => {
+        if (!s.codexSharedSettingsNotice) {
+          return s
+        }
+        window.api.ui.set({ codexSharedSettingsNotice: null }).catch(console.error)
+        return { codexSharedSettingsNotice: null }
       })
   }
 }

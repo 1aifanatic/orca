@@ -8,6 +8,7 @@ import type { ContextualTourId } from '../../../../../shared/contextual-tours'
 import type { OrcaHookScriptKind } from '../../../lib/orca-hook-trust'
 import type { SettingsNavigationTarget } from '../../../lib/settings-navigation-types'
 import type { ExecutionHostId } from '../../../../../shared/execution-host'
+import type { CodexSharedSettingsNotice } from '../../../../../shared/persisted-ui-state-types'
 
 export type UISliceContextual = {
   openSettingsPage: () => void
@@ -116,4 +117,6 @@ export type UISliceContextual = {
   dismissUsageEmptyState: () => void
   codexTerminalServerIsolationNoticeSeen: boolean
   markCodexTerminalServerIsolationNoticeSeen: () => void
+  codexSharedSettingsNotice: CodexSharedSettingsNotice | null
+  clearCodexSharedSettingsNotice: () => void
 }

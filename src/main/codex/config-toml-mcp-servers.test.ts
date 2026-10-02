@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readMcpServerTomlOwnership } from './config-toml-mcp-servers'
+import { isRuntimeOnlyMcpServer, readMcpServerTomlOwnership } from './config-toml-mcp-servers'
 import { getTomlTableHeader } from './config-toml-line-scan'
 
 describe('MCP server TOML ownership', () => {
@@ -63,5 +63,22 @@ describe('commented TOML headers', () => {
     ['command = "[mcp_servers.fake]"', null]
   ])('recognizes the structural header in %s', (line, header) => {
     expect(getTomlTableHeader(line)).toBe(header)
+  })
+})
+
+describe('runtime-only MCP servers', () => {
+  const owned = (names: string[], ownsRoot = false) => ({ names: new Set(names), ownsRoot })
+
+  it('is a server neither ~/.codex nor the last mirror has', () => {
+    expect(isRuntimeOnlyMcpServer('orca', owned(['shared']), owned(['shared']))).toBe(true)
+  })
+
+  it.each([
+    ['~/.codex has it', owned(['orca']), owned([])],
+    ['the user removed it from ~/.codex after a mirror', owned([]), owned(['orca'])],
+    ['~/.codex owns the whole table inline', owned([], true), owned([])],
+    ['a legacy baseline owned the whole table', owned([]), owned([], true)]
+  ])('is not when %s', (_case, system, lastMirrored) => {
+    expect(isRuntimeOnlyMcpServer('orca', system, lastMirrored)).toBe(false)
   })
 })

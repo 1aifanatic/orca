@@ -6,11 +6,13 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 
-/** Canonical inline root assignments own the whole table, which TOML forbids extending. */
-export function readMcpServerTomlOwnership(config: string): {
+export type McpServerTomlOwnership = {
   names: ReadonlySet<string>
   ownsRoot: boolean
-} {
+}
+
+/** Canonical inline root assignments own the whole table, which TOML forbids extending. */
+export function readMcpServerTomlOwnership(config: string): McpServerTomlOwnership {
   const names = new Set<string>()
   let ownsRoot = false
   let tablePath: string[] | null = []
@@ -39,4 +41,23 @@ export function readMcpServerTomlOwnership(config: string): {
     state = updateTomlLineScanState(state, line)
   }
   return { names, ownsRoot }
+}
+
+/**
+ * Whether an MCP server in Orca's managed home exists only there: neither in
+ * ~/.codex nor copied from it by the last mirror (a copied name that ~/.codex
+ * no longer has was removed there). One rule, so the mirror keeps exactly the
+ * servers the Windows switch notice reports as left behind.
+ */
+export function isRuntimeOnlyMcpServer(
+  name: string,
+  system: McpServerTomlOwnership,
+  lastMirrored: McpServerTomlOwnership
+): boolean {
+  return (
+    !system.ownsRoot &&
+    !lastMirrored.ownsRoot &&
+    !system.names.has(name) &&
+    !lastMirrored.names.has(name)
+  )
 }
