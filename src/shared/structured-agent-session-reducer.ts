@@ -75,8 +75,8 @@ export type StructuredAgentSessionState = {
   /** Bumped per live batch that leaves a turn row's newest revision outside the window
    *  (dropped or trimmed), so a whole-journal answer derived from turn rows is asked for again. */
   unloadedTurnRevisions?: number
-  /** Why the host keeps this chat read-only, from its latest whole page; a host stays read-only
-   *  until it restarts, which sends a new one. */
+  /** Why the host keeps this chat read-only, from its latest whole page. Only a whole page clears
+   *  it, so a client holding it reconnects for one. */
   readOnly?: AgentSessionReadOnlyReason
 }
 
