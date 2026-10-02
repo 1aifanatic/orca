@@ -49,7 +49,9 @@ function busiestSecond(tasks: { start: number; end: number }[]): number {
 
 describe('the copy’s share of each second (C3)', () => {
   it('holds any second to its share, its burst and the one task that crossed it', async () => {
-    const { waits, run } = pacedClock()
+    const { clock, waits, run } = pacedClock()
+    // Idle a long while first: what it saves is capped at the burst.
+    clock.now = 10_000
 
     const tasks = await run(Array.from({ length: 60 }, () => 40))
 
