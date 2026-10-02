@@ -1,4 +1,5 @@
-import { realpathSync } from 'node:fs'
+import { realpathSync, statSync, type Stats } from 'node:fs'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import {
   subscribeViaWatcherProcess,
@@ -12,16 +13,51 @@ function releaseSubscription(subscription: WatcherProcessSubscription): void {
   void subscription.unsubscribe().catch(() => undefined)
 }
 
+function addPluginRootParent(parentNames: Map<string, Set<string>>, root: string): void {
+  const { watchRoot: parent } = resolveWatcherRootPaths(dirname(root))
+  const names = parentNames.get(parent) ?? new Set<string>()
+  names.add(basename(root))
+  parentNames.set(parent, names)
+}
+
+type PluginRootBinding = { physicalRoot: string; identity: string }
+
+function pluginRootBinding(physicalRoot: string, entry: Stats): PluginRootBinding | null {
+  return entry.isDirectory() ? { physicalRoot, identity: `${entry.dev}:${entry.ino}` } : null
+}
+
+function readPluginRootBindingSync(physicalRoot: string): PluginRootBinding | null {
+  try {
+    return pluginRootBinding(physicalRoot, statSync(physicalRoot))
+  } catch {
+    return null
+  }
+}
+
+async function readPluginRootBinding(requestedRoot: string): Promise<PluginRootBinding | null> {
+  try {
+    const physicalRoot = await realpath(requestedRoot)
+    return pluginRootBinding(physicalRoot, await stat(physicalRoot))
+  } catch {
+    return null
+  }
+}
+
 /** Owns debounced manifest/panel refresh watchers for mutable dev plugins. */
 export class PluginDevWatcher {
   private readonly subscriptions: WatcherProcessSubscription[] = []
   private readonly physicalRoots = new Map<string, string>()
+  private readonly rootBindings = new Map<string, PluginRootBinding | null>()
   private refreshTimer: ReturnType<typeof setTimeout> | null = null
   private generation = 0
 
   constructor(private readonly subscribePath = subscribeViaWatcherProcess) {}
 
-  start(devPaths: readonly string[], refresh: () => void, onWatcherError?: () => void): void {
+  start(
+    devPaths: readonly string[],
+    refresh: () => void,
+    onWatcherError?: (retry?: boolean) => void
+  ): void {
     this.stopSubscriptions()
     const requestedRoots = new Set(devPaths.map((path) => resolve(path)))
     for (const path of this.physicalRoots.keys()) {
@@ -38,13 +74,14 @@ export class PluginDevWatcher {
           return physicalRoot
         }
       })
+      this.rootBindings.set(requestedRoot, readPluginRootBindingSync(watchRoot))
       // A dangling symlink still needs its last physical parent watched.
       const physicalRoot = this.physicalRoots.get(requestedRoot) ?? watchRoot
-      for (const root of new Set([requestedRoot, physicalRoot])) {
-        const { watchRoot: parent } = resolveWatcherRootPaths(dirname(root))
-        const names = parentNames.get(parent) ?? new Set<string>()
-        names.add(basename(root))
-        parentNames.set(parent, names)
+      // macOS fs.watch parents still feed recursive FSEvents before filtering.
+      if (process.platform !== 'darwin') {
+        for (const root of new Set([requestedRoot, physicalRoot])) {
+          addPluginRootParent(parentNames, root)
+        }
       }
       this.subscribe(
         requestedRoot,
@@ -70,8 +107,34 @@ export class PluginDevWatcher {
     this.physicalRoots.clear()
   }
 
+  async checkRootBindings(): Promise<boolean | null> {
+    const generation = this.generation
+    const nextBindings = await Promise.all(
+      [...this.rootBindings.keys()].map(async (root) => ({
+        root,
+        binding: await readPluginRootBinding(root)
+      }))
+    )
+    if (generation !== this.generation) {
+      return null
+    }
+    let changed = false
+    for (const { root, binding } of nextBindings) {
+      const previous = this.rootBindings.get(root)
+      if (
+        previous?.physicalRoot !== binding?.physicalRoot ||
+        previous?.identity !== binding?.identity
+      ) {
+        this.rootBindings.set(root, binding)
+        changed = true
+      }
+    }
+    return changed
+  }
+
   private stopSubscriptions(): void {
     this.generation += 1
+    this.rootBindings.clear()
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer)
       this.refreshTimer = null
@@ -86,9 +149,12 @@ export class PluginDevWatcher {
     options: WatcherProcessSubscribeOptions,
     parent: boolean,
     refresh: () => void,
-    onWatcherError?: () => void
+    onWatcherError?: (retry?: boolean) => void
   ): void {
     const generation = this.generation
+    const retrySetupFailure = parent
+      ? readPluginRootBindingSync(path) !== null
+      : !!this.rootBindings.get(path)
     let subscription: WatcherProcessSubscription | null = null
     let closed = false
     const isActive = (): boolean => generation === this.generation && !closed
@@ -138,8 +204,8 @@ export class PluginDevWatcher {
       .catch(() => {
         if (isActive()) {
           closed = true
-          // The parent watch or maintenance interval retries missing roots.
-          onWatcherError?.()
+          // Missing roots recover through binding checks instead of refresh loops.
+          onWatcherError?.(retrySetupFailure)
         }
       })
   }
