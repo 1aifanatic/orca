@@ -1,4 +1,5 @@
-import { getFirstCommandToken } from '../../shared/command-token-scanner'
+import { isAbsolute } from 'node:path'
+import { resolveStartupShell, tokenizeStartupCommand } from '../../shared/tui-agent-startup-shell'
 import { runProcess } from '../../shared/child-process/run-process'
 import { resolveCommandOnLocalPath } from '../ipc/command-path-resolver'
 
@@ -13,7 +14,19 @@ export async function probeOpenCodeModelAvailability(options: {
   if (options.wsl || !options.cwd) {
     return false
   }
-  const executable = await resolveCommandOnLocalPath(getFirstCommandToken(options.command ?? ''), {
+  const parsed = tokenizeStartupCommand(
+    options.command ?? '',
+    resolveStartupShell(process.platform)
+  )
+  if (
+    !parsed.ok ||
+    parsed.tokens.length !== 1 ||
+    parsed.spans.some((span) => span.divergesFromShell) ||
+    !isAbsolute(parsed.tokens[0])
+  ) {
+    return false
+  }
+  const executable = await resolveCommandOnLocalPath(parsed.tokens[0], {
     env: options.env,
     cwd: options.cwd
   })

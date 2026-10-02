@@ -195,14 +195,12 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
     repo?: string
     model?: string
   }): Promise<boolean> {
-    if (!target.model || (!target.repo && !target.worktree)) {
+    if (!target.model || target.repo || !target.worktree) {
       return false
     }
-    const repo = target.repo ? await this.resolveRepoSelector(target.repo) : null
-    const workspace = repo ? null : await this.resolveTerminalWorkspaceLaunchScope(target.worktree)
-    const executionRepo = repo ?? workspace?.repo
+    const workspace = await this.resolveTerminalWorkspaceLaunchScope(target.worktree)
+    const executionRepo = workspace?.repo
     if (
-      repo?.connectionId ||
       workspace?.connectionId ||
       (executionRepo?.executionHostId && executionRepo.executionHostId !== 'local')
     ) {
@@ -210,7 +208,7 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
     }
     const store = this.requireStore()
     const settings = store.getSettings()
-    const path = repo?.path ?? workspace?.path
+    const path = workspace?.path
     const unc = path ? parseWslUncPath(path) : null
     const projectRuntime = executionRepo
       ? resolveLocalProjectRuntimeForRepo(store, executionRepo)

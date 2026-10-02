@@ -51,6 +51,13 @@ describe('OpenCode model catalog validation', () => {
     })
     expect(await probeOpenCodeModelAvailability(options)).toBe(false)
   })
+  it.each(['opencode', '/private/opencode --config another-profile', 'echo;/private/opencode'])(
+    'refuses an executable or configuration that differs from the direct launch: %s',
+    async (command) => {
+      expect(await probeOpenCodeModelAvailability({ ...options, command })).toBe(false)
+      expect(runProcess).not.toHaveBeenCalled()
+    }
+  )
   it('refuses WSL until its exact guest launch environment is available', async () => {
     expect(await probeOpenCodeModelAvailability({ ...options, wsl: { distro: 'Ubuntu' } })).toBe(
       false

@@ -86,6 +86,17 @@ describe('OpenCode worker model execution host', () => {
       isWsl: false
     })
   })
+  it('refuses creation repo catalogs before the actual destination exists', async () => {
+    expect(
+      await Reflect.apply(
+        OrcaRuntimeService.prototype.probeOrchestrationOpenCodeModelLaunchSupport,
+        host(),
+        [{ repo: 'id:repo', model: 'opencode/fledge-alpha-free' }]
+      )
+    ).toBe(false)
+    expect(probeOpenCodeLaunchCapabilities).not.toHaveBeenCalled()
+    expect(probeOpenCodeModelAvailability).not.toHaveBeenCalled()
+  })
   it('rejects an unknown selector rather than claiming the fallback model', async () => {
     vi.mocked(probeOpenCodeModelAvailability).mockResolvedValue(false)
     expect(await probe(host())).toBe(false)
