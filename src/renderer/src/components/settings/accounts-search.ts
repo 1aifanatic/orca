@@ -217,6 +217,17 @@ export const getAccountsGrokSearchEntries = createLocalizedCatalog(() => [
   }
 ])
 
+export const getAccountsAntigravitySearchEntries = createLocalizedCatalog(() => [
+  {
+    title: translate('accounts.antigravity.searchTitle', 'Antigravity Accounts'),
+    description: translate(
+      'accounts.antigravity.searchDescription',
+      'Save and select native agy Google accounts on the execution host.'
+    ),
+    keywords: ['antigravity', 'agy', 'google', 'accounts', 'login', 'usage']
+  }
+])
+
 export const getAccountsCursorSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.accounts.search.cursor.title', 'Cursor Usage'),
@@ -257,5 +268,6 @@ export const getAccountsPaneSearchEntries = createLocalizedCatalog((): SettingsS
   ...getAccountsOpencodeSearchEntries(),
   ...getAccountsMiniMaxSearchEntries(),
   ...getAccountsGrokSearchEntries(),
+  ...getAccountsAntigravitySearchEntries(),
   ...getAccountsCursorSearchEntries()
 ])
