@@ -41,23 +41,25 @@ function probe(
   runtime: ReturnType<typeof host>,
   target = { worktree: 'id:folder', model: 'opencode/fledge-alpha-free' }
 ) {
-  return Reflect.apply(
-    OrcaRuntimeService.prototype.probeOrchestrationOpenCodeModelLaunchSupport,
+  return OrcaRuntimeService.prototype.probeOrchestrationOpenCodeModelLaunchSupport.call(
     runtime,
-    [target]
+    target
   )
 }
 
 describe('OpenCode worker model execution host', () => {
   it('refuses resume preferences before any workspace or process effects', async () => {
     await expect(
-      Reflect.apply(OrcaRuntimeService.prototype.ensureAgentSession, {}, [
+      OrcaRuntimeService.prototype.ensureAgentSession.call(
+        {},
         {
           kind: 'explicit',
+          worktree: 'id:folder',
           agent: 'opencode',
+          providerSession: { key: 'session_id', id: 'ses_resume' },
           launchPreferences: { model: 'opencode/fledge-alpha-free' }
         }
-      ])
+      )
     ).rejects.toMatchObject({ code: 'capability_unsupported' })
   })
   beforeEach(() => {
@@ -112,11 +114,10 @@ describe('OpenCode worker model execution host', () => {
   })
   it('refuses creation repo catalogs before the actual destination exists', async () => {
     expect(
-      await Reflect.apply(
-        OrcaRuntimeService.prototype.probeOrchestrationOpenCodeModelLaunchSupport,
-        host(),
-        [{ repo: 'id:repo', model: 'opencode/fledge-alpha-free' }]
-      )
+      await OrcaRuntimeService.prototype.probeOrchestrationOpenCodeModelLaunchSupport.call(host(), {
+        repo: 'id:repo',
+        model: 'opencode/fledge-alpha-free'
+      })
     ).toBe(false)
     expect(probeOpenCodeLaunchCapabilities).not.toHaveBeenCalled()
     expect(probeOpenCodeModelAvailability).not.toHaveBeenCalled()
