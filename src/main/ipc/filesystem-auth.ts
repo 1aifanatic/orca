@@ -45,9 +45,9 @@ export function authorizeExternalPath(targetPath: string): void {
 }
 
 /**
- * Re-derives a restored editor tab's grant without widening any project: a path a project root
- * already covers gets none, and an alias spelling of a project path gets only that spelling, never
- * its realpath — so a project symlink's outside target is never granted.
+ * Re-derives a restored editor tab's grant without widening any project. A path inside a project in
+ * any spelling — as named, or through the real path of any ancestor folder — gets at most its named
+ * spelling, never its realpath, so a project symlink's outside target is never granted.
  */
 export async function authorizeExternalPathOutsideAllowedRoots(
   targetPath: string,
@@ -62,37 +62,33 @@ export async function authorizeExternalPathOutsideAllowedRoots(
   if (isInsideRoot(resolvedTarget, roots)) {
     return
   }
-  const canonicalRoots = await Promise.all(
+  const realRoots = await Promise.all(
     roots.map((root) => normalizeExistingPath(root).catch(() => root))
   )
-  const canonicalTarget = await canonicalizeParentKeepingLeaf(resolvedTarget)
-  if (
-    isInsideRoot(resolvedTarget, canonicalRoots) ||
-    (canonicalTarget !== null &&
-      (isInsideRoot(canonicalTarget, roots) || isInsideRoot(canonicalTarget, canonicalRoots)))
-  ) {
-    rememberAuthorizedExternalPath(resolvedTarget)
-    return
-  }
-  authorizeExternalPath(resolvedTarget)
-}
-
-// Why keep the leaf: a project symlink must still read as inside its project, not as its target.
-async function canonicalizeParentKeepingLeaf(resolvedTarget: string): Promise<string | null> {
-  const missingSegments = [basename(resolvedTarget)]
-  let ancestor = dirname(resolvedTarget)
-  while (true) {
+  const rootSpellings = [...roots, ...realRoots]
+  // Why every ancestor: past an escaping directory symlink the real path has left the project, so
+  // only a higher ancestor's real path shows the named path entered it. The leaf is skipped: a file
+  // that links into a project is not a project path.
+  for (let ancestor = dirname(resolvedTarget); ; ancestor = dirname(ancestor)) {
+    let realAncestor: string | null = null
     try {
-      return resolve(await realpath(ancestor), ...missingSegments)
+      realAncestor = resolve(await realpath(ancestor))
     } catch (error) {
-      const parent = dirname(ancestor)
-      if (!isENOENT(error) || parent === ancestor) {
-        return null
+      if (!isENOENT(error)) {
+        // Why fail closed: an unresolvable ancestor can't prove the path stays outside every project.
+        rememberAuthorizedExternalPath(resolvedTarget)
+        return
       }
-      missingSegments.unshift(basename(ancestor))
-      ancestor = parent
+    }
+    if (realAncestor !== null && isInsideRoot(realAncestor, rootSpellings)) {
+      rememberAuthorizedExternalPath(resolvedTarget)
+      return
+    }
+    if (dirname(ancestor) === ancestor) {
+      break
     }
   }
+  authorizeExternalPath(resolvedTarget)
 }
 
 /**
