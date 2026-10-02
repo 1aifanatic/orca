@@ -13,6 +13,11 @@ export const CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS = 1_500
 /** A probe still running by now is killed, and its binary gets no flag. */
 const PROBE_KILL_AFTER_MS = 10_000
 
+/** How long a probe that gave no version (killed, failed to spawn, unparseable) means "no flag":
+ *  long enough that a hung `--version` costs one wait per stretch, short enough that a failure
+ *  from a loaded boot heals. */
+const FAILED_PROBE_RETRY_AFTER_MS = 10 * 60_000
+
 /** Commander's refusal, exactly: any other startup failure says nothing about the flag. */
 const UNKNOWN_FLAG_DIAGNOSTIC = "unknown option '--thinking-display'"
 
@@ -82,11 +87,12 @@ export function createClaudeThinkingDisplaySupport(
     now: () => performance.now()
   }
 ): ClaudeThinkingDisplaySupport {
-  const known = new Map<string, boolean>()
+  /** `expiresAt` only on an answer that was no answer: a version or a refusal is final. */
+  const known = new Map<string, { supported: boolean; expiresAt?: number }>()
   const probing = new Map<string, { settled: Promise<void>; startedAt: number }>()
-  const remember = (key: string, supported: boolean): void => {
+  const remember = (key: string, supported: boolean, expiresAt?: number): void => {
     known.delete(key)
-    known.set(key, supported)
+    known.set(key, { supported, ...(expiresAt === undefined ? {} : { expiresAt }) })
     for (const stale of known.keys()) {
       if (known.size <= MAX_REMEMBERED) {
         break
@@ -94,23 +100,37 @@ export function createClaudeThinkingDisplaySupport(
       known.delete(stale)
     }
   }
-  // Every outcome is kept for the binary's life: one that hung, failed or printed no version
-  // would otherwise cost every launch a spawn and the whole wait. A refusal seen meanwhile wins.
-  const settle = (key: string, supported: boolean): void => {
+  // A version is kept for the binary's life. A probe that gave none is kept only for a while, so
+  // a hung CLI costs one wait per stretch and a boot-time failure heals. A refusal seen meanwhile
+  // wins over either.
+  const settle = (key: string, supported: boolean, expiresAt?: number): void => {
     if (!known.has(key)) {
-      remember(key, supported)
+      remember(key, supported, expiresAt)
     }
+  }
+  const settleWithoutVersion = (key: string): void =>
+    settle(key, false, deps.now() + FAILED_PROBE_RETRY_AFTER_MS)
+  const lookup = (key: string): boolean | undefined => {
+    const entry = known.get(key)
+    if (entry?.expiresAt !== undefined && entry.expiresAt <= deps.now()) {
+      known.delete(key)
+      return undefined
+    }
+    if (entry) {
+      // Read as used: the bound drops the binaries launched least recently.
+      remember(key, entry.supported, entry.expiresAt)
+    }
+    return entry?.supported
   }
   const probe = (key: string, launch: ClaudeThinkingDisplayLaunch) => {
     const settled = deps
       .probe(launch.command, { cwd: launch.cwd, env: launch.env, timeoutMs: PROBE_KILL_AFTER_MS })
       .then(
         (version) =>
-          settle(
-            key,
-            version !== null && claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION)
-          ),
-        () => settle(key, false)
+          version === null
+            ? settleWithoutVersion(key)
+            : settle(key, claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION)),
+        () => settleWithoutVersion(key)
       )
       .finally(() => probing.delete(key))
     const started = { settled, startedAt: deps.now() }
@@ -126,10 +146,8 @@ export function createClaudeThinkingDisplaySupport(
       if (key === undefined || key === null) {
         return {}
       }
-      const supported = known.get(key)
+      const supported = lookup(key)
       if (supported !== undefined) {
-        // Read as used: the bound drops the binaries launched least recently.
-        remember(key, supported)
         return supported ? SUMMARIZED : {}
       }
       const running = probing.get(key) ?? probe(key, launch)
@@ -138,7 +156,7 @@ export function createClaudeThinkingDisplaySupport(
         running.settled,
         Math.min(running.startedAt + deps.budgetMs, deadline) - deps.now()
       )
-      return known.get(key) === true ? SUMMARIZED : {}
+      return known.get(key)?.supported === true ? SUMMARIZED : {}
     },
     observeExit: (launch, error) => {
       if (!error.message.includes(UNKNOWN_FLAG_DIAGNOSTIC)) {

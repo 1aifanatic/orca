@@ -17,13 +17,15 @@ function supportWith(
   keyOf = async (command: string, cwd: string): Promise<string | null> => `${command}\n${cwd}`
 ) {
   const calls = vi.fn(probe)
+  // Real time plus whatever a test skips ahead.
+  let skippedMs = 0
   const support = createClaudeThinkingDisplaySupport({
     probe: calls,
     keyOf,
     budgetMs,
-    now: () => performance.now()
+    now: () => performance.now() + skippedMs
   })
-  return { support, calls }
+  return { support, calls, skip: (ms: number) => (skippedMs += ms) }
 }
 
 /** A probe the test answers by hand. */
@@ -56,19 +58,26 @@ describe('the thinking-display flag a launch passes', () => {
     expect(calls).toHaveBeenCalledTimes(2)
   })
 
-  it('passes nothing to a CLI older than the flag, and remembers that answer', async () => {
-    const { support, calls } = supportWith(async () => '2.1.92')
+  it('passes nothing to a CLI older than the flag, and keeps that answer for good', async () => {
+    const { support, calls, skip } = supportWith(async () => '2.1.92')
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+    skip(60 * 60_000)
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
     expect(calls).toHaveBeenCalledTimes(1)
   })
 
-  it('remembers a probe that printed no version, failed or was killed, as no flag', async () => {
-    for (const probe of [async () => null, () => Promise.reject(new Error('spawn failed'))]) {
-      const { support, calls } = supportWith(probe)
+  it('asks again after a while when a probe printed no version, failed or was killed', async () => {
+    for (const probe of [async () => null, () => Promise.reject(new Error('EMFILE'))]) {
+      const { support, calls, skip } = supportWith(probe)
       await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+      // Within the window a hung or broken probe costs no further spawn or wait.
+      skip(9 * 60_000)
       await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
       expect(calls).toHaveBeenCalledTimes(1)
+      // A failure from a loaded boot heals.
+      skip(2 * 60_000)
+      await support.argsFor(LAUNCH)
+      expect(calls).toHaveBeenCalledTimes(2)
     }
   })
 
