@@ -900,6 +900,17 @@
         "symlink": "无法附加符号链接。",
         "permissionDenied": "没有访问权限。",
         "unsupported": "不支持的文件类型。"
+      },
+      "dropTempCopyFailure": {
+        "changed": "Orca 复制时文件发生了变化。请重新拖放。",
+        "outOfSpace": "磁盘空间不足，无法复制拖放的文件。",
+        "storageUnavailable": "Orca 无法为拖放的文件创建存储位置。",
+        "storageNotPrivate": "Orca 用于拖放文件的存储位置可被其他用户读取，因此未复制任何内容。",
+        "timedOut": "复制耗时过长。请重新拖放。",
+        "busy": "仍有太多拖放正在复制。请稍候再试。",
+        "tooLarge": "文件太大，无法复制，因此 Orca 无法将其交给代理。",
+        "storageFull": "Orca 用于拖放文件的存储空间已满，因此 Orca 无法将其交给代理。",
+        "generic": "请重新拖放。"
       }
     },
     "hooks": {
@@ -934,7 +945,10 @@
         "nativeDropPathsTooLarge": "拖放的路径列表过大。",
         "ownerChanged": "无法确认哪个主机拥有此工作区。请在它重新连接后重试。",
         "nativeDropUnresolvedPathsDescription": "首先将它们保存到磁盘，然后删除保存的文件。",
-        "nativeDropUnresolvedPaths": "Orca 无法读取已删除文件的路径。"
+        "nativeDropUnresolvedPaths": "Orca 无法读取已删除文件的路径。",
+        "nativeDropTempCopyFailed": "Orca 无法复制 {{count}} 个拖放的文件。",
+        "nativeDropTempCopyFailed_one": "Orca 无法复制 {{count}} 个拖放的文件。",
+        "nativeDropTempCopyFailed_other": "Orca 无法复制 {{count}} 个拖放的文件。"
       },
       "useIpcEvents": {
         "0e3cf53060": "未找到浏览器选项卡 {{value0}}",
@@ -7072,7 +7086,7 @@
             "shellEnvCopy": "Codex 和 Claude 聊天启动时会带上登录 shell 导出的所有变量，与终端一致。关闭后可选择传递哪些变量。",
             "shellEnvToggleLabel": "切换使用 shell 环境",
             "structuredTitle": "使用更新的结构化本机聊天",
-            "structuredCopy": "选择加入 Codex 和 Claude 的主机拥有的结构化聊天运行时。关闭会保留现有的终端支持的聊天路径。",
+            "structuredCopy": "将新的 Codex 和 Claude 代理作为结构化聊天打开。关闭时会在终端支持的聊天中打开。已有的聊天保持不变。",
             "structuredScope": "目前仅限本地会话。 WSL 和远程执行主机（包括 SSH）继续使用终端聊天，Windows 会回退到它，除非 Orca 可以读取进程启动时间。",
             "structuredToggleLabel": "切换更新的结构化本机聊天",
             "resumeTitle": "重启后自动恢复工作聊天",
@@ -17282,6 +17296,12 @@
   },
   "components": {
     "native-chat": {
+      "contextMenu": {
+        "copyOrcaSessionId": "复制 Orca 会话 ID",
+        "orcaSessionIdCopied": "已复制 Orca 会话 ID",
+        "orcaSessionIdCopyFailed": "无法复制 Orca 会话 ID",
+        "orcaSessionIdTooltip": "Orca 为此聊天分配的 ID，独立于智能体 CLI 自身的会话 ID。智能体通过 Orca 用它来相互指代。"
+      },
       "failureWords": {
         "theAgent": "智能体",
         "providerStartFailed": "{{agent}} 在完成启动前已停止。",
@@ -17339,7 +17359,8 @@
         "hostStopped": "{{agent}} 始终未完成启动，因此 Orca 已将其停止。",
         "providerRateLimited": "{{agent}} 已被限流，正在重试。",
         "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
-        "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。"
+        "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。",
+        "previousExitUnverifiable": "Orca 无法确认 {{agent}} 的上一个进程已结束。在 Orca 确认其已结束之前，消息会等待发送。"
       },
       "writeNotice": {
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
