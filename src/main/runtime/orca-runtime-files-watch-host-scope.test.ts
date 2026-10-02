@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import {
+  getSshFilesystemProviderMock,
   resolveAuthorizedPathMock,
   statMock,
   watchInWatcherProcessMock,
@@ -149,11 +150,10 @@ describe('RuntimeFileCommands', () => {
   it('scopes same-path runtime watcher teardown to its SSH execution host', async () => {
     const firstDispose = vi.fn()
     const secondDispose = vi.fn()
-    vi.mocked(getSshFilesystemProvider).mockImplementation(
-      (connectionId) =>
-        ({
-          watch: vi.fn(() => (connectionId === 'ssh-1' ? firstDispose : secondDispose))
-        }) as never
+    const firstProvider = { watch: vi.fn(() => firstDispose) }
+    const secondProvider = { watch: vi.fn(() => secondDispose) }
+    getSshFilesystemProviderMock.mockImplementation((connectionId) =>
+      connectionId === 'ssh-1' ? firstProvider : secondProvider
     )
     const first = createRuntimeFileCommands({ path: '/same/repo' })
     const second = createRuntimeFileCommands({ path: '/same/repo' })

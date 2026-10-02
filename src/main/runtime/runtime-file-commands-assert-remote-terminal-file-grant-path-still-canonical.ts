@@ -112,7 +112,8 @@ export class RuntimeFileCommandsWithAssertRemoteTerminalFileGrantPathStillCanoni
             callback,
             onTerminalError,
             signal,
-            initialUnwatch: close
+            initialUnwatch: close,
+            initialProvider: route.provider
           })
           return { unsubscribe: rearm.unsubscribe, rootPaths: [target.path] }
         }
