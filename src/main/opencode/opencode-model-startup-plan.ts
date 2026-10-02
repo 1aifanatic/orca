@@ -34,6 +34,9 @@ export async function prepareOpenCodeModelStartupInputs(options: StartupScope) {
     return { inputs }
   }
   if (
+    Object.entries(inputs.sessionOptions ?? {}).some(
+      ([key, value]) => key !== 'model' && value !== undefined
+    ) ||
     inputs.isRemote ||
     options.isWsl ||
     inputs.platform !== process.platform ||
