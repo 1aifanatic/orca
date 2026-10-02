@@ -192,15 +192,6 @@ export type JournalRowParse =
    *  compact this journal. */
   | { ok: false; unreadable: true }
 
-const ROW_KINDS = new Set([
-  'epoch',
-  'item',
-  'tombstone',
-  'submission',
-  'dispatch',
-  'lifecycle-batch'
-])
-
 export function serializeJournalRow(row: JournalRow): string {
   return JSON.stringify(row)
 }
@@ -244,7 +235,7 @@ export function parseJournalRow(line: string): JournalRowParse {
   }
   // A newer build's kind is placed by the envelope every row keeps; one without it is damage.
   const { kind } = upcast
-  const unknownKind = typeof kind === 'string' && kind !== '' && !ROW_KINDS.has(kind)
+  const unknownKind = typeof kind === 'string' && kind !== '' && !KNOWN_ROW_KINDS.has(kind)
   return { ok: false, unreadable: unknownKind && hasJournalRowEnvelope(upcast) }
 }
 
@@ -332,58 +323,45 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  schema — their nested shapes are dereferenced unguarded all the way to the
  *  rendered surface, so a JSON-valid corruption must fail here, not there. */
 function isJournalRow(record: Record<string, unknown>): record is JournalRow {
-  if (typeof record.kind !== 'string' || !ROW_KINDS.has(record.kind)) {
-    return false
-  }
-  if (!hasJournalRowEnvelope(record)) {
-    return false
-  }
-  if (record.kind === 'item') {
-    return (
-      typeof record.itemId === 'string' &&
-      Number.isInteger(record.revision) &&
-      isAdmissibleAgentJournalItemBody(record.body)
-    )
-  }
-  if (record.kind === 'tombstone') {
-    return typeof record.itemId === 'string' && Number.isInteger(record.revision)
-  }
-  if (record.kind === 'submission') {
-    return (
-      typeof record.clientMessageId === 'string' &&
-      record.clientMessageId.length > 0 &&
-      typeof record.payloadFingerprint === 'string' &&
-      isPlainObject(record.providerHandle) &&
-      isAdmissibleAgentJournalMessageBody(record.body)
-    )
-  }
-  if (record.kind === 'dispatch') {
-    return (
-      typeof record.clientMessageId === 'string' &&
-      record.clientMessageId.length > 0 &&
-      typeof record.state === 'string' &&
-      record.state.length > 0 &&
-      (record.providerItemId === null || typeof record.providerItemId === 'string') &&
-      (record.reason === null || typeof record.reason === 'string')
-    )
-  }
-  if (record.kind === 'lifecycle-batch') {
-    return (
-      typeof record.settlementId === 'string' &&
-      record.settlementId.length > 0 &&
-      Array.isArray(record.mutations) &&
-      record.mutations.length > 0 &&
-      record.mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
-      Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES &&
-      record.mutations.every(isLifecycleMutation)
-    )
-  }
-  return (
-    record.kind === 'epoch' &&
-    typeof record.reason === 'string' &&
-    isPlainObject(record.providerHandle)
-  )
+  const fieldCheck = typeof record.kind === 'string' ? KNOWN_ROW_KINDS.get(record.kind) : undefined
+  return fieldCheck !== undefined && hasJournalRowEnvelope(record) && fieldCheck(record)
 }
+
+/** Each kind's own fields, keyed by every kind the union holds: a kind without a check here fails
+ *  to compile, never reads as a newer build's kind. */
+const ROW_FIELD_CHECK_BY_KIND: Record<
+  JournalRow['kind'],
+  (record: Record<string, unknown>) => boolean
+> = {
+  epoch: (record) => typeof record.reason === 'string' && isPlainObject(record.providerHandle),
+  item: (record) =>
+    typeof record.itemId === 'string' &&
+    Number.isInteger(record.revision) &&
+    isAdmissibleAgentJournalItemBody(record.body),
+  tombstone: (record) => typeof record.itemId === 'string' && Number.isInteger(record.revision),
+  submission: (record) =>
+    typeof record.clientMessageId === 'string' &&
+    record.clientMessageId.length > 0 &&
+    typeof record.payloadFingerprint === 'string' &&
+    isPlainObject(record.providerHandle) &&
+    isAdmissibleAgentJournalMessageBody(record.body),
+  dispatch: (record) =>
+    typeof record.clientMessageId === 'string' &&
+    record.clientMessageId.length > 0 &&
+    typeof record.state === 'string' &&
+    record.state.length > 0 &&
+    (record.providerItemId === null || typeof record.providerItemId === 'string') &&
+    (record.reason === null || typeof record.reason === 'string'),
+  'lifecycle-batch': (record) =>
+    typeof record.settlementId === 'string' &&
+    record.settlementId.length > 0 &&
+    Array.isArray(record.mutations) &&
+    record.mutations.length > 0 &&
+    record.mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
+    Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES &&
+    record.mutations.every(isLifecycleMutation)
+}
+const KNOWN_ROW_KINDS = new Map(Object.entries(ROW_FIELD_CHECK_BY_KIND))
 
 /** The fields every row keeps whatever its kind: its epoch, its place in it, its writer, its time. */
 function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {

@@ -19,7 +19,7 @@ import {
   liveTestJournalRows,
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
-import { parseJournalRow } from './journal-row-schema'
+import { parseJournalRow, type JournalRow } from './journal-row-schema'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-newer-kind',
@@ -100,6 +100,56 @@ async function journalWithOneItem(): Promise<string> {
   await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
   return first.epoch
 }
+
+/** One valid row of every kind this build writes; a kind added to the union without one here
+ *  fails to compile. */
+function rowOfEveryKind(): { [Kind in JournalRow['kind']]: Extract<JournalRow, { kind: Kind }> } {
+  const base = { v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION, epoch: 'epoch-1', fence: 1, ts: 1 }
+  const providerHandle = IDENTITY.providerHandle
+  return {
+    epoch: { ...base, seq: 1, kind: 'epoch', reason: 'session_created', providerHandle },
+    item: {
+      ...base,
+      seq: 2,
+      kind: 'item',
+      itemId: 'i',
+      revision: 1,
+      body: { kind: 'status', text: 'x' }
+    },
+    tombstone: { ...base, seq: 3, kind: 'tombstone', itemId: 'i', revision: 2 },
+    submission: {
+      ...base,
+      seq: 4,
+      kind: 'submission',
+      clientMessageId: 'c',
+      payloadFingerprint: 'f',
+      providerHandle,
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hi' }] }
+    },
+    dispatch: {
+      ...base,
+      seq: 5,
+      kind: 'dispatch',
+      clientMessageId: 'c',
+      state: 'accepted',
+      providerItemId: null,
+      reason: null
+    },
+    'lifecycle-batch': {
+      ...base,
+      seq: 6,
+      kind: 'lifecycle-batch',
+      settlementId: 's',
+      mutations: [{ kind: 'tombstone', itemId: 'i', revision: 3 }]
+    }
+  }
+}
+
+it("reads a row of every kind this build writes, never as a newer build's kind", () => {
+  for (const row of Object.values(rowOfEveryKind())) {
+    expect(parseJournalRow(JSON.stringify(row))).toEqual({ ok: true, row })
+  }
+})
 
 describe('parsing a row of a kind this build does not know', () => {
   it('reads one in the envelope every row keeps as unreadable', () => {
