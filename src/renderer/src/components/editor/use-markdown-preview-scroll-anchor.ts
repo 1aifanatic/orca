@@ -35,7 +35,7 @@ export function useMarkdownPreviewScrollAnchor({
     rows: blocks,
     getRowKey: blockKey,
     getItemElementKey: elementKey,
-    itemElementSelector: '[data-preview-block-index]',
+    itemElementSelector: '[data-preview-block-index][data-preview-block-loaded]',
     scrollElementRef: rootRef,
     virtualizer,
     totalSize: virtualizer.getTotalSize(),

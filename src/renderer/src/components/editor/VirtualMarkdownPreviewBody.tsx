@@ -261,7 +261,8 @@ export function VirtualMarkdownPreviewBody({
             key={row.key}
             data-index={row.index}
             data-preview-block-index={row.index}
-            ref={virtualizer.measureElement}
+            data-preview-block-loaded={block ? true : undefined}
+            ref={block ? virtualizer.measureElement : undefined}
             className="absolute left-0 top-0 w-full flow-root"
             style={{
               transform: `translateY(${row.start - virtualizer.options.scrollMargin}px)`,
