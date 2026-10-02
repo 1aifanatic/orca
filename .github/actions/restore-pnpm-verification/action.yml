@@ -5,9 +5,9 @@ inputs:
   enabled:
     description: Restore a verification record on supported runners.
     default: 'true'
-  container-cache-directory:
-    description: Linux container cache mount; reads the pinned pnpm version from package.json without installing host pnpm.
-    default: ''
+  container-toolchain:
+    description: Use the manifest's pnpm version and default Linux cache path without installing host pnpm.
+    default: 'false'
 
 outputs:
   path:
@@ -33,11 +33,12 @@ runs:
       shell: bash
       env:
         POLICY_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc') }}
-        CONTAINER_CACHE_DIRECTORY: ${{ inputs.container-cache-directory }}
+        CONTAINER_TOOLCHAIN: ${{ inputs.container-toolchain }}
       run: |
-        if [ -n "$CONTAINER_CACHE_DIRECTORY" ]; then
+        if [ "$CONTAINER_TOOLCHAIN" = true ]; then
           test "$RUNNER_OS" = Linux
-          cache_path="$CONTAINER_CACHE_DIRECTORY"
+          # Cache versions include paths, so match the native Linux producer.
+          cache_path="$(node -p "require('node:path').join(process.env.XDG_CACHE_HOME || require('node:path').join(require('node:os').homedir(), '.cache'), 'pnpm')")"
           pnpm_version="$(node -p "require('./package.json').packageManager.match(/^pnpm@([^+]+)/)[1]")"
           mkdir -p "$cache_path"
         else

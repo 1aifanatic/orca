@@ -28,7 +28,8 @@ function resolveRecord({
   try {
     const output = join(root, 'outputs')
     const calls = join(root, 'pnpm-calls')
-    const cachePath = join(root, 'cache with spaces')
+    const cacheRoot = join(root, 'cache with spaces')
+    const cachePath = join(cacheRoot, 'pnpm')
     writeFileSync(join(root, 'package.json'), JSON.stringify({ packageManager }))
     const execution = runProcessSync({
       program: 'bash',
@@ -58,7 +59,8 @@ function resolveRecord({
         GITHUB_OUTPUT: output,
         TEST_CALLS: calls,
         TEST_CACHE_PATH: cachePath,
-        CONTAINER_CACHE_DIRECTORY: container ? cachePath : ''
+        CONTAINER_TOOLCHAIN: String(container),
+        XDG_CACHE_HOME: cacheRoot
       }
     })
     return {
@@ -80,14 +82,16 @@ describe('pnpm-owned verification record', () => {
   })
 
   it.skipIf(process.platform === 'win32')(
-    'shares the exact key with containers without invoking host pnpm',
+    'shares the exact key and archive path with containers without invoking host pnpm',
     () => {
       const host = resolveRecord()
       const container = resolveRecord({ container: true })
       expect(host.code).toBe(0)
       expect(container.code).toBe(0)
       expect(container.output).toBe(host.output)
-      expect(container.output).toContain('path=<root>/cache with spaces/lockfile-verified.jsonl')
+      expect(container.output).toContain(
+        'path=<root>/cache with spaces/pnpm/lockfile-verified.jsonl'
+      )
       expect(container.output).toContain(
         'key=pnpm-verification-v1-Linux-ARM64-12.8.1-policy-digest'
       )
