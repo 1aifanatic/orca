@@ -10,8 +10,8 @@
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
 // journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
 // failed start's, the fact its loaded row states, says only that it was not sent: the row already
-// says why. Until the journal's submissions say so, the outbox draws it from its smaller copy, with
-// a Dismiss in case they never do.
+// says why. Until its row loads, the outbox draws it from its smaller copy, which leaves on the batch
+// or page that loads the row.
 
 import {
   readAgentSessionFailureFact,
@@ -149,8 +149,6 @@ export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   agentName: string,
   retry: (clientMessageId: string) => void,
-  /** Clears a message the host recorded and rejected from the outbox, which draws it until then. */
-  dismiss: (clientMessageId: string) => void,
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
@@ -178,41 +176,27 @@ export function structuredAgentSessionDeliveryNotices(
       entry.clientMessageId === held
     ) {
       // Its own Retry is the step, so the words leave out sending again. One the host recorded is
-      // the host's: sending it again is a new message, so it has no Retry, only a Dismiss.
-      const recorded = structuredAgentSessionEntryRejectedByHost(entry)
-      const retryControl = (stalledFrom === -1 || index <= stalledFrom) && !recorded
+      // the host's: sending it again is a new message, so it has no Retry.
+      const retryControl =
+        (stalledFrom === -1 || index <= stalledFrom) &&
+        !structuredAgentSessionEntryRejectedByHost(entry)
       const text = deliveryNoticeText(entry, { agentName, retryControl }, failedHere)
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
-        recorded
-          ? { text, onDismiss: () => dismiss(entry.clientMessageId) }
-          : retryControl
-            ? { text, onRetry: () => retry(entry.clientMessageId) }
-            : { text }
+        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
       )
     }
   }
-  // After the outbox's, in the host's words. The outbox copy draws it while the row is not loaded
-  // (an older host may leave that row outside the window), so its Dismiss stays until it leaves.
+  // After the outbox's: in the host's words, whether its row or the outbox's copy draws it.
   const shown = structuredAgentSessionRejectedShownInPlace(
     submissions,
     queuedMessageIds,
     commandItemIds
   )
-  const outboxDraws = new Set(
-    outbox.filter(structuredAgentSessionEntryRejectedByHost).map((entry) => entry.clientMessageId)
-  )
   for (const submission of rejected.values()) {
-    const { clientMessageId } = submission
-    const id = agentJournalSubmissionKey(clientMessageId)
+    const id = agentJournalSubmissionKey(submission.clientMessageId)
     if (shown.has(id)) {
-      const text = hostRejectionNoticeText(submission, agentName, startFailures)
-      notices.set(
-        id,
-        outboxDraws.has(clientMessageId)
-          ? { text, onDismiss: () => dismiss(clientMessageId) }
-          : { text }
-      )
+      notices.set(id, { text: hostRejectionNoticeText(submission, agentName, startFailures) })
     }
   }
   return notices

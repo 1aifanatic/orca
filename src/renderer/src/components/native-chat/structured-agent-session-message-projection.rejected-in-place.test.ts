@@ -171,7 +171,6 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       [],
       'Claude',
       () => {},
-      () => {},
       [SEED, restartRejected('lost', 'fix the parser', 3)],
       [],
       new Set()
@@ -193,7 +192,6 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const notices = structuredAgentSessionDeliveryNotices(
       [],
       'Claude',
-      () => {},
       () => {},
       [failedStart],
       [{ kind: 'notSignedIn' }],
@@ -292,7 +290,6 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
         [],
         'Claude',
         () => {},
-        () => {},
         submissions,
         [],
         new Set(),
@@ -310,15 +307,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
     ])
     expect(
-      structuredAgentSessionDeliveryNotices(
-        [],
-        'Claude',
-        () => {},
-        () => {},
-        submissions,
-        [],
-        new Set()
-      ).size
+      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
     ).toBe(0)
   })
 })
@@ -345,7 +334,6 @@ describe("one row per rejected message, the host's once it records the rejection
     const notice = structuredAgentSessionDeliveryNotices(
       [held],
       'Claude',
-      () => {},
       () => {},
       [SEED],
       [],
@@ -374,15 +362,14 @@ describe("one row per rejected message, the host's once it records the rejection
         [entry],
         'Claude',
         () => {},
-        () => {},
         [SEED, rejected],
         [],
         new Set()
       )
-      // In the host's words, never a Retry; a recorded copy keeps its Dismiss until it leaves.
-      expect([...notices.keys()]).toEqual([hostRow.id])
-      expect(notices.get(hostRow.id)?.text).toBe('Orca restarted before this message was sent.')
-      expect(notices.get(hostRow.id)?.onRetry).toBeUndefined()
+      // In the host's words, with no control.
+      expect([...notices]).toEqual([
+        [hostRow.id, { text: 'Orca restarted before this message was sent.' }]
+      ])
     }
   })
 
@@ -434,15 +421,7 @@ describe('a rejected message the queue holds', () => {
       seedRow
     ])
     expect(
-      structuredAgentSessionDeliveryNotices(
-        [],
-        'Claude',
-        () => {},
-        () => {},
-        submissions,
-        [],
-        new Set()
-      ).size
+      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
     ).toBe(0)
   })
 
@@ -455,16 +434,9 @@ describe('a rejected message the queue holds', () => {
       seedRow
     ])
     expect(
-      structuredAgentSessionDeliveryNotices(
-        [],
-        'Claude',
-        () => {},
-        () => {},
-        submissions,
-        [],
-        new Set(),
-        ['kept']
-      ).size
+      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set(), [
+        'kept'
+      ]).size
     ).toBe(0)
     expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, []))).toEqual([
       seedRow,

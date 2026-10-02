@@ -1,6 +1,6 @@
 // An older host leaves a rejected message where it was sent. When that is older than the loaded
 // window, the chat holds its rejected submission but not its row: the outbox copy keeps drawing it,
-// with a Dismiss, until the page holding the row loads, and then the host's row draws it instead.
+// with no control, until the page holding the row loads, and then the host's row draws it instead.
 
 import { expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
@@ -134,13 +134,11 @@ it("keeps the outbox copy of a rejected message whose row is outside the window,
     kept,
     'Claude',
     () => {},
-    () => {},
     state.submissions,
     [],
     new Set()
   ).get(MESSAGE_ID)
-  expect(notice?.onDismiss).toBeDefined()
-  expect(notice?.onRetry).toBeUndefined()
+  expect(notice).toEqual({ text: 'Orca restarted before this message was sent.' })
 
   // Paging back loads the row: the outbox lets go, and the host's row is the one drawn.
   state = reduceStructuredAgentSession(state, {

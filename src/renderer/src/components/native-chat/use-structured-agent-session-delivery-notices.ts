@@ -20,20 +20,16 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   failedHere: ReadonlySet<string>
   queuedMessageIds: readonly string[]
   retry: (clientMessageId: string) => void
-  dismiss: (clientMessageId: string) => void
   agentName: string
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const { agentName, failedHere, outbox, queuedMessageIds, submissions } = args
-  // Read at click time, so the notices stay put while the outbox's actions are rebuilt each render.
-  const actionsRef = useRef({ retry: args.retry, dismiss: args.dismiss })
+  // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
+  const retryRef = useRef(args.retry)
   useEffect(() => {
-    actionsRef.current = { retry: args.retry, dismiss: args.dismiss }
+    retryRef.current = args.retry
   })
   const retry = useCallback((clientMessageId: string) => {
-    actionsRef.current.retry(clientMessageId)
-  }, [])
-  const dismiss = useCallback((clientMessageId: string) => {
-    actionsRef.current.dismiss(clientMessageId)
+    retryRef.current(clientMessageId)
   }, [])
   // Only a message shown as not sent reads the journal's rows (a withdrawn one draws nothing), so
   // in a chat without one a new batch of them re-renders no row.
@@ -51,7 +47,6 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
         outbox,
         agentName,
         retry,
-        dismiss,
         rejectionRows,
         startFailures,
         failedHere,
@@ -62,7 +57,6 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
       outbox,
       agentName,
       retry,
-      dismiss,
       rejectionRows,
       startFailures,
       failedHere,

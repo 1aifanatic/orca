@@ -15,9 +15,8 @@ import { structuredAgentSessionPayloadFingerprint } from './structured-agent-ses
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
 /** `rejected`: settled as not delivered. The drain never sends it again and nothing queues behind
- *  it. One the host refused unrecorded waits for the user's Retry. One it recorded leaves once the
- *  row that draws it is loaded (`structured-agent-session-outbox-reconcile`); until then the user
- *  may Dismiss it, and it owes no delivery. */
+ *  it. One the host refused unrecorded waits for the user's Retry. One it recorded owes no delivery
+ *  and leaves on the batch or page that loads its row (`structured-agent-session-outbox-reconcile`). */
 export type StructuredAgentSessionOutboxState =
   | 'queued'
   | 'dispatching'

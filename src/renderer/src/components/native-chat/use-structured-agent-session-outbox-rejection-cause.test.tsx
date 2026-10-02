@@ -294,9 +294,9 @@ describe('a send the host rejected because the agent never started', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
-  // One stored host fact, one rendering: a message the host recorded and rejected has no Retry on
-  // any mount, however this mount learned of it, and a Dismiss that clears it from storage.
-  it('gives a message the host rejected no Retry but a Dismiss, on every mount', async () => {
+  // One stored host fact, one rendering: a message the host recorded and rejected, whose record this
+  // chat does not hold, keeps showing why on every mount, with no control, and is never sent again.
+  it('keeps a message the host rejected, with no control, on every mount, and never resends it', async () => {
     writeOutbox('session-1', [
       {
         ...rejectedBeforeRestart(),
@@ -316,7 +316,6 @@ describe('a send the host rejected because the agent never started', () => {
       structuredAgentSessionDeliveryNotices(
         outbox,
         'Claude',
-        () => {},
         () => {},
         NO_SUBMISSIONS,
         [],
@@ -343,13 +342,13 @@ describe('a send the host rejected because the agent never started', () => {
     const onSecond = notice(second.result.current.outbox, second.result.current.failedHere)
 
     for (const shown of [onFirst, onSecond]) {
-      expect(shown?.text).toBe(REASON)
-      expect(shown?.onRetry).toBeUndefined()
-      expect(shown?.onDismiss).toBeDefined()
+      expect(shown).toEqual({ text: REASON })
     }
-    act(() => second.result.current.dismiss('rejected-before-restart'))
-    expect(second.result.current.outbox).toEqual([])
-    expect(readOutbox('session-1')).toEqual([])
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1500)))
+    // Only the first mount's question about the send it left in doubt; nothing resends it.
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(second.result.current.outbox.map((entry) => entry.state)).toEqual(['rejected'])
+    expect(readOutbox('session-1')).toHaveLength(1)
     expect(hasUndeliveredStructuredAgentSessionOutbox('session-1')).toBe(false)
   }, 10000)
 
@@ -388,7 +387,7 @@ describe('a send the host rejected because the agent never started', () => {
   })
 
   // An older host leaves a rejected message where it was sent, which may be outside the loaded
-  // window: the entry draws it, with a Dismiss, until the row that draws it loads.
+  // window: the entry draws it, with no control, until the row that draws it loads.
   it('keeps a rejected message whose row is not loaded, then lets it go once the row loads', async () => {
     writeOutbox('session-1', [
       { ...rejectedBeforeRestart(), state: 'dispatching', lastFailure: undefined, lastAttemptAt: 5 }

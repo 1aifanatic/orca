@@ -48,7 +48,6 @@ function texts(
     outbox,
     'Claude',
     () => {},
-    () => {},
     submissions,
     startFailures,
     new Set(outbox.map((candidate) => candidate.clientMessageId))
@@ -77,7 +76,6 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
-      () => {},
       [],
       [],
       new Set(['first', 'second'])
@@ -97,10 +95,9 @@ describe('the notice on each message that did not go through', () => {
     expect(notices.get(agentJournalSubmissionKey('second'))?.onRetry).toBeUndefined()
   })
 
-  // However this chat learned of it: the host recorded it, so it has a Dismiss and never a Retry.
-  it('gives a message the host rejected before this chat opened a Dismiss, not a Retry', () => {
+  // However this chat learned of it: the host recorded it, so it has no control at all.
+  it('gives a message the host rejected before this chat opened no Retry and no Dismiss', () => {
     const retry = vi.fn()
-    const dismiss = vi.fn()
     const notice = structuredAgentSessionDeliveryNotices(
       [
         entry('earlier', {
@@ -110,14 +107,11 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
-      dismiss,
       [],
       [],
       NOT_FAILED_HERE
     ).get(agentJournalSubmissionKey('earlier'))
-    expect(notice?.onRetry).toBeUndefined()
-    notice?.onDismiss?.()
-    expect(dismiss).toHaveBeenCalledExactlyOnceWith('earlier')
+    expect(notice).toEqual({ text: 'Claude messages support at most 20 images' })
     expect(retry).not.toHaveBeenCalled()
   })
 
@@ -131,7 +125,6 @@ describe('the notice on each message that did not go through', () => {
         })
       ],
       'Claude',
-      () => {},
       () => {},
       [],
       [],
@@ -229,7 +222,6 @@ describe('the notice on each message that did not go through', () => {
         outbox,
         'Claude',
         retry,
-        () => {},
         [],
         [],
         NOT_FAILED_HERE
@@ -261,7 +253,6 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
-      () => {},
       [],
       [],
       NOT_FAILED_HERE
@@ -449,7 +440,6 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       vi.fn(),
-      () => {},
       [],
       [],
       NOT_FAILED_HERE
@@ -473,15 +463,9 @@ describe('the notice on each message that did not go through', () => {
       }
     })
     const words = (failedHere: ReadonlySet<string>) =>
-      structuredAgentSessionDeliveryNotices(
-        [held],
-        'Claude',
-        vi.fn(),
-        () => {},
-        [],
-        [],
-        failedHere
-      ).get(agentJournalSubmissionKey('held'))
+      structuredAgentSessionDeliveryNotices([held], 'Claude', vi.fn(), [], [], failedHere).get(
+        agentJournalSubmissionKey('held')
+      )
     expect(words(NOT_FAILED_HERE)).toMatchObject({ text: 'Your message was not sent.' })
     expect(words(NOT_FAILED_HERE)?.onRetry).toBeDefined()
     expect(words(new Set(['held']))?.text).toBe(

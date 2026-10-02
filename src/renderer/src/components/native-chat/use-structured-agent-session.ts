@@ -226,7 +226,6 @@ export function useStructuredAgentSession(args: {
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       outboxController.send(...input),
     retry: outboxController.retry,
-    dismiss: outboxController.dismiss,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,
