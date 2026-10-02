@@ -98,6 +98,7 @@ export abstract class AgentHookServerState {
   protected statusDropListeners = new Set<StatusDropListener>()
   protected onAgentPresenceReleased: AgentPresenceReleaseListener | null = null
   protected onAgentOwner: AgentOwnerListener | null = null
+  protected agentOwnerChangeListeners = new Set<StatusRowMutationListener>()
   // Why memory-only: the execution host re-derives owners from its own foreground reads
   // (reattach, command start); a persisted copy could only describe a process it cannot check.
   protected agentOwnerByPaneKey = new Map<string, AgentPaneOwner>()

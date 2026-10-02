@@ -68,6 +68,16 @@ function wslDistroForWorktree(worktreeId: string | undefined): string | null {
   return worktreePath ? (parseWslUncPath(worktreePath)?.distro ?? null) : null
 }
 
+function ownerIdentity(owner: AgentPaneOwner | undefined): AgentHookStatusRowIdentity | null {
+  return owner
+    ? {
+        paneKey: owner.paneKey,
+        ...(owner.worktreeId ? { worktreeId: owner.worktreeId } : {}),
+        ...(owner.terminalHandle ? { terminalHandle: owner.terminalHandle } : {})
+      }
+    : null
+}
+
 function remoteOwnerRecord(
   scope: Pick<AgentHookEventPayload, 'paneKey' | 'connectionId' | 'worktreeId' | 'tabId'>,
   presence: AgentProcessPresence,
@@ -145,6 +155,14 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
     return [...this.agentOwnerByPaneKey.values()]
   }
 
+  /** Multi-subscriber tap on owner changes, shaped like a row mutation so republishers reuse it. */
+  subscribeAgentOwnerChanges(listener: StatusRowMutationListener): () => void {
+    this.agentOwnerChangeListeners.add(listener)
+    return () => {
+      this.agentOwnerChangeListeners.delete(listener)
+    }
+  }
+
   /** Publishes every owner change; replays the current owners to a new listener. */
   setAgentOwnerListener(listener: AgentOwnerListener | null): void {
     this.onAgentOwner = listener
@@ -185,6 +203,14 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
         this.noteLiveAgentOwner()
       }
       this.onAgentOwner?.(next)
+    }
+    const change = { before: ownerIdentity(before), after: ownerIdentity(next) }
+    for (const listener of this.agentOwnerChangeListeners) {
+      try {
+        listener(change)
+      } catch (error) {
+        console.error('[agent-hooks] owner change listener threw', error)
+      }
     }
     this.notifyStatusChangeListeners()
   }
