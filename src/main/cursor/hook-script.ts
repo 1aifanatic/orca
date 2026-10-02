@@ -1,8 +1,10 @@
 import {
   buildWindowsAgentHookPostCommand,
+  buildWindowsHookPowerShellCommand,
   wrapPosixHookCommand,
-  wrapWindowsHookCommand
+  wrapWindowsPowerShellEncodedCommand
 } from '../agent-hooks/installer-utils'
+import { wrapWindowsDirectCmdHookCommand } from '../agent-hooks/windows-direct-cmd-hook-command'
 import {
   buildPosixHookPayloadCapture,
   buildPosixHookSpoolLines,
@@ -13,7 +15,7 @@ import {
   buildPosixGrokReplayGuardLines,
   buildWindowsGrokReplayGuardLines
 } from '../agent-hooks/grok-replay-guard'
-import { getCursorHookResponse, type CursorEvent } from './hook-events'
+import { CURSOR_EVENTS, getCursorHookResponse, type CursorEvent } from './hook-events'
 
 const CURSOR_HOOK_RESPONSE_ENV = 'ORCA_CURSOR_HOOK_RESPONSE'
 
@@ -27,14 +29,34 @@ export function getPosixManagedCommand(scriptPath: string, eventName: CursorEven
 }
 
 export function getManagedCommand(scriptPath: string, eventName: CursorEvent): string {
+  if (process.platform !== 'win32') {
+    return getPosixManagedCommand(scriptPath, eventName)
+  }
+  // PowerShell 5.1 can recode hook stdin through the ANSI code page (#24380).
+  const directScript = wrapWindowsDirectCmdHookCommand(scriptPath)
+  if (directScript) {
+    return `${directScript} ${eventName}`
+  }
   const response = getCursorHookResponse(eventName)
-  return process.platform === 'win32'
-    ? wrapWindowsHookCommand(
-        scriptPath,
-        { [CURSOR_HOOK_RESPONSE_ENV]: response },
-        { fallbackStdout: response }
-      )
-    : getPosixManagedCommand(scriptPath, eventName)
+  const command = buildWindowsHookPowerShellCommand(
+    scriptPath,
+    { [CURSOR_HOOK_RESPONSE_ENV]: response },
+    { fallbackStdout: response }
+  )
+  return wrapWindowsPowerShellEncodedCommand(
+    `[Console]::InputEncoding = New-Object System.Text.UTF8Encoding; $OutputEncoding = [Console]::InputEncoding; ${command}`
+  )
+}
+
+// The event argument keeps permission replies intact without a PowerShell hop.
+function buildWindowsCursorResponseLines(): string[] {
+  const lines = CURSOR_EVENTS.map((eventName, index) => {
+    const keyword = index === 0 ? 'if' : ') else if'
+    return `${keyword} /I "%~1"=="${eventName}" (echo ${getCursorHookResponse(eventName)}`
+  })
+  lines.push(`) else if defined ${CURSOR_HOOK_RESPONSE_ENV} (echo %${CURSOR_HOOK_RESPONSE_ENV}%`)
+  lines.push(') else (echo {})')
+  return lines
 }
 
 export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
@@ -43,7 +65,8 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
       '@echo off',
       'setlocal',
       // Why: Cursor permission hooks fail closed on empty/invalid stdout (#15462).
-      `if defined ${CURSOR_HOOK_RESPONSE_ENV} (echo %${CURSOR_HOOK_RESPONSE_ENV}%) else (echo {})`,
+      // %~1 is the direct-launch event; the env var is the PowerShell fallback for unsafe paths.
+      ...buildWindowsCursorResponseLines(),
       // Why: source current endpoint coordinates for PTYs surviving an Orca restart.
       'if defined ORCA_AGENT_HOOK_ENDPOINT if exist "%ORCA_AGENT_HOOK_ENDPOINT%" call "%ORCA_AGENT_HOOK_ENDPOINT%" 2>nul',
       ...buildWindowsHookEnvironmentGuardLines(),
