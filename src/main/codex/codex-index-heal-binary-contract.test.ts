@@ -1,14 +1,16 @@
 import { execFile } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { zstdCompressSync } from 'node:zlib'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
+import { _internals as readerInternals } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 import SyncDatabase from '../sqlite/sync-database'
 import { runCodexAppServerSession, type CodexAppServerRpc } from './codex-app-server-session'
-import { findNewestCodexStateDbPath, readCodexStateDbBackfillStatus } from './codex-state-db'
+import { readCodexStateDbBackfillStatus } from './codex-state-db'
 
 // Why this file exists: every other index-heal test drives a stub app-server and
 // asserts "healed" as "the `thread/read` call did not error". That pins Orca's half
@@ -57,7 +59,12 @@ describeCodexContract(
   () => {
     const disposableHomes: string[] = []
 
+    afterAll(() => {
+      readerInternals.setWorkerFactory(null)
+    })
+
     beforeAll(async () => {
+      readerInternals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
       // Why assert the version: the whole point of a real-binary check is that the
       // binary drifts. A job that quietly ran some other Codex would report a
       // contract this repo never verified.
@@ -86,7 +93,7 @@ describeCodexContract(
       // An app-server session over an empty sessions tree is what stamps the backfill complete.
       await runAppServerSession(home, async () => undefined)
       // Why: the account bridge links history only after this no-request session stamps it.
-      expect(readCodexStateDbBackfillStatus(home).kind).toBe('complete')
+      expect((await readCodexStateDbBackfillStatus(home)).kind).toBe('complete')
       expect(readThreadRows(home)).toEqual([])
       return home
     }
@@ -151,10 +158,15 @@ describeCodexContract(
     }
 
     function readThreadRows(home: string): ThreadRow[] {
-      const stateDbPath = findNewestCodexStateDbPath(home)
-      if (!stateDbPath) {
+      // Test-side read: the newest `state_<n>.sqlite`, as Codex picks it.
+      const newest = readdirSync(home)
+        .map((name) => /^state_(\d+)\.sqlite$/.exec(name))
+        .filter((match) => match !== null)
+        .sort((left, right) => Number(right[1]) - Number(left[1]))[0]
+      if (!newest) {
         return []
       }
+      const stateDbPath = join(home, newest[0])
       const db = new SyncDatabase(stateDbPath, { readonly: true, fileMustExist: true })
       try {
         return db

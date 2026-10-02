@@ -1,6 +1,10 @@
 import type { WorkerThreadFactory } from '../lazy-worker-thread-host'
 import { WorkerThreadRequestQueue } from '../worker-thread-request-queue'
 import {
+  parseCodexIndexStatusResult,
+  type CodexIndexStatusResult
+} from './codex-index-status-result'
+import {
   cursorProfileReadFailure,
   parseCursorProfileReadResult,
   type CursorDesktopProfileReadResult
@@ -12,10 +16,16 @@ import {
   type OpenCodeSessionCursor
 } from './opencode-binder-sessions-result'
 import type {
+  CodexIndexStatusQuery,
   ForeignSqliteReaderKind,
   ForeignSqliteReaderRequest,
   ForeignSqliteReaderResponse
 } from './foreign-sqlite-reader-protocol'
+import {
+  openCodeGoKeyReadFailure,
+  parseOpenCodeGoKeyReadResult,
+  type OpenCodeGoKeyReadResult
+} from './opencode-go-key-result'
 
 // Why: an open of another app's database can block for seconds on a large -wal,
 // so it never runs on the main thread. Each reader gets its own lazily started
@@ -26,9 +36,12 @@ const READ_TIMEOUT_MS = 60_000
 const DEFAULT_IDLE_TEARDOWN_MS: Record<ForeignSqliteReaderKind, number> = {
   cursorProfile: 30_000,
   // The OpenCode binder polls every 60 s.
-  openCodeBinderSessions: 120_000
+  openCodeBinderSessions: 120_000,
+  openCodeGoKey: 30_000,
+  codexIndexStatus: 30_000
 }
 const MAX_CONSECUTIVE_DEATHS = 3
+const KEEP_ALIVE_INTERVAL_MS = 60_000
 
 type LaneSettings = {
   workerFactory: WorkerThreadFactory
@@ -43,12 +56,11 @@ export class ForeignSqliteReaderLane<T> {
     ForeignSqliteReaderRequest,
     ForeignSqliteReaderResponse
   >
-  private readonly inFlight = new Map<string, Promise<T>>()
+  private readonly inFlight = new Map<string, Promise<T | null>>()
 
   constructor(
     private readonly kind: ForeignSqliteReaderKind,
     private readonly parse: (value: unknown) => T | null,
-    private readonly failure: () => T,
     private readonly settings: LaneSettings
   ) {
     this.queue = new WorkerThreadRequestQueue({
@@ -66,17 +78,22 @@ export class ForeignSqliteReaderLane<T> {
   }
 
   /**
-   * Read one database on this reader's thread.
-   * @param key - Database path plus any query arguments; concurrent reads with one key share a request.
+   * Read on this reader's thread.
+   * @param key - What is read (e.g. the database path); concurrent reads of it share one request.
    * @param buildRequest - Builds the request around the queue's correlation id.
-   * @returns The parsed value, or the reader's failure value if the worker cannot answer.
+   * @returns The parsed value, or null when the worker did not answer (timeout, crash,
+   * no worker, error or malformed reply); callers map null to their failure value.
    */
-  read(key: string, buildRequest: (id: number) => ForeignSqliteReaderRequest): Promise<T> {
+  read(key: string, buildRequest: (id: number) => ForeignSqliteReaderRequest): Promise<T | null> {
     const pending = this.inFlight.get(key)
     if (pending) {
       return pending
     }
+    // Why: the worker and its timeout timer are unref'd, so a short-lived process such
+    // as the CLI would exit mid-read; this ref'd handle lives until the read settles.
+    const keepAlive = setInterval(() => {}, KEEP_ALIVE_INTERVAL_MS)
     const read = this.dispatch(buildRequest).finally(() => {
+      clearInterval(keepAlive)
       this.inFlight.delete(key)
     })
     this.inFlight.set(key, read)
@@ -88,24 +105,25 @@ export class ForeignSqliteReaderLane<T> {
     this.inFlight.clear()
   }
 
-  private async dispatch(buildRequest: (id: number) => ForeignSqliteReaderRequest): Promise<T> {
+  private async dispatch(
+    buildRequest: (id: number) => ForeignSqliteReaderRequest
+  ): Promise<T | null> {
     const { kind, settings } = this
     try {
       const response = await this.queue.dispatch(buildRequest, settings.timeoutMs)
       if (!response.ok) {
         settings.log(`Foreign SQLite reader ${kind} failed: ${response.error}`)
-        return this.failure()
+        return null
       }
       const value = this.parse(response.value)
       if (value === null) {
         settings.log(`Foreign SQLite reader ${kind} returned a malformed result.`)
-        return this.failure()
       }
       return value
     } catch (err) {
       // Timeout, crash, or no worker: never retried on the main thread.
       settings.log(`Foreign SQLite reader ${kind} did not answer: ${errorText(err)}`)
-      return this.failure()
+      return null
     }
   }
 }
@@ -113,6 +131,8 @@ export class ForeignSqliteReaderLane<T> {
 export class ForeignSqliteReaderClient {
   private readonly cursorProfile: ForeignSqliteReaderLane<CursorDesktopProfileReadResult>
   private readonly openCodeBinderSessions: ForeignSqliteReaderLane<BinderSessionRow[]>
+  private readonly openCodeGoKey: ForeignSqliteReaderLane<OpenCodeGoKeyReadResult>
+  private readonly codexIndexStatus: ForeignSqliteReaderLane<CodexIndexStatusResult>
 
   constructor(options: {
     workerFactory: WorkerThreadFactory
@@ -129,14 +149,22 @@ export class ForeignSqliteReaderClient {
     this.cursorProfile = new ForeignSqliteReaderLane(
       'cursorProfile',
       parseCursorProfileReadResult,
-      cursorProfileReadFailure,
       settings('cursorProfile')
     )
     this.openCodeBinderSessions = new ForeignSqliteReaderLane(
       'openCodeBinderSessions',
       parseOpenCodeBinderSessions,
-      openCodeBinderSessionsFailure,
       settings('openCodeBinderSessions')
+    )
+    this.openCodeGoKey = new ForeignSqliteReaderLane(
+      'openCodeGoKey',
+      parseOpenCodeGoKeyReadResult,
+      settings('openCodeGoKey')
+    )
+    this.codexIndexStatus = new ForeignSqliteReaderLane(
+      'codexIndexStatus',
+      parseCodexIndexStatusResult,
+      settings('codexIndexStatus')
     )
   }
 
@@ -145,8 +173,44 @@ export class ForeignSqliteReaderClient {
    * @param dbPath - Cursor's state.vscdb.
    * @returns The reader's result; its failure value when the worker cannot answer.
    */
-  readCursorProfile(dbPath: string): Promise<CursorDesktopProfileReadResult> {
-    return this.cursorProfile.read(dbPath, (id) => ({ id, kind: 'cursorProfile', dbPath }))
+  async readCursorProfile(dbPath: string): Promise<CursorDesktopProfileReadResult> {
+    const result = await this.cursorProfile.read(dbPath, (id) => ({
+      id,
+      kind: 'cursorProfile',
+      dbPath
+    }))
+    return result ?? cursorProfileReadFailure()
+  }
+
+  /**
+   * Read OpenCode's stored Go key off the main thread.
+   * @param dbPaths - Credential databases in probe order.
+   * @returns The reader's result; `unreadable` when the worker cannot answer.
+   */
+  async readOpenCodeGoKey(dbPaths: readonly string[]): Promise<OpenCodeGoKeyReadResult> {
+    const paths = [...dbPaths]
+    const result = await this.openCodeGoKey.read(JSON.stringify(paths), (id) => ({
+      id,
+      kind: 'openCodeGoKey',
+      dbPaths: paths
+    }))
+    return result ?? openCodeGoKeyReadFailure()
+  }
+
+  /**
+   * Answer a Codex index question off the main thread.
+   * @param query - The home or sessions tree to read, and what to read.
+   * @returns The answer, or null when the worker did not answer; callers pick the failure value.
+   */
+  async readCodexIndexStatus<Q extends CodexIndexStatusQuery>(
+    query: Q
+  ): Promise<CodexIndexStatusAnswer<Q> | null> {
+    const result = await this.codexIndexStatus.read(JSON.stringify(query), (id) => ({
+      id,
+      kind: 'codexIndexStatus',
+      query
+    }))
+    return result && answersQuery(result, query) ? result : null
   }
 
   /**
@@ -155,25 +219,40 @@ export class ForeignSqliteReaderClient {
    * @param cursor - Store position the binder has handled up to.
    * @returns Rows oldest first; `[]` when the store or the worker cannot answer.
    */
-  readOpenCodeBinderSessions(
+  async readOpenCodeBinderSessions(
     dbPath: string,
     cursor: OpenCodeSessionCursor
   ): Promise<BinderSessionRow[]> {
     // Why the cursor in the key: a round from before a stop can still be in flight
     // with an older cursor, and its rows are not the answer for a restarted round.
     const key = JSON.stringify([dbPath, cursor.ms, cursor.id])
-    return this.openCodeBinderSessions.read(key, (id) => ({
+    const result = await this.openCodeBinderSessions.read(key, (id) => ({
       id,
       kind: 'openCodeBinderSessions',
       dbPath,
       cursor: { ms: cursor.ms, id: cursor.id }
     }))
+    return result ?? openCodeBinderSessionsFailure()
   }
 
   dispose(): void {
     this.cursorProfile.dispose()
     this.openCodeBinderSessions.dispose()
+    this.openCodeGoKey.dispose()
+    this.codexIndexStatus.dispose()
   }
+}
+
+export type CodexIndexStatusAnswer<Q extends CodexIndexStatusQuery> = Extract<
+  CodexIndexStatusResult,
+  { type: Q['type'] }
+>
+
+function answersQuery<Q extends CodexIndexStatusQuery>(
+  result: CodexIndexStatusResult,
+  query: Q
+): result is CodexIndexStatusAnswer<Q> {
+  return result.type === query.type
 }
 
 function errorText(err: unknown): string {

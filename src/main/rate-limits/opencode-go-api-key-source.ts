@@ -4,13 +4,16 @@ import {
   compareOpenCodeClaimPriority,
   listOpenCodeDatabases
 } from '../opencode-usage/opencode-database-discovery'
-import { tableExists } from '../opencode-usage/schema-helpers'
 import { isWslUncPath } from '../../shared/wsl-paths'
+import { readOpenCodeGoKeyFromDatabases } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 import { resolveOpenCodeDataDirectory } from '../opencode/opencode-data-directory'
-import Database from '../sqlite/sync-database'
+import {
+  isRecord,
+  keyFromCredentialRecord,
+  OPENCODE_GO_INTEGRATION_ID,
+  trimmedKey
+} from './opencode-go-credential-record'
 
-/** OpenCode's provider/integration id for the Go subscription. */
-const OPENCODE_GO_INTEGRATION_ID = 'opencode-go'
 /** models.dev declares this env var for both `opencode` and `opencode-go`. */
 const OPENCODE_API_KEY_ENV = 'OPENCODE_API_KEY'
 const AUTH_FILE_NAME = 'auth.json'
@@ -32,26 +35,6 @@ export function getOpenCodeAuthFilePath(
   homeDirectory?: string
 ): string {
   return join(resolveOpenCodeDataDirectory(environment, homeDirectory), AUTH_FILE_NAME)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Reads `{ type: <kind>, key: "…" }` from an already-narrowed record. */
-function keyFromCredentialRecord(value: unknown, kind: string): string | null {
-  if (!isRecord(value) || value.type !== kind) {
-    return null
-  }
-  return trimmedKey(value.key)
-}
-
-function trimmedKey(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed ? trimmed : null
 }
 
 /**
@@ -86,34 +69,6 @@ export function readOpenCodeAuthFileGoKey(
   }
 }
 
-function selectCredentialKey(database: Database.Database): string | null {
-  if (!tableExists(database, 'credential')) {
-    return null
-  }
-  // OpenCode marks the chosen credential per integration with `active = 1`;
-  // newest wins among the rest (packages/core/src/credential.ts).
-  const rows: unknown[] = database
-    .prepare(
-      'SELECT value FROM credential WHERE integration_id = ? ' +
-        'ORDER BY active DESC, time_created DESC LIMIT 8'
-    )
-    .all(OPENCODE_GO_INTEGRATION_ID)
-  for (const row of rows) {
-    if (!isRecord(row) || typeof row.value !== 'string') {
-      continue
-    }
-    try {
-      const key = keyFromCredentialRecord(JSON.parse(row.value), 'key')
-      if (key) {
-        return key
-      }
-    } catch {
-      continue
-    }
-  }
-  return null
-}
-
 /**
  * Read the `opencode-go` key from OpenCode's `credential` table.
  *
@@ -131,29 +86,15 @@ export async function readOpenCodeCredentialDatabaseGoKey(): Promise<string | nu
   } catch {
     return null
   }
-  for (const path of paths) {
-    // A synchronous open against a 9p/UNC share can hang the main process, and
-    // the status bar is never worth that; the other tiers still apply.
-    if (isWslUncPath(path)) {
-      continue
-    }
-    let database: Database.Database | null = null
-    try {
-      database = new Database(path, { readonly: true, fileMustExist: true })
-      database.pragma('query_only = ON')
-      const key = selectCredentialKey(database)
-      if (key) {
-        return key
-      }
-    } catch {
-      // A locked, WAL-index-less, or foreign-schema database is not an error
-      // here; it just holds no key we can read.
-      continue
-    } finally {
-      database?.close()
-    }
+  // Why skip UNC paths even off-thread: a 9p/UNC open can hang its reader thread for
+  // the whole timeout, and the status bar is never worth that; the other tiers still apply.
+  const localPaths = paths.filter((path) => !isWslUncPath(path))
+  if (localPaths.length === 0) {
+    return null
   }
-  return null
+  // Runs on the foreign SQLite reader worker; `unreadable` stays "no key" here.
+  const read = await readOpenCodeGoKeyFromDatabases(localPaths)
+  return read.status === 'found' ? read.key : null
 }
 
 /**

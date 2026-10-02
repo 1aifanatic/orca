@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { build } from 'esbuild'
-import { copyFileSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import { performance } from 'node:perf_hooks'
 import { Worker } from 'node:worker_threads'
 import SyncDatabase from '../sqlite/sync-database'
@@ -159,4 +161,87 @@ describe('foreign SQLite reader event-loop occupancy', () => {
       client.dispose()
     }
   }, 120_000)
+
+  it('answers the Go key and Codex index readers from the bundled worker', async () => {
+    const credentialDb = join(root, 'opencode.db')
+    const credentials = new SyncDatabase(credentialDb)
+    credentials.exec(
+      'CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, value TEXT, ' +
+        'active INTEGER, time_created INTEGER)'
+    )
+    credentials
+      .prepare("INSERT INTO credential VALUES ('c', 'opencode-go', ?, 1, 1)")
+      .run(JSON.stringify({ type: 'key', key: 'placeholder-key' }))
+    credentials.close()
+    const codexHome = join(root, 'codex-home')
+    mkdirSync(codexHome)
+    const state = new SyncDatabase(join(codexHome, 'state_5.sqlite'))
+    state.exec(
+      'CREATE TABLE backfill_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL); ' +
+        "INSERT INTO backfill_state (id, status) VALUES (1, 'running')"
+    )
+    state.close()
+
+    const client = new ForeignSqliteReaderClient({
+      workerFactory: () => new Worker(workerEntryPath),
+      log: () => {}
+    })
+    try {
+      await expect(client.readOpenCodeGoKey([credentialDb])).resolves.toEqual({
+        status: 'found',
+        key: 'placeholder-key'
+      })
+      await expect(
+        client.readCodexIndexStatus({
+          type: 'backfill',
+          codexHomePath: codexHome,
+          sessionFileLimit: 100
+        })
+      ).resolves.toEqual({
+        type: 'backfill',
+        status: {
+          kind: 'incomplete',
+          stateDbPath: join(codexHome, 'state_5.sqlite'),
+          status: 'running'
+        },
+        sessionFileCount: null
+      })
+    } finally {
+      client.dispose()
+    }
+  }, 60_000)
+
+  it('keeps a short-lived process alive until its read answers', async () => {
+    // Why: the worker is unref'd; a CLI awaiting a read with nothing else alive must not exit early.
+    const scriptPath = join(root, 'short-lived-reader.cjs')
+    await build({
+      stdin: {
+        contents: [
+          "import { Worker } from 'node:worker_threads'",
+          "import { ForeignSqliteReaderClient } from './foreign-sqlite-reader-client'",
+          'const client = new ForeignSqliteReaderClient({',
+          '  workerFactory: () => new Worker(process.argv[2]),',
+          '  log: () => {}',
+          '})',
+          'void client',
+          "  .readCodexIndexStatus({ type: 'sessionFileCount', sessionsRoot: process.argv[3], limit: 1 })",
+          '  .then((answer) => console.log(JSON.stringify(answer)))'
+        ].join('\n'),
+        resolveDir: __dirname,
+        loader: 'ts'
+      },
+      outfile: scriptPath,
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      target: 'node22',
+      logLevel: 'error'
+    })
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      scriptPath,
+      workerEntryPath,
+      root
+    ])
+    expect(JSON.parse(stdout)).toEqual({ type: 'sessionFileCount', count: 0 })
+  }, 60_000)
 })

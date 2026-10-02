@@ -11,7 +11,7 @@ import { parseCodexRolloutThreadId } from './codex-session-index-heal-state'
 import { linkCodexSessionFile } from './codex-session-link'
 import {
   countCodexSessionFilesUpTo,
-  findNewestCodexStateDbPath,
+  readCodexStateDbBackfillSnapshot,
   readCodexStateDbBackfillStatus
 } from './codex-state-db'
 
@@ -57,18 +57,22 @@ async function isReadyForBridgedHistory(
   sourceCodexHomePaths: readonly string[],
   dependencies: BackgroundBridgeDependencies
 ): Promise<boolean> {
-  if (
-    !findNewestCodexStateDbPath(targetCodexHomePath) &&
-    !hasSessionRollouts(targetCodexHomePath)
-  ) {
+  // One read answers both "has a state DB" (status not `missing`) and "has rollouts".
+  const target = await readCodexStateDbBackfillSnapshot(targetCodexHomePath, 1)
+  let status = target?.status
+  if (status?.kind === 'missing' && !target?.sessionFileCount) {
     if (
-      !sourceCodexHomePaths.some(hasSessionRollouts) ||
+      !(await someHomeHasSessionRollouts(sourceCodexHomePaths)) ||
       !(await dependencies.createStateDb(targetCodexHomePath))
     ) {
       return false
     }
+    status = await readCodexStateDbBackfillStatus(targetCodexHomePath)
   }
-  const status = readCodexStateDbBackfillStatus(targetCodexHomePath)
+  if (!status) {
+    // Why: a reader that did not answer is retried by the next launch, like contention.
+    return false
+  }
   if (status.kind === 'unreadable') {
     // Why: contention clears by the next launch; corruption would skip every launch, so surface it.
     console.warn(
@@ -83,8 +87,13 @@ async function isReadyForBridgedHistory(
   return status.kind === 'complete' || status.kind === 'missing'
 }
 
-function hasSessionRollouts(codexHomePath: string): boolean {
-  return countCodexSessionFilesUpTo(join(codexHomePath, 'sessions'), 1) > 0
+async function someHomeHasSessionRollouts(codexHomePaths: readonly string[]): Promise<boolean> {
+  for (const codexHomePath of codexHomePaths) {
+    if ((await countCodexSessionFilesUpTo(join(codexHomePath, 'sessions'), 1)) > 0) {
+      return true
+    }
+  }
+  return false
 }
 
 /**

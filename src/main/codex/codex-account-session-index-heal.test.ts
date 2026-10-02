@@ -62,7 +62,7 @@ describe('healCodexAccountSessionIndex', () => {
     const { runSession, readThreadIds } = fakeAppServer()
 
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a', 'b', 'c'), {
-      readIndexedThreadIds: () => new Set(['b']),
+      readIndexedThreadIds: async () => new Set(['b']),
       buildInvocation,
       runSession
     })
@@ -86,7 +86,12 @@ describe('healCodexAccountSessionIndex', () => {
         ['oldest', '2025-12-31T23-59-59'],
         ['newest', '2026-09-28T01-46-16']
       ]),
-      { readIndexedThreadIds: () => new Set(), buildInvocation, runSession, readConcurrency: 1 }
+      {
+        readIndexedThreadIds: async () => new Set(),
+        buildInvocation,
+        runSession,
+        readConcurrency: 1
+      }
     )
 
     expect(readThreadIds).toEqual(['newest', 'middle', 'oldest'])
@@ -96,7 +101,7 @@ describe('healCodexAccountSessionIndex', () => {
     const { runSession } = fakeAppServer()
 
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
-      readIndexedThreadIds: () => new Set(['a']),
+      readIndexedThreadIds: async () => new Set(['a']),
       buildInvocation,
       runSession
     })
@@ -109,7 +114,7 @@ describe('healCodexAccountSessionIndex', () => {
     const { runSession } = fakeAppServer()
 
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
-      readIndexedThreadIds: () => null,
+      readIndexedThreadIds: async () => null,
       buildInvocation,
       runSession
     })
@@ -122,7 +127,7 @@ describe('healCodexAccountSessionIndex', () => {
     const { runSession } = fakeAppServer()
 
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
-      readIndexedThreadIds: () => new Set(),
+      readIndexedThreadIds: async () => new Set(),
       buildInvocation,
       runSession,
       shouldStop: () => true
@@ -139,7 +144,7 @@ describe('healCodexAccountSessionIndex', () => {
       }
     })
     const dependencies = {
-      readIndexedThreadIds: () => new Set<string>(),
+      readIndexedThreadIds: async () => new Set<string>(),
       buildInvocation,
       runSession
     }
@@ -164,7 +169,7 @@ describe('healCodexAccountSessionIndex', () => {
       }
     })
     const dependencies = {
-      readIndexedThreadIds: () => new Set<string>(),
+      readIndexedThreadIds: async () => new Set<string>(),
       buildInvocation,
       runSession
     }
@@ -184,7 +189,11 @@ describe('healCodexAccountSessionIndex', () => {
     const { runSession, readThreadIds } = fakeAppServer(() => {
       throw new Error('codex app-server thread/read failed: no rollout found for thread id gone')
     })
-    const options = { readIndexedThreadIds: () => new Set<string>(), buildInvocation, runSession }
+    const options = {
+      readIndexedThreadIds: async () => new Set<string>(),
+      buildInvocation,
+      runSession
+    }
 
     const first = await healCodexAccountSessionIndex(HOME, bridged('gone'), options)
     const second = await healCodexAccountSessionIndex(HOME, bridged('gone'), options)
@@ -204,7 +213,7 @@ describe('healCodexAccountSessionIndex', () => {
       throw new Error('codex app-server exited before responding')
     })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const readIndexedThreadIds = (): Set<string> => new Set()
+    const readIndexedThreadIds = async (): Promise<Set<string>> => new Set()
 
     const first = await healCodexAccountSessionIndex(HOME, bridged('a'), {
       readIndexedThreadIds,
@@ -227,7 +236,7 @@ describe('healCodexAccountSessionIndex', () => {
   it('reports a session that fails during quit as stopped, not unsupported', async () => {
     let stopping = false
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
-      readIndexedThreadIds: () => new Set(),
+      readIndexedThreadIds: async () => new Set(),
       buildInvocation,
       runSession: async () => {
         stopping = true
@@ -246,7 +255,7 @@ describe('healCodexAccountSessionIndex', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const summary = await healCodexAccountSessionIndex(HOME, bridged('a'), {
-      readIndexedThreadIds: () => new Set(),
+      readIndexedThreadIds: async () => new Set(),
       buildInvocation,
       runSession
     })

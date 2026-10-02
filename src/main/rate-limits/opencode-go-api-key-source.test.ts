@@ -1,13 +1,15 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import Database from '../sqlite/sync-database'
 import {
   getOpenCodeAuthFilePath,
   readOpenCodeAuthFileGoKey,
   resolveOpenCodeGoApiKey
 } from './opencode-go-api-key-source'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
+import { _internals as foreignSqliteReaderInternals } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 
 // Placeholder values only — a real key must never reach a fixture.
 const SETTINGS_KEY = 'settings-placeholder-key'
@@ -16,6 +18,15 @@ const AUTH_FILE_KEY = 'auth-file-placeholder-key'
 const DATABASE_KEY = 'database-placeholder-key'
 
 const ENVIRONMENT_KEYS = ['XDG_DATA_HOME', 'OPENCODE_API_KEY', 'OPENCODE_DB'] as const
+
+// Real fixture databases: run the reader dispatch in-process, as vitest has no built worker entry.
+beforeAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
+})
+
+afterAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(null)
+})
 
 describe('resolveOpenCodeGoApiKey', () => {
   let dataHome: string

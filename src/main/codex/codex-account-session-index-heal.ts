@@ -24,7 +24,7 @@ export type CodexAccountSessionIndexHealSummary = {
 }
 
 export type CodexAccountSessionIndexHealOptions = CodexSessionIndexHealOptions & {
-  readIndexedThreadIds?: (codexHomePath: string) => Set<string> | null
+  readIndexedThreadIds?: (codexHomePath: string) => Promise<Set<string> | null>
 }
 
 // Why: app-server finishes state DB startup before it answers `initialize`,
@@ -79,7 +79,7 @@ export async function healCodexAccountSessionIndex(
   }
   // Why: with no DB in the home, Codex keeps none (older CLI) or uses a
   // `sqlite_home` shared by every Orca home, which already indexes these threads.
-  const indexed = (options.readIndexedThreadIds ?? readIndexedCodexThreadIds)(codexHomePath)
+  const indexed = await (options.readIndexedThreadIds ?? readIndexedCodexThreadIds)(codexHomePath)
   if (!indexed) {
     return { ...summary, outcome: 'no-index' }
   }

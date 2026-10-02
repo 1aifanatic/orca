@@ -1,150 +1,90 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import SyncDatabase from '../sqlite/sync-database'
+import type { CodexStateDbBackfillStatus } from '../foreign-sqlite-readers/codex-index-status-result'
+import { readCodexIndexStatus } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 
-const STATE_DB_FILE_PATTERN = /^state_(\d+)\.sqlite$/
+// Why async: every read here (state DB open, sessions-tree walk) runs on the
+// foreign SQLite reader worker, so a large -wal or a stalled \\wsl.localhost
+// share never blocks the main thread. There is no main-thread fallback.
 
-export type CodexStateDbBackfillStatus =
-  | { kind: 'complete'; stateDbPath: string }
-  | { kind: 'incomplete'; stateDbPath: string; status: string }
-  | { kind: 'missing' }
-  | { kind: 'not-tracked'; stateDbPath: string }
-  | { kind: 'unreadable'; stateDbPath: string; error: string }
+export type { CodexStateDbBackfillStatus }
 
-export function findNewestCodexStateDbPath(codexHomePath: string): string | null {
-  let entries: string[]
-  try {
-    entries = readdirSync(codexHomePath)
-  } catch {
-    return null
+export const BACKFILL_PENDING_MIN_SESSION_FILES = 100
+
+export type CodexStateDbBackfillSnapshot = {
+  status: CodexStateDbBackfillStatus
+  /** Rollouts counted up to the requested limit; null unless status is `missing` or `not-tracked`. */
+  sessionFileCount: number | null
+}
+
+function workerUnansweredStatus(): CodexStateDbBackfillStatus {
+  return {
+    kind: 'unreadable',
+    stateDbPath: null,
+    error: 'The Codex index reader did not answer'
   }
-  let newest: { version: number; name: string } | null = null
-  for (const name of entries) {
-    const match = STATE_DB_FILE_PATTERN.exec(name)
-    if (!match) {
-      continue
-    }
-    const version = Number(match[1])
-    if (!newest || version > newest.version) {
-      newest = { version, name }
-    }
-  }
-  return newest ? join(codexHomePath, newest.name) : null
+}
+
+/**
+ * Backfill status plus a bounded rollout count, in one worker round trip.
+ * @returns Null when the reader worker did not answer, which is not an unreadable index.
+ */
+export async function readCodexStateDbBackfillSnapshot(
+  codexHomePath: string,
+  sessionFileLimit: number
+): Promise<CodexStateDbBackfillSnapshot | null> {
+  const answer = await readCodexIndexStatus({
+    type: 'backfill',
+    codexHomePath,
+    sessionFileLimit
+  })
+  return answer ? { status: answer.status, sessionFileCount: answer.sessionFileCount } : null
 }
 
 /** Reads Codex-owned backfill metadata without creating or mutating its database. */
-export function readCodexStateDbBackfillStatus(codexHomePath: string): CodexStateDbBackfillStatus {
-  const stateDbPath = findNewestCodexStateDbPath(codexHomePath)
-  if (!stateDbPath) {
-    return { kind: 'missing' }
-  }
-  let db: SyncDatabase | null = null
-  try {
-    db = new SyncDatabase(stateDbPath, { readonly: true, fileMustExist: true })
-    const table = db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'backfill_state'")
-      .get()
-    if (!table) {
-      return { kind: 'not-tracked', stateDbPath }
-    }
-    const row = db.prepare('SELECT status FROM backfill_state WHERE id = 1').get() as
-      | { status?: unknown }
-      | undefined
-    if (!row || typeof row.status !== 'string') {
-      return { kind: 'not-tracked', stateDbPath }
-    }
-    return row.status === 'complete'
-      ? { kind: 'complete', stateDbPath }
-      : { kind: 'incomplete', stateDbPath, status: row.status }
-  } catch (error) {
-    return {
-      kind: 'unreadable',
-      stateDbPath,
-      error: error instanceof Error ? error.message : String(error)
-    }
-  } finally {
-    try {
-      db?.close()
-    } catch {
-      // A close failure cannot change the read-only result already collected.
-    }
-  }
+export async function readCodexStateDbBackfillStatus(
+  codexHomePath: string
+): Promise<CodexStateDbBackfillStatus> {
+  const snapshot = await readCodexStateDbBackfillSnapshot(codexHomePath, 0)
+  return snapshot?.status ?? workerUnansweredStatus()
 }
 
 /**
  * Lower-cased thread ids already in Codex's state DB, or null when the DB is
  * missing or unreadable. Read-only; never creates or mutates Codex's database.
  */
-export function readIndexedCodexThreadIds(codexHomePath: string): Set<string> | null {
-  const stateDbPath = findNewestCodexStateDbPath(codexHomePath)
-  if (!stateDbPath) {
-    return null
+export async function readIndexedCodexThreadIds(
+  codexHomePath: string
+): Promise<Set<string> | null> {
+  const answer = await readCodexIndexStatus({ type: 'indexedThreadIds', codexHomePath })
+  if (answer?.error) {
+    console.warn('[codex-state-db] Failed to read indexed Codex threads:', answer.error)
   }
-  let db: SyncDatabase | null = null
-  try {
-    db = new SyncDatabase(stateDbPath, { readonly: true, fileMustExist: true })
-    const ids = new Set<string>()
-    for (const row of db.prepare('SELECT id FROM threads').all()) {
-      if (typeof row.id === 'string') {
-        ids.add(row.id.toLowerCase())
-      }
-    }
-    return ids
-  } catch (error) {
-    console.warn('[codex-state-db] Failed to read indexed Codex threads:', error)
-    return null
-  } finally {
-    try {
-      db?.close()
-    } catch {
-      // A close failure cannot change the read-only result already collected.
-    }
-  }
+  return answer?.threadIds ? new Set(answer.threadIds) : null
 }
 
-export function countCodexSessionFilesUpTo(sessionsRoot: string, limit: number): number {
-  let count = 0
-  const pendingDirectories = [sessionsRoot]
-  while (pendingDirectories.length > 0 && count < limit) {
-    const directory = pendingDirectories.pop() as string
-    let entries
-    try {
-      entries = readdirSync(directory, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        pendingDirectories.push(join(directory, entry.name))
-      } else if (
-        entry.isFile() &&
-        // Why: Codex's startup backfill parses compressed rollouts too.
-        (entry.name.endsWith('.jsonl') || entry.name.endsWith('.jsonl.zst'))
-      ) {
-        count += 1
-        if (count >= limit) {
-          break
-        }
-      }
-    }
-  }
-  return count
+/** Rollouts under `sessionsRoot`, counted up to `limit`; 0 when the reader cannot answer. */
+export async function countCodexSessionFilesUpTo(
+  sessionsRoot: string,
+  limit: number
+): Promise<number> {
+  const answer = await readCodexIndexStatus({ type: 'sessionFileCount', sessionsRoot, limit })
+  return answer?.count ?? 0
 }
 
-export const BACKFILL_PENDING_MIN_SESSION_FILES = 100
-
-export function isCodexStateDbBackfillPending(codexHomePath: string): boolean {
-  const status = readCodexStateDbBackfillStatus(codexHomePath)
-  if (status.kind === 'incomplete') {
-    return true
-  }
-  if (status.kind !== 'missing' && status.kind !== 'not-tracked') {
+/** Pending from a snapshot; an unanswered read is not pending, as an unreadable index is not. */
+export function isCodexStateDbBackfillSnapshotPending(
+  snapshot: CodexStateDbBackfillSnapshot | null
+): boolean {
+  if (!snapshot) {
     return false
   }
-  return (
-    countCodexSessionFilesUpTo(
-      join(codexHomePath, 'sessions'),
-      BACKFILL_PENDING_MIN_SESSION_FILES
-    ) >= BACKFILL_PENDING_MIN_SESSION_FILES
+  if (snapshot.status.kind === 'incomplete') {
+    return true
+  }
+  return (snapshot.sessionFileCount ?? 0) >= BACKFILL_PENDING_MIN_SESSION_FILES
+}
+
+export async function isCodexStateDbBackfillPending(codexHomePath: string): Promise<boolean> {
+  return isCodexStateDbBackfillSnapshotPending(
+    await readCodexStateDbBackfillSnapshot(codexHomePath, BACKFILL_PENDING_MIN_SESSION_FILES)
   )
 }

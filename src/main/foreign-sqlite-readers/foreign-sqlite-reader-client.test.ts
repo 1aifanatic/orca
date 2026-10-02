@@ -133,7 +133,6 @@ describe('ForeignSqliteReaderClient', () => {
     const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
     const first = client.readCursorProfile('/a/state.vscdb')
     const second = client.readCursorProfile('/a/state.vscdb')
-    expect(second).toBe(first)
     expect(workers[0]?.posted).toHaveLength(1)
     workers[0]?.reply(OK)
     await expect(Promise.all([first, second])).resolves.toEqual([OK, OK])
@@ -147,12 +146,66 @@ describe('ForeignSqliteReaderClient', () => {
     client.dispose()
   })
 
-  it('does not share reads across different databases', () => {
+  it('does not share reads across different databases', async () => {
     const workers: FakeWorker[] = []
     const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
     const first = client.readCursorProfile('/a/state.vscdb')
     const second = client.readCursorProfile('/b/state.vscdb')
-    expect(second).not.toBe(first)
+    workers[0]?.reply(OK)
+    await first
+    await settle()
+    expect(
+      workers[0]?.posted.map((request) => request.kind === 'cursorProfile' && request.dbPath)
+    ).toEqual(['/a/state.vscdb', '/b/state.vscdb'])
+    workers[0]?.reply(OK)
+    await second
+    client.dispose()
+  })
+
+  it('reads the OpenCode Go key on its own thread and fails to unreadable', async () => {
+    const workers: FakeWorker[] = []
+    const client = new ForeignSqliteReaderClient({
+      workerFactory: fakeFactory(workers),
+      log() {},
+      timeoutMs: 5
+    })
+    const cursor = client.readCursorProfile('/a/state.vscdb')
+    const found = client.readOpenCodeGoKey(['/a/opencode.db', '/a/opencode-b.db'])
+    expect(workers).toHaveLength(2)
+    expect(workers[1]?.posted[0]).toMatchObject({
+      kind: 'openCodeGoKey',
+      dbPaths: ['/a/opencode.db', '/a/opencode-b.db']
+    })
+    workers[1]?.reply({ status: 'found', key: 'k' })
+    await expect(found).resolves.toEqual({ status: 'found', key: 'k' })
+    // No reply within the timeout: an unread store is reported as unreadable, not as no key.
+    await expect(client.readOpenCodeGoKey(['/a/opencode.db'])).resolves.toEqual({
+      status: 'unreadable'
+    })
+    await cursor
+    client.dispose()
+  })
+
+  it('answers a Codex index query, and null when the worker cannot answer', async () => {
+    const workers: FakeWorker[] = []
+    const client = new ForeignSqliteReaderClient({
+      workerFactory: fakeFactory(workers),
+      log() {},
+      timeoutMs: 5
+    })
+    const query = { type: 'sessionFileCount', sessionsRoot: '/h/sessions', limit: 3 } as const
+    const answered = client.readCodexIndexStatus(query)
+    expect(workers[0]?.posted[0]).toMatchObject({ kind: 'codexIndexStatus', query })
+    workers[0]?.reply({ type: 'sessionFileCount', count: 2 })
+    await expect(answered).resolves.toEqual({ type: 'sessionFileCount', count: 2 })
+
+    // A well-formed answer to a different question is not an answer to this one.
+    const mismatched = client.readCodexIndexStatus(query)
+    await settle()
+    workers[0]?.reply({ type: 'indexedThreadIds', threadIds: [], error: null })
+    await expect(mismatched).resolves.toBeNull()
+
+    await expect(client.readCodexIndexStatus(query)).resolves.toBeNull()
     client.dispose()
   })
 })
@@ -167,9 +220,8 @@ describe('ForeignSqliteReaderLane', () => {
       idleTeardownMs: 30_000
     }
     const parse = (value: unknown): unknown => value
-    const failure = (): unknown => 'failed'
-    const slow = new ForeignSqliteReaderLane('cursorProfile', parse, failure, settings)
-    const other = new ForeignSqliteReaderLane('cursorProfile', parse, failure, settings)
+    const slow = new ForeignSqliteReaderLane('cursorProfile', parse, settings)
+    const other = new ForeignSqliteReaderLane('cursorProfile', parse, settings)
 
     const stuck = slow.read('/slow.db', (id) => ({ id, kind: 'cursorProfile', dbPath: '/slow.db' }))
     const quick = other.read('/quick.db', (id) => ({
@@ -231,8 +283,18 @@ describe('ForeignSqliteReaderClient OpenCode binder sessions', () => {
     const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
     const stale = client.readOpenCodeBinderSessions('/o/opencode.db', { ms: 100, id: 'ses_a' })
     const restarted = client.readOpenCodeBinderSessions('/o/opencode.db', START)
-    expect(restarted).not.toBe(stale)
-    expect(client.readOpenCodeBinderSessions('/o/opencode.db', START)).toBe(restarted)
+    const sharer = client.readOpenCodeBinderSessions('/o/opencode.db', START)
+    workers[0]?.reply([])
+    await stale
+    await settle()
+    workers[0]?.reply([])
+    await expect(Promise.all([restarted, sharer])).resolves.toEqual([[], []])
+    // One request per cursor: the restarted round did not reuse the stale one.
+    expect(
+      workers[0]?.posted.map(
+        (request) => request.kind === 'openCodeBinderSessions' && request.cursor
+      )
+    ).toEqual([{ ms: 100, id: 'ses_a' }, START])
     client.dispose()
   })
 

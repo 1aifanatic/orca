@@ -294,7 +294,7 @@ export async function grantManagedCodexHookTrust(
       diagnostics.ledgerHits += 1
       return { lane: 'rpc', entries: ledgerEntries }
     }
-    if (isCodexStateDbBackfillPending(plan.runtimeHomePath)) {
+    if (await isCodexStateDbBackfillPending(plan.runtimeHomePath)) {
       // Why: a short trust RPC can refresh Codex's abandoned lease and strand every pane again.
       return fallback(plan, 'retry-cached')
     }

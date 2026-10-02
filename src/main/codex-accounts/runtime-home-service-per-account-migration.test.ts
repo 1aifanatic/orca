@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type * as NodeOs from 'node:os'
+import type * as ForeignSqliteReaderSpawn from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
 import { readHookTrustEntries } from '../codex/config-toml-trust'
 import { writeCodexStateDbBackfillStatus } from '../codex/codex-state-db-test-fixture'
 
@@ -15,6 +17,14 @@ vi.mock('electron', () => ({ app: { getPath: () => testState.userData } }))
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
   return { ...actual, homedir: () => testState.home }
+})
+// Why: the bridge reads Codex state DBs on a worker vitest has no built entry for.
+vi.mock('../foreign-sqlite-readers/foreign-sqlite-reader-spawn', async () => {
+  const actual = await vi.importActual<typeof ForeignSqliteReaderSpawn>(
+    '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
+  )
+  actual._internals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
+  return actual
 })
 // Why: selecting an account starts the history bridge, which would otherwise
 // spawn the real `codex app-server` on these fixture homes.

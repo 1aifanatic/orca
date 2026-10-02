@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +18,8 @@ import {
 } from './codex-account-session-bridge'
 import { writeCodexStateDbBackfillStatus } from './codex-state-db-test-fixture'
 import SyncDatabase from '../sqlite/sync-database'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
+import { _internals as foreignSqliteReaderInternals } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 
 let workspaceRoot: string
 const healIndexStub = vi.fn(async () => ({
@@ -61,6 +63,15 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(workspaceRoot, { recursive: true, force: true })
+})
+
+// Real fixture databases: run the reader dispatch in-process, as vitest has no built worker entry.
+beforeAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
+})
+
+afterAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(null)
 })
 
 describe('bridgeCodexSessionsIntoAccountHome', () => {

@@ -15,7 +15,7 @@ const {
   readFileMock: vi.fn(),
   resolveCodexCommandMock: vi.fn(),
   ptySpawnMock: vi.fn(),
-  isBackfillPendingMock: vi.fn(() => false),
+  isBackfillPendingMock: vi.fn(async () => false),
   startBackfillRecoveryMock: vi.fn(() => Promise.resolve(null))
 }))
 
@@ -138,7 +138,7 @@ describe('fetchCodexRateLimits', () => {
     resolveCodexCommandMock.mockReturnValue('codex')
     vi.mocked(probeCodexAuthPresence).mockResolvedValue('present')
     readFileMock.mockRejectedValue(new Error('no auth fixture'))
-    isBackfillPendingMock.mockReturnValue(false)
+    isBackfillPendingMock.mockResolvedValue(false)
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -162,7 +162,7 @@ describe('fetchCodexRateLimits', () => {
   })
 
   it('does not let a quota probe steal an incomplete state-DB backfill lease', async () => {
-    isBackfillPendingMock.mockReturnValue(true)
+    isBackfillPendingMock.mockResolvedValue(true)
 
     await expect(fetchCodexRateLimits({ codexHomePath: '/managed-home' })).resolves.toMatchObject({
       status: 'error',

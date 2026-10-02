@@ -22,6 +22,19 @@ describe('handleForeignSqliteReaderRequest', () => {
     expect(response).toMatchObject({ id: 5, ok: false })
   })
 
+  it('routes openCodeGoKey and codexIndexStatus to their readers', () => {
+    expect(handleForeignSqliteReaderRequest({ id: 6, kind: 'openCodeGoKey', dbPaths: [] })).toEqual(
+      { id: 6, ok: true, value: { status: 'missing' } }
+    )
+    expect(
+      handleForeignSqliteReaderRequest({
+        id: 7,
+        kind: 'codexIndexStatus',
+        query: { type: 'sessionFileCount', sessionsRoot: '/definitely/missing', limit: 1 }
+      })
+    ).toEqual({ id: 7, ok: true, value: { type: 'sessionFileCount', count: 0 } })
+  })
+
   it('rejects a kind no reader owns instead of running one', () => {
     // Parsed, as a structured clone arrives: untyped, with a kind outside the union.
     const request = JSON.parse('{"id":9,"kind":"list","dbPaths":[]}')

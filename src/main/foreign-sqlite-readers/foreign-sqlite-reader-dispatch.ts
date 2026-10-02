@@ -2,8 +2,10 @@ import type {
   ForeignSqliteReaderRequest,
   ForeignSqliteReaderResponse
 } from './foreign-sqlite-reader-protocol'
+import { readCodexIndexStatus } from './readers/codex-index-status'
 import { readCursorProfile } from './readers/cursor-profile'
 import { readOpenCodeBinderSessions } from './readers/opencode-binder-sessions'
+import { readOpenCodeGoKey } from './readers/opencode-go-key'
 
 /**
  * Run one foreign-app SQLite read on the worker thread.
@@ -21,6 +23,10 @@ export function handleForeignSqliteReaderRequest(
         return { id, ok: true, value: readCursorProfile(request.dbPath) }
       case 'openCodeBinderSessions':
         return { id, ok: true, value: readOpenCodeBinderSessions(request.dbPath, request.cursor) }
+      case 'openCodeGoKey':
+        return { id, ok: true, value: readOpenCodeGoKey(request.dbPaths) }
+      case 'codexIndexStatus':
+        return { id, ok: true, value: readCodexIndexStatus(request.query) }
     }
     // A structured clone can carry any kind; one without a reader is refused, not guessed at.
     return unknownKind(id, kind)

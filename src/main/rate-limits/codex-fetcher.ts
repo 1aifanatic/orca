@@ -194,7 +194,7 @@ export async function fetchCodexRateLimits(
     }
   }
 
-  if (options?.codexHomePath && isCodexStateDbBackfillPending(options.codexHomePath)) {
+  if (options?.codexHomePath && (await isCodexStateDbBackfillPending(options.codexHomePath))) {
     void startCodexStateDbBackfillRecoveryInBackground(options.codexHomePath)
     return codexUnavailable(
       'Codex is rebuilding its session index; usage will refresh when recovery finishes',

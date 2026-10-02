@@ -18,6 +18,8 @@ import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type * as ShellStartupEnv from '../pty/shell-startup-env'
+import type * as ForeignSqliteReaderSpawn from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
 
 export const testState = {
   userDataDir: '',
@@ -168,6 +170,14 @@ export function setupRuntimeHomeTest(): void {
     ...(await vi.importActual<typeof ShellStartupEnv>('../pty/shell-startup-env')),
     isShellStartupEnvProbeSupported: () => testState.shellStartupEnvProbeSupported
   }))
+  // Why: Codex state DB reads run on a worker vitest has no built entry for; run them in-process.
+  vi.doMock('../foreign-sqlite-readers/foreign-sqlite-reader-spawn', async () => {
+    const actual = await vi.importActual<typeof ForeignSqliteReaderSpawn>(
+      '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
+    )
+    actual._internals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
+    return actual
+  })
   testState.userDataDir = mkdtempSync(join(tmpdir(), 'orca-runtime-home-'))
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-codex-home-'))
   testState.previousUserDataPath = process.env.ORCA_USER_DATA_PATH

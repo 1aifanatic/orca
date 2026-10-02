@@ -7,11 +7,14 @@ import * as ownerIdentity from '../agent-hooks/managed-hook-owner-identity'
 import { CODEX_READ_ONLY_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import {
   _internals,
-  resolveCodexBackfillSupervisorLockRoot,
+  ensureCodexStateDbBackfillRecoveryStarted,
   runCodexStateDbBackfillRecovery,
-  startCodexStateDbBackfillRecoveryInBackground,
-  withCodexBackfillSupervisorLock
+  startCodexStateDbBackfillRecoveryInBackground
 } from './codex-state-db-backfill-recovery'
+import {
+  resolveCodexBackfillSupervisorLockRoot,
+  withCodexBackfillSupervisorLock
+} from './codex-state-db-backfill-supervisor-lock'
 import type { CodexStateDbBackfillStatus } from './codex-state-db'
 
 const temporaryRoots: string[] = []
@@ -56,7 +59,7 @@ describe('Codex state DB backfill recovery', () => {
         await claim()
     )
     const dependencies = {
-      isPending: vi.fn(() => true),
+      isPending: vi.fn(async () => true),
       run,
       withLock: withLock as never
     }
@@ -72,11 +75,138 @@ describe('Codex state DB backfill recovery', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
+  it('reserves the recovery slot before the pending read, so concurrent starts share one', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    let answerPending!: (pending: boolean) => void
+    const isPending = vi.fn(() => new Promise<boolean>((resolve) => (answerPending = resolve)))
+    let finishRun!: () => void
+    const run = vi.fn(
+      () =>
+        new Promise<{ outcome: 'completed'; spawnCount: number }>((resolve) => {
+          finishRun = () => resolve({ outcome: 'completed', spawnCount: 1 })
+        })
+    )
+    let lockClaims = 0
+    const withLock: typeof withCodexBackfillSupervisorLock = async (_home, _signal, claim) => {
+      lockClaims += 1
+      return await claim()
+    }
+    const dependencies = { isPending, run, withLock }
+
+    const first = startCodexStateDbBackfillRecoveryInBackground('/managed-home', dependencies)
+    const second = startCodexStateDbBackfillRecoveryInBackground('/managed-home', dependencies)
+    let ensured = false
+    const ensure = ensureCodexStateDbBackfillRecoveryStarted('/managed-home').then(() => {
+      ensured = true
+    })
+
+    expect(second).toBe(first)
+    expect(isPending).toHaveBeenCalledTimes(1)
+    await new Promise((resolve) => setImmediate(resolve))
+    // `ensure` must not return while the pending read is still arbitrating the lock.
+    expect(ensured).toBe(false)
+
+    answerPending(true)
+    await ensure
+    expect(lockClaims).toBe(1)
+    expect(run).toHaveBeenCalledTimes(1)
+    finishRun()
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { outcome: 'completed', spawnCount: 1 },
+      { outcome: 'completed', spawnCount: 1 }
+    ])
+  })
+
+  it('releases the reserved slot when the home turns out not to be pending', async () => {
+    const isPending = vi.fn(async () => false)
+    let lockClaims = 0
+    const withLock: typeof withCodexBackfillSupervisorLock = async () => {
+      lockClaims += 1
+      throw new Error('a home that is not pending takes no lock')
+    }
+    const dependencies = { isPending, run: vi.fn(), withLock }
+
+    await expect(
+      startCodexStateDbBackfillRecoveryInBackground('/managed-home', dependencies)
+    ).resolves.toBeNull()
+    await expect(
+      startCodexStateDbBackfillRecoveryInBackground('/managed-home', dependencies)
+    ).resolves.toBeNull()
+    expect(isPending).toHaveBeenCalledTimes(2)
+    expect(lockClaims).toBe(0)
+  })
+
+  it('keeps polling when the index reader does not answer', async () => {
+    const child = createFakeChild()
+    const terminate = vi.fn(async () => {})
+    const sleep = vi.fn(async () => {})
+    const readStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        kind: 'incomplete',
+        stateDbPath: '/state.sqlite',
+        status: 'running'
+      })
+      // A timed-out or crashed reader says nothing about the index.
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ kind: 'complete', stateDbPath: '/state.sqlite' })
+
+    await expect(
+      runCodexStateDbBackfillRecovery('/managed-home', new AbortController().signal, {
+        spawnProcess: vi.fn(() => child) as never,
+        readStatus,
+        terminate,
+        sleep,
+        now: vi.fn(() => 1_000)
+      })
+    ).resolves.toEqual({ outcome: 'completed', spawnCount: 1 })
+    expect(readStatus).toHaveBeenCalledTimes(4)
+    expect(sleep).toHaveBeenCalledTimes(3)
+    expect(terminate).toHaveBeenCalledTimes(1)
+  })
+
+  it('still stops on an index the reader reports unreadable', async () => {
+    const child = createFakeChild()
+    const terminate = vi.fn(async () => {})
+    const readStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        kind: 'incomplete',
+        stateDbPath: '/state.sqlite',
+        status: 'running'
+      })
+      .mockResolvedValue({ kind: 'unreadable', stateDbPath: '/state.sqlite', error: 'locked' })
+
+    await expect(
+      runCodexStateDbBackfillRecovery('/managed-home', new AbortController().signal, {
+        spawnProcess: vi.fn(() => child) as never,
+        readStatus,
+        terminate,
+        sleep: vi.fn(async () => {}),
+        now: vi.fn(() => 1_000)
+      })
+    ).resolves.toEqual({ outcome: 'unreadable', spawnCount: 1 })
+    expect(terminate).toHaveBeenCalledWith(child)
+  })
+
+  it('spawns no claimant when the first status read goes unanswered', async () => {
+    const spawnProcess = vi.fn()
+    await expect(
+      runCodexStateDbBackfillRecovery('/managed-home', new AbortController().signal, {
+        spawnProcess: spawnProcess as never,
+        readStatus: vi.fn(async () => null),
+        now: vi.fn(() => 1_000)
+      })
+    ).resolves.toEqual({ outcome: 'unreadable', spawnCount: 0 })
+    expect(spawnProcess).not.toHaveBeenCalled()
+  })
+
   it('releases a completed supervisor entry', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {})
     const run = vi.fn(async () => ({ outcome: 'completed' as const, spawnCount: 1 }))
     const dependencies = {
-      isPending: vi.fn().mockReturnValueOnce(true).mockReturnValue(false),
+      isPending: vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false),
       run,
       withLock: vi.fn(
         async (_home: string, _signal: AbortSignal | undefined, claim: () => Promise<unknown>) =>
@@ -99,7 +229,7 @@ describe('Codex state DB backfill recovery', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'info').mockImplementation(() => {})
     const dependencies = {
-      isPending: vi.fn(() => true),
+      isPending: vi.fn(async () => true),
       run: vi.fn(async () => ({ outcome: 'completed' as const, spawnCount: 1 })),
       withLock: vi
         .fn()
@@ -125,7 +255,7 @@ describe('Codex state DB backfill recovery', () => {
   it('bounds permanent coordinator failures across later triggers', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const dependencies = {
-      isPending: vi.fn(() => true),
+      isPending: vi.fn(async () => true),
       run: vi.fn(),
       withLock: vi.fn(async () => {
         throw new Error('permanent lock-root failure')
@@ -190,7 +320,7 @@ describe('Codex state DB backfill recovery', () => {
 
     const summary = await runCodexStateDbBackfillRecovery('/managed-home', controller.signal, {
       spawnProcess: spawnProcess as never,
-      readStatus: vi.fn((): CodexStateDbBackfillStatus => ({
+      readStatus: vi.fn(async (): Promise<CodexStateDbBackfillStatus> => ({
         kind: 'incomplete',
         stateDbPath: '/state.sqlite',
         status: 'running'
@@ -267,7 +397,7 @@ describe('Codex state DB backfill recovery', () => {
       new AbortController().signal,
       {
         spawnProcess: spawnProcess as never,
-        readStatus: vi.fn((): CodexStateDbBackfillStatus =>
+        readStatus: vi.fn(async (): Promise<CodexStateDbBackfillStatus> =>
           spawnProcess.mock.calls.length >= 3
             ? { kind: 'complete', stateDbPath: '/state.sqlite' }
             : {
@@ -324,7 +454,7 @@ describe('Codex state DB backfill recovery', () => {
     await expect(
       runCodexStateDbBackfillRecovery('/managed-home', new AbortController().signal, {
         spawnProcess: spawnProcess as never,
-        readStatus: vi.fn((): CodexStateDbBackfillStatus =>
+        readStatus: vi.fn(async (): Promise<CodexStateDbBackfillStatus> =>
           spawnCount >= 2
             ? { kind: 'complete', stateDbPath: '/state.sqlite' }
             : { kind: 'incomplete', stateDbPath: '/state.sqlite', status: 'running' }
@@ -349,8 +479,12 @@ describe('Codex state DB backfill recovery', () => {
     const terminate = vi.fn(async () => {})
     const readStatus = vi
       .fn()
-      .mockReturnValueOnce({ kind: 'incomplete', stateDbPath: '/state.sqlite', status: 'running' })
-      .mockReturnValue({ kind: 'complete', stateDbPath: '/state.sqlite' })
+      .mockResolvedValueOnce({
+        kind: 'incomplete',
+        stateDbPath: '/state.sqlite',
+        status: 'running'
+      })
+      .mockResolvedValue({ kind: 'complete', stateDbPath: '/state.sqlite' })
 
     await expect(
       runCodexStateDbBackfillRecovery('/managed-home', new AbortController().signal, {
@@ -371,8 +505,8 @@ describe('Codex state DB backfill recovery', () => {
     const codexCommand = 'C:\\Users\\alice\\AppData\\Roaming\\npm\\codex.cmd'
     const readStatus = vi
       .fn()
-      .mockReturnValueOnce({ kind: 'incomplete', stateDbPath: 'state.sqlite', status: 'running' })
-      .mockReturnValue({ kind: 'complete', stateDbPath: 'state.sqlite' })
+      .mockResolvedValueOnce({ kind: 'incomplete', stateDbPath: 'state.sqlite', status: 'running' })
+      .mockResolvedValue({ kind: 'complete', stateDbPath: 'state.sqlite' })
 
     await runCodexStateDbBackfillRecovery(
       'C:\\Users\\alice\\.codex',
@@ -420,7 +554,7 @@ describe('Codex state DB backfill recovery', () => {
       }
       return child
     })
-    const readStatus = vi.fn((): CodexStateDbBackfillStatus =>
+    const readStatus = vi.fn(async (): Promise<CodexStateDbBackfillStatus> =>
       spawnCount >= 2
         ? { kind: 'complete', stateDbPath: '/state.sqlite' }
         : { kind: 'incomplete', stateDbPath: '/state.sqlite', status: 'running' }
@@ -446,8 +580,8 @@ describe('Codex state DB backfill recovery', () => {
     const spawnProcess = vi.fn(() => child)
     const readStatus = vi
       .fn()
-      .mockReturnValueOnce({ kind: 'incomplete', stateDbPath: 'state.sqlite', status: 'running' })
-      .mockReturnValue({ kind: 'complete', stateDbPath: 'state.sqlite' })
+      .mockResolvedValueOnce({ kind: 'incomplete', stateDbPath: 'state.sqlite', status: 'running' })
+      .mockResolvedValue({ kind: 'complete', stateDbPath: 'state.sqlite' })
 
     await runCodexStateDbBackfillRecovery(
       '\\\\wsl.localhost\\Ubuntu\\home\\alice\\.codex',

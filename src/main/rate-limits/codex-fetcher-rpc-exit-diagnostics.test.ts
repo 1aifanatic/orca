@@ -38,7 +38,7 @@ vi.mock('./codex-auth-presence', () => ({
 }))
 
 vi.mock('../codex/codex-state-db', () => ({
-  isCodexStateDbBackfillPending: vi.fn(() => false)
+  isCodexStateDbBackfillPending: vi.fn(async () => false)
 }))
 
 vi.mock('../codex/codex-state-db-backfill-recovery', () => ({

@@ -1,10 +1,7 @@
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { parseWslUncPath } from '../../shared/wsl-paths'
-import { withManagedHookInstallLock } from '../agent-hooks/managed-hook-install-lock'
-import { readManagedHookHostIdentity } from '../agent-hooks/managed-hook-owner-identity'
 import { buildWslCodexAppServerArgs } from '../codex-accounts/wsl-codex-command'
 import { resolveCodexCommand } from '../codex-cli/command'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
@@ -15,21 +12,20 @@ import {
   spawnCodexAppServerProcess,
   type CodexAppServerSpawn
 } from './codex-app-server-process-tree-kill'
-import { getOrcaUserDataPath } from './codex-home-paths'
 import {
   BACKFILL_PENDING_MIN_SESSION_FILES,
   countCodexSessionFilesUpTo,
   isCodexStateDbBackfillPending,
-  readCodexStateDbBackfillStatus,
+  readCodexStateDbBackfillSnapshot,
   type CodexStateDbBackfillStatus
 } from './codex-state-db'
+import { withCodexBackfillSupervisorLock } from './codex-state-db-backfill-supervisor-lock'
 
 const RECOVERY_POLL_INTERVAL_MS = 5_000
 const RECOVERY_RETRY_DELAY_MS = 2_000
 const RECOVERY_MAX_COORDINATOR_FAILURES = 5
 const RECOVERY_MAX_SPAWNS = 5
 const RECOVERY_MAX_TOTAL_MS = 60 * 60_000
-const RECOVERY_OWNER_CHECK_TIMEOUT_MS = 1_000
 
 export type CodexStateDbBackfillRecoverySummary = {
   outcome: 'completed' | 'already-complete' | 'not-needed' | 'unreadable' | 'stopped' | 'gave-up'
@@ -39,8 +35,9 @@ export type CodexStateDbBackfillRecoverySummary = {
 type RecoveryDependencies = {
   spawnProcess: CodexAppServerSpawn
   resolveCommand: () => string
-  readStatus: (codexHomePath: string) => CodexStateDbBackfillStatus
-  countSessions: (sessionsRoot: string, limit: number) => number
+  /** Null when the index reader did not answer (timeout, crash, no worker). */
+  readStatus: (codexHomePath: string) => Promise<CodexStateDbBackfillStatus | null>
+  countSessions: (sessionsRoot: string, limit: number) => Promise<number>
   now: () => number
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
   terminate: (child: ChildProcessHandle) => Promise<void>
@@ -49,7 +46,8 @@ type RecoveryDependencies = {
 const defaultDependencies: RecoveryDependencies = {
   spawnProcess: spawnCodexAppServerProcess,
   resolveCommand: resolveCodexCommand,
-  readStatus: readCodexStateDbBackfillStatus,
+  readStatus: async (codexHomePath) =>
+    (await readCodexStateDbBackfillSnapshot(codexHomePath, 0))?.status ?? null,
   countSessions: countCodexSessionFilesUpTo,
   now: Date.now,
   sleep: async (ms, signal) => await delay(ms, undefined, { signal }),
@@ -63,23 +61,24 @@ function finish(
   return { outcome, spawnCount }
 }
 
-function initialRecoveryDecision(
+async function initialRecoveryDecision(
   codexHomePath: string,
   dependencies: RecoveryDependencies
-): CodexStateDbBackfillRecoverySummary['outcome'] | null {
-  const status = dependencies.readStatus(codexHomePath)
-  if (status.kind === 'complete') {
+): Promise<CodexStateDbBackfillRecoverySummary['outcome'] | null> {
+  const status = await dependencies.readStatus(codexHomePath)
+  if (status?.kind === 'complete') {
     return 'already-complete'
   }
-  if (status.kind === 'unreadable') {
+  // Why: never spawn a claimant against an index whose state nobody could read.
+  if (!status || status.kind === 'unreadable') {
     return 'unreadable'
   }
   if (
     (status.kind === 'missing' || status.kind === 'not-tracked') &&
-    dependencies.countSessions(
+    (await dependencies.countSessions(
       join(codexHomePath, 'sessions'),
       BACKFILL_PENDING_MIN_SESSION_FILES
-    ) < BACKFILL_PENDING_MIN_SESSION_FILES
+    )) < BACKFILL_PENDING_MIN_SESSION_FILES
   ) {
     return 'not-needed'
   }
@@ -122,7 +121,7 @@ export async function runCodexStateDbBackfillRecovery(
   dependenciesOverride: Partial<RecoveryDependencies> = {}
 ): Promise<CodexStateDbBackfillRecoverySummary> {
   const dependencies = { ...defaultDependencies, ...dependenciesOverride }
-  const initialOutcome = initialRecoveryDecision(codexHomePath, dependencies)
+  const initialOutcome = await initialRecoveryDecision(codexHomePath, dependencies)
   if (initialOutcome) {
     return finish(initialOutcome, 0)
   }
@@ -143,12 +142,13 @@ export async function runCodexStateDbBackfillRecovery(
     try {
       while (!childDown && !signal.aborted && dependencies.now() < deadline) {
         await dependencies.sleep(RECOVERY_POLL_INTERVAL_MS, signal)
-        const status = dependencies.readStatus(codexHomePath)
-        if (status.kind === 'complete') {
+        const status = await dependencies.readStatus(codexHomePath)
+        // A reader that did not answer says nothing about the index: keep polling.
+        if (status?.kind === 'complete') {
           await dependencies.terminate(child)
           return finish('completed', spawnCount)
         }
-        if (status.kind === 'unreadable') {
+        if (status?.kind === 'unreadable') {
           await dependencies.terminate(child)
           return finish('unreadable', spawnCount)
         }
@@ -180,33 +180,6 @@ export async function runCodexStateDbBackfillRecovery(
   return finish(signal.aborted ? 'stopped' : 'gave-up', spawnCount)
 }
 
-export function resolveCodexBackfillSupervisorLockRoot(codexHomePath: string): string {
-  const homeKey = normalizeRuntimePathForComparison(codexHomePath)
-  const digest = createHash('sha256').update(homeKey).digest('hex')
-  return join(getOrcaUserDataPath(), 'codex-state-db-backfill-locks', digest)
-}
-
-function scopeRecoveryHostIdentity(hostIdentity: string, codexHomePath: string): string {
-  const wslHome = process.platform === 'win32' ? parseWslUncPath(codexHomePath) : null
-  return wslHome ? `${hostIdentity}:wsl:${wslHome.distro.toLowerCase()}` : hostIdentity
-}
-
-export async function withCodexBackfillSupervisorLock<T>(
-  codexHomePath: string,
-  signal: AbortSignal | undefined,
-  run: () => Promise<T>
-): Promise<T> {
-  const hostIdentity = scopeRecoveryHostIdentity(await readManagedHookHostIdentity(), codexHomePath)
-  // Reuse the crash-safe hard-link claim protocol; its storage root is Codex-specific.
-  return await withManagedHookInstallLock(
-    resolveCodexBackfillSupervisorLockRoot(codexHomePath),
-    signal,
-    run,
-    hostIdentity,
-    { waitTimeoutMs: RECOVERY_OWNER_CHECK_TIMEOUT_MS }
-  )
-}
-
 type ActiveRecovery = {
   controller: AbortController
   ready: Promise<void>
@@ -229,15 +202,18 @@ const defaultCoordinatorDependencies: RecoveryCoordinatorDependencies = {
   withLock: withCodexBackfillSupervisorLock
 }
 
+/** `not-pending`: no recovery was needed, so the slot is released like a finished one. */
+type RecoveryAttempt = CodexStateDbBackfillRecoverySummary | null | 'not-pending'
+
 function settleRecoveryEntry(
   key: string,
   task: ActiveRecovery['task'],
-  summary: CodexStateDbBackfillRecoverySummary | null
+  summary: RecoveryAttempt
 ): void {
   if (activeRecoveries.get(key)?.task !== task) {
     return
   }
-  if (summary?.outcome === 'gave-up') {
+  if (summary !== 'not-pending' && summary?.outcome === 'gave-up') {
     coordinatorFailureCounts.delete(key)
     return
   }
@@ -267,31 +243,42 @@ export function startCodexStateDbBackfillRecoveryInBackground(
   if (stopping) {
     return Promise.resolve(null)
   }
-  if (!dependencies.isPending(codexHomePath)) {
-    coordinatorFailureCounts.delete(key)
-    return Promise.resolve(null)
-  }
   const controller = new AbortController()
   let markReady!: () => void
   const ready = new Promise<void>((resolve) => (markReady = resolve))
-  const task = dependencies
-    .withLock(codexHomePath, controller.signal, async () => {
+  const attempt = attemptRecovery(codexHomePath, controller, markReady, dependencies)
+  const task = attempt.then((result) => (result === 'not-pending' ? null : result))
+  void task.finally(markReady)
+  // Why before any await: the pending read is async, so the slot is reserved first;
+  // a concurrent start then shares this task and `ensure` waits on this `ready`.
+  activeRecoveries.set(key, { controller, ready, task })
+  void attempt.then((result) => {
+    settleRecoveryEntry(key, task, result)
+  })
+  return task
+}
+
+async function attemptRecovery(
+  codexHomePath: string,
+  controller: AbortController,
+  markReady: () => void,
+  dependencies: RecoveryCoordinatorDependencies
+): Promise<RecoveryAttempt> {
+  try {
+    if (!(await dependencies.isPending(codexHomePath)) || controller.signal.aborted) {
+      return 'not-pending'
+    }
+    return await dependencies.withLock(codexHomePath, controller.signal, async () => {
       console.info(`[codex-state-db-backfill] supervising Codex index at ${codexHomePath}`)
       markReady()
       return await dependencies.run(codexHomePath, controller.signal)
     })
-    .catch((error: unknown) => {
-      if (!controller.signal.aborted) {
-        console.warn('[codex-state-db-backfill] recovery supervisor stopped:', error)
-      }
-      return null
-    })
-  void task.finally(markReady)
-  activeRecoveries.set(key, { controller, ready, task })
-  void task.then((summary) => {
-    settleRecoveryEntry(key, task, summary)
-  })
-  return task
+  } catch (error: unknown) {
+    if (!controller.signal.aborted) {
+      console.warn('[codex-state-db-backfill] recovery supervisor stopped:', error)
+    }
+    return null
+  }
 }
 
 /** Waits only for exact-owner arbitration, never for the potentially long Codex index. */

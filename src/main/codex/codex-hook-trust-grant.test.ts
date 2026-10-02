@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,6 +26,8 @@ import {
   upsertHookTrustEntries,
   type CodexTrustEntry
 } from './config-toml-trust'
+import { createInProcessForeignSqliteReaderWorker } from '../foreign-sqlite-readers/foreign-sqlite-reader-in-process-test-worker'
+import { _internals as foreignSqliteReaderInternals } from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
 
 let userDataDir: string
 let runtimeHomeDir: string
@@ -99,6 +101,15 @@ function grantedSessionResult(entries: CodexTrustEntry[], hashPrefix = 'sha256:c
     })
   }
 }
+
+// Real fixture databases: run the reader dispatch in-process, as vitest has no built worker entry.
+beforeAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(createInProcessForeignSqliteReaderWorker)
+})
+
+afterAll(() => {
+  foreignSqliteReaderInternals.setWorkerFactory(null)
+})
 
 describe('grantManagedCodexHookTrust', () => {
   it('does not let a short trust RPC claim an incomplete session index', async () => {
