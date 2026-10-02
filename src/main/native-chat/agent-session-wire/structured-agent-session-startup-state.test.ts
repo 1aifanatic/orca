@@ -29,12 +29,14 @@ import { hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
   createRestTestRig,
   REST_TEST_CALLER,
-  latestRestTestStatus,
   restTestChat,
-  restTestOpens,
   sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import {
+  latestRestTestStatus,
+  restTestOpens
+} from './structured-agent-session-rest-test-observations'
 
 const rigs: RestTestRig[] = []
 
@@ -597,7 +599,8 @@ describe('whether the settle step is running (R3M-2)', () => {
       openDeps: {
         store: rig.store,
         adapter: { historyFilePath: async () => null },
-        journalDatabase: openTestJournalHostDatabase(rig.root)
+        journalDatabase: openTestJournalHostDatabase(rig.root),
+        logger: { warn: vi.fn(), error: vi.fn() }
       },
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => !!record,
       seedStatus: vi.fn(),
@@ -620,12 +623,12 @@ describe('whether the settle step is running (R3M-2)', () => {
   })
 
   it('clears when the settle goes on past a recovery that never answers', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const stuck = { ...agentSessionRecordFixture(), sessionId: 'session-stuck' }
     stuck.lease = { ...stuck.lease, sessionId: 'session-stuck', handoffStage: 'recovering' }
     const openDeps = {
       store: { getRecord: () => stuck, listRecords: () => [stuck] },
-      journalDatabase: { readOnly: false, db: { prepare: () => ({ all: () => [] }) } }
+      journalDatabase: { readOnly: false, db: { prepare: () => ({ all: () => [] }) } },
+      logger: { warn: vi.fn(), error: vi.fn() }
     }
     const state = createStructuredAgentSessionStartupState({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the settle reads only the store's records and the unsettled-row query; nothing is selected, so nothing opens.
@@ -650,14 +653,15 @@ describe('whether the settle step is running (R3M-2)', () => {
 
 describe('a recovery that never answers', () => {
   it('leaves that lease unverified and lets the settle go on', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logger = { warn: vi.fn(), error: vi.fn() }
     const stuck = { ...agentSessionRecordFixture(), sessionId: 'session-stuck' }
     stuck.lease = { ...stuck.lease, sessionId: 'session-stuck', handoffStage: 'recovering' }
     const resolveRecovery = vi.fn(() => new Promise<boolean>(() => {}))
     const restoreListed = vi.fn(async () => undefined)
     const openDeps = {
       store: { getRecord: () => stuck, listRecords: () => [stuck] },
-      journalDatabase: { readOnly: false, db: { prepare: () => ({ all: () => [] }) } }
+      journalDatabase: { readOnly: false, db: { prepare: () => ({ all: () => [] }) } },
+      logger
     }
     const state = createStructuredAgentSessionStartupState({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the settle reads only the store's records and the unsettled-row query; nothing is selected, so nothing opens.
@@ -677,10 +681,10 @@ describe('a recovery that never answers', () => {
     expect(resolveRecovery).toHaveBeenCalledWith('session-stuck')
     expect(restoreListed).toHaveBeenCalledWith([])
     expect(stuck.lease.handoffStage).toBe('recovering')
-    expect(warn).toHaveBeenCalledWith(
-      '[structured-agent-session] a chat recovery outlasted startup; left unverified',
-      { sessionId: 'session-stuck' }
-    )
+    expect(logger.warn).toHaveBeenCalledWith('a chat recovery outlasted startup; left unverified', {
+      scope: 'startup-recovery-timeout',
+      sessionId: 'session-stuck'
+    })
   })
 })
 

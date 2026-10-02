@@ -34,6 +34,7 @@ type StatusBackfillDeps = Pick<
   | 'isDisposed'
   | 'now'
   | 'appVersion'
+  | 'logger'
 > & {
   /** Runs a step inside the chat's lock, handing it the yield that ends each of its tasks. */
   inChat: <T>(sessionId: string, task: (yieldTask: () => Promise<void>) => Promise<T>) => Promise<T>
@@ -52,7 +53,7 @@ export function readStatusBackfillOwed(
  *  wrote that row from, when the row shows work a gone process left. Inside the chat's serialize.
  *  Never rejects: a failure is logged, and the next startup settles the row. */
 export async function settleWrittenChat(
-  deps: Pick<StatusBackfillDeps, 'store' | 'settleClosedChat'>,
+  deps: Pick<StatusBackfillDeps, 'store' | 'settleClosedChat' | 'logger'>,
   sessionId: string,
   { load, status }: { load: JournalLoad; status: JournalSessionStatus }
 ): Promise<void> {
@@ -64,7 +65,11 @@ export async function settleWrittenChat(
   try {
     await deps.settleClosedChat(record, load)
   } catch (error) {
-    console.warn('[structured-agent-session] settling a copied chat failed', { sessionId, error })
+    deps.logger.warn('settling a copied chat failed', {
+      scope: 'per-chat-file-copy-settle',
+      sessionId,
+      error
+    })
   }
 }
 
@@ -73,10 +78,14 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
 } {
   let owed: string[] | null = null
   const logged = new Set<string>()
-  const warnOnce = (key: string, message: string, details: unknown) => {
+  const warnOnce = (key: string, message: string, error: unknown) => {
     if (!logged.has(key)) {
       logged.add(key)
-      console.warn(`[structured-agent-session] ${message}`, details)
+      deps.logger.warn(message, {
+        scope: 'per-chat-file-copy-status',
+        ...(key ? { sessionId: key } : {}),
+        error
+      })
     }
   }
   const underSerialize = async (
@@ -105,7 +114,7 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
         failedAt: deps.now()
       })
     }
-    warnOnce(sessionId, `writing a missing chat status failed (${kind})`, { sessionId, error })
+    warnOnce(sessionId, `writing a missing chat status failed (${kind})`, error)
     return 'skipped'
   }
   return {

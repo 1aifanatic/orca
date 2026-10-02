@@ -12,11 +12,13 @@ import { AgentSessionJournal } from '../native-chat/agent-session-journal/journa
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createRestTestRig,
-  latestRestTestStatus,
   restTestChat,
-  restTestOpens,
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
+import {
+  latestRestTestStatus,
+  restTestOpens
+} from '../native-chat/agent-session-wire/structured-agent-session-rest-test-observations'
 import { OrcaRuntimeService } from './orca-runtime'
 import { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
 
@@ -236,7 +238,7 @@ it('never fails startup: each failure is logged by chat and the rest still settl
   }
   await rig.crash()
   await rig.boot()
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const warn = vi.spyOn(rig.host.deps.logger, 'warn')
   rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
     if (sessionId === 'session-open-fails') {
       throw new Error('EACCES: permission denied')
@@ -261,7 +263,7 @@ it('never fails startup: each failure is logged by chat and the rest still settl
   expect(owes('session-open-fails')).toBe(true)
   expect(owes('session-settle-fails')).toBe(true)
   expect(warn).toHaveBeenCalledWith(
-    '[structured-agent-session] restoring a chat for reading failed',
+    'restoring a chat for reading failed',
     expect.objectContaining({ sessionId: 'session-open-fails' })
   )
 })

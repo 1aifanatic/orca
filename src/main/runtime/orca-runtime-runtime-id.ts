@@ -129,7 +129,6 @@ export class OrcaRuntimeWithRuntimeId {
   protected structuredAgentSessionInventoryUnverifiable = false
 
   protected structuredAgentSessionStartupRestorePromise: Promise<void> | null = null
-  protected structuredAgentSessionStartupStepPromise: Promise<void> | null = null
 
   protected mobileSessionTabsChangeSequence = 0
 
@@ -353,7 +352,8 @@ export class OrcaRuntimeWithRuntimeId {
     getPaneAgent: (ptyId) => this.getPaneAgentForTuiIdle(ptyId),
     getFirstPartyAgentStatus: (ptyId) =>
       (ptyId ? this.ptysById.get(ptyId)?.lastExplicitAgentStatus : null) ?? null,
-    readScreenLines: (ptyId) => this.readLiveTerminalScreenLines(ptyId)
+    readScreenLines: (ptyId) => this.readLiveTerminalScreenLines(ptyId),
+    readScreenRuledLines: (ptyId) => this.readScreenRuledLines(ptyId)
   }
 
   protected readonly terminalIdlePolls = new RuntimeTerminalIdlePolls({

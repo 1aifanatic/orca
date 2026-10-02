@@ -132,6 +132,7 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     settleClosedChat: vi.fn(startup.settleClosedChat),
     canSettle,
     isDisposed: () => false,
+    logger: rig.host.deps.logger,
     now: () => rig.copyClock.now,
     appVersion: '1.0.0',
     freeBytes: async () => null,

@@ -4,6 +4,7 @@
 
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionJournal } from '../../../native-chat/agent-session-journal/journal-store'
 import { projectStructuredAgentSessionStatusState } from '../../../../shared/structured-agent-session-projection'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -19,6 +20,8 @@ import {
 import type { RpcRequest, RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
+import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 
 export const SESSION = 'session-alpha'
 export const FINGERPRINT = 'f'.repeat(64)
@@ -94,16 +97,20 @@ export const STATUS_ITEMS: AgentJournalRenderItem[] = [
 /** One indexed session over a journal that reads back fixed items; the projection is real. */
 function statusFeed(): StructuredAgentSessionStatusFeed {
   return new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     sessions: new Map([
       [
         STATUS_SESSION,
         {
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (snapshot, cursor, its projection, activity, read-only).
           journal: {
             isReadOnly: false,
+            cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
+            snapshot: () => ({ items: STATUS_ITEMS }),
             statusState: (fence?: number) =>
               projectStructuredAgentSessionStatusState(STATUS_ITEMS, [], fence)
-          },
+          } as unknown as AgentSessionJournal,
           params: {
             location: {
               executionHostId: 'local',
@@ -206,6 +213,8 @@ export function hostStub(): StructuredAgentSessionHost {
     ),
     unsubscribe: vi.fn()
   })
+  // Not a call: the logger the host hands a runtime caller that reports for it.
+  Reflect.set(hostCalls, 'deps', { logger: recordingStructuredAgentSessionLogger().logger })
   return hostCalls as unknown as StructuredAgentSessionHost
 }
 

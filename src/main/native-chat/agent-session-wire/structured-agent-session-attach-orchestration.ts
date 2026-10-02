@@ -138,6 +138,7 @@ async function runAttach(
     const attached = await performAttach({
       store: context.deps.store,
       adapter: context.deps.adapter,
+      logger: context.deps.logger,
       eventSink: attemptSink.sink,
       // The superseded child's writes settle into its own journal before a new child starts.
       onAcquiring: async () => {
@@ -204,7 +205,7 @@ async function runAttach(
           }
         }
         await recoverStructuredRewind(
-          context.deps.store,
+          context.deps,
           sessionId,
           attached.journal,
           fence,

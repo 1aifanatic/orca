@@ -17,6 +17,7 @@ import {
 } from './structured-agent-session-host-lifetime'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionTeardownPhase = {
   name: string
@@ -71,6 +72,7 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
   /** Opens this teardown's witnesses; each session's own is taken as eviction stops its child. */
   beginResumeMarkers: () => void
   recordResumeMarkers: () => Promise<void>
+  logger: StructuredAgentSessionLogger
 }): StructuredAgentSessionTeardownPhase[] {
   return [
     {
@@ -81,7 +83,10 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
           collaborators.perChatFileCopy.stop,
           PER_CHAT_FILE_COPY_STOP_TIMEOUT_MS
         ).catch((error: unknown) => {
-          console.warn('[structured-agent-session] stopping the old chat file copy failed', error)
+          collaborators.logger.warn('stopping the old chat file copy failed', {
+            scope: 'stop-per-chat-file-copy',
+            error
+          })
         })
     },
     {
@@ -90,7 +95,9 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
         try {
           collaborators.beginResumeMarkers()
         } catch {
-          console.warn('[structured-agent-session] capturing recovery witnesses failed')
+          collaborators.logger.warn('capturing recovery witnesses for teardown failed', {
+            scope: 'teardown-recovery-witnesses'
+          })
         }
       }
     },
@@ -106,7 +113,9 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
       run: () =>
         withPhaseTimeout(collaborators.recordResumeMarkers, RESUME_MARKER_RECORD_TIMEOUT_MS).catch(
           () => {
-            console.warn('[structured-agent-session] recording recovery capsule failed')
+            collaborators.logger.warn('recording the recovery capsule at teardown failed', {
+              scope: 'teardown-recovery-capsule'
+            })
           }
         )
     },
@@ -187,7 +196,8 @@ export async function flushStructuredAgentSessionHost(
           retainSessionIds
         ),
       beginResumeMarkers: () => context.restartResume.beginTeardown(context.trigger),
-      recordResumeMarkers: context.restartResume.recordMarkers
+      recordResumeMarkers: context.restartResume.recordMarkers,
+      logger: context.deps.logger
     }),
     sessions: context.sessions,
     retainSessionIds,

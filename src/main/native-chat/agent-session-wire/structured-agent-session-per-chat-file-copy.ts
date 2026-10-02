@@ -46,6 +46,7 @@ import {
   roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
 import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type {
   StructuredAgentSessionStartupState,
   StructuredAgentSessionStartupStateDeps
@@ -77,6 +78,7 @@ export type PerChatFileCopyDeps = {
   /** Whether this host settles a chat: the missing-row phase writes no row for one it doesn't. */
   canSettle: StructuredAgentSessionStartupStateDeps['canSettle']
   isDisposed: () => boolean
+  logger: StructuredAgentSessionLogger
   now: () => number
   appVersion: string
   /** Free bytes on the state directory's volume; null when unknown. */
@@ -317,7 +319,8 @@ export class StructuredAgentSessionPerChatFileCopy {
     }
     if (!this.logged.has(`${sessionId}:${kind}`)) {
       this.logged.add(`${sessionId}:${kind}`)
-      console.warn(`[structured-agent-session] copying an old chat file failed (${kind})`, {
+      this.deps.logger.warn(`copying an old chat file failed (${kind})`, {
+        scope: 'per-chat-file-copy',
         sessionId,
         error
       })
@@ -330,7 +333,8 @@ export class StructuredAgentSessionPerChatFileCopy {
   private endForLaunch(error: unknown): void {
     this.finished = true
     this.clearTimer()
-    console.warn('[structured-agent-session] copying old chat files stopped for this launch', {
+    this.deps.logger.warn('copying old chat files stopped for this launch', {
+      scope: 'per-chat-file-copy',
       tally: Object.fromEntries(this.tally),
       error
     })
@@ -340,6 +344,7 @@ export class StructuredAgentSessionPerChatFileCopy {
     this.finished = true
     this.clearTimer()
     await removeEmptyPerChatDirectories(this.deps.database.stateDirectory)
+    // A summary, not a failure: the host's logger reports only failures.
     console.info('[structured-agent-session] old chat files copied', Object.fromEntries(this.tally))
   }
 

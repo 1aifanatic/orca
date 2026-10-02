@@ -8,10 +8,10 @@ import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-
 import {
   createRestTestRig,
   restTestChat,
-  restTestOpens,
   sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import { restTestOpens } from './structured-agent-session-rest-test-observations'
 
 let rig: RestTestRig
 

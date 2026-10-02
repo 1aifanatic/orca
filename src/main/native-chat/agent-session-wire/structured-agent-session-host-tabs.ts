@@ -1,4 +1,5 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 
 /**
@@ -7,9 +8,10 @@ import { adapterSupportsRecord } from './structured-agent-session-provider-suppo
  * durable tab here, so the chat's restart offer and any failure record die with it. Advisory:
  * recovery bookkeeping must never gate closing a chat.
  */
-export function setStructuredAgentSessionTabVisibility(
+export async function setStructuredAgentSessionTabVisibility(
   host: {
     deps: {
+      logger: StructuredAgentSessionLogger
       store: {
         setSessionTabVisibility: (
           sessionId: string,
@@ -22,14 +24,22 @@ export function setStructuredAgentSessionTabVisibility(
   },
   sessionId: string,
   visible: boolean,
-  tabId?: string
+  tabId?: string,
+  /** After a tab is retired, once its durable write landed. */
+  onHidden?: () => void
 ): Promise<void> {
   if (!visible) {
     void host.restartResume.dismiss([sessionId]).catch(() => {
-      console.warn('[structured-agent-session] forgetting recovery records on chat close failed')
+      host.deps.logger.warn('forgetting recovery records on chat close failed', {
+        scope: 'tab-close-recovery-dismiss',
+        sessionId
+      })
     })
   }
-  return host.deps.store.setSessionTabVisibility(sessionId, visible, tabId)
+  await host.deps.store.setSessionTabVisibility(sessionId, visible, tabId)
+  if (!visible) {
+    onHidden?.()
+  }
 }
 
 /** Whether the chat still has its tab. A legacy store with no tab index cannot say, so yes. */

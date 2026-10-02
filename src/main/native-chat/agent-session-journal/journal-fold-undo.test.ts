@@ -16,6 +16,7 @@ import {
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from './journal-host-database-test-support'
+import type { JournalFoldHolder } from './journal-fold-holder'
 import { JournalQueuedMessages } from './journal-queued-messages'
 import { MAX_JOURNAL_APPLIED_SETTLEMENT_IDS, type JournalReducerState } from './journal-reducer'
 import { deriveJournalSessionStatus } from './journal-session-state'
@@ -76,7 +77,7 @@ function failNextCommit(): () => void {
 }
 
 type JournalInternals = {
-  fold: JournalReducerState
+  fold: JournalFoldHolder
   rowWriter: { enqueue: (build: unknown, hook?: unknown) => Promise<unknown> }
 }
 
@@ -100,10 +101,9 @@ function comparableFold(state: JournalReducerState) {
   }
 }
 
-/** The fold as the store serves it: a stale fold is re-read by the next public read first. */
+/** The fold as the store serves it: a stale fold is re-read first. */
 function servedFold(journal: AgentSessionJournal): JournalReducerState {
-  journal.cursor()
-  return internals(journal).fold
+  return internals(journal).fold.get()
 }
 
 function expectFoldIsTheDisk(journal: AgentSessionJournal, sessionId: string): void {
@@ -204,6 +204,17 @@ describe('a failed append leaves the fold equal to a replay of the disk', () => 
     const violations = failEveryAppendOnce(journal, 'order')
 
     await journal.appendTombstone(codexItem('t-1', 0), { fence: CORPUS_FENCE })
+    expect(violations).toEqual([])
+  })
+
+  it("keeps a person's Stop and the queue's Resume as a replay reads them", async () => {
+    const journal = await open('stop')
+    await journal.appendItem(codexItem('t-1', 0), assistant('x'), THREAD)
+    const violations = failEveryAppendOnce(journal, 'stop')
+
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 't-1' }, CORPUS_FENCE)
+    await journal.appendQueueResume(CORPUS_FENCE)
+    await journal.appendStopEvent({ reason: 'user-stop' }, CORPUS_FENCE)
     expect(violations).toEqual([])
   })
 

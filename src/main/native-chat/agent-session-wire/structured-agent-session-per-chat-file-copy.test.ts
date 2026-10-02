@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import Database from '../../sqlite/sync-database'
 import { NO_LEGACY_JOURNAL_RECORDS } from '../agent-session-journal/journal-database'
@@ -425,7 +426,7 @@ describe('a failure is logged, never thrown (S1)', () => {
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('reading chats without a status failed'),
-      expect.any(Error)
+      expect.objectContaining({ error: expect.any(Error) })
     )
     // It ended as a job that finished, not one a failure stopped.
     expect(info).toHaveBeenCalledWith(expect.stringContaining('old chat files copied'), {})
@@ -509,6 +510,7 @@ const copyJobDeps = {
   settleClosedChat: async () => false,
   canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => record !== null,
   isDisposed: () => false,
+  logger: createStructuredAgentSessionLogger(),
   now: () => 0,
   appVersion: '1.0.0'
 }

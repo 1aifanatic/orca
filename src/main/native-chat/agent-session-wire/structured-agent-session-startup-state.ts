@@ -109,7 +109,10 @@ function seedStoredStatuses(
     stored = readJournalSessionStatuses(database.db, listedIds)
   } catch (error) {
     // Fails open: every listed chat is restored in the background, as before stored status existed.
-    console.warn('[structured-agent-session] reading stored chat status failed', error)
+    deps.openDeps.logger.warn('reading stored chat status failed', {
+      scope: 'startup-status-read',
+      error
+    })
     return [...listedIds]
   }
   const byId = new Map(stored.map((row) => [row.sessionId, row.status]))
@@ -162,7 +165,7 @@ async function settleOwedSessions(
     for (const sessionId of readUnsettledJournalSessionIds(database.db)) {
       const record = deps.openDeps.store.getRecord(sessionId)
       if (!deps.canSettle(record)) {
-        dropUnreachableStatus(database, sessionId, record)
+        dropUnreachableStatus(deps, sessionId, record)
         continue
       }
       if (listedOrder.has(sessionId)) {
@@ -187,14 +190,18 @@ async function settleOwedSessions(
       await deps
         .serialize(record.sessionId, () => settleClosed(deps, record))
         .catch((error: unknown) => {
-          console.warn('[structured-agent-session] settling a chat at startup failed', {
+          deps.openDeps.logger.warn('settling a chat at startup failed', {
+            scope: 'startup-settle-chat',
             sessionId: record.sessionId,
             error
           })
         })
     }
   } catch (error) {
-    console.warn('[structured-agent-session] settling chats at startup failed', error)
+    deps.openDeps.logger.warn('settling chats at startup failed', {
+      scope: 'startup-settle',
+      error
+    })
   }
 }
 
@@ -204,17 +211,19 @@ async function settleOwedSessions(
  * opened here. Kept while the records import is owed, which may still bring the record.
  */
 function dropUnreachableStatus(
-  database: StructuredAgentSessionStartupStateDeps['openDeps']['journalDatabase'],
+  deps: StructuredAgentSessionStartupStateDeps,
   sessionId: string,
   record: AgentSessionRecord | null
 ): void {
+  const database = deps.openDeps.journalDatabase
   if (!record && database.legacyRecordImportOwed) {
     return
   }
   try {
     deleteJournalSessionStatus(database.db, sessionId)
   } catch (error) {
-    console.warn('[structured-agent-session] dropping an unreachable chat status failed', {
+    deps.openDeps.logger.warn('dropping an unreachable chat status failed', {
+      scope: 'startup-drop-status',
       sessionId,
       error
     })
@@ -232,12 +241,10 @@ async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateD
     if (
       (await withTimeout<boolean | null>(deps.resolveRecovery(sessionId), budgetMs, null)) === null
     ) {
-      console.warn(
-        '[structured-agent-session] a chat recovery outlasted startup; left unverified',
-        {
-          sessionId
-        }
-      )
+      deps.openDeps.logger.warn('a chat recovery outlasted startup; left unverified', {
+        scope: 'startup-recovery-timeout',
+        sessionId
+      })
     }
   })
 }

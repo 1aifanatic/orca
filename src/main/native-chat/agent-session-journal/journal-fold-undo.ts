@@ -103,6 +103,8 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     latestPersonTurnSequence: state.latestPersonTurnSequence
   }
   const derivedTurnScope = state.derivedTurnScope.clone()
+  // Edited in place by the fold; its fields are replaced, never mutated, so a shallow copy restores it.
+  const queuePauseMarks = { ...state.queuePauseMarks }
   for (const container of recording) {
     container.onChange = record
   }
@@ -123,6 +125,7 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
       }
       Object.assign(state, scalars)
       state.derivedTurnScope = derivedTurnScope
+      Object.assign(state.queuePauseMarks, queuePauseMarks)
       return true
     }
   }

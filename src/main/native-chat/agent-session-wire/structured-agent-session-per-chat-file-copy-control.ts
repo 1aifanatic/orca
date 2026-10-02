@@ -62,7 +62,10 @@ export function createStructuredAgentSessionPerChatFileCopyControl(
         })
       } catch (error) {
         // Bookkeeping: startup goes on, and the next launch derives what is owed again.
-        console.warn('[structured-agent-session] starting the copy of old chat files failed', error)
+        deps.logger.warn('starting the copy of old chat files failed', {
+          scope: 'per-chat-file-copy',
+          error
+        })
       }
     },
     stop: async () => {

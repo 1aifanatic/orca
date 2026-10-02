@@ -17,6 +17,7 @@ import type {
   AgentSessionStatusEvent,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
@@ -37,6 +38,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export const REST_TEST_CALLER = { callerKey: 'client-1' }
 export const IDLE_MS = STRUCTURED_AGENT_SESSION_IDLE_MS
@@ -49,7 +51,6 @@ export type RestTestAdapter = {
   acknowledgeSessionRelease: Mock<
     NonNullable<StructuredAgentSessionAdapter['acknowledgeSessionRelease']>
   >
-  backgroundTaskState: Mock<NonNullable<StructuredAgentSessionAdapter['backgroundTaskState']>>
   holdsDispatch: Mock<NonNullable<StructuredAgentSessionAdapter['holdsDispatch']>>
   readOptions: Mock<NonNullable<StructuredAgentSessionAdapter['readOptions']>>
   /** Called once per journal open, with the session id; replace its implementation to hold one. */
@@ -63,7 +64,12 @@ export type RestTestRig = {
   adapter: RestTestAdapter
   clock: { now: number }
   statusEvents: AgentSessionStatusEvent[]
-  sink: { publish: Mock; forget: Mock }
+  /** `readChildWork` serves the session's child records, as the host's store does. */
+  sink: {
+    publish: Mock
+    forget: Mock
+    readChildWork: Mock<(subject: unknown) => AgentChildWorkView[]>
+  }
   probeOwner: Mock<(record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>>
   /** Workspaces this host's adapter does not serve, as a platform gate would. */
   unsupportedWorkspaceIds: Set<string>
@@ -155,7 +161,11 @@ export async function createRestTestRig(
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'orca-rest-')))
   const clock = { now: HOST_TEST_NOW }
   const statusEvents: AgentSessionStatusEvent[] = []
-  const sink = { publish: vi.fn(), forget: vi.fn() }
+  const sink: RestTestRig['sink'] = {
+    publish: vi.fn(),
+    forget: vi.fn(),
+    readChildWork: vi.fn((): AgentChildWorkView[] => [])
+  }
   const probeOwner: RestTestRig['probeOwner'] = vi.fn(async () => ({ outcome: 'pid-absent' }))
   const unsupportedWorkspaceIds = new Set<string>()
   const openStore = () => openTestAgentSessionRecordStore(root)
@@ -178,13 +188,13 @@ export async function createRestTestRig(
     closeSession: vi.fn(async () => true),
     dispatch: vi.fn(async (input) => acceptedDispatch(input.sessionId)),
     acknowledgeSessionRelease: vi.fn(),
-    backgroundTaskState: vi.fn(() => undefined),
     holdsDispatch: vi.fn(() => false),
     readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } })),
     historyFilePath: vi.fn(async (_sessionId: string): Promise<string | null> => null)
   }
   const hostFor = (overrides: Partial<StructuredAgentSessionHostDeps>) => {
     const host = new StructuredAgentSessionHost({
+      logger: createStructuredAgentSessionLogger(),
       store,
       adapter: {
         ...adapter,
@@ -305,26 +315,6 @@ export function foundRestTestChat(rig: RestTestRig): Promise<void> {
 /** A send from a client that has not attached this run, so it names no fence. */
 export function sendRestTestMessage(rig: RestTestRig, sessionId: string, text: string) {
   return rig.host.send(REST_TEST_CALLER, restTestSend(text, null, sessionId))
-}
-
-export function restTestOpens(rig: RestTestRig, sessionId: string): number {
-  return rig.adapter.historyFilePath.mock.calls.filter(([id]) => id === sessionId).length
-}
-
-/** The newest row the status stream carried for a session. */
-export function latestRestTestStatus(rig: RestTestRig, sessionId: string) {
-  for (const event of rig.statusEvents.toReversed()) {
-    if (event.type === 'status' && event.session.sessionId === sessionId) {
-      return event.session
-    }
-    if (event.type === 'snapshot') {
-      const found = event.sessions.find((session) => session.sessionId === sessionId)
-      if (found) {
-        return found
-      }
-    }
-  }
-  return undefined
 }
 
 /** Runs one sweep pass now, for a test that set `idleSweep.intervalMs` out of reach. */

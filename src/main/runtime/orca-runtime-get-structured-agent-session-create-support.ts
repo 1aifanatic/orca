@@ -32,6 +32,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   // Listed chats startup could not answer from stored state; null until it has run.
   protected structuredAgentSessionBackgroundRestoreIds: string[] | null = null
   protected structuredAgentSessionStartupChatWork = new StructuredAgentSessionStartupChatWork()
+  protected structuredAgentSessionStartupStepPromise: Promise<void> | null = null
 
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,

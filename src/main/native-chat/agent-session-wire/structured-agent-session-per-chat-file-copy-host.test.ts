@@ -4,6 +4,7 @@
 // given the status row the version 5 migration left it without.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   closeTestJournalHostDatabases,
@@ -370,6 +371,7 @@ describe('starting and stopping (T17b, T6)', () => {
         record !== null,
       isHostChatWorkActive: () => false,
       isDisposed: () => false,
+      logger: createStructuredAgentSessionLogger(),
       now: () => 0,
       appVersion: '1.0.0'
     })
@@ -405,6 +407,7 @@ describe('starting and stopping (T17b, T6)', () => {
         record !== null,
       isHostChatWorkActive: () => false,
       isDisposed: () => false,
+      logger: createStructuredAgentSessionLogger(),
       now: () => 0,
       appVersion: '1.0.0'
     })
@@ -414,7 +417,7 @@ describe('starting and stopping (T17b, T6)', () => {
     ).not.toThrow()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('starting the copy of old chat files failed'),
-      expect.any(Error)
+      expect.objectContaining({ error: expect.any(Error) })
     )
     await control.stop()
   })

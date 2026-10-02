@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
+import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { projectStructuredAgentSessionStatusState } from '../../shared/structured-agent-session-projection'
 import { StructuredAgentSessionStatusFeed } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import { maybeAutoRenameWorkspaceOnFirstStructuredTurn } from './first-work-structured-session-rename'
@@ -63,6 +64,7 @@ import {
   noUpstreamError,
   workingEvent
 } from './first-work-branch-rename-test-harness'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 function makeDeps(overrides: Partial<FirstWorkBranchRenameDeps> = {}) {
   return makeBranchRenameDeps(vi.fn, overrides)
@@ -100,13 +102,17 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         isPendingFirstAgentMessageRename: () => true
       })
       const items: AgentJournalRenderItem[] = []
-      // Projected on every publish, as a real journal re-projects each commit: this test is
-      // about the rename.
+      // A real journal's sequence only ever advances, so the feed's projection
+      // cache must miss on every publish here: this test is about the rename.
+      let sequence = 0
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (snapshot, cursor, its projection, activity, read-only).
       const journal = {
+        snapshot: () => ({ items }),
         lastActivityAt: () => 1,
         isReadOnly: false,
+        cursor: () => ({ epoch: 1, sequence: (sequence += 1) }),
         statusState: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)
-      }
+      } as unknown as AgentSessionJournal
       const pending: Promise<void>[] = []
       const observe = vi.fn((summary, options) => {
         const work = maybeAutoRenameWorkspaceOnFirstStructuredTurn(summary, options, deps)
@@ -115,6 +121,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         }
       })
       const feed = new StructuredAgentSessionStatusFeed({
+        logger: createStructuredAgentSessionLogger(),
         sessions: new Map([
           [
             'session',
@@ -208,11 +215,14 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         }
       }
     ]
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (snapshot, cursor, its projection, activity, read-only).
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,
-      statusState: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)
-    }
+      cursor: () => ({ epoch: 1, sequence: 1 }),
+      statusState: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence),
+      snapshot: () => ({ items })
+    } as unknown as AgentSessionJournal
     const location = {
       executionHostId: 'local' as const,
       wslDistro: null,
@@ -221,6 +231,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     }
     const pending: Promise<void>[] = []
     const feed = new StructuredAgentSessionStatusFeed({
+      logger: createStructuredAgentSessionLogger(),
       sessions: new Map([['session', { journal, params: { location, provider: 'codex' } }]]),
       getRecord: () => null,
       now: () => 1,

@@ -106,7 +106,7 @@ export function createStructuredAgentSessionHostRestore(
     serialize: <T>(sessionId: string, task: () => Promise<T>) => tasks.serialize(sessionId, task),
     hasSession: (sessionId: string) => sessions.has(sessionId)
   }
-  const failures = reportEachFailureOnce(deps.onLeaseReconcileFailure)
+  const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
   const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
@@ -148,6 +148,7 @@ export function createStructuredAgentSessionHostRestore(
     canSettle,
     isHostChatWorkActive: () => startup.isSettling() || restorer.isRestoring,
     isDisposed: rest.isDisposed,
+    logger: deps.logger,
     now: () => deps.now?.() ?? Date.now(),
     appVersion:
       deps.appVersion ?? (hasAppEnvironment() ? getAppEnvironment().getVersion() : 'unknown')

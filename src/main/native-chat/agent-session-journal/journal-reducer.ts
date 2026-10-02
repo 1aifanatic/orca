@@ -27,10 +27,15 @@ import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { JournalFoldMap, JournalFoldSet } from './journal-fold-undo'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import type { JournalRow } from './journal-row-schema'
+import { isJournalStopOrResumeRow, type JournalRow } from './journal-row-schema'
 import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
 import { applyJournalDispatchRow } from './journal-dispatch-reducer'
 import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
+import {
+  createJournalQueuePauseMarks,
+  foldJournalQueuePauseMark,
+  type JournalQueuePauseMarks
+} from './queued-message-pause'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -58,6 +63,8 @@ export type JournalReducerState = {
   /** The submission row of the latest turn a person asked for (`origin: 'client'`) that the
    *  provider accepted; 0 when none. Kept as it folds so the queue's pause reads it in O(1). */
   latestPersonTurnSequence: number
+  /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
+  queuePauseMarks: JournalQueuePauseMarks
 }
 
 export function createJournalReducerState(sessionId: string, epoch: string): JournalReducerState {
@@ -77,7 +84,8 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     aliases: new JournalFoldMap(),
     appliedSettlementIds: new JournalFoldSet(),
     derivedTurnScope: new JournalDerivedTurnScope(),
-    latestPersonTurnSequence: 0
+    latestPersonTurnSequence: 0,
+    queuePauseMarks: createJournalQueuePauseMarks()
   }
 }
 
@@ -101,6 +109,10 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
       journalRenderItem(itemId, row.revision, row.body, row, statedOrDerivedTurnScope(state, row)),
       row.fence
     )
+    return
+  }
+  if (isJournalStopOrResumeRow(row)) {
+    foldJournalQueuePauseMark(state.queuePauseMarks, row)
     return
   }
   if (row.kind === 'tombstone') {
