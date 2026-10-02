@@ -18,6 +18,7 @@ export function buildDirectWorkItemStartup(args: {
   launchConnectionId: string | null
   worktreePath: string
   repoProjectRuntime?: Parameters<typeof resolveSourceControlLaunchPlatform>[0]['projectRuntime']
+  launchesOnPairedHost: boolean
 }): ReturnType<typeof buildDirectWorkItemAgentStartupPlan> {
   const launchPlatform =
     args.launchPlatform ??
@@ -37,7 +38,8 @@ export function buildDirectWorkItemStartup(args: {
       args.launchConnectionId
     ),
     // Why: SSH hosts run the plain `orca` shim, so the Linux-only `orca-ide` rename is not applied.
-    isRemote: typeof args.launchConnectionId === 'string'
+    isRemote: typeof args.launchConnectionId === 'string',
+    launchesOnPairedHost: args.launchesOnPairedHost
   })
 }
 

@@ -22,6 +22,7 @@ export type QuickComposerStartupInput = {
   platform: NodeJS.Platform
   shell: AgentStartupShell | null | undefined
   isRemote: boolean
+  hostWritesLaunchFile: boolean
   telemetrySource: WorktreeCreationRequest['telemetrySource']
 }
 
@@ -91,6 +92,7 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
       platform: input.platform,
       shell: input.shell ?? undefined,
       isRemote: input.isRemote,
+      hostWritesLaunchFile: input.hostWritesLaunchFile,
       allowEmptyPromptLaunch: true
     })
     if (startupPlan && draftPrompt) {
@@ -116,6 +118,7 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
           ...(startupPlan.startupCommandDelivery
             ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
             : {}),
+          ...(startupPlan.launchFile ? { launchFile: startupPlan.launchFile } : {}),
           ...(telemetry ? { telemetry } : {})
         }
       : undefined

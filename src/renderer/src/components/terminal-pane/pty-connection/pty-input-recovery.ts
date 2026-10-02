@@ -62,9 +62,9 @@ export function installPtyInputRecovery(session: ConnectPanePtySession): void {
       : {}),
     env: session.paneEnv,
     ...(session.paneStartup?.envToDelete ? { envToDelete: session.paneStartup.envToDelete } : {}),
-    command: session.shouldDeliverStartupViaTerminalPaste
-      ? undefined
-      : session.paneStartup?.command,
+    ...(session.shouldDeliverStartupViaTerminalPaste
+      ? {}
+      : { command: session.paneStartup?.command, launchFile: session.paneStartup?.launchFile }),
     ...(session.shouldUseProviderSshStartupDelivery
       ? { commandDelivery: 'provider' as const }
       : {}),

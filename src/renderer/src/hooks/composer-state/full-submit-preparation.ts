@@ -16,6 +16,7 @@ type FullSubmitPreparationInput = Pick<
   | 'selectedRepoExecutionHostId'
   | 'selectedRepoIsGit'
   | 'selectedRepoIsRemote'
+  | 'selectedRepoSettings'
   | 'selectedRepoStartupShell'
   | 'settings'
   | 'smartNameMode'
@@ -38,6 +39,7 @@ import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
+import { launchHostWritesLaunchFile } from '@/lib/launch-file-host'
 import type { PendingSmartGitHubSubmitResolution } from './source-selection-decisions'
 
 export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
@@ -56,6 +58,7 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
     selectedRepoExecutionHostId,
     selectedRepoIsGit,
     selectedRepoIsRemote,
+    selectedRepoSettings,
     selectedRepoStartupShell,
     settings,
     smartNameMode,
@@ -199,7 +202,8 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
         ),
         platform: selectedRepoAgentLaunchPlatform,
         shell: selectedRepoStartupShell,
-        isRemote: selectedRepoIsRemote
+        isRemote: selectedRepoIsRemote,
+        hostWritesLaunchFile: launchHostWritesLaunchFile(selectedRepoSettings)
       })
 
       const shouldSeedInitialAgentStatus =
@@ -222,6 +226,7 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
               ...(startupPlan.startupCommandDelivery
                 ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
                 : {}),
+              ...(startupPlan.launchFile ? { launchFile: startupPlan.launchFile } : {}),
               telemetry: composerTelemetry
             }
           : undefined
@@ -256,6 +261,7 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
       selectedRepoExecutionHostId,
       selectedRepoIsGit,
       selectedRepoIsRemote,
+      selectedRepoSettings,
       selectedRepoStartupShell,
       settings,
       smartNameMode,

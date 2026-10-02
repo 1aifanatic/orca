@@ -27,7 +27,7 @@ describe('planSourceControlAgentActionLaunch', () => {
     ).toEqual({ ok: false, error: 'The selected agent was not detected on this workspace host.' })
   })
 
-  it('mirrors submit-after-ready delivery without embedding the prompt in the command', () => {
+  it('carries a submit-after-ready prompt on the command line of an agent that takes one', () => {
     const result = planSourceControlAgentActionLaunch({
       agent: 'codex',
       commandInput: 'Fix checks',
@@ -36,10 +36,23 @@ describe('planSourceControlAgentActionLaunch', () => {
       platform: 'linux'
     })
 
-    expect(result.ok && result.delivery).toBe('paste-submit')
-    expect(result.ok && result.commandLabel).toBe('codex')
-    expect(result.ok && result.summary).toContain('pastes and submits')
+    expect(result.ok && result.delivery).toBe('argv')
+    expect(result.ok && result.commandLabel).toBe("codex 'Fix checks'")
+    expect(result.ok && result.summary).toContain('included in the launch command')
     expect(result.ok && result.caveat).toContain('PATH')
+  })
+
+  it('says an input past the argv ceiling goes in a private file, not on the command line', () => {
+    const result = planSourceControlAgentActionLaunch({
+      agent: 'codex',
+      commandInput: 'z'.repeat(200_000),
+      promptDelivery: 'submit-after-ready',
+      detectedAgents: ['codex'],
+      platform: 'linux'
+    })
+
+    expect(result.ok && result.summary).toContain('private file')
+    expect(result.ok && result.summary).not.toContain('included in the launch command')
   })
 
   it('includes per-action CLI arguments in submit-after-ready launch plans', () => {
@@ -52,7 +65,20 @@ describe('planSourceControlAgentActionLaunch', () => {
       platform: 'linux'
     })
 
-    expect(result.ok && result.commandLabel).toBe("codex '--model' 'gpt-5.5'")
+    expect(result.ok && result.commandLabel).toBe("codex '--model' 'gpt-5.5' 'Fix checks'")
+  })
+
+  it('still pastes and submits for an agent that takes its text only after start', () => {
+    const result = planSourceControlAgentActionLaunch({
+      agent: 'amp',
+      commandInput: 'Fix checks',
+      promptDelivery: 'submit-after-ready',
+      detectedAgents: ['amp'],
+      platform: 'linux'
+    })
+
+    expect(result.ok && result.delivery).toBe('paste-submit')
+    expect(result.ok && result.summary).toContain('pastes and submits')
   })
 
   it.each([

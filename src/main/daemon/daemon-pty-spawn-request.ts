@@ -115,6 +115,10 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
         envToDelete: context.attachOnly ? undefined : opts.envToDelete,
         command: context.attachOnly ? undefined : opts.command,
         startupCommandDelivery: context.attachOnly ? undefined : opts.startupCommandDelivery,
+        ...(!context.attachOnly && opts.launchFile ? { launchFile: opts.launchFile } : {}),
+        ...(!context.attachOnly && opts.wslLaunchDirectory
+          ? { wslLaunchDirectory: opts.wslLaunchDirectory }
+          : {}),
         launchAgent: context.attachOnly ? undefined : opts.launchAgent,
         ...(context.attachOnly && !context.emulateLegacyAttachOnly ? { attachOnly: true } : {}),
         shellOverride: context.attachOnly ? undefined : opts.shellOverride,

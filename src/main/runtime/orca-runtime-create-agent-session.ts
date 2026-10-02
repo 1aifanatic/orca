@@ -17,7 +17,13 @@ import {
 } from './orca-runtime-core'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
+import {
+  agentPromptRidesLaunchCommand,
+  buildAgentDraftLaunchPlan,
+  buildAgentStartupPlan
+} from '../../shared/tui-agent-startup'
+import { windowsDraftRefusal } from '../../shared/startup-plan-launch-file'
+import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
   AgentSessionCreateOperation,
@@ -168,7 +174,22 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
               allowEmptyPromptLaunch: true
             })
       if (!startup) {
-        throw new Error('agent_session_identity_required')
+        const refusal =
+          request.promptDelivery === 'draft'
+            ? windowsDraftRefusal(
+                request.prompt ?? '',
+                resolveStartupShell(startupArgs.platform, startupArgs.shell)
+              )
+            : null
+        throw new Error(refusal ?? 'agent_session_identity_required')
+      }
+      if (startup.followupPrompt && agentPromptRidesLaunchCommand(request.agent)) {
+        // Why: this create has no paste after ready, so a prompt left for one would be dropped.
+        throw new Error(
+          `${request.agent} cannot take this prompt on its command line here (too long, private, or ` +
+            "broken by the host's Windows shell), so the session was not started. Start it without " +
+            'the prompt and paste the prompt once it opens.'
+        )
       }
       if (caller.signal?.aborted) {
         throw new Error('client_disconnected')
@@ -201,6 +222,9 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           launchAgent: request.agent,
           terminalKittyKeyboardProtocol: request.terminalKittyKeyboardProtocol,
           startupCommandDelivery: startup.startupCommandDelivery,
+          ...('launchFile' in startup && startup.launchFile
+            ? { launchFile: startup.launchFile }
+            : {}),
           // A fresh agent this host built; the request has no surface field, so it counts as `unknown`.
           telemetry: agentStartedTelemetry(request.agent, undefined),
           cwd: startupCwd,

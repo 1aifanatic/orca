@@ -14,6 +14,8 @@ import { waitAtTerminalPtyPreSpawnE2EBarrier } from './terminal-pty-pre-spawn-e2
 import type { IpcPtySessionHandlers } from './ipc-pty-session-handlers'
 import { isSshSessionGoneError } from './pty-connection/pty-connect-limits'
 import { spawnIpcPty } from './ipc-pty-spawn-request'
+import { isLaunchFileUnavailableMessage } from '../../../../shared/launch-prompt-file'
+import { showAgentLaunchNotStartedNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import type { IpcPtyTransportOptions, PtyConnectResult, PtyTransport } from './pty-transport-types'
 
 const SSH_PTY_CONNECTION_MISMATCH_MARKER = 'belongs to SSH connection'
@@ -188,6 +190,12 @@ function handleConnectError(
   }
   if (message.includes('was explicitly killed')) {
     return undefined
+  }
+  // Why the transport's file: the spawn sends it unless the connect call named its own command.
+  const { launchFile } = context.transportOptions
+  if (launchFile && !options.command && isLaunchFileUnavailableMessage(message)) {
+    // The pane gets no shell; the notice holds the only copy of the prompt.
+    showAgentLaunchNotStartedNotice({ prompt: launchFile.content })
   }
   if (connectionId && options.sessionId && message.includes(SSH_PTY_CONNECTION_MISMATCH_MARKER)) {
     // Why not `sessionExpired`: this string is minted by `toRelaySshPtyId`/`toAppSshPtyId` from a

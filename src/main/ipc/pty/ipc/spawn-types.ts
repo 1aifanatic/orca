@@ -36,6 +36,8 @@ export type PtySpawnIpcArgs = {
   launchToken?: unknown
   launchAgent?: TuiAgent
   startupCommandDelivery?: StartupCommandDelivery
+  /** Unvalidated here; spawn options keep it only when it parses. */
+  launchFile?: unknown
   connectionId?: string | null
   worktreeId?: string
   sessionId?: string

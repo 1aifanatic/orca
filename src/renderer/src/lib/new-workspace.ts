@@ -1,10 +1,11 @@
+import { agentPromptRidesLaunchCommand } from '../../../shared/tui-agent-startup'
 import { useAppStore } from '@/store'
 import {
   getSettingsForAgentTabRuntimeOwner,
   pasteDraftToAgentPtyWhenReady
 } from '@/lib/agent-paste-draft'
 import { sendFollowupPromptWhenAgentReady } from '@/lib/agent-followup-delivery'
-import { showAutomationPromptNotSentToast } from '@/lib/agent-background-session-timeout-toast'
+import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import type { LinkedWorkItemContext } from '@/lib/linked-work-item-context'
 import {
@@ -287,16 +288,27 @@ async function deliverAgentStartupToTerminal(
   // (aider, goose, etc.) that need their initial prompt typed into the live
   // session and submitted. Wait until the agent owns the PTY before writing.
   if (startup.followupPrompt) {
-    const delivered = await sendFollowupPromptWhenAgentReady({
-      ptyId,
-      expectedProcess: startup.expectedProcess,
-      prompt: startup.followupPrompt,
-      settings: runtimeSettings
-    })
-    // Why: a dropped follow-up is otherwise silent — surface the same toast the
-    // draft path uses so the user knows to open the workspace and paste it.
+    const prompt = startup.followupPrompt
+    // Why: an argv agent's prompt left for paste (a WSL line too long to type, a paired host) waits
+    // for the agent's composer and lands as one bracketed paste, not raw keys once the process shows.
+    const delivered = agentPromptRidesLaunchCommand(startup.agent)
+      ? await pasteDraftToAgentPtyWhenReady({
+          tabId,
+          ptyId,
+          content: prompt,
+          agent: startup.agent,
+          submit: true,
+          forcePaste: true
+        })
+      : await sendFollowupPromptWhenAgentReady({
+          ptyId,
+          expectedProcess: startup.expectedProcess,
+          prompt,
+          settings: runtimeSettings
+        })
+    // Why: a dropped follow-up is otherwise silent; the notice hands the prompt back.
     if (!delivered) {
-      showAutomationPromptNotSentToast(startup.agent)
+      showAgentLaunchPromptNotDeliveredNotice({ agent: startup.agent, prompt })
     }
   }
 
@@ -313,7 +325,8 @@ async function deliverAgentStartupToTerminal(
       // planning is unavailable, so this paste is the first delivery attempt.
       forcePaste: true,
       // Why: surface a dropped draft instead of silently losing it.
-      onTimeout: () => showAutomationPromptNotSentToast(startup.agent)
+      onTimeout: () =>
+        showAgentLaunchPromptNotDeliveredNotice({ agent: startup.agent, prompt: draftPrompt })
     })
   }
 }

@@ -6,6 +6,7 @@ import {
   type StartupCommandStaging
 } from '../../shared/startup-command-staging'
 import { resolvePtyOwnerBackend } from '../../shared/pty-owner-backend'
+import { removeLaunchFile, writeSpawnLaunchFile } from '../../shared/launch-file-writing'
 import { getDaemonSessionResultMetadata } from './daemon-create-or-attach-result'
 import { enumerateDirectoryOnce } from './directory-enumeration-probe'
 import { normalizePtySize } from './daemon-pty-size'
@@ -119,23 +120,40 @@ async function spawnAndPublishSession(
   // Why before the fork: the shell's own cwd may already have fallen back, so probe the requested path.
   const cwdReadableByDaemon =
     opts.cwd && !wslDistro ? await isCwdReadableByThisProcess(opts.cwd) : null
-  const subprocess = await deps.spawnSubprocess({
-    sessionId: opts.sessionId,
-    cols: size.cols,
-    rows: size.rows,
-    cwd: opts.cwd,
-    env: opts.env,
-    envToDelete: opts.envToDelete,
+  const wslDirectory =
+    wslDistro && opts.wslLaunchDirectory?.distro === wslDistro ? opts.wslLaunchDirectory : undefined
+  const launchFile = writeSpawnLaunchFile({
+    launchFile: opts.launchFile,
     command: opts.command,
-    startupCommandDelivery: opts.startupCommandDelivery,
-    ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
-    shellOverride: opts.shellOverride,
-    terminalShellArgs: opts.terminalShellArgs,
-    terminalWindowsWslDistro: opts.terminalWindowsWslDistro,
-    terminalWindowsPowerShellImplementation: opts.terminalWindowsPowerShellImplementation,
-    isCanceled: opts.isCanceled,
-    ...(opts.cancelSignal ? { cancelSignal: opts.cancelSignal } : {})
+    env: opts.env,
+    orcaBuiltLine: opts.launchAgent !== undefined,
+    wslDistro,
+    wslDirectory
   })
+  const command = launchFile?.command ?? opts.command
+  let subprocess: Awaited<ReturnType<typeof deps.spawnSubprocess>>
+  try {
+    subprocess = await deps.spawnSubprocess({
+      sessionId: opts.sessionId,
+      cols: size.cols,
+      rows: size.rows,
+      cwd: opts.cwd,
+      env: launchFile?.env ?? opts.env,
+      envToDelete: opts.envToDelete,
+      command,
+      startupCommandDelivery: opts.startupCommandDelivery,
+      ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
+      shellOverride: opts.shellOverride,
+      terminalShellArgs: opts.terminalShellArgs,
+      terminalWindowsWslDistro: opts.terminalWindowsWslDistro,
+      terminalWindowsPowerShellImplementation: opts.terminalWindowsPowerShellImplementation,
+      isCanceled: opts.isCanceled,
+      ...(opts.cancelSignal ? { cancelSignal: opts.cancelSignal } : {})
+    })
+  } catch (error) {
+    removeLaunchFile(launchFile)
+    throw error
+  }
 
   let staging: StartupCommandStaging | undefined
   // Why: a fallback shell does not emit the preferred shell's ready marker;
@@ -164,7 +182,10 @@ async function spawnAndPublishSession(
       deps.onSessionExit,
       opts.sessionId,
       opts.agentSessionGeneration,
-      () => discardStagedStartupCommand(staging)
+      () => {
+        discardStagedStartupCommand(staging)
+        removeLaunchFile(launchFile)
+      }
     ),
     ...(deps.reportReadinessEvent ? { reportReadinessEvent: deps.reportReadinessEvent } : {}),
     ...(opts.shellReadyTimeoutMs !== undefined
@@ -176,6 +197,7 @@ async function spawnAndPublishSession(
     // Retain cleanup ownership if the native child refuses to exit.
     deps.sessions.set(opts.sessionId, session)
     await session.forceKillAndDisposeSubprocess()
+    removeLaunchFile(launchFile)
     if (deps.sessions.get(opts.sessionId) === session) {
       session.dispose()
       deps.sessions.delete(opts.sessionId)
@@ -188,27 +210,27 @@ async function spawnAndPublishSession(
   deps.onSessionCreated(opts.sessionId, opts.agentSessionGeneration, session.isAlive)
   const token = session.attachClient(opts.streamClient)
 
-  const startupCommandWritten =
-    Boolean(opts.command) && !subprocess.startupCommandDeliveredInShellArgs
+  const startupCommandWritten = Boolean(command) && !subprocess.startupCommandDeliveredInShellArgs
   // Why: without this, a missing command and a lost one log identically.
   // Length, never the text -- launches can carry credentials.
   try {
     deps.reportReadinessEvent?.('startup-command-delivery', {
       sessionId: opts.sessionId,
       written: startupCommandWritten,
-      hasCommand: Boolean(opts.command),
-      commandLength: opts.command?.length ?? 0,
+      hasCommand: Boolean(command),
+      commandLength: command?.length ?? 0,
       viaShellArgs: subprocess.startupCommandDeliveredInShellArgs === true,
       queuedByShellReadyBarrier: shellReadySupported
     })
   } catch {
     // Diagnostics must never turn a live PTY into a failed create.
   }
-  if (startupCommandWritten && opts.command) {
+  if (startupCommandWritten && command) {
     staging = stageStartupCommand({
-      command: opts.command,
+      command,
       shellPath: subprocess.shellPath,
-      orcaBuiltLine: opts.launchAgent !== undefined
+      orcaBuiltLine: opts.launchAgent !== undefined,
+      wslDirectory
     })
     const notice = startupStagingFailureNotice(staging)
     if (notice) {

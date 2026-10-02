@@ -100,7 +100,11 @@ export function planSourceControlAgentActionLaunch(args: {
   let startupPlan: AgentStartupPlan | null = null
   let delivery: SourceControlLaunchPlanDelivery
 
-  if (args.promptDelivery === 'submit-after-ready') {
+  // Only an agent that takes no launch prompt waits for readiness; the rest carry it on argv.
+  if (
+    args.promptDelivery === 'submit-after-ready' &&
+    TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'
+  ) {
     startupPlan = buildAgentStartupPlan({
       agent,
       prompt: '',
@@ -199,7 +203,9 @@ export function planSourceControlAgentActionLaunch(args: {
         ? 'The command input is prefilled as an editable draft by the agent launch command.'
         : delivery === 'draft-paste'
           ? 'The agent starts with no prompt, then Orca pastes the command input as an editable draft after the TUI is ready.'
-          : 'The command input is included in the launch command and submitted as the first turn.'
+          : startupPlan.launchFile
+            ? 'The command input goes in a private file the host writes; the launch command tells the agent to read it, submitted as the first turn.'
+            : 'The command input is included in the launch command and submitted as the first turn.'
 
   return {
     ok: true,

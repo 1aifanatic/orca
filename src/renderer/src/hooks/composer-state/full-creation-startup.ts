@@ -23,6 +23,8 @@ export function buildFullCreationStartup(args: {
     ...(args.startupPlan.startupCommandDelivery
       ? { startupCommandDelivery: args.startupPlan.startupCommandDelivery }
       : {}),
+    // Why: the command points at this file; without it the agent is told to read nothing.
+    ...(args.startupPlan.launchFile ? { launchFile: args.startupPlan.launchFile } : {}),
     ...(args.shouldSeedInitialAgentStatus
       ? { initialAgentStatus: { agent: args.agent, prompt: args.prompt.trim() } }
       : {}),

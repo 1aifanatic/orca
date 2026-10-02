@@ -77,12 +77,13 @@ describe('tui agent startup plans', () => {
   it('uses PowerShell quoting by default when the target shell is Windows', () => {
     const plan = buildAgentStartupPlan({
       agent: 'claude',
-      prompt: 'fix Bob\'s "quoted" branch',
+      prompt: "fix Bob's \u2018quoted\u2019 branch",
       cmdOverrides: {},
       platform: 'win32'
     })
 
-    expect(plan?.launchCommand).toBe("claude 'fix Bob''s \"quoted\" branch'")
+    // A `"` would move the prompt into a launch file (windows-shell-prompt-damage.test.ts).
+    expect(plan?.launchCommand).toBe("claude 'fix Bob''s \u2018\u2018quoted\u2019\u2019 branch'")
   })
 
   it('invokes fully quoted argv commands in PowerShell', () => {
@@ -100,7 +101,65 @@ describe('tui agent startup plans', () => {
       shell: 'cmd'
     })
 
-    expect(plan?.launchCommand).toBe('claude "fix ^"quoted^" ^& ^%PATH^%"')
+    expect(plan?.launchCommand).toBe('claude "fix ""quoted"" & "^%"PATH"^%""')
+  })
+
+  it.each(['cmd', 'powershell'] as const)(
+    'never types a line break into %s: a multi-line prompt rides a launch file',
+    (shell) => {
+      const prompt = 'fix the build\r\n& echo PWNED\nthen run tests'
+      const plan = buildAgentStartupPlan({
+        agent: 'claude',
+        prompt,
+        cmdOverrides: {},
+        platform: 'win32',
+        shell
+      })
+
+      expect(plan?.launchCommand).not.toMatch(/[\r\n]/)
+      expect(plan?.launchCommand).not.toContain('PWNED')
+      expect(plan?.launchFile).toMatchObject({ content: prompt, sensitive: false })
+      expect(plan?.launchCommand).toContain(plan?.launchFile?.placeholder)
+    }
+  )
+
+  it('keeps a multi-line prompt inline for a POSIX shell on a POSIX host, which stages it', () => {
+    const plan = buildAgentStartupPlan({
+      agent: 'claude',
+      prompt: 'line one\nline two',
+      cmdOverrides: {},
+      platform: 'linux',
+      shell: 'posix'
+    })
+
+    expect(plan?.launchFile).toBeUndefined()
+    expect(plan?.launchCommand).toContain('line one\nline two')
+  })
+
+  // Why: a Windows host stages nothing, so Git Bash would get the raw line break typed.
+  it('points Git Bash on a Windows host at a launch file for a multi-line prompt', () => {
+    const plan = buildAgentStartupPlan({
+      agent: 'claude',
+      prompt: 'line one\nline two',
+      cmdOverrides: {},
+      platform: 'win32',
+      shell: 'posix'
+    })
+
+    expect(plan?.launchFile?.content).toBe('line one\nline two')
+    expect(plan?.launchCommand).not.toContain('line one')
+  })
+
+  it('leaves a multi-line draft for the paste on a Windows shell instead of typing it', () => {
+    expect(
+      buildAgentDraftLaunchPlan({
+        agent: 'claude',
+        draft: 'line one\nline two',
+        cmdOverrides: {},
+        platform: 'win32',
+        shell: 'cmd'
+      })
+    ).toBeNull()
   })
 
   it('terminates Grok options before a flag-shaped POSIX prompt', () => {

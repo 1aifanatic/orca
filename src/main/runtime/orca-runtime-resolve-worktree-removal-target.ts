@@ -19,9 +19,14 @@ import { terminalShellOverrideRefusal } from './terminal-shell-override-host-sup
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtime-resolution'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
-import { agentPromptRidesLaunchCommand } from '../../shared/tui-agent-startup'
-import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt-carry'
-import { nameLocalTypedLineShell } from './agent-launch-typed-line-shell'
+import {
+  agentPromptRidesLaunchCommand,
+  buildAgentStartupPlan
+} from '../../shared/tui-agent-startup'
+import {
+  planStartupWithLaunchPrompt,
+  type LaunchPromptStartupPlan
+} from '../../shared/startup-line-prompt-carry'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -261,26 +266,31 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     if (opts.startupPrompt && !agentPromptRidesLaunchCommand(agent)) {
       throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
     }
-    const { plan: startupPlan, promptCarried } = planStartupWithPromptCandidate(
-      resolveAgentStartupPlanInputs({
-        agent,
-        settings,
-        platform,
-        isRemote,
-        ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
-        // A requested shell is the one this PTY will actually be, so it owns the quoting family.
-        windowsShellOverride: opts.shellOverride,
-        sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
-      }),
-      opts.startupPrompt ?? '',
-      nameLocalTypedLineShell({
-        isRemote,
-        ...(opts.shellOverride ? { shellOverride: opts.shellOverride } : {}),
-        ...(settings.terminalDefaultShell
-          ? { defaultShellSetting: settings.terminalDefaultShell }
-          : {})
+    const planInputs = resolveAgentStartupPlanInputs({
+      agent,
+      settings,
+      platform,
+      isRemote,
+      ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
+      // A requested shell is the one this PTY will actually be, so it owns the quoting family.
+      windowsShellOverride: opts.shellOverride,
+      sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
+    })
+    // A caller that wrote its own launch file already passes the pointer to it as the prompt.
+    const prompt = opts.startupPrompt ?? ''
+    let planned: LaunchPromptStartupPlan
+    if (opts.launchFile) {
+      const plan = buildAgentStartupPlan({
+        ...planInputs,
+        prompt,
+        allowEmptyPromptLaunch: true,
+        launchFile: opts.launchFile
       })
-    )
+      planned = { plan, launchFile: plan?.launchFile ?? opts.launchFile }
+    } else {
+      planned = planStartupWithLaunchPrompt(planInputs, prompt)
+    }
+    const { plan: startupPlan, launchFile } = planned
     if (!startupPlan) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare
       // shell that never reaches agent readiness.
@@ -289,8 +299,16 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       }
       return opts
     }
-    if (opts.startupPrompt) {
-      opts.onStartupPromptCarry?.(promptCarried)
+    if (opts.startupPrompt?.trim()) {
+      const carried = startupPlan.followupPrompt === null
+      if (!carried && !opts.onStartupPromptCarry) {
+        // Why: this create returns options, not a live PTY, so the prompt would be dropped.
+        throw new Error(
+          `${agent} cannot take this prompt on its command line here, so no terminal was created. ` +
+            'Start the agent without it and paste the prompt once it opens.'
+        )
+      }
+      opts.onStartupPromptCarry?.(carried)
     }
 
     return {
@@ -300,6 +318,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       launchConfig: startupPlan.launchConfig,
       launchAgent: agent,
       startupCommandDelivery: startupPlan.startupCommandDelivery,
+      ...(launchFile ? { launchFile } : {}),
       // A bare command the user typed stays out of launch accounting, as before.
       ...(opts.startupAgent ? { telemetry: agentStartedTelemetry(agent, opts.launchSource) } : {})
     }

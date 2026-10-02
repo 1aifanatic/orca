@@ -8,11 +8,12 @@
  * by the host that owns the PTY, at the moment it accepts the spawn.
  */
 import { randomBytes } from 'node:crypto'
-import { readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { hasControlByte, TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES } from './startup-line-prompt-carry'
+import { join, posix } from 'node:path'
 import { quoteStartupArg } from './tui-agent-startup-shell'
+import { typedStartupLineFits } from './typed-startup-line'
+import type { WslLaunchDirectory } from './wsl-launch-directory'
 
 export const STAGED_STARTUP_COMMAND_PREFIX = 'orca-launch-'
 
@@ -41,8 +42,6 @@ const STAGING_SHELLS = new Set(['bash', 'zsh', 'sh', 'dash', 'fish', 'ksh', 'mks
 // not stop the agent (mksh untested, kept with it); their long Orca-built lines use `/bin/sh`.
 const SOURCING_SHELLS = new Set(['bash', 'zsh', 'sh', 'dash', 'fish'])
 
-const encoder = new TextEncoder()
-
 export function stagingShellName(shellPath: string | undefined): string | null {
   const name = shellPath?.split('/').pop()?.replace(/^-/, '').toLowerCase()
   return name && STAGING_SHELLS.has(name) ? name : null
@@ -68,10 +67,8 @@ export function shouldStageStartupCommand(args: {
     // quoted backslash and expands `!!`), so another shell only ever sees the script's inert path.
     return args.orcaBuiltLine === true
   }
-  const body = stripSubmitTerminator(args.command)
   return (
-    (hasControlByte(body) ||
-      encoder.encode(body).byteLength > TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES) &&
+    !typedStartupLineFits(stripSubmitTerminator(args.command)) &&
     (SOURCING_SHELLS.has(shellName) || args.orcaBuiltLine === true)
   )
 }
@@ -86,7 +83,7 @@ function stagedScriptLine(shellName: string | null, quotedPath: string): string 
     : `/bin/sh ${quotedPath}`
 }
 
-let staleSweepStarted = false
+const sweptDirectories = new Set<string>()
 
 export function stageStartupCommand(args: {
   command: string
@@ -94,24 +91,35 @@ export function stageStartupCommand(args: {
   orcaBuiltLine?: boolean
   platform?: NodeJS.Platform
   directory?: string
+  /** A WSL session stages like a POSIX host in its login shell: written over UNC, sourced by its
+   *  Linux path. */
+  wslDirectory?: WslLaunchDirectory
 }): StartupCommandStaging {
-  const platform = args.platform ?? process.platform
-  if (!shouldStageStartupCommand({ ...args, platform })) {
+  const wsl = args.wslDirectory
+  const platform = wsl ? 'linux' : (args.platform ?? process.platform)
+  // Why the distro's shell: the host sees only wsl.exe, and /bin/sh would skip the pane's own
+  // functions (Orca's codex wrapper, the user's aliases).
+  const shellPath = wsl ? wsl.shell : args.shellPath
+  if (!shouldStageStartupCommand({ ...args, shellPath, platform })) {
     return { command: args.command, delivery: 'typed' }
   }
-  const directory = args.directory ?? tmpdir()
-  if (!staleSweepStarted) {
-    staleSweepStarted = true
+  const directory = wsl?.windowsPath ?? args.directory ?? tmpdir()
+  if (!sweptDirectories.has(directory)) {
+    sweptDirectories.add(directory)
     // Why deferred: the sweep is crash recovery and must never delay this launch.
     setTimeout(() => sweepStaleStagedStartupCommands({ directory }), 0).unref?.()
   }
-  const shellName = stagingShellName(args.shellPath)
-  const scriptPath = join(
-    directory,
-    `${STAGED_STARTUP_COMMAND_PREFIX}${randomBytes(8).toString('hex')}.sh`
+  const shellName = stagingShellName(shellPath)
+  const scriptName = `${STAGED_STARTUP_COMMAND_PREFIX}${randomBytes(8).toString('hex')}.sh`
+  const scriptPath = join(directory, scriptName)
+  const quotedPath = quoteStartupArg(
+    wsl ? posix.join(wsl.linuxPath, scriptName) : scriptPath,
+    'posix'
   )
-  const quotedPath = quoteStartupArg(scriptPath, 'posix')
   try {
+    if (wsl) {
+      mkdirSync(directory, { recursive: true })
+    }
     // Why rm first: the shell keeps reading the open file, so the prompt-bearing script is gone
     // before the agent starts, however long it runs.
     writeFileSync(

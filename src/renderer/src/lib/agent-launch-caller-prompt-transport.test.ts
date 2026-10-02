@@ -69,11 +69,12 @@ const TRANSPORT_TABLE: readonly {
 }[] = [
   { agent: 'codex', mode: 'argv', promptDelivery: 'auto-submit', transport: 'argv', submits: true },
   { agent: 'codex', mode: 'argv', promptDelivery: 'draft', transport: 'paste', submits: false },
+  // Waiting for readiness is only for an agent that cannot take the prompt at launch.
   {
     agent: 'codex',
     mode: 'argv',
     promptDelivery: 'submit-after-ready',
-    transport: 'paste',
+    transport: 'argv',
     submits: true
   },
   // Claude is the argv agent with a native draft flag, so its draft rides argv instead of pasting.
@@ -141,7 +142,7 @@ describe('agent launch caller prompt transport', () => {
 
   it.each(cases)(
     'carries the prompt %s sends on the transport its mode picks',
-    async (id, profile) => {
+    async (_id, profile) => {
       const result = await launch(profile)
 
       if (profile.args.prompt === undefined) {
@@ -150,30 +151,22 @@ describe('agent launch caller prompt transport', () => {
         expect(queuedStartupCommand(store)).not.toContain(PROMPT)
         return
       }
-      // quick-command is the only prompt-carrying call site that names no delivery mode, so its text
-      // rides argv; every other one asks for draft or submit-after-ready and pastes.
-      const ridesArgv = id === 'quick-command'
+      // Codex takes its prompt on argv, so only a draft, which it cannot prefill, is pasted.
+      const ridesArgv = profile.args.promptDelivery !== 'draft'
       expect(result?.pasteDraftAfterLaunch).toBe(!ridesArgv)
       expect(queuedStartupCommand(store)?.includes(PROMPT)).toBe(ridesArgv)
     }
   )
 
   it.each(cases)(
-    'exposes a delivery promise to %s only for submit-after-ready',
+    'exposes no delivery promise to %s, whose Codex prompt rides argv or is a draft',
     async (_id, profile) => {
       const result = await launch(profile)
 
-      // Why: three call sites branch on this promise being present; a draft launch must NOT get one,
-      // because the composer owns the text until the user sends it.
-      const expectsPromise =
-        profile.args.prompt !== undefined && profile.args.promptDelivery === 'submit-after-ready'
-      expect(result?.promptDeliveryResult !== undefined).toBe(expectsPromise)
-      if (expectsPromise) {
-        await expect(result?.promptDeliveryResult).resolves.toEqual({
-          delivered: true,
-          failureNotified: false
-        })
-      }
+      // Why: three call sites branch on this promise being present. A draft launch must NOT get one,
+      // because the composer owns the text until the user sends it, and a prompt the launch command
+      // carries has no paste to wait for.
+      expect(result?.promptDeliveryResult).toBeUndefined()
     }
   )
 
@@ -256,8 +249,9 @@ describe('agent launch caller prompt transport', () => {
     const onPromptDelivered = vi.fn()
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
+    // Amp takes its text only after start, so it is the agent a submit-after-ready launch pastes into.
     const result = launchAgentInNewTab({
-      agent: 'codex',
+      agent: 'amp',
       worktreeId: 'wt-1',
       prompt: PROMPT,
       promptDelivery: 'submit-after-ready',

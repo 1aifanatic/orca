@@ -27,6 +27,7 @@ export function buildWorktreeCreationStartupOpt(
     // the sole signal that this launch starts with unsent context in the TUI.
     ...(request.launchDraftPrompt ? { launchDraftText: request.launchDraftPrompt } : {}),
     ...(plan.startupCommandDelivery ? { startupCommandDelivery: plan.startupCommandDelivery } : {}),
+    ...(plan.launchFile ? { launchFile: plan.launchFile } : {}),
     // Why: command-code shows its prompt in the tab status before the first
     // hook fires, so the prompt is threaded through here.
     ...(request.agent === 'command-code' && request.quickPrompt.trim().length > 0

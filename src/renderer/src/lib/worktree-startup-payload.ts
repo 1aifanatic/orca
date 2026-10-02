@@ -6,6 +6,7 @@ import type {
   SleepingAgentLaunchConfig
 } from '../../../shared/agent-session-resume'
 import type { SessionOptionValue } from '../../../shared/native-chat-session-options'
+import type { LaunchFile } from '../../../shared/launch-prompt-file'
 
 /** Telemetry threaded from the launch site to `pty:spawn`; main fires `agent_started`
  *  only after the spawn succeeds. See telemetry-plan.md§Agent launch semantics. */
@@ -30,6 +31,8 @@ export type WorktreeStartupPayload = {
    */
   launchDraftText?: string
   startupCommandDelivery?: StartupCommandDelivery
+  /** Written by the host before it types `command`, which names it by placeholder. */
+  launchFile?: LaunchFile
   initialAgentStatus?: { agent: TuiAgent; prompt: string }
   sessionOptions?: Record<string, SessionOptionValue>
   telemetry?: AgentStartedTelemetry

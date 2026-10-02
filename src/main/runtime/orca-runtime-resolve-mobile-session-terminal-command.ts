@@ -28,6 +28,7 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
     startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
     launchConfig?: SleepingAgentLaunchConfig
     launchAgent?: TuiAgent
+    launchFile?: WorktreeStartupLaunch['launchFile']
   }> {
     if (opts.command || !opts.agent) {
       return {
@@ -72,7 +73,8 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
       envToDelete: opts.envToDelete,
       launchConfig: startupPlan.launchConfig,
       launchAgent: opts.agent,
-      startupCommandDelivery: startupPlan.startupCommandDelivery
+      startupCommandDelivery: startupPlan.startupCommandDelivery,
+      ...(startupPlan.launchFile ? { launchFile: startupPlan.launchFile } : {})
     }
   }
 }

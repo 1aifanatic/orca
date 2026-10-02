@@ -213,6 +213,21 @@ describe('agent-session create operation ledger', () => {
     )
   })
 
+  it('refuses a prompt it could only paste, having no paste after ready', async () => {
+    const runtime = createRuntime({
+      supportsAgentSessionClaims: () => true,
+      supportsAgentSessionCreateOperations: () => true
+    })
+    const createTerminal = vi.spyOn(runtime, 'createTerminal').mockResolvedValue(terminal())
+
+    await expect(
+      runtime.createAgentSession(
+        request(operationId(), { agent: 'gemini', prompt: 'x'.repeat(20_000) })
+      )
+    ).rejects.toThrow(/gemini cannot take this prompt on its command line here/)
+    expect(createTerminal).not.toHaveBeenCalled()
+  })
+
   it('requests exact client legacy fallback before nested SSH side effects', async () => {
     const runtime = createRuntime()
     const internal = runtime as unknown as {
