@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { WorkspaceSessionState } from '../../shared/types'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { AgentPaneOwner } from '../../shared/agent-process-presence'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import {
