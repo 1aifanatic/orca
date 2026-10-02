@@ -136,6 +136,9 @@ describe('ElectronServeBrowserProcess start-up', () => {
       vi.stubEnv(key, `leaked-${key}`)
     }
     vi.stubEnv('ORCA_HARNESS_UNRELATED', 'preserved')
+    for (const key of ['ORCA_E2E_USER_DATA_DIR', 'ORCA_USER_DATA', 'ORCA_USER_DATA_PATH']) {
+      vi.stubEnv(key, harnessRoot)
+    }
 
     const processHandle = await startProvider()
 
@@ -153,6 +156,9 @@ describe('ElectronServeBrowserProcess start-up', () => {
       expect(spec.env).not.toHaveProperty(key)
     }
     expect(spec.env?.ORCA_HARNESS_UNRELATED).toBe('preserved')
+    for (const key of ['ORCA_E2E_USER_DATA_DIR', 'ORCA_USER_DATA', 'ORCA_USER_DATA_PATH']) {
+      expect(spec.env).not.toHaveProperty(key)
+    }
     expect(processHandle.isAvailable()).toBe(true)
   })
 

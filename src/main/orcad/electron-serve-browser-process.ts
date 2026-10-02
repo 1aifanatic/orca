@@ -55,6 +55,9 @@ async function reserveLoopbackPort(): Promise<number> {
 function electronServeEnvironment(): NodeJS.ProcessEnv {
   const environment = { ...process.env }
   for (const key of [
+    'ORCA_E2E_USER_DATA_DIR',
+    'ORCA_USER_DATA',
+    'ORCA_USER_DATA_PATH',
     'AGENT_BROWSER_ARGS',
     'AGENT_BROWSER_AUTO_CONNECT',
     'AGENT_BROWSER_CDP',
