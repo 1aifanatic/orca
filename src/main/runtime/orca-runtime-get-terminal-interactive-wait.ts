@@ -244,7 +244,7 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
       hostIdentity: this.getRuntimeId()
     })
     return (
-      capabilities?.pluginApi === 'v1' &&
+      capabilities?.version === '1.18.30' &&
       (await probeOpenCodeModelAvailability({ command, model: target.model, cwd: path, wsl, env }))
     )
   }

@@ -86,6 +86,15 @@ describe('OpenCode worker model execution host', () => {
       isWsl: false
     })
   })
+  it('refuses unverified legacy versions even when they accept a model flag', async () => {
+    vi.mocked(probeOpenCodeLaunchCapabilities).mockResolvedValue({
+      version: '1.1.23',
+      pluginApi: 'v1',
+      promptMode: 'submit'
+    })
+    expect(await probe(host())).toBe(false)
+    expect(probeOpenCodeModelAvailability).not.toHaveBeenCalled()
+  })
   it('refuses creation repo catalogs before the actual destination exists', async () => {
     expect(
       await Reflect.apply(
