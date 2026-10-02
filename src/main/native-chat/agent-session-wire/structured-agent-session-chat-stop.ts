@@ -18,7 +18,7 @@ import {
 } from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import { runRecordedStop, stopReachesUnrecordedWork } from './structured-agent-session-queued-stop'
+import { runRecordedStop, stopRecordedWork } from './structured-agent-session-queued-stop'
 import {
   openForWrite,
   structuredAgentSessionFailureWordsContext
@@ -90,14 +90,15 @@ export function mutateWithChatStop<TValue>(
           return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
         }
         // Awaited until journal appends are synchronous; then issued here, and a `finally` awaits it.
-        if (withdrawn.length > 0 || (await stopReachesUnrecordedWork(ctx, turnId))) {
-          await tookEffect()
-        }
+        const recorded = withdrawn.length > 0 ? 'unrecorded' : await stopRecordedWork(ctx, turnId)
+        // The event this Stop's answer is for: the one it writes, or the one in force it repeats.
+        const answers = recorded === 'unrecorded' ? await tookEffect() : recorded
         return performCancel(
           { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
           {
             clientOperationId: envelope.clientOperationId,
             ...named,
+            ...(answers ? { stopEventAt: answers.at } : {}),
             stopChild,
             onStopChildError: (error) =>
               context.deps.logger.warn('ending the agent process on Stop failed', {

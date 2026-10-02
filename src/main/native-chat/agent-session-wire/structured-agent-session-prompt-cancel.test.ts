@@ -161,7 +161,8 @@ describe('performCancel for a pending prompt', () => {
     })
     expect(journal.snapshot().items.map((item) => item.body)).toEqual([
       expect.objectContaining({ resolution: expect.objectContaining({ state: 'cancelled' }) }),
-      { kind: 'status', text: 'Cancellation requested.' }
+      // A card's own Cancel writes no Stop event, so its answer names none.
+      { kind: 'status', text: 'Cancellation requested.', stop: { answer: 'took' } }
     ])
   })
 

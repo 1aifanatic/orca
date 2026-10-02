@@ -265,6 +265,31 @@ export type AgentJournalThreadGoalState =
   | { state: 'set'; goal: AgentJournalThreadGoal }
   | { state: 'cleared' }
 
+/** What a Stop did, as its note says. Persisted and published: never rename an arm. Open like the
+ *  other persisted vocabularies: an arm a newer host writes must not turn the row malformed, and a
+ *  reader treats one it does not know as no answer (`readAgentJournalStopAnswer`).
+ *  - `took`: the provider took the interrupt, or the host ended the child running the turn.
+ *  - `end-owed`: the Stop ends the provider's process in its next step, which still owes it.
+ *  - `declined`: the provider could not interrupt the turn, and the turn may run on.
+ *  - `interrupt-unconfirmed`: the interrupt failed with no answer, and nothing ended the child.
+ *  - `no-effect`: the provider had nothing running for it to stop. */
+export const AGENT_JOURNAL_STOP_ANSWERS = [
+  'took',
+  'end-owed',
+  'declined',
+  'interrupt-unconfirmed',
+  'no-effect'
+] as const
+export type AgentJournalStopAnswer = (typeof AGENT_JOURNAL_STOP_ANSWERS)[number]
+
+/** A Stop's answer, on the note it writes. */
+export type AgentJournalStopNoteAnswer = {
+  answer: AgentJournalStopAnswer
+  /** The Stop event this answers, by its `at`, which a rewind's restatement keeps: the event the
+   *  Stop wrote, or the one in force it repeated. Absent: it answers no recorded Stop. */
+  eventAt?: number
+}
+
 type AgentJournalStatusItemFields = {
   kind: 'status'
   /** Optional display hints; unknown values retain the ordinary text fallback. */
@@ -283,6 +308,8 @@ type AgentJournalStatusItemFields = {
   }
   /** Present on thread-goal transitions; absent on rows from older hosts. */
   threadGoal?: AgentJournalThreadGoalState
+  /** Present on a Stop's note (`stop:`-keyed); absent on rows from older hosts. */
+  stop?: AgentJournalStopNoteAnswer
 }
 
 /** A status row that reports no failure; its text is its writer's own. */

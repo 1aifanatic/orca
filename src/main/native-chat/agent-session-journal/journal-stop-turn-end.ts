@@ -2,7 +2,8 @@
 //
 // A turn a person's Stop or close of this chat named, or, when it named none, a turn opened by a
 // send it stopped, ending with no verdict of its own after that Stop's event, ends as their
-// cancellation. A host stop, an eviction and no Stop at all leave the end as written. It runs
+// cancellation, unless every answer that Stop has says it did not take (`journalStopStillCounts`).
+// A host stop, an eviction and no Stop at all leave the end as written. It runs
 // where each row is built, inside the journal's serialized write, so it reads every Stop folded
 // before the end: the adapter's settle, the host's fallback and a relaunch's settle all write
 // through it, and every client folds the row it wrote.
@@ -19,6 +20,7 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalStopEvent } from './journal-row-schema'
+import { journalStopStillCounts } from './journal-stop-answers'
 import type { JournalQueuePauseMarks } from './queued-message-pause'
 
 export type JournalLatestStop = NonNullable<JournalQueuePauseMarks['latestStop']>
@@ -132,7 +134,8 @@ function stopEndsTurnAsCancellation(
   return (
     stop !== null &&
     stopIsTurnCancellation(state, stop, turnId, userItemId) &&
-    (endedAt === undefined || endedAt >= stop.event.at)
+    (endedAt === undefined || endedAt >= stop.event.at) &&
+    journalStopStillCounts(state, stop.event)
   )
 }
 
@@ -165,7 +168,11 @@ export function personStopDecidesTurn(
     return false
   }
   if (turnId === null) {
-    return stop.event.turnId === undefined && unansweredSendsAreStopTargets(state, stop)
+    return (
+      stop.event.turnId === undefined &&
+      unansweredSendsAreStopTargets(state, stop) &&
+      journalStopStillCounts(state, stop.event)
+    )
   }
   const turn = [...state.items.values()]
     .map((item) => readAgentJournalTurn(item.body))
@@ -178,7 +185,8 @@ export function personStopDecidesTurn(
 /**
  * The body to write for item `itemId`: unchanged unless it ends, with no verdict of its own and no
  * earlier than the latest Stop event, a person's, which named it, or stopped the send that opened
- * it, while it was still open (running, or unproven). A provider's own verdict always stands.
+ * it, while it was still open (running, or unproven), and that still counts. A provider's own
+ * verdict always stands.
  */
 export function turnEndAfterStop(
   state: TurnEndState,

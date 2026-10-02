@@ -15,6 +15,11 @@
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import {
+  AgentJournalFailureFactSchema,
+  AgentJournalStopNoteAnswerSchema,
+  AgentJournalThreadGoalStateSchema
+} from './agent-session-journal-fact-schemas'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -182,33 +187,6 @@ const MessageBody = z.object({
   command: z.object({ name: z.string().min(1) }).optional()
 })
 
-const ThreadGoal = z.object({
-  objective: z.string(),
-  status: z.string().min(1),
-  tokenBudget: z.number().finite().nullable(),
-  tokensUsed: z.number().finite(),
-  timeUsedSeconds: z.number().finite(),
-  createdAt: z.number().finite(),
-  updatedAt: z.number().finite()
-})
-
-/** Like blocks: an unknown `state` stays admissible, a known one with a broken payload does not. */
-const ThreadGoalState = z.union([
-  z.discriminatedUnion('state', [
-    z.object({ state: z.literal('set'), goal: ThreadGoal }),
-    z.object({ state: z.literal('cleared') })
-  ]),
-  z.object({ state: z.string() }).refine((value) => !['set', 'cleared'].includes(value.state))
-])
-
-/** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
- *  malformed; the fact reader is where an unplaceable one is dropped. */
-const FailureFact = z.object({
-  kind: z.string().min(1),
-  detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
-  refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
-})
-
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
   MessageBody,
   z.object({
@@ -261,8 +239,9 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
       })
       .optional(),
     providerFrame: ProviderFrame.optional(),
-    threadGoal: ThreadGoalState.optional(),
-    failure: FailureFact.optional()
+    threadGoal: AgentJournalThreadGoalStateSchema.optional(),
+    failure: AgentJournalFailureFactSchema.optional(),
+    stop: AgentJournalStopNoteAnswerSchema.optional()
   }),
   z.object({
     kind: z.literal('turn'),
@@ -328,7 +307,7 @@ export const AgentJournalSubmissionSchema = z.object({
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional(),
+  rejection: AgentJournalFailureFactSchema.optional(),
   // Listed, or the parse strips it: this schema drops unknown keys.
   queuedMessageId: z.string().min(1).optional()
 })

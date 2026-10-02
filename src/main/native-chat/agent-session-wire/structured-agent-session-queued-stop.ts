@@ -31,52 +31,59 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  * command's stop, a kill after the interrupt), or, reaching no agent, once it withdrew something.
  * That writes the Stop's event, whatever the queue holds, so a card its interrupt later withdraws
  * comes back to waiting under the pause, and whatever ends the child finds the event already
- * written. A Stop that throws before then, or stops nothing (`stopReachesUnrecordedWork`), changed
- * nothing and writes nothing.
+ * written. A Stop that throws before then, or stops nothing (`stopRecordedWork`), changed
+ * nothing and writes nothing. `tookEffect` resolves to the event as written, which the Stop's
+ * answer names; undefined when the write failed.
  * The drain cannot slip a card in between: the Stop runs on the drain's serialized lane.
  */
 export async function runRecordedStop<TValue>(
   ctx: AgentSessionTurnContext,
   /** `turnId` absent: the turn running when the Stop takes effect, if any. */
   event: Omit<JournalStopEvent, 'at'>,
-  stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
+  stop: (tookEffect: () => Promise<JournalStopEvent | undefined>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
-  const skipped = (error: unknown): void => report(ctx, 'event row', error)
+  const skipped = (error: unknown): undefined => {
+    report(ctx, 'event row', error)
+    return undefined
+  }
   return stop(() => {
     try {
       const turnId = structuredAgentSessionStoppedTurnId(ctx.journal, event.turnId) ?? undefined
       return ctx.journal
         .appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence)
-        .then(() => undefined, skipped)
+        .then((written) => {
+          const latest = ctx.journal.stopMarks.latest()
+          return latest?.sequence === written.sequence ? latest.event : undefined
+        }, skipped)
     } catch (error) {
       // A throw before the append is queued is reported too: the Stop still interrupts.
-      skipped(error)
-      return Promise.resolve()
+      return Promise.resolve(skipped(error))
     }
   })
 }
 
 /**
- * Whether a Stop reaching a running agent stops anything no Stop event records yet. Not when it
- * names a turn already over (a late Stop from a phone), nor when it repeats the Stop still in force
- * with nothing sent since, on the same turn or one that opened after a Stop pressed before any
- * turn showed: a card queued between the presses then sends normally, as after one Stop.
+ * What a Stop reaching a running agent finds recorded: `unrecorded` when it stops work no Stop event
+ * records yet, so it writes one; the event of the Stop still in force when it repeats that Stop with
+ * nothing sent since, on the same turn or one that opened after a Stop pressed before any turn
+ * showed (a card queued between the presses then sends normally, as after one Stop); null when it
+ * names a turn already over (a late Stop from a phone).
  */
-export async function stopReachesUnrecordedWork(
+export async function stopRecordedWork(
   ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
   namedTurnId: string | undefined
-): Promise<boolean> {
+): Promise<'unrecorded' | JournalStopEvent | null> {
   const live = ctx.journal.activeTurnId()
   // No turn published yet while the agent works: the named one may still be opening.
   if (
     structuredAgentSessionStopNamesTurnNotLive(namedTurnId, live) &&
     (live !== null || !(await isMainAgentWorkingOnceFlushed(ctx)))
   ) {
-    return false
+    return null
   }
   const inForce = ctx.journal.queuedMessages.userStopInForce()
   if (inForce === null) {
-    return true
+    return 'unrecorded'
   }
   // Sent after that Stop and not refused, even if its fate is unknown: this interrupt may send it
   // back to waiting, so this Stop must hold it. A send with no sequence is an older host's.
@@ -89,6 +96,8 @@ export async function stopReachesUnrecordedWork(
         entry.acceptedSequence > inForce.sequence
     )
   return sentSince || structuredAgentSessionStopNamesTurnNotLive(inForce.event.turnId, live)
+    ? 'unrecorded'
+    : inForce.event
 }
 
 function report(ctx: AgentSessionTurnContext, step: string, error: unknown): void {

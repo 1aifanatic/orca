@@ -2,7 +2,15 @@ import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import type { AgentJournalStatusItem } from '../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalStatusItem,
+  AgentJournalStopAnswer
+} from '../../../shared/agent-session-journal-types'
+import {
+  agentJournalStopAnswerReplaces,
+  readAgentJournalStopAnswer
+} from '../../../shared/agent-session-stop-answer'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
 import type { AgentSessionCancelOutcome } from './structured-agent-session-adapter'
@@ -121,6 +129,9 @@ export async function performCancel(
     endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
     /** The host already withdrew queued messages for this Stop. */
     withdrewQueued?: boolean
+    /** The Stop event this Stop answers (`JournalStopEvent.at`): the one it wrote, or the one in
+     *  force it repeated. Absent: its answer names none. */
+    stopEventAt?: number
     /** The session's child records: a background Stop reaches the tasks they offer a stop. */
     childWork?: () => readonly AgentChildWorkView[] | undefined
   }
@@ -136,6 +147,8 @@ export async function performCancel(
     kind: 'status',
     text: STOP_NOTE_CANCELLATION_REQUESTED
   }
+  // What the note records the Stop did, set with each note below.
+  let answer: AgentJournalStopAnswer = 'took'
   // The turn the Stop names, read before the cancel settles it: the note reports on that turn.
   const turnScope =
     (input.turnId !== undefined && !input.scope
@@ -202,6 +215,8 @@ export async function performCancel(
     } else if (!cancelled && input.turnId === undefined) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
       note = stopRefusedNote(ctx, refusal)
+      // No interrupt went out, or the provider had no turn running for it.
+      answer = interruptFailed ? 'declined' : 'no-effect'
     }
   } catch (error) {
     if (input.prompt) {
@@ -213,6 +228,7 @@ export async function performCancel(
       kind: 'status',
       ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
     }
+    answer = 'interrupt-unconfirmed'
   }
   // A Stop naming a turn that has since ended keeps the session only when the provider declined
   // it: an interrupt, answered or not, can stop a follow-up whose turn has not opened.
@@ -223,12 +239,14 @@ export async function performCancel(
     cancelled = true
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {
-      note = { kind: 'status', text: 'Cancellation requested.' }
+      note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
+      answer = 'end-owed'
     }
   } else if (runningCommand && !cancelled) {
     await input.stopChild?.()
     cancelled = true
     note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
+    answer = 'took'
   } else if (
     !cancelled &&
     interruptFailed &&
@@ -249,9 +267,11 @@ export async function performCancel(
     if (ended) {
       cancelled = true
       note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
+      answer = 'took'
     } else if (taken !== undefined) {
       // The turn was just read running, so a named Stop says it was refused rather than nothing.
       note = stopRefusedNote(ctx, refusal)
+      answer = 'declined'
     }
   } else if (!cancelled && taken === false && input.turnId !== undefined) {
     // Nothing was left of the turn it named and nothing else ended: a Stop that ends nothing writes no row.
@@ -265,10 +285,16 @@ export async function performCancel(
     return { ok: true, value }
   }
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
-  await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId),
-    note,
-    { fence: ctx.fence, turnScope }
+  const identity = structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId)
+  const stop = {
+    answer,
+    ...(input.stopEventAt !== undefined ? { eventAt: input.stopEventAt } : {})
+  }
+  const previous = readAgentJournalStopAnswer(
+    ctx.journal.itemBody(agentJournalItemKey(identity)) ?? undefined
   )
+  if (agentJournalStopAnswerReplaces(previous, stop)) {
+    await ctx.journal.appendItem(identity, { ...note, stop }, { fence: ctx.fence, turnScope })
+  }
   return { ok: true, value }
 }
