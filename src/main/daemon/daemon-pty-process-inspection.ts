@@ -1,4 +1,5 @@
 import {
+  type AgentPresenceCaptureOptions,
   readAgentProcessPresence,
   type AgentProcessIdentity,
   type AgentProcessVerdict
@@ -70,13 +71,17 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
     return verdict === 'live' || verdict === 'exited' ? verdict : 'unverifiable'
   }
 
-  async captureAgentPresence(id: string) {
+  async captureAgentPresence(id: string, options?: AgentPresenceCaptureOptions) {
     if (this.protocolVersion < GET_FOREGROUND_PROCESS_PROTOCOL_VERSION) {
       return undefined
     }
+    // An older daemon ignores the bound and answers from its cached table, as before.
     const result = await this.client.request<{ agentPresence?: unknown }>('getForegroundProcess', {
       sessionId: id,
-      captureAgentPresence: true
+      captureAgentPresence: true,
+      ...(options?.snapshotNotBeforeMs !== undefined
+        ? { snapshotNotBeforeMs: options.snapshotNotBeforeMs }
+        : {})
     })
     return readAgentProcessPresence(result.agentPresence)
   }

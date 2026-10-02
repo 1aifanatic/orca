@@ -21,6 +21,8 @@ export type AgentForegroundResolutionOptions = {
   contextPaths?: readonly string[]
   /** Require a Windows process-table scan started after this request. */
   fresh?: boolean
+  /** POSIX: accept only a table that began at or after this time (the evidence being answered). */
+  snapshotNotBeforeMs?: number
   /** Force confirmation scans even when node-pty reports a recognized name. */
   forceProcessScan?: boolean
   /** Lazily proves which global descendants still belong to this ConPTY. */

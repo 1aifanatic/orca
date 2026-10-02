@@ -1,4 +1,5 @@
 import type {
+  AgentPresenceCaptureOptions,
   AgentProcessPresence,
   AgentProcessIdentity,
   AgentProcessVerdict
@@ -242,7 +243,10 @@ export type IPtyProvider = {
   acknowledgeDataEvent(id: string, charCount: number): void
   hasChildProcesses(id: string): Promise<boolean>
   probeAgentPresence?(id: string, identity: AgentProcessIdentity): Promise<AgentProcessVerdict>
-  captureAgentPresence?(id: string): Promise<AgentProcessPresence | undefined>
+  captureAgentPresence?(
+    id: string,
+    options?: AgentPresenceCaptureOptions
+  ): Promise<AgentProcessPresence | undefined>
   getForegroundProcess(id: string): Promise<string | null>
   /** Strong process evidence captured after the caller's command boundary. */
   confirmForegroundProcess?: (id: string) => Promise<string | null>

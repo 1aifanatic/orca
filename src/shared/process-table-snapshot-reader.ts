@@ -12,8 +12,10 @@ import {
   parseStrictProcessTableRows,
   type ProcessTableRow
 } from './process-table-snapshot'
+import { createProcessTableSnapshotReader } from './process-table-snapshot-cache'
 
 export { PROCESS_TABLE_SNAPSHOT_MAX_STALENESS_MS, PS_ARGS, PS_MAX_BUFFER_BYTES }
+export { createProcessTableSnapshotReader }
 
 const execFile = promisify(execFileCb)
 
@@ -23,119 +25,6 @@ const execFile = promisify(execFileCb)
 // whole subsystem answered "unverifiable" about a table it could read. This keeps a wedged
 // `ps` bounded while staying out of reach of a host that is merely busy.
 export const PS_TIMEOUT_MS = 15_000
-const DEFAULT_SNAPSHOT_TTL_MS = PROCESS_TABLE_SNAPSHOT_MAX_STALENESS_MS
-
-type Snapshot<T> = { value: T; capturedAtMs: number; completedAtMs: number }
-
-type ProcessTableSnapshotReaderDeps<T> = {
-  runPs: () => Promise<T>
-  now: () => number
-  ttlMs?: number
-}
-
-/** Build a process-table reader that coalesces concurrent and recent captures. */
-export function createProcessTableSnapshotReader<T = string>(
-  deps: ProcessTableSnapshotReaderDeps<T>
-): {
-  getSnapshot: () => Promise<T>
-  getSnapshotWithAge: () => Promise<{ value: T; capturedAgeMs: number }>
-  getFreshSnapshot: () => Promise<T>
-  reset: () => void
-} {
-  const ttlMs = deps.ttlMs ?? DEFAULT_SNAPSHOT_TTL_MS
-  let cached: Snapshot<T> | null = null
-  let inFlight: Promise<T> | null = null
-  let sequence = 0
-  let freshQueued: { promise: Promise<T>; startSequence: number | null } | null = null
-
-  async function runSnapshot(): Promise<T> {
-    // Two stamps because they answer different questions: `capturedAtMs` is when `ps` read the
-    // kernel table, which is what a destructive consumer bounds staleness against, while the TTL
-    // keys on completion so a capture slower than the TTL still coalesces instead of forking a
-    // whole-machine `ps` per caller on exactly the loaded host that can least afford it.
-    const capturedAtMs = deps.now()
-    const promise = deps.runPs()
-    inFlight = promise
-    try {
-      const value = await promise
-      cached = { value, capturedAtMs, completedAtMs: deps.now() }
-      return value
-    } finally {
-      if (inFlight === promise) {
-        inFlight = null
-      }
-    }
-  }
-
-  async function getSnapshot(): Promise<T> {
-    if (cached && deps.now() - cached.completedAtMs < ttlMs) {
-      return cached.value
-    }
-    if (inFlight) {
-      return inFlight
-    }
-    if (freshQueued) {
-      return freshQueued.promise
-    }
-    return runSnapshot()
-  }
-
-  async function getSnapshotWithAge(): Promise<{ value: T; capturedAgeMs: number }> {
-    const value = await getSnapshot()
-    const capturedAtMs = cached?.value === value ? cached.capturedAtMs : deps.now()
-    return { value, capturedAgeMs: Math.max(0, deps.now() - capturedAtMs) }
-  }
-
-  function getFreshSnapshot(): Promise<T> {
-    const requestSequence = ++sequence
-    if (freshQueued?.startSequence === null) {
-      return freshQueued.promise
-    }
-    const priorFresh = freshQueued?.promise ?? null
-    const priorScan = inFlight
-    const entry: { promise: Promise<T>; startSequence: number | null } = {
-      promise: Promise.resolve(undefined as never),
-      startSequence: null
-    }
-    entry.promise = Promise.resolve().then(async () => {
-      for (const prior of [priorFresh, priorScan]) {
-        if (!prior) {
-          continue
-        }
-        try {
-          await prior
-        } catch {
-          // The post-boundary scan below owns the confirmation result.
-        }
-      }
-      entry.startSequence = ++sequence
-      if (entry.startSequence <= requestSequence) {
-        throw new Error('fresh process snapshot did not start after request')
-      }
-      return runSnapshot()
-    })
-    freshQueued = entry
-    const clearQueued = (): void => {
-      if (freshQueued === entry) {
-        freshQueued = null
-      }
-    }
-    void entry.promise.then(clearQueued, clearQueued)
-    return entry.promise
-  }
-
-  return {
-    getSnapshot,
-    getSnapshotWithAge,
-    getFreshSnapshot,
-    reset: () => {
-      cached = null
-      inFlight = null
-      sequence = 0
-      freshQueued = null
-    }
-  }
-}
 
 type ProcessTableCapture = {
   lenient: () => ProcessTableRow[]
@@ -295,6 +184,13 @@ export async function getFreshShellForegroundSnapshot(): Promise<ProcessTableRow
 
 export async function getProcessTableSnapshot(): Promise<ProcessTableRow[]> {
   return (await processTableReader.getSnapshot()).lenient()
+}
+
+/** For a read that answers evidence seen at `notBeforeMs`; see `getSnapshotSince`. */
+export async function getProcessTableSnapshotSince(
+  notBeforeMs: number
+): Promise<ProcessTableRow[]> {
+  return (await processTableReader.getSnapshotSince(notBeforeMs)).lenient()
 }
 
 export async function getFreshProcessTableSnapshot(): Promise<ProcessTableRow[]> {

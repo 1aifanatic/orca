@@ -1,4 +1,5 @@
 import type {
+  AgentPresenceCaptureOptions,
   AgentProcessPresence,
   AgentProcessIdentity,
   AgentProcessVerdict
@@ -121,7 +122,10 @@ export type RuntimePtyController = {
   recordUnconfirmedStop?(ptyId: string): boolean
   getCwd?(ptyId: string): Promise<string | null>
   probeAgentPresence?(id: string, identity: AgentProcessIdentity): Promise<AgentProcessVerdict>
-  captureAgentPresence?(id: string): Promise<AgentProcessPresence | undefined>
+  captureAgentPresence?(
+    id: string,
+    options?: AgentPresenceCaptureOptions
+  ): Promise<AgentProcessPresence | undefined>
   getForegroundProcess(ptyId: string): Promise<string | null>
   inspectProcess?(
     ptyId: string,

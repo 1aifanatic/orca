@@ -15,7 +15,9 @@ export class AgentPresenceCommandObserver {
     private readonly observe: (
       id: string,
       isCurrent: () => boolean,
-      kind: AgentPresenceObservationKind
+      kind: AgentPresenceObservationKind,
+      /** When the evidence arrived; a process table older than this cannot answer it. */
+      evidenceAtMs: number
     ) => Promise<void>
   ) {}
 
@@ -26,11 +28,12 @@ export class AgentPresenceCommandObserver {
     }
     this.end(id)
     const command = this.open(id)
+    const startedAtMs = Date.now()
     const current = () => this.commands.get(id) === command && isCurrent()
     command.timer = setTimeout(() => {
       command.timer = null
       if (current()) {
-        void this.observe(id, current, 'command').catch(() => undefined)
+        void this.observe(id, current, 'command', startedAtMs).catch(() => undefined)
       }
     }, 1_000)
     command.timer.unref?.()
@@ -43,10 +46,11 @@ export class AgentPresenceCommandObserver {
       return
     }
     command.claimed.add(agent)
+    const evidenceAtMs = Date.now()
     const current = () => this.commands.get(id) === command && isCurrent()
     const run = () => {
       if (current()) {
-        void this.observe(id, current, 'evidence').catch(() => undefined)
+        void this.observe(id, current, 'evidence', evidenceAtMs).catch(() => undefined)
       }
     }
     if (delayMs <= 0) {

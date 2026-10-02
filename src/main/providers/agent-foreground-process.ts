@@ -6,9 +6,10 @@ import {
 } from '../../shared/foreground-wrapper-agent'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 import {
-  getFreshProcessTableSnapshot,
   getFreshShellForegroundSnapshot,
-  getProcessTableSnapshot
+  getFreshProcessTableSnapshot,
+  getProcessTableSnapshot,
+  getProcessTableSnapshotSince
 } from '../../shared/process-table-snapshot-reader'
 import { collectDescendantsFromIndex, getProcessTableIndex } from '../../shared/process-table-index'
 import {
@@ -161,7 +162,9 @@ export async function resolveAgentForegroundProcessWithAvailability(
   try {
     const rows = options.fresh
       ? await getFreshProcessTableSnapshot()
-      : await getProcessTableSnapshot()
+      : options.snapshotNotBeforeMs === undefined
+        ? await getProcessTableSnapshot()
+        : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs)
     if (options.fresh && !getProcessTableIndex(rows).byPid.has(shellPid)) {
       return { available: false, processName: fallbackProcess }
     }

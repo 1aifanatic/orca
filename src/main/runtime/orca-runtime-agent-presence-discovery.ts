@@ -116,7 +116,8 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
   protected discoverAgentPresence(
     ptyId: string,
     commandCurrent: () => boolean = () => true,
-    doubtOwner = false
+    doubtOwner = false,
+    evidenceAtMs = Date.now()
   ): Promise<void> {
     const pty = this.ptysById.get(ptyId)
     const controller = this.ptyController
@@ -124,7 +125,8 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
       return Promise.resolve()
     }
     const incarnation = pty.incarnationId
-    const discoveryKey = `${ptyId}\0${incarnation}`
+    // Why the evidence time: a newer command must not join a read that answers an older one.
+    const discoveryKey = `${ptyId}\0${incarnation}\0${evidenceAtMs}`
     const pending = this.agentPresenceDiscovery.get(discoveryKey)
     if (pending) {
       return pending
@@ -140,7 +142,7 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
       pty.incarnationId === incarnation &&
       this.ptyController === controller
     const discovery = controller
-      .captureAgentPresence(ptyId)
+      .captureAgentPresence(ptyId, { snapshotNotBeforeMs: evidenceAtMs })
       .then((presence) => {
         if (!presence || !commandCurrent() || !current() || settled()) {
           return

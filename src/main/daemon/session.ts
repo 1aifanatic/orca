@@ -1,4 +1,7 @@
-import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessIdentity
+} from '../../shared/agent-process-presence'
 import { isValidPtySize } from './daemon-pty-size'
 import type { SessionOutputPlane, AttachedClient } from './session-output-plane'
 import { createSessionOutputPipeline } from './session-output-pipeline'
@@ -246,7 +249,8 @@ export class Session {
 
   inspectChildProcesses = (): PtyChildProcessVerdict =>
     this.subprocess.inspectChildProcesses?.() ?? 'unverifiable'
-  captureAgentPresence = () => this.subprocess.captureAgentPresence?.()
+  captureAgentPresence = (options?: AgentPresenceCaptureOptions) =>
+    this.subprocess.captureAgentPresence?.(options)
   probeAgentPresence = (identity: AgentProcessIdentity) =>
     this.subprocess.probeAgentPresence?.(identity) ?? Promise.resolve('unverifiable' as const)
 

@@ -16,7 +16,13 @@ export async function readDaemonForeground(
   }
   if (payload.captureAgentPresence) {
     return {
-      agentPresence: await host.captureAgentPresence(payload.sessionId)
+      agentPresence: await host.captureAgentPresence(
+        payload.sessionId,
+        typeof payload.snapshotNotBeforeMs === 'number' &&
+          Number.isFinite(payload.snapshotNotBeforeMs)
+          ? { snapshotNotBeforeMs: payload.snapshotNotBeforeMs }
+          : undefined
+      )
     }
   }
   return {

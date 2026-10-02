@@ -47,8 +47,9 @@ import { ClaudeAgentTeamsService } from './claude-agent-teams-service'
 import { teardownFolderWorkspacePtys } from './folder-workspace-pty-teardown'
 
 export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTerminalDrivers {
-  protected readonly agentPresenceCommands = new AgentPresenceCommandObserver((id, current, kind) =>
-    this.discoverAgentPresence(id, current, kind === 'command')
+  protected readonly agentPresenceCommands = new AgentPresenceCommandObserver(
+    (id, current, kind, evidenceAtMs) =>
+      this.discoverAgentPresence(id, current, kind === 'command', evidenceAtMs)
   )
   protected readonly preservedBranchCleanup = new RuntimePreservedBranchCleanup(() =>
     this.store ? this.requireStore() : null

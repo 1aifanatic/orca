@@ -182,13 +182,13 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
     this.providerFor(id).acknowledgeDataEvent(id, charCount)
   }
 
-  async hasChildProcesses(id: string): Promise<boolean> {
-    return this.providerFor(id).hasChildProcesses(id)
-  }
+  hasChildProcesses = async (id: string): Promise<boolean> =>
+    this.providerFor(id).hasChildProcesses(id)
 
   probeAgentPresence = async (id: string, identity: AgentProcessIdentity) =>
     this.providerFor(id).probeAgentPresence?.(id, identity) ?? ('unverifiable' as const)
-  captureAgentPresence = async (id: string) => this.providerFor(id).captureAgentPresence?.(id)
+  captureAgentPresence: IPtyProvider['captureAgentPresence'] = async (id, options) =>
+    this.providerFor(id).captureAgentPresence?.(id, options)
   getForegroundProcess = async (id: string): Promise<string | null> =>
     this.providerFor(id).getForegroundProcess(id)
   inspectProcess(id: string) {

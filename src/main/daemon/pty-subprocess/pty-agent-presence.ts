@@ -1,5 +1,8 @@
 import type { RecognizedAgentProcess } from '../../../shared/agent-process-recognition'
-import type { AgentProcessPresence } from '../../../shared/agent-process-presence'
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessPresence
+} from '../../../shared/agent-process-presence'
 import type { IPty } from 'node-pty'
 import {
   captureAgentForegroundIdentity,
@@ -31,7 +34,9 @@ export async function capturePtyAgentPresence(
 }
 
 export type PtyForegroundProcessTracker = {
-  captureAgentPresence(): Promise<AgentProcessPresence | undefined>
+  captureAgentPresence(
+    options?: AgentPresenceCaptureOptions
+  ): Promise<AgentProcessPresence | undefined>
   recordOutput(data: string): void
   markDead(): void
   /** `rawFallback`: node-pty's own name only, with no identity cache and no background

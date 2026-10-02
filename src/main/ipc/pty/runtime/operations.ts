@@ -1,4 +1,7 @@
-import type { AgentProcessIdentity } from '../../../../shared/agent-process-presence'
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessIdentity
+} from '../../../../shared/agent-process-presence'
 import type { IPtyProvider } from '../../../providers/types'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
@@ -288,8 +291,11 @@ export async function serializeProviderBufferFromRuntimeController(
   }
 }
 
-export async function captureAgentPresenceFromRuntimeController(ptyId: string) {
-  return getProviderForPty(ptyId).captureAgentPresence?.(ptyId)
+export async function captureAgentPresenceFromRuntimeController(
+  ptyId: string,
+  options?: AgentPresenceCaptureOptions
+) {
+  return getProviderForPty(ptyId).captureAgentPresence?.(ptyId, options)
 }
 
 export async function probeAgentPresenceFromRuntimeController(

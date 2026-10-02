@@ -147,7 +147,9 @@ describe('runtime foreground admission', () => {
     })
     await Promise.resolve()
     await Promise.resolve()
-    expect(f.capture).toHaveBeenCalledExactlyOnceWith('reattached')
+    expect(f.capture).toHaveBeenCalledExactlyOnceWith('reattached', {
+      snapshotNotBeforeMs: expect.any(Number)
+    })
     expect(f.publish).toHaveBeenCalledWith(
       expect.objectContaining({ paneKey: makePaneKey('tab-2', reattachedLeaf) }),
       owner
@@ -231,5 +233,30 @@ describe('runtime foreground admission', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     // 13 of the 25 commands ran past the one-second mark; markers and idle time add nothing.
     expect(f.capture).toHaveBeenCalledTimes(13)
+  })
+
+  it('asks for a process table that began no earlier than the evidence it answers', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(50_000)
+    const f = fixture()
+    f.capture.mockResolvedValue(undefined)
+    f.data('\x1b]133;C\x07')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenLastCalledWith('pty', { snapshotNotBeforeMs: 50_000 })
+    vi.setSystemTime(60_000)
+    f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(f.capture).toHaveBeenLastCalledWith('pty', { snapshotNotBeforeMs: 60_000 })
+  })
+
+  it('reads for a newer command instead of joining a read still waiting on an older one', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.capture.mockImplementation(() => new Promise(() => undefined))
+    f.data('\x1b]133;C\x07')
+    await vi.advanceTimersByTimeAsync(1_000)
+    f.data('\x1b]133;D;0\x07\x1b]133;C\x07')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenCalledTimes(2)
   })
 })

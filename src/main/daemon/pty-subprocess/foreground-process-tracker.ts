@@ -199,9 +199,9 @@ export function createPtyForegroundProcessTracker(
   }
 
   return {
-    captureAgentPresence: () =>
+    captureAgentPresence: (options) =>
       AgentPresence.capturePtyAgentPresence(proc, args.isDead, cachedAgentForeground, () =>
-        resolveForeground(proc.pid, getFallbackProcess(), { contextPaths })
+        resolveForeground(proc.pid, getFallbackProcess(), { contextPaths, ...options })
       ),
     recordOutput: (data) => {
       if (data.length > 0) {

@@ -1,15 +1,19 @@
 import type { Session } from './session'
-import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessIdentity
+} from '../../shared/agent-process-presence'
 
 export async function captureSessionAgentPresence(
   sessions: ReadonlyMap<string, Session>,
-  id: string
+  id: string,
+  options?: AgentPresenceCaptureOptions
 ) {
   const session = sessions.get(id)
   if (!session?.isAlive) {
     return undefined
   }
-  const presence = await session.captureAgentPresence()
+  const presence = await session.captureAgentPresence(options)
   return sessions.get(id) === session && session.isAlive ? presence : undefined
 }
 

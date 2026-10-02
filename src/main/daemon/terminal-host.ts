@@ -231,7 +231,7 @@ export class TerminalHost {
     )
   }
 
-  captureAgentPresence = (id: string) => captureSessionAgentPresence(this.sessions, id)
+  captureAgentPresence = captureSessionAgentPresence.bind(null, this.sessions)
   probeAgentPresence = (id: string, identity: AgentProcessIdentity) =>
     probeSessionAgentPresence(this.sessions, id, identity)
   getForegroundProcess = (id: string) => readSessionForeground(this.sessions, id)

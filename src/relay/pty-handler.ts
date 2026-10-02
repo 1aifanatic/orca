@@ -735,12 +735,12 @@ export class PtyHandler {
       presence: AgentProcessPresence
     ) => void
   }
-  private readonly presenceDiscoveries = new Set<ManagedPty>()
+  private readonly presenceDiscoveries = new Set<string>()
   private readonly presenceCommands = new AgentPresenceCommandObserver(
-    async (id, current, kind) => {
+    async (id, current, kind, evidenceAtMs) => {
       const managed = this.ptys.get(id)
       if (managed) {
-        await this.discoverAgentOwner(managed, current, kind === 'command')
+        await this.discoverAgentOwner(managed, current, kind === 'command', evidenceAtMs)
       }
     }
   )
@@ -767,26 +767,32 @@ export class PtyHandler {
 
   private async discoverAgentOwner(
     managed: ManagedPty,
-    current: () => boolean = () => true,
-    doubtOwner = false
+    current: () => boolean,
+    doubtOwner: boolean,
+    evidenceAtMs: number
   ): Promise<void> {
     const admission = this.presenceAdmission
     const paneKey = managed.paneKey
+    // Why the evidence time: a newer command must not be dropped behind a read for an older one.
+    const discoveryKey = `${managed.id}\0${evidenceAtMs}`
     if (
       !admission ||
       !paneKey ||
       managed.disposed ||
       process.platform === 'win32' ||
       (!doubtOwner && admission.hasOwner(paneKey)) ||
-      this.presenceDiscoveries.has(managed)
+      this.presenceDiscoveries.has(discoveryKey)
     ) {
       return
     }
     const incarnation = managed.incarnationId
-    this.presenceDiscoveries.add(managed)
+    this.presenceDiscoveries.add(discoveryKey)
     try {
+      // Why the bound: a process table that began before the evidence cannot show what it started.
       const presence = await captureAgentForegroundIdentity(() =>
-        createPtyForegroundResolver(managed.pty)(managed.pty.pid, managed.pty.process || null)
+        createPtyForegroundResolver(managed.pty)(managed.pty.pid, managed.pty.process || null, {
+          snapshotNotBeforeMs: evidenceAtMs
+        })
       )
       if (
         !presence ||
@@ -800,7 +806,7 @@ export class PtyHandler {
       }
       admission.admit({ paneKey, tabId: managed.tabId, worktreeId: managed.worktreeId }, presence)
     } finally {
-      this.presenceDiscoveries.delete(managed)
+      this.presenceDiscoveries.delete(discoveryKey)
     }
   }
 

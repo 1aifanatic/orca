@@ -68,7 +68,8 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
       }),
     probeAgentPresence: (ptyId, identity) =>
       probeAgentPresenceFromRuntimeController(ptyId, identity),
-    captureAgentPresence: (ptyId) => captureAgentPresenceFromRuntimeController(ptyId),
+    captureAgentPresence: (ptyId, options) =>
+      captureAgentPresenceFromRuntimeController(ptyId, options),
     getForegroundProcess: (ptyId) => getForegroundProcessFromRuntimeController(ptyId),
     inspectProcess: (ptyId, options) => inspectProcessFromRuntimeController(ptyId, options),
     confirmForegroundProcess: (ptyId) => confirmForegroundProcessFromRuntimeController(ptyId),

@@ -1,5 +1,8 @@
 import { captureWindowsAgentPresence, probeWindowsPtyAgentPresence } from './windows-agent-presence'
-import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessIdentity
+} from '../../shared/agent-process-presence'
 import { captureAgentForegroundIdentity } from '../../shared/agent-foreground-identity'
 import { createPtyForegroundResolver } from '../daemon/pty-subprocess/spawn-file-foreground-process'
 import {
@@ -9,7 +12,7 @@ import {
   ptyLastRecognizedForeground
 } from './local-pty-provider-state'
 
-export async function captureLocalAgentPresence(id: string) {
+export async function captureLocalAgentPresence(id: string, options?: AgentPresenceCaptureOptions) {
   const proc = ptyProcesses.get(id)
   // WSL needs a guest-shell binding; native Windows awaits its job-proof capability.
   if (!proc || ptyWslDistroById.get(id)) {
@@ -30,7 +33,8 @@ export async function captureLocalAgentPresence(id: string) {
   }
   const presence = await captureAgentForegroundIdentity(() =>
     createPtyForegroundResolver(proc)(proc.pid, proc.process || null, {
-      contextPaths: ptyAgentForegroundContextPaths.get(id)
+      contextPaths: ptyAgentForegroundContextPaths.get(id),
+      ...options
     })
   )
   return ptyProcesses.get(id) === proc ? presence : undefined

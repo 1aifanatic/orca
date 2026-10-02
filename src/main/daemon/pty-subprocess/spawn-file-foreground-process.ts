@@ -11,7 +11,8 @@ import {
 import type { ProcessTableRow } from '../../../shared/process-table-snapshot'
 import {
   getFreshProcessTableSnapshot,
-  getProcessTableSnapshot
+  getProcessTableSnapshot,
+  getProcessTableSnapshotSince
 } from '../../../shared/process-table-snapshot-reader'
 import { selectForegroundProcessCandidate } from '../../../shared/foreground-process-selection'
 import { resolveOuterWrapperForegroundIdentity } from '../../../shared/foreground-wrapper-agent'
@@ -89,7 +90,9 @@ export async function resolveSpawnFileForegroundProcess(
     if (process.platform !== 'win32') {
       const rows = options.fresh
         ? await getFreshProcessTableSnapshot()
-        : await getProcessTableSnapshot()
+        : options.snapshotNotBeforeMs === undefined
+          ? await getProcessTableSnapshot()
+          : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs)
       return resolveSpawnFileForegroundFromRows(rows, proc.pid)
     }
     const resolution = await resolveAgentForegroundProcessWithAvailability(

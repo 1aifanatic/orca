@@ -5,6 +5,8 @@ export type GetForegroundProcessRequest = {
   payload: {
     probeAgentPresence?: AgentProcessIdentity
     captureAgentPresence?: boolean
+    /** Optional; an older daemon answers from its cached process table. */
+    snapshotNotBeforeMs?: number
     sessionId: string
   }
 }
