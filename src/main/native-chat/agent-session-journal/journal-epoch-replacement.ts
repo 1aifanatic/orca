@@ -3,8 +3,8 @@
 // One transaction: discard the old epoch's rows, insert the epoch row plus the
 // replacement items, move the session projection, and retire any repair marker
 // — this republished history is exactly what the marker was holding out for.
-// A newer build's rows this build skips are carried, not discarded: that build
-// still reads them after a downgrade and upgrade.
+// A newer build's rows its writer declared `carry` are carried, not discarded:
+// that build still reads them after a downgrade and upgrade.
 
 import type {
   AgentJournalItemBody,
@@ -58,8 +58,8 @@ export function replaceJournalEpoch(input: {
   /** Restated in the new epoch, or the rewind would release cards the person stopped, or bring
    *  back a /clear pause they already lifted. */
   queuePause: JournalQueuePauseRestatement
-  /** The live epoch's rows of a newer build's kind. */
-  skippedSequences: readonly number[]
+  /** The live epoch's rows of a newer build's kind, declared `carry`. */
+  carrySequences: readonly number[]
   now: () => number
   mintEpoch: () => string
   /** Called the instant the transaction commits, before any fallible follow-up. */
@@ -90,43 +90,34 @@ export function replaceJournalEpoch(input: {
     applyJournalRow(state, row)
     rows.push(row)
   }
-  const { sessionId } = input.identity
-  const { liftedAt, liveStop } = input.queuePause
+  const { lifted, liveStop } = input.queuePause
   const place = () => ({ state, seq: state.lastSequence + 1, fence: input.fence, ts: input.now() })
-  const append = (row: JournalRow) => {
+  if (lifted) {
+    const row = buildJournalQueueResumeRow(place())
     applyJournalRow(state, row)
     rows.push(row)
   }
-  const carried: JournalStoredRow[] = []
-  // After the rebuilt history, in the order their source rows held: a newer build may read a
-  // carried row against a restated Stop or Resume.
-  const tail: { from: number; write: () => void }[] = []
-  if (liftedAt > 0) {
-    tail.push({ from: liftedAt, write: () => append(buildJournalQueueResumeRow(place())) })
-  }
   if (liveStop) {
-    const { sequence, event } = liveStop
-    const write = () => append(buildJournalStopEventRow({ ...place(), event }))
-    tail.push({ from: sequence, write })
+    const row = buildJournalStopEventRow({ ...place(), event: liveStop })
+    applyJournalRow(state, row)
+    rows.push(row)
   }
-  for (const stored of readLiveJournalRows(input.database, sessionId, input.skippedSequences)) {
+
+  const { sessionId } = input.identity
+  // Last, in source order: their writer vouched they mean the same at any later place.
+  const carried: JournalStoredRow[] = []
+  for (const stored of readLiveJournalRows(input.database, sessionId, input.carrySequences)) {
     const parsed = parseJournalRow(stored.rowJson)
     const skipped = !parsed.ok && parsed.skipped
-    if (!skipped) {
+    if (!skipped || skipped.ifUnknown !== 'carry') {
       continue
     }
-    const write = () => {
-      const at = { epoch, seq: state.lastSequence + 1, fence: input.fence }
-      const moved = restampSkippedJournalRow(stored.rowJson, skipped, at)
-      if (moved) {
-        applyJournalRow(state, moved.row)
-        carried.push({ epoch, seq: moved.row.seq, ts: moved.row.ts, rowJson: moved.rowJson })
-      }
+    const at = { epoch, seq: state.lastSequence + 1, fence: input.fence }
+    const moved = restampSkippedJournalRow(stored.rowJson, skipped, at)
+    if (moved) {
+      applyJournalRow(state, moved.row)
+      carried.push({ epoch, seq: moved.row.seq, ts: moved.row.ts, rowJson: moved.rowJson })
     }
-    tail.push({ from: stored.seq, write })
-  }
-  for (const entry of tail.sort((left, right) => left.from - right.from)) {
-    entry.write()
   }
 
   input.database.transaction((db) => {

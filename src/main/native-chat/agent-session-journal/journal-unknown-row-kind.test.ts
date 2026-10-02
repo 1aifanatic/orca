@@ -1,5 +1,6 @@
-// A newer build's row kind is skipped and kept: it never reads as corruption, never renders, and
-// survives every rewrite this build makes, so the newer build still reads it after an upgrade.
+// A newer build's row kind is never repaired away. Undeclared, it latches this build read-only with
+// every row kept. Declared `skip` or `carry` by its writer, it is read past and the chat stays
+// writable; a rewind drops a `skip` row and carries a `carry` row into the new epoch.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -88,22 +89,23 @@ function storedNewerRows() {
 }
 
 /** A journal of its anchor, two items, then a newer build's row at sequence 4. */
-async function journalWithNewerRow() {
+async function journalWithNewerRow(extra: Record<string, unknown> = {}) {
   const first = await open()
   await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
   await first.appendItem(item(1), { kind: 'status', text: 'also before' }, SCOPE)
-  const json = JSON.stringify(newerRow(first.epoch, 4))
+  const json = JSON.stringify(newerRow(first.epoch, 4, extra))
   return { journal: await restartWith([{ seq: 4, json }]), json }
 }
 
 describe('parsing a row of a kind this build does not know', () => {
-  it('skips one whose envelope places it', () => {
-    expect(parseJournalRow(JSON.stringify(newerRow('epoch-1', 7)))).toEqual({
+  it.each(['skip', 'carry'] as const)('reads past one its writer declared %s', (ifUnknown) => {
+    expect(parseJournalRow(JSON.stringify(newerRow('epoch-1', 7, { ifUnknown })))).toEqual({
       ok: false,
       unreadable: false,
       skipped: {
         kind: 'skipped',
         storedKind: 'future-mark',
+        ifUnknown,
         epoch: 'epoch-1',
         seq: 7,
         fence: 1,
@@ -113,33 +115,74 @@ describe('parsing a row of a kind this build does not know', () => {
   })
 
   it.each([
+    ['no declaration', {}],
+    ['a declaration this build does not know', { ifUnknown: 'drop' }],
+    ['a declaration of the wrong type', { ifUnknown: true }]
+  ])('reads one with %s as unreadable', (_name, declared) => {
+    const parsed = parseJournalRow(JSON.stringify(newerRow('epoch-1', 7, declared)))
+    expect(parsed).toEqual({ ok: false, unreadable: true })
+  })
+
+  it.each([
     ['no sequence', { seq: undefined }],
     ['a fractional fence', { fence: 1.5 }],
     ['an empty epoch', { epoch: '' }],
     ['an empty kind', { kind: '' }]
-  ])('reads one with %s as malformed', (_name, broken) => {
-    const parsed = parseJournalRow(JSON.stringify(newerRow('epoch-1', 7, broken)))
-    expect(parsed).toEqual({ ok: false, unreadable: false })
+  ])('reads one with %s as malformed, declared or not', (_name, broken) => {
+    for (const declared of [{}, { ifUnknown: 'skip' }]) {
+      const parsed = parseJournalRow(
+        JSON.stringify(newerRow('epoch-1', 7, { ...declared, ...broken }))
+      )
+      expect(parsed).toEqual({ ok: false, unreadable: false })
+    }
   })
 
-  it('reads a known kind that fails its own checks as malformed, never skipped', () => {
+  it('reads a known kind that fails its own checks as malformed, whatever it declares', () => {
     const parsed = parseJournalRow(
-      JSON.stringify({ ...newerRow('epoch-1', 7), kind: 'item', itemId: 'x', revision: 1 })
+      JSON.stringify({
+        ...newerRow('epoch-1', 7, { ifUnknown: 'skip' }),
+        kind: 'item',
+        itemId: 'x',
+        revision: 1
+      })
     )
     expect(parsed).toEqual({ ok: false, unreadable: false })
   })
 
-  it('still latches a future schema version, whatever its kind', () => {
+  it('still latches a future schema version, whatever it declares', () => {
     const parsed = parseJournalRow(
-      JSON.stringify(newerRow('epoch-1', 7, { v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1 }))
+      JSON.stringify(
+        newerRow('epoch-1', 7, { v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1, ifUnknown: 'skip' })
+      )
     )
     expect(parsed).toEqual({ ok: false, unreadable: true })
   })
 })
 
-describe("a journal holding a newer build's row", () => {
-  it('opens with every known row, keeps the row through a write and a reopen, and numbers past it', async () => {
+describe("a journal holding a newer build's undeclared row", () => {
+  it('opens read-only with the rows before it, refuses writes, and deletes nothing', async () => {
     const { journal, json } = await journalWithNewerRow()
+    const before = stored()
+    expect(journal.isReadOnly).toBe(true)
+    expect(journal.repair).toEqual({ malformedRows: 0 })
+    expect(journal.snapshot().items.map((entry) => entry.itemId)).toEqual([
+      'codex:thread-1:turn-1:0',
+      'codex:thread-1:turn-1:1'
+    ])
+    await expect(
+      journal.appendItem(item(2), { kind: 'status', text: 'after' }, SCOPE)
+    ).rejects.toMatchObject({ code: 'journal_read_only' })
+
+    const reopened = await restartWith([])
+    expect(reopened.isReadOnly).toBe(true)
+    expect(stored()).toEqual(before)
+    expect(storedNewerRows()).toEqual([{ seq: 4, json: JSON.parse(json) }])
+  })
+})
+
+describe("a journal holding a newer build's row declared skippable", () => {
+  it('opens with every known row, keeps the row through a write and a reopen, and numbers past it', async () => {
+    const { journal, json } = await journalWithNewerRow({ ifUnknown: 'skip' })
     expect(journal.repair).toEqual({ malformedRows: 0 })
     expect(journal.needsRebuild).toBe(false)
     expect(journal.isReadOnly).toBe(false)
@@ -161,7 +204,7 @@ describe("a journal holding a newer build's row", () => {
   })
 
   it('hands a reader a placeholder that keeps the sequence whole, so catch-up never resets', async () => {
-    const { journal } = await journalWithNewerRow()
+    const { journal } = await journalWithNewerRow({ ifUnknown: 'skip' })
     await journal.appendItem(item(2), { kind: 'status', text: 'after' }, SCOPE)
     const since = journal.readSince({ epoch: journal.epoch, sequence: 3 })
     if (!since.ok) {
@@ -183,7 +226,7 @@ describe("a journal holding a newer build's row", () => {
   })
 
   it('lets a forward history page step past it, even as the newest row', async () => {
-    const { journal } = await journalWithNewerRow()
+    const { journal } = await journalWithNewerRow({ ifUnknown: 'skip' })
     const page = readAgentSessionHistory(journal, {
       sessionId: IDENTITY.sessionId,
       direction: 'after',
@@ -196,8 +239,16 @@ describe("a journal holding a newer build's row", () => {
     })
   })
 
-  it('is carried into the new epoch by a rewind, as written, and again by the next one', async () => {
-    const { journal, json } = await journalWithNewerRow()
+  it('is dropped by a rewind when declared skip', async () => {
+    const { journal } = await journalWithNewerRow({ ifUnknown: 'skip' })
+    await journal.replaceEpochItems('handle_forked', 1, [
+      { identity: item(0), body: { kind: 'status', text: 'republished' } }
+    ])
+    expect(stored().map((row) => row.json.kind)).toEqual(['epoch', 'item'])
+  })
+
+  it('is carried into the new epoch by a rewind when declared carry, and again by the next one', async () => {
+    const { journal, json } = await journalWithNewerRow({ ifUnknown: 'carry' })
     await journal.replaceEpochItems('handle_forked', 1, [
       { identity: item(0), body: { kind: 'status', text: 'republished' } }
     ])
@@ -219,48 +270,49 @@ describe("a journal holding a newer build's row", () => {
     expect(stored().map((row) => row.seq)).toEqual([1, 2, 3])
   })
 
-  it.each([
-    ['before a Stop', 'newer-first', ['future-mark', 'tombstone']],
-    ['after a Stop', 'stop-first', ['tombstone', 'future-mark']]
-  ])('keeps its place %s when a rewind restates the Stop', async (_name, order, expected) => {
+  it("carries a row after the restated Stop, under the rewinder's fence", async () => {
     const first = await open()
     await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
-    if (order === 'stop-first') {
-      await first.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, 1)
-    }
     const at = first.cursor().sequence + 1
     const journal = await restartWith([
-      { seq: at, json: JSON.stringify(newerRow(first.epoch, at)) }
+      { seq: at, json: JSON.stringify(newerRow(first.epoch, at, { ifUnknown: 'carry' })) }
     ])
-    if (order === 'newer-first') {
-      await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, 1)
-    }
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, 1)
 
-    await journal.replaceEpochItems('handle_forked', 1, [])
+    await journal.replaceEpochItems('handle_forked', 3, [])
 
-    expect(stored().map((row) => row.json.kind)).toEqual(['epoch', ...expected])
+    expect(stored().map((row) => [row.json.kind, row.json.fence])).toEqual([
+      ['epoch', 3],
+      ['tombstone', 3],
+      ['future-mark', 3]
+    ])
     expect(journal.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
       'stopped'
     ])
+    const reopened = await restartWith([])
+    expect(reopened.repair).toEqual({ malformedRows: 0 })
+    expect(reopened.cursor().sequence).toBe(3)
+    await reopened.appendItem(item(1), { kind: 'status', text: 'after' }, { ...SCOPE, fence: 3 })
+    expect(reopened.cursor().sequence).toBe(4)
   })
 
   // Intended: a roll starts the chat over from nothing, and takes every row of every kind with it.
   it('goes with every other row when the chat is rolled to a new epoch', async () => {
-    const { journal } = await journalWithNewerRow()
+    const { journal } = await journalWithNewerRow({ ifUnknown: 'carry' })
     await journal.rollEpoch('handle_forked', 1)
     expect(stored().map((row) => row.json.kind)).toEqual(['epoch'])
   })
 })
 
 describe('real corruption beside a newer row', () => {
-  it('still drops the suffix from a malformed row, and keeps the newer row before it', async () => {
+  it('still drops the suffix from a malformed row, and keeps the skippable row before it', async () => {
     const first = await open()
     await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
     const epoch = first.epoch
     const journal = await restartWith([
-      { seq: 3, json: JSON.stringify(newerRow(epoch, 3)) },
+      { seq: 3, json: JSON.stringify(newerRow(epoch, 3, { ifUnknown: 'skip' })) },
       { seq: 4, json: '{"not":"a row"}' },
-      { seq: 5, json: JSON.stringify(newerRow(epoch, 5)) }
+      { seq: 5, json: JSON.stringify(newerRow(epoch, 5, { ifUnknown: 'skip' })) }
     ])
     expect(journal.repair).toEqual({ malformedRows: 1 })
     expect(journal.needsRebuild).toBe(true)
@@ -283,11 +335,29 @@ describe('real corruption beside a newer row', () => {
     expect(storedNewerRows()).toEqual([])
   })
 
-  it('treats a newer row naming the wrong sequence as a gap', async () => {
-    const first = await open()
-    await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
-    const journal = await restartWith([{ seq: 3, json: JSON.stringify(newerRow(first.epoch, 9)) }])
-    expect(journal.needsRebuild).toBe(true)
-    expect(journal.cursor().sequence).toBe(2)
-  })
+  it.each([
+    ['a known row', { kind: 'tombstone', itemId: 'gone', revision: 1 }],
+    ['a skippable newer row', { ifUnknown: 'skip' }]
+  ])(
+    'drops %s whose body names another sequence than its key, and writes past it',
+    async (_name, shape) => {
+      const first = await open()
+      await first.appendItem(item(0), { kind: 'status', text: 'before' }, SCOPE)
+      // Key 3, body 2: trusting the body would number the next write onto key 3.
+      const json = JSON.stringify(newerRow(first.epoch, 2, shape))
+      const journal = await restartWith([{ seq: 3, json }])
+      expect(journal.repair).toEqual({ malformedRows: 1 })
+      expect(journal.needsRebuild).toBe(true)
+      expect(stored().map((row) => [row.seq, row.json.kind])).toEqual([
+        [1, 'epoch'],
+        [2, 'item'],
+        [3, 'item']
+      ])
+
+      await journal.appendItem(item(1), { kind: 'status', text: 'after' }, SCOPE)
+      const reopened = await restartWith([])
+      expect(reopened.cursor().sequence).toBe(4)
+      expect(reopened.snapshot().items).toHaveLength(3)
+    }
+  )
 })

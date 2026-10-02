@@ -65,8 +65,8 @@ export type JournalReducerState = {
   latestPersonTurnSequence: number
   /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
   queuePauseMarks: JournalQueuePauseMarks
-  /** Sequences of a newer build's rows this build skips, so a replacement can carry them. */
-  skippedSequences: number[]
+  /** Sequences of a newer build's rows declared `carry`, which a replacement carries. */
+  carrySequences: number[]
 }
 
 export function createJournalReducerState(sessionId: string, epoch: string): JournalReducerState {
@@ -87,7 +87,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     derivedTurnScope: new JournalDerivedTurnScope(),
     latestPersonTurnSequence: 0,
     queuePauseMarks: createJournalQueuePauseMarks(),
-    skippedSequences: []
+    carrySequences: []
   }
 }
 
@@ -99,7 +99,9 @@ export function applyJournalRow(state: JournalReducerState, row: JournalReadRow)
   }
   // Holds its sequence and fence, the envelope facts every row has; its content is unknown here.
   if (row.kind === 'skipped') {
-    state.skippedSequences.push(row.seq)
+    if (row.ifUnknown === 'carry') {
+      state.carrySequences.push(row.seq)
+    }
     return
   }
   state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)

@@ -27,13 +27,14 @@ const FIRST_JOURNAL_SEQUENCE = 1
 
 export type JournalLoad = {
   state: JournalReducerState
-  /** A row from a future schema was met: no writes, no deletion. */
+  /** A row this build cannot read was met (a future schema, or a newer kind not declared
+   *  skippable): no writes, no deletion. */
   readOnly: boolean
   /** Set when the surviving prefix is unusable and the caller must roll the epoch. */
   corrupt: boolean
-  /** Rows dropped because their body failed to parse (a future version latches `readOnly`, and
-   *  a newer build's unknown kind is skipped and kept; neither counts here). The store discloses
-   *  these in the timeline. */
+  /** Rows dropped because their body failed to parse (an unreadable row latches `readOnly`, and a
+   *  skippable newer kind is kept; neither counts here). The store discloses these in the
+   *  timeline. */
   malformedRows: number
   /** Directory-internal: the first sequence of an unusable suffix. The store
    *  deletes from here before it accepts a write; a probe leaves it alone. */
@@ -94,9 +95,10 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
 
   const add = (entry: { seq: number; rowJson: string }): boolean => {
     const parsed = parseJournalRow(entry.rowJson)
-    // A newer build's kind still holds its place, so it is sequence-checked like any row.
+    // A skipped newer kind still holds its place, so it is sequence-checked like any row.
     const row = journalReadRow(parsed)
-    if (!row) {
+    // A body naming another sequence than its key is malformed there: writes number past the key.
+    if (!row || row.seq !== entry.seq) {
       truncateFrom = entry.seq
       latched = !parsed.ok && parsed.unreadable
       malformedRows = latched ? 0 : 1
@@ -153,7 +155,7 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
   return { add, finish }
 }
 
-/** Rows after a cursor, in sequence order, a newer build's kinds as placeholders that keep the
+/** Rows after a cursor, in sequence order, skippable newer kinds as placeholders that keep the
  *  sequence whole. Stops at the first row this build cannot parse, exactly as replay does. */
 export function readJournalRowsAfterCursor(
   db: Database.Database,
@@ -165,7 +167,7 @@ export function readJournalRowsAfterCursor(
   const rows: JournalReadRow[] = []
   for (const stored of readJournalRowsAfter(db, sessionId, epoch, afterSequence, limit)) {
     const row = journalReadRow(parseJournalRow(stored.rowJson))
-    if (!row) {
+    if (!row || row.seq !== stored.seq) {
       break
     }
     rows.push(row)
