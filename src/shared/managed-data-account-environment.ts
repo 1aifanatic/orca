@@ -4,7 +4,8 @@ const originalEnvironment = z.object({
   XDG_DATA_HOME: z.string().nullable(),
   XDG_STATE_HOME: z.string().nullable(),
   OPENCODE_AUTH_CONTENT: z.string().nullable(),
-  OPENCODE_DB: z.string().nullable()
+  OPENCODE_DB: z.string().nullable(),
+  inlineAuthReference: z.uuid().optional()
 })
 const ORIGINAL_ENV = 'ORCA_DATA_ACCOUNT_ORIGINAL_ENV'
 export const MANAGED_DATA_ACCOUNT_BASELINE_ENV_KEYS = [
@@ -14,32 +15,29 @@ export const MANAGED_DATA_ACCOUNT_BASELINE_ENV_KEYS = [
   'OPENCODE_DB'
 ] as const
 
-export function getInheritedManagedDataAccountEnvKeysToDelete(
-  environment: Record<string, string> | undefined
-): string[] {
-  return [
-    ...MANAGED_DATA_ACCOUNT_BASELINE_ENV_KEYS,
-    'ORCA_DATA_ACCOUNT_DATA_HOME',
-    'ORCA_DATA_ACCOUNT_STATE_HOME',
-    'ORCA_DATA_ACCOUNT_PROVIDER',
-    ORIGINAL_ENV
-  ].filter((key) => environment?.[key] === undefined)
-}
-
 export function captureManagedDataAccountOriginalEnvironment(
-  environment: Record<string, string>
+  environment: Record<string, string>,
+  inlineAuthReference?: string
 ): void {
-  environment[ORIGINAL_ENV] = JSON.stringify(
-    Object.fromEntries(
+  environment[ORIGINAL_ENV] = JSON.stringify({
+    ...Object.fromEntries(
       MANAGED_DATA_ACCOUNT_BASELINE_ENV_KEYS.map((key) => [key, environment[key] ?? null])
-    )
-  )
+    ),
+    OPENCODE_AUTH_CONTENT: environment.OPENCODE_AUTH_CONTENT === '' ? '' : null,
+    ...(inlineAuthReference ? { inlineAuthReference } : {})
+  })
 }
 
 export function restoreManagedDataAccountEnvironment(
   environment: Record<string, string | undefined>,
-  restoreOriginal = true
+  restoreOriginal = true,
+  resolveInlineAuth?: (reference: string) => string | undefined
 ): void {
+  const provider = environment.ORCA_DATA_ACCOUNT_PROVIDER
+  const dataHome = environment.ORCA_DATA_ACCOUNT_DATA_HOME
+  if (!dataHome || (provider !== undefined && provider !== 'opencode' && provider !== 'devin')) {
+    return
+  }
   let original: z.infer<typeof originalEnvironment> | undefined
   try {
     const parsed = originalEnvironment.safeParse(JSON.parse(environment[ORIGINAL_ENV] ?? 'null'))
@@ -49,6 +47,15 @@ export function restoreManagedDataAccountEnvironment(
   } catch {
     // Older panes have no baseline snapshot; strip only their owned overrides.
   }
+  const ownsOpenCode =
+    provider === 'opencode' &&
+    environment.XDG_DATA_HOME === dataHome &&
+    environment.ORCA_DATA_ACCOUNT_STATE_HOME !== undefined &&
+    environment.XDG_STATE_HOME === environment.ORCA_DATA_ACCOUNT_STATE_HOME
+  const inlineAuth =
+    ownsOpenCode && environment.OPENCODE_AUTH_CONTENT === '' && original?.inlineAuthReference
+      ? resolveInlineAuth?.(original.inlineAuthReference)
+      : original?.OPENCODE_AUTH_CONTENT
   function restore(
     key: (typeof MANAGED_DATA_ACCOUNT_BASELINE_ENV_KEYS)[number],
     ownedValue: string | undefined
@@ -56,20 +63,18 @@ export function restoreManagedDataAccountEnvironment(
     if (ownedValue === undefined || environment[key] !== ownedValue) {
       return
     }
-    const value = original?.[key]
+    const value = key === 'OPENCODE_AUTH_CONTENT' ? inlineAuth : original?.[key]
     if (typeof value === 'string') {
       environment[key] = value
     } else {
       delete environment[key]
     }
   }
-  if (environment.ORCA_DATA_ACCOUNT_DATA_HOME) {
-    restore('XDG_DATA_HOME', environment.ORCA_DATA_ACCOUNT_DATA_HOME)
-    restore('XDG_STATE_HOME', environment.ORCA_DATA_ACCOUNT_STATE_HOME)
-    if (environment.ORCA_DATA_ACCOUNT_PROVIDER === 'opencode') {
-      restore('OPENCODE_AUTH_CONTENT', '')
-      restore('OPENCODE_DB', 'opencode.db')
-    }
+  restore('XDG_DATA_HOME', dataHome)
+  restore('XDG_STATE_HOME', environment.ORCA_DATA_ACCOUNT_STATE_HOME)
+  if (ownsOpenCode) {
+    restore('OPENCODE_AUTH_CONTENT', '')
+    restore('OPENCODE_DB', 'opencode.db')
   }
   delete environment.ORCA_DATA_ACCOUNT_DATA_HOME
   delete environment.ORCA_DATA_ACCOUNT_STATE_HOME

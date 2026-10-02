@@ -1,21 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import {
-  captureManagedDataAccountOriginalEnvironment,
-  restoreManagedDataAccountEnvironment,
-  getInheritedManagedDataAccountEnvKeysToDelete
-} from '../../shared/managed-data-account-environment'
+import { restoreManagedDataAccountEnvironment } from '../../shared/managed-data-account-environment'
 import { createDaemonPtyEnvironment } from '../daemon/pty-subprocess/spawn-environment'
+import type * as ServiceModule from './service'
 
 const selected = vi.hoisted(() => {
   const value: Record<string, string> = {}
   return { value }
 })
-vi.mock('./service', () => ({
-  getManagedDataAccountService: () => ({ launchEnvironment: () => selected.value })
-}))
+vi.mock('./service', async (importOriginal) => {
+  const actual = await importOriginal<typeof ServiceModule>()
+  const service = new actual.ManagedDataAccountService('test-managed-root')
+  vi.spyOn(service, 'launchEnvironment').mockImplementation(() => selected.value)
+  return { ...actual, getManagedDataAccountService: () => service }
+})
 import { applyManagedDataAccountEnvironment } from './launch-environment'
+import { getManagedDataAccountService } from './service'
 
 function inheritedProfile(): Record<string, string> {
   const env = {
@@ -23,7 +24,11 @@ function inheritedProfile(): Record<string, string> {
     OPENCODE_DB: 'user.db',
     OPENCODE_AUTH_CONTENT: 'user-config'
   }
-  captureManagedDataAccountOriginalEnvironment(env)
+  getManagedDataAccountService().captureOriginalEnvironment(env, {
+    XDG_DATA_HOME: join(tmpdir(), 'old-account', 'data'),
+    XDG_STATE_HOME: join(tmpdir(), 'old-account', 'state'),
+    OPENCODE_AUTH_CONTENT: ''
+  })
   return {
     ...env,
     XDG_DATA_HOME: join(tmpdir(), 'old-account', 'data'),
@@ -61,7 +66,6 @@ describe('managed account inherited environment', () => {
     expect(final.XDG_DATA_HOME).toBe(join(tmpdir(), 'user-data'))
     expect(final.XDG_STATE_HOME).toBeUndefined()
     expect(final.ORCA_DATA_ACCOUNT_DATA_HOME).toBeUndefined()
-    expect(getInheritedManagedDataAccountEnvKeysToDelete(env)).toContain('XDG_STATE_HOME')
   })
 
   it('keeps a fresh selection after the daemon restores its own parent profile', () => {
