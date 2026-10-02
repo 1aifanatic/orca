@@ -17,6 +17,7 @@ const BUILD_SCRIPTS = [
   'config/scripts/pinned-node-downloads.mjs',
   'config/scripts/build-orcad.mjs',
   'config/scripts/build-orcad-prebuilds.mjs',
+  'config/scripts/orcad-windows-prebuild-cache.mjs',
   'config/scripts/orcad-prebuild-smoke-child.cjs',
   'config/scripts/build-windows-process-tree-relay-addon.mjs',
   'config/scripts/run-node-server-tests.mjs',

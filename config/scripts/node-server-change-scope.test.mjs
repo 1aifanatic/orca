@@ -113,6 +113,7 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     'src/main/worker-thread-entry-path.ts',
     'config/scripts/zip-extractor-command.mjs',
     'config/scripts/windows-process-tree-gyp-rebuild.mjs',
+    'config/scripts/orcad-windows-prebuild-cache.mjs',
     'config/scripts/profile-state-worker-smoke.mjs',
     'config/scripts/vitest-host-ports-setup.ts',
     'tests/e2e/daemon-running-work-probe.unit.test.ts'
