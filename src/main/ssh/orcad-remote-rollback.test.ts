@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as RecordFile from './orcad-remote-record-file'
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({
   execCommand: vi.fn(),
@@ -10,13 +9,9 @@ vi.mock('./ssh-relay-install-transfers', () => ({
   writeRelayFile: vi.fn().mockResolvedValue(undefined),
   uploadRelayDirectory: vi.fn().mockResolvedValue(undefined)
 }))
-vi.mock('./orcad-remote-record-file', async (importOriginal) => ({
-  ...(await importOriginal<typeof RecordFile>()),
-  writeAtomicOrcadRemoteRecord: vi.fn().mockResolvedValue(undefined)
-}))
 
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
+import { writeRelayFile } from './ssh-relay-install-transfers'
 import { rollbackOrcad, type OrcadRollbackOptions } from './orcad-remote-rollback'
 import { emptyOrcadActivationRecord, type OrcadActivationRecord } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
@@ -79,9 +74,6 @@ function scriptHost(
 ): void {
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
-    if (text.includes('__ORCAD_RECORD_PRESENT__')) {
-      return `__ORCAD_RECORD_PRESENT__\n${JSON.stringify(record())}`
-    }
     if (text.includes('state.tar') && text.includes('test -f') && !text.includes('tar -C')) {
       return 'PRESENT'
     }
@@ -100,7 +92,7 @@ function scriptHost(
       log.push(`launch:${text.includes(ACTIVE) ? ACTIVE : TARGET}`)
       return '9999'
     }
-    if (text.startsWith('head -c ') && text.includes('.orcad-readiness')) {
+    if (text.startsWith('cat ') && text.includes('.orcad-readiness')) {
       if (overrides.readinessAtMs !== undefined && Date.now() < overrides.readinessAtMs) {
         return ''
       }
@@ -177,7 +169,7 @@ describe('rollbackOrcad', () => {
       code: 'orcad_rollback_orphans_live_terminals'
     })
     expect(log).toEqual([])
-    expect(vi.mocked(writeAtomicOrcadRemoteRecord)).not.toHaveBeenCalled()
+    expect(vi.mocked(writeRelayFile)).not.toHaveBeenCalled()
   })
 
   it('refuses when the snapshot is gone from the host', async () => {
@@ -220,7 +212,7 @@ describe('rollbackOrcad', () => {
     expect(result).toMatchObject({ outcome: 'failed', code: 'orcad_activation_no_readiness' })
     // Until the target is proven serving, `active` must still name the version an operator
     // would have to bring back.
-    expect(vi.mocked(writeAtomicOrcadRemoteRecord)).not.toHaveBeenCalled()
+    expect(vi.mocked(writeRelayFile)).not.toHaveBeenCalled()
   })
 
   it('records the rollback only after the target answers healthy', async () => {
@@ -228,9 +220,9 @@ describe('rollbackOrcad', () => {
     scriptHost(log)
     await rollbackOrcad(options())
     const written = vi
-      .mocked(writeAtomicOrcadRemoteRecord)
-      .mock.calls.find((call) => String(call[1]).endsWith('orcad-active.json'))
-    expect(JSON.parse(String(written?.[2]))).toMatchObject({
+      .mocked(writeRelayFile)
+      .mock.calls.find((call) => String(call[2]).endsWith('orcad-active.json'))
+    expect(JSON.parse(String(written?.[3]))).toMatchObject({
       active: TARGET,
       previous: null,
       snapshot: null

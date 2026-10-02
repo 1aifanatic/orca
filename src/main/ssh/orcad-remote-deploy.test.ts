@@ -1,5 +1,4 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import type * as RecordFile from './orcad-remote-record-file'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,10 +17,6 @@ vi.mock('./ssh-relay-install-transfers', () => ({
   uploadRelayDirectory: vi.fn().mockResolvedValue(undefined),
   writeRelayFile: vi.fn().mockResolvedValue(undefined)
 }))
-vi.mock('./orcad-remote-record-file', async (importOriginal) => ({
-  ...(await importOriginal<typeof RecordFile>()),
-  writeAtomicOrcadRemoteRecord: vi.fn().mockResolvedValue(undefined)
-}))
 vi.mock('./orcad-remote-node-runtime', () => ({
   ensureRemoteOrcadNodeRuntime: vi.fn().mockResolvedValue(undefined)
 }))
@@ -31,8 +26,7 @@ vi.mock('./orcad-local-build-hash', () => ({
 
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { acquireInstallLock } from './ssh-relay-install-lock'
-import { uploadRelayDirectory } from './ssh-relay-install-transfers'
-import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
+import { uploadRelayDirectory, writeRelayFile } from './ssh-relay-install-transfers'
 import { deployOrcad, type OrcadDeployOptions } from './orcad-remote-deploy'
 import { installOrcadBundle } from './orcad-remote-install'
 import { ensureRemoteOrcadNodeRuntime } from './orcad-remote-node-runtime'
@@ -112,12 +106,10 @@ type HostScript = {
 function scriptHost(script: HostScript): void {
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
-    if (text.includes('__ORCAD_RECORD_PRESENT__') && text.includes('orcad-active.json')) {
+    if (text.startsWith('cat ') && text.includes('orcad-active.json')) {
       return script.activationRecord
-        ? `__ORCAD_RECORD_PRESENT__\n${script.activationRecord}`
-        : '__ORCAD_RECORD_ABSENT__\n'
     }
-    if (text.includes('.orcad-readiness') && text.startsWith('head -c ')) {
+    if (text.includes('.orcad-readiness') && text.startsWith('cat ')) {
       if (script.readinessAtMs !== undefined && Date.now() < script.readinessAtMs) {
         return ''
       }
@@ -280,8 +272,8 @@ describe('deployOrcad', () => {
       expect(script.log).toEqual(['preflight'])
       expect(
         vi
-          .mocked(writeAtomicOrcadRemoteRecord)
-          .mock.calls.some(([, path]) => path.includes('orcad-active.json'))
+          .mocked(writeRelayFile)
+          .mock.calls.some(([, , path]) => path.includes('orcad-active.json'))
       ).toBe(false)
     }
   )
@@ -364,7 +356,7 @@ describe('deployOrcad', () => {
       if (String(command).startsWith('chmod 755 ')) {
         throw new Error('chmod failed')
       }
-      return String(command).includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''
+      return ''
     })
     await expect(deployOrcad(options())).rejects.toThrow('chmod failed')
     expect(vi.mocked(finalizeInstall)).not.toHaveBeenCalled()
@@ -449,9 +441,9 @@ describe('deployOrcad', () => {
     const result = await deployOrcad(options())
     expect(result).toMatchObject({ outcome: 'installed-and-activated', fullVersion: NEW_VERSION })
     const written = vi
-      .mocked(writeAtomicOrcadRemoteRecord)
-      .mock.calls.find((call) => String(call[1]).endsWith('orcad-active.json'))
-    expect(JSON.parse(String(written?.[2]))).toMatchObject({
+      .mocked(writeRelayFile)
+      .mock.calls.find((call) => String(call[2]).endsWith('orcad-active.json'))
+    expect(JSON.parse(String(written?.[3]))).toMatchObject({
       active: NEW_VERSION,
       previous: OLD_VERSION
     })
@@ -500,8 +492,8 @@ describe('deployOrcad', () => {
     expect(result).toMatchObject({ code: 'orcad_activation_daemon_degraded' })
     expect(
       vi
-        .mocked(writeAtomicOrcadRemoteRecord)
-        .mock.calls.some((call) => String(call[1]).endsWith('orcad-active.json'))
+        .mocked(writeRelayFile)
+        .mock.calls.some((call) => String(call[2]).endsWith('orcad-active.json'))
     ).toBe(false)
   })
 

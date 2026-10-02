@@ -14,19 +14,26 @@
  * failure this is meant to avoid, arrived at from the other side.
  */
 import type { SshConnection } from './ssh-connection'
+import { ORCAD_STARTUP_READINESS_TIMEOUT_MS } from '../../shared/orcad-profile-preflight'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { ORCAD_INSTALL_MODEL } from './remote-install-model'
 import { computeRemoteInstallDir } from './ssh-relay-versioned-install'
+import { writeRelayFile } from './ssh-relay-install-transfers'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import {
   ORCAD_STATE_SNAPSHOT_DIR,
+  serializeOrcadActivationRecord,
   withRolledBackVersion,
   type OrcadActivationRecord
 } from './orcad-activation-record'
 import { assessOrcadRollback, type OrcadTerminalCensus } from './orcad-update-plan'
 import { evaluateOrcadActivation, type OrcadActivationVerdict } from './orcad-activation-gate'
-import { ORCAD_LOG_FILENAME } from './orcad-remote-launch'
-import { launchOrcadAndAwaitReadiness } from './orcad-remote-runtime-control'
+import {
+  ORCAD_LOG_FILENAME,
+  orcadLaunchCommand,
+  parseOrcadReadinessOutput,
+  readOrcadReadinessCommand
+} from './orcad-remote-launch'
 import {
   newestStateMtimeCommand,
   parseNewestStateMtimeSeconds,
@@ -39,7 +46,7 @@ import {
   parseOrcadStopOutcome,
   stopOrcadCommand
 } from './orcad-remote-process-control'
-import { writeOrcadActivationRecord } from './orcad-activation-record-store'
+import { orcadActivationPath } from './orcad-activation-record-store'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 
 export type OrcadRollbackOptions = {
@@ -65,6 +72,7 @@ export type OrcadRollbackResult =
   | { outcome: 'refused'; code: string; reason: string }
   | { outcome: 'failed'; code: string; reason: string }
 
+const READINESS_POLL_MS = 500
 const STOP_WAIT_SECONDS = 20
 
 function exec(options: OrcadRollbackOptions, command: string): Promise<string> {
@@ -177,14 +185,29 @@ export async function rollbackOrcad(options: OrcadRollbackOptions): Promise<Orca
   }
 
   const targetDir = computeRemoteInstallDir(ORCAD_INSTALL_MODEL, options.remoteHome, safety.target)
-  const parsed = await launchOrcadAndAwaitReadiness(options, {
-    remoteInstallDir: targetDir,
-    nodePath: options.nodePath,
-    fullVersion: safety.target,
-    userDataDir: options.userDataDir,
-    bindHost: options.bindHost,
-    port: options.port
-  })
+  await exec(
+    options,
+    orcadLaunchCommand(options.host, {
+      remoteInstallDir: targetDir,
+      nodePath: options.nodePath,
+      fullVersion: safety.target,
+      userDataDir: options.userDataDir,
+      bindHost: options.bindHost,
+      port: options.port
+    })
+  )
+  const deadline = Date.now() + (options.readinessTimeoutMs ?? ORCAD_STARTUP_READINESS_TIMEOUT_MS)
+  const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
+  let parsed = parseOrcadReadinessOutput('')
+  while (Date.now() < deadline && parsed.state === 'pending') {
+    options.signal?.throwIfAborted()
+    parsed = parseOrcadReadinessOutput(
+      await exec(options, readOrcadReadinessCommand(options.host, targetDir))
+    )
+    if (parsed.state === 'pending') {
+      await sleep(READINESS_POLL_MS)
+    }
+  }
   const verdict = evaluateOrcadActivation(parsed.state === 'ready' ? parsed.readiness : null, {
     buildHash: options.targetBuildHash,
     fullVersion: safety.target
@@ -202,7 +225,13 @@ export async function rollbackOrcad(options: OrcadRollbackOptions): Promise<Orca
 
   // Why the record is written last: until the target is proven serving, `active` still names
   // the version an operator would need to bring back, and `previous` still names this target.
-  await writeOrcadActivationRecord(options, withRolledBackVersion(options.record, now()))
+  await writeRelayFile(
+    options.conn,
+    options.host,
+    orcadActivationPath(options.host, options.remoteHome),
+    serializeOrcadActivationRecord(withRolledBackVersion(options.record, now())),
+    { signal: options.signal }
+  )
   return {
     outcome: 'rolled-back',
     target: safety.target,
