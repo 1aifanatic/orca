@@ -32,7 +32,8 @@ export function classifyRuntimeLongPoll(request: RpcRequest): RuntimeLongPollCla
     (request.method === 'agent.launch' || request.method === 'agent.launchReplay') &&
     typeof request.params === 'object' &&
     request.params !== null &&
-    (request.params as { prompt?: unknown }).prompt !== undefined
+    'prompt' in request.params &&
+    request.params.prompt !== undefined
   ) {
     return 'wait'
   }
