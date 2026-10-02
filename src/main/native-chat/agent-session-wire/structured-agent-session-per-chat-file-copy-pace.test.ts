@@ -98,4 +98,38 @@ describe('the copy’s share of each second (C3)', () => {
     clock.now = 1_000
     await expect(pace.yieldTask()).resolves.toBeUndefined()
   })
+
+  it('keeps the debt of a chat it gave way in, and pays it between chats', async () => {
+    const clock = { now: 0 }
+    const waits: number[] = []
+    const pace = new StructuredAgentSessionPerChatFileCopyPace(
+      () => clock.now,
+      async (ms) => {
+        waits.push(ms)
+        // Someone starts waiting for the chat 100 ms in: the wait ends there.
+        clock.now += inChat ? 100 : ms
+      }
+    )
+    let inChat = false
+    const locks = {
+      serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
+      hasQueuedBehind: () => false,
+      nextQueued: () => new Promise<void>(() => {})
+    }
+    pace.begin()
+
+    await pace.inChat(locks, 'session-held', async (yieldTask) => {
+      inChat = true
+      clock.now += 200
+      await yieldTask()
+      inChat = false
+    })
+    await pace.yieldTask()
+
+    // 200 ms of work against a 50 ms burst: a debt of 120 ms (800 ms of wait). The chat's wait
+    // ended after 100 ms (15 ms paid), so the wait between chats is for the rest.
+    const debt = 200 - PER_CHAT_FILE_COPY_BURST_MS - 200 * PER_CHAT_FILE_COPY_SHARE
+    expect(waits[0]).toBe(debt / PER_CHAT_FILE_COPY_SHARE)
+    expect(waits[1]).toBeCloseTo((debt - 100 * PER_CHAT_FILE_COPY_SHARE) / PER_CHAT_FILE_COPY_SHARE)
+  })
 })

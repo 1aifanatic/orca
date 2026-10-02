@@ -363,8 +363,7 @@ describe('starting and stopping (T17b, T6)', () => {
     const control = createStructuredAgentSessionPerChatFileCopyControl({
       database,
       store: rig.store,
-      serialize: rig.host.collaboratorsForTests().tasks.serialize,
-      chatWaiters: rig.host.collaboratorsForTests().tasks,
+      tasks: rig.host.collaboratorsForTests().tasks,
       openJournal: () => undefined,
       settleClosedChat: async () => false,
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
@@ -399,8 +398,7 @@ describe('starting and stopping (T17b, T6)', () => {
         },
         listRecords: () => []
       },
-      serialize: async (_sessionId, task) => task(),
-      chatWaiters: new StructuredAgentSessionTaskQueue(),
+      tasks: new StructuredAgentSessionTaskQueue(),
       openJournal: () => undefined,
       settleClosedChat: async () => false,
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>

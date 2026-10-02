@@ -1,5 +1,5 @@
-// The background copy of old per-chat files: a fixed budget per run, a gate re-derived before every
-// run and every chat, listed chats first, a disk guard, a give-up keyed to the file, a failure that
+// The background copy of old per-chat files: one run paced at its share, a gate re-derived before
+// every run and every chat, listed chats first, a disk guard, a give-up keyed to the file, a failure that
 // is logged and never thrown, and an end.
 
 import { existsSync } from 'node:fs'
@@ -504,8 +504,7 @@ const copyJobDeps = {
   store: { getRecord: () => null, listRecords: () => [] },
   listedIds: [],
   isStartupChatWorkActive: () => false,
-  serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
-  chatWaiters: new StructuredAgentSessionTaskQueue(),
+  tasks: new StructuredAgentSessionTaskQueue(),
   openJournal: () => undefined,
   settleClosedChat: async () => false,
   canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => record !== null,
@@ -645,7 +644,8 @@ describe('the missing-row phase (L2, A8)', () => {
       throw new Error('malformed row')
     })
 
-    await runToEnd(rig, copyJob(rig, { serialize: failing }))
+    const { tasks } = rig.host.collaboratorsForTests()
+    await runToEnd(rig, copyJob(rig, { tasks: { ...tasks, serialize: failing } }))
 
     expect(failing).toHaveBeenCalledOnce()
     // The next launch: the same rows under the same version owe nothing.
@@ -672,7 +672,8 @@ describe('the missing-row phase (L2, A8)', () => {
       throw Object.assign(new Error('database is locked'), { code: 'ERR_SQLITE_ERROR', errcode: 5 })
     })
 
-    await runToEnd(rig, copyJob(rig, { serialize: locked }))
+    const { tasks } = rig.host.collaboratorsForTests()
+    await runToEnd(rig, copyJob(rig, { tasks: { ...tasks, serialize: locked } }))
 
     const job = startJob(rig)
     expect(job).not.toBeNull()

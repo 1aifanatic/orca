@@ -8,7 +8,12 @@ export type StructuredAgentSessionChatWaiters = {
   nextQueued: (sessionId: string, signal: AbortSignal) => Promise<void>
 }
 
-export class StructuredAgentSessionTaskQueue implements StructuredAgentSessionChatWaiters {
+/** Each chat's lock, and who waits for it: one queue, so the two cannot disagree. */
+export type StructuredAgentSessionChatLocks = StructuredAgentSessionChatWaiters & {
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+}
+
+export class StructuredAgentSessionTaskQueue implements StructuredAgentSessionChatLocks {
   private readonly chains = new Map<string, Promise<void>>()
   private readonly attaching = new Set<Promise<unknown>>()
   /** Calls on each chat not yet settled: the one running, and those queued behind it. */

@@ -1,7 +1,8 @@
 // The background copy's share of the main thread: each of its tasks ends by yielding here, and a
 // task that takes more than the copy's share so far waits until the share catches up (a token
 // bucket refilled at the share, holding at most a small burst). So any second gives the copy at
-// most the share, the burst and the one task that crossed it.
+// most the share, the burst and the one task that crossed it, except while it gives way (below):
+// then the rest of that chat runs unpaced, and its debt is paid after it.
 //
 // Inside a chat the copy holds that chat's lock, so a wait there would hold up anyone who opens or
 // commands it: there the pace gives way, skipping its wait while anyone waits for the chat and
@@ -11,7 +12,7 @@
 
 import { performance } from 'node:perf_hooks'
 import { setTimeout as sleep, setImmediate as yieldToEventLoop } from 'node:timers/promises'
-import type { StructuredAgentSessionChatWaiters } from './structured-agent-session-task-queue'
+import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
 
 /** The copy's share of the main thread's wall time, waits on disk included. */
 export const PER_CHAT_FILE_COPY_SHARE = 0.15
@@ -71,19 +72,16 @@ export class StructuredAgentSessionPerChatFileCopyPace {
   /** Runs `task` inside the chat's lock. The wait for the lock is not charged, and the task's
    *  yields give way to anyone who waits for the chat meanwhile (see the header). */
   inChat<T>(
-    lock: {
-      serialize: <R>(sessionId: string, task: () => Promise<R>) => Promise<R>
-      chatWaiters: StructuredAgentSessionChatWaiters
-    },
+    locks: StructuredAgentSessionChatLocks,
     sessionId: string,
     task: (yieldTask: () => Promise<void>) => Promise<T>
   ): Promise<T> {
     const giveWay: PerChatFileCopyGiveWay = {
-      now: () => lock.chatWaiters.hasQueuedBehind(sessionId),
-      next: (signal) => lock.chatWaiters.nextQueued(sessionId, signal)
+      now: () => locks.hasQueuedBehind(sessionId),
+      next: (signal) => locks.nextQueued(sessionId, signal)
     }
     this.pause()
-    return lock.serialize(sessionId, () => {
+    return locks.serialize(sessionId, () => {
       this.begin()
       return task(() => this.yieldGivingWay(giveWay))
     })

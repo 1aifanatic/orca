@@ -45,7 +45,7 @@ import {
   removeEmptyPerChatDirectories,
   roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
-import type { StructuredAgentSessionChatWaiters } from './structured-agent-session-task-queue'
+import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
 import type {
   StructuredAgentSessionStartupState,
   StructuredAgentSessionStartupStateDeps
@@ -66,9 +66,8 @@ export type PerChatFileCopyDeps = {
   /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
    *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** Who waits for a chat's lock: the copy gives way to them inside a chat. */
-  chatWaiters: StructuredAgentSessionChatWaiters
+  /** Each chat's lock, and who waits for it: the copy gives way to them inside a chat. */
+  tasks: StructuredAgentSessionChatLocks
   /** The chat's journal, when it is open on this host. */
   openJournal: (
     sessionId: string
@@ -244,7 +243,7 @@ export class StructuredAgentSessionPerChatFileCopy {
   private inChat = <T>(
     sessionId: string,
     task: (yieldTask: () => Promise<void>) => Promise<T>
-  ): Promise<T> => this.pace.inChat(this.deps, sessionId, task)
+  ): Promise<T> => this.pace.inChat(this.deps.tasks, sessionId, task)
 
   private async copyUnderSerialize(
     record: AgentSessionRecord,

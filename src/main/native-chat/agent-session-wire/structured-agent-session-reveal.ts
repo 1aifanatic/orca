@@ -10,10 +10,7 @@
 // a send does. And a journal it cannot open is not a refusal — the chat shows that failure with a
 // Retry, so the tab is worth publishing either way.
 
-import type {
-  StructuredAgentSessionChatWaiters,
-  StructuredAgentSessionTaskQueue
-} from './structured-agent-session-task-queue'
+import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sessionTabListed } from './structured-agent-session-host-tabs'
@@ -95,7 +92,7 @@ export function createStructuredAgentSessionHostRestore(
     seedStatus: StructuredAgentSessionStartupStateDeps['seedStatus']
     sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
     /** Each chat's lock, and who waits for it. */
-    tasks: Pick<StructuredAgentSessionTaskQueue, 'serialize'> & StructuredAgentSessionChatWaiters
+    tasks: StructuredAgentSessionChatLocks
   }
 ): {
   reconcileRestartLeases: () => Promise<void>
@@ -145,8 +142,7 @@ export function createStructuredAgentSessionHostRestore(
   const perChatFileCopy = createStructuredAgentSessionPerChatFileCopyControl({
     database: deps.journalDatabase,
     store: deps.store,
-    serialize: rest.serialize,
-    chatWaiters: tasks,
+    tasks,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
     settleClosedChat: startup.settleClosedChat,
     canSettle,
