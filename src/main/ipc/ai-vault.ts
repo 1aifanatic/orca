@@ -86,24 +86,22 @@ async function listAiVaultSessions(
   options: { signal?: AbortSignal } = {}
 ): Promise<AiVaultListResult> {
   const executionHostScope = requestedExecutionHostScope(args?.executionHostScope)
-  // Scope paths change the result set, so they must be part of the cache key.
-  // A scanner consumes at most 64 paths, so smaller equivalent workspace sets
-  // can share a snapshot regardless of which worktree was selected first.
+  // Canonicalize bounded workspace sets so equivalent scopes share a scan.
   const scopePaths = args?.scopePaths ?? []
   const key = JSON.stringify({
     scopePaths:
       scopePaths.length <= AI_VAULT_SCOPE_PATHS_MAX_COUNT
         ? [...new Set(scopePaths)].sort()
         : scopePaths,
-    executionHostScope
+    executionHostScope,
+    includeAntigravityIdeSessions: args?.includeAntigravityIdeSessions === true
   })
   const depth = requestedAiVaultSessionDepth(args)
-  const scanKey = JSON.stringify({ key, depth })
   // Why: every renderer request carries its own cancellation signal, so
   // coalescing has to survive them — the coordinator hands all same-key callers
   // one scan and only aborts it once every one of them has cancelled.
   return scanCoordinator.run({
-    key: scanKey,
+    key: JSON.stringify({ key, depth }),
     force: args?.force,
     signal: options.signal,
     start: (scanSignal) => {

@@ -55,6 +55,7 @@ export type RemoteSessionSource = {
   directoryPredicate?: (name: string, depth: number) => boolean
   // A canonical file directly beneath every top-level session directory.
   fixedChildFileSegments?: readonly string[]
+  additionalFixedChildFileSegments?: readonly (readonly string[])[]
   // Sibling-subagent layouts (Claude `<session>/subagents/`, OMP's same-named
   // artifact dir): count subagent transcripts from the walked listing and drop
   // them from candidates instead of indexing them as sessions.

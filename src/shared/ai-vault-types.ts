@@ -210,6 +210,8 @@ export type AiVaultScanIssue = {
 }
 
 export type AiVaultListArgs = {
+  /** Opt-in promises this client starts IDE history in a new CLI conversation. */
+  includeAntigravityIdeSessions?: boolean
   limit?: number
   unlimited?: boolean
   force?: boolean

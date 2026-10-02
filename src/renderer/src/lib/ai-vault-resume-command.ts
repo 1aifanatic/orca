@@ -1,3 +1,4 @@
+import { isAntigravityReferenceSession } from '../../../shared/antigravity-session-origin'
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import {
   buildAiVaultResumeCommand,
@@ -254,6 +255,9 @@ export function getAiVaultAgentProviderSession(
   session: Pick<AiVaultSession, 'agent' | 'sessionId'> & { filePath?: string }
 ): AgentProviderSessionMetadata | null {
   if (!isResumableTuiAgent(session.agent)) {
+    return null
+  }
+  if (isAntigravityReferenceSession(session)) {
     return null
   }
   if (session.agent === 'antigravity') {

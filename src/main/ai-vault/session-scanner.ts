@@ -1,3 +1,4 @@
+import { candidateFileTime } from './antigravity-transcript-candidates'
 import type {
   AiVaultListResult,
   AiVaultScanIssue,
@@ -233,7 +234,9 @@ async function parseSessionCandidates(args: {
 
   while (index < args.candidates.length) {
     throwIfAiVaultScanCancelled(args.signal)
-    if (canStopParsingSessions(sessions, args.limit, args.candidates[index]?.file.mtimeMs)) {
+    if (
+      canStopParsingSessions(sessions, args.limit, candidateFileTime(args.candidates[index]?.file))
+    ) {
       break
     }
 

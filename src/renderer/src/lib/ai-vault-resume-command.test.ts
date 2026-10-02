@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store/types'
 import {
+  getAiVaultAgentProviderSession,
   buildAiVaultResumeCopyCommandForWorktree,
   buildAiVaultResumeStartupForWorktree
 } from './ai-vault-resume-command'
@@ -68,6 +69,28 @@ function buildQueuedAiVaultResumeCommand(
 }
 
 describe('ai vault resume command runtime', () => {
+  it('starts an IDE reference with no CLI conversation identity on the selected WSL runtime', () => {
+    const state = makeState({
+      worktreePath: '\\\\wsl.localhost\\Ubuntu\\home\\example\\project',
+      localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+    })
+    const session = {
+      agent: 'antigravity' as const,
+      sessionId: 'ide-id',
+      cwd: '/home/example/project',
+      codexHome: null,
+      filePath:
+        '\\\\wsl.localhost\\Ubuntu\\home\\example\\.gemini\\antigravity-ide\\brain\\ide-id\\.system_generated\\logs\\transcript_full.jsonl'
+    }
+    const startup = buildAiVaultResumeStartupForWorktree({ state, session })
+    expect(startup.command).toContain('--prompt-interactive')
+    expect(startup.command).not.toContain('--conversation')
+    expect(startup.command).not.toContain('wsl.localhost')
+    expect(startup.providerSession).toBeUndefined()
+    expect(getAiVaultAgentProviderSession(session)).toBeNull()
+    expect(startup.cwd).toBe('/home/example/project')
+  })
+
   it('repro: queues a host-runtime resume without configured-WSL shell syntax', () => {
     const state = makeState({
       worktreePath: 'C:\\Users\\alice\\repo',
