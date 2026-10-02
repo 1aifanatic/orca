@@ -14929,6 +14929,7 @@
   },
   "components": {
     "native-chat": {
+      "reasoning": "Razonamiento",
       "contextMenu": {
         "copyOrcaSessionId": "Copiar ID de sesión de Orca",
         "orcaSessionIdCopied": "ID de sesión de Orca copiado",
@@ -15205,7 +15206,10 @@
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar"
-      }
+      },
+      "thinking": "Pensando…",
+      "thought": "Pensó",
+      "thoughtForDuration": "Pensó durante {{duration}}"
     },
     "tab": {
       "bar": {

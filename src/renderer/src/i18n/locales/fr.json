@@ -17395,6 +17395,7 @@
   },
   "components": {
     "native-chat": {
+      "reasoning": "Raisonnement",
       "contextMenu": {
         "copyOrcaSessionId": "Copier l'ID de session Orca",
         "orcaSessionIdCopied": "ID de session Orca copié",
@@ -17887,7 +17888,10 @@
         "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
         "queuePaused": "File d'attente en pause",
         "resume": "Reprendre"
-      }
+      },
+      "thinking": "Réflexion…",
+      "thought": "A réfléchi",
+      "thoughtForDuration": "A réfléchi pendant {{duration}}"
     },
     "tab": {
       "bar": {

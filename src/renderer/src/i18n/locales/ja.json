@@ -17331,6 +17331,7 @@
       }
     },
     "native-chat": {
+      "reasoning": "推論",
       "contextMenu": {
         "copyOrcaSessionId": "Orca セッション ID をコピー",
         "orcaSessionIdCopied": "Orca セッション ID をコピーしました",
@@ -17823,7 +17824,10 @@
         "queuePausedCleared": "会話を消去したため、キューを一時停止しました",
         "queuePaused": "キューは一時停止中です",
         "resume": "再開"
-      }
+      },
+      "thinking": "考え中…",
+      "thought": "考えました",
+      "thoughtForDuration": "{{duration}} 考えました"
     },
     "tab": {
       "bar": {

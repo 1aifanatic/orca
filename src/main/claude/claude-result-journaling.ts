@@ -21,7 +21,6 @@ export type ClaudeResultJournalContext = Pick<
   | 'sink'
   | 'streamedBlocks'
   | 'streamedText'
-  | 'streamedThinking'
   | 'subagents'
   | 'providerFallback'
   | 'corrections'
@@ -36,7 +35,6 @@ export function journalClaudeResult(
     sink,
     streamedBlocks,
     streamedText,
-    streamedThinking,
     subagents,
     providerFallback,
     corrections,
@@ -76,7 +74,6 @@ export function journalClaudeResult(
     // would otherwise retain that text for the life of the session.
     streamedBlocks.clear()
     streamedText.settle()
-    streamedThinking.settle()
   }
   const kind = claudeProviderFrameKind(message)
   const failure = claudeResultFailure(message, leftToStop)

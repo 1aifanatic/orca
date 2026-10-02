@@ -28,6 +28,7 @@ import {
   codexTurnLifecycleIdentity
 } from './codex-structured-journal-translation-turns'
 import { appendCodexLifecycleMutations } from './codex-structured-journal-sink'
+import { endedCodexReasoning, withCodexReasoningLifecycle } from './codex-reasoning-lifecycle'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
 
 export type CodexActiveJournalItem = {
@@ -61,6 +62,7 @@ export function settleCodexJournalSession(input: {
    *  conversation command claimed, whose record the host settles. */
   settledTurnLifecycle: (threadId: string, turnId: string) => AgentJournalTurnLifecycle | null
   attributionFor: CodexRowAttribution
+  now?: () => number
 }): StructuredAgentSessionSinkAdmission {
   // Rows from every thread settle in this one batch, so each names its own producer.
   const mutations: JournalLifecycleMutationInput[] = []
@@ -70,7 +72,10 @@ export function settleCodexJournalSession(input: {
     const translated = streamed
       ? codexStreamingJournalItem(active.item, streamed.text)
       : codexJournalItem(active.item, active.helperName)
-    const body = interruptedBody(translated.body)
+    const body = interruptedBody(
+      translated.body,
+      input.event.observedAt ?? input.now?.() ?? Date.now()
+    )
     if (body) {
       mutations.push(settledRow(input.attributionFor, active, body))
     }
@@ -118,6 +123,8 @@ export function settleCodexJournalTurn(input: {
   turnId: string
   /** Null off the primary thread: only the primary turn owns a lifecycle row. */
   turnLifecycle: AgentJournalTurnLifecycle | null
+  /** Host clock when the turn's end arrived, which is also the end of anything it left open. */
+  completedAt: number
   sink: StructuredAgentSessionEventSink
   streams: CodexStructuredItemStreams
   activeItems: Map<string, CodexActiveJournalItem>
@@ -142,7 +149,7 @@ export function settleCodexJournalTurn(input: {
     const translated = streamed
       ? codexStreamingJournalItem(active.item, streamed.text)
       : codexJournalItem(active.item, active.helperName)
-    const body = interruptedBody(translated.body)
+    const body = interruptedBody(translated.body, input.completedAt)
     if (body) {
       mutations.push(settledRow(input.attributionFor, active, body))
     }
@@ -196,7 +203,11 @@ function settledRow(
   return journalLifecycleItemMutation(attributionFor(row.threadId, row.turnId), row.identity, body)
 }
 
-function interruptedBody(body: AgentJournalItemBody | null): AgentJournalItemBody | null {
+/** The row an item still open when its turn ends is left with: the end is the turn's, seen live. */
+function interruptedBody(
+  body: AgentJournalItemBody | null,
+  endedAt: number
+): AgentJournalItemBody | null {
   if (!body) {
     return null
   }
@@ -204,7 +215,7 @@ function interruptedBody(body: AgentJournalItemBody | null): AgentJournalItemBod
     return { ...body, state: 'failed' }
   }
   if (body.kind === 'message') {
-    return body
+    return withCodexReasoningLifecycle(body, endedCodexReasoning(endedAt))
   }
   return body.kind === 'diff'
     ? { kind: 'status', text: 'File changes were interrupted before completion.' }

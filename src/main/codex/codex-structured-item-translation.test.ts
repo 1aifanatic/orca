@@ -854,7 +854,12 @@ describe('codex item bodies', () => {
   it('keeps streamed reasoning as a message and leaves streamed plans as status', () => {
     expect(codexStreamingJournalItem({ type: 'reasoning', id: 'r' }, 'thinking')).toEqual({
       handled: true,
-      body: { kind: 'message', role: 'reasoning', blocks: [{ type: 'text', text: 'thinking' }] }
+      body: {
+        kind: 'message',
+        role: 'reasoning',
+        blocks: [{ type: 'text', text: 'thinking' }],
+        state: 'running'
+      }
     })
     expect(codexStreamingJournalItem({ type: 'reasoning', id: 'r' }, ' \n ')).toEqual({
       handled: true,

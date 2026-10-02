@@ -15,7 +15,6 @@ import {
   claudeMessageBody,
   claudeMessageIdentity,
   claudeOutputEnvelope,
-  claudeThinkingText,
   claudeToolBody,
   claudeToolIdentity,
   claudeToolResults,
@@ -29,7 +28,7 @@ import {
 } from './claude-structured-provider-fallback'
 import type { createClaudeStreamedBlockRegistry } from './claude-streamed-block-identity'
 import type { createClaudeStreamedTextCheckpoints } from './claude-streamed-text-checkpoints'
-import { claudeReasoningBody, type ClaudeStreamedThinking } from './claude-streamed-thinking'
+import type { ClaudeStreamedThinking } from './claude-streamed-thinking'
 import type { ClaudeProvisionalRowCorrections } from './claude-provisional-row-corrections'
 import type { ClaudeSubagentRoster } from './claude-subagent-roster'
 import { claudeTurnOpenedBySendEcho, type ClaudeTurnSource } from './claude-turn-opening'
@@ -98,10 +97,7 @@ export function journalClaudeMessage(
     (body && envelope.role === 'assistant' ? ctx.streamedBlocks.reconcile(envelope) : null) ??
     claudeMessageIdentity(envelope)
   ctx.streamedText.forget(agentJournalItemKey(identity))
-  const thinkingIdentity = ctx.streamedThinking.finalIdentity(outputEnvelope)
-  const thinkingBody = thinkingIdentity
-    ? claudeReasoningBody(claudeThinkingText(outputEnvelope) ?? '')
-    : null
+  const thinking = ctx.streamedThinking.finalize(outputEnvelope, observedAt)
   const source: ClaudeTurnSource = {
     sessionId: envelope.sessionId,
     uuid: envelope.uuid,
@@ -154,9 +150,13 @@ export function journalClaudeMessage(
     ctx.tools.delete(result.toolUseId)
     changed = true
   }
-  if (thinkingIdentity && thinkingBody) {
+  if (thinking) {
     ctx.turn.ensureOpen(message, source, observedAt)
-    ctx.sink.appendItem(thinkingIdentity, thinkingBody, stamp(thinkingIdentity, thinkingBody))
+    // The write that ends the row: shed under pressure, the row would read open for good.
+    ctx.sink.appendItem(thinking.identity, thinking.body, {
+      ...stamp(thinking.identity, thinking.body),
+      lifecycle: true
+    })
     changed = true
   }
   changed =

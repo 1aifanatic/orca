@@ -1,4 +1,7 @@
-import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemBody,
+  AgentJournalMessageItem
+} from '../../../shared/agent-session-journal-types'
 import { isRunningAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 
 /** True while an item is still awaiting the row that settles it, so a sink can
@@ -11,4 +14,13 @@ export function requiresTerminalSettlement(body: AgentJournalItemBody): boolean 
     return body.resolution.state === 'pending'
   }
   return isRunningAgentJournalTurn(body)
+}
+
+/** A message still open, ended by a sweep that cannot know when it stopped: no time is claimed. */
+export function endedUnseenMessageBody(body: AgentJournalItemBody): AgentJournalMessageItem | null {
+  if (body.kind !== 'message' || body.state !== 'running') {
+    return null
+  }
+  const { completedAt: _unseen, ...open } = body
+  return { ...open, state: 'completed' }
 }

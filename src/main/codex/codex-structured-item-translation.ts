@@ -32,6 +32,7 @@ export {
   MAX_CODEX_TURN_ORDINAL_BYTES,
   MAX_CODEX_TURN_ORDINAL_ENTRIES
 } from './codex-turn-ordinals'
+import { codexReasoningBody } from './codex-reasoning-lifecycle'
 
 // Codex thread items → journal item bodies.
 
@@ -74,10 +75,6 @@ export function codexMessageBlocks(item: CodexThreadItem): NativeChatBlock[] {
 export type CodexJournalItem = {
   body: AgentJournalItemBody | null
   handled: boolean
-}
-
-function reasoningMessageBody(text: string): AgentJournalItemBody {
-  return { kind: 'message', role: 'reasoning', blocks: [{ type: 'text', text }] }
 }
 
 function commandItem(item: CodexThreadItem): CodexJournalItem {
@@ -281,7 +278,7 @@ export function codexJournalItem(
       readTextContent(item, 'text') ??
       readTextContent(item, 'summary') ??
       readTextContent(item, 'content')
-    return reasoningItem(text)
+    return { body: codexReasoningBody(text), handled: true }
   }
   const unhandled = unhandledProviderFrameJournalItem('codex', `item:${item.type}`, item)
   return unhandled ? { body: unhandled.body, handled: false } : { body: null, handled: true }
@@ -300,22 +297,14 @@ export function codexStreamingMessageBody(text: string): AgentJournalItemBody {
   }
 }
 
-function reasoningItem(text: string | null): CodexJournalItem {
-  return {
-    body: text?.trim()
-      ? reasoningMessageBody(boundInlineText(text, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text)
-      : null,
-    handled: true
-  }
-}
-
 /** Snapshot body for any item-level stream, keyed onto its parent item. */
 export function codexStreamingJournalItem(item: CodexThreadItem, text: string): CodexJournalItem {
   if (item.type === 'agentMessage') {
     return { body: codexStreamingMessageBody(text), handled: true }
   }
   if (item.type === 'reasoning') {
-    return reasoningItem(text)
+    // A stream only ever carries an item that has not completed yet.
+    return { body: codexReasoningBody(text, { state: 'running' }), handled: true }
   }
   if (item.type === 'commandExecution') {
     return commandItem({ ...item, aggregatedOutput: text })

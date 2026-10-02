@@ -32,6 +32,11 @@ import type { CodexActiveJournalItem } from './codex-structured-journal-settleme
 import { readCodexJournalString } from './codex-structured-journal-translation-values'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import { readCodexDispatchEcho } from './codex-structured-dispatch-echo'
+import {
+  endedCodexReasoning,
+  withCodexReasoningLifecycle,
+  type CodexReasoningLifecycle
+} from './codex-reasoning-lifecycle'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
 
 export class CodexJournalItems {
@@ -67,7 +72,7 @@ export class CodexJournalItems {
   }
 
   handle(
-    event: { threadId: string; method: string; params: unknown },
+    event: { threadId: string; method: string; params: unknown; observedAt?: number },
     source: 'live' | 'history' = 'live'
   ): CodexItemTranslation {
     const params =
@@ -101,7 +106,14 @@ export class CodexJournalItems {
     const itemKey = codexStructuredItemKey(event.threadId, item.id)
     const started =
       event.method === 'item/completed' ? this.activeItems.get(itemKey)?.item : undefined
-    const translated = codexJournalItem(item, this.helperName, started)
+    const translated = withItemLifecycle(
+      codexJournalItem(item, this.helperName, started),
+      source === 'history'
+        ? endedCodexReasoning()
+        : event.method === 'item/completed'
+          ? endedCodexReasoning(event.observedAt ?? Date.now())
+          : { state: 'running' }
+    )
     const command = readCodexJournalString(item, 'command')
     if (command) {
       const boundedCommand = Buffer.from(command, 'utf8')
@@ -264,7 +276,20 @@ export class CodexJournalItems {
   }
 }
 
+function withItemLifecycle(
+  translated: ReturnType<typeof codexJournalItem>,
+  lifecycle: CodexReasoningLifecycle
+): ReturnType<typeof codexJournalItem> {
+  return translated.body
+    ? { ...translated, body: withCodexReasoningLifecycle(translated.body, lifecycle) }
+    : translated
+}
+
 function evictedActiveBody(body: AgentJournalItemBody): AgentJournalItemBody {
+  // Evicted, not ended: nothing saw when the item stopped, so the end claims no time.
+  if (body.kind === 'message') {
+    return withCodexReasoningLifecycle(body, endedCodexReasoning())
+  }
   if (body.kind === 'tool-call' && body.state === 'running') {
     return { ...body, state: 'failed' }
   }

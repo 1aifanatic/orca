@@ -214,8 +214,8 @@ export const MessageRow = memo(function MessageRow({
     return (
       <div ref={rowRef}>
         <NativeChatReasoningRow
-          blockId={message.id}
-          isStreaming={activeTurnIsWorking}
+          message={message}
+          turnIsWorking={activeTurnIsWorking}
           markdown={markdown}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}

@@ -17,25 +17,38 @@ function setup() {
       publish: vi.fn()
     }
   })
-  const frame = (message: Record<string, unknown>): void =>
+  const frame = (message: Record<string, unknown>, observedAt?: number): void =>
     translator.handle({
       type: 'message',
       sessionId: 'orca-session',
+      ...(observedAt === undefined ? {} : { observedAt }),
       message: {
         session_id: 'session',
         parent_tool_use_id: null,
         ...message
       }
     })
-  const stream = (uuid: string, event: Record<string, unknown>): void =>
-    frame({ type: 'stream_event', uuid, event })
-  const final = (uuid: string, content: unknown[]): void =>
-    frame({
-      type: 'assistant',
-      uuid,
-      message: { id: 'message-1', role: 'assistant', content }
-    })
+  const stream = (uuid: string, event: Record<string, unknown>, observedAt?: number): void =>
+    frame({ type: 'stream_event', uuid, event }, observedAt)
+  const final = (uuid: string, content: unknown[], observedAt?: number): void =>
+    frame(
+      {
+        type: 'assistant',
+        uuid,
+        message: { id: 'message-1', role: 'assistant', content }
+      },
+      observedAt
+    )
   return { rows, translator, frame, stream, final }
+}
+
+function reasoning(text: string, lifecycle: Record<string, unknown>): AgentJournalItemBody {
+  return {
+    kind: 'message',
+    role: 'reasoning',
+    blocks: [{ type: 'text', text }],
+    ...lifecycle
+  }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -48,50 +61,52 @@ describe('structured Claude reasoning', () => {
     translator.dispose()
   })
 
-  it('emits final-only thinking with readable reasoning text', () => {
+  it('writes final-only thinking closed, with no span it never saw', () => {
     const { rows, final, translator } = setup()
-    final('final-only', [{ type: 'thinking', thinking: 'Inspecting the request' }])
+    final('final-only', [{ type: 'thinking', thinking: 'Inspecting the request' }], 5_000)
     expect([...rows.values()]).toEqual([
-      {
-        kind: 'message',
-        role: 'reasoning',
-        blocks: [{ type: 'text', text: 'Inspecting the request' }]
-      }
+      reasoning('Inspecting the request', { state: 'completed' })
     ])
     translator.dispose()
   })
 
-  it('keeps reasoning identity through deltas and final frames, apart from assistant prose', () => {
+  it('streams a running row and closes that same row on its final frame', () => {
     vi.useFakeTimers()
     const { rows, stream, final, translator } = setup()
-    stream('start', { type: 'message_start', message: { id: 'message-1' } })
-    stream('thinking-start', {
-      type: 'content_block_start',
-      index: 0,
-      content_block: { type: 'thinking', thinking: '' }
-    })
-    stream('delta-1', {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'thinking_delta', thinking: 'Inspecting ' }
-    })
+    stream('start', { type: 'message_start', message: { id: 'message-1' } }, 1_000)
+    stream(
+      'thinking-start',
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      1_000
+    )
+    stream(
+      'delta-1',
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'Inspecting ' }
+      },
+      3_000
+    )
     translator.flush()
     const firstKey = [...rows.keys()][0]
-    expect(firstKey).toBeDefined()
-    stream('delta-2', {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'thinking_delta', thinking: 'the request' }
-    })
+    expect(rows.get(firstKey!)).toEqual(reasoning('Inspecting ', { state: 'running' }))
+    stream(
+      'delta-2',
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'the request' }
+      },
+      4_000
+    )
     translator.flush()
     expect([...rows.keys()]).toEqual([firstKey])
-    final('thinking-final', [{ type: 'thinking', thinking: 'Inspecting the request' }])
+    final('thinking-final', [{ type: 'thinking', thinking: 'Inspecting the request' }], 9_000)
     expect([...rows.keys()]).toEqual([firstKey])
-    expect(rows.get(firstKey!)).toEqual({
-      kind: 'message',
-      role: 'reasoning',
-      blocks: [{ type: 'text', text: 'Inspecting the request' }]
-    })
+    expect(rows.get(firstKey!)).toEqual(
+      reasoning('Inspecting the request', { state: 'completed', completedAt: 9_000 })
+    )
 
     stream('text-start', {
       type: 'content_block_start',
@@ -105,7 +120,6 @@ describe('structured Claude reasoning', () => {
     })
     translator.flush()
     final('text-final', [{ type: 'text', text: 'Here is the answer' }])
-    expect(rows.size).toBe(2)
     expect([...rows.values()].map((body) => body.kind === 'message' && body.role)).toEqual([
       'reasoning',
       'assistant'
@@ -114,20 +128,22 @@ describe('structured Claude reasoning', () => {
     translator.dispose()
   })
 
-  it('flushes interrupted thinking and releases its checkpoint state', () => {
+  it('closes a streamed row with its streamed text when the final frame carries none', () => {
     vi.useFakeTimers()
-    const { rows, stream, frame, translator } = setup()
-    stream('delta', {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'thinking_delta', thinking: 'Unfinished thought' }
-    })
-    frame({ type: 'result', subtype: 'success', uuid: 'result' })
-    expect([...rows.values()]).toContainEqual({
-      kind: 'message',
-      role: 'reasoning',
-      blocks: [{ type: 'text', text: 'Unfinished thought' }]
-    })
+    const { rows, stream, final, translator } = setup()
+    stream(
+      'delta',
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'Summary' }
+      },
+      1_000
+    )
+    final('thinking-final', [{ type: 'thinking', thinking: '', signature: 'sig' }], 2_000)
+    expect([...rows.values()]).toEqual([
+      reasoning('Summary', { state: 'completed', completedAt: 2_000 })
+    ])
     expect(translator.pendingStreamedBlocks).toBe(0)
     translator.dispose()
   })

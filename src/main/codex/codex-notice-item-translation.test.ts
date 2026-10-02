@@ -30,7 +30,8 @@ describe('plan document translation', () => {
       body: {
         kind: 'message',
         role: 'reasoning',
-        blocks: [{ type: 'text', text: 'Thinking…' }]
+        blocks: [{ type: 'text', text: 'Thinking…' }],
+        state: 'running'
       },
       handled: true
     })

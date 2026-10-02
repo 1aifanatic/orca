@@ -73,6 +73,7 @@ export function createClaudeJournalTranslator(
   const turn = new ClaudeOpenTurn({
     sink: deps.sink,
     settleChildren: (groupKey) => subagents.settleTurn(groupKey),
+    endOpenWork: (completedAt) => streamedThinking.finishOpen(completedAt),
     onOpen: () => context.markActivity()
   })
   const context = new ClaudeContextFacts(turn, deps.sink)
@@ -157,7 +158,7 @@ export function createClaudeJournalTranslator(
 
   const handleStream = (message: Record<string, unknown>, observedAt: number): boolean => {
     const delta = streamedBlocks.observe(message)
-    const thinking = streamedThinking.observe(message)
+    const thinking = streamedThinking.observe(message, observedAt)
     // `message_start` is the provider's turn boundary. Keep the first content
     // delta as a compatibility fallback for streams that omit it.
     const source =

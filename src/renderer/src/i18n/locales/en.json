@@ -17986,8 +17986,8 @@
         "queuePaused": "Queue paused",
         "resume": "Resume"
       },
-      "thinking": "Thinking...",
-      "thoughtForFewSeconds": "Thought for a few seconds",
+      "thinking": "Thinking…",
+      "thought": "Thought",
       "thoughtForDuration": "Thought for {{duration}}"
     },
     "tab": {
