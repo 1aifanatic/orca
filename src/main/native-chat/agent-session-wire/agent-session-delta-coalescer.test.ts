@@ -40,47 +40,22 @@ function coalescer(clock: ReturnType<typeof manualClock>, windowMs?: number) {
 }
 
 describe('agent-session delta coalescer', () => {
-  // The first delta makes the row, so a write issued after the text began lands below it.
-  it("emits a stream's first delta at once, then folds a burst into one emit on one shared window", () => {
+  it('folds a burst into one emit carrying the full text, on one shared window', () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)
 
     instance.append('item-1', 'he')
-    expect(emitted).toEqual([['item-1', 'he']])
-    expect(clock.windows()).toEqual([])
     instance.append('item-1', 'llo')
-    instance.append('item-1', ' there')
     instance.append('item-2', 'world')
 
-    expect(emitted).toEqual([
-      ['item-1', 'he'],
-      ['item-2', 'world']
-    ])
+    expect(emitted).toEqual([])
     expect(clock.windows()).toEqual([AGENT_SESSION_DELTA_COALESCE_MS])
 
     clock.fire()
     expect(emitted).toEqual([
-      ['item-1', 'he'],
-      ['item-2', 'world'],
-      ['item-1', 'hello there']
+      ['item-1', 'hello'],
+      ['item-2', 'world']
     ])
-  })
-
-  // A growth throttle behind emit must not count the row-creating write as a checkpoint.
-  it('marks the row-creating emit and the first snapshot after it as the opening', () => {
-    const clock = manualClock()
-    const openings: boolean[] = []
-    const instance = createAgentSessionDeltaCoalescer({
-      emit: (_key, _text, _snapshot, opening) => openings.push(opening),
-      schedule: clock.schedule
-    })
-
-    for (const delta of ['I', "'ll", ' check']) {
-      instance.append('item-1', delta)
-      clock.fire()
-    }
-
-    expect(openings).toEqual([true, true, false])
   })
 
   it('emits the accumulated snapshot again, not the increment, on the next window', () => {
@@ -107,10 +82,7 @@ describe('agent-session delta coalescer', () => {
     }
     clock.fire()
 
-    expect(emitted).toEqual([
-      ['item-1', 'x'],
-      ['item-1', 'x'.repeat(10_000)]
-    ])
+    expect(emitted).toEqual([['item-1', 'x'.repeat(10_000)]])
   })
 
   it('does not re-emit a stream with no new text', () => {
@@ -122,29 +94,6 @@ describe('agent-session delta coalescer', () => {
     instance.flushAll()
 
     expect(emitted).toEqual([['item-1', 'hi']])
-  })
-
-  // Forced past a growth throttle, an unchanged snapshot would rewrite the row with the same text.
-  it('never marks a snapshot an empty delta left unchanged as the opening', () => {
-    const clock = manualClock()
-    const emits: [string, boolean][] = []
-    const instance = createAgentSessionDeltaCoalescer({
-      emit: (_key, text, _snapshot, opening) => emits.push([text, opening]),
-      schedule: clock.schedule
-    })
-
-    instance.append('item-1', 'Hello')
-    instance.append('item-1', '')
-    clock.fire()
-    instance.append('item-1', ' there')
-    clock.fire()
-
-    // The first snapshot that changed the text is still the opening one.
-    expect(emits).toEqual([
-      ['Hello', true],
-      ['Hello', false],
-      ['Hello there', true]
-    ])
   })
 
   it('flushes pending text ahead of a lifecycle event and cancels the window', () => {
@@ -202,10 +151,7 @@ describe('agent-session delta coalescer', () => {
     expect(instance.snapshot('first')?.text).toBe('preserve me')
     reject = false
     expect(instance.append('second', 'new stream')).toBe(true)
-    expect(emitted).toEqual([
-      ['first', 'preserve me'],
-      ['second', 'new stream']
-    ])
+    expect(emitted).toEqual([['first', 'preserve me']])
   })
 
   it('drops a forgotten stream without emitting it, because its final body already landed', () => {
@@ -214,28 +160,21 @@ describe('agent-session delta coalescer', () => {
 
     instance.append('item-1', 'stale')
     instance.append('item-2', 'kept')
-    instance.append('item-1', ' and more')
-    instance.append('item-2', ' too')
     instance.forget('item-1')
     clock.fire()
 
-    expect(emitted).toEqual([
-      ['item-1', 'stale'],
-      ['item-2', 'kept'],
-      ['item-2', 'kept too']
-    ])
+    expect(emitted).toEqual([['item-2', 'kept']])
   })
 
   it('emits nothing after dispose, and leaves no timer behind', () => {
     const clock = manualClock()
     const { instance, emitted } = coalescer(clock)
 
-    instance.append('item-1', 'begun')
-    instance.append('item-1', ' and gone')
+    instance.append('item-1', 'gone')
     instance.dispose()
     clock.fire()
 
-    expect(emitted).toEqual([['item-1', 'begun']])
+    expect(emitted).toEqual([])
     expect(clock.pendingCount()).toBe(0)
   })
 
@@ -244,7 +183,6 @@ describe('agent-session delta coalescer', () => {
     const { instance } = coalescer(clock, 5)
 
     instance.append('item-1', 'x')
-    instance.append('item-1', 'y')
 
     expect(clock.windows()).toEqual([5])
   })
@@ -265,7 +203,6 @@ describe('agent-session delta coalescer', () => {
     clock.fire()
 
     expect(emitted).toEqual([
-      { text: 'éé', observedBytes: 4, truncated: false },
       {
         text: 'ééé\n[Orca: streamed output truncated]',
         observedBytes: 48,

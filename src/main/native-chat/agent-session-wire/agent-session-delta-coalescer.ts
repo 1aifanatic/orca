@@ -9,10 +9,7 @@
 //
 // The window applies to text only. Lifecycle — an item completing, a turn
 // ending, an approval arriving — bypasses it by flushing first, so nothing can
-// be journaled ahead of the text that preceded it. A stream's first delta is
-// emitted at once, so its row takes its place in the journal when the text
-// begins and any write issued after lands below it; the window only delays
-// later snapshots of that row.
+// be journaled ahead of the text that preceded it.
 
 /** Long enough to fold a burst of tokens into one row, short enough that the
  *  text still reads as streaming. */
@@ -33,15 +30,8 @@ export type AgentSessionDeltaSnapshot = {
 }
 
 export type AgentSessionDeltaCoalescerDeps = {
-  /** Called with the FULL text accumulated for the key, not the increment. `opening` marks the
-   *  row-creating emit and the first snapshot after it that changed the text, which a growth
-   *  throttle must not skip. */
-  emit: (
-    key: string,
-    text: string,
-    snapshot: AgentSessionDeltaSnapshot,
-    opening: boolean
-  ) => unknown
+  /** Called with the FULL text accumulated for the key, not the increment. */
+  emit: (key: string, text: string, snapshot: AgentSessionDeltaSnapshot) => unknown
   windowMs?: number
   maxRetainedBytes?: number
   maxTotalRetainedBytes?: number
@@ -91,11 +81,6 @@ export function createAgentSessionDeltaCoalescer(
       observedBytes: number
       truncated: boolean
       dirty: boolean
-      /** The text differs from the last successful emit's. */
-      changed: boolean
-      /** Successful emits that changed the text, counted to 2: the first makes the row, the second
-       *  is its first snapshot. */
-      emits: number
     }
   >()
   let totalRetainedBytes = 0
@@ -108,20 +93,15 @@ export function createAgentSessionDeltaCoalescer(
       return true
     }
     const text = stream.chunks.join('')
-    const emitted = deps.emit(
-      key,
+    const emitted = deps.emit(key, text, {
       text,
-      { text, observedBytes: stream.observedBytes, truncated: stream.truncated },
-      stream.emits < 2 && stream.changed
-    )
+      observedBytes: stream.observedBytes,
+      truncated: stream.truncated
+    })
     if (emitted === false) {
       return false
     }
     stream.dirty = false
-    if (stream.changed) {
-      stream.changed = false
-      stream.emits = Math.min(2, stream.emits + 1)
-    }
     return true
   }
 
@@ -177,9 +157,7 @@ export function createAgentSessionDeltaCoalescer(
           retainedBytes: 0,
           observedBytes: 0,
           truncated: false,
-          dirty: false,
-          changed: true,
-          emits: 0
+          dirty: false
         }
         if (!deps.isProtected?.(key)) {
           evictable.add(key)
@@ -204,16 +182,8 @@ export function createAgentSessionDeltaCoalescer(
         stream.retainedBytes = next.retainedBytes
         stream.truncated = next.truncated
         stream.dirty = true
-        // An empty delta still owes an emit, but not a forced one: its text is unchanged.
-        if (deltaBytes > 0) {
-          stream.changed = true
-        }
       }
       streams.set(key, stream)
-      // The first text makes the row; refused under backpressure, it waits for the window.
-      if (stream.emits === 0 && stream.dirty && stream.retainedBytes > 0 && flushKey(key)) {
-        return true
-      }
       // One timer for every stream: a shared deadline bounds latency the same
       // way and costs one wakeup per window instead of one per stream.
       scheduleFlush()

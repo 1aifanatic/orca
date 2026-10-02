@@ -577,17 +577,17 @@ describe('codex journal translation', () => {
     translator.handle(
       notification('item/started', { item: { type: 'agentMessage', id: 'item-1', text: '' } })
     )
-    const rest = 'llo, and on past the next checkpoint'
     translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'he' }))
-    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: rest }))
+    translator.handle(notification('item/agentMessage/delta', { itemId: 'item-1', delta: 'llo' }))
     window.fire()
 
-    // `item/started` had no text to journal; the first delta makes the row, the window its snapshot.
-    const reply = (text: string) => ({
-      key: 'codex:thread-abc:turn-1:0',
-      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }
-    })
-    expect(tap.rows).toEqual([reply('he'), reply(`he${rest}`)])
+    // `item/started` had no text to journal; only the coalesced snapshot lands.
+    expect(tap.rows).toEqual([
+      {
+        key: 'codex:thread-abc:turn-1:0',
+        body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'hello' }] }
+      }
+    ])
   })
 
   it('upserts the streamed text and the completed body onto one row, body last', () => {

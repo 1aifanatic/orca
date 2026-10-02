@@ -88,34 +88,12 @@ describe('claude streamed text checkpoints', () => {
   it('rewrites a block row with the full text accumulated so far', () => {
     const { store, rows, runWindow } = checkpoints()
 
-    const rest = 'lo, reading the failing test before the fix'
     store.append(identityOf('block-1'), 'hel')
-    // The first delta makes the row at once; the window folds the rest into one rewrite.
-    expect(rows).toEqual([{ uuid: 'block-1', text: 'hel' }])
-    store.append(identityOf('block-1'), rest)
+    store.append(identityOf('block-1'), 'lo')
     runWindow()
 
-    expect(rows).toEqual([
-      { uuid: 'block-1', text: 'hel' },
-      { uuid: 'block-1', text: `hel${rest}` }
-    ])
+    expect(rows).toEqual([{ uuid: 'block-1', text: 'hello' }])
     expect(store.pending).toBe(1)
-  })
-
-  it("writes the window's first snapshot however little it grew the row, then widens", () => {
-    const { store, rows, runWindow } = checkpoints()
-
-    store.append(identityOf('block-1'), 'I')
-    store.append(identityOf('block-1'), "'ll check")
-    runWindow()
-    // The row-creating write is not a checkpoint: the window's snapshot lands in full.
-    expect(rows).toEqual([
-      { uuid: 'block-1', text: 'I' },
-      { uuid: 'block-1', text: "I'll check" }
-    ])
-    store.append(identityOf('block-1'), ' the tests.')
-    runWindow()
-    expect(rows).toHaveLength(2)
   })
 
   it('drops every block still awaiting its final frame at settlement', () => {
@@ -242,12 +220,11 @@ describe('claude streamed text checkpoints', () => {
     const { store, rows, runWindow } = checkpoints()
 
     store.append(identityOf('block-1'), 'text')
-    store.append(identityOf('block-1'), ' and the rest of it, long enough to checkpoint')
     store.dispose()
     runWindow()
     store.flush()
 
-    expect(rows).toEqual([{ uuid: 'block-1', text: 'text' }])
+    expect(rows).toEqual([])
     expect(store.pending).toBe(0)
   })
 })
