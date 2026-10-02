@@ -1,4 +1,5 @@
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import { resolveNativeChatTranscriptAgent } from '../../../../shared/native-chat-agent-support'
 import {
   readNativeChatTranscriptTail,
   subscribeNativeChatTranscript,
@@ -57,9 +58,14 @@ function windowTranscript(
 function windowForClient(
   messages: readonly NativeChatMessage[],
   clientKind: RpcContext['clientKind'],
-  limit = MOBILE_NATIVE_CHAT_DEFAULT_WINDOW
+  limit = MOBILE_NATIVE_CHAT_DEFAULT_WINDOW,
+  agent?: string
 ): NativeChatMessage[] {
-  const windowed = windowTranscript(messages, limit)
+  // OpenCode pages keep a reasoning/answer pair together under one raw-row cursor.
+  const windowed =
+    resolveNativeChatTranscriptAgent(agent) === 'opencode'
+      ? messages
+      : windowTranscript(messages, limit)
   return windowed.map((message) => sanitizeMessage(message, clientKind))
 }
 
@@ -81,7 +87,7 @@ export const NATIVE_CHAT_METHODS = [
       )
       return 'messages' in result
         ? {
-            messages: windowForClient(result.messages, clientKind, limit),
+            messages: windowForClient(result.messages, clientKind, limit, params.agent),
             hasMore: result.hasMore,
             beforeOffset: result.beforeOffset,
             ...(result.lifecycle ? { lifecycle: result.lifecycle } : {})
@@ -144,7 +150,7 @@ export const NATIVE_CHAT_METHODS = [
           // instead of stranding the view at 'loading' when the read keeps throwing.
           emit({
             type: 'snapshot',
-            messages: windowForClient(messages, clientKind, limit),
+            messages: windowForClient(messages, clientKind, limit, params.agent),
             hasMore,
             beforeOffset,
             ...(error ? { error } : {}),
@@ -166,7 +172,7 @@ export const NATIVE_CHAT_METHODS = [
           }
           emit({
             type: 'replacement',
-            messages: windowForClient(messages, clientKind, limit),
+            messages: windowForClient(messages, clientKind, limit, params.agent),
             hasMore,
             beforeOffset,
             ...(lifecycle ? { lifecycle } : {})

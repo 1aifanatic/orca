@@ -25,13 +25,18 @@ export function compareNativeChatMessagesByTime(
   if (at !== bt) {
     return at - bt
   }
-  if (a.id < b.id) {
+  // Split reasoning shares its provider row's key, before that row's answer.
+  const aReasoning = a.role === 'reasoning' && a.id.endsWith(':reasoning')
+  const bReasoning = b.role === 'reasoning' && b.id.endsWith(':reasoning')
+  const aId = aReasoning ? a.id.slice(0, -':reasoning'.length) : a.id
+  const bId = bReasoning ? b.id.slice(0, -':reasoning'.length) : b.id
+  if (aId < bId) {
     return -1
   }
-  if (a.id > b.id) {
+  if (aId > bId) {
     return 1
   }
-  return 0
+  return Number(bReasoning) - Number(aReasoning)
 }
 
 /** Rows the journal holds read in the journal's own order, never its clock: a
