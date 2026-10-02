@@ -14999,7 +14999,7 @@
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
         "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}.",
-        "previousExitUnverifiable": "Orca no pudo confirmar que el proceso anterior de {{agent}} terminó."
+        "previousExitUnverifiable": "Orca no pudo detener el proceso anterior de {{agent}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",

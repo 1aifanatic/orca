@@ -417,7 +417,7 @@ it('rejects a message whose start meets a close still unverifiable, and starts n
   await eventually(async () => expect((await submission(next))?.dispatchState).toBe('rejected'))
   const rejected = (await submission(next))!
   expect(rejected.reason).toBe(
-    "Orca couldn't confirm Claude's previous process ended. Send your message to try again."
+    "Orca couldn't stop Claude's previous process. Send your message to try again."
   )
   expect(rejected.rejection).toMatchObject({
     kind: 'restartFailed',
@@ -432,6 +432,7 @@ it('rejects a message whose start meets a close still unverifiable, and starts n
   expect(claude.connections).toHaveLength(1)
   expect(wrote(connection, 'Carry on.')).toBe(false)
   expect(child()?.close).toBeDefined()
+  expect(scopes()).toContain('provider-close-unproven')
 })
 
 it('refuses an option change while the close stays unverifiable, never writing to the old child', async () => {
