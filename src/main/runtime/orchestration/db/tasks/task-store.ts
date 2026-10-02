@@ -88,6 +88,7 @@ export function createTask(
 // Why wildcard-free: SyncDatabase refuses to cache any statement containing `*`, so a `SELECT *`
 // here recompiles on every call — including the hot dispatch lookups and the coordinator poll.
 const TASK_COLUMN_LIST = selectColumns(TASK_COLUMNS)
+const TASK_QUALIFIED_COLUMN_LIST = selectColumns(TASK_COLUMNS, 't')
 
 // Why: hoisted and wildcard-free so the per-publish lineage lookup hits the SyncDatabase statement cache.
 const TASK_RUNTIME_LINEAGE_SQL = `SELECT ${selectColumns(TASK_COLUMNS, 't')},
@@ -186,7 +187,7 @@ export function listTasksWithDispatch(
   const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
   const sql = `
     SELECT
-      t.*,
+      ${TASK_QUALIFIED_COLUMN_LIST},
       d.assignee_handle AS assignee_handle,
       d.id              AS dispatch_id
     FROM tasks t
