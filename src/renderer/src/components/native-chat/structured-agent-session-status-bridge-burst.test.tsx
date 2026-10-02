@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => ({
   subscribeStatus: vi.fn(),
   subscribeTranscript: vi.fn(),
   supportsCapability: vi.fn(),
-  unsubscribe: vi.fn()
+  unsubscribe: vi.fn(),
+  writeEachRowAlone: false
 }))
 
 vi.mock('@/store', async () => {
@@ -51,17 +52,46 @@ vi.mock('@/store', async () => {
     },
     // The bridge writes rows through one transaction per tick; each applied row is one write.
     transactAgentStatuses: (operation) =>
-      transactAgentStatuses((transaction) =>
-        operation({
-          ...transaction,
-          apply: (update) => {
-            if (update.kind !== 'providerSession') {
-              mocks.setAgentStatus(update.paneKey, update.payload)
-            }
-            return transaction.apply(update)
-          }
-        })
-      ),
+      mocks.writeEachRowAlone
+        ? operation({
+            // The bridge before batching: each row written straight to the store, read live.
+            getState: useAppStore.getState,
+            apply: (update) => {
+              const state = useAppStore.getState()
+              if (update.kind === 'providerSession') {
+                state.recordAgentProviderSession(
+                  update.paneKey,
+                  update.agent,
+                  update.providerSession,
+                  update.timing,
+                  update.routing,
+                  update.metadata
+                )
+              } else {
+                state.setAgentStatus(
+                  update.paneKey,
+                  update.payload,
+                  update.terminalTitle,
+                  update.timing,
+                  update.routing,
+                  update.metadata
+                )
+              }
+              return true
+            },
+            afterCommit: (effect) => effect()
+          })
+        : transactAgentStatuses((transaction) =>
+            operation({
+              ...transaction,
+              apply: (update) => {
+                if (update.kind !== 'providerSession') {
+                  mocks.setAgentStatus(update.paneKey, update.payload)
+                }
+                return transaction.apply(update)
+              }
+            })
+          ),
     removeAgentStatus: (paneKey) => {
       mocks.removeAgentStatus(paneKey)
       removeAgentStatus(paneKey)
@@ -195,6 +225,71 @@ function subscribeMobileSync(): () => void {
   })
 }
 
+/** Every chat in one of five states, shifted each round so each row changes state between rounds. */
+function variedSummaries(round: number): AgentSessionStatusSummary[] {
+  return tabs.map((tab, index) => {
+    const kind = (index + round) % 5
+    return summary({
+      sessionId: tab.entityId,
+      status: kind === 0 ? 'idle' : kind === 1 ? 'attention' : 'working',
+      latestPrompt: `prompt ${index} r${round}`,
+      updatedAt: 100 * round + index + 1,
+      ...(kind === 0
+        ? { turnOutcome: 'interruption' as const, lastAssistantMessage: `said ${index}` }
+        : {}),
+      ...(kind === 2 ? { toolName: 'Bash', toolInput: `ls ${index}`, model: 'gpt-x' } : {}),
+      ...(kind === 3
+        ? {
+            backgroundTasks: [
+              {
+                id: `child-${index}`,
+                kind: 'agent' as const,
+                name: 'deep_review',
+                description: 'Review',
+                state: 'working' as const,
+                startedAt: 500
+              }
+            ]
+          }
+        : {}),
+      ...(kind === 4 && round > 0 ? { hostExecutionOwned: undefined } : {})
+    })
+  })
+}
+
+/** Three snapshots, then single updates; the status map after each step, and the tab labels. */
+async function snapshotRounds(): Promise<{ rows: unknown[]; labels: unknown[] }> {
+  await renderBridge()
+  const rows: unknown[] = []
+  for (const round of [0, 1, 2]) {
+    vi.mocked(Date.now).mockReturnValue(1_000 + round)
+    await act(async () => feed().emit({ type: 'snapshot', sessions: variedSummaries(round) }))
+    rows.push(structuredClone(useAppStore.getState().agentStatusByPaneKey))
+  }
+  for (const index of [3, 7, 11]) {
+    const session = variedSummaries(2)[index]!
+    await act(async () =>
+      feed().emit({
+        type: 'status',
+        session: {
+          ...session,
+          status: 'idle',
+          turnOutcome: 'interruption',
+          updatedAt: 50_000 + index
+        }
+      })
+    )
+  }
+  rows.push(structuredClone(useAppStore.getState().agentStatusByPaneKey))
+  const labels = (useAppStore.getState().unifiedTabsByWorktree['wt-1'] ?? []).map((tab) => [
+    tab.id,
+    tab.label,
+    tab.generatedLabel ?? null
+  ])
+  cleanup()
+  return { rows, labels }
+}
+
 async function renderBridge(): Promise<void> {
   render(<StructuredAgentSessionStatusBridge />)
   await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
@@ -242,24 +337,18 @@ describe('a status snapshot of many chats', () => {
     expect(mocks.setGeneratedTitles.mock.calls[0][0]).toHaveLength(CHAT_COUNT)
   })
 
-  it('writes the same rows as a status event per chat', async () => {
-    await renderBridge()
-    await act(async () => feed().emit({ type: 'snapshot', sessions: chatSummaries() }))
-    const fromSnapshot = useAppStore.getState().agentStatusByPaneKey
-
-    cleanup()
+  it('writes the same rows and titles as writing each row on its own', async () => {
+    const tabsBefore = structuredClone(useAppStore.getState().unifiedTabsByWorktree)
+    const batched = await snapshotRounds()
     resetStructuredAgentSessionStatusFeedsForTests()
     mocks.subscribeStatus.mockClear()
-    useAppStore.setState({ agentStatusByPaneKey: {} })
-    await renderBridge()
-    const publications = countPublications()
-    for (const session of chatSummaries()) {
-      await act(async () => feed().emit({ type: 'status', session }))
-    }
-    publications.stop()
+    useAppStore.setState({ agentStatusByPaneKey: {}, unifiedTabsByWorktree: tabsBefore })
+    mocks.writeEachRowAlone = true
+    const perRow = await snapshotRounds()
+    mocks.writeEachRowAlone = false
 
-    expect(publications.status).toBe(CHAT_COUNT)
-    expect(useAppStore.getState().agentStatusByPaneKey).toEqual(fromSnapshot)
+    expect(Object.keys(batched.rows[0] ?? {})).toHaveLength(CHAT_COUNT)
+    expect(batched).toEqual(perRow)
   })
 
   it('still removes a row, and applies a later single update on the next tick', async () => {
