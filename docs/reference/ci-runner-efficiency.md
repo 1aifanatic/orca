@@ -1195,3 +1195,23 @@ crash. The last control also proved that crash returns enter the capture.
 This measures the three-file oracle cohort. Whole-shard timings include other
 test bodies, imports and transforms, so a whole-suite saving needs separate
 measurement.
+
+## Cache warming: let hourly ticks wait for active work
+
+The hourly warmer previously cancelled an active warmer, even when both used
+the same source. On October 2, the [merge-triggered run](https://github.com/stablyai/orca/actions/runs/36965832780)
+at 8ff6296 was interrupted by the [hourly run](https://github.com/stablyai/orca/actions/runs/36966367896)
+at the same commit. The Windows ARM dependency installation had run for 356
+seconds before cancellation; its native verification was skipped. The other
+four lanes had already succeeded.
+
+Scheduled events now wait in the existing concurrency group. Push, PR and manual
+events still replace active work. This keeps one active workflow and the default
+single pending slot, using GitHub's documented
+[conditional cancellation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+All cache probes, platforms and publication rules remain.
+
+This avoids the observed discarded installation. It does not remove the next
+scheduled run or its repeated successful lanes, and pending replacement still
+applies regardless of the cancellation expression. The bounded 20-run sample
+contains this collision; it does not establish a recurring or whole-CI saving.
