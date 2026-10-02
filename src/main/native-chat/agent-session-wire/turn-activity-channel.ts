@@ -31,7 +31,7 @@ function isOpen(reasoning: AgentSessionOpenReasoning): boolean {
 /** One turn's live activity line, composed from the provider's words and its open reasoning, so
  *  neither writer overwrites the other. */
 export function createTurnActivityChannel(
-  sink: Pick<StructuredAgentSessionEventSink, 'setActivity'>
+  sink: Pick<StructuredAgentSessionEventSink, 'setActivity' | 'trySetActivity'>
 ): TurnActivityChannel {
   let turnId: string | null = null
   let text = ''
@@ -59,7 +59,10 @@ export function createTurnActivityChannel(
         : null
     if (force || published === UNSENT || !agentSessionTurnActivityEqual(next, published)) {
       // Only an admitted value counts as sent: one the full queue refused goes again on the next derive.
-      published = sink.setActivity?.(next)?.accepted === false ? UNSENT : next
+      const admission = sink.trySetActivity
+        ? sink.trySetActivity(next)
+        : (sink.setActivity?.(next), { accepted: true })
+      published = admission.accepted ? next : UNSENT
     }
   }
 

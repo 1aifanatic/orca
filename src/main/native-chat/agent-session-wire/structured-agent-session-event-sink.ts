@@ -10,6 +10,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import { estimateStructuredAgentSessionItemBytes } from './structured-agent-session-event-sink-estimate'
 import { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
+import { turnActivityOperation } from './structured-agent-session-turn-activity-operation'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 import { createStructuredAgentSessionResolvedAppend } from './structured-agent-session-resolved-append'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
@@ -93,8 +94,9 @@ export type StructuredAgentSessionEventSink = {
     options?: StructuredAgentSessionAppendOptions
   ): StructuredAgentSessionSinkAdmission
   publish(options?: StructuredAgentSessionAppendOptions): void
-  /** Refused like any ordinary write when the queue is full; the caller re-sends a refused value. */
-  setActivity?(next: AgentSessionTurnActivity | null): StructuredAgentSessionSinkAdmission | void
+  setActivity?(activity: AgentSessionTurnActivity | null): void
+  /** The queue's verdict too: refused when it is full, so the caller can send the value again. */
+  trySetActivity?(activity: AgentSessionTurnActivity | null): StructuredAgentSessionSinkAdmission
   tryAppendItem?(
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
@@ -329,12 +331,10 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       publish: (options = {}) => {
         publish(options)
       },
-      setActivity: (activity) =>
-        queue.submit({
-          bytes: Buffer.byteLength(JSON.stringify(activity), 'utf8') + 64,
-          coalescingKey: 'turn-activity',
-          run: (bound) => bound.publish(activity)
-        }),
+      setActivity: (activity) => {
+        queue.submit(turnActivityOperation(activity))
+      },
+      trySetActivity: (activity) => queue.submit(turnActivityOperation(activity)),
       tryPublish: publish
     },
     bind: (next) => queue.bind(next),

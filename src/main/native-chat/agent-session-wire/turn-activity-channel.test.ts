@@ -81,7 +81,7 @@ describe('the live turn activity channel', () => {
     const sent: (AgentSessionTurnActivity | null)[] = []
     let full = true
     const activity = createTurnActivityChannel({
-      setActivity: (next) => {
+      trySetActivity: (next) => {
         sent.push(next)
         return full ? { accepted: false, reason: 'backpressure' } : { accepted: true }
       }
