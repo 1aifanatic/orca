@@ -1,10 +1,15 @@
-import type { JSONContent } from '@tiptap/react'
 // One unsent message (text and image attachments) per chat, shared by every view of that chat and
 // saved to disk (native-chat-draft-storage) so it survives quitting Orca. Views mirror it and
 // subscribe to changes, so typing in one pane shows in every other pane on the same chat.
 
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import { createNativeChatDraftSendHolds } from './native-chat-draft-send-holds'
+import { clearNativeChatDraftDocumentsForTests } from './native-chat-draft-document-cache'
+import {
+  clearRestoredNativeChatHeldSendsForTests,
+  forgetRestoredNativeChatHeldSends,
+  noteRestoredNativeChatHeldSends
+} from './native-chat-restored-held-sends'
 import {
   awaitNativeChatDraftSaved,
   hasPendingNativeChatDraftPersist,
@@ -17,6 +22,7 @@ import {
   scheduleNativeChatDraftPersist,
   type NativeChatDraftAttachment,
   type NativeChatDraftWriteResult,
+  type NativeChatHeldSend,
   type NativeChatTuiInputSeed,
   type PersistedNativeChatDraft
 } from './native-chat-draft-storage'
@@ -50,6 +56,7 @@ function drafts(): Map<string, DraftEntry> {
     hydrated = true
     for (const { scopeKey, draft } of loadPersistedNativeChatDrafts()) {
       draftCache.set(scopeKey, draft)
+      noteRestoredNativeChatHeldSends(scopeKey, draft.heldSends)
     }
     if (!observingOtherWindows) {
       observingOtherWindows = true
@@ -111,6 +118,7 @@ export function discardNativeChatDrafts(ended: {
     }
   }
   sendHolds.forget(doomed)
+  forgetRestoredNativeChatHeldSends(doomed)
   for (const draftKey of doomed) {
     if (drafts().has(draftKey)) {
       setEntry(draftKey, { text: '', attachments: EMPTY_ATTACHMENTS })
@@ -141,13 +149,13 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
 }
 
 /**
- * Empties the chat's box for a send (`clear`) without saving that, so a crash before the host has
- * the message restores it unsent. Returns `save`: call it once the host has the message, or once
- * the message is back in the box; a message that stays undelivered never calls it. It saves the
- * draft as it is then, keeping whatever was typed since Enter, unless a later send on the chat is
- * still waiting for its host. A store that saves a send's clear at once (the web client's browser
- * storage) saves it now instead. A quit does not end a hold: until the agent accepted the message
- * the host may still lose it, so the draft keeps it for the next launch.
+ * Empties the chat's box for a send to a terminal agent (`clear`) without saving that, so a crash
+ * before the terminal has the message restores it unsent. Returns `save`: call it once the terminal
+ * has the message, or once the message is back in the box; a message that stays undelivered never
+ * calls it. It saves the draft as it is then, keeping whatever was typed since Enter, unless a later
+ * send on the chat is still waiting. A store that saves a send's clear at once (the web client's
+ * browser storage) saves it now instead. Structured sends keep a held send instead
+ * (`clearNativeChatDraftForHeldSend`).
  */
 export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.
@@ -157,6 +165,46 @@ export function clearNativeChatDraftForSend(draftKey: string, clear: () => void)
   return sendHolds.clearForSend(draftKey, clear, {
     saveAtOnce: nativeChatDraftStoreSavesSendClearAtOnce()
   })
+}
+
+/**
+ * Empties the chat's box for a structured send without saving that: the box is saved with the
+ * send's held copy (`updateNativeChatDraftHeldSends`) once the send has its id. A store that saves
+ * a send's clear at once (the web client's browser storage) saves it now and holds no copy.
+ */
+export function clearNativeChatDraftForHeldSend(draftKey: string, clear: () => void): void {
+  if (nativeChatDraftStoreSavesSendClearAtOnce()) {
+    clear()
+    return
+  }
+  // The message typed just before Enter may still be waiting for its pause; it is saved first.
+  if (hasPendingNativeChatDraftPersist(draftKey)) {
+    void persistNow(draftKey)
+  }
+  sendHolds.clearUnsaved(draftKey, clear)
+}
+
+/** Saves the chat's draft as it is now. */
+export function saveNativeChatDraftNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
+  return persistNow(draftKey)
+}
+
+export function readNativeChatDraftHeldSends(draftKey: string): readonly NativeChatHeldSend[] {
+  return readEntry(draftKey).heldSends ?? []
+}
+
+/** Changes the chat's held sends, leaving the live draft as it is; saved at once unless `save` is false. */
+export function updateNativeChatDraftHeldSends(
+  draftKey: string,
+  update: (heldSends: readonly NativeChatHeldSend[]) => readonly NativeChatHeldSend[],
+  options: { save: boolean } = { save: true }
+): void {
+  const { heldSends: previous, ...entry } = readEntry(draftKey)
+  const heldSends = update(previous ?? [])
+  setEntry(draftKey, heldSends.length > 0 ? { ...entry, heldSends } : entry)
+  if (options.save) {
+    void persistNow(draftKey)
+  }
 }
 
 export function readNativeChatDraftCache(draftKey: string): string {
@@ -322,9 +370,6 @@ export function subscribeToNativeChatDraftAppend(
   return subscribe(textAppendListeners, draftKey, listener)
 }
 
-// Rich editor state belongs to the pane's editor, not the chat; memory only.
-const documentCache = new Map<string, { text: string; document: JSONContent }>()
-
 /** Clears memory and the saved drafts on disk. */
 export function nativeChatSendsAwaitingHostForTests(draftKey: string): number {
   return sendHolds.sendsAwaitingForTests(draftKey)
@@ -332,28 +377,9 @@ export function nativeChatSendsAwaitingHostForTests(draftKey: string): number {
 
 export function clearNativeChatDraftCacheForTests(): void {
   sendHolds.clearForTests()
+  clearRestoredNativeChatHeldSendsForTests()
   draftCache.clear()
-  documentCache.clear()
+  clearNativeChatDraftDocumentsForTests()
   hydrated = false
   resetNativeChatDraftStorageForTests()
-}
-
-export function readNativeChatDraftDocument(
-  paneKey: string,
-  text: string
-): JSONContent | undefined {
-  const cached = documentCache.get(paneKey)
-  return cached?.text === text ? cached.document : undefined
-}
-
-export function writeNativeChatDraftDocument(
-  paneKey: string,
-  text: string,
-  document: JSONContent
-): void {
-  if (!text) {
-    documentCache.delete(paneKey)
-    return
-  }
-  setBoundedScopeCacheEntry(documentCache, paneKey, { text, document })
 }

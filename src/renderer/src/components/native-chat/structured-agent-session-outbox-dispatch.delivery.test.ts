@@ -144,7 +144,7 @@ describe("a sent message's saved draft", () => {
     const hostHasIt = await sendWithReply((entry) =>
       ok({
         clientMessageId: entry.clientMessageId,
-        queued: { messageId: 'queued-1', position: 1, state: 'waiting' }
+        queued: { messageId: entry.clientMessageId, position: 1, state: 'waiting' }
       })
     )
 

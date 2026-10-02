@@ -27,7 +27,7 @@ import {
 import {
   keepStructuredAgentSessionMessageDraft,
   noteStructuredAgentSessionMessagesDelivered,
-  structuredAgentSessionSubmissionHeldForGood
+  structuredAgentSessionHostHoldsMessage
 } from './structured-agent-session-message-delivery'
 import {
   getStructuredAgentLaunchPromptDispatch,
@@ -192,11 +192,11 @@ function noteSendReply(
     return
   }
   const reply = result.value
-  if (
-    'queued' in reply ||
-    reply.submission.queuedMessageId === clientMessageId ||
-    structuredAgentSessionSubmissionHeldForGood(reply.submission)
-  ) {
+  const host =
+    'queued' in reply
+      ? { submissions: [], cards: [reply.queued] }
+      : { submissions: [reply.submission], cards: [] }
+  if (structuredAgentSessionHostHoldsMessage(host, clientMessageId)) {
     noteStructuredAgentSessionMessagesDelivered(sessionId, [clientMessageId])
   } else if (!entries.some((entry) => entry.clientMessageId === clientMessageId)) {
     // Dropped with delivery unconfirmed: the draft's copy is all that is left.

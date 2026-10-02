@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { useNativeChatHeldSends } from './use-native-chat-held-sends'
 import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
@@ -127,6 +128,11 @@ export function useStructuredAgentSession(args: {
     composerWorktreeId,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
+  })
+  useNativeChatHeldSends(composerScopeKey, {
+    status: transportEnabled ? state.status : 'idle',
+    submissions: transportState.submissions,
+    queuedMessages: transportState.queuedMessages
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({

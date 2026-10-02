@@ -1,8 +1,4 @@
 import {
-  noteStructuredAgentSessionMessagesDelivered,
-  structuredAgentSessionSubmissionHeldForGood
-} from './structured-agent-session-message-delivery'
-import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -152,12 +148,6 @@ export function useStructuredAgentSessionOutbox(args: {
           (submission) =>
             submission.dispatchState === 'pending' || submission.dispatchState === 'accepted'
         )
-        .map((submission) => submission.clientMessageId),
-      ...handedOffQueuedMessageIds(submissions)
-    ])
-    noteStructuredAgentSessionMessagesDelivered(sessionId, [
-      ...submissions
-        .filter(structuredAgentSessionSubmissionHeldForGood)
         .map((submission) => submission.clientMessageId),
       ...handedOffQueuedMessageIds(submissions)
     ])

@@ -77,7 +77,10 @@ import {
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 import { noteStructuredAgentSessionMessagesDelivered } from './structured-agent-session-message-delivery'
-import { flushNativeChatDraftPersists } from './native-chat-draft-storage'
+import {
+  flushNativeChatDraftPersists,
+  type PersistedNativeChatDraft
+} from './native-chat-draft-storage'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
@@ -335,11 +338,20 @@ describe('the saved draft at send', () => {
     installLocalStorageNativeChatDrafts({ like: 'desktop' })
   })
 
-  function savedText(): string | null {
+  function savedRecord(): PersistedNativeChatDraft | null {
     const raw = localStorage.getItem(
       `orca:nativeChatComposerDraft:v1:${encodeURIComponent(draftKey)}`
     )
-    return raw ? JSON.parse(raw).text : null
+    return raw ? JSON.parse(raw) : null
+  }
+
+  function savedText(): string | null {
+    return savedRecord()?.text ?? null
+  }
+
+  // The sent messages the saved draft still holds, beside its live text.
+  function savedHeld(): string[] {
+    return savedRecord()?.heldSends?.map((send) => send.text) ?? []
   }
 
   // The real outbox, so the test can play the host taking the message.
@@ -385,11 +397,12 @@ describe('the saved draft at send', () => {
 
     expect(structured.send).toHaveBeenCalledOnce()
     expect(promptValue(input)).toBe('')
-    expect(savedText()).toBe('ship it')
+    expect(savedText()).toBe('')
+    expect(savedHeld()).toEqual(['ship it'])
 
     hostTakes(structured)
     await act(async () => {})
-    expect(savedText()).toBeNull()
+    expect(savedRecord()).toBeNull()
   })
 
   // "Sent" is the host's ok reply: a message it holds for the provider must not come back.
@@ -413,14 +426,16 @@ describe('the saved draft at send', () => {
     const [first] = getStructuredAgentSessionOutbox(structured.sessionId)
 
     hostRefusesWithNewId(structured, first)
-    expect(savedText()).toBe('refused message')
+    expect(savedRecord()?.heldSends).toMatchObject([
+      { clientMessageId: 'rotated-id', text: 'refused message' }
+    ])
 
     act(() => noteStructuredAgentSessionMessagesDelivered(structured.sessionId, ['rotated-id']))
     await act(async () => {})
-    expect(savedText()).toBeNull()
+    expect(savedRecord()).toBeNull()
   })
 
-  it('saves a later send even while an earlier one is held for Retry', async () => {
+  it('releases a later send the host holds while an earlier one waits for Retry', async () => {
     const structured = outboxTransport()
     const input = await sendTyped(structured, 'message A')
     const [held] = getStructuredAgentSessionOutbox(structured.sessionId)
@@ -442,10 +457,10 @@ describe('the saved draft at send', () => {
     )
     await act(async () => {})
 
-    expect(savedText()).toBeNull()
+    expect(savedHeld()).toEqual(['message A'])
   })
 
-  it("does not save an earlier send's clear while a later send still waits", async () => {
+  it('releases only the send the host holds while a later one still waits', async () => {
     const structured = outboxTransport()
     const input = await sendTyped(structured, 'message A')
     const [first] = getStructuredAgentSessionOutbox(structured.sessionId)
@@ -458,7 +473,8 @@ describe('the saved draft at send', () => {
     )
     await act(async () => {})
 
-    expect(savedText()).toBe('message B')
+    expect(savedText()).toBe('')
+    expect(savedHeld()).toEqual(['message B'])
   })
 
   // Case 12: a send while the agent works, then a normal quit. Until the agent accepted it, the host
@@ -468,12 +484,12 @@ describe('the saved draft at send', () => {
     async (event) => {
       const structured = outboxTransport()
       await sendTyped(structured, 'queued while working')
-      expect(savedText()).toBe('queued while working')
+      expect(savedHeld()).toEqual(['queued while working'])
 
       act(() => window.dispatchEvent(new Event(event)))
       await act(async () => {})
 
-      expect(savedText()).toBe('queued while working')
+      expect(savedHeld()).toEqual(['queued while working'])
       expect(getStructuredAgentSessionOutbox(structured.sessionId)).toHaveLength(1)
     }
   )
@@ -492,14 +508,18 @@ describe('the saved draft at send', () => {
       }
     })
     const drafts = installLocalStorageNativeChatDrafts({ like: 'desktop' })
-    const saves: { text: string; chips: number }[] = []
+    const saves: (PersistedNativeChatDraft | null)[] = []
     installNativeChatDrafts({
       ...drafts,
       write: (scopeKey, draft) => {
-        saves.push({ text: draft?.text ?? '', chips: draft?.attachments.length ?? 0 })
+        saves.push(draft)
         return drafts.write(scopeKey, draft)
       }
     })
+    const holdsMessage = (draft: PersistedNativeChatDraft | null): boolean =>
+      [draft, ...(draft?.heldSends ?? [])].some(
+        (copy) => copy?.text === 'look at this' && copy.attachments.length === 1
+      )
     const structured = outboxTransport()
     const chat = nativeChatDraftKey({ sessionId: structured.sessionId, paneKey: '' })
     act(
@@ -519,12 +539,50 @@ describe('the saved draft at send', () => {
 
     expect(structured.send).toHaveBeenCalledOnce()
     expect(promptValue(input)).toBe('')
-    expect(saves.filter((save) => save.text === '' || save.chips === 0)).toEqual([])
-    expect(savedText()).toBe('look at this')
+    expect(saves.filter((save) => !holdsMessage(save))).toEqual([])
+    expect(savedHeld()).toEqual(['look at this'])
 
     hostTakes(structured)
     await act(async () => {})
-    expect(saves.at(-1)).toEqual({ text: '', chips: 0 })
+    expect(saves.at(-1)).toBeNull()
+  })
+
+  // A crash can never find the box saved empty without the message it sent.
+  it('saves the emptied box and the sent message, under its id, in one write', async () => {
+    const drafts = installLocalStorageNativeChatDrafts({ like: 'desktop' })
+    const saves: (PersistedNativeChatDraft | null)[] = []
+    installNativeChatDrafts({
+      ...drafts,
+      write: (scopeKey, draft) => {
+        saves.push(draft)
+        return drafts.write(scopeKey, draft)
+      }
+    })
+    const structured = outboxTransport()
+    renderComposer(structured)
+    const input = textarea()
+    changePrompt(input, 'ship it')
+    act(() => flushNativeChatDraftPersists())
+    saves.length = 0
+
+    await act(async () => pressEnter(input))
+    await act(async () => {})
+    const [entry] = getStructuredAgentSessionOutbox(structured.sessionId)
+
+    expect(saves).toEqual([
+      {
+        text: '',
+        attachments: [],
+        heldSends: [
+          {
+            clientMessageId: entry.clientMessageId,
+            text: 'ship it',
+            attachments: [],
+            sentAt: expect.any(Number)
+          }
+        ]
+      }
+    ])
   })
 
   it('keeps what was typed after Enter when the host takes the message', async () => {

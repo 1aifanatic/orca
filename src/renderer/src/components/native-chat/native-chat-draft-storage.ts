@@ -1,7 +1,8 @@
 // Saved copy of the composer drafts, so a half-typed message survives quitting Orca. Typing is
 // saved after a short pause and flushed when the page hides or unloads; a put-back is saved at
-// once. A send's clear is saved only once the host has the message (native-chat-draft-cache), so
-// a crash before that restores the unsent text and a crash after it cannot bring it back. On
+// once. A sent message stays saved until the host has it (native-chat-held-sends for structured
+// chats, the cache's send hold for terminal ones), so a crash before that restores the unsent text
+// and a crash after it cannot bring it back. On
 // desktop the main process confirms each write once the file op returned; the web client keeps
 // browser storage, which reaches disk on the browser's own delay, so a browser crash can.
 
@@ -14,6 +15,7 @@ import type {
 export type {
   NativeChatDraftAttachment,
   NativeChatDraftAttachmentLocation,
+  NativeChatHeldSend,
   NativeChatTuiInputSeed,
   PersistedNativeChatDraft
 } from '../../../../shared/native-chat-draft-record'

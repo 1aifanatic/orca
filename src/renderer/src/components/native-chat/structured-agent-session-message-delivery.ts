@@ -1,6 +1,6 @@
 // Tells a composer when the host has a message it sent for good, so the chat's saved draft can stop
 // holding it: the agent accepted it, or the host queued it as a card (both kept across quit and
-// restart), by the send's reply or the journal.
+// restart), by the send's reply or the journal (`structuredAgentSessionHostHoldsMessage`).
 // A message withdrawn back into the box, or dropped, also settles; one refused, rejected or still
 // unconfirmed keeps its draft copy until it is delivered or leaves. A refusal that gives the entry
 // a new id is followed to that id.
@@ -8,7 +8,7 @@
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
-type Watched = { queuedAt: number; body: string }
+type Watched = { queuedAt: number; body: string; renamed?: (from: string, to: string) => void }
 type Watcher = { messages: Map<string, Watched>; settle: () => void }
 
 const watchersBySession = new Map<string, Set<Watcher>>()
@@ -41,10 +41,48 @@ export function structuredAgentSessionSubmissionHeldForGood(
   return submission.dispatchState === 'accepted'
 }
 
-/** Settles once the host has every one of `entries` (or each was withdrawn or dropped). */
+/** What the host holds for a chat, as its journal or a send's reply shows it. */
+export type StructuredAgentSessionHostCopies = {
+  submissions: readonly Pick<
+    AgentJournalSubmission,
+    'clientMessageId' | 'dispatchState' | 'queuedMessageId'
+  >[]
+  cards: readonly { messageId: string; state: string }[]
+}
+
+// A card the host keeps (its `queued_messages` row); a withdrawn one went back to its sender.
+const HELD_CARD_STATES: ReadonlySet<string> = new Set(['waiting', 'returned', 'dispatched'])
+
+/**
+ * Whether the host holds message `clientMessageId` for good: the agent accepted it, the host keeps
+ * it as a card, or a submission handed that card off. The one rule for releasing a sent message's
+ * saved copy, in the session and after a relaunch; the planned relaxation switches only this.
+ */
+export function structuredAgentSessionHostHoldsMessage(
+  host: StructuredAgentSessionHostCopies,
+  clientMessageId: string
+): boolean {
+  return (
+    host.submissions.some(
+      (submission) =>
+        submission.queuedMessageId === clientMessageId ||
+        (submission.clientMessageId === clientMessageId &&
+          structuredAgentSessionSubmissionHeldForGood(submission))
+    ) ||
+    host.cards.some(
+      (card) => card.messageId === clientMessageId && HELD_CARD_STATES.has(card.state)
+    )
+  )
+}
+
+/**
+ * Settles once the host has every one of `entries` (or each was withdrawn or dropped). `renamed`
+ * hears when a refusal gives an entry a new id, which is then watched instead.
+ */
 export function whenStructuredAgentSessionHostHasMessages(
   sessionId: string,
-  entries: readonly StructuredAgentSessionOutboxEntry[]
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  renamed?: (from: string, to: string) => void
 ): Promise<void> {
   if (entries.length === 0) {
     return Promise.resolve()
@@ -53,7 +91,7 @@ export function whenStructuredAgentSessionHostHasMessages(
     const messages = new Map(
       entries.map((entry): [string, Watched] => [
         entry.clientMessageId,
-        { queuedAt: entry.queuedAt, body: JSON.stringify(entry.body) }
+        { queuedAt: entry.queuedAt, body: JSON.stringify(entry.body), renamed }
       ])
     )
     const watchers = watchersBySession.get(sessionId) ?? new Set()
@@ -108,6 +146,7 @@ export function observeStructuredAgentSessionOutboxWrite(
       )
       if (renamed) {
         watcher.messages.set(renamed.clientMessageId, watched)
+        watched.renamed?.(id, renamed.clientMessageId)
       }
     }
   })

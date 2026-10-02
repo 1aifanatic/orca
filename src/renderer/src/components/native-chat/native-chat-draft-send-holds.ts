@@ -9,6 +9,8 @@ export type NativeChatDraftSendHolds = {
     clear: () => void,
     options: { saveAtOnce: boolean }
   ) => () => void
+  /** Runs `clear` without saving it; the caller saves the box itself. */
+  clearUnsaved: (draftKey: string, clear: () => void) => void
   /** Whether a send is clearing this chat's box right now, so the write waits for `save`. */
   isClearingForSend: (draftKey: string) => boolean
   /** Forgets the holds of chats that ended. */
@@ -25,6 +27,15 @@ export function createNativeChatDraftSendHolds(
   const awaitingByChat = new Map<string, Set<number>>()
   let sequence = 0
 
+  const clearUnsaved = (draftKey: string, clear: () => void): void => {
+    clearing.add(draftKey)
+    try {
+      clear()
+    } finally {
+      clearing.delete(draftKey)
+    }
+  }
+
   return {
     clearForSend: (draftKey, clear, options) => {
       const send = (sequence += 1)
@@ -33,12 +44,7 @@ export function createNativeChatDraftSendHolds(
       if (options.saveAtOnce) {
         clear()
       } else {
-        clearing.add(draftKey)
-        try {
-          clear()
-        } finally {
-          clearing.delete(draftKey)
-        }
+        clearUnsaved(draftKey, clear)
       }
       const save = (): void => {
         if (!awaiting.delete(send)) {
@@ -56,6 +62,7 @@ export function createNativeChatDraftSendHolds(
       }
       return save
     },
+    clearUnsaved,
     isClearingForSend: (draftKey) => clearing.has(draftKey),
     forget: (draftKeys) => {
       for (const draftKey of draftKeys) {

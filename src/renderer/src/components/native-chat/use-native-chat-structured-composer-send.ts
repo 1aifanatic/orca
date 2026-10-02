@@ -11,9 +11,15 @@ import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import {
-  clearNativeChatDraftForSend,
-  restoreNativeChatDraftIfEmpty
+  clearNativeChatDraftForHeldSend,
+  restoreNativeChatDraftIfEmpty,
+  saveNativeChatDraftNow
 } from './native-chat-draft-cache'
+import {
+  holdNativeChatDraftSend,
+  releaseNativeChatHeldSend,
+  renameNativeChatHeldSend
+} from './native-chat-held-sends'
 import { nativeChatDraftAttachmentsOf } from './native-chat-draft-save-after-send'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { whenStructuredAgentSessionHostHasMessages } from './structured-agent-session-message-delivery'
@@ -74,29 +80,27 @@ export function useNativeChatStructuredComposerSend({
         clearImageAttachments()
       }
       let cleared = false
-      let saveDraft = (): void => {}
       let outboxBefore: ReadonlySet<string> = new Set()
-      // A refused message goes back, unless something was typed since. Its saved copy was never
-      // cleared, so saving the draft afterwards keeps what the box shows.
+      const sent = { text, attachments: nativeChatDraftAttachmentsOf(attachments) }
+      // A refused message goes back, unless something was typed since. The clear was never saved,
+      // so saving the draft afterwards keeps what the box shows.
       const putBack = (): void => {
         if (cleared) {
-          void restoreNativeChatDraftIfEmpty(draftKey, {
-            text,
-            attachments: nativeChatDraftAttachmentsOf(attachments)
-          })
+          void restoreNativeChatDraftIfEmpty(draftKey, sent)
+          void saveNativeChatDraftNow(draftKey)
         }
-        saveDraft()
       }
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments, () => {
-        // The box empties now; its saved draft keeps the message until the host has it, so a
-        // crash before then restores it unsent, and a crash after cannot bring it back.
+        // The box empties now, and is saved once the send has its id, together with the message as
+        // a held send kept until the host has it: a crash before then restores it unsent, and a
+        // crash after cannot bring it back.
         cleared = true
         outboxBefore = new Set(
           getStructuredAgentSessionOutbox(structuredTransport.sessionId).map(
             (entry) => entry.clientMessageId
           )
         )
-        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer)
+        clearNativeChatDraftForHeldSend(draftKey, clearComposer)
       })
         .then(
           ({ accepted, error }) => {
@@ -105,15 +109,25 @@ export function useNativeChatStructuredComposerSend({
               putBack()
               return
             }
-            // Saved once the host holds the message for good (the agent accepted it, or a card) or
-            // it is withdrawn back into the box; until then the draft keeps a copy.
+            // The held send goes once the host holds the message for good (the agent accepted it,
+            // or a card), or it is withdrawn back into the box or dropped; a refusal's new id
+            // renames it.
             if (cleared) {
-              void whenStructuredAgentSessionHostHasMessages(
-                structuredTransport.sessionId,
-                getStructuredAgentSessionOutbox(structuredTransport.sessionId).filter(
-                  (entry) => !outboxBefore.has(entry.clientMessageId)
-                )
-              ).then(saveDraft)
+              const entry = getStructuredAgentSessionOutbox(structuredTransport.sessionId).find(
+                (candidate) => !outboxBefore.has(candidate.clientMessageId)
+              )
+              holdNativeChatDraftSend(draftKey, sent, entry?.clientMessageId)
+              if (entry) {
+                let heldAs = entry.clientMessageId
+                void whenStructuredAgentSessionHostHasMessages(
+                  structuredTransport.sessionId,
+                  [entry],
+                  (from, to) => {
+                    renameNativeChatHeldSend(draftKey, from, to)
+                    heldAs = to
+                  }
+                ).then(() => releaseNativeChatHeldSend(draftKey, heldAs))
+              }
             }
             emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
             // A real user send is a takeover, exactly as typing into a worker's pane is. Only past

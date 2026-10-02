@@ -120,6 +120,16 @@ describe('the native chat draft store', () => {
     ])
   })
 
+  it('keeps the sends a draft still holds for their host', async () => {
+    const root = await freshRoot()
+    const heldSends = [{ clientMessageId: 'm1', text: 'sent once', attachments: [], sentAt: 5 }]
+    await createNativeChatDraftStore(root).write('session:s1', { ...draft(''), heldSends })
+
+    expect(await createNativeChatDraftStore(root).load()).toEqual([
+      { scopeKey: 'session:s1', draft: { ...draft(''), heldSends } }
+    ])
+  })
+
   it('applies writes for one chat in the order they were asked for', async () => {
     const root = await freshRoot()
     const store = createNativeChatDraftStore(root)
