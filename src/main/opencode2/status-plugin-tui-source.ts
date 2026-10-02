@@ -225,7 +225,7 @@ async function setupOpenCode2Tui(ctx) {
           // A hot reload keeps the terminal verdict; only this root's next turn replaces it.
           setMemory((draft) => {
             draft.endings = (draft.endings || []).filter(([id]) => id !== root);
-            if (errorName) draft.endings = [...draft.endings, [root, errorName, data.get?.(root)?.time?.idle]].slice(-TUI_EARLY_ROOTS_MAX);
+            if (errorName) draft.endings = [...draft.endings, [root, errorName, event.created ?? data.get?.(root)?.time?.idle]].slice(-TUI_EARLY_ROOTS_MAX);
           });
         }
       }

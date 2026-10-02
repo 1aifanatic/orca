@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 
-export type BusEvent = { type: string; data: Record<string, unknown> }
+export type BusEvent = { type: string; data: Record<string, unknown>; created?: number }
 
 type Blocker = { id: string; sessionID: string; [key: string]: unknown }
 
@@ -107,9 +107,10 @@ export function fakeTui(version = '2.0.14') {
       })
       return release
     },
-    // Applies an event to the session data first, then to plugin listeners, as OpenCode does.
+    // Ending events reach listeners before the session snapshot catches up.
     emit(event: BusEvent) {
       const sessionID = String(event.data.sessionID)
+      let notified = false
       if (event.type === 'session.created') {
         const parentID = typeof event.data.parentID === 'string' ? event.data.parentID : undefined
         sessions.set(sessionID, { id: sessionID, parentID })
@@ -124,11 +125,16 @@ export function fakeTui(version = '2.0.14') {
         event.type === 'session.execution.failed' ||
         event.type === 'session.execution.interrupted'
       ) {
+        event = { ...event, created: ++idleClock }
+        for (const handler of listeners) {
+          handler({ details: event })
+        }
+        notified = true
         running.delete(sessionID)
         const session = sessions.get(sessionID)
         if (session) {
           session.outcome = event.type.slice('session.execution.'.length)
-          session.time = { idle: ++idleClock }
+          session.time = { idle: idleClock }
         }
       } else if (event.type === 'permission.asked') {
         permissions.set(sessionID, [...(permissions.get(sessionID) ?? []), toBlocker(event.data)])
@@ -140,8 +146,10 @@ export function fakeTui(version = '2.0.14') {
       } else if (event.type === 'form.replied' || event.type === 'form.cancelled') {
         without(forms, sessionID, event.data.id)
       }
-      for (const handler of listeners) {
-        handler({ details: event })
+      if (!notified) {
+        for (const handler of listeners) {
+          handler({ details: event })
+        }
       }
     }
   }

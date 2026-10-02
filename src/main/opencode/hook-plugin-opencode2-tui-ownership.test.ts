@@ -388,6 +388,9 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       tui.navigate(SES_A)
       await pump(tui, turn(SES_A, 'root').start)
       await pump(tui, [{ type: 'session.execution.failed', data: { sessionID: SES_A } }])
+      await vi.waitFor(() =>
+        expect(posts.at(-1)?.payload?.root_turn_error_name).toBe('UnknownError')
+      )
       await first?.()
       const before = posts.length
       const second = await start(tui)
