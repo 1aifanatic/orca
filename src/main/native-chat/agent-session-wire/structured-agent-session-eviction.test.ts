@@ -9,7 +9,7 @@ import { StructuredAgentSessionHostRuntimeState } from './structured-agent-sessi
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
-function context(): StructuredAgentSessionEvictionContext & { order: string[] } {
+function context(closeError?: Error): StructuredAgentSessionEvictionContext & { order: string[] } {
   const order: string[] = []
   return {
     order,
@@ -19,20 +19,19 @@ function context(): StructuredAgentSessionEvictionContext & { order: string[] } 
       unbind: vi.fn(() => order.push('unbind')),
       drained: vi.fn(async () => {
         order.push('drained')
-        return { ok: true }
+        return { ok: true as const }
       }),
-      close: vi.fn(() => order.push('close'))
-    } as unknown as StructuredAgentSessionEvictionContext['eventSink'],
+      close: vi.fn(() => {
+        order.push('close')
+        if (closeError) {
+          throw closeError
+        }
+      })
+    },
     acknowledgeRelease: vi.fn(() => {
       order.push('acknowledgeRelease')
     }),
-    discardSink: vi.fn(() => order.push('discardSink')),
-    settleWork: vi.fn(async () => {
-      order.push('settleWork')
-    }),
-    releaseLease: vi.fn(async () => {
-      order.push('releaseLease')
-    })
+    discardSink: vi.fn(() => order.push('discardSink'))
   }
 }
 
@@ -45,29 +44,18 @@ function runtimeState(): StructuredAgentSessionHostRuntimeState {
   } as never)
 }
 
-describe('the wind-down after a proven exit', () => {
-  it('drains what the child said before it lets the sink go, then acknowledges the release', async () => {
+describe("the route release after a child's exit", () => {
+  it('lets the sink go before it acknowledges the release', async () => {
     const ctx = context()
     await evictStructuredAgentSession(ctx)
-    expect(ctx.order).toEqual([
-      'drained',
-      'settleWork',
-      'unbind',
-      'close',
-      'discardSink',
-      'releaseLease',
-      'acknowledgeRelease'
-    ])
+    expect(ctx.order).toEqual(['unbind', 'close', 'discardSink', 'acknowledgeRelease'])
   })
 
   it('names every step, so a failure says which one it was', () => {
     expect(STRUCTURED_AGENT_SESSION_EVICTION_STEPS.map((step) => step.name)).toEqual([
-      'drain-published',
-      'settle-dead-generation',
       'stop-publishing',
       'close-sink',
       'discard-sink',
-      'release-lease',
       'acknowledge-release'
     ])
   })
@@ -75,30 +63,13 @@ describe('the wind-down after a proven exit', () => {
   // Bookkeeping for a process already gone: none of it may keep the child on record.
   it('reports a failed step with its name and still runs every step after it', async () => {
     const recorded = recordingStructuredAgentSessionLogger()
-    const ctx = { ...context(), logger: recorded.logger }
-    ctx.eventSink.drained = vi.fn(async () => {
-      ctx.order.push('drained')
-      return { ok: false, error: new Error('append failed') }
-    }) as unknown as StructuredAgentSessionEvictionContext['eventSink']['drained']
-    ctx.releaseLease = vi.fn(async () => {
-      ctx.order.push('releaseLease')
-      throw new Error('store unavailable')
-    })
+    const ctx = { ...context(new Error('sink already gone')), logger: recorded.logger }
 
     await expect(evictStructuredAgentSession(ctx)).resolves.toBeUndefined()
 
-    expect(ctx.order).toEqual([
-      'drained',
-      'settleWork',
-      'unbind',
-      'close',
-      'discardSink',
-      'releaseLease',
-      'acknowledgeRelease'
-    ])
+    expect(ctx.order).toEqual(['unbind', 'close', 'discardSink', 'acknowledgeRelease'])
     expect(recorded.entries.map((entry) => entry.fields.error)).toEqual([
-      expect.objectContaining({ step: 'drain-published' }),
-      expect.objectContaining({ step: 'release-lease' })
+      expect.objectContaining({ step: 'close-sink' })
     ])
     expect(recorded.entries[0]?.fields.error).toBeInstanceOf(StructuredAgentSessionEvictionError)
   })
@@ -116,8 +87,6 @@ describe('eviction against the real sink cache', () => {
       logger: recordingStructuredAgentSessionLogger().logger,
       eventSink: state.eventSinkFor(sessionId),
       discardSink: () => state.discardEventSink(sessionId),
-      settleWork: async () => {},
-      releaseLease: async () => {},
       acknowledgeRelease: () => {}
     })
 

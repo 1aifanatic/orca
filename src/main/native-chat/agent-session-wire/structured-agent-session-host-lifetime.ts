@@ -9,7 +9,6 @@
 // reentrant, so every public entry point takes it once and calls these.
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -21,14 +20,15 @@ import { joinStructuredAgentSessionChildClose } from './structured-agent-session
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import type {
   StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession
+  StructuredAgentSessionHostSession,
+  StructuredAgentSessionProviderChild
 } from './structured-agent-session-host-types'
+import type { StructuredAgentSessionChildExit } from './structured-agent-session-child-exit'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 export type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-stop-event'
 import {
   recordStopEvent,
-  STOP_EVENT_DRAIN_TIMEOUT_MS,
   stopEndsWork,
   type StructuredAgentSessionStopEnding
 } from './structured-agent-session-host-stop-event'
@@ -42,8 +42,13 @@ export type StructuredAgentSessionLifetimeContext = {
   publishStatus?: (sessionId: string) => void
   /** Hands the delivery loop what is queued; for a caller inside the session's serialize. */
   wakeDelivery?: (sessionId: string) => void
-  /** The session's lane, which a close's late proof takes to end the child's record. */
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+  /** The one exit handler (`structured-agent-session-child-exit`), for a caller inside the
+   *  session's serialize that proved its child's exit. */
+  endExitedChild: (
+    sessionId: string,
+    child: StructuredAgentSessionProviderChild,
+    exit: StructuredAgentSessionChildExit
+  ) => Promise<void>
   /** Quit-only snapshot taken immediately before the provider child is stopped. */
   restartWitness?: {
     beforeStop: (sessionId: string) => void
@@ -101,19 +106,22 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   if (!session || !child) {
     return
   }
+  const cause = 'recorded' in ending ? ending.recorded : ending.cause
   if (!child.close) {
-    // Judged before the kill: a stop that ends nothing writes nothing.
+    // Judged before the kill: a stop that ends nothing writes nothing. Its event is issued before
+    // the kill and never awaited by it; the journal writes rows in order.
     const recorded = (await stopEndsWork(context, sessionId, session, ending))
       ? recordStopEvent(context, sessionId, session, ending)
       : Promise.resolve()
     child.close = {
-      cause: 'recorded' in ending ? ending.recorded : ending.cause,
+      cause,
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
-      recorded
+      recorded,
+      requestedAt: session.journal.cursor()
     }
-    // The event lands before the rows the kill makes the child write, bounded so a slow journal
-    // never holds the kill.
-    await withTimeout(recorded, STOP_EVENT_DRAIN_TIMEOUT_MS, undefined)
+  } else if (child.close.cause === cause) {
+    // The same stop asked again, such as a second close of the chat, closes what came since.
+    child.close.requestedAt = session.journal.cursor()
   }
   if (context.restartWitness) {
     await snapshotBeforeStructuredAgentSessionStop(
@@ -125,10 +133,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       () => context.restartWitness?.beforeStop(sessionId)
     )
   }
-  if (
-    (await joinStructuredAgentSessionChildClose(context, sessionId, child, child.close)) !==
-    'exited'
-  ) {
+  if ((await joinStructuredAgentSessionChildClose(context, sessionId, child)) !== 'exited') {
     throw new StructuredAgentSessionEvictionError(
       'stop-provider-child',
       sessionId,

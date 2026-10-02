@@ -45,6 +45,9 @@ function stopEvents(): JournalStopEvent[] {
 function stopEventsAtClose(): { events: JournalStopEvent[] | null } {
   const seen: { events: JournalStopEvent[] | null } = { events: null }
   rig.closeSession.mockImplementationOnce(async () => {
+    // The event is issued before the kill, never awaited by it: the journal writes it ahead of
+    // anything the kill makes the child write.
+    await new Promise((resolve) => setImmediate(resolve))
     seen.events = stopEvents()
     return true
   })

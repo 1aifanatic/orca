@@ -27,7 +27,7 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
-import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -38,6 +38,7 @@ let codex: ReturnType<typeof fakeCodex>
 let notify: (method: string, params: unknown) => void
 /** Read at each start, so a test can say what the next start resumes. */
 let launch: { resumeThreadId?: string | null }
+let log: ReturnType<typeof recordingStructuredAgentSessionLogger>
 let disposeSession: MockInstance<NonNullable<StructuredAgentSessionAdapter['disposeSession']>>
 
 beforeEach(async () => {
@@ -70,7 +71,7 @@ beforeEach(async () => {
   })
   disposeSession = vi.spyOn(adapter, 'disposeSession')
   host = new StructuredAgentSessionHost({
-    logger: createStructuredAgentSessionLogger(),
+    logger: (log = recordingStructuredAgentSessionLogger()).logger,
     store,
     adapter: Object.assign(adapter, { supportsCreate: () => true }),
     journalDatabase: openTestJournalHostDatabase(root),
@@ -532,5 +533,21 @@ describe('a message after a Codex Stop whose exit was unproven', () => {
     await vi.waitFor(() => expect(startedWith(codex.connections[1]!, 'carry on')).toBe(true))
     expect(startedWith(old, 'carry on')).toBe(false)
     expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'user-stop' })
+  })
+
+  it('reports a process tree left unproven by a proven root exit, and ends the record anyway', async () => {
+    await runningTurn()
+    codex.routes['turn/interrupt'] = () => {
+      throw interruptFailure('internal error')
+    }
+    const old = codex.connections.at(-1)!
+    // The forced kill saw the root exit but could not prove the rest of the tree gone.
+    Object.defineProperty(old, 'processTreeUnproven', { get: () => old.closed })
+
+    await stop()
+
+    await vi.waitFor(() => expect(host['sessions'].get(SESSION)?.child).toBeNull())
+    expect(log.entries.map((entry) => entry.fields.scope)).toContain('provider-close-after-exit')
+    expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ rootGone: true })
   })
 })

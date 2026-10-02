@@ -20,7 +20,6 @@ import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-rec
 import { structuredClaudeLifecycleEvent } from '../../runtime/structured-claude-runtime-adapter'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { STRUCTURED_AGENT_SESSION_EVICTION_STEP_TIMEOUT_MS } from './structured-agent-session-eviction-deadline'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import {
   HOST_TEST_NOW as NOW,
@@ -41,12 +40,14 @@ let store: AgentSessionRecordStore
 let claude: ReturnType<typeof fakeClaude>
 let log: ReturnType<typeof recordingStructuredAgentSessionLogger>
 let persistHandle: ReturnType<typeof vi.fn<() => Promise<void>>>
+let childWork: string[]
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-stop-exit-ends-record-'))
   resetHostTestOperationIds()
   log = recordingStructuredAgentSessionLogger()
   persistHandle = vi.fn(async () => undefined)
+  childWork = []
   claude = fakeClaude({
     replayUuid: null,
     routes: { interrupt: () => ({ still_queued: [], cancelled: [] }) }
@@ -71,6 +72,11 @@ beforeEach(async () => {
     },
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     persistHandle: () => persistHandle(),
+    logger: log.logger,
+    onChildWorkEvidence: (sessionId, evidence) => {
+      childWork.push(...evidence.map((edge) => edge.type))
+      host.publishChildWorkEvidence(sessionId, evidence)
+    },
     openConnection: claude.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW
@@ -284,7 +290,7 @@ it('joins the close a Stop could not prove before the next message, then sends i
   })
 })
 
-it('has a send made while the close still runs join that close, not start another', async () => {
+it('has a send made while the close still runs wait for that close, not start another', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
   const proof = deferred<void>()
@@ -297,58 +303,50 @@ it('has a send made while the close still runs join that close, not start anothe
     return close()
   }
   refuseWritesOnceClosed(connection)
-  const closeSession = vi.spyOn(adapter, 'closeSession')
   await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   frame(connection, INTERRUPTED_RESULT)
 
-  await send('Carry on.')
+  // Accepted on the chat's queue behind the Stop's close, which nothing abandons meanwhile.
+  const sent = send('Carry on.')
   await eventually(() => expect(attempts).toBe(1))
   expect(claude.connections).toHaveLength(1)
   proof.resolve()
+  await sent
 
   await resumedWith(connection, 'Carry on.')
-  // One close of the old child, which the send waited on rather than asking for its own.
-  expect(closeSession).toHaveBeenCalledOnce()
+  // One close of the old child, which the send waited on rather than starting its own.
   expect(attempts).toBe(1)
   expect(connection.closeCount).toBe(1)
 })
 
-// The caller's bound is how long it waits, never how long the close may take.
-it('ends the record when the proof lands after every caller stopped waiting', async () => {
+// The verdict is the root's exit; the resume point written after it is bookkeeping.
+it('ends the record at the proven exit though the resume-point write after it never settles', async () => {
   const connection = claude.connections[0]!
-  const proof = deferred<boolean>()
-  connection.close = async () => {
-    connection.closed = true
-    return proof.promise
-  }
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  let stopped: unknown
-  try {
-    const stopping = host['tasks']
-      .serialize(SESSION, () => host['lifetime'].stopAgent(SESSION, { cause: 'evict' }))
-      .then(
-        () => 'proven',
-        (error: unknown) => error
-      )
-    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_EVICTION_STEP_TIMEOUT_MS + 2_000)
-    stopped = await stopping
-  } finally {
-    vi.useRealTimers()
-  }
-  // Unverifiable for that caller, and the close still running: nothing claims the child exited.
-  expect(stopped).toMatchObject({ step: 'stop-provider-child' })
-  expect(child()?.close?.attempt).toBeDefined()
-  expect(lease()?.claimStatus).toBe('live')
-
-  proof.resolve(true)
+  await openTurn(connection)
+  refuseWritesOnceClosed(connection)
+  persistHandle.mockImplementationOnce(() => new Promise<void>(() => {}))
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
 
   await eventually(() => expect(child()).toBeNull())
-  expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'evict' })
-  await eventually(() => expect(lease()?.claimStatus).toBe('released'))
+  expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'user-stop' })
+  await send('Carry on.')
+  await resumedWith(connection, 'Carry on.')
 })
 
 it('ends the record when the root exits after its close gave up, with no one asking again', async () => {
-  const connection = await stopWithUnprovenClose(1)
+  const connection = claude.connections[0]!
+  // A background task the old agent was running when the Stop's close came back unproven.
+  frame(connection, {
+    type: 'system',
+    subtype: 'task_started',
+    uuid: 'task-start',
+    task_id: 'background-1',
+    task_type: 'local_agent',
+    is_backgrounded: true
+  })
+  await stopWithUnprovenClose(1)
+  childWork.length = 0
 
   // The connection reports the root's exit as the end of the close Orca began.
   connection.handlers.onExit?.(new Error('claude exited'), { expected: true })
@@ -358,6 +356,8 @@ it('ends the record when the root exits after its close gave up, with no one ask
   expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'user-stop' })
   expect(connection.closeCount).toBe(2)
   expect(claude.connections).toHaveLength(1)
+  // The child work ends with the session, so nothing is left shown running for a dead agent.
+  await eventually(() => expect(childWork).toContain('session-ended'))
 })
 
 it('sends after a proven exit whose resume-point write and lease release both failed', async () => {
@@ -377,7 +377,7 @@ it('sends after a proven exit whose resume-point write and lease release both fa
   // Both reported; neither kept the dead child on record.
   await eventually(() =>
     expect(scopes()).toEqual(
-      expect.arrayContaining(['provider-close-after-exit', 'exit-wind-down'])
+      expect.arrayContaining(['claude-close-resume-point', 'exit-owner-release'])
     )
   )
   expect(lease()?.claimStatus).toBe('live')
@@ -467,4 +467,94 @@ it('has the idle reaper join a close still unverifiable, ending the record with 
   expect(connection.closeCount).toBe(2)
   expect(lease()).toMatchObject({ claimStatus: 'released', ownerProcess: null })
   expect(host.hasSession(SESSION)).toBe(false)
+})
+
+it("ends a Claude journal-sink failure as Orca's own fault, never a quiet rest", async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+
+  host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('journal write failed'))
+
+  await eventually(() => expect(child()).toBeNull())
+  expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({
+    cause: 'exit',
+    failure: { kind: 'hostFault' }
+  })
+  expect(connection.closeCount).toBe(1)
+})
+
+it('delivers a message accepted after a tab close was asked for, when the late exit lands first', async () => {
+  const connection = claude.connections[0]!
+  closeUnprovenFor(connection, 1)
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  const closing = child()!
+  expect(closing.close).toMatchObject({ cause: 'user-close' })
+
+  // The message is accepted, then the exit report ends the child, before the delivery step runs.
+  const held = deferred<void>()
+  const holding = host['tasks'].serialize(SESSION, () => held.promise)
+  const sent = send('Carry on.')
+  const ended = host['tasks'].serialize(SESSION, () =>
+    host['eventRecovery'].endExitedChildUnderSerialize(SESSION, closing, {
+      expected: true,
+      reason: 'claude session closed'
+    })
+  )
+  held.resolve()
+  await holding
+  const next = await sent
+  await ended
+
+  // The close was asked for before the message, so its end closes nothing the message carries.
+  await resumedWith(connection, 'Carry on.')
+  expect(await submission(next)).not.toMatchObject({ dispatchState: 'rejected' })
+})
+
+it('fails only the message its own refusal is about, never one accepted while that start was refused', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  // The Stop's close and the first send's join both come back unproven; the second's proves.
+  const close = connection.close
+  const joined = deferred<boolean>()
+  let attempts = 0
+  connection.close = async () => {
+    attempts += 1
+    connection.closeCount += 1
+    connection.closed = true
+    if (attempts === 1) {
+      return false
+    }
+    return attempts === 2 ? joined.promise : close()
+  }
+  refuseWritesOnceClosed(connection)
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
+  await laneDrained()
+
+  const first = await send('First.')
+  await eventually(() => expect(attempts).toBe(2))
+  // Accepted while the first send's join still runs, then that join comes back unproven.
+  const second = send('Second.')
+  joined.resolve(false)
+
+  const secondId = await second
+  await eventually(async () => expect((await submission(first))?.dispatchState).toBe('rejected'))
+  await resumedWith(connection, 'Second.')
+  expect(await submission(secondId)).not.toMatchObject({ dispatchState: 'rejected' })
+})
+
+it('runs the stop again for every ask after a close that came back unproven', async () => {
+  const connection = await stopWithUnprovenClose(3)
+
+  await send('First.')
+  await eventually(() => expect(connection.closeCount).toBe(2))
+  await laneDrained()
+  await send('Second.')
+  await eventually(() => expect(connection.closeCount).toBe(3))
+  await laneDrained()
+
+  // Each ask asked again; the third proves the exit.
+  await send('Third.')
+  await resumedWith(connection, 'Third.')
+  expect(connection.closeCount).toBe(4)
 })

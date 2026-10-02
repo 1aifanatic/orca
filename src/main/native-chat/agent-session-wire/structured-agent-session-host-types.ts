@@ -46,8 +46,9 @@ export type StructuredAgentSessionChildClose = {
   readonly reason: string | null
   /** The Stop event that stop wrote, folded before the work it ends is settled. */
   readonly recorded: Promise<void>
-  /** The adapter's close while it runs; cleared when it ends unproven, so the next ask retries. */
-  attempt?: Promise<boolean>
+  /** Where the journal stood when that stop was asked for: the child's end is ordered there, so a
+   *  message accepted while the exit was being proven came after it. A repeated ask moves it. */
+  requestedAt: AgentJournalCursor
 }
 
 /** The provider process behind a conversation. Written only in
@@ -82,7 +83,7 @@ export type StructuredAgentSessionEndedChild = StructuredAgentSessionProviderChi
     duringStartup: boolean
     startedFor?: string
     /** Where the conversation's journal stood when the child ended, to order the end against a
-     *  message's acceptance. */
+     *  message's acceptance. A close's end stands where its stop was asked for. */
     endedAt: AgentJournalCursor
   }
 

@@ -22,9 +22,8 @@ export type StructuredAgentSessionStopEnding =
       resting?: true
     }
 
-/** How long a host stop waits for the session's sink before it judges whether the stop ends work,
- *  and for its event's write before the kill. */
-export const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
+/** How long a host stop waits for the session's sink before it judges whether the stop ends work. */
+const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
 
 /**
  * Whether this stop ends work its event must record: a running turn or an unanswered send, a start's
@@ -67,8 +66,8 @@ export async function stopEndsWork(
   )
 }
 
-/** Writes this stop's event (`JournalStopEvent`). Issued before the kill, which waits for it only
- *  `STOP_EVENT_DRAIN_TIMEOUT_MS`: bookkeeping, reported on failure. */
+/** Writes this stop's event (`JournalStopEvent`). Issued before the kill and never awaited by it:
+ *  bookkeeping, reported on failure. */
 export function recordStopEvent(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string,

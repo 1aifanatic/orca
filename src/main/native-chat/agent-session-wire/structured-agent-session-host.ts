@@ -159,7 +159,8 @@ export class StructuredAgentSessionHost {
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
-      lifetime: () => this.lifetimeContext()
+      runtimeState: this.runtimeState,
+      wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId)
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
       ...structuredAgentSessionRestartResumeSurfaces(this, this.now),
@@ -195,7 +196,7 @@ export class StructuredAgentSessionHost {
       now: () => this.now(),
       publishStatus: this.clientDelivery.publishStatus,
       wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId),
-      serialize: this.serialize
+      endExitedChild: this.eventRecovery.endExitedChildUnderSerialize
     } satisfies StructuredAgentSessionLifetimeContext
   }
 

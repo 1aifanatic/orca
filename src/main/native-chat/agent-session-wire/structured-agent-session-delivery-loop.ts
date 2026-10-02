@@ -115,16 +115,8 @@ export class StructuredAgentSessionDeliveryLoop {
           return
         }
         if (!prepared.ok) {
-          const { refusal, diagnostic } = prepared
-          // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
-          const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
-          const cause = {
-            refusal,
-            ...(diagnostic ? { diagnostic } : {}),
-            ...(newSession ? { newSession: true as const } : {})
-          }
           await this.deps.serialize(sessionId, () =>
-            this.fail(sessionId, { startKey: null, cause })
+            this.fail(sessionId, this.refusedStart(sessionId, prepared))
           )
           return
         }
@@ -187,6 +179,11 @@ export class StructuredAgentSessionDeliveryLoop {
       return this.fail(sessionId, failedStart)
     }
     const ready = await this.deps.ensureProviderChild(sessionId, oldest.clientMessageId)
+    if (!ready.ok && ready.refusal.details?.reason === 'previousExitUnverifiable') {
+      // Failed in the step that was refused: a message accepted, or an exit proven, after it must
+      // not be failed for a verdict that no longer holds.
+      return this.fail(sessionId, this.refusedStart(sessionId, ready))
+    }
     if (!ready.ok) {
       return ready
     }
@@ -252,6 +249,23 @@ export class StructuredAgentSessionDeliveryLoop {
       next
     )
     return 'continue'
+  }
+
+  /** A start the session refused, as the failure every queued message it was for is rejected with. */
+  private refusedStart(
+    sessionId: string,
+    { refusal, diagnostic }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+  ): StartFailure {
+    // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
+    const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
+    return {
+      startKey: null,
+      cause: {
+        refusal,
+        ...(diagnostic ? { diagnostic } : {}),
+        ...(newSession ? { newSession: true as const } : {})
+      }
+    }
   }
 
   private async fail(sessionId: string, failure: StartFailure): Promise<'stop'> {
