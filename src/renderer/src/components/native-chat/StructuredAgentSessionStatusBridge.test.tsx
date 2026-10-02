@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   store: null as null | {
     getState: () => AppState
     setState: (state: Partial<AppState> & { testRuntimeOwner?: string | null }) => void
-    subscribe: (listener: (state: AppState, previous: AppState) => void) => () => void
   },
   subscribeStatus: vi.fn(),
   subscribeTranscript: vi.fn(),

@@ -11,7 +11,6 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { Tab } from '../../../../shared/tab-types'
-import type { AppState } from '@/store/types'
 import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 import type * as AgentStatusProjectionModule from '@/runtime/sync-runtime-graph/agent-status-projection'
 
@@ -21,11 +20,6 @@ const mocks = vi.hoisted(() => ({
   setAgentStatus: vi.fn(),
   setGeneratedTitle: vi.fn(),
   setGeneratedTitles: vi.fn(),
-  store: null as null | {
-    getState: () => AppState
-    setState: (state: Partial<AppState> & { testRuntimeOwner?: string | null }) => void
-    subscribe: (listener: (state: AppState, previous: AppState) => void) => () => void
-  },
   subscribeStatus: vi.fn(),
   subscribeTranscript: vi.fn(),
   supportsCapability: vi.fn(),
@@ -73,7 +67,6 @@ vi.mock('@/store', async () => {
       removeAgentStatus(paneKey)
     }
   })
-  mocks.store = useAppStore
   return { useAppStore }
 })
 
@@ -90,9 +83,9 @@ vi.mock('@/runtime/sync-runtime-graph/agent-status-projection', async (importOri
   }
 })
 
+// Every chat runs on the local host.
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
-    state.testRuntimeOwner ?? null
+  getRuntimeEnvironmentIdForWorktree: () => null
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
@@ -107,6 +100,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { StructuredAgentSessionStatusBridge } from './StructuredAgentSessionStatusBridge'
+import { useAppStore } from '@/store'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
 import {
   canSkipRuntimeMobileSessionSyncKeyBuild,
@@ -147,7 +141,7 @@ function summary(overrides: Partial<AgentSessionStatusSummary> = {}): AgentSessi
 }
 
 function statuses(): AgentStatusEntry[] {
-  return Object.values(mocks.store?.getState().agentStatusByPaneKey ?? {})
+  return Object.values(useAppStore.getState().agentStatusByPaneKey ?? {})
 }
 
 /** The host side of the most recent status subscription. */
@@ -182,7 +176,7 @@ function chatSummaries(): AgentSessionStatusSummary[] {
 /** Every store notification, and how many changed the status map. */
 function countPublications(): { all: number; status: number; stop: () => void } {
   const counts = { all: 0, status: 0, stop: () => {} }
-  counts.stop = mocks.store!.subscribe((state, previous) => {
+  counts.stop = useAppStore.subscribe((state, previous) => {
     counts.all += 1
     if (state.agentStatusByPaneKey !== previous.agentStatusByPaneKey) {
       counts.status += 1
@@ -193,8 +187,8 @@ function countPublications(): { all: number; status: number; stop: () => void } 
 
 /** The mobile session sync's store subscriber, which rebuilds the status projection per change. */
 function subscribeMobileSync(): () => void {
-  let previousKey = getRuntimeMobileSessionSyncKey(mocks.store!.getState())
-  return mocks.store!.subscribe((state, previous) => {
+  let previousKey = getRuntimeMobileSessionSyncKey(useAppStore.getState())
+  return useAppStore.subscribe((state, previous) => {
     if (!canSkipRuntimeMobileSessionSyncKeyBuild(state, previous)) {
       previousKey = getRuntimeMobileSessionSyncKey(state, previous, previousKey)
     }
@@ -214,10 +208,9 @@ describe('a status snapshot of many chats', () => {
     mocks.supportsCapability.mockResolvedValue(true)
     // The status evidence clock, so rows written on different ticks compare equal.
     vi.spyOn(Date, 'now').mockReturnValue(1_000)
-    mocks.store?.setState({
+    useAppStore.setState({
       agentStatusByPaneKey: {},
       settings: { ...getDefaultSettings('/tmp'), tabAutoGenerateTitle: true },
-      testRuntimeOwner: null,
       unifiedTabsByWorktree: { 'wt-1': tabs }
     })
   })
@@ -252,12 +245,12 @@ describe('a status snapshot of many chats', () => {
   it('writes the same rows as a status event per chat', async () => {
     await renderBridge()
     await act(async () => feed().emit({ type: 'snapshot', sessions: chatSummaries() }))
-    const fromSnapshot = mocks.store!.getState().agentStatusByPaneKey
+    const fromSnapshot = useAppStore.getState().agentStatusByPaneKey
 
     cleanup()
     resetStructuredAgentSessionStatusFeedsForTests()
     mocks.subscribeStatus.mockClear()
-    mocks.store?.setState({ agentStatusByPaneKey: {} })
+    useAppStore.setState({ agentStatusByPaneKey: {} })
     await renderBridge()
     const publications = countPublications()
     for (const session of chatSummaries()) {
@@ -266,7 +259,7 @@ describe('a status snapshot of many chats', () => {
     publications.stop()
 
     expect(publications.status).toBe(CHAT_COUNT)
-    expect(mocks.store!.getState().agentStatusByPaneKey).toEqual(fromSnapshot)
+    expect(useAppStore.getState().agentStatusByPaneKey).toEqual(fromSnapshot)
   })
 
   it('still removes a row, and applies a later single update on the next tick', async () => {
@@ -275,11 +268,11 @@ describe('a status snapshot of many chats', () => {
     const [first, second] = chatSummaries()
     const paneKey = (tab: (typeof tabs)[number]): string =>
       structuredAgentSessionPaneKey(tab.id, tab.entityId)
-    expect(mocks.store!.getState().agentStatusByPaneKey[paneKey(tabs[0])]).toBeDefined()
+    expect(useAppStore.getState().agentStatusByPaneKey[paneKey(tabs[0])]).toBeDefined()
 
     await act(async () => feed().emit({ type: 'status', session: { ...first, status: null } }))
     expect(mocks.removeAgentStatus).toHaveBeenCalledWith(paneKey(tabs[0]))
-    expect(mocks.store!.getState().agentStatusByPaneKey[paneKey(tabs[0])]).toBeUndefined()
+    expect(useAppStore.getState().agentStatusByPaneKey[paneKey(tabs[0])]).toBeUndefined()
 
     const publications = countPublications()
     await act(async () =>
@@ -287,7 +280,7 @@ describe('a status snapshot of many chats', () => {
     )
     publications.stop()
     expect(publications.status).toBe(1)
-    expect(mocks.store!.getState().agentStatusByPaneKey[paneKey(tabs[1])]).toMatchObject({
+    expect(useAppStore.getState().agentStatusByPaneKey[paneKey(tabs[1])]).toMatchObject({
       state: 'done',
       updatedAt: 9_999
     })
