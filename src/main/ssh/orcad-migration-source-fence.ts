@@ -137,6 +137,7 @@ export async function fenceOrcadMigrationSource(args: {
     sshTargetId: target.id,
     sshTargetGeneration: generation,
     manifestSha256: manifest.manifestSha256,
+    provenPtyIds: args.terminalProof.provenPtyIds,
     manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)

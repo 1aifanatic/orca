@@ -34,6 +34,8 @@ const CutoverRecordSchema = z
     sshTargetId: z.string().min(1).max(1_024),
     sshTargetGeneration: z.number().int().positive(),
     manifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    // Terminals proven exited before the fence; any other live lease later means work started.
+    provenPtyIds: z.array(z.string().min(1).max(256)).max(10_000),
     manifest: z.unknown()
   })
   .strict()
