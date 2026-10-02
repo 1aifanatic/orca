@@ -34,11 +34,8 @@ it.each([
   'src/main/persistence/profile-state/store.ts',
   'src/main/sqlite/database.ts',
   'src/main/orcad/entry.ts',
-  'src/main/runtime/windows-terminal.ts',
-  'src/shared/linux-glibc.ts',
   'src/main/daemon/entry.ts',
   'src/relay/index.ts',
-  'src/main/wsl/runner.ts',
   'config/scripts/build-orcad-prebuilds.mjs',
   'config/scripts/orcad-prebuild-slot-contents.mjs',
   'src/shared/node-runtime-pin.ts'
@@ -57,4 +54,71 @@ it('fails closed to every platform when the evidence is incomplete', () => {
       graphUnavailable: true
     }).qualification
   ).toBe(true)
+})
+
+it.each([
+  [
+    'src/main/runtime/windows-terminal.ts',
+    ['ubuntu-22.04', 'windows-2022', 'windows-11-arm'],
+    false
+  ],
+  [
+    'src/main/windows/windows-process-table.ts',
+    ['ubuntu-22.04', 'windows-2022', 'windows-11-arm'],
+    false
+  ],
+  ['src/main/wsl/runner.ts', ['ubuntu-22.04', 'windows-2022', 'windows-11-arm'], false],
+  [
+    'src/main/orcad/orcad-launcher.win32.test.ts',
+    ['ubuntu-22.04', 'windows-2022', 'windows-11-arm'],
+    false
+  ],
+  ['src/main/daemon/darwin-process.ts', ['ubuntu-22.04', 'macos-14', 'macos-15-intel'], false],
+  ['src/shared/linux-glibc.ts', ['ubuntu-22.04', 'ubuntu-24.04-arm'], true],
+  [
+    'src/main/daemon/posix-process.ts',
+    ['ubuntu-22.04', 'ubuntu-24.04-arm', 'macos-14', 'macos-15-intel'],
+    true
+  ]
+])('selects both architectures and a Linux smoke for %s', (file, runners, qualification) => {
+  expect(nodeServerQualification([file], scope)).toEqual({ runners, qualification })
+})
+
+it('combines platform families without adding Linux compatibility work', () => {
+  expect(
+    nodeServerQualification(
+      ['src/main/windows/windows-process-table.ts', 'src/main/daemon/darwin-process.ts'],
+      scope
+    )
+  ).toEqual({
+    runners: ['ubuntu-22.04', 'macos-14', 'macos-15-intel', 'windows-2022', 'windows-11-arm'],
+    qualification: false
+  })
+})
+
+it('keeps all hosts for shared changes alongside a platform-specific change', () => {
+  expect(
+    nodeServerQualification(
+      ['src/main/windows/windows-process-table.ts', 'src/main/daemon/entry.ts'],
+      scope
+    )
+  ).toEqual({ runners: NODE_SERVER_RUNNERS, qualification: true })
+})
+
+it.each([
+  '.github/workflows/node-server-tests.yml',
+  'config/scripts/node-server-qualification.mjs'
+])('qualifies all hosts when the selection policy changes: %s', (file) => {
+  expect(nodeServerQualification([file], scope)).toEqual({
+    runners: NODE_SERVER_RUNNERS,
+    qualification: true
+  })
+})
+
+it('fully qualifies relevant main pushes even for an unflavoured change', () => {
+  expect(
+    nodeServerQualification(['src/main/runtime/rpc/methods/example.ts'], scope, {
+      fullQualification: true
+    })
+  ).toEqual({ runners: NODE_SERVER_RUNNERS, qualification: true })
 })

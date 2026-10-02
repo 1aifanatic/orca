@@ -131,16 +131,22 @@ describe('the actual Bun build and profile-test dependency graph', () => {
   })
 })
 
-it('keeps all ten platform jobs and runs them when detection is skipped or fails', () => {
+it('keeps every platform job and runs them when detection is skipped or fails', () => {
   const workflow = parse(
     readFileSync(new URL('../../.github/workflows/node-server-tests.yml', import.meta.url), 'utf8')
   )
   expect(workflow.on).toHaveProperty('workflow_dispatch')
-  expect(workflow.jobs.changes.if).toBe("github.event_name == 'pull_request'")
+  expect(workflow.jobs.changes.if).toBe(
+    "github.event_name == 'pull_request' || github.event_name == 'push'"
+  )
   expect(workflow.jobs.changes.steps[0].with['fetch-depth']).toBe(2)
   expect(workflow.jobs.changes.steps[0].with['persist-credentials']).toBe(false)
   const detect = workflow.jobs.changes.steps.find((step) => step.id === 'scope')
   expect(detect.run).toContain('git diff --name-only --no-renames -z HEAD^1 HEAD')
+  expect(detect.env.PUSH_BASE).toBe('${{ github.event.before }}')
+  expect(detect.run).toContain('git fetch --no-tags --depth=1 origin "$PUSH_BASE"')
+  expect(detect.run).toContain('git diff --name-only --no-renames -z "$PUSH_BASE" HEAD')
+  expect(detect.run).toContain('node-server-changes" --full-qualification')
   expect(workflow.on.pull_request.types).toContain('ready_for_review')
   expect(workflow.on.schedule).toHaveLength(1)
   // A pull request may qualify one platform, so the merged commit must re-qualify all six.
