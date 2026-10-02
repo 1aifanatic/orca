@@ -24,11 +24,13 @@ function setup() {
   })
   const message = (
     frame: Record<string, unknown>,
-    observedAt: number
+    observedAt: number,
+    startsTurn = false
   ): ClaudeStructuredSessionEvent => ({
     type: 'message',
     sessionId: 'orca-session',
     observedAt,
+    ...(startsTurn ? { startsTurn: true } : {}),
     message: { session_id: 'claude-session', parent_tool_use_id: null, ...frame }
   })
   const thinkingDelta = (uuid: string, thinking: string, observedAt: number, index = 0): void =>
@@ -95,17 +97,17 @@ describe('a streamed reasoning row the provider never finishes', () => {
   it('ends when a new send supersedes its turn', () => {
     const { translator, message, thinkingDelta, lastReasoning } = setup()
     thinkingDelta('delta', 'Unfinished thought', 1_000)
-    translator.handle({
-      ...message(
+    translator.handle(
+      message(
         {
           type: 'user',
           uuid: 'user-2',
           message: { role: 'user', content: [{ type: 'text', text: 'next' }] }
         },
-        8_000
-      ),
-      startsTurn: true
-    })
+        8_000,
+        true
+      )
+    )
     expect(lastReasoning()?.body).toMatchObject({ state: 'completed', completedAt: 8_000 })
   })
 
