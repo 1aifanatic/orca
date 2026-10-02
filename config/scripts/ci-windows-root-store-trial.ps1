@@ -19,7 +19,11 @@ New-Item -ItemType Directory -Force $outputDirectory | Out-Null
 function Get-Digests([string[]]$Files) {
   return @($Files | ForEach-Object {
     $path = Join-Path $repository $_
-    "$_=$((Get-FileHash -Algorithm SHA256 $path).Hash)"
+    if ($_ -eq '.npmrc' -and -not (Test-Path -LiteralPath $path)) {
+      "$_=absent"
+    } else {
+      "$_=$((Get-FileHash -Algorithm SHA256 $path).Hash)"
+    }
   }) -join ';'
 }
 
