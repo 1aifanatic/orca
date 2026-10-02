@@ -63,6 +63,19 @@ type FoldOptions = {
   signal?: AbortSignal
 }
 
+/** The epoch a fold of the chat would read, or null when it has nothing to fold: the database is a
+ *  newer build's, the chat has no epoch here (it is still in a per-chat file), or it has a row. */
+export function foldableJournalSessionEpoch(
+  database: JournalHostDatabase,
+  sessionId: string
+): string | null {
+  if (database.readOnly) {
+    return null
+  }
+  const epoch = readJournalSessionEpoch(database.db, sessionId)
+  return epoch === null || hasJournalSessionStatus(database.db, sessionId) ? null : epoch
+}
+
 /** The chat's rows folded a part per task, as a replay folds them, and its status derived. Null when
  *  the chat already has a row, has no epoch in this database (it is still in a per-chat file), the
  *  database or the chat's rows are a newer build's, or `signal` aborted, which is checked before each
@@ -77,11 +90,8 @@ export async function foldJournalSessionStatus(
     signal
   }: FoldOptions = {}
 ): Promise<FoldedJournalSessionStatus | null> {
-  if (database.readOnly) {
-    return null
-  }
-  const epoch = readJournalSessionEpoch(database.db, sessionId)
-  if (epoch === null || hasJournalSessionStatus(database.db, sessionId)) {
+  const epoch = foldableJournalSessionEpoch(database, sessionId)
+  if (epoch === null) {
     return null
   }
   const tip = readJournalTip(database.db, sessionId, epoch)
@@ -135,7 +145,8 @@ export function writeJournalSessionStatuses(
   if (folded.length === 0) {
     return []
   }
-  return database.transaction((db) =>
+  // Unsynced: a lost row is re-derived from the journal, and any later synced commit covers it.
+  return database.unsyncedTransaction((db) =>
     folded.filter(({ sessionId, epoch, tip, status }) => {
       if (
         hasJournalSessionStatus(db, sessionId) ||

@@ -249,6 +249,87 @@ describe('a row from the rows alone', () => {
     }
   })
 
+  it('commits a batch unsynced and restores the synced level after, also when the commit fails', async () => {
+    for (const sessionId of ['first', 'second']) {
+      await JOURNAL_SESSION_STATE_CORPUS.settled(await open(sessionId))
+    }
+    await journals.closeAll()
+    const folded: FoldedJournalSessionStatus[] = []
+    for (const sessionId of ['first', 'second']) {
+      dropRow(sessionId)
+      folded.push((await foldJournalSessionStatus(database(), sessionId))!)
+    }
+    const connection = database().db
+    const level = () => Number(connection.pragma('synchronous', { simple: true }))
+    const exec = connection.exec.bind(connection)
+    const atCommit: number[] = []
+    let failCommit = false
+    vi.spyOn(connection, 'exec').mockImplementation((sql) => {
+      if (sql === 'COMMIT') {
+        atCommit.push(level())
+        if (failCommit) {
+          throw new Error('disk I/O error')
+        }
+      }
+      exec(sql)
+    })
+    // NORMAL (1) for the batch's commit, FULL (2) for every other commit on the connection.
+    expect(level()).toBe(2)
+
+    expect(writeJournalSessionStatuses(database(), [folded[0]!])).toHaveLength(1)
+    expect(atCommit).toEqual([1])
+    expect(level()).toBe(2)
+
+    failCommit = true
+    expect(() => writeJournalSessionStatuses(database(), [folded[1]!])).toThrow('disk I/O error')
+    expect(connection.isTransaction).toBe(false)
+    expect(level()).toBe(2)
+    expect(readTestJournalSessionStatus(root, 'second')).toBeNull()
+  })
+
+  it("leaves the next commit synced, a chat's own append included, after a slice that landed or failed", async () => {
+    for (const sessionId of ['first', 'second']) {
+      await JOURNAL_SESSION_STATE_CORPUS.settled(await open(sessionId))
+    }
+    const live = await open('live')
+    await JOURNAL_SESSION_STATE_CORPUS.settled(live)
+    const folded: FoldedJournalSessionStatus[] = []
+    for (const sessionId of ['first', 'second']) {
+      dropRow(sessionId)
+      folded.push((await foldJournalSessionStatus(database(), sessionId))!)
+    }
+    const connection = database().db
+    const exec = connection.exec.bind(connection)
+    const atCommit: number[] = []
+    let failNextCommit = false
+    vi.spyOn(connection, 'exec').mockImplementation((sql) => {
+      if (sql === 'COMMIT') {
+        atCommit.push(Number(connection.pragma('synchronous', { simple: true })))
+        if (failNextCommit) {
+          failNextCommit = false
+          throw new Error('disk I/O error')
+        }
+      }
+      exec(sql)
+    })
+    const append = (text: string) =>
+      live.appendItem(
+        { provider: 'orca', clientMessageId: text },
+        { kind: 'status', text },
+        { fence: CORPUS_FENCE, turnScope: { kind: 'thread' } }
+      )
+
+    writeJournalSessionStatuses(database(), [folded[0]!])
+    await append('after a slice')
+    failNextCommit = true
+    expect(() => writeJournalSessionStatuses(database(), [folded[1]!])).toThrow('disk I/O error')
+    await append('after a failed slice')
+    database().transaction((db) => db.prepare('SELECT 1').get())
+
+    // The slices at NORMAL (1); every commit after them, the chat's appends first, at FULL (2).
+    expect(atCommit).toEqual([1, 2, 1, 2, 2])
+  })
+
   it('skips only the chats in a batch that moved, got a row or a new history since their fold', async () => {
     const ids = ['steady', 'appended', 'rowed', 'replaced']
     const journalsById = new Map<string, AgentSessionJournal>()
