@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import { DISPATCH_REJECTED_WRITE_FAILED } from '../../../../shared/structured-agent-session-dispatch-rejection'
+import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration-timing-budgets'
 
 const hostRef: { current: unknown } = { current: null }
 const createSpy = vi.fn()
@@ -375,8 +376,9 @@ describe('structured worker dispatch preamble', () => {
     const verdicts: unknown[] = []
     const heldThen = (verdict: Settled): PreambleHost => ({
       ...hostWithSubmission({ dispatchState: 'pending', reason: null }),
+      // Only the watch past the start's wait hears the verdict; within it the agent never took it.
       waitForSendSettlement: async (_session, _id, options) =>
-        options?.until === 'verdict'
+        options?.until === 'verdict' && (options.budgetMs ?? 0) > ORCHESTRATION_READINESS_TIMEOUT_MS
           ? {
               cursor: { epoch: 'epoch-1', sequence: 3 },
               value: { clientMessageId: 'c1', submission: submissionOf(verdict) }
@@ -399,7 +401,7 @@ describe('structured worker dispatch preamble', () => {
       )
     }
 
-    expect(verdicts).toEqual(['pending', 'pending'])
+    expect(verdicts).toEqual([{ state: 'pending' }, { state: 'pending' }])
     await vi.waitFor(() => expect(heard).toHaveBeenCalledOnce())
     expect(heard).toHaveBeenCalledWith(
       'The dispatch preamble was not delivered: Codex never finished starting, so Orca stopped it.'

@@ -513,12 +513,9 @@ describe('a structured Claude session over agentSession.*', () => {
 
     await ok<{ fence: number }>('agentSession.create', createIntentParams())
     const sent = await send('hello')
-    // Unproven, so the message waits for another start rather than ending.
+    // A start whose process could not be proven gone books no other try: the message ends.
     await vi.waitFor(async () =>
-      expect(await submissionOf(sent.clientMessageId)).toMatchObject({
-        dispatchState: 'pending',
-        startRetry: { attempts: 1, rejection: { kind: 'startFailed' } }
-      })
+      expect(await submissionOf(sent.clientMessageId)).toMatchObject({ dispatchState: 'rejected' })
     )
     expect(claude.connections).toHaveLength(1)
     claude.setSelfExit(null)
