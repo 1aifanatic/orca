@@ -15,9 +15,25 @@ describe('decideInitialAgentTabViewMode', () => {
           experimentalNativeChat: true,
           openAgentTabsInChatByDefault: true,
           agent,
+          providerSessionId: agent === 'antigravity' ? 'known-conversation' : undefined,
           nativeChatTranscriptIsLocalReadable: true
         })
       ).toBe('chat')
+    }
+  )
+
+  it.each([undefined, null, '', '   '])(
+    'keeps Antigravity in Terminal until its provider session is associated (%s)',
+    (providerSessionId) => {
+      expect(
+        decideInitialAgentTabViewMode({
+          experimentalNativeChat: true,
+          openAgentTabsInChatByDefault: true,
+          agent: 'antigravity',
+          providerSessionId,
+          nativeChatTranscriptIsLocalReadable: true
+        })
+      ).toBeUndefined()
     }
   )
 
@@ -86,6 +102,7 @@ describe('decideInitialAgentTabViewMode', () => {
           experimentalNativeChat: true,
           openAgentTabsInChatByDefault: true,
           agent,
+          providerSessionId: agent === 'antigravity' ? 'known-conversation' : undefined,
           nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(connectionId)
         })
       expect(forConnection('ssh-target-1')).toBeUndefined()

@@ -55,6 +55,7 @@ import { resolveSessionFilePath } from './session-file-resolver'
 import { resetHostReadableTranscriptPathCacheForTests } from './host-readable-transcript-path'
 import { WslTranscriptFsError } from './wsl-transcript-fs-error'
 import { listRunningWslDistrosAsync, listRunningWslHomeDirsAsync } from '../wsl'
+import { configureNativeChatExecutionNamespace } from './native-chat-execution-namespace'
 
 const HOST_TRANSCRIPT = join(
   'C:\\Users\\ada',
@@ -75,6 +76,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 beforeEach(() => {
   resetHostReadableTranscriptPathCacheForTests()
+  configureNativeChatExecutionNamespace(() => [])
   mocks.hostExisting.clear()
   mocks.wslFiles.clear()
   mocks.existsSync.mockClear()
@@ -84,16 +86,53 @@ beforeEach(() => {
   setPlatform('win32')
 })
 
-afterEach(() => setPlatform(realPlatform))
+afterEach(() => {
+  setPlatform(realPlatform)
+  configureNativeChatExecutionNamespace(() => [])
+})
 
 describe('Antigravity id-based resolve on a Windows host with WSL', () => {
-  it('finds a WSL guest transcript when the host brain has no such conversation', async () => {
+  it('does not guess an unassociated conversation across WSL guests', async () => {
+    mocks.wslFiles.set(UBUNTU_TRANSCRIPT, true)
+    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).resolves.toBeNull()
+    expect(listRunningWslDistrosAsync).not.toHaveBeenCalled()
+  })
+
+  it('derives id-only namespace from the owning host canonical session row', async () => {
+    configureNativeChatExecutionNamespace(() => [
+      {
+        paneKey: 'tab:leaf',
+        state: 'working',
+        prompt: '',
+        receivedAt: 1,
+        stateStartedAt: 1,
+        agentType: 'antigravity',
+        connectionId: 'wsl:Debian',
+        providerSession: { key: 'conversation_id', id: CONVERSATION_ID }
+      }
+    ])
+    mocks.hostExisting.add(HOST_TRANSCRIPT)
+    mocks.wslFiles.set(UBUNTU_TRANSCRIPT, true)
+    mocks.wslFiles.set(DEBIAN_TRANSCRIPT, true)
+    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).resolves.toBe(
+      DEBIAN_TRANSCRIPT
+    )
+    expect(mocks.existsSync).not.toHaveBeenCalledWith(HOST_TRANSCRIPT)
+    expect(mocks.wslGatedAccess).not.toHaveBeenCalledWith(
+      UBUNTU_TRANSCRIPT,
+      expect.anything(),
+      expect.anything()
+    )
+  })
+
+  it('reads only the attested guest even when a native duplicate exists', async () => {
+    mocks.hostExisting.add(HOST_TRANSCRIPT)
     mocks.wslFiles.set(UBUNTU_TRANSCRIPT, true)
 
-    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).resolves.toBe(
-      UBUNTU_TRANSCRIPT
-    )
-    expect(mocks.existsSync).toHaveBeenCalledWith(HOST_TRANSCRIPT)
+    await expect(
+      resolveSessionFilePath('antigravity', CONVERSATION_ID, { wslDistro: 'Ubuntu' })
+    ).resolves.toBe(UBUNTU_TRANSCRIPT)
+    expect(mocks.existsSync).not.toHaveBeenCalledWith(HOST_TRANSCRIPT)
   })
 
   it('keeps the host transcript first and never enumerates WSL homes on a host hit', async () => {
@@ -120,9 +159,9 @@ describe('Antigravity id-based resolve on a Windows host with WSL', () => {
   it('probes running distros once per attempt, not once per candidate', async () => {
     mocks.wslFiles.set(DEBIAN_TRANSCRIPT, true)
 
-    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).resolves.toBe(
-      DEBIAN_TRANSCRIPT
-    )
+    await expect(
+      resolveSessionFilePath('antigravity', CONVERSATION_ID, { wslDistro: 'Debian' })
+    ).resolves.toBe(DEBIAN_TRANSCRIPT)
     expect(listRunningWslDistrosAsync).toHaveBeenCalledTimes(1)
   })
 
@@ -140,21 +179,21 @@ describe('Antigravity id-based resolve on a Windows host with WSL', () => {
     expect(listRunningWslHomeDirsAsync).not.toHaveBeenCalled()
   })
 
-  it('lets a responsive distro win when another distro stalls', async () => {
+  it('does not replace a stalled owning distro with a responsive duplicate', async () => {
     mocks.wslFiles.set(UBUNTU_TRANSCRIPT, 'stall')
     mocks.wslFiles.set(DEBIAN_TRANSCRIPT, true)
 
-    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).resolves.toBe(
-      DEBIAN_TRANSCRIPT
-    )
+    await expect(
+      resolveSessionFilePath('antigravity', CONVERSATION_ID, { wslDistro: 'Ubuntu' })
+    ).rejects.toBeInstanceOf(WslTranscriptFsError)
   })
 
   it('reports a stalled distro as unavailable instead of missing', async () => {
     mocks.wslFiles.set(UBUNTU_TRANSCRIPT, 'stall')
 
-    await expect(resolveSessionFilePath('antigravity', CONVERSATION_ID)).rejects.toBeInstanceOf(
-      WslTranscriptFsError
-    )
+    await expect(
+      resolveSessionFilePath('antigravity', CONVERSATION_ID, { wslDistro: 'Ubuntu' })
+    ).rejects.toBeInstanceOf(WslTranscriptFsError)
   })
 
   it('rejects a path-shaped conversation id before touching any filesystem', async () => {
@@ -169,7 +208,11 @@ describe('Antigravity id-based resolve on a Windows host with WSL', () => {
     await expect(
       resolveSessionFilePath('antigravity', CONVERSATION_ID, { wslDistro: 'Ubuntu' })
     ).resolves.toBeNull()
-    expect(listRunningWslDistrosAsync).not.toHaveBeenCalled()
+    expect(mocks.wslGatedAccess).not.toHaveBeenCalledWith(
+      DEBIAN_TRANSCRIPT,
+      expect.anything(),
+      expect.anything()
+    )
   })
 
   it('does not replace a missing guest hook path with an id match', async () => {

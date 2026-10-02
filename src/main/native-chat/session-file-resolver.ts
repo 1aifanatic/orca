@@ -9,20 +9,16 @@ import { isWslUncPath } from '../../shared/wsl-paths'
 import { walkSessionFiles } from '../ai-vault/session-scanner-discovery'
 import { OMP_SESSION_ARTIFACT_DIR_PATTERN } from '../ai-vault/session-scanner-omp-subagent-transcripts'
 import { resolveOmpSessionsDir } from '../ai-vault/omp-session-root'
-import {
-  ANTIGRAVITY_BRAIN_HOME_SEGMENTS,
-  antigravityTranscriptSegmentsInBrain
-} from '../ai-vault/session-scanner-antigravity-paths'
+import { resolveAntigravitySessionFile } from './antigravity-session-file-resolution'
 import { resolveOrcaManagedCodexHomePath } from '../codex/codex-home-paths'
+import { antigravitySessionWslDistro } from './native-chat-execution-namespace'
 import {
   findGrokChatHistoryBySessionId,
   resolveGrokSessionsDir
 } from '../../shared/grok-session-paths'
 import {
-  createWslTranscriptResolutionSnapshot,
   needsWslHostResolution,
   toHostReadableTranscriptPath,
-  wslAntigravityTranscriptPaths,
   wslCodexSessionsDirs
 } from './host-readable-transcript-path'
 import { findWslCodexSessionPath } from './wsl-codex-session-path-scan'
@@ -112,12 +108,29 @@ export async function resolveSessionFilePath(
   if (!transcriptAgent) {
     return null
   }
+  if (transcriptAgent === 'antigravity') {
+    const canonicalDistro = antigravitySessionWslDistro(sessionId)
+    if (canonicalDistro && options.wslDistro && canonicalDistro !== options.wslDistro) {
+      throw new Error('Antigravity transcript execution namespace does not match')
+    }
+    if (canonicalDistro) {
+      options = { ...options, wslDistro: canonicalDistro }
+    }
+  }
   // Why: the hook's transcript_path is the exact file the agent is writing, so it
   // beats reconstructing a path from the session id. Route it through the host
   // readability check so a WSL guest path becomes an openable UNC on Windows;
   // stale/missing paths fall through to the id-based search.
   let unavailable: WslTranscriptFsError | undefined
   const hookPath = options.transcriptPath?.trim()
+  if (
+    transcriptAgent === 'antigravity' &&
+    options.wslDistro &&
+    hookPath &&
+    !needsWslHostResolution(hookPath)
+  ) {
+    throw new Error('Antigravity guest transcript path does not match its execution namespace')
+  }
   if (hookPath && extname(hookPath) === '.jsonl') {
     try {
       const hostReadable = await toHostReadableTranscriptPath(hookPath, {
@@ -152,7 +165,14 @@ export async function resolveSessionFilePath(
     if (unavailable) {
       throw unavailable
     }
-    return null
+    return transcriptAgent === 'antigravity' && !hookPath
+      ? resolveAntigravitySessionFile(
+          sessionId,
+          options.antigravityBrainDir,
+          signal,
+          options.wslDistro
+        )
+      : null
   }
 
   const resolved = await resolveSessionFileById(transcriptAgent, sessionId, options, signal)
@@ -295,52 +315,6 @@ async function findCodexRolloutInDirs(
     }
   }
   // No hit and at least one root never scanned: "couldn't look", not "missing".
-  if (unavailable) {
-    throw unavailable
-  }
-  return null
-}
-
-async function resolveAntigravitySessionFile(
-  conversationId: string,
-  brainDirOverride: string | undefined,
-  signal?: AbortSignal
-): Promise<string | null> {
-  // A conversation id is one directory segment, never a caller-supplied path.
-  if (!/^[a-zA-Z0-9_-]+$/.test(conversationId)) {
-    return null
-  }
-  const hostHit = await toHostReadableTranscriptPath(
-    join(
-      brainDirOverride ?? join(homedir(), ...ANTIGRAVITY_BRAIN_HOME_SEGMENTS),
-      ...antigravityTranscriptSegmentsInBrain(conversationId)
-    ),
-    { signal }
-  )
-  if (hostHit || brainDirOverride) {
-    return hostHit
-  }
-  if (process.platform !== 'win32') {
-    return null
-  }
-  // Why: enumerating WSL homes spawns wsl.exe, so only pay it after the host misses,
-  // and once per attempt — Chat re-resolves every few seconds until the file appears.
-  signal?.throwIfAborted()
-  const wslSnapshot = await createWslTranscriptResolutionSnapshot()
-  signal?.throwIfAborted()
-  let unavailable: WslTranscriptFsError | undefined
-  for (const candidate of await wslAntigravityTranscriptPaths(conversationId, { wslSnapshot })) {
-    try {
-      const hit = await toHostReadableTranscriptPath(candidate, { signal, wslSnapshot })
-      if (hit) {
-        return hit
-      }
-    } catch (error) {
-      signal?.throwIfAborted()
-      // Why: one stalled distro must not hide another distro's hit.
-      unavailable = wslTranscriptFsRefusal(error)
-    }
-  }
   if (unavailable) {
     throw unavailable
   }

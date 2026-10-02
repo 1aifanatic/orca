@@ -38,6 +38,7 @@ import { RuntimeAutomationController } from './runtime-automation-controller'
 import { RuntimeOrchestrationFederation } from './runtime-orchestration-federation'
 import { configureAiVaultSessionSources } from '../ai-vault/cached-session-list'
 import { configureHostReadableTranscriptPathSources } from '../native-chat/host-readable-transcript-path'
+import { configureNativeChatExecutionNamespace } from '../native-chat/native-chat-execution-namespace'
 import { createEphemeralAgentSessionClaimSigner } from './agent-session-claim-identity'
 import { registerConptyDa1OverrideInstaller } from './terminal-model-query-authority'
 import { registerTerminalViewAttributesApplier } from './terminal-view-attribute-store'
@@ -225,6 +226,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       deps?.readObservedAgentStatusPaneIdentity ?? (() => ({ kind: 'unobserved' }))
     this.getAgentProviderSessionSnapshotFn =
       deps?.getAgentProviderSessionSnapshot ?? deps?.getAgentStatusSnapshot ?? null
+    configureNativeChatExecutionNamespace(() => this.getAgentProviderSessionSnapshotFn?.() ?? [])
     this.getAgentProviderSessionRowsForPaneFn = deps?.getAgentProviderSessionRowsForPane ?? null
     this.attestAgentHookCompatibilityAuthorityFn =
       deps?.attestAgentHookCompatibilityAuthority ?? null
