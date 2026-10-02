@@ -23,6 +23,7 @@ import {
   readJournalSessionStatuses,
   readUnsettledJournalSessionIds
 } from '../agent-session-journal/journal-session-state'
+import { backfillJournalSessionStatus } from '../agent-session-journal/journal-session-status-backfill'
 import {
   openStructuredAgentSessionConversationJournal,
   type StructuredAgentSessionConversationOpenDeps
@@ -71,6 +72,13 @@ export type StructuredAgentSessionStartupState = {
    * so callers must catch.
    */
   settleClosedChat: (record: AgentSessionRecord) => Promise<boolean>
+  /**
+   * The background pass's first step: each listed chat with history here and no status row gets
+   * its row from its rows alone, opening nothing, one chat at a time in the order given. Answers
+   * the chats still to open: the rest, and any whose rows show work a gone process left or owe a
+   * rebuild, which their open settles or rebuilds.
+   */
+  deriveMissingStatuses: (sessionIds: readonly string[]) => Promise<string[]>
 }
 
 export function createStructuredAgentSessionStartupState(
@@ -83,8 +91,74 @@ export function createStructuredAgentSessionStartupState(
       settling ??= settleOwedSessions(deps, listedIds)
       return settling
     },
-    settleClosedChat: (record) => settleClosed(deps, record)
+    settleClosedChat: (record) => settleClosed(deps, record),
+    deriveMissingStatuses: (sessionIds) => deriveMissingStatuses(deps, sessionIds)
   }
+}
+
+async function deriveMissingStatuses(
+  deps: StructuredAgentSessionStartupStateDeps,
+  sessionIds: readonly string[]
+): Promise<string[]> {
+  if (deps.openDeps.journalDatabase.readOnly) {
+    return [...sessionIds]
+  }
+  // Quit stops a fold within one part, and nothing more is written.
+  const quit = new AbortController()
+  const yieldTask = async () => {
+    await yieldToEventLoop()
+    if (deps.isDisposed()) {
+      quit.abort()
+    }
+  }
+  const toOpen: string[] = []
+  for (const sessionId of sessionIds) {
+    if (deps.isDisposed()) {
+      return []
+    }
+    const record = deps.openDeps.store.getRecord(sessionId)
+    const derived =
+      record &&
+      deps.canSettle(record) &&
+      !deps.hasSession(sessionId) &&
+      (await deriveFromRows(deps, record, { yieldTask, signal: quit.signal }))
+    if (!derived) {
+      toOpen.push(sessionId)
+    }
+  }
+  return toOpen
+}
+
+/** Seeds the chat from a row derived from its rows; false leaves it to its open. */
+async function deriveFromRows(
+  deps: StructuredAgentSessionStartupStateDeps,
+  record: AgentSessionRecord,
+  options: { yieldTask: () => Promise<void>; signal: AbortSignal }
+): Promise<boolean> {
+  let derived: Awaited<ReturnType<typeof backfillJournalSessionStatus>>
+  try {
+    derived = await backfillJournalSessionStatus(
+      deps.openDeps.journalDatabase,
+      record.sessionId,
+      options
+    )
+  } catch (error) {
+    deps.openDeps.logger.warn('deriving a chat status from its rows failed', {
+      scope: 'startup-status-derive',
+      sessionId: record.sessionId,
+      error
+    })
+    return false
+  }
+  // Work a gone process left is settled, and a corrupt history rebuilt, by the chat's open.
+  if (!derived || derived.load.corrupt || isUnsettledJournalSessionStatus(derived.status)) {
+    return false
+  }
+  deps.seedStatus(record, {
+    projected: derived.status.summary,
+    lastActivityAt: derived.status.lastActivityAt
+  })
+  return true
 }
 
 function seedStoredStatuses(

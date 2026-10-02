@@ -110,21 +110,28 @@ export function createStructuredAgentSessionHostRestore(
   }
   const restorer = new StructuredAgentSessionReadableRestorer({ ...readRestore, supportsRecord })
   const gate = new StructuredAgentSessionRestartRestoreGate()
+  const startup = createStructuredAgentSessionStartupState({
+    openDeps: deps,
+    canSettle,
+    seedStatus,
+    resolveRecovery: readRestore.resolveRecovery,
+    restoreListed: (records) =>
+      restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
+    serialize: rest.serialize,
+    hasSession: rest.hasSession,
+    isDisposed: rest.isDisposed
+  })
   return {
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },
-    restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
-    ...createStructuredAgentSessionStartupState({
-      openDeps: deps,
-      canSettle,
-      seedStatus,
-      resolveRecovery: readRestore.resolveRecovery,
-      restoreListed: (records) =>
-        restoreStructuredAgentSessionsOnRestart({ ...readRestore, records }),
-      serialize: rest.serialize,
-      hasSession: rest.hasSession,
-      isDisposed: rest.isDisposed
-    })
+    // The listed chats the tab list left to it: rows derived without an open first, then the rest.
+    restoreReadableSessions: (sessionIds) =>
+      gate.run(async () =>
+        restorer.restore(
+          sessionIds === undefined ? undefined : await startup.deriveMissingStatuses(sessionIds)
+        )
+      ),
+    ...startup
   }
 }
