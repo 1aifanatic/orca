@@ -33,5 +33,54 @@ try {
   if(($result.hidden -join '|') -ne "$nodeDir|$gccDir"){throw 'Toolchain PATH entries not hidden'}
   if(($result.kept -join '|') -ne "$plainDir|$(Join-Path $pathRoot 'missing')|Q:\no-such-drive"){throw 'Plain PATH entries not kept in order'}
 } finally {Remove-Item -LiteralPath $pathRoot -Recurse -Force -ErrorAction SilentlyContinue}
+# Mock only the machine boundary; exercise the shared installer without servicing this host.
+. (Join-Path $PSScriptRoot 'windows-ssh-capability.ps1')
+function Assert-IsolatedWindowsSshCi([string]$Arch){if($script:refuseCapabilityHost){throw 'Injected host refusal'}}
+function Assert-WindowsSshGlobalServerDormant([string]$Server){$script:globalChecks++;if($script:globalChecks -eq $script:refuseGlobalCheck){throw 'Injected global server refusal'}}
+function Assert-WindowsSshStockShell {$script:shellChecks++;if($script:shellChecks -eq $script:refuseShellCheck){throw 'Injected shell refusal'}}
+function Get-WindowsCapability([switch]$Online,[string]$Name){$script:capabilityQueries++;return @{State=$script:capabilityState}}
+function Add-WindowsCapability([switch]$Online,[string]$Name){$script:capabilityAdds++;if($script:failCapabilityInstall){throw 'Injected capability install failure'}}
+function Reset-CapabilityControl([string]$State){
+  $script:capabilityState=$State;$script:capabilityQueries=0;$script:capabilityAdds=0
+  $script:globalChecks=0;$script:shellChecks=0;$script:refuseGlobalCheck=0;$script:refuseShellCheck=0
+  $script:refuseCapabilityHost=$false;$script:failCapabilityInstall=$false
+  $script:capabilityStages=[Collections.Generic.List[string]]::new()
+}
+foreach($state in @('Installed','NotPresent')){
+  Reset-CapabilityControl $state
+  $capabilityReport=@{}
+  Install-WindowsInboxSshCapability 'x64' $capabilityReport {param($name) $script:capabilityStages.Add($name)}
+  $expectedAdds=if($state -eq 'Installed'){0}else{1}
+  if($capabilityReport.inboxCapabilityInitialState -ne $state -or $script:capabilityAdds -ne $expectedAdds -or $script:globalChecks -ne 2 -or $script:shellChecks -ne 2 -or ($script:capabilityStages -join ',') -ne 'inbox-capability-start,inbox-capability-complete'){throw 'Shared capability preparation did not preserve the install and guard boundaries'}
+}
+foreach($fault in @('host','global-before','shell-before','global-after','shell-after','install')){
+  Reset-CapabilityControl 'NotPresent'
+  switch($fault){
+    'host' {$script:refuseCapabilityHost=$true}
+    'global-before' {$script:refuseGlobalCheck=1}
+    'shell-before' {$script:refuseShellCheck=1}
+    'global-after' {$script:refuseGlobalCheck=2}
+    'shell-after' {$script:refuseShellCheck=2}
+    'install' {$script:failCapabilityInstall=$true}
+  }
+  $rejected=$false
+  try {Install-WindowsInboxSshCapability 'x64' @{} {param($name) $script:capabilityStages.Add($name)}} catch {$rejected=$true}
+  if(-not $rejected -or $script:capabilityStages.Contains('inbox-capability-complete')){throw "Capability fault did not fail closed: $fault"}
+  if($fault -in @('host','global-before','shell-before') -and $script:capabilityAdds){throw 'Capability mutation preceded its host guards'}
+}
+$capabilityRoot=Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+try {
+  New-Item -ItemType Directory -Path $capabilityRoot | Out-Null
+  $capabilityReceipt=Join-Path $capabilityRoot 'capability.json'
+  Reset-CapabilityControl 'Installed'
+  Initialize-WindowsInboxSshCapability 'x64' $capabilityReceipt
+  $completed=Get-Content -LiteralPath $capabilityReceipt -Raw | ConvertFrom-Json
+  if($completed.status -ne 'passed' -or $completed.inboxCapabilityInitialState -ne 'Installed'){throw 'Capability success receipt missing its observed initial state'}
+  Reset-CapabilityControl 'NotPresent';$script:failCapabilityInstall=$true
+  $rejected=$false
+  try {Initialize-WindowsInboxSshCapability 'x64' $capabilityReceipt} catch {$rejected=$true}
+  $failed=Get-Content -LiteralPath $capabilityReceipt -Raw | ConvertFrom-Json
+  if(-not $rejected -or $failed.status -ne 'failed' -or $failed.inboxCapabilityInitialState -ne 'NotPresent' -or $failed.error -ne 'Injected capability install failure'){throw 'Failed capability preparation masqueraded as a passing receipt'}
+} finally {Remove-Item -LiteralPath $capabilityRoot -Recurse -Force -ErrorAction SilentlyContinue}
 # Extract functions through the AST: never provision the fixture while testing diagnostics.
-'PASS: fixture parse, five numeric-diagnostic cases and the toolchain PATH split'
+'PASS: fixture parse, diagnostics, PATH split, capability boundaries and failure receipts'

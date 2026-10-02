@@ -136,7 +136,9 @@ it('keeps all ten platform jobs and runs them when detection is skipped or fails
     readFileSync(new URL('../../.github/workflows/node-server-tests.yml', import.meta.url), 'utf8')
   )
   expect(workflow.on).toHaveProperty('workflow_dispatch')
-  expect(workflow.jobs.changes.if).toBe("github.event_name == 'pull_request'")
+  expect(workflow.jobs.changes.if).toBe(
+    "github.event_name == 'pull_request' && github.event.pull_request.draft != true"
+  )
   expect(workflow.jobs.changes.steps[0].with['fetch-depth']).toBe(2)
   expect(workflow.jobs.changes.steps[0].with['persist-credentials']).toBe(false)
   const detect = workflow.jobs.changes.steps.find((step) => step.id === 'scope')
@@ -150,15 +152,21 @@ it('keeps all ten platform jobs and runs them when detection is skipped or fails
   expect(workflow.jobs.persistence.if).toContain(
     "github.event_name != 'pull_request' || github.event.pull_request.draft != true"
   )
+  expect(workflow.jobs.persistence.needs).toBe('changes')
   expect(workflow.jobs.persistence.strategy.matrix.os).toContain('needs.changes.outputs.runners')
-  for (const jobName of ['linux_glibc_floor', 'linux_musl']) {
+  for (const jobName of ['linux_glibc_floor', 'linux_glibc217_compat', 'linux_musl']) {
     const job = workflow.jobs[jobName]
     expect(job.needs).toEqual(['changes', 'persistence'])
     expect(job.if).toContain("needs.persistence.result == 'success'")
     expect(job.if).toContain("needs.changes.outputs.qualification != 'false'")
     expect(job.if).toContain("needs.changes.outputs.should_run != 'false'")
-    expect(job.strategy.matrix.os).toEqual(['ubuntu-22.04', 'ubuntu-24.04-arm'])
   }
+  for (const jobName of ['linux_glibc_floor', 'linux_musl']) {
+    expect(workflow.jobs[jobName].strategy.matrix.os).toEqual(['ubuntu-22.04', 'ubuntu-24.04-arm'])
+  }
+  expect(workflow.jobs.desktop_template.needs).toContain('persistence')
+  expect(workflow.jobs.desktop_template.if).toContain("needs.persistence.result == 'success'")
+  expect(workflow.jobs.desktop_template.if).toContain('inputs.build_template')
 })
 
 it('builds server glibc slots on glibc 2.28 and the compat slot on glibc 2.17 (design D6)', () => {
