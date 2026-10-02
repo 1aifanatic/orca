@@ -67,7 +67,8 @@ const SANDBOX = mkdtempSync(join(tmpdir(), 'orca-staging-pty-'))
 const AGENT = join(SANDBOX, 'agent')
 writeFileSync(
   AGENT,
-  `#!/bin/sh\nps -o pgid=,tpgid= -p $$ > "$ORCA_TEST_CAPTURE.job"\nfor arg in "$@"; do printf '%s\\0' "$arg"; done > "$ORCA_TEST_CAPTURE"\n`
+  // Why the rename: the capture appears only once whole, however long a large argv takes to write.
+  `#!/bin/sh\nps -o pgid=,tpgid= -p $$ > "$ORCA_TEST_CAPTURE.job"\nfor arg in "$@"; do printf '%s\\0' "$arg"; done > "$ORCA_TEST_CAPTURE.part"\nmv "$ORCA_TEST_CAPTURE.part" "$ORCA_TEST_CAPTURE"\n`
 )
 chmodSync(AGENT, 0o755)
 
@@ -155,8 +156,6 @@ async function launchInRealShell(
     const deadline = Date.now() + 10_000
     while (Date.now() < deadline) {
       if (existsSync(capture)) {
-        // Why a beat: the agent's redirect creates the file before printf fills it.
-        await new Promise((resolve) => setTimeout(resolve, 100))
         const [pgid, foregroundPgid] = readFileSync(`${capture}.job`, 'utf8').trim().split(/\s+/)
         return {
           argv: readFileSync(capture, 'utf8'),
