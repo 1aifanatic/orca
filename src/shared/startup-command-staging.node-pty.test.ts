@@ -1,6 +1,7 @@
 /**
  * Real shells in real PTYs: the line a host types for a long or multi-line launch
- * must reach the agent's argv byte for byte, and leave no script behind.
+ * must reach the agent's argv byte for byte, run it as its own foreground job as a
+ * typed line would, and leave no script behind.
  *
  * The line is written the moment the shell spawns, while the TTY is still in
  * canonical mode — the window where a typed line past MAX_CANON is truncated
@@ -60,7 +61,7 @@ const SANDBOX = mkdtempSync(join(tmpdir(), 'orca-staging-pty-'))
 const AGENT = join(SANDBOX, 'agent')
 writeFileSync(
   AGENT,
-  `#!/bin/sh\nfor arg in "$@"; do printf '%s\\0' "$arg"; done > "$ORCA_TEST_CAPTURE"\n`
+  `#!/bin/sh\nps -o pgid=,tpgid= -p $$ > "$ORCA_TEST_CAPTURE.job"\nfor arg in "$@"; do printf '%s\\0' "$arg"; done > "$ORCA_TEST_CAPTURE"\n`
 )
 chmodSync(AGENT, 0o755)
 
@@ -79,7 +80,9 @@ const PROMPTS: [string, string][] = [
   ['a prompt with a tab', 'before\tafter']
 ]
 
-async function launchInRealShell(shell: LiveShell, prompt: string): Promise<string | null> {
+type AgentRun = { argv: string; pgid: number; foregroundPgid: number; shellPid: number }
+
+async function launchInRealShell(shell: LiveShell, prompt: string): Promise<AgentRun | null> {
   const caseDir = mkdtempSync(join(SANDBOX, `${shell.name}-`))
   const capture = join(caseDir, 'argv')
   const command = `${quoteStartupArg(AGENT, 'posix')} ${quoteStartupArg(prompt, 'posix')}`
@@ -130,7 +133,13 @@ async function launchInRealShell(shell: LiveShell, prompt: string): Promise<stri
       if (existsSync(capture)) {
         // Why a beat: the agent's redirect creates the file before printf fills it.
         await new Promise((resolve) => setTimeout(resolve, 100))
-        return readFileSync(capture, 'utf8')
+        const [pgid, foregroundPgid] = readFileSync(`${capture}.job`, 'utf8').trim().split(/\s+/)
+        return {
+          argv: readFileSync(capture, 'utf8'),
+          pgid: Number(pgid),
+          foregroundPgid: Number(foregroundPgid),
+          shellPid: proc.pid
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
@@ -148,9 +157,14 @@ const describeShells = SHELLS.length > 0 ? describe : describe.skip
 describeShells('a staged launch line in a real shell', () => {
   for (const shell of SHELLS) {
     it.each(PROMPTS)(
-      `reaches the agent byte for byte in ${shell.name}: %s`,
+      `reaches the agent byte for byte, as its own job, in ${shell.name}: %s`,
       async (_, prompt) => {
-        expect(await launchInRealShell(shell, prompt)).toBe(`${prompt}\0`)
+        const run = await launchInRealShell(shell, prompt)
+        expect(run?.argv).toBe(`${prompt}\0`)
+        // Why: in the shell's own group, Ctrl-Z never stops the agent and the shell-in-front check
+        // cannot tell the two apart.
+        expect(run?.pgid).not.toBe(run?.shellPid)
+        expect(run?.pgid).toBe(run?.foregroundPgid)
       },
       20_000
     )

@@ -70,19 +70,48 @@ describe('stageStartupCommand', () => {
     expect(readFileSync(scriptPath, 'utf8')).toBe(`command rm -f -- '${scriptPath}'\n${command}\n`)
   })
 
-  it('sources with `source` in fish', () => {
+  it('evals the script in fish, which runs a sourced file without job control', () => {
     const staged = stage('a'.repeat(600), '/opt/homebrew/bin/fish')
-    expect(staged.command).toBe(`source '${staged.scriptPath}'`)
+    expect(staged.command).toBe(`eval (string collect < '${staged.scriptPath}')`)
   })
 
   it('recognizes a login shell name', () => {
     expect(stage('a'.repeat(600), '-zsh').delivery).toBe('staged')
   })
 
-  it('sources the script in ksh like sh', () => {
-    const staged = stage('a'.repeat(600), '/bin/ksh')
-    expect(staged.command).toBe(`. '${staged.scriptPath}'`)
-  })
+  // Why: ksh runs a sourced file's commands in the shell's own process group, so Ctrl-Z is lost.
+  it.each([['/bin/ksh'], ['/usr/bin/mksh']])(
+    'runs a long Orca-built line through /bin/sh in %s, and types a short one as is',
+    (shellPath) => {
+      const staged = stageStartupCommand({
+        command: `claude '${'x'.repeat(600)}'`,
+        shellPath,
+        orcaBuiltLine: true,
+        platform: 'darwin',
+        directory
+      })
+      expect(staged.command).toBe(`/bin/sh '${staged.scriptPath}'`)
+      const command = `claude 'wow!! great'`
+      expect(
+        stageStartupCommand({
+          command,
+          shellPath,
+          orcaBuiltLine: true,
+          platform: 'darwin',
+          directory
+        })
+      ).toEqual({ command, delivery: 'typed' })
+    }
+  )
+
+  it.each([['/bin/ksh'], ['/usr/bin/mksh']])(
+    'types a long command the user wrote as it always was in %s',
+    (shellPath) => {
+      const command = 'a'.repeat(600)
+      expect(stage(command, shellPath)).toEqual({ command, delivery: 'typed' })
+      expect(readdirSync(directory)).toEqual([])
+    }
+  )
 
   // Why: typed raw, tcsh runs a prompt's second line as a command and MAX_CANON cuts a long one.
   it.each([['/usr/bin/nu'], ['/bin/tcsh'], ['/usr/local/bin/pwsh'], [undefined]])(

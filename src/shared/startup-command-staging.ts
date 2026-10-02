@@ -11,10 +11,8 @@ import { randomBytes } from 'node:crypto'
 import { readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { hasControlByte, TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES } from './startup-line-prompt-carry'
 import { quoteStartupArg } from './tui-agent-startup-shell'
-
-/** Half of macOS MAX_CANON: a typed line this long survived every canonical-mode write measured. */
-export const TYPED_STARTUP_COMMAND_BUDGET_BYTES = 512
 
 export const STAGED_STARTUP_COMMAND_PREFIX = 'orca-launch-'
 
@@ -34,27 +32,20 @@ export type StartupCommandStaging = {
   failure?: string
 }
 
-// Why only these source the script: the staged body is Orca's portable quoting, verified literal in
-// these. Any other shell (tcsh, nu, xonsh, pwsh...) runs an agent launch line Orca built through
-// `/bin/sh` instead; a command the user wrote for that shell is typed as it always was.
+// Why only these type a short line as is: Orca's portable quoting is verified literal in these. Any
+// other shell (tcsh, nu, xonsh, pwsh...) runs an agent launch line Orca built through `/bin/sh`
+// instead; a command the user wrote for that shell is typed as it always was.
 const STAGING_SHELLS = new Set(['bash', 'zsh', 'sh', 'dash', 'fish', 'ksh', 'mksh'])
+
+// Why not ksh: it runs a sourced file's commands in the shell's own process group, so Ctrl-Z could
+// not stop the agent (mksh untested, kept with it); their long Orca-built lines use `/bin/sh`.
+const SOURCING_SHELLS = new Set(['bash', 'zsh', 'sh', 'dash', 'fish'])
 
 const encoder = new TextEncoder()
 
 export function stagingShellName(shellPath: string | undefined): string | null {
   const name = shellPath?.split('/').pop()?.replace(/^-/, '').toLowerCase()
   return name && STAGING_SHELLS.has(name) ? name : null
-}
-
-/** Any C0 byte or DEL: no quoter escapes them, so a line editor reads them as keys. */
-function hasControlByte(line: string): boolean {
-  for (let i = 0; i < line.length; i += 1) {
-    const code = line.charCodeAt(i)
-    if (code < 0x20 || code === 0x7f) {
-      return true
-    }
-  }
-  return false
 }
 
 function stripSubmitTerminator(command: string): string {
@@ -71,15 +62,28 @@ export function shouldStageStartupCommand(args: {
   if (args.platform === 'win32') {
     return false
   }
-  if (stagingShellName(args.shellPath) === null) {
+  const shellName = stagingShellName(args.shellPath)
+  if (shellName === null) {
     // Why every length: Orca's POSIX quoting is literal only in the shells above (tcsh doubles a
     // quoted backslash and expands `!!`), so another shell only ever sees the script's inert path.
     return args.orcaBuiltLine === true
   }
   const body = stripSubmitTerminator(args.command)
   return (
-    hasControlByte(body) || encoder.encode(body).byteLength > TYPED_STARTUP_COMMAND_BUDGET_BYTES
+    (hasControlByte(body) ||
+      encoder.encode(body).byteLength > TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES) &&
+    (SOURCING_SHELLS.has(shellName) || args.orcaBuiltLine === true)
   )
+}
+
+function stagedScriptLine(shellName: string | null, quotedPath: string): string {
+  if (shellName === 'fish') {
+    // Why eval: fish runs a sourced file without job control; eval runs it as if typed.
+    return `eval (string collect < ${quotedPath})`
+  }
+  return shellName !== null && SOURCING_SHELLS.has(shellName)
+    ? `. ${quotedPath}`
+    : `/bin/sh ${quotedPath}`
 }
 
 let staleSweepStarted = false
@@ -123,10 +127,7 @@ export function stageStartupCommand(args: {
     }
   }
   return {
-    command:
-      shellName === null
-        ? `/bin/sh ${quotedPath}`
-        : `${shellName === 'fish' ? 'source' : '.'} ${quotedPath}`,
+    command: stagedScriptLine(shellName, quotedPath),
     delivery: 'staged',
     scriptPath
   }
