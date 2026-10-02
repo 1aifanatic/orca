@@ -143,15 +143,15 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
         console.warn('[agent-hooks] failed to reconcile managed hooks on startup:', error)
       )
   }
-  // Why: process-gone metrics only see survivors, and the gone-time host memory
-  // read lands after the corpse released its pages; both need a live pre-gone
-  // sample to compare against in crash reports.
   // Why the path captured once: resolving it each time re-runs the runtime dir's mkdir/chmod.
   let daemonPidPath: string | null = null
   setLinuxOomKillDaemonPidSource(() => {
     daemonPidPath ??= getDaemonEndpointFacts()?.pidPath ?? null
     return readDaemonPidRecord(daemonPidPath)?.pid
   })
+  // Why: process-gone metrics only see survivors, and the gone-time host memory
+  // read lands after the corpse released its pages; both need a live pre-gone
+  // sample to compare against in crash reports.
   startPreGoneCrashSampling()
   app.on('child-process-gone', (_event, details) => {
     recordProcessGoneCrash('child', details.type, details.reason, details.exitCode ?? null, {

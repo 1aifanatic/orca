@@ -139,7 +139,11 @@ describe('readLinuxOomKillCounters', () => {
   it('reads the daemon pid source once while the daemon stays in its cgroup', () => {
     const pidSource = vi.fn(() => DAEMON_PID)
     setLinuxOomKillDaemonPidSource(pidSource)
-    const state = { hostKills: 3, cgroupKills: 0, daemonCgroup: DAEMON_SCOPE as string | undefined }
+    const state: { hostKills: number; cgroupKills: number; daemonCgroup?: string } = {
+      hostKills: 3,
+      cgroupKills: 0,
+      daemonCgroup: DAEMON_SCOPE
+    }
     setLinuxOomKillFileReaderForTest(fakeHost(state), 'linux')
     readLinuxOomKillCounters()
     readLinuxOomKillCounters()

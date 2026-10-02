@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { CrashReportDetailValue } from '../../shared/crash-reporting'
+import { isDaemonScopeUnit } from '../daemon/daemon-cgroup-scope'
 
 // ─── Linux kernel OOM-kill attribution ──────────────────────────────
 // Why: a Linux renderer SIGKILL (exit 9) with main surviving looks the same
@@ -98,9 +99,6 @@ function cgroupLeafKind(cgroupPath: string): LinuxCgroupLeafKind {
   return /orca/i.test(leaf) ? 'orca' : 'other'
 }
 
-// Why the prefix check: a stale pid record can point at a recycled pid in an unrelated cgroup.
-const DAEMON_SCOPE_LEAF = /^(orca-daemon-|app-orca-).*\.scope$/
-
 function readDaemonScopeCounter(counters: LinuxOomKillCounters, daemonPath: string): void {
   counters.daemonSharesCgroup = false
   counters.daemonCgroupPath = daemonPath
@@ -128,7 +126,8 @@ function readDaemonCgroup(
     counters.daemonSharesCgroup = true
     return
   }
-  if (!DAEMON_SCOPE_LEAF.test(daemonPath.split('/').at(-1) ?? '')) {
+  // Why: a stale pid record can point at a recycled pid in an unrelated cgroup.
+  if (!isDaemonScopeUnit(daemonPath.split('/').at(-1) ?? '')) {
     return
   }
   readDaemonScopeCounter(counters, daemonPath)
