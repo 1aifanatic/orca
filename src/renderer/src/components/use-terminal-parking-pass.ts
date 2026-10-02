@@ -48,7 +48,7 @@ export function useTerminalParkingPass(controller: TerminalParkingFoundation): v
     parked: ReadonlySet<string>
     forceParked: ReadonlySet<string>
     evictionExempt: ReadonlySet<string>
-  }>({ parked: new Set(), forceParked: new Set(), evictionExempt: new Set() })
+  } | null>(null)
 
   useEffect(() => {
     const pass = collectTerminalParkingPassCandidates(controller)
@@ -152,7 +152,11 @@ export function useTerminalParkingPass(controller: TerminalParkingFoundation): v
     // Why: a functional updater that returns `current` still queues a render. This pass runs in the
     // synchronously flushed effects of every pty-exit commit, so those no-op renders chained a
     // worktree removal's pane-close burst past React's nested-update limit (#185).
-    const dispatched = dispatchedIdSetsRef.current
+    const dispatched = (dispatchedIdSetsRef.current ??= {
+      parked: new Set(),
+      forceParked: new Set(),
+      evictionExempt: new Set()
+    })
     if (!haveSameIdSet(dispatched.parked, pass.nextParkedTerminalWorktreeIds)) {
       dispatched.parked = pass.nextParkedTerminalWorktreeIds
       setParkedTerminalWorktreeIds(pass.nextParkedTerminalWorktreeIds)

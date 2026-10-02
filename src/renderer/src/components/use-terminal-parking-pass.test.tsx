@@ -1,17 +1,19 @@
 // @vitest-environment happy-dom
 
 import { act, renderHook } from '@testing-library/react'
-import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { StrictMode, useState } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalParkingFoundation } from './use-terminal-parking-foundation'
 import { useTerminalParkingPass } from './use-terminal-parking-pass'
+
+const parkingPass = vi.hoisted(() => ({ parkedIds: ['wt-parked'] }))
 
 vi.mock('./terminal-parking-pass-candidates', () => ({
   canOrdinarilyParkRetentionCandidate: () => true,
   collectTerminalParkingPassCandidates: () => ({
     retentionCandidates: [],
     // Fresh Set each pass, like the real selector.
-    nextParkedTerminalWorktreeIds: new Set(['wt-parked']),
+    nextParkedTerminalWorktreeIds: new Set(parkingPass.parkedIds),
     nowMs: 0,
     overrides: {},
     parkingTimers: new Map()
@@ -54,6 +56,10 @@ function useParkingPassHost() {
 }
 
 describe('useTerminalParkingPass', () => {
+  beforeEach(() => {
+    parkingPass.parkedIds = ['wt-parked']
+  })
+
   it('does not queue a render when a pass produces the same parking sets', () => {
     let renders = 0
     const { result } = renderHook(() => {
@@ -69,6 +75,28 @@ describe('useTerminalParkingPass', () => {
       act(() => result.current.bump())
     }
     expect(renders - settled).toBe(5)
+    expect([...result.current.parked]).toEqual(['wt-parked'])
+  })
+
+  it('applies changed parking decisions after unchanged passes', () => {
+    const { result } = renderHook(() => useParkingPassHost())
+    act(() => result.current.bump())
+    parkingPass.parkedIds = ['wt-other']
+    act(() => result.current.bump())
+    expect([...result.current.parked]).toEqual(['wt-other'])
+    parkingPass.parkedIds = []
+    act(() => result.current.bump())
+    expect([...result.current.parked]).toEqual([])
+  })
+
+  it('keeps parking transitions working under StrictMode', () => {
+    const { result } = renderHook(() => useParkingPassHost(), { wrapper: StrictMode })
+    expect([...result.current.parked]).toEqual(['wt-parked'])
+    parkingPass.parkedIds = []
+    act(() => result.current.bump())
+    expect([...result.current.parked]).toEqual([])
+    parkingPass.parkedIds = ['wt-parked']
+    act(() => result.current.bump())
     expect([...result.current.parked]).toEqual(['wt-parked'])
   })
 })
