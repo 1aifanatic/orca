@@ -15,7 +15,7 @@ export function createProcessTableSnapshotReader<T = string>(
   deps: ProcessTableSnapshotReaderDeps<T>
 ): {
   getSnapshot: () => Promise<T>
-  getSnapshotSince: (notBeforeMs: number) => Promise<T>
+  getSnapshotSince: (notBeforeMs: number, stillWanted?: () => boolean) => Promise<T>
   getSnapshotWithAge: () => Promise<{ value: T; capturedAgeMs: number }>
   getFreshSnapshot: () => Promise<T>
   reset: () => void
@@ -63,13 +63,20 @@ export function createProcessTableSnapshotReader<T = string>(
   /** A table that began no earlier than `notBeforeMs`: one that started before the evidence cannot
    *  show what that evidence started. Joins a qualifying capture, else waits out the running one
    *  and starts the next, so concurrent waiters still share one `ps`. */
-  async function getSnapshotSince(notBeforeMs: number): Promise<T> {
+  async function getSnapshotSince(
+    notBeforeMs: number,
+    stillWanted: () => boolean = () => true
+  ): Promise<T> {
     for (;;) {
       if (cached && cached.capturedAtMs >= notBeforeMs) {
         return cached.value
       }
       const running = inFlight ?? freshQueued?.promise ?? null
       if (!running) {
+        // Why: a waiter abandoned while it waited (its command ended) must not fork a `ps` alone.
+        if (!stillWanted()) {
+          throw new Error('process table read abandoned')
+        }
         return runSnapshot()
       }
       if (inFlight === running && inFlightCapturedAtMs >= notBeforeMs) {

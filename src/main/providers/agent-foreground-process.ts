@@ -164,7 +164,7 @@ export async function resolveAgentForegroundProcessWithAvailability(
       ? await getFreshProcessTableSnapshot()
       : options.snapshotNotBeforeMs === undefined
         ? await getProcessTableSnapshot()
-        : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs)
+        : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs, options.stillWanted)
     if (options.fresh && !getProcessTableIndex(rows).byPid.has(shellPid)) {
       return { available: false, processName: fallbackProcess }
     }

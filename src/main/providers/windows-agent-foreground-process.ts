@@ -1,4 +1,5 @@
 import type { AgentForegroundObservation } from '../../shared/agent-foreground-identity'
+import type { AgentPresenceCaptureOptions } from '../../shared/agent-process-presence'
 import {
   isAgentForegroundWrapperProcess,
   isExpectedAgentProcess,
@@ -17,12 +18,11 @@ import {
   type WindowsProcessRow
 } from './windows-foreground-process-rows'
 
-export type AgentForegroundResolutionOptions = {
+// Capture options: POSIX reads take only a table that began after their evidence.
+export type AgentForegroundResolutionOptions = AgentPresenceCaptureOptions & {
   contextPaths?: readonly string[]
   /** Require a Windows process-table scan started after this request. */
   fresh?: boolean
-  /** POSIX: accept only a table that began at or after this time (the evidence being answered). */
-  snapshotNotBeforeMs?: number
   /** Force confirmation scans even when node-pty reports a recognized name. */
   forceProcessScan?: boolean
   /** Lazily proves which global descendants still belong to this ConPTY. */

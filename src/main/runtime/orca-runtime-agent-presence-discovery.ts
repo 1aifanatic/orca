@@ -143,7 +143,10 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
       pty.incarnationId === incarnation &&
       this.ptyController === controller
     const discovery = controller
-      .captureAgentPresence(ptyId, { snapshotNotBeforeMs: evidenceAtMs })
+      .captureAgentPresence(ptyId, {
+        snapshotNotBeforeMs: evidenceAtMs,
+        stillWanted: () => commandCurrent() && current()
+      })
       .then((presence) => {
         if (!presence || !commandCurrent() || !current() || settled()) {
           return

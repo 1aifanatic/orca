@@ -92,7 +92,7 @@ export async function resolveSpawnFileForegroundProcess(
         ? await getFreshProcessTableSnapshot()
         : options.snapshotNotBeforeMs === undefined
           ? await getProcessTableSnapshot()
-          : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs)
+          : await getProcessTableSnapshotSince(options.snapshotNotBeforeMs, options.stillWanted)
       return resolveSpawnFileForegroundFromRows(rows, proc.pid)
     }
     const resolution = await resolveAgentForegroundProcessWithAvailability(

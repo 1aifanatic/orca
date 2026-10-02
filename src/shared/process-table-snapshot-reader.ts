@@ -188,9 +188,10 @@ export async function getProcessTableSnapshot(): Promise<ProcessTableRow[]> {
 
 /** For a read that answers evidence seen at `notBeforeMs`; see `getSnapshotSince`. */
 export async function getProcessTableSnapshotSince(
-  notBeforeMs: number
+  notBeforeMs: number,
+  stillWanted?: () => boolean
 ): Promise<ProcessTableRow[]> {
-  return (await processTableReader.getSnapshotSince(notBeforeMs)).lenient()
+  return (await processTableReader.getSnapshotSince(notBeforeMs, stillWanted)).lenient()
 }
 
 export async function getFreshProcessTableSnapshot(): Promise<ProcessTableRow[]> {

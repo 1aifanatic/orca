@@ -798,7 +798,8 @@ export class PtyHandler {
       // Why the bound: a process table that began before the evidence cannot show what it started.
       const presence = await captureAgentForegroundIdentity(() =>
         createPtyForegroundResolver(managed.pty)(managed.pty.pid, managed.pty.process || null, {
-          snapshotNotBeforeMs: evidenceAtMs
+          snapshotNotBeforeMs: evidenceAtMs,
+          stillWanted: wanted
         })
       )
       if (presence && wanted() && (doubtOwner || !owned())) {

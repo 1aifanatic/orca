@@ -69,4 +69,17 @@ describe('a process table read that answers evidence', () => {
     await expect(reader.getSnapshotSince(100)).resolves.toBe('fresh')
     expect(runs).toHaveLength(1)
   })
+
+  it('starts no new table for a waiter abandoned while it waited', async () => {
+    const { reader, runs, tick } = slowReader()
+    void reader.getSnapshot()
+    tick(100)
+    let wanted = true
+    const abandoned = reader.getSnapshotSince(100, () => wanted)
+    wanted = false
+    tick(10_000)
+    runs[0].finish('old')
+    await expect(abandoned).rejects.toThrow('abandoned')
+    expect(runs).toHaveLength(1)
+  })
 })

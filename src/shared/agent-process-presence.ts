@@ -19,7 +19,11 @@ export type AgentProcessPresence = {
 export type AgentProcessVerdict = 'live' | 'unverifiable' | 'exited'
 
 /** What a capture answers: evidence seen at this time, so an older process table cannot. */
-export type AgentPresenceCaptureOptions = { snapshotNotBeforeMs?: number }
+export type AgentPresenceCaptureOptions = {
+  snapshotNotBeforeMs?: number
+  /** In-process only: a read nobody wants any more starts no new process table. */
+  stillWanted?: () => boolean
+}
 
 /** The execution host's record of the agent process owning a pane; independent of any turn row. */
 export type AgentPaneOwner = {
