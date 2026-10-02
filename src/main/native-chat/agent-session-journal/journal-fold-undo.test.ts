@@ -207,6 +207,17 @@ describe('a failed append leaves the fold equal to a replay of the disk', () => 
     expect(violations).toEqual([])
   })
 
+  it("keeps a person's Stop and the queue's Resume as a replay reads them", async () => {
+    const journal = await open('stop')
+    await journal.appendItem(codexItem('t-1', 0), assistant('x'), THREAD)
+    const violations = failEveryAppendOnce(journal, 'stop')
+
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 't-1' }, CORPUS_FENCE)
+    await journal.appendQueueResume(CORPUS_FENCE)
+    await journal.appendStopEvent({ reason: 'user-stop' }, CORPUS_FENCE)
+    expect(violations).toEqual([])
+  })
+
   it.each(JOURNAL_SESSION_STATE_CASES)(
     'with a bookkeeping savepoint that always fails: %s',
     async (name) => {
