@@ -202,6 +202,20 @@ describe('worktree teardown and structured agent sessions', () => {
     })
   })
 
+  it('closes an open chat whose previous agent recovery has not proven gone, and refuses until it is', async () => {
+    const recovering = record('s1', WORKTREE)
+    recovering.lease.handoffStage = 'recovering'
+    const host = installHost({ records: [recovering], unverifiable: new Set(['s1']) })
+    expect(listStructuredSessionsForWorktree(WORKTREE, {}).live).toEqual([
+      { sessionId: 's1', agent: 'claude' }
+    ])
+
+    await expect(killAllProcessesForWorktree(WORKTREE, destructiveDeps())).rejects.toThrow(
+      /1 agent session \(claude\)/
+    )
+    expect(host.closed).toEqual(['s1'])
+  })
+
   it('closes a live session on an ordinary removal instead of refusing it', async () => {
     // The defect this pins, and the reason the guard is not simply deleted: all three PTY sweeps
     // enumerate leaves, provider sessions and the local registry, and a structured session is on

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import {
+  failedAcquisitionDeathEvidence,
+  type AgentSessionAcquisitionExitProof
+} from './agent-session-failed-acquisition'
 import type { AgentSessionOwnerProbe } from './agent-session-lease-adjudication'
 import {
   agentSessionLeaseAdmitsWriter,
@@ -107,6 +111,18 @@ describe('lease state derived from host proof', () => {
     expect(agentSessionLeaseIsFree(state)).toBe(false)
   })
 
+  it.each([
+    ['unreconciled', lease({ unreconciled: true })],
+    ['mid-handoff', lease({ handoffStage: 'new-owner-proving' })],
+    ['reserved', lease({ claimStatus: 'reserved' })],
+    ['recording no process', lease({ ownerProcess: null })],
+    ['recovering', lease({ handoffStage: 'recovering' })]
+  ] as const)('never admits the child this host runs as a writer while %s', (_label, stored) => {
+    expect(
+      agentSessionLeaseAdmitsWriter(deriveAgentSessionLeaseState(stored, proof({ kind: 'runs' })))
+    ).toBe(false)
+  })
+
   it('ignores proof gathered at another fence', () => {
     expect(deriveAgentSessionLeaseState(lease(), proof(WATCHED, 6)).state).toBe('unverifiable')
     expect(deriveAgentSessionLeaseState(lease(), proof({ kind: 'runs' }, 8)).state).toBe(
@@ -133,6 +149,34 @@ describe('lease state derived from host proof', () => {
       expect(state).toEqual({ state: 'acquiring' })
       expect(agentSessionLeaseOwnerVerdict(stored, state)).toBe('live')
     }
+  })
+
+  it('trusts a stored release only in the clean shape restart adjudication calls free', () => {
+    for (const leftover of [{ reservedSpawnToken: null }, { ownerProcess: null }]) {
+      const stored = lease({ claimStatus: 'released', ...leftover })
+      expect(deriveAgentSessionLeaseState(stored, proof(INDETERMINATE)).state).toBe('unverifiable')
+      expect(deriveAgentSessionLeaseState(stored, null).state).not.toBe('free')
+    }
+    const recordedOwner = lease({ claimStatus: 'released', reservedSpawnToken: null })
+    expect(deriveAgentSessionLeaseState(recordedOwner, proof(ALIVE)).state).toBe('held')
+  })
+
+  it('reads a clean release as free and exited before restart reconciliation lands', () => {
+    const evidence = { kind: 'pid-absent', detail: 'gone', observedAt: 900, ownerFence: 6 } as const
+    const released = lease({
+      claimStatus: 'released',
+      ownerProcess: null,
+      reservedSpawnToken: null,
+      unreconciled: true,
+      deathEvidence: evidence
+    })
+    const state = deriveAgentSessionLeaseState(released, null)
+    expect(state).toEqual({ state: 'free', basis: { kind: 'stored' } })
+    expect(agentSessionLeaseOwnerVerdict(released, state)).toBe('exited')
+    expect(
+      deriveAgentSessionLeaseState(lease({ claimStatus: 'released', unreconciled: true }), null)
+        .state
+    ).toBe('reconciling')
   })
 
   it('keeps a stored release free with whatever evidence it wrote', () => {
@@ -179,5 +223,63 @@ describe('owner verdict and evidence', () => {
     expect(
       agentSessionLeaseOwnerVerdict(lease(), deriveAgentSessionLeaseState(lease(), null))
     ).toBe('unverifiable')
+  })
+})
+
+describe("this host's own failed attempt whose settlement never landed", () => {
+  const ATTEMPT = { spawnToken: 'spawn-a', operationId: 'op-1' }
+  const RESERVATION = lease({ ...RESERVED, reservedSpawnToken: 'spawn-a' })
+  const failed = (exitProof: AgentSessionAcquisitionExitProof): AgentSessionOwnerEvidence => ({
+    kind: 'failed-acquisition',
+    ...ATTEMPT,
+    exitProof,
+    observedAt: 900
+  })
+
+  it.each(['exit-proven', 'root-exit-observed', 'processless'] as const)(
+    'frees its reservation as the %s settlement would have, with that evidence',
+    (exitProof) => {
+      const state = deriveAgentSessionLeaseState(RESERVATION, proof(failed(exitProof)))
+      expect(state).toEqual({ state: 'free', basis: failed(exitProof) })
+      expect(agentSessionLeaseOwnerVerdict(RESERVATION, state)).toBe('exited')
+      expect(
+        state.state === 'free' && agentSessionLeaseFreeEvidence(RESERVATION, state.basis, 2_000)
+      ).toEqual(failedAcquisitionDeathEvidence(exitProof, 900, 7))
+    }
+  )
+
+  it('frees a recorded owner only when the attempt proved its exit', () => {
+    const spawned = lease({ ...RESERVED, ownerProcess: OWNER })
+    expect(deriveAgentSessionLeaseState(spawned, proof(failed('exit-proven'))).state).toBe('free')
+    expect(deriveAgentSessionLeaseState(spawned, proof(failed('unproven'))).state).toBe(
+      'unverifiable'
+    )
+  })
+
+  it.each([
+    ['its exit went unproven', RESERVATION, failed('unproven'), 7],
+    ['the proof is for another fence', RESERVATION, failed('exit-proven'), 6],
+    [
+      'another attempt holds the reservation',
+      lease({ ...RESERVED, handoffOperationId: 'op-2' }),
+      failed('exit-proven'),
+      7
+    ],
+    [
+      'another token was reserved',
+      lease({ ...RESERVED, reservedSpawnToken: 'spawn-b' }),
+      failed('exit-proven'),
+      7
+    ],
+    [
+      'recovery already holds it',
+      lease({ ...RESERVED, handoffStage: 'recovering' }),
+      failed('exit-proven'),
+      7
+    ]
+  ] as const)('never frees it when %s', (_label, stored, owner, fence) => {
+    expect(agentSessionLeaseIsFree(deriveAgentSessionLeaseState(stored, proof(owner, fence)))).toBe(
+      false
+    )
   })
 })

@@ -1,11 +1,13 @@
 // What this host knows in memory about a session's owner: the child it runs, the exit of that child
-// it watched, and whether an acquisition of its own is under way.
+// it watched, how its own failed attempt accounted for its process, and whether an acquisition of
+// its own is under way.
 //
 // Only an owner this host recorded at the lease's current fence is spoken for. A fence is granted by
-// exactly one acquisition, and this host's store is the only writer, so a child or an ended child at
-// that fence IS the lease's owner. An owner on any other host gets nothing from memory: only a probe
-// may speak for it, and it answers `indeterminate`.
+// exactly one acquisition, and this host's store is the only writer, so a child, an ended child or a
+// failed attempt at that fence IS the lease's owner. An owner on any other host gets nothing from
+// memory: only a probe may speak for it, and it answers `indeterminate`.
 
+import { isFailedAcquisitionReservation } from '../../../shared/agent-session-failed-acquisition'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import {
   agentSessionLeaseFreeEvidence,
@@ -17,6 +19,7 @@ import type {
   AgentSessionLease,
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
+import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { MAX_UNEXPECTED_EXIT_REASON_CHARS } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
@@ -26,10 +29,33 @@ export function structuredAgentSessionOwnerProof(input: {
   hostId: string
   session: Pick<StructuredAgentSessionHostSession, 'child' | 'lastEndedChild'> | undefined
   attemptInFlight: boolean
+  /** This host's last failed attempt for the session whose settlement write did not land. */
+  unsettledAcquisition?: AgentSessionFailedAcquisitionSettlement
 }): AgentSessionHostProof {
   const { lease, session } = input
   const fence = lease.runtimeFence
   const proof = { fence, attemptInFlight: input.attemptInFlight }
+  const failed = input.unsettledAcquisition
+  if (
+    failed?.fence === fence &&
+    failed.exitProof !== 'unproven' &&
+    isFailedAcquisitionReservation(lease, failed) &&
+    // A reservation names no host: its own token at its own fence is what makes it this host's.
+    (lease.ownerProcess === null ||
+      (lease.ownerProcess.hostId === input.hostId &&
+        lease.ownerProcess.spawnToken === failed.spawnToken))
+  ) {
+    return {
+      ...proof,
+      owner: {
+        kind: 'failed-acquisition',
+        spawnToken: failed.spawnToken,
+        operationId: failed.operationId,
+        exitProof: failed.exitProof,
+        observedAt: failed.now
+      }
+    }
+  }
   if (lease.ownerProcess?.hostId !== input.hostId) {
     return { ...proof, owner: { kind: 'none' } }
   }
@@ -76,8 +102,10 @@ export function structuredAgentSessionOwnerProofUnderSerialize(
 
 /** The probe an acquisition's compare-and-swap reads. A watched exit is `exit-observed`, the
  *  vocabulary's own word for it; this host's child echoed the reserved token when its identity was
- *  committed. No record means nothing was ever reserved. */
+ *  committed. No record means nothing was ever reserved. A failed attempt's cleanup accounted for
+ *  whatever it spawned: its recorded owner exited, or nothing runs under its reservation. */
 export function structuredAgentSessionAcquisitionProbe(
+  lease: AgentSessionLease | null,
   proof: AgentSessionHostProof | null
 ): AgentSessionOwnerProbe {
   switch (proof?.owner.kind) {
@@ -85,6 +113,8 @@ export function structuredAgentSessionAcquisitionProbe(
       return { outcome: 'reservation-unused' }
     case 'watched-exit':
       return { outcome: 'exit-observed' }
+    case 'failed-acquisition':
+      return lease?.ownerProcess ? { outcome: 'exit-observed' } : { outcome: 'reservation-unused' }
     case 'probed':
       return proof.owner.probe
     case 'runs':

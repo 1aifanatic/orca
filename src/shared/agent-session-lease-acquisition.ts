@@ -3,7 +3,7 @@
  * asks about — whether the caller read the current fence, and whether it is re-entering its own
  * reservation. It runs inside the session's serialize, so no other attempt of this host's is in
  * flight beside it: a reservation another operation left behind belongs to an attempt that ended,
- * and is free once the probe proves nothing was, or is still, spawned under it.
+ * and is free once the host proves nothing was, or is still, spawned under it.
  */
 
 import { isAgentSessionFenceCurrent } from './agent-session-lease-adjudication'
@@ -45,7 +45,8 @@ export function evaluateAgentSessionAcquisition(args: {
     attemptInFlight: false,
     owner: { kind: 'probed', probe }
   })
-  if (state.state === 'reconciling') {
+  // Why: even a release the derivation calls free waits for its adjudication before a new fence.
+  if (lease.unreconciled) {
     return {
       decision: 'refused',
       code: 'execution_owner_reconciling',

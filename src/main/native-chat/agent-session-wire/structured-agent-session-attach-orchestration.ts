@@ -18,8 +18,10 @@ import { performAttach, type AttachFlowInput } from './structured-agent-session-
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
   agentSessionLeaseAdmitsWriter,
-  deriveAgentSessionLeaseState
+  deriveAgentSessionLeaseState,
+  type AgentSessionHostProof
 } from '../../../shared/agent-session-lease-state'
+import type { AgentSessionLease } from '../../../shared/agent-session-record'
 import {
   structuredAgentSessionAcquisitionProbe,
   structuredAgentSessionPriorDeathEvidence
@@ -55,6 +57,8 @@ export type StructuredAgentSessionAttachOptions = {
   onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
   /** The queued message a start is for; see `StructuredAgentSessionProviderChild.startedFor`. */
   startedFor?: string
+  /** The proof a caller in the same serialize already gathered, and the lease it was gathered for. */
+  provenOwner?: { lease: AgentSessionLease; proof: AgentSessionHostProof | null }
 }
 
 /**
@@ -124,9 +128,14 @@ async function runAttach(
   await withAgentSessionCreatePhase('resolve_recovery', recordPhase, () =>
     context.runtimeState.resolveRecovery(sessionId)
   )
-  const proof = await withAgentSessionCreatePhase('probe_owner', recordPhase, () =>
-    context.runtimeState.proveOwner(sessionId)
-  )
+  const proven = options.provenOwner
+  // Reused only while the lease is the very one it was gathered for; anything else probes again.
+  const proof =
+    proven && context.deps.store.getRecord(sessionId)?.lease === proven.lease
+      ? proven.proof
+      : await withAgentSessionCreatePhase('probe_owner', recordPhase, () =>
+          context.runtimeState.proveOwner(sessionId)
+        )
   // A child this attach spawns writes through a sink this attempt owns. Only a successful
   // attach makes the child and its sink the session's; any other exit closes the sink with
   // whatever the child queued, and leaves the conversation's child as it was.
@@ -169,7 +178,7 @@ async function runAttach(
         spawnToken: () => context.deps.mintSpawnToken?.() ?? randomUUID(),
         claimKeyId: context.deps.claimKeyId,
         handoffOperationId: params.envelope.clientOperationId,
-        probe: structuredAgentSessionAcquisitionProbe(proof),
+        probe: structuredAgentSessionAcquisitionProbe(priorRecord?.lease ?? null, proof),
         ...(await pinnedAgentSessionLaunchArgs(context.deps.resolveLaunchArgs, params)),
         ...(await pinnedAgentSessionLaunchEnv(context.deps.resolveLaunchEnv, params))
       },
@@ -178,6 +187,8 @@ async function runAttach(
       now: () => context.now(),
       recordPhase,
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
+      onAcquisitionUnsettled: (settlement) =>
+        context.runtimeState.rememberUnsettledAcquisition(settlement),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId, {
           acquisition: true

@@ -141,7 +141,8 @@ function refuseUnlessWriterAdmitted(
   if (agentSessionLeaseAdmitsWriter(state)) {
     return null
   }
-  if (state.state === 'reconciling') {
+  // Why: a clean release derives free while unreconciled; the refusal still names the adjudication.
+  if (lease.unreconciled) {
     return refuse(
       'execution_owner_reconciling',
       { reason: 'hostReconciling' },

@@ -20,14 +20,28 @@ import {
   isProvenDeadProbe,
   type AgentSessionOwnerProbe
 } from './agent-session-lease-adjudication'
+import {
+  failedAcquisitionDeathEvidence,
+  isFailedAcquisitionReservation,
+  type AgentSessionAcquisitionExitProof
+} from './agent-session-failed-acquisition'
 import type { AgentSessionDeathEvidence, AgentSessionLease } from './agent-session-record'
 import type { AgentSessionOwnerVerdict } from './agent-session-wire-refusals'
 
-/** What the host knows about the owner at one fence. Memory first: its own child, or the exit of
- *  that child it watched. A probe only when memory has nothing to say. */
+/** What the host knows about the owner at one fence. Memory first: its own child, the exit of
+ *  that child it watched, or how its own failed attempt accounted for its process. A probe only
+ *  when memory has nothing to say. */
 export type AgentSessionOwnerEvidence =
   | { kind: 'runs' }
   | { kind: 'watched-exit'; observedAt: number; reason: string | null }
+  /** This host's attempt that reserved the fence failed, and its settlement write did not land. */
+  | {
+      kind: 'failed-acquisition'
+      spawnToken: string
+      operationId: string
+      exitProof: AgentSessionAcquisitionExitProof
+      observedAt: number
+    }
   | { kind: 'probed'; probe: AgentSessionOwnerProbe }
   | { kind: 'none' }
 
@@ -42,8 +56,7 @@ export type AgentSessionHostProof = {
 export type AgentSessionFreeBasis =
   /** Stored released, with whatever evidence its release wrote. */
   | { kind: 'stored' }
-  | { kind: 'watched-exit'; observedAt: number; reason: string | null }
-  | { kind: 'probed'; probe: AgentSessionOwnerProbe }
+  | Extract<AgentSessionOwnerEvidence, { kind: 'watched-exit' | 'failed-acquisition' | 'probed' }>
 
 export type AgentSessionLeaseState =
   | { state: 'reconciling' }
@@ -63,7 +76,13 @@ export function deriveAgentSessionLeaseState(
   lease: AgentSessionLease,
   proof: AgentSessionHostProof | null
 ): AgentSessionLeaseState {
-  if (lease.unreconciled) {
+  // Why: the only stored release restart adjudication calls free, so reconciling it changes nothing.
+  const storedRelease =
+    lease.claimStatus === 'released' &&
+    lease.handoffStage === null &&
+    lease.ownerProcess === null &&
+    lease.reservedSpawnToken === null
+  if (lease.unreconciled && !storedRelease) {
     return { state: 'reconciling' }
   }
   if (lease.claimStatus === 'conflicted') {
@@ -75,11 +94,18 @@ export function deriveAgentSessionLeaseState(
   if (proof?.attemptInFlight) {
     return { state: 'acquiring' }
   }
-  if (lease.claimStatus === 'released' && lease.handoffStage === null) {
+  if (storedRelease) {
     return { state: 'free', basis: { kind: 'stored' } }
   }
   const owner: AgentSessionOwnerEvidence =
     proof && proof.fence === lease.runtimeFence ? proof.owner : { kind: 'none' }
+  if (owner.kind === 'failed-acquisition') {
+    // Why: the release its settlement would have written. A spawn whose exit went unproven may
+    // still run, so it stays with the probe, and recovery, like a stored one.
+    return isFailedAcquisitionReservation(lease, owner) && owner.exitProof !== 'unproven'
+      ? { state: 'free', basis: owner }
+      : { state: 'unverifiable' }
+  }
   if (lease.ownerProcess === null) {
     // Why: the spawn token is the only thing an unrecorded child could carry; only a scan that
     // proves no process has it frees the reservation.
@@ -149,6 +175,9 @@ export function agentSessionLeaseFreeEvidence(
       observedAt: basis.observedAt,
       ownerFence: lease.runtimeFence
     }
+  }
+  if (basis.kind === 'failed-acquisition') {
+    return failedAcquisitionDeathEvidence(basis.exitProof, basis.observedAt, lease.runtimeFence)
   }
   if (basis.probe.outcome === 'reservation-unused') {
     return {

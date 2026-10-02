@@ -5,6 +5,7 @@ import {
   type AgentSessionLeaseState
 } from '../../../shared/agent-session-lease-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
 import {
   createDeferredStructuredAgentSessionEventSink,
   type DeferredStructuredAgentSessionEventSink,
@@ -27,6 +28,12 @@ export class StructuredAgentSessionHostRuntimeState {
   /** Sessions an attach of this host's is acquiring. In memory only: a restart reconciles every
    *  lease anyway, and an attempt that ends takes its entry with it. */
   private readonly acquisitions = new Set<string>()
+  /** Each session's last failed attempt whose settlement write did not land: the proof that frees
+   *  its reservation, and the write the renewer replays. Dead once the lease moves past its fence. */
+  private readonly unsettledAcquisitions = new Map<
+    string,
+    AgentSessionFailedAcquisitionSettlement
+  >()
   private readonly leaseRenewer: StructuredAgentSessionLeaseRenewer
   private readonly onEventSinkFailure?: (sessionId: string, error: unknown) => void
 
@@ -41,6 +48,7 @@ export class StructuredAgentSessionHostRuntimeState {
       probe: (record) => this.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
       ownerProof: (record) => this.ownerProofFor(record),
+      unsettledAcquisition: (sessionId) => this.unsettledAcquisitions.get(sessionId),
       serialize: memory.serialize,
       now: () => deps.now?.() ?? Date.now(),
       // Lease/ownership failures are transient and stay on the visible lease-error path.
@@ -156,6 +164,10 @@ export class StructuredAgentSessionHostRuntimeState {
     return () => this.acquisitions.delete(sessionId)
   }
 
+  rememberUnsettledAcquisition(settlement: AgentSessionFailedAcquisitionSettlement): void {
+    this.unsettledAcquisitions.set(settlement.sessionId, settlement)
+  }
+
   /** What memory proves about the session's owner; null when the session has no record. */
   ownerProof(sessionId: string): AgentSessionHostProof | null {
     const record = this.deps.store.getRecord(sessionId)
@@ -171,11 +183,17 @@ export class StructuredAgentSessionHostRuntimeState {
 
   /** The proof as the acquiring attempt itself reads it: its own attempt is not one beside it. */
   ownerProofForAttempt(record: AgentSessionRecord): AgentSessionHostProof {
+    const unsettled = this.unsettledAcquisitions.get(record.sessionId)
+    // Fences only grow, so an attempt behind the lease can never speak for it again.
+    if (unsettled && unsettled.fence < record.lease.runtimeFence) {
+      this.unsettledAcquisitions.delete(record.sessionId)
+    }
     return structuredAgentSessionOwnerProof({
       lease: record.lease,
       hostId: this.deps.store.hostId,
       session: this.memory.session(record.sessionId),
-      attemptInFlight: false
+      attemptInFlight: false,
+      ...(unsettled ? { unsettledAcquisition: unsettled } : {})
     })
   }
 
@@ -192,7 +210,12 @@ export class StructuredAgentSessionHostRuntimeState {
   /** Memory's proof, or a probe where memory has none: what a start and an acquisition decide on. */
   async proveOwner(sessionId: string): Promise<AgentSessionHostProof | null> {
     const known = this.ownerProof(sessionId)
-    if (!known || known.attemptInFlight || known.owner.kind === 'watched-exit') {
+    if (
+      !known ||
+      known.attemptInFlight ||
+      known.owner.kind === 'watched-exit' ||
+      known.owner.kind === 'failed-acquisition'
+    ) {
       return known
     }
     return { ...known, owner: { kind: 'probed', probe: await this.probeOwner(sessionId) } }

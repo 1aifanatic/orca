@@ -23,6 +23,7 @@ const NO_MEMORY = {
     attemptInFlight: false,
     owner: { kind: 'none' as const }
   }),
+  unsettledAcquisition: () => undefined,
   serialize: (_sessionId: string, task: () => Promise<void>) => task()
 }
 const roots: string[] = []
@@ -401,6 +402,49 @@ describe('structured agent-session lease renewal', () => {
         claimStatus: 'live',
         lastRenewedAt: NOW
       })
+    })
+
+    it('reports a child memory says runs once the probe proves it dead, and renews nothing', async () => {
+      const store = await liveStore()
+      const renew = vi.spyOn(store, 'renewLeases')
+      const { renewer, log } = renewerWith(store, { outcome: 'pid-absent' }, { kind: 'runs' })
+
+      await renewer.renewNow()
+
+      expect(renew).not.toHaveBeenCalled()
+      expect(log.entries.map((entry) => entry.fields)).toContainEqual({
+        scope: 'lease-renewal',
+        sessionId: 'session-renewal',
+        probe: { outcome: 'pid-absent' }
+      })
+    })
+
+    it('never queues behind an acquisition that began after the tick proved the lease free', async () => {
+      const store = await liveStore()
+      let attemptInFlight = false
+      const serialize = vi.fn(() => new Promise<void>(() => {}))
+      const renewer = new StructuredAgentSessionLeaseRenewer({
+        ...NO_MEMORY,
+        ownerProof: (record) => ({
+          fence: record.lease.runtimeFence,
+          attemptInFlight,
+          owner: { kind: 'none' }
+        }),
+        serialize,
+        store,
+        probe: async () => {
+          // A send's attach takes the session while the tick is probing.
+          attemptInFlight = true
+          return { outcome: 'pid-absent' }
+        },
+        now: () => NOW + 10_000,
+        logger: recordingStructuredAgentSessionLogger().logger
+      })
+
+      await renewer.renewNow()
+
+      expect(serialize).not.toHaveBeenCalled()
+      expect(store.getRecord('session-renewal')?.lease.claimStatus).toBe('live')
     })
 
     it('never converges an owner proven alive or a conflicted claim', async () => {

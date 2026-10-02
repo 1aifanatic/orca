@@ -28,6 +28,7 @@ import {
   type AttachedJournal
 } from './structured-agent-session-attach'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
 import { adapterSupportsCreateIfDeclared } from './structured-agent-session-provider-support'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
@@ -79,6 +80,9 @@ export type AttachFlowInput = {
   /** The error an acquisition failed with, for a host-side reader of the provider's words; the
    *  refusal never carries them. */
   onAcquisitionFailed?: (error: unknown) => void
+  /** The settlement of a failed acquisition did not land; the host keeps it as proof of how its
+   *  own attempt ended. */
+  onAcquisitionUnsettled?: (settlement: AgentSessionFailedAcquisitionSettlement) => void
 }
 
 export async function performAttach(
@@ -188,7 +192,7 @@ export async function performAttach(
     if (reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted) {
       // Settle processless proof and failed operation atomically.
       try {
-        await store.settleFailedAcquisition({
+        await settleFailedAcquisition(input, {
           sessionId,
           fence: reservedRecord.lease.runtimeFence,
           spawnToken,
@@ -295,7 +299,7 @@ async function settleUnsupportedReservation(
     return
   }
   try {
-    await input.store.settleFailedAcquisition({
+    await settleFailedAcquisition(input, {
       sessionId: record.sessionId,
       fence: record.lease.runtimeFence,
       spawnToken,
@@ -312,5 +316,17 @@ async function settleUnsupportedReservation(
     })
   } catch (error) {
     throw new AggregateError([error], 'agent session unsupported reservation settlement failed')
+  }
+}
+
+async function settleFailedAcquisition(
+  input: AttachFlowInput,
+  settlement: AgentSessionFailedAcquisitionSettlement
+): Promise<void> {
+  try {
+    await input.store.settleFailedAcquisition(settlement)
+  } catch (error) {
+    input.onAcquisitionUnsettled?.(settlement)
+    throw error
   }
 }

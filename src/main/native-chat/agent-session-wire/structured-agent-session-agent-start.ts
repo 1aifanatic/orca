@@ -212,6 +212,8 @@ async function startStructuredAgentSessionAgent(
   try {
     attached = await attachStructuredAgentSessionUnderSerialize(context, callerKey, params, {
       ...(startedFor === undefined ? {} : { startedFor }),
+      // The acquisition decides on the proof this start was admitted on, not a second probe.
+      provenOwner: { lease: record.lease, proof },
       onAcquisitionFailed: (error) => {
         acquisitionError = error
       }

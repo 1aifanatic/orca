@@ -15,7 +15,13 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import {
+  findAgentSessionSpawnTokenProcesses,
+  scanAgentSessionSpawnTokenProcesses
+} from '../../runtime/agent-session-spawn-token-process-scan'
+import { createStructuredAgentSessionOwnerProbe } from '../../runtime/structured-agent-session-owner-probe'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { observeStructuredWorker } from '../../runtime/structured-worker-authority'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
@@ -40,11 +46,12 @@ let root: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
+let releaseAcquisition: Mock<NonNullable<StructuredAgentSessionAdapter['releaseAcquisition']>>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let sink: StructuredAgentSessionEventSink | null
 let logged: { message: string; scope: unknown }[]
 /** What the host's owner probe answers; a dead pid by default, as after any of these endings. */
-let probe: (record: { lease: { ownerProcess: unknown } }) => AgentSessionOwnerProbe
+let probe: (record: AgentSessionRecord) => AgentSessionOwnerProbe | Promise<AgentSessionOwnerProbe>
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -62,6 +69,7 @@ beforeEach(async () => {
   probe = (record) =>
     record.lease.ownerProcess ? { outcome: 'pid-absent' } : { outcome: 'reservation-unused' }
   let generation = 0
+  releaseAcquisition = vi.fn(async () => true)
   acquire = vi.fn(async ({ fence, spawnToken, events }) => {
     sink = events ?? null
     return {
@@ -98,7 +106,7 @@ beforeEach(async () => {
       acquire,
       dispatch,
       closeSession: vi.fn(async () => true),
-      releaseAcquisition: vi.fn(async () => true),
+      releaseAcquisition,
       cancelTurn: vi.fn(async () => ({ cancelled: false })),
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
@@ -230,14 +238,18 @@ describe('an exit whose release write failed', () => {
     })
   })
 
-  it('starts the agent from a probe once the chat that watched the exit has closed', async () => {
+  it('starts the agent from one probe once the chat that watched the exit has closed', async () => {
     await exitWhileStoreUnwritable()
     await host.close(SESSION, 'evict')
     expect(host.hasSession(SESSION)).toBe(false)
+    const probed = vi.fn(probe)
+    probe = probed
 
     await sendReachesTheAgent('after closing and reopening')
 
     expect(acquire).toHaveBeenCalledTimes(2)
+    // The start's eligibility and the acquisition decide on the same proof.
+    expect(probed).toHaveBeenCalledOnce()
   })
 
   it('settles the turn the exit cut short as interrupted at the exit', async () => {
@@ -270,9 +282,23 @@ describe('an exit whose release write failed', () => {
 })
 
 describe('a failed start whose settlement write failed', () => {
-  async function failStartWithoutSettlement(): Promise<void> {
+  // The production probe with the macOS and Windows token scan, which can never prove a
+  // reservation unused: only the host's memory of its own attempt can.
+  const tokenScanCannotAnswer = createStructuredAgentSessionOwnerProbe(
+    'local',
+    async () => ({ outcome: 'pid-absent' }),
+    (token) =>
+      findAgentSessionSpawnTokenProcesses(token, () =>
+        scanAgentSessionSpawnTokenProcesses('darwin')
+      )
+  )
+
+  beforeEach(() => {
+    probe = tokenScanCannotAnswer
+  })
+
+  async function failStartWithoutSettlement(): Promise<Mock> {
     await host.close(SESSION, 'evict')
-    acquire.mockRejectedValueOnce(new Error('provider failed to start'))
     const settle = vi
       .spyOn(store, 'settleFailedAcquisition')
       .mockRejectedValueOnce(new Error('SQLITE_READONLY: attempt to write a readonly database'))
@@ -286,10 +312,13 @@ describe('a failed start whose settlement write failed', () => {
       claimStatus: 'reserved',
       handoffStage: 'new-owner-proving'
     })
+    return settle
   }
 
-  it('lets the next send start the agent once the probe proves the reservation unused', async () => {
+  it('lets the next send start the agent though no scan can prove the reservation unused', async () => {
+    acquire.mockRejectedValueOnce(new Error('provider failed to start'))
     await failStartWithoutSettlement()
+    expect(store.getRecord(SESSION)?.lease.ownerProcess).toBeNull()
 
     await sendReachesTheAgent('after the failed start')
 
@@ -297,25 +326,86 @@ describe('a failed start whose settlement write failed', () => {
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
   })
 
-  it('lands the abandoned reservation on the next renewal tick', async () => {
-    await failStartWithoutSettlement()
+  it('replays the settlement the failed start could not write on the next renewal tick', async () => {
+    acquire.mockRejectedValueOnce(new Error('provider failed to start'))
+    const settle = await failStartWithoutSettlement()
+    const fence = store.getRecord(SESSION)!.lease.runtimeFence
 
     await renewNow()
 
+    expect(settle).toHaveBeenCalledTimes(2)
+    expect(settle.mock.calls[1]).toEqual(settle.mock.calls[0])
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
-      deathEvidence: { kind: 'pid-absent', detail: 'reservation never spawned' }
+      runtimeFence: fence + 1,
+      deathEvidence: {
+        kind: 'exit-observed',
+        detail: 'acquisition cleanup proved no provider child remains',
+        ownerFence: fence
+      }
     })
+    expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('exited')
   })
 
-  it('never frees it while a process may still carry the token', async () => {
+  it('never frees a spawned child whose exit the failed start could not prove', async () => {
+    probe = () => ({ outcome: 'indeterminate', reason: 'no answer' })
+    releaseAcquisition.mockResolvedValueOnce(false)
+    const spawn = acquire.getMockImplementation()!
+    acquire.mockImplementationOnce(async (input) => {
+      const acquired = await spawn(input)
+      await input.onSpawned?.(acquired.process)
+      throw new Error('provider failed to start')
+    })
     await failStartWithoutSettlement()
-    probe = () => ({ outcome: 'indeterminate', reason: 'token scan unavailable' })
+    expect(store.getRecord(SESSION)?.lease.ownerProcess).not.toBeNull()
 
     await renewNow()
 
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('reserved')
+    expect(host.leaseState(SESSION)?.state).toBe('unverifiable')
+    expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('unverifiable')
+  })
+})
+
+describe('a renewal tick racing a send that restarts the agent', () => {
+  it('leaves the new fence alone and does not wait on the spawn', async () => {
+    const fence = await exitWhileStoreUnwritable()
+    await host.close(SESSION, 'evict')
+    let releaseProbe: (answer: AgentSessionOwnerProbe) => void = () => {}
+    probe = () =>
+      new Promise((resolve) => {
+        releaseProbe = resolve
+        probe = () => ({ outcome: 'pid-absent' })
+      })
+    let releaseSpawn: () => void = () => {}
+    const spawnHeld = new Promise<void>((resolve) => {
+      releaseSpawn = resolve
+    })
+    const spawn = acquire.getMockImplementation()!
+    acquire.mockImplementationOnce(async (input) => {
+      await spawnHeld
+      return spawn(input)
+    })
+    // The tick proves the stranded lease dead while a send reserves the next fence and spawns.
+    let tickDone = false
+    const tick = renewNow().then(() => {
+      tickDone = true
+    })
+    expect(await host.send(CALLER, sendParams('during the tick'))).toMatchObject({ ok: true })
+    await eventually(() => expect(acquire).toHaveBeenCalledTimes(2))
+    releaseProbe({ outcome: 'pid-absent' })
+
+    await eventually(() => expect(tickDone).toBe(true))
+    releaseSpawn()
+    await tick
+    await eventually(() => expect(dispatch).toHaveBeenCalled())
+
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'live',
+      runtimeFence: fence + 1
+    })
+    expect(logged.map((entry) => entry.scope)).not.toContain('lease-convergence')
   })
 })
 

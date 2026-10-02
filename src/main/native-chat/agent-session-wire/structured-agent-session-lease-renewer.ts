@@ -8,6 +8,7 @@ import {
   type AgentSessionHostProof
 } from '../../../shared/agent-session-lease-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
 import {
   AGENT_SESSION_LEASE_TTL_MS,
   type AgentSessionRecordStore
@@ -22,8 +23,8 @@ type ConvergenceBasis = Exclude<AgentSessionFreeBasis, { kind: 'stored' }>
 /**
  * Every tick, each lease the host is not recovering or acquiring either renews or converges. A held
  * owner renews on a fresh identity match. A lease the host can prove free — an exit it watched, a
- * probe that found the owner dead or a reservation nothing used — gets the one release its writer
- * never landed. Nothing is latched: a failed write is logged and the next tick derives again, until
+ * failed attempt of its own, a probe that found the owner dead or a reservation nothing used — gets
+ * the one release its writer never landed. Nothing is latched: a failed write is logged and the next tick derives again, until
  * any successful write (this one, a send's acquisition, a restart's reconciliation) moves the lease.
  */
 export class StructuredAgentSessionLeaseRenewer {
@@ -42,6 +43,8 @@ export class StructuredAgentSessionLeaseRenewer {
         | 'renewLease'
         | 'renewLeases'
         | 'evictProvenDeadOwner'
+        | 'settleFailedAcquisition'
+        | 'getOperationRow'
         | 'transitionHandoff'
       >
       probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
@@ -50,6 +53,10 @@ export class StructuredAgentSessionLeaseRenewer {
       ) => Promise<Map<string, AgentSessionOwnerProbe>>
       /** What the host's memory proves about this record's owner. */
       ownerProof: (record: AgentSessionRecord) => AgentSessionHostProof
+      /** The settlement this host's last failed attempt for the session could not write. */
+      unsettledAcquisition: (
+        sessionId: string
+      ) => AgentSessionFailedAcquisitionSettlement | undefined
       /** The session's serialize, so a convergence never interleaves an attach or an exit. */
       serialize: (sessionId: string, task: () => Promise<void>) => Promise<void>
       now: () => number
@@ -112,10 +119,14 @@ export class StructuredAgentSessionLeaseRenewer {
     }
     const converging: { record: AgentSessionRecord; basis: ConvergenceBasis }[] = []
     const unproven = candidates.filter(({ record, proof }) => {
-      if (proof.owner.kind !== 'watched-exit') {
+      if (proof.owner.kind !== 'watched-exit' && proof.owner.kind !== 'failed-acquisition') {
         return true
       }
-      converging.push({ record, basis: proof.owner })
+      // Memory speaks for this owner; a probe could only say less.
+      const state = deriveAgentSessionLeaseState(record.lease, proof)
+      if (state.state === 'free' && state.basis.kind !== 'stored') {
+        converging.push({ record, basis: state.basis })
+      }
       return false
     })
     const probes = await this.probe(unproven.map(({ record }) => record))
@@ -132,7 +143,6 @@ export class StructuredAgentSessionLeaseRenewer {
         continue
       }
       if (proof.owner.kind === 'runs') {
-        // The adapter's exit event for this child is in flight; its handler owns the release.
         if (!isProvenDeadProbe(probe)) {
           renewals.push({
             sessionId: record.sessionId,
@@ -140,7 +150,14 @@ export class StructuredAgentSessionLeaseRenewer {
             childProbe: probe,
             now
           })
+          continue
         }
+        // The exit event's handler owns the release; this is the only sign of one that never came.
+        this.input.logger.warn('a chat agent the host still runs probed dead', {
+          scope: 'lease-renewal',
+          sessionId: record.sessionId,
+          probe
+        })
         continue
       }
       const state = deriveAgentSessionLeaseState(record.lease, {
@@ -201,6 +218,10 @@ export class StructuredAgentSessionLeaseRenewer {
   private converge(record: AgentSessionRecord, basis: ConvergenceBasis): Promise<void> {
     const { store } = this.input
     const { sessionId } = record
+    // Why: an attempt holds the serialize through its spawn; queueing here would stall the tick.
+    if (this.input.ownerProof(record).attemptInFlight) {
+      return Promise.resolve()
+    }
     return this.input.serialize(sessionId, async () => {
       const current = store.getRecord(sessionId)
       // Moved since the proof was taken, or an acquisition began: the next tick derives again.
@@ -208,6 +229,17 @@ export class StructuredAgentSessionLeaseRenewer {
         return
       }
       const expectedFence = record.lease.runtimeFence
+      if (basis.kind === 'failed-acquisition') {
+        const settlement = this.input.unsettledAcquisition(sessionId)
+        const operation = settlement
+          ? store.getOperationRow(settlement.callerKey, settlement.operationId)
+          : null
+        // An aged-out row already answers its replay as expired; the next acquisition moves the lease.
+        if (settlement?.fence === expectedFence && operation?.outcome.status === 'pending') {
+          await store.settleFailedAcquisition(settlement)
+        }
+        return
+      }
       if (basis.kind === 'watched-exit') {
         await releaseStoredAgentSessionOwnerAfterSurfaceClose(store, {
           sessionId,

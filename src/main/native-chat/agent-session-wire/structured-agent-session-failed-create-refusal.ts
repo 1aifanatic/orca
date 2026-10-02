@@ -18,7 +18,7 @@ import {
   type AgentSessionHostProof
 } from '../../../shared/agent-session-lease-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionAcquisitionExitProof } from '../../runtime/agent-session-acquisition-failure-settlement'
+import type { AgentSessionAcquisitionExitProof } from '../../../shared/agent-session-failed-acquisition'
 import {
   AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,

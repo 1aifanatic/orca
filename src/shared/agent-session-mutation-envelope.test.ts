@@ -164,6 +164,32 @@ describe('admitAgentSessionMutation', () => {
     })
   })
 
+  it('never admits the child this host runs while its lease is still proving it', () => {
+    for (const lease of [
+      { ...LEASE, handoffStage: 'new-owner-proving' as const },
+      { ...LEASE, claimStatus: 'reserved' as const }
+    ]) {
+      const admission = admitAgentSessionMutation({
+        ...base,
+        lease,
+        ownerProof: RUNS,
+        ledger: ADMIT('f'.repeat(64))
+      })
+      expect(admission).toMatchObject({ decision: 'refused' })
+    }
+    expect(
+      admitAgentSessionMutation({
+        ...base,
+        lease: { ...LEASE, handoffStage: 'new-owner-proving' },
+        ownerProof: RUNS,
+        ledger: ADMIT('f'.repeat(64))
+      })
+    ).toMatchObject({
+      decision: 'refused',
+      refusal: { code: 'agent_session_conflict', details: { reason: 'chatStarting' } }
+    })
+  })
+
   it('names recovery rather than a handoff when a restart left the owner unproven', () => {
     const admission = admitAgentSessionMutation({
       ...base,
