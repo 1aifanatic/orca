@@ -73,8 +73,6 @@ export type StructuredAgentSessionStartupState = {
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
   /** The settle step has started and not finished. */
   isSettling: () => boolean
-  /** A `deriveMissingStatuses` pass has started and not finished. */
-  isDeriving: () => boolean
   /**
    * The one settle of a chat nothing holds open. Call it inside the chat's serialize; it never
    * waits on the startup gate. `loaded`, when the caller holds the chat's current fold, is used in
@@ -100,7 +98,6 @@ export function createStructuredAgentSessionStartupState(
 ): StructuredAgentSessionStartupState {
   let settling: Promise<void> | null = null
   let settled = false
-  let deriving = 0
   return {
     seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
     settleOwedSessions: (listedIds) => {
@@ -110,14 +107,8 @@ export function createStructuredAgentSessionStartupState(
       return settling
     },
     isSettling: () => settling !== null && !settled,
-    isDeriving: () => deriving > 0,
     settleClosedChat: (record, loaded) => settleClosed(deps, record, loaded),
-    deriveMissingStatuses: (sessionIds) => {
-      deriving += 1
-      return deriveMissingStatuses(deps, sessionIds).finally(() => {
-        deriving -= 1
-      })
-    }
+    deriveMissingStatuses: (sessionIds) => deriveMissingStatuses(deps, sessionIds)
   }
 }
 

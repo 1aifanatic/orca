@@ -139,6 +139,8 @@ export function createStructuredAgentSessionHostRestore(
     isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
+  // Calls of `restoreReadableSessions` still running: the derive pass at its front included.
+  let readableRestores = 0
   const perChatFileCopy = createStructuredAgentSessionPerChatFileCopyControl({
     database: deps.journalDatabase,
     store: deps.store,
@@ -148,7 +150,7 @@ export function createStructuredAgentSessionHostRestore(
     chatWork: chatStatus.chatWork,
     canSettle,
     isHostChatWorkActive: () =>
-      startup.isSettling() || startup.isDeriving() || restorer.isRestoring,
+      startup.isSettling() || readableRestores > 0 || restorer.isRestoring,
     isDisposed: rest.isDisposed,
     logger: deps.logger,
     now: () => deps.now?.() ?? Date.now(),
@@ -160,12 +162,18 @@ export function createStructuredAgentSessionHostRestore(
       await reconcile('startup')
     },
     // The listed chats the tab list left to it: rows derived without an open first, then the rest.
-    restoreReadableSessions: (sessionIds) =>
-      gate.run(async () =>
-        restorer.restore(
-          sessionIds === undefined ? undefined : await startup.deriveMissingStatuses(sessionIds)
+    restoreReadableSessions: (sessionIds) => {
+      readableRestores += 1
+      return gate
+        .run(async () =>
+          restorer.restore(
+            sessionIds === undefined ? undefined : await startup.deriveMissingStatuses(sessionIds)
+          )
         )
-      ),
+        .finally(() => {
+          readableRestores -= 1
+        })
+    },
     ...startup,
     startPerChatFileCopy: perChatFileCopy.start,
     stopPerChatFileCopy: perChatFileCopy.stop
