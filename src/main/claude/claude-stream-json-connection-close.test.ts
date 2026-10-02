@@ -163,6 +163,42 @@ describe('Claude stream-json close ordering', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
+  // The ladder (stdin end, SIGTERM, SIGKILL) runs again for the next ask; nothing reuses the root.
+  it('runs the stop ladder again on a close after an unproven attempt, refusing input meanwhile', async () => {
+    mocks.refresh.mockReset()
+    mocks.proveClaudeChildExit.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    mocks.proveClaudeChildExit.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const child = fakeChild()
+    const next = vi.fn(async (): Promise<IteratorResult<Record<string, unknown>>> => ({
+      value: undefined,
+      done: true
+    }))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This injected query exercises only the async iterator used by the connection.
+    const queryImpl = ((params: Parameters<typeof query>[0]) => {
+      params.options?.spawnClaudeCodeProcess?.({
+        command: 'claude',
+        args: [],
+        env: {},
+        signal: new AbortController().signal
+      })
+      return {
+        [Symbol.asyncIterator]: () => ({ next })
+      }
+    }) as unknown as typeof query
+    const connection = await openClaudeStreamJsonConnection(
+      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      {},
+      () => child,
+      queryImpl
+    )
+
+    await expect(connection.close()).resolves.toBe(false)
+    await expect(connection.send({ type: 'user' })).rejects.toThrow()
+    await expect(connection.close()).resolves.toBe(true)
+    expect(mocks.proveClaudeChildExit).toHaveBeenCalledTimes(2)
+  })
+
   // Whatever holds the output open past a proven exit (a process that escaped the tree) must not
   // keep every send and Stop that joins this close waiting.
   it('resolves a proven close though the output never ends', async () => {

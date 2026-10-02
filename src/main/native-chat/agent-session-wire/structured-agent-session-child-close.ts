@@ -77,14 +77,26 @@ function closeProviderRoot(
         sessionId,
         error
       })
-  ).catch((error: unknown) => {
-    logger.warn("closing the agent's process did not prove it exited", {
-      scope: 'provider-close',
-      sessionId,
-      error
-    })
-    return false
-  })
+  ).then(
+    (exited) => {
+      if (!exited) {
+        // The adapter asked, then killed; the root is still there. The next ask kills again.
+        logger.warn("the agent's process did not exit after Orca stopped and killed it", {
+          scope: 'provider-close-unproven',
+          sessionId
+        })
+      }
+      return exited
+    },
+    (error: unknown) => {
+      logger.warn("closing the agent's process did not prove it exited", {
+        scope: 'provider-close',
+        sessionId,
+        error
+      })
+      return false
+    }
+  )
 }
 
 /** Whether the lease still names the child this host last proved gone, unreleased: only that
