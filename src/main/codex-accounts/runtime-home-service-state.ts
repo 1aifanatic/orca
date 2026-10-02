@@ -213,8 +213,6 @@ export abstract class CodexRuntimeHomeState {
   protected abstract captureSystemDefaultSnapshot(options: { force: boolean }): void
   protected abstract syncRuntimeAuthWithSystemDefault(): void
   protected abstract syncLegacySharedSystemDefaultAuthForRetainedPanes(): void
-  /** Whether the retired mirror holds nothing left to carry. */
-  protected abstract carryRetiredWindowsMirror(): boolean
   protected abstract restoreSystemDefaultSnapshot(options: { detectExternalLogin: boolean }): void
   protected abstract writeSystemDefaultAuth(contents: string): void
   protected abstract clearRuntimeAuthAfterSystemDefaultLogout(runtimeAuthPath: string): void

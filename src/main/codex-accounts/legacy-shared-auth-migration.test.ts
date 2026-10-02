@@ -33,7 +33,6 @@ vi.mock('./fs-utils', async () => {
 import {
   LEGACY_SHARED_AUTH_MIGRATION_MARKER,
   LEGACY_SHARED_MCP_CREDENTIALS_MIGRATION_MARKER,
-  isLegacySharedMcpCredentialsClaimedByManagedAccount,
   migrateLegacySharedAuthToPerAccountHome
 } from './legacy-shared-auth-migration'
 
@@ -318,22 +317,6 @@ describe('legacy shared Codex MCP credentials migration (#8440)', () => {
     expect(existsSync(fixture.accountCredentialsPath(account1))).toBe(false)
     expect(existsSync(fixture.accountCredentialsPath(account2))).toBe(false)
     expect(existsSync(fixture.markerPath)).toBe(false)
-  })
-
-  it.each([
-    [null, false],
-    [{ outcome: 'no-shared-credentials', accountId: 'account-1' }, false],
-    [{ outcome: 'no-shared-auth' }, false],
-    [{ outcome: 'migrated', accountId: 'account-1' }, true],
-    [{ outcome: 'per-account-present', accountId: 'account-1' }, true],
-    ['not json', true]
-  ])('reads marker %j as a managed claim: %s', (marker, claimed) => {
-    if (marker !== null) {
-      const contents = typeof marker === 'string' ? marker : JSON.stringify(marker)
-      writeFileSync(fixture.mcpMarkerPath, contents, 'utf-8')
-    }
-
-    expect(isLegacySharedMcpCredentialsClaimedByManagedAccount(fixture.metadataDir)).toBe(claimed)
   })
 })
 

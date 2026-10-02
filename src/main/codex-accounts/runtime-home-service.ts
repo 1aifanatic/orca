@@ -1,12 +1,12 @@
 import type { Store } from '../persistence'
-import { CodexRuntimeHomeMirrorRetirement } from './runtime-home-service-mirror-retirement'
+import { CodexRuntimeHomeAuthSync } from './runtime-home-service-auth-sync'
 
 export type {
   CodexMirroredHomeStatus,
   CodexRateLimitHomeResolution
 } from './runtime-home-service-types'
 
-export class CodexRuntimeHomeService extends CodexRuntimeHomeMirrorRetirement {
+export class CodexRuntimeHomeService extends CodexRuntimeHomeAuthSync {
   constructor(store: Store) {
     super(store)
     this.safeRecoverInterruptedRuntimeAuthOperation()

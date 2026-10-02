@@ -164,19 +164,11 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
   }
 
   reconcileLegacySharedHomeForRetainedPanes(): void {
-    if (!this.isHostSystemDefaultRealHome()) {
-      return
-    }
-    const mirrorRetired = this.carryRetiredWindowsMirror()
-    if (!hasRecordedLegacySharedCodexPane()) {
+    if (!this.isHostSystemDefaultRealHome() || !hasRecordedLegacySharedCodexPane()) {
       return
     }
     this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
-    // Why gated: the refresh rewrites the mirror from ~/.codex, which would
-    // erase the mirror-only config a retry still has to carry.
-    if (mirrorRetired) {
-      syncLegacySharedCodexConfigForRetainedPanes()
-    }
+    syncLegacySharedCodexConfigForRetainedPanes()
   }
 
   /** Preserve refreshed auth from retained legacy WSL panes before restart. */
@@ -292,9 +284,10 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       // Why: null lets the fetcher fall back to the main process's inherited
       // CODEX_HOME before ~/.codex. Nested Orca launches can inherit the
       // managed home, restarting the background OAuth conflict (#5370), so
-      // pin this non-interactive lane to the native home explicitly. Entering
-      // it carries the retired mirror first, so the poll never uses a staler token.
-      this.reconcileLegacySharedHomeForRetainedPanes()
+      // pin this non-interactive lane to the native home explicitly.
+      if (hasRecordedLegacySharedCodexPane()) {
+        this.syncLegacySharedSystemDefaultAuthForRetainedPanes()
+      }
       return { kind: 'ready', codexHomePath: getSystemCodexHomePath() }
     }
     this.syncForCurrentSelection()
