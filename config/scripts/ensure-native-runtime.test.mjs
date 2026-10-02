@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,9 +10,13 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, isAbsolute, join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { runProcessSync } from '../../src/shared/child-process/run-process.ts'
+import { resolveCliCommand } from '../../src/shared/node-cli-command-resolution.ts'
+import { removeTreeSync } from '../../src/shared/windows-transient-lock-removal.ts'
+import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
 import { copyScriptWithLocalModules } from './script-module-dependencies.mjs'
 
 const sourceScriptPath = fileURLToPath(new URL('./ensure-native-runtime.mjs', import.meta.url))
@@ -46,7 +51,7 @@ describe('ensure-native-runtime', () => {
 
       expect(result.status, result.stderr).toBe(0)
       const log = readFileSync(logPath, 'utf8')
-      expect(log).toContain('pnpm exec node-gyp rebuild\n')
+      expect(log).toContain('pnpm --config.verify-deps-before-run=false exec node-gyp rebuild\n')
       expect(log).toContain(join('node_modules', 'node-pty'))
       if (process.platform === 'linux') {
         expect(log).toMatch(/^cxxflags=(?:.*\s)?-std=gnu\+\+2a$/m)
@@ -85,7 +90,9 @@ describe('ensure-native-runtime', () => {
 
         expect(result.status, result.stderr).toBe(0)
         const log = readFileSync(logPath, 'utf8')
-        expect(log.match(/pnpm exec node-gyp rebuild\n/g)).toHaveLength(2)
+        expect(
+          log.match(/pnpm --config.verify-deps-before-run=false exec node-gyp rebuild\n/g)
+        ).toHaveLength(2)
         expect(log).toContain(join('node_modules', 'node-pty'))
         expect(log).toContain(join('node_modules', '@orca', 'windows-registry'))
       } finally {
@@ -121,7 +128,9 @@ describe('ensure-native-runtime', () => {
         expect(result.stderr).toContain(
           'Patched node-pty build artifacts are missing; rebuilding native deps.'
         )
-        expect(readFileSync(logPath, 'utf8')).toContain('pnpm exec node-gyp rebuild\n')
+        expect(readFileSync(logPath, 'utf8')).toContain(
+          'pnpm --config.verify-deps-before-run=false exec node-gyp rebuild\n'
+        )
       } finally {
         rmSync(projectDir, { recursive: true, force: true })
       }
@@ -154,7 +163,9 @@ describe('ensure-native-runtime', () => {
 
         expect(result.status, result.stderr).toBe(0)
         expect(result.stderr).toContain("expected build/Release so Orca's node-pty patch is active")
-        expect(readFileSync(logPath, 'utf8')).toContain('pnpm exec node-gyp rebuild\n')
+        expect(readFileSync(logPath, 'utf8')).toContain(
+          'pnpm --config.verify-deps-before-run=false exec node-gyp rebuild\n'
+        )
       } finally {
         rmSync(projectDir, { recursive: true, force: true })
       }
@@ -187,12 +198,93 @@ describe('ensure-native-runtime', () => {
 
         expect(result.status, result.stderr).toBe(0)
         expect(result.stderr).not.toContain('Patched node-pty build artifacts are missing')
-        expect(readFileSync(logPath, 'utf8')).not.toContain('pnpm exec node-gyp rebuild')
+        expect(readFileSync(logPath, 'utf8')).not.toContain('exec node-gyp rebuild')
       } finally {
         rmSync(projectDir, { recursive: true, force: true })
       }
     }
   )
+  it('rebuilds through real pnpm without installing addon development dependencies', () => {
+    const { command, prefixArgs } = resolvePnpmCliInvocation()
+    const program = isAbsolute(command) ? command : resolveCliCommand(parse(command).name)
+    expect(isAbsolute(program), 'pnpm must be installed for the native rebuild contract').toBe(true)
+    const projectDir = mkTempProject()
+    try {
+      const binDir = join(projectDir, 'bin')
+      const markerPath = join(projectDir, 'rebuilt.marker')
+      const logPath = join(projectDir, 'native-runtime.log')
+      writeFakeNativeModules(projectDir)
+      writeNodePtyPatchFile(projectDir)
+      const addonDir = join(projectDir, 'node_modules', 'node-pty')
+      const sourceDevDir = join(addonDir, 'source-only-dev')
+      mkdirSync(sourceDevDir)
+      writeFileSync(
+        join(sourceDevDir, 'package.json'),
+        '{"name":"source-only-dev","version":"1.0.0"}'
+      )
+      writeFileSync(
+        join(addonDir, 'package.json'),
+        JSON.stringify({
+          name: 'node-pty',
+          version: '1.1.0',
+          main: 'index.js',
+          devDependencies: { 'source-only-dev': 'file:./source-only-dev' },
+          scripts: {
+            prepare:
+              "node -e \"require('node:fs').writeFileSync('prepare-ran','');process.exit(43)\""
+          }
+        })
+      )
+      writePnpmShim(
+        binDir,
+        `
+import(${JSON.stringify(new URL('./script-child-process.mjs', import.meta.url).href)}).then(({ runProcessSync }) => {
+  const result = runProcessSync({ program: ${JSON.stringify(program)}, args: [...${JSON.stringify(prefixArgs)}, ...process.argv.slice(2)], cwd: process.cwd(), timeoutMs: 20_000 })
+  process.stdout.write(result.stdout)
+  process.stderr.write(result.stderr)
+  process.exit(result.code ?? 1)
+}).catch((error) => { console.error(error); process.exit(1) })
+`
+      )
+      const nodeGypScript = join(binDir, 'node-gyp.cjs')
+      writeFileSync(
+        nodeGypScript,
+        `
+const { appendFileSync, writeFileSync } = require('node:fs')
+appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, 'real-pnpm node-gyp ' + process.argv.slice(2).join(' ') + '\\n')
+writeFileSync(process.env.ORCA_NATIVE_TEST_MARKER, 'rebuilt')
+`
+      )
+      const nodeGypPath = join(binDir, 'node-gyp')
+      writeFileSync(nodeGypPath, `#!/usr/bin/env node\nrequire(${JSON.stringify(nodeGypScript)})\n`)
+      chmodSync(nodeGypPath, 0o755)
+      writeFileSync(
+        join(binDir, 'node-gyp.cmd'),
+        `@echo off\r\n"${process.execPath}" "%~dp0\\node-gyp.cjs" %*\r\n`
+      )
+      const result = runProcessSync({
+        program: process.execPath,
+        args: [
+          join(projectDir, 'config', 'scripts', 'ensure-native-runtime.mjs'),
+          '--runtime=node'
+        ],
+        cwd: projectDir,
+        timeoutMs: 20_000,
+        env: envWithPrependedPath(binDir, {
+          ORCA_BACKGROUND_LAUNCH: '1',
+          ORCA_NATIVE_TEST_LOG: logPath,
+          ORCA_NATIVE_TEST_MARKER: markerPath
+        })
+      })
+      expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0)
+      expect(readFileSync(logPath, 'utf8')).toContain('real-pnpm node-gyp rebuild\n')
+      expect(existsSync(join(addonDir, 'prepare-ran'))).toBe(false)
+      expect(existsSync(join(addonDir, 'pnpm-lock.yaml'))).toBe(false)
+      expect(existsSync(join(addonDir, 'node_modules', 'source-only-dev'))).toBe(false)
+    } finally {
+      removeTreeSync(projectDir)
+    }
+  })
 })
 
 function mkTempProject() {
@@ -258,6 +350,11 @@ exports.loadNativeModule = function loadNativeModule(nativeName) {
 `
   )
   writeFakeWindowsRegistry(projectDir, { requiresMarker: windowsRegistryRequiresMarker })
+  if (process.platform === 'win32') {
+    const buildDir = join(nodePtyDir, 'build', 'Release')
+    mkdirSync(buildDir, { recursive: true })
+    writeFileSync(join(buildDir, 'conpty.node'), Buffer.from('msys-2.0.dll', 'utf16le'))
+  }
 }
 
 function writeLoadableNativeModules(projectDir, { nativeDir = null } = {}) {
@@ -314,7 +411,10 @@ function writeFakeWindowsRegistry(projectDir, { requiresMarker = false } = {}) {
   )
   const processTreeDir = join(projectDir, 'node_modules', '@vscode', 'windows-process-tree')
   mkdirSync(processTreeDir, { recursive: true })
-  writeFileSync(join(processTreeDir, 'index.js'), 'module.exports = {}\n')
+  writeFileSync(
+    join(processTreeDir, 'index.js'),
+    'exports.supportedProcessDataFlags = 4; exports.getProcessCreationTime = () => 1\n'
+  )
 }
 
 function writeNodePtyPatchFile(projectDir) {
@@ -339,10 +439,8 @@ function writePatchedNodePtyBuildArtifacts(projectDir) {
 }
 
 function writeFakePnpm(binDir) {
-  mkdirSync(binDir, { recursive: true })
-  const shimPath = join(binDir, 'pnpm-shim.cjs')
-  writeFileSync(
-    shimPath,
+  writePnpmShim(
+    binDir,
     `
 const { appendFileSync, writeFileSync } = require('node:fs')
 
@@ -359,6 +457,12 @@ appendFileSync(
 writeFileSync(process.env.ORCA_NATIVE_TEST_MARKER, 'rebuilt')
 `
   )
+}
+
+function writePnpmShim(binDir, source) {
+  mkdirSync(binDir, { recursive: true })
+  const shimPath = join(binDir, 'pnpm-shim.cjs')
+  writeFileSync(shimPath, source)
 
   const posixPnpmPath = join(binDir, 'pnpm')
   writeFileSync(posixPnpmPath, `#!/usr/bin/env node\nrequire(${JSON.stringify(shimPath)})\n`)

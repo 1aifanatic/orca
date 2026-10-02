@@ -400,7 +400,10 @@ function rebuildNodeRuntimeModules(moduleNames) {
       moduleDir = realpathSync(moduleDir)
     }
     console.warn(`[native-runtime] Rebuilding ${moduleName} with node-gyp.`)
-    runPnpm(['exec', 'node-gyp', 'rebuild'], { cwd: moduleDir })
+    // An installed addon's source-only devDependencies must not trigger another install.
+    runPnpm(['--config.verify-deps-before-run=false', 'exec', 'node-gyp', 'rebuild'], {
+      cwd: moduleDir
+    })
     if (moduleName === 'node-pty' && process.platform === 'win32') {
       runNodeScript([resolve(moduleDir, 'scripts', 'post-install.js')])
     }
