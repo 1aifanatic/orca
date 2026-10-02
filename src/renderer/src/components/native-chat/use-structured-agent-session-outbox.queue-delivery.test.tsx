@@ -29,7 +29,9 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
-import { readOutbox } from './structured-agent-session-outbox-storage'
+import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
+import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -237,6 +239,83 @@ describe('outbox queue delivery selection', () => {
       expect(mocks.call).toHaveBeenCalledTimes(1)
     }
   )
+
+  // The card may be sent, edited or deleted on another device before this desktop ever sees it:
+  // the send's own record says the host kept it, so its local copy leaves with no Retry.
+  describe('a send the host kept as a card, its card never seen here', () => {
+    function keptRejection(id: string): AgentJournalSubmission {
+      return {
+        clientMessageId: id,
+        fence: 1,
+        payloadFingerprint: 'fp',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason: 'Orca restarted before this message was sent.',
+        rejection: { kind: 'hostRestarted' },
+        submittedAt: 1,
+        resolvedAt: 2,
+        recovered: true,
+        handoverRecorded: true,
+        keptAsQueuedMessageId: id
+      }
+    }
+
+    it('leaves the outbox on the host’s answer', async () => {
+      mocks.call.mockImplementation(async (_target, _method, params) => ({
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 2 },
+        value: {
+          clientMessageId: params.envelope.clientOperationId,
+          submission: keptRejection(params.envelope.clientOperationId)
+        }
+      }))
+      const view = renderHook(() =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions: [],
+          composerScopeKey: 'kept-elsewhere',
+          queueDelivery: { capability: 'unsupported', enabled: true }
+        })
+      )
+      expect(view.result.current.send('kept, then deleted elsewhere')).toBe(true)
+      await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+      expect(readOutbox('session-1')).toEqual([])
+      expect(readNativeChatDraftCache('kept-elsewhere')).toBe('')
+    })
+
+    it('leaves the outbox when the journal shows it, from a stored not-sent copy', async () => {
+      writeOutbox('session-1', [
+        {
+          ...createStructuredAgentSessionOutboxEntry({
+            clientMessageId: 'kept-id',
+            sessionId: 'session-1',
+            text: 'kept, then deleted elsewhere',
+            attachments: [],
+            queuedAt: 1
+          }),
+          state: 'unconfirmed',
+          lastAttemptAt: 5
+        }
+      ])
+      const view = renderHook(() =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions: [keptRejection('kept-id')],
+          queueDelivery: { capability: 'unsupported', enabled: true }
+        })
+      )
+      await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+      expect(readOutbox('session-1')).toEqual([])
+      expect(mocks.call).not.toHaveBeenCalled()
+    })
+  })
 
   it("Stop's local step never restores a queued send already in flight — its answer settles it", async () => {
     // The send is on its way; the Stop lands behind it, so the host may already hold
