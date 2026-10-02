@@ -165,10 +165,6 @@ export function structuredAgentSessionDeliveryNotices(
   )
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const [index, entry] of outbox.entries()) {
-    // The journal settled it, and the reconcile is about to drop it.
-    if (rejected.has(entry.clientMessageId)) {
-      continue
-    }
     if (
       entry.state === 'rejected' ||
       structuredAgentSessionEntryHeldForRetry(entry) ||
@@ -185,6 +181,7 @@ export function structuredAgentSessionDeliveryNotices(
       )
     }
   }
+  // After the outbox's: the host's row is the message, whatever the outbox still holds under its id.
   const shown = structuredAgentSessionRejectedShownInPlace(submissions, queuedMessageIds)
   for (const submission of rejected.values()) {
     const id = agentJournalSubmissionKey(submission.clientMessageId)
