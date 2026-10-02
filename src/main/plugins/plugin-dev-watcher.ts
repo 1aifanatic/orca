@@ -21,11 +21,10 @@ function addPluginRootParent(parentNames: Map<string, Set<string>>, root: string
   parentNames.set(parent, names)
 }
 
-type PluginRootBinding = { physicalRoot: string; identity: string }
+type PluginRootBinding = { physicalRoot: string; identity: string | null }
 
 function pluginRootBinding(physicalRoot: string, entry: BigIntStats): PluginRootBinding | null {
-  const identity = watcherDirectoryIdentity(entry)
-  return identity === null ? null : { physicalRoot, identity }
+  return entry.isDirectory() ? { physicalRoot, identity: watcherDirectoryIdentity(entry) } : null
 }
 
 function readPluginRootBindingSync(physicalRoot: string): PluginRootBinding | null {
@@ -123,13 +122,23 @@ export class PluginDevWatcher {
     let changed = false
     for (const { root, binding } of nextBindings) {
       const previous = this.rootBindings.get(root)
+      // Keep the last known binding when a present directory's metadata becomes ambiguous.
+      if (
+        previous &&
+        binding &&
+        previous.physicalRoot === binding.physicalRoot &&
+        binding.identity === null
+      ) {
+        binding.identity = previous.identity
+      }
       if (
         previous?.physicalRoot !== binding?.physicalRoot ||
-        previous?.identity !== binding?.identity
+        (binding?.identity && previous?.identity !== binding.identity)
       ) {
-        this.rootBindings.set(root, binding)
         changed = true
       }
+      // Unknown identity stays quiet; a newly usable identity admits one conservative rebind.
+      this.rootBindings.set(root, binding)
     }
     return changed
   }
