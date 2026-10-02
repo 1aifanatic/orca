@@ -3,28 +3,33 @@ import { parse } from 'yaml'
 import { defaultExclude } from 'vitest/config'
 import { describe, expect, it } from 'vitest'
 import { CROSS_VERSION_WIRE_DIR, UNIT_INCLUDE, discoverUnitFiles } from './ci-unit-files.mjs'
+import { classifyPrJobs } from './pr-code-change-scope.mjs'
 
 function posixPaths(files) {
   return files.map((file) => file.replaceAll('\\', '/'))
 }
 
 function workflowJobs(path) {
-  return Object.values(parse(readFileSync(path, 'utf8')).jobs)
+  return parse(readFileSync(path, 'utf8')).jobs
 }
 
-// Jobs of pr.yml plus the reusable workflows it calls, since those run on every PR too.
-function prJobs() {
+// Why verify.needs: a job left out of it (e2e, ime, wsl) can be red or skipped without blocking a merge.
+// Each gating job carries the code_paths output that decides whether it runs; a called workflow's jobs inherit the caller's.
+function gatingJobs() {
   const jobs = workflowJobs('.github/workflows/pr.yml')
-  const called = jobs
-    .map((job) => job.uses)
-    .filter((uses) => typeof uses === 'string' && uses.startsWith('./.github/workflows/'))
-  return [...jobs, ...called.flatMap((uses) => workflowJobs(uses.slice(2)))]
+  return jobs.verify.needs.flatMap((name) => {
+    const { if: condition = '', uses } = jobs[name]
+    const gate = /needs\.code_paths\.outputs\.([\w-]+) == 'true'/.exec(condition)?.[1]
+    const called = uses?.startsWith('./.github/workflows/')
+      ? Object.values(workflowJobs(uses.slice(2)))
+      : [jobs[name]]
+    return called.map((job) => ({ gate, pathArguments: vitestPathArguments(job) }))
+  })
 }
 
-// Path arguments of every PR step that runs vitest; a trailing slash means a directory.
-function vitestPathArguments() {
-  return prJobs()
-    .flatMap((job) => job.steps ?? [])
+// Path arguments of every step in the job that runs vitest; a trailing slash means a directory.
+function vitestPathArguments(job) {
+  return (job.steps ?? [])
     .map((step) => step.run)
     .filter((run) => typeof run === 'string' && /\bvitest\b/.test(run))
     .flatMap((run) => run.replaceAll('\\\n', ' ').split(/\s+/))
@@ -32,27 +37,47 @@ function vitestPathArguments() {
     .filter((token) => /^(?:src|config|tests|mobile)\//.test(token))
 }
 
-function runByPrVitestStep(file, pathArguments) {
+function runByVitestStep(file, pathArguments) {
   return pathArguments.some(
     (path) => path === file || (path.endsWith('/') && file.startsWith(path))
   )
 }
 
+function excludedUnitFiles() {
+  const sharded = new Set(discoverUnitFiles())
+  return posixPaths(globSync(UNIT_INCLUDE, { exclude: defaultExclude })).filter(
+    (file) => !sharded.has(file)
+  )
+}
+
 describe('unit files kept out of the sharded test job', () => {
-  it('each still runs in some PR job', () => {
-    const sharded = new Set(discoverUnitFiles())
-    const excluded = posixPaths(globSync(UNIT_INCLUDE, { exclude: defaultExclude })).filter(
-      (file) => !sharded.has(file)
-    )
-    const pathArguments = vitestPathArguments()
+  it('each still runs in a job that gates the PR', () => {
+    const excluded = excludedUnitFiles()
+    const jobs = gatingJobs()
 
     expect(excluded.length).toBeGreaterThan(0)
-    // Why: an excluded file no step names guards nothing, and nothing else reports it.
-    expect(excluded.filter((file) => !runByPrVitestStep(file, pathArguments))).toEqual([])
+    // Why: an excluded file no gating step names guards nothing, and nothing else reports it.
+    expect(
+      excluded.filter((file) => !jobs.some((job) => runByVitestStep(file, job.pathArguments)))
+    ).toEqual([])
+  })
+
+  it('a change to each runs a gating job that names it', () => {
+    const jobs = gatingJobs()
+    // Why: otherwise a PR editing only the file skips the one job that runs it.
+    expect(
+      excludedUnitFiles().filter(
+        (file) =>
+          !jobs.some(
+            ({ gate, pathArguments }) =>
+              runByVitestStep(file, pathArguments) && (!gate || classifyPrJobs([file])[gate])
+          )
+      )
+    ).toEqual([])
   })
 
   it('runs the whole cross-version-wire directory, not a list of its files', () => {
-    expect(vitestPathArguments()).toContain(CROSS_VERSION_WIRE_DIR)
+    expect(gatingJobs().flatMap((job) => job.pathArguments)).toContain(CROSS_VERSION_WIRE_DIR)
   })
 
   it('names every cross-version-wire test so the unit include picks it up', () => {
