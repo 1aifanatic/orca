@@ -3,10 +3,12 @@ import { createHash } from 'node:crypto'
 import {
   appendFileSync,
   existsSync,
+  globSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
+  statSync,
   writeFileSync
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -24,9 +26,9 @@ const pilotSources = [
   '.github/actions/install-node-dependencies/action.yml',
   '.github/workflows/ci-pnpm-verification-pilot.yml',
   'config/scripts/ci-pnpm-root-store-pilot.mjs',
-  ...readdirSync(join(repository, 'config/patches'))
+  ...globSync('config/patches/**/*', { cwd: repository })
+    .filter((path) => statSync(join(repository, path)).isFile())
     .sort()
-    .map((name) => `config/patches/${name}`)
 ]
 
 function sha256(value) {
