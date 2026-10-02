@@ -111,10 +111,10 @@
   },
   "settings": {
     "terminal": {
-      "optionLayoutAlt": "Anglais américain — Option envoie des séquences Alt/Esc",
+      "optionLayoutAlt": "ABC ou U.S. — Option envoie des séquences Alt/Esc",
       "optionLayoutCompose": "la disposition utilise Option pour composer des caractères comme @, €, [, ]",
       "optionLayoutUnknown": "disposition inconnue — Option compose des caractères (choix sûr par défaut)",
-      "optionShortcutHint": "Si les raccourcis Option saisissent des symboles, choisissez Gauche, Droite ou Les deux. Gauche ou Droite laisse l’autre touche Option disponible pour les accents et les symboles."
+      "optionShortcutHint": "Choisissez Les deux pour les raccourcis Option, Désactivé pour les accents et les symboles, ou Gauche/Droite pour attribuer un usage à chaque touche Option."
     },
     "appearance": {
       "language": {

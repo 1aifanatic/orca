@@ -12,10 +12,10 @@
   },
   "settings": {
     "terminal": {
-      "optionLayoutAlt": "美式英语 — Option 键发送 Alt/Esc 序列",
+      "optionLayoutAlt": "ABC 或 U.S. — Option 键发送 Alt/Esc 序列",
       "optionLayoutCompose": "此布局使用 Option 键输入 @、€、[、] 等字符",
       "optionLayoutUnknown": "未知布局 — Option 键输入字符（安全的默认设置）",
-      "optionShortcutHint": "如果 Option 快捷键输入的是符号，请选择“左边”“右边”或“两个都”。选择“左边”或“右边”后，另一个 Option 键仍可用于输入重音字符和符号。"
+      "optionShortcutHint": "选择“两个都”使用 Option 快捷键，选择“关”输入重音字符和符号，或选择“左边”/“右边”让两个 Option 键各司其职。"
     },
     "appearance": {
       "language": {

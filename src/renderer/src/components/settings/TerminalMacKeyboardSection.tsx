@@ -18,7 +18,7 @@ export function TerminalMacKeyboardSection({
     detectedLayout === 'us'
       ? translate(
           'settings.terminal.optionLayoutAlt',
-          'US English — Option sends Alt/Esc sequences'
+          'ABC or U.S. — Option sends Alt/Esc sequences'
         )
       : detectedLayout === 'non-us'
         ? translate(
@@ -84,7 +84,7 @@ export function TerminalMacKeyboardSection({
                       )}{' '}
               {translate(
                 'settings.terminal.optionShortcutHint',
-                'If Option shortcuts type symbols, choose Left, Right, or Both. Left or Right keeps the other Option key available for accents and symbols.'
+                'Choose Both for Option shortcuts, Off for accents and symbols, or Left/Right to use one Option key for each.'
               )}
             </>
           }
