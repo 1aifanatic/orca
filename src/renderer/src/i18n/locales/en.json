@@ -18634,6 +18634,9 @@
     }
   },
   "aiVault": {
+    "antigravityReferenceDescription": "Continues in a new Antigravity CLI conversation using this transcript as a reference.",
+    "antigravityIdeToCli": "IDE → CLI",
+    "antigravity2ToCli": "2.0 → CLI",
     "continueInCli": "Continue in CLI",
     "continueInCliNewTab": "Continue in CLI in New Tab",
     "subagents": {

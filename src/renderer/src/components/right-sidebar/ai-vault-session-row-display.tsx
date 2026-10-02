@@ -62,9 +62,14 @@ export function SessionMetadata({
         {isAntigravityReferenceSession(session) ? (
           <Badge
             variant="outline"
-            title="Continues in a new Antigravity CLI conversation using this transcript as a reference."
+            title={translate(
+              'aiVault.antigravityReferenceDescription',
+              'Continues in a new Antigravity CLI conversation using this transcript as a reference.'
+            )}
           >
-            {origin === 'antigravity-ide' ? 'IDE → CLI' : '2.0 → CLI'}
+            {origin === 'antigravity-ide'
+              ? translate('aiVault.antigravityIdeToCli', 'IDE → CLI')
+              : translate('aiVault.antigravity2ToCli', '2.0 → CLI')}
           </Badge>
         ) : null}
         <span className="shrink-0 tabular-nums">
