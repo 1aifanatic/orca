@@ -255,6 +255,37 @@ describe('foldMobileNativeChatMessages', () => {
     expect(folded.map((message) => message.id)).toEqual(['a1'])
   })
 
+  // Mobile draws no task list, so a hidden plan update must not split the run around it.
+  it('keeps one tool run across a Codex plan update it does not draw', () => {
+    const plan: NativeChatMessage = {
+      id: 'plan',
+      role: 'system',
+      timestamp: 0,
+      source: 'transcript',
+      blocks: [
+        {
+          type: 'text',
+          text: 'codex · notification:turn/plan/updated',
+          providerFrame: {
+            provider: 'codex',
+            kind: 'notification:turn/plan/updated',
+            payload: { head: '{}', byteLength: 2, digest: 'digest', truncated: false }
+          }
+        }
+      ]
+    }
+    const folded = foldMobileNativeChatMessages([
+      assistant('a1', 'Working.'),
+      toolCall('c1'),
+      toolResult('r1', 'ok'),
+      plan,
+      toolCall('c2'),
+      toolResult('r2', 'ok')
+    ])
+    expect(folded.map((message) => message.id)).toEqual(['a1'])
+    expect(folded[0]?.blocks.filter((block) => block.type === 'tool-call')).toHaveLength(2)
+  })
+
   it('still folds a result whose call is inside the window', () => {
     const folded = foldMobileNativeChatMessages([
       assistant('a1', 'Checking which binary is on PATH.'),

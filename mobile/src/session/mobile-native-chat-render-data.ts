@@ -57,11 +57,18 @@ export function foldMobileNativeChatMessages(messages: NativeChatMessage[]): Nat
   // The conversation only: a subagent's rows are that subagent's, and mobile shows
   // each spawn as its roster's one line rather than the child's own rows.
   // Normalize first (desktop assembler parity): image marker turns fold into
-  // image-ref blocks instead of rendering as raw `[Image: …]` text. As on desktop, an
-  // unrecognised event with no words of its own is stored, not drawn.
+  // image-ref blocks instead of rendering as raw `[Image: …]` text. An unrecognised event
+  // with no words of its own is stored, not drawn; mobile draws no task list, so a plan update
+  // goes too, before folding, so it never splits a tool run.
   return stripNoiseMessages(
-    foldToolMessages(normalizeImageTranscriptMessages(messages.filter(isRootAgentJournalItem)))
-  ).filter((message) => !isWordlessProviderFrameMessage(message))
+    foldToolMessages(
+      normalizeImageTranscriptMessages(
+        messages.filter(
+          (message) => isRootAgentJournalItem(message) && !isWordlessProviderFrameMessage(message)
+        )
+      )
+    )
+  )
 }
 
 /** Assemble the folded transcript, streaming text, and optimistic user echoes. */

@@ -115,13 +115,13 @@ export class CodexJournalGenericFrames {
     const turnId = frameTurnId ?? 'outside-turn'
     const bucket = this.bucketFor(threadId, turnId)
     const rows = this.genericRowsByTurn.get(bucket) ?? { drawn: 0, wordless: 0 }
-    // The cap bounds noise, never evidence: an error frame is always journaled, and
-    // capped frames stay countable through one summary row per turn.
+    // The cap bounds noise, never evidence: an error frame is always journaled, and capped
+    // frames a client draws stay countable through one summary row per turn.
     const isError = translated.classification === 'error-surface'
     // The task list reads every plan update; capping one would freeze it mid-turn.
     const isPlan = translated.body.providerFrame?.kind === CODEX_PLAN_UPDATED_FRAME_KIND
-    // A row no client draws is bounded silently: neither filling the drawn cap nor summarized,
-    // since a summary of rows nobody sees would be the only line drawn.
+    // A row no client draws is bounded silently: past its own cap it is dropped and counted
+    // nowhere, since a summary of rows nobody sees would be the only line drawn.
     const wordless = !isPlan && isWordlessProviderFrame(translated.body)
     if (!isError && wordless && rows.wordless >= MAX_CODEX_WORDLESS_ROWS_PER_TURN) {
       return CODEX_JOURNAL_ADMITTED

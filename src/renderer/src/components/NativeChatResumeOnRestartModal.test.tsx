@@ -552,12 +552,14 @@ it('keeps the offer listed after an unreadable resume response', async () => {
 it('reports the chats a lost resume request named once, as failed, until it is retried', async () => {
   let sessions = offered
   let continueFails = true
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const lost = new Error('response lost')
   rpc.mockImplementation(async (_target, method) => {
     if (method === 'agentSession.restartResumable') {
       return { sessions, failed: [] }
     }
     if (continueFails) {
-      throw new Error('response lost')
+      throw lost
     }
     sessions = []
     return {
@@ -582,6 +584,9 @@ it('reports the chats a lost resume request named once, as failed, until it is r
     ['agentSession.restartResumable', undefined]
   ])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+  // The row's reason is this side's own code, so the real error goes to the log.
+  expect(warn).toHaveBeenCalledWith(expect.any(String), lost)
+  warn.mockRestore()
   expect(offerIds()).toEqual([])
   expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a', 'b'])
   expect(button('2 chats failed to resume. Click for details.')).toBeTruthy()
@@ -605,6 +610,30 @@ it('reports the chats a lost resume request named once, as failed, until it is r
     { sessionIds: ['b'] }
   ])
   expect(getNativeChatRestartOffer()).toMatchObject({ candidates: [], failed: [] })
+})
+
+// A Dismiss the host never took leaves the chat shown as failed, not back as a plain offer.
+it('keeps a lost resume request marked failed when its Dismiss fails', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  rpc.mockImplementation(async (_target, method) => {
+    if (method === 'agentSession.restartResumable') {
+      return { sessions: [offered[0]!], failed: [] }
+    }
+    throw new Error('host unreachable')
+  })
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => button('Resume 1 chat').click())
+  expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a'])
+
+  await act(async () => requestNativeChatResumeOnRestartDialog())
+  await act(async () => button('Dismiss "Prompt a" in workspace').click())
+  expect(rpc.mock.calls.at(-2)?.slice(1)).toEqual([
+    'agentSession.restartResumableDismiss',
+    { sessionIds: ['a'] }
+  ])
+  expect(offerIds()).toEqual([])
+  expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a'])
+  vi.mocked(console.warn).mockRestore()
 })
 
 /** Every button in the dialog, in order; row checkboxes are buttons too, so they are left out. */

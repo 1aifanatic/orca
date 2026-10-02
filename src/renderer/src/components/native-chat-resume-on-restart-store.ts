@@ -294,7 +294,9 @@ export async function continueNativeChatRestartOffer(
     } else {
       await refreshNativeChatRestartOffer()
     }
-  } catch {
+  } catch (error) {
+    // The row's reason is this side's own code, so the real error is kept in the log.
+    console.warn('[native-chat-resume] resume request failed before reaching the chats', error)
     markUnsentResumes(batch, Date.now())
     await refreshNativeChatRestartOffer()
   } finally {
@@ -312,15 +314,17 @@ export async function continueNativeChatRestartOffer(
  */
 export async function dismissNativeChatRestartOffer(sessionIds?: readonly string[]): Promise<void> {
   actionsBegun += 1
-  forgetUnsentResumes(sessionIds)
   try {
     const result = await callStructuredAgentSession<HostOfferPayload>(
       LOCAL,
       'agentSession.restartResumableDismiss',
-      // Named only for rows the host itself listed as failures, which an older host never does,
-      // so it is never asked to understand the key.
+      // Named only for rows the dialog lists as failed: the host's own failures, or chats this side
+      // marked after a lost resume request, which the host still lists as offers. The host is this
+      // build, and it forgets named records of any state.
       sessionIds ? { sessionIds: [...sessionIds] } : {}
     )
+    // Only a dismissal the host took ends the mark; a failed one leaves the chat shown as failed.
+    forgetUnsentResumes(sessionIds)
     if (Array.isArray(result.sessions)) {
       publishAnswer({
         candidates: result.sessions,
