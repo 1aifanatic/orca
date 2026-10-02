@@ -117,7 +117,8 @@ export async function restoreStructuredAgentSessionsOnRestart(
   // One chat's failure costs only that chat, which opens again when it is read.
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      console.warn('[structured-agent-session] restoring a chat for reading failed', {
+      input.openDeps.logger.warn('restoring a chat for reading failed', {
+        scope: 'history-restore-chat',
         sessionId: input.records[index]?.sessionId,
         error: result.reason
       })

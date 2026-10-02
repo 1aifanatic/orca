@@ -3,14 +3,14 @@ import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
+import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import { isCodexAppServerRequestError } from './codex-app-server-connection'
 import type {
   AgentSessionAcquisition,
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAcquireInput,
   StructuredAgentSessionAdapter,
-  StructuredAgentSessionSetOptionInput,
-  StructuredAgentSessionStopCause
+  StructuredAgentSessionSetOptionInput
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
 import { dispatchCodexTurn, isCodexTurnOptionKey } from './codex-structured-turn-start'
@@ -76,9 +76,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       sessions: this.sessions,
       acquisitions: this.acquisitions,
       ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
-      ...(deps.onBackgroundTasksChanged
-        ? { onBackgroundTasksChanged: deps.onBackgroundTasksChanged }
-        : {}),
       forgetNotificationRetries: (sessionId) => this.notificationRetries.clear(sessionId, null)
     })
   }
@@ -138,11 +135,9 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       settleCodexSendsInEndedTurn(session, event.method, event.params, (settlement) =>
         this.deps.onDispatchSettledLate?.({ sessionId: event.sessionId, ...settlement })
       )
-      // After the admission check, so a refused frame is observed by the strip
+      // After the admission check, so a refused frame is observed by the child records
       // only on the retry that also reaches the journal.
-      if (session.backgroundTasks.observe(event, session.prompts.takeAbandonedCommands())) {
-        this.deps.onBackgroundTasksChanged?.(event.sessionId, session.backgroundTasks.state)
-      }
+      session.backgroundTasks.observe(event, session.prompts.takeAbandonedCommands())
       // After the journal and the parent's republished row, never ahead of either.
       session.backgroundTasks.publishChildWork()
     }
@@ -169,9 +164,16 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     )
   }
 
-  backgroundTaskState: NonNullable<StructuredAgentSessionAdapter['backgroundTaskState']> = (
+  /** The tracker's own roster. No host decision reads it: the host's child records are the one
+   *  owner of "what runs", and this stays only so tests can hold the two rule sets side by side. */
+  backgroundTaskState = (sessionId: string): AgentSessionBackgroundTaskState | null | undefined =>
+    this.sessions.get(sessionId)?.backgroundTasks.state
+
+  // Codex exposes no honest stop for a child thread or a persistent command.
+  backgroundTaskStops: NonNullable<StructuredAgentSessionAdapter['backgroundTaskStops']> = (
     sessionId
-  ) => this.sessions.get(sessionId)?.backgroundTasks.state
+  ) =>
+    this.sessions.has(sessionId) ? { supportsTaskStop: false, supportsStopAll: false } : undefined
 
   bindPromptItemId = (
     sessionId: string,
@@ -286,11 +288,9 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     identity: AgentSessionJournalIdentity
   }): Promise<string | null> => this.sessions.get(input.identity.sessionId)?.historyPath ?? null
 
-  closeSession = (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> =>
-    this.teardown.close(sessionId, cause)
+  closeSession = (sessionId: string): Promise<boolean> => this.teardown.close(sessionId)
   forceCloseSession = (sessionId: string): Promise<boolean> => this.teardown.forceClose(sessionId)
-  disposeSession = (sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean> =>
-    this.teardown.close(sessionId, cause)
+  disposeSession = (sessionId: string): Promise<boolean> => this.teardown.close(sessionId)
   closeAll = (): Promise<void> => this.teardown.closeAll()
   releaseAcquisition = (input: { sessionId: string }): Promise<boolean> =>
     this.teardown.close(input.sessionId)

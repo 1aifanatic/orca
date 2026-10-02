@@ -6,9 +6,9 @@ import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-
 import {
   createRestTestRig,
   restTestChat,
-  restTestOpens,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import { restTestOpens } from './structured-agent-session-rest-test-observations'
 
 const IDS = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5']
 const LAST = 'session-5'
