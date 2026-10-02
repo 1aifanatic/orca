@@ -1,3 +1,4 @@
+import { isOrchestrationMutation } from '../../shared/orchestration-rpc-contract'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import type { PairingOffer } from '../../shared/pairing'
 import type {
@@ -8,7 +9,7 @@ import type { KnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import { getPreferredPairingOffer } from '../../shared/runtime-environments'
 import { markEnvironmentUsed, resolveEnvironment } from '../../shared/runtime-environment-store'
 import { recordRuntimeEnvironmentUsage } from './runtime-environment-usage-record'
-import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/protocol-version'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import {
   subscribeRemoteRuntimeRequest,
   type RemoteRuntimeSubscription
@@ -18,7 +19,10 @@ import {
   isRuntimeEnvironmentCapabilityOutcomeCurrent,
   type RuntimeEnvironmentCapabilityOutcome
 } from './runtime-environment-capability-evidence'
-import { runtimeEnvironmentRevisionFailure } from './runtime-environment-revision-guard'
+import {
+  runtimeEnvironmentChangedFailure,
+  runtimeEnvironmentRevisionFailure
+} from './runtime-environment-revision-guard'
 import { supportsSharedControl } from './runtime-environment-shared-control-support'
 import {
   sendRemoteRuntimeRequestAbortable,
@@ -237,21 +241,6 @@ export async function routeRuntimeEnvironmentSubscriptionBySupport<TSubscription
   return { subscription, outcome }
 }
 
-function runtimeEnvironmentChangedFailure(
-  environment: KnownRuntimeEnvironment,
-  method: string
-): RuntimeRpcResponse<never> {
-  return {
-    id: method,
-    ok: false,
-    error: {
-      code: 'runtime_environment_changed',
-      message: 'Runtime environment pairing changed; refresh and try again'
-    },
-    _meta: { runtimeId: environment.runtimeId }
-  }
-}
-
 function subscriptionCallbacks(
   args: Pick<
     Parameters<typeof subscribeSupportRoutedRuntimeEnvironment>[0],
@@ -282,4 +271,14 @@ function subscriptionCallbacks(
       args.callbacks.onClose()
     }
   }
+}
+
+export function shouldUseSharedControlEnvelope(
+  method: string,
+  params: unknown,
+  envelope: RuntimeOrchestrationEnvelope | undefined
+): RuntimeOrchestrationEnvelope | undefined {
+  return envelope && method.startsWith('orchestration.') && !isOrchestrationMutation(method, params)
+    ? envelope
+    : undefined
 }
