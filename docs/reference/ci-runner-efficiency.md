@@ -3,6 +3,79 @@
 The [September 28 demand rollout](ci-demand-rollout.md) documents staged checks,
 unit-selection evidence, headless runtime qualification, review cancellation and daily occupancy reports.
 
+## Headless server follow-up
+
+[PR #24527](https://github.com/stablyai/orca/pull/24527) adds dependency detection to
+main pushes. Unrelated pushes skip qualification; relevant pushes still run all
+six persistence targets and five Linux compatibility jobs. Explicit Windows or
+Mac PR paths select both architectures plus a Linux smoke, while shared
+execution/storage changes, SSH/provider/relay inputs, native inputs, manifests, and incomplete evidence
+retain the full matrix. Main pushes use the same validated exact Windows slot
+cache as PRs; nightly and release builds still compile freshly.
+
+Main detection runs cannot cancel each other. Only eligible qualification jobs
+share main concurrency groups, so an unrelated push cannot cancel needed tests.
+Release templates, explicit refs, and nightly runs remain isolated.
+
+Draft PRs have no server verdict, so their detector is also skipped. The existing
+`ready_for_review` event performs detection and qualification once the PR is ready.
+This removes the checkout and dependency installation for a result whose platform
+jobs were already ineligible.
+
+The glibc 2.28 prerequisite step checks all five tools before installing anything.
+The pinned ARM image already supplies them, including Git 2.55.0 built under
+`/usr/local/bin`; installing the Git RPM does not change the Git on PATH. A
+missing-tool fallback still installs the original package list and disables EPEL
+for that one command. In
+the baseline x64 log, EPEL metadata took 4 minutes 50 seconds to download although
+every installed package came from AlmaLinux BaseOS or AppStream. The package list,
+compiler image, libc floor, native smoke, and persistence tests stay unchanged.
+The [DNF command reference](https://dnf.readthedocs.io/en/stable/command_ref.html)
+defines `--disablerepo` as a temporary command-level filter, so later commands
+retain the image's repository configuration.
+
+The [PR qualification run](https://github.com/stablyai/orca/actions/runs/36972824276/job/110734327685)
+passed the x64 floor native smoke and persistence suite. Its prerequisite step
+finished within GitHub's one-second timing resolution, compared with 5 minutes
+37 seconds in the baseline job; the supplied tools needed no package install.
+This measures that step, not the complete workflow or its queue time.
+
+A [completed main run](https://github.com/stablyai/orca/actions/runs/36962172614)
+used 42 aggregate runner-minutes across 11 test jobs. The
+[latest daily demand report](https://github.com/stablyai/orca/actions/runs/36965354205)
+estimates 34.9 headless runner-hours, including 23.4 in cancelled runs. These are
+baseline observations; post-merge savings have not yet been measured.
+
+## SSH Windows slot reuse
+
+The SSH Windows host workflow uses the same server-slot preparation action as
+headless qualification. Its four PR jobs can restore the exact slot published by
+fully qualified main runs, then validate its inventory and hashes and run the
+required-slot and pinned-Node smoke checks. Misses or invalid payloads compile
+freshly. Only main headless qualification publishes; manual SSH qualification
+still builds freshly. Both sshd versions, both architectures, all three host
+cells, the process-table addon build, and the template/relay builds remain.
+
+The action is part of the cache fingerprint, so this extraction starts a new
+namespace that needs a successful main seed. The existing hosted measurements
+below suggest about 160 aggregate runner-seconds saved across four warm SSH jobs;
+that is a conditional estimate, not a measured improvement of this consumer.
+Private sshd installation and host execution still dominate this workflow.
+
+## Prepared relay addon reuse
+
+A [completed SSH Windows run](https://github.com/stablyai/orca/actions/runs/36972043877)
+rebuilt the process-table relay addon after native dependency preparation. From
+its builder's start message to the validated staged artifact, x64 took 85.5 seconds
+and ARM64 took 135.6 seconds. These are single-run observations, not medians.
+
+An opt-in reuse path checks the same binary architecture, patched reader and
+launcher exports as staging, then runs the existing native-load and CreationTime
+probe. Repaired source or incomplete evidence requires a fresh build. SSH PRs
+request reuse only following an exact prepared native-cache hit; manual SSH and
+all release builders retain fresh compilation. Subsequent staging checks still
+run. Hosted validation and the reuse interval remain to be measured.
+
 ## October 1 Windows and dependency cache follow-up
 
 [PR #24355](https://github.com/stablyai/orca/pull/24355) merged at `197ea3a3`.
@@ -17,8 +90,8 @@ tooling is removed from ordinary PR CI.
 The existing dependency-native cache and the server's N-API 8 slot serve different
 consumers. Cache the small server slot separately, using the exact compiler image,
 architecture, dependency/patch/runtime inputs and compilation/validation source.
-Only PR qualification restores it. Main qualification still compiles freshly and
-saves after persistence/lifecycle tests and the existing x64 Node 18 handoff.
+PR and main-push qualification restore it. Nightly qualification still compiles
+freshly; main saves after persistence/lifecycle tests and the existing x64 Node 18 handoff.
 Templates and explicit-ref calls continue to compile freshly.
 
 | Hosted runner    | Fresh build median | Restore median | Difference |
@@ -1060,3 +1133,262 @@ warnings remained non-fatal. Every full-repository scan passed cleanly.
 
 Keep the existing production waves. The temporary workflow and 601-line
 benchmark driver were removed after recording this rejected result.
+
+## Native cache ownership: retain the extraction
+
+Native restoration, toolchain recovery, and preparation now belong to
+`.github/actions/prepare-native-runtime/action.yml`. The installer forwards
+its requested key and three build paths; Windows packaging saves the Node
+build before calling the same action for Electron. Existing native load,
+patched-build, Windows job-ownership, registry, and process-table probes remain
+unchanged on restored consumers. Exact keys still separate OS/image or Linux
+container libc, architecture, runtime, resolved Node version, and actual pnpm
+version, without partial-key restoration.
+
+The source hash covers the dedicated action, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `.npmrc`, `.pnpmfile.cjs`, both native dependency patches,
+and these complete build/probe inputs:
+
+- `config/scripts/ensure-native-runtime.mjs`, `rebuild-native-deps.mjs`,
+  `node-pty-job-ownership.cjs`, `windows-pe-machine.cjs`,
+  `windows-process-tree-gyp-rebuild.mjs`, and
+  `windows-process-tree-creation-time.cjs`;
+- `config/scripts/install-electron-package-binary.mjs`,
+  `electron-platform-path.mjs`, `zip-extractor-command.mjs`,
+  `shared-electron-dist-cache.mjs`, `space-sharing-copy.mjs`, and
+  `src/shared/zip-extractor-command.ts`;
+- `native/windows-registry/src/addon.cc`, `binding.gyp`, `package.json`, and
+  `index.js`.
+
+The patches are `config/patches/node-pty@1.1.0.patch` and
+`config/patches/@vscode__windows-process-tree@0.8.0.patch`. Root app version and
+script metadata are excluded; installed package versions remain owned by the
+full lockfile, and the external node-gyp pin belongs to the native action.
+A negative control changing only the installer's
+pnpm verification condition preserves the native key and paths. Every declared
+native input mutation changes the key, and main warming watches those inputs.
+
+This policy creates one cold namespace. The bounded 50-head main sample has
+49 adjacent transitions and three native-key changes under both the old and
+expanded policies: the added node-pty helper export still invalidates #24448.
+There is no measured historical net saving.
+
+The [cold warming run](https://github.com/stablyai/orca/actions/runs/36945655208/attempts/1)
+published all four exact Node keys, and its
+[warm rerun](https://github.com/stablyai/orca/actions/runs/36945655208/attempts/2)
+restored them on fresh runners with the same frozen inputs, Node 24.21.0, and
+pnpm 12.0.0. All five jobs passed in both attempts. These times cover the entire
+native action: runtime validation, key resolution, restore, any toolchain
+recovery, and the unchanged native preparation probes.
+
+| Native Node lane | Cold action | Warm action | Cold post-job save |
+| ---------------- | ----------- | ----------- | ------------------ |
+| Linux x64        | 18.288 s    | 0.993 s     | 0.387 s            |
+| Linux ARM64      | 11.540 s    | 1.062 s     | 1.113 s            |
+| Windows x64      | 104.482 s   | 1.381 s     | 2.424 s            |
+| Windows ARM64    | 256.662 s   | 3.832 s     | 1.243 s            |
+
+Cold Windows jobs rebuilt all three native addons. Warm jobs loaded and probed
+the restored builds; Linux also ran the existing check-only probe before
+skipping the external node-gyp installation. Warm post-job steps recognized
+their primary keys and did not save again. An earlier trial exposed unavailable
+nested composite outputs during post-job saving; both cache variants now use
+the same literal path inventory as the requested output, and the fixed cold
+jobs published their caches without missing-path warnings.
+
+Both [PR package jobs](https://github.com/stablyai/orca/actions/runs/36945659474)
+passed. Windows packaging consumed the same-run Node seed in 1.374 seconds
+before its Node tests and Electron transition. Its Electron cache initially
+missed while the modules were already healthy, so that stage does not establish
+an avoided compilation. Linux's Electron cache was also published, and all 19
+bundled native binaries passed the existing glibc floor check.
+
+The [first six-platform headless run](https://github.com/stablyai/orca/actions/runs/36945658897)
+ran every persistence lane: five passed, while Mac Intel failed waiting for a
+cancel-test worker's ready file before its 500 ms timeout. That lane deliberately
+uses `native-runtime: none`; its separate slot build and smoke passed. The failure
+blocked the five downstream Linux glibc/musl qualifications, so this run does not
+establish complete headless qualification. All six persistence lanes, Node 18
+handoffs, and Linux floor/musl gates remain; final qualification is tracked in
+the [PR's latest checks](https://github.com/stablyai/orca/pull/24476/checks).
+
+These are single cold/warm observations, not paired medians or a measured
+whole-workflow saving. They demonstrate usable exact-key reuse after publication;
+future savings depend on cache availability and unchanged native inputs. The
+trial seeds belong to this PR's merge ref. Other PRs require a main-branch seed
+after merging this new namespace; the existing main push and hourly warming
+jobs provide that seed.
+
+## Separate mobile install verification: retain the current policy
+
+Three local paired pnpm 12 mobile installs reduced the median from 17.155 to
+15.871 seconds, a 1.284-second difference before cache transfer and postinstall
+scripts. That narrow margin does not establish a net hosted saving, so the
+separate mobile verification record was not adopted.
+
+## Unit shard weights: retain the current allocation
+
+The latest five shard wall times were 526/495/503/508/510 seconds. Reweighting
+projected roughly a 4% reduction in the slowest shard without reducing total
+CPU work; the evidence across runs was weak. That estimate does not justify
+changing allocation, so the current weights remain.
+
+## Serializer oracle allocations: retain the change
+
+The serializer round-trip oracle now reloads one xterm cell per buffer traversal
+and writes flag digits directly, avoiding fresh cell objects and flag arrays for
+every comparison. Independent replay terminals, cell descriptors, transcript
+fixtures, resize schedules, ConPTY modes and seeds remain unchanged.
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/36944080887)
+used one Ubuntu 24.04 ARM64 runner, image 20260927.135.1, Node 24.21.0 and one
+isolated fork. The baseline formatter was frozen from f69052e. Byte-parity capture
+ran separately; these three alternating pairs had no payload instrumentation.
+Times cover the complete Vitest invocation, including startup and shutdown.
+
+| Pair/order         | Baseline | Candidate | Change |
+| ------------------ | -------- | --------- | ------ |
+| 1: baseline first  | 70.631 s | 61.661 s  | -12.7% |
+| 2: candidate first | 70.619 s | 62.284 s  | -11.8% |
+| 3: baseline first  | 70.750 s | 62.091 s  | -12.2% |
+| Median             | 70.631 s | 62.091 s  | -12.1% |
+
+Median test-body time fell from 69.519 to 60.953 seconds. All eight full-cohort
+invocations preserved the same 89 passes and two existing conditional skips
+across three files. Separate baseline/candidate captures produced identical
+95,017,559-byte payloads for all 1,435 scenarios and 7,649 checkpoints, with zero
+source crashes; both SHA256 hashes matched the local captures.
+
+Seven focused controls compare against the original allocating oracle, including
+all 128 text-flag combinations, styled blanks, wide cells, cell reuse and immutable
+snapshots. Five deliberate faults were detected: stale cell contents, a missing
+bold flag, changed empty-cell policy, removed scratch reuse and a source-parser
+crash. The last control also proved that crash returns enter the capture.
+
+This measures the three-file oracle cohort. Whole-shard timings include other
+test bodies, imports and transforms, so a whole-suite saving needs separate
+measurement.
+
+## Cache warming: let hourly ticks wait for active work
+
+The hourly warmer previously cancelled an active warmer, even when both used
+the same source. On October 2, the [merge-triggered run](https://github.com/stablyai/orca/actions/runs/36965832780)
+at 8ff6296 was interrupted by the [hourly run](https://github.com/stablyai/orca/actions/runs/36966367896)
+at the same commit. The Windows ARM dependency installation had run for 356
+seconds before cancellation; its native verification was skipped. The other
+four lanes had already succeeded.
+
+Scheduled events now wait in the existing concurrency group. Push, PR and manual
+events still replace active work. This keeps one active workflow and the default
+single pending slot, using GitHub's documented
+[conditional cancellation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+All cache probes, platforms and publication rules remain.
+
+This avoids the observed discarded installation. It does not remove the next
+scheduled run or its repeated successful lanes, and pending replacement still
+applies regardless of the cancellation expression. The bounded 20-run sample
+contains this collision; it does not establish a recurring or whole-CI saving.
+
+## Daemon shutdown fixture: remove build tools after compilation
+
+The fixture now removes compiler and Python build dependencies, plus npm and
+node-gyp caches, in the same Docker layer that installs node-pty. It restores the base image's manual
+package marks, keeps procps and util-linux, and retains the packages owning the
+shared libraries used by Node and the actually loaded PTY addon. This extends
+the [official Node image's package-ownership approach](https://github.com/nodejs/docker-node/blob/main/22/bookworm-slim/Dockerfile)
+to native addons. Dependency checks and a real PTY spawn fail the build if cleanup
+breaks the runtime.
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/36969120786)
+used Ubuntu x64, Docker 28.0.4 and the same resolved Node 22.23.3 base digest for
+both images. All 3,418 common entries under `/usr/local` retained their bytes,
+modes and symlink targets; all seven resolved runtime libraries matched. Only
+two directory-only Python paths disappeared. The 52 removed Debian packages
+were build dependencies; retained package versions stayed identical.
+
+| Image payload      | Baseline      | Candidate     | Reduction |
+| ------------------ | ------------- | ------------- | --------- |
+| Docker archive     | 714,643,456 B | 329,967,616 B | 53.8%     |
+| Compressed archive | 205,819,558 B | 91,888,840 B  | 55.4%     |
+
+Each timed arm started a separate Docker daemon with an empty image store,
+decompressed the archive, loaded it, rebuilt from its inline cache and ran the
+unchanged descendant/canary shutdown check. Every provisioning layer was cached.
+
+| Pair/order         | Baseline | Candidate | Saving  |
+| ------------------ | -------- | --------- | ------- |
+| 1: baseline first  | 16.320 s | 10.198 s  | 6.122 s |
+| 2: candidate first | 16.389 s | 10.141 s  | 6.248 s |
+| 3: baseline first  | 16.351 s | 10.223 s  | 6.129 s |
+| Median             | 16.351 s | 10.198 s  | 6.153 s |
+
+Median decompression fell from 1.059 to 0.493 seconds and loading from 10.723 to
+5.125 seconds. Cached rebuild and shutdown times stayed close. Both seed images
+and all six restored consumers passed the original shutdown/canary assertions;
+both deliberate no-op disposal controls failed with the descendant still live.
+Byte and retained-directory mode faults also failed the inventory comparator.
+All six owned daemons stopped gracefully without a forced kill.
+
+These private daemons used separate classic overlay2 stores and the untouched
+host containerd service. Production storage settings were not captured, the
+filesystem cache was not flushed, and network transfer is excluded. Production
+restores overlap dependency installation, so this 37.6% fixture-sequence saving
+does not establish a six-second PR wall-time improvement. Single cold image
+builds took 19.313 and 22.623 seconds. The Dockerfile change creates one new
+fixture key; the existing main warmer seeds it after merge.
+
+## WebRTC egress fixture: avoid GPU initialization for the data channel
+
+The Linux-only probe disables hardware acceleration before Electron readiness.
+It still creates two independent processes/profiles, a real data channel, offer
+and local description, and checks the exact proxy and UDP policy. The three-second
+host observation, 500 ms drain and 20/30/45-second deadlines remain unchanged.
+
+Two fresh Ubuntu x64 runners compared three alternating pairs each, with identical
+phase instrumentation. The [first trial](https://github.com/stablyai/orca/actions/runs/36967511524)
+started with the baseline; the [second trial](https://github.com/stablyai/orca/actions/runs/36969120786)
+started with the candidate. Their first baseline peer constructors took 4.059
+and 2.546 seconds and logged the GPU command-buffer error seen in an earlier
+package timeout. In the second trial, that baseline delay followed the cold
+candidate's 2.3 ms constructor. Every candidate constructor took 2.0–2.6 ms.
+
+Typical process time stayed near 8.3 seconds: baseline/candidate medians were
+8.288/8.273 seconds in the first trial and 8.298/8.380 in the reverse trial.
+The evidence supports removing an avoidable startup delay, without a measured
+typical throughput gain or an estimate of future timeout frequency.
+
+All 12 full case invocations preserved actual unprotected UDP and zero protected
+UDP. Both trials rejected seven faults: missing policy, a packet at 2.9 seconds,
+a packet during the drain, a missing peer factory or local description, a broken
+packet counter and a hung renderer. The original assertions and deadlines caught
+each fault. The normal package gate runs the uninstrumented fixture.
+
+## Remote resync fixture: keep coalesced frames in one decoder pass
+
+The first [full PR run](https://github.com/stablyai/orca/actions/runs/36971375340)
+passed both package jobs but failed one remote-workspace ordering assertion:
+it observed revisions `[2, 3]` where the fixture expected `[3]`. The decoder can
+yield between two frames after its four-millisecond work budget. Under slow
+scheduling, the first response's promise can publish revision 2 before the
+second frame's revision 3 notification is dispatched.
+
+The fixture now holds its delivery clock at the actual timestamp from multiplexer
+construction through the first coalesced-buffer delivery, following the existing
+decoder test pattern. It restores the clock before asynchronous assertions and
+again before disposal. All four source/order cases retain their exact cache,
+publication, client-identity and follow-up-read assertions. Production decoding,
+its fairness budget and remote messages are unchanged.
+
+Normal focused runs passed all 18 tests. Advancing the clock by four milliseconds
+per call reproduced `[2, 3]` in both original response-first cases; the fixed
+fixture passed all 18 under the same control. Removing the freeze reproduced both
+failures. Bypassing the production read-safety guard still caused `[3, 2]` rollback
+in all four ordering cases and eight failing tests overall. All controls preserved
+the same 18 test identities. This corrects a reproducible fixture assumption;
+one CI failure does not establish a failure-rate reduction.
+
+## Windows server cache metadata: retain the current key
+
+The bounded 50-head main sample ending at 8ff6296 contained no root package
+metadata changes. Removing app-version metadata from the Windows server cache
+key would not improve reuse in that sample, so the key remains unchanged.

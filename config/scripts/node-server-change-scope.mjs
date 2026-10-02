@@ -17,6 +17,7 @@ const BUILD_SCRIPTS = [
   'config/scripts/pinned-node-downloads.mjs',
   'config/scripts/build-orcad.mjs',
   'config/scripts/build-orcad-prebuilds.mjs',
+  'config/scripts/orcad-windows-prebuild-cache.mjs',
   'config/scripts/orcad-prebuild-smoke-child.cjs',
   'config/scripts/build-windows-process-tree-relay-addon.mjs',
   'config/scripts/run-node-server-tests.mjs',
@@ -41,6 +42,8 @@ const ALWAYS_FILES = new Set([
 ])
 const ALWAYS_PREFIXES = [
   '.github/actions/install-node-dependencies/',
+  '.github/actions/prepare-native-runtime/',
+  '.github/actions/prepare-orcad-prebuilds/',
   // These areas also contain worker paths and fixtures opened without an import.
   'src/main/persistence/',
   'src/main/sqlite/',
@@ -132,7 +135,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const changedFiles = readFileSync(process.argv[2], 'utf8').split('\0').filter(Boolean)
   const result = await classifyNodeServerChanges(changedFiles)
   console.log(result.reason)
-  const policy = nodeServerQualification(changedFiles, result)
+  const policy = nodeServerQualification(changedFiles, result, {
+    fullQualification: process.argv.includes('--full-qualification')
+  })
   const output = `should_run=${result.shouldRun}\nqualification=${policy.qualification}\nrunners=${JSON.stringify(policy.runners)}\n`
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, output)
