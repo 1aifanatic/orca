@@ -96,6 +96,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
+  /** The Claude CLI's version, for launch flags older binaries reject; absent passes none. */
+  resolveClaudeCliVersion?: (command: string) => Promise<string | null>
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -280,6 +282,9 @@ async function installOnJournal(
     store,
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
+    ...(deps.resolveClaudeCliVersion
+      ? { resolveClaudeCliVersion: deps.resolveClaudeCliVersion }
+      : {}),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv,
     resolveClaudeAuthPolicy: deps.resolveClaudeAuthPolicy,

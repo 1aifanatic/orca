@@ -13,7 +13,8 @@ import {
   CLAUDE_SESSION_STATE_EVENTS_ENV,
   CLAUDE_STRUCTURED_BASE_OPTIONS,
   claudeSessionIdForOrcaSession,
-  createClaudeStructuredLaunchResolver
+  createClaudeStructuredLaunchResolver,
+  type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
 
@@ -523,5 +524,47 @@ describe('claude structured launch resolution', () => {
         resolverFor(RESUMABLE)({ identity: identityAt('leaf-current') })
       ).resolves.toMatchObject({ providerSessionId: 'provider-current' })
     })
+  })
+})
+
+describe('readable Claude thinking', () => {
+  const launchWith = (
+    resolveCliVersion?: ClaudeStructuredLaunchResolverDeps['resolveCliVersion']
+  ) =>
+    createClaudeStructuredLaunchResolver({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launch resolution reads only getRecord.
+      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      resolveWorkspacePath: async (id) => `/repos/${id}`,
+      resolveCommand: () => '/usr/local/bin/claude',
+      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      hasTranscript: async () => false,
+      ...(resolveCliVersion ? { resolveCliVersion } : {})
+    })({ identity: IDENTITY })
+
+  it('asks for summarized thinking on a CLI that knows the flag, and never forces thinking on', async () => {
+    const probed: string[] = []
+    const launch = await launchWith(async (command) => {
+      probed.push(command)
+      return '2.1.280'
+    })
+    expect(probed).toEqual(['/usr/local/bin/claude'])
+    expect(launch.options.extraArgs).toEqual({
+      'replay-user-messages': null,
+      'thinking-display': 'summarized'
+    })
+    expect(launch.options).not.toHaveProperty('thinking')
+  })
+
+  it.each([
+    ['an older CLI', '2.1.92'],
+    ['an unresolved version', null]
+  ])('passes nothing to %s, whose start the flag could fail', async (_case, version) => {
+    const launch = await launchWith(async () => version)
+    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
+  })
+
+  it('launches without the flag rather than wait on a probe that has not answered', async () => {
+    const launch = await launchWith(() => new Promise<string | null>(() => {}))
+    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
   })
 })
