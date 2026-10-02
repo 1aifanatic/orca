@@ -112,6 +112,19 @@ describe('readLinuxOomKillCounters', () => {
     expect(counters).not.toHaveProperty('daemonCgroupPath')
   })
 
+  it('reads the daemon pid source once while the daemon stays in its cgroup', () => {
+    const pidSource = vi.fn(() => DAEMON_PID)
+    setLinuxOomKillDaemonPidSource(pidSource)
+    const state = { hostKills: 3, cgroupKills: 0, daemonCgroup: DAEMON_SCOPE as string | undefined }
+    setLinuxOomKillFileReaderForTest(fakeHost(state), 'linux')
+    readLinuxOomKillCounters()
+    readLinuxOomKillCounters()
+    expect(pidSource).toHaveBeenCalledTimes(1)
+    state.daemonCgroup = undefined
+    readLinuxOomKillCounters()
+    expect(pidSource).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores a daemon pid whose cgroup is not an Orca daemon scope (recycled pid)', () => {
     setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
     setLinuxOomKillFileReaderForTest(

@@ -11,7 +11,8 @@ import { configureBrowserClientPageAutomationRuntime } from '../browser/browser-
 import { BrowserClientPageCommandError } from '../browser/browser-client-page-command-failure'
 import { startPreGoneCrashSampling } from '../crash-reporting/process-gone-diagnostics'
 import { setLinuxOomKillDaemonPidSource } from '../crash-reporting/linux-oom-kill-counters'
-import { readDaemonPidRecord } from '../daemon/daemon-init'
+import { getDaemonEndpointFacts } from '../daemon/daemon-init'
+import { readDaemonPidRecord } from '../daemon/daemon-endpoint-incarnation'
 import { recordProcessGoneCrash } from './main-window-lifecycle-flags'
 import { handleGpuChildCrash } from './gpu-lifecycle'
 import { isGpuFallbackCrashCandidate } from '../crash-reporting/gpu-crash-fallback-decision'
@@ -145,7 +146,12 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   // Why: process-gone metrics only see survivors, and the gone-time host memory
   // read lands after the corpse released its pages; both need a live pre-gone
   // sample to compare against in crash reports.
-  setLinuxOomKillDaemonPidSource(() => readDaemonPidRecord()?.pid)
+  // Why the path captured once: resolving it each time re-runs the runtime dir's mkdir/chmod.
+  let daemonPidPath: string | null = null
+  setLinuxOomKillDaemonPidSource(() => {
+    daemonPidPath ??= getDaemonEndpointFacts()?.pidPath ?? null
+    return readDaemonPidRecord(daemonPidPath)?.pid
+  })
   startPreGoneCrashSampling()
   app.on('child-process-gone', (_event, details) => {
     recordProcessGoneCrash('child', details.type, details.reason, details.exitCode ?? null, {

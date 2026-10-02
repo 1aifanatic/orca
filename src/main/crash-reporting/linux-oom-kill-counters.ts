@@ -47,12 +47,14 @@ function readTextFile(path: string): string | undefined {
 let fileReader: FileReader = readTextFile
 let counterPlatform: NodeJS.Platform = process.platform
 let daemonPidSource: (() => number | null | undefined) | null = null
+let cachedDaemon: { pid: number; cgroupPath: string } | null = null
 
 /** Why injected: crash-reporting must not import the daemon provider graph. */
 export function setLinuxOomKillDaemonPidSource(
   source: (() => number | null | undefined) | null
 ): void {
   daemonPidSource = source
+  cachedDaemon = null
 }
 
 export function setLinuxOomKillFileReaderForTest(
@@ -111,11 +113,7 @@ function readDaemonCgroup(
     readDaemonScopeCounter(counters, pinnedDaemonPath)
     return
   }
-  const pid = daemonPidSource?.()
-  if (!pid || pid <= 0) {
-    return
-  }
-  const daemonPath = cgroupPathOf(`/proc/${pid}/cgroup`)
+  const daemonPath = resolveDaemonCgroupPath()
   if (!daemonPath) {
     return
   }
@@ -127,6 +125,27 @@ function readDaemonCgroup(
     return
   }
   readDaemonScopeCounter(counters, daemonPath)
+}
+
+// Why cached: the pid source reads the pid file off disk, which a paging-storm poll must not
+// repeat each tick; procfs alone tells us when the cached daemon has gone.
+function resolveDaemonCgroupPath(): string | undefined {
+  if (cachedDaemon) {
+    const path = cgroupPathOf(`/proc/${cachedDaemon.pid}/cgroup`)
+    if (path === cachedDaemon.cgroupPath) {
+      return path
+    }
+    cachedDaemon = null
+  }
+  const pid = daemonPidSource?.()
+  if (!pid || pid <= 0) {
+    return undefined
+  }
+  const path = cgroupPathOf(`/proc/${pid}/cgroup`)
+  if (path) {
+    cachedDaemon = { pid, cgroupPath: path }
+  }
+  return path
 }
 
 function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } | undefined {
