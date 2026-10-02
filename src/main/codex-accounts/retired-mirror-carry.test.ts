@@ -5,11 +5,25 @@ import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
 import type * as CodexAccountFs from './fs-utils'
+import type * as SettingsPromotion from '../codex/config-settings-promotion'
 import { carryRetiredMirror } from './retired-mirror-carry'
 
 const { homedirMock, concurrentEdit } = vi.hoisted(() => {
-  const edit: { configToml: string | null } = { configToml: null }
+  const edit: { configToml: string | null; failSettings: boolean } = {
+    configToml: null,
+    failSettings: false
+  }
   return { homedirMock: vi.fn<() => string>(), concurrentEdit: edit }
+})
+
+vi.mock('../codex/config-settings-promotion', async (importOriginal) => {
+  const actual = await importOriginal<typeof SettingsPromotion>()
+  return {
+    ...actual,
+    promoteCodexRuntimeSettingsToSystem: (
+      ...args: Parameters<typeof actual.promoteCodexRuntimeSettingsToSystem>
+    ) => (concurrentEdit.failSettings ? null : actual.promoteCodexRuntimeSettingsToSystem(...args))
+  }
 })
 
 vi.mock('node:os', async (importOriginal) => ({
@@ -44,6 +58,8 @@ beforeEach(() => {
   runtimeHomePath = join(root, 'orca', 'codex-runtime-home', 'home')
   systemHomePath = join(root, 'user', '.codex')
   mkdirSync(runtimeHomePath, { recursive: true })
+  concurrentEdit.failSettings = false
+  concurrentEdit.configToml = null
 })
 
 afterEach(() => {
@@ -203,17 +219,52 @@ describe('carryRetiredMirror', () => {
     const carryCredentials = vi.fn(() => carryCredentials.mock.calls.length > 1)
 
     expect(carry(carryCredentials)).toBe(false)
-    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables'])
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables', 'files'])
     expect(readSystem('config.toml')).toContain('[mcp_servers.docs]')
     writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
 
     expect(carry(carryCredentials)).toBe(true)
     expect(carryCredentials).toHaveBeenCalledTimes(2)
-    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables', 'credentials'])
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables', 'credentials', 'files'])
     expect(readSystem('config.toml')).toBe('model = "gpt-5"\n')
     expect(carry(carryCredentials)).toBe(true)
     expect(carryCredentials).toHaveBeenCalledTimes(2)
   })
+
+  it('keeps a failing settings step pending while the other steps land', () => {
+    writeFileSync(join(runtimeHomePath, 'config.toml'), '[mcp_servers.docs]\ncommand = "server"\n')
+    concurrentEdit.failSettings = true
+
+    expect(carry()).toBe(false)
+    expect(completedSteps()).toEqual(['hooks', 'tables', 'credentials', 'files'])
+    expect(readSystem('config.toml')).toContain('[mcp_servers.docs]')
+
+    concurrentEdit.failSettings = false
+    const carryCredentials = vi.fn(() => true)
+    expect(carry(carryCredentials)).toBe(true)
+    expect(carryCredentials).not.toHaveBeenCalled()
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'tables', 'credentials', 'files'])
+  })
+
+  it.each(['{not json', '"just a string"', '{}'])(
+    'treats an unreadable marker (%s) as done rather than rerunning landed steps',
+    (marker) => {
+      mkdirSync(systemHomePath, { recursive: true })
+      writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+      writeFileSync(
+        join(runtimeHomePath, 'config.toml'),
+        '[mcp_servers.docs]\ncommand = "server"\n'
+      )
+      writeFileSync(markerPath(), marker)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const carryCredentials = vi.fn(() => true)
+
+      expect(carry(carryCredentials)).toBe(true)
+
+      expect(carryCredentials).not.toHaveBeenCalled()
+      expect(readSystem('config.toml')).toBe('model = "gpt-5"\n')
+    }
+  )
 
   it('retries tables after a concurrent ~/.codex write refuses the guarded write', () => {
     mkdirSync(systemHomePath, { recursive: true })
@@ -223,7 +274,7 @@ describe('carryRetiredMirror', () => {
 
     expect(carry()).toBe(false)
     expect(readSystem('config.toml')).toBe('model = "concurrent"\n')
-    expect(completedSteps()).toEqual(['settings', 'hooks', 'credentials'])
+    expect(completedSteps()).toEqual(['settings', 'hooks', 'credentials', 'files'])
 
     expect(carry()).toBe(true)
     expect(readSystem('config.toml')).toBe(

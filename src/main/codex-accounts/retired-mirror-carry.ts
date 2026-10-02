@@ -24,10 +24,11 @@ import {
 } from '../codex/config-toml-runtime-owned-sections'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { writeFileAtomically, writeFileAtomicallyIfUnchanged } from './fs-utils'
+import { carryMirrorOnlyHomeFiles } from './retired-mirror-home-files'
 
 export const RETIRED_MIRROR_CARRY_MARKER = 'retired-mirror-carry-v1.json'
 
-const CARRY_STEPS = ['settings', 'hooks', 'tables', 'credentials'] as const
+const CARRY_STEPS = ['settings', 'hooks', 'tables', 'credentials', 'files'] as const
 type CarryStep = (typeof CARRY_STEPS)[number]
 
 type RetiredMirrorHomes = {
@@ -38,8 +39,9 @@ type RetiredMirrorHomes = {
 /**
  * Carries what only the system-default mirror holds into ~/.codex when that
  * lane retires. Promotion salvages settings only inside a mirror pass, and the
- * mirror keeps project trust, its own MCP servers and pane logins to itself, so
- * without this the first real-home launch would drop them.
+ * mirror keeps project trust, its own MCP servers, pane logins, approved
+ * command rules and pane-installed skills to itself, so without this the first
+ * real-home launch would drop them.
  *
  * Additive: never replaces anything ~/.codex already has. The marker records
  * each step that landed, so a launch reruns only the ones still owed and a
@@ -62,7 +64,8 @@ export function carryRetiredMirror(
     settings: () => promoteCodexRuntimeSettingsToSystem(homes) !== null,
     hooks: () => promoteCodexRuntimeHookApprovalsToSystem(homes.runtimeHomePath),
     tables: () => carryMirrorOnlyTables(homes),
-    credentials: carryCredentials
+    credentials: carryCredentials,
+    files: () => carryMirrorOnlyHomeFiles(homes)
   }
   const landed = pending.filter((step) => runStep(steps[step]))
   if (landed.length > 0) {
@@ -73,20 +76,33 @@ export function carryRetiredMirror(
 }
 
 function readCompletedCarrySteps(markerPath: string): ReadonlySet<CarryStep> {
-  let marker: unknown
+  let contents: string
   try {
-    marker = JSON.parse(readFileSync(markerPath, 'utf-8'))
+    contents = readFileSync(markerPath, 'utf-8')
   } catch (error) {
     if (isDefinitiveAbsence(error)) {
       return new Set()
     }
     throw error
   }
-  const completed: unknown[] =
-    marker && typeof marker === 'object' && 'completed' in marker && Array.isArray(marker.completed)
-      ? marker.completed
-      : []
-  return new Set(CARRY_STEPS.filter((step) => completed.includes(step)))
+  let marker: unknown
+  try {
+    marker = JSON.parse(contents)
+  } catch {
+    marker = null
+  }
+  if (
+    marker &&
+    typeof marker === 'object' &&
+    'completed' in marker &&
+    Array.isArray(marker.completed)
+  ) {
+    const completed: unknown[] = marker.completed
+    return new Set(CARRY_STEPS.filter((step) => completed.includes(step)))
+  }
+  // Why all done: rerunning landed steps would bring back what the user removed since.
+  console.warn('[codex-runtime-home] Unreadable retired-mirror carry marker; treating it as done')
+  return new Set(CARRY_STEPS)
 }
 
 function runStep(step: () => boolean): boolean {
