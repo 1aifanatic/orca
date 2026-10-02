@@ -1,3 +1,4 @@
+import { agentStopDisplayStatus } from '../../../../shared/agent-stop-display-status'
 import type { useStructuredAgentSession } from './use-structured-agent-session'
 
 type StopController = Pick<
@@ -23,7 +24,12 @@ export function nativeChatStructuredStopControls(
     queuesAfterStop: boolean
   }
 } {
-  const stopping = controller.canStop && (hostStopping || controller.stopPressed)
+  const stopping =
+    agentStopDisplayStatus({
+      working: controller.canStop,
+      hostStopping,
+      stopPressed: controller.stopPressed
+    }) === 'stopping'
   const stopInFlight = controller.canStop && controller.stopPressed
   return {
     stopping,

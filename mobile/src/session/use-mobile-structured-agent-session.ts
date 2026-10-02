@@ -32,6 +32,7 @@ import {
   requestMobileStructuredAgentSessionCancel
 } from './mobile-structured-agent-session-cancel'
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
+import { agentStopDisplayStatus } from '../../../src/shared/agent-stop-display-status'
 import {
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
@@ -176,7 +177,12 @@ export function useMobileStructuredAgentSession(args: {
   })
   // The host's word, bridged by this phone's own press until its Stop event lands.
   const stopPress = useMobileStructuredStopPress(sessionKey)
-  const stopping = isWorking && (hostStopping || stopPress.pressed)
+  const stopping =
+    agentStopDisplayStatus({
+      working: isWorking,
+      hostStopping,
+      stopPressed: stopPress.pressed
+    }) === 'stopping'
   const stopRequestInFlight = isWorking && stopPress.pressed
   const turnIndicator = useMemo(
     () => ({ thinking, activityText, stopping, stopRequestInFlight }),

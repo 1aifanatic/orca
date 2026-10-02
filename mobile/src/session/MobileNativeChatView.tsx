@@ -21,6 +21,7 @@ import {
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import { colors } from '../theme/mobile-theme'
 import { mobileNativeChatComposerPlaceholder } from './mobile-native-chat-composer-placeholder'
+import { agentStopDisplayStatus } from '../../../src/shared/agent-stop-display-status'
 import { styles } from './mobile-native-chat-view-styles'
 import { mobileNativeChatListFooter } from './mobile-native-chat-list-footer'
 import {
@@ -268,7 +269,11 @@ export function MobileNativeChatView({
   // Per-turn status rows: one live indicator while the turn runs, then a settled
   // "Worked for N" row. The structured lane owns them; the bridge lane keeps its
   // three-dot indicator.
-  const stopping = agentWorking === true && turnIndicator?.stopping === true
+  const stopping =
+    agentStopDisplayStatus({
+      working: agentWorking === true,
+      hostStopping: turnIndicator?.stopping === true
+    }) === 'stopping'
   // Only this phone's own request holds Stop: a repeat is how a stuck stop escalates.
   const stopHeld = agentWorking === true && turnIndicator?.stopRequestInFlight === true
   const stoppingCopy = NATIVE_CHAT_TURN_STATUS_COPY.stopping

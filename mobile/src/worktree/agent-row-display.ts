@@ -129,7 +129,8 @@ const STOPPING_LABEL = 'Stopping…'
 
 // Primary row text: "Stopping…" while the host says a person's Stop is ending the turn, else the
 // agent's last message, then the user prompt, then a human-readable state label so a row is never
-// blank. Matches the desktop DashboardAgentRow displayLabel fallback chain.
+// blank. Matches the desktop DashboardAgentRow displayLabel fallback chain. The Stopping test
+// mirrors agentStopDisplayStatus (src/shared), which this file cannot import as a value either.
 export function agentDisplayLabel(row: RuntimeWorktreeAgentRow, now: number): string {
   if (row.state === 'working' && row.mainAgent?.stopping === true) {
     return STOPPING_LABEL
