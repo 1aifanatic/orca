@@ -21,6 +21,6 @@ export function getOpenCodeCliCapabilities(
   return {
     version,
     pluginApi: major === '1' ? 'v1' : major === '2' ? 'v2' : 'unknown',
-    promptMode: major === '1' ? 'submit' : major === '2' ? 'prefill' : 'unknown'
+    promptMode: major === '1' ? 'submit' : version === '2.0.16' ? 'prefill' : 'unknown'
   }
 }

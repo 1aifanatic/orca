@@ -27,3 +27,8 @@ it('keeps future versions unknown instead of assuming a plugin loader or prompt 
     promptMode: 'prefill'
   })
 })
+
+it('does not opt unverified v2 builds into an extra prompt submission', () => {
+  expect(getOpenCodeCliCapabilities('2.0.17').promptMode).toBe('unknown')
+  expect(getOpenCodeCliCapabilities('2.0.16-beta').promptMode).toBe('unknown')
+})
