@@ -20,6 +20,25 @@ export type UnhandledProviderFrameJournalItem = {
 export type UnhandledProviderFrameJournalItemOptions = {
   /** A typed translator accepted this exact frame, not merely this frame kind. */
   coveredByTypedTranslator?: boolean
+  /** The sentence the caller knows for a frame that does not name one itself; it leads the row. */
+  displayText?: string | null
+  /** The row is the durable record of a reply Orca already sent, so it stays even without words. */
+  recordsHostReply?: true
+}
+
+const loggedTextlessKinds = new Set<string>()
+const MAX_LOGGED_TEXTLESS_KINDS = 200
+
+/** Once per provider and kind: a frame the user is never shown still leaves a trace to debug from. */
+function logTextlessFrame(provider: string, kind: string): void {
+  const key = `${provider}\u0000${kind}`
+  if (loggedTextlessKinds.has(key) || loggedTextlessKinds.size >= MAX_LOGGED_TEXTLESS_KINDS) {
+    return
+  }
+  loggedTextlessKinds.add(key)
+  console.info(
+    `[agent-session] provider frame with no text left out of the chat: ${provider} ${kind}`
+  )
 }
 
 function serializeProviderPayload(payload: unknown): string {
@@ -43,7 +62,9 @@ const MESSAGE_KEYS = [
   // `error` is how a failed dependency reports itself — an MCP server that could not start says
   // so here and nowhere else. Without it the row falls back to the bare method name, which is how
   // "MCP server X failed to start: auth expired" reached users as `notification:mcpServer/...`.
-  'error'
+  'error',
+  // Last: a local slash command's output (`/usage`) is its frame's `content`, meant for the transcript.
+  'content'
 ] as const
 
 function directReadableMessage(payload: unknown): string | null {
@@ -137,15 +158,19 @@ export function unhandledProviderFrameJournalItem(
         .join('\n\n') || message
   }
   const goalText = provider === 'codex' ? codexGoalRowText(method, payload) : null
-  const display = message ? boundInlineText(message, limits) : null
-  const goalDisplay = goalText ? boundInlineText(goalText, limits) : null
+  const named = goalText || options.displayText || message
+  const text = compaction ? 'Context compacted' : named ? boundInlineText(named, limits).text : null
+  // A frame with no words of its own tells the user nothing, so it is logged, not shown. A failure
+  // still shows: it is the only word that something went wrong.
+  if (text === null && classification !== 'error-surface' && !options.recordsHostReply) {
+    logTextlessFrame(provider, kind)
+    return null
+  }
   const threadGoal = provider === 'codex' ? codexThreadGoalState(method, payload) : null
   return {
     body: {
       kind: 'status',
-      text: compaction
-        ? 'Context compacted'
-        : (goalDisplay?.text ?? display?.text ?? `${provider} · ${kind}`),
+      text: text ?? `${provider} · ${kind}`,
       ...(compaction ? { presentation: 'compaction' } : {}),
       ...(tone ? { tone } : {}),
       providerFrame: { provider, kind, payload: bounded },

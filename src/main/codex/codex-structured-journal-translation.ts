@@ -204,7 +204,8 @@ export function createCodexJournalTranslator(
         return genericFrames.appendUnhandled(
           `request:${event.method}`,
           event.params,
-          event.threadId
+          event.threadId,
+          { recordsHostReply: true }
         )
       }
       if (event.type === 'provider-frame') {

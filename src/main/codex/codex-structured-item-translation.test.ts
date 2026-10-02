@@ -609,7 +609,7 @@ describe('codex item bodies', () => {
     })
   })
 
-  it('renders reasoning as a typed message and exposes an unknown item as a provider frame', () => {
+  it('renders reasoning as a typed message and an unknown item only when it has words', () => {
     expect(codexItemBody({ type: 'reasoning', id: 'r', text: 'thinking' })).toEqual({
       kind: 'message',
       role: 'reasoning',
@@ -617,9 +617,12 @@ describe('codex item bodies', () => {
     })
     expect(codexItemBody({ type: 'reasoning', id: 'r' })).toBeNull()
     expect(codexItemBody({ type: 'agentMessage', id: 'm', text: '' })).toBeNull()
-    expect(codexItemBody({ type: 'somethingCodexAddedLater', id: 'x' })).toMatchObject({
+    expect(codexItemBody({ type: 'somethingCodexAddedLater', id: 'x' })).toBeNull()
+    expect(
+      codexItemBody({ type: 'somethingCodexAddedLater', id: 'x', text: 'Indexed the repo' })
+    ).toMatchObject({
       kind: 'status',
-      text: 'codex · item:somethingCodexAddedLater',
+      text: 'Indexed the repo',
       providerFrame: { provider: 'codex', kind: 'item:somethingCodexAddedLater' }
     })
   })
