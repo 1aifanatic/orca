@@ -113,6 +113,8 @@ async function deriveMissingStatuses(
   }
   const toOpen: string[] = []
   for (const sessionId of sessionIds) {
+    // A task per chat at least: short chats fold in one part, and a pass of them must not be one task.
+    await yieldTask()
     if (deps.isDisposed()) {
       return []
     }

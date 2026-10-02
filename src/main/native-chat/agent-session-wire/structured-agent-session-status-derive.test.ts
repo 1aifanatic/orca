@@ -3,8 +3,11 @@
 // with work is still opened, so it is settled; and a send during the pass is not queued behind it.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
 import {
   closeTestJournalHostDatabases,
+  insertTestJournalRow,
+  liveTestJournalRows,
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
@@ -49,6 +52,29 @@ async function startupThroughListing(rig: RestTestRig): Promise<string[]> {
   const background = rig.host.seedStoredStatuses(listed)
   await rig.host.settleOwedSessions(listed)
   return background
+}
+
+/** Appends `count` short status items to each chat's history, as a stopped Orca left them. */
+function appendHistory(rig: RestTestRig, sessionIds: readonly string[], count: number): void {
+  const { db } = openTestJournalHostDatabase(rig.root)
+  db.exec('BEGIN')
+  for (const sessionId of sessionIds) {
+    const tip = liveTestJournalRows(db, sessionId).at(-1)!
+    for (let index = 0; index < count; index += 1) {
+      insertTestJournalRow(db, sessionId, {
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+        kind: 'item',
+        epoch: tip.epoch,
+        seq: tip.seq + 1 + index,
+        fence: rig.store.getRecord(sessionId)!.lease.runtimeFence,
+        ts: 1_000 + index,
+        itemId: `${sessionId}-note-${index}`,
+        revision: 1,
+        body: { kind: 'status', text: `note ${index}` }
+      })
+    }
+  }
+  db.exec('COMMIT')
 }
 
 const seeded = (rig: RestTestRig, sessionId: string) =>
@@ -149,5 +175,46 @@ describe('rowless listed chats after an upgrade', () => {
     expect(after - before).toBeLessThanOrEqual(1)
     expect(after).toBeLessThan(ids.length)
     expect(derivedCount()).toBe(ids.length)
+  }, 120_000)
+
+  it('gives each short chat its own task, so a send waits for at most one', async () => {
+    const rig = await newRig()
+    // Each folds in a single part, so only a yield between chats splits the pass.
+    const ids = Array.from({ length: 60 }, (_, index) => `session-short-${index}`)
+    for (const sessionId of ids) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+    }
+    await restTestChat(rig, 'session-send', { message: 'first' })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    appendHistory(rig, ids, 150)
+    upgradeToEmptyStatusTable(rig)
+    await rig.boot()
+    const background = (await startupThroughListing(rig)).filter((id) => id !== 'session-send')
+    const derivedCount = () =>
+      ids.filter((sessionId) => readTestJournalSessionStatus(rig.root, sessionId) !== null).length
+    let ticks = 0
+    let ticking = true
+    const tick = (): void => {
+      if (ticking) {
+        ticks += 1
+        setImmediate(tick)
+      }
+    }
+    setImmediate(tick)
+
+    const pass = rig.host.restoreReadableSessions(background)
+    await new Promise((resolve) => setImmediate(resolve))
+    const before = derivedCount()
+    const sent = await sendRestTestMessage(rig, 'session-send', 'during the pass')
+    const after = derivedCount()
+    await pass
+    ticking = false
+
+    expect(sent).toMatchObject({ ok: true })
+    expect(after - before).toBeLessThanOrEqual(1)
+    expect(after).toBeLessThan(ids.length)
+    expect(derivedCount()).toBe(ids.length)
+    expect(ticks).toBeGreaterThanOrEqual(ids.length)
   }, 120_000)
 })
