@@ -125,7 +125,9 @@ describe('migrateAgentLaunchProfile', () => {
       ...allYoloArgs(),
       claude: `--model opus ${CLAUDE_BYPASS}`,
       codex: '-m o3',
-      gemini: ''
+      gemini: '',
+      // Bypass beside another permission option: the launch must keep both.
+      'claude-agent-teams': `${CLAUDE_BYPASS} --permission-mode plan`
     }
     const { profile } = migrateAgentLaunchProfile(
       legacy({

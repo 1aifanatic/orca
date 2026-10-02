@@ -77,6 +77,8 @@ export type AgentCatalogRowProps = {
   onSaveArgs: (value: string) => void
   onSaveEnv: (value: Record<string, string>) => void
   sessionSourceHome?: AgentSessionSourceHomeControl
+  /** Shows the environment editor even when empty (agents whose permission mode is an env var). */
+  envEditable?: boolean
   /** Absent for agents with no permission flag to set. */
   permission?: {
     override: AgentPermissionMode | undefined
@@ -105,6 +107,7 @@ export function AgentCatalogRow({
   onSaveArgs,
   onSaveEnv,
   sessionSourceHome,
+  envEditable,
   permission
 }: AgentCatalogRowProps): React.JSX.Element {
   const envSummary = stringifyAgentDefaultEnvDraft(envOverride)
@@ -249,7 +252,7 @@ export function AgentCatalogRow({
               />
             </div>
           )}
-          {(defaultEnvSummary || envSummary) && (
+          {(envEditable || defaultEnvSummary || envSummary) && (
             <div className="mt-2">
               <AgentDefaultEnvInput
                 key={`${agentId}:${envSummary}`}

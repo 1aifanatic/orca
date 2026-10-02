@@ -56,17 +56,47 @@ describe('RuntimeClientSettingsController agent launch projection', () => {
       agentDefaultArgs: { claude: '--model opus', codex: `${CODEX_BYPASS} -m o3` }
     })
 
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      {
-        agentDefaultArgs: { claude: '--model opus', codex: '-m o3' },
-        agentDefaultEnv: {},
-        agentPermissionModeOverrides: { claude: 'ask' }
-      },
-      { notifyListeners: true }
-    )
+    expect(store.getSettings().agentPermissionModeOverrides).toEqual({ claude: 'ask' })
+    expect(store.getSettings().agentDefaultArgs).toMatchObject({
+      claude: '--model opus',
+      codex: '-m o3'
+    })
     const published = controller.get()
     expect(published.agentDefaultArgs?.claude).toBe('--model opus')
     expect(published.agentDefaultArgs?.codex).toBe(`${CODEX_BYPASS} -m o3`)
+  })
+
+  it('reads an agent the written record leaves out as the shipped bypass default', async () => {
+    const { controller } = controllerFor(
+      hostSettings({
+        agentPermissionMode: 'ask',
+        agentPermissionModeOverrides: {},
+        agentDefaultArgs: { claude: '--model opus' },
+        agentDefaultEnv: {}
+      })
+    )
+
+    await controller.update({ agentDefaultArgs: { codex: '' } })
+
+    const published = controller.get()
+    expect(published.agentDefaultArgs?.claude).toBe(CLAUDE_BYPASS)
+    expect(published.agentDefaultArgs?.codex).toBe('')
+  })
+
+  it('keeps the mode of an agent whose written text sets permissions itself', async () => {
+    const { controller, store } = controllerFor(
+      hostSettings({
+        agentPermissionMode: 'bypass',
+        agentPermissionModeOverrides: {},
+        agentDefaultArgs: { claude: '--permission-mode plan' },
+        agentDefaultEnv: {}
+      })
+    )
+
+    await controller.update({ agentDefaultArgs: controller.get().agentDefaultArgs })
+
+    expect(store.getSettings().agentPermissionModeOverrides?.claude).toBeUndefined()
+    expect(controller.get().agentDefaultArgs?.claude).toBe('--permission-mode plan')
   })
 
   it('passes other updates through untouched', async () => {

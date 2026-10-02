@@ -1,15 +1,18 @@
 import type { GlobalSettings } from './global-settings-types'
-import { isTuiAgent } from './tui-agent-config'
 import {
+  composeTuiAgentLaunchArgsRecord,
+  composeTuiAgentLaunchEnvRecord,
   liftTuiAgentBypassArgs,
   liftTuiAgentBypassEnv,
   normalizeTuiAgentArgsRecord,
   normalizeTuiAgentEnvRecord,
   resolveComposedTuiAgentLaunchArgs,
-  resolveComposedTuiAgentLaunchEnv
+  resolveComposedTuiAgentLaunchEnv,
+  tuiAgentArgsSetPermissions
 } from './tui-agent-launch-defaults'
 import {
   PERMISSION_AGENT_IDS,
+  resolveAgentPermissionMode,
   resolveDefaultAgentPermissionMode,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV,
@@ -76,8 +79,9 @@ export function liftComposedAgentLaunchProfile(
 
 /**
  * Applies a launch-ready `agentDefaultArgs`/`agentDefaultEnv` write — the shape paired clients
- * built before the mode was typed — to a typed profile: each agent it names gets the mode its
- * text implies and keeps only the rest of the text. Agents it does not name are untouched.
+ * built before the mode was typed — to a typed profile. Like before, a written record replaces the
+ * whole record: each agent gets the mode its text implies and keeps only the rest of the text, and
+ * a permission agent the record leaves out reads as the shipped default, the bypass flag.
  */
 export function applyComposedAgentLaunchUpdate(
   current: Partial<
@@ -90,40 +94,27 @@ export function applyComposedAgentLaunchUpdate(
     >
   >,
   update: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>>
-): Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'> {
-  const agentDefaultArgs = { ...current.agentDefaultArgs }
-  const agentDefaultEnv = { ...current.agentDefaultEnv }
-  const agentPermissionModeOverrides = { ...current.agentPermissionModeOverrides }
+): Partial<
+  Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'>
+> {
+  const lifted = liftComposedAgentLaunchProfile({
+    agentDefaultArgs: update.agentDefaultArgs ?? composeTuiAgentLaunchArgsRecord(current),
+    agentDefaultEnv: update.agentDefaultEnv ?? composeTuiAgentLaunchEnvRecord(current)
+  })
   const defaultMode = resolveDefaultAgentPermissionMode(current)
-  const setMode = (agent: TuiAgent, bypass: boolean): void => {
-    const mode: AgentPermissionMode = bypass ? 'bypass' : 'ask'
-    if (mode === defaultMode) {
-      delete agentPermissionModeOverrides[agent]
-    } else {
+  const agentPermissionModeOverrides: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
+  for (const agent of PERMISSION_AGENT_IDS) {
+    // Text that sets permissions itself decides the launch, so it says nothing about the mode.
+    const mode = tuiAgentArgsSetPermissions(agent, lifted.agentDefaultArgs[agent])
+      ? resolveAgentPermissionMode(agent, current)
+      : resolveAgentPermissionMode(agent, lifted)
+    if (mode !== defaultMode) {
       agentPermissionModeOverrides[agent] = mode
     }
   }
-  for (const [agent, args] of Object.entries(
-    normalizeTuiAgentArgsRecord(update.agentDefaultArgs)
-  )) {
-    if (!isTuiAgent(agent)) {
-      continue
-    }
-    const lifted = liftTuiAgentBypassArgs(agent, args)
-    agentDefaultArgs[agent] = lifted.extraArgs
-    if (agent in YOLO_TUI_AGENT_ARGS) {
-      setMode(agent, lifted.bypass)
-    }
+  return {
+    ...(update.agentDefaultArgs !== undefined ? { agentDefaultArgs: lifted.agentDefaultArgs } : {}),
+    ...(update.agentDefaultEnv !== undefined ? { agentDefaultEnv: lifted.agentDefaultEnv } : {}),
+    agentPermissionModeOverrides
   }
-  for (const [agent, env] of Object.entries(normalizeTuiAgentEnvRecord(update.agentDefaultEnv))) {
-    if (!isTuiAgent(agent)) {
-      continue
-    }
-    const lifted = liftTuiAgentBypassEnv(agent, env)
-    agentDefaultEnv[agent] = lifted.extraEnv
-    if (agent in YOLO_TUI_AGENT_ENV) {
-      setMode(agent, lifted.bypass)
-    }
-  }
-  return { agentDefaultArgs, agentDefaultEnv, agentPermissionModeOverrides }
 }

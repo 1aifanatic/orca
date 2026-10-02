@@ -71,6 +71,13 @@ describe('resolveTuiAgentLaunchArgs', () => {
     ).toBe(`${CLAUDE_BYPASS} --append-system-prompt "--permission-mode plan"`)
   })
 
+  // One settings string reaches POSIX, PowerShell and cmd hosts.
+  it('treats an option any launch grammar sees as setting permissions', () => {
+    expect(resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: '^-a never' } })).toBe(
+      '^-a never'
+    )
+  })
+
   it('applies the mode to per-launch extra arguments, and null means none', () => {
     const settings = { agentDefaultArgs: { codex: '--model stored' } }
     expect(resolveTuiAgentLaunchArgs('codex', settings, '--model recipe')).toBe(
@@ -126,6 +133,14 @@ describe('liftTuiAgentBypassArgs', () => {
     ]
   ] as const)('lifts claude %j to bypass=%s with %j left', (args, bypass, extraArgs) => {
     expect(liftTuiAgentBypassArgs('claude', args)).toEqual({ bypass, extraArgs })
+  })
+
+  // Lossless: a launch adds no flag beside text that sets permissions, so the flag must stay in it.
+  it('keeps the flag in text that also sets permissions another way', () => {
+    expect(liftTuiAgentBypassArgs('claude', `${CLAUDE_BYPASS} --permission-mode plan`)).toEqual({
+      bypass: true,
+      extraArgs: `${CLAUDE_BYPASS} --permission-mode plan`
+    })
   })
 
   it('lifts a multi-word bypass flag only as a whole', () => {
@@ -209,6 +224,20 @@ describe('resolveAgentPermissionPosture', () => {
         'darwin'
       ).argumentPermissionOptions
     ).toEqual(['-a', '-s'])
+  })
+
+  it.each([
+    ['codex', '--yolo'],
+    ['claude', '--permission-mode bypassPermissions'],
+    ['claude', '--permission-mode=bypassPermissions']
+  ] as const)('reads the %s bypass alias %j as bypass', (agent, args) => {
+    expect(
+      resolveAgentPermissionPosture(
+        agent,
+        { agentPermissionMode: 'ask', agentDefaultArgs: { [agent]: args } },
+        'darwin'
+      ).effectiveBypass
+    ).toBe(true)
   })
 
   it('reports typed permission options overriding Yolo', () => {

@@ -120,7 +120,7 @@ export function AgentPermissionOverrideControl({
         )
       : null
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-start gap-1">
       <span className="text-xs text-muted-foreground">
         {translate('auto.components.settings.AgentsPane.agentPermissionOverride', 'Permissions')}
       </span>
@@ -147,7 +147,7 @@ export function AgentPermissionOverrideControl({
         ]}
       />
       {notice ? (
-        <div className="flex items-start gap-2 rounded-md border border-status-warning-border bg-status-warning-background px-2.5 py-1.5 text-status-warning">
+        <div className="flex items-start gap-2 self-stretch rounded-md border border-status-warning-border bg-status-warning-background px-2.5 py-1.5 text-status-warning">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
           <p className="min-w-0 text-xs leading-snug">{notice}</p>
         </div>

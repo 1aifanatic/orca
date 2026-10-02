@@ -495,6 +495,7 @@ describe('AgentsPane', () => {
   })
 
   it('counts a permission option typed into Arguments as the agent posture', () => {
+    detectedAgentsMock.detectedIds = ['claude', 'codex']
     const markup = renderPane({
       ...getDefaultSettings('/tmp'),
       agentPermissionMode: 'bypass',
@@ -502,6 +503,17 @@ describe('AgentsPane', () => {
     })
 
     expect(markup).toContain('Set separately: Codex (Manual).')
+  })
+
+  it('leaves agents that are not installed out of the summary', () => {
+    detectedAgentsMock.detectedIds = ['claude']
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { codex: 'ask' }
+    })
+
+    expect(markup).not.toContain('Set separately')
   })
 
   it('lists no exceptions when every agent follows the switch', () => {

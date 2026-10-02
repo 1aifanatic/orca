@@ -28,6 +28,7 @@ import {
   agentHasPermissionMode,
   applyAgentPermissionModeToAll,
   resolveDefaultAgentPermissionMode,
+  YOLO_TUI_AGENT_ENV,
   type AgentPermissionMode
 } from '../../../../shared/tui-agent-permissions'
 import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
@@ -104,18 +105,21 @@ export function AgentsPane({
   const permissionOverrides = settings.agentPermissionModeOverrides ?? {}
   const defaultPermissionMode = resolveDefaultAgentPermissionMode(settings)
   const platform = getRendererAppPlatform()
-  const permissionExceptions: AgentPermissionException[] = catalog.flatMap((agent) => {
-    if (!agentHasPermissionMode(agent.id)) {
-      return []
-    }
-    const { effectiveBypass } = resolveAgentPermissionPosture(agent.id, settings, platform)
-    return effectiveBypass === (defaultPermissionMode === 'bypass')
-      ? []
-      : [{ label: agent.label, effectiveBypass }]
-  })
+  const permissionPostures = new Map(
+    catalog
+      .filter((agent) => agentHasPermissionMode(agent.id))
+      .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, settings, platform)])
+  )
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))
+  // Installed agents only, so the summary does not list agents the user never sees launch.
+  const permissionExceptions: AgentPermissionException[] = detectedAgents.flatMap((agent) => {
+    const posture = permissionPostures.get(agent.id)
+    return !posture || posture.effectiveBypass === (defaultPermissionMode === 'bypass')
+      ? []
+      : [{ label: agent.label, effectiveBypass: posture.effectiveBypass }]
+  })
   const enabledDetectedAgents = detectedAgents.filter((agent) =>
     isTuiAgentEnabled(agent.id, disabledAgents)
   )
@@ -131,6 +135,25 @@ export function AgentsPane({
       agentId: id,
       enabled
     })
+  }
+  const permissionRowProps = (id: TuiAgent): AgentCatalogRowProps['permission'] => {
+    const posture = permissionPostures.get(id)
+    return posture
+      ? {
+          override: permissionOverrides[id],
+          defaultMode: defaultPermissionMode,
+          posture,
+          onChange: (choice) => {
+            const next = { ...permissionOverrides }
+            if (choice === 'default') {
+              delete next[id]
+            } else {
+              next[id] = choice
+            }
+            updateSettings({ agentPermissionModeOverrides: next })
+          }
+        }
+      : undefined
   }
   const getRowProps = (
     agent: (typeof catalog)[number],
@@ -148,22 +171,8 @@ export function AgentsPane({
     cmdOverride: isDetected ? cmdOverrides[agent.id] : undefined,
     argsOverride: agentDefaultArgs[agent.id] ?? '',
     envOverride: { ...agentDefaultEnv[agent.id] },
-    permission: agentHasPermissionMode(agent.id)
-      ? {
-          override: permissionOverrides[agent.id],
-          defaultMode: defaultPermissionMode,
-          posture: resolveAgentPermissionPosture(agent.id, settings, platform),
-          onChange: (choice) => {
-            const next = { ...permissionOverrides }
-            if (choice === 'default') {
-              delete next[agent.id]
-            } else {
-              next[agent.id] = choice
-            }
-            updateSettings({ agentPermissionModeOverrides: next })
-          }
-        }
-      : undefined,
+    envEditable: agent.id in YOLO_TUI_AGENT_ENV,
+    permission: permissionRowProps(agent.id),
     onSetDefault: isDetected ? () => updateSettings({ defaultTuiAgent: agent.id }) : () => {},
     onSetEnabled: (enabled) => setAgentEnabled(agent.id, enabled),
     onSaveOverride: isDetected
