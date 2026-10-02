@@ -5,6 +5,7 @@ import {
 } from '../../shared/agent-session-operation-ledger'
 import {
   failedAcquisitionDeathEvidence,
+  failedAcquisitionReleasesReservation,
   isFailedAcquisitionReservation,
   type AgentSessionAcquisitionExitProof
 } from '../../shared/agent-session-failed-acquisition'
@@ -111,7 +112,7 @@ function settleFailedLease(
   if (!isFailedAcquisitionReservation(record.lease, args)) {
     throw new Error('agent_session_ownership_unknown')
   }
-  if (args.exitProof === 'unproven' && record.lease.ownerProcess) {
+  if (!failedAcquisitionReleasesReservation(record.lease, args.exitProof)) {
     // Parking in recovery proves nothing alive, so `lastRenewedAt` keeps the spawn's proof.
     return {
       ...withLease(record, {

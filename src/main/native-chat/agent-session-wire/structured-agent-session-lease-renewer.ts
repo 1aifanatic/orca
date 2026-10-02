@@ -8,7 +8,6 @@ import {
   type AgentSessionHostProof
 } from '../../../shared/agent-session-lease-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
 import {
   AGENT_SESSION_LEASE_TTL_MS,
   type AgentSessionRecordStore
@@ -43,8 +42,6 @@ export class StructuredAgentSessionLeaseRenewer {
         | 'renewLease'
         | 'renewLeases'
         | 'evictProvenDeadOwner'
-        | 'settleFailedAcquisition'
-        | 'getOperationRow'
         | 'transitionHandoff'
       >
       probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
@@ -53,10 +50,8 @@ export class StructuredAgentSessionLeaseRenewer {
       ) => Promise<Map<string, AgentSessionOwnerProbe>>
       /** What the host's memory proves about this record's owner. */
       ownerProof: (record: AgentSessionRecord) => AgentSessionHostProof
-      /** The settlement this host's last failed attempt for the session could not write. */
-      unsettledAcquisition: (
-        sessionId: string
-      ) => AgentSessionFailedAcquisitionSettlement | undefined
+      /** Writes the settlement this host's failed attempt for the session could not. */
+      landUnsettledAcquisition: (sessionId: string) => Promise<void>
       /** The session's serialize, so a convergence never interleaves an attach or an exit. */
       serialize: (sessionId: string, task: () => Promise<void>) => Promise<void>
       now: () => number
@@ -119,7 +114,12 @@ export class StructuredAgentSessionLeaseRenewer {
     }
     const converging: { record: AgentSessionRecord; basis: ConvergenceBasis }[] = []
     const unproven = candidates.filter(({ record, proof }) => {
-      if (proof.owner.kind !== 'watched-exit' && proof.owner.kind !== 'failed-acquisition') {
+      if (proof.owner.kind === 'failed-acquisition') {
+        // The write that failed, whether it releases the lease or parks it in recovery.
+        converging.push({ record, basis: proof.owner })
+        return false
+      }
+      if (proof.owner.kind !== 'watched-exit') {
         return true
       }
       // Memory speaks for this owner; a probe could only say less.
@@ -230,14 +230,7 @@ export class StructuredAgentSessionLeaseRenewer {
       }
       const expectedFence = record.lease.runtimeFence
       if (basis.kind === 'failed-acquisition') {
-        const settlement = this.input.unsettledAcquisition(sessionId)
-        const operation = settlement
-          ? store.getOperationRow(settlement.callerKey, settlement.operationId)
-          : null
-        // An aged-out row already answers its replay as expired; the next acquisition moves the lease.
-        if (settlement?.fence === expectedFence && operation?.outcome.status === 'pending') {
-          await store.settleFailedAcquisition(settlement)
-        }
+        await this.input.landUnsettledAcquisition(sessionId)
         return
       }
       if (basis.kind === 'watched-exit') {

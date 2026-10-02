@@ -48,7 +48,7 @@ export class StructuredAgentSessionHostRuntimeState {
       probe: (record) => this.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
       ownerProof: (record) => this.ownerProofFor(record),
-      unsettledAcquisition: (sessionId) => this.unsettledAcquisitions.get(sessionId),
+      landUnsettledAcquisition: (sessionId) => this.landUnsettledAcquisition(sessionId),
       serialize: memory.serialize,
       now: () => deps.now?.() ?? Date.now(),
       // Lease/ownership failures are transient and stay on the visible lease-error path.
@@ -144,8 +144,19 @@ export class StructuredAgentSessionHostRuntimeState {
     }
   }
 
-  /** Exit from a latched recovery stage when present-time evidence permits one. */
-  resolveRecovery(sessionId: string): Promise<'resolved' | 'unresolved' | 'not-applicable'> {
+  /** Exit from a latched recovery stage when present-time evidence permits one. A failed attempt's
+   *  unwritten settlement that would have parked its owner there lands first, so recovery concludes
+   *  about it as if it had been written. */
+  async resolveRecovery(sessionId: string): Promise<'resolved' | 'unresolved' | 'not-applicable'> {
+    if (this.leaseState(sessionId)?.state === 'recovering') {
+      await this.landUnsettledAcquisition(sessionId).catch((error: unknown) => {
+        this.deps.logger.warn("writing a failed start's settlement failed", {
+          scope: 'lease-convergence',
+          sessionId,
+          error
+        })
+      })
+    }
     return resolveStructuredSessionRecovery(
       {
         store: this.deps.store,
@@ -166,6 +177,25 @@ export class StructuredAgentSessionHostRuntimeState {
 
   rememberUnsettledAcquisition(settlement: AgentSessionFailedAcquisitionSettlement): void {
     this.unsettledAcquisitions.set(settlement.sessionId, settlement)
+  }
+
+  /** Writes the settlement this host's failed attempt could not, while it still speaks for the
+   *  lease. An aged-out ledger row already answers its replay as expired, so it is left alone. */
+  async landUnsettledAcquisition(sessionId: string): Promise<void> {
+    const settlement = this.unsettledAcquisitions.get(sessionId)
+    const record = this.deps.store.getRecord(sessionId)
+    if (!settlement || !record) {
+      return
+    }
+    const proof = this.ownerProofFor(record)
+    const operation = this.deps.store.getOperationRow(settlement.callerKey, settlement.operationId)
+    if (
+      !proof.attemptInFlight &&
+      proof.owner.kind === 'failed-acquisition' &&
+      operation?.outcome.status === 'pending'
+    ) {
+      await this.deps.store.settleFailedAcquisition(settlement)
+    }
   }
 
   /** What memory proves about the session's owner; null when the session has no record. */

@@ -20,7 +20,6 @@ import type {
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import type { AgentSessionFailedAcquisitionSettlement } from '../../runtime/agent-session-acquisition-failure-settlement'
-import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { MAX_UNEXPECTED_EXIT_REASON_CHARS } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 
@@ -38,7 +37,6 @@ export function structuredAgentSessionOwnerProof(input: {
   const failed = input.unsettledAcquisition
   if (
     failed?.fence === fence &&
-    failed.exitProof !== 'unproven' &&
     isFailedAcquisitionReservation(lease, failed) &&
     // A reservation names no host: its own token at its own fence is what makes it this host's.
     (lease.ownerProcess === null ||
@@ -78,26 +76,6 @@ export function structuredAgentSessionOwnerProof(input: {
     }
   }
   return { ...proof, owner: { kind: 'none' } }
-}
-
-/** The proof for a caller inside the session's serialize, where no acquisition can be in flight. */
-export function structuredAgentSessionOwnerProofUnderSerialize(
-  context: {
-    deps: { store: Pick<AgentSessionRecordStore, 'getRecord' | 'hostId'> }
-    sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
-  },
-  sessionId: string
-): AgentSessionHostProof | null {
-  const { store } = context.deps
-  const record = store.getRecord(sessionId)
-  return record
-    ? structuredAgentSessionOwnerProof({
-        lease: record.lease,
-        hostId: store.hostId,
-        session: context.sessions.get(sessionId),
-        attemptInFlight: false
-      })
-    : null
 }
 
 /** The probe an acquisition's compare-and-swap reads. A watched exit is `exit-observed`, the

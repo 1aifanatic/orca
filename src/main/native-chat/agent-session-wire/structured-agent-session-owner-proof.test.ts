@@ -136,8 +136,25 @@ describe('the proof a failed attempt of its own leaves when its settlement never
     expect(proofWith(settlement(), spawned, 'ssh:devbox').owner).toEqual({ kind: 'none' })
   })
 
+  it('speaks for an unrecorded spawn whose exit went unproven, which its settlement releases', () => {
+    expect(proofWith(settlement({ exitProof: 'unproven' })).owner).toMatchObject({
+      kind: 'failed-acquisition',
+      exitProof: 'unproven'
+    })
+  })
+
+  it('speaks for a recorded owner whose exit went unproven, which its settlement parks', () => {
+    const spawned = {
+      ...RESERVATION,
+      ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: null, spawnToken: 'spawn-a' }
+    }
+    expect(proofWith(settlement({ exitProof: 'unproven' }), spawned).owner).toMatchObject({
+      kind: 'failed-acquisition',
+      exitProof: 'unproven'
+    })
+  })
+
   it.each([
-    ['an exit it could not prove', settlement({ exitProof: 'unproven' })],
     ['another fence', settlement({ fence: 3 })],
     ['another operation', settlement({ operationId: 'op-2' })],
     ['another spawn token', settlement({ spawnToken: 'spawn-b' })]

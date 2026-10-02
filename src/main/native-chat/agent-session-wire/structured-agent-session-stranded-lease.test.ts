@@ -348,7 +348,71 @@ describe('a failed start whose settlement write failed', () => {
     expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('exited')
   })
 
-  it('never frees a spawned child whose exit the failed start could not prove', async () => {
+  /** Claude's shape on an unwritable store: no identity callback, so the identity commit after the
+   *  spawn is the first write to fail; the release's close proves the child dead, then its handle
+   *  write fails on the same store, so the cleanup reads unproven with no owner recorded. */
+  async function failStartWhoseCleanupWriteFails(): Promise<Mock> {
+    await host.close(SESSION, 'evict')
+    const spawn = acquire.getMockImplementation()!
+    acquire.mockImplementationOnce(async (input) => {
+      const acquired = await spawn(input)
+      setStoreWritable(false)
+      return acquired
+    })
+    releaseAcquisition.mockImplementationOnce(async () => {
+      await store.transitionHandoff(SESSION, (record) => ({
+        ...record,
+        updatedAt: record.updatedAt + 1
+      }))
+      return true
+    })
+    const settle = vi.spyOn(store, 'settleFailedAcquisition')
+    expect(await host.send(CALLER, sendParams('the start fails'))).toMatchObject({ ok: true })
+    await eventually(() => expect(settle).toHaveBeenCalledOnce())
+    await eventually(() => expect(host.leaseState(SESSION)?.state).not.toBe('acquiring'))
+    expect(settle.mock.calls[0]?.[0]).toMatchObject({ exitProof: 'unproven' })
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'reserved',
+      ownerProcess: null
+    })
+    setStoreWritable(true)
+    return settle
+  }
+
+  it('lets the next send start after a Claude-shaped start whose cleanup reads unproven', async () => {
+    await failStartWhoseCleanupWriteFails()
+    // Free as its settlement would release it, but nothing claims the child exited.
+    expect(host.leaseState(SESSION)?.state).toBe('free')
+    expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('unverifiable')
+    const dispatched = dispatch.mock.calls.length
+
+    expect(await host.send(CALLER, sendParams('after the failed start'))).toMatchObject({
+      ok: true
+    })
+
+    await eventually(() => expect(dispatch.mock.calls.length).toBeGreaterThan(dispatched))
+    expect(acquire).toHaveBeenCalledTimes(3)
+    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
+  })
+
+  it('replays the Claude-shaped settlement once the store accepts writes', async () => {
+    const settle = await failStartWhoseCleanupWriteFails()
+    const fence = store.getRecord(SESSION)!.lease.runtimeFence
+
+    await renewNow()
+
+    expect(settle).toHaveBeenCalledTimes(2)
+    expect(settle.mock.calls[1]).toEqual(settle.mock.calls[0])
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      runtimeFence: fence + 1,
+      deathEvidence: null
+    })
+  })
+
+  /** A spawn whose identity was recorded and whose kill could not be proven: the settlement would
+   *  park the owner in recovery rather than release it. */
+  async function failStartLeavingAnUnprovenOwner(): Promise<void> {
     probe = () => ({ outcome: 'indeterminate', reason: 'no answer' })
     releaseAcquisition.mockResolvedValueOnce(false)
     const spawn = acquire.getMockImplementation()!
@@ -359,12 +423,30 @@ describe('a failed start whose settlement write failed', () => {
     })
     await failStartWithoutSettlement()
     expect(store.getRecord(SESSION)?.lease.ownerProcess).not.toBeNull()
+  }
+
+  it('reads an owner whose exit the failed start could not prove as recovering, never free', async () => {
+    await failStartLeavingAnUnprovenOwner()
+    expect(host.leaseState(SESSION)?.state).toBe('recovering')
+    expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('unverifiable')
 
     await renewNow()
 
-    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('reserved')
-    expect(host.leaseState(SESSION)?.state).toBe('unverifiable')
-    expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('unverifiable')
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'reserved',
+      handoffStage: 'recovering'
+    })
+  })
+
+  it('lands that settlement before the next send resolves recovery, as if it had been written', async () => {
+    await failStartLeavingAnUnprovenOwner()
+
+    // Recovery concludes as after the stored settlement: the owner cannot be verified, so it is
+    // released without evidence and the send starts the agent.
+    await sendReachesTheAgent('after recovery')
+
+    expect(acquire).toHaveBeenCalledTimes(3)
+    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
   })
 })
 

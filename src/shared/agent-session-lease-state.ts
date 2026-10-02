@@ -22,6 +22,7 @@ import {
 } from './agent-session-lease-adjudication'
 import {
   failedAcquisitionDeathEvidence,
+  failedAcquisitionReleasesReservation,
   isFailedAcquisitionReservation,
   type AgentSessionAcquisitionExitProof
 } from './agent-session-failed-acquisition'
@@ -100,11 +101,13 @@ export function deriveAgentSessionLeaseState(
   const owner: AgentSessionOwnerEvidence =
     proof && proof.fence === lease.runtimeFence ? proof.owner : { kind: 'none' }
   if (owner.kind === 'failed-acquisition') {
-    // Why: the release its settlement would have written. A spawn whose exit went unproven may
-    // still run, so it stays with the probe, and recovery, like a stored one.
-    return isFailedAcquisitionReservation(lease, owner) && owner.exitProof !== 'unproven'
+    // Why: exactly the lease its settlement would have left: released, or parked in recovery.
+    if (!isFailedAcquisitionReservation(lease, owner)) {
+      return { state: 'unverifiable' }
+    }
+    return failedAcquisitionReleasesReservation(lease, owner.exitProof)
       ? { state: 'free', basis: owner }
-      : { state: 'unverifiable' }
+      : { state: 'recovering' }
   }
   if (lease.ownerProcess === null) {
     // Why: the spawn token is the only thing an unrecorded child could carry; only a scan that
@@ -145,8 +148,13 @@ export function agentSessionLeaseOwnerVerdict(
   if (state.state !== 'free') {
     return 'unverifiable'
   }
-  // A release recovery made without proof wrote no evidence: its owner may still be running.
-  return state.basis.kind !== 'stored' || lease.deathEvidence !== null ? 'exited' : 'unverifiable'
+  // A release made without proof — recovery's, or a failed start's unproven cleanup — wrote no
+  // evidence: its owner may still be running.
+  const proved =
+    state.basis.kind === 'stored'
+      ? lease.deathEvidence !== null
+      : state.basis.kind !== 'failed-acquisition' || state.basis.exitProof !== 'unproven'
+  return proved ? 'exited' : 'unverifiable'
 }
 
 /** True only for the owner this host runs: every writer is this host's own child. */

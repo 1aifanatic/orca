@@ -23,7 +23,7 @@ const NO_MEMORY = {
     attemptInFlight: false,
     owner: { kind: 'none' as const }
   }),
-  unsettledAcquisition: () => undefined,
+  landUnsettledAcquisition: async () => {},
   serialize: (_sessionId: string, task: () => Promise<void>) => task()
 }
 const roots: string[] = []

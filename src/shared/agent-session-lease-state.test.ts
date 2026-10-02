@@ -248,16 +248,32 @@ describe("this host's own failed attempt whose settlement never landed", () => {
     }
   )
 
-  it('frees a recorded owner only when the attempt proved its exit', () => {
+  it('frees an unrecorded spawn whose exit went unproven, as its settlement does, claiming no exit', () => {
+    // Claude on an unwritable store: the identity commit and the close's handle write both fail.
+    const state = deriveAgentSessionLeaseState(RESERVATION, proof(failed('unproven')))
+    expect(state).toEqual({ state: 'free', basis: failed('unproven') })
+    expect(agentSessionLeaseOwnerVerdict(RESERVATION, state)).toBe('unverifiable')
+    expect(
+      state.state === 'free' && agentSessionLeaseFreeEvidence(RESERVATION, state.basis, 2_000)
+    ).toBeNull()
+  })
+
+  it('frees a recorded owner only when the attempt proved its exit, else reads it recovering', () => {
     const spawned = lease({ ...RESERVED, ownerProcess: OWNER })
     expect(deriveAgentSessionLeaseState(spawned, proof(failed('exit-proven'))).state).toBe('free')
+    // Where its settlement would have parked it, for recovery to conclude about.
     expect(deriveAgentSessionLeaseState(spawned, proof(failed('unproven'))).state).toBe(
-      'unverifiable'
+      'recovering'
     )
   })
 
   it.each([
-    ['its exit went unproven', RESERVATION, failed('unproven'), 7],
+    [
+      'its recorded owner went unproven',
+      lease({ ...RESERVED, ownerProcess: OWNER }),
+      failed('unproven'),
+      7
+    ],
     ['the proof is for another fence', RESERVATION, failed('exit-proven'), 6],
     [
       'another attempt holds the reservation',

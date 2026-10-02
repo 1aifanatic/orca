@@ -36,6 +36,15 @@ export function isFailedAcquisitionReservation(
   )
 }
 
+/** Whether the settlement releases the reservation. Only a recorded owner whose exit went unproven
+ *  is kept, for recovery to conclude about. */
+export function failedAcquisitionReleasesReservation(
+  lease: AgentSessionLease,
+  exitProof: AgentSessionAcquisitionExitProof
+): boolean {
+  return exitProof !== 'unproven' || lease.ownerProcess === null
+}
+
 /** Records only what was observed: never a tree claim the cleanup did not make, and nothing at all
  *  when nothing was. */
 export function failedAcquisitionDeathEvidence(

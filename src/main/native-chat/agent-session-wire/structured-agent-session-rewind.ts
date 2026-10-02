@@ -19,7 +19,6 @@ import { openWithAgent } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
-import { structuredAgentSessionOwnerProofUnderSerialize } from './structured-agent-session-owner-proof'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import { rewindRefusal } from './structured-rewind-refusal'
 import { persistRewindRecord, recoverStructuredRewind } from './structured-rewind-recovery'
@@ -44,7 +43,7 @@ export async function rewindStructuredAgentSession(
       prepareSession: openWithAgent(context, params.envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
-      ownerProof: () => structuredAgentSessionOwnerProofUnderSerialize(context, sessionId),
+      ownerProof: () => context.ownerProof(sessionId),
       flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {
