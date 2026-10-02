@@ -3,18 +3,38 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionSinkBarrier } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import {
+  createDeferredStructuredAgentSessionEventSink,
+  type StructuredAgentSessionSinkBarrier
+} from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
+import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+
+const PROMPT: Extract<ClaudeStructuredSessionEvent, { type: 'prompt' }> = {
+  type: 'prompt',
+  sessionId: 'session-1',
+  prompt: {
+    requestId: 'req-1',
+    promptKey: 'req-1',
+    toolUseId: 'toolu-1',
+    toolName: 'Bash',
+    kind: 'approval',
+    input: { command: 'touch f' },
+    suggestions: [],
+    questionIds: [],
+    settle: vi.fn()
+  }
+}
 
 function cards(options: { accepted?: boolean; asker?: string } = {}) {
   let land: (barrier: StructuredAgentSessionSinkBarrier) => void = () => {}
+  const writes = { accepted: options.accepted !== false }
   const prompts = new ClaudeJournalPrompts({
     sink: {
       appendItem: () => {},
       tryAppendItem: () =>
-        options.accepted === false
-          ? { accepted: false, reason: 'backpressure' }
-          : { accepted: true },
+        writes.accepted ? { accepted: true } : { accepted: false, reason: 'backpressure' },
       appendTombstone: () => {},
       publish: () => {},
       written: () =>
@@ -26,21 +46,7 @@ function cards(options: { accepted?: boolean; asker?: string } = {}) {
     producerOf: () =>
       options.asker === undefined ? {} : { agentId: options.asker, producerKind: 'agent' }
   })
-  prompts.handle({
-    type: 'prompt',
-    sessionId: 'session-1',
-    prompt: {
-      requestId: 'req-1',
-      promptKey: 'req-1',
-      toolUseId: 'toolu-1',
-      toolName: 'Bash',
-      kind: 'approval',
-      input: { command: 'touch f' },
-      suggestions: [],
-      questionIds: [],
-      settle: vi.fn()
-    }
-  })
+  prompts.handle(PROMPT)
   const open = () => [...prompts.openCards()]
   const landed = async (barrier: StructuredAgentSessionSinkBarrier = { ok: true }) => {
     const written = prompts.whenWritten('req-1')
@@ -51,7 +57,11 @@ function cards(options: { accepted?: boolean; asker?: string } = {}) {
     prompts,
     open,
     landed,
-    land: (barrier: StructuredAgentSessionSinkBarrier) => land(barrier)
+    land: (barrier: StructuredAgentSessionSinkBarrier) => land(barrier),
+    /** The sink is backpressured from now on. */
+    refuseWrites: () => {
+      writes.accepted = false
+    }
   }
 }
 
@@ -90,6 +100,29 @@ describe("a subagent's prompt card", () => {
     await withdrawn.landed()
     withdrawn.prompts.cancel('req-1')
     expect(withdrawn.open()).toEqual([])
+  })
+
+  it('never opens when the sink closes before its rows are written', async () => {
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
+    const prompts = new ClaudeJournalPrompts({
+      sink: deferred.sink,
+      turnScope: () => AGENT_JOURNAL_THREAD_SCOPE,
+      producerOf: () => ({ agentId: 'agent-1', producerKind: 'agent' })
+    })
+    prompts.handle(PROMPT)
+    const written = prompts.whenWritten('req-1')
+    deferred.close()
+    await written
+    expect([...prompts.openCards()]).toEqual([])
+  })
+
+  it('closes when Claude withdraws it while the sink holds the cancelled row back', async () => {
+    const { prompts, open, landed, refuseWrites } = cards({ asker: 'agent-1' })
+    await landed()
+    refuseWrites()
+    expect(prompts.cancel('req-1')).toMatchObject({ accepted: false, reason: 'backpressure' })
+    expect(prompts.pendingCancellationCount).toBe(1)
+    expect(open()).toEqual([])
   })
 
   it('opens a card handed back before its rows landed once they land', async () => {

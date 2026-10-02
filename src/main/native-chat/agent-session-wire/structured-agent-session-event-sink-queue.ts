@@ -39,6 +39,8 @@ export class StructuredAgentSessionSinkQueue {
   private backpressured = false
   private acceptedSequence = 0
   private settledSequence = 0
+  /** The newest operation that actually ran; a close settles the rest without running them. */
+  private ranSequence = 0
   private readonly queue: StructuredAgentSessionSinkOperation[] = []
   private readonly waiters: StructuredAgentSessionDrainWaiter[] = []
 
@@ -114,6 +116,15 @@ export class StructuredAgentSessionSinkQueue {
       )
     }
     return new Promise((resolve) => this.waiters.push({ through, resolve }))
+  }
+
+  /** Like `barrier`, but a close that dropped writes admitted so far reads as not landed. */
+  written = async (): Promise<StructuredAgentSessionSinkBarrier> => {
+    const through = this.acceptedSequence
+    const settled = await this.barrier()
+    return settled.ok && this.ranSequence < through
+      ? { ok: false, error: new Error('the sink closed before its writes landed') }
+      : settled
   }
 
   submit(
@@ -252,6 +263,7 @@ export class StructuredAgentSessionSinkQueue {
           this.lifecycleQueuedOperations = Math.max(0, this.lifecycleQueuedOperations - 1)
         }
         this.settledSequence = Math.max(this.settledSequence, operation.sequence)
+        this.ranSequence = Math.max(this.ranSequence, operation.sequence)
         this.updateBackpressure()
         this.settleWaiters()
         this.pump()

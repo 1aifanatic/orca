@@ -21,6 +21,7 @@ import type { AgentStatusStructuredSessionSubject } from '../../shared/agent-sta
 import { AgentHookServer } from '../agent-hooks/server'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import { settleStructuredAgentSessionDeadGeneration } from '../native-chat/agent-session-wire/structured-agent-session-dead-generation-settlement'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -28,6 +29,7 @@ import { StructuredAgentSessionStatusFeed } from '../native-chat/agent-session-w
 import { indexedStatusFeedSession } from '../native-chat/agent-session-wire/structured-agent-session-status-feed-test-session'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
+import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 import {
   fakeClaude,
   identityFor,
@@ -61,6 +63,11 @@ function captured(name: string): Captured[] {
   )
 }
 
+/** The subagent that asks in the captures. */
+const ASKER = text(
+  captured('fg-allow').find((event) => event.frame.subtype === 'task_started')?.frame.task_id
+)
+
 /** The same evidence from a producer that never reads a subagent waiting. */
 function withoutWaits(evidence: AgentChildWorkEvidence[]): AgentChildWorkEvidence[] {
   return evidence.map((edge) =>
@@ -92,12 +99,15 @@ function pendingCards(items: readonly AgentJournalRenderItem[]): AgentJournalRen
 
 const journals = createTrackedJournalOpener()
 let root: string
+/** What the host does with the adapter's events, where a test needs it. */
+const hooks: { onEvent?: (event: ClaudeStructuredSessionEvent) => void } = {}
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-subagent-request-'))
 })
 
 afterEach(async () => {
+  hooks.onEvent = undefined
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
@@ -190,7 +200,8 @@ async function pipeline() {
     readProcessStartTime: async () => 1_700_000_000_000,
     now,
     persistHandle: async () => {},
-    onChildWorkEvidence: (sessionId, evidence) => feed.publishChildWork(sessionId, evidence)
+    onChildWorkEvidence: (sessionId, evidence) => feed.publishChildWork(sessionId, evidence),
+    onEvent: (event) => hooks.onEvent?.(event)
   })
   await adapter.acquire({
     identity: identityFor(SESSION),
@@ -207,10 +218,10 @@ async function pipeline() {
   }
   /** What the host's own commit writes for the card: its resolution, at the live turn. */
   const hostRecords =
-    (resolution: Pick<AgentJournalResolution, 'state' | 'selectedOptionId'>) =>
+    (resolution: Pick<AgentJournalResolution, 'state' | 'selectedOptionId'>, itemId = cardId()) =>
     async (): Promise<void> => {
       await deferred.drained()
-      const card = pendingCards(journal.snapshot().items)[0]
+      const card = pendingCards(journal.snapshot().items).find((item) => item.itemId === itemId)
       const identity = card && parseAgentJournalItemKey(card.itemId)
       if (card?.body.kind !== 'approval' || !identity) {
         throw new Error('no pending card to record')
@@ -270,9 +281,23 @@ async function pipeline() {
         entry.waiting.some((id) => !entry.askers.includes(id)) ||
         !isDeepStrictEqual(entry.row, entry.unwaited)
     )
+  /** Raises a request the capture does not hold, as the SDK would. */
+  const raise = (requestId: string, toolUseId: string, agentId?: string): void => {
+    const controller = new AbortController()
+    aborts.set(requestId, controller)
+    invokeCanUseTool(connection, 'Bash', requestId, toolUseId, {
+      input: { command: `echo ${requestId}` },
+      signal: controller.signal,
+      ...(agentId ? { agentID: agentId } : {})
+    })
+  }
   return {
     adapter,
     journal,
+    deferred,
+    connection,
+    now,
+    raise,
     publishes,
     violations,
     settle,
@@ -289,11 +314,12 @@ type Pipeline = Awaited<ReturnType<typeof pipeline>>
 function answer(
   run: Pipeline,
   optionId: 'allow' | 'deny',
-  commit = run.hostRecords({ state: 'resolved', selectedOptionId: optionId })
+  commit = run.hostRecords({ state: 'resolved', selectedOptionId: optionId }),
+  itemId = run.cardId()
 ) {
   return run.adapter.answerPrompt({
     sessionId: SESSION,
-    itemId: run.cardId(),
+    itemId,
     kind: 'approval',
     response: { kind: 'option', optionId },
     fence: FENCE,
@@ -388,13 +414,97 @@ describe("the parent row while a Claude subagent's request is open", () => {
   it('keeps an answered request in the rows of the subagent that asked', async () => {
     const run = await replay('fg-allow')
     const card = run.journal.snapshot().items.find((item) => item.body.kind === 'approval')
-    expect(card?.agentId).toBe(
-      text(
-        captured('fg-allow').find((event) => event.frame.subtype === 'task_started')?.frame.task_id
-      )
-    )
+    expect(card?.agentId).toBe(ASKER)
     expect(card?.body).toMatchObject({
       resolution: { state: 'resolved', selectedOptionId: 'allow' }
     })
   })
+
+  it('waits each asking subagent beside its own card, and only those, as requests open and close', async () => {
+    const run = await pipeline()
+    await run.ask('fg-allow')
+    const started = captured('fg-allow').find((event) => event.frame.subtype === 'task_started')
+    await run.step({
+      from: 'cli',
+      frame: { ...started?.frame, task_id: 'agent-two', uuid: 'u-two', tool_use_id: 'toolu_two' }
+    })
+    run.raise('req-two', 'toolu_two_bash', 'agent-two')
+    await run.settle()
+    expect([...(run.publishes.at(-1)?.waiting ?? [])].sort()).toEqual([ASKER, 'agent-two'].sort())
+    const cardOf = (agentId: string) =>
+      pendingCards(run.journal.snapshot().items).find((card) => card.agentId === agentId)?.itemId
+    const first = cardOf(ASKER)
+    await answer(
+      run,
+      'allow',
+      run.hostRecords({ state: 'resolved', selectedOptionId: 'allow' }, first),
+      first
+    )
+    await run.settle()
+    expect(run.publishes.at(-1)?.waiting).toEqual(['agent-two'])
+    const second = cardOf('agent-two')
+    await answer(
+      run,
+      'allow',
+      run.hostRecords({ state: 'resolved', selectedOptionId: 'allow' }, second),
+      second
+    )
+    await run.settle()
+    expect(run.publishes.at(-1)?.waiting).toEqual([])
+    expect(run.violations()).toEqual([])
+  })
+
+  it("stays blocked on the session's own request after its subagent's is answered", async () => {
+    const run = await pipeline()
+    await run.ask('fg-allow')
+    run.raise('req-main', 'toolu_main_bash')
+    await run.settle()
+    const cards = pendingCards(run.journal.snapshot().items)
+    expect(cards.map((card) => card.agentId ?? null).sort()).toEqual([ASKER, null].sort())
+    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
+    const subagents = cards.find((card) => card.agentId === ASKER)?.itemId
+    await answer(
+      run,
+      'allow',
+      run.hostRecords({ state: 'resolved', selectedOptionId: 'allow' }, subagents),
+      subagents
+    )
+    await run.settle()
+    expect(run.publishes.at(-1)).toMatchObject({ waiting: [], row: { state: 'blocked' } })
+    expect(run.violations()).toEqual([])
+  })
+
+  it.each(['at once', 'after the provider writes flush'] as const)(
+    'stops the subagent waiting when the process dies mid-request and the host settles it %s',
+    async (when) => {
+      const run = await pipeline()
+      await run.ask('fg-allow')
+      expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
+      let settled: Promise<unknown> | undefined
+      hooks.onEvent = (event) => {
+        if (event.type !== 'ended') {
+          return
+        }
+        const settle = () =>
+          settleStructuredAgentSessionDeadGeneration({
+            journal: run.journal,
+            sessionId: SESSION,
+            fence: FENCE,
+            settlementId: 'provider-exit:test',
+            verdict: { state: 'interrupted', completedAt: run.now() },
+            pendingSubmissionReason: 'provider_exited_before_acknowledgement'
+          })
+        settled = when === 'at once' ? settle() : run.deferred.drained().then(settle)
+      }
+      run.connection.handlers.onExit?.(new Error('claude crashed'))
+      for (let attempt = 0; attempt < 20 && !settled; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      await settled
+      await run.settle()
+      expect(pendingCards(run.journal.snapshot().items)).toEqual([])
+      expect(run.publishes.at(-1)?.waiting).toEqual([])
+      expect(run.violations()).toEqual([])
+    }
+  )
 })

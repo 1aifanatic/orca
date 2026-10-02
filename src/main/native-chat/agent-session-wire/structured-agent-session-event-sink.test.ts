@@ -179,6 +179,23 @@ describe('deferred structured agent-session event sink', () => {
     expect(log).toEqual([])
   })
 
+  it('says its writes landed only when they ran, though a close still settles drained()', async () => {
+    const log: Recorded[] = []
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
+    deferred.bind(target(1, log))
+    deferred.sink.appendItem(identity(0), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    expect(await deferred.sink.written?.()).toEqual({ ok: true })
+
+    deferred.unbind()
+    deferred.sink.appendItem(identity(1), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    const written = deferred.sink.written?.()
+    deferred.close()
+
+    expect(await written).toMatchObject({ ok: false })
+    expect(await deferred.drained()).toEqual({ ok: true })
+    expect(log).toEqual([{ call: 'appendItem', fence: 1, ordinal: 0 }])
+  })
+
   it('reports one refused append, fails the barrier, and stops later writes', async () => {
     const log: Recorded[] = []
     const errors: unknown[] = []

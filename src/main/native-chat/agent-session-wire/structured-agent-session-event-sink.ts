@@ -93,7 +93,8 @@ export type StructuredAgentSessionEventSink = {
     options?: StructuredAgentSessionAppendOptions
   ): StructuredAgentSessionSinkAdmission
   publish(options?: StructuredAgentSessionAppendOptions): void
-  /** Resolves once every write admitted so far has landed in the journal (or the sink failed). */
+  /** Resolves `ok` once every write admitted so far has landed in the journal; not `ok` when one
+   *  failed or a close dropped it unwritten. */
   written?(): Promise<StructuredAgentSessionSinkBarrier>
   setActivity?(activity: AgentSessionTurnActivity | null): void
   tryAppendItem?(
@@ -324,7 +325,7 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       publish: (options = {}) => {
         publish(options)
       },
-      written: queue.barrier,
+      written: queue.written,
       setActivity: (activity) => {
         queue.submit({
           bytes: Buffer.byteLength(JSON.stringify(activity), 'utf8') + 64,
