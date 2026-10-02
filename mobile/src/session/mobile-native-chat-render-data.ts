@@ -5,6 +5,7 @@ import {
 } from '../../../src/shared/native-chat-empty-state'
 import { isRootAgentJournalItem } from '../../../src/shared/agent-session-journal-producer'
 import { stripNoiseMessages } from '../../../src/shared/native-chat-noise'
+import { isWordlessProviderFrameBlock } from '../../../src/shared/native-chat-provider-frame-summary'
 import { foldToolMessages } from '../../../src/shared/native-chat-tool-fold'
 import { isImageRefBlock, type NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
@@ -59,7 +60,12 @@ export function foldMobileNativeChatMessages(messages: NativeChatMessage[]): Nat
   // image-ref blocks instead of rendering as raw `[Image: …]` text.
   return stripNoiseMessages(
     foldToolMessages(normalizeImageTranscriptMessages(messages.filter(isRootAgentJournalItem)))
-  )
+  ).filter((message) => !isWordlessProviderFrameRow(message))
+}
+
+/** Same rule as desktop: an unrecognised event with no words of its own is stored, not drawn. */
+function isWordlessProviderFrameRow(message: NativeChatMessage): boolean {
+  return message.blocks.length > 0 && message.blocks.every(isWordlessProviderFrameBlock)
 }
 
 /** Assemble the folded transcript, streaming text, and optimistic user echoes. */

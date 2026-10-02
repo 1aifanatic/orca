@@ -376,10 +376,10 @@ describe('a Claude turn the provider resumed on its own', () => {
     translator.handle(frame('assistant', 'empty-1', []))
 
     expect(projected(items())).toBe('idle')
-    // Nothing to read, so no row either.
-    expect(items().some((item) => item.body.kind === 'status' && item.body.providerFrame)).toBe(
-      false
-    )
+    expect(items().at(-1)?.body).toMatchObject({
+      kind: 'status',
+      providerFrame: { kind: 'message:assistant:empty' }
+    })
   })
 
   it('still reports a nested result failure even though it settles no turn', () => {

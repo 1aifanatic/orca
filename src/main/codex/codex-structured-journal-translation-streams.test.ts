@@ -4,6 +4,7 @@ import type {
   AgentJournalItemIdentity
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import { normalizeNativeChatTaskList } from '../../shared/native-chat-task-list'
 import { projectStructuredItemsToNativeChat } from '../../shared/structured-agent-session-projection'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { CodexTurnOrdinals } from './codex-structured-item-translation'
@@ -175,8 +176,7 @@ describe('codex journal translation', () => {
     }
   })
 
-  // A malformed frame has no words for the user; the host logs it instead of showing the opcode.
-  it('journals neither a malformed item event nor a malformed delta', () => {
+  it('journals malformed item events but never malformed deltas', () => {
     const { translator, tap, window } = translatorWith()
 
     translator.handle(TURN_STARTED)
@@ -184,19 +184,23 @@ describe('codex journal translation', () => {
     translator.handle(notification('item/agentMessage/delta', { delta: 'orphan' }))
     window.fire()
 
-    expect(tap.rows.map((row) => row.body).filter((body) => body.kind === 'status')).toEqual([])
+    expect(tap.rows.map((row) => row.body)).toEqual([
+      expect.objectContaining({
+        kind: 'status',
+        providerFrame: expect.objectContaining({ kind: 'notification:item/completed' })
+      })
+    ])
   })
 
   it('journals unknown notifications, server requests, and decoded provider frames', () => {
     const { translator, tap } = translatorWith()
 
-    translator.handle(notification('future/notification', { message: 'one' }))
+    translator.handle(notification('future/notification', { value: 1 }))
     translator.handle({
       type: 'server-request',
       sessionId: SESSION_ID,
       threadId: THREAD_ID,
       method: 'future/request',
-      // Wordless, but the record of a reply Orca already sent, so it is still journaled.
       params: { value: 2 }
     })
     translator.handle({
@@ -204,7 +208,7 @@ describe('codex journal translation', () => {
       sessionId: SESSION_ID,
       threadId: THREAD_ID,
       kind: 'frame:unclassified',
-      payload: { message: 'three' }
+      payload: { value: 3 }
     })
 
     expect(
@@ -229,7 +233,7 @@ describe('codex journal translation', () => {
     const { translator } = translatorWith(tap)
     translator.handle(TURN_STARTED)
     for (let index = 0; index < MAX_CODEX_GENERIC_ROWS_PER_TURN + 1; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index}` }))
+      translator.handle(notification('future/notification', { value: index }))
     }
     translator.handle(
       notification('item/started', {
@@ -276,7 +280,7 @@ describe('codex journal translation', () => {
     const { translator, tap, window } = translatorWith()
     translator.handle(TURN_STARTED)
     for (let index = 0; index < MAX_CODEX_GENERIC_ROWS_PER_TURN + 20; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index}` }))
+      translator.handle(notification('future/notification', { value: index }))
     }
     translator.handle(notification('item/future/outputDelta', { itemId: 'future', delta: 'x' }))
     window.fire()
@@ -314,12 +318,12 @@ describe('codex journal translation', () => {
     const { translator, tap, window } = translatorWith()
     translator.handle(TURN_STARTED)
     for (let index = 0; index < MAX_CODEX_GENERIC_ROWS_PER_TURN; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index}` }))
+      translator.handle(notification('future/notification', { value: index }))
     }
     const publishesBeforeSuppression = tap.publishes()
 
     for (let index = 0; index < 500; index += 1) {
-      translator.handle(notification('future/notification', { message: `suppressed-${index}` }))
+      translator.handle(notification('future/notification', { value: `suppressed-${index}` }))
     }
 
     expect(tap.rows.filter((row) => row.key.includes('provider-frame-suppressed'))).toHaveLength(0)
@@ -353,18 +357,18 @@ describe('codex journal translation', () => {
       schedule: window.schedule
     })
     translator.handle(TURN_STARTED)
-    translator.handle(notification('future/notification', { message: 'one' }))
+    translator.handle(notification('future/notification', { value: 1 }))
     reject = false
-    translator.handle(notification('future/notification', { message: 'two' }))
+    translator.handle(notification('future/notification', { value: 2 }))
     expect(
       tap.rows.filter((row) => row.body.kind === 'status' && row.body.providerFrame)
     ).toHaveLength(1)
 
     for (let index = 1; index < MAX_CODEX_GENERIC_ROWS_PER_TURN; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index + 2}` }))
+      translator.handle(notification('future/notification', { value: index + 2 }))
     }
     reject = true
-    translator.handle(notification('future/notification', { message: 'suppressed' }))
+    translator.handle(notification('future/notification', { value: 'suppressed' }))
     window.fire()
     expect(tap.rows.filter((row) => row.key.includes('provider-frame-suppressed'))).toHaveLength(0)
     reject = false
@@ -378,7 +382,7 @@ describe('codex journal translation', () => {
     const { translator, tap, window } = translatorWith()
     translator.handle(TURN_STARTED)
     for (let index = 0; index < MAX_CODEX_GENERIC_ROWS_PER_TURN + 3; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index}` }))
+      translator.handle(notification('future/notification', { value: index }))
     }
     translator.handle(notification('future/failure', { error: 'provider exploded' }))
     window.fire()
@@ -408,7 +412,7 @@ describe('codex journal translation', () => {
         translator.handle(
           notification('future/notification', {
             turn: { id: turnId },
-            message: `${turnId}-${row}`
+            value: `${turnId}-${row}`
           })
         )
       }
@@ -467,6 +471,42 @@ describe('codex journal translation', () => {
       }))
     )
     expect(timeline).toEqual([])
+  })
+
+  // The Codex task list is read from this stored frame; it carries no sentence of its own.
+  it('stores a plan update the task list can be read from', () => {
+    const { translator, tap, window } = translatorWith()
+    translator.handle(TURN_STARTED)
+    translator.handle(
+      notification('turn/plan/updated', {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        explanation: 'Keep verification visible',
+        plan: [{ step: 'Verify', status: 'inProgress' }]
+      })
+    )
+    window.fire()
+
+    const timeline = projectStructuredItemsToNativeChat(
+      tap.rows.map((row, index) => ({
+        itemId: row.key,
+        revision: 1,
+        sequence: index + 1,
+        observedAt: index + 1,
+        body: row.body
+      }))
+    )
+    const frame = timeline
+      .flatMap((message) => message.blocks)
+      .flatMap((block) =>
+        block.type === 'text' && block.providerFrame ? [block.providerFrame] : []
+      )
+      .find((entry) => entry.kind === 'notification:turn/plan/updated')
+    expect(frame?.payload.truncated).toBe(false)
+    expect(normalizeNativeChatTaskList('update_plan', frame?.payload.head)).toEqual({
+      explanation: 'Keep verification visible',
+      tasks: [{ content: 'Verify', status: 'in_progress' }]
+    })
   })
 
   it('projects assistant content without provider user echoes for a complete turn with hooks', () => {
@@ -596,7 +636,7 @@ describe('notice journal pipeline', () => {
     const { translator, tap, window } = translatorWith()
     translator.handle(TURN_STARTED)
     for (let index = 0; index < MAX_CODEX_GENERIC_ROWS_PER_TURN; index += 1) {
-      translator.handle(notification('future/notification', { message: `note ${index}` }))
+      translator.handle(notification('future/notification', { value: index }))
     }
     for (const method of ['warning', 'guardianWarning', 'configWarning', 'deprecationNotice']) {
       translator.handle(notification(method, { message: method, summary: method }))

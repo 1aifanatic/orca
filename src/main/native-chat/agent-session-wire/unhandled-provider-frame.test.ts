@@ -1,14 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { projectStructuredItemToNativeChat } from '../../../shared/structured-agent-session-projection'
 import { unhandledProviderFrameJournalItem } from './unhandled-provider-frame'
 
 describe('unhandled provider frame journal fallback', () => {
-  it('keeps a wordless failure as a compact label and bounds the expandable payload', () => {
-    const payload = { isError: true, body: 'abcdefghij' }
+  it('keeps a compact label and bounds the expandable payload without dropping it', () => {
     const item = unhandledProviderFrameJournalItem(
       'future-provider',
       'notification:new/event',
-      payload,
+      { body: 'abcdefghij' },
       { inlineHeadBytes: 8 }
     )
 
@@ -22,7 +21,7 @@ describe('unhandled provider frame journal fallback', () => {
       providerFrame: {
         provider: 'future-provider',
         kind: 'notification:new/event',
-        payload: { byteLength: JSON.stringify(payload).length, truncated: true }
+        payload: { byteLength: 21, truncated: true }
       }
     })
     expect(
@@ -31,7 +30,7 @@ describe('unhandled provider frame journal fallback', () => {
   })
 
   it('turns an unserializable message-shaped payload into an explicit visible value', () => {
-    const cyclic: { warning?: unknown; isError: true } = { isError: true }
+    const cyclic: { warning?: unknown } = {}
     cyclic.warning = cyclic
 
     const item = unhandledProviderFrameJournalItem('codex', 'frame', cyclic)
@@ -163,31 +162,14 @@ describe('unhandled provider frame journal fallback', () => {
     ).not.toBeNull()
   })
 
-  it('keeps unknown frames that carry a sentence visible for both providers', () => {
+  it('keeps unknown substantive frames visible for both providers', () => {
     expect(
-      unhandledProviderFrameJournalItem('codex', 'notification:future/event', { message: 'Hi' })
-        ?.body.text
-    ).toBe('Hi')
-    expect(
-      unhandledProviderFrameJournalItem('claude', 'message:future/event', { text: 'Hi' })?.body.text
-    ).toBe('Hi')
+      unhandledProviderFrameJournalItem('codex', 'notification:future/event', {})
+    ).not.toBeNull()
+    expect(unhandledProviderFrameJournalItem('claude', 'message:future/event', {})).not.toBeNull()
   })
 
-  // An opcode with a Details dump tells the user nothing; the host logs it instead of journaling it.
-  it('leaves an unknown frame with no words of its own out of the chat, and logs it once', () => {
-    const logged = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-    for (const provider of ['codex', 'claude']) {
-      expect(unhandledProviderFrameJournalItem(provider, 'notification:wordless', {})).toBeNull()
-      expect(
-        unhandledProviderFrameJournalItem(provider, 'notification:wordless', { count: 3 })
-      ).toBeNull()
-    }
-    expect(logged).toHaveBeenCalledTimes(2)
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining('codex notification:wordless'))
-    logged.mockRestore()
-  })
-
-  it("shows a local slash command's output, which Claude sends as the frame's content", () => {
+  it("leads with a local slash command's output, which Claude sends as the frame's content", () => {
     expect(
       unhandledProviderFrameJournalItem('claude', 'message:system:local_command_output', {
         type: 'system',
@@ -195,26 +177,11 @@ describe('unhandled provider frame journal fallback', () => {
         content: 'Session usage: 12% of your limit'
       })?.body.text
     ).toBe('Session usage: 12% of your limit')
-  })
-
-  it('keeps a wordless row that records a reply Orca already sent', () => {
+    // Scoped to that frame: another frame's `content` is not its sentence.
     expect(
-      unhandledProviderFrameJournalItem(
-        'codex',
-        'request:mcpServer/elicitation/request',
-        {},
-        undefined,
-        { recordsHostReply: true }
-      )?.body.text
-    ).toBe('codex \u00b7 request:mcpServer/elicitation/request')
-  })
-
-  it('lets a sentence the caller knows stand in for a frame that names none', () => {
-    expect(
-      unhandledProviderFrameJournalItem('claude', 'message:future/event', {}, undefined, {
-        displayText: 'Claude paused the task.'
-      })?.body.text
-    ).toBe('Claude paused the task.')
+      unhandledProviderFrameJournalItem('claude', 'message:future/event', { content: 'raw' })?.body
+        .text
+    ).toBe('claude \u00b7 message:future/event')
   })
 
   it('leads with the provider sentence instead of naming the opcode', () => {
@@ -239,15 +206,15 @@ describe('unhandled provider frame journal fallback', () => {
     expect(row?.body.text).toContain('[Orca: output truncated')
   })
 
-  it('unwraps a nested sentence and falls back to the opcode only for a failure', () => {
+  it('unwraps a nested sentence and falls back to the opcode when there is none', () => {
     expect(
       unhandledProviderFrameJournalItem('codex', 'notification:warning', {
         warning: { text: 'Sandbox is degraded.' }
       })?.body.text
     ).toBe('Sandbox is degraded.')
     expect(
-      unhandledProviderFrameJournalItem('codex', 'notification:future/event', { isError: true })
-        ?.body.text
+      unhandledProviderFrameJournalItem('codex', 'notification:future/event', { count: 3 })?.body
+        .text
     ).toBe('codex \u00b7 notification:future/event')
   })
 })

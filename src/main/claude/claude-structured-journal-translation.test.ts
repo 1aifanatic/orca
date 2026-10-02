@@ -692,14 +692,14 @@ describe('Claude structured journal translation', () => {
     expect(state.tombstones).toEqual([])
   })
 
-  it('renders unmodeled Claude frames with words as bounded provider rows, and drops wordless ones', () => {
+  it('renders unmodeled substantive Claude frames as bounded provider rows', () => {
     const state = sinkState()
     const translator = createClaudeJournalTranslator({ sink: state.sink })
 
     translator.handle({
       type: 'message',
       sessionId: 'orca-session',
-      message: { type: 'system', subtype: 'local_command_output', content: 'x'.repeat(100_000) }
+      message: { type: 'system', subtype: 'local_command_output', summary: 'x'.repeat(100_000) }
     })
     translator.handle({
       type: 'message',
@@ -741,11 +741,21 @@ describe('Claude structured journal translation', () => {
     const frames = state.items.flatMap((item) =>
       item.body.kind === 'status' && item.body.providerFrame ? [item.body.providerFrame] : []
     )
-    // A result with no success subtype reads as a failure, which shows even without words.
-    expect(frames.map((frame) => frame.kind)).toEqual([
-      'message:system:local_command_output',
-      'message:result'
-    ])
+    expect(frames.map((frame) => frame.kind)).toEqual(
+      expect.arrayContaining([
+        'message:system:local_command_output',
+        'message:system:command_started',
+        'message:result',
+        'control_request:future_control'
+      ])
+    )
+    expect(frames.map((frame) => frame.kind)).not.toEqual(
+      expect.arrayContaining([
+        'message:system:hook_response',
+        'message:tool_progress',
+        'message:prompt_suggestion'
+      ])
+    )
     expect(
       frames.find((frame) => frame.kind === 'message:system:local_command_output')?.payload
     ).toEqual(expect.objectContaining({ truncated: true, byteLength: expect.any(Number) }))
