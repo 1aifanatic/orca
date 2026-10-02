@@ -41,14 +41,21 @@ function sessionExists(db: SyncDatabase, sessionId: string): boolean {
 }
 
 function rowsOf<T>(statement: SqliteStatement, ...params: BindValue[]): T[] {
+  return rowsWithinBudget<T>(statement, { bytes: 0 }, ...params)
+}
+
+function rowsWithinBudget<T>(
+  statement: SqliteStatement,
+  budget: { bytes: number },
+  ...params: BindValue[]
+): T[] {
   const rows: ReturnType<SqliteStatement['all']> = []
-  let bytes = 0
   for (const row of statement.iterate(...params)) {
-    bytes += Object.values(row).reduce<number>(
+    budget.bytes += Object.values(row).reduce<number>(
       (size, value) => size + (typeof value === 'string' ? Buffer.byteLength(value) : 0),
       0
     )
-    if (rows.length >= 10000 || bytes > 16 * 1024 * 1024) {
+    if (rows.length >= 10000 || budget.bytes > 16 * 1024 * 1024) {
       throw new Error('OpenCode transcript query exceeds its read limit')
     }
     rows.push(row)
@@ -115,11 +122,13 @@ export function readOpenCodeTranscriptPage(args: {
     const collected: OpenCodeTranscriptItem[] = []
     let scannedRows = 0
     let pageBytes = 0
+    const rawBudget = { bytes: 0 }
     let cursor: number | undefined = args.beforeMessageRowId
     let hasMore = false
     for (;;) {
-      const rows = rowsOf<MessageRow>(
+      const rows = rowsWithinBudget<MessageRow>(
         select,
+        rawBudget,
         args.sessionId,
         cursor ?? Number.MAX_SAFE_INTEGER,
         limit + 1
@@ -138,7 +147,7 @@ export function readOpenCodeTranscriptPage(args: {
       if (selected.some((row) => typeof row.data !== 'string')) {
         throw new Error('OpenCode transcript message exceeds its byte limit')
       }
-      const mapped = mapMessageRows(db, args.sessionId, selected)
+      const mapped = mapMessageRows(db, args.sessionId, selected, rawBudget)
       pageBytes += Buffer.byteLength(JSON.stringify(mapped))
       if (pageBytes > 16 * 1024 * 1024) {
         throw new Error('OpenCode transcript page exceeds its byte limit')
@@ -178,7 +187,8 @@ type PartRow = {
 function mapMessageRows(
   db: SyncDatabase,
   sessionId: string,
-  rows: MessageRow[]
+  rows: MessageRow[],
+  rawBudget: { bytes: number }
 ): OpenCodeTranscriptItem[] {
   if (rows.length === 0) {
     return []
@@ -188,12 +198,13 @@ function mapMessageRows(
   for (let start = 0; start < ids.length; start += PART_ID_BATCH) {
     const batch = ids.slice(start, start + PART_ID_BATCH)
     const placeholders = batch.map(() => '?').join(', ')
-    const partRows = rowsOf<PartRow>(
+    const partRows = rowsWithinBudget<PartRow>(
       db.prepare(
         `SELECT message_id, time_updated, CASE WHEN length(data) <= 2097152 THEN data ELSE NULL END AS data FROM part
          WHERE session_id = ? AND message_id IN (${placeholders})
          ORDER BY rowid LIMIT 10001`
       ),
+      rawBudget,
       sessionId,
       ...batch
     )
@@ -208,14 +219,6 @@ function mapMessageRows(
         partsByMessage.set(partRow.message_id, [partRow])
       }
     }
-  }
-  if (
-    [...partsByMessage.values()]
-      .flat()
-      .reduce((bytes, row) => bytes + Buffer.byteLength(row.data), 0) >
-    16 * 1024 * 1024
-  ) {
-    throw new Error('OpenCode transcript page exceeds its byte limit')
   }
   const items: OpenCodeTranscriptItem[] = []
   for (const row of rows) {

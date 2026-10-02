@@ -79,6 +79,23 @@ function messageItem(value: unknown): OpenCodeTranscriptItem | null {
     : typeof record.text === 'string'
       ? [{ type: 'text', text: record.text }]
       : []
+  if (row.type === 'user' && Array.isArray(record.files)) {
+    for (const file of record.files) {
+      const attachment = asRecord(file)
+      if (!attachment) {
+        continue
+      }
+      const url =
+        typeof attachment.uri === 'string'
+          ? attachment.uri
+          : typeof attachment.data === 'string' && typeof attachment.mime === 'string'
+            ? `data:${attachment.mime};base64,${attachment.data}`
+            : null
+      if (url) {
+        content.push({ type: 'file', url, mime: attachment.mime, filename: attachment.name })
+      }
+    }
+  }
   const parts = content.flatMap((value) => {
     const item = asRecord(value)
     if (!item) {

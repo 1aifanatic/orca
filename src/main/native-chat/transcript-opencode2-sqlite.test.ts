@@ -162,3 +162,18 @@ describe('OpenCode 2 native transcript', () => {
     }
   })
 })
+
+it('preserves real v2 user image files with or without accompanying text', () => {
+  const { path, insert } = fixture()
+  const file = { data: 'YQ==', mime: 'image/png', source: { type: 'inline' }, name: 'tiny.png' }
+  insert('text-image', 'user', { text: 'see this', files: [file] })
+  insert('image-only', 'user', { text: '', files: [file] })
+  const page = readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'session', limit: 10 })
+  expect(page?.items.map((item) => item.message.blocks)).toEqual([
+    [
+      { type: 'text', text: 'see this' },
+      { type: 'image-ref', url: `data:${file.mime};base64,${file.data}`, alt: 'tiny.png' }
+    ],
+    [{ type: 'image-ref', url: `data:${file.mime};base64,${file.data}`, alt: 'tiny.png' }]
+  ])
+})

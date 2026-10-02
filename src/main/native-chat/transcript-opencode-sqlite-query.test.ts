@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from '../sqlite/sync-database'
 import {
   readOpenCodeTranscriptPage,
@@ -435,4 +435,35 @@ describe('readOpenCodeTranscriptSignal', () => {
     applySchema(db)
     expect(readOpenCodeTranscriptSignal(path, 'missing')).toBeNull()
   })
+})
+
+it('stops before fetching a third part batch when earlier batches exhaust the page byte budget', () => {
+  const { db, path } = createTempDb()
+  applySchema(db)
+  const text = 'x'.repeat(100_000)
+  db.exec('BEGIN')
+  {
+    for (let i = 0; i < 300; i++) {
+      insertMessage(db, { id: `budget-${i}`, time: i })
+      insertPart(db, {
+        id: `part-${i}`,
+        messageId: `budget-${i}`,
+        time: i,
+        data: { type: 'text', text }
+      })
+    }
+  }
+  db.exec('COMMIT')
+  const prepared = vi.spyOn(Database.prototype, 'prepare')
+  try {
+    expect(() =>
+      readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'ses-1', limit: 300 })
+    ).toThrow('read limit')
+    const partQueries = prepared.mock.calls.filter(
+      ([sql]) => sql.includes('FROM part') && sql.includes('message_id IN')
+    )
+    expect(partQueries).toHaveLength(2)
+  } finally {
+    prepared.mockRestore()
+  }
 })
