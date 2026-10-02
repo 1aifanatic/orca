@@ -43,6 +43,7 @@ import {
 import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
 import { reserveServeStdoutForReadiness } from '../server/serve-stdout-boundary'
+import { acquireDesktopProfileInstanceLock } from './desktop-profile-instance-lock'
 import { createServeDesktopActivationGate } from './serve-desktop-activation'
 import {
   shouldBypassSingleInstanceLock,
@@ -260,6 +261,14 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
     // Why: a graceful quit is deferred pre-ready, so this launch would still walk into Linux display init and SIGSEGV (#11935).
     app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
     return false
+  }
+  // Why after Electron's lock: that one fences other desktops; this one fences orcad `orca serve`.
+  if (!skip && !bypass) {
+    const profileLock = acquireDesktopProfileInstanceLock(getCanonicalUserDataPath())
+    if (profileLock.state === 'held') {
+      app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
+      return false
+    }
   }
   state.profileStateAdmission = acquireProfileStateRuntimeAdmission(getCanonicalUserDataPath())
   // Renderer and worker defaults must be fixed before any session exists.
