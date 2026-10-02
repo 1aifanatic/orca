@@ -1060,3 +1060,58 @@ warnings remained non-fatal. Every full-repository scan passed cleanly.
 
 Keep the existing production waves. The temporary workflow and 601-line
 benchmark driver were removed after recording this rejected result.
+
+## Native cache ownership: hosted qualification pending
+
+Native restoration, toolchain recovery, and preparation now belong to
+`.github/actions/prepare-native-runtime/action.yml`. The installer forwards
+its requested key and three build paths; Windows packaging saves the Node
+build before calling the same action for Electron. Existing native load,
+patched-build, Windows job-ownership, registry, and process-table probes remain
+unchanged on restored consumers. Exact keys still separate OS/image or Linux
+container libc, architecture, runtime, resolved Node version, and actual pnpm
+version, without partial-key restoration.
+
+The source hash covers the dedicated action, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `.npmrc`, `.pnpmfile.cjs`, both native dependency patches,
+and these complete build/probe inputs:
+
+- `config/scripts/ensure-native-runtime.mjs`, `rebuild-native-deps.mjs`,
+  `node-pty-job-ownership.cjs`, `windows-pe-machine.cjs`,
+  `windows-process-tree-gyp-rebuild.mjs`, and
+  `windows-process-tree-creation-time.cjs`;
+- `config/scripts/install-electron-package-binary.mjs`,
+  `electron-platform-path.mjs`, `zip-extractor-command.mjs`,
+  `shared-electron-dist-cache.mjs`, `space-sharing-copy.mjs`, and
+  `src/shared/zip-extractor-command.ts`;
+- `native/windows-registry/src/addon.cc`, `binding.gyp`, `package.json`, and
+  `index.js`.
+
+The patches are `config/patches/node-pty@1.1.0.patch` and
+`config/patches/@vscode__windows-process-tree@0.8.0.patch`. Root app version and
+script metadata are excluded; installed package versions remain owned by the
+full lockfile, and the external node-gyp pin belongs to the native action.
+A negative control changing only the installer's
+pnpm verification condition preserves the native key and paths. Every declared
+native input mutation changes the key, and main warming watches those inputs.
+
+This policy creates one cold namespace. The bounded 50-head main sample has
+49 adjacent transitions and three native-key changes under both the old and
+expanded policies: the added node-pty helper export still invalidates #24448.
+There is no measured historical net saving. The observed Windows x64 cold
+Node preparation took 118.552 seconds; any saving depends on an actual usable
+cache hit. Hosted cold/warm qualification remains pending.
+
+## Separate mobile install verification: retain the current policy
+
+Three local paired pnpm 12 mobile installs reduced the median from 17.155 to
+15.871 seconds, a 1.284-second difference before cache transfer and postinstall
+scripts. That narrow margin does not establish a net hosted saving, so the
+separate mobile verification record was not adopted.
+
+## Unit shard weights: retain the current allocation
+
+The latest five shard wall times were 526/495/503/508/510 seconds. Reweighting
+projected roughly a 4% reduction in the slowest shard without reducing total
+CPU work; the evidence across runs was weak. That estimate does not justify
+changing allocation, so the current weights remain.
