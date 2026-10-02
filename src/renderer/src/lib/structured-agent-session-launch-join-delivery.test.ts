@@ -176,3 +176,30 @@ describe('coalesced launch delivery mode', () => {
     )
   })
 })
+
+describe("who holds a launch's prompt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mocks.launch.mockImplementation(() => new Promise(() => {}))
+  })
+
+  it.each([
+    ['a composer, which keeps nothing once the chat has it', {}, undefined],
+    ['a caller told of its delivery', { onPromptDelivered: () => {} }, true],
+    ['a caller that waits on its delivery', { promptHeldBySource: true }, true]
+  ] as const)('marks it held only by %s', (_case, caller, heldBySource) => {
+    const sessionId = `held-${String(heldBySource)}-${Object.keys(caller).join('')}`
+    mocks.createIntent.mockReturnValueOnce(launchIntent(`wt-${sessionId}`, sessionId))
+
+    startStructuredAgentLaunch(`wt-${sessionId}`, 'codex', {
+      prompt: 'review this',
+      promptDelivery: 'auto-submit',
+      ...caller
+    })
+
+    const [entry] = readOutbox(sessionId)
+    expect(entry).toMatchObject({ source: 'launch' })
+    expect(entry?.heldBySource).toBe(heldBySource)
+  })
+})

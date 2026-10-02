@@ -216,7 +216,8 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       promptDelivery,
       launchPlatform: args.launchPlatform,
       repoProjectRuntime,
-      planLaunch: planAgentSessionLaunch
+      planLaunch: planAgentSessionLaunch,
+      ...(args.waitForPromptDelivery ? { promptHeldBySource: true } : {})
     })
     if (launchPreparation.unavailable) {
       activateAndRevealWorktree(worktreeId, {

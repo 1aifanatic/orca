@@ -39,6 +39,8 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
   launchPlatform?: NodeJS.Platform
   repoProjectRuntime?: Parameters<typeof buildDirectWorkItemStartup>[0]['repoProjectRuntime']
   planLaunch: typeof planAgentSessionLaunch
+  /** The caller waits on the prompt's delivery and keeps it until then. */
+  promptHeldBySource?: boolean
 }): Promise<DirectWorkItemAgentLaunchPreparation> {
   const launchConnectionId = getConnectionId(args.worktreeId) ?? args.repoConnectionId
   const agentSelection = await resolveDirectWorkItemAgent({
@@ -97,7 +99,8 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
           workspace: { kind: 'git-worktree', worktreeId: args.worktreeId, repoId: args.repoId },
           prompt: args.draftContent,
           promptDelivery: args.promptDelivery,
-          initialSessionOptions: startupPlan?.sessionOptions
+          initialSessionOptions: startupPlan?.sessionOptions,
+          ...(args.promptHeldBySource ? { promptHeldBySource: true } : {})
         })
   const structuredLaunch = plan?.route === 'structured-native-chat'
 

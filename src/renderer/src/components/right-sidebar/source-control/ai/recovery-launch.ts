@@ -164,7 +164,8 @@ export async function launchSourceControlRecoveryAgentWithDefault({
     agentArgs: savedRecipe.agentArgs,
     promptDelivery: 'submit-after-ready',
     launchPlatform: activeSourceControlLaunchPlatform,
-    launchSource: 'source_control_recovery'
+    launchSource: 'source_control_recovery',
+    promptHeldBySource: true
   })
   if (!result) {
     toast.error(copy.launchCommandUnavailable)

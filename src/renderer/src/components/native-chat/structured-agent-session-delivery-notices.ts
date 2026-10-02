@@ -181,11 +181,11 @@ function deliveryNoticeText(
   )
 }
 
-/** A launch prompt the host rejected for good belongs to where it was sent from (notes, review
- *  comments, a fix action): that source still holds it as unsent and is where it goes again, so a
- *  Retry here would deliver it while the source never learns it went. */
+/** A launch prompt the host rejected for good whose caller still holds it (notes, review comments,
+ *  a fix action) is sent again from there, so a Retry here would deliver it while that caller never
+ *  learns it went. A composer's prompt has no such caller and keeps its Retry. */
 function sentFromSource(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return entry.source === 'launch' && entry.state === 'rejected'
+  return entry.heldBySource === true && entry.state === 'rejected'
 }
 
 function sourcedMessageNotSentText(reason: string): string {

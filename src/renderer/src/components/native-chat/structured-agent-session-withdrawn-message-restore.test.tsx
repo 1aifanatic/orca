@@ -280,9 +280,9 @@ describe('a message the host withdrew at a Stop', () => {
     ['a composer shows the chat', PANE],
     ['no composer shows the chat', null]
   ])(
-    'keeps a launch prompt a Stop withdrew while its start retried as not sent, when %s',
+    'keeps a launch prompt its caller holds, which a Stop withdrew while its start retried, as not sent, when %s',
     (_case, composer) => {
-      const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
+      const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text', true)!
       const id = launch.clientMessageId
       const { result, rerender } = renderOutbox(composer)
       rerender({
@@ -323,6 +323,19 @@ describe('a message the host withdrew at a Stop', () => {
       })
     }
   )
+
+  it("gives a composer's launch prompt a Stop withdrew back to the composer, which holds nothing else", () => {
+    const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
+    const { result, rerender } = renderOutbox()
+    rerender({ submissions: [submission(launch.clientMessageId)] })
+
+    rerender({
+      submissions: [withdrawn(launch.clientMessageId, { rejection: { kind: 'cancelled' } })]
+    })
+
+    expect(readNativeChatDraftCache(PANE)).toBe('launch text')
+    expect(result.current.outbox).toEqual([])
+  })
 })
 
 describe('a message a Stop took out of the outbox before the host held it', () => {
@@ -367,8 +380,8 @@ describe('a message a Stop took out of the outbox before the host held it', () =
     expect(readNativeChatDraftCache(PANE)).toBe('hello')
   })
 
-  it('keeps a launch prompt not yet sent as not sent, and gives it nothing in the composer', () => {
-    const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
+  it('keeps a launch prompt its caller holds, not yet sent, as not sent, and gives it nothing in the composer', () => {
+    const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text', true)!
     mocks.call.mockImplementation(() => new Promise<never>(() => {}))
     const { result } = renderOutbox()
 

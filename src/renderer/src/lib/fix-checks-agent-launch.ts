@@ -197,6 +197,7 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
       promptDelivery: 'submit-after-ready',
       launchPlatform,
       launchSource: args.launchSource,
+      promptHeldBySource: true,
       beforeSurfaceOpen: () => {
         // Why: the launcher owns the initial surface, so revealing must not seed a sibling shell.
         const revealed = activateAndRevealWorktree(targetWorktreeId, {

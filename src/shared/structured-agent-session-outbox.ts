@@ -35,6 +35,10 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
+  /** A launch prompt whose caller keeps it, or a side effect, until it is delivered (notes, a review
+   *  reply, a fix action): that caller is where it is sent again, so the chat offers no Retry and
+   *  a Stop gives it no composer copy. A composer's own prompt has none and keeps both. */
+  heldBySource?: true
   /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
    *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
@@ -189,7 +193,7 @@ export function requeueStructuredAgentSessionSendRefusal(
     refusal.code === 'agent_session_ownership_unknown' &&
     agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
   // Its source sends it again as a new message, so refused for good it stays here as not sent.
-  if (entry.source === 'launch' && refusalSettled) {
+  if (entry.heldBySource === true && refusalSettled) {
     return { ...entry, state: 'rejected' }
   }
   if (
@@ -227,7 +231,7 @@ export function reconcileStructuredAgentSessionOutbox(
       classifyDispatchRejection(submission).category === 'withdrawn'
     ) {
       const failure = structuredAgentSessionRejectedFailure(submission)
-      return entry.source === 'launch' ? [withdrawnFromItsSource(entry, failure)] : []
+      return entry.heldBySource === true ? [withdrawnFromItsSource(entry, failure)] : []
     }
     if (submission?.dispatchState === 'pending') {
       if (entry.state === 'dispatching') {
@@ -303,6 +307,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
+    ...(entry.heldBySource === true ? { heldBySource: true as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

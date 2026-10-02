@@ -167,8 +167,8 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     )
   })
 
-  it('keeps why a launch prompt was refused for good, so its notice says it', async () => {
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+  it('keeps why a launch prompt its caller holds was refused for good, so its notice says it', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this', true)
     mocks.call.mockResolvedValue({
       ok: false,
       refusal: { code: 'agent_session_operation_invalid', message: 'invalid' }

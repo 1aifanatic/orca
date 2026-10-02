@@ -1,4 +1,4 @@
-// A launch prompt's outbox entry: its source (notes, review comments, a fix action) still holds it
+// A launch prompt whose caller holds it (notes, review comments, a fix action): that caller keeps it
 // as unsent until the agent takes it, and is where it is sent again.
 
 import type {

@@ -170,6 +170,10 @@ describe('Resolve comments with AI, when the chat starts on its first message', 
   it('posts its reply and resolves its thread exactly once, after a retried start takes the prompt', async () => {
     const { model, hook } = acknowledgement()
     const { host, launched } = resolveCommentsWithAi(hook)
+    // Its replies wait on the delivery, so the chat leaves the prompt to it rather than its Retry.
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({ promptHeldBySource: true })
+    )
     const stream = await host
     const [retry, handedOver, accepted] = FIRST_START_FAILS.retriedThenTaken
 

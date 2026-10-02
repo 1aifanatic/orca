@@ -250,7 +250,7 @@ export function appendStructuredAgentSessionOutboxMessage(
   sessionId: string,
   text: string,
   attachments: readonly StructuredAgentSessionAttachment[] = [],
-  source?: 'launch'
+  marking: Pick<StructuredAgentSessionOutboxEntry, 'source' | 'heldBySource'> = {}
 ): StructuredAgentSessionOutboxEntry | null {
   const entry = {
     ...createStructuredAgentSessionOutboxEntry({
@@ -260,7 +260,7 @@ export function appendStructuredAgentSessionOutboxMessage(
       attachments,
       queuedAt: Date.now()
     }),
-    ...(source ? { source } : {})
+    ...marking
   }
   return commitStructuredAgentSessionOutbox(
     sessionId,
@@ -273,9 +273,13 @@ export function appendStructuredAgentSessionOutboxMessage(
 
 export function enqueueStructuredAgentSessionLaunchPrompt(
   sessionId: string,
-  text: string
+  text: string,
+  heldBySource = false
 ): StructuredAgentSessionOutboxEntry | null {
-  return appendStructuredAgentSessionOutboxMessage(sessionId, text, [], 'launch')
+  return appendStructuredAgentSessionOutboxMessage(sessionId, text, [], {
+    source: 'launch',
+    ...(heldBySource ? { heldBySource: true } : {})
+  })
 }
 
 export function discardStructuredAgentSessionLaunchOutbox(sessionId: string): void {

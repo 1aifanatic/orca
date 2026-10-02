@@ -580,7 +580,13 @@ describe('the notice on a launch prompt the host rejected for good', () => {
     const retry = vi.fn()
     const notices = structuredAgentSessionDeliveryNotices(
       [
-        entry('launch', { source: 'launch', state: 'rejected', lastFailure: notInstalled }),
+        entry('launch', {
+          source: 'launch',
+          heldBySource: true,
+          state: 'rejected',
+          lastFailure: notInstalled
+        }),
+        entry('composer', { source: 'launch', state: 'rejected', lastFailure: notInstalled }),
         entry('typed', { state: 'rejected', lastFailure: notInstalled })
       ],
       'Claude',
@@ -595,6 +601,8 @@ describe('the notice on a launch prompt the host rejected for good', () => {
     expect(launch?.text).toBe(
       "Not sent: Claude isn't installed. Install it first. Send it again from where you started it."
     )
+    // A composer's launch prompt has nowhere else to be sent from: it keeps the chat's Retry.
+    expect(notices.get(agentJournalSubmissionKey('composer'))?.onRetry).toBeTypeOf('function')
     // A message typed in the chat keeps its own Retry, and the same step to take first.
     const typed = notices.get(agentJournalSubmissionKey('typed'))
     expect(typed?.onRetry).toBeTypeOf('function')
@@ -606,6 +614,7 @@ describe('the notice on a launch prompt the host rejected for good', () => {
       [
         entry('launch', {
           source: 'launch',
+          heldBySource: true,
           state: 'queued',
           lastFailure: { kind: 'refused', code: 'agent_session_operation_capacity' }
         })
