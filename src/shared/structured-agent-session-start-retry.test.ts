@@ -108,15 +108,27 @@ describe('a queued message waiting out a failed start', () => {
     expect(isStructuredAgentSessionMainAgentWorking(null, [submission()])).toBe(true)
   })
 
-  it('reads as a failed request in every session list, from when it failed', () => {
-    expect(latestStructuredAgentSessionRequest([MESSAGE], [RETRYING])).toEqual({
-      kind: 'refused-send',
-      id: MESSAGE.itemId,
-      turnState: null,
-      outcome: 'failure',
-      settledAt: FAILED_AT,
-      waiting: true
-    })
+  // A try is booked, so it has no verdict yet: no session list reads it as failed, nor as working.
+  it('leaves the session reading as it did before it was sent', () => {
+    expect(latestStructuredAgentSessionRequest([MESSAGE], [RETRYING])).toBeNull()
+    const earlier = submission({ clientMessageId: 'earlier', dispatchState: 'accepted' })
+    const answered: AgentJournalRenderItem = {
+      itemId: 'turn:t1',
+      revision: 0,
+      sequence: 0,
+      observedAt: 0,
+      body: {
+        kind: 'turn',
+        turnId: 't1',
+        state: 'completed',
+        outcome: 'success',
+        startedAt: 0,
+        completedAt: 500
+      }
+    }
+    expect(
+      latestStructuredAgentSessionRequest([answered, MESSAGE], [earlier, RETRYING])
+    ).toMatchObject({ kind: 'turn', id: 't1', outcome: 'success' })
   })
 
   it('reaches a client whole, and a malformed record costs only the record', () => {
