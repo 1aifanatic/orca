@@ -124,10 +124,12 @@ export function SessionInlineDetails({
               className="h-7 shrink-0 px-2.5 text-[11px]"
             >
               <Play className="size-3.5" />
-              {translate(
-                'auto.components.right.sidebar.AiVaultSessionRow.resumeInNewTab',
-                'Resume in New Tab'
-              )}
+              {referenceSession
+                ? translate('components.aiVault.continueInCliNewTab', 'Continue in CLI in New Tab')
+                : translate(
+                    'auto.components.right.sidebar.AiVaultSessionRow.resumeInNewTab',
+                    'Resume in New Tab'
+                  )}
             </Button>
           ) : null}
           {onResumeInNewChat ? (

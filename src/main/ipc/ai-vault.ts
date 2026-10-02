@@ -250,15 +250,7 @@ async function scanLocalAiVaultSessions(
   // Why: the shared cache module owns codex-home/WSL sourcing and the local
   // scan cache, so the desktop IPC path and the runtime RPC method (mobile)
   // share one cache instance and one source of managed-Codex homes.
-  return listCachedLocalAiVaultSessions(
-    {
-      limit: args?.limit,
-      unlimited: args?.unlimited,
-      force: args?.force,
-      scopePaths: args?.scopePaths
-    },
-    { signal }
-  )
+  return listCachedLocalAiVaultSessions(args, { signal })
 }
 
 export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): void {

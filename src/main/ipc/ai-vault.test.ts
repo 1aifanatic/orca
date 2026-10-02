@@ -121,11 +121,11 @@ beforeEach(() => {
 
 describe('listAiVaultSessions host routing', () => {
   it('routes local scope to the local scanner', async () => {
-    await _internals.listAiVaultSessions({ executionHostScope: 'local', scopePaths: ['/repo'] })
+    await _internals.listAiVaultSessions({ includeAntigravityIdeSessions: true })
 
     expect(mocks.scanAiVaultSessionsInWorker).toHaveBeenCalledWith(
       expect.objectContaining({
-        scopePaths: ['/repo'],
+        includeAntigravityIdeSessions: true,
         executionHostId: 'local'
       }),
       expect.any(AbortSignal)
