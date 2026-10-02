@@ -61,15 +61,18 @@ export function createAgentPresenceActions(
           sortEpoch: state.sortEpoch + 1
         }
       })
-      // Why no row removal: the host's pane clear follows an owner exit and keeps main's rule that
-      // a finished row, with its read state, outlives the agent.
       const ended = Boolean(record.presence.process && record.presence.ended)
       runtime.runAfterCommit(() => {
-        if (runtime.get().agentPresenceByPaneKey[paneKey] !== record) {
+        const state = runtime.get()
+        if (state.agentPresenceByPaneKey[paneKey] !== record) {
           return
         }
         if (ended) {
-          runtime.get().setCacheTimerStartedAt(paneKey, null)
+          state.setCacheTimerStartedAt(paneKey, null)
+          // Why: a proven exit is what a confirmed shell return proves, so its row goes the same way.
+          if (state.agentStatusByPaneKey[paneKey]?.agentType === record.presence.agent) {
+            state.dropAgentStatus(paneKey)
+          }
         }
         publishAgentPresence(paneKey, record.presence)
       })
