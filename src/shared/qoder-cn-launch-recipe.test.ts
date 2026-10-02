@@ -20,7 +20,7 @@ describe('Qoder China launch recipe identity', () => {
           cmdOverrides: {},
           platform
         })?.launchCommand
-      ).toBe("qoderclicn --resume 'fixture-session'")
+      ).toBe("qoderclicn '--resume' 'fixture-session'")
     }
   )
 
@@ -43,7 +43,7 @@ describe('Qoder China launch recipe identity', () => {
           cmdOverrides,
           platform
         })?.launchCommand
-      ).toBe("qodercli --cn --resume 'fixture-session'")
+      ).toBe("qodercli --cn '--resume' 'fixture-session'")
     }
   )
 })
