@@ -1,4 +1,6 @@
 import { dirname, join, resolve } from 'node:path'
+import { statSync } from 'node:fs'
+import type * as Fs from 'node:fs'
 import { mkdir, realpath, rename, rm, stat, symlink } from 'node:fs/promises'
 import type * as FsPromises from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,6 +19,10 @@ import { PluginDevWatcher } from './plugin-dev-watcher'
 import { PluginServiceHousekeeping } from './plugin-service-housekeeping'
 
 vi.mock('../ipc/parcel-watcher-process', () => ({ subscribeViaWatcherProcess: vi.fn() }))
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof Fs>('node:fs')
+  return { ...actual, statSync: vi.fn(actual.statSync) }
+})
 vi.mock('node:fs/promises', async () => {
   const actual = await vi.importActual<typeof FsPromises>('node:fs/promises')
   return { ...actual, realpath: vi.fn(actual.realpath), stat: vi.fn(actual.stat) }
@@ -44,6 +50,8 @@ beforeEach(() => {
     value: 'linux'
   })
   subscribeMock.mockReset()
+  vi.mocked(statSync).mockReset()
+  vi.mocked(stat).mockReset()
   subscribeMock.mockImplementation(async (path, callback, options, hooks = {}) => {
     const unsubscribe = vi.fn().mockResolvedValue(undefined)
     subscriptions.push({ path, callback, options, hooks, unsubscribe })
@@ -370,6 +378,55 @@ describe('PluginDevWatcher', () => {
     expect(await watcher.checkRootBindings()).toBe(true)
     expect(await watcher.checkRootBindings()).toBe(false)
   })
+
+  it.each(['dev', 'ino'] as const)(
+    'detects adjacent 64-bit %s values without losing precision',
+    async (field) => {
+      aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-large-identity-')
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+      const path = aliasedRoot.realRoot
+      const previousId = 9_007_199_254_740_992n
+      const nextId = previousId + 1n
+      expect(Number(previousId)).toBe(Number(nextId))
+      const previousIdentity = { dev: previousId, ino: previousId }
+      const nextIdentity = { ...previousIdentity, [field]: nextId }
+      const previousNumeric = Object.assign(statSync(path), {
+        dev: Number(previousIdentity.dev),
+        ino: Number(previousIdentity.ino)
+      })
+      const previousBigInt = Object.assign(statSync(path, { bigint: true }), previousIdentity)
+      const nextNumeric = Object.assign(statSync(path), {
+        dev: Number(nextIdentity.dev),
+        ino: Number(nextIdentity.ino)
+      })
+      const nextBigInt = Object.assign(statSync(path, { bigint: true }), nextIdentity)
+      vi.mocked(statSync).mockClear()
+      vi.mocked(stat).mockClear()
+      vi.mocked(statSync).mockImplementationOnce((_path, options) =>
+        options?.bigint ? previousBigInt : previousNumeric
+      )
+      vi.mocked(stat)
+        .mockImplementationOnce(async (_path, options) =>
+          options?.bigint ? previousBigInt : previousNumeric
+        )
+        .mockImplementationOnce(async (_path, options) =>
+          options?.bigint ? nextBigInt : nextNumeric
+        )
+        .mockImplementationOnce(async (_path, options) =>
+          options?.bigint ? nextBigInt : nextNumeric
+        )
+      const { watcher } = startDevWatcher(undefined, undefined, [path])
+
+      expect(await watcher.checkRootBindings()).toBe(false)
+      expect(await watcher.checkRootBindings()).toBe(true)
+      expect(await watcher.checkRootBindings()).toBe(false)
+      expect(statSync).toHaveBeenCalledExactlyOnceWith(path, { bigint: true })
+      expect(stat).toHaveBeenCalledTimes(3)
+      for (const args of vi.mocked(stat).mock.calls) {
+        expect(args).toEqual([path, { bigint: true }])
+      }
+    }
+  )
 
   it('detects missing and restored roots once per transition', async () => {
     aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-missing-binding-')

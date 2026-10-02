@@ -1,4 +1,4 @@
-import { realpathSync, statSync, type Stats } from 'node:fs'
+import { realpathSync, statSync, type BigIntStats } from 'node:fs'
 import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import {
@@ -22,13 +22,13 @@ function addPluginRootParent(parentNames: Map<string, Set<string>>, root: string
 
 type PluginRootBinding = { physicalRoot: string; identity: string }
 
-function pluginRootBinding(physicalRoot: string, entry: Stats): PluginRootBinding | null {
+function pluginRootBinding(physicalRoot: string, entry: BigIntStats): PluginRootBinding | null {
   return entry.isDirectory() ? { physicalRoot, identity: `${entry.dev}:${entry.ino}` } : null
 }
 
 function readPluginRootBindingSync(physicalRoot: string): PluginRootBinding | null {
   try {
-    return pluginRootBinding(physicalRoot, statSync(physicalRoot))
+    return pluginRootBinding(physicalRoot, statSync(physicalRoot, { bigint: true }))
   } catch {
     return null
   }
@@ -37,7 +37,7 @@ function readPluginRootBindingSync(physicalRoot: string): PluginRootBinding | nu
 async function readPluginRootBinding(requestedRoot: string): Promise<PluginRootBinding | null> {
   try {
     const physicalRoot = await realpath(requestedRoot)
-    return pluginRootBinding(physicalRoot, await stat(physicalRoot))
+    return pluginRootBinding(physicalRoot, await stat(physicalRoot, { bigint: true }))
   } catch {
     return null
   }
