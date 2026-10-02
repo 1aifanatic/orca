@@ -62,6 +62,8 @@ export type PreparedWorktreeCreateAttempt =
       retargeted: boolean
       reset: PreparedCheckoutReset
       origin: PreparedCheckoutOrigin
+      buildMs: number
+      idleMs: number
       result: AddWorktreeResult
       /** Run after materialization/startup completes, before returning the create result. */
       rearm: () => void
@@ -128,7 +130,7 @@ async function prepareWorktreeCreateInBackground(
 }
 
 type ClaimedPreparation =
-  | ({ status: 'claimed' } & ReservedPreparation)
+  | ({ status: 'claimed'; claimedAt: number } & ReservedPreparation)
   | { status: 'miss'; reason: PreparedCheckoutMissReason; rearm?: () => void }
 
 async function claimPreparedWorktree(
@@ -144,9 +146,10 @@ async function claimPreparedWorktree(
   }
   const { entry, reservation } = reserved
   args.timing?.recordAdoptedPreparation(entry.work)
+  const claimedAt = Date.now()
   try {
     await timePhase(args, 'prepared_checkout_wait', () => entry.ready)
-    return { ...reserved, status: 'claimed' }
+    return { ...reserved, status: 'claimed', claimedAt }
   } catch {
     return { status: 'miss', reason: 'prepare_failed', rearm: releaseClaimAfterCreate(reservation) }
   }
@@ -215,10 +218,23 @@ export async function consumePreparedWorktreeCreate(
   const attempt = await attemptPreparedWorktreeCreate(args)
   args.timing?.recordPreparedCheckout(
     attempt.status === 'hit'
-      ? { status: 'hit', reset: attempt.reset, origin: attempt.origin }
+      ? {
+          status: 'hit',
+          reset: attempt.reset,
+          origin: attempt.origin,
+          buildMs: attempt.buildMs,
+          idleMs: attempt.idleMs
+        }
       : { status: 'miss', reason: attempt.reason }
   )
   return attempt
+}
+
+function preparationOrigin(entry: PreparationEntry): PreparedCheckoutOrigin {
+  if (entry.kind === 'explicit') {
+    return 'prefetch'
+  }
+  return entry.prefetchRequested ? 'rearm_then_prefetch' : 'rearm'
 }
 
 function preparedCheckoutReset(retargeted: boolean, headReset: boolean): PreparedCheckoutReset {
@@ -262,11 +278,15 @@ async function attemptPreparedWorktreeCreate(
     // Consuming the only prepared checkout leaves the next create cold. Re-arm for a user who is
     // creating in a burst; the TTL and the preparation limit still bound an unused replacement.
     const rearm = deferRearmPreparation(entry, reservation, args.baseBranch, claim.canonicalBase)
+    // Pool clock (`createdAt`); a create that waited for the build reports no idle time.
+    const readyAt = entry.readyAt ?? claim.claimedAt
     return {
       status: 'hit',
       retargeted: claim.retargeted,
-      reset: preparedCheckoutReset(claim.retargeted, preparedHeadReset === true),
-      origin: entry.kind === 'automatic' ? 'rearm' : 'prefetch',
+      reset: preparedCheckoutReset(claim.retargeted, preparedHeadReset),
+      origin: preparationOrigin(entry),
+      buildMs: Math.max(0, readyAt - entry.createdAt),
+      idleMs: Math.max(0, claim.claimedAt - readyAt),
       result,
       rearm
     }

@@ -65,24 +65,54 @@ describe('probeCreateEventRepoFacts', () => {
     })
   })
 
-  it('reports the index size alongside the hook', async () => {
-    await writeFile(path.join(repo, '.git', 'index'), Buffer.alloc(4_096))
-    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
-      postCheckoutHook: 'absent',
-      indexBytes: 4_096
-    })
-  })
+  async function writeIndex(signature: string, version: number, entries: number): Promise<void> {
+    const header = Buffer.alloc(12)
+    header.write(signature, 0, 'latin1')
+    header.writeUInt32BE(version, 4)
+    header.writeUInt32BE(entries, 8)
+    await writeFile(path.join(repo, '.git', 'index'), Buffer.concat([header, Buffer.alloc(64)]))
+  }
 
-  it('omits the index size when the repo has no index yet', async () => {
+  it.each([2, 4])(
+    'reads the tracked-file count from a version %i index header',
+    async (version) => {
+      await writeIndex('DIRC', version, 123_456)
+      expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
+        postCheckoutHook: 'absent',
+        indexEntryCount: 123_456
+      })
+    }
+  )
+
+  it('omits the count when the repo has no index yet', async () => {
     expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'absent' })
   })
 
-  it('still reports the index size when the config cannot be read', async () => {
+  it('omits the count for a file that is not an index', async () => {
+    await writeIndex('NOPE', 2, 10)
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
+  })
+
+  it('omits the count for a truncated index', async () => {
+    await writeFile(path.join(repo, '.git', 'index'), Buffer.from('DIRC\0\0'))
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
+  })
+
+  it('omits the count for a split index, whose entries live in a shared index', async () => {
+    await writeIndex('DIRC', 2, 3)
+    await writeFile(path.join(repo, '.git', 'sharedindex.0123abcd'), '')
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
+  })
+
+  it('omits the count for a sparse index, which collapses directories', async () => {
+    await writeIndex('DIRC', 4, 3)
+    await writeFile(path.join(repo, '.git', 'config'), '[index]\n\tsparse = true\n')
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
+  })
+
+  it('reports neither fact when the config cannot be read', async () => {
     await rm(path.join(repo, '.git', 'config'))
-    await writeFile(path.join(repo, '.git', 'index'), Buffer.alloc(10))
-    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
-      postCheckoutHook: 'unknown',
-      indexBytes: 10
-    })
+    await writeIndex('DIRC', 2, 10)
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'unknown' })
   })
 })

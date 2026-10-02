@@ -43,6 +43,10 @@ export type PreparationEntry = {
   controller: AbortController
   checkoutStarted: boolean
   kind: DeferredPreparation['kind']
+  /** An explicit prefetch also asked for this entry while an automatic build held it. */
+  prefetchRequested: boolean
+  /** When `ready` resolved, on the same clock as `createdAt`. */
+  readyAt?: number
   /** Counts the build as disk work competing with creates until `ready` settles. */
   work: PreparationWork
 }
@@ -234,6 +238,9 @@ export function startPreparation(
     args.options.wslDistro ?? ''
   )
   if (existing) {
+    if (kind === 'explicit') {
+      existing.prefetchRequested = true
+    }
     return existing.ready
   }
   if (deferPreparationForClaim(args, kind)) {
@@ -282,6 +289,7 @@ function startBackgroundPreparation(
     controller,
     checkoutStarted: false,
     kind,
+    prefetchRequested: false,
     work,
     ready: (async () => {
       await startStalePreparationCleanup(
@@ -302,7 +310,10 @@ function startBackgroundPreparation(
   } satisfies PreparationEntry)
   preparations.set(key, entry)
   void entry.ready.then(
-    () => work.end(),
+    () => {
+      entry.readyAt = Date.now()
+      work.end()
+    },
     () => work.end()
   )
   void entry.ready.catch(() => {

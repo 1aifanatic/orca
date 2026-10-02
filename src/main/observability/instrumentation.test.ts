@@ -224,7 +224,13 @@ describe('addWorktreeCreatePhaseAttributes', () => {
     addWorktreeCreatePhaseAttributes(span, {
       totalDurationMs: 900,
       phases: [{ phase: 'git_worktree_add', startedAtMs: 0, durationMs: 400 }],
-      preparedCheckout: { status: 'hit', reset: 'retargeted', origin: 'rearm' }
+      preparedCheckout: {
+        status: 'hit',
+        reset: 'retargeted',
+        origin: 'rearm',
+        buildMs: 1,
+        idleMs: 0
+      }
     })
 
     expect(attributes['worktree.create.prepared_checkout']).toBe('hit')

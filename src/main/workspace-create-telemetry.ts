@@ -48,44 +48,56 @@ export function beginWorkspaceCreateTelemetry(
   const inFlight = args.isFolder ? null : beginWorktreeCreate()
   const timing = createWorktreeCreateTimingRecorder(undefined, inFlight ?? undefined)
   let settled = false
+  const settleOnce = (send: () => void): void => {
+    if (settled) {
+      return
+    }
+    settled = true
+    try {
+      send()
+    } catch (error) {
+      // Bookkeeping must never change the outcome of the create it describes.
+      console.warn('[worktree-create] create event could not be sent', error)
+    } finally {
+      inFlight?.end()
+    }
+  }
 
   return {
     timing,
     succeeded(createTiming) {
-      if (settled) {
-        return
-      }
-      settled = true
-      const props: EventProps<'workspace_created'> = {
-        source,
-        from_existing_branch: !args.isFolder && args.fromExistingBranch,
-        ...getCohortAtEmit()
-      }
-      if (!inFlight) {
-        track('workspace_created', props)
-        return
-      }
-      void trackWorkspaceCreated(props, args.repoPath, createTiming ?? timing.finish(), {
-        entryPoint: args.entryPoint,
-        concurrency: inFlight.end()
+      settleOnce(() => {
+        const props: EventProps<'workspace_created'> = {
+          source,
+          from_existing_branch: !args.isFolder && args.fromExistingBranch,
+          ...getCohortAtEmit()
+        }
+        if (!inFlight) {
+          track('workspace_created', props)
+          return
+        }
+        void trackWorkspaceCreated(props, args.repoPath, createTiming ?? timing.finish(), {
+          entryPoint: args.entryPoint,
+          concurrency: inFlight.end()
+        }).catch((error: unknown) => {
+          console.warn('[worktree-create] create event could not be sent', error)
+        })
       })
     },
     failed(error) {
-      if (settled) {
-        return
-      }
-      settled = true
-      track('workspace_create_failed', {
-        source,
-        error_class: classifyWorkspaceCreateError(error),
-        ...getCohortAtEmit(),
-        ...(inFlight
-          ? workspaceCreateFailureFields(timing, {
-              entryPoint: args.entryPoint,
-              concurrency: inFlight.end(),
-              error
-            })
-          : {})
+      settleOnce(() => {
+        track('workspace_create_failed', {
+          source,
+          error_class: classifyWorkspaceCreateError(error),
+          ...getCohortAtEmit(),
+          ...(inFlight
+            ? workspaceCreateFailureFields(timing, {
+                entryPoint: args.entryPoint,
+                concurrency: inFlight.end(),
+                error
+              })
+            : {})
+        })
       })
     }
   }

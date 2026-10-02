@@ -55,9 +55,10 @@ export const PREPARED_CHECKOUT_RESETS = ['none', 'base_moved', 'retargeted'] as 
 
 export type PreparedCheckoutReset = (typeof PREPARED_CHECKOUT_RESETS)[number]
 
-/** Who asked for the prepared checkout a hit used: the new-worktree UI's prefetch, or the
- *  automatic replacement armed after an earlier create in a burst. */
-export const PREPARED_CHECKOUT_ORIGINS = ['prefetch', 'rearm'] as const
+/** Who asked for the prepared checkout a hit used: the new-worktree UI's prefetch, the automatic
+ *  replacement armed after an earlier create in a burst, or that replacement which the UI's
+ *  prefetch then asked for too (the re-arm only gave it a head start). */
+export const PREPARED_CHECKOUT_ORIGINS = ['prefetch', 'rearm', 'rearm_then_prefetch'] as const
 
 export type PreparedCheckoutOrigin = (typeof PREPARED_CHECKOUT_ORIGINS)[number]
 

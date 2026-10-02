@@ -113,7 +113,13 @@ describe('prepared checkout create timing', () => {
     await preparation
     expect(timing.finish()).toEqual({
       totalDurationMs: 140,
-      preparedCheckout: { status: 'hit', reset: 'none', origin: 'prefetch' },
+      preparedCheckout: {
+        status: 'hit',
+        reset: 'none',
+        origin: 'prefetch',
+        buildMs: expect.any(Number),
+        idleMs: 0
+      },
       phases: [
         { phase: 'prepared_checkout_claim', startedAtMs: 0, durationMs: 0 },
         { phase: 'prepared_checkout_wait', startedAtMs: 0, durationMs: 110 },
@@ -236,11 +242,65 @@ describe('prepared checkout create timing', () => {
 
     expect(attempt).toMatchObject({ status: 'hit', reset: 'base_moved', origin: 'rearm' })
     expect(attempt.status === 'hit' && attempt.result).toEqual({})
-    expect(timing.finish().preparedCheckout).toEqual({
+    expect(timing.finish().preparedCheckout).toMatchObject({
       status: 'hit',
       reset: 'base_moved',
       origin: 'rearm'
     })
+  })
+
+  it('reports a re-arm the new-worktree UI then asked for as well', async () => {
+    const args = {
+      repoPath: request.repoPath,
+      workspaceRoot: request.workspaceRoot,
+      baseBranch: request.baseBranch,
+      canonicalBase: 'refs/remotes/origin/main',
+      options: {}
+    }
+    await startPreparation(args, 'automatic')
+    await startPreparation(args, 'explicit')
+    expect(mocks.prepare).toHaveBeenCalledOnce()
+
+    const attempt = await consumePreparedWorktreeCreate({ ...request })
+
+    expect(attempt).toMatchObject({ status: 'hit', origin: 'rearm_then_prefetch' })
+  })
+
+  it('reports how long the build took and how long it sat ready before the claim', async () => {
+    let now = 1_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const checkout = Promise.withResolvers<void>()
+    mocks.prepare.mockReturnValue(checkout.promise)
+    const preparation = prepare()
+    now = 4_000
+    checkout.resolve()
+    await preparation
+    now = 9_000
+
+    const attempt = await consumePreparedWorktreeCreate({ ...request })
+
+    expect(attempt).toMatchObject({ status: 'hit', buildMs: 3_000, idleMs: 5_000 })
+  })
+
+  it('reports no idle time when the create waited for the build', async () => {
+    let now = 1_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const checkoutStarted = Promise.withResolvers<void>()
+    const checkout = Promise.withResolvers<void>()
+    mocks.prepare.mockImplementation(() => {
+      checkoutStarted.resolve()
+      return checkout.promise
+    })
+    const preparation = prepare()
+    await checkoutStarted.promise
+    now = 2_000
+    const create = consumePreparedWorktreeCreate({ ...request })
+    await settleClaim()
+    now = 6_000
+    checkout.resolve()
+    await preparation
+
+    expect(await create).toMatchObject({ status: 'hit', buildMs: 5_000, idleMs: 0 })
   })
 
   it('counts a building prepared checkout against other creates but not the one that used it', async () => {

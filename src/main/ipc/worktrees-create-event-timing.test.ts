@@ -194,7 +194,10 @@ describe('worktrees:create event timing fields', () => {
   it('sends timing after the create returns, without any further git work', async () => {
     useRepo(makeRepo({}))
     useLocalListing()
-    let resolveProbe: (value: { postCheckoutHook: string; indexBytes?: number }) => void = () => {}
+    let resolveProbe: (value: {
+      postCheckoutHook: string
+      indexEntryCount?: number
+    }) => void = () => {}
     probeHookMock.mockReturnValue(
       new Promise((resolve) => {
         resolveProbe = resolve
@@ -207,7 +210,7 @@ describe('worktrees:create event timing fields', () => {
     expect(trackedEvent('workspace_created')).toBeUndefined()
     const gitCallsAtReturn = gitWorkCallCount()
 
-    resolveProbe({ postCheckoutHook: 'present', indexBytes: 600 * 1024 })
+    resolveProbe({ postCheckoutHook: 'present', indexEntryCount: 6_000 })
     await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
 
     expect(gitWorkCallCount()).toBe(gitCallsAtReturn)
@@ -221,7 +224,7 @@ describe('worktrees:create event timing fields', () => {
       worktree_count_bucket: '2-5',
       concurrent_creates: 0,
       concurrent_preparations: 0,
-      repo_index_size_bucket: '100KB-1MB',
+      repo_file_count_bucket: '1k-10k',
       post_checkout_hook: 'present'
     })
     // One create, one event: the runtime entry point never runs for an app create.
@@ -245,6 +248,25 @@ describe('worktrees:create event timing fields', () => {
     await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
 
     expect(trackedEvent('workspace_created')).toMatchObject({ concurrent_preparations: 1 })
+  })
+
+  it('still answers the create, or its error, when sending the event throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    useRepo(makeRepo({}))
+    useLocalListing()
+    probeHookMock.mockResolvedValue({ postCheckoutHook: 'absent' })
+    trackMock.mockImplementation(() => {
+      throw new Error('telemetry broke')
+    })
+
+    await expect(
+      handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+    ).resolves.toHaveProperty('worktree')
+
+    addWorktreeMock.mockRejectedValue(new Error('fatal: could not create work tree dir'))
+    await expect(
+      handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+    ).rejects.toThrow('could not create work tree dir')
   })
 
   it('does not read the repo for hooks when telemetry is off', async () => {

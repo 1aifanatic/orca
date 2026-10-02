@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { eventSchemas } from '../shared/telemetry-event-registry'
 import { createWorktreeCreateTimingRecorder } from './worktree-create-timing'
 import {
-  bucketRepoIndexSize,
+  bucketRepoFileCount,
   bucketWorktreeCount,
   workspaceCreateFailureFields,
   workspaceCreateTimingFields
@@ -22,14 +22,20 @@ describe('workspaceCreateTimingFields', () => {
           { phase: 'prepared_checkout_wait', startedAtMs: 204, durationMs: 300 },
           { phase: 'list_created_worktree', startedAtMs: 700, durationMs: 100 }
         ],
-        preparedCheckout: { status: 'hit', reset: 'base_moved', origin: 'rearm' },
+        preparedCheckout: {
+          status: 'hit',
+          reset: 'base_moved',
+          origin: 'rearm',
+          buildMs: 30_000.4,
+          idleMs: 2_500
+        },
         executionHost: 'local',
         worktreeCount: 812
       },
       {
         entryPoint: 'runtime',
         concurrency: { otherCreates: 1, preparations: 2 },
-        repoFacts: { postCheckoutHook: 'absent', indexBytes: 3 * 1024 * 1024 }
+        repoFacts: { postCheckoutHook: 'absent', indexEntryCount: 42_000 }
       }
     )
 
@@ -44,12 +50,14 @@ describe('workspaceCreateTimingFields', () => {
       prepared_checkout: 'hit',
       prepared_checkout_reset: 'base_moved',
       prepared_checkout_origin: 'rearm',
+      prepared_checkout_build_ms: 30_000,
+      prepared_checkout_idle_ms: 2_500,
       create_entry_point: 'runtime',
       execution_host: 'local',
       worktree_count_bucket: '301-1000',
       concurrent_creates: 1,
       concurrent_preparations: 2,
-      repo_index_size_bucket: '1-10MB',
+      repo_file_count_bucket: '10k-100k',
       post_checkout_hook: 'absent'
     })
     expect(
@@ -82,13 +90,13 @@ describe('workspaceCreateTimingFields', () => {
     })
   })
 
-  it('sends the hook but no size when the repo has no readable index', () => {
+  it('sends the hook but no file count when the repo has no usable index', () => {
     const fields = workspaceCreateTimingFields(
       { totalDurationMs: 1, phases: [] },
       { entryPoint: 'app', concurrency: quiet, repoFacts: { postCheckoutHook: 'unknown' } }
     )
     expect(fields.post_checkout_hook).toBe('unknown')
-    expect(fields).not.toHaveProperty('repo_index_size_bucket')
+    expect(fields).not.toHaveProperty('repo_file_count_bucket')
   })
 
   it('sums a repeated phase and drops names outside the closed vocabulary', () => {
@@ -209,15 +217,15 @@ describe('bucketWorktreeCount', () => {
   })
 })
 
-describe('bucketRepoIndexSize', () => {
+describe('bucketRepoFileCount', () => {
   it.each([
-    [0, '<100KB'],
-    [100 * 1024 - 1, '<100KB'],
-    [100 * 1024, '100KB-1MB'],
-    [1024 * 1024, '1-10MB'],
-    [10 * 1024 * 1024, '10-50MB'],
-    [50 * 1024 * 1024, '50MB+']
-  ] as const)('%i bytes -> %s', (bytes, bucket) => {
-    expect(bucketRepoIndexSize(bytes)).toBe(bucket)
+    [0, '<1k'],
+    [999, '<1k'],
+    [1_000, '1k-10k'],
+    [10_000, '10k-100k'],
+    [100_000, '100k-500k'],
+    [500_000, '500k+']
+  ] as const)('%i files -> %s', (count, bucket) => {
+    expect(bucketRepoFileCount(count)).toBe(bucket)
   })
 })

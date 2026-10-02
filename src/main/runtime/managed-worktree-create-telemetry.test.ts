@@ -117,13 +117,19 @@ function localCreateResult() {
 describe('runtime create events', () => {
   beforeEach(() => {
     mocks.track.mockReset()
-    mocks.probe.mockReset().mockResolvedValue({ postCheckoutHook: 'absent', indexBytes: 2048 })
+    mocks.probe.mockReset().mockResolvedValue({ postCheckoutHook: 'absent', indexEntryCount: 2048 })
     mocks.createFolder.mockReset().mockResolvedValue({ worktree: { id: 'folder-1' } })
     mocks.startTerminals.mockReset().mockResolvedValue({})
     mocks.createLocal.mockReset().mockImplementation(async ({ timing }: LocalCreateArgs) => {
       timing.recordExecutionHost('local')
       await timing.time('git_worktree_add', async () => {
-        timing.recordPreparedCheckout({ status: 'hit', reset: 'none', origin: 'prefetch' })
+        timing.recordPreparedCheckout({
+          status: 'hit',
+          reset: 'none',
+          origin: 'prefetch',
+          buildMs: 9_000,
+          idleMs: 120
+        })
       })
       return localCreateResult()
     })
@@ -152,7 +158,7 @@ describe('runtime create events', () => {
       prepared_checkout_origin: 'prefetch',
       concurrent_creates: 0,
       concurrent_preparations: 0,
-      repo_index_size_bucket: '<100KB',
+      repo_file_count_bucket: '1k-10k',
       post_checkout_hook: 'absent'
     })
     expect(typeof events('workspace_created')[0].git_worktree_add_ms).toBe('number')
@@ -199,6 +205,63 @@ describe('runtime create events', () => {
     await vi.waitFor(() => expect(events('workspace_created')).toHaveLength(1))
 
     expect(events('workspace_created')[0]).toMatchObject({ concurrent_preparations: 1 })
+  })
+
+  it('still returns the create when sending its event throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mocks.track.mockImplementation(() => {
+      throw new Error('telemetry broke')
+    })
+
+    await expect(
+      makeRuntime().createManagedWorktree({ repoSelector: 'repo-1', name: 'app' })
+    ).resolves.toMatchObject({ worktree: { id: 'wt-1' } })
+    await vi.waitFor(() => expect(mocks.track).toHaveBeenCalledOnce())
+  })
+
+  it('still rejects with the create error when sending the failure event throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mocks.track.mockImplementation(() => {
+      throw new Error('telemetry broke')
+    })
+    mocks.createLocal.mockRejectedValue(new Error('fatal: could not create work tree'))
+
+    await expect(
+      makeRuntime().createManagedWorktree({ repoSelector: 'repo-1', name: 'app' })
+    ).rejects.toThrow('could not create work tree')
+    expect(mocks.track).toHaveBeenCalledOnce()
+  })
+
+  it('carries the SSH create timing the runtime hands to the remote create', async () => {
+    const runtime = makeRuntime({
+      id: 'repo-remote',
+      path: '/srv/app',
+      kind: 'git',
+      executionHostId: 'ssh:remote-1'
+    })
+    const remoteCreate = vi.fn(
+      async (_repo: unknown, args: { timing?: WorktreeCreateTimingRecorder }) => {
+        // Stands in for createRemoteWorktree, which records into the recorder it is given.
+        args.timing?.recordExecutionHost('ssh')
+        await args.timing?.time('git_worktree_add', async () => {})
+        return { worktree }
+      }
+    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: createManagedRemoteWorktree exists on the service; the cast only exposes the protected member to the spy.
+    const internals = runtime as unknown as { createManagedRemoteWorktree: typeof remoteCreate }
+    vi.spyOn(internals, 'createManagedRemoteWorktree').mockImplementation(remoteCreate)
+
+    await runtime.createManagedWorktree({ repoSelector: 'repo-remote', name: 'app' })
+    await vi.waitFor(() => expect(events('workspace_created')).toHaveLength(1))
+
+    expect(remoteCreate.mock.calls[0]?.[1].timing).toBeDefined()
+    expect(events('workspace_created')[0]).toMatchObject({
+      create_entry_point: 'runtime',
+      execution_host: 'ssh'
+    })
+    expect(typeof events('workspace_created')[0].git_worktree_add_ms).toBe('number')
+    // SSH would need a remote round trip, so the repo is not probed.
+    expect(mocks.probe).not.toHaveBeenCalled()
   })
 
   it('sends nothing for a folder workspace, as before', async () => {

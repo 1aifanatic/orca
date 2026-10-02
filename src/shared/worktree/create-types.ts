@@ -47,9 +47,16 @@ export type WorktreeCreateTimingPhase = {
 }
 
 /** Whether a create reused a prewarmed checkout, and when it did not, which part of
- *  the claim key disagreed. A hit says what reset it needed and who armed it. */
+ *  the claim key disagreed. A hit says what reset it needed, who armed it, how long it took
+ *  to build and how long it then sat ready before this create claimed it. */
 export type PreparedCheckoutOutcome =
-  | { status: 'hit'; reset: PreparedCheckoutReset; origin: PreparedCheckoutOrigin }
+  | {
+      status: 'hit'
+      reset: PreparedCheckoutReset
+      origin: PreparedCheckoutOrigin
+      buildMs: number
+      idleMs: number
+    }
   | { status: 'miss'; reason: PreparedCheckoutMissReason }
 
 export type WorktreeCreateTiming = {

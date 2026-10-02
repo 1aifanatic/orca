@@ -25,15 +25,9 @@ export const WORKTREE_COUNT_BUCKETS = [
   '1001+'
 ] as const
 
-/** Byte size of the main repo's `.git/index`, a proxy for tracked-file count (~100 bytes per file):
- *  roughly under 1k, 10k, 100k and 500k files, then monorepos. */
-export const REPO_INDEX_SIZE_BUCKETS = [
-  '<100KB',
-  '100KB-1MB',
-  '1-10MB',
-  '10-50MB',
-  '50MB+'
-] as const
+/** Files the main repo tracks (its index entry count); checkout cost grows with it, and these split
+ *  small projects, typical apps, kernel-sized repos, large monorepos and the very largest. */
+export const REPO_FILE_COUNT_BUCKETS = ['<1k', '1k-10k', '10k-100k', '100k-500k', '500k+'] as const
 
 export const POST_CHECKOUT_HOOK_PRESENCE_VALUES = [
   'present',
@@ -92,6 +86,10 @@ const preparedCheckoutProperties = {
   prepared_checkout_reset: z.enum(PREPARED_CHECKOUT_RESETS).optional(),
   /** Hit only: whether the new-worktree UI or the automatic burst replacement armed it. */
   prepared_checkout_origin: z.enum(PREPARED_CHECKOUT_ORIGINS).optional(),
+  /** Hit only: from arming the prepared checkout to it being ready. */
+  prepared_checkout_build_ms: durationMsSchema,
+  /** Hit only: how long it sat ready before this create claimed it; 0 when the create waited. */
+  prepared_checkout_idle_ms: durationMsSchema,
   prepared_checkout_miss_reason: z.enum(PREPARED_CHECKOUT_MISS_REASONS).optional()
 }
 
@@ -105,7 +103,7 @@ export const workspaceCreatedTimingProperties = {
   ...preparedCheckoutProperties,
   ...workspaceCreateContextProperties,
   worktree_count_bucket: z.enum(WORKTREE_COUNT_BUCKETS).optional(),
-  repo_index_size_bucket: z.enum(REPO_INDEX_SIZE_BUCKETS).optional(),
+  repo_file_count_bucket: z.enum(REPO_FILE_COUNT_BUCKETS).optional(),
   post_checkout_hook: z.enum(POST_CHECKOUT_HOOK_PRESENCE_VALUES).optional()
 }
 

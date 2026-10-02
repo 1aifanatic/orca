@@ -6,7 +6,7 @@ import {
   type WorktreeCreatePhase
 } from '../shared/worktree/create-timing-vocabulary'
 import type {
-  REPO_INDEX_SIZE_BUCKETS,
+  REPO_FILE_COUNT_BUCKETS,
   WORKTREE_COUNT_BUCKETS,
   workspaceCreateFailedProperties,
   workspaceCreatedTimingProperties
@@ -24,7 +24,7 @@ export type WorkspaceCreateFailureFields = OptionalEventFields<
   typeof workspaceCreateFailedProperties
 >
 type WorktreeCountBucket = (typeof WORKTREE_COUNT_BUCKETS)[number]
-type RepoIndexSizeBucket = (typeof REPO_INDEX_SIZE_BUCKETS)[number]
+type RepoFileCountBucket = (typeof REPO_FILE_COUNT_BUCKETS)[number]
 
 /** What the create's owner knows beyond the timing the create recorded. */
 export type WorkspaceCreateEventContext = {
@@ -57,20 +57,17 @@ export function bucketWorktreeCount(count: number): WorktreeCountBucket {
   return count <= 1000 ? '301-1000' : '1001+'
 }
 
-const KB = 1024
-const MB = 1024 * KB
-
-export function bucketRepoIndexSize(bytes: number): RepoIndexSizeBucket {
-  if (bytes < 100 * KB) {
-    return '<100KB'
+export function bucketRepoFileCount(count: number): RepoFileCountBucket {
+  if (count < 1_000) {
+    return '<1k'
   }
-  if (bytes < MB) {
-    return '100KB-1MB'
+  if (count < 10_000) {
+    return '1k-10k'
   }
-  if (bytes < 10 * MB) {
-    return '1-10MB'
+  if (count < 100_000) {
+    return '10k-100k'
   }
-  return bytes < 50 * MB ? '10-50MB' : '50MB+'
+  return count < 500_000 ? '100k-500k' : '500k+'
 }
 
 function phaseTotals(phases: WorktreeCreateTiming['phases']): Map<WorktreeCreatePhase, number> {
@@ -99,7 +96,9 @@ function preparedCheckoutFields(
     return {
       prepared_checkout: 'hit',
       prepared_checkout_reset: prepared.reset,
-      prepared_checkout_origin: prepared.origin
+      prepared_checkout_origin: prepared.origin,
+      prepared_checkout_build_ms: Math.round(prepared.buildMs),
+      prepared_checkout_idle_ms: Math.round(prepared.idleMs)
     }
   }
   return prepared
@@ -134,8 +133,8 @@ export function workspaceCreateTimingFields(
     ...(timing.worktreeCount !== undefined
       ? { worktree_count_bucket: bucketWorktreeCount(timing.worktreeCount) }
       : {}),
-    ...(repoFacts?.indexBytes !== undefined
-      ? { repo_index_size_bucket: bucketRepoIndexSize(repoFacts.indexBytes) }
+    ...(repoFacts?.indexEntryCount !== undefined
+      ? { repo_file_count_bucket: bucketRepoFileCount(repoFacts.indexEntryCount) }
       : {}),
     ...(repoFacts ? { post_checkout_hook: repoFacts.postCheckoutHook } : {})
   }

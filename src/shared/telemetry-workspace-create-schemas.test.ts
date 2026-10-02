@@ -20,11 +20,13 @@ const fullCreatedPayload = {
   spawn_startup_terminal_ms: 90,
   prepared_checkout: 'hit',
   prepared_checkout_reset: 'retargeted',
-  prepared_checkout_origin: 'prefetch',
+  prepared_checkout_origin: 'rearm_then_prefetch',
+  prepared_checkout_build_ms: 41_000,
+  prepared_checkout_idle_ms: 0,
   create_entry_point: 'runtime',
   execution_host: 'wsl',
   worktree_count_bucket: '301-1000',
-  repo_index_size_bucket: '10-50MB',
+  repo_file_count_bucket: '100k-500k',
   concurrent_creates: 2,
   concurrent_preparations: 1,
   post_checkout_hook: 'present'
@@ -74,7 +76,8 @@ describe('workspace_created timing fields', () => {
     ['prepared_checkout_reset', 'hard'],
     ['prepared_checkout_origin', 'dialog'],
     ['create_entry_point', 'cli'],
-    ['repo_index_size_bucket', '12MB'],
+    ['repo_file_count_bucket', '12000'],
+    ['prepared_checkout_idle_ms', -5],
     ['prepared_checkout_miss_reason', 'the branch alice/feature was missing'],
     ['execution_host', 'docker'],
     ['worktree_count_bucket', '812'],
@@ -135,7 +138,7 @@ describe('workspace_create_failed timing fields', () => {
 
   it.each([
     ['post_checkout_hook', 'present'],
-    ['repo_index_size_bucket', '<100KB'],
+    ['repo_file_count_bucket', '<1k'],
     ['git_worktree_add_ms', 10]
   ])('rejects the success-only field %s via .strict()', (key, value) => {
     const parsed = failed.safeParse({ source: 'sidebar', error_class: 'git_failed', [key]: value })
