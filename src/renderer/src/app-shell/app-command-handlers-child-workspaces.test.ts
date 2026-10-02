@@ -5,8 +5,11 @@ const mocks = vi.hoisted(() => {
   const target: { groupKey: string | null } = { groupKey: 'lineage:parent' }
   return {
     target,
+    floatingFocused: false,
     requestScrollAnchor: vi.fn(),
+    notifyTerminalCapture: vi.fn(),
     store: {
+      activeModal: 'none',
       collapsedGroups: new Set<string>(),
       setSidebarOpen: vi.fn(),
       toggleCollapsedGroup: vi.fn()
@@ -28,11 +31,11 @@ vi.mock('@/hooks/requestVirtualizedScrollAnchorRecord', () => ({
 }))
 
 vi.mock('@/lib/floating-workspace-terminal-actions', () => ({
-  isFloatingWorkspacePanelFocused: () => false
+  isFloatingWorkspacePanelFocused: () => mocks.floatingFocused
 }))
 
 vi.mock('@/lib/terminal-shortcut-capture-notification', () => ({
-  showTerminalShortcutCaptureNotification: vi.fn()
+  showTerminalShortcutCaptureNotification: mocks.notifyTerminalCapture
 }))
 
 import { createAppCommandHandlers } from './app-command-handlers'
@@ -75,6 +78,8 @@ describe('child workspaces toggle app command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.target.groupKey = 'lineage:parent'
+    mocks.floatingFocused = false
+    mocks.store.activeModal = 'none'
     mocks.store.collapsedGroups = new Set()
   })
 
@@ -86,6 +91,9 @@ describe('child workspaces toggle app command', () => {
     expect(mocks.requestScrollAnchor).toHaveBeenCalledWith('[data-worktree-sidebar]')
     expect(mocks.store.toggleCollapsedGroup).toHaveBeenCalledWith('lineage:parent')
     expect(mocks.store.setSidebarOpen).not.toHaveBeenCalled()
+    expect(mocks.requestScrollAnchor.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.store.toggleCollapsedGroup.mock.invocationCallOrder[0] ?? 0
+    )
   })
 
   it('opens the sidebar when showing hidden children', () => {
@@ -103,5 +111,36 @@ describe('child workspaces toggle app command', () => {
     expect(runToggle(input)).toBe(false)
     expect(input.preventDefault).not.toHaveBeenCalled()
     expect(mocks.store.toggleCollapsedGroup).not.toHaveBeenCalled()
+    expect(mocks.requestScrollAnchor).not.toHaveBeenCalled()
+  })
+
+  it('lets a modal keep its keyboard input', () => {
+    mocks.store.activeModal = 'delete-worktree'
+    const input = shortcutInput()
+
+    expect(runToggle(input)).toBe(false)
+    expect(input.preventDefault).not.toHaveBeenCalled()
+    expect(mocks.store.toggleCollapsedGroup).not.toHaveBeenCalled()
+  })
+
+  it('lets the focused floating workspace keep its keyboard input', () => {
+    mocks.floatingFocused = true
+    const input = shortcutInput()
+
+    expect(runToggle(input)).toBe(false)
+    expect(input.preventDefault).not.toHaveBeenCalled()
+    expect(mocks.store.toggleCollapsedGroup).not.toHaveBeenCalled()
+  })
+
+  it('reports a claimed terminal shortcut through the existing notification policy', () => {
+    const input = shortcutInput()
+    expect(
+      createAppCommandHandlers(shortcutState(), input, 'terminal').get(
+        'sidebar.childWorkspaces.toggle'
+      )?.()
+    ).toBe(true)
+    expect(mocks.notifyTerminalCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: 'sidebar.childWorkspaces.toggle' })
+    )
   })
 })

@@ -187,6 +187,9 @@ export function createAppCommandHandlers(
       'sidebar.childWorkspaces.toggle',
       () => {
         const store = useAppStore.getState()
+        if (store.activeModal !== 'none' || floatingWorkspaceFocused) {
+          return false
+        }
         const groupKey = resolveChildWorkspacesToggleGroupKey(
           store,
           getRenderedLineageChipKeys(store)

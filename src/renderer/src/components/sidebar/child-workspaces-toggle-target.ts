@@ -8,7 +8,10 @@ import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualif
 import type { Worktree } from '../../../../shared/worktree/types'
 import { getHoveredWorkspaceIdentity } from './hovered-workspace-delete'
 import { computeRenderedSidebarRows } from './rendered-sidebar-worktree-order'
-import { computeVisibleWorktrees } from './visible-worktrees'
+import {
+  computeVisibleWorktrees,
+  getPublishedVisibleWorktreeShortcutTargets
+} from './visible-worktrees'
 import { buildVisibleWorktreeOptionsFromState } from './visible-worktree-options-from-state'
 import { getWorktreeLineageGroupKey } from './worktree-list/grouping/group-keys'
 import {
@@ -60,11 +63,7 @@ function getParentWorktree(
   return getWorktreeLineageAncestors(target, lineageById, worktreeMap)[0]
 }
 
-/**
- * The collapse key the "Toggle Child Workspaces" shortcut flips: the target's
- * own, or its parent's when the target shows no children chip. Only keys whose
- * chip the sidebar renders qualify, so the shortcut never flips hidden state.
- */
+/** Resolves the target's rendered chip, falling back to its same-host parent's chip. */
 export function resolveChildWorkspacesToggleGroupKey(
   state: ChildWorkspacesToggleState,
   renderedChipKeys: ReadonlySet<string>,
@@ -83,8 +82,14 @@ export function resolveChildWorkspacesToggleGroupKey(
   return parentKey && renderedChipKeys.has(parentKey) ? parentKey : null
 }
 
-/** Lineage keys of cards that currently render a children chip, from the sidebar's own row pipeline. */
+/** Uses mounted rows so temporary reveal and drag policies match the existing chip. */
 export function getRenderedLineageChipKeys(state: AppState): Set<string> {
+  const publishedTargets = getPublishedVisibleWorktreeShortcutTargets()
+  if (publishedTargets !== null) {
+    return new Set(
+      publishedTargets.flatMap((target) => (target.lineageGroupKey ? [target.lineageGroupKey] : []))
+    )
+  }
   const visibleWorktrees = computeVisibleWorktrees(
     state.worktreesByRepo,
     [],

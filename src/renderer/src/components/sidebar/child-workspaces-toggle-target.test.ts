@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
 import type { WorktreeLineage } from '../../../../shared/worktree/lineage-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { resolveChildWorkspacesToggleGroupKey } from './child-workspaces-toggle-target'
 import { worktree as baseWorktree } from './worktree-list-groups-test-fixtures'
 
@@ -101,6 +102,18 @@ describe('resolveChildWorkspacesToggleGroupKey', () => {
 
   it('returns null without a hovered or active workspace', () => {
     expect(resolve(toggleState(family), hoveredDocument())).toBeNull()
+  })
+
+  it('lets an active or hovered folder card pass through even with an active parent', () => {
+    const folder = worktree(folderWorkspaceKey('folder-1'), { hostId: 'local' })
+    expect(resolve(toggleState({ ...family, active: parent }), hoveredDocument(folder))).toBeNull()
+    expect(resolve(toggleState({ ...family, active: folder }), hoveredDocument())).toBeNull()
+  })
+
+  it('does not fall back to the active parent for a stale hovered card', () => {
+    expect(
+      resolve(toggleState({ ...family, active: parent }), hoveredDocument(worktree('removed')))
+    ).toBeNull()
   })
 
   it('does not fold an archived parent', () => {
