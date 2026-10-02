@@ -315,7 +315,7 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   // refused, and an agent's own idle-title rule replaces the sustained-title lane below.
   const ruled = input.readAgentRuleVerdict()
   if (ruled !== null) {
-    return isSettledWeakIdle(ruled, input.record, input.quiescenceMs)
+    return isSettledWeakIdle(ruled, input.record, input.quiescenceMs, input.launchReadiness)
       ? READY_WEAK
       : { kind: 'pending', quietForeground: 'closed' }
   }
@@ -329,15 +329,18 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   }
 }
 
+// Why launch readiness asks quiet of every weak idle: those rules read a name-only title, which a
+// shell auto-title writes before the TUI mounts, as in the sustained-title lane.
 function isSettledWeakIdle(
   verdict: AgentStateVerdict,
   record: TuiIdleEvidenceRecord,
-  quiescenceMs: number
+  quiescenceMs: number,
+  launchReadiness = false
 ): boolean {
   return (
     verdict.state === 'idle' &&
     verdict.strength === 'weak' &&
-    (!verdict.requiresQuiet || hasQuietOutput(record, quiescenceMs))
+    ((!verdict.requiresQuiet && !launchReadiness) || hasQuietOutput(record, quiescenceMs))
   )
 }
 
