@@ -345,5 +345,7 @@ export type ClaudeAcquireCallbacks = {
     event: ClaudeStructuredSessionEvent
   ) => void
   handleExit: (sessionId: string, attempt: ClaudeAcquisitionAttempt, error: Error) => void
+  /** The root exited during a close Orca began: finishes that close for this exact child. */
+  finishClose: (sessionId: string, attempt: ClaudeAcquisitionAttempt) => void
   settleExit: (sessionId: string, exit: ClaudeSessionExit) => Promise<void>
 }

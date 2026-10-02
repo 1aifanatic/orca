@@ -14,11 +14,9 @@ export function handleCodexSessionExit(input: {
   sessionId: string
   connection: CodexAppServerConnection | null
   error: Error
-  /** Set by Orca's own close. Absent only from the connection's onExit, which the connection
-   *  withholds while Orca is closing the child. */
+  /** Set for the end of a close Orca began: by that close, or by the root's own exit report. */
   closedByOrca?: true
   prompts?: CodexSession['prompts']
-  allowFailedSettlement?: boolean
   onEvent?: (event: CodexStructuredSessionEvent) => void
 }): boolean {
   const session = input.sessions.get(input.sessionId)
@@ -43,13 +41,9 @@ export function handleCodexSessionExit(input: {
     observedAt: session.exitObservedAt
   } as const
   // A synchronous sink rejection (usually backpressure) leaves the terminal rows to the host's
-  // exit settlement, which writes its own bounded fallback.
-  const admission = session.translator?.handle(event) ?? { accepted: true }
-  // The connection invokes onExit exactly once, so an unexpected exit is forwarded even when
-  // admission is backpressured; waiting for a second callback would strand the lease.
-  if (!admission.accepted && event.cause !== 'unexpected-exit' && !input.allowFailedSettlement) {
-    return false
-  }
+  // exit settlement, which writes its own bounded fallback. The exit itself is observed, so the
+  // session ends either way: holding a dead child as unproven over a refused row would strand it.
+  session.translator?.handle(event)
   session.ended = true
   // Nothing can echo for this child any more; the journal's pending-submission
   // recovery is what settles the sends these were armed for.
@@ -69,7 +63,6 @@ export async function closeCodexPublishedSession(
   sessionId: string,
   onEvent?: (event: CodexStructuredSessionEvent) => void,
   options?: {
-    allowFailedSettlement?: boolean
     requestedClose?: boolean
     expectedFence?: number
     expectedAcquisitionGeneration?: string
@@ -97,21 +90,15 @@ export async function closeCodexPublishedSession(
     return false
   }
   if (!session.ended) {
-    const handled = handleCodexSessionExit({
+    handleCodexSessionExit({
       sessions,
       sessionId,
       connection: session.connection,
       error: options?.unexpectedReason ?? new Error('codex session closed'),
       closedByOrca: true,
       prompts: session.prompts,
-      ...(options?.allowFailedSettlement ? { allowFailedSettlement: true } : {}),
       ...(onEvent ? { onEvent } : {})
     })
-    // Keep the closed session indexed when terminal settlement admission was
-    // rejected; a later close attempt retries the same stable lifecycle event.
-    if (!handled) {
-      return false
-    }
   }
   sessions.delete(sessionId)
   return true

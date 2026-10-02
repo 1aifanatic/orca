@@ -126,9 +126,9 @@ export async function openCodexAppServerConnection(
     // Transport/protocol failures make the connection unusable immediately so
     // callers do not hang, but recovery must not treat that as a child exit
     // until the execution host has observed `exit`/`close`.
-    if (exitObserved && !closing && !exitReported) {
+    if (exitObserved && !exitReported) {
       exitReported = true
-      handlers.onExit?.(terminalError)
+      handlers.onExit?.(terminalError, { expected: closing })
     }
   }
 
@@ -257,11 +257,17 @@ export async function openCodexAppServerConnection(
         )
         if (!exited) {
           const treeExited = await terminateProcessTree()
-          if (!treeExited) {
-            dispatcher.failPending(new Error('codex app-server process-tree exit was not proven'))
-            return false
-          }
           await waitForProcessExitUntil(exitPromise, FORCED_EXIT_MS)
+          if (!treeExited && exitObserved) {
+            // The lease follows the root, which is gone: a child left behind is reported, and
+            // blocks nothing.
+            console.warn(
+              '[codex-app-server] root exited but its process tree was not proven gone',
+              {
+                pid: child.pid
+              }
+            )
+          }
         }
       }
       dispatcher.failPending(new Error('codex app-server connection closed'))

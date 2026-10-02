@@ -812,13 +812,13 @@ describe('openCodexAppServerConnection', () => {
     await connection.close()
   })
 
-  it('keeps a graceful close quiet when stdin breaks during the reap', async () => {
+  it('reports a graceful close as expected when stdin breaks during the reap', async () => {
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
-    const exits: string[] = []
+    const exits: (boolean | undefined)[] = []
     const connection = await openCodexAppServerConnection(
       { command: 'codex', args: ['app-server'] },
-      { onExit: (error) => exits.push(error.message) },
+      { onExit: (_error, exit) => exits.push(exit?.expected) },
       spawnImpl
     )
     child.stdin.on('finish', () => child.stdin.emit('error', new Error('write EPIPE')))
@@ -831,6 +831,7 @@ describe('openCodexAppServerConnection', () => {
     await connection.close()
 
     expect((await inFlight).message).toContain('EPIPE')
-    expect(exits).toHaveLength(0)
+    // The root's exit is the close's own end, never an unexpected death.
+    expect(exits).toEqual([true])
   })
 })

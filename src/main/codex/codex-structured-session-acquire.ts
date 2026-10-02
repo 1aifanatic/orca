@@ -163,13 +163,15 @@ export async function acquireCodexStructuredSession(input: {
             Buffer.byteLength(JSON.stringify(payload ?? null), 'utf8')
           ),
         onSpawned: spawnIdentity.onSpawned,
-        onExit: (error) => {
+        onExit: (error, exit) => {
           try {
             handleCodexSessionExit({
               sessions,
               sessionId,
               connection: acquisition.connection,
               error,
+              // The end of a close Orca began, even one that came back unproven before it.
+              ...(exit?.expected ? { closedByOrca: true as const } : {}),
               prompts: acquisition.prompts,
               ...(deps.onEvent ? { onEvent: deps.onEvent } : {})
             })

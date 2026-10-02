@@ -7,6 +7,7 @@ import type {
 } from './claude-structured-session-state'
 import { cancelClaudeAcquisitionAttempt } from './claude-structured-session-state'
 import {
+  AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionAcquisitionRootExitObservedError,
   AgentSessionPreSpawnError
@@ -137,6 +138,10 @@ async function finalizeClaudePublishedSession(
     type: 'ended',
     sessionId: input.sessionId,
     reason: 'claude session closed',
+    // The host ends the child's record on it, whoever was still waiting on the close.
+    cause: 'requested-close',
+    fence: session.fence,
+    acquisitionGeneration: session.acquisitionGeneration,
     observedAt: Date.now()
   } as const
   let callbackError: unknown
@@ -152,8 +157,6 @@ async function finalizeClaudePublishedSession(
   let persistenceError: unknown
   try {
     await persistence
-    session.closeFinalized = true
-    input.sessions.delete(input.sessionId)
     deliver({
       type: 'handle',
       sessionId: input.sessionId,
@@ -162,16 +165,13 @@ async function finalizeClaudePublishedSession(
       fence: session.fence
     })
   } catch (error) {
-    // Keep the closed session indexed so a retry can persist the same cursor.
-    // Removing it first would turn a durable-write failure into a no-op retry.
-    if (session.closePersistence === persistence) {
-      session.closePersistence = undefined
-    }
     persistenceError = error
   }
-  // The connection already proved the child dead, so the session has ended
-  // whatever the durable write did: withholding it would strand the renderer on
-  // a session nothing re-drives. Emitted once, so a retry only re-persists.
+  // The connection already proved the child dead, so the session has ended whatever the resume
+  // point's write did: that write is bookkeeping, reported below, never a reason to keep a dead
+  // child indexed as if its exit were unproven.
+  session.closeFinalized = true
+  input.sessions.delete(input.sessionId)
   if (!session.closeEnded) {
     session.closeEnded = true
     try {
@@ -186,14 +186,14 @@ async function finalizeClaudePublishedSession(
       session.translator?.dispose()
     }
   }
-  if (persistenceError) {
-    throw persistenceError
-  }
-  if (callbackThrew) {
-    throw callbackError
-  }
   if (rootExitVerdict) {
     throw rootExitVerdict
+  }
+  if (persistenceError !== undefined || callbackThrew) {
+    // The exit is proven; only what followed it failed, which the caller reports.
+    throw new AgentSessionAcquisitionExitProvenError(
+      persistenceError !== undefined ? persistenceError : callbackError
+    )
   }
   return true
 }

@@ -65,7 +65,9 @@ export type ClaudeStreamJsonConnectionHandlers = {
   onUserDialog?: OnUserDialog
   /** A transport/process fault that is not itself first-hand root exit proof. */
   onFault?: (error: Error) => void
-  onExit?: (error: Error) => void
+  /** The root process exited, reported once. `expected`: a close had begun, so it is that close's
+   *  end, even one that ran out of its own escalation first and came back unproven. */
+  onExit?: (error: Error, exit?: { expected: boolean }) => void
 }
 
 /**
@@ -222,9 +224,9 @@ export async function openClaudeStreamJsonConnection(
       faultReported = true
       handlers.onFault?.(terminalError)
     }
-    if (!closing && exited && !exitReported) {
+    if (exited && !exitReported) {
       exitReported = true
-      handlers.onExit?.(terminalError)
+      handlers.onExit?.(terminalError, { expected: closing })
     }
   }
 

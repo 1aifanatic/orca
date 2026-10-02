@@ -26,7 +26,11 @@ import {
   type ClaudeStructuredSessionAdapterDeps,
   type ClaudeStructuredSessionEvent
 } from './claude-structured-session-state'
-import { closeAllClaudeSessions, closeClaudeSession } from './claude-structured-session-close'
+import {
+  closeAllClaudeSessions,
+  closeClaudePublishedSessionForDeps,
+  closeClaudeSession
+} from './claude-structured-session-close'
 import { claudeStoppedRequestEndWait } from './claude-request-end-wait'
 import {
   drainClaudeObservedExits,
@@ -95,6 +99,14 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         emit: (session, _events, event) => this.emit(session, event),
         handleExit: (sessionId, attempt, error) =>
           observeClaudeSessionExit(this.exitLifecycle, sessionId, attempt, error),
+        finishClose: (sessionId, attempt) => {
+          if (this.sessions.get(sessionId)?.connection === attempt.connection) {
+            // Joins a close still running; finalizes one that came back unproven before the exit.
+            void closeClaudePublishedSessionForDeps(this.sessions, sessionId, this.deps).catch(
+              () => undefined
+            )
+          }
+        },
         settleExit: (sessionId, exit) =>
           settleClaudeUnexpectedExit(this.exitLifecycle, sessionId, exit)
       }

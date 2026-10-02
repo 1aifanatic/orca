@@ -40,7 +40,7 @@ export class CodexStructuredSessionTeardown {
       this.deps.sessions,
       sessionId,
       this.deps.onEvent,
-      { allowFailedSettlement: true, requestedClose: false }
+      { requestedClose: false }
     )
     return this.settled(sessionId, closed)
   }
@@ -63,7 +63,6 @@ export class CodexStructuredSessionTeardown {
       return Promise.resolve(false)
     }
     return closeCodexPublishedSession(this.deps.sessions, sessionId, this.deps.onEvent, {
-      allowFailedSettlement: true,
       requestedClose: false,
       expectedFence: fence,
       expectedAcquisitionGeneration: acquisitionGeneration,

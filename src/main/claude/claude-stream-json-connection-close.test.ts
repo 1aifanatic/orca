@@ -162,6 +162,39 @@ describe('Claude stream-json close ordering', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
+  it('reports a root that exits after its close came back unproven as that close ending', async () => {
+    mocks.refresh.mockReset()
+    mocks.proveClaudeChildExit.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    mocks.proveClaudeChildExit.mockResolvedValue(false)
+    const child = fakeChild()
+    const next = vi.fn(() => new Promise<IteratorResult<Record<string, unknown>>>(() => {}))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This injected query exercises only the async iterator used by the connection.
+    const queryImpl = ((params: Parameters<typeof query>[0]) => {
+      params.options?.spawnClaudeCodeProcess?.({
+        command: 'claude',
+        args: [],
+        env: {},
+        signal: new AbortController().signal
+      })
+      return {
+        [Symbol.asyncIterator]: () => ({ next })
+      }
+    }) as unknown as typeof query
+    const exits: (boolean | undefined)[] = []
+    const connection = await openClaudeStreamJsonConnection(
+      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { onExit: (_error, exit) => exits.push(exit?.expected) },
+      () => child,
+      queryImpl
+    )
+    await expect(connection.close()).resolves.toBe(false)
+
+    child.emit('exit', 0, 'SIGTERM')
+
+    expect(exits).toEqual([true])
+  })
+
   it('waits for the live tree refresh before ending stdin', async () => {
     const refreshDone = Promise.withResolvers<void>()
     mocks.refresh.mockReturnValueOnce(refreshDone.promise)

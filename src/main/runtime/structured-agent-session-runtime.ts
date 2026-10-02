@@ -271,7 +271,8 @@ async function installOnJournal(
     onDispatchSettledLate,
     onPrimaryThreadStoppedRunning: releaseUnansweredDispatches,
     onEvent: (event) => {
-      if (event.type === 'ended' && 'cause' in event && event.cause === 'unexpected-exit') {
+      // Every exit, expected or not: the host ends that child's record.
+      if (event.type === 'ended' && 'cause' in event) {
         lifecycle.deliver(event)
       }
     }

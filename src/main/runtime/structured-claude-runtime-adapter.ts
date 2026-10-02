@@ -47,9 +47,10 @@ export function structuredClaudeLifecycleEvent(
   if (event.type === 'started') {
     return event
   }
+  // Every exit of a child with an identity, expected or not: the host ends that child's record.
   if (
     event.type === 'ended' &&
-    event.cause === 'unexpected-exit' &&
+    event.cause !== undefined &&
     event.fence !== undefined &&
     event.acquisitionGeneration
   ) {
