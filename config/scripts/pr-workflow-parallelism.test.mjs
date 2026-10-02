@@ -433,7 +433,10 @@ describe('PR workflow parallelism', () => {
     // that cannot load, and ensure-native-runtime would recompile it anyway.
     for (const cacheStep of [steps[cacheIndex], restoreOnly]) {
       expect(cacheStep.with.key).toBe('${{ steps.native-cache-scope.outputs.key }}')
-      expect(cacheStep.with.path).toBe('${{ steps.native-cache-scope.outputs.path }}')
+      expect(cacheStep.with.path).not.toContain('${{')
+      expect(cacheStep.with.path).toContain('node-pty@*/node_modules/node-pty/build')
+      expect(cacheStep.with.path).toContain('native/windows-registry/build')
+      expect(cacheStep.with.path).toContain('@vscode+windows-process-tre*')
       expect(cacheStep.with['restore-keys']).toBeUndefined()
     }
     expect(steps[cacheIndex].id).toBe('native-cache-restore')

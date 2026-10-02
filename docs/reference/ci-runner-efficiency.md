@@ -1115,3 +1115,39 @@ The latest five shard wall times were 526/495/503/508/510 seconds. Reweighting
 projected roughly a 4% reduction in the slowest shard without reducing total
 CPU work; the evidence across runs was weak. That estimate does not justify
 changing allocation, so the current weights remain.
+
+## Serializer oracle allocations: retain the change
+
+The serializer round-trip oracle now reloads one xterm cell per buffer traversal
+and writes flag digits directly, avoiding fresh cell objects and flag arrays for
+every comparison. Independent replay terminals, cell descriptors, transcript
+fixtures, resize schedules, ConPTY modes and seeds remain unchanged.
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/36944080887)
+used one Ubuntu 24.04 ARM64 runner, image 20260927.135.1, Node 24.21.0 and one
+isolated fork. The baseline formatter was frozen from f69052e. Byte-parity capture
+ran separately; these three alternating pairs had no payload instrumentation.
+Times cover the complete Vitest invocation, including startup and shutdown.
+
+| Pair/order         | Baseline | Candidate | Change |
+| ------------------ | -------- | --------- | ------ |
+| 1: baseline first  | 70.631 s | 61.661 s  | -12.7% |
+| 2: candidate first | 70.619 s | 62.284 s  | -11.8% |
+| 3: baseline first  | 70.750 s | 62.091 s  | -12.2% |
+| Median             | 70.631 s | 62.091 s  | -12.1% |
+
+Median test-body time fell from 69.519 to 60.953 seconds. All eight full-cohort
+invocations preserved the same 89 passes and two existing conditional skips
+across three files. Separate baseline/candidate captures produced identical
+95,017,559-byte payloads for all 1,435 scenarios and 7,649 checkpoints, with zero
+source crashes; both SHA256 hashes matched the local captures.
+
+Seven focused controls compare against the original allocating oracle, including
+all 128 text-flag combinations, styled blanks, wide cells, cell reuse and immutable
+snapshots. Five deliberate faults were detected: stale cell contents, a missing
+bold flag, changed empty-cell policy, removed scratch reuse and a source-parser
+crash. The last control also proved that crash returns enter the capture.
+
+This measures the three-file oracle cohort. Whole-shard timings include other
+test bodies, imports and transforms, so a whole-suite saving needs separate
+measurement.

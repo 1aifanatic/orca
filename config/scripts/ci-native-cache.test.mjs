@@ -204,7 +204,7 @@ describe('CI native cache ownership', () => {
   it('uses requested identity on both restores and saves the Node ABI before Windows switches to Electron', () => {
     for (const step of native.runs.steps.filter((step) => step.uses?.startsWith('actions/cache'))) {
       expect(step.with.key).toBe('${{ steps.native-cache-scope.outputs.key }}')
-      expect(step.with.path).toBe('${{ steps.native-cache-scope.outputs.path }}')
+      expect(step.with.path.trim().split('\n')).toEqual(paths)
       expect(step.with['restore-keys']).toBeUndefined()
     }
     const job = parse(readFileSync('.github/workflows/pr.yml', 'utf8')).jobs.package_windows
@@ -226,4 +226,23 @@ describe('CI native cache ownership', () => {
     })
     expect(native.outputs['cache-key'].value).toBe('${{ steps.native-cache-scope.outputs.key }}')
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps cache post-job paths when the nested step output context is absent',
+    () => {
+      const postContext = { steps: {} }
+      const evaluateInput = (value) =>
+        value.replace(
+          /\$\{\{\s*steps\.([\w-]+)\.outputs\.([\w-]+)\s*\}\}/g,
+          (_expression, step, output) => postContext.steps[step]?.outputs?.[output] ?? ''
+        )
+      expect(evaluateInput('${{ steps.native-cache-scope.outputs.path }}')).toBe('')
+      const emitted = resolveIdentity().path
+      for (const step of native.runs.steps.filter((step) =>
+        step.uses?.startsWith('actions/cache')
+      )) {
+        expect(evaluateInput(step.with.path).trim()).toBe(emitted)
+      }
+    }
+  )
 })

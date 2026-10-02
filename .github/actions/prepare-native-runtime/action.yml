@@ -78,7 +78,11 @@ runs:
       if: inputs.native-runtime != 'none' && inputs.persist-native-cache != 'false'
       uses: actions/cache@v5
       with:
-        path: ${{ steps.native-cache-scope.outputs.path }}
+        # Post-job saving cannot resolve nested composite step outputs.
+        path: |
+          node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
+          native/windows-registry/build
+          node_modules/.pnpm/@vscode+windows-process-tre*/node_modules/@vscode/windows-process-tree/build
         key: ${{ steps.native-cache-scope.outputs.key }}
 
     - name: Restore compiled native modules without saving
@@ -86,7 +90,10 @@ runs:
       if: inputs.native-runtime != 'none' && inputs.persist-native-cache == 'false'
       uses: actions/cache/restore@v5
       with:
-        path: ${{ steps.native-cache-scope.outputs.path }}
+        path: |
+          node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
+          native/windows-registry/build
+          node_modules/.pnpm/@vscode+windows-process-tre*/node_modules/@vscode/windows-process-tree/build
         key: ${{ steps.native-cache-scope.outputs.key }}
 
     # pnpm's bundled gyp_main.py is not executable; Electron rebuild uses its own node-gyp API.
