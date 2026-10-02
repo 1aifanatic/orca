@@ -1,6 +1,7 @@
 import {
   memo,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -33,6 +34,7 @@ import {
   markdownPreviewViewportIndices,
   markdownPreviewRequestIndices
 } from './markdown-preview-viewport-budget'
+import { refreshMarkdownPreviewRowMeasurements } from './markdown-preview-row-measurements'
 import { useMarkdownPreviewBodyLayout } from './use-markdown-preview-body-layout'
 import { useMarkdownPreviewScrollAnchor } from './use-markdown-preview-scroll-anchor'
 import type { MarkdownPreviewDocumentClient } from './markdown-preview-document-client'
@@ -117,7 +119,15 @@ export function VirtualMarkdownPreviewBody({
     overscan: MARKDOWN_PREVIEW_OVERSCAN,
     rangeExtractor: (range) => markdownPreviewViewportIndices(range, pinnedAnnotationIndex)
   })
-  useEffect(() => virtualizer.measure(), [minimumRowHeight, virtualizer])
+  const measuredMinimumHeight = useRef(minimumRowHeight)
+  useLayoutEffect(() => {
+    refreshMarkdownPreviewRowMeasurements(
+      virtualizer,
+      virtualBodyRef.current,
+      measuredMinimumHeight.current !== minimumRowHeight
+    )
+    measuredMinimumHeight.current = minimumRowHeight
+  }, [minimumRowHeight, rendered, virtualizer])
   useMarkdownPreviewScrollAnchor({ blocks: document.blocks, rootRef, virtualizer, scrollCacheKey })
   const anchorBlocks = useMemo(
     () =>

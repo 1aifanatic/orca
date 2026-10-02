@@ -246,6 +246,32 @@ for (const width of [1920, 1280]) {
         )
       )
       .toBeLessThanOrEqual(2)
+    await orcaPage.setViewportSize({ width, height: 1800 })
+    await expect
+      .poll(() =>
+        preview
+          .locator('[data-preview-block-loaded]')
+          .first()
+          .evaluate((node) =>
+            node instanceof HTMLElement ? Number.parseFloat(node.style.minHeight) : 0
+          )
+      )
+      .toBeGreaterThan(40)
+    await expect
+      .poll(() =>
+        preview
+          .locator('[data-preview-block-loaded]')
+          .evaluateAll((nodes) =>
+            nodes
+              .slice(1)
+              .some(
+                (node, index) =>
+                  node.getBoundingClientRect().top < nodes[index].getBoundingClientRect().bottom - 1
+              )
+          )
+      )
+      .toBe(false)
+    await orcaPage.screenshot({ path: path.join(proofDirectory, `resized-${width}.png`) })
     const memory = await electronApp.evaluate(({ app }) =>
       app
         .getAppMetrics()
