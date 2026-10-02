@@ -1,13 +1,21 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from '../sqlite/sync-database'
 import {
   getOpenCodeAuthFilePath,
   readOpenCodeAuthFileGoKey,
   resolveOpenCodeGoApiKey
 } from './opencode-go-api-key-source'
+
+const selectedAccount = vi.hoisted(() => {
+  const environment: NodeJS.ProcessEnv = {}
+  return { environment }
+})
+vi.mock('../managed-data-accounts/service', () => ({
+  getManagedDataAccountService: () => ({ launchEnvironment: () => selectedAccount.environment })
+}))
 
 // Placeholder values only — a real key must never reach a fixture.
 const SETTINGS_KEY = 'settings-placeholder-key'
@@ -26,10 +34,13 @@ describe('resolveOpenCodeGoApiKey', () => {
     writeFileSync(join(dataHome, 'opencode', 'auth.json'), JSON.stringify(contents))
   }
 
-  function writeCredentialDatabase(rows: { value: string; active: number; created: number }[]): {
+  function writeCredentialDatabase(
+    rows: { value: string; active: number; created: number }[],
+    directory = dataHome
+  ): {
     path: string
   } {
-    const path = join(dataHome, 'opencode-credentials.db')
+    const path = join(directory, 'opencode-credentials.db')
     const database = new Database(path)
     database.exec(
       'CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, ' +
@@ -50,6 +61,9 @@ describe('resolveOpenCodeGoApiKey', () => {
   beforeEach(() => {
     originalEnvironment = Object.fromEntries(ENVIRONMENT_KEYS.map((key) => [key, process.env[key]]))
     dataHome = mkdtempSync(join(tmpdir(), 'orca-opencode-go-key-'))
+    for (const key of Object.keys(selectedAccount.environment)) {
+      delete selectedAccount.environment[key]
+    }
     process.env.XDG_DATA_HOME = dataHome
     delete process.env.OPENCODE_API_KEY
     // Keeps the credential-database tier from touching the developer's own store.
@@ -66,6 +80,45 @@ describe('resolveOpenCodeGoApiKey', () => {
       }
     }
     rmSync(dataHome, { recursive: true, force: true })
+  })
+
+  it('reads only the selected account database rather than the host default key', async () => {
+    const directory = join(dataHome, 'selected')
+    mkdirSync(directory)
+    const host = writeCredentialDatabase([
+      { value: JSON.stringify({ type: 'key', key: 'host-key' }), active: 1, created: 1 }
+    ])
+    const selected = writeCredentialDatabase(
+      [{ value: JSON.stringify({ type: 'key', key: 'selected-key' }), active: 1, created: 1 }],
+      directory
+    )
+    process.env.OPENCODE_DB = host.path
+    selectedAccount.environment.XDG_DATA_HOME = directory
+    selectedAccount.environment.OPENCODE_DB = selected.path
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({
+      status: 'found',
+      tier: 'opencode-credential-database',
+      key: 'selected-key'
+    })
+  })
+
+  it('keeps legacy auth-file fallback inside the selected account home', async () => {
+    writeAuthFile({ 'opencode-go': { type: 'api', key: 'host-key' } })
+    const directory = join(dataHome, 'selected')
+    mkdirSync(join(directory, 'opencode'), { recursive: true })
+    writeFileSync(
+      join(directory, 'opencode', 'auth.json'),
+      JSON.stringify({
+        'opencode-go': { type: 'api', key: 'selected-key' }
+      })
+    )
+    selectedAccount.environment.XDG_DATA_HOME = directory
+    selectedAccount.environment.OPENCODE_DB = ':memory:'
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({
+      status: 'found',
+      tier: 'opencode-auth-file',
+      key: 'selected-key'
+    })
   })
 
   it('reads auth.json from XDG_DATA_HOME, which OpenCode uses on every platform', () => {

@@ -8,6 +8,7 @@ import { tableExists } from '../opencode-usage/schema-helpers'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import { resolveOpenCodeDataDirectory } from '../opencode/opencode-data-directory'
 import Database from '../sqlite/sync-database'
+import { getManagedDataAccountService } from '../managed-data-accounts/service'
 
 /** OpenCode's provider/integration id for the Go subscription. */
 const OPENCODE_GO_INTEGRATION_ID = 'opencode-go'
@@ -124,10 +125,14 @@ function selectCredentialKey(database: Database.Database): string | null {
  * empty on a real 1.18.16 install), so probe it regardless of version.
  * @returns The key, or null when no database, table, or row carries one.
  */
-export async function readOpenCodeCredentialDatabaseGoKey(): Promise<string | null> {
+export async function readOpenCodeCredentialDatabaseGoKey(
+  environment: NodeJS.ProcessEnv = process.env
+): Promise<string | null> {
   let paths: string[]
   try {
-    paths = [...(await listOpenCodeDatabases())].sort(compareOpenCodeClaimPriority)
+    paths = [...(await listOpenCodeDatabases(undefined, environment))].sort(
+      compareOpenCodeClaimPriority
+    )
   } catch {
     return null
   }
@@ -160,13 +165,13 @@ export async function readOpenCodeCredentialDatabaseGoKey(): Promise<string | nu
  * Resolve the OpenCode Go API key in the documented precedence order.
  *
  * Settings override, then whatever OpenCode itself stored on `/connect` —
- * `auth.json`, then the `credential` table — then `OPENCODE_API_KEY`. Both
- * stores are probed on every version: 1.18.x creates the `credential` table too,
- * so its presence is not a 2.x marker, and a 2.x install that never ran the
- * legacy import has no `auth.json` at all.
+ * the `credential` table, then `auth.json` — then `OPENCODE_API_KEY`. The table
+ * wins because OpenCode 2 imports `auth.json` once and never writes it again,
+ * so a key re-connected on 2.x would otherwise be shadowed by a stale file; on
+ * 1.x the table exists but stays empty, so `auth.json` still decides there.
  * The stored key outranks the env var because OpenCode applies it after env,
  * and the env var is shared with the Zen provider.
- * @param input.settingsOverride - The key a user pasted into Orca's settings.
+ * @param input.settingsOverride - The key a user saved in Orca's settings.
  * @param input.environment - Process environment to read; injectable for tests.
  * @returns The first key found and the tier it came from, or `missing`.
  */
@@ -174,18 +179,21 @@ export async function resolveOpenCodeGoApiKey(input: {
   settingsOverride?: string
   environment?: NodeJS.ProcessEnv
 }): Promise<OpenCodeGoApiKeyResolution> {
-  const environment = input.environment ?? process.env
+  const environment = input.environment ?? {
+    ...process.env,
+    ...getManagedDataAccountService().launchEnvironment('opencode')
+  }
   const override = trimmedKey(input.settingsOverride)
   if (override) {
     return { status: 'found', key: override, tier: 'settings' }
   }
+  const fromDatabase = await readOpenCodeCredentialDatabaseGoKey(environment)
+  if (fromDatabase) {
+    return { status: 'found', key: fromDatabase, tier: 'opencode-credential-database' }
+  }
   const fromAuthFile = readOpenCodeAuthFileGoKey(environment)
   if (fromAuthFile) {
     return { status: 'found', key: fromAuthFile, tier: 'opencode-auth-file' }
-  }
-  const fromDatabase = await readOpenCodeCredentialDatabaseGoKey()
-  if (fromDatabase) {
-    return { status: 'found', key: fromDatabase, tier: 'opencode-credential-database' }
   }
   const fromEnvironment = trimmedKey(environment[OPENCODE_API_KEY_ENV])
   if (fromEnvironment) {
