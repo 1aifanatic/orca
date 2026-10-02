@@ -5,9 +5,9 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import {
-  boundInlineText,
-  DEFAULT_JOURNAL_PAYLOAD_LIMITS
-} from '../native-chat/agent-session-journal/journal-payload-bounds'
+  endedJournalReasoning,
+  journalReasoningBody
+} from '../native-chat/agent-session-journal/journal-reasoning-row'
 import type { AgentSessionDeltaCoalescerDeps } from '../native-chat/agent-session-wire/agent-session-delta-coalescer'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { createClaudeStreamedBlockRegistry } from './claude-streamed-block-identity'
@@ -23,32 +23,6 @@ import {
   type ClaudeMessageEnvelope
 } from './claude-structured-item-translation'
 import type { ClaudeSubagentLinkageSource } from './claude-subagent-linkage'
-
-type ReasoningLifecycle = Pick<AgentJournalMessageItem, 'state' | 'completedAt'>
-
-/** Null for blank thinking: a block with no readable text journals no row. */
-export function claudeReasoningBody(
-  text: string,
-  lifecycle: ReasoningLifecycle
-): AgentJournalMessageItem | null {
-  return text.trim()
-    ? {
-        kind: 'message',
-        role: 'reasoning',
-        blocks: [
-          { type: 'text', text: boundInlineText(text, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text }
-        ],
-        ...lifecycle
-      }
-    : null
-}
-
-function endedLifecycle(ended: ClaudeStreamedBlockEnd): ReasoningLifecycle {
-  return {
-    state: 'completed',
-    ...(ended.completedAt === undefined ? {} : { completedAt: ended.completedAt })
-  }
-}
 
 /** The stream a frame belongs to, which a new message in it starts over. */
 function streamScope(frame: Record<string, unknown>): string | null {
@@ -86,7 +60,10 @@ export function createClaudeStreamedThinking(deps: {
     ...(deps.schedule ? { schedule: deps.schedule } : {}),
     producer: deps.producer,
     persist: (identity, text, options, ended) => {
-      const body = claudeReasoningBody(text, ended ? endedLifecycle(ended) : { state: 'running' })
+      const body = journalReasoningBody(
+        text,
+        ended ? endedJournalReasoning(ended.completedAt) : { state: 'running' }
+      )
       if (body) {
         const startedAt = open.get(agentJournalItemKey(identity))?.startedAt
         deps.sink.appendItem(identity, body, {
@@ -152,9 +129,9 @@ export function createClaudeStreamedThinking(deps: {
       const text = claudeThinkingText(envelope) ?? checkpoints.latest(key) ?? ''
       checkpoints.forget(key)
       open.delete(key)
-      const body = claudeReasoningBody(
+      const body = journalReasoningBody(
         text,
-        endedLifecycle(streamed ? { completedAt: observedAt } : {})
+        endedJournalReasoning(streamed ? observedAt : undefined)
       )
       return body
         ? { identity, body, ...(streamed ? { startedAt: streamed.startedAt } : {}) }

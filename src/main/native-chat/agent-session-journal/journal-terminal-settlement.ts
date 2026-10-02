@@ -3,6 +3,7 @@ import type {
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import { isRunningAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { endedJournalReasoning } from './journal-reasoning-row'
 
 /** True while an item is still awaiting the row that settles it, so a sink can
  *  treat that row as lifecycle-critical rather than sheddable under pressure. */
@@ -22,5 +23,5 @@ export function endedUnseenMessageBody(body: AgentJournalItemBody): AgentJournal
     return null
   }
   const { completedAt: _unseen, ...open } = body
-  return { ...open, state: 'completed' }
+  return { ...open, ...endedJournalReasoning() }
 }

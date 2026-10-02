@@ -7,7 +7,7 @@ import { createAgentSessionDeltaCoalescer } from '../native-chat/agent-session-w
 import { CodexItemStreamRetention } from './codex-item-stream-retention'
 import { appendCodexItemAndPublish } from './codex-structured-journal-sink'
 import { codexJournalItem, codexStreamingJournalItem } from './codex-structured-item-translation'
-import { withCodexReasoningLifecycle } from './codex-reasoning-lifecycle'
+import { withJournalReasoningLifecycle } from '../native-chat/agent-session-journal/journal-reasoning-row'
 import {
   codexStructuredItemKey,
   MAX_CODEX_ITEM_STREAM_PENDING_PATCHES,
@@ -116,7 +116,7 @@ export function createCodexStructuredItemStreams(
       return true
     }
     // A stream only ever carries an item that has not completed yet.
-    const body = withCodexReasoningLifecycle(translated.body, { state: 'running' })
+    const body = withJournalReasoningLifecycle(translated.body, { state: 'running' })
     return appendCodexItemAndPublish(deps.sink, state.identity, body, {
       coalescingKey: `checkpoint:${agentJournalItemKey(state.identity)}`,
       ...attributionOf(key),

@@ -37,10 +37,10 @@ import {
   interruptedCodexItemBody
 } from './codex-unfinished-item-body'
 import {
-  endedCodexReasoning,
-  withCodexReasoningLifecycle,
-  type CodexReasoningLifecycle
-} from './codex-reasoning-lifecycle'
+  endedJournalReasoning,
+  withJournalReasoningLifecycle,
+  type JournalReasoningLifecycle
+} from '../native-chat/agent-session-journal/journal-reasoning-row'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
 
 export class CodexJournalItems {
@@ -110,12 +110,12 @@ export class CodexJournalItems {
     const itemKey = codexStructuredItemKey(event.threadId, item.id)
     const active = event.method === 'item/completed' ? this.activeItems.get(itemKey) : undefined
     const receivedAt = event.observedAt ?? this.deps.now?.() ?? Date.now()
-    const lifecycle: CodexReasoningLifecycle =
+    const lifecycle: JournalReasoningLifecycle =
       source === 'history'
-        ? endedCodexReasoning()
+        ? endedJournalReasoning()
         : event.method === 'item/completed'
           ? // A completion with no start on record claims no span it never saw.
-            endedCodexReasoning(active?.startedAt === undefined ? undefined : receivedAt)
+            endedJournalReasoning(active?.startedAt === undefined ? undefined : receivedAt)
           : { state: 'running' }
     const translated = withItemLifecycle(
       codexCompletedItem(
@@ -298,9 +298,9 @@ export class CodexJournalItems {
 
 function withItemLifecycle(
   translated: ReturnType<typeof codexJournalItem>,
-  lifecycle: CodexReasoningLifecycle
+  lifecycle: JournalReasoningLifecycle
 ): ReturnType<typeof codexJournalItem> {
   return translated.body
-    ? { ...translated, body: withCodexReasoningLifecycle(translated.body, lifecycle) }
+    ? { ...translated, body: withJournalReasoningLifecycle(translated.body, lifecycle) }
     : translated
 }

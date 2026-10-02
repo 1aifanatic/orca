@@ -32,7 +32,7 @@ export {
   MAX_CODEX_TURN_ORDINAL_BYTES,
   MAX_CODEX_TURN_ORDINAL_ENTRIES
 } from './codex-turn-ordinals'
-import { codexReasoningBody } from './codex-reasoning-lifecycle'
+import { journalReasoningBody } from '../native-chat/agent-session-journal/journal-reasoning-row'
 
 // Codex thread items → journal item bodies.
 
@@ -278,7 +278,7 @@ export function codexJournalItem(
       readTextContent(item, 'text') ??
       readTextContent(item, 'summary') ??
       readTextContent(item, 'content')
-    return { body: codexReasoningBody(text), handled: true }
+    return { body: journalReasoningBody(text), handled: true }
   }
   const unhandled = unhandledProviderFrameJournalItem('codex', `item:${item.type}`, item)
   return unhandled ? { body: unhandled.body, handled: false } : { body: null, handled: true }
@@ -303,7 +303,7 @@ export function codexStreamingJournalItem(item: CodexThreadItem, text: string): 
     return { body: codexStreamingMessageBody(text), handled: true }
   }
   if (item.type === 'reasoning') {
-    return { body: codexReasoningBody(text), handled: true }
+    return { body: journalReasoningBody(text), handled: true }
   }
   if (item.type === 'commandExecution') {
     return commandItem({ ...item, aggregatedOutput: text })

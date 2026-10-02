@@ -1,6 +1,9 @@
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import { cancelledJournalPromptBody } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
-import { endedCodexReasoning, withCodexReasoningLifecycle } from './codex-reasoning-lifecycle'
+import {
+  endedJournalReasoning,
+  withJournalReasoningLifecycle
+} from '../native-chat/agent-session-journal/journal-reasoning-row'
 import type { CodexStructuredItemStreams } from './codex-structured-item-stream-contracts'
 import {
   codexJournalItem,
@@ -50,7 +53,7 @@ export function interruptedCodexItemBody(
     return { ...body, state: 'failed' }
   }
   if (body.kind === 'message') {
-    return withCodexReasoningLifecycle(body, endedCodexReasoning(endedAt))
+    return withJournalReasoningLifecycle(body, endedJournalReasoning(endedAt))
   }
   if (body.kind === 'diff') {
     return { kind: 'status', text: 'File changes were interrupted before completion.' }
