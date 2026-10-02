@@ -36,6 +36,7 @@ function stubStructuredHostInstall(runtime: OrcaRuntimeService): {
   const host = {
     reconcileRestartLeases: vi.fn(async () => {}),
     catchUpMissingStatuses: vi.fn(async () => undefined),
+    restoreListedFromPerChatFiles: vi.fn(async () => undefined),
     seedStoredStatuses: vi.fn((ids: readonly string[]) => [...ids]),
     settleOwedSessions: vi.fn(async () => undefined),
     supportsCreate: (location: { executionHostId: string; wslDistro: string | null }) =>

@@ -135,7 +135,11 @@ Two rules the ingest must keep:
   chat last written before that table existed has no row at first: a listed
   chat gets one at startup, before the tab listing answers, computed from its
   journal rows without opening it, so the republish and the settle below cover
-  it too; any other chat gets one when it is opened, which also settles it.
+  it too; any other chat gets one when it is opened, which also settles it. A
+  listed chat whose history is still in an older build's per-chat file is
+  opened from that file before the tab listing answers, which publishes its
+  status, and gets its row with its first write. A corrupt chat gets no row
+  until its open rebuilds it.
   At host startup the host republishes a settled chat's row into the store
   without opening the chat, and settles a chat a gone process left with work
   first. A structured row in `last-status.json` would

@@ -70,8 +70,8 @@ export async function revealStructuredAgentSession(
   }
 }
 
-/** The host's startup restore: reconcile, then seed and settle from the state stored beside each
- *  journal, then open in the background what that state cannot answer. Its lease bookkeeping is a
+/** The host's startup restore: reconcile, then catch up, seed and settle from the state stored beside
+ *  each journal, then open in the background what that state cannot answer. Its lease bookkeeping is a
  *  reader's, which never fails a read or startup; startup shares it. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
@@ -108,29 +108,37 @@ export function createStructuredAgentSessionHostRestore(
       ),
     ...rest
   }
-  const restorer = new StructuredAgentSessionReadableRestorer({ ...readRestore, supportsRecord })
-  const gate = new StructuredAgentSessionRestartRestoreGate()
   const startup = createStructuredAgentSessionStartupState({
     openDeps: deps,
     canSettle,
     seedStatus,
     resolveRecovery: readRestore.resolveRecovery,
-    restoreListed: (records, resolveListedRecovery) =>
+    restoreListed: (records, resolveListedRecovery, concurrency) =>
       restoreStructuredAgentSessionsOnRestart({
         ...readRestore,
         records,
-        resolveRecovery: resolveListedRecovery
+        resolveRecovery: resolveListedRecovery,
+        concurrency
       }),
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
+    isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
+  // Startup's resolver: a lease startup recovered, or gave up on, is not recovered again.
+  const restorer = new StructuredAgentSessionReadableRestorer({
+    ...readRestore,
+    resolveRecovery: startup.recoverLease,
+    supportsRecord
+  })
+  const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },
-    // The listed chats the tab list left to it: still in a per-chat file, corrupt, or unreadable.
+    // The listed chats the tab list left to it: corrupt, unreadable, or a per-chat file whose open
+    // failed before the listing.
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
     ...startup
   }

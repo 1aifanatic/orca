@@ -1,21 +1,22 @@
 // What host startup does with each chat's stored status, before any client lists a tab.
 //
+// Recovery: every lease a crash left `recovering` starts resolving first (a surviving provider
+// process is stopped and its death recorded), so each settle verdict below reads that evidence.
 // Catch-up: a listed chat with history here and no stored status yet (the first launch after the
-// upgrade) gets its row from its rows alone, so what follows reads stored status for it too. Seed: every settled, listed chat's status row is published from its stored status, so session
-// lists have it at paint, without opening the chat. Settle: first every lease a crash left
-// `recovering` is resolved (a surviving provider process is stopped and its death recorded), so
-// each verdict below is taken once, from that evidence. Then every chat whose stored status shows
-// work a gone process left, listed or not, is opened once, one at a time, and its open appends the
-// settlement plan. A listed one goes through the restart restore's own per-chat worker and stays
-// open; any other is settled and closed, never indexed or published. Chat commands wait for the
-// settle (see `StructuredAgentSessionHostDeps.commandsReady`); listing, paint and status reads do
-// not. A listed chat whose history is still in a per-chat file, or is corrupt, is left to the
+// upgrade) gets its row from its rows alone, so what follows reads stored status for it too. A listed
+// chat whose history is still in a per-chat file is then opened from it, before the listing (see
+// `structured-agent-session-startup-per-chat-file-restore`). Seed: every settled chat still listed
+// and not open has its status row published from its stored status, so session lists have it at
+// paint, without opening the chat. Settle: once every recovery has ended, every chat whose stored
+// status shows work a gone process left, listed or not, is opened once, one at a time, and its open
+// appends the settlement plan. A listed one goes through the restart restore's own per-chat worker
+// and stays open; any other is settled and closed, never indexed or published. Chat commands wait
+// for the settle (see `StructuredAgentSessionHostDeps.commandsReady`); listing, paint and status
+// reads do not. A listed chat that is corrupt, or whose per-chat file failed to open, is left to the
 // background restore after the listing, which is the same worker.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
-import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
@@ -30,14 +31,12 @@ import {
   type StructuredAgentSessionConversationOpenDeps
 } from './structured-agent-session-conversation-open'
 import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
+import {
+  createStructuredAgentSessionStartupLeaseRecovery,
+  type StructuredAgentSessionStartupLeaseRecovery
+} from './structured-agent-session-startup-lease-recovery'
+import { restoreListedFromPerChatFiles } from './structured-agent-session-startup-per-chat-file-restore'
 import { catchUpMissingStatuses } from './structured-agent-session-startup-status-catch-up'
-
-// Record-only (a probe and at most a process stop each), so a few at once.
-const RECOVERY_CONCURRENCY = 4
-// A recovery is process probes around at most one stop (its SIGTERM grace is 5.5 s). Past this a
-// probe has stopped answering: the lease stays `recovering`, unverified and never called dead, for
-// the next attach or send to resolve, and the settle goes on.
-const RECOVERY_BUDGET_MS = 15_000
 
 export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
@@ -53,70 +52,64 @@ export type StructuredAgentSessionStartupStateDeps = {
    *  attach or send). */
   resolveRecovery: (sessionId: string) => Promise<boolean>
   /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish), resolving
-   *  recovery through `resolveRecovery`. */
+   *  recovery through `resolveRecovery`, at its own concurrency unless given one. */
   restoreListed: (
     records: AgentSessionRecord[],
-    resolveRecovery: (sessionId: string) => Promise<boolean>
+    resolveRecovery: (sessionId: string) => Promise<boolean>,
+    concurrency?: number
   ) => Promise<void>
   /** Tests shorten it; production takes the default. */
   recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
+  /** Whether the chat still has its tab: one closed during startup is not seeded. */
+  isListed: (sessionId: string) => boolean
   isDisposed: () => boolean
 }
 
 export type StructuredAgentSessionStartupState = {
-  /** Writes the stored status of every listed chat with history here and none yet, before the
-   *  listing answers. Never rejects. See `catchUpMissingStatuses`. */
+  /** Starts every lease recovery, then writes the stored status of every listed chat with history
+   *  here and none yet, before the listing answers. Never rejects. */
   catchUpMissingStatuses: (listedIds: readonly string[]) => Promise<void>
+  /** Opens listed chats still in per-chat files, before the listing answers. Never rejects. */
+  restoreListedFromPerChatFiles: (listedIds: readonly string[]) => Promise<void>
   /** Seeds settled listed chats; answers the listed ids the background restore still opens. */
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat a gone process left with work, once per host. Never rejects. */
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
-  /** Startup's own chat work: true from the catch-up's start until the settle has ended. */
-  isSettling: () => boolean
+  /** Every restart restore's lease resolver, so no `recovering` lease is recovered twice. */
+  recoverLease: (sessionId: string) => Promise<boolean>
 }
 
 export function createStructuredAgentSessionStartupState(
   deps: StructuredAgentSessionStartupStateDeps
 ): StructuredAgentSessionStartupState {
-  let catchingUp = 0
-  // What the catch-up read for a listing, which that listing's seed reads instead of reading again.
-  let caughtUp: { listedIds: readonly string[]; stored: StoredJournalSessionStatus[] } | null = null
+  const leases = createStructuredAgentSessionStartupLeaseRecovery({
+    ...deps,
+    budgetMs: deps.recoveryBudgetMs
+  })
   let settling: Promise<void> | null = null
-  let settled = false
-  // One budgeted pass over the leases a crash left `recovering`, for whichever needs it first.
-  let recovering: Promise<ReadonlySet<string>> | null = null
-  const recover = () => (recovering ??= resolveRecoveringLeases(deps))
   return {
     catchUpMissingStatuses: async (listedIds) => {
-      catchingUp += 1
-      try {
-        const stored = await catchUpMissingStatuses(deps, listedIds, recover)
-        caughtUp = stored ? { listedIds, stored } : null
-      } finally {
-        catchingUp -= 1
+      if (!deps.openDeps.journalDatabase.readOnly) {
+        void leases.recoverAll()
       }
+      await catchUpMissingStatuses(deps, listedIds)
     },
-    seedStoredStatuses: (listedIds) => {
-      const read = caughtUp?.listedIds === listedIds ? caughtUp.stored : null
-      caughtUp = null
-      return seedStoredStatuses(deps, listedIds, read)
-    },
+    restoreListedFromPerChatFiles: (listedIds) =>
+      restoreListedFromPerChatFiles(deps, listedIds, leases.resolve),
+    seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
     settleOwedSessions: (listedIds) => {
-      settling ??= settleOwedSessions(deps, listedIds, recover).finally(() => {
-        settled = true
-      })
+      settling ??= settleOwedSessions(deps, listedIds, leases)
       return settling
     },
-    isSettling: () => catchingUp > 0 || (settling !== null && !settled)
+    recoverLease: leases.resolve
   }
 }
 
 function seedStoredStatuses(
   deps: StructuredAgentSessionStartupStateDeps,
-  listedIds: readonly string[],
-  read?: readonly StoredJournalSessionStatus[] | null
+  listedIds: readonly string[]
 ): string[] {
   const database = deps.openDeps.journalDatabase
   // A newer build's database: nothing is stored this build can read, and every chat reads as it does.
@@ -125,7 +118,7 @@ function seedStoredStatuses(
   }
   let stored: readonly StoredJournalSessionStatus[]
   try {
-    stored = read ?? readJournalSessionStatuses(database.db, listedIds)
+    stored = readJournalSessionStatuses(database.db, listedIds)
   } catch (error) {
     // Fails open: every listed chat is restored in the background, as before stored status existed.
     deps.openDeps.logger.warn('reading stored chat status failed', {
@@ -137,6 +130,10 @@ function seedStoredStatuses(
   const byId = new Map(stored.map((row) => [row.sessionId, row.status]))
   const background: string[] = []
   for (const sessionId of listedIds) {
+    // Its tab closed during startup, or its open (a restore, read or send) publishes its own status.
+    if (!deps.isListed(sessionId) || deps.hasSession(sessionId)) {
+      continue
+    }
     const record = deps.openDeps.store.getRecord(sessionId)
     if (!record) {
       // Its record may still be owed by the records import: the restore reads records when it runs.
@@ -147,7 +144,7 @@ function seedStoredStatuses(
       continue
     }
     if (!byId.has(sessionId)) {
-      // Never sent opens nothing; a per-chat file not yet copied is read in the background.
+      // Never sent opens nothing; a per-chat file whose open failed is tried again in the background.
       if (hasHistoryOutsideJournalDatabase(database, record)) {
         background.push(sessionId)
       }
@@ -171,14 +168,14 @@ function seedStoredStatuses(
 async function settleOwedSessions(
   deps: StructuredAgentSessionStartupStateDeps,
   listedIds: readonly string[],
-  recover: () => Promise<ReadonlySet<string>>
+  leases: StructuredAgentSessionStartupLeaseRecovery
 ): Promise<void> {
   try {
     const database = deps.openDeps.journalDatabase
     if (database.readOnly) {
       return
     }
-    const outlasted = await recover()
+    await leases.recoverAll()
     const listedOrder = new Map(listedIds.map((sessionId, index) => [sessionId, index]))
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
@@ -198,11 +195,7 @@ async function settleOwedSessions(
       (left, right) =>
         (listedOrder.get(left.sessionId) ?? 0) - (listedOrder.get(right.sessionId) ?? 0)
     )
-    // A recovery that outlasted its budget is still running: a second one beside it could hang the
-    // same way, so its chat is opened unverified and the next attach or send resolves it.
-    await deps.restoreListed(listed, (sessionId) =>
-      outlasted.has(sessionId) ? Promise.resolve(true) : deps.resolveRecovery(sessionId)
-    )
+    await deps.restoreListed(listed, leases.resolve)
     // A listed chat the worker left closed (its tab closed meanwhile) is settled like any other.
     others.push(...listed.filter((record) => !deps.hasSession(record.sessionId)))
     for (const record of others) {
@@ -252,30 +245,6 @@ function dropUnreachableStatus(
       error
     })
   }
-}
-
-/** Every lease a crash left `recovering`, listed or not: a provider process that outlived the crash
- *  is stopped and its death recorded, so the settle below reads one verdict per turn. */
-async function resolveRecoveringLeases(
-  deps: StructuredAgentSessionStartupStateDeps
-): Promise<ReadonlySet<string>> {
-  const recovering = deps.openDeps.store
-    .listRecords()
-    .filter((record) => record.lease.handoffStage === 'recovering')
-  const budgetMs = deps.recoveryBudgetMs ?? RECOVERY_BUDGET_MS
-  const outlasted = new Set<string>()
-  await forEachWithConcurrency(recovering, RECOVERY_CONCURRENCY, async ({ sessionId }) => {
-    if (
-      (await withTimeout<boolean | null>(deps.resolveRecovery(sessionId), budgetMs, null)) === null
-    ) {
-      outlasted.add(sessionId)
-      deps.openDeps.logger.warn('a chat recovery outlasted startup; left unverified', {
-        scope: 'startup-recovery-timeout',
-        sessionId
-      })
-    }
-  })
-  return outlasted
 }
 
 /** A chat nothing holds open: settled and closed, never indexed, so it gets no status row. */

@@ -85,9 +85,7 @@ export class StructuredAgentSessionHost {
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
-  private readonly reconcileLeases: (
-    sessionId: string
-  ) => Promise<SessionWire.AgentSessionWireRefusal | null>
+  private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
   private readonly restore: ReturnType<typeof createStructuredAgentSessionHostRestore>
   private readonly lifetime: StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: ReturnType<
@@ -239,6 +237,8 @@ export class StructuredAgentSessionHost {
   restoreReadableSessions = (ids?: readonly string[]) => this.restore.restoreReadableSessions(ids)
   // Startup, from each chat's stored state: see `structured-agent-session-startup-state`.
   catchUpMissingStatuses = (ids: readonly string[]) => this.restore.catchUpMissingStatuses(ids)
+  restoreListedFromPerChatFiles = (ids: readonly string[]) =>
+    this.restore.restoreListedFromPerChatFiles(ids)
   seedStoredStatuses = (ids: readonly string[]) => this.restore.seedStoredStatuses(ids)
   settleOwedSessions = (ids: readonly string[]) => this.restore.settleOwedSessions(ids)
 

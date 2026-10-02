@@ -1,6 +1,7 @@
 // The structured-chat step of host startup, before any client lists a tab: the restart lease check,
-// then each listed chat's status seeded from its stored status, and every chat a gone process left
-// with work settled. Chat commands wait for that settle; the tab list and paint do not.
+// the rows listed chats lack derived from their rows, listed chats still in per-chat files opened,
+// each listed chat's status seeded from its stored status, and every chat a gone process left with
+// work settled. The tab list waits for all but the settle; chat commands wait for the settle too.
 
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
@@ -15,7 +16,11 @@ import type {
 /** Named from the host so a rename fails to compile. */
 export type StructuredAgentSessionStartupHost = Pick<
   StructuredAgentSessionHost,
-  'reconcileRestartLeases' | 'catchUpMissingStatuses' | 'seedStoredStatuses' | 'settleOwedSessions'
+  | 'reconcileRestartLeases'
+  | 'catchUpMissingStatuses'
+  | 'restoreListedFromPerChatFiles'
+  | 'seedStoredStatuses'
+  | 'settleOwedSessions'
 > &
   StructuredAgentSessionListingHost
 
@@ -39,6 +44,8 @@ export async function runStructuredAgentSessionStartupStep(
   // Before the listing answers: the first launch after the upgrade derives the rows listed chats
   // lack, so the seed and the settle below read stored status for every one of them.
   await host.catchUpMissingStatuses(listedIds)
+  // Listed chats an older build left in per-chat files have no stored status to list them from.
+  await host.restoreListedFromPerChatFiles(listedIds)
   const background = host.seedStoredStatuses(listedIds)
   // Not awaited here: the tab list and paint never wait on it; chat commands do.
   onSettling(host.settleOwedSessions(listedIds))

@@ -84,6 +84,7 @@ async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> 
 async function startup(rig: RestTestRig, listed: readonly string[]) {
   await rig.host.reconcileRestartLeases()
   await rig.host.catchUpMissingStatuses(listed)
+  await rig.host.restoreListedFromPerChatFiles(listed)
   const background = rig.host.seedStoredStatuses(listed)
   await rig.host.settleOwedSessions(listed)
   await rig.host.restoreReadableSessions(background)
@@ -320,8 +321,9 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     expect(opened(rig, [...listed, ...unlisted]).toSorted()).toEqual(
       ['session-crashed', ...unlisted, 'session-uncopied'].toSorted()
     )
-    // Its row is derived before the seed, so only the per-chat file is left to the restore.
-    expect(background).toEqual(['session-uncopied'])
+    // Its row is derived before the seed, and the per-chat file is opened before it: nothing is
+    // left to the restore after the listing.
+    expect(background).toEqual([])
     expect(latestRestTestStatus(rig, 'session-draft')).toMatchObject({ status: 'idle' })
     // Settled with no user action; the listed one is open and never showed its pre-crash work.
     for (const sessionId of ['session-crashed', ...unlisted]) {
@@ -618,6 +620,7 @@ describe('a recovery that never answers', () => {
       restoreListed,
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
+      isListed: () => true,
       isDisposed: () => false,
       recoveryBudgetMs: 20
     })

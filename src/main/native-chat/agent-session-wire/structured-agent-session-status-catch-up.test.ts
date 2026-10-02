@@ -6,6 +6,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as JournalSessionStateModule from '../agent-session-journal/journal-session-state'
+import type * as StatusBackfillModule from '../agent-session-journal/journal-session-status-backfill'
 import type * as JournalRecoveryModule from './agent-session-journal-recovery'
 import type * as PerSessionImportModule from '../agent-session-journal/journal-per-session-import'
 import {
@@ -19,8 +20,10 @@ import {
 import {
   createRestTestRig,
   restTestChat,
+  sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import { StructuredAgentSessionStartupGate } from '../../runtime/structured-agent-session-startup-gate'
 import {
   latestRestTestStatus,
   restTestOpens
@@ -43,6 +46,47 @@ vi.mock('../agent-session-journal/journal-session-state', async (importOriginal)
         throw new Error('database is locked')
       }
       return actual.readJournalSessionStatuses(...args)
+    }
+  }
+})
+
+// The catch-up's work as it happens: fold parts, finished folds and batch commits.
+const work = vi.hoisted(() => {
+  const seen: {
+    parts: number
+    folded: string[]
+    commits: number
+    /** Runs as each fold ends, before its batch is written. */
+    afterFold: ((sessionId: string) => Promise<void>) | null
+  } = { parts: 0, folded: [], commits: 0, afterFold: null }
+  return seen
+})
+
+vi.mock('../agent-session-journal/journal-session-status-backfill', async (importOriginal) => {
+  const actual = await importOriginal<typeof StatusBackfillModule>()
+  return {
+    ...actual,
+    foldJournalSessionStatus: async (
+      ...[database, sessionId, options]: Parameters<typeof actual.foldJournalSessionStatus>
+    ) => {
+      const yieldTask = options?.yieldTask
+      const folded = await actual.foldJournalSessionStatus(database, sessionId, {
+        ...options,
+        yieldTask: async () => {
+          work.parts += 1
+          await yieldTask?.()
+        }
+      })
+      work.parts += 1
+      work.folded.push(sessionId)
+      await work.afterFold?.(sessionId)
+      return folded
+    },
+    writeJournalSessionStatuses: (
+      ...args: Parameters<typeof actual.writeJournalSessionStatuses>
+    ) => {
+      work.commits += 1
+      return actual.writeJournalSessionStatuses(...args)
     }
   }
 })
@@ -99,6 +143,10 @@ const rigs: RestTestRig[] = []
 
 afterEach(async () => {
   reads.failNext = false
+  work.parts = 0
+  work.folded.length = 0
+  work.commits = 0
+  work.afterFold = null
   rebuilds.sessionIds.length = 0
   previews.sessionIds.length = 0
   previews.damaged.clear()
@@ -127,6 +175,7 @@ async function startup(rig: RestTestRig): Promise<string[]> {
   const listed = listedIds(rig)
   await rig.host.reconcileRestartLeases()
   await rig.host.catchUpMissingStatuses(listed)
+  await rig.host.restoreListedFromPerChatFiles(listed)
   const background = rig.host.seedStoredStatuses(listed)
   await rig.host.settleOwedSessions(listed)
   return background
@@ -362,8 +411,10 @@ describe('listed chats with no stored status after the upgrade', () => {
     expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({
       latestPrompt: 'asked session-file'
     })
-    // The restore after the listing skips it: one preview, one open.
-    await rig.host.restoreReadableSessions(background)
+    // Not queued for the restore after the listing, which skips it even when given every listed
+    // chat (its list when startup gave none): one preview, one open.
+    expect(background).toEqual([])
+    await rig.host.restoreReadableSessions(listedIds(rig))
     expect(previews.sessionIds.filter((id) => id === 'session-file')).toEqual(['session-file'])
     expect(restTestOpens(rig, 'session-file')).toBe(1)
     // One with no tab waits for its first use.
@@ -401,8 +452,99 @@ describe('listed chats with no stored status after the upgrade', () => {
       expect.objectContaining({ sessionId: 'session-damaged' })
     )
     expect(rig.host.hasSession('session-damaged')).toBe(false)
-    // Both files stay the restore's after the listing, which skips the open one; the chat with no
-    // file anywhere has nothing to read, and is listed all the same.
-    expect(background).toEqual(['session-damaged', 'session-file'])
+    // The damaged file is tried again after the listing; the chat with no file anywhere has nothing
+    // to read, and is listed all the same.
+    expect(background).toEqual(['session-damaged'])
   })
+  it('gives a chat whose tab closes during the catch-up its row, but no status row', async () => {
+    const rig = await newRig()
+    for (const sessionId of ['session-kept', 'session-closing']) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+    }
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    upgradeToEmptyStatusTable(rig)
+    await rig.boot()
+    let closedAt = -1
+    // A close is not held for startup: it lands between the catch-up's folds.
+    work.afterFold = async (sessionId) => {
+      if (sessionId === 'session-kept') {
+        await rig.host.setSessionTabVisibility('session-closing', false)
+        await rig.host.close('session-closing', 'user-close')
+        closedAt = rig.statusEvents.length
+      }
+    }
+
+    await startup(rig)
+
+    expect(closedAt).toBeGreaterThan(-1)
+    expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
+      lifecycle: 'idle'
+    })
+    expect(
+      rig.statusEvents
+        .slice(closedAt)
+        .filter((event) => event.type === 'status' && event.session.sessionId === 'session-closing')
+    ).toEqual([])
+    expect(restTestOpens(rig, 'session-closing')).toBe(0)
+    expect(latestRestTestStatus(rig, 'session-kept')).toMatchObject({ status: 'idle' })
+  })
+
+  it('lets a send through mid-catch-up once the gate ceiling passes, behind at most one fold part and one batch commit', async () => {
+    const rig = await newRig()
+    const ids = Array.from({ length: 6 }, (_, index) => `session-long-${index}`)
+    for (const sessionId of ids) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+      const journal = rig.host.collaboratorsForTests().sessions.get(sessionId)!.journal
+      const fence = rig.store.getRecord(sessionId)!.lease.runtimeFence
+      // Long enough that its fold takes several parts, as a long chat's does.
+      for (let index = 0; index < 1_200; index += 1) {
+        await journal.appendItem(
+          { provider: 'orca', clientMessageId: `${sessionId}-note-${index}` },
+          { kind: 'status', text: `${index} ${'x'.repeat(400)}` },
+          { fence, turnScope: { kind: 'thread' } }
+        )
+      }
+    }
+    await restTestChat(rig, 'session-send', { message: 'first' })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    // The chat the send goes to keeps its row; the long ones are the catch-up's.
+    openTestJournalHostDatabase(rig.root)
+      .db.prepare('DELETE FROM journal_session_state WHERE session_id != ?')
+      .run('session-send')
+    const gate = new StructuredAgentSessionStartupGate(30)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    gate.hold()
+    await rig.boot({ commandsReady: gate.ready })
+    // Every task's budget is spent at its first check, so each fold part is a task of its own.
+    let clock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
+    let sent: Promise<unknown> | null = null
+    let ahead = { parts: -1, commits: -1 }
+    work.afterFold = async (sessionId) => {
+      if (sessionId !== ids[0]) {
+        return
+      }
+      // The catch-up outlasts the gate's ceiling, which lets commands go.
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      expect(gate.ready()).toBeNull()
+      const before = { parts: work.parts, commits: work.commits }
+      // A send arrives as a message: its own task, which runs once the catch-up yields.
+      sent = new Promise((resolve) => {
+        setImmediate(() => {
+          ahead = { parts: work.parts - before.parts, commits: work.commits - before.commits }
+          resolve(sendRestTestMessage(rig, 'session-send', 'during the catch-up'))
+        })
+      })
+    }
+
+    await rig.host.catchUpMissingStatuses(listedIds(rig))
+
+    expect(await sent).toMatchObject({ ok: true })
+    expect(ahead.parts).toBeGreaterThanOrEqual(0)
+    expect(ahead.parts).toBeLessThanOrEqual(1)
+    expect(ahead.commits).toBeLessThanOrEqual(1)
+    expect(ids.every((sessionId) => readTestJournalSessionStatus(rig.root, sessionId))).toBe(true)
+  }, 120_000)
 })

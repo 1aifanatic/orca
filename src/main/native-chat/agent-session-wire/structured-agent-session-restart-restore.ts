@@ -86,7 +86,10 @@ async function restoreOneStructuredAgentSessionReadUnderSerialize(
 }
 
 export async function restoreStructuredAgentSessionsOnRestart(
-  input: StructuredAgentSessionReadRestoreDeps & { records: AgentSessionRecord[] }
+  input: StructuredAgentSessionReadRestoreDeps & {
+    records: AgentSessionRecord[]
+    concurrency?: number
+  }
 ): Promise<void> {
   const [first] = input.records
   if (!first) {
@@ -107,7 +110,7 @@ export async function restoreStructuredAgentSessionsOnRestart(
   }
   const results = await mapSettledWithConcurrency(
     input.records,
-    JOURNAL_RESTORE_CONCURRENCY,
+    input.concurrency ?? JOURNAL_RESTORE_CONCURRENCY,
     async ({ sessionId }) => {
       // A journal open is synchronous SQLite: without a macrotask per chat the restore is one long task.
       await yieldToEventLoop()

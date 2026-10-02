@@ -1,6 +1,6 @@
 // The catch-up's tasks and its quit: a launch where every listed chat has its row does no work at
-// all, a launch that derives rows yields only when a task has run long enough, and quit stops it
-// with nothing more written, for the next launch to redo.
+// all, a launch that derives rows yields only when a task has run long enough, quit stops it with
+// nothing more written, for the next launch to redo, and lease recovery starts before it.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -100,7 +100,14 @@ async function chats(sessionIds: readonly string[], { rowless }: { rowless: bool
 }
 
 function deps(
-  disposed: { value: boolean } = { value: false }
+  disposed: { value: boolean } = { value: false },
+  recovering: {
+    records: AgentSessionRecord[]
+    resolveRecovery: (id: string) => Promise<boolean>
+  } = {
+    records: [],
+    resolveRecovery: async () => true
+  }
 ): StructuredAgentSessionStartupStateDeps {
   const stand = {
     openDeps: {
@@ -110,24 +117,23 @@ function deps(
           ...agentSessionRecordFixture(),
           sessionId
         }),
-        listRecords: () => []
+        listRecords: () => recovering.records
       },
       logger: { warn: vi.fn(), error: vi.fn() }
     },
     canSettle: (candidate: AgentSessionRecord | null): candidate is AgentSessionRecord =>
       candidate !== null,
     seedStatus: vi.fn(),
-    resolveRecovery: async () => true,
+    resolveRecovery: recovering.resolveRecovery,
     restoreListed: async () => undefined,
     serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
     hasSession: () => false,
+    isListed: () => true,
     isDisposed: () => disposed.value
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the catch-up reads only the database, records, logger and the members above.
   return stand as unknown as StructuredAgentSessionStartupStateDeps
 }
-
-const noRecovery = async (): Promise<ReadonlySet<string>> => new Set()
 
 const yields = () => trace.events.filter((event) => event === 'yield').length
 const folds = () => trace.events.filter((event) => event.startsWith('fold:'))
@@ -140,13 +146,12 @@ describe('the startup status catch-up', () => {
     const transaction = vi.spyOn(stand.openDeps.journalDatabase, 'transaction')
     trace.events = []
 
-    const stored = await catchUpMissingStatuses(stand, ids, noRecovery)
+    await catchUpMissingStatuses(stand, ids)
 
-    // No fold, no yield, no transaction; the seed reads what this read.
+    // No fold, no yield, no transaction.
     expect(folds()).toEqual([])
     expect(yields()).toBe(0)
     expect(transaction).not.toHaveBeenCalled()
-    expect(stored?.map(({ sessionId }) => sessionId).toSorted()).toEqual(ids.toSorted())
   })
 
   it('yields only once a task has run long enough, not before every chat', async () => {
@@ -157,60 +162,76 @@ describe('the startup status catch-up', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => (clock += 3))
     trace.events = []
 
-    const stored = await catchUpMissingStatuses(deps(), ids, noRecovery)
+    await catchUpMissingStatuses(deps(), ids)
 
     expect(folds()).toHaveLength(ids.length)
     expect(yields()).toBeGreaterThan(0)
     expect(yields()).toBeLessThan(ids.length / 2)
-    expect(ids.every((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(true)
-    expect(stored?.every(({ status }) => status?.lifecycle === 'idle')).toBe(true)
+    expect(
+      ids.every((sessionId) => readTestJournalSessionStatus(root, sessionId)?.lifecycle === 'idle')
+    ).toBe(true)
   })
 
   it.each([
-    ['mid-way', 'session-2'],
-    ['during the last fold', 'session-9']
-  ])('writes nothing after quit %s, and the next launch redoes it', async (_when, quitDuring) => {
-    // Fewer than one batch, so nothing is due a write before the end.
-    const ids = Array.from({ length: 10 }, (_, index) => `session-${index}`)
-    await chats(ids, { rowless: true })
-    const disposed = { value: false }
-    let clock = 0
-    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
-    trace.afterFold = (sessionId) => {
-      if (sessionId === quitDuring) {
-        disposed.value = true
+    ['mid-way', 10, 3],
+    ['during the last fold', 10, 10],
+    // The 16th fold fills a batch, which is due its write at once.
+    ['during the fold that fills a batch', 20, 16]
+  ])(
+    'writes nothing after quit %s, and the next launch redoes it',
+    async (_when, count, quitAtFold) => {
+      const ids = Array.from({ length: count }, (_, index) => `session-${index}`)
+      await chats(ids, { rowless: true })
+      const disposed = { value: false }
+      // Every task boundary is due a yield, but the quit lands before the next one.
+      let clock = 0
+      vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
+      trace.afterFold = () => {
+        if (folds().length === quitAtFold) {
+          disposed.value = true
+        }
       }
+      const stand = deps(disposed)
+      const transaction = vi.spyOn(stand.openDeps.journalDatabase, 'transaction')
+
+      await catchUpMissingStatuses(stand, ids)
+
+      expect(folds()).toHaveLength(quitAtFold)
+      expect(transaction).not.toHaveBeenCalled()
+      expect(ids.some((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(false)
+
+      trace.afterFold = null
+      disposed.value = false
+      await catchUpMissingStatuses(deps(), ids)
+      expect(ids.every((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(true)
     }
-    const stand = deps(disposed)
-    const transaction = vi.spyOn(stand.openDeps.journalDatabase, 'transaction')
+  )
 
-    expect(await catchUpMissingStatuses(stand, ids, noRecovery)).toBeNull()
-
-    expect(transaction).not.toHaveBeenCalled()
-    expect(ids.some((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(false)
-
-    trace.afterFold = null
-    disposed.value = false
-    await catchUpMissingStatuses(deps(), ids, noRecovery)
-    expect(ids.every((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(true)
-  })
-
-  it("reads as startup's own chat work from the catch-up's start until the settle ends", async () => {
+  it('starts every lease recovery, listed or not, before its first fold', async () => {
     const ids = ['session-0', 'session-1']
     await chats(ids, { rowless: true })
-    const state = createStructuredAgentSessionStartupState(deps())
-    const during: boolean[] = []
-    trace.afterFold = () => during.push(state.isSettling())
-    expect(state.isSettling()).toBe(false)
+    const crashed = ['session-0', 'session-tabless'].map((sessionId) => {
+      const record = { ...agentSessionRecordFixture(), sessionId }
+      record.lease = { ...record.lease, sessionId, handoffStage: 'recovering' }
+      return record
+    })
+    const state = createStructuredAgentSessionStartupState(
+      deps(undefined, {
+        records: crashed,
+        resolveRecovery: async (sessionId) => {
+          trace.events.push(`recover:${sessionId}`)
+          return true
+        }
+      })
+    )
+    trace.events = []
 
-    const catchingUp = state.catchUpMissingStatuses(ids)
-    expect(state.isSettling()).toBe(true)
-    await catchingUp
-    expect(during).toEqual([true, true])
-    const settling = state.settleOwedSessions(ids)
-    expect(state.isSettling()).toBe(true)
-    await settling
+    await state.catchUpMissingStatuses(ids)
 
-    expect(state.isSettling()).toBe(false)
+    const firstFold = trace.events.findIndex((event) => event.startsWith('fold:'))
+    expect(firstFold).toBeGreaterThan(-1)
+    expect(trace.events.slice(0, firstFold)).toEqual(
+      expect.arrayContaining(['recover:session-0', 'recover:session-tabless'])
+    )
   })
 })
