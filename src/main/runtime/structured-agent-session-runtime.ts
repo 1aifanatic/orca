@@ -62,6 +62,7 @@ import {
   modelCatalogHostDeps,
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
+import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
 
 /** Whether this profile holds a structured chat: a record or tab in the journal database, or the
  *  records file a profile from before it carries while the database still owes its copy. */
@@ -96,8 +97,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
-  /** The Claude CLI's version, for launch flags older binaries reject; absent passes none. */
-  resolveClaudeCliVersion?: (command: string) => Promise<string | null>
+  /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
+  claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -282,9 +283,7 @@ async function installOnJournal(
     store,
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
-    ...(deps.resolveClaudeCliVersion
-      ? { resolveClaudeCliVersion: deps.resolveClaudeCliVersion }
-      : {}),
+    ...(deps.claudeThinkingDisplay ? { claudeThinkingDisplay: deps.claudeThinkingDisplay } : {}),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv,
     resolveClaudeAuthPolicy: deps.resolveClaudeAuthPolicy,

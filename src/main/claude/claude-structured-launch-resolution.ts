@@ -29,7 +29,7 @@ import {
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
-import { claudeVersionReaches } from './claude-hook-event-versions'
+import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
@@ -89,36 +89,6 @@ export function claudeStructuredPermissionOptions(
   return mode === 'bypassPermissions' ? { extraArgs: { 'dangerously-skip-permissions': null } } : {}
 }
 
-// Why: the first CLI whose parser defines the flag (2.1.93 was never published); an older binary
-// exits on it before the session starts. Found by reading published packages, not by running them.
-export const CLAUDE_THINKING_DISPLAY_FIRST_VERSION = '2.1.94'
-
-/**
- * Asks for readable thinking: under Orca's launch the CLI otherwise streams thinking blocks with no
- * text. Only the display is set, never `--thinking`, so a user who turned thinking off keeps it off.
- * An unknown version gets nothing rather than risking a start that fails.
- */
-export function claudeThinkingDisplayArgs(
-  version: string | null | undefined
-): Record<string, string> {
-  return claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION)
-    ? { 'thinking-display': 'summarized' }
-    : {}
-}
-
-/** A lookup's answer only if it arrived while something else was being awaited: a slow probe
- *  never holds a launch back. */
-function answerIfReady<T>(pending: Promise<T> | undefined): () => T | undefined {
-  let answer: T | undefined
-  void pending?.then(
-    (value) => {
-      answer = value
-    },
-    () => {}
-  )
-  return () => answer
-}
-
 export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
@@ -159,8 +129,8 @@ export type ClaudeStructuredLaunchResolverDeps = {
   authSwitchSettleTimeoutMs?: number
   /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
   readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
-  /** The CLI's version, for flags older binaries reject. Absent ⇒ no such flag is passed. */
-  resolveCliVersion?: (command: string) => Promise<string | null>
+  /** Whether this CLI takes the thinking-display flag. Absent ⇒ the flag is never passed. */
+  thinkingDisplay?: Pick<ClaudeThinkingDisplaySupport, 'argsFor'>
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
   hasTranscript?: (input: {
     providerSessionId: string
@@ -263,9 +233,6 @@ export function createClaudeStructuredLaunchResolver(
   deps: ClaudeStructuredLaunchResolverDeps
 ): (input: { identity: AgentSessionJournalIdentity }) => Promise<ClaudeStructuredLaunch> {
   return async ({ identity }) => {
-    const resolvedCommand = (deps.resolveCommand ?? resolveClaudeCommand)()
-    // Asked first so the probe overlaps everything below; read only once resolution is done.
-    const cliVersion = answerIfReady(deps.resolveCliVersion?.(resolvedCommand))
     await assertClaudeAuthSwitchSettled(deps.authSwitchSettleTimeoutMs)
     const record = deps.store.getRecord(identity.sessionId)
     if (!record) {
@@ -309,6 +276,17 @@ export function createClaudeStructuredLaunchResolver(
         ? head.handle.sessionId
         : claudeSessionIdForOrcaSession(identity.sessionId)
     const continuesChain = head?.handle.provider === 'claude'
+    const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
+    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
+      // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
+      structuredSessionChildIdentityEnv(record.sessionId, {
+        ...base,
+        // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+        [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+      })
+    )
+    // Asked as soon as the spawn's cwd and env are known, so it overlaps what is left to resolve.
+    const thinkingDisplay = deps.thinkingDisplay?.argsFor({ command, cwd, env })
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const resumesTranscript =
@@ -323,17 +301,7 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const { command, env } = await resolveClaudeStructuredInvocation(
-      { ...deps, resolveCommand: () => resolvedCommand },
-      (base) =>
-        // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-        structuredSessionChildIdentityEnv(record.sessionId, {
-          ...base,
-          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-        })
-    )
-    const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
+    const thinkingDisplayArgs = (await thinkingDisplay) ?? {}
     return {
       pathToClaudeCodeExecutable: command,
       options: {
@@ -342,7 +310,7 @@ export function createClaudeStructuredLaunchResolver(
         extraArgs: {
           ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
           ...permission.extraArgs,
-          ...claudeThinkingDisplayArgs(cliVersion())
+          ...thinkingDisplayArgs
         },
         // Claude owns where a resumed conversation continues; the stored leaf is Orca's bookkeeping.
         ...(resumesTranscript ? { resume: providerSessionId } : { sessionId: providerSessionId })

@@ -528,26 +528,27 @@ describe('claude structured launch resolution', () => {
 })
 
 describe('readable Claude thinking', () => {
-  const launchWith = (
-    resolveCliVersion?: ClaudeStructuredLaunchResolverDeps['resolveCliVersion']
-  ) =>
+  const launchWith = (thinkingDisplay?: ClaudeStructuredLaunchResolverDeps['thinkingDisplay']) =>
     createClaudeStructuredLaunchResolver({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launch resolution reads only getRecord.
       store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveEnv: () => ({ PROJECT_SHIM: '1' }),
       hasTranscript: async () => false,
-      ...(resolveCliVersion ? { resolveCliVersion } : {})
+      ...(thinkingDisplay ? { thinkingDisplay } : {})
     })({ identity: IDENTITY })
 
-  it('asks for summarized thinking on a CLI that knows the flag, and never forces thinking on', async () => {
-    const probed: string[] = []
-    const launch = await launchWith(async (command) => {
-      probed.push(command)
-      return '2.1.280'
+  it("asks with the launch's own command, cwd and env, and never forces thinking on", async () => {
+    const argsFor = vi.fn(async () => ({ 'thinking-display': 'summarized' }))
+    const launch = await launchWith({ argsFor })
+    expect(argsFor).toHaveBeenCalledWith({
+      command: '/usr/local/bin/claude',
+      cwd: '/repos/workspace-1',
+      env: launch.env
     })
-    expect(probed).toEqual(['/usr/local/bin/claude'])
+    expect(launch.env).toMatchObject({ PROJECT_SHIM: '1' })
     expect(launch.options.extraArgs).toEqual({
       'replay-user-messages': null,
       'thinking-display': 'summarized'
@@ -555,16 +556,9 @@ describe('readable Claude thinking', () => {
     expect(launch.options).not.toHaveProperty('thinking')
   })
 
-  it.each([
-    ['an older CLI', '2.1.92'],
-    ['an unresolved version', null]
-  ])('passes nothing to %s, whose start the flag could fail', async (_case, version) => {
-    const launch = await launchWith(async () => version)
+  it('passes nothing when the CLI is not known to take the flag, or nothing can say', async () => {
+    const launch = await launchWith({ argsFor: async () => ({}) })
     expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
-  })
-
-  it('launches without the flag rather than wait on a probe that has not answered', async () => {
-    const launch = await launchWith(() => new Promise<string | null>(() => {}))
-    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
+    expect((await launchWith()).options.extraArgs).toEqual({ 'replay-user-messages': null })
   })
 })
