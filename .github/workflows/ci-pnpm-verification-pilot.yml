@@ -1,65 +1,478 @@
-name: pnpm verification cache pilot
-
+name: Sequential heavy preflight qualification
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
-  workflow_dispatch:
-
+  workflow_dispatch: {}
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  ORCA_BACKGROUND_LAUNCH: "1"
+  ORCA_SHARD_SOURCE_SHA: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  census:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout pilot assets
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
+      - name: Hold the driver outside all clean source checkouts
+        run: |-
+          mkdir -p "$RUNNER_TEMP/orca-heavy-census"
+          cp config/scripts/ci-sequential-heavy-census.mjs "$RUNNER_TEMP/orca-heavy-census/census.mjs"
+          cat > "$RUNNER_TEMP/orca-heavy-census/context.json" <<'ORCA_CENSUS_CONTEXT'
+          {
+            "kind": "ignored-prototype-not-production",
+            "qualificationTargetCommit": "cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2",
+            "paths": {
+              ".github/workflows/pr.yml": "cd755c8e3f125c6a7af54f23b0478e55798e1372e479c2e435596fc2a742aad8",
+              "package.json": "33ce3cbb97500af0690cc32bd26e60db9fb7628692fbdeb7b99e98557aa966ff",
+              "pnpm-lock.yaml": "3b50e687509eac4606bdc60cd890e4485862a4c5fcfca44317ac8802f5a849c1",
+              "pnpm-workspace.yaml": "c6a151d1b5d2734bc6be54d48104a0aa6a18da0cd22e3e4799c99fd9665f7d04",
+              ".npmrc": null,
+              ".pnpmfile.cjs": null,
+              ".github/actions/install-node-dependencies/action.yml": "0fca9590b7e623f361baef85f5f88fe2e64be273bc5bca0de9d983c678d5148e",
+              ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+              ".github/actions/install-mobile-dependencies/action.yml": "cdbd5c905201ccd8e8332f55a61729e9180d044ab0927f6c1b3fd30da66bcce2",
+              ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+              "mobile/package.json": "c7d0398fa4dbdf3dddd2e0a844ee41baac9f5cb11bf779328938d55cc89e2189",
+              "mobile/pnpm-lock.yaml": "6f040cddf647a4f464c5bdc573e5972d710fd42f7eadabec1c74e6f7c47eea59",
+              "mobile/pnpm-workspace.yaml": "e6e241deb2600a90e923dba1934509cabd169c2c1edcdb868972f2e2708cb0fd",
+              "mobile/.npmrc": null,
+              "config/scripts/pr-code-change-scope.mjs": "df81e121bd37ef0550e928b2505e9cfb13e2b8e43b8011f3b3e47471b82fd992",
+              ".github/workflows/unit-tests.yml": "421f3662dd935bb0e8bb7e14a1e8b08e42b3fcbff9b2eac74597c58de41378ef",
+              "config/scripts/ci-unit-plan.mjs": "3a813ea675f5dcffbf0699d77ac1c8e97f666250ea6c17168c86509fc8a71b56",
+              "config/scripts/ci-unit-files.mjs": "1f57d80257f49d70f13b4d6238d22d928aa0bde77e6bb013efb6dd32cbd1847b",
+              "config/scripts/ci-unit-selection.mjs": "6de346fd1fa9135a52203f1df839672de6273fbb1ef53a082c11fcf9a3d61f3b",
+              "config/scripts/ci-unit-dependency-graph.mjs": "dd3c4333caccb2a5785680b853ae137baa3524e86312119e9f4ee670e80a7e98",
+              "config/scripts/ci-shard-assignment.mjs": "a7b57ff68bdbfab909b753bc117edbcc0da2029b552ab1176d815b2d2142f49b",
+              "config/scripts/ci-shard-timings.json": "acc2c1cdc8e5e2e94baa15c35f302a9d2f158810b18871974daed5f8383cb859",
+              "config/scripts/pr-ready-check-reuse.mjs": "84760d8ebb99923debdd81796a3214b87ca421965404abe93fbd1bfce6dd2019",
+              "config/scripts/run-typecheck-projects-in-parallel.mjs": "fe76f86de22faf8318349b037001e379a5128c051b2fdff8f019879b1f9286e4",
+              "config/tsconfig.node.json": "58060851a677b3d5790857987c751199404cb11212ff872a31c66cd7c972d834",
+              "config/tsconfig.tc.cli.json": "e46781282b7fca16ac73d0054534daa8f0527d5ba238b4ee7da0bc0086285cd9",
+              "config/tsconfig.tc.web.json": "e8a5f7faa6cee4389968d29ad417357cdc1a90391333d0c00a0b027f11723e8e",
+              "config/tsconfig.cli.json": "d3c91fef05377ff762fd591298b8bd201cddeeaa6391a4356c9a9e00763f697e",
+              "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672"
+            },
+            "candidateWorkflowSha256": "181b5dd2110274ebf6c907246278a65dc45fb43cdd272fa53550c562394a8706",
+            "unchangedRouter": true,
+            "sharedHeavyTimeoutMinutes": 360,
+            "timeoutPolicy": "A single shared 360-minute ceiling is stricter than two independent default 360-minute jobs.",
+            "compilerNodePolicy": "Restore package.json default Node after static major24 preparation; no second install.",
+            "hostedNativeWaitQualification": "pending",
+            "compilerAndPlannerParity": "pending",
+            "publicationOrTimingPerformed": false
+          }
+          ORCA_CENSUS_CONTEXT
+          node -e 'const os = require("node:os"); if(process.platform !== "linux" || process.arch !== "arm64" || os.availableParallelism() !== 4) throw new Error("Expected hosted Linux ARM64 with four CPUs")'
+      - name: "Clean fixed source: separate-tc"
+        uses: actions/checkout@v6
         with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+          fetch-depth: 50
+          clean: true
           persist-credentials: false
+      - name: "Verify clean source: separate-tc"
+        run: |-
+          test "$(git rev-parse HEAD)" = 'cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test ! -e node_modules
+          test ! -e mobile/node_modules
+          mkdir -p "$RUNNER_TEMP/orca-heavy-census/separate-tc"
+          printf "base_sha=%s\n" "$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+        id: source-context
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+        name: Install the existing separate-tc dependency policy
+        id: a-deps
+      - name: "Record preparation identity: separate-tc"
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          RESOLVED_NODE: ${{ steps.a-deps.outputs.node-version }}
+          NATIVE_KEY: ${{ steps.a-deps.outputs.native-cache-key }}
+          NATIVE_HIT: ${{ steps.a-deps.outputs.native-cache-hit }}
+          NATIVE_SCOPE: ${{ steps.a-deps.outputs.native-cache-scope }}
+        run: node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/orca-heavy-census/separate-tc/install-host.json",JSON.stringify({version:process.version,executable:process.execPath,resolvedNode:process.env.RESOLVED_NODE,nativeKey:process.env.NATIVE_KEY,nativeHit:process.env.NATIVE_HIT,nativeScope:process.env.NATIVE_SCOPE},null,2))'
+      - name: "separate-tc: Cache TypeScript incremental state"
+        uses: actions/cache/restore@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ steps.source-context.outputs.base_sha }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        id: a-ts-cache
+      - name: "separate-tc: Plan unit selection"
+        id: a-unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: node config/scripts/ci-unit-plan.mjs
+      - name: "separate-tc: unchanged compiler command with diagnostic capture"
+        run: |-
+          set +e
+          pnpm run typecheck > "$RUNNER_TEMP/orca-heavy-census/separate-tc/diagnostics.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/orca-heavy-census/separate-tc/diagnostics.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/orca-heavy-census/separate-tc/compiler-status.txt"
+          exit "$status"
+      - wait: a-unit-plan
+      - name: "Capture exact compiler/planner census: separate-tc"
+        env:
+          TS_CACHE_HIT: ${{ steps.a-ts-cache.outputs.cache-hit }}
+        run: node "$RUNNER_TEMP/orca-heavy-census/census.mjs" capture separate-tc
+      - name: "Clean fixed source: shared-root"
+        uses: actions/checkout@v6
+        with:
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+          fetch-depth: 50
+          clean: true
+          persist-credentials: false
+      - name: "Verify clean source: shared-root"
+        run: |-
+          test "$(git rev-parse HEAD)" = 'cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test ! -e node_modules
+          test ! -e mobile/node_modules
+          mkdir -p "$RUNNER_TEMP/orca-heavy-census/shared-root"
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          persist-native-cache: "false"
+        name: Install the existing shared-root dependency policy
+        id: b-deps
+      - name: "Record preparation identity: shared-root"
+        env:
+          RESOLVED_NODE: ${{ steps.b-deps.outputs.node-version }}
+          NATIVE_KEY: ${{ steps.b-deps.outputs.native-cache-key }}
+          NATIVE_HIT: ${{ steps.b-deps.outputs.native-cache-hit }}
+          NATIVE_SCOPE: ${{ steps.b-deps.outputs.native-cache-scope }}
+        run: node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/orca-heavy-census/shared-root/install-host.json",JSON.stringify({version:process.version,executable:process.execPath,resolvedNode:process.env.RESOLVED_NODE,nativeKey:process.env.NATIVE_KEY,nativeHit:process.env.NATIVE_HIT,nativeScope:process.env.NATIVE_SCOPE},null,2))'
+      - name: "shared-root: Lint"
+        id: b-root-lint
+        background: true
+        run: pnpm exec oxlint --format github
+      - name: "shared-root: Reject low-evidence patterns"
+        run: pnpm run audit:anti-slop
+      - wait: b-root-lint
+      - name: "shared-root: Enforce focused code-quality plugins"
+        id: b-native-code-quality
+        background: true
+        run: pnpm run audit:code-quality:native
+      - name: "shared-root: Enforce type-aware code-quality baseline"
+        run: pnpm run audit:code-quality:type-aware
+      - wait: b-native-code-quality
+      - name: "shared-root: Enforce changed-code quality"
+        id: b-changed-code-quality
+        background: true
+        run: pnpm run check:code-quality:changed -- "${{ steps.source-context.outputs.base_sha }}"
+      - name: "shared-root: Enforce React Doctor on changed lines"
+        run: pnpm run check:react-doctor:changed -- "${{ steps.source-context.outputs.base_sha }}"
+      - wait: b-changed-code-quality
+      - name: "shared-root: Check Zustand selector fan-out budget"
+        run: pnpm run check:zustand-selector-fanout
+      - name: "shared-root: Check reliability gate manifest"
+        run: pnpm run check:reliability-gates
+      - name: "shared-root: Enforce dead design-system classes"
+        run: pnpm run check:dead-classes
+      - name: "shared-root: Check VM runtime rollback compatibility"
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+      - name: "shared-root: Enforce max-lines ratchet"
+        run: pnpm run check:max-lines-ratchet
+      - name: "shared-root: Enforce ts-nocheck ratchet"
+        run: pnpm run check:ts-nocheck-ratchet
+      - name: "shared-root: Enforce runtime Electron-import ratchet"
+        run: pnpm run check:runtime-electron-ratchet
+      - name: "shared-root: Check Node runtime pin"
+        run: pnpm run check:node-runtime-pin
+      - name: "shared-root: Verify localization extraction"
+        id: b-localization-extraction
+        background: true
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
+        run: |
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - name: "shared-root: Boot orcad and round-trip a terminal"
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+      - name: "shared-root: Verify the generated RPC params catalog"
+        run: pnpm run verify:rpc-params-catalog
+      - name: "shared-root: Verify bundled skill guides"
+        run: pnpm run verify:bundled-skill-guides
+      - name: "shared-root: Verify skill freshness manifest"
+        run: pnpm run verify:skill-bundle-manifest
+      - name: "shared-root: Verify localization catalogs"
+        id: b-localization-catalogs
+        background: true
+        run: pnpm run verify:localization-catalogs
+      - name: "shared-root: Verify localization coverage"
+        run: pnpm run verify:localization-coverage
+      - wait:
+          - b-localization-catalogs
+          - b-localization-extraction
+      - name: "shared-root: Guard against project-owned .d.ts in preload/shared"
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+      - name: "shared-root: Check feature wall asset budget"
+        run: pnpm check:feature-wall-assets
+      - name: "shared-root: Verify macOS entitlements"
+        run: pnpm verify:macos-entitlements
+      - name: "Restore compiler/planner host: shared-root"
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: "shared-root: Cache TypeScript incremental state"
+        uses: actions/cache/restore@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ steps.source-context.outputs.base_sha }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        id: b-ts-cache
+      - name: "shared-root: Plan unit selection"
+        id: b-unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: node config/scripts/ci-unit-plan.mjs
+      - name: "shared-root: unchanged compiler command with diagnostic capture"
+        run: |-
+          set +e
+          pnpm run typecheck > "$RUNNER_TEMP/orca-heavy-census/shared-root/diagnostics.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/orca-heavy-census/shared-root/diagnostics.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/orca-heavy-census/shared-root/compiler-status.txt"
+          exit "$status"
+      - wait: b-unit-plan
+      - name: "Capture exact compiler/planner census: shared-root"
+        env:
+          TS_CACHE_HIT: ${{ steps.b-ts-cache.outputs.cache-hit }}
+        run: node "$RUNNER_TEMP/orca-heavy-census/census.mjs" capture shared-root
+      - name: "Clean fixed source: shared-mixed"
+        uses: actions/checkout@v6
+        with:
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+          fetch-depth: 50
+          clean: true
+          persist-credentials: false
+      - name: "Verify clean source: shared-mixed"
+        run: |-
+          test "$(git rev-parse HEAD)" = 'cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test ! -e node_modules
+          test ! -e mobile/node_modules
+          mkdir -p "$RUNNER_TEMP/orca-heavy-census/shared-mixed"
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+          persist-native-cache: "false"
+        name: Install the existing shared-mixed dependency policy
+        id: c-deps
+      - name: "Record preparation identity: shared-mixed"
+        env:
+          RESOLVED_NODE: ${{ steps.c-deps.outputs.node-version }}
+          NATIVE_KEY: ${{ steps.c-deps.outputs.native-cache-key }}
+          NATIVE_HIT: ${{ steps.c-deps.outputs.native-cache-hit }}
+          NATIVE_SCOPE: ${{ steps.c-deps.outputs.native-cache-scope }}
+        run: node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/orca-heavy-census/shared-mixed/install-host.json",JSON.stringify({version:process.version,executable:process.execPath,resolvedNode:process.env.RESOLVED_NODE,nativeKey:process.env.NATIVE_KEY,nativeHit:process.env.NATIVE_HIT,nativeScope:process.env.NATIVE_SCOPE},null,2))'
+      - name: "shared-mixed: Lint"
+        id: c-root-lint
+        background: true
+        run: pnpm exec oxlint --format github
+      - name: "shared-mixed: Reject low-evidence patterns"
+        run: pnpm run audit:anti-slop
+      - wait: c-root-lint
+      - name: "shared-mixed: Enforce focused code-quality plugins"
+        id: c-native-code-quality
+        background: true
+        run: pnpm run audit:code-quality:native
+      - name: "shared-mixed: Enforce type-aware code-quality baseline"
+        run: pnpm run audit:code-quality:type-aware
+      - wait: c-native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: "shared-mixed: Enforce changed-code quality"
+        id: c-changed-code-quality
+        background: true
+        run: pnpm run check:code-quality:changed -- "${{ steps.source-context.outputs.base_sha }}"
+      - name: "shared-mixed: Enforce React Doctor on changed lines"
+        run: pnpm run check:react-doctor:changed -- "${{ steps.source-context.outputs.base_sha }}"
+      - wait: c-changed-code-quality
+      - name: "shared-mixed: Check Zustand selector fan-out budget"
+        run: pnpm run check:zustand-selector-fanout
+      - name: "shared-mixed: Check reliability gate manifest"
+        run: pnpm run check:reliability-gates
+      - name: "shared-mixed: Enforce dead design-system classes"
+        run: pnpm run check:dead-classes
+      - name: "shared-mixed: Check VM runtime rollback compatibility"
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+      - name: "shared-mixed: Enforce max-lines ratchet"
+        run: pnpm run check:max-lines-ratchet
+      - name: "shared-mixed: Enforce ts-nocheck ratchet"
+        run: pnpm run check:ts-nocheck-ratchet
+      - name: "shared-mixed: Enforce runtime Electron-import ratchet"
+        run: pnpm run check:runtime-electron-ratchet
+      - name: "shared-mixed: Check Node runtime pin"
+        run: pnpm run check:node-runtime-pin
+      - name: "shared-mixed: Verify localization extraction"
+        id: c-localization-extraction
+        background: true
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
+        run: |
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - name: "shared-mixed: Boot orcad and round-trip a terminal"
+        env:
+          BASE_SHA: ${{ steps.source-context.outputs.base_sha }}
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+      - name: "shared-mixed: Verify the generated RPC params catalog"
+        run: pnpm run verify:rpc-params-catalog
+      - name: "shared-mixed: Verify bundled skill guides"
+        run: pnpm run verify:bundled-skill-guides
+      - name: "shared-mixed: Verify skill freshness manifest"
+        run: pnpm run verify:skill-bundle-manifest
+      - name: "shared-mixed: Verify localization catalogs"
+        id: c-localization-catalogs
+        background: true
+        run: pnpm run verify:localization-catalogs
+      - name: "shared-mixed: Verify localization coverage"
+        run: pnpm run verify:localization-coverage
+      - wait:
+          - c-localization-catalogs
+          - c-localization-extraction
+      - name: "shared-mixed: Guard against project-owned .d.ts in preload/shared"
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+      - name: "shared-mixed: Check feature wall asset budget"
+        run: pnpm check:feature-wall-assets
+      - name: "shared-mixed: Verify macOS entitlements"
+        run: pnpm verify:macos-entitlements
+      - name: "Restore compiler/planner host: shared-mixed"
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: "shared-mixed: Cache TypeScript incremental state"
+        uses: actions/cache/restore@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ steps.source-context.outputs.base_sha }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        id: c-ts-cache
+      - name: "shared-mixed: Plan unit selection"
+        id: c-unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: node config/scripts/ci-unit-plan.mjs
+      - name: "shared-mixed: unchanged compiler command with diagnostic capture"
+        run: |-
+          set +e
+          pnpm run typecheck > "$RUNNER_TEMP/orca-heavy-census/shared-mixed/diagnostics.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/orca-heavy-census/shared-mixed/diagnostics.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/orca-heavy-census/shared-mixed/compiler-status.txt"
+          exit "$status"
+      - wait: c-unit-plan
+      - name: "Capture exact compiler/planner census: shared-mixed"
+        env:
+          TS_CACHE_HIT: ${{ steps.c-ts-cache.outputs.cache-hit }}
+        run: node "$RUNNER_TEMP/orca-heavy-census/census.mjs" capture shared-mixed
+      - name: Require exact three-state parity
+        run: node "$RUNNER_TEMP/orca-heavy-census/census.mjs" compare
+      - name: Preserve successful or failed qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sequential-heavy-census-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-heavy-census
+          retention-days: 14
+          if-no-files-found: error
