@@ -241,10 +241,12 @@ export function settleRejectedQueuedMessage(
     consumedRef: string
     reason: string | null
     rejection: UnreadAgentSessionFailureFact | undefined
+    /** Who asked for the rejected hand-off (`AgentJournalSubmission.origin`). */
+    origin: 'client' | 'host' | undefined
     now: number
   }
 ): boolean {
-  const settlement = rejectedDraftSettlement({ reason: input.reason, rejection: input.rejection })
+  const settlement = rejectedDraftSettlement(input)
   const changed =
     settlement.state === 'waiting'
       ? db

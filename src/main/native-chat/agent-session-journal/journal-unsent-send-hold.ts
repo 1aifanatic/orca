@@ -28,7 +28,7 @@ export type UnsentSendHold =
   | { cause: 'chatClosed'; which?: (submission: AgentJournalSubmission) => boolean }
 
 /** The body an unsent send is kept with, or null when it is rejected instead:
- *  - a card's own hand-off: its rejection already returns the card, kept (`rejectedDraftSettlement`);
+ *  - a card's own hand-off: its rejection already returns the card (`rejectedDraftSettlement`);
  *  - `/compact` and other commands: a command in flight is not resumed, the person re-runs it;
  *  - an image: cards are text-only;
  *  - orchestration mail (the mailbox re-sends it), a dispatch preamble or a restart continuation
@@ -56,8 +56,9 @@ export function unsentSendKeptAsCard(
 /**
  * Settles every send `hold` names. Each is rejected with the hold's cause in its own row, and a
  * kept one becomes a card in that row's transaction, so a crash between them can never leave
- * both. This batch's cards, and a card hand-off's own card, go to the head of the queue in the
- * order they were accepted, behind the cards an earlier settlement kept. Throws once every row was
+ * both. This batch's cards, and the card of a Send the person asked for, go to the head of the
+ * queue in the order they were accepted, behind the cards an earlier settlement kept; the queue's
+ * own hand-off returns its card where it stood. Throws once every row was
  * tried when one of them could not be written at all: that row stays queued.
  */
 export async function holdUnsentSends(
@@ -163,8 +164,8 @@ export async function holdUnsentSends(
 }
 
 /** Where each card of the batch goes: right before every other card, the cards an earlier
- *  settlement kept first, in the order they stand, then this batch's cards and hand-offs' own
- *  cards in the order they were accepted. A kept card's `queuedAt` cannot order it against
+ *  settlement kept first, in the order they stand, then this batch's cards and the cards of the
+ *  person's own Sends in the order they were accepted. A kept card's `queuedAt` cannot order it against
  *  them: sequences restart with each epoch, and a returned hand-off's names its draft's time. */
 function headOfQueuePositions(
   journal: AgentSessionJournal,
@@ -179,7 +180,11 @@ function headOfQueuePositions(
     const { clientMessageId } = submission
     if (body && !earlier.includes(clientMessageId)) {
       placed.push({ messageId: clientMessageId, position: 0 })
-    } else if (!body && cards.some((card) => card.consumedAs === clientMessageId)) {
+    } else if (
+      // Kept by its settlement (`rejectedDraftSettlement`): a Send the person asked for.
+      submission.origin === 'client' &&
+      cards.some((card) => card.consumedAs === clientMessageId)
+    ) {
       placed.push({ consumedAs: clientMessageId, position: 0 })
     }
   }

@@ -47,7 +47,6 @@ describe('mobileQueuedMessageCards', () => {
       text: 'body of a',
       state: 'waiting',
       paused: false,
-      kept: false,
       needsAttention: false,
       caption: null
     })
@@ -103,13 +102,14 @@ describe('mobileQueuedMessageCards', () => {
     expect(resumable([failed])).toBe(false)
     expect(resumable([failed, waiting])).toBe(true)
     expect(resumable([waiting, { ...returned, position: 3 }])).toBe(true)
-    // A kept card blocks what is behind it, as a returned one does.
+    // A kept card is held on its own, like a failed one: the drain goes past it.
     const kept = draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT })
-    expect(resumable([kept, waiting])).toBe(false)
+    expect(resumable([kept])).toBe(false)
+    expect(resumable([kept, waiting])).toBe(true)
   })
 
-  // The host kept it unsent across a restart or a close; nothing behind it sends until it does.
-  it('captions a kept card as not sent yet, and the cards behind it as waiting on it', () => {
+  // The host kept it unsent across a restart or a close; the cards behind it are not held by it.
+  it('captions a kept card as not sent yet, and leaves the cards behind it plainly queued', () => {
     const cards = mobileQueuedMessageCards(
       [
         draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT }),
@@ -118,15 +118,9 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(
-      cards.map(({ caption, kept, needsAttention }) => ({ caption, kept, needsAttention }))
-    ).toEqual([
-      { caption: 'Not sent yet — tap Send to send it', kept: true, needsAttention: false },
-      {
-        caption: 'Waiting — a message ahead needs attention',
-        kept: false,
-        needsAttention: false
-      }
+    expect(cards.map(({ caption, needsAttention }) => ({ caption, needsAttention }))).toEqual([
+      { caption: 'Not sent yet — tap Send to send it', needsAttention: false },
+      { caption: null, needsAttention: false }
     ])
   })
 

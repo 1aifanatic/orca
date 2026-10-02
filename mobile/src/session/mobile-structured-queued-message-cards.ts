@@ -20,8 +20,6 @@ export type MobileQueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   paused: boolean
-  /** Held because the host kept it unsent; the cards behind it wait for it. */
-  kept: boolean
   /** Returned, or its own send failed: the row leads with an alert. */
   needsAttention: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
@@ -71,10 +69,10 @@ const QUEUE_PAUSE_LABELS: Readonly<Record<string, string>> = {
 }
 
 /** Whether Resume would send anything: a waiting card with no hold of its own, ahead of any
- *  returned or kept card. The drain stops at either, so cards behind one never go. */
+ *  returned card. The drain stops at a returned card, so cards behind one never go. */
 export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageCard[]): boolean {
   for (const card of cards) {
-    if (card.state === 'returned' || card.kept) {
+    if (card.state === 'returned') {
       return false
     }
     if (!card.paused) {
@@ -130,19 +128,17 @@ export function mobileQueuedMessageCards(
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
                 : null
-    const kept = paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_KEPT
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
       state: draft.state,
       paused,
-      kept,
       needsAttention:
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
       caption
     })
-    if (draft.state === 'returned' || kept) {
+    if (draft.state === 'returned') {
       behindReturned = true
     }
   }

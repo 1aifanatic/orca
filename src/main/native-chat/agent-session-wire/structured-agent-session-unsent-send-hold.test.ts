@@ -233,6 +233,40 @@ describe('only an action on the card releases a kept card', () => {
   })
 })
 
+// The queue stops with delivery at quit, so a quit makes no hand-off only the next process could
+// settle: the queued cards come back as a crash leaves them, under the restart's pause.
+describe('cards queued behind a working turn, then Orca stops', () => {
+  it.each(['quit', 'crash'] as const)(
+    'after a %s they wait under the restart pause, not kept, with no hand-off made',
+    async (how) => {
+      await rig.workingSend()
+      const first = rig.send('queued behind work', 'queue-if-active')
+      expect(await first.result).toMatchObject({
+        ok: true,
+        value: { queued: { state: 'waiting' } }
+      })
+      const second = rig.send('second queued behind work', 'queue-if-active')
+      expect(await second.result).toMatchObject({
+        ok: true,
+        value: { queued: { state: 'waiting' } }
+      })
+      if (how === 'quit') {
+        await rig.quitRestartHostProcess()
+      } else {
+        rig.crashRestartHostProcess()
+      }
+
+      expect(await rig.drafts()).toEqual([
+        { messageId: first.id, state: 'waiting' },
+        { messageId: second.id, state: 'waiting' }
+      ])
+      expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+      expect(await rig.handoff(first.id)).toBeUndefined()
+      expect(journal().queuedMessages.get(first.id)?.holdReason).toBeNull()
+    }
+  )
+})
+
 // The same rule as a restart: tab close, worktree teardown and an orchestration stop all close the
 // chat, and the chat can be reopened from its history.
 describe('a message accepted while the agent starts, then the chat closes', () => {

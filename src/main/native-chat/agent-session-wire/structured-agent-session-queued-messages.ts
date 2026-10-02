@@ -267,12 +267,19 @@ export type QueuedMessageDrainDeps = {
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
+  private disposed = false
 
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
 
+  /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
+   *  quit leaves the cards exactly as a crash does. */
+  dispose(): void {
+    this.disposed = true
+  }
+
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
-    if (!journal || journal.isReadOnly) {
+    if (this.disposed || !journal || journal.isReadOnly) {
       return
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
@@ -315,7 +322,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   private async step(sessionId: string): Promise<void> {
     const session = this.deps.sessions.get(sessionId)
-    if (!session || session.journal.isReadOnly) {
+    if (this.disposed || !session || session.journal.isReadOnly) {
       return
     }
     await this.deps.flushStreamedEvents(sessionId)

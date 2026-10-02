@@ -7,8 +7,8 @@ import type { AgentJournalMessageItem } from './agent-session-journal-types'
 /** The draft could not be converted into a send; an explicit Send retries it. */
 export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
 
-/** A message the host accepted and never handed over before a restart or a close of the chat. It
- *  waits for the person's own Send, and the cards behind it wait for it. */
+/** A person's message the host accepted and never handed over before a restart or a close of the
+ *  chat. It waits for the person's own Send; the cards behind it still send, as past a failed one. */
 export const QUEUED_MESSAGE_PAUSED_KEPT = 'kept' as const
 
 export type AgentSessionQueuedMessagePausedReason =

@@ -58,7 +58,7 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     respondPermission: (optionId: string) => Promise<boolean>
     respondQuestion: (answer: string) => Promise<boolean>
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
-    /** The queued-draft cards and their actions; empty and inert off capable hosts. */
+    /** The queued-draft cards and their actions, from any host that publishes them. */
     queued: MobileStructuredQueuedMessageControls
   }
 

@@ -3,10 +3,7 @@
 
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import {
-  QUEUED_MESSAGE_PAUSED_KEPT,
-  type AgentSessionQueuedMessage
-} from '../../../../shared/agent-session-wire'
+import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
   structuredAgentSessionEntryAsksToQueue,
@@ -26,7 +23,6 @@ export type QueuedMessageCardHold =
   | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'
-  /** Behind a returned card or a kept one, which the host never sends past. */
   | 'behind-returned'
   | 'returned'
 
@@ -79,10 +75,7 @@ export function projectQueuedMessageCards(
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
                 : 'turn'
-    behindReturned =
-      behindReturned ||
-      message.state === 'returned' ||
-      message.pausedReason === QUEUED_MESSAGE_PAUSED_KEPT
+    behindReturned = behindReturned || message.state === 'returned'
     return {
       messageId: message.messageId,
       position: message.position,

@@ -611,24 +611,20 @@ describe('which cards the pauses in force hold', () => {
     expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
   })
 
-  // FIFO: nothing sends past a kept card, and no Resume is offered over it; a card whose own send
-  // failed is overtaken by the cards behind it.
-  it('a kept card holds every card behind it until the person acts on it; a send_failed one does not', () => {
+  // Held on its own, as a card whose send failed: the queue goes past it, and Resume is offered
+  // over the cards a pause holds behind it.
+  it('a kept card is skipped like a send_failed one; the cards behind it still send', () => {
     const behind = card('behind', 2)
     const kept = [card('kept', 1, { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }), behind]
     expect(holding(kept, 0)).toEqual([
       ['kept', null],
       ['behind', null]
     ])
-    expect(nextSendableQueuedCard(pausesOver(kept, 0), kept)).toBeNull()
+    expect(nextSendableQueuedCard(pausesOver(kept, 0), kept)).toBe(behind)
     expect(resumableQueuePause(pausesOver(kept, 0), kept)).toBeNull()
-    // A dead process's card behind it is paused, and Resume still has nothing it would send.
     const restarted = [kept[0]!, card('dead', 2, { hostInstance: DEAD })]
-    expect(pausesOver(restarted, 0).map((pause) => pause.reason)).toEqual(['restarted'])
-    expect(resumableQueuePause(pausesOver(restarted, 0), restarted)).toBeNull()
-
-    const failed = [card('failed', 1, { holdReason: 'send_failed' }), behind]
-    expect(nextSendableQueuedCard(pausesOver(failed, 0), failed)).toBe(behind)
+    expect(nextSendableQueuedCard(pausesOver(restarted, 0), restarted)).toBeNull()
+    expect(resumableQueuePause(pausesOver(restarted, 0), restarted)?.reason).toBe('restarted')
   })
 
   it("a /clear's pause that holds nothing never hides a restart's", () => {

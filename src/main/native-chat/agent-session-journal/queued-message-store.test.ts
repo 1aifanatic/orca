@@ -88,7 +88,12 @@ async function queueDraft(journal: AgentSessionJournal, messageId: string, text 
 async function consumeDraft(
   journal: AgentSessionJournal,
   messageId: string,
-  options: { as?: string; expect?: 'waiting' | 'returned'; settledByOp?: string | null } = {}
+  options: {
+    as?: string
+    expect?: 'waiting' | 'returned'
+    settledByOp?: string | null
+    origin?: 'client' | 'host'
+  } = {}
 ) {
   const draft = journal.queuedMessages.get(messageId)
   await journal.appendSubmission(
@@ -97,7 +102,8 @@ async function consumeDraft(
       payloadFingerprint: draft?.fingerprint ?? `fp-${messageId}`,
       body: draft?.body ?? message('queued text'),
       fence: 0,
-      handoverRecorded: true
+      handoverRecorded: true,
+      ...(options.origin ? { origin: options.origin } : {})
     },
     {
       messageId,
@@ -352,25 +358,32 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.submission('sub-draft-1')?.queuedMessageId).toBe('draft-1')
   })
 
-  it('a restart between consume and handover sends the draft back to waiting, kept for its own Send', async () => {
-    let journal = await open()
-    await queueDraft(journal, 'draft-1')
-    await consumeDraft(journal, 'draft-1')
-    await journal.close()
-    journal = await open()
-    expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
-    await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
-      journal.wroteBeforeOpen(submission.acceptedSequence)
-    )
-    // The host never sent it, so it waits for the person, as a message the restart kept does.
-    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
-      state: 'waiting',
-      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
-      hostInstance: 'proc-1',
-      consumedAs: null,
-      returnedReason: null
-    })
-  })
+  it.each([
+    { by: 'the queue', origin: 'host' as const, holdReason: null },
+    { by: 'the person', origin: 'client' as const, holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
+  ])(
+    'a restart between $by’s consume and handover sends the draft back to waiting',
+    async ({ origin, holdReason }) => {
+      let journal = await open()
+      await queueDraft(journal, 'draft-1')
+      await consumeDraft(journal, 'draft-1', { origin })
+      await journal.close()
+      journal = await open()
+      expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
+      await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
+        journal.wroteBeforeOpen(submission.acceptedSequence)
+      )
+      // The queue's own hand-off waits under the restart's pause, derived from the row's host
+      // instance; a Send the person asked for waits for them, kept.
+      expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+        state: 'waiting',
+        holdReason,
+        hostInstance: 'proc-1',
+        consumedAs: null,
+        returnedReason: null
+      })
+    }
+  )
 
   it('refuse → Send under a fresh id → refuse again returns the card again; a late duplicate of the first refusal never touches the re-send (N4)', async () => {
     const journal = await open()

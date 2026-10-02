@@ -121,8 +121,8 @@ async function tearDownStructuredAgentSessionHost(input: {
   const entries = [...input.sessions.entries()].filter(
     ([sessionId]) => !input.retainSessionIds?.has(sessionId)
   )
-  // Quit settles nothing still queued: delivery is already disposed, so nothing hands it over now,
-  // and the next open keeps a person's message as a held card. `allSettled`, so one failed close
+  // Quit settles nothing still queued: delivery and the queue's drain are already disposed, so
+  // nothing hands it over now, and the next open settles it as it would after a crash. `allSettled`, so one failed close
   // cannot skip the others.
   const closed = await Promise.allSettled(
     entries.map(async ([, session]) => {

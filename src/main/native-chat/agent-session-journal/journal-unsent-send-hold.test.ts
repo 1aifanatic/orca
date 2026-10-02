@@ -184,37 +184,45 @@ describe('which sends an earlier host process left unsent are kept', () => {
     }
   })
 
-  it('a card’s own hand-off returns its card kept, and makes no second one', async () => {
-    const journal = await afterRestart(async (earlier) => {
-      await earlier.queuedMessages.insert({
-        messageId: 'card',
-        body: message('card text'),
-        fingerprint: fingerprint(message('card text')),
-        hostInstance: 'proc-1'
-      })
-      await earlier.appendSubmission(
-        {
-          clientMessageId: 'handoff',
-          payloadFingerprint: fingerprint(message('card text')),
+  // Only a Send the person asked for comes back kept; the queue's own hand-off waits under the
+  // restart's pause, where it stood.
+  it.each([
+    { by: 'Send now', origin: 'client' as const, holdReason: QUEUED_MESSAGE_PAUSED_KEPT },
+    { by: 'the queue', origin: 'host' as const, holdReason: null }
+  ])(
+    'a card’s own hand-off by $by returns its card, and makes no second one',
+    async ({ origin, holdReason }) => {
+      const journal = await afterRestart(async (earlier) => {
+        await earlier.queuedMessages.insert({
+          messageId: 'card',
           body: message('card text'),
-          fence: 0,
-          handoverRecorded: true,
-          origin: 'host',
-          source: 'queue'
-        },
-        { messageId: 'card', expect: 'waiting', settledByOp: null }
-      )
-    })
-    await hold(journal)
+          fingerprint: fingerprint(message('card text')),
+          hostInstance: 'proc-1'
+        })
+        await earlier.appendSubmission(
+          {
+            clientMessageId: 'handoff',
+            payloadFingerprint: fingerprint(message('card text')),
+            body: message('card text'),
+            fence: 0,
+            handoverRecorded: true,
+            origin,
+            source: 'queue'
+          },
+          { messageId: 'card', expect: 'waiting', settledByOp: null }
+        )
+      })
+      await hold(journal)
 
-    expect(journal.queuedMessages.list()).toHaveLength(1)
-    expect(journal.queuedMessages.get('card')).toMatchObject({
-      state: 'waiting',
-      consumedAs: null,
-      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
-    })
-    expect(journal.queuedMessages.get('handoff')).toBeNull()
-  })
+      expect(journal.queuedMessages.list()).toHaveLength(1)
+      expect(journal.queuedMessages.get('card')).toMatchObject({
+        state: 'waiting',
+        consumedAs: null,
+        holdReason
+      })
+      expect(journal.queuedMessages.get('handoff')).toBeNull()
+    }
+  )
 
   it('leaves alone what this process accepted', async () => {
     const journal = await open()
@@ -255,39 +263,46 @@ describe('which sends an earlier host process left unsent are kept', () => {
 })
 
 describe('where kept sends go in the queue', () => {
-  it('in acceptance order, a returned hand-off among them, all ahead of the cards already waiting', async () => {
-    const journal = await afterRestart(async (earlier) => {
-      await earlier.queuedMessages.insert({
-        messageId: 'H',
-        body: message('H'),
-        fingerprint: fingerprint(message('H')),
-        hostInstance: 'proc-1'
-      })
-      await earlier.queuedMessages.insert({
-        messageId: 'C',
-        body: message('C'),
-        fingerprint: fingerprint(message('C')),
-        hostInstance: 'proc-1'
-      })
-      await accept(earlier, 'A', { origin: 'client', source: 'person' })
-      await earlier.appendSubmission(
-        {
-          clientMessageId: 'H-handoff',
-          payloadFingerprint: fingerprint(message('H')),
+  // A Send the person asked for comes back kept among them; the queue's own hand-off stays put.
+  it.each([
+    { by: 'Send now', origin: 'client' as const, order: ['A', 'H', 'B', 'C'] },
+    { by: 'the queue', origin: 'host' as const, order: ['A', 'B', 'H', 'C'] }
+  ])(
+    'in acceptance order, ahead of the cards already waiting, a hand-off by $by among them',
+    async ({ origin, order }) => {
+      const journal = await afterRestart(async (earlier) => {
+        await earlier.queuedMessages.insert({
+          messageId: 'H',
           body: message('H'),
-          fence: 0,
-          handoverRecorded: true,
-          origin: 'host',
-          source: 'queue'
-        },
-        { messageId: 'H', expect: 'waiting', settledByOp: null }
-      )
-      await accept(earlier, 'B', { origin: 'client', source: 'person' })
-    })
-    await hold(journal)
+          fingerprint: fingerprint(message('H')),
+          hostInstance: 'proc-1'
+        })
+        await earlier.queuedMessages.insert({
+          messageId: 'C',
+          body: message('C'),
+          fingerprint: fingerprint(message('C')),
+          hostInstance: 'proc-1'
+        })
+        await accept(earlier, 'A', { origin: 'client', source: 'person' })
+        await earlier.appendSubmission(
+          {
+            clientMessageId: 'H-handoff',
+            payloadFingerprint: fingerprint(message('H')),
+            body: message('H'),
+            fence: 0,
+            handoverRecorded: true,
+            origin,
+            source: 'queue'
+          },
+          { messageId: 'H', expect: 'waiting', settledByOp: null }
+        )
+        await accept(earlier, 'B', { origin: 'client', source: 'person' })
+      })
+      await hold(journal)
 
-    expect(cardOrder(journal)).toEqual(['A', 'H', 'B', 'C'])
-  })
+      expect(cardOrder(journal)).toEqual(order)
+    }
+  )
 
   it('a run a crash cut short is placed again with the rest, in acceptance order', async () => {
     const interrupted = await afterRestart(async (earlier) => {

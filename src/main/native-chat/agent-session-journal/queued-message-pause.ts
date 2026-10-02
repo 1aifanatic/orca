@@ -12,7 +12,6 @@
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
@@ -167,25 +166,15 @@ export function queuePauseHolding(
   return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
 }
 
-/** A card that holds every card behind it until the person acts on it: a returned one, or one
- *  the host kept. A `send_failed` card does not: the cards behind it still send. */
-function blocksCardsBehind(card: QueueCard): boolean {
-  return (
-    card.state === 'returned' ||
-    (card.state === 'waiting' && card.holdReason === QUEUED_MESSAGE_PAUSED_KEPT)
-  )
-}
-
-/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a card
- *  that blocks the rest (`blocksCardsBehind`) or one a pause holds comes first. The queue never
- *  reorders, so a newer card never overtakes a held one. The drain's pick and its consume both
- *  read this. */
+/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
+ *  returned card or a held one comes first. The queue never reorders, so a newer card never
+ *  overtakes a held one. The drain's pick and its consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
   for (const card of cards) {
-    if (blocksCardsBehind(card) || queuePauseHolding(pauses, card)) {
+    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
       return null
     }
     if (card.state === 'waiting' && card.holdReason === null) {
@@ -195,15 +184,15 @@ export function nextSendableQueuedCard<T extends QueueCard>(
   return null
 }
 
-/** The pause to PUBLISH: the one holding the first card Resume would send, not behind a card that
- *  blocks everything after it until the user acts. None otherwise, so its header never offers a
- *  Resume that sends nothing. */
+/** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
+ *  card, which blocks everything after it until the user acts. None otherwise, so its header
+ *  never offers a Resume that sends nothing. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]
 ): DerivedQueuePause | null {
   for (const card of cards) {
-    if (blocksCardsBehind(card)) {
+    if (card.state === 'returned') {
       return null
     }
     const holding = queuePauseHolding(pauses, card)

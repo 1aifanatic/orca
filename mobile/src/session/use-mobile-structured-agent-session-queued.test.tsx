@@ -532,7 +532,6 @@ describe('mobile structured queued messages', () => {
           text: 'text of draft-1',
           state: 'waiting',
           paused: false,
-          kept: false,
           needsAttention: false,
           caption: null
         }
@@ -587,10 +586,10 @@ describe('mobile structured queued messages', () => {
       )
       expect(hook!.queued.cards.map(({ messageId, caption }) => ({ messageId, caption }))).toEqual([
         { messageId: 'kept-1', caption: 'Not sent yet — tap Send to send it' },
-        { messageId: 'behind', caption: 'Waiting — a message ahead needs attention' }
+        { messageId: 'behind', caption: null }
       ])
-      // Resume would send nothing past the kept card, so it is not offered.
-      expect(hook!.queued.pause).toBeNull()
+      // The kept card is held on its own, so Resume would send the card behind it.
+      expect(hook!.queued.pause).toEqual({ reason: 'restarted' })
     })
   })
 
