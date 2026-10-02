@@ -87,7 +87,7 @@ describe('saved structured session restoration targets', () => {
     expect(collectSavedStructuredAgentSessionIds(saved)).toEqual(['session-codex'])
   })
 
-  it("fills the chats on screen first: the active worktree's active tab, then every other worktree's", async () => {
+  it("fills the chats on screen first: the active worktree's visible tabs, then every other worktree's", async () => {
     const tabs = {
       'workspace-1': [
         tab({ id: 'a-1', entityId: 'session-a-1' }),
@@ -109,20 +109,36 @@ describe('saved structured session restoration targets', () => {
         })
       ]
     }
+    const group = (id: string, worktreeId: string, activeTabId: string) => ({
+      id,
+      worktreeId,
+      activeTabId,
+      tabOrder: [activeTabId]
+    })
+    // As the renderer saves it: each group's active tab is what is on screen, the focused group's
+    // first; `activeTabIdByWorktree` names a terminal whatever is shown.
     const saved: WorkspaceSessionState = {
       ...session([], null),
       activeWorktreeId: 'workspace-2',
       unifiedTabs: tabs,
-      activeTabIdByWorktree: { 'workspace-1': 'a-2', 'workspace-2': 'b-2' }
+      tabGroups: {
+        'workspace-1': [group('g-a', 'workspace-1', 'a-2')],
+        'workspace-2': [
+          group('g-b-left', 'workspace-2', 'b-1'),
+          group('g-b-right', 'workspace-2', 'b-2')
+        ]
+      },
+      activeGroupIdByWorktree: { 'workspace-1': 'g-a', 'workspace-2': 'g-b-right' },
+      activeTabIdByWorktree: { 'workspace-1': 'terminal-a', 'workspace-2': 'terminal-b' }
     }
     // The pass's order: the host's tab order, which knows nothing of what is on screen.
     const listed = ['session-a-1', 'session-a-2', 'session-b-1', 'session-b-2', 'session-b-remote']
 
     expect(orderOnScreenStructuredAgentSessionsFirst(listed, saved)).toEqual([
       'session-b-2',
+      'session-b-1',
       'session-a-2',
       'session-a-1',
-      'session-b-1',
       'session-b-remote'
     ])
     // Only reorders the chats it is given.
@@ -139,9 +155,9 @@ describe('saved structured session restoration targets', () => {
     }
     expect(await runStructuredAgentSessionStartupStep(host, saved, () => undefined)).toEqual([
       'session-b-2',
+      'session-b-1',
       'session-a-2',
       'session-a-1',
-      'session-b-1',
       'session-b-remote'
     ])
   })
