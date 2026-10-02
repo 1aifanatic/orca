@@ -2,6 +2,7 @@ import {
   isExpectedAgentProcess,
   recognizeAgentProcess
 } from '../../shared/agent-process-recognition'
+import { PROCESS_TABLE_SNAPSHOT_MAX_STALENESS_MS } from '../../shared/process-table-snapshot'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
@@ -13,9 +14,6 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
  * Only `agent` lets a launch write its prompt; only `shell` drops a ready signal.
  */
 export type LaunchedAgentForeground = 'agent' | 'shell' | 'unknown'
-
-/** Under the 1.5 s quiet a ready signal needs, so an observation this young postdates a crash. */
-const FOREGROUND_GROUP_EVIDENCE_MAX_AGE_MS = 1_000
 
 /** A login shell is reported as `-zsh`. */
 function isLaunchShell(processName: string): boolean {
@@ -33,8 +31,10 @@ function isLaunchedAgent(processName: string, agent: TuiAgent): boolean {
  * First the host's process-group observation, which only ever proves the agent: the launched agent
  * among the members of the terminal's foreground group finds it behind a wrapper that did not
  * `exec` it (a script, or the `/bin/sh` a tcsh or nu launch line runs), whose own name leads the
- * group. It never proves a shell: a macOS pane's shell runs under `login`, so the group's root is
- * not the shell, and a capture that ran out of time is no answer.
+ * group. It counts only from a capture begun after this read was asked for, less the window a
+ * shared capture is reused across, and never by how long `ps` took on a loaded host. It never
+ * proves a shell: a macOS pane's shell runs under `login`, so the group's root is not the shell,
+ * and a capture that ran out of time is no answer.
  *
  * Otherwise one fresh read of the terminal's foreground process: on a local POSIX host the scan
  * behind `confirmForegroundProcess`, and on an SSH host the relay's name, which it reads from the
@@ -65,11 +65,12 @@ export async function readLaunchedAgentForeground(
       // An SSH pane has no such check, so on a Windows relay nothing proves a shell.
       return (await controller.confirmShellForeground?.(ptyId)) ? 'shell' : 'unknown'
     }
+    const askedAt = Date.now()
     const evidence = (await controller.inspectProcess?.(ptyId))?.foregroundProcessEvidence
     if (
       evidence?.verdict === 'live' &&
       evidence.fence.platform === 'posix' &&
-      evidence.capturedAgeMs <= FOREGROUND_GROUP_EVIDENCE_MAX_AGE_MS &&
+      Date.now() - evidence.capturedAgeMs >= askedAt - PROCESS_TABLE_SNAPSHOT_MAX_STALENESS_MS &&
       evidence.processName &&
       isLaunchedAgent(evidence.processName, agent)
     ) {
