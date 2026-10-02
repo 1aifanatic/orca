@@ -26,7 +26,7 @@ function row(overrides: Partial<AgentStatusIpcPayload> = {}): AgentStatusIpcPayl
     connectionId: null,
     state: 'done',
     prompt: '',
-    agentType: 'codex',
+    agentType: 'pi',
     receivedAt: now,
     stateStartedAt: now,
     ...overrides
@@ -74,7 +74,7 @@ describe('hookLeadTurnState', () => {
 
 describe('readTuiIdleHookTurn', () => {
   const base = {
-    agent: 'codex' as const,
+    agent: 'pi' as const,
     handles: [HANDLE],
     paneKeys: [PANE_KEY],
     resolveBlockedText: () => null
@@ -189,10 +189,10 @@ describe('readTuiIdleHookTurn', () => {
 
 describe('profile.hooks', () => {
   it('marks the agents whose hooks report every turn end as authoritative', () => {
-    for (const agent of ['codex', 'opencode', 'opencode2', 'pi', 'omp'] as const) {
+    for (const agent of ['opencode', 'opencode2', 'pi', 'omp'] as const) {
       expect(hooksAreAuthoritative(agent)).toBe(true)
     }
-    for (const agent of ['claude', 'cursor', 'gemini', 'grok', null] as const) {
+    for (const agent of ['codex', 'claude', 'cursor', 'gemini', 'grok', null] as const) {
       expect(hooksAreAuthoritative(agent)).toBe(false)
     }
   })
@@ -217,7 +217,7 @@ function input(overrides: Partial<TuiIdleEvaluationInput> = {}): TuiIdleEvaluati
     readPositiveBodyEvidence: () => false,
     readQuietReadyBodyEvidence: () => false,
     readAgentRuleVerdict: () => null,
-    agent: 'codex',
+    agent: 'pi',
     firstPartyStatus: null,
     quiescenceMs: QUIESCENCE_MS,
     ...overrides
@@ -235,7 +235,7 @@ describe('evaluateTuiIdle hook lane', () => {
     expect(
       evaluateTuiIdle(
         input({
-          record: record({ lastAgentStatus: 'idle', lastOscTitle: 'Codex ready' }),
+          record: record({ lastAgentStatus: 'idle', lastOscTitle: 'Pi ready' }),
           readPositiveBodyEvidence: () => true,
           readHookTurn: () => WORKING
         })
@@ -293,9 +293,9 @@ describe('evaluateTuiIdle hook lane', () => {
     ).toEqual({ kind: 'pending', quietForeground: 'closed' })
   })
 
-  it('never reads hooks for an identity-only agent', () => {
+  it.each(['claude', 'codex'] as const)('never reads hooks for identity-only %s', (agent) => {
     const readHookTurn = vi.fn(() => ({ state: 'done' as const, blockedReason: null }))
-    expect(evaluateTuiIdle(input({ agent: 'claude', readHookTurn }))).toEqual({
+    expect(evaluateTuiIdle(input({ agent, readHookTurn }))).toEqual({
       kind: 'pending',
       quietForeground: 'closed'
     })

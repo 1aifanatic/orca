@@ -446,7 +446,7 @@ call it.
 `terminal wait --for tui-idle` is a reader too. Before STA-9100 hook state
 reached it only through the `<Agent> ready` titles the window writes, so a
 headless `orca serve` never saw it (#16095). Now an agent whose rule file says
-`profile.hooks: "authoritative"` (Codex, OpenCode, OpenCode 2, Pi, OMP) has its
+`profile.hooks: "authoritative"` (OpenCode, OpenCode 2, Pi, OMP) has its
 fresh row read straight from the store, through the same
 `selectFreshExplicitAgentStatusRow` join prompt-receipt verification uses
 (`src/main/runtime/tui-idle-hook-lane.ts`):
@@ -469,7 +469,11 @@ fresh row read straight from the store, through the same
   OSC 133 zones itself;
 - every other agent stays `identity-only`: Claude sends no event when an
   approval is denied or Esc stops a tool, so its row can sit at `waiting` or
-  `working` forever, and the rules keep deciding.
+  `working` forever, and the rules keep deciding. Codex is identity-only too:
+  before its `Interrupt` hook an Esc mid-turn leaves the row `working`, and an
+  older TUI can hand its hooks to a newer shared app server, so no version
+  check tells which Codex posts it. Current Codex settles fast anyway, since
+  `Interrupt` drives its `Codex ready` title.
 
 The titles stay for display; remote clients read them.
 
