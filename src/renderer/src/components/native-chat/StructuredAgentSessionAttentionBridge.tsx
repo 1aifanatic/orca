@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { resolveNotificationTabOwner } from '@/attention/notification-subject-owner'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { useAppStore } from '@/store'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { getStructuredAgentSessionTurnCompletionFeed } from '@/runtime/structured-agent-session-turn-completion-feed'
@@ -16,27 +16,23 @@ import { getStructuredAgentSessionTabs, type StructuredTab } from './structured-
  * mark and no liveness evidence in this process, and the surface adapter would reject it anyway.
  */
 function StructuredAgentSessionAttention({ tab }: { tab: StructuredTab }): null {
-  const owner = useAppStore(useShallow((state) => resolveNotificationTabOwner(state, tab)))
+  const environmentId = useAppStore((state) =>
+    getRuntimeEnvironmentIdForWorktree(state, tab.worktreeId)
+  )
   const target = useMemo(
-    () =>
-      owner
-        ? getActiveRuntimeTarget({ activeRuntimeEnvironmentId: owner.runtimeEnvironmentId })
-        : null,
-    [owner]
+    () => getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId }),
+    [environmentId]
   )
-  const feed = useMemo(
-    () => (target ? getStructuredAgentSessionTurnCompletionFeed(target) : null),
-    [target]
-  )
-  useEffect(() => feed?.activate(), [feed])
+  const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
+  useEffect(() => feed.activate(), [feed])
   useEffect(
     () =>
-      feed?.subscribe((completion) => {
+      feed.subscribe((completion) => {
         if (completion.sessionId === tab.entityId) {
-          dispatchStructuredTurnCompletionAttention(tab, completion, owner ?? undefined)
+          dispatchStructuredTurnCompletionAttention(tab, completion, target)
         }
       }),
-    [feed, tab, owner]
+    [feed, tab, target]
   )
   return null
 }

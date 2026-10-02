@@ -21,7 +21,7 @@ export type NotificationSettings = {
     | 'custom'
   customSoundPath: string | null
   customSoundVolume: number
-  /** Machines whose workspaces raise no desktop banner. Stored as an opt-out so a newly added machine notifies. */
+  /** Opt-outs for this computer, direct SSH machines, and paired servers including work reached through them; new sources notify. */
   mutedNotificationSourceIds: NotificationSourceId[]
 }
 

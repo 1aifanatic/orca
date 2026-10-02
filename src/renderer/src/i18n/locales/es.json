@@ -8855,7 +8855,7 @@
             "0534c76311": "Interruptor maestro para notificaciones de escritorio de Orca.",
             "4a210b2f72": "Habilitar notificaciones",
             "machines": "Máquinas",
-            "machinesDescription": "Activa o desactiva las notificaciones de los espacios de trabajo de cada máquina, como hosts SSH o emparejados.",
+            "machinesDescription": "Controla las notificaciones de escritorio de este equipo, las máquinas SSH conectadas directamente y los servidores vinculados, incluido el trabajo al que se accede a través de ellos.",
             "host": "host",
             "remote": "remoto",
             "ssh": "ssh",

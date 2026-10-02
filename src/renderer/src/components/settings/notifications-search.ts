@@ -83,7 +83,7 @@ export const getNotificationsPaneSearchEntries = createLocalizedCatalog(() => [
     title: translate('auto.components.settings.notifications.search.machines', 'Machines'),
     description: translate(
       'auto.components.settings.notifications.search.machinesDescription',
-      'Turn notifications on or off for workspaces on each machine, such as SSH or paired hosts.'
+      'Control desktop notifications for this computer, directly connected SSH machines, and paired servers, including work reached through them.'
     ),
     keywords: [
       ...translateSearchKeyword(

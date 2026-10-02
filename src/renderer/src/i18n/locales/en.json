@@ -10276,7 +10276,7 @@
             "0534c76311": "Master switch for Orca desktop notifications.",
             "4a210b2f72": "Enable Notifications",
             "machines": "Machines",
-            "machinesDescription": "Turn notifications on or off for workspaces on each machine, such as SSH or paired hosts.",
+            "machinesDescription": "Control desktop notifications for this computer, directly connected SSH machines, and paired servers, including work reached through them.",
             "host": "host",
             "remote": "remote",
             "ssh": "ssh",
