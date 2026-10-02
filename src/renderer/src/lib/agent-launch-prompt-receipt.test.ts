@@ -33,7 +33,8 @@ const mocks = vi.hoisted(() => {
       state = empty()
     },
     readiness: vi.fn(),
-    readForeground: vi.fn()
+    readForeground: vi.fn(),
+    foregroundName: vi.fn()
   }
 })
 
@@ -61,11 +62,17 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     mocks.setState({ tabsByWorktree: { 'wt-1': [{ id: 'tab-1' }] } })
     mocks.readiness.mockReset().mockResolvedValue(true)
     mocks.readForeground.mockReset().mockResolvedValue('agent')
+    mocks.foregroundName.mockReset().mockResolvedValue('claude')
     // Timers go through globalThis at call time, so fake timers reach them.
     vi.stubGlobal('window', {
       setTimeout: (handler: () => void, ms: number) => globalThis.setTimeout(handler, ms),
       clearTimeout: (timer: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(timer),
-      api: { pty: { readLaunchedAgentForeground: mocks.readForeground } }
+      api: {
+        pty: {
+          readLaunchedAgentForeground: mocks.readForeground,
+          getForegroundProcess: mocks.foregroundName
+        }
+      }
     })
   })
 
@@ -91,14 +98,63 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     expect(mocks.readiness.mock.calls[0]?.[4]).toEqual({ revokeOnBracketedPasteOff: true })
   })
 
-  // Why: a shell back at its prompt looks ready too; readiness alone never counts.
-  // Why: the agent had the prompt on its line and quit at startup, before reading it.
-  it('reports the agent exited when the read finds the shell, however ready it looked', async () => {
-    mocks.readForeground.mockResolvedValue('shell')
+  // Why: the agent had the prompt on its line and quit at startup, before reading it. Only the
+  // agent itself seen in front, then the shell, proves that.
+  it('reports the agent exited when the agent was seen in front and then the shell', async () => {
+    vi.useFakeTimers()
+    let ready: () => void = () => {}
+    mocks.readiness.mockReturnValue(new Promise<void>((resolve) => (ready = resolve)))
+    mocks.readForeground.mockResolvedValueOnce('agent').mockResolvedValue('shell')
+    const pending = receipt()
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    await vi.advanceTimersByTimeAsync(250)
+    ready()
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(pending).resolves.toBe('agent-exited')
+  })
+
+  // Why (stack QA, slow shell startup): the shell drew its prompt and looked ready before it ran
+  // the launch line, and one read finding it in front was taken for an agent that had exited.
+  it('keeps reading through a slow shell startup until the agent is in front', async () => {
+    vi.useFakeTimers()
+    let ready: () => void = () => {}
+    mocks.readiness.mockReturnValue(new Promise<void>((resolve) => (ready = resolve)))
+    // The shell's startup file runs `sleep` in front, then the shell draws its prompt (and looks
+    // ready) before it runs the launch line, then the agent starts.
+    mocks.readForeground
+      .mockResolvedValueOnce('agent')
+      .mockResolvedValueOnce('shell')
+      .mockResolvedValueOnce('shell')
+      .mockResolvedValueOnce('shell')
+      .mockResolvedValue('agent')
+    mocks.foregroundName
+      .mockResolvedValueOnce('sleep')
+      .mockResolvedValueOnce('zsh')
+      .mockResolvedValueOnce('zsh')
+      .mockResolvedValueOnce('zsh')
+      .mockResolvedValue('claude')
     mocks.setState({ agentStatusByPaneKey: { [PANE]: { updatedAt: 50 } } })
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
-    await expect(pending).resolves.toBe('agent-exited')
+    await vi.advanceTimersByTimeAsync(100)
+    ready()
+    await vi.advanceTimersByTimeAsync(2_000)
+    await expect(pending).resolves.toBe('delivered')
+    expect(mocks.readForeground.mock.calls.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('is unconfirmed, never exited, when the shell stays in front with no sign the agent ran', async () => {
+    vi.useFakeTimers()
+    mocks.readForeground.mockResolvedValue('shell')
+    mocks.foregroundName.mockResolvedValue('zsh')
+    const pending = receipt()
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    let settled: string | null = null
+    void pending.then((value) => (settled = value))
+    await vi.advanceTimersByTimeAsync(29_000)
+    expect(settled).toBeNull()
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(settled).toBe('unconfirmed')
   })
 
   it('is unconfirmed when the host cannot tell and no hook turn arrives', async () => {
@@ -120,12 +176,23 @@ describe('whether a prompt that rode the launch command reached the agent', () =
     await expect(pending).resolves.toBe('delivered')
   })
 
-  it('reports the agent exited when the PTY exits first', async () => {
+  it('reports the agent exited when the PTY exits after the agent was seen', async () => {
+    vi.useFakeTimers()
     mocks.readiness.mockReturnValue(new Promise(() => {}))
     const pending = receipt()
     mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    await vi.advanceTimersByTimeAsync(0)
     mocks.setState({ ptyIdsByTabId: { 'tab-1': [] } })
     await expect(pending).resolves.toBe('agent-exited')
+  })
+
+  it('is unconfirmed when the PTY exits before the agent was ever seen', async () => {
+    mocks.readiness.mockReturnValue(new Promise(() => {}))
+    mocks.readForeground.mockReturnValue(new Promise(() => {}))
+    const pending = receipt()
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
+    mocks.setState({ ptyIdsByTabId: { 'tab-1': [] } })
+    await expect(pending).resolves.toBe('unconfirmed')
   })
 
   it('is not delivered when the PTY never spawns, as when the host refused its launch file', async () => {

@@ -1,4 +1,8 @@
 import type { TuiAgent } from '../../../shared/tui-agent'
+import {
+  isExpectedAgentProcess,
+  recognizeAgentProcess
+} from '../../../shared/agent-process-recognition'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import { resolveDraftPasteReadyTimeoutMs } from '../../../shared/draft-paste-ready-timeout'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
@@ -13,6 +17,11 @@ export type LaunchPromptReceipt = 'delivered' | 'not-delivered' | 'agent-exited'
 
 /** How long a hook turn may still arrive after a read that could not tell. */
 const HOOK_GRACE_AFTER_UNKNOWN_READ_MS = 2000
+/** How often what holds the terminal is read until the receipt settles. */
+const FOREGROUND_POLL_MS = 250
+/** How long after the ready signal the shell may stay in front before the launch line runs: a
+ *  slow shell startup can draw its prompt, and look ready, before it types the line. */
+const LAUNCH_LINE_WAIT_AFTER_READY_MS = 30_000
 
 function hookReportedTurnOnTab(state: AppState, tabId: string, launchedAt: number): boolean {
   return Object.entries(state.agentStatusByPaneKey).some(
@@ -35,15 +44,30 @@ async function readLaunchedAgentForeground(
   return window.api.pty.readLaunchedAgentForeground(ptyId, agent).catch(() => 'unknown' as const)
 }
 
+/** Whether the host names the launched agent itself in front: proof it started, which a read of
+ *  "not the shell" is not (a slow shell startup runs its own commands in front first). */
+async function launchedAgentNamedInFront(ptyId: string, agent: TuiAgent): Promise<boolean> {
+  if (isRemoteRuntimePtyId(ptyId)) {
+    return false
+  }
+  const name = await window.api.pty.getForegroundProcess(ptyId).catch(() => null)
+  return (
+    name !== null &&
+    (recognizeAgentProcess(name)?.agent === agent ||
+      isExpectedAgentProcess(name, TUI_AGENT_CONFIG[agent].expectedProcess))
+  )
+}
+
 /**
  * Whether a prompt that rode an agent's launch command reached the agent, proven the way #24257's
  * crash guard proves an agent before a paste. Delivered on the agent's own hook turn on the tab, or
  * a fresh read on the execution host that finds the launched agent, not its shell, in front of the
  * terminal (`readLaunchedAgentForeground`). A ready signal never counts on its own: it only times
  * that read, and bracketed paste turned off (`2004l`) revokes it. Not delivered when the PTY never
- * spawns (a refused launch file included) or the tab closes. Agent exited when the PTY exits or
- * the read finds the shell back in front: the agent had the prompt on its line and quit before
- * reading it. Unconfirmed when nothing proves either, as on a Windows host without hooks.
+ * spawns (a refused launch file included) or the tab closes. Agent exited only on proof it ran and
+ * ended: the agent itself was named in front, then the shell came back or the PTY exited. A shell
+ * in front before then is a launch line not yet run (a slow shell startup), so the reads go on.
+ * Unconfirmed when nothing proves either, as on a Windows host without hooks.
  */
 export function waitForLaunchPromptReceipt(args: {
   tabId: string
@@ -65,8 +89,11 @@ export function waitForLaunchPromptReceipt(args: {
       timers.forEach((timer) => window.clearTimeout(timer))
       resolve(receipt)
     }
-    const readAfterReadiness = (ptyId: string): void => {
+    let agentSeen = false
+    const watchForeground = (ptyId: string): void => {
       const config = TUI_AGENT_CONFIG[agent]
+      let readyAt: number | null = null
+      let graceArmed = false
       void waitForAgentDraftInputReady(
         ptyId,
         resolveDraftPasteReadyTimeoutMs(agent),
@@ -74,19 +101,36 @@ export function waitForLaunchPromptReceipt(args: {
         getSettingsForAgentTabRuntimeOwner(tabId),
         { revokeOnBracketedPasteOff: true }
       )
-        .then(() => readLaunchedAgentForeground(ptyId, agent))
-        .then((foreground) => {
-          if (foreground === 'agent') {
-            finish('delivered')
-          } else if (foreground === 'shell') {
-            finish('agent-exited')
-          } else {
+        .then(() => {
+          readyAt = Date.now()
+        })
+        .catch(() => finish('unconfirmed'))
+      const read = async (): Promise<void> => {
+        const [foreground, named] = await Promise.all([
+          readLaunchedAgentForeground(ptyId, agent),
+          agentSeen ? Promise.resolve(true) : launchedAgentNamedInFront(ptyId, agent)
+        ])
+        if (settled) {
+          return
+        }
+        agentSeen ||= named && foreground === 'agent'
+        if (foreground === 'agent' && readyAt !== null) {
+          finish('delivered')
+        } else if (foreground === 'shell' && agentSeen) {
+          finish('agent-exited')
+        } else if (readyAt !== null && Date.now() - readyAt >= LAUNCH_LINE_WAIT_AFTER_READY_MS) {
+          finish('unconfirmed')
+        } else {
+          if (foreground === 'unknown' && readyAt !== null && !graceArmed) {
+            graceArmed = true
             timers.push(
               window.setTimeout(() => finish('unconfirmed'), HOOK_GRACE_AFTER_UNKNOWN_READ_MS)
             )
           }
-        })
-        .catch(() => finish('unconfirmed'))
+          timers.push(window.setTimeout(() => void read(), FOREGROUND_POLL_MS))
+        }
+      }
+      void read().catch(() => finish('unconfirmed'))
     }
     let scannedStatus: AppState['agentStatusByPaneKey'] | null = null
     const observe = (state: AppState): void => {
@@ -101,11 +145,11 @@ export function waitForLaunchPromptReceipt(args: {
       const ptyId = state.ptyIdsByTabId[tabId]?.[0]
       if (ptyId && !boundPtyId) {
         boundPtyId = ptyId
-        readAfterReadiness(ptyId)
+        watchForeground(ptyId)
       } else if (!tabExists(state, tabId)) {
         finish('not-delivered')
       } else if (boundPtyId && !ptyId) {
-        finish('agent-exited')
+        finish(agentSeen ? 'agent-exited' : 'unconfirmed')
       }
     }
     unsubscribe = useAppStore.subscribe(observe)
