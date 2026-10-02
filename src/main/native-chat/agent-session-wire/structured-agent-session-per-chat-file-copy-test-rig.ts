@@ -31,6 +31,7 @@ import {
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
 import { createStructuredAgentSessionStartupState } from './structured-agent-session-startup-state'
+import { sessionTabListed } from './structured-agent-session-host-tabs'
 
 export const COPY_TEST_WORKSPACE = 'workspace-1'
 
@@ -125,6 +126,7 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     restoreListed: async () => undefined,
     serialize,
     hasSession: (sessionId) => sessions.has(sessionId),
+    isListed: (sessionId) => sessionTabListed(rig.store, sessionId),
     isDisposed: () => false
   })
   return {

@@ -612,6 +612,7 @@ describe('whether the settle step is running (R3M-2)', () => {
       restoreListed: () => restoring.promise,
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
+      isListed: () => true,
       isDisposed: () => false
     })
     expect(state.isSettling()).toBe(false)
@@ -643,6 +644,7 @@ describe('whether the settle step is running (R3M-2)', () => {
       restoreListed: vi.fn(async () => undefined),
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
+      isListed: () => true,
       isDisposed: () => false,
       recoveryBudgetMs: 20
     })
