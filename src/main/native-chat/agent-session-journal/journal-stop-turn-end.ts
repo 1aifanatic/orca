@@ -160,11 +160,9 @@ export function turnEndAfterStop(
     return body
   }
   const previous = readAgentJournalTurn(state.items.get(itemId)?.body)
-  // An end already written stands: the Stop came after it. A cancellation written stays one.
+  // An end already written stands: the Stop came after it.
   if (previous && previous.state !== 'running' && previous.state !== 'unverifiable') {
-    return previous.state === 'interrupted' && previous.outcome === 'cancellation'
-      ? { ...body, outcome: 'cancellation' }
-      : body
+    return body
   }
   return stopEndsTurnAsCancellation(state, body.turnId, body.completedAt)
     ? { ...body, outcome: 'cancellation' }

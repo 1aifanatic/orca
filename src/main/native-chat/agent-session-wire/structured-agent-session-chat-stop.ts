@@ -94,9 +94,11 @@ export function mutateWithChatStop<TValue>(
           return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
         }
         // Awaited until journal appends are synchronous; then issued here, and a `finally` awaits it.
-        if (withdrawn.length > 0 || (await stopReachesUnrecordedWork(ctx, turnId))) {
-          await tookEffect()
-        }
+        const reach =
+          withdrawn.length > 0 ? 'unrecorded' : await stopReachesUnrecordedWork(ctx, turnId)
+        // Its settle binds the latest Stop only when that Stop is this press's own, or the one in
+        // force this press repeats; a late Stop or a lost event row binds nothing.
+        const ownsLatestStop = reach === 'unrecorded' ? await tookEffect() : reach === 'repeat'
         return performCancel(
           { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
           {
@@ -114,7 +116,8 @@ export function mutateWithChatStop<TValue>(
             endSession: (owed) => {
               windDown = { owed, ctx }
             },
-            withdrewQueued: withdrawn.length > 0
+            withdrewQueued: withdrawn.length > 0,
+            ...(ownsLatestStop ? { opensSettle: true as const } : {})
           }
         )
       }

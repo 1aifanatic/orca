@@ -20,8 +20,9 @@ export type StructuredAgentSessionStopWindDown = {
   stoppedAt: number
   /** The note the Stop wrote, which a failed wind-down revises. */
   stopNote: AgentJournalItemIdentity
-  /** Closes the Stop's settle once the child's end is proven, or binds the turn running on after
-   *  an end that failed: until then, what ends is the Stop's. */
+  /** Closes the Stop's settle once the wind-down finishes, whether or not the child's exit was
+   *  proven, binding the turn running on after an end that failed: until then, what ends is the
+   *  Stop's. */
   settled?: (failedOn?: string) => void
 }
 

@@ -67,14 +67,17 @@ export type CodexStopTarget = { turnId: string } | { opening: string } | null
 
 /**
  * The turn a Stop or a send names: the latest Codex reported started and not ended, or else the
- * one Codex answered a send into, once it opens. `opening` when the wait runs out first. Null when
- * none is running and that one ends, the thread stops running or the child exits first; each such
- * turn is waited for once.
+ * one Codex answered a send into, once it opens. `opening` when the wait runs out first, or an
+ * earlier wait already gave up on it with its send still owed. Null when none is running and that
+ * one ends, the thread stops running or the child exits first; each such turn is waited for once.
  */
 export async function codexStopTarget(session: {
   threadId: string
   activeTurnIds?: ReadonlySet<string>
-  dispatchEchoes: Pick<CodexDispatchEchoes, 'answeredUnopenedTurn' | 'leftUnopened'>
+  dispatchEchoes: Pick<
+    CodexDispatchEchoes,
+    'answeredUnopenedTurn' | 'leftUnopened' | 'answeredTurnLeftUnopened'
+  >
   turnOpenWaits: Pick<CodexTurnOpenWaits, 'wait'>
 }): Promise<CodexStopTarget> {
   const running = [...(session.activeTurnIds ?? [])].at(-1)
@@ -86,7 +89,12 @@ export async function codexStopTarget(session: {
     session.activeTurnIds ?? new Set<string>()
   )
   if (!answered) {
-    return null
+    // An earlier wait gave up on it, yet its send is still owed: it may still open.
+    const left = session.dispatchEchoes.answeredTurnLeftUnopened(
+      session.threadId,
+      session.activeTurnIds ?? new Set<string>()
+    )
+    return left ? { opening: left } : null
   }
   // Codex refuses an interrupt, and before 0.148 a steer, until it opens the turn.
   const settled = await session.turnOpenWaits.wait(answered, CODEX_TURN_OPEN_WAIT_MS)
