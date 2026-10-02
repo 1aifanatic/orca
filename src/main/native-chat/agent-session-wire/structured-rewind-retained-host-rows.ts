@@ -40,11 +40,14 @@ export function mergeRetainedHostLifecycleRows(
   const rowsAfter = new Map<number, RetainedRow[]>()
   let anchor = -1
   for (const item of reference) {
-    const carried =
-      isRetainedHostLifecycleRow(item) || !AGENT_JOURNAL_ITEM_BODY_KINDS.has(item.body.kind)
-    if (!carried) {
-      anchor = spineIndex.get(item.itemId) ?? anchor
-    } else if (!spineIndex.has(item.itemId)) {
+    // Any row the provider still holds moves the anchor, carried or not, so a later row follows it.
+    const spine = spineIndex.get(item.itemId)
+    if (spine !== undefined) {
+      anchor = spine
+    } else if (
+      isRetainedHostLifecycleRow(item) ||
+      !AGENT_JOURNAL_ITEM_BODY_KINDS.has(item.body.kind)
+    ) {
       rowsAfter.set(anchor, [...(rowsAfter.get(anchor) ?? []), item])
     }
   }

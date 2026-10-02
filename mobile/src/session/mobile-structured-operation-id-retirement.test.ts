@@ -56,7 +56,6 @@ function cancelArgs(client: RpcClient, hostAnswersRepeatedStops: boolean | null 
     enabled: true,
     stateRef: { current: runningState() },
     promptCancelSupported: null,
-    conversationStopSupported: null,
     hostAnswersRepeatedStops,
     inFlight: new Map<string, Promise<boolean>>(),
     onSendError: vi.fn()

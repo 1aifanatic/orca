@@ -72,7 +72,8 @@ it("hands the card a newer Orca's subject in a writable chat, and its cancel goe
   })
 })
 
-it('sends the card to the host even when no turn is running, so its cancel still answers it', () => {
+// The host's cancel names its turn, so with none running nothing is sent.
+it('sends nothing for the card when no turn is running', () => {
   mocks.promptItems = [NEWER_APPROVAL]
   render(
     <NativeChatStructuredSession
@@ -85,8 +86,5 @@ it('sends the card to the host even when no turn is running, so its cancel still
     />
   )
   mocks.approvalCardProps?.onCancel?.()
-  expect(mocks.cancel).toHaveBeenCalledWith(null, {
-    itemId: 'approval-item',
-    expectedRevision: 3
-  })
+  expect(mocks.cancel).not.toHaveBeenCalled()
 })

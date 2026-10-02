@@ -27,8 +27,6 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   enabled: boolean
   stateRef: { readonly current: StructuredAgentSessionState }
   promptCancelSupported: boolean | null
-  /** Whether the host takes a cancel that names no turn. */
-  conversationStopSupported: boolean | null
   prompt?: PromptIdentity
   /** Whether the host answers a repeated Stop of a turn quietly; null until the status probe answers. */
   hostAnswersRepeatedStops: boolean | null
@@ -40,15 +38,15 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   const { client, enabled, inFlight, onSendError, sessionId, stateRef } = args
   const current = stateRef.current
   const turnId = activeStructuredAgentSessionTurnId(current.items)
-  const prompt = args.prompt && args.promptCancelSupported === true ? args.prompt : undefined
-  // A card that outlived its turn: the host declines it without a turn to name.
-  const turnless = !turnId && prompt !== undefined && args.conversationStopSupported === true
-  if (!client || !sessionId || !enabled || current.fence === null || (!turnId && !turnless)) {
+  if (!client || !sessionId || !enabled || current.fence === null || !turnId) {
     onSendError('Stop not sent')
     return false
   }
   // Check the capability before fields enter the fingerprint.
-  const fields = { ...(turnId ? { turnId } : {}), ...(prompt ? { prompt } : {}) }
+  const fields = {
+    turnId,
+    ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
+  }
   // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
   const fence = current.fence
   const stop = () => sendStop({ client, sessionId, fence, fields, onSendError })

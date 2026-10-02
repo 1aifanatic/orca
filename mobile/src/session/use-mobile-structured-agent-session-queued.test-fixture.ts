@@ -13,7 +13,6 @@ import type { StructuredAgentSessionHostSupport } from './mobile-structured-agen
 export const SESSION_ID = 'session-1'
 
 export const CAPABLE: StructuredAgentSessionHostSupport = {
-  conversationStop: false,
   promptCancel: false,
   questionAnswers: false,
   queuedMessages: true,
