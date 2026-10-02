@@ -386,7 +386,9 @@ describe('per-job path classification', () => {
       'src/shared/runtime-worktree-contracts.ts',
       'src/renderer/src/runtime/remote-runtime-terminal-multiplexer.ts',
       'src/shared/structured-agent-session-projection.ts',
-      'src/main/runtime/orchestration/db.ts'
+      'src/shared/agent-turn-outcome.ts',
+      'src/main/runtime/orchestration/db.ts',
+      'src/main/runtime/orchestration/orchestration-schema-version-skew.ts'
     ]) {
       expectClassification([file], {
         'cross-version-wire': true,

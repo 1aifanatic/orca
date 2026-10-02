@@ -182,7 +182,8 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/runtime/runtime-worktree-pty-agent-sources',
   'src/shared/runtime-worktree-contracts',
   'src/renderer/src/runtime/remote-runtime-terminal-multiplexer',
-  // Status an older host publishes, read by current code (cross-version-host-observed-turn-end).
+  // Turn-end status a newer host publishes and an older desktop reads (cross-version-host-observed-turn-end).
+  'src/shared/agent-turn-outcome',
   'src/shared/agent-status-types',
   'src/shared/agent-lead-status-fold',
   'src/shared/agent-session-turn-record',
@@ -191,7 +192,8 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/shared/workspace-session-sleeping-agents',
   // An older app opening a newer orchestration database (orchestration-delivery-downgrade).
   'src/main/runtime/orchestration/db.ts',
-  'src/main/runtime/orchestration/db/'
+  'src/main/runtime/orchestration/db/',
+  'src/main/runtime/orchestration/orchestration-schema-version-skew'
 ]
 
 const MANAGED_HOOK_PREFIXES = [
