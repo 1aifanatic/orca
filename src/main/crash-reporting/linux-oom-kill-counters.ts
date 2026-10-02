@@ -213,6 +213,8 @@ export function readLinuxOomKillCounters(
 // sibling `orca-daemon-*.scope`, and a shell-launched Orca shares its terminal's scope.
 export type LinuxOomKillVerdict =
   | 'orca-cgroup-oom-kill'
+  // Orca's cgroup also holds the login session, launching terminal, or daemon, so the victim may be theirs.
+  | 'shared-cgroup-oom-kill'
   | 'daemon-cgroup-oom-kill'
   | 'oom-kill-outside-orca-cgroups'
   | 'host-oom-kill-unattributed'
@@ -229,11 +231,12 @@ function oomKillVerdict(
   vmstatDelta: number | undefined,
   cgroupDelta: number | undefined,
   daemonCgroupDelta: number | undefined,
-  daemonCovered: boolean
+  daemonCovered: boolean,
+  cgroupExclusive: boolean
 ): LinuxOomKillVerdict {
   // Why Orca's cgroup first: renderers live there, while a host kill may be anyone's.
   if ((cgroupDelta ?? 0) > 0) {
-    return 'orca-cgroup-oom-kill'
+    return cgroupExclusive ? 'orca-cgroup-oom-kill' : 'shared-cgroup-oom-kill'
   }
   if ((daemonCgroupDelta ?? 0) > 0) {
     return 'daemon-cgroup-oom-kill'
@@ -310,9 +313,22 @@ export function linuxOomKillDetails(
   const daemonCovered =
     daemonCgroupDelta === 0 ||
     (baseline.daemonSharesCgroup === true && current.daemonCgroupPath === undefined)
-  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta, daemonCovered)
+  const cgroupExclusive =
+    current.cgroupLeafKind === 'orca' &&
+    baseline.daemonSharesCgroup !== true &&
+    current.daemonSharesCgroup !== true
+  const verdict = oomKillVerdict(
+    vmstatDelta,
+    cgroupDelta,
+    daemonCgroupDelta,
+    daemonCovered,
+    cgroupExclusive
+  )
   details.linuxOomKillVerdict = verdict
-  const scope = verdict === 'orca-cgroup-oom-kill' ? oomKillScope(baseline, current) : undefined
+  const scope =
+    verdict === 'orca-cgroup-oom-kill' || verdict === 'shared-cgroup-oom-kill'
+      ? oomKillScope(baseline, current)
+      : undefined
   if (scope) {
     details.linuxOomKillScope = scope
   }

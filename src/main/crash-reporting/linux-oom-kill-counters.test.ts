@@ -205,6 +205,7 @@ describe('linuxOomKillDetails', () => {
         {
           vmstatOomKill: 6,
           cgroupOomKill: 1,
+          cgroupLeafKind: 'orca',
           cgroupMemoryMaxMB: 600,
           memoryLimits: [{ dir: '/s', maxMB: 600, localOomEvents: 4 }]
         }
@@ -213,6 +214,7 @@ describe('linuxOomKillDetails', () => {
       linuxOomKillBaselineAgeMs: 12_000,
       linuxOomKillHostDelta: 1,
       linuxOomKillCgroupDelta: 1,
+      linuxOomKillCgroupLeafKind: 'orca',
       linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'memcg-limit',
       linuxCgroupMemoryMaxMB: 600,
@@ -224,7 +226,8 @@ describe('linuxOomKillDetails', () => {
     expect(
       linuxOomKillDetails({ vmstatOomKill: 5, cgroupOomKill: 0 }, 5_000, {
         vmstatOomKill: 6,
-        cgroupOomKill: 1
+        cgroupOomKill: 1,
+        cgroupLeafKind: 'orca'
       })
     ).toMatchObject({
       linuxOomKillVerdict: 'orca-cgroup-oom-kill',
@@ -242,6 +245,7 @@ describe('linuxOomKillDetails', () => {
         {
           vmstatOomKill: 6,
           cgroupOomKill: 1,
+          cgroupLeafKind: 'orca',
           cgroupMemoryMaxMB: 8192,
           memoryLimits: [{ dir: '/s', maxMB: 8192, localOomEvents: 2 }]
         }
@@ -293,6 +297,37 @@ describe('linuxOomKillDetails', () => {
       linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'global'
     })
+  })
+
+  it.each([
+    ['a login-session leaf', { cgroupLeafKind: 'login-session' as const }],
+    ['an unrecognised leaf', { cgroupLeafKind: 'other' as const }],
+    ['an unknown leaf', {}],
+    [
+      'a cgroup shared with the daemon',
+      { cgroupLeafKind: 'orca' as const, daemonSharesCgroup: true }
+    ]
+  ])('does not pin a kill in %s on Orca', (_label, leaf) => {
+    expect(
+      linuxOomKillDetails({ vmstatOomKill: 5, cgroupOomKill: 0 }, 5_000, {
+        vmstatOomKill: 6,
+        cgroupOomKill: 1,
+        ...leaf
+      })
+    ).toMatchObject({
+      linuxOomKillVerdict: 'shared-cgroup-oom-kill',
+      linuxOomKillScope: 'global'
+    })
+  })
+
+  it('treats the cgroup as shared when only the baseline saw the daemon in it', () => {
+    expect(
+      linuxOomKillDetails({ vmstatOomKill: 5, cgroupOomKill: 0, daemonSharesCgroup: true }, 5_000, {
+        vmstatOomKill: 6,
+        cgroupOomKill: 1,
+        cgroupLeafKind: 'orca'
+      })
+    ).toMatchObject({ linuxOomKillVerdict: 'shared-cgroup-oom-kill' })
   })
 
   it('clears Orca when the host counter moved but its readable cgroup counter did not', () => {
