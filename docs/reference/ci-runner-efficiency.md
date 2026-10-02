@@ -1061,7 +1061,7 @@ warnings remained non-fatal. Every full-repository scan passed cleanly.
 Keep the existing production waves. The temporary workflow and 601-line
 benchmark driver were removed after recording this rejected result.
 
-## Native cache ownership: hosted qualification pending
+## Native cache ownership: retain the extraction
 
 Native restoration, toolchain recovery, and preparation now belong to
 `.github/actions/prepare-native-runtime/action.yml`. The installer forwards
@@ -1098,9 +1098,53 @@ native input mutation changes the key, and main warming watches those inputs.
 This policy creates one cold namespace. The bounded 50-head main sample has
 49 adjacent transitions and three native-key changes under both the old and
 expanded policies: the added node-pty helper export still invalidates #24448.
-There is no measured historical net saving. The observed Windows x64 cold
-Node preparation took 118.552 seconds; any saving depends on an actual usable
-cache hit. Hosted cold/warm qualification remains pending.
+There is no measured historical net saving.
+
+The [cold warming run](https://github.com/stablyai/orca/actions/runs/36945655208/attempts/1)
+published all four exact Node keys, and its
+[warm rerun](https://github.com/stablyai/orca/actions/runs/36945655208/attempts/2)
+restored them on fresh runners with the same frozen inputs, Node 24.21.0, and
+pnpm 12.0.0. All five jobs passed in both attempts. These times cover the entire
+native action: runtime validation, key resolution, restore, any toolchain
+recovery, and the unchanged native preparation probes.
+
+| Native Node lane | Cold action | Warm action | Cold post-job save |
+| ---------------- | ----------- | ----------- | ------------------ |
+| Linux x64        | 18.288 s    | 0.993 s     | 0.387 s            |
+| Linux ARM64      | 11.540 s    | 1.062 s     | 1.113 s            |
+| Windows x64      | 104.482 s   | 1.381 s     | 2.424 s            |
+| Windows ARM64    | 256.662 s   | 3.832 s     | 1.243 s            |
+
+Cold Windows jobs rebuilt all three native addons. Warm jobs loaded and probed
+the restored builds; Linux also ran the existing check-only probe before
+skipping the external node-gyp installation. Warm post-job steps recognized
+their primary keys and did not save again. An earlier trial exposed unavailable
+nested composite outputs during post-job saving; both cache variants now use
+the same literal path inventory as the requested output, and the fixed cold
+jobs published their caches without missing-path warnings.
+
+Both [PR package jobs](https://github.com/stablyai/orca/actions/runs/36945659474)
+passed. Windows packaging consumed the same-run Node seed in 1.374 seconds
+before its Node tests and Electron transition. Its Electron cache initially
+missed while the modules were already healthy, so that stage does not establish
+an avoided compilation. Linux's Electron cache was also published, and all 19
+bundled native binaries passed the existing glibc floor check.
+
+The [first six-platform headless run](https://github.com/stablyai/orca/actions/runs/36945658897)
+ran every persistence lane: five passed, while Mac Intel failed waiting for a
+cancel-test worker's ready file before its 500 ms timeout. That lane deliberately
+uses `native-runtime: none`; its separate slot build and smoke passed. The failure
+blocked the five downstream Linux glibc/musl qualifications, so this run does not
+establish complete headless qualification. All six persistence lanes, Node 18
+handoffs, and Linux floor/musl gates remain; final qualification is tracked in
+the [PR's latest checks](https://github.com/stablyai/orca/pull/24476/checks).
+
+These are single cold/warm observations, not paired medians or a measured
+whole-workflow saving. They demonstrate usable exact-key reuse after publication;
+future savings depend on cache availability and unchanged native inputs. The
+trial seeds belong to this PR's merge ref. Other PRs require a main-branch seed
+after merging this new namespace; the existing main push and hourly warming
+jobs provide that seed.
 
 ## Separate mobile install verification: retain the current policy
 
