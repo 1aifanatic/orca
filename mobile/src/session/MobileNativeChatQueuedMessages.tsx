@@ -34,6 +34,8 @@ export type MobileNativeChatQueuedMessagesProps = {
   /** The whole queue's pause: the box's first row, with Resume. */
   pause?: MobileQueuePause
   onResume?: () => Promise<boolean>
+  /** The host refuses every write: the cards stay shown with nothing to press. */
+  disabled?: boolean
 }
 
 /** The host-held queued drafts, as one box of compact rows between transcript and
@@ -44,7 +46,8 @@ export function MobileNativeChatQueuedMessages({
   onDelete,
   onEdit,
   pause,
-  onResume
+  onResume,
+  disabled = false
 }: MobileNativeChatQueuedMessagesProps): React.JSX.Element | null {
   // One in-flight action per card; a second tap must not double-consume. The ref
   // closes the same-frame double tap the disabled state cannot.
@@ -67,7 +70,7 @@ export function MobileNativeChatQueuedMessages({
       setBusyIds(new Set(inFlightRef.current))
     }
   }
-  const resuming = busyIds.has(RESUME_KEY)
+  const resuming = disabled || busyIds.has(RESUME_KEY)
   // A card that drained or was removed while its menu was open closes the menu, for good: a
   // Stop-requeued draft comes back under the same id and must not reopen it.
   const menuCard = cards.find((card) => card.messageId === menuFor)
@@ -103,7 +106,7 @@ export function MobileNativeChatQueuedMessages({
           </View>
         ) : null}
         {cards.map((card, index) => {
-          const busy = busyIds.has(card.messageId)
+          const busy = disabled || busyIds.has(card.messageId)
           const returned = card.state === 'returned'
           // "Steer" submits beside the running turn, the paused queue's cards too; a card whose
           // own send failed, or a returned one, is sent again.

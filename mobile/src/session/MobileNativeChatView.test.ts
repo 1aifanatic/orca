@@ -79,7 +79,7 @@ type Overrides = {
   streaming?: string | null
   sendErrorMessage?: string | null
   onClearSendError?: () => void
-  inputLockReason?: 'disconnected' | 'waiting' | 'read-only' | null
+  inputLockReason?: 'disconnected' | 'waiting' | null
   readOnlyNotice?: string | null
   onSend?: (text: string) => Promise<boolean>
   pending?: Parameters<typeof MobileNativeChatView>[0]['pending']
@@ -679,19 +679,16 @@ describe('MobileNativeChatView', () => {
     }
   })
 
-  it("locks a read-only chat's composer with the host's reason as its placeholder", async () => {
-    vi.useFakeTimers()
-    try {
-      const reason = 'Saved by a newer Orca. Update Orca to continue this chat.'
-      await render({ inputLockReason: 'read-only', readOnlyNotice: reason })
-      await act(async () => {
-        vi.advanceTimersByTime(600)
-      })
+  it("locks a read-only chat's composer at once, with the reason as its placeholder", async () => {
+    const reason = 'Saved by a newer Orca. Update Orca to continue this chat.'
+    await render({
+      readOnlyNotice: reason,
+      structuredActivityUi: true,
+      permission: { title: 'Allow command?', options: [{ label: 'Allow', send: 'allow' }] }
+    })
 
-      expect(composer().props.disabled).toBe(true)
-      expect(composer().props.placeholder).toBe(reason)
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(composer().props).toMatchObject({ disabled: true, readOnly: true, placeholder: reason })
+    const [card] = renderer!.root.findAll((node) => String(node.type) === 'ChatPermission')
+    expect(card?.props.disabled).toBe(true)
   })
 })

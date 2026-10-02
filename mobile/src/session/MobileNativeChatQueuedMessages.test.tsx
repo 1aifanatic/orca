@@ -383,4 +383,19 @@ describe('MobileNativeChatQueuedMessages', () => {
       expect(flatStyle(row.props.style).minHeight).toBeGreaterThanOrEqual(44)
     }
   })
+
+  it('a read-only chat shows its cards with nothing to press', async () => {
+    const mounted = await mount({
+      cards: [card({ messageId: 'draft-1' })],
+      pause: { reason: 'stopped' },
+      onSend: vi.fn(async () => true),
+      onDelete: vi.fn(async () => true),
+      onResume: vi.fn(async () => true),
+      disabled: true
+    })
+    const pressables = mounted.root.findAll((node) => String(node.type) === 'Pressable')
+    expect(pressables.length).toBeGreaterThan(1)
+    expect(pressables.every((pressable) => pressable.props.disabled === true)).toBe(true)
+    expect(texts(mounted)).toContain('text of draft-1')
+  })
 })

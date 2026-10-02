@@ -19,7 +19,8 @@ export function MobileNativeChatPromptCard({
   permission,
   onRespondPermission,
   question,
-  onAnswerQuestion
+  onAnswerQuestion,
+  disabled = false
 }: {
   ask?: AskPrompt | null
   askKey?: string | null
@@ -31,6 +32,8 @@ export function MobileNativeChatPromptCard({
   onRespondPermission?: (send: string) => Promise<boolean>
   question?: MobileChatQuestion | null
   onAnswerQuestion?: (text: string) => Promise<boolean>
+  /** A structured prompt stays shown but not answerable: the host refuses every answer. */
+  disabled?: boolean
 }): React.JSX.Element | null {
   if (ask) {
     return (
@@ -61,6 +64,7 @@ export function MobileNativeChatPromptCard({
         permission={permission}
         onRespond={async (send) => (await onRespondPermission?.(send)) ?? false}
         onCancel={onCancelPrompt}
+        disabled={disabled}
       />
     )
   }
@@ -71,6 +75,7 @@ export function MobileNativeChatPromptCard({
         question={question}
         onAnswer={async (text) => (await onAnswerQuestion?.(text)) ?? false}
         onCancel={onCancelPrompt}
+        disabled={disabled}
       />
     )
   }

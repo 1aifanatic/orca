@@ -162,7 +162,10 @@ export function useMobileStructuredAgentSession(args: {
     () => projectStructuredAgentSessionMessages(state.items, [], state.submissions),
     [state.items, state.submissions]
   )
-  const turnId = activeStructuredAgentSessionTurnId(state.items)
+  // The one fact every write control reads: why the host refuses writes here, or none.
+  const readOnlyNotice = mobileReadOnlyNotice(state.readOnly)
+  // A read-only host projects no turn (structured-agent-session-status-journal-projection.ts).
+  const turnId = readOnlyNotice ? null : activeStructuredAgentSessionTurnId(state.items)
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
@@ -225,9 +228,11 @@ export function useMobileStructuredAgentSession(args: {
       hasMore: state.hasOlder,
       loadingEarlier: loadingOlder,
       loadEarlier,
-      readOnlyNotice: mobileReadOnlyNotice(state.readOnly)
+      readOnlyNotice
     },
-    isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+    isWorking:
+      !readOnlyNotice &&
+      isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
     turnId,
     turnIndicator,
     ...turnTiming,

@@ -32,7 +32,16 @@ function snapshot(readOnly?: 'written-by-newer-orca'): AgentSessionSubscribeEven
     epoch: 'epoch-1',
     fence: 3,
     direction: 'tail',
-    items: [],
+    // A turn that opened and never settled, as a read-only host leaves it.
+    items: [
+      {
+        itemId: 'turn-1',
+        revision: 1,
+        sequence: 1,
+        observedAt: 1,
+        body: { kind: 'turn', turnId: 'turn-1', state: 'running' }
+      }
+    ],
     removedItemIds: [],
     submissions: [],
     window: { oldest: null, newest: null, nextCursor: { epoch: 'epoch-1', sequence: 0 } },
@@ -81,15 +90,17 @@ afterEach(() => {
   hook = null
 })
 
-it("words the host's read-only reason on the phone, and drops it when the host takes writes again", async () => {
+it("words the host's read-only reason on the phone with no turn or work, until the host takes writes", async () => {
   act(() => {
     renderer = create(createElement(Harness))
   })
   await vi.waitFor(() => expect(listener).not.toBeNull())
   act(() => listener?.(snapshot('written-by-newer-orca')))
   expect(hook?.session.readOnlyNotice).toBe(NOTICE)
+  expect(hook).toMatchObject({ turnId: null, isWorking: false })
   act(() => listener?.(snapshot()))
   expect(hook?.session.readOnlyNotice).toBeNull()
+  expect(hook).toMatchObject({ turnId: 'turn-1', isWorking: true })
 })
 
 function overlayElement(
@@ -153,20 +164,26 @@ function chatViewProps(element: ReturnType<typeof createElement>): Record<string
   return props
 }
 
-it('locks the phone composer with the reason as its placeholder, with no prompt card to answer', () => {
-  expect(chatViewProps(overlayElement(NOTICE))).toMatchObject({
-    inputLockReason: 'read-only',
+/** The queued cards the overlay hands the chat view. */
+function queuedCardsProps(props: Record<string, unknown>): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay builds this slot with useMobileNativeChatQueuedSlot, whose `cards` is one element.
+  return (props.queuedSlot as { cards: { props: Record<string, unknown> } }).cards.props
+}
+
+it("hands the session's one read-only fact to the chat view: prompts shown, queued cards inert", () => {
+  const readOnly = chatViewProps(overlayElement(NOTICE))
+  expect(readOnly).toMatchObject({
+    inputLockReason: null,
     readOnlyNotice: NOTICE,
-    question: null,
-    permission: null,
+    question: { id: 'question-1' },
+    permission: { id: 'permission-1' },
     composerText: 'a draft'
   })
+  expect(queuedCardsProps(readOnly)).toMatchObject({ disabled: true })
   expect(chatViewProps(overlayElement(NOTICE, 'disconnected'))).toMatchObject({
     inputLockReason: 'disconnected'
   })
-  expect(chatViewProps(overlayElement(null))).toMatchObject({
-    inputLockReason: null,
-    question: { id: 'question-1' },
-    permission: { id: 'permission-1' }
-  })
+  const writable = chatViewProps(overlayElement(null))
+  expect(writable).toMatchObject({ inputLockReason: null, readOnlyNotice: null })
+  expect(queuedCardsProps(writable)).toMatchObject({ disabled: false })
 })

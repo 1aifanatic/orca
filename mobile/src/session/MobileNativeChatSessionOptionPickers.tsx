@@ -33,19 +33,24 @@ export type MobileNativeChatSessionOptionPickersProps = {
    *  window would be submitted as part of the user's prompt. The composer blocks
    *  the reverse direction on `pendingId`; this is the same guard mirrored. */
   sendInFlight?: boolean
+  /** The host refuses every change: the pill stays shown, shut. */
+  locked?: boolean
 }
 
 /** Combined model/session-option trigger and its mobile bottom drawer. */
 export function MobileNativeChatSessionOptionPickers({
   controller,
   isWorking,
-  sendInFlight = false
+  sendInFlight = false,
+  locked = false
 }: MobileNativeChatSessionOptionPickersProps): React.JSX.Element | null {
   const [openDescriptorId, setOpenDescriptorId] = useState<string | null>(null)
   const [lastRequest, setLastRequest] = useState(controller.optionPickerRequest)
   if (controller.optionPickerRequest && lastRequest !== controller.optionPickerRequest) {
     setLastRequest(controller.optionPickerRequest)
-    setOpenDescriptorId(controller.optionPickerRequest.id)
+    if (!locked) {
+      setOpenDescriptorId(controller.optionPickerRequest.id)
+    }
   }
   const { snapshot, pendingId } = controller
   const model = snapshot.find((descriptor) => descriptor.category === 'model')
@@ -53,7 +58,7 @@ export function MobileNativeChatSessionOptionPickers({
   if (!model) {
     return null
   }
-  const disabled = isWorking || pendingId !== null || sendInFlight
+  const disabled = locked || isWorking || pendingId !== null || sendInFlight
   const activeDescriptor = snapshot.find((descriptor) => descriptor.id === openDescriptorId)
   const modelView = activeDescriptor?.id === model.id
   const modelLabel = mobileModelPillLabel(model)

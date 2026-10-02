@@ -11,13 +11,17 @@ import type { MobileChatPermission } from './mobile-native-chat-permission'
 function MobileNativeChatPermissionImpl({
   permission,
   onRespond,
-  onCancel
+  onCancel,
+  disabled = false
 }: {
   permission: MobileChatPermission
   onRespond: (send: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
+  /** Shown but not answerable: the host refuses every answer. */
+  disabled?: boolean
 }): React.JSX.Element {
-  const [submitting, setSubmitting] = useState(false)
+  const [inFlight, setSubmitting] = useState(false)
+  const submitting = inFlight || disabled
   const submittingRef = useRef(false)
   const hasContext = Boolean(
     permission.description ||
@@ -114,7 +118,8 @@ function MobileNativeChatPermissionImpl({
               style={({ pressed }) => [
                 styles.option,
                 isPrimary ? styles.optionPrimary : styles.optionSecondary,
-                pressed && !submitting && styles.optionPressed
+                pressed && !submitting && styles.optionPressed,
+                disabled && styles.disabled
               ]}
               hitSlop={6}
               onPress={() => respond(option.send)}
@@ -211,6 +216,9 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.7
+  },
+  disabled: {
+    opacity: 0.5
   },
   optionText: {
     color: colors.textPrimary,

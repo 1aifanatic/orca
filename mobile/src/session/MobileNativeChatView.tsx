@@ -310,7 +310,9 @@ export function MobileNativeChatView({
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
   const showLoading = status === 'loading' && messages.length === 0
 
-  const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
+  // A read-only lock lasts, so it needs no settling; a transport lock outranks it.
+  const lockReason =
+    useSettledMobileNativeChatInputLock(inputLockReason) ?? (readOnlyNotice ? 'read-only' : null)
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
@@ -392,6 +394,7 @@ export function MobileNativeChatView({
         onRespondPermission={onRespondPermission}
         question={question}
         onAnswerQuestion={onAnswerQuestion}
+        disabled={readOnlyNotice !== null}
       />
       <View style={styles.chromeRow}>
         <View style={styles.chromeLeft}>
@@ -452,14 +455,13 @@ export function MobileNativeChatView({
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
         disabled={lockReason !== null}
+        readOnly={lockReason === 'read-only'}
         placeholder={
           lockReason === 'disconnected'
             ? 'Reconnecting…'
             : lockReason === 'waiting'
               ? 'Waiting for terminal…'
-              : lockReason === 'read-only' && readOnlyNotice
-                ? readOnlyNotice
-                : 'Message, @files, /commands'
+              : (readOnlyNotice ?? 'Message, @files, /commands')
         }
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}

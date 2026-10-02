@@ -53,7 +53,7 @@ export function MobileNativeChatOverlay({
   keyboardInset
 }: Props): React.JSX.Element | null {
   const session = controller.nativeChatSession
-  // A read-only chat refuses every write: its composer locks and says why, and no prompt card shows.
+  // The session's one read-only fact: every write control below reads it.
   const readOnlyNotice = session.readOnlyNotice ?? null
   const folded = useMemo(() => foldMobileNativeChatMessages(session.messages), [session.messages])
   const streaming = useMobileNativeChatStreamingBubble(
@@ -70,7 +70,8 @@ export function MobileNativeChatOverlay({
     onEdit: queued.edit,
     pause: queued.pause,
     onResume: queued.resume,
-    sessionKey: queued.sessionKey
+    sessionKey: queued.sessionKey,
+    disabled: readOnlyNotice !== null
   })
   if (!controller.showNativeChat) {
     return null
@@ -98,9 +99,9 @@ export function MobileNativeChatOverlay({
         onAnswerAsk={controller.handleNativeChatAnswerAsk}
         onCancelAsk={controller.handleNativeChatCancelAsk}
         onCancelPrompt={controller.handleNativeChatCancelPrompt}
-        question={readOnlyNotice ? null : controller.nativeChatQuestion}
+        question={controller.nativeChatQuestion}
         onAnswerQuestion={controller.handleNativeChatQuestionAnswer}
-        permission={readOnlyNotice ? null : controller.nativeChatPermission}
+        permission={controller.nativeChatPermission}
         onRespondPermission={controller.handleNativeChatRespondPermission}
         queuedSlot={queuedSlot}
         onOpenFile={onOpenFile}
@@ -124,7 +125,7 @@ export function MobileNativeChatOverlay({
         dictationMode={dictationMode}
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
-        inputLockReason={inputLockReason ?? (readOnlyNotice ? 'read-only' : null)}
+        inputLockReason={inputLockReason}
         sendErrorMessage={sendErrorMessage}
         onClearSendError={onClearSendError}
         readOnlyNotice={readOnlyNotice}

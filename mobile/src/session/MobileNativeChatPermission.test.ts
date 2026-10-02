@@ -145,4 +145,22 @@ describe('MobileNativeChatPermission', () => {
     expect(content.findAllByProps({ children: 'raw json that must not be shown' })).toHaveLength(0)
     expect(actions.findAllByProps({ children: 'Approve plan' })).toHaveLength(1)
   })
+
+  it('a disabled card shows the request with nothing to press', async () => {
+    const onRespond = vi.fn(async () => true)
+    const onCancel = vi.fn(async () => true)
+    await act(async () => {
+      renderer = create(
+        createElement(MobileNativeChatPermission, {
+          permission: { title: 'Approve?', options: [{ label: 'Allow', send: '1' }] },
+          onRespond,
+          onCancel,
+          disabled: true
+        })
+      )
+    })
+    const pressables = renderer!.root.findAllByType('Pressable')
+    expect(pressables.length).toBe(2)
+    expect(pressables.every((pressable) => pressable.props.disabled === true)).toBe(true)
+  })
 })

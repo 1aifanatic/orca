@@ -691,4 +691,49 @@ describe('MobileNativeChatComposer', () => {
 
     expect(Keyboard.dismiss).not.toHaveBeenCalled()
   })
+
+  it('a read-only lock keeps the field uneditable and the option pickers and dictation shut', async () => {
+    const controller = {
+      snapshot: [
+        {
+          id: 'model',
+          label: 'Model',
+          category: 'model' as const,
+          kind: { type: 'select' as const, choices: [{ value: 'opus', label: 'Opus 4.8' }] },
+          valueSource: 'unknown' as const,
+          settable: true
+        }
+      ],
+      pendingId: null,
+      setOption: vi.fn(),
+      invokeAction: vi.fn(),
+      recordCommand: vi.fn()
+    }
+    await act(async () => {
+      renderer = create(
+        createElement(MobileNativeChatComposer, {
+          value: '',
+          onChangeText: vi.fn(),
+          onSend: vi.fn(async () => true),
+          sendSurfaceId: 'tab-a',
+          getSendCompletionGeneration: getCurrentSendCompletionGeneration,
+          sessionOptions: { isWorking: false, controller },
+          onMicPress: vi.fn(),
+          disabled: true,
+          readOnly: true,
+          placeholder: 'Saved by a newer Orca.'
+        })
+      )
+    })
+    const pressable = (label: string) =>
+      renderer!.root.find(
+        (node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === label
+      )
+    expect(renderer!.root.find((node) => String(node.type) === 'TextInput').props).toMatchObject({
+      editable: false,
+      placeholder: 'Saved by a newer Orca.'
+    })
+    expect(pressable('Model, Model').props.accessibilityState.disabled).toBe(true)
+    expect(pressable('Dictate').props.disabled).toBe(true)
+  })
 })
