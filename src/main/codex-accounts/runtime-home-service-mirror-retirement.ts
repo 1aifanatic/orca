@@ -4,6 +4,7 @@ import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from '../code
 import { writeFileAtomicallyIfUnchanged } from './fs-utils'
 import { isLegacySharedMcpCredentialsClaimedByManagedAccount } from './legacy-shared-auth-migration'
 import { carryRetiredMirror, RETIRED_MIRROR_CARRY_MARKER } from './retired-mirror-carry'
+import { copyFileIfAbsent } from './retired-mirror-home-files'
 import { CodexRuntimeHomeAuthSync } from './runtime-home-service-auth-sync'
 
 export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeAuthSync {
@@ -40,11 +41,15 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
     const systemHomePath = getSystemCodexHomePath()
     const seededAuth = provenance.provenance.authJson
     const systemAuth = this.readSystemDefaultAuth()
-    // Why: MCP tokens carry no account of their own, so they follow only into
-    // a ~/.codex still logged into the mirror's account, or into none yet.
+    const runtimeAuthPath = this.getRuntimeAuthPath()
+    const runtimeAuth = existsSync(runtimeAuthPath) ? readFileSync(runtimeAuthPath, 'utf-8') : null
+    // Why: MCP tokens carry no account of their own, so they follow only into a
+    // ~/.codex logged into the account the mirror's panes use, or into none yet.
+    const mirrorAccountAuth = runtimeAuth ?? seededAuth
     const sameAccount =
       systemAuth === null ||
-      (seededAuth !== null && this.runtimeAuthMatchesSystemDefaultIdentity(systemAuth, seededAuth))
+      (mirrorAccountAuth !== null &&
+        this.runtimeAuthMatchesSystemDefaultIdentity(systemAuth, mirrorAccountAuth))
     if (
       sameAccount &&
       !isLegacySharedMcpCredentialsClaimedByManagedAccount(this.getRuntimeMetadataDir())
@@ -54,8 +59,6 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
         join(systemHomePath, '.credentials.json')
       )
     }
-    const runtimeAuthPath = this.getRuntimeAuthPath()
-    const runtimeAuth = existsSync(runtimeAuthPath) ? readFileSync(runtimeAuthPath, 'utf-8') : null
     if (
       runtimeAuth === null ||
       runtimeAuth === seededAuth ||
@@ -75,14 +78,5 @@ export abstract class CodexRuntimeHomeMirrorRetirement extends CodexRuntimeHomeA
       this.persistSharedRuntimeAuthProvenance({ owner: 'system-default', authJson: runtimeAuth })
     }
     return true
-  }
-}
-
-// Why all or nothing: a store ~/.codex already has, in any form, is the user's.
-function copyFileIfAbsent(sourcePath: string, targetPath: string): void {
-  if (existsSync(sourcePath) && !existsSync(targetPath)) {
-    writeFileAtomicallyIfUnchanged(targetPath, null, readFileSync(sourcePath, 'utf-8'), {
-      mode: 0o600
-    })
   }
 }
