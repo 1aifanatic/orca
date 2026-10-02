@@ -515,7 +515,10 @@ describe('claude structured launch resolution', () => {
       // account shape a person can change.
       const refused = resolve({ identity: identityAt('leaf-current') })
       await expect(refused).rejects.toBeInstanceOf(AgentSessionPreSpawnError)
-      await expect(refused).rejects.toMatchObject({ reason: 'managedAccountUnsupported' })
+      await expect(refused).rejects.toMatchObject({
+        reason: 'managedAccountUnsupported',
+        needsUser: true
+      })
     })
 
     it('fails closed when the account state cannot be read, naming no situation', async () => {
@@ -563,7 +566,10 @@ describe('a Claude CLI the host cannot find', () => {
       await expect(
         open({ PATH: join(root, 'bin'), HOME: join(root, 'home') }).opened
       ).rejects.toSatisfy(
-        (error) => error instanceof AgentSessionPreSpawnError && error.reason === 'providerMissing'
+        (error) =>
+          error instanceof AgentSessionPreSpawnError &&
+          error.reason === 'providerMissing' &&
+          error.needsUser
       )
     }
   )

@@ -387,18 +387,18 @@ describe('a start the chat needed and did not get', () => {
       }
     ],
     [
-      'auth',
+      'missing CLI',
       () =>
         acquire.mockRejectedValueOnce(
-          new AgentSessionPreSpawnError(new Error('Not logged in. Please run /login.'))
+          new AgentSessionPreSpawnError(new Error('codex is not on PATH'), {
+            reason: 'providerMissing',
+            needsUser: true
+          })
         ),
       {
-        // No process ever started, so nothing says the provider stopped.
-        text: "Codex couldn't restart. Send your message to try again.",
-        failure: {
-          kind: 'restartFailed',
-          refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
-        }
+        // Refused before spawn for a reason only the person can clear: not tried again.
+        text: "Codex isn't installed. Install it, then send your message again.",
+        failure: { kind: 'providerMissing' }
       }
     ]
   ])(

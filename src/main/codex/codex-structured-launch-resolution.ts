@@ -142,7 +142,7 @@ export async function openCodexStructuredChild(
   if (isCliCommandMissing('codex', launch.command, spawnEnv)) {
     throw new AgentSessionPreSpawnError(
       new Error('codex is not on PATH or in the usual install directories'),
-      { reason: 'providerMissing' }
+      { reason: 'providerMissing', needsUser: true }
     )
   }
   return openCodexAppServerConnection(launch, ...rest)

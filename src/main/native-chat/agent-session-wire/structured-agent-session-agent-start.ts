@@ -29,6 +29,7 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import { attachStructuredAgentSessionUnderSerialize } from './structured-agent-session-attach-orchestration'
 import type { AgentSessionMutationSessionPreparation } from './structured-agent-session-mutation-admission'
 import { failedCreateRefusal } from './structured-agent-session-failed-create-refusal'
+import { isAgentSessionPreSpawnError } from './structured-agent-session-adapter'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import { startFailureRefusalReason } from './structured-agent-session-failure-text'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -51,6 +52,10 @@ export type StructuredAgentSessionResumeOutcome =
       /** What the provider said about the failed start, for the chat's own record; host-side
        *  only, never on the refusal. */
       diagnostic?: ProviderDiagnostic
+      /** Refused before any provider process was spawned for it: Orca tries it again on its own,
+       *  unless the site that refused said only the person can clear it. Absent: the start ran,
+       *  or may have, and the person retries it. Host-side only. */
+      beforeSpawn?: { needsUser: boolean }
     }
 
 /** The attach's caller key: the ledger row a start settles is Orca's own. */
@@ -119,11 +124,15 @@ export async function ensureStructuredAgentSessionAgent(
   if (!started.ok || context.sessions.get(sessionId)?.child) {
     return started
   }
-  return refuseResume(
-    'agent_session_ownership_unknown',
-    { reason: 'noProviderChild' },
-    'The session attached without a provider child to write to.'
-  )
+  // The attach ran, so this is not a refusal from before spawn.
+  return {
+    ok: false,
+    refusal: refuse(
+      'agent_session_ownership_unknown',
+      { reason: 'noProviderChild' },
+      'The session attached without a provider child to write to.'
+    )
+  }
 }
 
 /** The same, for an operation's admission: a start that throws is that operation's refusal. A child
@@ -188,19 +197,21 @@ async function startStructuredAgentSessionAgent(
   // the lease the resolver handed back.
   const unreconciled = await context.reconcileLeases(sessionId)
   if (unreconciled) {
-    return { ok: false, refusal: unreconciled }
+    return { ok: false, refusal: unreconciled, beforeSpawn: { needsUser: false } }
   }
   await context.runtimeState.resolveRecovery(sessionId)
   const record = context.deps.store.getRecord(sessionId)
+  // Neither is a start refused: this host cannot run the chat at all, so no later try could land,
+  // and the words send the person to a new chat.
   if (!record) {
-    return refuseResume(
+    return refuseUnstartable(
       'agent_session_identity_required',
       { reason: 'recordMissing' },
       'No structured session exists by that id.'
     )
   }
   if (!adapterSupportsRecord(context.deps.adapter, record)) {
-    return refuseResume(
+    return refuseUnstartable(
       'structured_agent_session_unsupported',
       { reason: 'hostUnsupported' },
       'This execution host cannot resume the requested structured agent session.'
@@ -254,15 +265,31 @@ async function startStructuredAgentSessionAgent(
     }
     throw error
   }
-  return attached.ok ? { ok: true } : withDiagnostic(attached.refusal, acquisitionError)
+  // Refused before any acquisition, the attach's own refusal is from before spawn too.
+  return attached.ok
+    ? { ok: true }
+    : withDiagnostic(attached.refusal, acquisitionError, acquisitionError === undefined)
 }
 
+/** The refusal of a start, from where it failed: a pre-spawn error says so, and whether only the
+ *  person can clear it, where it was thrown. */
 function withDiagnostic(
   refusal: AgentSessionWireRefusal,
-  error: unknown
+  error: unknown,
+  refusedBeforeAcquiring = false
 ): StructuredAgentSessionResumeOutcome {
   const diagnostic = providerDiagnosticOf(error)
-  return { ok: false, refusal, ...(diagnostic ? { diagnostic } : {}) }
+  const beforeSpawn = isAgentSessionPreSpawnError(error)
+    ? { needsUser: error.needsUser }
+    : refusedBeforeAcquiring
+      ? { needsUser: false }
+      : undefined
+  return {
+    ok: false,
+    refusal,
+    ...(diagnostic ? { diagnostic } : {}),
+    ...(beforeSpawn ? { beforeSpawn } : {})
+  }
 }
 
 function settledResumeRefusal(
@@ -290,7 +317,16 @@ function settledResumeRefusal(
   )
 }
 
+/** A start refused before anything was spawned for it. */
 function refuseResume<C extends AgentSessionWireRefusalCode>(
+  code: C,
+  details: NoInfer<AgentSessionRefusalDetailsByCode[C]>,
+  message: string
+): StructuredAgentSessionResumeOutcome {
+  return { ok: false, refusal: refuse(code, details, message), beforeSpawn: { needsUser: false } }
+}
+
+function refuseUnstartable<C extends AgentSessionWireRefusalCode>(
   code: C,
   details: NoInfer<AgentSessionRefusalDetailsByCode[C]>,
   message: string

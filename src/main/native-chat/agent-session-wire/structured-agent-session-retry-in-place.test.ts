@@ -87,7 +87,8 @@ function startHost(): void {
 
 function notInstalled(): AgentSessionPreSpawnError {
   return new AgentSessionPreSpawnError(new Error('codex not installed'), {
-    reason: 'providerMissing'
+    reason: 'providerMissing',
+    needsUser: true
   })
 }
 

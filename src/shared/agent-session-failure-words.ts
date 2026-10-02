@@ -24,7 +24,7 @@ import {
   type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
-import { START_REFUSAL_STAGE } from './agent-session-start-resumability'
+import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import { joinSentences } from './sentence-joining'
 import {
   DISPATCH_REJECTED_CANCELLED,
@@ -68,6 +68,29 @@ export type AgentSessionFailureWordsContext = {
   /** Orca starts it again on its own, so the words leave out even when to try again. Implies
    *  `retryControl`. */
   orcaRetries?: boolean
+}
+
+/**
+ * Whether a refused start leaves the chat anything to start again from. `false`: this host has
+ * nothing to restart it from — no record, or none it can run — so only a new chat continues.
+ * A new wire code does not compile until it is classified here.
+ */
+export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolean> = {
+  execution_owner_reconciling: true,
+  agent_session_conflict: true,
+  agent_session_checkpoint_stale: true,
+  agent_session_ownership_unknown: true,
+  agent_session_operation_capacity: true,
+  structured_agent_session_unsupported: false,
+  agent_session_operation_conflict: true,
+  agent_session_operation_expired: true,
+  agent_session_operation_invalid: true,
+  agent_session_operation_unknown: true,
+  agent_session_item_revision_stale: true,
+  agent_session_already_resolved: true,
+  agent_session_identity_required: false,
+  agent_session_journal_unreadable: true,
+  agent_session_owner_restart_failed: true
 }
 
 /** Person-facing provider text is quoted, but bounded so the sentence stays one. */
@@ -127,7 +150,7 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
     }
     const code = fact.refusal?.code
     return joinSentences(
-      code && START_REFUSAL_STAGE[code] === 'newChat'
+      code && !START_REFUSAL_RESUMABLE[code]
         ? [failed, say('startNewChat')]
         : [failed, ...startRetry(say, context)]
     )

@@ -11,60 +11,13 @@ import {
 
 const FAILED_AT = 1_000
 
+// Which start is tried again is decided where it failed (see the start-failure writer's tests);
+// this is only when.
 describe('when a message whose agent start failed is tried again', () => {
-  it('waits 15 s, 1 min and 5 min after a start refused before it ran, then is done trying', () => {
-    const beforeHandoff = { kind: 'accountSwitchInProgress' } as const
+  it('waits 15 s, 1 min and 5 min, then is done trying', () => {
     expect(
-      [1, 2, 3, 4].map((attempts) =>
-        structuredAgentSessionStartRetryAt(beforeHandoff, attempts, FAILED_AT)
-      )
+      [1, 2, 3, 4].map((attempts) => structuredAgentSessionStartRetryAt(attempts, FAILED_AT))
     ).toEqual([FAILED_AT + 15_000, FAILED_AT + 60_000, FAILED_AT + 300_000, null])
-  })
-
-  it.each([
-    ['an account switch in progress', { kind: 'accountSwitchInProgress' }],
-    [
-      'an owner still being reconciled',
-      { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } }
-    ],
-    [
-      'another operation in the way',
-      { kind: 'startFailed', refusal: { code: 'agent_session_operation_conflict' } }
-    ]
-  ] as const)('tries again a start refused before it ran by %s', (_situation, fact) => {
-    expect(structuredAgentSessionStartRetryAt(fact, 1, FAILED_AT)).toBe(FAILED_AT + 15_000)
-  })
-
-  it.each([
-    ['exited while starting', { kind: 'providerStartFailed' }],
-    ['failed to start here', { kind: 'startFailed' }],
-    [
-      'failed its acquisition',
-      { kind: 'restartFailed', refusal: { code: 'agent_session_operation_invalid' } }
-    ],
-    [
-      'could not prove its process gone',
-      { kind: 'restartFailed', refusal: { code: 'agent_session_ownership_unknown' } }
-    ],
-    ['stopped by Orca after it hung', { kind: 'hostStopped' }],
-    ['ended before it took the message', { kind: 'providerExited' }],
-    ["Orca's own fault", { kind: 'hostFault' }]
-  ] as const)('is done at once, for the Retry, when the start %s', (_situation, fact) => {
-    expect(structuredAgentSessionStartRetryAt(fact, 1, FAILED_AT)).toBeNull()
-  })
-
-  it.each([
-    ['signed out', { kind: 'notSignedIn' }],
-    ['not installed', { kind: 'providerMissing' }],
-    ['a launch setting to remove', { kind: 'managedAccountEnvOverride' }],
-    ['an account Claude chats cannot use', { kind: 'managedAccountUnsupported' }],
-    ['too much history to restore', { kind: 'historyTooLarge' }],
-    [
-      'a host with nothing to restart from',
-      { kind: 'restartFailed', refusal: { code: 'structured_agent_session_unsupported' } }
-    ]
-  ] as const)('is done at once when %s: only the person can clear it', (_situation, fact) => {
-    expect(structuredAgentSessionStartRetryAt(fact, 1, FAILED_AT)).toBeNull()
   })
 })
 

@@ -901,7 +901,7 @@ describe('what waits on a message whose start failed', () => {
     }
   })
 
-  it('reads as failed, not working, in every session list while it waits', async () => {
+  it('reads as neither failed nor working in any session list while it waits', async () => {
     const statuses: { status: unknown; turnOutcome?: unknown }[] = []
     host.subscribeStatus({
       id: 'list-1',
@@ -918,8 +918,7 @@ describe('what waits on a message whose start failed', () => {
       expect((await submission(queued))?.startRetry).toMatchObject({ attempts: 1 })
     )
 
-    await eventually(() =>
-      expect(statuses.at(-1)).toMatchObject({ status: 'idle', turnOutcome: 'failure' })
-    )
+    await eventually(() => expect(statuses.at(-1)).toMatchObject({ status: 'idle' }))
+    expect(statuses.at(-1)).not.toHaveProperty('turnOutcome')
   })
 })

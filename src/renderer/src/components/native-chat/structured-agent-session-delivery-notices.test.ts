@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  AGENT_SESSION_FAILURE_KINDS,
   isSubmissionRejectionFact,
   readWholeAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../../shared/agent-session-failure'
-import {
-  isResumableStartFailure,
-  START_REFUSAL_STAGE
-} from '../../../../shared/agent-session-start-resumability'
+import { AGENT_SESSION_WIRE_REFUSAL_CODES } from '../../../../shared/agent-session-wire-refusals'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
@@ -656,20 +652,21 @@ describe('the notice on a message whose agent start failed', () => {
     }
   )
 
+  // Orca tries again any start refused before spawn whose refusing site did not say only the person
+  // can clear it: the account switch, or a start or restart refused with any code.
   it('never tells the person to try again while Orca will, for any start Orca tries again', () => {
-    const codes = Object.entries(START_REFUSAL_STAGE).flatMap(([code, stage]) =>
-      stage === 'beforeHandoff' ? [code] : []
-    )
     const facts = [
       { kind: 'accountSwitchInProgress' } satisfies AgentSessionFailureFact,
-      ...AGENT_SESSION_FAILURE_KINDS.flatMap((kind) =>
-        codes.map((code) => readWholeAgentSessionFailureFact({ kind, refusal: { code } }))
+      ...(['startFailed', 'restartFailed'] as const).flatMap((kind) =>
+        AGENT_SESSION_WIRE_REFUSAL_CODES.map((code) =>
+          readWholeAgentSessionFailureFact({ kind, refusal: { code } })
+        )
       )
     ].filter(
       (fact): fact is AgentSessionFailureFact =>
-        fact !== undefined && isSubmissionRejectionFact(fact) && isResumableStartFailure(fact)
+        fact !== undefined && isSubmissionRejectionFact(fact)
     )
-    expect(facts.length).toBeGreaterThan(codes.length)
+    expect(facts.length).toBe(1 + 2 * AGENT_SESSION_WIRE_REFUSAL_CODES.length)
     for (const fact of facts) {
       const [text] = Object.values(texts([], [retrying('mine', fact)]))
       expect(text?.endsWith(' Orca will try again shortly.')).toBe(true)

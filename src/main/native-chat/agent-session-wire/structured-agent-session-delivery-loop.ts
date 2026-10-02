@@ -108,13 +108,14 @@ export class StructuredAgentSessionDeliveryLoop {
           continue
         }
         if (!prepared.ok) {
-          const { refusal, diagnostic, startedFor } = prepared
+          const { refusal, diagnostic, beforeSpawn, startedFor } = prepared
           // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
           const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
           const cause = {
             refusal,
             ...(diagnostic ? { diagnostic } : {}),
-            ...(newSession ? { newSession: true as const } : {})
+            ...(newSession ? { newSession: true as const } : {}),
+            ...(beforeSpawn ? { beforeSpawn } : {})
           }
           await this.deps.serialize(sessionId, () => this.refused(sessionId, cause, startedFor))
           continue
