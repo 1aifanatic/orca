@@ -387,6 +387,28 @@ it('sends after a proven exit whose resume-point write and lease release both fa
   await resumedWith(connection, 'Carry on.')
 })
 
+// A crash's reason can carry kilobytes of stderr; the release a start re-derives must still land.
+it('sends after a crash with a long reason whose own lease release failed', async () => {
+  const connection = claude.connections[0]!
+  const transition = store.transitionHandoff.bind(store)
+  vi.spyOn(store, 'transitionHandoff')
+    .mockImplementationOnce(async () => {
+      throw new Error('store unavailable')
+    })
+    .mockImplementation(transition)
+
+  connection.handlers.onExit?.(
+    new Error(`claude stream-json exited (code 1): ${'stack frame\n'.repeat(700)}`)
+  )
+  await eventually(() => expect(child()).toBeNull())
+  await eventually(() => expect(scopes()).toContain('exit-owner-release'))
+  expect(lease()?.claimStatus).toBe('live')
+
+  await send('Carry on.')
+  await resumedWith(connection, 'Carry on.')
+  expect(scopes()).not.toContain('ended-child-lease-release')
+})
+
 it('rejects a message whose start meets a close still unverifiable, and starts nothing beside it', async () => {
   const connection = await stopWithUnprovenClose(2)
 

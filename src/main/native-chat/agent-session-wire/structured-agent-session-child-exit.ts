@@ -19,7 +19,6 @@ import {
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import {
   captureUnfinishedStructuredAgentSessionWork,
-  MAX_UNEXPECTED_EXIT_REASON_CHARS,
   settleStructuredAgentSessionDeadGeneration,
   type DeadGenerationJournal,
   unfinishedStructuredAgentSessionWorkWasInterrupted
@@ -182,7 +181,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
         expectedFence: child.fence,
         now: context.now(),
         exitObservedAt: observedAt,
-        exitReason: exit.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
+        exitReason: exit.reason
       })
       released = true
     } catch (error) {
