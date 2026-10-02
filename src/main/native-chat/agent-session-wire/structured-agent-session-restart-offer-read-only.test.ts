@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { AgentSessionJournalError } from '../agent-session-journal/journal-write-guards'
 import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
 import {
   HOST_TEST_NOW as NOW,
@@ -48,4 +49,25 @@ it('keeps a failure already filed for a chat that is now read-only, but does not
   expect(await host.restartResume.listFailures()).toMatchObject([
     { sessionId: SESSION, retryable: true }
   ])
+})
+
+// The journal latches after the offer was listed: the refusal is filed with its newer-Orca reason,
+// and while the chat stays read-only it is not shown.
+it('files a newer-Orca refusal with its reason, and does not show it while read-only', async () => {
+  const { host, root } = await interruptedRestart()
+  await host.restartResume.list()
+  vi.spyOn(AgentSessionJournal.prototype, 'appendSubmission').mockRejectedValue(
+    new AgentSessionJournalError('journal_read_only', 'a newer Orca wrote this journal')
+  )
+
+  await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect(await new AgentSessionRecoveryCapsule(root).listFailed(NOW)).toMatchObject([
+    {
+      reason: 'agent_session_journal_unreadable',
+      details: { reason: 'journalWrittenByNewerOrca' }
+    }
+  ])
+  journalsReadOnly()
+  expect(await host.restartResume.listFailures()).toEqual([])
 })
