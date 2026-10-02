@@ -76,7 +76,6 @@ vi.mock('../providers/windows-pty-job-membership', () => ({
 
 import { createPtySubprocess } from './pty-subprocess'
 import { mockPtyProcess, useDaemonPtySubprocessEnv } from './pty-subprocess-test-harness'
-import { CODEX_CMD_HOOK_FLAG_MACRO_COMMAND } from '../codex/codex-cmd-hook-flag-gate'
 
 const POWERSHELL_OSC133_COMMAND_ARGS = ['-NoLogo', '-NoExit', '-EncodedCommand', expect.any(String)]
 const CODEX_LAUNCH_PREFLIGHT = 'C:\\Program Files\\Orca\\orca.exe'
@@ -235,7 +234,7 @@ describe('createPtySubprocess', () => {
       'cmd.exe',
       [
         '/K',
-        `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1`
+        'chcp 65001 > nul & if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1'
       ],
       expect.objectContaining({
         env: expect.objectContaining({ ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE: '"' })
@@ -301,7 +300,7 @@ describe('createPtySubprocess', () => {
       'cmd.exe',
       [
         '/K',
-        `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1`
+        'chcp 65001 > nul & if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1'
       ],
       expect.any(Object)
     )

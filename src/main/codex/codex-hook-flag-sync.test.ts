@@ -7,9 +7,7 @@ import {
   mkdtempSync,
   readdirSync,
   realpathSync,
-  renameSync,
   rmSync,
-  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -65,7 +63,6 @@ import {
   getManagedCommand,
   getManagedScriptPath
 } from './codex-hook-definition'
-import { getCodexCmdHookFlagGatePath } from './codex-cmd-hook-flag-gate'
 import {
   getCodexHookFlagTablePath,
   publishCodexHookFlagEntry,
@@ -415,77 +412,6 @@ describe('syncCodexHookFlags', () => {
     expect(entryFor('codex-cli 0.150.1')).not.toBeNull()
   })
 
-  // Why AL2: the first launch after an update otherwise runs its whole session without status.
-  it("publishes an updated codex's entry with no launch, when its folder changes", async () => {
-    const real = writeBinary(join(root, 'lib', 'codex', 'codex.js'))
-    rmSync(mocks.state.mainPath)
-    symlinkSync(real, mocks.state.mainPath)
-    await start()
-    // Why realpath: the temp folder itself sits behind a symlink on macOS.
-    const target = dirname(realpathSync(real))
-    expect(openWatches(join(root, 'bin'))).toHaveLength(1)
-    expect(openWatches(target)).toHaveLength(1)
-
-    writeBinary(real, 'codex, updated')
-    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
-    openWatches(target)[0].fire()
-
-    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
-      timeout: 5_000
-    })
-  })
-
-  // Why F1: the standalone installer flips a `current` link that neither the PATH entry's folder nor the release's holds.
-  it("publishes with no launch when the standalone installer flips its 'current' link", async () => {
-    const standalone = join(root, 'packages', 'standalone')
-    const release = (version: string) =>
-      join(standalone, 'releases', `${version}-aarch64-apple-darwin`)
-    writeBinary(join(release('0.159.2'), 'bin', 'codex'), 'codex 0.159.2')
-    symlinkSync(release('0.159.2'), join(standalone, 'current'))
-    rmSync(mocks.state.mainPath)
-    symlinkSync(join(standalone, 'current', 'bin', 'codex'), mocks.state.mainPath)
-    await start()
-    const holder = watchers.find(
-      (watch) => !watch.watcher.closed && realpathSync(watch.path) === realpathSync(standalone)
-    )
-    expect(holder).toBeDefined()
-
-    writeBinary(join(release('0.160.0'), 'bin', 'codex'), 'codex 0.160.0')
-    symlinkSync(release('0.160.0'), join(standalone, 'current.next'))
-    renameSync(join(standalone, 'current.next'), join(standalone, 'current'))
-    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
-    holder?.fire()
-
-    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
-      timeout: 5_000
-    })
-    const watched = watchers
-      .filter((watch) => !watch.watcher.closed)
-      .map((watch) => realpathSync(watch.path))
-    expect(watched).toContain(realpathSync(join(release('0.160.0'), 'bin')))
-    expect(watched).not.toContain(realpathSync(join(release('0.159.2'), 'bin')))
-  })
-
-  // Why: npm unlinks codex mid-update, and its relink is the event that publishes the new version.
-  it('keeps watching while codex is briefly gone, then publishes the relinked one', async () => {
-    await start()
-    const bin = join(root, 'bin')
-    const codexPath = mocks.state.mainPath
-    rmSync(codexPath)
-    mocks.state.mainPath = 'codex'
-    await syncCodexHookFlags()
-    expect(openWatches(bin)).toHaveLength(1)
-
-    writeBinary(codexPath, 'codex, relinked')
-    mocks.state.mainPath = codexPath
-    versions.set(codexPath, 'codex-cli 0.160.0')
-    openWatches(bin)[0].fire()
-
-    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
-      timeout: 5_000
-    })
-  })
-
   // Why: macOS assesses a new binary on its first run, measured at 10-12 s for codex.
   it("gives a new codex's first run time to pass macOS's assessment, and status a short wait", async () => {
     await start()
@@ -502,36 +428,18 @@ describe('syncCodexHookFlags', () => {
     expect(status?.[0].timeoutMs).toBe(5_000)
   })
 
-  it('keeps one watch per folder, follows a moved or replaced codex, and closes them when hooks turn off', async () => {
+  it('watches the table only while hooks are on, and reopens it for a recreated table', async () => {
     await start()
-    const bin = join(root, 'bin')
-    await syncCodexHookFlags()
-    await syncCodexHookFlags()
-    expect(openWatches(bin)).toHaveLength(1)
-
-    // Why: a folder an update replaced under the same name needs a new watch. Swapped
-    // in while the old one still exists, as updaters do: a delete-then-mkdir can get
-    // the freed inode back on Linux, which a dev:ino check cannot tell apart.
-    writeBinary(join(root, 'bin.next', 'codex'))
-    renameSync(bin, join(root, 'bin.old'))
-    renameSync(join(root, 'bin.next'), bin)
-    rmSync(join(root, 'bin.old'), { recursive: true })
-    mocks.state.mainPath = join(bin, 'codex')
-    versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
-    await syncCodexHookFlags()
-    expect(openWatches(bin)).toHaveLength(1)
-    expect(watchers.filter((watch) => watch.path === bin)).toHaveLength(2)
-
-    const moved = writeBinary(join(root, 'brew', 'codex'))
-    versions.set(moved, 'codex-cli 0.159.2')
-    mocks.state.mainPath = moved
-    await syncCodexHookFlags()
-    expect(openWatches(bin)).toHaveLength(0)
-    expect(openWatches(join(root, 'brew'))).toHaveLength(1)
+    expect(openWatches(table())).toHaveLength(1)
 
     enabled = false
     await syncCodexHookFlags()
     expect(watchers.every((watch) => watch.watcher.closed)).toBe(true)
+
+    enabled = true
+    await syncCodexHookFlags()
+    expect(openWatches(table())).toHaveLength(1)
+    expect(watchers.filter((watch) => watch.path === table())).toHaveLength(2)
   })
 
   it('never throws on a request that is a directory', async () => {
@@ -755,14 +663,6 @@ describe('syncCodexHookFlags', () => {
       }
 
       expect(mocks.runProcess.mock.calls.length).toBe(spawned)
-    })
-
-    it("writes the cmd gate at start even while Codex hooks are off, so cmd panes' codex stays quiet", async () => {
-      enabled = false
-      await start()
-
-      expect(existsSync(getCodexCmdHookFlagGatePath())).toBe(true)
-      expect(existsSync(table())).toBe(false)
     })
 
     it('spawns no cmd.exe on each sync while codex is not installed', async () => {

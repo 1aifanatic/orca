@@ -7,7 +7,6 @@ import { resolveSetupRunnerCommand } from '../../shared/setup-runner-command'
 import { resolveWindowsShellLaunchArgs } from './windows-shell-args'
 // Why resolved rather than hardcoded: the wrapper tree is content-addressed.
 import { getShellReadyWrapperRoot } from './local-pty-shell-ready-wrapper-root'
-import { CODEX_CMD_HOOK_FLAG_MACRO_COMMAND } from '../codex/codex-cmd-hook-flag-gate'
 
 const CODEX_LAUNCH_PREFLIGHT = 'C:\\Program Files\\Orca\\orca.exe'
 const CMD_CODEX_LAUNCH_PREFLIGHT =
@@ -67,10 +66,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       undefined,
       CODEX_LAUNCH_PREFLIGHT
     )
-    expect(result.shellArgs).toEqual([
-      '/K',
-      `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & ${CMD_CODEX_LAUNCH_PREFLIGHT}`
-    ])
+    expect(result.shellArgs).toEqual(['/K', `chcp 65001 > nul & ${CMD_CODEX_LAUNCH_PREFLIGHT}`])
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
     expect(result.effectiveCwd).toBe('C:\\Users\\alice')
     expect(result.validationCwd).toBe('C:\\Users\\alice')
@@ -82,29 +78,14 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       'C:\\Users\\alice',
       undefined,
-      'claude --continue',
+      'codex --no-alt-screen',
       CODEX_LAUNCH_PREFLIGHT
     )
     expect(result.shellArgs).toEqual([
       '/K',
-      `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & ${CMD_CODEX_LAUNCH_PREFLIGHT} & claude --continue`
+      `chcp 65001 > nul & ${CMD_CODEX_LAUNCH_PREFLIGHT} & codex --no-alt-screen`
     ])
     expect(result.startupCommandDeliveredInShellArgs).toBe(true)
-  })
-
-  it('types a codex startup command so the doskey macro carries the status hook flag', () => {
-    const result = resolveWindowsShellLaunchArgs(
-      'cmd.exe',
-      'C:\\Users\\alice',
-      'C:\\Users\\alice',
-      undefined,
-      'codex --no-alt-screen'
-    )
-    expect(result.shellArgs).toEqual([
-      '/K',
-      `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND}`
-    ])
-    expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
   })
 
   it('keeps quoted cmd.exe startup commands on stdin delivery', () => {
@@ -117,10 +98,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       undefined,
       'cd /d "C:\\Users\\alice\\repo" && claude "--resume" "session one"'
     )
-    expect(result.shellArgs).toEqual([
-      '/K',
-      `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND}`
-    ])
+    expect(result.shellArgs).toEqual(['/K', 'chcp 65001 > nul'])
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
   })
 
@@ -133,10 +111,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       `codex ${'x'.repeat(7000)}`,
       CODEX_LAUNCH_PREFLIGHT
     )
-    expect(result.shellArgs).toEqual([
-      '/K',
-      `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND} & ${CMD_CODEX_LAUNCH_PREFLIGHT}`
-    ])
+    expect(result.shellArgs).toEqual(['/K', `chcp 65001 > nul & ${CMD_CODEX_LAUNCH_PREFLIGHT}`])
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
   })
 

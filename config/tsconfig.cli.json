@@ -127,7 +127,6 @@
     "../src/main/codex/codex-home-paths.ts",
     "../src/main/codex/codex-hook-command-form.ts",
     "../src/main/codex/codex-hook-definition.ts",
-    "../src/main/codex/codex-cmd-hook-flag-gate.ts",
     "../src/main/codex/codex-hook-flag-table.ts",
     "../src/main/codex/codex-hook-flag-sync.ts",
     "../src/main/codex/codex-folder-watch.ts",

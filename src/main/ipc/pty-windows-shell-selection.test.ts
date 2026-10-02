@@ -12,7 +12,6 @@ import {
 } from './pty-ipc-test-constants'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { registerPtyHandlers } from './pty'
-import { CODEX_CMD_HOOK_FLAG_MACRO_COMMAND } from '../codex/codex-cmd-hook-flag-gate'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -123,7 +122,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Windows\\system32\\cmd.exe',
-        ['/K', `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND}`],
+        ['/K', 'chcp 65001 > nul'],
         expect.any(Object)
       )
     })
@@ -237,7 +236,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Windows\\system32\\cmd.exe',
-        ['/K', `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND}`],
+        ['/K', 'chcp 65001 > nul'],
         expect.any(Object)
       )
     })
@@ -413,7 +412,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'cmd.exe',
-        ['/K', `chcp 65001 > nul & ${CODEX_CMD_HOOK_FLAG_MACRO_COMMAND}`],
+        ['/K', 'chcp 65001 > nul'],
         expect.any(Object)
       )
     })

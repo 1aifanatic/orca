@@ -21,7 +21,6 @@ import {
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
 import { writeManagedScript } from '../agent-hooks/installer-utils'
-import { ensureCodexCmdHookFlagGate } from './codex-cmd-hook-flag-gate'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -235,7 +234,6 @@ export class CodexHookService {
     } catch (error) {
       console.warn('[codex-hook-service] could not write the Codex hook script:', error)
     }
-    ensureCodexCmdHookFlagGate()
     // Why the retired-form sweep first: it finds their trust through the entries
     // it removes, and the removal below strips those entries too.
     await cleanupLegacyManagedHookRepresentations()

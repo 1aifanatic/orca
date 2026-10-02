@@ -1,6 +1,4 @@
 import { statSync, type FSWatcher } from 'node:fs'
-import { readlink } from 'node:fs/promises'
-import { dirname, isAbsolute, join, parse, sep } from 'node:path'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 
 export type WatchFolder = (path: string, onChange: () => void) => FSWatcher
@@ -84,7 +82,7 @@ export function createFolderWatch(
   }
 }
 
-// Why the inode too: on Linux a watch follows the folder an update replaced, not the new one.
+// Why the inode too: on Linux a watch follows a folder that was removed, not the one made in its place.
 function readFolderIdentity(folder: string): string | null {
   try {
     const info = statSync(folder)
@@ -92,37 +90,4 @@ function readFolderIdentity(folder: string): string | null {
   } catch {
     return null
   }
-}
-
-// Why a hop limit: a link cycle must end the walk, as it ends the OS's own resolution.
-const MAX_LINK_HOPS = 32
-
-/**
- * The folder of every symlink on the way from `path` to its real file, and of
- * that file, at most `max` of them, the file's always: an update relinks one
- * (a PATH entry, a `current` release link) or rewrites the file. POSIX only.
- */
-export async function readLinkChainFolders(path: string, max: number): Promise<string[]> {
-  const folders: string[] = []
-  let resolved = parse(path).root
-  let remaining = path.split(sep).filter(Boolean)
-  for (let hops = 0; remaining.length > 0 && hops < MAX_LINK_HOPS;) {
-    const next = join(resolved, remaining[0])
-    const target = await readlink(next).catch(() => null)
-    remaining = remaining.slice(1)
-    if (target === null) {
-      resolved = next
-      continue
-    }
-    hops += 1
-    // Why not a link at the filesystem root (macOS /var, /tmp): no update flips those.
-    if (resolved !== parse(resolved).root) {
-      folders.push(resolved)
-    }
-    const absolute = isAbsolute(target) ? target : join(resolved, target)
-    remaining = [...absolute.split(sep).filter(Boolean), ...remaining]
-    resolved = parse(absolute).root
-  }
-  const unique = [...new Set([...folders, dirname(resolved)])]
-  return unique.length > max ? [...unique.slice(0, max - 1), dirname(resolved)] : unique
 }

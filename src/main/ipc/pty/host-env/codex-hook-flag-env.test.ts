@@ -33,12 +33,8 @@ vi.mock('../../../cli/wsl-managed-cli', () => ({
 
 let root: string
 let options: BuildPtyHostEnvOptions
-// Why: a pane opened inside another Orca's pane inherits that Orca's values.
-const INHERITED = {
-  ORCA_CODEX_HOOK_FLAGS: '/other-orca/codex-hook-flags',
-  ORCA_CODEX_HOOK_ARG: '"hooks={stale}"',
-  ORCA_CODEX_HOOK_GATE: '"C:/stale/gate.cmd"'
-}
+// Why: a pane opened inside another Orca's pane inherits that Orca's value.
+const INHERITED = { ORCA_CODEX_HOOK_FLAGS: '/other-orca/codex-hook-flags' }
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-env-'))
@@ -67,15 +63,11 @@ describe('Codex status hook flag table in the pane env', () => {
   ])("points a native pane at this profile's flag table when %s", (_label, overrides) => {
     const env = buildPtyHostEnv('pane-1', { ...INHERITED }, { ...options, ...overrides })
     expect(env.ORCA_CODEX_HOOK_FLAGS).toBe(join(fixture.userData, 'codex-hook-flags'))
-    // Why: the cmd macro reads it as unset at startup; only its gate sets it.
-    expect(env.ORCA_CODEX_HOOK_ARG).toBeUndefined()
   })
 
-  it('clears every inherited flag variable in a WSL guest, whose Linux Codex keeps its installed hook', () => {
+  it('clears an inherited flag table in a WSL guest, whose Linux Codex keeps its installed hook', () => {
     const env = buildPtyHostEnv('pane-1', { ...INHERITED }, { ...options, isWsl: true })
-    for (const key of Object.keys(INHERITED)) {
-      expect(env[key]).toBeUndefined()
-    }
+    expect(env.ORCA_CODEX_HOOK_FLAGS).toBeUndefined()
   })
 
   // Why: a request the file watch missed, or a codex updated meanwhile, is served on the next spawn.

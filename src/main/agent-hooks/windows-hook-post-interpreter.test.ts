@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import type * as osModule from 'node:os'
 
 let isolatedUserDataDir = ''
@@ -31,7 +31,6 @@ vi.mock('os', async (importOriginal) => {
 
 import { AntigravityHookService } from '../antigravity/hook-service'
 import { ClaudeHookService } from '../claude/hook-service'
-import { getCodexCmdHookFlagGatePath } from '../codex/codex-cmd-hook-flag-gate'
 import { CodexHookService } from '../codex/hook-service'
 import { CommandCodeHookService } from '../command-code/hook-service'
 import { CursorHookService } from '../cursor/hook-service'
@@ -131,15 +130,10 @@ describe('Windows managed hook post interpreter', () => {
     // Why: `%~dp0` marks an event wrapper that only sets env and delegates to the core script.
     const isWrapper = (body: string): boolean => body.includes('%~dp0')
     const posts = (body: string): boolean => body.includes('127.0.0.1:%ORCA_AGENT_HOOK_PORT%')
-    // Why: the cmd pane's Codex flag gate is called at launch, not per hook event, so it posts nothing.
-    const gateName = basename(getCodexCmdHookFlagGatePath())
-    expect(scripts.map((s) => s.name)).toContain(gateName)
 
     // Why: name the script that stopped posting rather than failing on a bare count.
     expect(
-      scripts
-        .filter((s) => s.name !== gateName && !isWrapper(s.body) && !posts(s.body))
-        .map((s) => s.name),
+      scripts.filter((s) => !isWrapper(s.body) && !posts(s.body)).map((s) => s.name),
       'every non-wrapper script must post to the hook port'
     ).toEqual([])
 

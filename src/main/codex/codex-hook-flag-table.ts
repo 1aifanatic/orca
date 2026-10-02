@@ -43,7 +43,7 @@ type CodexHookFlagRequest = {
   codexPath: string | null
 }
 
-// Why this shape: every carrier, cmd.exe included, names the file after the version it read.
+// Why this shape: every carrier names the file after the version it read.
 const ENTRY_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,126}[A-Za-z0-9]$/
 
 export function getCodexHookFlagTablePath(): string {
