@@ -116,15 +116,26 @@ it('keeps the whole retrying line under a newer Orca\'s words, which name no one
   ).toBeTruthy()
 })
 
-it('says only that it is reconnecting, not as an error, when a failure names nothing', () => {
+// A dropped stream retries on its own; host reachability is the host status's to show, not the chat's.
+it('adds no line beside the transcript when a failure names nothing', () => {
   mocks.status = 'error'
 
-  renderPane()
+  const { container } = render(
+    <NativeChatStructuredSession
+      isVisible
+      isFocusedGroup
+      tabId="structured-read-error-tab"
+      sessionId="read-error-session"
+      target={{ kind: 'environment', environmentId: 'remote-host' }}
+      agent="codex"
+    />
+  )
 
   expect(screen.getByTestId('message-list')).toBeTruthy()
-  const reconnecting = screen.getByText('Reconnecting to this chat…')
-  expect(reconnecting.className).not.toContain('text-destructive')
+  expect(screen.getByTestId('structured-composer')).toBeTruthy()
+  expect(screen.queryByText(/reconnect/i)).toBeNull()
   expect(screen.queryByText(/history couldn't be loaded/)).toBeNull()
+  expect(container.querySelector('.text-destructive')).toBeNull()
 })
 
 it('words a failed reconnect beside a transcript it keeps', () => {

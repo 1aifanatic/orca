@@ -320,11 +320,11 @@ export function NativeChatStructuredSession(
         startupChildKey={hostExecution.childKey}
         paneKey={paneKey}
         // Said once: on the pane when the failure took it, else here beside the transcript. A
-        // failure that names nothing is only the pane reconnecting.
+        // failure that names nothing is the read retrying on its own; host reachability is the
+        // host status's to show, so the transcript and composer stay as they are.
         error={
           viewState.kind === 'error' || !readFailure?.named ? controller.error : readFailure.text
         }
-        reconnecting={viewState.kind !== 'error' && readFailure !== null && !readFailure.named}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}
