@@ -1,15 +1,14 @@
 import { expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { runProcess } from './child-process/run-process'
-import { fileURLToPath } from 'node:url'
 it.skipIf(process.platform === 'win32')(
   'retains existing permissions when the process umask is stricter',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-plugin-umask-'))
     const pluginPath = join(root, 'plugin.js')
-    const modulePath = fileURLToPath(new URL('./opencode-plugin-atomic-write.ts', import.meta.url))
+    const modulePath = resolve(process.cwd(), 'src/shared/opencode-plugin-atomic-write.ts')
     try {
       const result = await runProcess({
         program: process.execPath,
