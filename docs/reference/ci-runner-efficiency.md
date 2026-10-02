@@ -1232,18 +1232,3 @@ crash. The last control also proved that crash returns enter the capture.
 This measures the three-file oracle cohort. Whole-shard timings include other
 test bodies, imports and transforms, so a whole-suite saving needs separate
 measurement.
-
-## Unit job execution budget
-
-Both jobs in the reusable unit workflow have a 60-minute execution limit,
-including setup and cleanup. GitHub's [workflow syntax reference](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)
-defines an omitted job timeout as 360 minutes. A stalled job now receives a
-non-passing verdict sooner; it cannot make the required unit gate pass.
-
-The [October 1 demand sample](https://github.com/stablyai/orca/actions/runs/36965354205)
-contains 38 successful shard records with a 9.52-minute median and a 13.52-minute
-maximum. The preceding sample contains 63 successful shard records, with a
-12.87-minute maximum. Together they cover Node 24/26 on ARM PR and x86 scheduled
-runners. These are observed, unweighted durations including setup, not a guarantee
-for future runs. An hour leaves substantial room for cold caches and slow runners.
-The test selection, worker count, assertions, and failure propagation remain.
