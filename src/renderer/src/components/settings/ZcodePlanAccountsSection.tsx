@@ -150,7 +150,7 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
               <p className="text-xs text-muted-foreground">
                 {translate(
                   'auto.components.settings.ZcodePlanAccountsSection.usingCliHelp',
-                  'Orca reads the Coding Plan key from ~/.zcode/cli/config.json. Save an API key below to link the plan here instead.'
+                  'Orca reads the selected Coding Plan from the ZCode CLI credential store on this computer. Save an API key below to link the plan here instead.'
                 )}
               </p>
             </>

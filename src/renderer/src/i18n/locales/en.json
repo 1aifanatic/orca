@@ -12292,7 +12292,7 @@
           "keyStored": "API key saved · {{value0}}",
           "keyStoredHelp": "Stored locally and sent only to the selected site for usage refreshes. It takes priority over the ZCode CLI sign-in.",
           "usingCli": "Using the ZCode CLI sign-in",
-          "usingCliHelp": "Orca reads the Coding Plan key from ~/.zcode/cli/config.json. Save an API key below to link the plan here instead.",
+          "usingCliHelp": "Orca reads the selected Coding Plan from the ZCode CLI credential store on this computer. Save an API key below to link the plan here instead.",
           "notConfigured": "No GLM Coding Plan linked",
           "notConfiguredHelp": "Save the plan API key below, or sign in with the ZCode CLI on this computer.",
           "refreshUsage": "Refresh usage",
