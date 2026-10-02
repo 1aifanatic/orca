@@ -1,7 +1,9 @@
-// How many rows each task of a per-chat file's copy reads and writes. A whole page where a task is
-// cheap (one 512-row commit, as few checkpoints as the copy can have), fewer where a slow disk or
-// CPU makes one run long: each task's wall time, from the end of one yield to the start of the
-// next, sets the next page. The char ceilings still split a page of huge rows.
+// How many rows each task of a per-chat file's copy reads and writes. A user's own copy (a first
+// open, or the owed import a read pays) takes whole pages, as it always has. The background copy's
+// work takes a page that follows each task's wall time: a whole page where a task is cheap (one
+// 512-row commit, as few checkpoints as the copy can have), fewer where a slow disk or CPU makes
+// one run long. Measured within one copy, in memory only. The char ceilings still split a page of
+// huge rows.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 
@@ -11,7 +13,29 @@ export const IMPORT_TASK_TARGET_MS = 25
 /** The fewest rows a page shrinks to. */
 export const IMPORT_MIN_PAGE_ROWS = 8
 
-export class JournalImportPage {
+/** The page a copy reads and writes per task, and the yield that ends each task. */
+export type JournalImportPaging = {
+  readonly rows: number
+  yieldTask: () => Promise<void>
+}
+
+/** Builds one copy's paging from its most rows and the caller's yield. */
+export type JournalImportPages = (
+  maxRows: number,
+  yieldTask: () => Promise<void>
+) => JournalImportPaging
+
+/** Whole pages, the default: a user's own copy. */
+export const wholeJournalImportPages: JournalImportPages = (maxRows, yieldTask) => ({
+  rows: maxRows,
+  yieldTask
+})
+
+/** Pages sized by each task's time: the background copy's work. */
+export const timedJournalImportPages: JournalImportPages = (maxRows, yieldTask) =>
+  new JournalImportPage(maxRows, yieldTask)
+
+export class JournalImportPage implements JournalImportPaging {
   /** Rows the next read takes. */
   rows: number
   private readonly minRows: number

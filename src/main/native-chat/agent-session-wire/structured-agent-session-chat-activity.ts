@@ -18,15 +18,29 @@ export type StructuredAgentSessionChatWork = {
   onActivity: (listener: () => void) => () => void
 }
 
+type ChatJournal = Pick<AgentSessionJournal, 'isReadOnly' | 'cursor' | 'submissions'>
+
+/** A chat's answer to "a send in flight?", for the journal tip, fence and agent it was read at. */
+type InFlightRead = {
+  epoch: string
+  sequence: number
+  fence: number | undefined
+  agentReady: boolean
+  inFlight: boolean
+}
+
 export class StructuredAgentSessionChatActivity implements StructuredAgentSessionChatWork {
   private readonly listeners = new Set<() => void>()
+  /** Re-read when any of its inputs moves: every send and answer is a journal row, so a new one
+   *  moves the tip. Keyed by the journal, so a closed chat's read goes with it. */
+  private readonly reads = new WeakMap<ChatJournal, InFlightRead>()
 
   constructor(
     private readonly deps: {
       sessions: ReadonlyMap<
         string,
         {
-          journal: AgentSessionJournal
+          journal: ChatJournal
           child: { phase: StructuredAgentSessionProviderChildPhase } | null
         }
       >
@@ -37,23 +51,40 @@ export class StructuredAgentSessionChatActivity implements StructuredAgentSessio
 
   sendInFlight = (): boolean => {
     for (const [sessionId, { journal, child }] of this.deps.sessions) {
-      const fence = this.deps.fence(sessionId)
-      // A ready agent is handed a send at once unless a turn or prompt holds it back.
-      const agentReady = child?.phase === 'ready'
-      if (
-        !journal.isReadOnly &&
-        journal
-          .submissions()
-          .some(
-            (submission) =>
-              isUnansweredStructuredAgentSessionDispatch(submission, fence) &&
-              !(agentReady && isQueuedAgentJournalSubmission(submission))
-          )
-      ) {
+      if (!journal.isReadOnly && this.chatSendInFlight(sessionId, journal, child)) {
         return true
       }
     }
     return false
+  }
+
+  private chatSendInFlight(
+    sessionId: string,
+    journal: ChatJournal,
+    child: { phase: StructuredAgentSessionProviderChildPhase } | null
+  ): boolean {
+    const { epoch, sequence } = journal.cursor()
+    const fence = this.deps.fence(sessionId)
+    // A ready agent is handed a send at once unless a turn or prompt holds it back.
+    const agentReady = child?.phase === 'ready'
+    const read = this.reads.get(journal)
+    if (
+      read?.epoch === epoch &&
+      read.sequence === sequence &&
+      read.fence === fence &&
+      read.agentReady === agentReady
+    ) {
+      return read.inFlight
+    }
+    const inFlight = journal
+      .submissions()
+      .some(
+        (submission) =>
+          isUnansweredStructuredAgentSessionDispatch(submission, fence) &&
+          !(agentReady && isQueuedAgentJournalSubmission(submission))
+      )
+    this.reads.set(journal, { epoch, sequence, fence, agentReady, inFlight })
+    return inFlight
   }
 
   onActivity = (listener: () => void): (() => void) => {

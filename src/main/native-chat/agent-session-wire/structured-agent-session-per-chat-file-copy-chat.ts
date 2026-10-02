@@ -4,6 +4,7 @@
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
+import { timedJournalImportPages } from '../agent-session-journal/journal-import-page'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
 import type { PerChatFileCopyDeps } from './structured-agent-session-per-chat-file-copy'
@@ -42,7 +43,9 @@ export async function copyPerChatFileUnderSerialize(
     identity,
     legacyDirectory,
     yieldTask,
-    signal
+    signal,
+    // The job's own work: its pages follow its tasks' time.
+    pages: timedJournalImportPages
   })
   // An older build left it with work: settled now, from the copy's fold, so no later startup
   // opens it. A failed or stopped settle is not a failed copy: startup settles the row it wrote.

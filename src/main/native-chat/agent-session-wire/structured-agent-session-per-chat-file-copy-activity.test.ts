@@ -35,6 +35,8 @@ import {
   type LiveTestChat
 } from './structured-agent-session-per-chat-file-copy-test-rig'
 import { restTestChat, sendRestTestMessage } from './structured-agent-session-rest-test-rig'
+import { StructuredAgentSessionChatActivity } from './structured-agent-session-chat-activity'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 
 vi.mock('../agent-session-journal/journal-session-state', async (importOriginal) => {
   const actual = await importOriginal<typeof SessionState>()
@@ -533,5 +535,77 @@ describe('one chat’s copy', () => {
 
     expect(chat.signal.aborted).toBe(true)
     expect(chat.stoppedByWork()).toBe(true)
+  })
+})
+
+describe('a send in flight, read once per journal tip', () => {
+  function chat() {
+    const submissions = new Map<string, AgentJournalSubmission>()
+    const state = { sequence: 1, fence: 1 }
+    const read = vi.fn(() => [...submissions.values()])
+    const journal = {
+      isReadOnly: false,
+      cursor: () => ({ epoch: 'epoch-1', sequence: state.sequence }),
+      submissions: read
+    }
+    const entry: { journal: typeof journal; child: { phase: 'ready' | 'starting' } | null } = {
+      journal,
+      child: { phase: 'ready' }
+    }
+    const open = new Map([['chat', entry]])
+    const activity = new StructuredAgentSessionChatActivity({
+      sessions: open,
+      fence: () => state.fence
+    })
+    const pending: AgentJournalSubmission = {
+      clientMessageId: 'send-1',
+      fence: 1,
+      payloadFingerprint: '',
+      dispatchState: 'pending',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: null,
+      handoverRecorded: true,
+      acceptedSequence: 1,
+      origin: 'host'
+    }
+    return {
+      activity,
+      read,
+      state,
+      open,
+      send: (submission: Partial<AgentJournalSubmission>) => {
+        submissions.set('send-1', { ...pending, ...submission })
+        state.sequence += 1
+      }
+    }
+  }
+
+  it('walks a chat’s sends only when its tip, fence or agent moved', () => {
+    const { activity, read, state, open, send } = chat()
+    expect(activity.sendInFlight()).toBe(false)
+    expect(activity.sendInFlight()).toBe(false)
+    expect(read).toHaveBeenCalledOnce()
+
+    // A send handed over: a new row moves the tip.
+    send({ handedOverAt: 2 })
+    expect(activity.sendInFlight()).toBe(true)
+    expect(read).toHaveBeenCalledTimes(2)
+    // Answered: the tip moves again.
+    send({ handedOverAt: 2, dispatchState: 'accepted' })
+    expect(activity.sendInFlight()).toBe(false)
+
+    // Queued behind a ready agent: not in flight; the same send while its agent starts: in flight.
+    send({})
+    expect(activity.sendInFlight()).toBe(false)
+    open.get('chat')!.child = { phase: 'starting' }
+    expect(activity.sendInFlight()).toBe(true)
+
+    // The child ended: its fence moved past the send, which is no longer in flight.
+    send({ handedOverAt: 2 })
+    expect(activity.sendInFlight()).toBe(true)
+    state.fence = 2
+    expect(activity.sendInFlight()).toBe(false)
   })
 })

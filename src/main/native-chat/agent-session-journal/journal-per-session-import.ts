@@ -46,7 +46,7 @@ import {
   type PerSessionJournalHead
 } from './journal-per-session-reimport'
 import { charBoundedBatches, IMPORT_BATCH_CHARS } from './journal-session-status-backfill'
-import { JournalImportPage } from './journal-import-page'
+import { wholeJournalImportPages, type JournalImportPages } from './journal-import-page'
 import {
   foldLegacyJournal,
   IMPORT_BATCH_ROWS,
@@ -78,7 +78,7 @@ type PerSessionJournalImportDeps = {
   openSource?: (path: string) => Database.Database
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
-  /** Most rows per page; a task that runs long shrinks the next (journal-import-page.ts). */
+  /** Rows per page: every page by default, the most a timed page takes (journal-import-page.ts). */
   batchRows?: number
   /** Row JSON per verify batch; see `IMPORT_BATCH_CHARS`. */
   batchChars?: number
@@ -86,8 +86,8 @@ type PerSessionJournalImportDeps = {
   commitChars?: number
   /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
   yieldTask?: () => Promise<void>
-  /** Times each task for the page size; a test supplies its own. */
-  clock?: () => number
+  /** The copy's pages: whole by default; the background copy's work sizes them by time. */
+  pages?: JournalImportPages
   /** Stops the copy at its next batch, publishing nothing; the chat stays owed. */
   signal?: AbortSignal
 }
@@ -246,10 +246,9 @@ async function copyLegacyJournal(
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchChars = input.batchChars ?? IMPORT_BATCH_CHARS
-  const page = new JournalImportPage(
+  const page = (input.pages ?? wholeJournalImportPages)(
     input.batchRows ?? IMPORT_BATCH_ROWS,
-    input.yieldTask ?? (() => yieldToEventLoop()),
-    input.clock
+    input.yieldTask ?? (() => yieldToEventLoop())
   )
   const yieldTask = page.yieldTask
   // What an earlier try that stopped midway left, a page per task as the copy's own rows go in.

@@ -29,6 +29,7 @@ import {
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
 import { openLegacySource } from './journal-per-session-source'
+import { timedJournalImportPages, type JournalImportPages } from './journal-import-page'
 import {
   charBoundedBatches,
   foldJournalSessionStatus,
@@ -532,12 +533,19 @@ describe('a file written after its copy began verifying (T20)', () => {
 })
 
 describe('a page per task sized by its time (J2)', () => {
-  /** Rows each copy commit wrote, on a clock that each commit moves by `commitMs(n)` for the n-th;
-   *  and every read of the file's rows, write and yield, in order. */
-  async function commitsOf(sessionId: string, commitMs: (commit: number) => number) {
+  /** Rows each copy commit wrote, on a clock (`performance.now`) that each commit moves by
+   *  `commitMs(n)` for the n-th; and every read of the file's rows, write and yield, in order. The
+   *  background copy's work passes `timedJournalImportPages`; a user's own copy passes nothing. */
+  async function commitsOf(
+    sessionId: string,
+    commitMs: (commit: number) => number,
+    { userCopy = false }: { userCopy?: boolean } = {}
+  ) {
+    const pages: JournalImportPages | null = userCopy ? null : timedJournalImportPages
     const { directory, rows } = await stageChat(sessionId, (journal) => manyItems(journal, 1_100))
     const database = openTestJournalHostDatabase(root)
     let now = 0
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
     const written: number[] = []
     const steps: string[] = []
     const count = () =>
@@ -580,7 +588,7 @@ describe('a page per task sized by its time (J2)', () => {
     }
 
     const result = await importChat(sessionId, directory, {
-      clock: () => now,
+      ...(pages ? { pages } : {}),
       openSource,
       yieldTask: async () => {
         steps.push('yield')
@@ -590,10 +598,17 @@ describe('a page per task sized by its time (J2)', () => {
 
     // The database is shared across copies: unwrap it for the next one.
     commitSpy.mockRestore()
+    clock.mockRestore()
     expect(result.outcome).toBe('imported')
     expect(written.reduce((sum, page) => sum + page, 0)).toBe(rows.length)
     return { written, steps }
   }
+
+  it('keeps whole pages for a user’s own copy, however slow its commits', async () => {
+    const { written } = await commitsOf('session-user', () => 100, { userCopy: true })
+    expect(written.slice(0, -1).every((page) => page === 512)).toBe(true)
+    expect(written.length).toBe(Math.ceil(written.reduce((a, b) => a + b, 0) / 512))
+  })
 
   it('commits whole 512-row pages while every task is fast', async () => {
     const { written, steps } = await commitsOf('session-fast', () => 0)

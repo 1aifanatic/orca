@@ -17,6 +17,7 @@ import { writeJournalSessionStatusFromDisk } from './journal-session-state'
 import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
 import { AgentSessionJournalError } from './journal-write-guards'
 import { readJournalSessionEpoch, readJournalTip } from './journal-row-table'
+import { timedJournalImportPages } from './journal-import-page'
 
 export async function restoreJournalStore(
   host: JournalStoreHost,
@@ -34,10 +35,15 @@ export async function restoreJournalStore(
   const preview = host.deferPerSessionImport ? await previewPerSessionJournal(source) : null
   if (preview) {
     host.owe(async (signal) => {
-      // The copy's own fold is what a replay would return; another copy first means a replay.
+      // The copy's own fold is what a replay would return; another copy first means a replay. Only
+      // the background copy pays it with a signal, and its work pages by time; a read pays it whole.
       const imported =
-        (await importPerSessionJournal({ ...source, ...(signal ? { signal } : {}) })).load ??
-        replayJournal(source.database.db, host.identity.sessionId)
+        (
+          await importPerSessionJournal({
+            ...source,
+            ...(signal ? { signal, pages: timedJournalImportPages } : {})
+          })
+        ).load ?? replayJournal(source.database.db, host.identity.sessionId)
       if (!imported) {
         throw new Error(`per-chat journal of ${host.identity.sessionId} was gone before its copy`)
       }

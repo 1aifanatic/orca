@@ -10,6 +10,8 @@ import type * as PerSessionImport from '../agent-session-journal/journal-per-ses
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { StructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy'
 import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
+import { timedJournalImportPages } from '../agent-session-journal/journal-import-page'
+import { sendRestTestMessage } from './structured-agent-session-rest-test-rig'
 import { PER_CHAT_FILE_COPY_QUIET_MS } from './structured-agent-session-per-chat-file-copy-activity'
 import {
   copyJobDeps,
@@ -103,6 +105,37 @@ describe('a restored chat’s copy (G2, R6)', () => {
     expect(paced).toEqual({ 'session-listed': false, 'session-unlisted': true })
     expect(restoredJournal(rig).importPending).toBe(false)
   }, 30_000)
+
+  it('pages by time only the copy’s own work: its imports and the owed import it pays; a user’s send pays it whole', async () => {
+    const recorded: unknown[] = []
+    const unlisted: unknown[] = []
+    vi.mocked(importPerSessionJournal).mockImplementation(async (input) => {
+      if (input.identity.sessionId === 'session-listed') {
+        recorded.push(input.pages)
+      } else if (input.identity.sessionId === 'session-unlisted') {
+        unlisted.push(input.pages)
+      }
+      const actual = await vi.importActual<typeof PerSessionImport>(
+        '../agent-session-journal/journal-per-session-import'
+      )
+      return actual.importPerSessionJournal(input)
+    })
+    const rig = await restoredAndUnlisted()
+    const setUp = recorded.length
+    const sent = await sendRestTestMessage(rig, 'session-listed', 'after the restart')
+    expect(sent.ok).toBe(true)
+    expect(restoredJournal(rig).importPending).toBe(false)
+    expect(recorded.slice(setUp)).toEqual([undefined])
+
+    const copied = await restoredAndUnlisted()
+    const copySetUp = recorded.length
+    const unlistedSetUp = unlisted.length
+    await new StructuredAgentSessionPerChatFileCopy(copyJobDeps(copied)).tick()
+    expect(restoredJournal(copied).importPending).toBe(false)
+    expect(recorded.slice(copySetUp)).toEqual([timedJournalImportPages])
+    // The job's own import of a closed chat.
+    expect(unlisted.slice(unlistedSetUp)).toEqual([timedJournalImportPages])
+  }, 20_000)
 
   it('waits only between chats, never inside one', async () => {
     const rig = await restoredAndUnlisted()
