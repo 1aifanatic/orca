@@ -225,7 +225,8 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
 
 describe('one row per rejected message while the outbox still holds it', () => {
   const items = [...SEED_ROWS, userItem('held', 3, 'host copy')]
-  const rejected = restartRejected('held', 'outbox copy', 3)
+  // Fingerprinted from the host's own copy, so only the shared id ties the two rows together.
+  const rejected = restartRejected('held', 'host copy', 3)
   const held = outboxEntry('held', 'outbox copy', {
     state: 'rejected',
     lastFailure: { kind: 'rejected', reason: DISPATCH_REJECTED_HOST_RESTARTED }
@@ -274,9 +275,10 @@ describe('one row per rejected message while the outbox still holds it', () => {
 
   it("hides it behind the outbox's resend under a new id until the host records that", () => {
     const hostItems = [...SEED_ROWS, userItem('held', 3, 'outbox copy')]
+    const resent = restartRejected('held', 'outbox copy', 3)
     const resend = outboxEntry('resend', 'outbox copy')
     expect(
-      rows(projectStructuredAgentSessionMessages(hostItems, [resend], [SEED, rejected]))
+      rows(projectStructuredAgentSessionMessages(hostItems, [resend], [SEED, resent]))
     ).toEqual([
       seedRow,
       { id: agentJournalSubmissionKey('resend'), text: 'outbox copy', unsent: false }
@@ -289,7 +291,7 @@ describe('one row per rejected message while the outbox still holds it', () => {
       lastFailure: { kind: 'refused' as const, code: 'agent_session_journal_unreadable' as const }
     }
     expect(
-      rows(projectStructuredAgentSessionMessages(hostItems, [refused], [SEED, rejected]))
+      rows(projectStructuredAgentSessionMessages(hostItems, [refused], [SEED, resent]))
     ).toEqual([
       seedRow,
       { id: agentJournalSubmissionKey('resend'), text: 'outbox copy', unsent: true }
