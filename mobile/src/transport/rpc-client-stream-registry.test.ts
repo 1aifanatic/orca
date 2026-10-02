@@ -18,6 +18,9 @@ function createRegistry(initialState: ConnectionState = 'connected') {
     deviceToken: 'device-token',
     getState: () => state,
     sendEncrypted: (request) => {
+      if (state !== 'connected') {
+        return false
+      }
       sent.push(request as SentRequest)
       return true
     }
@@ -303,7 +306,7 @@ describe('RpcClientStreamRegistry', () => {
       expect(events).toEqual([])
     })
 
-    it('drops an unsent canceled stream without replay or host cleanup', () => {
+    it('does not replay a canceled opener queued before connection', () => {
       const { registry, sent, setState } = createRegistry('connecting')
       const events: unknown[] = []
       const dispose = registry.subscribe(method, params, (event) => events.push(event))
