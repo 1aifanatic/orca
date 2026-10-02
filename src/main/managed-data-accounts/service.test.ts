@@ -42,6 +42,23 @@ function openCodeSource(sessionTable = 'session'): void {
 }
 
 describe('managed data accounts', () => {
+  it('retains selected account metadata after locked cleanup and permits retry', async () => {
+    let locked = true
+    service = new ManagedDataAccountService(join(root, 'managed'), (directory) => {
+      if (locked) {
+        throw new Error('file locked')
+      }
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const before = await service.add('devin', source, 'Work')
+    await expect(service.remove('devin', before.accounts[0].id)).rejects.toThrow('file locked')
+    expect(service.list('devin')).toEqual(before)
+    expect(service.launchEnvironment('devin').XDG_DATA_HOME).toBeTruthy()
+    locked = false
+    await service.remove('devin', before.accounts[0].id)
+    expect(service.list('devin')).toEqual({ accounts: [], activeAccountId: null })
+  })
+
   it('registers private Devin credentials, exposes summaries, and removes only its profile', async () => {
     const state = await service.add('devin', source, 'Work')
     const id = state.accounts[0].id

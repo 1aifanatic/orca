@@ -169,6 +169,7 @@ describe('ElectronServeBrowserProcess start-up', () => {
     expect(spec.env?.HOME).toBe(isolatedHome)
     expect(spec.env?.XDG_DATA_HOME).toBe(join(isolatedHome, 'data'))
     expect(spec.env?.XDG_STATE_HOME).toBe(join(isolatedHome, 'state'))
+    expect(args).toEqual(expect.arrayContaining(['--password-store=basic', '--use-mock-keychain']))
     expect(processHandle.isAvailable()).toBe(true)
   })
 
