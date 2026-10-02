@@ -25,10 +25,11 @@ export type OrcadMigrationPreflightStore = OrcadMigrationExportStore &
     'getSshTarget' | 'getSshRemotePtyLeases' | 'inspectOrcadMigrationUntransferredDependencies'
   >
 
+/** `owner` passes the environment's own fence only when its migration journal is on disk. */
 export function preflightOrcadMigrationExport(
   store: OrcadMigrationPreflightStore,
   targetId: string,
-  environmentId?: string
+  owner?: { environmentId: string; recorded: boolean }
 ): OrcadMigrationPreflight {
   const target = store.getSshTarget(targetId)
   if (!target) {
@@ -39,8 +40,15 @@ export function preflightOrcadMigrationExport(
       blockers: [{ code: 'orcad_migration_target_not_found', category: 'registration' }]
     }
   }
-  if (environmentId && getManagedOrcadOwnerEnvironmentId(target.owner) === environmentId) {
-    return { targetId, targetLabel: target.label, claimable: true, blockers: [] }
+  if (owner && getManagedOrcadOwnerEnvironmentId(target.owner) === owner.environmentId) {
+    return owner.recorded
+      ? { targetId, targetLabel: target.label, claimable: true, blockers: [] }
+      : {
+          targetId,
+          targetLabel: target.label,
+          claimable: false,
+          blockers: [{ code: 'orcad_migration_owner_unrecorded', category: 'exclusive-ownership' }]
+        }
   }
   const blockers: OrcadMigrationBlocker[] = [...collectTargetCatalogBlockers(store, target)]
   const terminalLeases = store

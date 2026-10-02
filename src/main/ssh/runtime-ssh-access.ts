@@ -154,7 +154,8 @@ export function linkRuntimeSshAccess(
       await claims.flush()
       requireAccessOnlyTarget(claims, target.id, environmentId)
       requireFence(claims, environmentId, fence, true)
-      claims.claim(target.id, environmentId)
+      // Why recorded: the durable link intent above names this target and environment.
+      claims.claim(target.id, environmentId, { ownerRecorded: true })
       await claims.flush()
       let tunnelStarted = false
       let linkCommitted = false

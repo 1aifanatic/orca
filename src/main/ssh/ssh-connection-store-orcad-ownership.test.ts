@@ -36,7 +36,7 @@ describe('managed orcad ownership of SSH targets', () => {
       orcadProvisioning: { requestId: 'r', name: 'n' }
     })
     const claimed = sshStore.addTarget({ ...base, label: 'claimed' })
-    sshStore.getOrcadRuntimeClaims().claim(claimed.id, 'environment-1')
+    sshStore.getOrcadRuntimeClaims().claim(claimed.id, 'environment-1', { ownerRecorded: false })
 
     expect(sshStore.listTargets()).toEqual([visible])
     expect(sshStore.getOrcadRuntimeClaims().listTargets()).toHaveLength(3)
