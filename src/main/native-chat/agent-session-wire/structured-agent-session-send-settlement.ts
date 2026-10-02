@@ -22,13 +22,15 @@ type SendSettlement = SettledSend | 'pending' | 'missing'
  *  the message waiting behind a running command, which hands nothing over until it ends. A failed
  *  start recorded on the message ends each: the host answers it now, while it waits for its next try.
  *  `verdict` alone waits through those tries, for the message's own answer, and `final` through a
- *  lost answer (`unknown`) too, which a late echo can still prove accepted. */
+ *  lost answer (`unknown`) too, which a late echo can still prove accepted. `past-start` is
+ *  handed over or behind a command, waiting through the tries: a started agent has it. */
 export type SendSettlementPoint =
   | 'answered'
   | 'handed-over'
   | 'handed-over-or-behind-command'
   | 'verdict'
   | 'final'
+  | 'past-start'
 
 export type SendSettlementWaitOptions = {
   signal?: AbortSignal
@@ -66,14 +68,16 @@ function settledSend(
     return 'missing'
   }
   const waiting =
-    until === 'verdict' || until === 'final'
-      ? submission.dispatchState === 'pending' ||
-        (until === 'final' && submission.dispatchState === 'unknown')
-      : !isRetryingStructuredAgentSessionStart(submission) &&
-        (until === 'answered'
-          ? submission.dispatchState === 'pending'
-          : isQueuedAgentJournalSubmission(submission) &&
-            !(until === 'handed-over-or-behind-command' && runningCommand(journal)))
+    until === 'past-start'
+      ? isQueuedAgentJournalSubmission(submission) && !runningCommand(journal)
+      : until === 'verdict' || until === 'final'
+        ? submission.dispatchState === 'pending' ||
+          (until === 'final' && submission.dispatchState === 'unknown')
+        : !isRetryingStructuredAgentSessionStart(submission) &&
+          (until === 'answered'
+            ? submission.dispatchState === 'pending'
+            : isQueuedAgentJournalSubmission(submission) &&
+              !(until === 'handed-over-or-behind-command' && runningCommand(journal)))
   return waiting ? 'pending' : { cursor: journal.cursor(), value: { clientMessageId, submission } }
 }
 

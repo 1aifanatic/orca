@@ -29,6 +29,7 @@ import {
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
+  AGENT_SESSION_SEND_FINAL_STATE_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
@@ -852,9 +853,12 @@ describe('cross-version structured agent sessions', () => {
 
       const restarted = await bootHost('c')
       startGate = new Promise((resolve) => (open = resolve))
+      // Current: it follows the message to its final state itself (a desktop with only accepted
+      // sends is held past the start: accepted-send-hold-downgrade.unit.test.ts).
       const currentReply = await call('agentSession.send', sendParams('current', created.fence), [
         ...released,
-        AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY
+        AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
+        AGENT_SESSION_SEND_FINAL_STATE_RUNTIME_CAPABILITY
       ])
       expect(currentReply[0]).toMatchObject({
         ok: true,
