@@ -5,6 +5,7 @@
  * the host for `recoverInterruptedOrcadActivation` to finish or undo it. A run that ends with
  * the host provably back on one slot drops the fence; one that cannot prove it keeps it.
  */
+import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 import { randomUUID } from 'node:crypto'
 import type { OrcadDeployOptions, OrcadDeployResult } from './orcad-remote-deploy'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
@@ -176,7 +177,12 @@ export async function activateInstalledOrcad(
   const capture = parseOrcadSnapshotCapture(
     await execOrcadRemote(
       options,
-      captureOrcadStateSnapshotCommand(options.host, options.userDataDir, snapshotDir)
+      captureOrcadStateSnapshotCommand(
+        options.host,
+        options.userDataDir,
+        snapshotDir,
+        orcadRemoteBaseDir(options.host, options.remoteHome)
+      )
     ).catch((error: unknown) => {
       if (isUnconfirmedSshCommandTermination(error)) {
         throw error

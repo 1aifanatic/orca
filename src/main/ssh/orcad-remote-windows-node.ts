@@ -16,6 +16,7 @@ import {
 } from '../../shared/orcad-artifacts'
 import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import type { SshConnection } from './ssh-connection'
+import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
 import { powerShellLiteral } from './ssh-remote-powershell'
 import {
@@ -71,6 +72,11 @@ export function orcadWindowsNodeCommandLine(executable: string, args: readonly s
   }
   const inner = ['&', ...[program, ...args].map(powerShellLiteral)].join(' ')
   return `powershell.exe -NoProfile -NonInteractive -Command "${inner}"`
+}
+
+/** `~/.orca-remote` from the remote home. */
+export function orcadRemoteBaseDir(host: RemoteHostPlatform, remoteHome: string): string {
+  return joinRemotePath(host, remoteHome, RELAY_REMOTE_DIR)
 }
 
 /** `~/.orca-remote`, the parent of every slot and of the runtime store. */

@@ -105,14 +105,39 @@ describe('detecting writes since activation', () => {
 })
 
 describe('Windows hosts', () => {
+  const BASE = 'C:/Users/u/.orca-remote'
   it.each([
-    ['capture', () => captureOrcadStateSnapshotCommand(windows, ROOT, SNAP)],
-    ['restore', () => restoreOrcadStateSnapshotCommand(windows, ROOT, SNAP)],
-    ['clear', () => clearOrcadStateSnapshotMembersCommand(windows, ROOT)],
-    ['presence', () => probeOrcadStateSnapshotCommand(windows, SNAP)],
-    ['compare', () => compareOrcadStateSnapshotCommand(windows, ROOT, SNAP)],
-    ['mtime', () => newestStateMtimeCommand(windows, ROOT)]
-  ])('refuses %s rather than emitting a POSIX command', (_label, build) => {
-    expect(build).toThrow('orcad to a Windows host is not implemented')
+    [
+      'capture',
+      'snapshot-capture',
+      (base?: string) => captureOrcadStateSnapshotCommand(windows, ROOT, SNAP, base)
+    ],
+    [
+      'restore',
+      'snapshot-restore',
+      (base?: string) => restoreOrcadStateSnapshotCommand(windows, ROOT, SNAP, base)
+    ],
+    [
+      'clear',
+      'snapshot-clear',
+      (base?: string) => clearOrcadStateSnapshotMembersCommand(windows, ROOT, base)
+    ],
+    [
+      'presence',
+      'snapshot-probe',
+      (base?: string) => probeOrcadStateSnapshotCommand(windows, SNAP, base)
+    ],
+    [
+      'compare',
+      'snapshot-compare',
+      (base?: string) => compareOrcadStateSnapshotCommand(windows, ROOT, SNAP, base)
+    ],
+    ['mtime', 'state-newest-mtime', (base?: string) => newestStateMtimeCommand(windows, ROOT, base)]
+  ])('%s runs the host script op %s with node.exe, never a POSIX command', (_label, op, build) => {
+    const command = build(BASE)
+    expect(command).toContain(` ${op} `)
+    expect(command).toMatch(/^C:\\Users\\u\\\.orca-remote\\runtimes\\node-[0-9a-f]+\\node\.exe /u)
+    expect(command).not.toMatch(/tar |find |diff |EncodedCommand|powershell/u)
+    expect(() => build()).toThrow('~/.orca-remote')
   })
 })

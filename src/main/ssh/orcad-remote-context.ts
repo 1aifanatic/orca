@@ -4,11 +4,12 @@ import type { SshTarget } from '../../shared/ssh-types'
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import { resolveOrcadDeploymentTarget } from './orcad-deployment-target'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
+import { prepareWindowsOrcadHost } from './orcad-windows-host-preparation'
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import type { SshConnection } from './ssh-connection'
 import { readRemoteHomeCommand } from './ssh-remote-commands'
 import {
+  isWindowsRemoteHost,
   joinRemotePath,
   normalizeRemoteHome,
   validateRemoteHome,
@@ -35,8 +36,6 @@ export async function resolveOrcadRemoteContext(
   if (!host) {
     throw new Error('This SSH host platform is not supported by managed orcad.')
   }
-  // Why first: every lifecycle step after this is POSIX-only, so refuse before probing further.
-  assertPosixOrcadHost(host)
   const remote = { conn: connection, host, signal }
   const remoteHome = normalizeRemoteHome(
     await execOrcadRemote(remote, readRemoteHomeCommand(host)),
@@ -46,6 +45,10 @@ export async function resolveOrcadRemoteContext(
     throw new Error(`Remote home is not a valid path: ${remoteHome.slice(0, 100)}`)
   }
   const serverTarget = await resolveOrcadDeploymentTarget({ conn: connection, host, signal })
+  if (isWindowsRemoteHost(host)) {
+    // Every Windows host op, the activation record read included, runs on the pinned node.exe.
+    await prepareWindowsOrcadHost({ conn: connection, host, remoteHome, serverTarget, signal })
+  }
   const activationRecord = await readOrcadActivationRecord({ ...remote, remoteHome })
   return {
     activationRecord,
