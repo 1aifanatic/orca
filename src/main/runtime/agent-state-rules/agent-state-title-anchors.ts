@@ -1,4 +1,3 @@
-import type { AgentStatus } from '../../../shared/agent-detection'
 import { isOpenCodeNativeTitle } from '../../../shared/opencode-terminal-title'
 import { compileTextTest } from './agent-state-rule-matchers'
 import { BUNDLED_AGENT_STATE_RULE_FILES } from './agent-state-rules-catalog'
@@ -13,14 +12,12 @@ const NAMED_TITLE_PREDICATES: Record<NamedTitlePredicate, (title: string) => boo
   'opencode-native-title': isOpenCodeNativeTitle
 }
 
-type TitleAnchorMatcher = (title: string, status: AgentStatus | null) => boolean
+type TitleAnchorMatcher = (title: string) => boolean
 
 function compileTitleAnchor(when: TitleAnchorCondition): TitleAnchorMatcher {
-  const matches =
-    'predicate' in when.match
-      ? NAMED_TITLE_PREDICATES[when.match.predicate]
-      : compileTextTest(when.match)
-  return (title, status) => status === when.status && matches(title)
+  return 'predicate' in when.match
+    ? NAMED_TITLE_PREDICATES[when.match.predicate]
+    : compileTextTest(when.match)
 }
 
 function compileTitleAnchors(files: readonly AgentStateRulesFile[]): TitleAnchorMatcher[] {
@@ -31,7 +28,7 @@ function compileTitleAnchors(files: readonly AgentStateRulesFile[]): TitleAnchor
 
 const TITLE_ANCHORS = compileTitleAnchors(BUNDLED_AGENT_STATE_RULE_FILES)
 
-/** Whether any rule file's title anchor reads `title`, classified `status`, as an agent's own idle. */
-export function showsIdleTitleAnchor(title: string, status: AgentStatus | null): boolean {
-  return TITLE_ANCHORS.some((matches) => matches(title, status))
+/** Whether any rule file's title anchor marks an idle-classified `title` as an agent's own rest title. */
+export function showsIdleTitleAnchor(title: string): boolean {
+  return TITLE_ANCHORS.some((matches) => matches(title))
 }

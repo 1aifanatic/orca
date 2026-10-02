@@ -9,7 +9,6 @@ import type {
   TextAnchorCondition
 } from './agent-state-rules-schema'
 import { findAntigravityComposerIndex } from './antigravity-text-composer'
-import { findCodexProvisionalStartupIndex } from './codex-provisional-startup'
 
 export type BlockedTextSignal = { reason: RuntimeTerminalWaitBlockedReason; index: number }
 
@@ -18,8 +17,7 @@ type TextAnchorHit = { answer: Anchor['answer']; index: number }
 export type TextAnchorFinder = (normalized: string) => TextAnchorHit | null
 
 const NAMED_TEXT_ANCHOR_FINDERS: Record<NamedTextAnchor, (normalized: string) => number | null> = {
-  'antigravity-text-composer': findAntigravityComposerIndex,
-  'codex-provisional-startup': findCodexProvisionalStartupIndex
+  'antigravity-text-composer': findAntigravityComposerIndex
 }
 
 function compileFind(find: TextAnchorCondition['find']): (text: string) => number | null {
@@ -140,9 +138,6 @@ export function showsHoldAnchor(normalized: string): boolean {
 }
 
 export function showsScreenProbeBanner(text: string): boolean {
-  if (TEXT_ANCHORS.screenProbeBanners.length === 0) {
-    return false
-  }
   const normalized = text.toLowerCase()
   return TEXT_ANCHORS.screenProbeBanners.some((banner) => normalized.includes(banner))
 }

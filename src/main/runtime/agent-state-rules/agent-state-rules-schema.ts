@@ -33,21 +33,24 @@ const SafeRegex = Literal.superRefine((pattern, ctx) => {
   }
 })
 
-const TextTermSchema = z.union([
-  z.object({ regex: SafeRegex, ignoreCase: z.boolean().optional() }).strict(),
-  z.object({ contains: Literal }).strict()
-])
-
-const Terms = z.array(TextTermSchema).min(1).max(MAX_TERMS)
-
 /** A test on one row or one text segment: a single term, or every `all`, some `any`, no `none`. */
-const TextTestSchema = z.union([
-  TextTermSchema,
-  z
-    .object({ all: Terms.optional(), any: Terms.optional(), none: Terms.optional() })
-    .strict()
-    .refine((test) => Boolean(test.all ?? test.any ?? test.none), 'needs all, any or none')
-])
+function textTestSchema(containsLiteral: typeof Literal) {
+  const term = z.union([
+    z.object({ regex: SafeRegex, ignoreCase: z.boolean().optional() }).strict(),
+    z.object({ contains: containsLiteral }).strict()
+  ])
+  const terms = z.array(term).min(1).max(MAX_TERMS)
+  return z.union([
+    term,
+    z
+      .object({ all: terms.optional(), any: terms.optional(), none: terms.optional() })
+      .strict()
+      .refine((test) => Boolean(test.all ?? test.any ?? test.none), 'needs all, any or none')
+  ])
+}
+
+const TextTestSchema = textTestSchema(Literal)
+const TailTextTestSchema = textTestSchema(TailLiteral)
 
 const RowSchema = z.union([TextTestSchema, z.object({ optional: TextTestSchema }).strict()])
 
@@ -108,7 +111,7 @@ const RuleAnswerSchema = z.discriminatedUnion('state', [
       requiresQuiet: z.boolean(),
       /** On a pane with no output clock (restored or adopted), quiet cannot be measured: a strong
        *  quiet rule is believed at once there, unless it says `skip` (then it does not apply). */
-      withoutClock: z.enum(['believe', 'skip']).optional()
+      withoutClock: z.literal('skip').optional()
     })
     .strict()
     .refine(
@@ -131,7 +134,7 @@ const AgentStateRuleSchema = z
   })
   .strict()
 
-const NAMED_TEXT_ANCHORS = ['antigravity-text-composer', 'codex-provisional-startup'] as const
+const NAMED_TEXT_ANCHORS = ['antigravity-text-composer'] as const
 const NAMED_TITLE_PREDICATES = ['opencode-native-title'] as const
 
 const AGENT_BLOCKED_REASONS = [
@@ -161,14 +164,14 @@ const TextAnchorConditionSchema = z
     /** Reads only the last N lines of its input. */
     withinLastLines: z.number().int().min(1).max(64).optional(),
     /** The text from the anchor to the end must pass this. */
-    after: TextTestSchema.optional(),
+    after: TailTextTestSchema.optional(),
     /** Over the lines read, trailing blanks dropped: at least `atLeast` pass, the last one too
      *  when `includingLast`. */
     lines: z
       .object({
         atLeast: z.number().int().min(1).max(MAX_ROWS),
         includingLast: z.boolean(),
-        test: TextTestSchema
+        test: TailTextTestSchema
       })
       .strict()
       .optional()
@@ -176,14 +179,14 @@ const TextAnchorConditionSchema = z
   .strict()
 
 /**
- * A pane title, like a text anchor read whatever agent the pane runs: an adopted pane has no
- * known agent, and a pane can run another agent than it launched. Only an idle title (`status`)
- * can carry one; `match` is a test, or a named engine predicate shared with other title readers.
+ * A title the shared classifier already calls idle, marked as an agent's own rest title. Like a
+ * text anchor it is read whatever agent the pane runs: an adopted pane has no known agent, and a
+ * pane can run another agent than it launched. `match` is a test, or a named engine predicate
+ * shared with other title readers.
  */
 const TitleAnchorConditionSchema = z
   .object({
     region: z.literal('title'),
-    status: z.enum(['idle']),
     match: z.union([
       TextTestSchema,
       z.object({ predicate: z.enum(NAMED_TITLE_PREDICATES) }).strict()

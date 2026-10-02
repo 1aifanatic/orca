@@ -5,7 +5,7 @@
     {
       "id": "idle_title",
       "why": "Gemini CLI marks rest with `◇` in its title (`✦` while working, `✋` on a permission).",
-      "when": { "region": "title", "status": "idle", "match": { "contains": "◇" } },
+      "when": { "region": "title", "match": { "contains": "◇" } },
       "answer": { "state": "idle" }
     }
   ],

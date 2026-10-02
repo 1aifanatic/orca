@@ -6,11 +6,7 @@
     {
       "id": "native_title",
       "why": "OpenCode's own session title (`OC | <session>`, after an optional wrapper label or status glyph). It unblocks waits on hookless remote panes; guarded writes corroborate it. Named because presence detection reads the same marker.",
-      "when": {
-        "region": "title",
-        "status": "idle",
-        "match": { "predicate": "opencode-native-title" }
-      },
+      "when": { "region": "title", "match": { "predicate": "opencode-native-title" } },
       "answer": { "state": "idle" }
     }
   ],
