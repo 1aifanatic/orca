@@ -5,7 +5,10 @@ import {
   readBoundedAntigravityIndex
 } from './session-scanner-antigravity-metadata'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
-import { openTranscriptReadStream } from '../native-chat/wsl-transcript-fs-access'
+import { openTranscriptReadStream, wslGatedStat } from '../native-chat/wsl-transcript-fs-access'
+import { readNodeFileWithinLimit } from '../../shared/node-bounded-file-reader'
+import { isWslUncPath } from '../../shared/wsl-paths'
+import { throwIfAiVaultScanCancelled } from './ai-vault-scan-cancellation'
 import { WslTranscriptFsError } from '../native-chat/wsl-transcript-fs-gate'
 import { normalizeTitleText, parseJsonObject, timestampMs } from './session-scanner-values'
 
@@ -18,15 +21,39 @@ const HISTORY_MATCH_WINDOW_MS = 2_000
  * null lists the session with a missing cwd and no retry signal, and the
  * resolver's memo relies on the rejection to evict rather than pin a stall.
  */
-export async function readLocalAntigravityHistory(path: string): Promise<string | null> {
+export async function readLocalAntigravityHistory(
+  path: string,
+  signal?: AbortSignal
+): Promise<string | null> {
   try {
-    const input = openTranscriptReadStream(path, {}, 'scan')
+    throwIfAiVaultScanCancelled(signal)
+    if (!isWslUncPath(path)) {
+      const read = await readNodeFileWithinLimit(path, ANTIGRAVITY_INDEX_MAX_BYTES, {
+        regularFileOnly: true,
+        signal
+      })
+      return read.buffer.toString('utf8')
+    }
+    const stats = await wslGatedStat(path, 'scan', signal)
+    if (!stats.isFile() || stats.size > ANTIGRAVITY_INDEX_MAX_BYTES) {
+      return null
+    }
+    const input = openTranscriptReadStream(
+      path,
+      { end: ANTIGRAVITY_INDEX_MAX_BYTES },
+      'scan',
+      signal
+    )
     try {
       return await readBoundedAntigravityIndex(input)
     } finally {
       input.destroy()
     }
   } catch (error) {
+    throwIfAiVaultScanCancelled(signal)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error
+    }
     if (error instanceof WslTranscriptFsError) {
       throw error
     }

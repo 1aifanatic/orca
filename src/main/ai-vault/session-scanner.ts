@@ -79,8 +79,8 @@ export async function scanAiVaultSessions(
         const executionHostId = options.executionHostId ?? LOCAL_EXECUTION_HOST_ID
         const issues: AiVaultScanIssue[] = []
         const parseStats = createSessionParseStats()
-        const antigravityWorkspaceResolver = createAntigravityWorkspaceResolver(
-          readLocalAntigravityHistory
+        const antigravityWorkspaceResolver = createAntigravityWorkspaceResolver((path) =>
+          readLocalAntigravityHistory(path, options.signal)
         )
         // Why: persisted entries must be seeded before any candidate is parsed, or
         // the cold scan gains nothing from the cache file (#9210).

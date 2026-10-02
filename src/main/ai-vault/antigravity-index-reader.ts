@@ -3,7 +3,10 @@ import {
   readBoundedAntigravityIndex
 } from './session-scanner-antigravity-metadata'
 import type { RemoteSessionFilesystemProvider } from './remote-session-scanner-types'
-import { throwIfAiVaultScanCancelled } from './ai-vault-scan-cancellation'
+import {
+  abandonRemoteSessionScanOnCancel,
+  throwIfAiVaultScanCancelled
+} from './ai-vault-scan-cancellation'
 
 export async function readRemoteAntigravityIndex(
   provider: RemoteSessionFilesystemProvider,
@@ -13,13 +16,24 @@ export async function readRemoteAntigravityIndex(
   try {
     throwIfAiVaultScanCancelled(signal)
     if (provider.readTranscriptBytes) {
-      return await readBoundedAntigravityIndex(provider.readTranscriptBytes(path, signal))
+      return await abandonRemoteSessionScanOnCancel(
+        readBoundedAntigravityIndex(
+          provider.readTranscriptBytes(path, signal, {
+            regularFileOnly: true,
+            maxBytes: ANTIGRAVITY_INDEX_MAX_BYTES
+          })
+        ),
+        signal
+      )
     }
-    const stat = await provider.stat(path)
-    if (stat.size > ANTIGRAVITY_INDEX_MAX_BYTES) {
+    const stat = await abandonRemoteSessionScanOnCancel(provider.stat(path), signal)
+    if (stat.type !== 'file' || stat.size > ANTIGRAVITY_INDEX_MAX_BYTES) {
       return null
     }
-    const read = await provider.readFile(path)
+    const read = await abandonRemoteSessionScanOnCancel(
+      provider.readFile(path, { maxTextBytes: ANTIGRAVITY_INDEX_MAX_BYTES }),
+      signal
+    )
     throwIfAiVaultScanCancelled(signal)
     return read.isBinary || Buffer.byteLength(read.content) > ANTIGRAVITY_INDEX_MAX_BYTES
       ? null

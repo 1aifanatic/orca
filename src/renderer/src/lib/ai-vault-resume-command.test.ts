@@ -76,6 +76,9 @@ describe('ai vault resume command runtime', () => {
         worktreePath: '\\\\wsl.localhost\\Ubuntu\\home\\example\\project',
         localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
       })
+      if (executionHostId !== 'local') {
+        state.repos = state.repos.map((repo) => ({ ...repo, executionHostId }))
+      }
       const session = {
         agent: 'antigravity' as const,
         sessionId: 'ide-id',

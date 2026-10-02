@@ -1,3 +1,4 @@
+import { runProcess } from '../../shared/child-process/run-process'
 import { mkdtemp, mkdir, rm, writeFile, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -152,6 +153,35 @@ describe('Antigravity IDE history discovery', () => {
     expect(result.sessions).toHaveLength(1)
     expect(result.sessions[0]?.filePath).toBe(full)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'lists all origins despite a FIFO metadata cache and retains transcript workspace fallback',
+    async () => {
+      const home = await temporaryHome()
+      for (const origin of origins) {
+        const brain = join(home, '.gemini', origin, 'brain')
+        await writeAntigravityTranscript(brain, conversationId, records(origin))
+        const cache = join(dirname(brain), 'cache')
+        await mkdir(cache, { recursive: true })
+        const result = await runProcess({
+          program: 'mkfifo',
+          args: [join(cache, 'projects.json')],
+          timeoutMs: 2000
+        })
+        expect(result.code).toBe(0)
+      }
+      const result = await scanAiVaultSessions({
+        ...isolatedScanRoots(home),
+        antigravityBrainDir: join(home, '.gemini', 'antigravity-cli', 'brain'),
+        antigravityAppHome: home,
+        includeAntigravityIdeSessions: true
+      })
+      expect(result.sessions).toHaveLength(3)
+      expect(result.issues).toEqual([])
+      expect(result.sessions.every((session) => session.cwd === null)).toBe(true)
+    },
+    5000
+  )
 
   it('does not retain an oversized metadata file', async () => {
     const home = await temporaryHome()

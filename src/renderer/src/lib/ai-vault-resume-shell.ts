@@ -74,3 +74,34 @@ export function getAiVaultResumeWorkspacePath(
       .find((candidate) => candidate.id === targetWorktreeId)?.path ?? null
   )
 }
+
+export function getAiVaultResumeWorkspaceWslDistro(
+  state: Pick<AppState, 'folderWorkspaces' | 'repos' | 'worktreesByRepo'> &
+    Partial<Pick<AppState, 'activeRepoId' | 'activeWorktreeId' | 'projects' | 'settings'>>,
+  workspaceId: string | null | undefined
+): string | null {
+  const workspacePath = getAiVaultResumeWorkspacePath(state, workspaceId)
+  const workspaceKey = workspaceId ? parseWorkspaceKey(workspaceId) : null
+  if (workspaceKey?.type === 'folder') {
+    return workspacePath ? (parseWslUncPath(workspacePath)?.distro ?? null) : null
+  }
+  const runtime = getLocalProjectExecutionRuntimeContext(
+    {
+      activeRepoId: state.activeRepoId ?? null,
+      activeWorktreeId: state.activeWorktreeId ?? null,
+      projects: state.projects ?? [],
+      settings: state.settings ?? null,
+      repos: state.repos,
+      worktreesByRepo: state.worktreesByRepo
+    },
+    workspaceKey?.type === 'worktree' ? workspaceKey.worktreeId : workspaceId,
+    CLIENT_PLATFORM
+  )
+  if (runtime?.status === 'repair-required') {
+    return null
+  }
+  if (runtime?.status === 'resolved') {
+    return runtime.runtime.kind === 'wsl' ? runtime.runtime.distro : null
+  }
+  return workspacePath ? (parseWslUncPath(workspacePath)?.distro ?? null) : null
+}
