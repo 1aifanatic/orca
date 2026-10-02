@@ -13,7 +13,7 @@ import {
   removeCodexHookFlagEntry,
   type CodexHookFlagEntry
 } from './codex-hook-flag-table'
-import { resolveWindowsShortPath } from '../windows/windows-short-path'
+import { resolveWindowsShortPath, windowsShortPathRefuses } from '../windows/windows-short-path'
 import {
   buildCodexHookDefinitionFlag,
   buildCodexHookSessionFlag,
@@ -167,6 +167,14 @@ async function lookupCarriableHookCommand(scriptPath: string): Promise<Carriable
   if (buildCodexHookDefinitionFlag(command)) {
     return { command, failure: null, transient: false }
   }
+  const noShortName = {
+    command: null,
+    failure: `Codex status needs a short (8.3) name for ${scriptPath}, and it has none Orca can use`,
+    transient: false
+  }
+  if (windowsShortPathRefuses(scriptPath)) {
+    return noShortName
+  }
   const shortPath = await resolveWindowsShortPath(scriptPath).catch(() => null)
   if (shortPath === null) {
     return {
@@ -176,14 +184,10 @@ async function lookupCarriableHookCommand(scriptPath: string): Promise<Carriable
     }
   }
   const shortCommand = getManagedCommand(shortPath)
-  // Why "off": with no short name, cmd.exe answers the long path itself.
+  // Why no short name: cmd.exe answers the long path when there is none; a `'` survives into the short one.
   return buildCodexHookDefinitionFlag(shortCommand)
     ? { command: shortCommand, failure: null, transient: false }
-    : {
-        command: null,
-        failure: `Codex status needs a short (8.3) name for ${scriptPath}; this volume has 8.3 names off`,
-        transient: false
-      }
+    : noShortName
 }
 
 /**

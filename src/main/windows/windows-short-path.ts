@@ -12,7 +12,7 @@ const SHORT_PATH_TIMEOUT_MS = 5_000
  * than spelled for cmd.
  */
 export async function resolveWindowsShortPath(path: string): Promise<string | null> {
-  if (process.platform !== 'win32' || /[%"]/.test(path) || !existsSync(path)) {
+  if (process.platform !== 'win32' || windowsShortPathRefuses(path) || !existsSync(path)) {
     return null
   }
   try {
@@ -28,4 +28,9 @@ export async function resolveWindowsShortPath(path: string): Promise<string | nu
   } catch {
     return null
   }
+}
+
+/** Whether the lookup refuses `path` outright: cmd.exe would read its `%` or `"` as syntax. */
+export function windowsShortPathRefuses(path: string): boolean {
+  return /[%"]/.test(path)
 }

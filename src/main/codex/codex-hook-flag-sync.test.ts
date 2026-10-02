@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync
@@ -151,7 +152,8 @@ describe('syncCodexHookFlags', () => {
   const putOnPath = (...folders: string[]) => vi.stubEnv('PATH', folders.join(delimiter))
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-sync-'))
+    // Why real: watches name folders as resolved, and macOS's temp folder sits behind /var.
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'orca-codex-hook-flag-sync-')))
     vi.stubEnv('ORCA_USER_DATA_PATH', join(root, 'user-data'))
     // Why: the sync writes the hook script under ~/.orca.
     vi.stubEnv('HOME', join(root, 'home'))
@@ -431,6 +433,37 @@ describe('syncCodexHookFlags', () => {
     await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
       timeout: 5_000
     })
+  })
+
+  // Why F1: the standalone installer flips a `current` link that neither the PATH entry's folder nor the release's holds.
+  it("publishes with no launch when the standalone installer flips its 'current' link", async () => {
+    const standalone = join(root, 'packages', 'standalone')
+    const release = (version: string) =>
+      join(standalone, 'releases', `${version}-aarch64-apple-darwin`)
+    writeBinary(join(release('0.159.2'), 'bin', 'codex'), 'codex 0.159.2')
+    symlinkSync(release('0.159.2'), join(standalone, 'current'))
+    rmSync(mocks.state.mainPath)
+    symlinkSync(join(standalone, 'current', 'bin', 'codex'), mocks.state.mainPath)
+    await start()
+    const holder = watchers.find(
+      (watch) => !watch.watcher.closed && realpathSync(watch.path) === realpathSync(standalone)
+    )
+    expect(holder).toBeDefined()
+
+    writeBinary(join(release('0.160.0'), 'bin', 'codex'), 'codex 0.160.0')
+    symlinkSync(release('0.160.0'), join(standalone, 'current.next'))
+    renameSync(join(standalone, 'current.next'), join(standalone, 'current'))
+    versions.set(mocks.state.mainPath, 'codex-cli 0.160.0')
+    holder?.fire()
+
+    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
+      timeout: 5_000
+    })
+    const watched = watchers
+      .filter((watch) => !watch.watcher.closed)
+      .map((watch) => realpathSync(watch.path))
+    expect(watched).toContain(realpathSync(join(release('0.160.0'), 'bin')))
+    expect(watched).not.toContain(realpathSync(join(release('0.159.2'), 'bin')))
   })
 
   // Why: npm unlinks codex mid-update, and its relink is the event that publishes the new version.
@@ -741,15 +774,46 @@ describe('syncCodexHookFlags', () => {
       expect(versionCalls()).toEqual([])
     })
 
+    const noShortName = () =>
+      `Codex status needs a short (8.3) name for ${getManagedScriptPath()}, and it has none Orca can use`
+
     // Why AL4: with 8.3 names off, cmd.exe answers the long path, and status must say why there is no flag.
-    it('reports a profile path that needs an 8.3 name this volume does not keep', async () => {
+    it('reports a profile path that has no short name', async () => {
       shortPath = () => getManagedScriptPath()
       await start()
 
-      expect(getKnownCodexHookFlag()?.failure).toBe(
-        `Codex status needs a short (8.3) name for ${getManagedScriptPath()}; this volume has 8.3 names off`
-      )
+      expect(getKnownCodexHookFlag()?.failure).toBe(noShortName())
       expect(mocks.runCodexAppServerSession).not.toHaveBeenCalled()
+    })
+
+    // Why: a `'` stays in the short name, which the flag cannot carry either.
+    it("reports a short name that still cannot be carried, as for O'Brien", async () => {
+      vi.stubEnv('HOME', join(root, "O'Brien"))
+      vi.stubEnv('USERPROFILE', join(root, "O'Brien"))
+      shortPath = () => {
+        const short = getManagedScriptPath().replace(join(root, "O'Brien"), join(root, "O'BRIE~1"))
+        mkdirSync(dirname(short), { recursive: true })
+        writeFileSync(short, 'x')
+        return short
+      }
+      await start()
+
+      expect(getKnownCodexHookFlag()?.failure).toBe(noShortName())
+    })
+
+    // Why: the lookup refuses a `%` before asking cmd.exe, so no retry can find a name.
+    it('reports a path the 8.3 lookup refuses as permanent, asking cmd.exe nothing', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.stubEnv('HOME', join(root, 'John 100%'))
+      vi.stubEnv('USERPROFILE', join(root, 'John 100%'))
+      await start()
+      expect(getKnownCodexHookFlag()?.failure).toBe(noShortName())
+
+      vi.setSystemTime(Date.now() + 61_000)
+      await syncCodexHookFlags()
+
+      expect(cmdCalls()).toBe(0)
+      expect(versionCalls()).toHaveLength(1)
     })
 
     it("tells the CLI's status the same", async () => {
@@ -759,9 +823,7 @@ describe('syncCodexHookFlags', () => {
 
       await learnCodexHookFlagVersion()
 
-      expect(getKnownCodexHookFlag()?.failure).toBe(
-        `Codex status needs a short (8.3) name for ${getManagedScriptPath()}; this volume has 8.3 names off`
-      )
+      expect(getKnownCodexHookFlag()?.failure).toBe(noShortName())
     })
 
     // Why S3: a definition the lookup failed to learn proves no entry stale.

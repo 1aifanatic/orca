@@ -17,7 +17,12 @@ import {
   resolveCodexProbePath,
   takeCodexHookFlagRequests
 } from './codex-hook-flag-table'
-import { createFolderWatch, type FolderWatch, type WatchFolder } from './codex-folder-watch'
+import {
+  createFolderWatch,
+  readLinkChainFolders,
+  type FolderWatch,
+  type WatchFolder
+} from './codex-folder-watch'
 import { admitRequestedCodexPath } from './codex-requested-binary'
 import {
   _internals as derivationInternals,
@@ -42,6 +47,8 @@ import {
 const TABLE_SETTLE_MS = 100
 // Why longer: an update rewrites its folder in a burst, and a sync mid-burst could probe a half-installed codex.
 const BINARY_SETTLE_MS = 1_000
+// Why a cap: a long link chain must not open a watch per hop.
+const MAX_BINARY_WATCH_FOLDERS = 4
 // Why a cap: one entry per Codex version ever seen would otherwise accumulate.
 const MAX_TABLE_ENTRIES = 8
 // Why retried soon: a timeout at a loaded boot must not cost status until a restart.
@@ -304,18 +311,17 @@ async function fingerprintCodex(codexPath: string): Promise<string> {
   }
 }
 
-// Why both folders: a brew or winget update relinks the PATH entry, npm or a standalone one rewrites the target.
+// Why every link's folder: an update relinks one (brew the PATH entry, the standalone installer its `current`) or rewrites the real file (npm).
 async function watchCodexBinary(mainPath: string): Promise<void> {
   // Why keep watching when codex is gone: npm unlinks it mid-update, and the relink is the event that matters.
   if (!isAbsolute(mainPath)) {
     return
   }
-  const folders = [dirname(mainPath)]
-  // Why not on Windows: a watch holds its folder open, and an updater replacing that folder would fail.
-  const realPath = process.platform === 'win32' ? null : await realpath(mainPath).catch(() => null)
-  if (realPath) {
-    folders.push(dirname(realPath))
-  }
+  // Why only the PATH entry on Windows: a watch holds its folder open, and an updater replacing that folder would fail.
+  const folders =
+    process.platform === 'win32'
+      ? [dirname(mainPath)]
+      : await readLinkChainFolders(mainPath, MAX_BINARY_WATCH_FOLDERS)
   if (isEnabledNow() && codexHookFlagTableExists()) {
     binaryWatch?.follow(folders)
   }
