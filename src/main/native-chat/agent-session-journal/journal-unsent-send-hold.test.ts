@@ -132,16 +132,23 @@ describe('which sends an earlier host process left unsent are kept', () => {
     await hold(journal)
 
     expect(cardOrder(journal)).toEqual(['person', 'launch', 'legacy-client'])
+    await journal.close()
+    // The rejection names the card it was kept as, read back from disk.
+    const reopened = await open()
     for (const id of ['person', 'launch', 'legacy-client']) {
-      expect(journal.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
-      expect(journal.queuedMessages.get(id)).toMatchObject({
+      expect(reopened.submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        ...HOST_RESTARTED,
+        keptAsQueuedMessageId: id
+      })
+      expect(reopened.queuedMessages.get(id)).toMatchObject({
         state: 'waiting',
         holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
         hostInstance: HOST,
         body: message(`text of ${id}`),
         fingerprint: fingerprint(message(`text of ${id}`)),
         carriedFrom: null,
-        queuedAt: { epoch: 'epoch-1', sequence: journal.submission(id)?.acceptedSequence }
+        queuedAt: { epoch: 'epoch-1', sequence: reopened.submission(id)?.acceptedSequence }
       })
     }
   })
@@ -181,6 +188,7 @@ describe('which sends an earlier host process left unsent are kept', () => {
       'no-origin'
     ]) {
       expect(journal.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+      expect(journal.submission(id)).not.toHaveProperty('keptAsQueuedMessageId')
     }
   })
 

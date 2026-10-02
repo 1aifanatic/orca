@@ -15,7 +15,18 @@ export function projectStructuredAgentSessionMessages(
   submissions: readonly AgentJournalSubmission[],
   projectItems = projectStructuredItemsToNativeChat
 ): NativeChatMessage[] {
-  const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
+  // A send the host kept as a card is drawn only as that card, its local copy included: once the
+  // card is sent, edited or deleted, nothing of the original send shows.
+  const keptAsCard = new Set(
+    submissions.flatMap((submission) =>
+      submission.dispatchState === 'rejected' && submission.keptAsQueuedMessageId !== undefined
+        ? [submission.clientMessageId]
+        : []
+    )
+  )
+  const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions).filter(
+    (entry) => !keptAsCard.has(entry.clientMessageId)
+  )
   // Refused sends are ledger evidence, not conversation history; local drafts remain in the outbox.
   const rejected = new Set(
     submissions

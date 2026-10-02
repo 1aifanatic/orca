@@ -109,26 +109,26 @@ export async function holdUnsentSends(
     const position = positions.placed.find(
       (entry) => 'messageId' in entry && entry.messageId === clientMessageId
     )?.position
+    const card = body && position !== undefined ? { body, position } : null
     const keep: JournalRowTransactionHook | undefined =
-      body || moves.length > 0
+      card || moves.length > 0
         ? (db) => {
             journal.queuedMessages.holdInTransaction(db, {
-              card:
-                body && position !== undefined
-                  ? {
-                      messageId: clientMessageId,
-                      body,
-                      fingerprint: structuredAgentSessionPayloadFingerprint({
-                        method: 'agentSession.send',
-                        sessionId: journal.queuedMessages.sessionId,
-                        fields: { body }
-                      }),
-                      hostInstance: input.hostInstance,
-                      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
-                      queuedAt: { epoch, sequence: submission.acceptedSequence ?? 0 },
-                      position
-                    }
-                  : null,
+              card: card
+                ? {
+                    messageId: clientMessageId,
+                    body: card.body,
+                    fingerprint: structuredAgentSessionPayloadFingerprint({
+                      method: 'agentSession.send',
+                      sessionId: journal.queuedMessages.sessionId,
+                      fields: { body: card.body }
+                    }),
+                    hostInstance: input.hostInstance,
+                    holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+                    queuedAt: { epoch, sequence: submission.acceptedSequence ?? 0 },
+                    position: card.position
+                  }
+                : null,
               positions: moves
             })
           }
@@ -141,7 +141,11 @@ export async function holdUnsentSends(
       recovered: true as const
     }
     try {
-      await journal.resolveDispatch(reject, keep)
+      // The send names its card in the same row, so no surface draws it once the card is gone.
+      await journal.resolveDispatch(
+        card ? { ...reject, keptAsQueuedMessageId: clientMessageId } : reject,
+        keep
+      )
     } catch (error) {
       if (!keep) {
         failures.push(error)

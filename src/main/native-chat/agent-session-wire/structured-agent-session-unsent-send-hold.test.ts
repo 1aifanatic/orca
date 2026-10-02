@@ -9,6 +9,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
+import { createStructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
@@ -187,6 +188,49 @@ describe('only an action on the card releases a kept card', () => {
       value: { submission: { queuedMessageId: sent, origin: 'client', source: 'queue' } }
     })
     await eventually(() => expect(dispatchedTexts()).toEqual(['send me now']))
+    expect(await rig.drafts()).toEqual([])
+  })
+
+  // Edit is the card's text in the composer, the card's Delete, then a new send. Neither leaves
+  // anything of the original send, even beside the sending desktop's own copy of it.
+  it.each(['Edit', 'Delete'] as const)('%s leaves no trace of the kept send', async (action) => {
+    const request = sendRequest('the kept words')
+    const id = await acceptWhileStarting(request)
+    await rig.quitRestartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
+    expect(await rig.deleteQueued(id)).toMatchObject({ ok: true, value: { deleted: true } })
+    const edited = action === 'Edit' ? rig.send('the edited words') : null
+    if (edited) {
+      await edited.result
+      await eventually(async () =>
+        expect((await rig.submission(edited.id))?.handedOverAt).toBeDefined()
+      )
+      await rig.settleAccepted(edited.id, 'edited')
+    }
+
+    const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+    if (!page.ok) {
+      throw new Error('history refused')
+    }
+    const lingering = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: id,
+        sessionId: SESSION,
+        text: 'the kept words',
+        attachments: [],
+        queuedAt: 1
+      }),
+      state: 'rejected' as const
+    }
+    const shown = projectStructuredAgentSessionMessages(
+      page.page.items,
+      [lingering],
+      page.page.submissions
+    ).map((message) => ({
+      text: message.blocks.map((block) => ('text' in block ? block.text : '')).join(''),
+      unsent: message.unsent ?? false
+    }))
+    expect(shown).toEqual(action === 'Edit' ? [{ text: 'the edited words', unsent: false }] : [])
     expect(await rig.drafts()).toEqual([])
   })
 
@@ -475,6 +519,8 @@ describe('what is not kept', () => {
       })
     )
     expect(await rig.drafts()).toEqual([])
+    // No card holds it, so its rejection names none.
+    expect(await rig.submission(id)).not.toHaveProperty('keptAsQueuedMessageId')
     expect(warned).toHaveBeenCalledWith(
       '[journal-hold] keeping an unsent send failed:',
       expect.objectContaining({ clientMessageId: id, cause: 'hostRestarted' })

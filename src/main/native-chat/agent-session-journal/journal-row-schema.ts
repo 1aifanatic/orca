@@ -154,6 +154,9 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
+  /** On `rejected`: the card the host kept this send as (`AgentJournalSubmission`). Older readers
+   *  keep the key and ignore it. */
+  keptAsQueuedMessageId?: string
 }
 
 /** An item mutation may name its own producer, because one batch can CREATE

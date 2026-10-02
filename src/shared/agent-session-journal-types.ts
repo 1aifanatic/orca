@@ -431,6 +431,10 @@ export type AgentJournalSubmission = {
    *  Typed values in `AgentJournalSubmissionSource`; a newer build's value stays as it was written,
    *  never read as absent. Published with the submission; clients ignore it. */
   source?: string
+  /** On a rejected send the host kept as a card: that card's message id. The text lives on the
+   *  card, so no surface draws this send, before or after the card is sent, edited or deleted.
+   *  Recorded in the rejection's own transaction (`journal-unsent-send-hold.ts`). */
+  keptAsQueuedMessageId?: string
 }
 
 /** Which path sent a submission: a person's send (typed, or `/compact`), `agent.launch`'s first
