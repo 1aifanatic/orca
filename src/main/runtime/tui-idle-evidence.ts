@@ -16,7 +16,14 @@ import {
   isKnownReadyPromptBody,
   isQuietReadyScreenBody
 } from './terminal-wait-detection'
-import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent-readiness'
+import {
+  evaluateAgentStateRules,
+  hasQuietReadyRules,
+  idleTitleRequiresQuiet,
+  readsTrustedScreen,
+  type AgentStateVerdict
+} from './agent-state-rules/agent-state-rules-engine'
+import { evaluateHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
 
 /**
  * Ranking the evidence that a `tui-idle` wait may settle on.
@@ -27,12 +34,15 @@ import { getScreenReadyRule, readScreenRuledVerdict } from './screen-ruled-agent
  * stale spinner (#1437) — so a busy Codex/Devin pane is routinely titled idle, and
  * accepting it satisfied a wait in ~0s mid-turn (#6011).
  *
- *   0. BLOCKED — the tail shows a prompt waiting on the user.
+ *   0. HOOKS — for an agent whose hooks are authoritative (agent-state-rules/ profile), a fresh
+ *      hook row for the main agent's turn: done, working, or a permission wait, with the tail's
+ *      blocked text judged by the permission arbiter against it (tui-idle-hook-lane.ts).
+ *   0b. BLOCKED — otherwise, the tail shows a prompt waiting on the user.
  *   1. STRONG READY — the agent states it is ready: an explicit idle marker in its own
  *      title, or a known ready-prompt body.
- *   1b. QUIET READY SCREEN — Muse and an idle Codex title no rest signal, and the screen-ruled
- *      agents (Antigravity, Cline, Prime Agent) can paint their idle composer mid-turn, so their
- *      ready-screen body is believed only once quiet.
+ *   1b. QUIET READY SCREEN — Muse titles no rest signal, and agents whose rules
+ *      (agent-state-rules/) read a ready screen or text they also paint mid-turn (Codex's
+ *      header and composer), so that body is believed only once quiet.
  *   2. WORKING — a fresh first-party agent status (OSC 9999) saying working/blocked/
  *      waiting, or a working title. The agent's own account of itself outranks anything
  *      inferred.
@@ -116,20 +126,16 @@ export function hasFreshWorkingFirstPartyStatus(status: FirstPartyAgentStatus): 
   return isFreshNonDoneAgentStatus(status ?? undefined)
 }
 
-/** Agents that paint their own explicit rest title (Claude's `✳`). Gemini's `◇` would qualify
- *  but is not yet held to it. */
-const NATIVE_EXPLICIT_IDLE_TITLE_AGENTS: ReadonlySet<TuiAgent> = new Set(['claude'])
-
 /**
  * Whether a name-only title from `agent` must be corroborated by a quiet stream.
  *
- * Only for agents that announce rest with an explicit title of their own: the hook-driven
- * `Codex ready` / `Devin ready`, or Claude's `✳`. For them the bare name is not a rest signal —
- * a shell auto-title (`claude`, `claude ~/repo`) names the agent from the moment it starts, over
- * a start-up dialog or a busy turn alike. Grok, Copilot, Aider, Mimo, agy and OpenCode emit
- * their NAME and nothing more at rest, so holding them to it leaves no settle signal at all:
- * a real idle Grok pane repaints its banner about four times a second forever, so the stream
- * never quiesces and the wait runs to timeout.
+ * An agent's own idle-title rule (agent-state-rules/) answers. Without one, only agents whose
+ * hooks drive an explicit `<Agent> ready` title are held to it: for them the bare name is not a
+ * rest signal, since a shell auto-title names the agent from the moment it starts, over a
+ * start-up dialog or a busy turn alike. Grok, Copilot, Aider, Mimo and agy emit their NAME and
+ * nothing more at rest, so holding them to it leaves no settle signal at all: a real idle Grok
+ * pane repaints its banner about four times a second forever, so the stream never quiesces and
+ * the wait runs to timeout.
  */
 export function nameOnlyIdleNeedsCorroboration(
   agent: TuiAgent | null | undefined,
@@ -138,10 +144,11 @@ export function nameOnlyIdleNeedsCorroboration(
   // Why the title fallback: an adopted pane carries no launch metadata, but its
   // name-only title is exactly the thing that names the agent.
   const resolved = agent ?? (title ? resolveExplicitTerminalTitleAgentType(title) : null)
+  if (resolved === null) {
+    return false
+  }
   return (
-    resolved !== null &&
-    (NATIVE_EXPLICIT_IDLE_TITLE_AGENTS.has(resolved) ||
-      getSyntheticAgentTerminalTitle(resolved, 'done') !== null)
+    idleTitleRequiresQuiet(resolved) ?? getSyntheticAgentTerminalTitle(resolved, 'done') !== null
   )
 }
 
@@ -162,10 +169,12 @@ export function hasSustainedTitleIdle(
   // no local output clock, so for an agent that WILL announce rest explicitly there is no
   // corroboration available at all. Settling here let a busy Codex/Devin satisfy the wait
   // from a name-only title (#6011); hold out for tier 1/2 or the caller's timeout instead.
-  if (record.lastOutputAt === null) {
-    return false
-  }
-  return Date.now() - record.lastOutputAt >= quiescenceMs
+  return hasQuietOutput(record, quiescenceMs)
+}
+
+/** Why a missing clock is not quiet: an adopted or restored pane cannot measure it. */
+function hasQuietOutput(record: TuiIdleEvidenceRecord, quiescenceMs: number): boolean {
+  return record.lastOutputAt !== null && Date.now() - record.lastOutputAt >= quiescenceMs
 }
 
 /**
@@ -198,12 +207,14 @@ export type TuiIdleEvaluationInput = {
    *  (~11us and a multi-KB string on a full tail); the title check below usually answers
    *  first, and then none of that has to happen at all. */
   readPositiveBodyEvidence: () => boolean
-  /** Tier 1b body evidence: a Muse, Codex or screen-ruled ready screen. Thunk, as above. */
+  /** Tier 1b body evidence: a Muse ready screen, or a rule-file one held to quiet. Thunk, as above. */
   readQuietReadyBodyEvidence: () => boolean
-  /** Whether the agent's live screen already ruled on readiness, which shuts the weak lanes. */
-  readScreenDecidesReadiness: () => boolean
+  /** The agent's own rules' answer; any answer shuts the lanes that cannot see its screen. */
+  readAgentRuleVerdict: () => AgentStateVerdict | null
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
+  /** Tier 0: the hook server's fresh row for the pane, read only for an authoritative agent. */
+  readHookTurn?: () => TuiIdleHookTurn | null
   quiescenceMs: number
 }
 
@@ -220,8 +231,6 @@ const READY_STRONG: TuiIdleVerdict = { kind: 'ready-strong' }
 const READY_WEAK: TuiIdleVerdict = { kind: 'ready-weak' }
 const WORKING: TuiIdleVerdict = { kind: 'working' }
 
-const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex'])
-
 /**
  * Tier 1b: a ready screen in the body, believed only once the stream has gone quiet.
  *
@@ -229,9 +238,9 @@ const QUIET_READY_SCREEN_AGENTS: ReadonlySet<TuiAgent> = new Set(['muse', 'codex
  * the cwd (plus a thread name) and no agent name, so neither the explicit-idle nor the
  * sustained-title lane can fire. The ready screen proves the TUI is up; the quiescence
  * demand keeps a mid-turn streaming pane from satisfying, mirroring the tier-3 lane's
- * positive-evidence-plus-quiet shape. Scoped to those agents, the screen-ruled ones, and
- * agent-unknown panes (which read only Muse's screen): another agent's scrollback quoting them
- * must not settle its wait.
+ * positive-evidence-plus-quiet shape. Scoped to Muse, agents with quiet ready rules, and
+ * agent-unknown panes (which read only Muse's screen here): another agent's scrollback quoting
+ * them must not settle its wait.
  */
 export function hasQuietReadyScreen(
   record: TuiIdleEvidenceRecord,
@@ -239,12 +248,12 @@ export function hasQuietReadyScreen(
   readBodyEvidence: () => boolean,
   quiescenceMs: number
 ): boolean {
-  if (agent && !QUIET_READY_SCREEN_AGENTS.has(agent) && !getScreenReadyRule(agent)) {
+  if (agent && agent !== 'muse' && !hasQuietReadyRules(agent)) {
     return false
   }
   // Why: same rule as the tier-3 lane — without an output clock there is no
   // corroboration available, so hold out instead of settling.
-  if (record.lastOutputAt === null || Date.now() - record.lastOutputAt < quiescenceMs) {
+  if (!hasQuietOutput(record, quiescenceMs)) {
     return false
   }
   // Why last: a streaming pane never pays for the screen projection.
@@ -253,6 +262,10 @@ export function hasQuietReadyScreen(
 
 /** The one place the tiers are combined; every settle site branches only on the verdict. */
 export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
+  const hookVerdict = input.readHookTurn ? evaluateHookTurn(input.agent, input.readHookTurn) : null
+  if (hookVerdict) {
+    return hookVerdict
+  }
   const blockedReason = input.readTailBlockedReason()
   if (blockedReason) {
     return { kind: 'blocked', reason: blockedReason }
@@ -302,9 +315,13 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (input.record.lastAgentStatus === 'working') {
     return WORKING
   }
-  // Why: a name-only title and a quiet process cannot see the picker or prompt the screen refused.
-  if (input.readScreenDecidesReadiness()) {
-    return { kind: 'pending', quietForeground: 'closed' }
+  // Why here: a name-only title and a quiet process cannot see the picker or prompt the screen
+  // refused, and an agent's own idle-title rule replaces the sustained-title lane below.
+  const ruled = input.readAgentRuleVerdict()
+  if (ruled !== null) {
+    return isSettledWeakIdle(ruled, input.record, input.quiescenceMs)
+      ? READY_WEAK
+      : { kind: 'pending', quietForeground: 'closed' }
   }
   if (hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)) {
     return READY_WEAK
@@ -314,6 +331,18 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
     quietForeground:
       input.record.lastAgentStatus === null ? quietForegroundLane(input.agent) : 'closed'
   }
+}
+
+function isSettledWeakIdle(
+  verdict: AgentStateVerdict,
+  record: TuiIdleEvidenceRecord,
+  quiescenceMs: number
+): boolean {
+  return (
+    verdict.state === 'idle' &&
+    verdict.strength === 'weak' &&
+    (!verdict.requiresQuiet || hasQuietOutput(record, quiescenceMs))
+  )
 }
 
 export function isTuiIdleReadyVerdict(verdict: TuiIdleVerdict): boolean {
@@ -327,21 +356,50 @@ export type TuiIdleEvidenceSource = {
   getAdoptedPtyIdleStatus(pty: RuntimePtyWorktreeRecord): AgentStatus | null
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
+  /** The hook server's fresh row for the pane's main agent; absent on a host with no store. */
+  getHookTurn?(ptyId: string, agent: TuiAgent): TuiIdleHookTurn | null
   readScreenLines(ptyId: string | null | undefined): readonly string[] | null
-  /** The painted rows on the PTY's own grid, which only screen-ruled agents read. Absent, they
-   *  have no trustworthy screen. */
+  /** The painted rows on the PTY's own grid, which only agents whose rules read the trusted
+   *  screen use. Absent, they have no trustworthy screen. */
   readScreenRuledLines?(ptyId: string | null | undefined): readonly string[] | null
 }
 
-// Why per agent table: every other agent keeps the screen it read before screen rules existed.
+// Why per agent: every other agent keeps the live screen its rules were recorded against.
+// Why read once: several lanes consult the rules, and one evaluation sees one screen.
 function screenReader(
   source: TuiIdleEvidenceSource,
   agent: TuiAgent | null,
   ptyId: string | null | undefined
 ): () => readonly string[] | null {
-  return getScreenReadyRule(agent)
+  let lines: readonly string[] | null | undefined
+  const read = readsTrustedScreen(agent)
     ? () => source.readScreenRuledLines?.(ptyId) ?? null
     : () => source.readScreenLines(ptyId)
+  return () => (lines === undefined ? (lines = read()) : lines)
+}
+
+function readAgentRuleVerdict(
+  agent: TuiAgent | null,
+  record: TuiIdleEvidenceRecord,
+  readScreenLines: () => readonly string[] | null,
+  waitText: () => string
+): AgentStateVerdict | null {
+  return evaluateAgentStateRules(agent, {
+    readScreenLines,
+    readText: () => waitText().toLowerCase(),
+    readTitleStatus: () => record.lastAgentStatus,
+    hasOutputClock: record.lastOutputAt !== null
+  })
+}
+
+function hookTurnReader(
+  source: TuiIdleEvidenceSource,
+  agent: TuiAgent | null,
+  ptyId: string | null | undefined
+): (() => TuiIdleHookTurn | null) | undefined {
+  return source.getHookTurn && agent && ptyId
+    ? () => source.getHookTurn?.(ptyId, agent) ?? null
+    : undefined
 }
 
 function lazyWaitText(readWaitText: () => string): () => string {
@@ -364,9 +422,10 @@ export function leafTuiIdleEvidence(
     readPositiveBodyEvidence: () =>
       isKnownReadyPromptBody(waitText(), agent, readScreen, leaf.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
-    readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
+    readAgentRuleVerdict: () => readAgentRuleVerdict(agent, leaf, readScreen, waitText),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
+    readHookTurn: hookTurnReader(source, agent, leaf.ptyId),
     quiescenceMs: source.quiescenceMs
   }
 }
@@ -386,9 +445,10 @@ export function ptyTuiIdleEvidence(
       (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
       isKnownReadyPromptBody(waitText(), agent, readScreen, pty.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
-    readScreenDecidesReadiness: () => readScreenRuledVerdict(agent, readScreen) !== null,
+    readAgentRuleVerdict: () => readAgentRuleVerdict(agent, pty, readScreen, waitText),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
+    readHookTurn: hookTurnReader(source, agent, pty.ptyId),
     quiescenceMs: source.quiescenceMs
   }
 }
