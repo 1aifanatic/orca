@@ -127,8 +127,8 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
     rmSync(dir, { recursive: true, force: true })
   })
 
-  function writeVersionedCodex(version: string, help = 'Usage: codex'): string {
-    const path = join(dir, 'bin', 'codex')
+  function writeVersionedCodex(version: string, help = 'Usage: codex', name = 'codex'): string {
+    const path = join(dir, 'bin', name)
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(
       path,
@@ -248,6 +248,23 @@ describe.skipIf(hostPlatform === 'win32')('planCodexNoDaemonLaunch status hook f
       )
     } finally {
       vi.unstubAllEnvs()
+    }
+  })
+
+  // Why: cmd.exe defines no codex function, so an Orca-launched bare `codex` gets the flag here or not at all.
+  it("carries the entry for cmd.exe's bare codex, resolved on the pane's PATH", async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    try {
+      writeVersionedCodex('codex-cli 9.9.9', 'Usage: codex', 'codex.exe')
+      const cmd = { shellOverride: 'cmd.exe', env: { PATH: join(dir, 'bin'), PATHEXT: '.exe' } }
+      await expect(planIn('codex resume', cmd)).resolves.toBe(`codex -c "${FLAG}" resume`)
+
+      const newer = writeVersionedCodex('codex-cli 9.9.10', 'Usage: codex', 'codex.exe')
+      syncCodexHookFlags.mockClear()
+      await expect(planIn('codex resume', cmd)).resolves.toBe('codex resume')
+      expect(syncCodexHookFlags).toHaveBeenCalledWith({ codexPath: newer })
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
     }
   })
 

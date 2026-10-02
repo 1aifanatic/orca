@@ -39,9 +39,8 @@ export type LocalCodexLaunch = {
  * The launch command with `--no-daemon` after the Codex executable, applying the
  * shell codex function's rule (src/shared/codex-shell-function.ts) where that
  * function never runs: cmd.exe defines none, and a path-named binary bypasses it.
- * A path-named binary also gets the function's status hook flag, from the table
- * entry for its version, under the same gates; cmd's bare `codex` gets it from
- * the pane's doskey macro.
+ * Those launches also get the function's status hook flag, from the table entry
+ * for their binary's version, under the same gates.
  * Everywhere else the function probes the binary the shell itself resolves after
  * the user's startup files, which main cannot see. Null (synchronously) when
  * nothing applies: an extra await tick would reorder the pane-spawn reservation
@@ -76,7 +75,9 @@ export function planCodexNoDaemonLaunch(launch: LocalCodexLaunch): Promise<strin
   }
   // Why the existence check: no table means Codex hooks are off, so nothing is probed.
   const hookFlagTable =
-    isAbsolute(executable) && launch.hookFlagTable && codexHookFlagTableExists(launch.hookFlagTable)
+    (shell === 'cmd' || isAbsolute(executable)) &&
+    launch.hookFlagTable &&
+    codexHookFlagTableExists(launch.hookFlagTable)
       ? launch.hookFlagTable
       : null
   const sharedServer =
@@ -117,7 +118,10 @@ async function readHookFlagEntryFor(
   env: NodeJS.ProcessEnv,
   cwd: string | undefined
 ): Promise<CodexHookFlagEntry | null> {
-  const program = resolveCodexProbePath(executable)
+  const program = await resolveCodexProgram(executable, env, cwd)
+  if (!program) {
+    return null
+  }
   let lines: string[] = []
   try {
     const version = await runProcess({
@@ -152,9 +156,7 @@ async function supportsNoDaemon(
   env: NodeJS.ProcessEnv,
   cwd: string | undefined
 ): Promise<boolean> {
-  const program = isAbsolute(executable)
-    ? resolveCodexProbePath(executable)
-    : await resolveCommandOnLocalPath(executable, { env, cwd })
+  const program = await resolveCodexProgram(executable, env, cwd)
   if (!program) {
     return false
   }
@@ -170,4 +172,15 @@ async function supportsNoDaemon(
   } catch {
     return false
   }
+}
+
+// Why resolved for cmd's bare `codex`: the probe and its table entry must name the binary cmd.exe runs.
+async function resolveCodexProgram(
+  executable: string,
+  env: NodeJS.ProcessEnv,
+  cwd: string | undefined
+): Promise<string | null> {
+  return isAbsolute(executable)
+    ? resolveCodexProbePath(executable)
+    : await resolveCommandOnLocalPath(executable, { env, cwd })
 }
