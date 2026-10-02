@@ -66,31 +66,76 @@ describe('OpenCode execution-host launch capability probe', () => {
     expect(mocks.probe).not.toHaveBeenCalled()
   })
 
-  it('bounds and scopes WSL probes to the guest distro without native PATH or HOME', async () => {
+  it('bounds WSL probes and matches guest cwd plus explicitly imported config roots', async () => {
+    const env = {
+      HOME: '/native',
+      PATH: '/native/bin',
+      OPENCODE_CONFIG_DIR: '/guest/config',
+      XDG_DATA_HOME: '/guest/data',
+      WSLENV: 'OPENCODE_CONFIG_DIR:XDG_DATA_HOME'
+    }
     await probeOpenCodeLaunchCapabilities({
       command: 'opencode --standalone',
-      env: { HOME: '/native', PATH: '/native/bin', OPENCODE_CONFIG_DIR: '/guest/config' },
-      wsl: { distro: 'Ubuntu' },
+      env,
+      cwd: '\\\\wsl.localhost\\Ubuntu\\home\\user\\repo',
+      wsl: { distro: 'Debian' },
       hostIdentity: 'host-a'
     })
     expect(mocks.resolve).not.toHaveBeenCalled()
     const options = mocks.probe.mock.calls[0]?.[0]
+    const guestEnv = {
+      OPENCODE_CONFIG_DIR: '/guest/config',
+      XDG_DATA_HOME: '/guest/data',
+      WSLENV: env.WSLENV
+    }
     expect(options).toEqual(
       expect.objectContaining({
         executablePath: 'opencode',
         hostIdentity: 'host-a:wsl:Ubuntu',
-        env: { OPENCODE_CONFIG_DIR: '/guest/config' }
+        cwd: '/home/user/repo',
+        env: guestEnv
       })
     )
     await options.execute()
     expect(mocks.wsl).toHaveBeenCalledWith({
       distro: 'Ubuntu',
       loginPath: 'preferred',
+      cwd: '/home/user/repo',
       program: 'opencode',
       args: ['--version'],
-      env: { OPENCODE_CONFIG_DIR: '/guest/config' },
+      env: guestEnv,
       timeoutMs: 5000,
       maxOutputBytes: 4096
     })
+  })
+
+  it('does not import native configuration the actual WSL pane would not receive', async () => {
+    await probeOpenCodeLaunchCapabilities({
+      command: 'opencode',
+      env: { OPENCODE_CONFIG_DIR: 'C:\\native' },
+      cwd: 'D:\\repo',
+      wsl: { distro: 'Ubuntu' }
+    })
+    expect(mocks.probe).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: '/mnt/d/repo', env: {} })
+    )
+  })
+
+  it('keeps WSL path translation flags and skips Windows-only values', async () => {
+    await probeOpenCodeLaunchCapabilities({
+      command: 'opencode',
+      env: {
+        WSLENV: 'XDG_DATA_HOME/p:WINDOWS_ONLY/w:HOME',
+        XDG_DATA_HOME: 'D:\\data',
+        WINDOWS_ONLY: 'private',
+        HOME: 'C:\\native'
+      },
+      wsl: {}
+    })
+    expect(mocks.probe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: { WSLENV: 'XDG_DATA_HOME/p:WINDOWS_ONLY/w:HOME', XDG_DATA_HOME: 'D:\\data' }
+      })
+    )
   })
 })
