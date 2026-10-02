@@ -1,6 +1,11 @@
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import { readWholeAgentSessionFailureFact } from './agent-session-failure'
-import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-session-journal-types'
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from './agent-session-journal-types'
 import {
   parseAgentSessionWriteFailure,
   type AgentSessionWriteFailure,
@@ -11,6 +16,7 @@ import {
   agentSessionRefusalOperationState
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
+import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
@@ -217,15 +223,32 @@ export function requeueStructuredAgentSessionSendRefusal(
 
 export function reconcileStructuredAgentSessionOutbox(
   entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
+  submissions: readonly AgentJournalSubmission[],
+  /** The loaded journal rows: a rejected message leaves only once the row that draws it is here. */
+  items: readonly AgentJournalRenderItem[]
 ): StructuredAgentSessionOutboxEntry[] {
   const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
+  let loaded: Set<string> | undefined
   return entries.flatMap((entry) => {
     const submission = settled.get(entry.clientMessageId)
-    // Settled by the host: its history shows one delivered or rejected; a withdrawn one goes back
-    // to the composer.
-    if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'rejected') {
+    // Settled by the host: its history shows one delivered; a withdrawn one goes back to the
+    // composer.
+    if (submission?.dispatchState === 'accepted' || dispatchWasWithdrawn(submission)) {
       return []
+    }
+    if (submission?.dispatchState === 'rejected') {
+      // Its row draws it once loaded; until then the entry does, as the host recorded it. An older
+      // host leaves that row where it was sent, which may be outside the loaded window.
+      loaded ??= new Set(items.map((item) => item.itemId))
+      if (loaded.has(agentJournalSubmissionKey(entry.clientMessageId))) {
+        return []
+      }
+      const lastFailure = structuredAgentSessionRejectedFailure(submission)
+      return [
+        structuredAgentSessionEntryRejectedByHost(entry)
+          ? entry
+          : { ...entry, state: 'rejected' as const, lastFailure }
+      ]
     }
     if (submission?.dispatchState === 'pending') {
       if (entry.state === 'dispatching') {

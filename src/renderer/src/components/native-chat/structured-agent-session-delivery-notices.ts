@@ -192,16 +192,27 @@ export function structuredAgentSessionDeliveryNotices(
       )
     }
   }
-  // After the outbox's: the host's row is the message, whatever the outbox still holds under its id.
+  // After the outbox's, in the host's words. The outbox copy draws it while the row is not loaded
+  // (an older host may leave that row outside the window), so its Dismiss stays until it leaves.
   const shown = structuredAgentSessionRejectedShownInPlace(
     submissions,
     queuedMessageIds,
     commandItemIds
   )
+  const outboxDraws = new Set(
+    outbox.filter(structuredAgentSessionEntryRejectedByHost).map((entry) => entry.clientMessageId)
+  )
   for (const submission of rejected.values()) {
-    const id = agentJournalSubmissionKey(submission.clientMessageId)
+    const { clientMessageId } = submission
+    const id = agentJournalSubmissionKey(clientMessageId)
     if (shown.has(id)) {
-      notices.set(id, { text: hostRejectionNoticeText(submission, agentName, startFailures) })
+      const text = hostRejectionNoticeText(submission, agentName, startFailures)
+      notices.set(
+        id,
+        outboxDraws.has(clientMessageId)
+          ? { text, onDismiss: () => dismiss(clientMessageId) }
+          : { text }
+      )
     }
   }
   return notices

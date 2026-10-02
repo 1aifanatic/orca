@@ -164,7 +164,7 @@ describe('stated turn scope', () => {
     const onPhone = () => {
       const { items, submissions } = renderJournalState(state)
       return projectStructuredAgentSessionMessages(items, [], submissions, {
-        rejectedInPlace: true
+        rejectedInPlace: false
       })
     }
     // Still waiting: drawn after everything the agent did, the command's result included.

@@ -71,7 +71,8 @@ describe('a message held for its Retry', () => {
     }
     const [landed] = reconcileStructuredAgentSessionOutbox(
       [entry('held', { lastFailure: REFUSED })],
-      [submission]
+      [submission],
+      []
     )
     expect(landed?.state).toBe('dispatching')
     expect(landed?.lastFailure).toBeUndefined()
@@ -91,7 +92,8 @@ describe('a message held for its Retry', () => {
     }
     const reconciled = reconcileStructuredAgentSessionOutbox(
       [entry('held', { lastAttemptAt: 2, lastFailure: REFUSED }), entry('next')],
-      [submission]
+      [submission],
+      []
     )
     expect(reconciled[0]).toMatchObject({ state: 'unconfirmed' })
     expect(reconciled[0]?.lastFailure).toBeUndefined()

@@ -245,7 +245,7 @@ describe('a Codex ask with several questions', () => {
     // Mobile draws the shared projection in journal order, one row per question.
     expect(
       projectStructuredAgentSessionMessages(client.items, [], client.submissions, {
-        rejectedInPlace: true
+        rejectedInPlace: false
       }).map(({ blocks }) => (blocks[0]?.type === 'text' ? blocks[0].text.split('\n')[0] : null))
     ).toEqual(ASKED.map(({ question }) => question))
   })

@@ -4,7 +4,10 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionWireRefusalCode } from '../../../../shared/agent-session-wire'
 import { enqueueStructuredAgentSessionLaunchPrompt } from './structured-agent-session-outbox-storage'
 
@@ -18,6 +21,16 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
+
+const hostRow = (id: string): AgentJournalRenderItem => ({
+  itemId: `orca:${id}`,
+  revision: 1,
+  sequence: 1,
+  observedAt: 1,
+  body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: id }] }
+})
+
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -149,6 +162,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ fence }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence,
@@ -188,6 +202,7 @@ describe('useStructuredAgentSessionOutbox', () => {
 
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -209,6 +224,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ fence }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence,
@@ -243,6 +259,7 @@ describe('useStructuredAgentSessionOutbox', () => {
       mocks.call.mockResolvedValueOnce(refusedResult(code)).mockResolvedValueOnce(acceptedResult(1))
       const { result } = renderHook(() =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -275,6 +292,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -314,6 +332,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -344,6 +363,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -373,6 +393,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -398,6 +419,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -429,6 +451,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
     const first = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -443,6 +466,7 @@ describe('useStructuredAgentSessionOutbox', () => {
 
     const restored = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -474,6 +498,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -513,6 +538,7 @@ describe('useStructuredAgentSessionOutbox', () => {
       .mockResolvedValueOnce(acceptedResult(1))
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -542,6 +568,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -579,6 +606,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     mocks.call.mockResolvedValue(acceptedResult(1))
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -626,6 +654,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -677,9 +706,11 @@ describe('useStructuredAgentSessionOutbox', () => {
           .clientOperationId
         return acceptedResultFor(clientMessageId, 11)
       })
+    let rows = NO_JOURNAL_ITEMS
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: rows,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -692,6 +723,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
     const firstId = result.current.outbox[0]!.clientMessageId
     act(() => expect(result.current.send('second')).toBe(true))
+    rows = [hostRow(firstId)]
     rerender({
       submissions: [
         {
@@ -716,54 +748,6 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
   })
 
-  it('keeps a send its reply rejected without a Retry until the journal row takes it over', async () => {
-    const writeFailed = (clientMessageId: string): AgentJournalSubmission => ({
-      clientMessageId,
-      fence: 1,
-      payloadFingerprint: 'fingerprint',
-      dispatchState: 'rejected',
-      providerItemId: null,
-      reason: 'provider_write_failed: broken pipe',
-      submittedAt: 10,
-      resolvedAt: 10
-    })
-    mocks.call.mockImplementationOnce(async (_target, _method, params) => ({
-      ok: true,
-      replayed: false,
-      fence: 1,
-      cursor: { epoch: 'epoch-1', sequence: 10 },
-      value: {
-        clientMessageId: (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId,
-        submission: writeFailed(
-          (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
-        )
-      }
-    }))
-    const { result, rerender } = renderHook(
-      ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
-        useStructuredAgentSessionOutbox({
-          sessionId: 'session-1',
-          target: LOCAL_TARGET,
-          fence: 1,
-          submissions
-        }),
-      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
-    )
-
-    act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    const firstId = mocks.call.mock.calls[0]![2].envelope.clientOperationId as string
-
-    // Answered, not doubted: the entry draws the message, saying why, until the journal has it.
-    await waitFor(() => expect(result.current.outbox[0]?.lastFailure?.kind).toBe('rejected'))
-    expect(result.current.outbox[0]?.state).toBe('rejected')
-
-    rerender({ submissions: [writeFailed(firstId)] })
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    expect(mocks.call).toHaveBeenCalledOnce()
-  })
-
   it('loads the new session outbox when a pane switches sessions', async () => {
     mocks.call.mockImplementationOnce(async (_target, _method, params) => {
       const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
@@ -774,6 +758,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId,
           target: LOCAL_TARGET,
           fence: 1,
@@ -806,6 +791,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId,
           target: LOCAL_TARGET,
           fence: 1,
@@ -835,6 +821,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     } = { current: null }
     function Probe({ sessionId }: { sessionId: string }): null {
       controllerRef.current = useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId,
         target: LOCAL_TARGET,
         fence: 1,

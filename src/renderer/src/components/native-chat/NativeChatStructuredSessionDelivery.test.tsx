@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   },
   questionCardProps: null as NativeChatQuestionCardProps | null,
   promptItems: [] as AgentJournalRenderItem[],
+  noJournalItems: Array.of<AgentJournalRenderItem>(),
   respond: vi.fn(),
   handlePasteEvent: vi.fn(),
   pasteFromClipboard: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('./use-structured-agent-session', async () => {
       target: { kind: 'local' } | { kind: 'environment'; environmentId: string }
     }) => {
       const outbox = useStructuredAgentSessionOutbox({
+        journalItems: mocks.noJournalItems,
         sessionId: props.sessionId,
         target: props.target,
         fence: 1,

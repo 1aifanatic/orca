@@ -29,6 +29,8 @@ import {
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
+
 const NO_CARDS: readonly string[] = []
 
 afterEach(cleanup)
@@ -64,6 +66,7 @@ it('draws a send its reply rejected in place once, and leaves the composer empty
   })
   const { result } = renderHook(() =>
     useStructuredAgentSessionOutbox({
+      journalItems: NO_JOURNAL_ITEMS,
       sessionId: 'session-1',
       target: { kind: 'local' },
       fence: 1,

@@ -2,7 +2,10 @@
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +32,8 @@ import {
   readOutbox,
   writeOutbox
 } from './structured-agent-session-outbox-storage'
+
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -104,6 +109,7 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: { kind: 'local' },
         fence: 1,
@@ -132,6 +138,7 @@ describe('a send the host rejected because the agent never started', () => {
     })
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: { kind: 'local' },
         fence: 1,
@@ -168,8 +175,9 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[] }) =>
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target,
           fence: 1,
@@ -183,7 +191,10 @@ describe('a send the host rejected because the agent never started', () => {
     const id = result.current.outbox[0]!.clientMessageId
 
     rerender({
-      submissions: [{ ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }]
+      submissions: [
+        { ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }
+      ],
+      rows: rowsFor(id)
     })
 
     // The host's row shows it as not sent, with no Retry: nothing resends it.
@@ -203,8 +214,9 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[] }) =>
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target,
           fence: 1,
@@ -243,6 +255,7 @@ describe('a send the host rejected because the agent never started', () => {
     const target = { kind: 'local' } as const
     const first = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target,
         fence: 1,
@@ -258,8 +271,10 @@ describe('a send the host rejected because the agent never started', () => {
     const rejected = [
       { ...pendingResultFor(id).value.submission, dispatchState: 'rejected' as const, reason }
     ]
+    const reopenedRows = rowsFor(id)
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: reopenedRows,
         sessionId: 'session-1',
         target,
         fence: 1,
@@ -303,6 +318,7 @@ describe('a send the host rejected because the agent never started', () => {
     const mount = () =>
       renderHook(() =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: { kind: 'local' },
           fence: 1,
@@ -334,8 +350,9 @@ describe('a send the host rejected because the agent never started', () => {
   it('drops a message rejected before a restart once the journal says so, from storage too', async () => {
     writeOutbox('session-1', [rejectedBeforeRestart()])
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[] }) =>
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: { kind: 'local' },
           fence: 1,
@@ -353,13 +370,102 @@ describe('a send the host rejected because the agent never started', () => {
           reason: 'The provider did not accept this message.',
           resolvedAt: 2
         }
-      ]
+      ],
+      rows: rowsFor('rejected-before-restart')
     })
 
     await waitFor(() => expect(result.current.outbox).toEqual([]))
     expect(readOutbox('session-1')).toEqual([])
     expect(hasUndeliveredStructuredAgentSessionOutbox('session-1')).toBe(false)
     expect(mocks.call).not.toHaveBeenCalled()
+  })
+
+  // An older host leaves a rejected message where it was sent, which may be outside the loaded
+  // window: the entry draws it, with a Dismiss, until the row that draws it loads.
+  it('keeps a rejected message whose row is not loaded, then lets it go once the row loads', async () => {
+    writeOutbox('session-1', [
+      { ...rejectedBeforeRestart(), state: 'dispatching', lastFailure: undefined, lastAttemptAt: 5 }
+    ])
+    const rejected = [
+      {
+        ...pendingResultFor('rejected-before-restart').value.submission,
+        dispatchState: 'rejected' as const,
+        reason: REASON,
+        resolvedAt: 2
+      }
+    ]
+    const { result, rerender } = renderHook(
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+        useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
+          sessionId: 'session-1',
+          target: { kind: 'local' },
+          fence: 1,
+          submissions: props.submissions
+        }),
+      { initialProps: { submissions: rejected } }
+    )
+
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    expect(shownFailure(result.current.outbox[0])).toBe(REASON)
+    expect(readOutbox('session-1')).toHaveLength(1)
+
+    rerender({ submissions: rejected, rows: rowsFor('rejected-before-restart') })
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(readOutbox('session-1')).toEqual([])
+    expect(mocks.call).not.toHaveBeenCalled()
+  })
+
+  it('keeps a send its reply rejected without a Retry until the journal row takes it over', async () => {
+    const writeFailed = (clientMessageId: string): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'rejected',
+      providerItemId: null,
+      reason: 'provider_write_failed: broken pipe',
+      submittedAt: 10,
+      resolvedAt: 10
+    })
+    mocks.call.mockImplementationOnce(
+      async (
+        _target: unknown,
+        _method: unknown,
+        params: { envelope: { clientOperationId: string } }
+      ) => ({
+        ok: true,
+        replayed: false,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 10 },
+        value: {
+          clientMessageId: params.envelope.clientOperationId,
+          submission: writeFailed(params.envelope.clientOperationId)
+        }
+      })
+    )
+    const { result, rerender } = renderHook(
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+        useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions: props.submissions
+        }),
+      { initialProps: { submissions: NO_SUBMISSIONS } }
+    )
+
+    act(() => expect(result.current.send('first')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    const firstId = String(mocks.call.mock.calls[0]![2].envelope.clientOperationId)
+
+    // Answered, not doubted: the entry draws the message, saying why, until the journal has it.
+    await waitFor(() => expect(result.current.outbox[0]?.lastFailure?.kind).toBe('rejected'))
+    expect(result.current.outbox[0]?.state).toBe('rejected')
+
+    rerender({ submissions: [writeFailed(firstId)], rows: rowsFor(firstId) })
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    expect(mocks.call).toHaveBeenCalledOnce()
   })
 
   it('lets the journal settle the message when its rejection lands before the send answers', async () => {
@@ -373,8 +479,9 @@ describe('a send the host rejected because the agent never started', () => {
     )
     const target = { kind: 'local' } as const
     const { result, rerender } = renderHook(
-      (props: { submissions: AgentJournalSubmission[] }) =>
+      (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: props.rows ?? NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target,
           fence: 1,
@@ -389,7 +496,10 @@ describe('a send the host rejected because the agent never started', () => {
 
     // A start refused at once: the rejection frame lands before the send's own `pending` answer.
     rerender({
-      submissions: [{ ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }]
+      submissions: [
+        { ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }
+      ],
+      rows: rowsFor(id)
     })
     await waitFor(() => expect(result.current.outbox).toEqual([]))
     // The late `pending` answer must not bring it back.
@@ -401,6 +511,17 @@ describe('a send the host rejected because the agent never started', () => {
 })
 
 const NO_SUBMISSIONS: AgentJournalSubmission[] = []
+
+/** The host's rows for these messages, loaded. */
+function rowsFor(...ids: string[]): AgentJournalRenderItem[] {
+  return ids.map((id, index) => ({
+    itemId: agentJournalSubmissionKey(id),
+    revision: 1,
+    sequence: index + 1,
+    observedAt: index + 1,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: id }] }
+  }))
+}
 
 function rejectedBeforeRestart(): StructuredAgentSessionOutboxEntry {
   return {
@@ -490,6 +611,7 @@ describe('a send refused while its agent restarted', () => {
     const { result, rerender } = renderHook(
       ({ fence, submissions }: { fence: number; submissions: AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence,
@@ -549,6 +671,7 @@ describe('a send the host refused by throwing', () => {
     )
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: { kind: 'local' },
         fence: 1,
@@ -589,6 +712,7 @@ describe('a send refused on a journal a newer Orca wrote', () => {
     })
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: { kind: 'local' },
         fence: 1,

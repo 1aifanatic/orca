@@ -75,6 +75,8 @@ import {
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
+
 const SESSION = 'session-1'
 const PANE = 'tab-1::session-1'
 const OTHER_PANE = 'tab-2::session-1'
@@ -129,8 +131,9 @@ function answerSendsPending(): void {
 
 function renderOutbox(composerScopeKey: string | null = PANE) {
   return renderHook(
-    (props: { submissions: AgentJournalSubmission[] }) =>
+    (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
       useStructuredAgentSessionOutbox({
+        journalItems: props.rows ?? NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target,
         fence: 1,
@@ -267,6 +270,15 @@ describe('a message the host withdrew at a Stop', () => {
     rerender({
       submissions: [
         submission(id, { dispatchState: 'rejected', reason: DISPATCH_REJECTED_WRITE_FAILED })
+      ],
+      rows: [
+        {
+          itemId: `orca:${id}`,
+          revision: 1,
+          sequence: 1,
+          observedAt: 1,
+          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
+        }
       ]
     })
 

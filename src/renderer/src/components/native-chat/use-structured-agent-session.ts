@@ -120,6 +120,7 @@ export function useStructuredAgentSession(args: {
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
+    journalItems: transportState.journalItems,
     composerScopeKey,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds

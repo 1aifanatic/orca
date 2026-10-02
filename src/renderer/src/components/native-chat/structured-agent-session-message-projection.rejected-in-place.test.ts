@@ -379,9 +379,10 @@ describe("one row per rejected message, the host's once it records the rejection
         [],
         new Set()
       )
-      expect([...notices]).toEqual([
-        [hostRow.id, { text: 'Orca restarted before this message was sent.' }]
-      ])
+      // In the host's words, never a Retry; a recorded copy keeps its Dismiss until it leaves.
+      expect([...notices.keys()]).toEqual([hostRow.id])
+      expect(notices.get(hostRow.id)?.text).toBe('Orca restarted before this message was sent.')
+      expect(notices.get(hostRow.id)?.onRetry).toBeUndefined()
     }
   })
 

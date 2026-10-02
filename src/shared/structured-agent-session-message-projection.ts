@@ -85,7 +85,7 @@ export function projectStructuredAgentSessionMessages(
   options: StructuredAgentSessionMessageProjectionOptions,
   projectItems = projectStructuredItemsToNativeChat
 ): NativeChatMessage[] {
-  const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
+  const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions, items)
   // Refused sends are ledger evidence, not conversation history, unless drawn in place as not sent.
   const rejected = new Set(
     submissions
