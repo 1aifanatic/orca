@@ -4,6 +4,13 @@ on:
   pull_request:
     paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Comparison to run
+        type: choice
+        required: true
+        default: verification-cache
+        options: [verification-cache, coordinator-observation]
 
 permissions:
   contents: read
@@ -17,6 +24,7 @@ env:
 
 jobs:
   seed:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'verification-cache'
     strategy:
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
@@ -36,6 +44,7 @@ jobs:
           key: ${{ steps.deps.outputs.verification-cache-key }}
 
   measure:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'verification-cache'
     needs: seed
     name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
     strategy:
@@ -63,3 +72,29 @@ jobs:
           if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
           git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
           node -e "require.resolve('vitest'); require.resolve('electron')"
+
+  coordinator-observation:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'coordinator-observation'
+    name: Coordinator observations on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+      - name: Compare the same 23 cases in both orders
+        run: pnpm exec node config/scripts/ci-coordinator-observation-pilot.mjs
+      - name: Upload every comparison result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coordinator-observation-${{ runner.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-coordinator-observation
+          if-no-files-found: error
