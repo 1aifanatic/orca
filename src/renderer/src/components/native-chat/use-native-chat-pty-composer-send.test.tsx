@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentType } from '../../../../shared/agent-status-types'
+import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type { NativeChatSendClassification } from '../../../../shared/native-chat-slash-commands'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
 import { useNativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
@@ -9,9 +10,12 @@ import { sendNativeChatMessage } from './native-chat-runtime-send'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 import {
   clearNativeChatDraftCacheForTests,
+  forgetNativeChatTuiInputSeeds,
   readNativeChatDraftAttachments,
   readNativeChatDraftCache,
-  writeNativeChatDraftCache
+  readNativeChatDraftTuiInputSeed,
+  writeNativeChatDraftCache,
+  writeNativeChatDraftTuiInputSeed
 } from './native-chat-draft-cache'
 import {
   installHeldNativeChatDrafts,
@@ -27,8 +31,24 @@ vi.mock('./native-chat-runtime-send', () => ({
 vi.mock('./native-chat-runtime-image-send', () => ({
   sendNativeChatMessageWithImageAttachments: vi.fn(() => handle)
 }))
+const launchDrafts = vi.hoisted(() => {
+  const byTabId: Record<string, NativeChatLaunchDraft> = {}
+  return { byTabId }
+})
 vi.mock('../../store', () => ({
-  useAppStore: { getState: () => ({ clearNativeChatLaunchDraft: vi.fn() }) }
+  useAppStore: {
+    getState: () => ({
+      nativeChatLaunchDraftByTabId: launchDrafts.byTabId,
+      // As the store does: dropping the launch draft forgets its saved seeds too.
+      clearNativeChatLaunchDraft: (tabId: string) => {
+        forgetNativeChatTuiInputSeeds(tabId)
+        delete launchDrafts.byTabId[tabId]
+      },
+      seedNativeChatLaunchDraft: (draft: NativeChatLaunchDraft) => {
+        launchDrafts.byTabId[draft.tabId] = draft
+      }
+    })
+  }
 }))
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
 
@@ -38,7 +58,8 @@ function press(
   agent: AgentType,
   classification: NativeChatSendClassification,
   draft: string,
-  imagePaths: string[] = []
+  imagePaths: string[] = [],
+  launchDraft: NativeChatLaunchDraft | null = null
 ) {
   const callbacks = {
     rejected: vi.fn(),
@@ -63,7 +84,8 @@ function press(
         })),
         disabled: false,
         isDispatchingSessionOption: false,
-        launchDraftResolved: true,
+        launchDraft,
+        launchDraftResolved: launchDraft === null,
         resolveTarget: () => ({ ptyId: 'pty', settings: null }),
         classifySend: () => classification,
         onOptimisticSend: () => 'pending-1',
@@ -118,6 +140,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  launchDrafts.byTabId = {}
   clearNativeChatDraftCacheForTests()
   vi.useRealTimers()
 })
@@ -222,5 +245,48 @@ describe('the saved draft at send', () => {
 
     expect(callbacks.canceled).toHaveBeenCalledOnce()
     expect(callbacks.canceled).toHaveBeenCalledWith('pending-1')
+  })
+
+  // The agent's input line still holds the launch text, so the resend must replace it again.
+  it("brings back a cancelled first send's launch draft and input-line seed", async () => {
+    const launchDraft = {
+      tabId: 'tab',
+      agent: 'claude' as const,
+      text: 'Fix #12',
+      createdAt: 1,
+      adopted: true
+    }
+    const seed = { agent: 'claude' as const, text: 'Fix #12', createdAt: 1 }
+    launchDrafts.byTabId.tab = launchDraft
+    writeNativeChatDraftTuiInputSeed(DRAFT_KEY, seed)
+    writeNativeChatDraftCache(DRAFT_KEY, 'Fix #12, and the tests', 'now')
+    const writes = installHeldNativeChatDrafts()
+    const callbacks = press('claude', 'chat', 'Fix #12, and the tests', [], launchDraft)
+    expect(launchDrafts.byTabId.tab).toBeUndefined()
+
+    act(() => callbacks.cancelPendingSends())
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+
+    expect(sendNativeChatMessage).not.toHaveBeenCalled()
+    expect(launchDrafts.byTabId.tab).toEqual(launchDraft)
+    expect(readNativeChatDraftTuiInputSeed(DRAFT_KEY)).toEqual(seed)
+    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('Fix #12, and the tests')
+  })
+
+  it('drops the launch draft for good once the send is written', async () => {
+    const launchDraft = {
+      tabId: 'tab',
+      agent: 'claude' as const,
+      text: 'Fix #12',
+      createdAt: 1,
+      adopted: true
+    }
+    launchDrafts.byTabId.tab = launchDraft
+    writeNativeChatDraftTuiInputSeed(DRAFT_KEY, { agent: 'claude', text: 'Fix #12', createdAt: 1 })
+
+    await send('claude', 'chat', 'Fix #12, and the tests', [], launchDraft)
+
+    expect(launchDrafts.byTabId.tab).toBeUndefined()
+    expect(readNativeChatDraftTuiInputSeed(DRAFT_KEY)).toBeUndefined()
   })
 })

@@ -4,7 +4,10 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_HISTORY } from './native-chat-composer-state'
 import {
+  addNativeChatDraftAttachments,
+  clearNativeChatDraftAttachments,
   clearNativeChatDraftCacheForTests,
+  readNativeChatDraftAttachments,
   readNativeChatDraftCache,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
@@ -58,7 +61,7 @@ function renderDispatch(
       setCaret: vi.fn(),
       setActiveSuggestion: vi.fn(),
       clearSkillOrigin: vi.fn(),
-      clearImageAttachments: vi.fn(),
+      clearImageAttachments: () => clearNativeChatDraftAttachments(DRAFT_KEY),
       setNotice: vi.fn()
     })
   )
@@ -134,5 +137,24 @@ describe('a command picked from the menu', () => {
 
     expect(sendNativeChatTypedCommand).not.toHaveBeenCalled()
     expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('/status')
+  })
+
+  it('puts the image chips back with it, as the other send paths do', async () => {
+    const writes = installHeldNativeChatDrafts()
+    addNativeChatDraftAttachments(DRAFT_KEY, [
+      { id: 'shot', path: '/tmp/shot.png', location: 'local' },
+      { id: 'saving', path: '', pending: true }
+    ])
+    const tracked: { cancel: () => void }[] = []
+    const hook = renderDispatch('codex', (handle) => tracked.push(handle))
+
+    act(() => hook.result.current(COMMAND))
+    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([])
+    tracked.forEach((handle) => handle.cancel())
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+
+    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([
+      { id: 'shot', path: '/tmp/shot.png', location: 'local' }
+    ])
   })
 })

@@ -54,6 +54,15 @@ describe('web client drafts', () => {
     await expect(createWebNativeChatApi().drafts.write('session:s1', draft)).resolves.toBe('failed')
   })
 
+  // Blocked site storage is a setting, not an error.
+  it('reports no storage, rather than a failure, when the browser has none', async () => {
+    vi.stubGlobal('localStorage', undefined)
+
+    await expect(createWebNativeChatApi().drafts.write('session:s1', draft)).resolves.toBe(
+      'unavailable'
+    )
+  })
+
   it("hears another tab's change to a draft", () => {
     const listener = vi.fn()
     createWebNativeChatApi().drafts.onExternalChange?.(listener)

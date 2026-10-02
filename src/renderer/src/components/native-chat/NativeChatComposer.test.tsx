@@ -61,7 +61,9 @@ vi.mock('../../store', () => {
     settings: { voice: { enabled: false }, nativeChatSessionOptions: {} },
     agentStatusByPaneKey: {},
     updateSettings: vi.fn(),
+    nativeChatLaunchDraftByTabId: {},
     clearNativeChatLaunchDraft: mocks.clearNativeChatLaunchDraft,
+    seedNativeChatLaunchDraft: vi.fn(),
     markNativeChatLaunchDraftAdopted: mocks.markNativeChatLaunchDraftAdopted
   }
   const useAppStore = (selector: (value: typeof state) => unknown) => selector(state)

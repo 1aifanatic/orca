@@ -78,7 +78,7 @@ export function createWebNativeChatDrafts(): NativeChatDraftsApi {
     write: async (scopeKey, draft) => {
       const storage = draftStorage()
       if (!storage) {
-        return 'failed'
+        return 'unavailable'
       }
       try {
         if (!draft || isEmptyNativeChatDraft(draft)) {

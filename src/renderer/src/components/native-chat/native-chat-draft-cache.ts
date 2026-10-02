@@ -169,6 +169,16 @@ export function writeNativeChatDraftTuiInputSeed(
   void persistNow(draftKey)
 }
 
+/** Every pane of the tab whose input line Orca seeded, with that seed. */
+export function readNativeChatTuiInputSeeds(
+  terminalTabId: string
+): [draftKey: string, seed: NativeChatTuiInputSeed][] {
+  const prefix = nativeChatDraftKey({ paneKey: `${terminalTabId}:` })
+  return Array.from(drafts()).flatMap(([draftKey, { tuiInputSeed }]) =>
+    draftKey.startsWith(prefix) && tuiInputSeed ? [[draftKey, tuiInputSeed]] : []
+  )
+}
+
 /** The tab's launch draft is gone (sent, resolved, closed), so no pane's input line holds it. */
 export function forgetNativeChatTuiInputSeeds(terminalTabId: string): void {
   const prefix = nativeChatDraftKey({ paneKey: `${terminalTabId}:` })

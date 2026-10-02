@@ -421,6 +421,16 @@ describe('a clear that was not saved before the send went on', () => {
     expect(warn).toHaveBeenCalledWith(expect.any(String), { scopeKey: SCOPE, reason: 'failed' })
   })
 
+  it('is not logged when the browser has no storage to save to', async () => {
+    vi.stubGlobal('localStorage', undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
+
+    await cache.awaitNativeChatDraftWritten(SCOPE)
+
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('is not logged when it was saved', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     cache.writeNativeChatDraftCache(SCOPE, '', 'now')

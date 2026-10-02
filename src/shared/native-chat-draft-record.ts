@@ -32,8 +32,11 @@ export type PersistedNativeChatDraft = {
 /** One saved draft and the chat it belongs to. */
 export type SavedNativeChatDraft = { scopeKey: string; draft: PersistedNativeChatDraft }
 
-/** The outcome of a durable write; `failed` leaves the draft in memory only. */
-export type NativeChatDraftStoreResult = 'persisted' | 'failed'
+/**
+ * The outcome of a write; `failed` and `unavailable` leave the draft in memory only. `unavailable`
+ * means there is no storage to write to (a browser with site storage blocked), not an error.
+ */
+export type NativeChatDraftStoreResult = 'persisted' | 'failed' | 'unavailable'
 
 export function isEmptyNativeChatDraft(draft: PersistedNativeChatDraft): boolean {
   return (

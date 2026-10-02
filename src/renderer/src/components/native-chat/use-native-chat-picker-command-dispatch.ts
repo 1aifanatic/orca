@@ -17,8 +17,11 @@ import {
 } from './native-chat-composer-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
-import { appendNativeChatDraftNow } from './native-chat-draft-cache'
-import { writeToPtyAfterDraftClear } from './native-chat-send-after-draft-clear'
+import { appendNativeChatDraftNow, readNativeChatDraftAttachments } from './native-chat-draft-cache'
+import {
+  nativeChatDraftAttachmentsOf,
+  writeToPtyAfterDraftClear
+} from './native-chat-send-after-draft-clear'
 
 export function useNativeChatPickerCommandDispatch(args: {
   agent: AgentType
@@ -67,6 +70,10 @@ export function useNativeChatPickerCommandDispatch(args: {
       // the same telemetry and composer state as the typed path — including
       // disarming attachments, or a stale image rides the next prompt.
       emitNativeChatSendClassified({ agent, outcome: 'command' })
+      // The box's settled image chips, put back with the command if its send is cancelled.
+      const attachments = nativeChatDraftAttachmentsOf(
+        readNativeChatDraftAttachments(draftKey).filter((chip) => !chip.pending)
+      )
       setHistory((previous) => pushHistory(previous, text))
       setDraft('')
       setCaret(0)
@@ -91,7 +98,7 @@ export function useNativeChatPickerCommandDispatch(args: {
           })
           return handle
         },
-        putBack: () => void appendNativeChatDraftNow(draftKey, { text })
+        putBack: () => void appendNativeChatDraftNow(draftKey, { text, attachments })
       })
     },
     [

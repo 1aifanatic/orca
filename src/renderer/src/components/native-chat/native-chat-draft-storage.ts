@@ -29,10 +29,7 @@ const SEND_WAIT_FOR_CLEAR_MS = 250
 
 const pendingDrafts = new Map<string, PersistedNativeChatDraft | null>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
-// Why three outcomes: only a write the store refused is worth a warning; no store is expected.
-type WriteOutcome = 'persisted' | 'failed' | 'unavailable'
-
-const latestWrites = new Map<string, Promise<WriteOutcome>>()
+const latestWrites = new Map<string, Promise<NativeChatDraftStoreResult>>()
 let flushListenersInstalled = false
 let preloaded: SavedNativeChatDraft[] | null = null
 
@@ -47,14 +44,13 @@ function draftStore() {
 async function writeToStore(
   scopeKey: string,
   draft: PersistedNativeChatDraft | null
-): Promise<WriteOutcome> {
+): Promise<NativeChatDraftStoreResult> {
   const store = draftStore()
   if (!store) {
     return 'unavailable'
   }
   try {
-    const result: NativeChatDraftStoreResult = await store.write(scopeKey, draft)
-    return result
+    return await store.write(scopeKey, draft)
   } catch {
     return 'failed'
   }

@@ -19,11 +19,34 @@ import type { NativeChatPickerState } from './use-native-chat-picker-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
 import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-types'
-import { appendNativeChatDraftNow, type NativeChatDraftAttachment } from './native-chat-draft-cache'
+import {
+  appendNativeChatDraftNow,
+  readNativeChatTuiInputSeeds,
+  writeNativeChatDraftTuiInputSeed,
+  type NativeChatDraftAttachment
+} from './native-chat-draft-cache'
 import {
   nativeChatDraftAttachmentsOf,
   writeToPtyAfterDraftClear
 } from './native-chat-send-after-draft-clear'
+
+// The agent's input line keeps the launch text until a send's write replaces it. A send cancelled
+// before writing leaves it there, so the launch draft and its saved seeds come back with the
+// message, and the resend still replaces the line.
+function takeNativeChatLaunchDraft(terminalTabId: string): () => void {
+  const state = useAppStore.getState()
+  const launchDraft = state.nativeChatLaunchDraftByTabId[terminalTabId]
+  const seeds = readNativeChatTuiInputSeeds(terminalTabId)
+  state.clearNativeChatLaunchDraft(terminalTabId)
+  return () => {
+    if (launchDraft) {
+      useAppStore.getState().seedNativeChatLaunchDraft(launchDraft)
+    }
+    for (const [draftKey, seed] of seeds) {
+      writeNativeChatDraftTuiInputSeed(draftKey, seed)
+    }
+  }
+}
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
@@ -98,7 +121,7 @@ export function useNativeChatPtyComposerSend(args: {
     args.clearSkillOrigin()
     args.clearImageAttachments()
     args.setNotice(null)
-    useAppStore.getState().clearNativeChatLaunchDraft(args.terminalTabId)
+    const restoreLaunchDraft = takeNativeChatLaunchDraft(args.terminalTabId)
     const write = (): NativeChatSendHandle | null => {
       let pendingHandle: NativeChatSendHandle | null = null
       // Why: slash-like text must not silently drop its attached images.
@@ -137,7 +160,10 @@ export function useNativeChatPtyComposerSend(args: {
       trackPendingSend: args.trackPendingSend,
       pendingId,
       write,
-      putBack: () => void appendNativeChatDraftNow(args.draftKey, { text, attachments })
+      putBack: () => {
+        restoreLaunchDraft()
+        void appendNativeChatDraftNow(args.draftKey, { text, attachments })
+      }
     })
   }, [args])
 }
