@@ -114,9 +114,13 @@ export class ClaudePromptRegistry {
     return prompt
   }
 
-  /** Every request the provider is still blocked on. */
-  pending(): IterableIterator<ClaudePendingPrompt> {
-    return this.prompts.values()
+  /** Every request the provider is still blocked on with no answer underway. */
+  *unclaimed(): IterableIterator<ClaudePendingPrompt> {
+    for (const prompt of this.prompts.values()) {
+      if (!this.claims.has(prompt)) {
+        yield prompt
+      }
+    }
   }
 
   /** True only if the prompt was still pending; lets abort and answer settle once. */

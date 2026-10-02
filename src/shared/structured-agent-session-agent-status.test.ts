@@ -57,20 +57,6 @@ describe('structuredAgentSessionAgentStatus', () => {
     ).toEqual({ state: 'waiting', mainAgent: { state: 'done' } })
   })
 
-  it("waits on the session's own fact when no child record carries a subagent's request", () => {
-    for (const status of ['working', 'idle'] as const) {
-      expect(structuredAgentSessionAgentStatus({ status, awaitsUserSince: 5 })).toMatchObject({
-        state: 'waiting',
-        mainAgent: { state: status === 'working' ? 'working' : 'done' }
-      })
-    }
-    // The main agent's own request keeps its own vocabulary.
-    expect(structuredAgentSessionAgentStatus({ status: 'attention', awaitsUserSince: 5 })).toEqual({
-      state: 'blocked',
-      mainAgent: { state: 'blocked' }
-    })
-  })
-
   // The spinner and the expandable child list are built from the same summary, so a workflow must
   // not claim a running agent that `projectAgentChildWorkLegacySubagents` then refuses to render.
   it('reads a lead whose only live task is a workflow as monitoring, with no children to show', () => {

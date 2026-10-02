@@ -100,8 +100,12 @@ export function hostWithParent(): AgentHookServer {
   return host
 }
 
-/** With `host`, evidence goes through the host's own ingest instead of straight to reconciliation. */
-export async function producer(host?: AgentHookServer) {
+/** With `host`, evidence goes through the host's own ingest instead of straight to reconciliation.
+ *  `onEvidence` runs after each delivery, where production's feed republishes the parent. */
+export async function producer(
+  host?: AgentHookServer,
+  onEvidence?: (evidence: AgentChildWorkEvidence[]) => void
+) {
   const claude = fakeClaude()
   const store = createAgentStatusStore({ epoch: 'epoch-1', mode: 'authority' })
   expect(store.applyMutation({ parent: { subject: parent } })).not.toBeNull()
@@ -141,6 +145,7 @@ export async function producer(host?: AgentHookServer) {
       } else {
         reconcileAgentChildWorkEvidence({ store, admission, parent, provider: 'claude', evidence })
       }
+      onEvidence?.(evidence)
     }
   })
   // A real reducer behind the sink, so a test can project the session's own status from its rows.
@@ -197,6 +202,8 @@ export async function producer(host?: AgentHookServer) {
   return {
     adapter,
     claude,
+    /** The session's journal, for a test to write the rows the host itself records. */
+    journal,
     /** The host clock the replay has reached. */
     now: () => clock,
     store,

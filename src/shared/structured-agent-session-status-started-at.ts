@@ -59,19 +59,24 @@ function newestTurnItem(items: readonly AgentJournalRenderItem[]): AgentJournalR
   return null
 }
 
-/** The session's own oldest ask: `attention` is the session's own, so a subagent's never dates it. */
+/** The session's own ask when it has one; a subagent's only when that alone holds the session. */
 function oldestPendingPromptAt(items: readonly AgentJournalRenderItem[]): number | undefined {
   let own: number | undefined
+  let subagent: number | undefined
   for (const item of items) {
     if (
-      (item.body.kind === 'approval' || item.body.kind === 'question') &&
-      item.body.resolution.state === 'pending' &&
-      isRootAgentJournalItem(item)
+      (item.body.kind !== 'approval' && item.body.kind !== 'question') ||
+      item.body.resolution.state !== 'pending'
     ) {
+      continue
+    }
+    if (isRootAgentJournalItem(item)) {
       own = Math.min(own ?? item.observedAt, item.observedAt)
+    } else {
+      subagent = Math.min(subagent ?? item.observedAt, item.observedAt)
     }
   }
-  return own
+  return own ?? subagent
 }
 
 /** The main agent's own status, dated by the host when it published a clock. */
@@ -84,15 +89,11 @@ export function structuredAgentSessionDatedMainAgent<T extends object>(
     : { ...mainAgent, stateStartedAt: summary.statusStartedAt }
 }
 
-/** The row's own start, when the host dated it: the main agent's state when the row shows it, and
- *  the session's oldest pending prompt when the row waits on someone else's. Undefined leaves the
- *  writer's own continuity rule in charge, as for a row child work holds open. */
+/** The row's own start, when the host dated it: the row is showing the main agent's state rather
+ *  than one child work holds open. Undefined leaves the writer's own continuity rule in charge. */
 export function structuredAgentSessionRowStateStartedAt(
   row: { state: AgentStatusState; mainAgent: Pick<AgentMainAgentStatus, 'state'> },
-  summary: Pick<AgentSessionStatusSummary, 'statusStartedAt' | 'awaitsUserSince'>
+  summary: Pick<AgentSessionStatusSummary, 'statusStartedAt'>
 ): number | undefined {
-  if (row.state === row.mainAgent.state) {
-    return summary.statusStartedAt
-  }
-  return row.state === 'waiting' ? summary.awaitsUserSince : undefined
+  return row.state === row.mainAgent.state ? summary.statusStartedAt : undefined
 }

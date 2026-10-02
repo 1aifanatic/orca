@@ -109,7 +109,7 @@ export function dispatchStructuredTurnCompletionAttention(
           // 'done' is what the host told us, not an inference from the row — the row's own state
           // can still read 'working' when the completion outruns the status re-projection, and
           // main words a 'working' notification as "working". The outcome picks the wording from there.
-          // `awaitingUser`: someone in the session, the main agent or a subagent, has a prompt for the user.
+          // `awaitingUser` is the row's 'blocked': the user has a prompt to answer.
           agentState: completion.awaitingUser ? 'blocked' : 'done',
           agentTurnOutcome: completion.outcome,
           ...(row?.prompt ? { agentPrompt: row.prompt } : {}),

@@ -10,7 +10,7 @@ import type {
   AgentChildWorkLiveObservation
 } from '../../shared/agent-status-child-work-evidence'
 import { taskText, taskUsageTotalTokens } from './claude-background-task-frames'
-import { claudePromptAskingChild, type ClaudePendingPrompt } from './claude-prompt-registry'
+import { claudePromptAskingChild } from './claude-prompt-registry'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { deriveToolInputPreview } from '../../shared/agent-hook-listener/tool-input-preview'
 import {
@@ -111,14 +111,17 @@ export function claudeChildOperation(
   ]
 }
 
-/** The children blocked on a request the provider is still waiting on an answer to. */
-export function claudeWaitingChildIds(
-  prompts: Iterable<ClaudePendingPrompt>,
-  ownerOf: ((toolUseId: string) => string | null) | undefined
+/** The children blocked on a request the user can still answer: its card open, no answer underway.
+ *  A card the host already closed frees its child first, so a waiting child always sits beside a
+ *  pending prompt row and its parent reads that prompt, never the child's wait. */
+function claudeWaitingChildIds(
+  session: Pick<ClaudeSession, 'prompts' | 'translator'>
 ): Set<string> {
   const waiting = new Set<string>()
-  for (const prompt of prompts) {
-    const childId = claudePromptAskingChild(prompt, ownerOf)
+  for (const prompt of session.prompts.unclaimed()) {
+    const childId = session.translator?.journalPrompts.holdsOpen(prompt.promptKey)
+      ? claudePromptAskingChild(prompt, session.translator.childToolOwner)
+      : null
     if (childId !== null) {
       waiting.add(childId)
     }
@@ -135,11 +138,13 @@ export function drainClaudeChildWork(
   if (!session) {
     return []
   }
-  const ownerOf = session.translator?.childToolOwner
-  // Re-derived from the pending requests on every drain, so no wait outlives its request.
-  session.childWork.observeWaiting(claudeWaitingChildIds(session.prompts.pending(), ownerOf))
+  // Re-derived from the open requests on every drain, so no wait outlives its request.
+  session.childWork.observeWaiting(claudeWaitingChildIds(session))
   return [
-    ...withClaudeChildWorkOwners(session.childWork.drain(observedAt), ownerOf),
+    ...withClaudeChildWorkOwners(
+      session.childWork.drain(observedAt),
+      session.translator?.childToolOwner
+    ),
     ...(message ? claudeChildOperation(message, session.translator?.childActivity, observedAt) : [])
   ]
 }

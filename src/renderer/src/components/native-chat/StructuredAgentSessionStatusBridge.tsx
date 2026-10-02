@@ -121,8 +121,7 @@ function projectStatus(
   const agentStatus = structuredAgentSessionAgentStatus({
     status: summary.status,
     childWork: children ?? summary.backgroundTasks,
-    turnOutcome: summary.turnOutcome,
-    awaitsUserSince: summary.awaitsUserSince
+    turnOutcome: summary.turnOutcome
   })
   const current = store.agentStatusByPaneKey?.[paneKey]
   // Same continuity rule as the host ingest, on the main agent's own clock.

@@ -10,7 +10,7 @@ import {
   type AgentJournalSubmission
 } from './agent-session-journal-types'
 import { agentTurnVerdict, type AgentTurnOutcome } from './agent-turn-outcome'
-import { agentJournalLinkageFields, isRootAgentJournalItem } from './agent-session-journal-producer'
+import { agentJournalLinkageFields } from './agent-session-journal-producer'
 import { structuredAgentSessionStatusBlock } from './structured-agent-session-status-block'
 import { agentJournalItemRowOrigin } from './agent-session-journal-position'
 import {
@@ -183,35 +183,18 @@ export function structuredAgentSessionTabId(sessionId: string): string {
   return `structured-agent-session-${sessionId}`
 }
 
-function isPendingPrompt(item: AgentJournalRenderItem): boolean {
-  return (
-    (item.body.kind === 'approval' || item.body.kind === 'question') &&
-    item.body.resolution.state === 'pending'
-  )
-}
-
-/** When a human started being asked something in this session, the main agent or a subagent: its
- *  oldest pending prompt. Undefined while nobody is asked. */
-export function structuredAgentSessionAwaitsUserSince(
-  items: readonly AgentJournalRenderItem[]
-): number | undefined {
-  let since: number | undefined
-  for (const item of items) {
-    if (isPendingPrompt(item)) {
-      since = Math.min(since ?? item.observedAt, item.observedAt)
-    }
-  }
-  return since
-}
-
-/** The main agent's own status: `attention` is its own request only. A subagent's request is that
- *  subagent's wait, which `structuredAgentSessionAwaitsUserSince` and its child record carry. */
 export function projectStructuredAgentSessionStatus(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = [],
   currentFence?: number | null
 ): StructuredAgentSessionProjectedStatus {
-  if (items.some((item) => isPendingPrompt(item) && isRootAgentJournalItem(item))) {
+  if (
+    items.some(
+      (item) =>
+        (item.body.kind === 'approval' || item.body.kind === 'question') &&
+        item.body.resolution.state === 'pending'
+    )
+  ) {
     return 'attention'
   }
   return owesStructuredAgentSessionWork(items, submissions, currentFence) ? 'working' : 'idle'
@@ -232,8 +215,6 @@ export type StructuredAgentSessionStatusProjection = {
    *  `status` is idle. */
   turnOutcome?: AgentTurnOutcome
   statusStartedAt?: number
-  /** Someone in the session must answer a prompt, whoever asked, since this host time. */
-  awaitsUserSince?: number
 }
 
 /** One projection shared by host and client: null status means "no turn yet", not idle.
@@ -266,7 +247,6 @@ export function projectStructuredAgentSessionStatusState(
     return { summary: { status: null, latestPrompt: '' }, latestRequest: null, owesWork: false }
   }
   const status = projectStructuredAgentSessionStatus(items, submissions, currentFence)
-  const awaitsUserSince = structuredAgentSessionAwaitsUserSince(items)
   const statusToolCall = status === 'working' ? statusStructuredAgentSessionToolCall(items) : null
   const toolName = statusToolCall
     ? normalizeOptionalField(statusToolCall.name, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
@@ -304,8 +284,7 @@ export function projectStructuredAgentSessionStatusState(
       ...(toolInput ? { toolInput } : {}),
       ...(lastAssistantMessage ? { lastAssistantMessage } : {}),
       ...(turnOutcome ? { turnOutcome } : {}),
-      ...(statusStartedAt !== undefined ? { statusStartedAt } : {}),
-      ...(awaitsUserSince !== undefined ? { awaitsUserSince } : {})
+      ...(statusStartedAt !== undefined ? { statusStartedAt } : {})
     }
   }
 }

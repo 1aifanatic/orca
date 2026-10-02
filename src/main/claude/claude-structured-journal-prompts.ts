@@ -72,9 +72,9 @@ export class ClaudeJournalPrompts {
   ) {}
 
   /**
-   * A prompt row carries the linkage of the agent that raised it. The permission callback names the
-   * subagent that asked (or the tool call it gates names one), so a subagent's request is its own row,
-   * not the session's: the session's own agent is not the one waiting on the user.
+   * A prompt row carries the linkage of the agent that raised it: the permission callback names the
+   * subagent that asked, or the tool call it gates names one. The pending row still makes the session
+   * `attention` whoever asked; the linkage files the card under that subagent.
    */
   handle(event: Extract<ClaudeStructuredSessionEvent, { type: 'prompt' }>): void {
     const producer = this.deps.producerOf?.(event.prompt) ?? {}
@@ -200,6 +200,12 @@ export class ClaudeJournalPrompts {
 
   resolve(promptKey: string): void {
     this.deletePrompt(promptKey)
+  }
+
+  /** The card is still open and this translator's to close: nobody recorded an answer or a
+   *  dismissal for it. */
+  holdsOpen(promptKey: string): boolean {
+    return this.items.has(promptKey)
   }
 
   /** The host records the card itself, so nothing here writes it any more. The returned undo hands

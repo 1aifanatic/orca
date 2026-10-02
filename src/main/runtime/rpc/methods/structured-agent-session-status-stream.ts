@@ -5,7 +5,6 @@
 
 import { defineStreamingMethod, type RpcContext } from '../core'
 import { requireStructuredHost as requireHost } from './structured-agent-session-gate'
-import { projectStatusAwaitsUserEvent } from './structured-agent-session-status-awaits-user-capability'
 import { structuredAgentSessionStatusSubscriptionId } from './structured-agent-session-subscription-id'
 
 /** Ties a stream to both ends that can close it — the runtime's subscription registry and the
@@ -54,10 +53,7 @@ export const STRUCTURED_AGENT_SESSION_STATUS_METHODS = [
       if (stream.isClosed()) {
         return
       }
-      dispose = host.subscribeStatus({
-        id: subscriptionId,
-        emit: (event) => emit(projectStatusAwaitsUserEvent(event, ctx))
-      })
+      dispose = host.subscribeStatus({ id: subscriptionId, emit })
       if (stream.isClosed()) {
         dispose()
       }

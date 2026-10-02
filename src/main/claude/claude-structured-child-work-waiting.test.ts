@@ -1,13 +1,30 @@
 // A Claude subagent blocked on a permission request, replayed from a capture of the real CLI
-// through the real adapter into the host's child records.
+// through the real adapter into the host's child records. Every status publish also lands on a
+// second host fed the same evidence with no subagent ever waiting, as the producer was before: the
+// parent row must not tell the two apart.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import type { AgentJournalProducerLinkage } from '../../shared/agent-session-journal-types'
+import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalProducerLinkage,
+  type AgentJournalRenderItem,
+  type AgentJournalResolution
+} from '../../shared/agent-session-journal-types'
+import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
+import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import { projectStructuredAgentSessionStatusSummary } from '../../shared/structured-agent-session-projection'
-import { structuredAgentSessionAgentStatus } from '../../shared/structured-agent-session-agent-status'
-import { producer, system, toolUse } from './claude-child-work-producer-harness.test-fixture'
+import type { AgentHookServer } from '../agent-hooks/server'
+import {
+  hostWithParent,
+  parent,
+  producer,
+  system,
+  toolUse
+} from './claude-child-work-producer-harness.test-fixture'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 import { PROVIDER_SESSION_ID, type FakeConnection } from './claude-structured-session-test-support'
 
@@ -56,12 +73,103 @@ function requestFromWire(
   )
 }
 
-/** A session past startup, so no startup frame drains child work for the step under test. */
+type ParentRow = Pick<
+  AgentStatusIpcPayload,
+  'state' | 'workingMode' | 'mainAgent' | 'stateStartedAt'
+>
+
+function parentRowOf(host: AgentHookServer): ParentRow | undefined {
+  const row = host.getStatusSnapshot()[0]
+  return (
+    row && {
+      state: row.state,
+      workingMode: row.workingMode,
+      mainAgent: row.mainAgent,
+      stateStartedAt: row.stateStartedAt
+    }
+  )
+}
+
+/** The same evidence from a producer that never reads a subagent waiting. */
+function withoutWaits(evidence: AgentChildWorkEvidence[]): AgentChildWorkEvidence[] {
+  return evidence.map((edge) =>
+    edge.type === 'live' && edge.child.state === 'waiting'
+      ? { ...edge, child: { ...edge.child, state: 'working' } }
+      : edge
+  )
+}
+
+/** A session past startup, so no startup frame drains child work for the step under test. Its
+ *  status is published as the feed publishes it: after every child-work delivery, and wherever a
+ *  journal publication would land. */
 async function startedProducer() {
-  const harness = await producer()
+  const host = hostWithParent()
+  const unwaitedHost = hostWithParent()
+  const publishes: { row?: ParentRow; unwaited?: ParentRow; childWaiting: boolean }[] = []
+  const journal: { items: () => AgentJournalRenderItem[]; now: () => number } = {
+    items: () => [],
+    now: () => 0
+  }
+  const publish = (): void => {
+    const summary = projectStructuredAgentSessionStatusSummary(journal.items())
+    if (summary.status === null) {
+      return
+    }
+    for (const target of [host, unwaitedHost]) {
+      target.ingestStructuredStatus(
+        {
+          ...summary,
+          status: summary.status,
+          sessionId: parent.sessionId,
+          workspaceId: parent.workspaceId,
+          agent: 'claude',
+          hostExecutionOwned: true,
+          updatedAt: journal.now()
+        },
+        parent
+      )
+    }
+    publishes.push({
+      row: parentRowOf(host),
+      unwaited: parentRowOf(unwaitedHost),
+      childWaiting: host.getStructuredChildWork(parent).some((child) => child.state === 'waiting')
+    })
+  }
+  const harness = await producer(host, (evidence) => {
+    unwaitedHost.ingestStructuredChildWork(parent, withoutWaits(evidence), 'claude')
+    publish()
+  })
+  journal.items = harness.journalItems
+  journal.now = harness.now
   await harness.adapter.awaitStarted('session-1')
   await new Promise((resolve) => setTimeout(resolve, 0))
-  return harness
+  /** Publishes where the two hosts' parent rows differed. */
+  const divergences = () =>
+    publishes.filter((entry) => !isDeepStrictEqual(entry.row, entry.unwaited))
+  return { ...harness, host, publish, publishes, divergences }
+}
+
+type Harness = Awaited<ReturnType<typeof startedProducer>>
+
+/** What `commit` writes: the host's own record of the card, then the status publish its journal
+ *  commit delivers before the adapter resumes. */
+function hostRecordsCard(
+  harness: Harness,
+  resolution: Pick<AgentJournalResolution, 'state' | 'selectedOptionId'>
+): void {
+  const card = harness
+    .journalItems()
+    .find((item) => item.body.kind === 'approval' && item.body.resolution.state === 'pending')
+  const identity = card && parseAgentJournalItemKey(card.itemId)
+  if (card?.body.kind !== 'approval' || !identity) {
+    throw new Error('no pending card to record')
+  }
+  harness.journal.appendItem(
+    identity,
+    { ...card.body, resolution: { ...resolution, resolvedBy: 'client-1', resolvedAt: 1 } },
+    { turnScope: card.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE }
+  )
+  harness.publish()
 }
 
 /** Replays a capture up to its permission request and raises it, as the SDK would. */
@@ -73,26 +181,21 @@ async function askedAt(name: string, options: { withoutAgentId?: boolean } = {})
     harness.send({ ...frame, session_id: PROVIDER_SESSION_ID })
   }
   requestFromWire(harness.claude.connections[0]!, events[request]!.frame, options)
+  harness.publish()
   return harness
+}
+
+/** Binds the capture's request to a card id, as the journal binds its row. */
+function boundCard(harness: Harness, name: string): string {
+  const request = capturedScenario(name).find((event) => event.frame.type === 'control_request')
+  const requestId = text(request?.frame.request_id)
+  harness.adapter.bindPromptItemId('session-1', `item-${requestId}`, requestId)
+  return `item-${requestId}`
 }
 
 function subagentTaskId(name: string): string {
   const started = capturedScenario(name).find((event) => event.frame.subtype === 'task_started')
   return text(started?.frame.task_id)
-}
-
-/** The parent row as the host folds it: the status summary projected from the journal, plus its
- *  children's records. */
-function parentRow(harness: Awaited<ReturnType<typeof producer>>) {
-  const { status, awaitsUserSince } = projectStructuredAgentSessionStatusSummary(
-    harness.journalItems()
-  )
-  const row = structuredAgentSessionAgentStatus({
-    status: status ?? 'idle',
-    ...(awaitsUserSince !== undefined ? { awaitsUserSince } : {}),
-    childWork: harness.records()
-  })
-  return { sessionStatus: status, state: row.state, mainAgent: row.mainAgent }
 }
 
 /** Replays one capture and returns the subagent's record state after each event, labelled. */
@@ -119,13 +222,15 @@ async function replay(name: string, options: { withoutAgentId?: boolean } = {}) 
       const requestId = text(response.request_id)
       const behavior = isRecord(response.response) ? text(response.response.behavior) : ''
       adapter.bindPromptItemId('session-1', `item-${requestId}`, requestId)
+      const optionId = behavior === 'deny' ? 'deny' : 'allow'
       await adapter.answerPrompt({
         sessionId: 'session-1',
         itemId: `item-${requestId}`,
         kind: 'approval',
-        response: { kind: 'option', optionId: behavior === 'deny' ? 'deny' : 'allow' },
+        response: { kind: 'option', optionId },
         fence: 7,
-        commit: async () => undefined
+        commit: async () =>
+          hostRecordsCard(harness, { state: 'resolved', selectedOptionId: optionId })
       })
       label = behavior
     } else if (from === 'orca') {
@@ -134,6 +239,7 @@ async function replay(name: string, options: { withoutAgentId?: boolean } = {}) 
     } else {
       send({ ...frame, session_id: PROVIDER_SESSION_ID })
     }
+    harness.publish()
     const record = subagent()
     timeline.push(`${label} -> ${record ? `${record.membership} ${record.state}` : 'none'}`)
   }
@@ -172,31 +278,33 @@ describe('a Claude subagent waiting on a permission request', () => {
     })
   })
 
-  it('reads the parent row waiting while its subagent asks, with its own state unchanged', async () => {
+  it('reads the parent row as before while its subagent asks: blocked, dated by the request', async () => {
     const harness = await askedAt('fg-allow')
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     // The prompt row names the subagent that raised it, as its other rows do.
     expect(approval?.agentId).toBe(subagentTaskId('fg-allow'))
-    expect(parentRow(harness)).toEqual({
-      sessionStatus: 'working',
-      state: 'waiting',
-      mainAgent: { state: 'working' }
+    expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
+    // One needs-input state whoever asked, its clock the request's own.
+    expect(harness.publishes.at(-1)?.row).toMatchObject({
+      state: 'blocked',
+      stateStartedAt: approval?.observedAt,
+      mainAgent: { state: 'blocked', stateStartedAt: approval?.observedAt }
     })
+    expect(harness.divergences()).toEqual([])
   })
 
   it('names the subagent on its prompt row through the tool call when the CLI does not', async () => {
     const harness = await askedAt('fg-allow', { withoutAgentId: true })
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     expect(approval?.agentId).toBe(subagentTaskId('fg-allow'))
-    expect(parentRow(harness).state).toBe('waiting')
+    expect(harness.publishes.at(-1)?.row?.state).toBe('blocked')
   })
 
   it("keeps the parent row blocked when the session's own agent asks", async () => {
     const harness = await askedAt('main-allow')
     const approval = harness.journalItems().find((item) => item.body.kind === 'approval')
     expect(approval?.agentId).toBeUndefined()
-    expect(parentRow(harness)).toEqual({
-      sessionStatus: 'attention',
+    expect(harness.publishes.at(-1)?.row).toMatchObject({
       state: 'blocked',
       mainAgent: { state: 'blocked' }
     })
@@ -213,22 +321,39 @@ describe('a Claude subagent waiting on a permission request', () => {
     expect(timeline.at(-1)).toBe('success -> settled done')
   })
 
-  it('goes back to working when the user dismisses the card and Orca declines the request', async () => {
+  it.each([
+    ['declines the request', true],
+    ['leaves the request to the Stop that ends it', false]
+  ])('goes back to working when the user dismisses the card and Orca %s', async (_, answer) => {
     const harness = await askedAt('fg-allow')
     expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
-    const request = capturedScenario('fg-allow').find(
-      (event) => event.frame.type === 'control_request'
-    )
-    const requestId = text(request?.frame.request_id)
-    harness.adapter.bindPromptItemId('session-1', `item-${requestId}`, requestId)
     await harness.adapter.dismissPrompt({
       sessionId: 'session-1',
-      itemId: `item-${requestId}`,
+      itemId: boundCard(harness, 'fg-allow'),
       fence: 7,
-      answer: true,
-      commit: async () => undefined
+      answer,
+      commit: async () => hostRecordsCard(harness, { state: 'cancelled', selectedOptionId: null })
     })
+    // Without an answer Claude still holds the request; the card the user closed holds no one.
     expect(harness.byDescription('Touch probe file')?.state).toBe('working')
+    expect(harness.divergences()).toEqual([])
+  })
+
+  it('waits again when the host fails to record the answer', async () => {
+    const harness = await askedAt('fg-allow')
+    const answered = harness.adapter.answerPrompt({
+      sessionId: 'session-1',
+      itemId: boundCard(harness, 'fg-allow'),
+      kind: 'approval',
+      response: { kind: 'option', optionId: 'allow' },
+      fence: 7,
+      commit: async () => {
+        throw new Error('journal write failed')
+      }
+    })
+    await expect(answered).rejects.toThrow('journal write failed')
+    expect(harness.byDescription('Touch probe file')?.state).toBe('waiting')
+    expect(harness.divergences()).toEqual([])
   })
 
   it('stops waiting when an interrupt cancels the request, then settles cancelled', async () => {
@@ -309,6 +434,25 @@ describe('a Claude subagent waiting on a permission request', () => {
     const { timeline, records } = await replay('main-allow')
     expect(timeline.every((entry) => entry.endsWith('-> none'))).toBe(true)
     expect(records()).toEqual([])
+  })
+})
+
+describe("the parent row while a subagent's request is open", () => {
+  it.each(['fg-allow', 'fg-deny', 'fg-interrupt', 'bg-allow'])(
+    'reads at every status publish of %s what it read before subagents waited',
+    async (name) => {
+      const { publishes, divergences } = await replay(name)
+      expect(publishes.some((entry) => entry.childWaiting)).toBe(true)
+      expect(divergences()).toEqual([])
+    }
+  )
+
+  it('keeps an answered request in the rows of the subagent that asked', async () => {
+    const { journalItems } = await replay('fg-allow')
+    expect(journalItems().find((item) => item.body.kind === 'approval')).toMatchObject({
+      agentId: subagentTaskId('fg-allow'),
+      body: { resolution: { state: 'resolved', selectedOptionId: 'allow' } }
+    })
   })
 })
 

@@ -1,8 +1,6 @@
 import { vi } from 'vitest'
 import type { StructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-host'
 import { setStructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
-import { AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY } from '../../../src/shared/agent-session-status-awaits-user-capability'
-import { remoteRuntimeClientCapabilities } from '../../../src/shared/remote-runtime-client-capabilities'
 import {
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
@@ -147,47 +145,6 @@ export const turnItemSkew = {
         { ...TURN_ROW, body: { kind: 'status', turnLifecycle: TURN } }
       ],
       [[...current.capabilities], { ...TURN_ROW, body: { kind: 'turn', ...TURN } }]
-    ] as const
-  }
-}
-
-/** The main agent works while a subagent waits on the user. */
-const SUBAGENT_ASKS = {
-  sessionId: 's',
-  workspaceId: 'w',
-  agent: 'claude' as const,
-  status: 'working' as const,
-  awaitsUserSince: 1,
-  latestPrompt: 'go',
-  updatedAt: 2
-}
-
-/** One subagent request on the status feed, and the two ways the current host publishes it. The
- *  old client is derived from the baseline by removing the capability, as above. */
-export const statusAwaitsUserSkew = {
-  install(sessionId: string, workspaceId: string): void {
-    const host = structuredHostStub(sessionId, workspaceId)
-    host.subscribeStatus.mockImplementation((subscriber: { emit: (event: unknown) => void }) => {
-      subscriber.emit({ type: 'snapshot', sessions: [SUBAGENT_ASKS] })
-      return () => undefined
-    })
-    setStructuredAgentSessionHost(installableHost(host))
-  },
-  /** Each skew's advertised list and the summary fields it must be published. A current client is
-   *  the remote list this build sends: the capability is a client's, not one the host lists. */
-  clients(baseline: { capabilities: readonly string[] }) {
-    const old = baseline.capabilities.filter(
-      (c) => c !== AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY
-    )
-    return [
-      [
-        [...old, STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY],
-        { status: 'attention', statusStartedAt: SUBAGENT_ASKS.awaitsUserSince }
-      ],
-      [
-        [...remoteRuntimeClientCapabilities([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY])],
-        { status: 'working', awaitsUserSince: SUBAGENT_ASKS.awaitsUserSince }
-      ]
     ] as const
   }
 }

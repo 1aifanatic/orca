@@ -198,13 +198,23 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   awaitStoppedRequestEnd = claudeStoppedRequestEndWait(this.sessions)
   routePromptCancel = claudePromptCancelRoute
   dismissPrompt: NonNullable<StructuredAgentSessionAdapter['dismissPrompt']> = (request) =>
-    this.freeingAsker(
-      request.sessionId,
-      dismissClaudeStructuredPrompt({ request, sessions: this.sessions })
+    this.freeingAsker(request, (freeing) =>
+      dismissClaudeStructuredPrompt({ request: freeing, sessions: this.sessions })
     )
-  /** An answered or declined request frees the child it blocked; no provider frame says so first. */
-  private freeingAsker = (sessionId: string, settled: Promise<void>): Promise<void> =>
-    settled.finally(() => this.publishChildWork(sessionId, this.sessions.get(sessionId)))
+  /** An answered or dismissed request frees the child it blocked before the host records the card,
+   *  so no row reads the child waiting beside a closed card; no provider frame says so first. */
+  private freeingAsker = <R extends { sessionId: string; commit: () => Promise<void> }>(
+    request: R,
+    settle: (request: R) => Promise<void>
+  ): Promise<void> => {
+    const free = () =>
+      this.publishChildWork(request.sessionId, this.sessions.get(request.sessionId))
+    const commit = async (): Promise<void> => {
+      free()
+      await request.commit()
+    }
+    return settle({ ...request, commit }).finally(free)
+  }
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = async (
     input
   ) => {
@@ -246,9 +256,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     return session ? claudeHoldsDispatch(session) : false
   }
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
-    this.freeingAsker(
-      request.sessionId,
-      answerClaudeStructuredPrompt({ request, sessions: this.sessions })
+    this.freeingAsker(request, (freeing) =>
+      answerClaudeStructuredPrompt({ request: freeing, sessions: this.sessions })
     )
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>
     setClaudeStructuredSessionOption(

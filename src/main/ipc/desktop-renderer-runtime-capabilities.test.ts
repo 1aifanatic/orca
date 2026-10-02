@@ -29,7 +29,6 @@ import {
 } from '../../shared/protocol-version'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from '../../shared/agent-session-background-task-child-views-capability'
-import { AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY } from '../../shared/agent-session-status-awaits-user-capability'
 import { supportsAgentLaunch } from '../runtime/rpc/methods/agent-launch'
 import { createSupportFollowsHostSetting } from '../runtime/rpc/methods/structured-agent-session-policy'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from './desktop-renderer-runtime-capabilities'
@@ -65,7 +64,6 @@ const LOCAL_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
-  AGENT_SESSION_STATUS_AWAITS_USER_CAPABILITY,
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,

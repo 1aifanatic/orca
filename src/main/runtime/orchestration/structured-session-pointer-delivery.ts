@@ -13,7 +13,7 @@
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import {
   activeStructuredAgentSessionTurnId,
-  structuredAgentSessionAwaitsUserSince
+  projectStructuredAgentSessionStatus
 } from '../../../shared/structured-agent-session-projection'
 
 /** Every reason retains the pointer; none of them consume mail. */
@@ -57,7 +57,7 @@ export function structuredSessionGateFacts(
 ): StructuredSessionGateFacts {
   return {
     turnRunning: activeStructuredAgentSessionTurnId(items) !== null,
-    awaitingHuman: structuredAgentSessionAwaitsUserSince(items) !== undefined
+    awaitingHuman: projectStructuredAgentSessionStatus(items) === 'attention'
   }
 }
 

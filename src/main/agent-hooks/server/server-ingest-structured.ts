@@ -49,8 +49,7 @@ export abstract class AgentHookServerIngestStructured extends AgentHookServerIng
     const agentStatus = structuredAgentSessionAgentStatus({
       status: summary.status,
       childWork: this.canonicalStatusStore.getChildren(parsed),
-      turnOutcome: summary.turnOutcome,
-      awaitsUserSince: summary.awaitsUserSince
+      turnOutcome: summary.turnOutcome
     })
     const { state, workingMode } = agentStatus
     // The main agent's own clock keeps continuity the same way the combined row's does below, dated

@@ -36,7 +36,6 @@ import {
 import { resolveBaselineReleaseRef } from './release-checkout'
 import {
   installableHost,
-  statusAwaitsUserSkew,
   structuredHostStub,
   turnItemSkew
 } from './structured-agent-session-host-fixture'
@@ -322,22 +321,6 @@ describe('cross-version structured agent sessions', () => {
         const client = { clientKind: 'runtime' as const, clientCapabilities }
         const replies = await callBuild(current, 'agentSession.history', params, client)
         expect(replies[0]).toMatchObject({ ok: true, result: { page: { items: [item] } } })
-      }
-    })
-  })
-
-  describe('a client that predates the status awaitsUserSince split', () => {
-    beforeEach(() => statusAwaitsUserSkew.install(SESSION, WORKSPACE))
-    afterEach(() => setStructuredAgentSessionHost(null))
-
-    it("is published `attention` for a subagent's request where a capable client gets the main agent's own status", async () => {
-      for (const [clientCapabilities, fields] of statusAwaitsUserSkew.clients(baseline)) {
-        const client = { clientKind: 'runtime' as const, clientCapabilities }
-        const replies = await callBuild(current, STATUS_FEED_METHOD, null, client)
-        expect(replies[0]).toMatchObject({
-          ok: true,
-          result: { type: 'snapshot', sessions: [fields] }
-        })
       }
     })
   })

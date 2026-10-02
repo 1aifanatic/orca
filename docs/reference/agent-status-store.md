@@ -288,14 +288,10 @@ Every lane, Codex included, combines through the fold. A child waiting on a
 human is a fold input (`childWorkLiveness: 'waiting'`, derived from the child's
 own `waiting` state; a child's `blocked` means it failed and stays live work)
 and makes the row wait whatever the main agent is doing, unless the main agent
-is itself asking. The Codex hook lane feeds it from its child transcripts; the
-structured lanes feed it from child records, which read `waiting` for a Codex
-child thread's `waitingOnApproval` or `waitingOnUserInput` flag and for a
-Claude subagent's pending permission request. The structured lane also states
-the request itself: the status summary's `awaitsUserSince` (when the oldest
-prompt still pending was raised, whoever asked) is a fold input of its own, so
-a subagent's request makes the row wait even when no child record carries it,
-and it dates that wait. Known
+is itself asking. The Codex hook lane feeds it from its child transcripts, and
+the structured lanes from child records, which read `waiting` for a Codex child
+thread's approval or input flag and for a Claude subagent's open permission
+request. Known
 divergences, pinned by name in the parity table
 (`src/shared/main-agent-status-parity.test.ts`) where they are reachable, so a
 reader does not mistake them for drift:
@@ -306,13 +302,11 @@ reader does not mistake them for drift:
   main agent event overwrites the slot, so the row stops reading `waiting`
   while the child is still asking, and a second asking child replaces the
   first.
-- The structured lane reads the main agent's OWN pending prompt as its
-  `blocked` (the session's `attention`), where the hook lane reads it as
-  `waiting`. A subagent's prompt, Claude's or Codex's, is not the main agent's:
-  its prompt row names the subagent, `status` stays the main agent's own, and
-  `awaitsUserSince` makes the row wait. A client that predates the split is
-  sent `attention` for either ask, dated as it was before the split
-  (`agent-session.status-awaits-user.v1`).
+- In the structured lane a child's pending prompt also makes the session
+  `attention`, which reads as the main agent's own `blocked`: one needs-input
+  state whoever asked, so the child's own `waiting` record never reaches the
+  row. A Claude subagent stops waiting before the host records its card
+  answered or dismissed, so its record never outlasts the `attention`.
 - The Codex hook lane drops its roster on a root `Stop` when it tracks no
   child transcripts, so a still-running or still-asking child stops holding
   the row.
