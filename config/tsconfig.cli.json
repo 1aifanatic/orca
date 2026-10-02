@@ -162,6 +162,7 @@
     "../src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry-path.ts",
     "../src/main/foreign-sqlite-readers/foreign-sqlite-reader-protocol.ts",
     "../src/main/foreign-sqlite-readers/foreign-sqlite-reader-spawn.ts",
+    "../src/main/foreign-sqlite-readers/hermes-session-runs-result.ts",
     "../src/main/foreign-sqlite-readers/opencode-binder-sessions-result.ts",
     "../src/main/foreign-sqlite-readers/opencode-go-key-result.ts",
     "../src/main/lazy-worker-thread-host.ts",

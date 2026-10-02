@@ -10,33 +10,30 @@ const fakeDbRows = vi.hoisted(() => ({
   sessions: [] as Record<string, unknown>[],
   messages: [] as Record<string, unknown>[]
 }))
-const fakePrepareSqls = vi.hoisted(() => [] as string[])
-const fakeDatabase = vi.hoisted(() =>
-  vi.fn(function FakeDatabase() {
-    return {
-      prepare: vi.fn((sql: string) => {
-        fakePrepareSqls.push(sql)
-        return {
-          get: vi.fn((param: string) =>
-            sql.includes('FROM sessions')
-              ? fakeDbRows.sessions.find((session) => session.id === param)
-              : undefined
-          ),
-          all: vi.fn((param: string) =>
-            sql.includes('FROM sessions')
-              ? fakeDbRows.sessions
-              : fakeDbRows.messages.filter((message) => message.session_id === param)
-          )
-        }
-      }),
-      close: vi.fn()
-    }
-  })
-)
-
-vi.mock('../sqlite/sync-database', () => ({
-  default: fakeDatabase
+// Stands in for the worker reads; the SQL is covered by readers/hermes-session-runs.test.ts.
+const fakeReads = vi.hoisted(() => ({
+  refs: vi.fn(async (_dbPath: string, _jobId: string): Promise<Record<string, unknown>[]> => []),
+  runs: vi.fn(async (_dbPath: string, _runIds: readonly string[]): Promise<unknown[]> => [])
 }))
+
+vi.mock('../foreign-sqlite-readers/foreign-sqlite-reader-spawn', () => ({
+  readHermesSessionRunRefRows: fakeReads.refs,
+  readHermesSessionRuns: fakeReads.runs
+}))
+
+function serveFakeRows(): void {
+  fakeReads.refs.mockImplementation(async () =>
+    fakeDbRows.sessions.map((session) => ({ id: session.id, started_at: session.started_at }))
+  )
+  fakeReads.runs.mockImplementation(async (_dbPath, runIds) =>
+    runIds.flatMap((id) => {
+      const session = fakeDbRows.sessions.find((row) => row.id === id)
+      return session
+        ? [{ id, session, messages: fakeDbRows.messages.filter((row) => row.session_id === id) }]
+        : []
+    })
+  )
+}
 
 async function loadReader() {
   vi.resetModules()
@@ -52,8 +49,9 @@ async function createHermesHome(): Promise<string> {
 beforeEach(() => {
   fakeDbRows.sessions = []
   fakeDbRows.messages = []
-  fakePrepareSqls.length = 0
-  fakeDatabase.mockClear()
+  fakeReads.refs.mockReset()
+  fakeReads.runs.mockReset()
+  serveFakeRows()
 })
 
 afterEach(async () => {
@@ -274,7 +272,7 @@ Run summary: monitor automation completed successfully.
     const page = await readHermesCronOutputRunsPage('job-1', { page: 1, pageSize: 0 })
 
     expect(page).toEqual({ total: 1, runs: [] })
-    expect(fakePrepareSqls.some((sql) => sql.includes('FROM messages'))).toBe(false)
+    expect(fakeReads.runs).not.toHaveBeenCalled()
   })
 
   it('skips date sorting for counts while keeping paginated runs newest first', async () => {
@@ -347,6 +345,69 @@ Run summary: monitor automation completed successfully.
     await expect(readHermesCronOutputRunsPage('job-0', { page: 1, pageSize: 0 })).resolves.toEqual({
       total: 2,
       runs: []
+    })
+  })
+
+  it('reads a page of session runs in one worker request', async () => {
+    const home = await createHermesHome()
+    await writeFile(join(home, 'state.db'), '')
+    fakeDbRows.sessions = [1, 2, 3].map((n) => ({
+      id: `cron_job-1_run${n}`,
+      title: `Run ${n}`,
+      started_at: 1000 * n,
+      ended_at: 1000 * n + 10
+    }))
+    const { readHermesCronOutputRunsPage } = await loadReader()
+    const page = await readHermesCronOutputRunsPage('job-1', { page: 1, pageSize: 25 })
+
+    expect(fakeReads.runs).toHaveBeenCalledTimes(1)
+    expect(fakeReads.runs).toHaveBeenCalledWith(join(home, 'state.db'), [
+      'cron_job-1_run3',
+      'cron_job-1_run2',
+      'cron_job-1_run1'
+    ])
+    expect(page.runs).toMatchObject([
+      { id: 'cron_job-1_run3', status: 'completed', output_preview: 'Run 3' },
+      { id: 'cron_job-1_run2', status: 'completed' },
+      { id: 'cron_job-1_run1', status: 'completed' }
+    ])
+  })
+
+  it('skips the worker when state.db is absent', async () => {
+    await createHermesHome()
+    fakeDbRows.sessions = [{ id: 'cron_job-1_run1', started_at: 1000 }]
+    const { readHermesCronOutputRunsPage } = await loadReader()
+    await expect(readHermesCronOutputRunsPage('job-1', { page: 1, pageSize: 25 })).resolves.toEqual(
+      { total: 0, runs: [] }
+    )
+    expect(fakeReads.refs).not.toHaveBeenCalled()
+    expect(fakeReads.runs).not.toHaveBeenCalled()
+  })
+
+  it('keeps output-file runs when the worker answers its failure values', async () => {
+    const home = await createHermesHome()
+    const outputDir = join(home, 'cron', 'output', 'job-1')
+    await mkdir(outputDir, { recursive: true })
+    await writeFile(join(outputDir, '2026-05-15_09-02-00.md'), '# Cron Job: x\n', 'utf-8')
+    await writeFile(join(home, 'state.db'), '')
+    fakeDbRows.sessions = [{ id: 'cron_job-1_20260515_090000', started_at: 1000 }]
+    // [] from the run read is what the client resolves to on a timeout, crash or unreadable db.
+    fakeReads.runs.mockImplementation(async () => [])
+    const { readHermesCronOutputRunsPage } = await loadReader()
+    const withRefs = await readHermesCronOutputRunsPage('job-1', { page: 1, pageSize: 25 })
+    expect(withRefs.runs.length).toBeGreaterThan(0)
+    expect(withRefs.runs.every((run) => run !== null)).toBe(true)
+
+    fakeReads.refs.mockImplementation(async () => [])
+    const { readHermesCronOutputRunsPage: readAgain } = await loadReader()
+    await expect(readAgain('job-1', { page: 1, pageSize: 25 })).resolves.toMatchObject({
+      total: 1,
+      runs: [
+        {
+          id: 'job-1:2026-05-15_09-02-00.md',
+          output_path: join(outputDir, '2026-05-15_09-02-00.md')
+        }
+      ]
     })
   })
 })

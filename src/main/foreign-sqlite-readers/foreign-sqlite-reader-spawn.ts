@@ -9,6 +9,7 @@ import {
 } from './foreign-sqlite-reader-client'
 import { resolveForeignSqliteReaderEntryPath } from './foreign-sqlite-reader-entry-path'
 import type { CodexIndexStatusQuery } from './foreign-sqlite-reader-protocol'
+import type { HermesSessionRow, HermesSessionRunRows } from './hermes-session-runs-result'
 import type { BinderSessionRow, OpenCodeSessionCursor } from './opencode-binder-sessions-result'
 import type { OpenCodeGoKeyReadResult } from './opencode-go-key-result'
 
@@ -83,4 +84,26 @@ export const _internals = {
     sharedClient = null
     workerFactory = factory ?? defaultWorkerFactory
   }
+}
+
+/**
+ * List one Hermes cron job's session rows on the foreign SQLite reader worker.
+ * @returns Raw rows newest first; `[]` when state.db or the worker cannot answer.
+ */
+export function readHermesSessionRunRefRows(
+  dbPath: string,
+  jobId: string
+): Promise<HermesSessionRow[]> {
+  return getSharedClient().readHermesSessionRunRefRows(dbPath, jobId)
+}
+
+/**
+ * Read a page of Hermes runs on the foreign SQLite reader worker, in one request.
+ * @returns The runs found; `[]` when state.db or the worker cannot answer.
+ */
+export function readHermesSessionRuns(
+  dbPath: string,
+  runIds: readonly string[]
+): Promise<HermesSessionRunRows[]> {
+  return getSharedClient().readHermesSessionRuns(dbPath, runIds)
 }

@@ -10,6 +10,14 @@ import {
   type CursorDesktopProfileReadResult
 } from './cursor-profile-result'
 import {
+  hermesSessionRowsFailure,
+  hermesSessionRunsFailure,
+  parseHermesSessionRows,
+  parseHermesSessionRuns,
+  type HermesSessionRow,
+  type HermesSessionRunRows
+} from './hermes-session-runs-result'
+import {
   openCodeBinderSessionsFailure,
   parseOpenCodeBinderSessions,
   type BinderSessionRow,
@@ -38,7 +46,9 @@ const DEFAULT_IDLE_TEARDOWN_MS: Record<ForeignSqliteReaderKind, number> = {
   // The OpenCode binder polls every 60 s.
   openCodeBinderSessions: 120_000,
   openCodeGoKey: 30_000,
-  codexIndexStatus: 30_000
+  codexIndexStatus: 30_000,
+  hermesSessionRunRefs: 30_000,
+  hermesSessionRuns: 30_000
 }
 const MAX_CONSECUTIVE_DEATHS = 3
 const KEEP_ALIVE_INTERVAL_MS = 60_000
@@ -133,6 +143,8 @@ export class ForeignSqliteReaderClient {
   private readonly openCodeBinderSessions: ForeignSqliteReaderLane<BinderSessionRow[]>
   private readonly openCodeGoKey: ForeignSqliteReaderLane<OpenCodeGoKeyReadResult>
   private readonly codexIndexStatus: ForeignSqliteReaderLane<CodexIndexStatusResult>
+  private readonly hermesSessionRunRefs: ForeignSqliteReaderLane<HermesSessionRow[]>
+  private readonly hermesSessionRuns: ForeignSqliteReaderLane<HermesSessionRunRows[]>
 
   constructor(options: {
     workerFactory: WorkerThreadFactory
@@ -165,6 +177,16 @@ export class ForeignSqliteReaderClient {
       'codexIndexStatus',
       parseCodexIndexStatusResult,
       settings('codexIndexStatus')
+    )
+    this.hermesSessionRunRefs = new ForeignSqliteReaderLane(
+      'hermesSessionRunRefs',
+      parseHermesSessionRows,
+      settings('hermesSessionRunRefs')
+    )
+    this.hermesSessionRuns = new ForeignSqliteReaderLane(
+      'hermesSessionRuns',
+      parseHermesSessionRuns,
+      settings('hermesSessionRuns')
     )
   }
 
@@ -235,11 +257,48 @@ export class ForeignSqliteReaderClient {
     return result ?? openCodeBinderSessionsFailure()
   }
 
+  /**
+   * List one Hermes cron job's session rows off the main thread.
+   * @param dbPath - Hermes's state.db.
+   * @param jobId - Hermes cron job id.
+   * @returns Raw rows newest first; `[]` when state.db or the worker cannot answer.
+   */
+  async readHermesSessionRunRefRows(dbPath: string, jobId: string): Promise<HermesSessionRow[]> {
+    const result = await this.hermesSessionRunRefs.read(JSON.stringify([dbPath, jobId]), (id) => ({
+      id,
+      kind: 'hermesSessionRunRefs',
+      dbPath,
+      jobId
+    }))
+    return result ?? hermesSessionRowsFailure()
+  }
+
+  /**
+   * Read a page of Hermes runs in one request, so state.db opens once.
+   * @param dbPath - Hermes's state.db.
+   * @param runIds - Session ids of the page's runs.
+   * @returns The runs found; `[]` when state.db or the worker cannot answer.
+   */
+  async readHermesSessionRuns(
+    dbPath: string,
+    runIds: readonly string[]
+  ): Promise<HermesSessionRunRows[]> {
+    const result = await this.hermesSessionRuns.read(JSON.stringify([dbPath, ...runIds]), (id) => ({
+      id,
+      kind: 'hermesSessionRuns',
+      dbPath,
+      runIds: [...runIds]
+    }))
+    return result ?? hermesSessionRunsFailure()
+  }
+
   dispose(): void {
     this.cursorProfile.dispose()
     this.openCodeBinderSessions.dispose()
     this.openCodeGoKey.dispose()
     this.codexIndexStatus.dispose()
+    this.hermesSessionRunRefs.dispose()
+    this.hermesSessionRuns.dispose()
   }
 }
 

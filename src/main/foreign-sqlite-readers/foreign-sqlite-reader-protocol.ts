@@ -38,11 +38,28 @@ type CodexIndexStatusRequest = {
   query: CodexIndexStatusQuery
 }
 
+type HermesSessionRunRefsRequest = {
+  id: number
+  kind: 'hermesSessionRunRefs'
+  dbPath: string
+  jobId: string
+}
+
+// One request for a whole page of runs, so state.db opens once per page.
+type HermesSessionRunsRequest = {
+  id: number
+  kind: 'hermesSessionRuns'
+  dbPath: string
+  runIds: string[]
+}
+
 export type ForeignSqliteReaderRequest =
   | CursorProfileRequest
   | OpenCodeBinderSessionsRequest
   | OpenCodeGoKeyRequest
   | CodexIndexStatusRequest
+  | HermesSessionRunRefsRequest
+  | HermesSessionRunsRequest
 
 export type ForeignSqliteReaderKind = ForeignSqliteReaderRequest['kind']
 

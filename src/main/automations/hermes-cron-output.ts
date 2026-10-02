@@ -2,10 +2,13 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import Database from '../sqlite/sync-database'
+import {
+  readHermesSessionRunRefRows,
+  readHermesSessionRuns
+} from '../foreign-sqlite-readers/foreign-sqlite-reader-spawn'
+import type { HermesSessionRunRows } from '../foreign-sqlite-readers/hermes-session-runs-result'
 import {
   HERMES_OUTPUT_FILE_PATTERN,
-  escapeSqlLike,
   parseHermesOutput,
   runAtFromHermesOutputFile,
   runAtFromUnixSeconds,
@@ -65,7 +68,7 @@ export async function readHermesCronOutputRuns(jobId: string): Promise<unknown[]
 
 async function readHermesCronOutputRunRefs(jobId: string): Promise<HermesMergedRunRef[]> {
   const outputRuns = await readHermesOutputFileRunRefs(jobId)
-  return mergeHermesOutputAndSessionRunRefs(outputRuns, readHermesSessionDbRunRefs(jobId))
+  return mergeHermesOutputAndSessionRunRefs(outputRuns, await readHermesSessionDbRunRefs(jobId))
 }
 
 // Why: opening the Automations page calls readHermesCronOutputRunsPage with
@@ -83,9 +86,12 @@ async function readHermesCronOutputRunCount(jobId: string): Promise<number> {
   })
 }
 
-async function hydrateHermesRunRef(jobId: string, ref: HermesMergedRunRef): Promise<unknown> {
+async function hydrateHermesRunRef(
+  ref: HermesMergedRunRef,
+  sessionRuns: ReadonlyMap<string, unknown>
+): Promise<unknown> {
   const outputRun = ref.output ? await readHermesOutputFileRun(ref.output) : null
-  const sessionRun = ref.session ? readHermesSessionDbRunById(jobId, ref.session.id) : null
+  const sessionRun = ref.session ? (sessionRuns.get(ref.session.id) ?? null) : null
   return (
     mergeHermesOutputAndSessionRuns(
       outputRun ? [outputRun] : [],
@@ -128,9 +134,13 @@ export async function readHermesCronOutputRunsPage(
   })
   const start = (safePage - 1) * safePageSize
   const pageRefs = runRefs.slice(start, start + safePageSize)
+  const sessionRuns = await readHermesSessionDbRuns(
+    jobId,
+    pageRefs.flatMap((ref) => (ref.session ? [ref.session.id] : []))
+  )
   return {
     total: runRefs.length,
-    runs: await Promise.all(pageRefs.map((ref) => hydrateHermesRunRef(jobId, ref)))
+    runs: await Promise.all(pageRefs.map((ref) => hydrateHermesRunRef(ref, sessionRuns)))
   }
 }
 
@@ -198,93 +208,60 @@ async function readHermesOutputFileRun(ref: HermesOutputRunRef): Promise<unknown
   }
 }
 
-function readHermesSessionDbRunRefs(jobId: string): HermesSessionRunRef[] {
+async function readHermesSessionDbRunRefs(jobId: string): Promise<HermesSessionRunRef[]> {
   if (!existsSync(HERMES_STATE_DB)) {
     return []
   }
-  try {
-    const db = new Database(HERMES_STATE_DB, { readonly: true, fileMustExist: true })
-    try {
-      const pattern = `cron\\_${escapeSqlLike(jobId)}\\_%`
-      const rows = db
-        .prepare(
-          `SELECT id, started_at
-             FROM sessions
-            WHERE id LIKE ? ESCAPE '\\'
-            ORDER BY started_at DESC`
-        )
-        .all(pattern) as Record<string, unknown>[]
-      return rows.map((row) => {
-        const runId = typeof row.id === 'string' ? row.id : `${jobId}:${String(row.started_at)}`
-        return {
-          kind: 'session',
-          id: runId,
-          job_id: jobId,
-          run_at: runAtFromUnixSeconds(row.started_at),
-          run_key: runId.split(`${jobId}_`).at(-1) ?? null
-        }
-      })
-    } finally {
-      db.close()
+  const rows = await readHermesSessionRunRefRows(HERMES_STATE_DB, jobId)
+  return rows.map((row) => {
+    const runId = typeof row.id === 'string' ? row.id : `${jobId}:${String(row.started_at)}`
+    return {
+      kind: 'session',
+      id: runId,
+      job_id: jobId,
+      run_at: runAtFromUnixSeconds(row.started_at),
+      run_key: runId.split(`${jobId}_`).at(-1) ?? null
     }
-  } catch {
-    return []
-  }
+  })
 }
 
-function readHermesSessionDbRunById(jobId: string, runId: string): unknown {
-  if (!existsSync(HERMES_STATE_DB)) {
-    return null
+/** One page's session runs from a single worker read; a run that can't be read is absent. */
+async function readHermesSessionDbRuns(
+  jobId: string,
+  runIds: string[]
+): Promise<Map<string, unknown>> {
+  if (runIds.length === 0 || !existsSync(HERMES_STATE_DB)) {
+    return new Map()
   }
-  try {
-    const db = new Database(HERMES_STATE_DB, { readonly: true, fileMustExist: true })
-    try {
-      const row = db
-        .prepare(
-          `SELECT id, title, started_at, ended_at, end_reason, model, message_count,
-                  input_tokens, output_tokens, estimated_cost_usd
-             FROM sessions
-            WHERE id = ?`
-        )
-        .get(runId) as Record<string, unknown> | undefined
-      if (!row) {
-        return null
-      }
-      const messages = db
-        .prepare(
-          `SELECT role, content, tool_name, reasoning, reasoning_content
-               FROM messages
-              WHERE session_id = ?
-              ORDER BY timestamp, id`
-        )
-        .all(runId) as Record<string, unknown>[]
-      const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim() : null
-      const model = typeof row.model === 'string' && row.model.trim() ? row.model.trim() : null
-      const messageCount = typeof row.message_count === 'number' ? row.message_count : null
-      const tokenCount =
-        (typeof row.input_tokens === 'number' ? row.input_tokens : 0) +
-        (typeof row.output_tokens === 'number' ? row.output_tokens : 0)
-      const summaryParts = [
-        title,
-        model ? `Model: ${model}` : null,
-        messageCount !== null ? `${messageCount} messages` : null,
-        tokenCount > 0 ? `${tokenCount} tokens` : null
-      ].filter(Boolean)
-      return {
-        id: runId,
-        job_id: jobId,
-        run_at: runAtFromUnixSeconds(row.started_at),
-        run_key: runId.split(`${jobId}_`).at(-1) ?? null,
-        status: typeof row.ended_at === 'number' ? 'completed' : 'unknown',
-        output_preview: summaryParts.join(' · ') || null,
-        output_content: formatSessionMessages(messages),
-        error: null,
-        output_path: HERMES_STATE_DB
-      }
-    } finally {
-      db.close()
-    }
-  } catch {
-    return null
+  const runs = await readHermesSessionRuns(HERMES_STATE_DB, runIds)
+  return new Map(runs.map((run) => [run.id, toHermesSessionRun(jobId, run)]))
+}
+
+function toHermesSessionRun(
+  jobId: string,
+  { id: runId, session: row, messages }: HermesSessionRunRows
+): unknown {
+  const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim() : null
+  const model = typeof row.model === 'string' && row.model.trim() ? row.model.trim() : null
+  const messageCount = typeof row.message_count === 'number' ? row.message_count : null
+  const tokenCount =
+    (typeof row.input_tokens === 'number' ? row.input_tokens : 0) +
+    (typeof row.output_tokens === 'number' ? row.output_tokens : 0)
+  const summaryParts = [
+    title,
+    model ? `Model: ${model}` : null,
+    messageCount !== null ? `${messageCount} messages` : null,
+    tokenCount > 0 ? `${tokenCount} tokens` : null
+  ].filter(Boolean)
+  return {
+    id: runId,
+    job_id: jobId,
+    run_at: runAtFromUnixSeconds(row.started_at),
+    run_key: runId.split(`${jobId}_`).at(-1) ?? null,
+    status: typeof row.ended_at === 'number' ? 'completed' : 'unknown',
+    output_preview: summaryParts.join(' · ') || null,
+    output_content: formatSessionMessages(messages),
+    error: null,
+    output_path: HERMES_STATE_DB
   }
 }

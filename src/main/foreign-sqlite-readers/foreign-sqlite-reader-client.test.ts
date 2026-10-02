@@ -354,3 +354,53 @@ describe('ForeignSqliteReaderClient idle teardown', () => {
     }
   })
 })
+
+describe('ForeignSqliteReaderClient Hermes session runs', () => {
+  const RUN = { id: 'cron_j_a', session: { id: 'cron_j_a', title: 't' }, messages: [] }
+
+  it('sends a whole page of runs as one request', async () => {
+    const workers: FakeWorker[] = []
+    const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
+    const read = client.readHermesSessionRuns('/h/state.db', ['cron_j_a', 'cron_j_b'])
+    expect(workers[0]?.posted).toEqual([
+      {
+        id: expect.any(Number),
+        kind: 'hermesSessionRuns',
+        dbPath: '/h/state.db',
+        runIds: ['cron_j_a', 'cron_j_b']
+      }
+    ])
+    workers[0]?.reply([RUN])
+    await expect(read).resolves.toEqual([RUN])
+    client.dispose()
+  })
+
+  it('returns its failure value on an error or a malformed reply', async () => {
+    const workers: FakeWorker[] = []
+    const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
+    const refs = client.readHermesSessionRunRefRows('/h/state.db', 'j')
+    workers[0]?.emit('message', { id: workers[0].posted[0]?.id, ok: false, error: 'locked' })
+    await expect(refs).resolves.toEqual([])
+    const runs = client.readHermesSessionRuns('/h/state.db', ['cron_j_a'])
+    workers[1]?.reply([{ id: 'cron_j_a' }])
+    await expect(runs).resolves.toEqual([])
+    client.dispose()
+  })
+
+  it('shares an in-flight page only for the same run ids', async () => {
+    const workers: FakeWorker[] = []
+    const client = new ForeignSqliteReaderClient({ workerFactory: fakeFactory(workers), log() {} })
+    const first = client.readHermesSessionRuns('/h/state.db', ['a', 'b'])
+    const sharer = client.readHermesSessionRuns('/h/state.db', ['a', 'b'])
+    const other = client.readHermesSessionRuns('/h/state.db', ['a'])
+    workers[0]?.reply([])
+    await expect(Promise.all([first, sharer])).resolves.toEqual([[], []])
+    await settle()
+    workers[0]?.reply([])
+    await other
+    expect(
+      workers[0]?.posted.map((request) => request.kind === 'hermesSessionRuns' && request.runIds)
+    ).toEqual([['a', 'b'], ['a']])
+    client.dispose()
+  })
+})

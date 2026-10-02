@@ -35,6 +35,26 @@ describe('handleForeignSqliteReaderRequest', () => {
     ).toEqual({ id: 7, ok: true, value: { type: 'sessionFileCount', count: 0 } })
   })
 
+  it('routes both Hermes kinds to their readers', () => {
+    const missing = '/definitely/missing/state.db'
+    expect(
+      handleForeignSqliteReaderRequest({
+        id: 8,
+        kind: 'hermesSessionRunRefs',
+        dbPath: missing,
+        jobId: 'j'
+      })
+    ).toMatchObject({ id: 8, ok: false })
+    expect(
+      handleForeignSqliteReaderRequest({
+        id: 10,
+        kind: 'hermesSessionRuns',
+        dbPath: missing,
+        runIds: ['r']
+      })
+    ).toMatchObject({ id: 10, ok: false })
+  })
+
   it('rejects a kind no reader owns instead of running one', () => {
     // Parsed, as a structured clone arrives: untyped, with a kind outside the union.
     const request = JSON.parse('{"id":9,"kind":"list","dbPaths":[]}')

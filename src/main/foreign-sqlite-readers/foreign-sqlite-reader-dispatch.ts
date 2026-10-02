@@ -4,6 +4,7 @@ import type {
 } from './foreign-sqlite-reader-protocol'
 import { readCodexIndexStatus } from './readers/codex-index-status'
 import { readCursorProfile } from './readers/cursor-profile'
+import { readHermesSessionRunRefRows, readHermesSessionRuns } from './readers/hermes-session-runs'
 import { readOpenCodeBinderSessions } from './readers/opencode-binder-sessions'
 import { readOpenCodeGoKey } from './readers/opencode-go-key'
 
@@ -27,6 +28,10 @@ export function handleForeignSqliteReaderRequest(
         return { id, ok: true, value: readOpenCodeGoKey(request.dbPaths) }
       case 'codexIndexStatus':
         return { id, ok: true, value: readCodexIndexStatus(request.query) }
+      case 'hermesSessionRunRefs':
+        return { id, ok: true, value: readHermesSessionRunRefRows(request.dbPath, request.jobId) }
+      case 'hermesSessionRuns':
+        return { id, ok: true, value: readHermesSessionRuns(request.dbPath, request.runIds) }
     }
     // A structured clone can carry any kind; one without a reader is refused, not guessed at.
     return unknownKind(id, kind)
