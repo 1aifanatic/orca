@@ -2,7 +2,7 @@
 // The composer's placeholder as the real editor draws it: a lock with a reason shows the reason,
 // and every other state draws what it drew before.
 
-import { createRef } from 'react'
+import { useRef } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
@@ -27,11 +27,12 @@ type State = Pick<NativeChatComposerFieldProps, 'disabled' | 'hasPty' | 'canSend
 
 function Field(state: State): React.JSX.Element {
   const imeEnterGesture = useImeEnterGestureOwnership()
+  const textareaRef = useRef<NativeChatComposerInput>(null)
   return (
     <NativeChatComposerField
       {...state}
       composerScopeKey="pane-1"
-      textareaRef={createRef<NativeChatComposerInput>()}
+      textareaRef={textareaRef}
       draft=""
       autocomplete={{ mode: 'none' }}
       activeSuggestion={0}
@@ -74,7 +75,9 @@ const WRITABLE: State = { disabled: false, hasPty: true, canSend: true }
 const LOCKED: State = { disabled: true, hasPty: true, canSend: false, lockReason: REASON }
 
 it('draws the lock reason while the composer is locked, and the usual words once it unlocks', () => {
-  const { rerender } = render(<Field {...LOCKED} />)
+  const { rerender } = render(<Field {...WRITABLE} />)
+  expect(drawnPlaceholder()).toBe('Send a message…')
+  rerender(<Field {...LOCKED} />)
   expect(drawnPlaceholder()).toBe(REASON)
   rerender(<Field {...WRITABLE} />)
   expect(drawnPlaceholder()).toBe('Send a message…')

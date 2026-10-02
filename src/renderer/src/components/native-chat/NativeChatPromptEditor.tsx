@@ -50,7 +50,6 @@ export function NativeChatPromptEditor({
   const placeholderRef = useRef(placeholder)
   placeholderRef.current = placeholder
   const placeholderWhenDisabledRef = useRef(placeholderWhenDisabled)
-  placeholderWhenDisabledRef.current = placeholderWhenDisabled
   const editor = useEditor(
     {
       extensions: [
@@ -137,8 +136,10 @@ export function NativeChatPromptEditor({
   )
 
   useLayoutEffect(() => {
+    placeholderWhenDisabledRef.current = placeholderWhenDisabled
+    // Also redraws the placeholder, which reads the ref.
     editor?.setEditable(!disabled, false)
-  }, [disabled, editor])
+  }, [disabled, editor, placeholderWhenDisabled])
 
   const input = useMemo<NativeChatComposerInput | null>(
     () =>
