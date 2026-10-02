@@ -41,6 +41,8 @@ export type MobileNativeChatSession = {
   loadingEarlier: boolean
   /** Grow the window to page in older history. */
   loadEarlier: () => void
+  /** Why the host keeps this chat read-only, in words; absent on a chat that takes writes. */
+  readOnlyNotice?: string | null
 }
 
 // Small first page for a fast first paint; grows by a page as the user scrolls.

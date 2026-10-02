@@ -206,6 +206,8 @@ export function useStructuredAgentSession(args: {
     error: outboxController.error,
     /** The refusal the failed read met, while `status` is `error`. */
     readRefusal: transportEnabled ? state.readRefusal : undefined,
+    /** Why the host keeps this chat read-only; absent while it takes writes. */
+    readOnly: transportEnabled ? state.readOnly : undefined,
     hasOlder: transportEnabled && state.hasOlder,
     railOutline: transportEnabled ? railOutline : null,
     loadingOlder: transportEnabled && loadingOlder,

@@ -30,6 +30,7 @@ import {
   requestMobileStructuredAgentSessionCancel
 } from './mobile-structured-agent-session-cancel'
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
+import { mobileReadOnlyNotice } from './mobile-structured-read-only-notice'
 import {
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
@@ -223,7 +224,8 @@ export function useMobileStructuredAgentSession(args: {
       error: state.error,
       hasMore: state.hasOlder,
       loadingEarlier: loadingOlder,
-      loadEarlier
+      loadEarlier,
+      readOnlyNotice: mobileReadOnlyNotice(state.readOnly)
     },
     isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
     turnId,

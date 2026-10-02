@@ -80,6 +80,21 @@ export function readAgentSessionHistory(
   snapshot: AgentJournalSnapshot = journal.snapshot(),
   scope: AgentSessionHistoryScope = 'every-agent'
 ): AgentSessionHistoryResult {
+  const result = readHistory(journal, request, snapshot, scope)
+  return { ...result, page: { ...result.page, ...readOnlyField(journal) } }
+}
+
+/** Every read-only latch a journal has is a newer Orca's, so that is the reason it states. */
+function readOnlyField(journal: AgentSessionJournal): Pick<AgentSessionHistoryPage, 'readOnly'> {
+  return journal.isReadOnly ? { readOnly: 'written-by-newer-orca' } : {}
+}
+
+function readHistory(
+  journal: AgentSessionJournal,
+  request: AgentSessionHistoryRequest,
+  snapshot: AgentJournalSnapshot,
+  scope: AgentSessionHistoryScope
+): AgentSessionHistoryResult {
   if (journal.isReadOnly) {
     return historyReset(snapshot, 'schema_unreadable')
   }
@@ -145,7 +160,7 @@ export function readAgentSessionHydrationPage(
   journal: AgentSessionJournal,
   fence?: number
 ): AgentSessionHistoryPage {
-  return buildHydrationPage(journal.snapshot(), fence)
+  return { ...buildHydrationPage(journal.snapshot(), fence), ...readOnlyField(journal) }
 }
 
 function buildHydrationPage(

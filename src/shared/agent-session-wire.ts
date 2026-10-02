@@ -38,6 +38,7 @@ import {
   type AgentSessionRecord
 } from './agent-session-record'
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
+import type { AgentSessionReadOnlyReason } from './agent-session-read-only'
 import type { NativeChatSubagentEntry } from './native-chat-types'
 import type { StructuredAgentSessionProjectedStatus } from './structured-agent-session-projection'
 
@@ -133,6 +134,10 @@ export type AgentSessionHistoryPage = {
   /** Names the subagents with rows on the page whose roster row is older than it; bounded.
    *  Absent from older hosts, and when every such roster row is on the page. */
   subagentRoster?: AgentSessionSubagentRosterEntry[]
+  /** Present while the host keeps this chat read-only, and why: it serves the history and refuses
+   *  every write. Absent on a writable chat and from older hosts, which say nothing until a write
+   *  is refused. */
+  readOnly?: AgentSessionReadOnlyReason
 }
 
 export type AgentSessionHistoryResult =

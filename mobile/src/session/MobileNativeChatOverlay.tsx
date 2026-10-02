@@ -125,6 +125,7 @@ export function MobileNativeChatOverlay({
         inputLockReason={inputLockReason}
         sendErrorMessage={sendErrorMessage}
         onClearSendError={onClearSendError}
+        readOnlyNotice={session.readOnlyNotice ?? null}
         filePaths={controller.nativeChatFilePaths}
         onNeedFiles={controller.loadNativeChatFiles}
         sessionOptions={controller.nativeChatSessionOptions}

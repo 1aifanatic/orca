@@ -4,6 +4,11 @@ import { useDelayedStatus } from '@/hooks/use-delayed-status'
 import { NativeChatBackgroundTasksStatus } from './NativeChatBackgroundTasksStatus'
 import type { StructuredSessionBackgroundTasksView } from './structured-session-background-tasks-view'
 import { useStructuredSessionChildRowContext } from './use-structured-session-child-row-context'
+import {
+  agentSessionReadOnlyNoticeParts,
+  type AgentSessionReadOnlyReason
+} from '../../../../shared/agent-session-read-only'
+import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 type StoppingBackgroundTasks = {
   sessionId: string
@@ -28,6 +33,8 @@ export function NativeChatStructuredSessionStatus(props: {
   error: string | null
   /** A read the pane is reconnecting on its own: said plainly, not as an error. */
   reconnecting?: boolean
+  /** Why the host keeps this chat read-only: said up front, before a send is refused. */
+  readOnly?: AgentSessionReadOnlyReason
   composerError: string | null
   isVisible: boolean
   backgroundTasks: StructuredSessionBackgroundTasksView
@@ -42,6 +49,7 @@ export function NativeChatStructuredSessionStatus(props: {
     SLOW_STARTUP_NOTICE_DELAY_MS
   )
   const childRowContext = useStructuredSessionChildRowContext(props.paneKey)
+  const readOnlyParts = agentSessionReadOnlyNoticeParts(props.readOnly)
 
   const onStop = (taskId?: string) => {
     const sessionId = props.sessionId
@@ -82,6 +90,14 @@ export function NativeChatStructuredSessionStatus(props: {
             '{{value0}} is still starting. Messages wait until it is ready; close this chat to give up on it.',
             { value0: props.agentLabel }
           )}
+        </p>
+      ) : null}
+      {readOnlyParts ? (
+        <p
+          role="status"
+          className="mx-auto w-full max-w-4xl px-4 py-1 text-xs text-muted-foreground"
+        >
+          {agentSessionWriteNoticeText(readOnlyParts)}
         </p>
       ) : null}
       {props.reconnecting && !props.error ? (

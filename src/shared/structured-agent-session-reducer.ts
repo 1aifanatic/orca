@@ -13,9 +13,9 @@ import type {
   AgentSessionTurnActivity
 } from './agent-session-wire'
 import type { AgentSessionRefusalReference } from './agent-session-wire-refusals'
+import type { AgentSessionReadOnlyReason } from './agent-session-read-only'
 import { backgroundTaskStatesEqual } from './agent-session-background-task-state-equality'
 import { admitAgentSessionBackgroundTaskState } from './agent-session-background-task-state-admission'
-import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   MAX_RETAINED_ITEMS,
   MAX_RETAINED_OWN_ITEMS,
@@ -23,6 +23,11 @@ import {
   trimRetainedItems
 } from './structured-agent-session-item-retention'
 import { compareAgentJournalItems } from './agent-session-journal-position'
+import {
+  liveItemsWithinWindow,
+  mergeItems,
+  mergeSubmissions
+} from './structured-agent-session-window-merge'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import {
   foldStructuredAgentSubagentRoster,
@@ -70,6 +75,9 @@ export type StructuredAgentSessionState = {
   /** Bumped per live batch that leaves a turn row's newest revision outside the window
    *  (dropped or trimmed), so a whole-journal answer derived from turn rows is asked for again. */
   unloadedTurnRevisions?: number
+  /** Why the host keeps this chat read-only, from its latest whole page; a host stays read-only
+   *  until it restarts, which sends a new one. */
+  readOnly?: AgentSessionReadOnlyReason
 }
 
 export type StructuredAgentSessionAction =
@@ -78,8 +86,6 @@ export type StructuredAgentSessionAction =
   | { type: 'event'; event: AgentSessionSubscribeEvent }
   | { type: 'history-page'; page: AgentSessionHistoryPage }
   | { type: 'older-page'; requestedCursor: AgentJournalCursor; page: AgentSessionHistoryPage }
-
-const MAX_RETAINED_SUBMISSIONS = 256
 
 export const EMPTY_STRUCTURED_AGENT_SESSION: StructuredAgentSessionState = {
   epoch: null,
@@ -134,73 +140,13 @@ function replacePage(
     status: 'ready',
     subagentRoster: foldStructuredAgentSubagentRosterPage(undefined, page),
     activity: activity ?? null,
+    ...(page.readOnly !== undefined ? { readOnly: page.readOnly } : {}),
     ...(backgroundTasks !== undefined
       ? { backgroundTasks }
       : page.backgroundTasks !== undefined
         ? { backgroundTasks: admitAgentSessionBackgroundTaskState(page.backgroundTasks) }
         : {})
   }
-}
-
-function mergeItems(
-  current: readonly AgentJournalRenderItem[],
-  incoming: readonly AgentJournalRenderItem[],
-  removedIds: readonly string[]
-): AgentJournalRenderItem[] {
-  const removed = new Set(removedIds)
-  const byId = new Map(
-    current.filter((item) => !removed.has(item.itemId)).map((item) => [item.itemId, item])
-  )
-  for (const item of incoming) {
-    const prior = byId.get(item.itemId)
-    if (!prior || item.revision >= prior.revision) {
-      byId.set(item.itemId, item)
-    }
-  }
-  return [...byId.values()].sort(compareAgentJournalItems)
-}
-
-/**
- * Live rows the loaded window can take. The window is a contiguous suffix of the
- * journal, and its oldest row is the load-older anchor. A revision of a row older
- * than the window keeps that row's original sequence, so admitting it would move
- * the anchor below the window and paging `before` it would skip every row between.
- * The journal keeps the revision; the page reader serves it once the window
- * reaches the row. With nothing older on the host the window is the whole journal
- * and a row below the head (a revived tombstone) leaves no hole, so it is admitted.
- */
-function liveItemsWithinWindow(
-  state: StructuredAgentSessionState,
-  incoming: readonly AgentJournalRenderItem[]
-): readonly AgentJournalRenderItem[] {
-  const head = state.items[0]
-  if (!head || !state.hasOlder) {
-    return incoming
-  }
-  return incoming.filter((item) => item.sequence >= head.sequence)
-}
-
-function mergeSubmissions(
-  current: readonly AgentJournalSubmission[],
-  incoming: readonly AgentJournalSubmission[],
-  items: readonly AgentJournalRenderItem[]
-): AgentJournalSubmission[] {
-  const byId = new Map(current.map((submission) => [submission.clientMessageId, submission]))
-  for (const submission of incoming) {
-    byId.set(submission.clientMessageId, submission)
-  }
-  const sorted = [...byId.values()].sort((left, right) => left.submittedAt - right.submittedAt)
-  const itemIds = new Set(
-    items
-      .filter((item) => item.body.kind === 'message' && item.body.role === 'user')
-      .map((item) => item.itemId)
-  )
-  // Loaded user messages need their provider alias for durable turn attribution.
-  return sorted.filter(
-    (submission, index) =>
-      index >= sorted.length - MAX_RETAINED_SUBMISSIONS ||
-      itemIds.has(agentJournalSubmissionKey(submission.clientMessageId))
-  )
 }
 
 /** `receivedAt` is the client clock at apply time; callers pass it so the reducer stays pure. */

@@ -325,6 +325,7 @@ export function NativeChatStructuredSession(
           viewState.kind === 'error' || !readFailure?.named ? controller.error : readFailure.text
         }
         reconnecting={viewState.kind !== 'error' && readFailure !== null && !readFailure.named}
+        readOnly={controller.readOnly}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}

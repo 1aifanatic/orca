@@ -35,6 +35,7 @@ import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { MobileNativeChatPromptCard } from './MobileNativeChatPromptCard'
+import { MobileNativeChatComposerNotices } from './MobileNativeChatComposerNotices'
 import { NO_QUEUED_SLOT, type MobileQueuedSlotProps } from './use-mobile-native-chat-queued-slot'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
@@ -109,6 +110,8 @@ type Props = MobileQueuedSlotProps & {
   sendErrorMessage?: string | null
   /** Clears `sendErrorMessage` once a later send is accepted. */
   onClearSendError?: () => void
+  /** Why the host keeps this chat read-only, shown above the composer before any send. */
+  readOnlyNotice?: string | null
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
   /** Model/session-option pickers for the composer action row (desktop parity). */
@@ -178,6 +181,7 @@ export function MobileNativeChatView({
   inputLockReason,
   sendErrorMessage,
   onClearSendError,
+  readOnlyNotice = null,
   filePaths,
   onNeedFiles,
   sessionOptions,
@@ -417,16 +421,10 @@ export function MobileNativeChatView({
           </Pressable>
         ) : null}
       </View>
-      {sendErrorMessage ? (
-        // This banner is the only channel for a send failure — announce it.
-        <View
-          style={styles.sendError}
-          accessibilityRole="alert"
-          accessibilityLiveRegion="assertive"
-        >
-          <Text style={styles.sendErrorText}>{sendErrorMessage}</Text>
-        </View>
-      ) : null}
+      <MobileNativeChatComposerNotices
+        readOnlyNotice={readOnlyNotice}
+        sendErrorMessage={sendErrorMessage}
+      />
       <MobileNativeChatComposer
         structuredCommands={
           structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined

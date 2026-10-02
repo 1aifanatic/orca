@@ -17417,6 +17417,8 @@
         "historyUnavailable": "Orca가 지금 이 채팅의 기록을 열지 못했습니다.",
         "savedByNewerOrca": "채팅이 최신 버전의 Orca에서 저장되었습니다.",
         "updateOrcaToKeepUsing": "계속 사용하려면 Orca를 업데이트하세요.",
+        "chatReadOnlyNewerOrca": "이 채팅은 최신 버전의 Orca에서 저장되어 여기서는 읽기 전용입니다.",
+        "updateOrcaToContinueChat": "이 채팅을 계속하려면 Orca를 업데이트하세요.",
         "unsupported": "이 채팅을 실행 중인 Orca가 이 기능을 지원하지 않습니다. Orca를 업데이트한 후 다시 시도하세요.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
         "recordFailed": "Orca가 이 채팅의 기록에 저장하지 못했습니다.",
