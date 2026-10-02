@@ -240,7 +240,8 @@ export async function performCancel(
     // The child's end confirms the Stop, so a refused or unconfirmed interrupt says nothing more.
     if (note !== null) {
       note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
-      answer = 'end-owed'
+      // A taken interrupt stopped the turn, and the end is cleanup; else only the owed end stops it.
+      answer = taken === true ? 'took' : 'end-owed'
     }
   } else if (runningCommand && !cancelled) {
     await input.stopChild?.()

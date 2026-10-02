@@ -268,8 +268,10 @@ export type AgentJournalThreadGoalState =
 /** What a Stop did, as its note says. Persisted and published: never rename an arm. Open like the
  *  other persisted vocabularies: an arm a newer host writes must not turn the row malformed, and a
  *  reader treats one it does not know as no answer (`readAgentJournalStopAnswer`).
- *  - `took`: the provider took the interrupt, or the host ended the child running the turn.
- *  - `end-owed`: the Stop ends the provider's process in its next step, which still owes it.
+ *  - `took`: the provider took the interrupt (an end of its process still owed is cleanup), or the
+ *    host ended the child running the turn.
+ *  - `end-owed`: the provider did not take the interrupt, and the Stop's effect is the end of the
+ *    provider's process that its next step still owes.
  *  - `declined`: the provider could not interrupt the turn, and the turn may run on.
  *  - `interrupt-unconfirmed`: the interrupt failed with no answer, and nothing ended the child.
  *  - `no-effect`: the provider had nothing running for it to stop. */

@@ -297,8 +297,8 @@ it('answers on the interrupt, ends the child once the stopped turn ends, and res
   // The Stop answered on the interrupt Claude took: the child waits for Claude to end the turn.
   expect(connection.closed).toBe(false)
   expect(await statusTexts()).toEqual(['Cancellation requested.'])
-  // The child's end is still owed to the Stop's next step.
-  expect(await stopAnswers()).toEqual([{ answer: 'end-owed', answersLatestStop: true }])
+  // Claude took the interrupt; the child's end, still owed to the Stop's next step, is cleanup.
+  expect(await stopAnswers()).toEqual([{ answer: 'took', answersLatestStop: true }])
   const ended = Date.now()
   frame(connection, INTERRUPTED_RESULT)
   await laneDrained()
@@ -436,6 +436,7 @@ it('ends the child at once when Claude refuses the interrupt, and says only that
   const texts = await statusTexts()
   expect(texts).toContain('Cancellation requested.')
   expect(texts.some((text) => text.includes("didn't stop"))).toBe(false)
+  // Only the child's end stops the turn.
   expect(await stopAnswers()).toEqual([{ answer: 'end-owed', answersLatestStop: true }])
 })
 

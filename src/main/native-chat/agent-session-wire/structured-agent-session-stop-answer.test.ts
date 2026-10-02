@@ -275,9 +275,32 @@ describe('a Stop of a running turn', () => {
     expect(errorRows()).toEqual([])
   })
 
-  it('answers end-owed when the Stop ends the provider process next, whatever it answered', async () => {
+  // The process end is owed either way; only an interrupt the provider did not take leaves the
+  // Stop's effect to that end.
+  it.each([
+    ['took when the provider took the interrupt', { cancelled: true }, 'took'],
+    [
+      'end-owed when the provider refused the interrupt',
+      { cancelled: false, refusal: {} },
+      'end-owed'
+    ]
+  ] as const)(
+    'answers a Stop that ends the provider process next %s',
+    async (_case, outcome, answer) => {
+      await runningTurn({ stopEndsSession: true })
+      rig.cancelTurn.mockResolvedValueOnce(outcome)
+
+      expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+
+      expect(answers()).toEqual([
+        { answer, eventId: latestEventId(), text: 'Cancellation requested.' }
+      ])
+    }
+  )
+
+  it('answers end-owed when the Stop ends the provider process next and its interrupt went unanswered', async () => {
     await runningTurn({ stopEndsSession: true })
-    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
+    rig.cancelTurn.mockRejectedValueOnce(new Error('interrupt timed out'))
 
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
@@ -286,25 +309,34 @@ describe('a Stop of a running turn', () => {
     ])
   })
 
-  it('keeps an owed end when the same Stop, pressed again after its agent stopped taking Stops, cannot reach it', async () => {
-    let endsSession = true
-    await runningTurn({ stopEndsSession: () => endsSession })
-    // Neither the owed end nor the second press's kill is proven, so the chat keeps its child.
-    rig.closeSession.mockResolvedValueOnce(false).mockResolvedValueOnce(false)
-    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
-    // As when the agent's adapter has closed: its Stop ends nothing more, and its interrupt throws.
-    endsSession = false
-    rig.cancelTurn.mockRejectedValueOnce(new Error('no live structured adapter owns session-alpha'))
+  it.each([
+    ['took the interrupt', { cancelled: true }, 'took'],
+    ['refused the interrupt', { cancelled: false, refusal: {} }, 'end-owed']
+  ] as const)(
+    'keeps its answer when the same Stop, which %s, is pressed again after its agent stopped taking Stops',
+    async (_case, outcome, answer) => {
+      let endsSession = true
+      await runningTurn({ stopEndsSession: () => endsSession })
+      // Neither the owed end nor the second press's kill is proven, so the chat keeps its child.
+      rig.closeSession.mockResolvedValueOnce(false).mockResolvedValueOnce(false)
+      rig.cancelTurn.mockResolvedValueOnce(outcome)
+      expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+      // As when the agent's adapter has closed: its Stop ends nothing more, and its interrupt throws.
+      endsSession = false
+      rig.cancelTurn.mockRejectedValueOnce(
+        new Error('no live structured adapter owns session-alpha')
+      )
 
-    await rig.stop()
+      await rig.stop()
 
-    expect(stopEventCount()).toBe(1)
-    expect(answers()).toEqual([
-      { answer: 'end-owed', eventId: latestEventId(), text: 'Cancellation requested.' }
-    ])
-    await restartAndSettle()
-    expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
-  })
+      expect(stopEventCount()).toBe(1)
+      expect(answers()).toEqual([
+        { answer, eventId: latestEventId(), text: 'Cancellation requested.' }
+      ])
+      await restartAndSettle()
+      expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    }
+  )
 
   it('answers declined when the interrupt failed and the child could not be ended, and a crash reads as news with its red row', async () => {
     await runningTurn()
