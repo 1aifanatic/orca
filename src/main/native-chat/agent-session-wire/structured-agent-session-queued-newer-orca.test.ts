@@ -42,10 +42,10 @@ async function reopenOnNewerOrcaDatabase(close: () => Promise<unknown>): Promise
   Object.defineProperty(openTestJournalHostDatabase(rig.root), 'readOnly', { value: true })
 }
 
-/** A read-only journal's history answers as a `schema_unreadable` reset carrying its page. */
+/** A read-only journal's history page, which says the chat is read-only. */
 async function readOnlyQueue() {
   const answer = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
-  expect(answer).toMatchObject({ ok: false, reset: 'schema_unreadable' })
+  expect(answer).toMatchObject({ ok: true, page: { readOnly: 'written-by-newer-orca' } })
   const page = 'page' in answer ? answer.page : undefined
   return {
     cards: (page?.queuedMessages ?? []).map(({ messageId, state }) => ({ messageId, state })),

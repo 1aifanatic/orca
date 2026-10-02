@@ -95,9 +95,8 @@ function readHistory(
   snapshot: AgentJournalSnapshot,
   scope: AgentSessionHistoryScope
 ): AgentSessionHistoryResult {
-  if (journal.isReadOnly) {
-    return historyReset(snapshot, 'schema_unreadable')
-  }
+  // A read-only journal serves backward pages from the snapshot its open folded, as its first page
+  // does; only a forward read of its rows resets (journal-cursor.ts).
   const limit = resolveHistoryLimit(request.limit)
   if (request.direction === 'after') {
     return readForward(journal, snapshot, request.cursor, limit)

@@ -146,6 +146,30 @@ describe('a chat the host keeps read-only', () => {
   })
 })
 
+it('pages back through a read-only chat; only a forward read of its rows resets', async () => {
+  const journal = await reopenedAfter(
+    () => ({ v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION, kind: 'future-mark' }),
+    ['first', 'second']
+  )
+  expect(journal.isReadOnly).toBe(true)
+  const request = { sessionId: IDENTITY.sessionId, limit: 1 }
+  const tail = readAgentSessionHistory(journal, { ...request, direction: 'tail' })
+  expect(tail).toMatchObject({ ok: true, page: { hasOlder: true } })
+  const older = readAgentSessionHistory(journal, {
+    ...request,
+    direction: 'before',
+    cursor: tail.page.window.nextCursor
+  })
+  expect(older).toMatchObject({ ok: true, page: { readOnly: 'written-by-newer-orca' } })
+  expect(older.page.items.map((item) => item.body)).toEqual([{ kind: 'status', text: 'first' }])
+  const after = readAgentSessionHistory(journal, {
+    ...request,
+    direction: 'after',
+    cursor: { epoch: journal.epoch, sequence: 0 }
+  })
+  expect(after).toMatchObject({ ok: false, reset: 'schema_unreadable' })
+})
+
 it('says nothing on a chat that takes writes', async () => {
   const journal = await reopenedAfter(() => ({ ...ITEM, body: { kind: 'status', text: 'later' } }))
   expect(journal.isReadOnly).toBe(false)
