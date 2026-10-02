@@ -7,12 +7,13 @@
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
-import type {
-  AgentSessionMutationEnvelope,
-  AgentSessionMutationResult,
-  AgentSessionQueuedMessageDeleteResult,
-  AgentSessionQueuedMessagesResumeResult,
-  AgentSessionSendResult
+import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
+  type AgentSessionMutationEnvelope,
+  type AgentSessionMutationResult,
+  type AgentSessionQueuedMessageDeleteResult,
+  type AgentSessionQueuedMessagesResumeResult,
+  type AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
@@ -21,7 +22,6 @@ import {
   journalOpenRefusal
 } from '../agent-session-journal/journal-open-failure'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
-import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from '../agent-session-journal/queued-message-pause'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
   queuedMessageFingerprint,
@@ -117,12 +117,12 @@ export async function carryQueuedMessagesToClearReplacement(
         messageId: row.messageId,
         body: row.body,
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-        // A send a restart kept stays held there too: no later message may release it.
-        hostInstance:
-          row.hostInstance === QUEUED_MESSAGE_HELD_ACROSS_RESTART
-            ? QUEUED_MESSAGE_HELD_ACROSS_RESTART
-            : structuredAgentSessionHostInstance(),
-        carriedFrom: ctx.sessionId
+        hostInstance: structuredAgentSessionHostInstance(),
+        carriedFrom: ctx.sessionId,
+        // A kept send stays held there too: no later message may release it.
+        ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
+          ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
+          : {})
       })
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {
@@ -319,7 +319,7 @@ export function deleteQueuedStructuredAgentMessage(
 
 /** Resume: ends the queue's pause — a Stop's, or a restart's — so the cards send
  *  again, oldest first, as the session goes idle. A no-op when nothing is paused,
- *  and a per-card `send_failed` hold stays for its own Send. */
+ *  and a per-card hold (`send_failed`, `kept`) stays for its own Send. */
 export function resumeStructuredAgentQueue(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,

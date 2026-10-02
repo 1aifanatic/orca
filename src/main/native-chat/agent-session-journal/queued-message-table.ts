@@ -13,16 +13,23 @@ import type {
   AgentJournalCursor,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
+import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
+  type QUEUED_MESSAGE_PAUSED_SEND_FAILED
+} from '../../../shared/agent-session-queued-message-wire'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
-/** Why ONE waiting draft is held from auto-sending: its conversion failed.
- *  Stored on the row, so it survives handle eviction and restart; a wire marker
- *  (it publishes as `pausedReason`). A Stop or a restart pauses the whole queue
- *  instead. A reader treats an unknown stored value as a plain hold. */
-export type QueuedMessageHoldReason = 'send_failed'
+/** Why ONE waiting draft is held from auto-sending: its conversion failed (`send_failed`), or it
+ *  is a send the host accepted and kept across a restart or a close (`kept`). Stored on the row, so
+ *  it survives handle eviction and restart; a wire marker (it publishes as `pausedReason`). A Stop
+ *  or a restart pauses the whole queue instead. A reader treats an unknown stored value as a plain
+ *  hold. */
+export type QueuedMessageHoldReason =
+  | typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
+  | typeof QUEUED_MESSAGE_PAUSED_KEPT
 
 /** Definitively unsettled: what Stop, /clear, Edit and the budget count, and
  *  what the published list shows. Pending/unknown/accepted deliveries and
@@ -77,6 +84,7 @@ export function insertQueuedMessage(
     now: number
     /** Absent: after every other card. */
     position?: number
+    holdReason?: QueuedMessageHoldReason
   }
 ): QueuedMessageRow {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the statement selects exactly one aliased numeric column; better-sqlite3 types rows as unknown.
@@ -86,7 +94,7 @@ export function insertQueuedMessage(
   const position = input.position ?? Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -95,6 +103,7 @@ export function insertQueuedMessage(
     input.fingerprint,
     input.now,
     input.hostInstance,
+    input.holdReason ?? null,
     input.carriedFrom ?? null,
     input.queuedAt.epoch,
     input.queuedAt.sequence
@@ -108,7 +117,7 @@ export function insertQueuedMessage(
     createdAt: input.now,
     hostInstance: input.hostInstance,
     state: 'waiting',
-    holdReason: null,
+    holdReason: input.holdReason ?? null,
     returnedReason: null,
     returnedRejection: null,
     settledAt: null,
@@ -222,8 +231,8 @@ export function withdrawQueuedMessages(
  * dispatched → returned, or back to waiting (`rejectedDraftSettlement`),
  * matched on the draft's CURRENT hand-off (`consumed_as`), so a re-send refused
  * again still settles while a late duplicate of an earlier refusal matches
- * nothing. A draft back to waiting keeps its position and carries no refusal;
- * its spent submissions stay findable by their `queuedMessageId` link.
+ * nothing. A draft back to waiting keeps its position and carries no refusal, held as `kept`
+ * when the settlement says so; its spent submissions stay findable by their `queuedMessageId` link.
  */
 export function settleRejectedQueuedMessage(
   db: Database.Database,
@@ -241,11 +250,15 @@ export function settleRejectedQueuedMessage(
       ? db
           .prepare(
             `UPDATE queued_messages
-             SET state = 'waiting', hold_reason = NULL, consumed_as = NULL,
+             SET state = 'waiting', hold_reason = ?, consumed_as = NULL,
                  returned_reason = NULL, returned_rejection = NULL, settled_at = NULL, settled_by_op = NULL
              WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
           )
-          .run(input.sessionId, input.consumedRef)
+          .run(
+            settlement.kept ? QUEUED_MESSAGE_PAUSED_KEPT : null,
+            input.sessionId,
+            input.consumedRef
+          )
       : db
           .prepare(
             `UPDATE queued_messages

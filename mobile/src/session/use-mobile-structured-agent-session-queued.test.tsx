@@ -532,6 +532,7 @@ describe('mobile structured queued messages', () => {
           text: 'text of draft-1',
           state: 'waiting',
           paused: false,
+          kept: false,
           needsAttention: false,
           caption: null
         }
@@ -568,12 +569,28 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['same-id'])
     })
 
-    it('shows no cards from an incapable host even if a list arrives', async () => {
-      await mountSession(
-        LEGACY,
-        snapshotEvent({ queuedMessages: [queuedDraft({ messageId: 'draft-1' })] })
+    // A host that does not queue sends still keeps a message it accepted and never sent across a
+    // restart or a close, and publishes it as a card; only queueing a new send is gated.
+    it('shows the cards a host that does not queue sends publishes', async () => {
+      await mountSession(LEGACY)
+      act(() =>
+        listener?.(
+          batchEvent(
+            [
+              queuedDraft({ messageId: 'kept-1', paused: true, pausedReason: 'kept' }),
+              queuedDraft({ messageId: 'behind', position: 2 })
+            ],
+            [],
+            { reason: 'restarted' }
+          )
+        )
       )
-      expect(hook!.queued.cards).toEqual([])
+      expect(hook!.queued.cards.map(({ messageId, caption }) => ({ messageId, caption }))).toEqual([
+        { messageId: 'kept-1', caption: 'Not sent yet — tap Send to send it' },
+        { messageId: 'behind', caption: 'Waiting — a message ahead needs attention' }
+      ])
+      // Resume would send nothing past the kept card, so it is not offered.
+      expect(hook!.queued.pause).toBeNull()
     })
   })
 

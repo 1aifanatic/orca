@@ -105,13 +105,15 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused. */
+  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused;
+   *  `holdReason` carries a hold of its own over with it. */
   insert(input: {
     messageId: string
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
     carriedFrom?: string
+    holdReason?: QueuedMessageHoldReason
   }): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
     let inserted = false
@@ -179,17 +181,16 @@ export class JournalQueuedMessages {
   }
 
   /** Adopts waiting rows another host instance wrote into this one, ending a restart's pause.
-   *  `keepHeld` leaves the sends a restart kept (`adoptQueuedMessages`). Returns whether anything
-   *  changed. */
-  adopt(hostInstance: string, options: { keepHeld?: boolean } = {}): Promise<boolean> {
+   *  Returns whether anything changed. */
+  adopt(hostInstance: string): Promise<boolean> {
     const { sessionId } = this.deps
     return this.transact(
-      (db) => adoptQueuedMessages(db, { sessionId, hostInstance, ...options }),
+      (db) => adoptQueuedMessages(db, { sessionId, hostInstance }),
       (changed) => changed > 0
     ).then((changed) => changed > 0)
   }
 
-  /** Inside the caller's journal-row transaction (`journal-leftover-send-hold.ts`): one kept send
+  /** Inside the caller's journal-row transaction (`journal-unsent-send-hold.ts`): one kept send
    *  becomes a card, and the cards ahead of the queue take the positions given. False when a card
    *  by that id already exists, which then stands. */
   holdInTransaction(

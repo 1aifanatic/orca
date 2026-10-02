@@ -24,12 +24,12 @@ import type { AgentSessionJournal } from './journal-store'
 import {
   deriveQueuePauses,
   nextSendableQueuedCard,
-  QUEUED_MESSAGE_HELD_ACROSS_RESTART,
   queuePauseHolding,
   resumableQueuePause
 } from './queued-message-pause'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-p',
@@ -518,44 +518,21 @@ describe("a restart's pause", () => {
     ])
   })
 
-  it('a send a restart kept stays held after a person’s turn; adoption leaves it, Resume’s takes it', async () => {
+  it('adoption and Resume keep a kept card held: only its own Send, Edit or Delete releases it', async () => {
     const journal = await open()
-    await journal.queuedMessages.insert({
+    const kept = await journal.queuedMessages.insert({
       messageId: 'kept',
       body: message('kept across a restart'),
       fingerprint: 'fp-kept',
-      hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART
+      hostInstance: 'proc-0',
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
     })
-    await journal.queuedMessages.insert({
-      messageId: 'foreign',
-      body: message('another process wrote this'),
-      fingerprint: 'fp-foreign',
-      hostInstance: 'proc-0'
-    })
-    const pausesAfterTurn = () =>
-      deriveQueuePauses({
-        epoch: journal.epoch,
-        marks: { latestStop: null, resumedSequence: 0 },
-        latestPersonTurnSequence: 9,
-        cards: journal.queuedMessages.list(),
-        hostInstance: HOST,
-        restartEnded: true
-      }).map((pause) => pause.reason)
-    expect(pausesAfterTurn()).toEqual(['restarted'])
-
-    expect(await journal.queuedMessages.adopt(HOST, { keepHeld: true })).toBe(true)
-    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.hostInstance])).toEqual([
-      ['kept', QUEUED_MESSAGE_HELD_ACROSS_RESTART],
-      ['foreign', HOST]
-    ])
-    expect(pausesAfterTurn()).toEqual(['restarted'])
-    // Only kept rows left: nothing to adopt, and no write.
-    const revision = journal.queuedMessages.revision()
-    expect(await journal.queuedMessages.adopt(HOST, { keepHeld: true })).toBe(false)
-    expect(journal.queuedMessages.revision()).toBe(revision)
-
+    expect(kept.holdReason).toBe(QUEUED_MESSAGE_PAUSED_KEPT)
     expect(await journal.queuedMessages.adopt(HOST)).toBe(true)
-    expect(pausesAfterTurn()).toEqual([])
+    expect(journal.queuedMessages.get('kept')).toMatchObject({
+      hostInstance: HOST,
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+    })
   })
 
   it('an adoption with nothing to adopt changes nothing and fires no commit notification', async () => {
@@ -632,6 +609,26 @@ describe('which cards the pauses in force hold', () => {
       ['after', 'restarted']
     ])
     expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
+  })
+
+  // FIFO: nothing sends past a kept card, and no Resume is offered over it; a card whose own send
+  // failed is overtaken by the cards behind it.
+  it('a kept card holds every card behind it until the person acts on it; a send_failed one does not', () => {
+    const behind = card('behind', 2)
+    const kept = [card('kept', 1, { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }), behind]
+    expect(holding(kept, 0)).toEqual([
+      ['kept', null],
+      ['behind', null]
+    ])
+    expect(nextSendableQueuedCard(pausesOver(kept, 0), kept)).toBeNull()
+    expect(resumableQueuePause(pausesOver(kept, 0), kept)).toBeNull()
+    // A dead process's card behind it is paused, and Resume still has nothing it would send.
+    const restarted = [kept[0]!, card('dead', 2, { hostInstance: DEAD })]
+    expect(pausesOver(restarted, 0).map((pause) => pause.reason)).toEqual(['restarted'])
+    expect(resumableQueuePause(pausesOver(restarted, 0), restarted)).toBeNull()
+
+    const failed = [card('failed', 1, { holdReason: 'send_failed' }), behind]
+    expect(nextSendableQueuedCard(pausesOver(failed, 0), failed)).toBe(behind)
   })
 
   it("a /clear's pause that holds nothing never hides a restart's", () => {

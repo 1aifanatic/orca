@@ -159,6 +159,21 @@ describe('queued message cards', () => {
     ).toBe('awaiting-answer')
   })
 
+  // The host sends nothing past a kept card, so the cards behind it say a message ahead waits.
+  it('a card behind a kept one waits on it; one behind a send_failed card does not', () => {
+    const cards = projectQueuedMessageCards(
+      [
+        draft('failed', 1, { paused: true, pausedReason: 'send_failed' }),
+        draft('after-failed', 2),
+        draft('kept', 3, { paused: true, pausedReason: 'kept' }),
+        draft('behind', 4)
+      ],
+      [],
+      IDLE
+    )
+    expect(cards.map((card) => card.hold)).toEqual(['paused', 'turn', 'paused', 'behind-returned'])
+  })
+
   it('steers the newest card', () => {
     const cards = projectQueuedMessageCards([draft('a', 1), draft('b', 2)], [], IDLE)
     expect(newestSteerableQueuedMessageCard(cards)?.messageId).toBe('b')

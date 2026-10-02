@@ -6,8 +6,8 @@
 // journal. Send is fail-closed: admission alone cannot prove non-delivery.
 
 import type {
-  AgentJournalMessageItem,
-  AgentJournalSubmissionSource
+  AgentJournalHostSendSource,
+  AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
@@ -69,7 +69,7 @@ export function sendPlan(params: {
   delivery?: 'queue-if-active'
   userSend?: true
   /** Which path sent it; a person's send (`userSend`) is always `person`. */
-  source?: Extract<AgentJournalSubmissionSource, 'launch' | 'mail' | 'continuation'>
+  source?: AgentJournalHostSendSource
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -101,7 +101,7 @@ export function sendPlan(params: {
     replay: (ctx, outcome) => {
       // A send this host queued answers from its draft, then its hand-off; a
       // withdrawn draft replays as spent — never as missing-submission doubt. Only a send that
-      // asked to be queued may get that answer: a direct send a restart kept as a card answers
+      // asked to be queued may get that answer: a direct send the host kept as a card answers
       // from its own submission, which a client that never sent `delivery` can read.
       const queued =
         params.delivery === 'queue-if-active'

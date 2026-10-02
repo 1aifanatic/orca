@@ -34,6 +34,7 @@ function card(
     text: `text of ${overrides.messageId}`,
     state: 'waiting',
     paused: false,
+    kept: false,
     needsAttention: false,
     caption: null,
     ...overrides

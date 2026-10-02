@@ -4,6 +4,7 @@
 // every chat had its own file, and opens no file it does not restore.
 
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -380,10 +381,10 @@ describe('startup restore of chats still in their per-chat files', () => {
       state: 'rejected'
     })
     const cards = hostDb()
-      .prepare('SELECT message_id, host_instance, state FROM queued_messages WHERE session_id = ?')
+      .prepare('SELECT message_id, hold_reason, state FROM queued_messages WHERE session_id = ?')
       .all('chat-kept')
     expect(cards).toEqual([
-      { message_id: 'client-chat-kept', host_instance: 'held-across-restart', state: 'waiting' }
+      { message_id: 'client-chat-kept', hold_reason: QUEUED_MESSAGE_PAUSED_KEPT, state: 'waiting' }
     ])
   })
 

@@ -6,20 +6,16 @@
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened; or a waiting card is a send a restart kept
-//     (`QUEUED_MESSAGE_HELD_ACROSS_RESTART`), which only Resume, Send now, Edit or Delete releases.
+//     started since this conversation opened.
+// A card held on its own (`hold_reason`) is outside every pause: only an action on it releases it.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
-
-/** The host instance of a card made from a send accepted before a quit or crash and never handed
- *  over. Never a live process's id (a UUID), so it reads as another process's card everywhere; no
- *  later message adopts it, since a surface that cannot show cards would otherwise send it twice. */
-export const QUEUED_MESSAGE_HELD_ACROSS_RESTART = 'held-across-restart'
 
 /** The latest Stop event, whatever its reason, and the latest Resume row, folded by the reducer. */
 export type JournalQueuePauseMarks = {
@@ -130,13 +126,7 @@ export function deriveQueuePauses(input: {
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  const keptAcrossRestart = waiting.some(
-    (card) => card.hostInstance === QUEUED_MESSAGE_HELD_ACROSS_RESTART
-  )
-  if (
-    keptAcrossRestart ||
-    (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance))
-  ) {
+  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
     // The process that wrote a card is gone: every card waits, whenever it was written.
     pauses.push({ reason: 'restarted', since: null })
   }
@@ -177,15 +167,25 @@ export function queuePauseHolding(
   return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
 }
 
-/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
- *  returned card or a held one comes first. The queue never reorders, so a newer card never
- *  overtakes a held one. The drain's pick and its consume both read this. */
+/** A card that holds every card behind it until the person acts on it: a returned one, or one
+ *  the host kept. A `send_failed` card does not: the cards behind it still send. */
+function blocksCardsBehind(card: QueueCard): boolean {
+  return (
+    card.state === 'returned' ||
+    (card.state === 'waiting' && card.holdReason === QUEUED_MESSAGE_PAUSED_KEPT)
+  )
+}
+
+/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a card
+ *  that blocks the rest (`blocksCardsBehind`) or one a pause holds comes first. The queue never
+ *  reorders, so a newer card never overtakes a held one. The drain's pick and its consume both
+ *  read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
   for (const card of cards) {
-    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
+    if (blocksCardsBehind(card) || queuePauseHolding(pauses, card)) {
       return null
     }
     if (card.state === 'waiting' && card.holdReason === null) {
@@ -195,15 +195,15 @@ export function nextSendableQueuedCard<T extends QueueCard>(
   return null
 }
 
-/** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
- *  card, which blocks everything after it until the user acts. None otherwise, so its header
- *  never offers a Resume that sends nothing. */
+/** The pause to PUBLISH: the one holding the first card Resume would send, not behind a card that
+ *  blocks everything after it until the user acts. None otherwise, so its header never offers a
+ *  Resume that sends nothing. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]
 ): DerivedQueuePause | null {
   for (const card of cards) {
-    if (card.state === 'returned') {
+    if (blocksCardsBehind(card)) {
       return null
     }
     const holding = queuePauseHolding(pauses, card)

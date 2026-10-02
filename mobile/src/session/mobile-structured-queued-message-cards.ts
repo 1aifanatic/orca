@@ -8,6 +8,7 @@ import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-sessio
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionQueuedMessage,
   type AgentSessionQueuePause
@@ -19,6 +20,8 @@ export type MobileQueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   paused: boolean
+  /** Held because the host kept it unsent; the cards behind it wait for it. */
+  kept: boolean
   /** Returned, or its own send failed: the row leads with an alert. */
   needsAttention: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
@@ -48,10 +51,14 @@ function returnedCaption(
   )
 }
 
-/** One card's own hold: only a failed conversion; the queue's pause is the list's first row. */
+/** One card's own hold: a failed conversion, or a send the host kept; the queue's pause is the
+ *  list's first row. */
 function pausedCaption(reason: string | undefined): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
     return "Couldn't send — tap Send to retry"
+  }
+  if (reason === QUEUED_MESSAGE_PAUSED_KEPT) {
+    return 'Not sent yet — tap Send to send it'
   }
   // Absent or unknown (newer host) marker: a plain pause, promising no release rule.
   return 'Paused'
@@ -64,10 +71,10 @@ const QUEUE_PAUSE_LABELS: Readonly<Record<string, string>> = {
 }
 
 /** Whether Resume would send anything: a waiting card with no hold of its own, ahead of any
- *  returned card. The drain stops at a returned card, so cards behind one never go. */
+ *  returned or kept card. The drain stops at either, so cards behind one never go. */
 export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageCard[]): boolean {
   for (const card of cards) {
-    if (card.state === 'returned') {
+    if (card.state === 'returned' || card.kept) {
       return false
     }
     if (!card.paused) {
@@ -123,17 +130,19 @@ export function mobileQueuedMessageCards(
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
                 : null
+    const kept = paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_KEPT
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
       state: draft.state,
       paused,
+      kept,
       needsAttention:
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
       caption
     })
-    if (draft.state === 'returned') {
+    if (draft.state === 'returned' || kept) {
       behindReturned = true
     }
   }

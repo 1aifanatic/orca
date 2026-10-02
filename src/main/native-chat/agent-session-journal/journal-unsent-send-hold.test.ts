@@ -1,5 +1,5 @@
-// Which sends an earlier host process left queued become held cards, where they go in the queue,
-// and that a send's source is recorded and folded.
+// Which unsent sends a restart or a close keeps as held cards, where they go in the queue, and that
+// a send's source is recorded and folded.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -13,11 +13,15 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionCompactBody } from '../agent-session-wire/structured-agent-session-command-turn'
-import { holdJournalLeftoverSends, leftoverSendHeldAsCard } from './journal-leftover-send-hold'
+import {
+  holdUnsentSends,
+  unsentSendKeptAsCard,
+  type UnsentSendHold
+} from './journal-unsent-send-hold'
 import type { AgentSessionJournal } from './journal-store'
-import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from './queued-message-pause'
 import {
   closeTestJournalHostDatabases,
   createTrackedJournalOpener
@@ -33,9 +37,15 @@ const IDENTITY: AgentSessionJournalIdentity = {
 const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
   surface: 'rejection'
 })
+const CHAT_CLOSED = agentSessionFailureWords(agentSessionFailureFact('chatClosed'), {
+  surface: 'rejection'
+})
+/** The live host process the cards are written for. */
+const HOST = 'host-instance-2'
 
 let root: string
 let clock = 1_000
+let epochs = 0
 const journals = createTrackedJournalOpener()
 
 function message(text: string): AgentJournalMessageItem {
@@ -55,8 +65,12 @@ async function open(): Promise<AgentSessionJournal> {
     identity: IDENTITY,
     stateDirectory: root,
     now: () => (clock += 1),
-    mintEpoch: () => 'epoch-1'
+    mintEpoch: () => `epoch-${(epochs += 1)}`
   })
+}
+
+function hold(journal: AgentSessionJournal, settle: UnsentSendHold = { cause: 'hostRestarted' }) {
+  return holdUnsentSends(journal, { fence: 0, hostInstance: HOST, hold: settle })
 }
 
 async function accept(
@@ -98,7 +112,8 @@ function cardOrder(journal: AgentSessionJournal): string[] {
 }
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'orca-leftover-hold-'))
+  epochs = 0
+  root = await mkdtemp(join(tmpdir(), 'orca-unsent-hold-'))
 })
 
 afterEach(async () => {
@@ -107,21 +122,22 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-describe('which leftover sends are kept', () => {
+describe('which sends an earlier host process left unsent are kept', () => {
   it('keeps a person’s and a launch’s text, and an older build’s client send', async () => {
     const journal = await afterRestart(async (earlier) => {
       await accept(earlier, 'person', { origin: 'client', source: 'person' })
       await accept(earlier, 'launch', { origin: 'host', source: 'launch' })
       await accept(earlier, 'legacy-client', { origin: 'client' })
     })
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
 
     expect(cardOrder(journal)).toEqual(['person', 'launch', 'legacy-client'])
     for (const id of ['person', 'launch', 'legacy-client']) {
       expect(journal.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
       expect(journal.queuedMessages.get(id)).toMatchObject({
         state: 'waiting',
-        hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART,
+        holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+        hostInstance: HOST,
         body: message(`text of ${id}`),
         fingerprint: fingerprint(message(`text of ${id}`)),
         carriedFrom: null,
@@ -130,7 +146,7 @@ describe('which leftover sends are kept', () => {
     }
   })
 
-  it('rejects mail, a continuation, /compact, an image, and a send no one can attribute', async () => {
+  it('rejects mail, a dispatch preamble, a continuation, /compact, an image, and a send no one can attribute', async () => {
     const image: AgentJournalMessageItem = {
       kind: 'message',
       role: 'user',
@@ -141,6 +157,7 @@ describe('which leftover sends are kept', () => {
     }
     const journal = await afterRestart(async (earlier) => {
       await accept(earlier, 'mail', { origin: 'host', source: 'mail' })
+      await accept(earlier, 'dispatch', { origin: 'host', source: 'dispatch' })
       await accept(earlier, 'continuation', { origin: 'host', source: 'continuation' })
       await accept(earlier, 'compact', {
         origin: 'client',
@@ -151,15 +168,23 @@ describe('which leftover sends are kept', () => {
       await accept(earlier, 'legacy-host', { origin: 'host' })
       await accept(earlier, 'no-origin')
     })
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
 
     expect(journal.queuedMessages.list()).toEqual([])
-    for (const id of ['mail', 'continuation', 'compact', 'image', 'legacy-host', 'no-origin']) {
+    for (const id of [
+      'mail',
+      'dispatch',
+      'continuation',
+      'compact',
+      'image',
+      'legacy-host',
+      'no-origin'
+    ]) {
       expect(journal.submission(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
     }
   })
 
-  it('a card’s own hand-off returns its card, and makes no second one', async () => {
+  it('a card’s own hand-off returns its card kept, and makes no second one', async () => {
     const journal = await afterRestart(async (earlier) => {
       await earlier.queuedMessages.insert({
         messageId: 'card',
@@ -180,27 +205,52 @@ describe('which leftover sends are kept', () => {
         { messageId: 'card', expect: 'waiting', settledByOp: null }
       )
     })
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
 
     expect(journal.queuedMessages.list()).toHaveLength(1)
-    expect(journal.queuedMessages.get('card')).toMatchObject({ state: 'waiting', consumedAs: null })
+    expect(journal.queuedMessages.get('card')).toMatchObject({
+      state: 'waiting',
+      consumedAs: null,
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+    })
     expect(journal.queuedMessages.get('handoff')).toBeNull()
   })
 
   it('leaves alone what this process accepted', async () => {
     const journal = await open()
     await accept(journal, 'mine', { origin: 'client', source: 'person' })
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
     expect(journal.submission('mine')?.dispatchState).toBe('pending')
     expect(journal.queuedMessages.list()).toEqual([])
   })
 
   it('never keeps a queue hand-off, a card’s link, or a send with no message body', () => {
     const body = message('x')
-    expect(leftoverSendHeldAsCard({ source: 'person' }, body)).toBe(body)
-    expect(leftoverSendHeldAsCard({ source: 'queue' }, body)).toBeNull()
-    expect(leftoverSendHeldAsCard({ origin: 'client', queuedMessageId: 'card' }, body)).toBeNull()
-    expect(leftoverSendHeldAsCard({ origin: 'client' }, null)).toBeNull()
+    expect(unsentSendKeptAsCard({ source: 'person' }, body)).toBe(body)
+    expect(unsentSendKeptAsCard({ source: 'queue' }, body)).toBeNull()
+    expect(unsentSendKeptAsCard({ origin: 'client', queuedMessageId: 'card' }, body)).toBeNull()
+    expect(unsentSendKeptAsCard({ origin: 'client' }, null)).toBeNull()
+  })
+
+  // Only a row with no source at all is an older build's; a newer build's source may name a path
+  // that must not become a card.
+  it('never keeps a source this build does not know, whatever its origin', async () => {
+    const journal = await afterRestart(async (earlier) => {
+      await earlier.appendSubmission({
+        clientMessageId: 'future',
+        payloadFingerprint: fingerprint(message('from a newer build')),
+        body: message('from a newer build'),
+        fence: 0,
+        handoverRecorded: true,
+        origin: 'client',
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer build's source, which this build's type cannot name.
+        source: 'a-newer-path' as AgentJournalSubmissionSource
+      })
+    })
+    expect(journal.submission('future')?.source).toBe('a-newer-path')
+    await hold(journal)
+    expect(journal.queuedMessages.list()).toEqual([])
+    expect(journal.submission('future')).toMatchObject({ dispatchState: 'rejected' })
   })
 })
 
@@ -234,7 +284,7 @@ describe('where kept sends go in the queue', () => {
       )
       await accept(earlier, 'B', { origin: 'client', source: 'person' })
     })
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
 
     expect(cardOrder(journal)).toEqual(['A', 'H', 'B', 'C'])
   })
@@ -259,7 +309,8 @@ describe('where kept sends go in the queue', () => {
             messageId: 'A',
             body: message('text of A'),
             fingerprint: fingerprint(message('text of A')),
-            hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART,
+            hostInstance: HOST,
+            holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
             queuedAt: {
               epoch: 'epoch-1',
               sequence: interrupted.submission('A')!.acceptedSequence!
@@ -272,9 +323,63 @@ describe('where kept sends go in the queue', () => {
     )
     await interrupted.close()
     const journal = await open()
-    await holdJournalLeftoverSends(journal, 0)
+    await hold(journal)
 
     expect(cardOrder(journal)).toEqual(['A', 'B', 'C'])
+  })
+})
+
+describe('a close of the chat', () => {
+  it('keeps a person’s unsent send in place, rejected as closed, by the same rule as a restart', async () => {
+    const journal = await open()
+    await accept(journal, 'person', { origin: 'client', source: 'person' })
+    await accept(journal, 'mail', { origin: 'host', source: 'mail' })
+    await hold(journal, { cause: 'chatClosed' })
+
+    expect(cardOrder(journal)).toEqual(['person'])
+    expect(journal.queuedMessages.get('person')).toMatchObject({
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      hostInstance: HOST
+    })
+    for (const id of ['person', 'mail']) {
+      expect(journal.submission(id)).toMatchObject({ dispatchState: 'rejected', ...CHAT_CLOSED })
+    }
+  })
+
+  it('settles only what `which` names, leaving a later send queued', async () => {
+    const journal = await open()
+    await accept(journal, 'before', { origin: 'client', source: 'person' })
+    await accept(journal, 'after', { origin: 'client', source: 'person' })
+    await hold(journal, {
+      cause: 'chatClosed',
+      which: (submission) => submission.clientMessageId === 'before'
+    })
+
+    expect(cardOrder(journal)).toEqual(['before'])
+    expect(journal.submission('after')?.dispatchState).toBe('pending')
+  })
+})
+
+describe('the order kept cards stand in', () => {
+  // Sequences restart with each epoch, so a card kept before a rewind has no sequence to compare.
+  it('a card kept before the epoch rolled stays ahead of one kept after it', async () => {
+    const journal = await afterRestart(async (earlier) => {
+      for (const id of ['m1', 'm2', 'm3']) {
+        await accept(earlier, id, { origin: 'host', source: 'mail' })
+      }
+      await accept(earlier, 'A', { origin: 'client', source: 'person' })
+    })
+    await hold(journal)
+    await journal.rollEpoch('handle_forked', 0)
+    await accept(journal, 'B', { origin: 'client', source: 'person' })
+    await journal.close()
+    const reopened = await open()
+    await hold(reopened)
+
+    expect(reopened.queuedMessages.get('A')?.queuedAt?.epoch).not.toBe(
+      reopened.queuedMessages.get('B')?.queuedAt?.epoch
+    )
+    expect(cardOrder(reopened)).toEqual(['A', 'B'])
   })
 })
 

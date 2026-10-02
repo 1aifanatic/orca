@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED
+} from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import {
   mobileQueueHasResumableCard,
@@ -44,6 +47,7 @@ describe('mobileQueuedMessageCards', () => {
       text: 'body of a',
       state: 'waiting',
       paused: false,
+      kept: false,
       needsAttention: false,
       caption: null
     })
@@ -99,6 +103,31 @@ describe('mobileQueuedMessageCards', () => {
     expect(resumable([failed])).toBe(false)
     expect(resumable([failed, waiting])).toBe(true)
     expect(resumable([waiting, { ...returned, position: 3 }])).toBe(true)
+    // A kept card blocks what is behind it, as a returned one does.
+    const kept = draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT })
+    expect(resumable([kept, waiting])).toBe(false)
+  })
+
+  // The host kept it unsent across a restart or a close; nothing behind it sends until it does.
+  it('captions a kept card as not sent yet, and the cards behind it as waiting on it', () => {
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT }),
+        draft({ messageId: 'b', position: 2 })
+      ],
+      [],
+      { pendingPrompt: false }
+    )
+    expect(
+      cards.map(({ caption, kept, needsAttention }) => ({ caption, kept, needsAttention }))
+    ).toEqual([
+      { caption: 'Not sent yet — tap Send to send it', kept: true, needsAttention: false },
+      {
+        caption: 'Waiting — a message ahead needs attention',
+        kept: false,
+        needsAttention: false
+      }
+    ])
   })
 
   it('words the paused queue by reason, and one this build does not know as a plain pause', () => {

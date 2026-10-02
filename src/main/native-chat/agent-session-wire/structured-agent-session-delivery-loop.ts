@@ -9,7 +9,8 @@
 // that arrives while a start holds the queue withdraw the queued messages before the handover that
 // would have written them. Stop and the conversation's close are the only other writers of a
 // queued message: a child's exit only ends the child, and this loop reads why. A message an
-// earlier host process left queued is never handed over: its next open keeps it as a held card.
+// earlier host process left queued is never handed over: the open, or this loop's first step,
+// settles it first (`journal-unsent-send-hold.ts`).
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -19,7 +20,8 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
-import { holdJournalLeftoverSends } from '../agent-session-journal/journal-leftover-send-hold'
+import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   structuredAgentSessionStartFailure,
@@ -62,8 +64,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   ) => Promise<StructuredAgentSessionResumeOutcome>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
-  abandonQueued: (
+  /** Settles queued messages as a completed close of the chat does; false when that failed. */
+  holdClosed: (
     sessionId: string,
     which: (submission: AgentJournalSubmission) => boolean
   ) => Promise<boolean>
@@ -155,7 +157,7 @@ export class StructuredAgentSessionDeliveryLoop {
       await this.deps
         .serialize(sessionId, () => this.fail(sessionId, { startKey: null, cause }))
         .catch((failure: unknown) => {
-          // Rows left queued go to the next loop an accept wakes, or are settled by the next open.
+          // Rows left queued go to the next loop an accept wakes, or the next open settles them.
           this.running.delete(sessionId)
           this.deps.logger.warn('recording a failed delivery failed', {
             scope: 'delivery-loop-fail',
@@ -173,8 +175,13 @@ export class StructuredAgentSessionDeliveryLoop {
       return this.stop(sessionId)
     }
     // The open already did, unless its write failed: a row an earlier handle wrote is never handed
-    // over, whether it outlived a quit or a crash. A failure here throws, so none is.
-    await holdJournalLeftoverSends(session.journal, this.deps.conversationFence(sessionId))
+    // over, whether it outlived a quit or a crash. A failure here throws, so none is: this run then
+    // fails, which rejects every queued send, this process's own too.
+    await holdUnsentSends(session.journal, {
+      fence: this.deps.conversationFence(sessionId),
+      hostInstance: structuredAgentSessionHostInstance(),
+      hold: { cause: 'hostRestarted' }
+    })
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
@@ -299,7 +306,7 @@ export class StructuredAgentSessionDeliveryLoop {
       return true
     }
     const { epoch } = session.journal.cursor()
-    return this.deps.abandonQueued(
+    return this.deps.holdClosed(
       sessionId,
       (submission) =>
         ended.endedAt.epoch === epoch &&

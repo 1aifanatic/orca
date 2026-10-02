@@ -7,7 +7,10 @@
 // admitted without the writer lease; the delivery loop starts the provider child a send needs, and
 // an operation only the provider can perform starts it before admission.
 
-import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalHostSendSource,
+  AgentJournalMessageItem
+} from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -61,7 +64,7 @@ export function sendStructuredAgentSessionTurn(
      *  prompt never set it. */
     userSend?: true
     /** Which host-internal path sent it, when not a person (`AgentJournalSubmissionSource`). */
-    source?: 'launch' | 'mail' | 'continuation'
+    source?: AgentJournalHostSendSource
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {

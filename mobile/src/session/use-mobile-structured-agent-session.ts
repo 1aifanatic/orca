@@ -94,7 +94,7 @@ export function useMobileStructuredAgentSession(args: {
     onSendError,
     hostSupport
   } = args
-  // Old host ⇒ exactly today's behavior: no delivery field, no cards, plain Stop.
+  // Only a host that queues sends gets the delivery field; any host's published cards show.
   const queueCapable = hostSupport?.queuedMessages === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
   const hostAnswersRepeatedStops = hostSupport?.quietRepeatedStop ?? null
@@ -177,7 +177,6 @@ export function useMobileStructuredAgentSession(args: {
     [state.items]
   )
   const queued = useMobileStructuredQueuedMessageControls({
-    queueCapable,
     sessionKey,
     queuedMessages,
     queuePause,

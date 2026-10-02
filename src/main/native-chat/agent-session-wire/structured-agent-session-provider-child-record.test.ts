@@ -779,16 +779,38 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(await statusRows()).toEqual([])
   })
 
+  it('keeps a person’s message the user closed as a held card, and starts no child for it', async () => {
+    const start = deferred<void>()
+    adapterExtras = {
+      awaitStarted: vi.fn(() => start.promise),
+      closeSession: vi.fn(async () => true)
+    }
+    await restartHost()
+    acquire.mockImplementationOnce(spawnStartingChild)
+    const first = await accept('first', { person: true })
+    await eventually(() => expect(adapterExtras.awaitStarted).toHaveBeenCalledTimes(1))
+    await closeStopOnly()
+    const starts = acquire.mock.calls.length
+    start.resolve()
+    await settleLoop()
+
+    expect(await submission(first)).toMatchObject({ dispatchState: 'rejected', ...CHAT_CLOSED })
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.map((card) => card.messageId)).toEqual([first])
+    expect(acquire).toHaveBeenCalledTimes(starts)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('starts no child when closing what was queued fails, and closes it on the next wake', async () => {
     const { first, starts } = await closedWhileStarting(() => {
       const journal = conversation()!.journal
-      const reject = journal.rejectQueuedSubmissions.bind(journal)
-      vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(async (...args) => {
-        if (args[1].rejection.kind === 'chatClosed') {
-          vi.mocked(journal.rejectQueuedSubmissions).mockImplementation(reject)
+      const resolve = journal.resolveDispatch.bind(journal)
+      vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
+        if (args[0].state === 'rejected' && args[0].rejection?.kind === 'chatClosed') {
+          vi.mocked(journal.resolveDispatch).mockImplementation(resolve)
           throw new Error('disk full')
         }
-        return reject(...args)
+        return resolve(...args)
       })
     })
 

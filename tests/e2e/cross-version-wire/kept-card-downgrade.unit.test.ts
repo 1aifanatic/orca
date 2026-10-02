@@ -8,15 +8,18 @@ import type {
 } from '../../../src/shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../src/shared/agent-session-queued-message-wire'
 import { createTrackedJournalOpener } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
-import { holdJournalLeftoverSends } from '../../../src/main/native-chat/agent-session-journal/journal-leftover-send-hold'
-import { QUEUED_MESSAGE_HELD_ACROSS_RESTART } from '../../../src/main/native-chat/agent-session-journal/queued-message-pause'
+import { holdUnsentSends } from '../../../src/main/native-chat/agent-session-journal/journal-unsent-send-hold'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
-// A send a restart kept is an ordinary waiting card: a value in the host-instance column and a
-// place ahead of the queue, no new state or column. A build from before it must still list it,
-// first, under its restart pause, and must still settle a leftover this build's quit left queued.
-// The main commit this change branched from; move it to the first release that holds this change.
+// A kept send is an ordinary waiting card held by a new value in its existing `hold_reason`
+// column, placed ahead of the queue: no new state or column. A build with the queue but without
+// this change reads an unknown hold as a plain one: it must list the card first and never send it,
+// even after a person's turn ends a restart's pause, and must still settle a send this build's quit
+// left queued. The main commit this change branched from, which has the queue; move it to the
+// newest release that has the queue and predates this change. A baseline holding this change tests
+// no downgrade.
 const BASELINE_REF = '5a56636f6679071d6ec68b851ef7932cd3222560'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
 const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
@@ -35,12 +38,19 @@ function message(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
-type OlderCard = { messageId: string; state: string; position: number; hostInstance: string }
+type OlderCard = {
+  messageId: string
+  state: string
+  position: number
+  hostInstance: string
+  holdReason: string | null
+}
 
 type OlderJournal = {
   queuedMessages: {
     list: () => readonly OlderCard[]
     pauses: (hostInstance: string) => { reason: string }[]
+    adopt: (hostInstance: string) => Promise<boolean>
   }
   submission: (id: string) => { dispatchState: string; reason: string | null } | undefined
   wroteBeforeOpen: (sequence: number | undefined) => boolean
@@ -58,6 +68,23 @@ type OlderOpener = {
     stateDirectory: string
   }) => Promise<OlderJournal>
   closeAll: () => Promise<void>
+}
+
+type OlderNextSendable = (
+  pauses: readonly { reason: string }[],
+  cards: readonly OlderCard[]
+) => OlderCard | null
+
+/** The pinned build's drain pick (`nextSendableQueuedCard`): the card it would send next. */
+async function olderNextSendable(): Promise<OlderNextSendable> {
+  const checkout = await materializeReleaseCheckout(BASELINE_REF)
+  const pause = await importReleaseCheckoutModule(checkout, `${JOURNAL}/queued-message-pause.ts`)
+  const next = pause.nextSendableQueuedCard
+  if (typeof next !== 'function') {
+    throw new Error('the pinned build exports no nextSendableQueuedCard')
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the pinned build's own drain pick, called with that build's own pauses and cards.
+  return next as OlderNextSendable
 }
 
 async function olderOpener(): Promise<OlderOpener> {
@@ -89,7 +116,7 @@ async function acceptPersonSend(
   })
 }
 
-test('an older build lists a kept card first, held by its restart pause', async () => {
+test('an older build lists a kept card first and never sends it, even after a person’s turn', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-kept-card-downgrade-'))
   const journals = createTrackedJournalOpener()
   try {
@@ -103,7 +130,11 @@ test('an older build lists a kept card first, held by its restart pause', async 
     await acceptPersonSend(earlier, 'kept')
     await journals.closeAll()
     const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    await holdJournalLeftoverSends(reopened, 0)
+    await holdUnsentSends(reopened, {
+      fence: 0,
+      hostInstance: 'host-b',
+      hold: { cause: 'hostRestarted' }
+    })
     expect(reopened.queuedMessages.list().map((card) => card.messageId)).toEqual([
       'kept',
       'queued-card'
@@ -111,23 +142,34 @@ test('an older build lists a kept card first, held by its restart pause', async 
     await journals.closeAll()
 
     const older = await olderOpener()
+    const nextSendable = await olderNextSendable()
     try {
       const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
-      expect(
-        downgraded.queuedMessages.list().map(({ messageId, state, hostInstance }) => ({
+      const cards = () =>
+        downgraded.queuedMessages.list().map(({ messageId, state, holdReason }) => ({
           messageId,
           state,
-          hostInstance
+          holdReason
         }))
-      ).toEqual([
-        { messageId: 'kept', state: 'waiting', hostInstance: QUEUED_MESSAGE_HELD_ACROSS_RESTART },
-        { messageId: 'queued-card', state: 'waiting', hostInstance: 'host-a' }
+      expect(cards()).toEqual([
+        { messageId: 'kept', state: 'waiting', holdReason: QUEUED_MESSAGE_PAUSED_KEPT },
+        { messageId: 'queued-card', state: 'waiting', holdReason: null }
       ])
       expect(downgraded.queuedMessages.list()[0]!.position).toBeLessThan(1)
-      expect(downgraded.queuedMessages.pauses('host-b').map((pause) => pause.reason)).toEqual([
-        'restarted'
-      ])
       expect(downgraded.submission('kept')).toMatchObject({ dispatchState: 'rejected' })
+      // A person's turn there adopts every card into its process, which ends the restart's
+      // pause; the kept card's hold survives it, so its drain never picks it. That build skips a
+      // held card as it skips a failed send's, so the card behind it is the one it sends.
+      expect(await downgraded.queuedMessages.adopt('host-c')).toBe(true)
+      expect(cards()[0]).toMatchObject({
+        messageId: 'kept',
+        holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+      })
+      expect(downgraded.queuedMessages.pauses('host-c')).toEqual([])
+      expect(
+        nextSendable(downgraded.queuedMessages.pauses('host-c'), downgraded.queuedMessages.list())
+          ?.messageId
+      ).toBe('queued-card')
     } finally {
       await older.closeAll()
     }

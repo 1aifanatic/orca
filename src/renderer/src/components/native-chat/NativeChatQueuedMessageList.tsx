@@ -23,7 +23,7 @@ export function NativeChatQueuedMessageList({
   const queueRef = useRef<HTMLDivElement>(null)
   const { cards } = controller
   const newest = cards.at(-1)
-  // Only a host that queues sends has queueing to turn off; a restart's kept card shows without it.
+  // Only a host that queues sends has queueing to turn off; a kept card shows without it.
   const turnOffQueueing = controller.queueCapable
     ? () => void updateSettings({ nativeChatQueueFollowUps: false })
     : undefined

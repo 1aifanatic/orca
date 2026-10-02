@@ -1,5 +1,5 @@
 // Where a card sits in its queue, for a writer placing cards ahead of the others
-// (`journal-leftover-send-hold.ts`). The queue sends in position order.
+// (`journal-unsent-send-hold.ts`). The queue sends in position order.
 
 import type Database from '../../sqlite/sync-database'
 

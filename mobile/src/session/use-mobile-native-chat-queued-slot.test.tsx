@@ -32,6 +32,7 @@ const CARD = {
   text: 'next',
   state: 'waiting' as const,
   paused: false,
+  kept: false,
   needsAttention: false,
   caption: null
 }

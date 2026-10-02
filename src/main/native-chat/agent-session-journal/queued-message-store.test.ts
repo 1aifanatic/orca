@@ -13,6 +13,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import Database from '../../sqlite/sync-database'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import { journalDatabasePath } from './journal-host-database'
@@ -351,7 +352,7 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.submission('sub-draft-1')?.queuedMessageId).toBe('draft-1')
   })
 
-  it("a restart between consume and handover sends the draft back to waiting under the restart's pause", async () => {
+  it('a restart between consume and handover sends the draft back to waiting, kept for its own Send', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
@@ -361,10 +362,10 @@ describe('returned transition (D1/N4)', () => {
     await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
       journal.wroteBeforeOpen(submission.acceptedSequence)
     )
-    // No stored hold: the restart's pause derives from the row's host instance.
+    // The host never sent it, so it waits for the person, as a message the restart kept does.
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'waiting',
-      holdReason: null,
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
       hostInstance: 'proc-1',
       consumedAs: null,
       returnedReason: null

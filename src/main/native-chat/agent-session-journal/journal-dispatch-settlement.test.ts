@@ -18,18 +18,22 @@ function settle(kind: SubmissionRejectionKind) {
 
 describe('what a rejection does to the draft it was consumed from', () => {
   it("a Stop's withdrawal sends it back to waiting, under the queue's pause rather than a hold of its own", () => {
-    expect(settle('cancelled')).toEqual({ state: 'waiting' })
+    expect(settle('cancelled')).toEqual({ state: 'waiting', kept: false })
     expect(rejectedDraftSettlement({ reason: DISPATCH_REJECTED_CANCELLED })).toEqual({
-      state: 'waiting'
+      state: 'waiting',
+      kept: false
     })
+    expect(settle('notDelivered')).toEqual({ state: 'waiting', kept: false })
   })
 
-  it('a restart or close before hand-over sends it back to waiting too', () => {
-    for (const kind of ['hostRestarted', 'chatClosed', 'notDelivered'] as const) {
-      expect(settle(kind)).toEqual({ state: 'waiting' })
+  // The host keeps what it accepted and never sent: the card waits for the person's own Send.
+  it('a restart or close before hand-over sends it back to waiting, kept', () => {
+    for (const kind of ['hostRestarted', 'chatClosed'] as const) {
+      expect(settle(kind)).toEqual({ state: 'waiting', kept: true })
     }
     expect(rejectedDraftSettlement({ reason: DISPATCH_REJECTED_HOST_RESTARTED })).toEqual({
-      state: 'waiting'
+      state: 'waiting',
+      kept: true
     })
   })
 

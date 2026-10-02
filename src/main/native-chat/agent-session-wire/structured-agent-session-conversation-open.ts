@@ -7,12 +7,12 @@
 // needs no lease: provider history decides such a row later, under a won lease, in the attach. A
 // row an earlier process accepted and never handed over (it quit or crashed first) is settled here
 // too, before any reader, command or child sees it: a person's message is kept as a held card, the
-// rest rejected (`journal-leftover-send-hold.ts`). Nothing here starts a provider child.
+// rest rejected (`journal-unsent-send-hold.ts`). Nothing here starts a provider child.
 
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { holdJournalLeftoverSends } from '../agent-session-journal/journal-leftover-send-hold'
+import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
 import { openAgentSessionJournalWithRecovery } from './agent-session-journal-recovery'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -25,6 +25,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -113,9 +114,14 @@ export async function openStructuredAgentSessionConversationJournal(
   }
   try {
     // Before a Stop this open serves can withdraw one: a Stop never withdraws a card.
-    await holdJournalLeftoverSends(opened.journal, fence)
+    await holdUnsentSends(opened.journal, {
+      fence,
+      hostInstance: structuredAgentSessionHostInstance(),
+      hold: { cause: 'hostRestarted' }
+    })
   } catch (error) {
-    // The delivery loop's first step retries it, and hands nothing over until it lands.
+    // The row stays queued. The delivery loop's first step tries again before it hands anything
+    // over; if that fails too, the loop fails and rejects every queued send.
     deps.logger.warn('settling sends an earlier process left queued failed on open', {
       scope: 'open-leftover-sends',
       sessionId,
