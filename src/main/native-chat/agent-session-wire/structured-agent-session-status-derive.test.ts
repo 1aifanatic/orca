@@ -466,4 +466,55 @@ describe('rowless listed chats after an upgrade', () => {
     expect(restTestOpens(rig, 'session-corrupt')).toBeGreaterThan(0)
     expect(rebuilds.sessionIds).toEqual(['session-corrupt'])
   })
+
+  it('folds a chat again after its unsynced row is lost, to the same row and no wrong status', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-settled', { message: 'asked session-settled' })
+    await crashMidTurn(rig, 'session-unfinished')
+    const ids = ['session-settled', 'session-unfinished']
+    await rig.crash()
+    upgradeToEmptyStatusTable(rig)
+    await rig.boot()
+    // Only the pass's rows: no open, so the unfinished chat keeps the row the pass stored.
+    const restore = vi
+      .spyOn(StructuredAgentSessionReadableRestorer.prototype, 'restore')
+      .mockResolvedValue(undefined)
+    await rig.host.restoreReadableSessions(await startupThroughListing(rig))
+    const first = ids.map((sessionId) => readTestJournalSessionStatus(rig.root, sessionId))
+    const firstStatus = latestRestTestStatus(rig, 'session-settled')
+    expect(first[0]).toMatchObject({ lifecycle: 'idle' })
+    expect(first[1]).toMatchObject({ lifecycle: 'running' })
+
+    // The unsynced commit is lost: a power cut, then a boot that finds neither row.
+    await rig.crash()
+    upgradeToEmptyStatusTable(rig)
+    folds.done.clear()
+    await rig.boot()
+    const eventsBefore = rig.statusEvents.length
+    await rig.host.restoreReadableSessions(await startupThroughListing(rig))
+
+    expect(ids.every((sessionId) => folds.done.has(sessionId))).toBe(true)
+    expect(ids.map((sessionId) => readTestJournalSessionStatus(rig.root, sessionId))).toEqual(first)
+    // Nothing published in between but the settled chat's own row, as the first boot published it.
+    const between = rig.statusEvents.slice(eventsBefore)
+    expect(
+      between.every(
+        (event) => event.type !== 'status' || event.session.sessionId === 'session-settled'
+      )
+    ).toBe(true)
+    expect(latestRestTestStatus(rig, 'session-settled')).toEqual(firstStatus)
+
+    // Each row equals what an open writes for the chat.
+    restore.mockRestore()
+    upgradeToEmptyStatusTable(rig)
+    for (const sessionId of ids) {
+      await rig.host.history({ sessionId, direction: 'tail' })
+    }
+    expect(readTestJournalSessionStatus(rig.root, 'session-settled')).toEqual(first[0])
+    // The open settles what the pass only stored: never shown as running.
+    expect(readTestJournalSessionStatus(rig.root, 'session-unfinished')).toMatchObject({
+      lifecycle: 'idle'
+    })
+    expect(latestRestTestStatus(rig, 'session-unfinished')?.status).not.toBe('working')
+  })
 })
