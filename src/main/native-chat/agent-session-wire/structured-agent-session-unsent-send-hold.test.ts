@@ -201,6 +201,24 @@ describe('only an action on the card releases a kept card', () => {
   })
 
   // A Send now cut short by a quit hands the card back kept, so a retyped copy still goes alone.
+  // After a second restart the kept card is another process's, yet it pauses nothing else.
+  it('a later restart leaves the cards queued after it unpaused', async () => {
+    const id = await acceptWhileStarting(sendRequest('kept twice over'))
+    await rig.quitRestartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
+    rig.crashRestartHostProcess()
+    const working = await rig.workingSend()
+    const later = rig.send('queued after the restart', 'queue-if-active')
+    expect(await later.result).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
+
+    expect(await rig.queuePause()).toBeNull()
+    await rig.settleAccepted(working, 'working')
+    await eventually(() =>
+      expect(dispatchedTexts()).toEqual(['work on this', 'queued after the restart'])
+    )
+    expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
+  })
+
   it('stays kept when its own Send is cut short by another quit', async () => {
     const id = await acceptWhileStarting(sendRequest('the kept words'))
     await rig.quitRestartHostProcess()

@@ -627,6 +627,15 @@ describe('which cards the pauses in force hold', () => {
     expect(resumableQueuePause(pausesOver(restarted, 0), restarted)?.reason).toBe('restarted')
   })
 
+  // A dead process's card held on its own waits for its own Send, so it pauses no other card.
+  it('a card held on its own from a dead process starts no restart pause', () => {
+    for (const holdReason of [QUEUED_MESSAGE_PAUSED_KEPT, 'send_failed']) {
+      const cards = [card('held', 1, { hostInstance: DEAD, holdReason }), card('live', 2)]
+      expect(pausesOver(cards, 0)).toEqual([])
+      expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('live')
+    }
+  })
+
   it("a /clear's pause that holds nothing never hides a restart's", () => {
     const cards = [
       card('carried', 1, { carriedFrom: 'source-session', holdReason: 'send_failed' }),
