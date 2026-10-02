@@ -21,7 +21,10 @@ import { DeleteWorktreeDialogDescription } from './DeleteWorktreeDialogDescripti
 import { DeleteWorktreeTargetPreview } from './DeleteWorktreeTargetPreview'
 import { DeleteWorktreeWarningPanels } from './DeleteWorktreeWarningPanels'
 import { persistDeleteWorktreeConfirmSkipPreference } from './delete-worktree-preference-toast'
-import { getDeleteWorktreeDirtyChangeCounts } from './delete-worktree-dirty-change-counts'
+import {
+  getDeleteWorktreeDirtyChangeCounts,
+  getDeleteWorktreeDirtyChangePreviews
+} from './delete-worktree-dirty-change-counts'
 import {
   countFolderWorkspaceDeletes,
   getDeleteWorktreeDialogCopy,
@@ -176,14 +179,12 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
     visibleTargets: worktrees,
     repoMap
   })
-  const dirtyChangeCountsByWorktreeId = useMemo(() => {
-    return getDeleteWorktreeDirtyChangeCounts({
-      deleteTargets,
-      deleteStateByWorktreeId,
-      gitStatusByWorktree,
-      gitStatusByWorktreeIdentity,
-      repoMap
-    })
+  const dirtyChanges = useMemo(() => {
+    const statusInput = { deleteTargets, gitStatusByWorktree, gitStatusByWorktreeIdentity, repoMap }
+    return {
+      counts: getDeleteWorktreeDirtyChangeCounts({ ...statusInput, deleteStateByWorktreeId }),
+      previews: getDeleteWorktreeDirtyChangePreviews(statusInput)
+    }
   }, [
     deleteStateByWorktreeId,
     deleteTargets,
@@ -336,7 +337,7 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="max-w-md"
+        className="scrollbar-sleek max-h-[calc(100vh-2rem)] max-w-md overflow-y-auto"
         onOpenAutoFocus={(event) => {
           if (isMainWorktree) {
             return
@@ -382,13 +383,15 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
           collisionWorktrees={allWorktrees}
           hostLabelById={hostLabelById}
           deleteStateByWorktreeId={deleteStateByWorktreeId}
-          dirtyChangeCountsByWorktreeId={dirtyChangeCountsByWorktreeId}
+          dirtyChangeCountsByWorktreeId={dirtyChanges.counts}
+          dirtyChangePreviewsByWorktreeId={dirtyChanges.previews}
         />
 
         {hasLineageChildren && (
           <DeleteWorktreeLineageNotice
             descendants={lineageDelete.descendants}
-            dirtyChangeCountsByWorktreeId={dirtyChangeCountsByWorktreeId}
+            dirtyChangeCountsByWorktreeId={dirtyChanges.counts}
+            dirtyChangePreviewsByWorktreeId={dirtyChanges.previews}
           />
         )}
 

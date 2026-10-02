@@ -288,6 +288,7 @@ describe('DeleteWorktreeDialog lineage copy', () => {
       <DeleteWorktreeLineageNotice
         descendants={[child]}
         dirtyChangeCountsByWorktreeId={new Map()}
+        dirtyChangePreviewsByWorktreeId={new Map()}
       />
     )
 
