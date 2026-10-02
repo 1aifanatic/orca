@@ -52,8 +52,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       )
     }
     case 'paused':
-      // A card's own hold; the queue's pause is the list's header. Markers localize, and an absent
-      // or unknown one (newer host) is a plain pause, never shown raw.
+      // A card's own hold. Markers localize; an absent or unknown one (newer host) is a plain
+      // pause, never shown raw.
       if (card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
         return translate(
           'components.native-chat.queuedMessages.pausedSendFailed',
@@ -73,7 +73,7 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       )
     case 'turn':
     case 'queue-paused':
-      // Plainly queued; a paused queue's header row carries the why.
+      // Plainly queued: a held queue shows no caption.
       return null
   }
 }
