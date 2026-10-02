@@ -1,72 +1,126 @@
 /**
- * Running Orca's fixed host-side scripts with node.exe on a Windows orcad host.
+ * Running node.exe on a Windows orcad host straight from the SSH exec, with plain argv.
  *
- * Each operation is one powershell.exe through `powerShellCommand` (no policy switch, no
- * `Add-Type`, no WMI) that starts one node.exe; see docs/reference/windows-edr-posture.md. Data
- * the client sends travels in staged files or as plain path and number arguments, never as JSON
- * on the command line. Answers carrying host bytes are base64 behind a marker, because Windows
- * PowerShell 5.1 re-decodes native output through the console code page.
+ * sshd hands the command to its DefaultShell, cmd.exe on a stock install or PowerShell when an
+ * admin sets it, and Orca does not probe which. So the line is built from the subset both parse
+ * the same way: an unquoted executable path, then arguments that are bare or double-quoted and
+ * contain nothing either shell expands (`%`, `$`, backtick, `"`). When the executable path
+ * itself needs quoting (a profile with a space), the line falls back to one unencoded
+ * `powershell.exe -Command`, which both shells pass through intact. Anything else is refused
+ * rather than encoded (docs/reference/windows-edr-posture.md).
  */
 import {
   ORCAD_NODE_RUNTIME_DIR_PREFIX,
-  ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE,
   ORCAD_RUNTIMES_DIRNAME
 } from '../../shared/orcad-artifacts'
+import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
+import type { SshConnection } from './ssh-connection'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
-import { powerShellCommand, powerShellLiteral, powerShellNativeArg } from './ssh-remote-powershell'
+import { powerShellLiteral } from './ssh-remote-powershell'
+import {
+  ORCAD_WINDOWS_HOST_SCRIPT,
+  ORCAD_WINDOWS_HOST_SCRIPT_FILENAME,
+  type OrcadWindowsHostOp
+} from './orcad-windows-host-script'
 
-/** Same code the POSIX selector exits with when a slot names no usable runtime. */
-export const ORCAD_WINDOWS_RUNTIME_MISSING_EXIT = 78
+const BARE_EXECUTABLE = /^[A-Za-z]:\\[A-Za-z0-9._+~\\-]*$/u
+// Leading digits are quoted: PowerShell would read `1e5` as a number and pass `100000`.
+const BARE_ARGUMENT = /^[A-Za-z-][A-Za-z0-9._:+=/\\-]*$/u
+// Expanded by cmd.exe (`%`) or PowerShell (`$`, backtick, typographic quotes) inside "..."
+const UNQUOTABLE = /["%$`\r\n“”„‘’‚‛]/u
 
-/** PowerShell lines setting `$orcadRuntime` to the node.exe the slot's marker names, or exiting 78. */
-export function orcadWindowsSlotRuntimeLines(host: RemoteHostPlatform, slotDir: string): string[] {
-  const marker = joinRemotePath(host, slotDir, ORCAD_NODE_RUNTIME_MARKER_FILENAME)
-  const prefix = joinRemotePath(
+export class OrcadWindowsCommandLineError extends Error {
+  readonly code = 'orcad_windows_command_line_unsafe'
+  constructor(value: string) {
+    super(
+      `Orca cannot pass ${JSON.stringify(value)} to node.exe on this Windows host: it contains ` +
+        'a character cmd.exe or PowerShell would expand.'
+    )
+    this.name = 'OrcadWindowsCommandLineError'
+  }
+}
+
+function windowsPath(value: string): string {
+  return value.replace(/\//gu, '\\')
+}
+
+function quotedArgument(value: string): string {
+  if (BARE_ARGUMENT.test(value)) {
+    return value
+  }
+  // A trailing backslash would escape the closing quote for CommandLineToArgvW.
+  if (value === '' || UNQUOTABLE.test(value) || value.endsWith('\\')) {
+    throw new OrcadWindowsCommandLineError(value)
+  }
+  return `"${value}"`
+}
+
+/** One node.exe invocation that parses identically under cmd.exe and PowerShell. */
+export function orcadWindowsNodeCommandLine(executable: string, args: readonly string[]): string {
+  const program = windowsPath(executable)
+  const argv = args.map(quotedArgument)
+  if (BARE_EXECUTABLE.test(program)) {
+    return [program, ...argv].join(' ')
+  }
+  // The inner line is single-quoted PowerShell inside one double-quoted argument both shells keep.
+  for (const value of [program, ...args]) {
+    if (UNQUOTABLE.test(value)) {
+      throw new OrcadWindowsCommandLineError(value)
+    }
+  }
+  const inner = ['&', ...[program, ...args].map(powerShellLiteral)].join(' ')
+  return `powershell.exe -NoProfile -NonInteractive -Command "${inner}"`
+}
+
+/** `~/.orca-remote`, the parent of every slot and of the runtime store. */
+export function orcadWindowsBaseDir(host: RemoteHostPlatform, slotDir: string): string {
+  return remoteDirname(slotDir.replace(/\/+$/u, ''), host)
+}
+
+/** This client's pinned node.exe in the runtime store; deterministic from the host's arch. */
+export function orcadWindowsPinnedNodePath(host: RemoteHostPlatform, baseDir: string): string {
+  const target: NodeRuntimeTarget = host.arch === 'arm64' ? 'win32-arm64' : 'win32-x64'
+  return joinRemotePath(
     host,
-    remoteDirname(slotDir.replace(/\/+$/u, ''), host),
+    baseDir,
     ORCAD_RUNTIMES_DIRNAME,
-    ORCAD_NODE_RUNTIME_DIR_PREFIX
+    `${ORCAD_NODE_RUNTIME_DIR_PREFIX}${pinnedNodeRuntimeAsset(target).executableSha256}`,
+    ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE
   )
-  const exit = ORCAD_WINDOWS_RUNTIME_MISSING_EXIT
-  return [
-    `try { $orcadSha = [IO.File]::ReadAllText(${powerShellLiteral(marker)}).Trim() } catch { exit ${exit} }`,
-    // Why validate: the digest becomes a path segment, so only a bare sha256 may reach it.
-    `if ($orcadSha -cnotmatch '^[0-9a-f]{64}$') { exit ${exit} }`,
-    `$orcadRuntime = ${powerShellLiteral(prefix)} + $orcadSha + ${powerShellLiteral(`/${ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE}`)}`,
-    `if (-not (Test-Path -LiteralPath $orcadRuntime -PathType Leaf)) { exit ${exit} }`
-  ]
 }
 
-function runLine(runtime: string, nodeArgs: readonly string[]): string {
-  return [`& ${runtime}`, ...nodeArgs.map(powerShellNativeArg)].join(' ')
+export function orcadWindowsHostScriptPath(host: RemoteHostPlatform, baseDir: string): string {
+  return joinRemotePath(host, baseDir, ORCAD_WINDOWS_HOST_SCRIPT_FILENAME)
 }
 
-/** Runs the slot's own pinned node.exe; the exit code passes through. */
-export function orcadWindowsSlotNodeCommand(
+/** `node.exe <host script> <op> <args>`, run by this client's pinned runtime. */
+export function orcadWindowsHostOpCommand(
   host: RemoteHostPlatform,
-  slotDir: string,
-  nodeArgs: readonly string[]
+  baseDir: string,
+  op: OrcadWindowsHostOp,
+  args: readonly string[]
 ): string {
-  return powerShellCommand(
-    [
-      ...orcadWindowsSlotRuntimeLines(host, slotDir),
-      runLine('$orcadRuntime', nodeArgs),
-      'exit $LASTEXITCODE'
-    ].join('\n')
-  )
+  return orcadWindowsNodeCommandLine(orcadWindowsPinnedNodePath(host, baseDir), [
+    orcadWindowsHostScriptPath(host, baseDir),
+    op,
+    ...args
+  ])
 }
 
-/** Runs a named node.exe, for host records that belong to no slot. */
-export function orcadWindowsNodeCommand(nodePath: string, nodeArgs: readonly string[]): string {
-  return powerShellCommand(
-    [runLine(powerShellLiteral(nodePath), nodeArgs), 'exit $LASTEXITCODE'].join('\n')
+/**
+ * Stages the host script. One file write per lifecycle operation, before any host op: the
+ * caller that resolves a Windows orcad context owns calling it.
+ */
+export async function installOrcadWindowsHostScript(
+  target: { conn: SshConnection; host: RemoteHostPlatform; signal?: AbortSignal },
+  baseDir: string
+): Promise<void> {
+  await target.conn.writeFile(
+    orcadWindowsHostScriptPath(target.host, baseDir),
+    ORCAD_WINDOWS_HOST_SCRIPT,
+    { hostPlatform: target.host, signal: target.signal }
   )
-}
-
-/** JS expression writing `marker base64(buffer)` and exiting 0. */
-export function orcadWindowsEncodedAnswerJs(marker: string, bufferExpression: string): string {
-  return `process.stdout.write(${JSON.stringify(`${marker} `)}+(${bufferExpression}).toString("base64")+"\\n",()=>process.exit(0))`
 }
 
 /** The decoded payload after `marker`, or null when the host printed no such line. */

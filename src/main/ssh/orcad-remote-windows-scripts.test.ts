@@ -1,5 +1,5 @@
 /**
- * Runs the fixed node.exe scripts Windows orcad hosts execute, under this machine's node.
+ * Runs the host script Windows orcad hosts execute, under this machine's node.
  *
  * They use only `fs`, `path` and `process.kill(pid, 0)`, whose ESRCH/EPERM split libuv gives on
  * every platform. The process-tree addon is faked by a preload that loads `*.node` as a table of
@@ -14,18 +14,16 @@ import { ORCAD_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/orcad-artifact
 import { ORCAD_STOP_REQUEST_FILENAME } from '../../shared/orcad-stop-request'
 import { ORCAD_WINDOWS_PROCESS_FILENAME } from './orcad-remote-host-support'
 import { ORCAD_READINESS_FILENAME } from './orcad-remote-launch'
-import { ORCAD_WINDOWS_LIVENESS_JS } from './orcad-remote-liveness-windows'
-import { ORCAD_WINDOWS_STOP_JS } from './orcad-remote-process-control-windows'
-import {
-  ORCAD_WINDOWS_READINESS_MARKER,
-  ORCAD_WINDOWS_READINESS_WAIT_JS,
-  parseOrcadReadinessWaitOutput
-} from './orcad-remote-readiness-wait'
-import {
-  ORCAD_WINDOWS_RECORD_PUBLISH_JS,
-  windowsOrcadRecordReadScript
-} from './orcad-remote-record-file-windows'
+import { parseOrcadReadinessWaitOutput } from './orcad-remote-readiness-wait'
 import { readOrcadWindowsEncodedAnswer } from './orcad-remote-windows-node'
+import {
+  ORCAD_RECORD_ABSENT_MARKER,
+  ORCAD_RECORD_PRESENT_MARKER,
+  ORCAD_WINDOWS_HOST_SCRIPT,
+  ORCAD_WINDOWS_READINESS_MARKER,
+  ORCAD_WINDOWS_RUNTIME_MARKER,
+  type OrcadWindowsHostOp
+} from './orcad-windows-host-script'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
 const FAKE_ADDON_PRELOAD = [
@@ -38,12 +36,15 @@ const DEAD_PID = 4_194_303
 
 let dir = ''
 let preload = ''
+let script = ''
 const children: { kill: () => boolean }[] = []
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'orcad-win-scripts-'))
   preload = join(dir, 'fake-addon-preload.js')
   writeFileSync(preload, FAKE_ADDON_PRELOAD)
+  script = join(dir, 'orcad-host-script.js')
+  writeFileSync(script, ORCAD_WINDOWS_HOST_SCRIPT)
 })
 
 afterEach(() => {
@@ -53,10 +54,10 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-async function runScript(script: string, args: string[], withAddon = true) {
+async function runOp(op: OrcadWindowsHostOp, args: string[], withAddon = true) {
   return runProcess({
     program: process.execPath,
-    args: [...(withAddon ? ['--require', preload] : []), '-e', script, ...args],
+    args: [...(withAddon ? ['--require', preload] : []), script, op, ...args],
     timeoutMs: 15_000
   })
 }
@@ -78,8 +79,7 @@ function readyLine(health: Record<string, unknown>): string {
 }
 
 describe('Windows liveness script', () => {
-  const liveness = async (withAddon = true) =>
-    (await runScript(ORCAD_WINDOWS_LIVENESS_JS, [dir], withAddon)).stdout
+  const liveness = async (withAddon = true) => (await runOp('liveness', [dir], withAddon)).stdout
 
   it('is LIVE only when the PID runs and its creation time matches the record', async () => {
     stageAddon({ [process.pid]: 1000 })
@@ -110,8 +110,7 @@ describe('Windows liveness script', () => {
 describe('Windows stop script', () => {
   const requestFile = () => join(dir, ORCAD_STOP_REQUEST_FILENAME)
   const stop = async (justLaunched: boolean, waitSeconds = 5) =>
-    (await runScript(ORCAD_WINDOWS_STOP_JS, [dir, String(waitSeconds), justLaunched ? '1' : '0']))
-      .stdout
+    (await runOp('stop', [dir, String(waitSeconds), justLaunched ? '1' : '0'])).stdout
 
   /** Stands in for orcad's stop-request listener: exits once the request file appears. */
   function fakeOrcad(): number {
@@ -179,8 +178,8 @@ describe('Windows readiness wait script', () => {
   const host = getRemoteHostPlatform('win32-x64')
   const file = () => join(dir, ORCAD_READINESS_FILENAME)
   const wait = async (seconds: number) => {
-    const { stdout } = await runScript(
-      ORCAD_WINDOWS_READINESS_WAIT_JS,
+    const { stdout } = await runOp(
+      'readiness-wait',
       [file(), String(256 * 1024), String(seconds)],
       false
     )
@@ -210,16 +209,14 @@ describe('Windows readiness wait script', () => {
 })
 
 describe('Windows record scripts', () => {
-  const markers = { absent: '__ABSENT__', present: '__PRESENT__' }
-  const read = (path: string, max = 1024) =>
-    runScript(windowsOrcadRecordReadScript(markers), [path, String(max)], false)
+  const read = (path: string, max = 1024) => runOp('record-read', [path, String(max)], false)
 
   it('tells absent from present, and returns the bytes exactly', async () => {
     const path = join(dir, 'orcad-active.json')
-    expect((await read(path)).stdout.trim()).toBe(markers.absent)
+    expect((await read(path)).stdout.trim()).toBe(ORCAD_RECORD_ABSENT_MARKER)
     writeFileSync(path, '{"active":"0.2.0+bb01","owner":"Zoë"}')
     const present = await read(path)
-    expect(readOrcadWindowsEncodedAnswer(present.stdout, markers.present)).toBe(
+    expect(readOrcadWindowsEncodedAnswer(present.stdout, ORCAD_RECORD_PRESENT_MARKER)).toBe(
       '{"active":"0.2.0+bb01","owner":"Zoë"}'
     )
   })
@@ -237,19 +234,59 @@ describe('Windows record scripts', () => {
     const staged = `${path}.partial.1.abc`
     writeFileSync(path, 'old')
     writeFileSync(staged, 'new')
-    const result = await runScript(ORCAD_WINDOWS_RECORD_PUBLISH_JS, [staged, path], false)
+    const result = await runOp('record-publish', [staged, path], false)
     expect(result.code).toBe(0)
     expect(readFileSync(path, 'utf8')).toBe('new')
     expect(existsSync(staged)).toBe(false)
   })
 
   it('fails without a stage rather than publishing nothing', async () => {
-    const result = await runScript(
-      ORCAD_WINDOWS_RECORD_PUBLISH_JS,
+    const result = await runOp(
+      'record-publish',
       [join(dir, 'missing'), join(dir, 'transaction.json')],
       false
     )
     expect(result.code).not.toBe(0)
+  })
+})
+
+describe('Windows slot runtime and file removal', () => {
+  const slot = () => join(dir, 'orcad-0.2.0+bb01')
+  const sha = 'a'.repeat(64)
+
+  it('names the runtime the slot marker points at, and clears a stale stop request on launch', async () => {
+    mkdirSync(slot())
+    writeFileSync(join(slot(), '.runtime-node'), `${sha}\n`)
+    writeFileSync(join(slot(), ORCAD_STOP_REQUEST_FILENAME), '')
+    expect((await runOp('slot-runtime', [slot()], false)).code).toBe(78)
+    mkdirSync(join(dir, 'runtimes', `node-${sha}`), { recursive: true })
+    writeFileSync(join(dir, 'runtimes', `node-${sha}`, 'node.exe'), '')
+    const plain = await runOp('slot-runtime', [slot()], false)
+    expect(readOrcadWindowsEncodedAnswer(plain.stdout, ORCAD_WINDOWS_RUNTIME_MARKER)).toBe(
+      join(dir, 'runtimes', `node-${sha}`, 'node.exe')
+    )
+    expect(existsSync(join(slot(), ORCAD_STOP_REQUEST_FILENAME))).toBe(true)
+    await runOp('slot-runtime', [slot(), 'clear-stop-request'], false)
+    expect(existsSync(join(slot(), ORCAD_STOP_REQUEST_FILENAME))).toBe(false)
+  })
+
+  it('refuses a marker that is not a bare sha256', async () => {
+    mkdirSync(slot())
+    writeFileSync(join(slot(), '.runtime-node'), '../../escape')
+    expect((await runOp('slot-runtime', [slot()], false)).code).toBe(78)
+  })
+
+  it('removes a file and treats an absent one as removed', async () => {
+    const file = join(dir, 'staged.json')
+    writeFileSync(file, '{}')
+    expect((await runOp('remove-file', [file], false)).code).toBe(0)
+    expect(existsSync(file)).toBe(false)
+    expect((await runOp('remove-file', [file], false)).code).toBe(0)
+  })
+
+  it('rejects an unknown op', async () => {
+    const result = await runProcess({ program: process.execPath, args: [script, 'nope'] })
+    expect(result.code).toBe(64)
   })
 })
 

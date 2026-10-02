@@ -70,6 +70,7 @@ describe('relay Windows breakaway launcher', () => {
     expect(parseRelayWindowsBreakawayLaunch(argv)).toEqual({
       stdoutPath: 'C:/Users/me user/relay.log',
       stderrPath: 'C:/Users/me user/relay.err.log',
+      env: {},
       programArgs: argv.slice(8)
     })
   })
@@ -213,9 +214,32 @@ describe('orcad Windows breakaway launcher', () => {
         stdoutPath: 'C:/slot/.orcad-readiness',
         stderrPath: 'C:/slot/orcad.log',
         processFilePath: 'C:/slot/.orcad-process.json',
+        env: {},
         programArgs: ['--json', '--bind', '127.0.0.1']
       }
     )
+  })
+
+  it('collects --env assignments for the launched process and refuses a malformed one', () => {
+    const withEnv = [
+      ...orcadArgv.slice(0, 3),
+      '--env',
+      'ORCA_VERSION=0.2.0+bb01',
+      '--env',
+      'ORCA_USER_DATA=C:/Users/Ann Lee/.orca',
+      ...orcadArgv.slice(3)
+    ]
+    expect(
+      parseWindowsBreakawayLaunchRequest(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, withEnv)?.env
+    ).toEqual({ ORCA_VERSION: '0.2.0+bb01', ORCA_USER_DATA: 'C:/Users/Ann Lee/.orca' })
+    expect(() =>
+      parseWindowsBreakawayLaunchRequest(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, [
+        ...orcadArgv.slice(0, 3),
+        '--env',
+        'lower=1',
+        ...orcadArgv.slice(3)
+      ])
+    ).toThrow('NAME=VALUE')
   })
 
   it('records the PID with its creation time so a reused PID is never mistaken for it', () => {

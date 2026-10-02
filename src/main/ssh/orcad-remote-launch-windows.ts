@@ -7,27 +7,33 @@
  * is no WMI fallback: Win32_Process.Create is EDR-scored remote execution and refused to a
  * standard user's network logon, so a host that cannot break away refuses the launch.
  *
- * The launcher records the PID with its creation time; a PID alone is not an identity on
- * Windows, which reuses them aggressively.
+ * Two execs, neither through PowerShell: the host script resolves the runtime the slot's marker
+ * names (and drops a stale stop request), then that node.exe runs the launcher with plain argv.
+ * The launcher records the PID with its creation time; a PID alone is not an identity on Windows.
  */
 import {
   ORCAD_WINDOWS_BREAKAWAY_CONTRACT,
   parseWindowsBreakawayLaunchReport,
+  WINDOWS_BREAKAWAY_ENV_FLAG,
   WINDOWS_BREAKAWAY_LAUNCH_FLAG,
   WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
   WINDOWS_BREAKAWAY_STDERR_FLAG,
   WINDOWS_BREAKAWAY_STDOUT_FLAG
 } from '../../shared/windows-breakaway-launch'
-import { ORCAD_STOP_REQUEST_FILENAME } from '../../shared/orcad-stop-request'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
-import { powerShellCommand, powerShellLiteral, powerShellNativeArg } from './ssh-remote-powershell'
-import { orcadWindowsSlotRuntimeLines } from './orcad-remote-windows-node'
-import { ORCAD_WINDOWS_PROCESS_FILENAME } from './orcad-remote-host-support'
+import {
+  orcadWindowsBaseDir,
+  orcadWindowsHostOpCommand,
+  orcadWindowsNodeCommandLine,
+  readOrcadWindowsEncodedAnswer
+} from './orcad-remote-windows-node'
+import { ORCAD_WINDOWS_RUNTIME_MARKER } from './orcad-windows-host-script'
 import {
   ORCAD_LOG_FILENAME,
   ORCAD_READINESS_FILENAME,
-  type OrcadLaunchSpec
-} from './orcad-remote-launch'
+  ORCAD_WINDOWS_PROCESS_FILENAME
+} from './orcad-remote-host-support'
+import type { OrcadLaunchSpec } from './orcad-remote-launch'
 
 export class OrcadWindowsLaunchRefusedError extends Error {
   readonly code = 'orcad_windows_launch_refused'
@@ -41,9 +47,32 @@ export class OrcadWindowsLaunchRefusedError extends Error {
   }
 }
 
-export function windowsOrcadLaunchCommand(host: RemoteHostPlatform, spec: OrcadLaunchSpec): string {
+/** Resolves the slot's node.exe and clears a stop request the previous process never consumed. */
+export function windowsOrcadLaunchRuntimeCommand(
+  host: RemoteHostPlatform,
+  slotDir: string
+): string {
+  return orcadWindowsHostOpCommand(host, orcadWindowsBaseDir(host, slotDir), 'slot-runtime', [
+    slotDir,
+    'clear-stop-request'
+  ])
+}
+
+export function readWindowsOrcadSlotRuntime(output: string): string {
+  const runtime = readOrcadWindowsEncodedAnswer(output, ORCAD_WINDOWS_RUNTIME_MARKER)
+  if (!runtime) {
+    throw new Error('The Windows host did not name the runtime this orcad slot needs.')
+  }
+  return runtime
+}
+
+export function windowsOrcadLaunchCommand(
+  host: RemoteHostPlatform,
+  spec: OrcadLaunchSpec,
+  slotRuntime: string
+): string {
   const dir = spec.remoteInstallDir
-  const launcherArgs = [
+  return orcadWindowsNodeCommandLine(slotRuntime, [
     joinRemotePath(host, dir, 'orcad.js'),
     WINDOWS_BREAKAWAY_LAUNCH_FLAG,
     // The addon creates both with CREATE_ALWAYS, so a previous run's readiness line is gone
@@ -54,26 +83,17 @@ export function windowsOrcadLaunchCommand(host: RemoteHostPlatform, spec: OrcadL
     joinRemotePath(host, dir, ORCAD_LOG_FILENAME),
     WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
     joinRemotePath(host, dir, ORCAD_WINDOWS_PROCESS_FILENAME),
+    WINDOWS_BREAKAWAY_ENV_FLAG,
+    `ORCA_VERSION=${spec.fullVersion}`,
+    WINDOWS_BREAKAWAY_ENV_FLAG,
+    `ORCA_USER_DATA=${spec.userDataDir}`,
     ORCAD_WINDOWS_BREAKAWAY_CONTRACT.argsFlag,
     '--json',
     '--bind',
     spec.bindHost,
     '--port',
     String(spec.port)
-  ]
-  return powerShellCommand(
-    [
-      ...orcadWindowsSlotRuntimeLines(host, dir),
-      `Set-Location -ErrorAction Stop -LiteralPath ${powerShellLiteral(dir)}`,
-      // A stop request the previous process never consumed must not stop this one.
-      `Remove-Item -LiteralPath ${powerShellLiteral(joinRemotePath(host, dir, ORCAD_STOP_REQUEST_FILENAME))} -Force -ErrorAction SilentlyContinue`,
-      `$env:ORCA_VERSION = ${powerShellLiteral(spec.fullVersion)}`,
-      `$env:ORCA_USER_DATA = ${powerShellLiteral(spec.userDataDir)}`,
-      `(& $orcadRuntime ${launcherArgs.map(powerShellNativeArg).join(' ')}) -join ' '`,
-      // The report, not the exit code, carries the verdict.
-      'exit 0'
-    ].join('\n')
-  )
+  ])
 }
 
 /** The launched PID, or a refusal (no breakaway route) or failure the deploy must surface. */

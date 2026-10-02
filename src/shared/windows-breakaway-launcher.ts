@@ -12,6 +12,7 @@ import { createRequire } from 'node:module'
 import { quoteWindowsArgument } from './child-process/windows-command-line'
 import {
   formatWindowsBreakawayLaunchReport,
+  WINDOWS_BREAKAWAY_ENV_FLAG,
   WINDOWS_BREAKAWAY_EXIT_CODES,
   WINDOWS_BREAKAWAY_LAUNCH_FLAG,
   WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
@@ -46,8 +47,11 @@ export type WindowsBreakawayLaunchRequest = {
   stdoutPath: string
   stderrPath: string
   processFilePath?: string
+  env: Record<string, string>
   programArgs: string[]
 }
+
+const ENV_ASSIGNMENT = /^([A-Z_][A-Z0-9_]*)=(.*)$/su
 
 export function parseWindowsBreakawayLaunchRequest(
   contract: WindowsBreakawayLaunchContract,
@@ -71,10 +75,22 @@ export function parseWindowsBreakawayLaunchRequest(
     return value
   }
   const processFilePath = valueOf(WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG)
+  const env: Record<string, string> = {}
+  for (const [index, value] of own.entries()) {
+    if (value !== WINDOWS_BREAKAWAY_ENV_FLAG) {
+      continue
+    }
+    const assignment = ENV_ASSIGNMENT.exec(own[index + 1] ?? '')
+    if (!assignment?.[1]) {
+      throw new Error(`${WINDOWS_BREAKAWAY_ENV_FLAG} needs NAME=VALUE`)
+    }
+    env[assignment[1]] = assignment[2] ?? ''
+  }
   return {
     stdoutPath: required(WINDOWS_BREAKAWAY_STDOUT_FLAG),
     stderrPath: required(WINDOWS_BREAKAWAY_STDERR_FLAG),
     ...(processFilePath ? { processFilePath } : {}),
+    env,
     programArgs: separator === -1 ? [] : argv.slice(separator + 1)
   }
 }
@@ -197,6 +213,8 @@ export function runWindowsBreakawayLaunchIfRequested(
   if (!request) {
     return false
   }
+  // CreateProcessW gets no environment block, so the child inherits this process's, edits included.
+  Object.assign(process.env, request.env)
   const { report, exitCode } = launchOutsideJob(request, loadWindowsBreakawayLauncher(), {
     execPath: process.execPath,
     script: argv[1] ?? '',

@@ -9,24 +9,28 @@ import { shellEscape } from './ssh-connection-utils'
 import { removeRemoteFileCommand } from './ssh-remote-commands'
 import { execOrcadRemote, type OrcadRemoteExecTarget } from './orcad-remote-runtime-control'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
-import { isWindowsRemoteHost } from './ssh-remote-platform'
+import { isWindowsRemoteHost, joinRemotePath } from './ssh-remote-platform'
+import { RELAY_REMOTE_DIR } from './relay-protocol'
 import {
-  windowsOrcadRecordPublishCommand,
-  windowsOrcadRecordReadCommand
-} from './orcad-remote-record-file-windows'
-import { readOrcadWindowsEncodedAnswer } from './orcad-remote-windows-node'
-
-const ABSENT_MARKER = '__ORCAD_RECORD_ABSENT__'
-const PRESENT_MARKER = '__ORCAD_RECORD_PRESENT__'
+  orcadWindowsHostOpCommand,
+  readOrcadWindowsEncodedAnswer
+} from './orcad-remote-windows-node'
+import {
+  ORCAD_RECORD_ABSENT_MARKER as ABSENT_MARKER,
+  ORCAD_RECORD_PRESENT_MARKER as PRESENT_MARKER
+} from './orcad-windows-host-script'
 
 /** `present` carries raw bytes; schema checks belong to the caller that owns the format. */
 export type OrcadRemoteRecordRead = { state: 'absent' } | { state: 'present'; raw: string }
 
-function windowsNodePath(target: OrcadRemoteExecTarget): string {
-  if (!target.windowsNodePath) {
-    throw new Error('orcad host records on Windows need the pinned node.exe path')
+/** `~/.orca-remote`, where the host script and the pinned runtime live. */
+function windowsBaseDir(target: OrcadRemoteExecTarget): string {
+  if (!target.remoteHome) {
+    throw new Error(
+      'orcad host records on Windows need the remote home to find the pinned node.exe'
+    )
   }
-  return target.windowsNodePath
+  return joinRemotePath(target.host, target.remoteHome, RELAY_REMOTE_DIR)
 }
 
 export async function readBoundedOrcadRemoteRecord(
@@ -62,10 +66,12 @@ async function readWindowsRecord(
   path: string,
   maxBytes: number
 ): Promise<OrcadRemoteRecordRead> {
-  const markers = { absent: ABSENT_MARKER, present: PRESENT_MARKER }
   const output = await execOrcadRemote(
     target,
-    windowsOrcadRecordReadCommand(windowsNodePath(target), path, maxBytes, markers)
+    orcadWindowsHostOpCommand(target.host, windowsBaseDir(target), 'record-read', [
+      path,
+      String(maxBytes)
+    ])
   )
   if (output.split(/\r?\n/u).some((line) => line.trim() === ABSENT_MARKER)) {
     return { state: 'absent' }
@@ -83,14 +89,17 @@ export async function writeAtomicOrcadRemoteRecord(
   contents: string
 ): Promise<void> {
   const partialPath = `${path}.partial.${process.pid}.${randomUUID()}`
-  const nodePath = isWindowsRemoteHost(target.host) ? windowsNodePath(target) : null
+  const baseDir = isWindowsRemoteHost(target.host) ? windowsBaseDir(target) : null
   try {
-    if (nodePath) {
+    if (baseDir) {
       await target.conn.writeFile(partialPath, contents, {
         hostPlatform: target.host,
         signal: target.signal
       })
-      await execOrcadRemote(target, windowsOrcadRecordPublishCommand(nodePath, partialPath, path))
+      await execOrcadRemote(
+        target,
+        orcadWindowsHostOpCommand(target.host, baseDir, 'record-publish', [partialPath, path])
+      )
       return
     }
     await execOrcadRemote(
@@ -101,9 +110,10 @@ export async function writeAtomicOrcadRemoteRecord(
   } catch (error) {
     // Why keep the partial on an unconfirmed termination: the write may still be running there.
     if (!isUnconfirmedSshCommandTermination(error)) {
-      await execOrcadRemote(target, removeRemoteFileCommand(target.host, partialPath)).catch(
-        () => {}
-      )
+      const discard = baseDir
+        ? orcadWindowsHostOpCommand(target.host, baseDir, 'remove-file', [partialPath])
+        : removeRemoteFileCommand(target.host, partialPath)
+      await execOrcadRemote(target, discard).catch(() => {})
     }
     throw error
   }

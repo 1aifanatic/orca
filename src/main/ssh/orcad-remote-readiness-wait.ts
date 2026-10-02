@@ -2,9 +2,9 @@
  * Waiting for a launched orcad's readiness line on the host, not across SSH.
  *
  * The client used to re-read the readiness file every 500 ms, one exec each, for up to three
- * minutes. On Windows every exec is a powershell.exe, and a burst of short-lived interpreters
- * under sshd is itself an EDR signal (docs/reference/windows-edr-posture.md). One exec now
- * waits host-side for a complete line, an oversized file, or its own bounded deadline.
+ * minutes. A burst of short-lived processes under sshd is itself an EDR signal on Windows
+ * (docs/reference/windows-edr-posture.md). One exec now waits host-side for a complete line, an
+ * oversized file, or its own bounded deadline.
  */
 import { shellEscape } from './ssh-connection-utils'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
@@ -15,14 +15,14 @@ import {
   type OrcadReadinessParse
 } from './orcad-remote-launch'
 import {
-  orcadWindowsEncodedAnswerJs,
-  orcadWindowsSlotNodeCommand,
+  orcadWindowsBaseDir,
+  orcadWindowsHostOpCommand,
   readOrcadWindowsEncodedAnswer
 } from './orcad-remote-windows-node'
+import { ORCAD_WINDOWS_READINESS_MARKER } from './orcad-windows-host-script'
 
 /** Under the 30 s exec timeout, so one wait never reads as an unanswered host. */
 export const ORCAD_READINESS_WAIT_MAX_SECONDS = 20
-export const ORCAD_WINDOWS_READINESS_MARKER = '__ORCAD_READINESS__'
 
 /** Settles on a newline (a finished line) or more than the cap; both are final for the parser. */
 function posixReadinessWaitCommand(
@@ -46,20 +46,6 @@ function posixReadinessWaitCommand(
   ].join(' ')
 }
 
-export const ORCAD_WINDOWS_READINESS_WAIT_JS = [
-  'const fs=require("fs");',
-  'const [file,capArg,waitArg]=process.argv.slice(1);',
-  'const cap=Number(capArg),end=Date.now()+Number(waitArg)*1000;',
-  // A missing or unreadable file is "nothing yet", exactly as `head ... || true` reads it.
-  'const read=()=>{let fd;try{fd=fs.openSync(file,"r")}catch{return Buffer.alloc(0)}',
-  'try{const b=Buffer.alloc(cap+1);return b.subarray(0,fs.readSync(fd,b,0,cap+1,0))}',
-  'catch{return Buffer.alloc(0)}finally{fs.closeSync(fd)}};',
-  'const tick=()=>{const b=read();',
-  `if(b.includes(10)||b.length>cap||Date.now()>=end){${orcadWindowsEncodedAnswerJs(ORCAD_WINDOWS_READINESS_MARKER, 'b')};return}`,
-  'setTimeout(tick,200)};',
-  'tick();'
-].join('')
-
 export function orcadReadinessWaitCommand(
   host: RemoteHostPlatform,
   remoteInstallDir: string,
@@ -69,13 +55,16 @@ export function orcadReadinessWaitCommand(
   if (!isWindowsRemoteHost(host)) {
     return posixReadinessWaitCommand(host, remoteInstallDir, seconds)
   }
-  return orcadWindowsSlotNodeCommand(host, remoteInstallDir, [
-    '-e',
-    ORCAD_WINDOWS_READINESS_WAIT_JS,
-    joinRemotePath(host, remoteInstallDir, ORCAD_READINESS_FILENAME),
-    String(ORCAD_READINESS_MAX_BYTES),
-    String(seconds)
-  ])
+  return orcadWindowsHostOpCommand(
+    host,
+    orcadWindowsBaseDir(host, remoteInstallDir),
+    'readiness-wait',
+    [
+      joinRemotePath(host, remoteInstallDir, ORCAD_READINESS_FILENAME),
+      String(ORCAD_READINESS_MAX_BYTES),
+      String(seconds)
+    ]
+  )
 }
 
 /** What the readiness file held when the host stopped waiting; `pending` if still unfinished. */

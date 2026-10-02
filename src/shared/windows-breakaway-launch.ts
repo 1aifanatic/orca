@@ -9,6 +9,8 @@ export const WINDOWS_BREAKAWAY_STDOUT_FLAG = '--stdout-file'
 export const WINDOWS_BREAKAWAY_STDERR_FLAG = '--stderr-file'
 /** Optional: where to record the launched PID and its creation time as JSON. */
 export const WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG = '--process-file'
+/** Repeatable `NAME=VALUE` the launched process inherits; argv is the only channel both SSH shells share. */
+export const WINDOWS_BREAKAWAY_ENV_FLAG = '--env'
 
 export type WindowsBreakawayLaunchContract = {
   /** Everything after it is the program's own argv. Not `--`: Windows PowerShell may consume that. */

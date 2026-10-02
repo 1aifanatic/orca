@@ -8,7 +8,9 @@ import {
 } from './orcad-remote-launch'
 import {
   readWindowsOrcadLaunchReport,
-  windowsOrcadLaunchCommand
+  readWindowsOrcadSlotRuntime,
+  windowsOrcadLaunchCommand,
+  windowsOrcadLaunchRuntimeCommand
 } from './orcad-remote-launch-windows'
 import {
   ORCAD_READINESS_WAIT_MAX_SECONDS,
@@ -26,8 +28,8 @@ export type OrcadRemoteExecTarget = {
   conn: SshConnection
   host: RemoteHostPlatform
   signal?: AbortSignal
-  /** The pinned node.exe that runs host-record scripts; required on Windows, unused elsewhere. */
-  windowsNodePath?: string
+  /** Locates the runtime store for host-record scripts; required on Windows, unused elsewhere. */
+  remoteHome?: string
 }
 
 export function execOrcadRemote(
@@ -57,8 +59,14 @@ export async function launchOrcadAndAwaitReadiness(
   spec: OrcadLaunchSpec
 ): Promise<OrcadReadinessParse> {
   if (isWindowsRemoteHost(target.host)) {
+    const slotRuntime = readWindowsOrcadSlotRuntime(
+      await execOrcadRemote(
+        target,
+        windowsOrcadLaunchRuntimeCommand(target.host, spec.remoteInstallDir)
+      )
+    )
     readWindowsOrcadLaunchReport(
-      await execOrcadRemote(target, windowsOrcadLaunchCommand(target.host, spec))
+      await execOrcadRemote(target, windowsOrcadLaunchCommand(target.host, spec, slotRuntime))
     )
   } else {
     await execOrcadRemote(target, orcadLaunchCommand(target.host, spec))

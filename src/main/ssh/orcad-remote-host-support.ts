@@ -27,6 +27,13 @@ export function assertPosixOrcadHost(host: RemoteHostPlatform): void {
   }
 }
 
+/** Stdout of the launched candidate: exactly one `orca_server_ready` line, then nothing. */
+export const ORCAD_READINESS_FILENAME = '.orcad-readiness'
+/** Stderr, including the bind-exposure line and every supervision message. */
+export const ORCAD_LOG_FILENAME = 'orcad.log'
+// Why a cap: the readiness file is candidate-written stdout, and a runaway writer must not be read whole.
+export const ORCAD_READINESS_MAX_BYTES = 256 * 1024
+
 /** PID of the launched orcad, written into its own version dir at launch. */
 export const ORCAD_PID_FILENAME = '.orcad-pid'
 /** Windows' `.orcad-pid`: `{"pid":N,"creationTimeMs":M|null}`, since a PID alone is no identity there. */

@@ -16,7 +16,10 @@ import { shellEscape } from './ssh-connection-utils'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
   assertPosixOrcadHost as assertPosixHost,
+  ORCAD_LOG_FILENAME,
   ORCAD_PID_FILENAME,
+  ORCAD_READINESS_FILENAME,
+  ORCAD_READINESS_MAX_BYTES,
   posixProcessAliveShellFunction
 } from './orcad-remote-host-support'
 import type { ServeReadiness } from '../server/serve-readiness'
@@ -24,13 +27,13 @@ import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
 import { ORCAD_STOP_REQUEST_FILENAME } from '../../shared/orcad-stop-request'
 import { windowsOrcadLivenessProbeCommand } from './orcad-remote-liveness-windows'
 
-/** Stdout of the launched candidate: exactly one `orca_server_ready` line, then nothing. */
-export const ORCAD_READINESS_FILENAME = '.orcad-readiness'
-/** Stderr, including the bind-exposure line and every supervision message. */
-export const ORCAD_LOG_FILENAME = 'orcad.log'
-// Why a cap: the readiness file is candidate-written stdout, and a runaway writer must not be read whole.
-export const ORCAD_READINESS_MAX_BYTES = 256 * 1024
-export { ORCAD_PID_FILENAME, OrcadRemoteLaunchUnsupportedError } from './orcad-remote-host-support'
+export {
+  ORCAD_LOG_FILENAME,
+  ORCAD_PID_FILENAME,
+  ORCAD_READINESS_FILENAME,
+  ORCAD_READINESS_MAX_BYTES,
+  OrcadRemoteLaunchUnsupportedError
+} from './orcad-remote-host-support'
 
 export type OrcadLaunchSpec = {
   remoteInstallDir: string

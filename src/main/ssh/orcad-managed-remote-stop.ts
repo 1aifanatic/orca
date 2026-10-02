@@ -14,9 +14,14 @@ import { execOrcadRemote } from './orcad-remote-runtime-control'
 import { readBoundedOrcadRemoteRecord } from './orcad-remote-record-file'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
 import { isWindowsRemoteHost, joinRemotePath } from './ssh-remote-platform'
-import { removeRemoteFileCommand } from './ssh-remote-commands'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
-import { orcadWindowsSlotNodeCommand } from './orcad-remote-windows-node'
+import {
+  orcadWindowsBaseDir,
+  orcadWindowsHostOpCommand,
+  orcadWindowsNodeCommandLine,
+  readOrcadWindowsEncodedAnswer
+} from './orcad-remote-windows-node'
+import { ORCAD_WINDOWS_RUNTIME_MARKER } from './orcad-windows-host-script'
 import { ORCAD_LOCK_FILE_NAME, parseOrcadInstanceLockRecord } from '../orcad/orcad-instance-lock'
 import {
   ORCAD_CANCEL_MANAGED_STOP_FLAG,
@@ -142,6 +147,17 @@ async function runWindowsSlotCommand(
   request: OrcadManagedStopRequest,
   flag: string
 ): Promise<string> {
+  const baseDir = orcadWindowsBaseDir(options.host, slotDir)
+  const runtime = readOrcadWindowsEncodedAnswer(
+    await execOrcadRemote(
+      options,
+      orcadWindowsHostOpCommand(options.host, baseDir, 'slot-runtime', [slotDir])
+    ),
+    ORCAD_WINDOWS_RUNTIME_MARKER
+  )
+  if (!runtime) {
+    throw new Error('The Windows host did not name the runtime this orcad slot needs.')
+  }
   const staged = joinRemotePath(options.host, slotDir, `.orcad-stop-command-${randomUUID()}.json`)
   let removeStaged = true
   try {
@@ -151,7 +167,7 @@ async function runWindowsSlotCommand(
     })
     return await execOrcadRemote(
       options,
-      orcadWindowsSlotNodeCommand(options.host, slotDir, [
+      orcadWindowsNodeCommandLine(runtime, [
         entry,
         flag,
         ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG,
@@ -164,7 +180,10 @@ async function runWindowsSlotCommand(
     throw error
   } finally {
     if (removeStaged) {
-      await execOrcadRemote(options, removeRemoteFileCommand(options.host, staged)).catch(() => {})
+      await execOrcadRemote(
+        options,
+        orcadWindowsHostOpCommand(options.host, baseDir, 'remove-file', [staged])
+      ).catch(() => {})
     }
   }
 }
