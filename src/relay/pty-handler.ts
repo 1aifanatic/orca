@@ -852,7 +852,9 @@ export class PtyHandler {
       explicitEnv
     )
     const baseEnv: Record<string, string> = Object.fromEntries(
-      Object.entries(mergedEnv).filter(([, value]) => typeof value === 'string')
+      Object.entries(mergedEnv).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
     )
     const augmented: Record<string, string> = {}
     for (const augmenter of this.envAugmenters) {
@@ -866,7 +868,7 @@ export class PtyHandler {
     }
     const result: Record<string, string> = Object.fromEntries(
       Object.entries(mergeGitConfigEnvProtocol(baseEnv, augmented)).filter(
-        ([, value]) => typeof value === 'string'
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
       )
     )
     result[ORCA_IMAGE_PROTOCOL_ENV] = ORCA_IMAGE_PROTOCOL_VALUE
