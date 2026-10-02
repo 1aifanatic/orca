@@ -15,6 +15,10 @@ function createSignal(): SnapshotSignal {
 
 let current = createSignal()
 
+export function isAgentStatusStartupSnapshotReady(): boolean {
+  return current.ready
+}
+
 /** Coordinates the bridge's existing replay; it retains no agent rows. */
 export function registerAgentStatusStartupSnapshot(): {
   reset: () => void

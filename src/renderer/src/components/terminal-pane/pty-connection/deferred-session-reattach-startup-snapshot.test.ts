@@ -66,6 +66,17 @@ describe('cold reattach waits for host identity replay', () => {
     vi.useRealTimers()
   })
 
+  it('connects synchronously when host replay already applied before pane registration', () => {
+    const bridge = registerAgentStatusStartupSnapshot()
+    bridge.settle()
+    const { session, fixture, transport } = createSession()
+    fixture.deps.paneTransportsRef.current.clear()
+    startDeferredSessionReattach(session, 'live-pty')
+    expect(transport.connect).toHaveBeenCalledOnce()
+    fixture.deps.paneTransportsRef.current.set(1, transport)
+    bridge.dispose()
+  })
+
   it('connects once with the exact conversation after the initial snapshot applies', async () => {
     const bridge = registerAgentStatusStartupSnapshot()
     const { session, transport, replay } = createSession()

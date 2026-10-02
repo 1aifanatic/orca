@@ -1,10 +1,16 @@
 import { vi } from 'vitest'
 import { resetAgentStartupDelayedDeliveryForTests } from '@/lib/agent-startup-delayed-delivery'
+import * as agentStatusStartupSnapshot from '@/hooks/ipc-events/agent-status-startup-snapshot'
 import { drainFakeTimerWork, flushAsyncTicks } from './pty-connection-test-async'
 
 const originalRequestAnimationFrame = globalThis.requestAnimationFrame
 const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
 const originalDocument = globalThis.document
+type StatusSnapshot = ReturnType<
+  typeof agentStatusStartupSnapshot.registerAgentStatusStartupSnapshot
+>
+let statusSnapshot: StatusSnapshot | undefined
+let resetStatusSnapshot: StatusSnapshot | undefined
 
 export function buildAgentStatusModuleMock(
   actual: Record<string, unknown>
@@ -30,6 +36,18 @@ export function buildAgentStatusModuleMock(
 }
 
 export function installTerminalTestGlobals(): void {
+  statusSnapshot?.dispose()
+  resetStatusSnapshot?.dispose()
+  statusSnapshot = agentStatusStartupSnapshot.registerAgentStatusStartupSnapshot()
+  statusSnapshot.settle()
+  resetStatusSnapshot = undefined
+  // Import after resetModules so the seeded store and connection share one bridge.
+  vi.doMock('@/hooks/ipc-events/agent-status-startup-snapshot', async (importOriginal) => {
+    const actual = await importOriginal<typeof agentStatusStartupSnapshot>()
+    resetStatusSnapshot = actual.registerAgentStatusStartupSnapshot()
+    resetStatusSnapshot.settle()
+    return actual
+  })
   ;(globalThis as unknown as { window: unknown }).window = {
     api: {
       ssh: {
@@ -107,6 +125,11 @@ export async function restoreTerminalTestGlobals(): Promise<void> {
   // continuation throws `ReferenceError: window is not defined` and fails the
   // whole file (orca#14728, CI-only because it needs a slow enough tick).
   await flushAsyncTicks(20)
+  statusSnapshot?.dispose()
+  resetStatusSnapshot?.dispose()
+  statusSnapshot = undefined
+  resetStatusSnapshot = undefined
+  vi.doUnmock('@/hooks/ipc-events/agent-status-startup-snapshot')
   vi.restoreAllMocks()
   if (originalRequestAnimationFrame) {
     globalThis.requestAnimationFrame = originalRequestAnimationFrame

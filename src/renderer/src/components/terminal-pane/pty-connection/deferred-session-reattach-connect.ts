@@ -5,7 +5,10 @@ import { toProcessExitStartup } from './process-exit-startup'
 import { recoverUnverifiableDirectSshReattach } from './direct-ssh-reattach-recovery'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
-import { awaitAgentStatusStartupSnapshot } from '@/hooks/ipc-events/agent-status-startup-snapshot'
+import {
+  awaitAgentStatusStartupSnapshot,
+  isAgentStatusStartupSnapshotReady
+} from '@/hooks/ipc-events/agent-status-startup-snapshot'
 
 const PANE_OWNER_UNVERIFIED_ERROR = 'terminal_pane_owner_unverified'
 
@@ -27,13 +30,20 @@ async function prepareDeferredSessionReattach(
   deferredReattachSessionId: string
 ): Promise<void> {
   const generation = session.transportStreamGeneration
-  if (!session.runtimeEnvironmentId && !session.buildColdRestoreAgentResumeStartup()) {
+  let waitedForSnapshot = false
+  if (
+    !session.runtimeEnvironmentId &&
+    !session.buildColdRestoreAgentResumeStartup() &&
+    !isAgentStatusStartupSnapshotReady()
+  ) {
+    waitedForSnapshot = true
     await awaitAgentStatusStartupSnapshot()
   }
   if (
     session.disposed ||
     generation !== session.transportStreamGeneration ||
-    session.deps.paneTransportsRef.current.get(session.pane.id) !== session.transport
+    (waitedForSnapshot &&
+      session.deps.paneTransportsRef.current.get(session.pane.id) !== session.transport)
   ) {
     return
   }
