@@ -1,4 +1,4 @@
-import { basename, win32 } from 'node:path'
+import { getCommandTokenPathBasename } from '../../../shared/command-token-scanner'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { isTuiAgent } from '../../../shared/tui-agent-config'
 import {
@@ -22,13 +22,15 @@ export function resolveConfiguredWorkerAgent(
     }
     const parsed = tokenizeStartupCommand(command, resolveStartupShell(platform))
     // A command wrapper cannot attest which CLI grammar its arguments implement.
-    if (!parsed.ok || parsed.tokens.length !== 1) {
+    if (
+      !parsed.ok ||
+      parsed.tokens.length !== 1 ||
+      parsed.spans.some((span) => span.divergesFromShell)
+    ) {
       continue
     }
     const executable = parsed.tokens[0]
-    const name = (
-      executable.includes('\\') ? win32.basename(executable) : basename(executable)
-    ).replace(/\.(?:exe|cmd|bat)$/i, '')
+    const name = getCommandTokenPathBasename(executable).replace(/\.(?:exe|cmd|bat)$/i, '')
     if (name === selector) {
       matches.push(agent)
     }
