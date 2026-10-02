@@ -51,9 +51,75 @@ export function resolveTerminalPaneForEnvPaneKey<T extends EnvPaneKeyTerminal>(
     }
     carrier = terminal
   }
-  if (!carrier) {
-    return undefined
+  return carrier ? currentPaneOf(carrier, paneKey, source) : undefined
+}
+
+export type MovedEnvPaneKey = {
+  fromPaneKey: string
+  toPaneKey: string
+  connectionId: string | null
+}
+
+/** Every exported key whose terminal now shows another pane, in one indexed pass over the records. */
+export function collectMovedEnvPaneKeys<T extends EnvPaneKeyTerminal>(
+  source: EnvPaneKeyRoutingSource<T>
+): MovedEnvPaneKey[] {
+  const live = [...source.terminals].filter((terminal) => source.isLive(terminal))
+  const shown = new Set(live.map((terminal) => `${terminal.connectionId}\0${terminal.paneKey}`))
+  const carriers = new Map<string, number>()
+  for (const terminal of live) {
+    if (terminal.envPaneKey) {
+      const key = `${terminal.connectionId}\0${terminal.envPaneKey}`
+      carriers.set(key, (carriers.get(key) ?? 0) + 1)
+    }
   }
+  const moved: MovedEnvPaneKey[] = []
+  for (const terminal of live) {
+    const fromPaneKey = terminal.envPaneKey
+    const scoped = `${terminal.connectionId}\0${fromPaneKey}`
+    if (
+      !fromPaneKey ||
+      fromPaneKey === terminal.paneKey ||
+      !parsePaneKey(fromPaneKey) ||
+      shown.has(scoped) ||
+      carriers.get(scoped) !== 1
+    ) {
+      continue
+    }
+    const toPaneKey = currentPaneOf(terminal, fromPaneKey, source)
+    if (toPaneKey) {
+      moved.push({ fromPaneKey, toPaneKey, connectionId: terminal.connectionId })
+    }
+  }
+  return moved
+}
+
+/** True when no other live terminal shows or exported this terminal's exported key. */
+export function ownsEnvPaneKeyAlone<T extends EnvPaneKeyTerminal>(
+  terminal: T,
+  source: EnvPaneKeyRoutingSource<T>
+): boolean {
+  const key = terminal.envPaneKey
+  if (!key) {
+    return false
+  }
+  for (const other of source.terminals) {
+    if (
+      other.ptyId !== terminal.ptyId &&
+      (other.paneKey === key || other.envPaneKey === key) &&
+      source.isLive(other)
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function currentPaneOf<T extends EnvPaneKeyTerminal>(
+  carrier: T,
+  paneKey: string,
+  source: EnvPaneKeyRoutingSource<T>
+): string | undefined {
   const mounted = new Set(source.currentPaneKeys(carrier))
   if (mounted.size === 0 && carrier.paneKey) {
     mounted.add(carrier.paneKey)
@@ -63,22 +129,4 @@ export function resolveTerminalPaneForEnvPaneKey<T extends EnvPaneKeyTerminal>(
   }
   const [current] = mounted
   return current && parsePaneKey(current) ? current : undefined
-}
-
-/** Exported keys whose terminal now shows a different pane: the keys whose rows the store must move. */
-export function collectMovedEnvPaneKeys<T extends EnvPaneKeyTerminal>(
-  source: EnvPaneKeyRoutingSource<T>
-): string[] {
-  const moved: string[] = []
-  for (const terminal of source.terminals) {
-    const envPaneKey = terminal.envPaneKey
-    if (
-      envPaneKey &&
-      envPaneKey !== terminal.paneKey &&
-      resolveTerminalPaneForEnvPaneKey(envPaneKey, source) !== undefined
-    ) {
-      moved.push(envPaneKey)
-    }
-  }
-  return moved
 }

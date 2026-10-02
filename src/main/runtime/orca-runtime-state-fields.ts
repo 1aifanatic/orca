@@ -87,7 +87,9 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>
       reconcileAgentStatusForEndedProcess?: (paneKeys: Iterable<string>) => void
       // Why: a terminal can outlive the pane its environment names; the store moves those rows.
-      reconcileAgentStatusForMovedTerminals?: (envPaneKeys: readonly string[]) => void
+      reconcileAgentStatusForMovedTerminals?: (
+        moves: readonly { fromPaneKey: string; toPaneKey: string; connectionId: string | null }[]
+      ) => void
       canRecoverPersistentLocalPtys?: () => boolean
       // Why: the device registry lives on the RPC server, which is constructed with this runtime;
       // a closure defers the lookup past that ordering instead of inverting ownership.

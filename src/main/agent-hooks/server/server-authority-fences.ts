@@ -244,14 +244,22 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     return changed
   }
 
-  protected normalizeHookBodyPaneKeyAlias(body: unknown): unknown {
+  protected normalizeHookBodyPaneKeyAlias(
+    body: unknown,
+    options: { routeToTerminal: boolean } = { routeToTerminal: true }
+  ): unknown {
     if (typeof body !== 'object' || body === null) {
       return body
     }
     const record = body as Record<string, unknown>
     const rawPaneKey = typeof record.paneKey === 'string' ? record.paneKey.trim() : ''
-    // Local HTTP and spool posts come only from this machine's terminals.
-    const stablePaneKey = rawPaneKey ? this.resolveHookPaneKey(rawPaneKey, null) : rawPaneKey
+    // Local HTTP posts come only from this machine's terminals. Spool replay is checked against
+    // fences recorded under the posted key, so it stays on that key; reconcile moves it later.
+    const stablePaneKey = !rawPaneKey
+      ? rawPaneKey
+      : options.routeToTerminal
+        ? this.resolveHookPaneKey(rawPaneKey, null)
+        : this.resolvePaneKeyAlias(rawPaneKey)
     if (stablePaneKey === rawPaneKey) {
       return body
     }

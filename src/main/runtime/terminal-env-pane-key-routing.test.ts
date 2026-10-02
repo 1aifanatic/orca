@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import {
   collectMovedEnvPaneKeys,
+  ownsEnvPaneKeyAlone,
   resolveTerminalPaneForEnvPaneKey,
   type EnvPaneKeyTerminal
 } from './terminal-env-pane-key-routing'
@@ -86,7 +87,7 @@ describe('resolveTerminalPaneForEnvPaneKey', () => {
 })
 
 describe('collectMovedEnvPaneKeys', () => {
-  it('lists only the exported keys whose terminal now shows another pane', () => {
+  it('pairs each exported key with the pane its terminal shows now, scoped to its host', () => {
     expect(
       collectMovedEnvPaneKeys(
         source([
@@ -95,6 +96,58 @@ describe('collectMovedEnvPaneKeys', () => {
           { ptyId: 'pty-3', paneKey: OTHER, connectionId: null }
         ])
       )
-    ).toEqual([OLD])
+    ).toEqual([{ fromPaneKey: OLD, toPaneKey: NEW, connectionId: null }])
+  })
+
+  it.each<[string, Terminal[]]>([
+    [
+      'another live terminal shows that pane',
+      [moved, { ptyId: 'pty-2', paneKey: OLD, connectionId: null }]
+    ],
+    [
+      'another live terminal exported the same key',
+      [moved, { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OLD, connectionId: null }]
+    ],
+    ['the terminal exited', [{ ...moved, exited: true }]],
+    ['the terminal shows in two panes', [{ ...moved, mounted: [NEW, OTHER] }]]
+  ])('reports no move when %s', (_case, terminals) => {
+    expect(collectMovedEnvPaneKeys(source(terminals))).toEqual([])
+  })
+
+  it('keeps a key exported on two hosts apart', () => {
+    const remote: Terminal = {
+      ptyId: 'pty-2',
+      paneKey: OTHER,
+      envPaneKey: OLD,
+      connectionId: 'ssh-a'
+    }
+    expect(collectMovedEnvPaneKeys(source([moved, remote]))).toEqual([
+      { fromPaneKey: OLD, toPaneKey: NEW, connectionId: null },
+      { fromPaneKey: OLD, toPaneKey: OTHER, connectionId: 'ssh-a' }
+    ])
+  })
+})
+
+describe('ownsEnvPaneKeyAlone', () => {
+  it('is false when another live terminal shows or exported the key', () => {
+    expect(ownsEnvPaneKeyAlone(moved, source([moved]))).toBe(true)
+    expect(
+      ownsEnvPaneKeyAlone(
+        moved,
+        source([moved, { ptyId: 'pty-2', paneKey: OLD, connectionId: null }])
+      )
+    ).toBe(false)
+    expect(
+      ownsEnvPaneKeyAlone(
+        moved,
+        source([moved, { ptyId: 'pty-2', paneKey: OTHER, envPaneKey: OLD, connectionId: null }])
+      )
+    ).toBe(false)
+    expect(
+      ownsEnvPaneKeyAlone(
+        moved,
+        source([moved, { ptyId: 'pty-2', paneKey: OLD, connectionId: null, exited: true }])
+      )
+    ).toBe(true)
   })
 })

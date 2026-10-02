@@ -62,7 +62,10 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
         wslDistro,
         tabId: state.tabId ?? null,
         paneKey: state.paneKey ?? null,
-        envPaneKey: state.envPaneKey && parsePaneKey(state.envPaneKey) ? state.envPaneKey : null,
+        envPaneKey:
+          typeof state.envPaneKey === 'string' && parsePaneKey(state.envPaneKey)
+            ? state.envPaneKey
+            : null,
         // A PTY the runtime is meeting for the first time has no prior observation for a graph
         // statement to contradict, and the leaf map cannot answer for a pane no statement has ever
         // named — a headless workspace has no renderer graph at all. The next statement decides it.
@@ -133,7 +136,10 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
       pty.envPaneKey = null
     }
     // Why validated here: inventory rows come from a daemon or relay of any version.
-    const envPaneKey = state.envPaneKey && parsePaneKey(state.envPaneKey) ? state.envPaneKey : null
+    const envPaneKey =
+      typeof state.envPaneKey === 'string' && parsePaneKey(state.envPaneKey)
+        ? state.envPaneKey
+        : null
     const envPaneKeyLearned = envPaneKey !== null && envPaneKey !== pty.envPaneKey
     if (envPaneKeyLearned) {
       pty.envPaneKey = envPaneKey

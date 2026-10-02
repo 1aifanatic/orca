@@ -30,7 +30,9 @@ export function makeAgentStatusStoreWiring(): {
     reconcileAgentStatusForEndedProcess: (
       paneKeys: Parameters<AgentHookServer['reconcileEndedProcessForPaneKeys']>[0]
     ) => void
-    reconcileAgentStatusForMovedTerminals: (envPaneKeys: readonly string[]) => void
+    reconcileAgentStatusForMovedTerminals: (
+      moves: Parameters<AgentHookServer['reconcileMovedTerminalPaneKeys']>[0]
+    ) => void
   }
   /** Call once the runtime exists; returns the republish teardown. */
   attach: (runtime: WiredRuntime) => () => void
@@ -48,8 +50,8 @@ export function makeAgentStatusStoreWiring(): {
       reconcileAgentStatusForEndedProcess: (paneKeys) => {
         statusStore.reconcileEndedProcessForPaneKeys(paneKeys)
       },
-      reconcileAgentStatusForMovedTerminals: (envPaneKeys) =>
-        statusStore.reconcileMovedTerminalPaneKeys(envPaneKeys)
+      reconcileAgentStatusForMovedTerminals: (moves) =>
+        statusStore.reconcileMovedTerminalPaneKeys(moves)
     },
     attach: (runtime) => {
       statusStore.setTerminalPaneResolver((paneKey, connectionId) =>

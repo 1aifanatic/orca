@@ -95,11 +95,8 @@ function bindToRecordedSurface(
   }
   if (!tabExists(store, recorded.tabId)) {
     return (
-      !hasClosedTerminalTabRecord(
-        store.closedTerminalTabTombstonesByTabId,
-        recorded.tabId,
-        worktreeId
-      ) && bindLivePtyToExactSurface(store, worktreeId, recorded)
+      !hasClosedTerminalTabRecord(store.closedTerminalTabTombstonesByTabId, recorded.tabId) &&
+      bindLivePtyToExactSurface(store, worktreeId, recorded)
     )
   }
   const heldPtyId = store.terminalLayoutsByTabId[recorded.tabId]?.ptyIdsByLeafId?.[pane.leafId]

@@ -422,11 +422,12 @@ process — `envPaneKey` on the daemon session and the relay's PTY record, publi
 as an optional field on their listings, and on the runtime's PTY record for a fresh
 spawn. The record dies with the process, so it needs no TTL.
 
-- **Ingress.** HTTP, spool-replay and relay posts resolve through
+- **Ingress.** HTTP and relay posts resolve through
   `resolveHookPaneKey`: the runtime names the pane the live terminal carrying that
   key shows now (`terminal-env-pane-key-routing.ts`), then the alias table, then the
   key itself. Only a terminal on the host the post came from qualifies, and a local
-  record whose process was seen to exit does not. The runtime refuses to guess when the key already names a live pane,
+  record whose process was seen to exit does not. Spool replay stays on the posted
+  key, because its launch-token fence is recorded there; the move below follows. The runtime refuses to guess when the key already names a live pane,
   two live terminals exported it, or the terminal is mounted in more than one pane.
 - **Rows already filed under the exported key** move to the current pane when the
   runtime learns of the move (registration, graph sync, inventory), through the
@@ -436,7 +437,7 @@ spawn. The record dies with the process, so it needs no TTL.
 - **Cleanup is not routed.** Clears, dismissals and retirements are handed layout
   keys, so a dead layout key never reaches the pane its process moved to.
 - **Exit** clears rows under the exported key as well as the current pane, unless
-  another live terminal shows that pane.
+  another live terminal shows that pane or exported the same key.
 
 A daemon or relay that predates the field behaves as before: the persisted binding
 when incarnations match, otherwise the row stays where it lands. Rows remain keyed

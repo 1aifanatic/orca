@@ -1,6 +1,7 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
 import { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
+import type { MovedEnvPaneKey } from './terminal-env-pane-key-routing'
 import type { IPtyProvider } from '../providers/types'
 import type {
   AgentSessionCreateOperation,
@@ -99,7 +100,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | null
 
   protected readonly reconcileAgentStatusForMovedTerminalsFn:
-    | ((envPaneKeys: readonly string[]) => void)
+    | ((moves: readonly MovedEnvPaneKey[]) => void)
     | null
 
   protected readonly canRecoverPersistentLocalPtysFn: () => boolean

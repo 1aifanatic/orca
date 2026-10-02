@@ -16,6 +16,7 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   collectMovedEnvPaneKeys,
+  ownsEnvPaneKeyAlone,
   resolveTerminalPaneForEnvPaneKey,
   type EnvPaneKeyRoutingSource
 } from './terminal-env-pane-key-routing'
@@ -71,18 +72,10 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
       }
     }
     // Why: the process's hooks post its exported key, so rows filed there before the host could
-    // route them belong to it too, unless another live terminal shows that pane now.
-    const envPaneKey = this.ptysById.get(ptyId)?.envPaneKey
-    if (
-      envPaneKey &&
-      ![...this.ptysById.values()].some(
-        (other) =>
-          other.ptyId !== ptyId &&
-          other.paneKey === envPaneKey &&
-          this.getPtyLivenessVerdict(other.ptyId)?.status !== 'exited'
-      )
-    ) {
-      paneKeys.add(envPaneKey)
+    // route them belong to it too, unless another live terminal shows or exported that key.
+    const pty = this.ptysById.get(ptyId)
+    if (pty?.envPaneKey && ownsEnvPaneKeyAlone(pty, this.envPaneKeyRoutingSource())) {
+      paneKeys.add(pty.envPaneKey)
     }
     return paneKeys
   }
@@ -92,7 +85,7 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     return resolveTerminalPaneForEnvPaneKey(paneKey, this.envPaneKeyRoutingSource(), connectionId)
   }
 
-  /** Hands the store every exported key whose terminal now shows another pane, so it moves the rows. */
+  /** Hands the store each exported key's move, so it moves the rows filed there. */
   protected reconcileMovedTerminalAgentStatus(): void {
     if (!this.reconcileAgentStatusForMovedTerminalsFn) {
       return

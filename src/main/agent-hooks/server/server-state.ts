@@ -249,7 +249,10 @@ export abstract class AgentHookServerState {
   protected abstract restoreRetiredPaneFence(fence: RetiredPaneFence): void
   protected abstract revokeHydratedAuthorityForPaneKeys(paneKeys: ReadonlySet<string>): boolean
   protected abstract resolvePaneKeyAlias(paneKey: string): string
-  protected abstract normalizeHookBodyPaneKeyAlias(body: unknown): unknown
+  protected abstract normalizeHookBodyPaneKeyAlias(
+    body: unknown,
+    options?: { routeToTerminal: boolean }
+  ): unknown
   protected abstract normalizeLocalHookPayload(
     source: AgentHookSource,
     body: unknown

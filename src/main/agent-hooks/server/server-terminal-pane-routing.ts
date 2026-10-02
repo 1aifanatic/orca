@@ -1,11 +1,17 @@
 import {
   clearPaneCacheState,
-  deleteLegacyAgentStatus,
   paneHasStateClaims
 } from '../../../shared/agent-hook-listener/listener-state'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 import { isValidPaneKey } from './server-status-identity'
 import type { EnrichedAgentHookEventPayload } from './server-types'
+
+export type TerminalPaneMove = {
+  fromPaneKey: string
+  toPaneKey: string
+  /** The host that runs the terminal; rows from any other host are never moved. */
+  connectionId: string | null
+}
 
 /** Moves state filed under a terminal's exported pane key to the pane it shows now; no alias is minted. */
 export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServerAuthorityFences {
@@ -15,40 +21,51 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
     this.terminalPaneResolver = resolver
   }
 
-  reconcileMovedTerminalPaneKeys(envPaneKeys: readonly string[]): void {
-    for (const fromPaneKey of envPaneKeys) {
-      if (!isValidPaneKey(fromPaneKey) || !this.holdsPaneAuthorityState(fromPaneKey)) {
-        continue
-      }
-      const toPaneKey = this.terminalPaneResolver?.(fromPaneKey)
+  reconcileMovedTerminalPaneKeys(moves: readonly TerminalPaneMove[]): void {
+    for (const { fromPaneKey, toPaneKey, connectionId } of moves) {
+      const fromRow = this.statusRow(fromPaneKey)
       if (
-        !toPaneKey ||
-        toPaneKey === fromPaneKey ||
+        fromPaneKey === toPaneKey ||
+        !isValidPaneKey(fromPaneKey) ||
         !isValidPaneKey(toPaneKey) ||
+        !this.holdsPaneAuthorityState(fromPaneKey) ||
+        (fromRow !== undefined && (fromRow.connectionId ?? null) !== connectionId) ||
         this.isClosedAgentStatusTabForPaneKey(toPaneKey)
       ) {
         continue
       }
       this.takeRetiredPaneRestartId(fromPaneKey)
       this.takeRetiredPaneRestartId(toPaneKey)
-      const fromRow = this.statusRow(fromPaneKey)
+      this.repointPaneKeyAliases(fromPaneKey, toPaneKey)
       const toRow = this.statusRow(toPaneKey)
       if (toRow && (!fromRow || fromRow.receivedAt <= toRow.receivedAt)) {
-        this.retireSupersededPaneKey(fromPaneKey, toPaneKey)
+        this.carryLaunchAuthority(fromPaneKey, toPaneKey)
+        this.clearRawPaneState(fromPaneKey)
         continue
       }
       if (toRow) {
-        // The exported key's row is newer: the pane's own older row yields to it.
-        deleteLegacyAgentStatus(this.state, toPaneKey)
-        this.commitStatusRowMutation(toRow, undefined)
+        // The exported key's row is newer: the pane's own older state yields to it entirely.
+        this.clearRawPaneState(toPaneKey)
       }
       this.commitMovedPaneAuthorityState(this.movePaneAuthorityState(fromPaneKey, toPaneKey), true)
     }
   }
 
-  // Raw key, never through an alias; launch authority the pane lacks is kept so later posts verify.
-  private retireSupersededPaneKey(fromPaneKey: string, toPaneKey: string): void {
-    const row = this.statusRow(fromPaneKey)
+  private repointPaneKeyAliases(fromPaneKey: string, toPaneKey: string): void {
+    let changed = false
+    for (const [physicalPaneKey, entry] of this.legacyPaneKeyAliases) {
+      if (entry.stablePaneKey === fromPaneKey) {
+        this.legacyPaneKeyAliases.set(physicalPaneKey, { ...entry, stablePaneKey: toPaneKey })
+        changed = true
+      }
+    }
+    if (changed) {
+      this.notifyPaneKeyAliasPersistenceListener()
+    }
+  }
+
+  // Why: the superseded key's process still posts; keep its launch authority where the pane lacks one.
+  private carryLaunchAuthority(fromPaneKey: string, toPaneKey: string): void {
     const tokenHash = this.hydratedLaunchTokenHashByPaneKey.get(fromPaneKey)
     if (tokenHash && !this.hydratedLaunchTokenHashByPaneKey.has(toPaneKey)) {
       this.hydratedLaunchTokenHashByPaneKey.set(toPaneKey, tokenHash)
@@ -60,19 +77,25 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
         Object.freeze({ ...commitment, paneKey: toPaneKey })
       )
     }
-    this.hydratedLaunchTokenHashByPaneKey.delete(fromPaneKey)
-    this.persistedAuthorityCommitmentsByPaneKey.delete(fromPaneKey)
-    this.clearAssistantMessageRetry(fromPaneKey)
-    this.clearTranscriptPoll(fromPaneKey)
-    clearPaneCacheState(this.state, fromPaneKey)
-    this.activeHookTurnCompletedAtByPaneKey.delete(fromPaneKey)
-    this.runtimeObservedStatusPaneKeys.delete(fromPaneKey)
-    this.currentAuthorityObservations.delete(fromPaneKey)
-    this.promptSentDedupeByPaneKey.delete(fromPaneKey)
-    this.evidenceObservedAtByPaneKey.delete(fromPaneKey)
+  }
+
+  // Raw key, never through an alias: an alias owner is a different pane.
+  private clearRawPaneState(paneKey: string): void {
+    const row = this.statusRow(paneKey)
+    this.hydratedLaunchTokenHashByPaneKey.delete(paneKey)
+    this.persistedAuthorityCommitmentsByPaneKey.delete(paneKey)
+    this.restartedStatusLaunchTokenHashByPaneKey.delete(paneKey)
+    this.clearAssistantMessageRetry(paneKey)
+    this.clearTranscriptPoll(paneKey)
+    clearPaneCacheState(this.state, paneKey)
+    this.activeHookTurnCompletedAtByPaneKey.delete(paneKey)
+    this.runtimeObservedStatusPaneKeys.delete(paneKey)
+    this.currentAuthorityObservations.delete(paneKey)
+    this.promptSentDedupeByPaneKey.delete(paneKey)
+    this.evidenceObservedAtByPaneKey.delete(paneKey)
     if (row) {
       this.commitStatusRowMutation(row, undefined)
-      this.emitPaneStatusCleared({ paneKey: fromPaneKey })
+      this.emitPaneStatusCleared({ paneKey })
     }
     this.scheduleStatusPersist()
     this.notifyStatusChangeListeners()
@@ -88,7 +111,8 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
       paneHasStateClaims(this.state, paneKey) ||
       this.hydratedLaunchTokenHashByPaneKey.has(paneKey) ||
       this.persistedAuthorityCommitmentsByPaneKey.has(paneKey) ||
-      this.currentAuthorityObservations.has(paneKey)
+      this.currentAuthorityObservations.has(paneKey) ||
+      this.restartedStatusLaunchTokenHashByPaneKey.has(paneKey)
     )
   }
 }

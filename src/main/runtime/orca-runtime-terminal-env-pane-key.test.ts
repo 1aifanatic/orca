@@ -177,6 +177,13 @@ describe('hook status follows a terminal that outlived its pane', () => {
     expect(statusPaneKeys()).toEqual([OLD_PANE])
   })
 
+  it('survives a relay row whose exported key is not a string', async () => {
+    processes = listing(JSON.parse('{"envPaneKey":42}'))
+
+    await expect(runtime.readInventory()).resolves.not.toBeNull()
+    expect(runtime.resolveAgentHookTerminalPane(OLD_PANE)).toBeUndefined()
+  })
+
   it('keeps today’s behavior with a daemon or relay that predates the field', async () => {
     processes = listing()
     await runtime.readInventory()

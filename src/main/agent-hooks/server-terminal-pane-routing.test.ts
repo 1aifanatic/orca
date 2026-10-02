@@ -14,6 +14,7 @@ vi.mock('../telemetry/cohort-classifier', () => ({
 // FRESH_PANE (a tab the adoption path minted with a new id).
 const movedTerminal = (paneKey: string): string | undefined =>
   paneKey === OLD_PANE ? FRESH_PANE : undefined
+const MOVE = { fromPaneKey: OLD_PANE, toPaneKey: FRESH_PANE, connectionId: null }
 
 function postFromSpawnedPane(server: AgentHookServer, prompt: string): Promise<Response> {
   return postHookEvent(
@@ -61,7 +62,7 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([OLD_PANE])
 
     server.setTerminalPaneResolver(movedTerminal)
-    server.reconcileMovedTerminalPaneKeys([OLD_PANE])
+    server.reconcileMovedTerminalPaneKeys([MOVE])
 
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({
@@ -88,11 +89,29 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     await postFromSpawnedPane(server, 'newer from the process')
 
     server.setTerminalPaneResolver(movedTerminal)
-    server.reconcileMovedTerminalPaneKeys([OLD_PANE])
+    server.reconcileMovedTerminalPaneKeys([MOVE])
 
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'newer from the process' })
     ])
+  })
+
+  it('never moves a row posted by another host onto a terminal’s pane', async () => {
+    server.ingestRemote(
+      {
+        paneKey: OLD_PANE,
+        tabId: 'tab-old',
+        worktreeId: 'wt-1',
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'remote', agentType: 'claude' }
+      },
+      'ssh-other'
+    )
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+
+    expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([OLD_PANE])
   })
 
   it('drops the spawn-key row when the live pane already reports for itself', async () => {
@@ -106,7 +125,7 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     )
 
     server.setTerminalPaneResolver(movedTerminal)
-    server.reconcileMovedTerminalPaneKeys([OLD_PANE])
+    server.reconcileMovedTerminalPaneKeys([MOVE])
 
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'current' })
