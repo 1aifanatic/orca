@@ -1,151 +1,122 @@
-name: Warm shared CI caches
-
+name: Alpine verification record comparison
 on:
-  schedule:
-    - cron: '41 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/install-node-dependencies/**'
-      - '.github/actions/prepare-native-runtime/**'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.npmrc'
-      - '.pnpmfile.cjs'
-      - 'config/tsconfig*.json'
-      - 'config/scripts/ensure-native-runtime.mjs'
-      - 'config/scripts/rebuild-native-deps.mjs'
-      - 'config/scripts/node-pty-job-ownership.cjs'
-      - 'config/scripts/windows-pe-machine.cjs'
-      - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
-      - 'config/scripts/windows-process-tree-creation-time.cjs'
-      - 'config/scripts/install-electron-package-binary.mjs'
-      - 'config/scripts/electron-platform-path.mjs'
-      - 'config/scripts/zip-extractor-command.mjs'
-      - 'src/shared/zip-extractor-command.ts'
-      - 'config/scripts/shared-electron-dist-cache.mjs'
-      - 'config/scripts/space-sharing-copy.mjs'
-      - 'config/patches/node-pty@1.1.0.patch'
-      - 'config/patches/@vscode__windows-process-tree@0.8.0.patch'
-      - 'native/windows-registry/**'
-  pull_request:
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'config/scripts/ci-cache-warmup-workflow.test.mjs'
-
 permissions:
   contents: read
-
 concurrency:
-  group: ci-cache-warmup-${{ github.event.pull_request.number || github.ref }}
-  # Hourly retries must let an active warmer finish publishing its caches.
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
-
+  group: alpine-verification-comparison-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  warm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      # Default-branch caches can be restored by every PR; PR caches cannot.
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-
-      - uses: ./.github/actions/prepare-git-compatibility
-
-      - name: Cache TypeScript incremental state
-        id: typecheck-cache
-        uses: actions/cache@v5
-        with:
-          path: config/*.tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.sha }}
-          restore-keys: |
-            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
-
-      - name: Refresh TypeScript state for this commit
-        if: steps.typecheck-cache.outputs.cache-hit != 'true'
-        run: pnpm run typecheck
-
-  warm-linux-arm:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-windows:
+  compare:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+        runner: [ubuntu-22.04, ubuntu-24.04-arm]
+        replicate: [1, 2, 3]
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
+      REPLICATE: ${{ matrix.replicate }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
+      - name: Prepare identical toolchains and isolated input files
+        shell: bash
+        run: |
+          trial_root="$RUNNER_TEMP/verification-comparison"
+          mkdir -p "$trial_root/fixture/native/windows-registry" "$trial_root/fixture/config" "$trial_root/results/baseline" "$trial_root/results/cached"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$trial_root/fixture/"
+          cp native/windows-registry/package.json "$trial_root/fixture/native/windows-registry/"
+          cp -R config/patches "$trial_root/fixture/config/"
+          if [ -f .npmrc ]; then cp .npmrc "$trial_root/fixture/"; fi
+          cat > "$trial_root/Dockerfile" <<'DOCKERFILE'
+          FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          ARG PNPM_SPEC
+          RUN apk add --no-cache bash git libstdc++ python3 make g++ && npm install -g "$PNPM_SPEC"
+          DOCKERFILE
+          docker build --build-arg "PNPM_SPEC=$(node -p "require('./package.json').packageManager.split('+')[0]")" -t orca-verification-trial "$trial_root"
+          cat > "$trial_root/run-comparison.sh" <<'SCRIPT'
+          set -euo pipefail
+          trial_root="$RUNNER_TEMP/verification-comparison"
+          export TRIAL_RESULTS="$trial_root/results/$POLICY"
+          export TRIAL_START="$trial_root/$POLICY-start"
+          if [ "$POLICY" = baseline ]; then
+            node -e 'require("node:fs").writeFileSync(process.env.TRIAL_START, process.hrtime.bigint().toString())'
+          fi
+          docker_args=(run --rm -i -e ORCA_BACKGROUND_LAUNCH=1 -v "$trial_root/fixture:/input:ro" -v "$TRIAL_RESULTS:/results")
+          if [ "$POLICY" = cached ]; then
+            test "$CACHE_HIT" = true
+            test -s "$CACHE_DIRECTORY/lockfile-verified.jsonl"
+            docker_args+=(-v "$CACHE_DIRECTORY:/root/.cache/pnpm")
+          fi
+          docker "${docker_args[@]}" orca-verification-trial sh -s <<'CONTAINER'
+          set -eu
+          mkdir /project
+          cp -R /input/. /project/
+          cd /project
+          sha256sum package.json pnpm-lock.yaml pnpm-workspace.yaml > /results/manifests-before.sha
+          pnpm install --frozen-lockfile --ignore-scripts > /results/install.log 2>&1
+          sha256sum package.json pnpm-lock.yaml pnpm-workspace.yaml > /results/manifests-after.sha
+          cmp /results/manifests-before.sha /results/manifests-after.sha
+          node --version > /results/node-version.txt
+          pnpm --version > /results/pnpm-version.txt
+          CONTAINER
+          node --input-type=module <<'MEASURE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import assert from 'node:assert/strict'
+          const elapsedMs=Number(process.hrtime.bigint()-BigInt(readFileSync(process.env.TRIAL_START,'utf8')))/1e6
+          const root=process.env.TRIAL_RESULTS
+          const log=readFileSync(`${root}/install.log`,'utf8')
+          assert.match(log,/Lockfile passes supply-chain policies/)
+          if(process.env.POLICY==='cached') assert.match(log,/policies \(verified /)
+          else assert.match(log,/entries in /)
+          const result={policy:process.env.POLICY,replicate:process.env.REPLICATE,elapsedMs,cacheHit:process.env.CACHE_HIT??null,node:readFileSync(`${root}/node-version.txt`,'utf8').trim(),pnpm:readFileSync(`${root}/pnpm-version.txt`,'utf8').trim(),runner:process.env.RUNNER_ARCH,image:process.env.ImageVersion}
+          writeFileSync(`${root}/measurement.json`,JSON.stringify(result,null,2))
+          console.log(JSON.stringify(result))
+          MEASURE
+          SCRIPT
+      - name: Baseline first
+        if: matrix.replicate != 2
+        env:
+          POLICY: baseline
+        run: bash "$RUNNER_TEMP/verification-comparison/run-comparison.sh"
+      - name: Start the cached interval
+        run: node -e 'require("node:fs").writeFileSync(require("node:path").join(process.env.RUNNER_TEMP,"verification-comparison","cached-start"), process.hrtime.bigint().toString())'
+      - uses: pnpm/setup@v2
         with:
-          native-runtime: node
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-linux-package-fixtures:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
+          install: false
+      - name: Resolve the existing main cache identity
+        id: identity
+        env:
+          POLICY_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc') }}
+        run: |
+          cache_directory="$(pnpm cache path)"
+          {
+            printf 'directory=%s\n' "$cache_directory"
+            printf 'path=%s/lockfile-verified.jsonl\n' "$cache_directory"
+            printf 'key=pnpm-verification-v1-%s-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$(pnpm --version)" "$POLICY_HASH"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v5
+        id: restore
         with:
-          persist-credentials: false
-      - uses: ./.github/actions/prepare-linux-package-fixture
+          path: ${{ steps.identity.outputs.path }}
+          key: ${{ steps.identity.outputs.key }}
+      - name: Cached verification
+        env:
+          POLICY: cached
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_DIRECTORY: ${{ steps.identity.outputs.directory }}
+        run: bash "$RUNNER_TEMP/verification-comparison/run-comparison.sh"
+      - name: Baseline second
+        if: matrix.replicate == 2
+        env:
+          POLICY: baseline
+        run: bash "$RUNNER_TEMP/verification-comparison/run-comparison.sh"
+      - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          fixture: daemon-shutdown-descendants
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: headless-serve-shutdown
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: cli-launch-contract
-          save-cache: ${{ github.event_name != 'pull_request' }}
+          name: alpine-verification-${{ matrix.runner }}-${{ matrix.replicate }}
+          path: ${{ runner.temp }}/verification-comparison/results
+          retention-days: 7
