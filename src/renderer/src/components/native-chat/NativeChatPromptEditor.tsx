@@ -29,6 +29,8 @@ type Props = Omit<HTMLAttributes<HTMLDivElement>, 'onChange' | 'onSelect'> & {
   initialValue: string
   disabled: boolean
   placeholder: string
+  /** Draws the placeholder while disabled too: it then says why the editor is locked. */
+  placeholderWhenDisabled?: boolean
   onChange: (input: NativeChatComposerInput) => void
   onSelect: (input: NativeChatComposerInput) => void
 }
@@ -39,6 +41,7 @@ export function NativeChatPromptEditor({
   initialValue,
   disabled,
   placeholder,
+  placeholderWhenDisabled = false,
   onChange,
   onSelect,
   className,
@@ -46,6 +49,8 @@ export function NativeChatPromptEditor({
 }: Props): React.JSX.Element {
   const placeholderRef = useRef(placeholder)
   placeholderRef.current = placeholder
+  const placeholderWhenDisabledRef = useRef(placeholderWhenDisabled)
+  placeholderWhenDisabledRef.current = placeholderWhenDisabled
   const editor = useEditor(
     {
       extensions: [
@@ -68,7 +73,12 @@ export function NativeChatPromptEditor({
           trailingNode: false
         }),
         NativeChatSkill,
-        Placeholder.configure({ placeholder: () => placeholderRef.current })
+        // Every other disabled editor keeps drawing no placeholder, as the default option would.
+        Placeholder.configure({
+          showOnlyWhenEditable: false,
+          placeholder: ({ editor: current }) =>
+            current.isEditable || placeholderWhenDisabledRef.current ? placeholderRef.current : ''
+        })
       ],
       content:
         (scopeKey && readNativeChatDraftDocument(scopeKey, initialValue)) ||

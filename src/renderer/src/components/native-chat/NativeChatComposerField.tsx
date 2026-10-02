@@ -265,6 +265,7 @@ export function NativeChatComposerField({
                   ? `${pickerListboxId}-option-${Math.min(activeSuggestion, autocomplete.items.length - 1)}`
                   : undefined
               }
+              placeholderWhenDisabled={lockReason !== undefined}
               placeholder={
                 goalMode?.active
                   ? translate(
