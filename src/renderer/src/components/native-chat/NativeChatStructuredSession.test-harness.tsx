@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
@@ -52,8 +53,7 @@ type StructuredSessionMessageListProps = {
   allowFileUriLinks?: boolean
   isVisible?: boolean
   onLinkClick?: (...args: unknown[]) => void
-  showTurnStatus?: boolean
-  showLiveTurnActivity?: boolean
+  awaitingInput?: 'shown' | 'unshown' | null
   isWorking?: boolean
   runtimeContext?: unknown
   session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
@@ -75,24 +75,26 @@ export function createStructuredSessionMocks() {
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
     launchResumes: false,
-    retryLaunch: vi.fn<(...args: never[]) => unknown>(),
+    retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
     readRefusal: absent<AgentSessionRefusalReference>(),
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
-    composerProps: null as null | {
+    composerProps: nullable<{
       launchSeed?: NativeChatLaunchSeed
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
-    },
+      onStop?: () => void
+    }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
     promptItems: [] as AgentJournalRenderItem[],
     journalItems: new Array<AgentJournalRenderItem>(),
     respond: vi.fn<(...args: never[]) => unknown>(),
     cancel: vi.fn<(...args: never[]) => unknown>(),
+    stop: vi.fn<() => unknown>(),
     handlePasteEvent: vi.fn<(...args: never[]) => unknown>(),
     pasteFromClipboard: vi.fn<(...args: never[]) => unknown>(),
     submissions: [] as unknown[],
@@ -100,6 +102,8 @@ export function createStructuredSessionMocks() {
     showBackgroundTasks: false,
     isWorking: false,
     turnId: null as string | null,
+    // Unset: Stop follows the turn, as against an older host.
+    canStop: nullable<boolean>(),
     supportsBackgroundTaskStop: false,
     supportsBackgroundTaskStopAll: true,
     backgroundTasks: [] as AgentSessionBackgroundTask[],
@@ -109,7 +113,12 @@ export function createStructuredSessionMocks() {
     hasOlder: false,
     loadingOlder: false,
     olderHistoryGeneration: 0,
-    loadOlder: vi.fn<() => Promise<NativeChatOlderPageResult>>()
+    loadOlder: vi.fn<() => Promise<NativeChatOlderPageResult>>(),
+    queuedCards: Array.of<QueuedMessageCard>(),
+    queuedSteer: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
+    queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
+    queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
+    queuedSteerNewest: vi.fn<() => boolean>(() => false)
   }
 
   const moduleFactories = {
@@ -165,8 +174,8 @@ export function createStructuredSessionMocks() {
             loadOlder: mocks.loadOlder,
             prompts: mocks.promptItems,
             outbox: outbox.outbox,
+            failedHere: outbox.failedHere,
             submissions: mocks.submissions,
-            blockedClientMessageId: outbox.blockedClientMessageId,
             send: outbox.send,
             retry: outbox.retry,
             isWorking: mocks.isWorking,
@@ -179,6 +188,15 @@ export function createStructuredSessionMocks() {
               supportsStopAll: mocks.supportsBackgroundTaskStopAll
             },
             turnId: mocks.turnId,
+            canStop: mocks.canStop ?? mocks.turnId !== null,
+            stop: mocks.stop,
+            queuedMessages: {
+              cards: mocks.queuedCards,
+              steer: mocks.queuedSteer,
+              remove: mocks.queuedRemove,
+              edit: mocks.queuedEdit,
+              steerNewest: mocks.queuedSteerNewest
+            },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
             stopBackgroundTask: (taskId?: string) =>
@@ -213,6 +231,11 @@ export function createStructuredSessionMocks() {
     },
     structuredAgentSessionLaunch: () => ({
       retryStructuredAgentSessionLaunch: mocks.retryLaunch,
+      relaunchFailedStructuredAgentSessionForMessage: (worktreeId: string, sessionId: string) => {
+        if (mocks.launchLifecycle === 'failed') {
+          mocks.retryLaunch(worktreeId, sessionId)
+        }
+      },
       getStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       getStructuredAgentSessionLaunchResumes: () => mocks.launchResumes,
       useStructuredAgentSessionLaunchSelection: () => null,
@@ -250,7 +273,8 @@ export function createStructuredSessionMocks() {
           },
           insertTypedText: () => true,
           handlePasteEvent: mocks.handlePasteEvent,
-          pasteFromClipboard: mocks.pasteFromClipboard
+          pasteFromClipboard: mocks.pasteFromClipboard,
+          contains: (node: Node | null) => fieldRef.current?.contains(node) === true
         }))
         return <textarea ref={fieldRef} data-testid="structured-composer" />
       })
@@ -289,6 +313,7 @@ export function createStructuredSessionMocks() {
     mocks.journalItems = []
     mocks.respond.mockReset()
     mocks.cancel.mockReset()
+    mocks.stop.mockReset()
     mocks.handlePasteEvent.mockReset()
     mocks.pasteFromClipboard.mockReset()
     mocks.submissions = []
@@ -296,6 +321,7 @@ export function createStructuredSessionMocks() {
     mocks.showBackgroundTasks = false
     mocks.isWorking = false
     mocks.turnId = null
+    mocks.canStop = null
     mocks.supportsBackgroundTaskStop = false
     mocks.supportsBackgroundTaskStopAll = true
     mocks.stopBackgroundTask.mockReset()
