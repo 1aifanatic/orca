@@ -103,6 +103,11 @@ export async function awaitNativeChatDraftSaved(scopeKey: string): Promise<void>
   }
 }
 
+/** Whether the store saves a send's clear at Enter rather than once the host has the message. */
+export function nativeChatDraftStoreSavesSendClearAtOnce(): boolean {
+  return draftStore()?.savesSendClearAtOnce === true
+}
+
 /** Whether typing for this draft is still waiting for its pause to be saved. */
 export function hasPendingNativeChatDraftPersist(scopeKey: string): boolean {
   return pendingDrafts.has(scopeKey)

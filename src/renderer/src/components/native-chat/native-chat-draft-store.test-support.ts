@@ -15,10 +15,14 @@ export function installNativeChatDrafts(drafts: NativeChatDraftsApi): void {
 
 /**
  * Saves drafts in localStorage, as the web client does, so a test can read them back. Starts
- * empty: drafts an earlier test saved are removed.
+ * empty: drafts an earlier test saved are removed. `like: 'desktop'` saves a send's clear once
+ * the host has the message, as the desktop store does.
  */
-export function installLocalStorageNativeChatDrafts(): NativeChatDraftsApi {
-  const drafts = createWebNativeChatDrafts()
+export function installLocalStorageNativeChatDrafts(
+  options: { like?: 'web' | 'desktop' } = {}
+): NativeChatDraftsApi {
+  const { savesSendClearAtOnce: _web, ...desktop } = createWebNativeChatDrafts()
+  const drafts = options.like === 'desktop' ? desktop : createWebNativeChatDrafts()
   for (const { scopeKey } of drafts.loadSync()) {
     // Settles synchronously: browser storage has no async step.
     void drafts.write(scopeKey, null)

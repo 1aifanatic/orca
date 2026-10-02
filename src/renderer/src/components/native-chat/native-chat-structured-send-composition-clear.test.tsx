@@ -327,7 +327,10 @@ describe('a withdrawn message put back during an IME composition', () => {
 // A crash before the host has the message must restore it unsent, and one after must not bring it
 // back, so the box's clear is saved only once the host has it.
 describe('the saved draft at send', () => {
-  beforeEach(() => clearNativeChatDraftCacheForTests())
+  beforeEach(() => {
+    clearNativeChatDraftCacheForTests()
+    installLocalStorageNativeChatDrafts({ like: 'desktop' })
+  })
 
   function savedText(): string | null {
     const raw = localStorage.getItem(
@@ -385,8 +388,24 @@ describe('the saved draft at send', () => {
     expect(savedText()).toBe('and then')
   })
 
+  // Browser storage reaches disk lazily anyway; clearing first frees the quota the outbox append
+  // shares with drafts, so a large draft cannot make that append, and the send, fail.
+  it('saves the clear at Enter in the web client, before the outbox takes the message', async () => {
+    installLocalStorageNativeChatDrafts()
+    const seenBySend: (string | null)[] = []
+    const structured = transport()
+    structured.send = vi.fn((text: string) => {
+      seenBySend.push(savedText())
+      return appendStructuredAgentSessionOutboxMessage(structured.sessionId, text) !== null
+    })
+    const input = await sendTyped(structured, 'a long message')
+
+    expect(seenBySend).toEqual([null])
+    expect(promptValue(input)).toBe('')
+  })
+
   it('leaves the saved message alone, and puts it back in the box, when the send is refused', async () => {
-    const drafts = installLocalStorageNativeChatDrafts()
+    const drafts = installLocalStorageNativeChatDrafts({ like: 'desktop' })
     const saves: (string | null)[] = []
     installNativeChatDrafts({
       ...drafts,

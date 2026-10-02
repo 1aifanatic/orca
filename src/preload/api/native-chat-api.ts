@@ -90,6 +90,11 @@ export type NativeChatDraftsApi = {
     scopeKey: string,
     draft: PersistedNativeChatDraft | null
   ) => Promise<NativeChatDraftStoreResult>
+  /**
+   * Save a send's clear at Enter instead of once the host has the message. Browser storage reaches
+   * disk lazily anyway, and clearing first frees the quota the outbox append shares with drafts.
+   */
+  savesSendClearAtOnce?: true
   /** Another window changed a draft; only where several windows share one draft store. */
   onExternalChange?: (
     listener: (scopeKey: string, draft: PersistedNativeChatDraft | null) => void

@@ -8,6 +8,7 @@ import {
   awaitNativeChatDraftSaved,
   hasPendingNativeChatDraftPersist,
   isEmptyNativeChatDraft,
+  nativeChatDraftStoreSavesSendClearAtOnce,
   loadPersistedNativeChatDrafts,
   observeOtherWindowNativeChatDrafts,
   persistNativeChatDraftNow,
@@ -143,7 +144,8 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
  * Empties the chat's box for a send (`clear`) without saving that, so a crash before the host has
  * the message restores it unsent. Returns `save`, to call once the host accepted, refused or lost
  * the message: it saves the draft as it is then, keeping whatever was typed since Enter. With
- * several sends in flight on one chat, the last to settle saves.
+ * several sends in flight on one chat, the last to settle saves. A store that saves a send's clear
+ * at once (the web client's browser storage) saves it now instead.
  */
 export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.
@@ -151,11 +153,15 @@ export function clearNativeChatDraftForSend(draftKey: string, clear: () => void)
     void persistNow(draftKey)
   }
   sendsAwaitingHost.set(draftKey, (sendsAwaitingHost.get(draftKey) ?? 0) + 1)
-  clearingForSend.add(draftKey)
-  try {
+  if (nativeChatDraftStoreSavesSendClearAtOnce()) {
     clear()
-  } finally {
-    clearingForSend.delete(draftKey)
+  } else {
+    clearingForSend.add(draftKey)
+    try {
+      clear()
+    } finally {
+      clearingForSend.delete(draftKey)
+    }
   }
   let saved = false
   return () => {

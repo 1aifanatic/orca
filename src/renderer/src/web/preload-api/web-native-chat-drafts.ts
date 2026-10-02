@@ -73,6 +73,7 @@ function loadDrafts(): SavedNativeChatDraft[] {
 
 export function createWebNativeChatDrafts(): NativeChatDraftsApi {
   return {
+    savesSendClearAtOnce: true,
     load: async () => loadDrafts(),
     loadSync: loadDrafts,
     write: async (scopeKey, draft) => {
