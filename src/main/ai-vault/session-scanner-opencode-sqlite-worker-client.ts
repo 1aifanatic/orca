@@ -1,3 +1,7 @@
+import type {
+  OpenCodeNativeChatReadRequest,
+  OpenCodeNativeChatReadValue
+} from './session-scanner-opencode-sqlite-worker-protocol'
 import type { WorkerThreadFactory } from '../lazy-worker-thread-host'
 import { WorkerThreadRequestQueue } from '../worker-thread-request-queue'
 import type { AiVaultScanIssue, AiVaultSession } from '../../shared/ai-vault-types'
@@ -221,6 +225,15 @@ export class OpenCodeSqliteWorkerClient {
     } catch (err) {
       throw sessionReadFailure(err)
     }
+  }
+
+  async readNativeChat(
+    args: Omit<OpenCodeNativeChatReadRequest, 'id'>,
+    signal?: AbortSignal
+  ): Promise<OpenCodeNativeChatReadValue> {
+    const value = await this.dispatch((id) => ({ ...args, id }), PARSE_TIMEOUT_MS, signal)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only this build's internal worker dispatch constructs page/signal results; they are not client-supplied paths or frames.
+    return value as OpenCodeNativeChatReadValue
   }
 
   dispose(): void {

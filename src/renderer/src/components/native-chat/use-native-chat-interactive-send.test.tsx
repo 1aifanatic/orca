@@ -184,6 +184,24 @@ describe('useNativeChatInteractiveSend', () => {
     )
   })
 
+  it.each(['opencode', 'opencode2'] as const)(
+    'paces two Escape writes for %s Stop and cancels them on rebind',
+    (agent) => {
+      const { result, rerender } = renderHook(
+        ({ ptyId }) => useNativeChatInteractiveSend('tab-1', PANE_KEY, ptyId, agent),
+        { initialProps: { ptyId: 'pty-1' } }
+      )
+      act(() => result.current.cancel())
+      expect(mocks.sendNativeChatAskAnswer).toHaveBeenCalledWith(
+        { terminalTabId: 'tab-1' },
+        'pty-1',
+        [{ raw: '\x1b' }, { raw: '\x1b' }]
+      )
+      rerender({ ptyId: 'pty-2' })
+      expect(mocks.cancel).toHaveBeenCalledOnce()
+    }
+  )
+
   it('can cancel delayed writes without interrupting the replacement prompt', () => {
     const { result } = renderHook(() =>
       useNativeChatInteractiveSend('tab-1', PANE_KEY, 'pty-1', 'claude')

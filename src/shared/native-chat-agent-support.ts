@@ -1,6 +1,6 @@
 import type { TuiAgent } from './tui-agent'
 
-export type NativeChatTranscriptAgent = 'claude' | 'codex' | 'grok' | 'omp'
+export type NativeChatTranscriptAgent = 'claude' | 'codex' | 'grok' | 'omp' | 'opencode'
 
 /** Agents whose transcripts the native chat view can parse and render, in the
  *  order the settings pane advertises them. */
@@ -9,7 +9,9 @@ export const NATIVE_CHAT_SUPPORTED_AGENT_LIST: readonly TuiAgent[] = [
   'openclaude',
   'codex',
   'grok',
-  'omp'
+  'omp',
+  'opencode',
+  'opencode2'
 ]
 
 export const NATIVE_CHAT_SUPPORTED_AGENTS: ReadonlySet<string> = new Set(
@@ -24,7 +26,7 @@ export function isNativeChatSupportedAgent(agent: string | null | undefined): bo
  *  does not establish owning-host reads, so OMP remains gated even with metadata. */
 export function nativeChatRequiresLocalTranscript(agent: string | null | undefined): boolean {
   const transcriptAgent = resolveNativeChatTranscriptAgent(agent)
-  return transcriptAgent === 'grok' || transcriptAgent === 'omp'
+  return transcriptAgent === 'grok' || transcriptAgent === 'omp' || transcriptAgent === 'opencode'
 }
 
 /** True when the agent renders a digit-commit question selector that ignores
@@ -44,6 +46,9 @@ export function resolveNativeChatTranscriptAgent(
   // Orca preserves its distinct agent identity for launch and UI behavior.
   if (agent === 'claude' || agent === 'openclaude') {
     return 'claude'
+  }
+  if (agent === 'opencode' || agent === 'opencode2') {
+    return 'opencode'
   }
   if (agent === 'codex' || agent === 'grok' || agent === 'omp') {
     return agent

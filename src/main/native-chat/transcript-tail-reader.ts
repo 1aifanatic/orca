@@ -1,3 +1,4 @@
+import { readOpenCodeNativeChatTranscriptTail } from './transcript-opencode'
 import type {
   AgentType,
   NativeChatMessage,
@@ -230,6 +231,9 @@ export async function readNativeChatTranscriptTail(
     }
   | { error: string; notFound?: true }
 > {
+  if (resolveNativeChatTranscriptAgent(args.agent) === 'opencode') {
+    return readOpenCodeNativeChatTranscriptTail(args, {}, signal)
+  }
   const decode = nativeChatLineDecoderForAgent(args.agent)
   const decodeLifecycle = nativeChatTurnLifecycleDecoderForAgent(args.agent)
   if (!decode) {

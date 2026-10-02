@@ -159,8 +159,17 @@ export function useNativeChatInteractiveSend(
   // Stop/cancel: drop any pending answer writes, then send ESC to interrupt.
   const cancel = useCallback(() => {
     cancelInFlight()
+    if (resolveNativeChatTranscriptAgent(agent) === 'opencode' && targetPtyId) {
+      // OpenCode confirms interruption with a second Escape; pace writes like mobile Stop.
+      inFlightRef.current = sendNativeChatAskAnswer(
+        getSettingsForAgentTabRuntimeOwner(terminalTabId),
+        targetPtyId,
+        [{ raw: ESC }, { raw: ESC }]
+      )
+      return
+    }
     sendRaw(ESC)
-  }, [cancelInFlight, sendRaw])
+  }, [agent, cancelInFlight, sendRaw, targetPtyId, terminalTabId])
 
   return { sendAnswer, sendRaw, cancelPending: cancelInFlight, cancel }
 }

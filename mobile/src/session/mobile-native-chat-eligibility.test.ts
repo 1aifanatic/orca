@@ -80,6 +80,22 @@ describe('resolveMobileNativeChat', () => {
     })
   })
 
+  it.each(['opencode', 'opencode2'])('admits %s only on the execution host', (agent) => {
+    const tab = {
+      type: 'terminal',
+      launchAgent: agent,
+      agentStatus: status({
+        providerSession: { key: 'session_id', id: 'real-session' }
+      })
+    }
+    expect(resolveMobileNativeChat(tab, true)).toEqual({
+      agent,
+      sessionId: 'real-session',
+      transcriptPath: null
+    })
+    expect(resolveMobileNativeChat(tab, false)).toBeNull()
+  })
+
   it('returns null for unsupported agents', () => {
     expect(resolveMobileNativeChat({ type: 'terminal', launchAgent: 'gemini' })).toBeNull()
   })
