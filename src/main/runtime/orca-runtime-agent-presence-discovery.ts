@@ -3,6 +3,18 @@ import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controll
 
 export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithControllerKnowsPtyIsLive {
   private readonly agentPresenceDiscovery = new Map<string, Promise<boolean>>()
+  private readonly rederivedPtys = new WeakSet<object>()
+
+  /** Owners live only in memory: a terminal that survived a restart re-derives its owner with one
+   *  read, whether a pane reattaches it or a session inventory meets it first. */
+  protected rederiveSurvivingAgentOwner(ptyId: string, survived: boolean): void {
+    const pty = this.ptysById.get(ptyId)
+    if (!survived || !pty || this.rederivedPtys.has(pty)) {
+      return
+    }
+    this.rederivedPtys.add(pty)
+    void this.discoverAgentPresence(ptyId)
+  }
 
   private hasAgentPresenceOwner(keys: Iterable<string>): boolean {
     return [...keys].some((key) => {

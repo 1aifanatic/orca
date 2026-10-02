@@ -131,9 +131,7 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
     }
     // Why: owners live only in memory, and a surviving agent announces no new command; one read
     // per reattach re-derives what a restart forgot.
-    if (binding?.reattached || restoredLaunch) {
-      void this.discoverAgentPresence(ptyId)
-    }
+    this.rederiveSurvivingAgentOwner(ptyId, Boolean(binding?.reattached || restoredLaunch))
     const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
     if (
       pendingIncarnation === null ||
