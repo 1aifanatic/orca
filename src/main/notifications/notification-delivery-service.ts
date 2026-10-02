@@ -80,8 +80,12 @@ export function createNotificationDeliveryService(
       }
 
       const settings = deps.readNotificationSettings()
+      const hostMuted =
+        request.executionHostId !== undefined &&
+        settings.mutedExecutionHostIds.includes(request.executionHostId)
       const desktopAllowed =
         settings.enabled &&
+        !hostMuted &&
         (request.source !== 'agent-task-complete' || settings.agentTaskComplete) &&
         (request.source !== 'terminal-bell' || settings.terminalBell)
 
@@ -119,7 +123,10 @@ export function createNotificationDeliveryService(
       }
 
       if (!desktopAllowed) {
-        return { delivered: false, reason: settings.enabled ? 'source-disabled' : 'disabled' }
+        return {
+          delivered: false,
+          reason: !settings.enabled ? 'disabled' : hostMuted ? 'host-muted' : 'source-disabled'
+        }
       }
 
       const browserWindow = deps.findActiveWindow()

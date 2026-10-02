@@ -10021,7 +10021,13 @@
             "72539aede4": "系统",
             "51ae2183e1": "桌面",
             "0534c76311": "Orca 桌面通知的主开关。",
-            "4a210b2f72": "启用通知"
+            "4a210b2f72": "启用通知",
+            "machines": "机器",
+            "machinesDescription": "按机器开启或关闭工作区通知，例如 SSH 或已配对的主机。",
+            "host": "主机",
+            "remote": "远程",
+            "ssh": "ssh",
+            "mute": "静音"
           }
         },
         "orchestration": {
@@ -12052,6 +12058,10 @@
           "usageDescription": "Cursor 按两个随账单周期重置的额度池计费，用完后按需计费。",
           "usageLabel": "用量",
           "usageTitle": "每月套餐用量"
+        },
+        "NotificationHostToggles": {
+          "machines": "机器",
+          "machinesDescription": "显示每台机器上工作区的通知。"
         }
       },
       "right": {

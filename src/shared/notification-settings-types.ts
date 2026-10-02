@@ -1,5 +1,6 @@
 import type { AgentStatusState, AgentType } from './agent-status-types'
 import type { AgentTurnOutcome } from './agent-turn-outcome'
+import type { ExecutionHostId } from './execution-host'
 
 export type NotificationSettings = {
   enabled: boolean
@@ -20,6 +21,8 @@ export type NotificationSettings = {
     | 'custom'
   customSoundPath: string | null
   customSoundVolume: number
+  /** Machines whose workspaces raise no desktop banner. Stored as an opt-out so a newly added machine notifies. */
+  mutedExecutionHostIds: ExecutionHostId[]
 }
 
 export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
@@ -30,6 +33,8 @@ export type NotificationDispatchRequest = {
   /** Why: useful for fast native failures, but macOS can still drop notifications after 'show'. */
   requireDisplayConfirmation?: boolean
   worktreeId?: string
+  /** The machine the workspace runs on; absent when the sender could not resolve one. */
+  executionHostId?: ExecutionHostId
   /** Stable `${tabId}:${leafId}` terminal pane key for click-to-focus routing. */
   paneKey?: string
   repoLabel?: string
@@ -59,6 +64,7 @@ export type NotificationDispatchResult = {
   reason?:
     | 'disabled'
     | 'source-disabled'
+    | 'host-muted'
     | 'suppressed-focus'
     | 'cooldown'
     | 'not-supported'

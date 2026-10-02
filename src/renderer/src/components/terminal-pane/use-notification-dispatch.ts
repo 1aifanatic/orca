@@ -13,7 +13,10 @@ import type {
   AgentCompletionDispatchMeta,
   AgentCompletionStatusSnapshot
 } from './agent-completion-coordinator-types'
-import { getNotificationWorkspaceLabels } from './terminal-notification-state'
+import {
+  getNotificationExecutionHostId,
+  getNotificationWorkspaceLabels
+} from './terminal-notification-state'
 import { createTerminalAttentionSurface } from './terminal-attention-surface'
 import {
   applyAgentAttention,
@@ -170,6 +173,7 @@ export function dispatchTerminalNotification(
         worktreeId: request.workspaceId,
         paneKey: request.subjectKey ?? undefined,
         ...getNotificationWorkspaceLabels(state, request.workspaceId, event.terminalTitle),
+        ...getNotificationExecutionHostId(state, request.workspaceId),
         terminalTitle: event.terminalTitle,
         isActiveWorktree: request.workspaceIsActive,
         ...agentSnapshot

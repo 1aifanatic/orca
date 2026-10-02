@@ -16,6 +16,7 @@ function makeSettings(overrides: Partial<NotificationSettings> = {}): Notificati
     customSoundId: 'system',
     customSoundPath: null,
     customSoundVolume: 1,
+    mutedExecutionHostIds: [],
     ...overrides
   }
 }
@@ -118,6 +119,41 @@ describe('createNotificationDeliveryService', () => {
     expect(service.dispatch(makeRequest({ worktreeId: 'wt-2', worktreeLabel: 'wt-2' }))).toEqual({
       delivered: true
     })
+  })
+
+  it('skips the desktop banner for a muted machine but still reaches the phone', () => {
+    const harness = makeHarness(makeSettings({ mutedExecutionHostIds: ['runtime:m4air'] }))
+    const service = createNotificationDeliveryService(harness.deps)
+
+    expect(service.dispatch(makeRequest({ executionHostId: 'runtime:m4air' }))).toEqual({
+      delivered: false,
+      reason: 'host-muted'
+    })
+    expect(harness.dispatchMobileNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ desktopAllowed: false })
+    )
+    expect(harness.deliverNative).not.toHaveBeenCalled()
+
+    // Other machines, and requests whose machine is unknown, still notify.
+    expect(
+      service.dispatch(
+        makeRequest({ executionHostId: 'local', worktreeId: 'wt-2', worktreeLabel: 'wt-2' })
+      )
+    ).toEqual({ delivered: true })
+    expect(service.dispatch(makeRequest({ worktreeId: 'wt-3', worktreeLabel: 'wt-3' }))).toEqual({
+      delivered: true
+    })
+  })
+
+  it('reports the master switch over a muted machine', () => {
+    const harness = makeHarness(
+      makeSettings({ enabled: false, mutedExecutionHostIds: ['runtime:m4air'] })
+    )
+    expect(
+      createNotificationDeliveryService(harness.deps).dispatch(
+        makeRequest({ executionHostId: 'runtime:m4air' })
+      )
+    ).toEqual({ delivered: false, reason: 'disabled' })
   })
 
   it('suppresses a focused active workspace without touching mobile delivery', () => {

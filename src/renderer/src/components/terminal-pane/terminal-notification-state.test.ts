@@ -9,7 +9,10 @@ import {
 } from '@/store/slices/worktrees/listing/worktree-host-ownership'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { getNotificationWorkspaceLabels } from './terminal-notification-state'
+import {
+  getNotificationExecutionHostId,
+  getNotificationWorkspaceLabels
+} from './terminal-notification-state'
 
 function stateWithWorkspace() {
   return {
@@ -312,4 +315,26 @@ describe('notification workspace labels', () => {
       })
     }
   )
+})
+
+describe('notification machine', () => {
+  it('names the machine a remote workspace runs on', () => {
+    const state = stateWithWorkspace()
+    state.worktreesByRepo.repo = [
+      makeWorktree({ id: 'remote', repoId: 'repo', hostId: 'runtime:m4air' })
+    ]
+    expect(getNotificationExecutionHostId(state, 'remote')).toEqual({
+      executionHostId: 'runtime:m4air'
+    })
+  })
+
+  it('names this computer for a local workspace', () => {
+    expect(getNotificationExecutionHostId(stateWithWorkspace(), 'wt')).toEqual({
+      executionHostId: 'local'
+    })
+  })
+
+  it('names no machine for an unknown workspace, so a muted machine cannot swallow it', () => {
+    expect(getNotificationExecutionHostId(stateWithWorkspace(), 'missing')).toEqual({})
+  })
 })

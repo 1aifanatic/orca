@@ -33,7 +33,10 @@ import {
   readAgentAttentionNotificationSound
 } from '@/attention/agent-attention-notification-delivery'
 import { useAppStore } from '@/store'
-import { getNotificationWorkspaceLabels } from '../terminal-pane/terminal-notification-state'
+import {
+  getNotificationExecutionHostId,
+  getNotificationWorkspaceLabels
+} from '../terminal-pane/terminal-notification-state'
 import { createStructuredAttentionSurface } from './structured-attention-surface'
 import type { StructuredTab } from './structured-agent-session-tabs'
 
@@ -103,6 +106,7 @@ export function dispatchStructuredTurnCompletionAttention(
           worktreeId: request.workspaceId,
           paneKey: request.subjectKey ?? undefined,
           ...getNotificationWorkspaceLabels(state, request.workspaceId, tab.label),
+          ...getNotificationExecutionHostId(state, request.workspaceId),
           terminalTitle: tab.label,
           isActiveWorktree: request.workspaceIsActive,
           ...(row?.agentType ? { agentType: row.agentType } : {}),
