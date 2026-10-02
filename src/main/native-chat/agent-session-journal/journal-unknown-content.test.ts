@@ -1,7 +1,7 @@
-// Inside a row of a known kind, what a newer build wrote is never repaired away. A body of a kind
-// this build does not know (or a plan subject of one) is kept and the chat stays writable; a
-// mutation or sent message of a newer kind latches the chat read-only with every row kept as it
-// was, even beside damage. Anything else that fails is damage, repaired as before.
+// Inside a row of a known kind, what a newer build wrote is never damage. A body of a kind this
+// build does not know (or a plan subject of one) is kept and the chat stays writable; a mutation or
+// sent message of a newer kind latches the chat read-only with every row kept as it was, even
+// beside damage. Anything else that fails is damage: the chat fails to load, every row kept.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -113,7 +113,6 @@ const PLAN_APPROVAL = {
 async function expectReadOnlyAndKept(written: { seq: number; rowJson: string }[]) {
   const journal = await open()
   expect(journal.isReadOnly).toBe(true)
-  expect(journal.repair).toEqual({ malformedRows: 0 })
   await expect(
     journal.appendItem(item(5), { kind: 'status', text: 'refused' }, SCOPE)
   ).rejects.toMatchObject({ code: 'journal_read_only' })
@@ -125,12 +124,11 @@ async function expectReadOnlyAndKept(written: { seq: number; rowJson: string }[]
   expect(stored()).toEqual(written)
 }
 
-/** Opens writable with nothing repaired, keeps the newer item in the snapshot, takes a write,
- *  and leaves every earlier row byte-identical. */
+/** Opens writable, keeps the newer item in the snapshot, takes a write, and leaves every earlier
+ *  row byte-identical. */
 async function expectWritableAndKept(written: { seq: number; rowJson: string }[], itemId: string) {
   const journal = await open()
   expect(journal.isReadOnly).toBe(false)
-  expect(journal.repair).toEqual({ malformedRows: 0 })
   expect(journal.snapshot().items.some((entry) => entry.itemId === itemId)).toBe(true)
   await journal.appendItem(item(5), { kind: 'status', text: 'taken' }, SCOPE)
   await journals.closeAll()
@@ -242,7 +240,6 @@ describe("a turn's context usage of a newer shape", () => {
     ])
     const journal = await open()
     expect(journal.isReadOnly).toBe(false)
-    expect(journal.repair).toEqual({ malformedRows: 0 })
     expect(journal.snapshot().items[2]?.body).toEqual({
       kind: 'turn',
       turnId: 'turn-1',
@@ -265,20 +262,18 @@ describe('damage', () => {
       { kind: 'status', text: 'Turn started', turnLifecycle: { turnId: 7, state: 'running' } }
     ],
     ['an empty plan', { ...PLAN_APPROVAL, subject: { kind: 'plan', text: '' } }]
-  ])(
-    'is repaired as before, from %s: the open deletes from that row and says so',
-    async (_name, body) => {
-      const { written } = await journalWith((epoch) => [
-        itemRow(epoch, 'codex:thread-1:turn-1:2', body)
-      ])
-      const journal = await open()
-      expect(journal.isReadOnly).toBe(false)
-      expect(journal.repair).toEqual({ malformedRows: 1 })
-      await journals.closeAll()
-      const after = stored()
-      expect(after.slice(0, 3)).toEqual(written.slice(0, 3))
-      expect(after.some((row) => row.rowJson.includes('codex:thread-1:turn-1:2'))).toBe(false)
-      expect(after.some((row) => row.rowJson.includes('"after"'))).toBe(false)
+  ])('fails the load from %s, and every row is kept', async (_name, body) => {
+    const { written } = await journalWith((epoch) => [
+      itemRow(epoch, 'codex:thread-1:turn-1:2', body)
+    ])
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(open()).rejects.toMatchObject({
+        refusal: {
+          code: 'agent_session_journal_unreadable',
+          details: { reason: 'journalCorrupt' }
+        }
+      })
     }
-  )
+    expect(stored()).toEqual(written)
+  })
 })

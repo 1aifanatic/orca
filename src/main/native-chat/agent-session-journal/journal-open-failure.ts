@@ -12,6 +12,7 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
+import type { JournalLoad } from './journal-open'
 import { AgentSessionJournalError } from './journal-write-guards'
 import type { StructuredAgentSessionLogger } from '../agent-session-wire/structured-agent-session-logger'
 
@@ -25,6 +26,24 @@ export class JournalImportMismatchError extends Error {
   override readonly name = 'JournalImportMismatchError'
 }
 
+/** A history whose rows are not what they promise: a row no build wrote, a gap, no epoch row. */
+export class JournalDamageError extends Error {
+  override readonly name = 'JournalDamageError'
+}
+
+/** The one way damage fails a chat's load, wherever its rows are read: refused as history that
+ *  cannot be loaded, and every row is left where it is. A newer build's row wins, so a read-only
+ *  load never fails here. */
+export function failLoadOnJournalDamage(sessionId: string, load: JournalLoad): void {
+  if (!load.damage) {
+    return
+  }
+  const { sequence, cause } = load.damage
+  throw journalOpenRefusalError(
+    new JournalDamageError(`journal of ${sessionId} is damaged at sequence ${sequence}: ${cause}`)
+  )
+}
+
 /** A database only an unreleased development build wrote: left as found, never migrated. */
 export class JournalUnreleasedSchemaError extends Error {
   override readonly name = 'JournalUnreleasedSchemaError'
@@ -33,14 +52,15 @@ export class JournalUnreleasedSchemaError extends Error {
 // Bounds a cause chain that loops back on itself.
 const MAX_CAUSE_DEPTH = 8
 
-/** Unusable only where proven: damage the storage reports, a copy that did not verify, or a file
- *  only an unreleased build wrote. Anything unproven can clear. */
+/** Unusable only where proven: damage the storage or the rows show, a copy that did not verify,
+ *  or a file only an unreleased build wrote. Anything unproven can clear. */
 export function classifyJournalOpenFailure(error: unknown): JournalOpenFailure {
   let current = error
   for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== undefined; depth += 1) {
     if (
       isSqliteCorruption(current) ||
       current instanceof JournalImportMismatchError ||
+      current instanceof JournalDamageError ||
       current instanceof JournalUnreleasedSchemaError
     ) {
       return 'journalCorrupt'

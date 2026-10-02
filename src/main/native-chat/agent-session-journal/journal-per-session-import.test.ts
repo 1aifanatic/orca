@@ -26,7 +26,7 @@ import {
   readTestJournalRows
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
-import { importPerSessionJournal } from './journal-per-session-import'
+import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
 import { readJournalSessionEpoch, type JournalStoredRow } from './journal-row-table'
 import { createStructuredAgentSessionLogger } from '../agent-session-wire/structured-agent-session-logger'
 
@@ -170,7 +170,7 @@ function alteringFirstCopiedRead(
   }
 }
 
-const losingFirstCopiedRow = alteringFirstCopiedRead((rows) => rows.slice(1))
+const losingLastCopiedRow = alteringFirstCopiedRead((rows) => rows.slice(0, -1))
 
 /** Every row still there and still parsing, but the reply's words changed. */
 const garblingCopiedReply = alteringFirstCopiedRead((rows) =>
@@ -385,7 +385,7 @@ describe('importing a per-chat journal', () => {
       database,
       identity: IDENTITY,
       legacyDirectory: legacyDir(),
-      openSource: losingFirstCopiedRow
+      openSource: losingLastCopiedRow
     }
     const before = await readFile(legacyJournalDatabaseFile(legacyDir()))
 
@@ -408,6 +408,34 @@ describe('importing a per-chat journal', () => {
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
     expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
     expect(rowCount(database.db)).toBe(rows.length)
+  })
+
+  it('keeps a damaged file whole, copies none of it, and refuses the chat on every open', async () => {
+    const { epoch, rows } = await historyRows()
+    // A gap: the reply's row is gone from the file.
+    await writeLegacyJournal(
+      epoch,
+      rows.filter((row) => row.seq !== 2)
+    )
+    const database = openTestJournalHostDatabase(root)
+    const before = await readFile(legacyJournalDatabaseFile(legacyDir()))
+    const unloadable = {
+      refusal: { message: 'Unable to load this chat.', details: { reason: 'journalCorrupt' } }
+    }
+    const input = { database, identity: IDENTITY, legacyDirectory: legacyDir() }
+
+    await expect(previewPerSessionJournal(input)).rejects.toMatchObject(unloadable)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(importPerSessionJournal(input)).rejects.toMatchObject(unloadable)
+    }
+    await expect(openChat()).rejects.toMatchObject(unloadable)
+
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
+    expect(readJournalSessionEpoch(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(rowCount(database.db)).toBe(0)
+    expect(
+      database.db.prepare('SELECT count(*) AS total FROM journal_imports').get()
+    ).toMatchObject({ total: 0 })
   })
 
   // A copy that keeps every count but not every byte is no copy: the file is all there is.

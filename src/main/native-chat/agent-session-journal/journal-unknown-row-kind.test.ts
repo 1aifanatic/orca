@@ -1,6 +1,6 @@
-// A newer build's row kind is never repaired away: like a newer row version, it latches this build
+// A newer build's row kind is never damage: like a newer row version, it latches this build
 // read-only with every row kept, so the newer build still reads the whole chat after an upgrade.
-// A row whose stored sequence and body disagree is damage at its stored sequence.
+// A row whose stored sequence and body disagree is damage, which fails the load with every row kept.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,6 +20,10 @@ import {
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
+
+const UNLOADABLE = {
+  refusal: { code: 'agent_session_journal_unreadable', details: { reason: 'journalCorrupt' } }
+}
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-newer-kind',
@@ -202,7 +206,6 @@ describe("a journal holding a newer build's row kind", () => {
     const journal = await restartAfter((put) => put(3, newer))
     const latched = stored()
     expect(journal.isReadOnly).toBe(true)
-    expect(journal.repair).toEqual({ malformedRows: 0 })
     expect(itemIds(journal)).toEqual(['codex:thread-1:turn-1:0'])
     await expect(
       journal.appendItem(item(4), { kind: 'status', text: 'after' }, SCOPE)
@@ -232,18 +235,15 @@ describe("a journal holding a newer build's row kind", () => {
     ])
   })
 
-  it('reads a newer kind whose envelope is broken as malformed and drops from it', async () => {
+  it('reads a newer kind whose envelope is broken as damage, and keeps it', async () => {
     const epoch = await journalWithOneItem()
-    const journal = await restartAfter((put) =>
-      put(3, JSON.stringify(newerRow(epoch, 3, { fence: 'one' })))
-    )
-    expect(journal.isReadOnly).toBe(false)
-    expect(journal.repair).toEqual({ malformedRows: 1 })
-    // 3 is the disclosure the repair appends where the broken row was.
+    await expect(
+      restartAfter((put) => put(3, JSON.stringify(newerRow(epoch, 3, { fence: 'one' }))))
+    ).rejects.toMatchObject(UNLOADABLE)
     expect(storedKinds()).toEqual([
       [1, 'epoch'],
       [2, 'item'],
-      [3, 'item']
+      [3, 'future-mark']
     ])
   })
 })
@@ -252,25 +252,16 @@ describe('a row whose body names another sequence than its stored key', () => {
   it.each([
     ['an earlier', 2],
     ['a later', 9]
-  ])(
-    'is dropped at its key when it names %s one, and the next write succeeds',
-    async (_name, seq) => {
-      const epoch = await journalWithOneItem()
-      const tombstone = { ...newerRow(epoch, seq), kind: 'tombstone', itemId: 'gone', revision: 1 }
-      const journal = await restartAfter((put) => put(3, JSON.stringify(tombstone)))
-      expect(journal.repair).toEqual({ malformedRows: 1 })
-      expect(journal.needsRebuild).toBe(true)
-      // The valid row at 2 stays; 3 is the disclosure the repair appends.
-      expect(storedKinds()).toEqual([
-        [1, 'epoch'],
-        [2, 'item'],
-        [3, 'item']
-      ])
-
-      await journal.appendItem(item(1), { kind: 'status', text: 'after' }, SCOPE)
-      const reopened = await restartAfter()
-      expect(reopened.cursor().sequence).toBe(4)
-      expect(itemIds(reopened)).toHaveLength(3)
-    }
-  )
+  ])('fails the load and is kept when it names %s one', async (_name, seq) => {
+    const epoch = await journalWithOneItem()
+    const tombstone = { ...newerRow(epoch, seq), kind: 'tombstone', itemId: 'gone', revision: 1 }
+    await expect(restartAfter((put) => put(3, JSON.stringify(tombstone)))).rejects.toMatchObject(
+      UNLOADABLE
+    )
+    expect(storedKinds()).toEqual([
+      [1, 'epoch'],
+      [2, 'item'],
+      [3, 'tombstone']
+    ])
+  })
 })

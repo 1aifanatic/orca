@@ -43,10 +43,6 @@ export type JournalStoreHost = {
   cursor: () => AgentJournalCursor
   adopt: (loaded: JournalLoad) => void
   commit: (row: JournalRow) => void
-  /** Records whether the open's replay found an unusable prefix. */
-  setOpenedCorrupt: (corrupt: boolean) => void
-  malformedRows: () => number
-  setMalformedRows: (count: number) => void
   journal: () => AgentSessionJournal
   enqueue: (build: (seq: number, ts: number) => JournalRow) => Promise<JournalRow>
 }

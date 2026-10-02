@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 import {
-  readAgentJournalContent,
   readAgentJournalItemBody,
   readAgentJournalMessageBody
 } from './agent-session-journal-body-admission'
-import { openDiscriminatedUnion } from './agent-session-journal-open-union'
 
 const RESOLUTION = { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
 const QUESTION_ENTRY = {
@@ -79,39 +76,12 @@ describe('a body this build reads', () => {
   })
 })
 
-describe("a value outside a closed set this build knows: a newer build's", () => {
-  // A turn's context usage is the closed set left in a body; the row reader drops it before this.
-  const NEWER_USAGE = { used: { kind: 'measured' } }
-  it.each([
-    [
-      'a nested discriminant',
-      { kind: 'turn', turnId: 't', state: 'done', contextUsage: NEWER_USAGE }
-    ],
-    ['one beside damage', { kind: 'turn', turnId: 5, state: 'done', contextUsage: NEWER_USAGE }]
-  ])('is unreadable: %s', (_name, body) => {
-    expect(readAgentJournalItemBody(body)).toBe('unreadable')
-  })
-})
-
-describe('a closed set inside a known arm of an open union, as blocks and goal changes are built', () => {
-  const OpenBlock = openDiscriminatedUnion(
-    z.discriminatedUnion('type', [
-      z.object({ type: z.literal('text'), text: z.string(), tone: z.enum(['info']).optional() })
-    ])
-  )
-
-  it("reads a new value there as a newer build's, damage there as damage", () => {
-    expect(readAgentJournalContent(OpenBlock, { type: 'text', text: 'x', tone: 'critical' })).toBe(
-      'unreadable'
-    )
-    expect(readAgentJournalContent(OpenBlock, { type: 'text', text: 5 })).toBe('malformed')
-    expect(readAgentJournalContent(OpenBlock, { type: 'chart' })).toBe('readable')
-    expect(readAgentJournalContent(OpenBlock, { type: 5 })).toBe('malformed')
-  })
-})
-
 describe('anything else that fails: damage', () => {
   it.each([
+    [
+      "a turn's context usage of a kind it does not know, which the row reader drops first",
+      { kind: 'turn', turnId: 't', state: 'done', contextUsage: { used: { kind: 'measured' } } }
+    ],
     ['a body that is not an object', null],
     ['a body that is a list', [{ kind: 'status' }]],
     ['no kind', { text: 'x' }],

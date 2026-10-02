@@ -1,7 +1,7 @@
 // Bringing a store's in-memory state up from disk.
 //
 // Split out of the store for the same reason its collaborators were: this is the
-// ORDERING between replay, suffix repair and disclosure, and none of it belongs
+// ORDERING between import, replay and disclosure, and none of it belongs
 // to the store's public surface. Every step here reads or writes through the
 // same host the collaborators use, so the store keeps the state and this owns
 // the sequence.
@@ -9,10 +9,10 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { replayJournal, type JournalLoad } from './journal-open'
+import { failLoadOnJournalDamage } from './journal-open-failure'
 import { createJournalReducerState } from './journal-reducer'
 import type { JournalStoreHost } from './journal-store-collaborators'
 import { openJournalStoreState } from './journal-store-open'
-import { deleteJournalRepairedSuffix } from './journal-repair-marker'
 import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
 import { AgentSessionJournalError } from './journal-write-guards'
 
@@ -37,6 +37,7 @@ export async function restoreJournalStore(
       if (!imported) {
         throw new Error(`per-chat journal of ${host.identity.sessionId} was gone before its copy`)
       }
+      failLoadOnJournalDamage(host.identity.sessionId, imported)
       host.adopt(imported)
     })
   } else {
@@ -44,43 +45,24 @@ export async function restoreJournalStore(
     await importPerSessionJournal(source)
   }
   return openJournalStoreState({
+    sessionId: host.identity.sessionId,
     legacyDirectory: host.legacyDirectory,
-    replay: () => {
-      const loaded = preview ?? replayJournal(host.database().db, host.identity.sessionId)
-      host.setOpenedCorrupt(loaded?.corrupt ?? false)
-      return loaded
-    },
-    deleteSuffix: (fromSeq, contentFrom) =>
-      deleteJournalRepairedSuffix({
-        database: host.database(),
-        sessionId: host.identity.sessionId,
-        epoch: host.state().epoch,
-        fromSeq,
-        contentFrom,
-        now: host.now()
-      }),
+    replay: () => preview ?? replayJournal(host.database().db, host.identity.sessionId),
     start: () => collaborators.epochController.start('session_created', 0),
-    // `unreconcilable_prefix` is the durable statement that this epoch exists
-    // because a repair emptied one: replay reads it back and keeps asking for
-    // provider history until the timeline is rebuilt or the session writes.
-    publishRepairEpoch: () =>
-      collaborators.epochController.start('unreconcilable_prefix', host.state().highestFence),
     adopt: host.adopt,
-    // Repair and file-format notices are about the conversation, not any turn in it.
+    // File-format and roster notices are about the conversation, not any turn in it.
     appendItem: (identity, body, fence) =>
       host.journal().appendItem(identity, body, { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }),
     agent: host.identity.agent,
     highestFence: () => host.state().highestFence,
-    malformedRows: host.malformedRows,
-    setMalformedRows: host.setMalformedRows,
     readOnly: host.readOnly
   })
 }
 
 /**
  * A newer Orca's database: each chat shows what this build can read of it, from the database or a
- * per-chat file never copied in, and nothing is written, copied, repaired or founded. Every write
- * the store is asked for is refused as read-only.
+ * per-chat file never copied in, and nothing is written, copied or founded. Every write the store
+ * is asked for is refused as read-only, and a newer build's database wins over damage in it.
  */
 async function restoreFromNewerDatabase(
   host: JournalStoreHost,
@@ -99,11 +81,9 @@ async function restoreFromNewerDatabase(
       { cause: error }
     )
   }
-  host.setOpenedCorrupt(false)
   host.adopt({
     state: loaded?.state ?? createJournalReducerState(sessionId, ''),
     readOnly: true,
-    corrupt: false,
-    malformedRows: 0
+    damage: null
   })
 }

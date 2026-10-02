@@ -1,7 +1,8 @@
 // Every closed set a journal row is read against: a row kind, a lifecycle mutation kind, and each
-// enum, literal or discriminant in a body. A value outside one reads as a newer build's (a turn's
-// context usage is dropped instead), so older builds go read-only; this snapshot sits beside the
-// row version so that a change to either is deliberate.
+// enum, literal or discriminant in a body. A new row or mutation kind makes older builds go
+// read-only; a new value in a body's closed set is damage to them, and the chat fails to load
+// (a turn's context usage is dropped instead). This snapshot sits beside the row version so that
+// a change to either is deliberate.
 
 import { expect, it } from 'vitest'
 import { z } from 'zod'
@@ -101,7 +102,7 @@ const SNAPSHOT = {
 it('changes no closed set of a journal row without the row version', () => {
   expect(
     journalClosedSets(),
-    'A new closed-set value makes older builds go read-only: ship the reader first or bump v, ' +
-      'then update this snapshot.'
+    'A new closed-set value makes older builds go read-only or fail to load the chat: ship the ' +
+      'reader first or bump v, then update this snapshot.'
   ).toEqual(SNAPSHOT)
 })

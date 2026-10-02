@@ -5,7 +5,7 @@
 // guards. These schemas are the single deep validators for that render model:
 // admission must reject a JSON-valid but structurally wrong item (a question
 // whose `options` are null, a prompt without its `resolution`) so the row is
-// rejected at replay, where a repair can delete it, instead of throwing
+// refused at replay, where the chat fails to load, instead of throwing
 // mid-render.
 //
 // Discriminants (`kind`, known block `type`s) are validated deeply. Open string
@@ -13,18 +13,17 @@
 // and unknown object keys pass — a same-version row written by a slightly
 // newer build must not be misread as malformed (see journal-row-schema.ts).
 //
-// A newer writer extends a body only by new keys, new kinds of an open union, new values in a
-// closed set, or a bumped row `v`, never by changing a field's type or a bound this build checks.
-// Open unions (a body's `kind`, a block's `type`, a goal's `state`, an approval subject's `kind`)
-// keep a value this build does not know as-is and nobody draws it; the chat stays writable. A
-// value outside a closed set reads as a newer build's, so the chat goes read-only and nothing is
-// deleted (agent-session-journal-body-admission.ts); a turn's context usage is dropped instead
-// (journal-row-unusable-annotations.ts). Any other failure is damage. A new value of an open
-// string (turn, resolution, tool or goal `state`) is read as-is too, except that an older build's
-// rewind replaces an unknown turn, tool or resolution state with a placeholder row and turns an
-// unknown block into a text block of its raw JSON (structured-rewind-journal-body.ts); an unknown
-// body kind is carried as-is. History pages carry no row `v`, so older clients see such a value
-// too. It must be safe for every older build.
+// A newer writer extends a body only by new keys, new kinds of an open union, or a bumped row `v`,
+// never by changing a field's type, a bound or a closed set this build checks (the closed sets are
+// pinned in journal-closed-sets.test.ts). Open unions (a body's `kind`, a block's `type`, a goal's
+// `state`, an approval subject's `kind`) keep a value this build does not know as-is and nobody
+// draws it; the chat stays writable. Unreadable context usage is dropped
+// (journal-row-unusable-annotations.ts). Any other failure is damage: the chat fails to load and
+// nothing is deleted. A new value of an open string (turn, resolution, tool or goal `state`) is
+// read as-is too, except that an older build's rewind replaces an unknown turn, tool or resolution
+// state with a placeholder row and turns an unknown block into a text block of its raw JSON
+// (structured-rewind-journal-body.ts); an unknown body kind is carried as-is. History pages carry
+// no row `v`, so older clients see such a value too. It must be safe for every older build.
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'

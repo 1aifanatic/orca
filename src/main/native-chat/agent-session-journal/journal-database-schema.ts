@@ -2,8 +2,8 @@
 //
 // `journal_rows` is every chat's append-only log, keyed `(session_id, epoch, seq)`.
 // `journal_sessions` names each chat's live epoch, and is written only when that epoch changes, so
-// an append is one INSERT. `journal_repairs` carries at most one row per chat: the standing demand
-// for a rebuild a partial repair leaves behind (see journal-repair-marker.ts). `journal_imports`
+// an append is one INSERT. `journal_repairs` is only for an older build, which reads and writes it
+// on this same schema version; this build does neither. `journal_imports`
 // records which per-chat file each chat was copied from (journal-per-session-reimport.ts), and
 // `journal_set_aside` each chat whose per-chat file is not this build's history and is never read
 // again. The `agent_session_*` tables hold each chat's ownership record, its operation ledger, the

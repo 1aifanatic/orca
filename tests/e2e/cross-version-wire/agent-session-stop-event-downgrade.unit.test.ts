@@ -264,7 +264,6 @@ test("this build keeps a newer build's row kind and goes read-only; a build befo
 
     const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
     expect(reopened.isReadOnly).toBe(true)
-    expect(reopened.repair).toEqual({ malformedRows: 0 })
     await expect(
       reopened.appendItem(item(1), { kind: 'status', text: 'after' }, scope)
     ).rejects.toMatchObject({ code: 'journal_read_only' })

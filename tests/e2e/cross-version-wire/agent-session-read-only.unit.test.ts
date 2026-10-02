@@ -261,7 +261,6 @@ describe('a chat a newer Orca saved, across versions', () => {
       })
       const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
       expect(reopened.isReadOnly).toBe(false)
-      expect(reopened.repair).toEqual({ malformedRows: 0 })
       await journals.closeAll()
       expect(storedRows()).toEqual(rows)
 

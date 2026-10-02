@@ -82,8 +82,6 @@ export class AgentSessionJournal {
 
   private state: JournalReducerState
   private readOnly = false
-  private malformedRows = 0
-  private openedCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
   private readonly queue: JournalWriteQueue
@@ -127,14 +125,7 @@ export class AgentSessionJournal {
         applyJournalRow(this.state, row)
         this.onCommitted?.()
       },
-      setOpenedCorrupt: (corrupt) => {
-        this.openedCorrupt = corrupt
-      },
       notifyCommitted: () => this.onCommitted?.(),
-      malformedRows: () => this.malformedRows,
-      setMalformedRows: (count) => {
-        this.malformedRows = count
-      },
       journal: () => this,
       enqueue: (build) => this.rowWriter.enqueue(build)
     })
@@ -163,16 +154,6 @@ export class AgentSessionJournal {
       this.state.epoch === this.openedThrough.epoch &&
       sequence <= this.openedThrough.sequence
     )
-  }
-
-  /** What the last open's repair did. */
-  get repair(): { malformedRows: number } {
-    return { malformedRows: this.malformedRows }
-  }
-
-  /** The open replayed an unusable prefix: the chat is owed a rebuild from provider history. */
-  get needsRebuild(): boolean {
-    return this.openedCorrupt
   }
 
   async open(): Promise<void> {

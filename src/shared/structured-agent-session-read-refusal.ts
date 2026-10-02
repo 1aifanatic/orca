@@ -47,9 +47,9 @@ export function isUnattachedAgentSessionReadRefusal(error: unknown): boolean {
 }
 
 /**
- * A read refusal no retry reads past: SQLite reported the chat's journal damaged. Decided from the
- * reason, never the message, which is the bare code for every journal refusal; a journal that
- * failed to open for any other reason can clear, so its read keeps reconnecting.
+ * A read refusal no retry reads past: the chat's history is damaged, as SQLite or its rows show.
+ * Decided from the reason, never the message, which is the bare code for every journal refusal; a
+ * journal that failed to open for any other reason can clear, so its read keeps reconnecting.
  */
 export function isFinalAgentSessionReadRefusal(
   refusal: AgentSessionRefusalReference | undefined

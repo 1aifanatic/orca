@@ -224,7 +224,7 @@ describe('axis 2: the row body shape', () => {
     })
   })
 
-  it('skips a malformed row without giving up the journal, and discloses the skip', async () => {
+  it('refuses a journal holding a row that is not a row, and keeps that row', async () => {
     const journal = await open()
     await journal.appendItem(item(0), body('a'), {
       fence: 1,
@@ -235,39 +235,16 @@ describe('axis 2: the row body shape', () => {
     await journal.close()
     await appendRawRow(epoch, nextSeq, '{not json')
 
-    const reopened = await open()
-    expect(reopened.isReadOnly).toBe(false)
-    const items = reopened.snapshot().items
-    // The surviving row is untouched…
-    expect(items.some((entry) => entry.body.kind === 'message')).toBe(true)
-    // …and the skip is visible in the timeline instead of silently swallowed.
-    expect(
-      items.some(
-        (entry) => entry.body.kind === 'status' && entry.body.text.includes('could not be read')
-      )
-    ).toBe(true)
-  })
-
-  it('keeps one disclosure row across reopens instead of stacking duplicates', async () => {
-    const journal = await open()
-    await journal.appendItem(item(0), body('a'), {
-      fence: 1,
-      turnScope: AGENT_JOURNAL_THREAD_SCOPE
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(open()).rejects.toMatchObject({
+        refusal: { code: 'agent_session_journal_unreadable', details: { reason: 'journalCorrupt' } }
+      })
+    }
+    await withDatabase((db) => {
+      const stored = liveTestJournalRows(db, IDENTITY.sessionId)
+      expect(stored.map((row) => row.seq)).toEqual([1, 2, nextSeq])
+      expect(stored.at(-1)?.rowJson).toBe('{not json')
     })
-    const epoch = journal.epoch
-    const nextSeq = journal.cursor().sequence + 1
-    await journal.close()
-    await appendRawRow(epoch, nextSeq, '{not json')
-
-    await open().then((first) => first.close())
-    const reopened = await open()
-    expect(
-      reopened
-        .snapshot()
-        .items.filter(
-          (entry) => entry.body.kind === 'status' && entry.body.text.includes('could not be read')
-        )
-    ).toHaveLength(1)
   })
 
   it('reopens a journal holding an admitted malformed-percent item id without throwing', async () => {

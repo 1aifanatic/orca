@@ -19,7 +19,6 @@ const INSERT_ROW =
 const SELECT_ROWS_AFTER = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER_LIMITED = `${SELECT_ROWS_AFTER} LIMIT ?`
-const DELETE_SUFFIX = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq >= ?'
 const DELETE_EPOCH = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_UNPUBLISHED = `DELETE FROM journal_rows WHERE session_id = ?
 AND epoch IS NOT (SELECT epoch FROM journal_sessions WHERE session_id = ?)`
@@ -101,15 +100,4 @@ export function deleteJournalEpochRows(
 /** Rows of this chat under any epoch its pointer does not name: a copy that never published. */
 export function deleteUnpublishedJournalRows(db: Database.Database, sessionId: string): void {
   db.prepare(DELETE_UNPUBLISHED).run(sessionId, sessionId)
-}
-
-/** Drop the rejected suffix a repair found, from `fromSeq` to the tip. */
-export function deleteJournalRowSuffix(
-  db: Database.Database,
-  sessionId: string,
-  epoch: string,
-  fromSeq: number
-): number {
-  const deleted = db.prepare(DELETE_SUFFIX).run(sessionId, epoch, fromSeq)
-  return Number(deleted.changes ?? 0)
 }
