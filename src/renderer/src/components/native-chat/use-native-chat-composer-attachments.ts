@@ -59,6 +59,12 @@ export function useNativeChatComposerAttachments({
   )
   const imageAttachmentCounter = useRef(0)
 
+  // Read from the scope cache the updater below writes, never from this state, so a scope change
+  // can't save one pane's chips under another.
+  useEffect(() => {
+    persistNativeChatAttachmentCache(attachmentScopeKey)
+  }, [attachmentScopeKey, imageAttachments])
+
   useEffect(
     () =>
       subscribeToNativeChatAttachmentAppend(attachmentScopeKey, (appended) =>
@@ -254,11 +260,15 @@ function writeNativeChatAttachmentCache(
     .map(({ previewUrl: _previewUrl, ...attachment }) => attachment)
   if (attachments.length === 0) {
     attachmentCache.delete(scopeKey)
-    persistNativeChatDraftPart(scopeKey, { attachments: [] }, 'immediate')
     return
   }
   // LRU-bounded so pending attachments for permanently-removed panes can't accumulate.
   setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...attachments])
+}
+
+/** Saves the scope's cached chips with its draft, so a reload gives them back. */
+function persistNativeChatAttachmentCache(scopeKey: string): void {
+  const attachments = attachmentCache.get(scopeKey) ?? []
   persistNativeChatDraftPart(
     scopeKey,
     {
@@ -268,7 +278,7 @@ function writeNativeChatAttachmentCache(
         ...(connectionId ? { connectionId } : {})
       }))
     },
-    'deferred'
+    attachments.length === 0 ? 'immediate' : 'deferred'
   )
 }
 
@@ -290,6 +300,7 @@ export function appendNativeChatAttachmentCache(
     ...readNativeChatAttachmentCache(scopeKey),
     ...appended
   ])
+  persistNativeChatAttachmentCache(scopeKey)
   // Saved now: the copy it came from goes right after this.
   flushPersistedNativeChatDrafts()
   appendListeners.get(scopeKey)?.forEach((listener) => listener(appended))

@@ -208,6 +208,13 @@ export function persistNativeChatDraftPart(
   if (next.document === undefined) {
     delete next.document
   }
+  // A composer mounting or re-rendering with what is already saved writes nothing.
+  if (JSON.stringify(next) === JSON.stringify(base)) {
+    if (mode === 'immediate' && pendingDrafts.has(scopeKey)) {
+      flushPersistedNativeChatDrafts()
+    }
+    return
+  }
   pendingDrafts.set(scopeKey, next)
   // Clearing is immediate too, so a stored copy never outlives a sent or emptied draft.
   if (mode === 'immediate' || isEmptyDraft(next)) {
