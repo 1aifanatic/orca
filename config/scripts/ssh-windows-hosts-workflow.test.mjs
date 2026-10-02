@@ -67,11 +67,22 @@ describe('SSH Windows-host workflow', () => {
       (step) => step.uses === './.github/actions/install-node-dependencies'
     )
     const buildIndex = job.steps.findIndex((step) => step.name?.startsWith('Build this runner'))
+    const prebuildIndex = job.steps.findIndex(
+      (step) => step.uses === './.github/actions/prepare-orcad-prebuilds'
+    )
+    const templateIndex = job.steps.findIndex((step) => step.name?.startsWith('Build the win32'))
     const waitIndex = job.steps.findIndex((step) => step.wait === 'inbox-capability')
     const runIndex = job.steps.indexOf(runStep)
-    expect([selfTestIndex, prepareIndex, installIndex, buildIndex, waitIndex, runIndex]).toEqual([
-      1, 2, 3, 4, 5, 6
-    ])
+    expect([
+      selfTestIndex,
+      prepareIndex,
+      installIndex,
+      buildIndex,
+      prebuildIndex,
+      templateIndex,
+      waitIndex,
+      runIndex
+    ]).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
     expect(job.steps[prepareIndex]).toMatchObject({
       background: true,
       shell: 'pwsh'
