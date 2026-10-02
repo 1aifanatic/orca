@@ -210,6 +210,21 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ])
   })
 
+  // The host re-delivers its own message under new ids; however close their times, one row stays.
+  it('keeps the last of several copies rejected in the same instant', () => {
+    const items = [...SEED_ROWS, userItem('a', 3, 'pointer'), userItem('b', 4, 'pointer')]
+    const submissions = [
+      SEED,
+      restartRejected('a', 'pointer', 5),
+      restartRejected('b', 'pointer', 5)
+    ]
+
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
+      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('b'), text: 'pointer', unsent: true }
+    ])
+  })
+
   it('stays when the same body was only sent before it, or by a copy a Stop withdrew', () => {
     const items = [
       ...SEED_ROWS,
