@@ -15,6 +15,7 @@ import {
   type ClaudeControlSurface
 } from './claude-agent-sdk-control-requests'
 import { createClaudeChildTreeReaper, proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
+import { withTimeout } from '../../shared/promise-timeout-fallback'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import {
@@ -25,6 +26,10 @@ import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-reso
 
 export { ClaudeControlRequestError }
 
+/** How long a proven close waits for messages already written before the exit; whatever still
+ *  holds the output open past it is no reason to keep the close unresolved. */
+export const CLAUDE_READER_DRAIN_AFTER_EXIT_MS = 2_000
+
 /**
  * The SDK is loaded at the structured-Claude boundary rather than by this module's
  * import. The ordinary runtime's class graph statically reaches this file, and the
@@ -33,6 +38,7 @@ export { ClaudeControlRequestError }
  * path never opted into, and a missing SDK would fail runtime startup. Memoized,
  * so a session pays the import once per process rather than once per connection.
  */
+
 let claudeAgentSdk: Promise<typeof ClaudeAgentSdk> | null = null
 
 function loadClaudeAgentSdk(): Promise<typeof ClaudeAgentSdk> {
@@ -332,7 +338,16 @@ export async function openClaudeStreamJsonConnection(
         closePromise = null
         return false
       }
-      await readerDone
+      const drained = await withTimeout(
+        readerDone.then(() => true),
+        CLAUDE_READER_DRAIN_AFTER_EXIT_MS,
+        false
+      )
+      if (!drained) {
+        console.warn('[claude-stream-json] output still open after the proven exit:', {
+          pid: spawner.pid
+        })
+      }
       return true
     })()
     return closePromise

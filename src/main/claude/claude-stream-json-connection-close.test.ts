@@ -4,6 +4,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, it, vi } from 'vitest'
 import type { query } from '@anthropic-ai/claude-agent-sdk'
 import {
+  CLAUDE_READER_DRAIN_AFTER_EXIT_MS,
   openClaudeStreamJsonConnection,
   type ClaudeStreamJsonLaunch
 } from './claude-stream-json-connection'
@@ -160,6 +161,54 @@ describe('Claude stream-json close ordering', () => {
 
     await expect(connection.close()).resolves.toBe(false)
     expect(next).toHaveBeenCalledOnce()
+  })
+
+  // Whatever holds the output open past a proven exit (a process that escaped the tree) must not
+  // keep every send and Stop that joins this close waiting.
+  it('resolves a proven close though the output never ends', async () => {
+    mocks.refresh.mockReset()
+    mocks.proveClaudeChildExit.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    mocks.proveClaudeChildExit.mockResolvedValue(true)
+    const child = fakeChild()
+    const next = vi.fn(() => new Promise<IteratorResult<Record<string, unknown>>>(() => {}))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This injected query exercises only the async iterator used by the connection.
+    const queryImpl = ((params: Parameters<typeof query>[0]) => {
+      params.options?.spawnClaudeCodeProcess?.({
+        command: 'claude',
+        args: [],
+        env: {},
+        signal: new AbortController().signal
+      })
+      return {
+        [Symbol.asyncIterator]: () => ({ next })
+      }
+    }) as unknown as typeof query
+    const connection = await openClaudeStreamJsonConnection(
+      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      {},
+      () => child,
+      queryImpl
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.useFakeTimers()
+    try {
+      let closed: boolean | undefined
+      void connection.close().then((value) => {
+        closed = value
+      })
+      await vi.advanceTimersByTimeAsync(CLAUDE_READER_DRAIN_AFTER_EXIT_MS - 1)
+      expect(closed).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(closed).toBe(true)
+      expect(warn).toHaveBeenCalledWith(
+        '[claude-stream-json] output still open after the proven exit:',
+        expect.anything()
+      )
+    } finally {
+      vi.useRealTimers()
+      warn.mockRestore()
+    }
   })
 
   it('reports a root that exits after its close came back unproven as that close ending', async () => {
