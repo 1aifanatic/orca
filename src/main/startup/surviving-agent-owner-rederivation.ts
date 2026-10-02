@@ -1,13 +1,15 @@
 import type { SessionInfo } from '../daemon/types'
 import type { AgentHookServer } from '../agent-hooks/server'
-import {
-  AGENT_OWNER_BOOT_PROBE_CONCURRENCY,
-  type AgentPresenceCaptureOptions,
-  type AgentProcessPresence
+import type {
+  AgentPresenceCaptureOptions,
+  AgentProcessPresence
 } from '../../shared/agent-process-presence'
 import { forEachWithConcurrency } from '../../shared/map-with-concurrency'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { indexPersistedPtySurfaceBindings } from '../runtime/runtime-worktree-binding-index'
+
+/** A few captures at a time, so a busy boot neither forks per pane nor stalls behind one. */
+export const SURVIVING_OWNER_CAPTURE_CONCURRENCY = 4
 
 /**
  * Owners live only in memory: once the daemon lists its surviving sessions, each one still bound to
@@ -28,7 +30,7 @@ export async function rederiveSurvivingAgentOwners(deps: {
   const evidenceAtMs = Date.now()
   await forEachWithConcurrency(
     sessions,
-    AGENT_OWNER_BOOT_PROBE_CONCURRENCY,
+    SURVIVING_OWNER_CAPTURE_CONCURRENCY,
     async (session) => {
       const surface = surfaces.get(session.sessionId)
       // Why: a WSL guest has no host-checkable owner; a different incarnation is another terminal.

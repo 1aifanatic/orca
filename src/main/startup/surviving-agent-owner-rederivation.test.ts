@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { rederiveSurvivingAgentOwners } from './surviving-agent-owner-rederivation'
+import {
+  SURVIVING_OWNER_CAPTURE_CONCURRENCY,
+  rederiveSurvivingAgentOwners
+} from './surviving-agent-owner-rederivation'
 import type { SessionInfo } from '../daemon/types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { AGENT_OWNER_BOOT_PROBE_CONCURRENCY } from '../../shared/agent-process-presence'
 
 const WORKTREE = 'repo::/tmp/surviving'
 const TAB = '50000000-0000-4000-8000-000000000001'
@@ -59,7 +61,7 @@ describe('owners of terminals that survived a restart, at startup', () => {
     )
   })
 
-  it('captures surviving sessions a few at a time, like the boot owner probes', async () => {
+  it('captures surviving sessions a few at a time', async () => {
     const ids = Array.from({ length: 12 }, (_, i) => `pty-${i}`)
     const leafIds = ids.map((_, i) => `60000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the fields the persisted surface index reads.
@@ -90,7 +92,7 @@ describe('owners of terminals that survived a restart, at startup', () => {
     })
     expect(capture).toHaveBeenCalledTimes(12)
     expect(admit).toHaveBeenCalledTimes(12)
-    expect(peak).toBe(AGENT_OWNER_BOOT_PROBE_CONCURRENCY)
+    expect(peak).toBe(SURVIVING_OWNER_CAPTURE_CONCURRENCY)
   })
 
   it('keeps re-deriving the rest when admits throw', async () => {

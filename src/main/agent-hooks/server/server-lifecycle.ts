@@ -15,8 +15,6 @@ import { drainAgentHookSpool, type SpoolRecord } from '../../../shared/agent-hoo
 import { clearAllListenerCaches } from '../../../shared/agent-hook-listener/listener-state'
 import { trackEmptyPaneKeyHook } from './server-transport-rules'
 import { AgentHookServerRuntimeEnv } from './server-runtime-env'
-import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
-import { AGENT_OWNER_BOOT_PROBE_CONCURRENCY } from '../../../shared/agent-process-presence'
 
 export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv {
   /** Start the loopback listener after hydration and spool replay have settled. */
@@ -54,16 +52,6 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
           ingest: (record: SpoolRecord) => this.ingestSpoolRecord(record)
         })
       }
-      // Why: an owner may have died while Orca was down; re-derive each recorded owner once.
-      void forEachWithConcurrency(
-        [...this.state.lastStatusByPaneKey.keys()],
-        AGENT_OWNER_BOOT_PROBE_CONCURRENCY,
-        async (paneKey) => {
-          await this.checkAgentPresence(paneKey)
-        }
-      ).catch(() => undefined)
-      // Hydrated owners skip the row-write path that arms the recheck beat.
-      this.noteLiveAgentOwner()
       this.ownerStateInitialized = true
     }
     const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {

@@ -18,10 +18,6 @@ export type AgentProcessPresence = {
 
 export type AgentProcessVerdict = 'live' | 'unverifiable' | 'exited'
 
-/** Boot-time owner probes run a few at a time, so a busy boot neither forks per pane nor stalls
- *  behind one slow probe. */
-export const AGENT_OWNER_BOOT_PROBE_CONCURRENCY = 4
-
 /** What a capture answers: evidence seen at this time, so an older process table cannot. */
 export type AgentPresenceCaptureOptions = {
   snapshotNotBeforeMs?: number
