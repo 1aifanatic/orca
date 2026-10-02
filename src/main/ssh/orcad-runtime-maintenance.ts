@@ -236,15 +236,12 @@ function migrationRollbackRefusal(
     }
   }
   const migratedAt = environment.orcadMigratedAt
-  if (
-    migratedAt &&
-    (activatedAt === null || Date.parse(activatedAt) < Date.parse(migratedAt))
-  ) {
+  if (migratedAt && (activatedAt === null || Date.parse(activatedAt) < Date.parse(migratedAt))) {
     return {
       outcome: 'refused',
       code: 'orcad_rollback_crosses_migration',
       reason:
-        'The previous version\'s state predates the projects migrated onto this server; ' +
+        "The previous version's state predates the projects migrated onto this server; " +
         'rolling back would lose them. Deploy forward instead.'
     }
   }

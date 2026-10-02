@@ -23,7 +23,10 @@ import {
   commitOrcadMigrationDestination,
   type OrcadMigrationDestinationCatalog
 } from './orcad-migration-cutover-coordinator'
-import { fenceOrcadMigrationSource, resolveOrcadMigrationFence } from './orcad-migration-source-fence'
+import {
+  fenceOrcadMigrationSource,
+  resolveOrcadMigrationFence
+} from './orcad-migration-source-fence'
 import {
   assessOrcadMigrationTerminals,
   type ListRelayPtyIds
@@ -100,7 +103,9 @@ export async function convertSshTargetToManagedOrcad(
 async function fenceOrResume(
   userDataPath: string,
   args: OrcadManagedConversionArgs
-): Promise<OrcadMigrationSourceCutover | Extract<OrcadManagedConversionResult, { outcome: 'refused' }>> {
+): Promise<
+  OrcadMigrationSourceCutover | Extract<OrcadManagedConversionResult, { outcome: 'refused' }>
+> {
   const { claims, targetStore } = requireManagedOrcadInfrastructure()
   const target = targetStore.getTarget(args.sshTargetId)
   if (!target) {
@@ -112,11 +117,7 @@ async function fenceOrResume(
   }
   const store = targetStore.getOrcadMigrationSource()
   // Asked while the relay still answers; the fence re-checks leases once it holds.
-  const terminalProof = await assessOrcadMigrationTerminals(
-    store,
-    target.id,
-    args.listRelayPtyIds
-  )
+  const terminalProof = await assessOrcadMigrationTerminals(store, target.id, args.listRelayPtyIds)
   if (terminalProof.verdict !== 'exited') {
     return refuse(terminalProof.verdict, 'orcad_migration_terminals', terminalProof.reason)
   }
