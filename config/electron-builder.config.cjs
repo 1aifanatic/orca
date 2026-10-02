@@ -310,7 +310,6 @@ module.exports = {
     'out/main/daemon-entry.js',
     'out/main/session-scanner-service-entry.js',
     'out/main/wsl-transcript-fs-process-entry.js',
-    'out/main/cursor-desktop-profile-worker-entry.js',
     'out/main/foreign-sqlite-reader-entry.js',
     'out/main/plugin-host-entry.js',
     'out/main/computer-sidecar.js',
