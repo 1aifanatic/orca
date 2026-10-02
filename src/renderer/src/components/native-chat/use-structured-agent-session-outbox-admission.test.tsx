@@ -282,6 +282,7 @@ describe('structured agent session outbox admission', () => {
       result.current.outbox,
       'Claude',
       () => {},
+      () => {},
       [],
       [],
       result.current.failedHere

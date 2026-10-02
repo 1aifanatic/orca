@@ -117,6 +117,7 @@ export function NativeChatStructuredSession(
     failedHere: controller.failedHere,
     queuedMessageIds: controller.queuedMessageIds,
     retry: controller.retry,
+    dismiss: controller.dismiss,
     agentName: agentLabel
   })
   const viewState = selectNativeChatViewState(session, { readRetries: true })

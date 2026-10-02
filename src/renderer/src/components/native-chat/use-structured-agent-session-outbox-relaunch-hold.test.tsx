@@ -112,6 +112,7 @@ function notices(outbox: Outbox) {
     outbox.outbox,
     'Claude',
     outbox.retry,
+    () => {},
     [],
     [],
     outbox.failedHere

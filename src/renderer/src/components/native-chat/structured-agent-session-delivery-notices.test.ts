@@ -48,6 +48,7 @@ function texts(
     outbox,
     'Claude',
     () => {},
+    () => {},
     submissions,
     startFailures,
     new Set(outbox.map((candidate) => candidate.clientMessageId))
@@ -56,7 +57,7 @@ function texts(
 }
 
 describe('the notice on each message that did not go through', () => {
-  // Rejected while the chat watched, so the host has them: no Retry, the journal row takes over.
+  // Recorded by the host, so sending one again is a new message: no Retry.
   it('gives two messages the host rejected each their own reason and no Retry', () => {
     const retry = vi.fn()
     const notices = structuredAgentSessionDeliveryNotices(
@@ -76,6 +77,7 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
+      () => {},
       [],
       [],
       new Set(['first', 'second'])
@@ -95,9 +97,10 @@ describe('the notice on each message that did not go through', () => {
     expect(notices.get(agentJournalSubmissionKey('second'))?.onRetry).toBeUndefined()
   })
 
-  // Read back from storage with no row loaded: the host may have lost it, so it keeps its Retry.
-  it('keeps the Retry on a message the host rejected before this chat opened', () => {
+  // However this chat learned of it: the host recorded it, so it has a Dismiss and never a Retry.
+  it('gives a message the host rejected before this chat opened a Dismiss, not a Retry', () => {
     const retry = vi.fn()
+    const dismiss = vi.fn()
     const notice = structuredAgentSessionDeliveryNotices(
       [
         entry('earlier', {
@@ -107,12 +110,35 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
+      dismiss,
       [],
       [],
       NOT_FAILED_HERE
     ).get(agentJournalSubmissionKey('earlier'))
-    notice?.onRetry?.()
-    expect(retry).toHaveBeenCalledExactlyOnceWith('earlier')
+    expect(notice?.onRetry).toBeUndefined()
+    notice?.onDismiss?.()
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith('earlier')
+    expect(retry).not.toHaveBeenCalled()
+  })
+
+  // Refused before the host recorded it: only its Retry sends it, so it keeps one.
+  it('keeps the Retry on a message refused before the host recorded it', () => {
+    const notice = structuredAgentSessionDeliveryNotices(
+      [
+        entry('refused', {
+          state: 'rejected',
+          lastFailure: { kind: 'refused', code: 'agent_session_owner_restart_failed' }
+        })
+      ],
+      'Claude',
+      () => {},
+      () => {},
+      [],
+      [],
+      NOT_FAILED_HERE
+    ).get(agentJournalSubmissionKey('refused'))
+    expect(notice?.onRetry).toBeDefined()
+    expect(notice?.onDismiss).toBeUndefined()
   })
 
   it('chooses the words from the saved refusal on a refused message', () => {
@@ -203,6 +229,7 @@ describe('the notice on each message that did not go through', () => {
         outbox,
         'Claude',
         retry,
+        () => {},
         [],
         [],
         NOT_FAILED_HERE
@@ -234,6 +261,7 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       retry,
+      () => {},
       [],
       [],
       NOT_FAILED_HERE
@@ -421,6 +449,7 @@ describe('the notice on each message that did not go through', () => {
       ],
       'Claude',
       vi.fn(),
+      () => {},
       [],
       [],
       NOT_FAILED_HERE
@@ -444,9 +473,15 @@ describe('the notice on each message that did not go through', () => {
       }
     })
     const words = (failedHere: ReadonlySet<string>) =>
-      structuredAgentSessionDeliveryNotices([held], 'Claude', vi.fn(), [], [], failedHere).get(
-        agentJournalSubmissionKey('held')
-      )
+      structuredAgentSessionDeliveryNotices(
+        [held],
+        'Claude',
+        vi.fn(),
+        () => {},
+        [],
+        [],
+        failedHere
+      ).get(agentJournalSubmissionKey('held'))
     expect(words(NOT_FAILED_HERE)).toMatchObject({ text: 'Your message was not sent.' })
     expect(words(NOT_FAILED_HERE)?.onRetry).toBeDefined()
     expect(words(new Set(['held']))?.text).toBe(

@@ -295,12 +295,23 @@ export function useStructuredAgentSessionOutbox(args: {
       createOperationId: structuredSessionOperationId
     })
   }
+  // A message the host recorded and rejected, cleared by the user from what the outbox draws.
+  const dismiss = (clientMessageId: string): void => {
+    forget(clientMessageId)
+    commitStructuredAgentSessionOutbox(
+      sessionId,
+      getStructuredAgentSessionOutbox(sessionId).filter(
+        (entry) => entry.clientMessageId !== clientMessageId
+      )
+    )
+  }
   return {
     outbox,
     error,
     failedHere,
     send,
     retry,
+    dismiss,
     withdrawUnsent
   }
 }

@@ -85,6 +85,7 @@ vi.mock('./use-structured-agent-session', async () => {
         submissions: mocks.submissions,
         send: outbox.send,
         retry: outbox.retry,
+        dismiss: outbox.dismiss,
         isWorking: false,
         isMonitoringBackgroundTasks: mocks.monitoringBackgroundTasks,
         supportsBackgroundTaskStop: mocks.supportsBackgroundTaskStop,

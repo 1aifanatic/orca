@@ -10,7 +10,8 @@
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
 // journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
 // failed start's, the fact its loaded row states, says only that it was not sent: the row already
-// says why. Until the journal's submissions say so, the outbox draws it from its smaller copy.
+// says why. Until the journal's submissions say so, the outbox draws it from its smaller copy, with
+// a Dismiss in case they never do.
 
 import {
   readAgentSessionFailureFact,
@@ -42,6 +43,8 @@ import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/s
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
+
+const NO_COMMANDS: ReadonlySet<string> = new Set()
 
 /** The facts the chat's loaded start-failure rows state. */
 export function structuredAgentSessionStartFailureFacts(
@@ -146,6 +149,8 @@ export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   agentName: string,
   retry: (clientMessageId: string) => void,
+  /** Clears a message the host recorded and rejected from the outbox, which draws it until then. */
+  dismiss: (clientMessageId: string) => void,
   /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
@@ -153,7 +158,9 @@ export function structuredAgentSessionDeliveryNotices(
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
   failedHere: ReadonlySet<string>,
   /** The queue's live cards, which the transcript leaves a rejected message to. */
-  queuedMessageIds: readonly string[] = []
+  queuedMessageIds: readonly string[] = [],
+  /** The loaded commands, from `structuredAgentSessionCommandItemIds`: they report their own. */
+  commandItemIds: ReadonlySet<string> = NO_COMMANDS
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -170,21 +177,27 @@ export function structuredAgentSessionDeliveryNotices(
       structuredAgentSessionEntryHeldForRetry(entry) ||
       entry.clientMessageId === held
     ) {
-      // Its own Retry is the step, so the words leave out sending again. One the host rejected
-      // while this chat watched waits for its journal row instead: the host has it. Read back from
-      // storage with no row loaded, the host may have lost it, so it keeps its Retry.
-      const retryControl =
-        (stalledFrom === -1 || index <= stalledFrom) &&
-        !(structuredAgentSessionEntryRejectedByHost(entry) && failedHere.has(entry.clientMessageId))
+      // Its own Retry is the step, so the words leave out sending again. One the host recorded is
+      // the host's: sending it again is a new message, so it has no Retry, only a Dismiss.
+      const recorded = structuredAgentSessionEntryRejectedByHost(entry)
+      const retryControl = (stalledFrom === -1 || index <= stalledFrom) && !recorded
       const text = deliveryNoticeText(entry, { agentName, retryControl }, failedHere)
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
-        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
+        recorded
+          ? { text, onDismiss: () => dismiss(entry.clientMessageId) }
+          : retryControl
+            ? { text, onRetry: () => retry(entry.clientMessageId) }
+            : { text }
       )
     }
   }
   // After the outbox's: the host's row is the message, whatever the outbox still holds under its id.
-  const shown = structuredAgentSessionRejectedShownInPlace(submissions, queuedMessageIds)
+  const shown = structuredAgentSessionRejectedShownInPlace(
+    submissions,
+    queuedMessageIds,
+    commandItemIds
+  )
   for (const submission of rejected.values()) {
     const id = agentJournalSubmissionKey(submission.clientMessageId)
     if (shown.has(id)) {

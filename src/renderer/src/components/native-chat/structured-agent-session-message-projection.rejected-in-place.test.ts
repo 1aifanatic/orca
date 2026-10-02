@@ -11,7 +11,10 @@ import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED
 } from '../../../../shared/structured-agent-session-dispatch-rejection'
-import { projectStructuredAgentSessionMessages as projectShared } from '../../../../shared/structured-agent-session-message-projection'
+import {
+  projectStructuredAgentSessionMessages as projectShared,
+  structuredAgentSessionCommandItemIds
+} from '../../../../shared/structured-agent-session-message-projection'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -168,6 +171,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       [],
       'Claude',
       () => {},
+      () => {},
       [SEED, restartRejected('lost', 'fix the parser', 3)],
       [],
       new Set()
@@ -189,6 +193,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const notices = structuredAgentSessionDeliveryNotices(
       [],
       'Claude',
+      () => {},
       () => {},
       [failedStart],
       [{ kind: 'notSignedIn' }],
@@ -281,6 +286,20 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
         projectStructuredAgentSessionMessages([...SEED_ROWS, compact], [], submissions, NO_CARDS)
       )
     ).toEqual([{ id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }])
+    // One rule decides for the rows and the notices.
+    expect(
+      structuredAgentSessionDeliveryNotices(
+        [],
+        'Claude',
+        () => {},
+        () => {},
+        submissions,
+        [],
+        new Set(),
+        NO_CARDS,
+        structuredAgentSessionCommandItemIds([...SEED_ROWS, compact])
+      ).size
+    ).toBe(0)
   })
 
   it('keeps a message a Stop withdrew hidden: it went back to its sender', () => {
@@ -291,7 +310,15 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
     ])
     expect(
-      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
+      structuredAgentSessionDeliveryNotices(
+        [],
+        'Claude',
+        () => {},
+        () => {},
+        submissions,
+        [],
+        new Set()
+      ).size
     ).toBe(0)
   })
 })
@@ -319,6 +346,7 @@ describe("one row per rejected message, the host's once it records the rejection
       [held],
       'Claude',
       () => {},
+      () => {},
       [SEED],
       [],
       new Set(['held'])
@@ -345,6 +373,7 @@ describe("one row per rejected message, the host's once it records the rejection
       const notices = structuredAgentSessionDeliveryNotices(
         [entry],
         'Claude',
+        () => {},
         () => {},
         [SEED, rejected],
         [],
@@ -404,7 +433,15 @@ describe('a rejected message the queue holds', () => {
       seedRow
     ])
     expect(
-      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
+      structuredAgentSessionDeliveryNotices(
+        [],
+        'Claude',
+        () => {},
+        () => {},
+        submissions,
+        [],
+        new Set()
+      ).size
     ).toBe(0)
   })
 
@@ -417,9 +454,16 @@ describe('a rejected message the queue holds', () => {
       seedRow
     ])
     expect(
-      structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set(), [
-        'kept'
-      ]).size
+      structuredAgentSessionDeliveryNotices(
+        [],
+        'Claude',
+        () => {},
+        () => {},
+        submissions,
+        [],
+        new Set(),
+        ['kept']
+      ).size
     ).toBe(0)
     expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, []))).toEqual([
       seedRow,

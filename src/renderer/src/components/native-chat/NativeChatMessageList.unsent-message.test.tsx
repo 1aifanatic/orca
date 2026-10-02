@@ -267,6 +267,7 @@ describe('a message the host rejected after a crash, with no outbox entry left',
           [],
           'Claude',
           vi.fn(),
+          () => {},
           submissions,
           [],
           new Set()

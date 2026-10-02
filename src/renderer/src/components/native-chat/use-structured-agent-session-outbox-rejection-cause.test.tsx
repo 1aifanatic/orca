@@ -16,6 +16,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import { agentSessionWriteNoticeEnglish } from '../../../../shared/agent-session-refusal-notice'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import {
@@ -270,29 +272,63 @@ describe('a send the host rejected because the agent never started', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
-  // After a restart nothing in memory remembers the rejection, and its journal row may be older
-  // than the loaded page, or lost to a repair: the message keeps its Retry, which needs a new id.
-  it('retries a message rejected before a restart under a new id while its row is not loaded', async () => {
-    writeOutbox('session-1', [rejectedBeforeRestart()])
+  // One stored host fact, one rendering: a message the host recorded and rejected has no Retry on
+  // any mount, however this mount learned of it, and a Dismiss that clears it from storage.
+  it('gives a message the host rejected no Retry but a Dismiss, on every mount', async () => {
+    writeOutbox('session-1', [
+      {
+        ...rejectedBeforeRestart(),
+        state: 'dispatching',
+        lastFailure: undefined,
+        lastAttemptAt: 5
+      }
+    ])
+    // The host replays its rejection when the reopened chat asks about the send it left in doubt.
     mocks.call.mockImplementation(async (_target, _method, params) =>
-      acceptedResultFor(String(params.envelope.clientOperationId))
+      rejectedResultFor(String(params.envelope.clientOperationId))
     )
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: { kind: 'local' },
-        fence: 1,
-        submissions: []
-      })
-    )
-    expect(result.current.outbox[0]?.state).toBe('rejected')
+    const notice = (
+      outbox: readonly StructuredAgentSessionOutboxEntry[],
+      failedHere: ReadonlySet<string>
+    ) =>
+      structuredAgentSessionDeliveryNotices(
+        outbox,
+        'Claude',
+        () => {},
+        () => {},
+        NO_SUBMISSIONS,
+        [],
+        failedHere
+      ).get(agentJournalSubmissionKey('rejected-before-restart'))
+    const mount = () =>
+      renderHook(() =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: { kind: 'local' },
+          fence: 1,
+          submissions: NO_SUBMISSIONS
+        })
+      )
 
-    act(() => result.current.retry('rejected-before-restart'))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    const sentId: unknown = mocks.call.mock.calls[0]![2].envelope.clientOperationId
-    expect(sentId).not.toBe('rejected-before-restart')
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-  })
+    const first = mount()
+    await waitFor(() => expect(first.result.current.outbox[0]?.state).toBe('rejected'), {
+      timeout: 4000
+    })
+    const onFirst = notice(first.result.current.outbox, first.result.current.failedHere)
+    first.unmount()
+    const second = mount()
+    const onSecond = notice(second.result.current.outbox, second.result.current.failedHere)
+
+    for (const shown of [onFirst, onSecond]) {
+      expect(shown?.text).toBe(REASON)
+      expect(shown?.onRetry).toBeUndefined()
+      expect(shown?.onDismiss).toBeDefined()
+    }
+    act(() => second.result.current.dismiss('rejected-before-restart'))
+    expect(second.result.current.outbox).toEqual([])
+    expect(readOutbox('session-1')).toEqual([])
+    expect(hasUndeliveredStructuredAgentSessionOutbox('session-1')).toBe(false)
+  }, 10000)
 
   // The host's own record is what lets it go, and storage forgets it too: nothing is owed.
   it('drops a message rejected before a restart once the journal says so, from storage too', async () => {

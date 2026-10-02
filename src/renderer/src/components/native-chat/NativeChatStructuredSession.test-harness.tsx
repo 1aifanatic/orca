@@ -180,6 +180,7 @@ export function createStructuredSessionMocks() {
             submissions: mocks.submissions,
             send: outbox.send,
             retry: outbox.retry,
+            dismiss: outbox.dismiss,
             isWorking: mocks.isWorking,
             backgroundTasks: {
               show: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,
