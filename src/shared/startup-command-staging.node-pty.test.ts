@@ -23,7 +23,7 @@ import * as pty from 'node-pty'
 import { afterAll, describe, expect, it } from 'vitest'
 import { resolveFishBinary } from './fish-binary-requirement'
 import { writeLaunchFile, type WrittenLaunchFile } from './launch-file-writing'
-import { buildLaunchFilePointer, planLaunchPrompt } from './launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile } from './launch-prompt-file'
 import { stageStartupCommand } from './startup-command-staging'
 import { buildStartupCommandSubmission } from './startup-command-submission'
 import { quoteStartupArg } from './tui-agent-startup-shell'
@@ -181,7 +181,7 @@ describeShells('a launch file named on a real command line', () => {
   for (const shell of SHELLS) {
     it(`hands ${shell.name}'s agent a pointer to the full prompt`, async () => {
       const prompt = `${HOSTILE}\n${'z'.repeat(20_000)}\n`
-      const planned = planLaunchPrompt(prompt)
+      const planned = carryInLaunchFile(prompt, false)
       let written: WrittenLaunchFile | undefined
       const run = await launchInRealShell(shell, planned.prompt, (command) => {
         written = writeLaunchFile({

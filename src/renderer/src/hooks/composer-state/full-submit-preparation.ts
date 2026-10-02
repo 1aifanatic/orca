@@ -30,7 +30,7 @@ import { ensureHooksConfirmed, confirmRuntimeIssueCommandRead } from '@/lib/ensu
 import { useAppStore } from '@/store'
 import type { SetupDecision } from '../../../../shared/worktree/create-types'
 import { resolveComposerBranchNameOverrideForCreate } from '../composer-branch-selection'
-import { buildAgentStartupPlan } from '@/lib/tui-agent-startup'
+import { planLaunchPrompt } from '@/lib/tui-agent-startup'
 import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
@@ -39,7 +39,8 @@ import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
-import { launchHostWritesLaunchFile } from '@/lib/launch-file-host'
+import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { composerAgentStartupPlan } from '@/lib/composer-agent-startup-plan'
 import type { PendingSmartGitHubSubmitResolution } from './source-selection-decisions'
 
 export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
@@ -181,30 +182,33 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
         !effectiveBranchNameOverride &&
         !createDisplayName
 
-      const startupPlan = buildAgentStartupPlan({
-        agent: tuiAgent,
-        prompt: submitStartupPrompt,
-        cmdOverrides: settings?.agentCmdOverrides ?? {},
-        agentArgs: resolveTuiAgentLaunchArgs(tuiAgent, settings?.agentDefaultArgs),
-        agentEnv: resolveTuiAgentLaunchEnv(tuiAgent, settings?.agentDefaultEnv),
-        sessionOptions: resolveInitialNativeChatSessionOptions(
-          {
-            experimentalNativeChat: settings?.experimentalNativeChat,
-            openAgentTabsInChatByDefault: settings?.openAgentTabsInChatByDefault,
-            nativeChatSessionOptions: settings?.nativeChatSessionOptions
-          },
-          {
-            agent: tuiAgent,
-            nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(
-              selectedRepo?.connectionId
-            )
-          }
-        ),
-        platform: selectedRepoAgentLaunchPlatform,
-        shell: selectedRepoStartupShell,
-        isRemote: selectedRepoIsRemote,
-        hostWritesLaunchFile: launchHostWritesLaunchFile(selectedRepoSettings)
-      })
+      const startupPlan = composerAgentStartupPlan(
+        planLaunchPrompt({
+          agent: tuiAgent,
+          prompt: submitStartupPrompt,
+          cmdOverrides: settings?.agentCmdOverrides ?? {},
+          agentArgs: resolveTuiAgentLaunchArgs(tuiAgent, settings?.agentDefaultArgs),
+          agentEnv: resolveTuiAgentLaunchEnv(tuiAgent, settings?.agentDefaultEnv),
+          sessionOptions: resolveInitialNativeChatSessionOptions(
+            {
+              experimentalNativeChat: settings?.experimentalNativeChat,
+              openAgentTabsInChatByDefault: settings?.openAgentTabsInChatByDefault,
+              nativeChatSessionOptions: settings?.nativeChatSessionOptions
+            },
+            {
+              agent: tuiAgent,
+              nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(
+                selectedRepo?.connectionId
+              )
+            }
+          ),
+          platform: selectedRepoAgentLaunchPlatform,
+          shell: selectedRepoStartupShell,
+          isRemote: selectedRepoIsRemote,
+          launchHostIsPaired: launchHostIsPaired(selectedRepoSettings?.activeRuntimeEnvironmentId)
+        }),
+        submitStartupPrompt
+      )
 
       const shouldSeedInitialAgentStatus =
         tuiAgent === 'command-code' && submitStartupPrompt.trim().length > 0
@@ -217,7 +221,7 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
       }
 
       const backendStartup =
-        startupPlan && !startupPlan.draftPrompt && !startupPlan.followupPrompt
+        startupPlan && !startupPlan.draftPrompt && !startupPlan.pastePromptAfterReady
           ? {
               command: startupPlan.launchCommand,
               ...(startupPlan.env ? { env: startupPlan.env } : {}),

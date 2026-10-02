@@ -249,7 +249,7 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
               startupPlan,
               launchSource,
               promptDelivery === 'draft' ? draftContent : undefined,
-              launchPreparation.launchFile
+              launchPreparation
             ))
       })
       return activationHolder.value !== false

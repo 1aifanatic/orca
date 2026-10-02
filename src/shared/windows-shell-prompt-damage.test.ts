@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { planLaunchForTest } from './launch-prompt-plan.test-fixture'
 import { buildLaunchFilePointer, isLaunchFilePointer } from './launch-prompt-file'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from './tui-agent-startup'
+import { buildAgentDraftLaunchPlan } from './tui-agent-startup'
 import type { AgentStartupShell } from './tui-agent-startup-shell'
-import { windowsDraftRefusal } from './startup-plan-launch-file'
+import { windowsDraftRefusal } from './launch-prompt-carry'
 
 function plan(prompt: string, shell: AgentStartupShell) {
-  return buildAgentStartupPlan({
+  return planLaunchForTest({
     agent: 'claude',
     prompt,
     cmdOverrides: {},
@@ -76,17 +77,17 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
   })
 
   it('launches clean and leaves the prompt for the paste when the host writes no launch file', () => {
-    const startup = buildAgentStartupPlan({
+    const startup = planLaunchForTest({
       agent: 'claude',
       prompt: 'fix the build\nthen run the tests',
       cmdOverrides: {},
       platform: 'win32',
       shell: 'powershell',
-      hostWritesLaunchFile: false
+      launchHostIsPaired: true
     })
     expect(startup?.launchFile).toBeUndefined()
     expect(startup?.launchCommand).toBe('claude')
-    expect(startup?.followupPrompt).toBe('fix the build\nthen run the tests')
+    expect(startup?.pasteAfterReady).toBe('fix the build\nthen run the tests')
   })
 
   it('tells its own pointer apart from a prompt that merely mentions one', () => {

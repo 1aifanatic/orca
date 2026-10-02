@@ -3,12 +3,8 @@ import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import { planLaunchAgentStartupPrompt } from '@/lib/launch-agent-startup-prompt-plan'
 import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
-import { createPasteReadinessTimeoutNotice } from '@/lib/launch-agent-paste-timeout-notice'
-import {
-  deliverLaunchPromptToAgentTab,
-  seedNativeChatLaunchDraftForAgentTab,
-  seedNativeChatLaunchPromptForAgentTab
-} from '@/lib/agent-launch-prompt-delivery'
+import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { deliverNewTabLaunchPrompt } from '@/lib/launch-agent-new-tab-prompt-delivery'
 import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
@@ -157,14 +153,14 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, initialViewModeOptions)
   }
   const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(store, worktreeId)
-  const launchesOnPairedHost = isWebRuntimeSessionActive(runtimeEnvironmentId)
+  const hostPublishesTab = isWebRuntimeSessionActive(runtimeEnvironmentId)
   const { startupPlan, launchFile, pasteDraftAfterLaunch, submitPastedPrompt } =
     planLaunchAgentStartupPrompt({
       base: startupPlanBase,
       prompt: trimmedPrompt,
       promptDelivery,
       isFollowupPath,
-      launchesOnPairedHost
+      launchHostIsPaired: launchHostIsPaired(runtimeEnvironmentId)
     })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 
@@ -172,7 +168,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     return null
   }
 
-  if (launchesOnPairedHost) {
+  if (hostPublishesTab) {
     if (beforeSurfaceOpen?.({ kind: 'host-published' }) === false) {
       return null
     }
@@ -246,6 +242,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
   if (beforeSurfaceOpen?.({ kind: 'local-terminal' }) === false) {
     return null
   }
+  const launchedAt = Date.now()
   // Why: queue startup BEFORE TerminalPane mounts — it snapshots pendingStartupByTabId in useState on first render.
   // Why: followup path pastes an unsubmitted draft, so gate the initial chat view like a draft launch, not auto-submit.
   const tab = store.createTab(worktreeId, groupId, undefined, {
@@ -270,6 +267,9 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
       : {}),
     ...(launchFile ? { launchFile } : {}),
+    ...(hasPrompt && pasteDraftAfterLaunch === null && promptDelivery !== 'draft'
+      ? { launchPrompt: trimmedPrompt }
+      : {}),
     // Why: Command Code has no prompt-submit hook, so a prompt its launch line submits seeds working.
     ...(agent === 'command-code' &&
     hasPrompt &&
@@ -283,45 +283,20 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       request_kind: 'new'
     }
   })
-  // Why: fire-and-forget the paste-after-ready delivery so callers keep the synchronous { tabId, startupPlan } signature.
-  // Why: safe to call unconditionally — the helper short-circuits (no paste) for native-prefill agents already holding the draft.
-  // Why: no paste runs, so no paste seeds the chat's copy: a draft rode in on argv (Claude --prefill
-  // etc.), and a submitted prompt rode the launch line. Not with a launch file: the transcript then
-  // shows the pointer sentence, which would never prune this copy.
-  if (hasPrompt && pasteDraftAfterLaunch === null && !launchFile) {
-    if (promptDelivery === 'draft') {
-      seedNativeChatLaunchDraftForAgentTab({ tabId: tab.id, agent, text: trimmedPrompt })
-    } else if (promptDelivery === 'submit-after-ready') {
-      seedNativeChatLaunchPromptForAgentTab({ tabId: tab.id, agent, text: trimmedPrompt })
-    }
-  }
-  if (pasteDraftAfterLaunch !== null) {
-    const timeoutNotice = createPasteReadinessTimeoutNotice({
-      worktreeId,
-      tabId: tab.id,
-      agent,
-      submitted: submitPastedPrompt,
-      content: pasteDraftAfterLaunch
-    })
-    const deliveryPromise = deliverLaunchPromptToAgentTab({
-      tabId: tab.id,
-      content: pasteDraftAfterLaunch,
-      agent,
-      submit: submitPastedPrompt,
-      forcePaste: true,
-      onTimeout: timeoutNotice.onTimeout,
-      ...(onPromptDeliveryUnconfirmed ? { onUnconfirmedDelivery: onPromptDeliveryUnconfirmed } : {})
-    }).then((delivered) => timeoutNotice.settle(delivered, onPromptDelivered))
-    if (promptDelivery === 'submit-after-ready') {
-      promptDeliveryResult = deliveryPromise
-    } else {
-      void deliveryPromise.catch((error) =>
-        console.error('Prompt delivery failed after launch', error)
-      )
-    }
-  } else if (hasPrompt) {
-    onPromptDelivered?.()
-  }
+  // Why: fire-and-forget the delivery so callers keep the synchronous { tabId, startupPlan } signature.
+  promptDeliveryResult = deliverNewTabLaunchPrompt({
+    worktreeId,
+    tabId: tab.id,
+    agent,
+    prompt: trimmedPrompt,
+    promptDelivery,
+    pasteDraftAfterLaunch,
+    submitPastedPrompt,
+    promptInLaunchFile: launchFile !== undefined,
+    launchedAt,
+    ...(onPromptDelivered ? { onPromptDelivered } : {}),
+    ...(onPromptDeliveryUnconfirmed ? { onPromptDeliveryUnconfirmed } : {})
+  })
 
   // Why: without setActiveTabType('terminal') an activated launch can stay hidden behind an editor.
   // Scoped to the launch's worktree so a floating or background launch leaves the main window's tab alone.

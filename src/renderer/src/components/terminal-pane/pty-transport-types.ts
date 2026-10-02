@@ -270,6 +270,8 @@ export type IpcPtyTransportOptions = {
   startupCommandDelivery?: StartupCommandDelivery
   /** Local spawns only: a remote runtime writes no file the renderer names. */
   launchFile?: LaunchFile
+  /** See `PtyPaneStartup.launchPrompt`. */
+  launchPrompt?: string
   connectionId?: string | null
   executionHostId?: ExecutionHostId | null
   worktreeId?: string

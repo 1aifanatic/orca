@@ -272,7 +272,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
   })
 
   it('names the branch from the prompt a launch file carried, when main kept it', async () => {
-    const { deps, onRenamed } = makeDeps({ getLaunchFilePrompt: () => 'Fix auth from note #1' })
+    const { deps, onRenamed } = makeDeps({ showLaunchPrompt: () => 'Fix auth from note #1' })
     await maybeAutoRenameBranchOnFirstWork(
       workingEvent({ prompt: buildLaunchFilePointer('/tmp/orca-launch-file-a1/task-context.md') }),
       deps

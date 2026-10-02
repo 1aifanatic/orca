@@ -27,6 +27,8 @@ export type PtyPaneStartup = {
   delivery?: 'terminal-paste'
   startupCommandDelivery?: StartupCommandDelivery
   launchFile?: LaunchFile
+  /** The submitted prompt `command` carries; handed back to copy if the host refuses the spawn. */
+  launchPrompt?: string
   env?: Record<string, string>
   envToDelete?: string[]
   launchConfig?: SleepingAgentLaunchConfig

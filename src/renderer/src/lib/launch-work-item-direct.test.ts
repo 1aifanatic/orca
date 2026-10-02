@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store'
 import type * as TuiAgentSelectionModule from '../../../shared/tui-agent-selection'
 import type * as TuiAgentStartupModule from '@/lib/tui-agent-startup'
-import type * as PromptCarryModule from '../../../shared/startup-line-prompt-carry'
 import type * as DirectAgentRoutingModule from '@/lib/launch-work-item-direct-agent-routing'
 
 const mocks = vi.hoisted(() => ({
@@ -104,17 +103,8 @@ vi.mock('@/lib/tui-agent-startup', async () => {
   return {
     ...actual,
     buildAgentDraftLaunchPlan: vi.fn(actual.buildAgentDraftLaunchPlan),
-    buildAgentStartupPlan: vi.fn(actual.buildAgentStartupPlan)
-  }
-})
-
-vi.mock('../../../shared/startup-line-prompt-carry', async () => {
-  const actual = await vi.importActual<typeof PromptCarryModule>(
-    '../../../shared/startup-line-prompt-carry'
-  )
-  return {
-    ...actual,
-    planStartupWithLaunchPrompt: vi.fn(actual.planStartupWithLaunchPrompt)
+    buildAgentStartupPlan: vi.fn(actual.buildAgentStartupPlan),
+    planLaunchPrompt: vi.fn(actual.planLaunchPrompt)
   }
 })
 
@@ -141,9 +131,12 @@ vi.mock('@/lib/launch-work-item-direct-agent-routing', async () => {
 import { launchWorkItemDirect } from './launch-work-item-direct'
 import { pasteDraftWhenAgentReady } from '@/lib/agent-paste-draft'
 import { beginDirectWorkItemStructuredLaunch } from '@/lib/launch-work-item-direct-agent-routing'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '@/lib/tui-agent-startup'
+import {
+  buildAgentDraftLaunchPlan,
+  buildAgentStartupPlan,
+  planLaunchPrompt
+} from '@/lib/tui-agent-startup'
 import { pickTuiAgent } from '../../../shared/tui-agent-selection'
-import { planStartupWithLaunchPrompt } from '../../../shared/startup-line-prompt-carry'
 
 const mockApi = {
   worktrees: {
@@ -600,7 +593,6 @@ describe('launchWorkItemDirect', () => {
       agent: 'cursor',
       launchCommand: 'cursor-agent',
       expectedProcess: 'cursor-agent',
-      followupPrompt: null,
       launchConfig: { agentArgs: '', agentEnv: {} }
     })
     mocks.store.createWorktree.mockResolvedValue({
@@ -813,12 +805,12 @@ describe('launchWorkItemDirect', () => {
       })
     ).resolves.toBe(true)
 
-    expect(planStartupWithLaunchPrompt).toHaveBeenCalledWith(
+    expect(planLaunchPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
         agent: 'codex',
-        platform: 'linux'
-      }),
-      'Fix the failing checks.'
+        platform: 'linux',
+        prompt: 'Fix the failing checks.'
+      })
     )
   })
 })

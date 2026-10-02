@@ -28,6 +28,7 @@ export function buildWorktreeCreationStartupOpt(
     ...(request.launchDraftPrompt ? { launchDraftText: request.launchDraftPrompt } : {}),
     ...(plan.startupCommandDelivery ? { startupCommandDelivery: plan.startupCommandDelivery } : {}),
     ...(plan.launchFile ? { launchFile: plan.launchFile } : {}),
+    ...(plan.launchPrompt ? { launchPrompt: plan.launchPrompt } : {}),
     // Why: command-code shows its prompt in the tab status before the first
     // hook fires, so the prompt is threaded through here.
     ...(request.agent === 'command-code' && request.quickPrompt.trim().length > 0

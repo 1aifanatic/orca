@@ -1,6 +1,7 @@
 import { useAppStore } from '@/store'
-import { launchHostWritesLaunchFile } from '@/lib/launch-file-host'
-import { buildAgentStartupPlan } from '@/lib/tui-agent-startup'
+import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { planLaunchPrompt, type AgentStartupPlan } from '@/lib/tui-agent-startup'
+import type { LaunchFile } from '../../../shared/launch-prompt-file'
 import type {
   LaunchAgentBackgroundSessionArgs,
   LaunchAgentBackgroundSessionResult
@@ -75,23 +76,38 @@ export async function launchAgentBackgroundSession(
   // Route by the worktree's owner host, not the focused runtime.
   const ownerSettings = getSettingsForWorktreeRuntimeOwner(store, worktreeId)
   const runtimeTarget = getActiveRuntimeTarget(ownerSettings)
-  const startupPlan = buildAgentStartupPlan({
+  const planned = planLaunchPrompt({
     agent,
-    prompt: hasPrompt && !isFollowupPath ? trimmedPrompt : '',
+    prompt: trimmedPrompt,
     cmdOverrides,
     agentArgs,
     agentEnv,
     platform: launchPlatform,
     shell: startupShell,
     isRemote,
-    hostWritesLaunchFile: launchHostWritesLaunchFile(ownerSettings),
-    allowEmptyPromptLaunch: !hasPrompt || isFollowupPath
+    launchHostIsPaired: launchHostIsPaired(ownerSettings?.activeRuntimeEnvironmentId)
   })
-  if (!startupPlan) {
+  if (!planned) {
     return null
   }
-  // A prompt the host could not be sent in a launch file waits for the paste, as a stdin agent's does.
-  const promptLeftForPaste = hasPrompt && !isFollowupPath ? startupPlan.followupPrompt : null
+  let startupPlan: AgentStartupPlan
+  let launchFile: LaunchFile | undefined
+  // An argv agent's prompt the line could not carry waits for the paste, as a stdin agent's does.
+  let promptLeftForPaste: string | null = null
+  switch (planned.carry) {
+    case 'none':
+    case 'on-line':
+      startupPlan = planned.plan
+      break
+    case 'launch-file':
+      startupPlan = planned.plan
+      launchFile = planned.launchFile
+      break
+    case 'paste-after-ready':
+      startupPlan = planned.cleanPlan
+      promptLeftForPaste = isFollowupPath ? null : planned.text
+      break
+  }
   let pasteDraftAfterLaunch = hasPrompt && isFollowupPath ? trimmedPrompt : promptLeftForPaste
 
   // A hidden run tab must never be store-visible without its PTY (#2989).
@@ -192,7 +208,7 @@ export async function launchAgentBackgroundSession(
             ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
             : {}),
         env: paneEnv,
-        ...(startupPlan.launchFile ? { launchFile: startupPlan.launchFile } : {}),
+        ...(launchFile ? { launchFile } : {}),
         launchConfig: startupPlan.launchConfig,
         launchToken,
         launchAgent: agent,

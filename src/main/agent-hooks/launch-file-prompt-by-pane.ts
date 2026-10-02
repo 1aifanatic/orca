@@ -1,4 +1,4 @@
-import type { LaunchFile } from '../../shared/launch-prompt-file'
+import { isLaunchFilePointer, type LaunchFile } from '../../shared/launch-prompt-file'
 
 // Why bounded: an entry outlives its launch until newer ones push it out; the rename reads only a
 // prompt's opening, and a pane's rename runs within minutes of its launch.
@@ -7,9 +7,9 @@ const KEPT_CHARS = 4_000
 const promptByPane = new Map<string, string>()
 
 /**
- * Keeps a launch file's prompt for the pane it launched, for the first-work rename: the agent's hook
- * reports only the pointer to the file. A sensitive file (a worker brief with its capability) is
- * never kept.
+ * Keeps a launch file's prompt for the pane it launched: the agent's hook reports only the pointer
+ * to the file, and Orca shows the prompt instead (`launchPromptShownForPane`). A sensitive file (a
+ * worker brief with its capability) is never kept.
  */
 export function rememberLaunchFilePrompt(
   paneKey: string,
@@ -28,6 +28,8 @@ export function rememberLaunchFilePrompt(
   }
 }
 
-export function launchFilePromptForPane(paneKey: string): string | undefined {
-  return promptByPane.get(paneKey)
+/** The one place Orca reads a pane's reported prompt: a launch file's pointer reads as the prompt
+ *  it points at, when this host kept it. */
+export function launchPromptShownForPane(paneKey: string, prompt: string): string {
+  return isLaunchFilePointer(prompt) ? (promptByPane.get(paneKey) ?? prompt) : prompt
 }

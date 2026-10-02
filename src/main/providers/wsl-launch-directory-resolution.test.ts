@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createLocalPtyLaunchPlan, resolveLocalPtyWslDistro } from './local-pty-launch-plan'
 import type { LocalPtyProviderOptions } from './local-pty-provider-types'
 import type { PtySpawnOptions } from './types'
-import { resolveWslLaunchDirectory } from './wsl-launch-directory-resolution'
+import {
+  resolveSpawnWslLaunchDirectory,
+  resolveWslLaunchDirectory,
+  WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS
+} from './wsl-launch-directory-resolution'
 import type * as WslModule from '../wsl'
 
 const { runWslProcess } = vi.hoisted(() => ({ runWslProcess: vi.fn() }))
@@ -57,13 +61,41 @@ describe('resolveWslLaunchDirectory', () => {
     )
   })
 
-  it('probes a distro once, and asks again only after a failure', async () => {
-    runWslProcess.mockResolvedValueOnce(answers('', 1))
-    await expect(resolveWslLaunchDirectory('Arch')).resolves.toBeUndefined()
+  it('probes a distro once, and remembers a failure only for its TTL', async () => {
+    vi.useFakeTimers()
+    try {
+      runWslProcess.mockResolvedValueOnce(answers('', 1))
+      await expect(resolveWslLaunchDirectory('Arch')).resolves.toBeUndefined()
+      runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
+      // Why: a broken distro must not cost every spawn a wsl.exe round trip.
+      await expect(resolveWslLaunchDirectory('Arch')).resolves.toBeUndefined()
+      expect(runWslProcess).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(WSL_LAUNCH_DIRECTORY_FAILURE_TTL_MS)
+      await expect(resolveWslLaunchDirectory('Arch')).resolves.toMatchObject({
+        shell: '/bin/bash'
+      })
+      await resolveWslLaunchDirectory('Arch')
+      expect(runWslProcess).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('probes only for a spawn that needs the directory', async () => {
     runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
-    await expect(resolveWslLaunchDirectory('Arch')).resolves.toMatchObject({ shell: '/bin/bash' })
-    await resolveWslLaunchDirectory('Arch')
-    expect(runWslProcess).toHaveBeenCalledTimes(2)
+    expect(
+      resolveSpawnWslLaunchDirectory('Gentoo', { command: 'claude', launchAgent: 'claude' })
+    ).toBeUndefined()
+    expect(
+      resolveSpawnWslLaunchDirectory(undefined, { command: 'x'.repeat(600), launchAgent: 'claude' })
+    ).toBeUndefined()
+    await expect(
+      resolveSpawnWslLaunchDirectory('Gentoo', {
+        command: `claude '${'x'.repeat(600)}'`,
+        launchAgent: 'claude'
+      })
+    ).resolves.toMatchObject({ distro: 'Gentoo' })
+    expect(runWslProcess).toHaveBeenCalledTimes(1)
   })
 
   it('has none for a spawn outside WSL or a distro whose home cannot be read', async () => {

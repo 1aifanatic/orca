@@ -26,7 +26,6 @@ describe('buildDirectWorkItemStartupOpts', () => {
       agent: 'codex',
       launchCommand: "codex 'review linked issue'",
       expectedProcess: 'codex',
-      followupPrompt: null,
       launchConfig: { agentArgs: '', agentEnv: {} },
       startupCommandDelivery: 'shell-ready'
     }
@@ -53,7 +52,6 @@ describe('buildDirectWorkItemStartupOpts', () => {
       agent: 'claude',
       launchCommand: "claude --prefill 'https://github.com/o/r/issues/12'",
       expectedProcess: 'claude',
-      followupPrompt: null,
       launchConfig: { agentArgs: '', agentEnv: {} }
     }
 
@@ -85,6 +83,7 @@ const settings = {
 describe('buildDirectWorkItemAgentStartupPlan', () => {
   it('omits native-chat preferences when the new workspace opens in terminal mode', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
+      launchHostIsPaired: false,
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
@@ -99,6 +98,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
 
   it('applies native-chat preferences when the new workspace opens in chat', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
+      launchHostIsPaired: false,
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
@@ -147,6 +147,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 
   it('resolves the global Agents arguments when the launch names none', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
+      launchHostIsPaired: false,
       agent: 'codex',
       draftContent: 'Fix the broken checks',
       promptDelivery: 'draft',
@@ -160,6 +161,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 
   it('lets an explicit per-action value win over the global one', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
+      launchHostIsPaired: false,
       agent: 'codex',
       agentArgs: '--model gpt-5',
       draftContent: 'Fix the broken checks',
@@ -171,5 +173,40 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
 
     expect(result.startupPlan?.launchCommand).toContain("'--model' 'gpt-5'")
     expect(result.startupPlan?.launchCommand).not.toContain('danger-full-access')
+  })
+})
+
+describe('buildDirectWorkItemAgentStartupPlan submitted prompts', () => {
+  const submit = (agent: 'claude' | 'gemini', draftContent: string, launchHostIsPaired = false) =>
+    buildDirectWorkItemAgentStartupPlan({
+      launchHostIsPaired,
+      agent,
+      draftContent,
+      promptDelivery: 'submit-after-ready',
+      settings: { ...settings, openAgentTabsInChatByDefault: false },
+      launchPlatform: 'darwin',
+      nativeChatTranscriptIsLocalReadable: true
+    })
+
+  // The bug class the explicit carry outcome removes: a plan that exists but does not carry the
+  // prompt was reported as on the launch command, so no paste ran and the prompt was dropped.
+  it('leaves a file-sized prompt for the paste for an agent not measured reading the file', () => {
+    const result = submit('gemini', 'g'.repeat(20_000))
+    expect(result.promptOnLaunchCommand).toBe(false)
+    expect(result.startupPlan?.launchCommand).not.toContain('gggg')
+    expect(result.launchFile).toBeUndefined()
+  })
+
+  it('hands Claude the same prompt in a launch file, with the prompt to copy if refused', () => {
+    const prompt = 'c'.repeat(20_000)
+    const result = submit('claude', prompt)
+    expect(result.promptOnLaunchCommand).toBe(true)
+    expect(result.launchFile?.content).toBe(prompt)
+    expect(result.launchPrompt).toBe(prompt)
+  })
+
+  it('pastes on a paired host what its line cannot carry typed', () => {
+    expect(submit('claude', 'fix it', true).promptOnLaunchCommand).toBe(true)
+    expect(submit('claude', 'fix it\nthen run the tests', true).promptOnLaunchCommand).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ import {
   buildAgentDraftLaunchPlan,
   buildAgentStartupPlan,
   planAgentCliArgsSuffix,
+  planLaunchPrompt,
   type AgentStartupPlan
 } from '@/lib/tui-agent-startup'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
@@ -14,6 +15,7 @@ import type { SessionOptionValue } from '../../../shared/native-chat-session-opt
 
 export type SourceControlLaunchPlanDelivery =
   | 'argv'
+  | 'argv-launch-file'
   | 'draft-native'
   | 'draft-paste'
   | 'paste-submit'
@@ -43,6 +45,8 @@ export function planSourceControlAgentActionLaunch(args: {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must not be applied for remote launches. */
   isRemote?: boolean
+  /** See `launchHostIsPaired`. */
+  launchHostIsPaired?: boolean
 }): SourceControlLaunchPlanResult {
   const agent = args.agent
   if (!agent) {
@@ -133,7 +137,6 @@ export function planSourceControlAgentActionLaunch(args: {
         agent: draftLaunchPlan.agent,
         launchCommand: draftLaunchPlan.launchCommand,
         expectedProcess: draftLaunchPlan.expectedProcess,
-        followupPrompt: null,
         launchConfig: draftLaunchPlan.launchConfig,
         ...(draftLaunchPlan.sessionOptions
           ? { sessionOptions: draftLaunchPlan.sessionOptions }
@@ -172,7 +175,7 @@ export function planSourceControlAgentActionLaunch(args: {
     })
     delivery = 'draft-paste'
   } else {
-    startupPlan = buildAgentStartupPlan({
+    const planned = planLaunchPrompt({
       agent,
       prompt: trimmedInput,
       cmdOverrides,
@@ -181,9 +184,26 @@ export function planSourceControlAgentActionLaunch(args: {
       isRemote,
       agentArgs: args.agentArgs,
       sessionOptions: args.sessionOptions,
-      allowEmptyPromptLaunch: false
+      launchHostIsPaired: args.launchHostIsPaired ?? false
     })
-    delivery = 'argv'
+    switch (planned?.carry) {
+      case undefined:
+        delivery = 'argv'
+        break
+      case 'none':
+      case 'on-line':
+        startupPlan = planned.plan
+        delivery = 'argv'
+        break
+      case 'launch-file':
+        startupPlan = planned.plan
+        delivery = 'argv-launch-file'
+        break
+      case 'paste-after-ready':
+        startupPlan = planned.cleanPlan
+        delivery = 'paste-submit'
+        break
+    }
   }
 
   if (!startupPlan) {
@@ -203,7 +223,7 @@ export function planSourceControlAgentActionLaunch(args: {
         ? 'The command input is prefilled as an editable draft by the agent launch command.'
         : delivery === 'draft-paste'
           ? 'The agent starts with no prompt, then Orca pastes the command input as an editable draft after the TUI is ready.'
-          : startupPlan.launchFile
+          : delivery === 'argv-launch-file'
             ? 'The command input goes in a private file the host writes; the launch command tells the agent to read it, submitted as the first turn.'
             : 'The command input is included in the launch command and submitted as the first turn.'
 

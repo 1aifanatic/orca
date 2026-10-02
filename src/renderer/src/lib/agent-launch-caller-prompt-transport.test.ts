@@ -48,6 +48,10 @@ vi.mock('@/lib/agent-paste-draft', () => ({
 vi.mock('@/lib/agent-ready-wait', () => ({
   waitForAgentReady: vi.fn(async () => ({ ready: true, reason: 'foreground-match' }))
 }))
+const mockWaitForLaunchPromptReceipt = vi.fn(async () => true)
+vi.mock('@/lib/agent-launch-prompt-receipt', () => ({
+  waitForLaunchPromptReceipt: mockWaitForLaunchPromptReceipt
+}))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => []
 }))
@@ -159,14 +163,16 @@ describe('agent launch caller prompt transport', () => {
   )
 
   it.each(cases)(
-    'exposes no delivery promise to %s, whose Codex prompt rides argv or is a draft',
+    'exposes a delivery result to %s only for a prompt it waits to see submitted',
     async (_id, profile) => {
       const result = await launch(profile)
 
-      // Why: three call sites branch on this promise being present. A draft launch must NOT get one,
-      // because the composer owns the text until the user sends it, and a prompt the launch command
-      // carries has no paste to wait for.
-      expect(result?.promptDeliveryResult).toBeUndefined()
+      // Why: call sites branch on this result being present. A draft launch must NOT get one,
+      // because the composer owns the text until the user sends it; a submit-after-ready prompt the
+      // launch command carries still waits on the agent's receipt before the caller acts.
+      const waitsForSubmit =
+        profile.args.prompt !== undefined && profile.args.promptDelivery === 'submit-after-ready'
+      expect(result?.promptDeliveryResult !== undefined).toBe(waitsForSubmit)
     }
   )
 
@@ -214,6 +220,38 @@ describe('agent launch caller prompt transport', () => {
       })
     }
   })
+
+  // The bug class the explicit carry outcome removes: a plan that exists but does not carry the
+  // prompt was treated as delivered, and the prompt was dropped.
+  it.each([
+    ['past the argv ceiling', 'x'.repeat(20_000), 'darwin' as const],
+    ['a Windows-damaged prompt', 'say "hi"', 'win32' as const]
+  ])(
+    'pastes %s for an agent not measured reading a launch file, and waits for that paste',
+    async (_label, prompt, launchPlatform) => {
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+      const result = launchAgentInNewTab({
+        agent: 'gemini',
+        worktreeId: 'wt-1',
+        prompt,
+        promptDelivery: 'submit-after-ready',
+        launchPlatform
+      })
+
+      await expect(result?.promptDeliveryResult).resolves.toEqual({
+        delivered: true,
+        failureNotified: false
+      })
+      expect(mockPasteDraftWhenAgentReady.mock.calls[0]?.[0]).toMatchObject({
+        content: prompt,
+        submit: true
+      })
+      expect(mockWaitForLaunchPromptReceipt).not.toHaveBeenCalled()
+      expect(queuedStartupCommand(store)).not.toContain(prompt.slice(0, 8))
+      expect(queuedStartupPayload(store)?.launchFile).toBeUndefined()
+    }
+  )
 
   it('mirrors an argv-carried draft into the chat composer', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')

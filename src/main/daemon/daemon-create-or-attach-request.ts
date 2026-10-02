@@ -21,7 +21,7 @@ export type CreateOrAttachRequest = {
     envToDelete?: string[]
     command?: string
     startupCommandDelivery?: StartupCommandDelivery
-    /** v39+: written by the daemon before it types `command`. */
+    /** v41+ (`LAUNCH_FILE_DAEMON_PROTOCOL_VERSION`): written by the daemon before it types `command`. */
     launchFile?: LaunchFile
     /** Where the daemon writes a WSL session's staged line and launch file; main resolves it. */
     wslLaunchDirectory?: WslLaunchDirectory

@@ -20,12 +20,7 @@ import {
   sweepStaleLaunchFiles,
   writeLaunchFile
 } from './launch-file-writing'
-import {
-  MAX_INLINE_LAUNCH_PROMPT_CHARS,
-  buildLaunchFilePointer,
-  parseLaunchFile,
-  planLaunchPrompt
-} from './launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile, parseLaunchFile } from './launch-prompt-file'
 import { quoteStartupArg } from './tui-agent-startup-shell'
 
 let baseDirectory: string
@@ -38,35 +33,30 @@ afterEach(() => {
   rmSync(baseDirectory, { recursive: true, force: true })
 })
 
-describe('planLaunchPrompt', () => {
-  it('keeps a prompt at the ceiling inline', () => {
-    const prompt = 'a'.repeat(MAX_INLINE_LAUNCH_PROMPT_CHARS)
-    expect(planLaunchPrompt(prompt)).toEqual({ prompt })
-  })
-
-  it('moves a 20,000-character prompt into a launch file', () => {
+describe('carryInLaunchFile', () => {
+  it('moves a prompt into a launch file and names it by a pointer', () => {
     const prompt = 'b'.repeat(20_000)
-    const planned = planLaunchPrompt(prompt)
-    expect(planned.launchFile).toMatchObject({ content: prompt, sensitive: false })
-    expect(planned.prompt).toBe(buildLaunchFilePointer(planned.launchFile!.placeholder))
+    const carried = carryInLaunchFile(prompt, false)
+    expect(carried.launchFile).toMatchObject({ content: prompt, sensitive: false })
+    expect(carried.prompt).toBe(buildLaunchFilePointer(carried.launchFile.placeholder))
   })
 
-  it('moves a short sensitive prompt into a launch file', () => {
-    const planned = planLaunchPrompt('token dcap_secret', { sensitive: true })
-    expect(planned.prompt).not.toContain('dcap_secret')
-    expect(planned.launchFile).toMatchObject({ content: 'token dcap_secret', sensitive: true })
+  it('keeps a sensitive prompt off the pointer', () => {
+    const carried = carryInLaunchFile('token dcap_secret', true)
+    expect(carried.prompt).not.toContain('dcap_secret')
+    expect(carried.launchFile).toMatchObject({ content: 'token dcap_secret', sensitive: true })
   })
 
   it('mints a fresh placeholder each time', () => {
-    const first = planLaunchPrompt('x', { sensitive: true }).launchFile!.placeholder
-    const second = planLaunchPrompt('x', { sensitive: true }).launchFile!.placeholder
+    const first = carryInLaunchFile('x', true).launchFile.placeholder
+    const second = carryInLaunchFile('x', true).launchFile.placeholder
     expect(first).not.toBe(second)
   })
 })
 
 describe('parseLaunchFile', () => {
-  it('accepts what planLaunchPrompt mints and rejects anything else', () => {
-    const { launchFile } = planLaunchPrompt('x', { sensitive: true })
+  it('accepts what carryInLaunchFile mints and rejects anything else', () => {
+    const { launchFile } = carryInLaunchFile('x', true)
     expect(parseLaunchFile(launchFile)).toEqual(launchFile)
     expect(parseLaunchFile({ ...launchFile, placeholder: 'HOME' })).toBeUndefined()
     expect(parseLaunchFile({ ...launchFile, sensitive: 'yes' })).toBeUndefined()
@@ -81,7 +71,7 @@ describe('parseLaunchFile', () => {
 
 describe('writeLaunchFile', () => {
   it('writes a 0600 file in a private 0700 directory and puts its path in the line and env', () => {
-    const { prompt, launchFile } = planLaunchPrompt('c'.repeat(20_000))
+    const { prompt, launchFile } = carryInLaunchFile('c'.repeat(20_000), false)
     const written = writeLaunchFile({
       launchFile: launchFile!,
       command: `claude '${prompt}'`,
@@ -102,7 +92,7 @@ describe('writeLaunchFile', () => {
   it("refuses an apostrophe in the path when the line's quoting is unknown, leaving nothing behind", () => {
     const quoted = join(baseDirectory, "it's")
     mkdirSync(quoted)
-    const { launchFile } = planLaunchPrompt('x', { sensitive: true })
+    const { launchFile } = carryInLaunchFile('x', true)
     expect(() => writeLaunchFile({ launchFile: launchFile!, baseDirectory: quoted })).toThrow(
       LaunchFileUnavailableError
     )
@@ -110,7 +100,7 @@ describe('writeLaunchFile', () => {
   })
 
   it('refuses when the temp directory cannot be written', () => {
-    const { launchFile } = planLaunchPrompt('x', { sensitive: true })
+    const { launchFile } = carryInLaunchFile('x', true)
     expect(() =>
       writeLaunchFile({ launchFile: launchFile!, baseDirectory: join(baseDirectory, 'missing') })
     ).toThrow(
@@ -119,7 +109,7 @@ describe('writeLaunchFile', () => {
   })
 
   it('removes the whole directory', () => {
-    const { launchFile } = planLaunchPrompt('x', { sensitive: true })
+    const { launchFile } = carryInLaunchFile('x', true)
     const written = writeLaunchFile({ launchFile: launchFile!, baseDirectory })
     removeLaunchFile(written)
     expect(existsSync(written.directory)).toBe(false)
@@ -178,7 +168,7 @@ describePosix('a launch line naming a file under an unusual home directory', () 
     async (user) => {
       const home = join(baseDirectory, user)
       mkdirSync(home)
-      const { prompt, launchFile } = planLaunchPrompt('brief', { sensitive: true })
+      const { prompt, launchFile } = carryInLaunchFile('brief', true)
       const written = writeLaunchFile({
         launchFile: { ...launchFile!, quoting: 'posix' },
         command: `printf '%s' ${quoteStartupArg(prompt, 'posix')}`,

@@ -7,7 +7,11 @@ import {
   type SnapshotCheckpointResult
 } from './daemon-pty-runtime-state'
 import { isDaemonGoneError } from './daemon-endpoint-errors'
-import { HISTORY_SEED_TRANSFER_PROTOCOL_VERSION } from './daemon-protocol-version'
+import {
+  HISTORY_SEED_TRANSFER_PROTOCOL_VERSION,
+  LAUNCH_FILE_DAEMON_PROTOCOL_VERSION
+} from './daemon-protocol-version'
+import { LaunchFileUnavailableError } from '../../shared/launch-file-writing'
 import type { ColdRestoreInfo } from './history-reader'
 import { NdjsonLineTooLongError } from './ndjson'
 import {
@@ -105,6 +109,15 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
       const { opts } = context
       if (opts.signal?.aborted) {
         throw new Error('client_disconnected')
+      }
+      // Why refuse: an older daemon (a same-id respawn routed to it) would drop the file and type
+      // a line naming it. The refusal reaches the user with the prompt to copy.
+      if (
+        !context.attachOnly &&
+        opts.launchFile &&
+        this.protocolVersion < LAUNCH_FILE_DAEMON_PROTOCOL_VERSION
+      ) {
+        throw new LaunchFileUnavailableError("this terminal's daemon is from an older Orca")
       }
       const payload = {
         sessionId: context.sessionId,

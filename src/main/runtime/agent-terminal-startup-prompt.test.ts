@@ -2,9 +2,9 @@
  * The launch command a terminal create builds when the launch hands it a prompt.
  *
  * This is the argv half of terminal prompt delivery, and the reason it is worth pinning is that
- * its failure mode is silent: `buildAgentStartupPlan` answers a prompt it cannot fold by returning
- * a bare command plus a `followupPrompt`, and this resolver returns options, not a live PTY, so a
- * dropped `followupPrompt` would spawn the agent with no prompt and no error anywhere.
+ * its failure mode is silent: `planLaunchPrompt` answers a prompt it cannot fold with a clean plan
+ * and `paste-after-ready`, and this resolver returns options, not a live PTY, so a dropped paste
+ * would spawn the agent with no prompt and no error anywhere.
  */
 
 import { describe, expect, it, vi } from 'vitest'

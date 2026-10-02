@@ -7,6 +7,7 @@ import {
 import { sendFollowupPromptWhenAgentReady } from '@/lib/agent-followup-delivery'
 import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
+import type { ComposerAgentStartupPlan } from '@/lib/composer-agent-startup-plan'
 import type { LinkedWorkItemContext } from '@/lib/linked-work-item-context'
 import {
   beginAgentStartupDeliveryAttempt,
@@ -228,11 +229,11 @@ export function getWorkspaceSeedName(args: {
 export async function ensureAgentStartupInTerminal(args: {
   worktreeId: string
   primaryTabId?: string | null
-  startup: AgentStartupPlan
+  startup: ComposerAgentStartupPlan
 }): Promise<void> {
   const { worktreeId, primaryTabId, startup } = args
   const draftPrompt = startup.draftPrompt ?? null
-  if (startup.followupPrompt === null && draftPrompt === null) {
+  if (!startup.pastePromptAfterReady && draftPrompt === null) {
     return
   }
   const launchToken = ensureStartupLaunchToken(startup)
@@ -280,15 +281,14 @@ export async function ensureAgentStartupInTerminal(args: {
 async function deliverAgentStartupToTerminal(
   tabId: string,
   ptyId: string,
-  startup: AgentStartupPlan
+  startup: ComposerAgentStartupPlan
 ): Promise<void> {
   const draftPrompt = startup.draftPrompt ?? null
   const runtimeSettings = getSettingsForAgentTabRuntimeOwner(tabId)
-  // Why: followupPrompt is the legacy path for stdin-after-start agents
-  // (aider, goose, etc.) that need their initial prompt typed into the live
-  // session and submitted. Wait until the agent owns the PTY before writing.
-  if (startup.followupPrompt) {
-    const prompt = startup.followupPrompt
+  // Why: a stdin-after-start agent (aider, goose, etc.) needs its initial prompt typed into the
+  // live session and submitted. Wait until the agent owns the PTY before writing.
+  if (startup.pastePromptAfterReady) {
+    const prompt = startup.pastePromptAfterReady
     // Why: an argv agent's prompt left for paste (a WSL line too long to type, a paired host) waits
     // for the agent's composer and lands as one bracketed paste, not raw keys once the process shows.
     const delivered = agentPromptRidesLaunchCommand(startup.agent)

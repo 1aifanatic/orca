@@ -30,7 +30,7 @@ import {
   writeSpawnLaunchFile,
   type WrittenLaunchFile
 } from '../../shared/launch-file-writing'
-import { resolveWslLaunchDirectory } from './wsl-launch-directory-resolution'
+import { resolveSpawnWslLaunchDirectory } from './wsl-launch-directory-resolution'
 
 export async function spawnLocalPty(
   args: PtySpawnOptions,
@@ -40,7 +40,8 @@ export async function spawnLocalPty(
   const wslDistro =
     args.command && !args.attachOnly ? resolveLocalPtyWslDistro(args, getOptions) : undefined
   // Why before the shutdown check: no await may sit between it and this spawn's registration.
-  const wslLaunchDirectory = wslDistro ? await resolveWslLaunchDirectory(wslDistro) : undefined
+  const wslProbe = resolveSpawnWslLaunchDirectory(wslDistro, args)
+  const wslLaunchDirectory = wslProbe ? await wslProbe : undefined
   if (reattachId) {
     const pendingShutdown = ptyShutdownOperations.get(reattachId)
     if (pendingShutdown) {

@@ -207,6 +207,7 @@ export type TerminalActions = {
       delivery?: 'terminal-paste'
       startupCommandDelivery?: StartupCommandDelivery
       launchFile?: LaunchFile
+      launchPrompt?: string
       env?: Record<string, string>
       envToDelete?: string[]
       launchConfig?: SleepingAgentLaunchConfig
@@ -234,6 +235,7 @@ export type TerminalActions = {
     delivery?: 'terminal-paste'
     startupCommandDelivery?: StartupCommandDelivery
     launchFile?: LaunchFile
+    launchPrompt?: string
     env?: Record<string, string>
     envToDelete?: string[]
     launchConfig?: SleepingAgentLaunchConfig

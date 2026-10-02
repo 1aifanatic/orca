@@ -20,7 +20,7 @@ import {
   type LaunchFile
 } from './launch-prompt-file'
 import { quoteStartupArg, type AgentStartupShell } from './tui-agent-startup-shell'
-import { typedStartupLineFits } from './typed-startup-line'
+import { startupLineNeedsStaging } from './startup-command-staging'
 import type { WslLaunchDirectory } from './wsl-launch-directory'
 
 const LAUNCH_FILE_DIR_PREFIX = 'orca-launch-file-'
@@ -69,8 +69,8 @@ export function launchFilePathInQuotedRun(
 }
 
 export class LaunchFileUnavailableError extends Error {
-  constructor(reason: string) {
-    super(describeLaunchFileUnavailable(reason))
+  constructor(reason: string, carrier: 'file' | 'staged-line' = 'file') {
+    super(describeLaunchFileUnavailable(reason, carrier))
   }
 }
 
@@ -161,6 +161,19 @@ export function writeLaunchFile(args: {
   }
 }
 
+/** Whether a WSL spawn needs its distro's launch directory: for a launch file, or to stage the
+ *  long or multi-line agent line Orca built. Only then is the distro probed. */
+export function spawnNeedsWslLaunchDirectory(args: {
+  launchFile?: LaunchFile
+  command?: string
+  orcaBuiltLine: boolean
+}): boolean {
+  return (
+    args.launchFile !== undefined ||
+    (args.orcaBuiltLine && args.command !== undefined && startupLineNeedsStaging(args.command))
+  )
+}
+
 /**
  * The write site's launch file for a spawn. A WSL session writes it into the distro, and refuses
  * when the distro directory is unknown and a file or a staged line needs it: a Windows path means
@@ -175,11 +188,15 @@ export function writeSpawnLaunchFile(args: {
   wslDirectory: WslLaunchDirectory | undefined
 }): WrittenLaunchFile | undefined {
   const wslDirectory = args.wslDistro ? args.wslDirectory : undefined
-  const needsDirectory =
-    args.launchFile !== undefined ||
-    (args.orcaBuiltLine && args.command !== undefined && !typedStartupLineFits(args.command))
-  if (args.wslDistro && needsDirectory && wslDirectory?.distro !== args.wslDistro) {
-    throw new LaunchFileUnavailableError("the WSL distro's home directory could not be reached")
+  if (
+    args.wslDistro &&
+    spawnNeedsWslLaunchDirectory(args) &&
+    wslDirectory?.distro !== args.wslDistro
+  ) {
+    throw new LaunchFileUnavailableError(
+      "the WSL distro's home directory could not be reached",
+      args.launchFile ? 'file' : 'staged-line'
+    )
   }
   return args.launchFile
     ? writeLaunchFile({

@@ -33,6 +33,8 @@ export type WorktreeStartupPayload = {
   startupCommandDelivery?: StartupCommandDelivery
   /** Written by the host before it types `command`, which names it by placeholder. */
   launchFile?: LaunchFile
+  /** The submitted prompt `command` carries; handed back to copy if the host refuses the spawn. */
+  launchPrompt?: string
   initialAgentStatus?: { agent: TuiAgent; prompt: string }
   sessionOptions?: Record<string, SessionOptionValue>
   telemetry?: AgentStartedTelemetry

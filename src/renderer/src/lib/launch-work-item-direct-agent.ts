@@ -3,6 +3,7 @@ import { track, tuiAgentToAgentKind } from '@/lib/telemetry'
 import {
   buildAgentDraftLaunchPlan,
   buildAgentStartupPlan,
+  planLaunchPrompt,
   type AgentStartupPlan
 } from '@/lib/tui-agent-startup'
 import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
@@ -18,8 +19,6 @@ import { translate } from '@/i18n/i18n'
 import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat/native-chat-launch-session-options'
 import type { PersistedNativeChatSessionOptions } from '../../../shared/native-chat-session-options'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
-import { planStartupWithLaunchPrompt } from '../../../shared/startup-line-prompt-carry'
-import { agentPromptRidesLaunchCommand } from '../../../shared/tui-agent-startup'
 
 export function buildDirectWorkItemAgentStartupPlan(args: {
   agent: TuiAgent | null
@@ -42,11 +41,13 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must not be applied for remote launches. */
   isRemote?: boolean
-  /** A paired host of unknown version may neither stage a long line nor write a launch file. */
-  launchesOnPairedHost?: boolean
+  /** See `launchHostIsPaired`. */
+  launchHostIsPaired: boolean
 }): {
   startupPlan: AgentStartupPlan | null
   launchFile?: LaunchFile
+  /** The submitted prompt the launch command carries (on its line or in `launchFile`). */
+  launchPrompt?: string
   /** The launch command carries the content (a native draft or a submitted prompt); no paste runs. */
   promptOnLaunchCommand: boolean
   startupPlanFailed: boolean
@@ -76,33 +77,51 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
     agentEnv: effectiveAgentEnv,
     sessionOptions
   }
-  // Temporary, until paired hosts advertise staging: they keep the paste after readiness.
-  if (
-    args.promptDelivery === 'submit-after-ready' &&
-    !args.launchesOnPairedHost &&
-    agentPromptRidesLaunchCommand(args.agent)
-  ) {
-    const carried = planStartupWithLaunchPrompt(planInputs, args.draftContent)
-    return {
-      startupPlan: carried.plan,
-      ...(carried.launchFile ? { launchFile: carried.launchFile } : {}),
-      promptOnLaunchCommand: carried.plan !== null,
-      startupPlanFailed: carried.plan === null
+  if (args.promptDelivery === 'submit-after-ready') {
+    const planned = planLaunchPrompt({
+      ...planInputs,
+      prompt: args.draftContent,
+      launchHostIsPaired: args.launchHostIsPaired
+    })
+    if (!planned) {
+      return { startupPlan: null, promptOnLaunchCommand: false, startupPlanFailed: true }
+    }
+    switch (planned.carry) {
+      case 'none':
+        return { startupPlan: planned.plan, promptOnLaunchCommand: true, startupPlanFailed: false }
+      case 'on-line':
+        return {
+          startupPlan: planned.plan,
+          launchPrompt: args.draftContent,
+          promptOnLaunchCommand: true,
+          startupPlanFailed: false
+        }
+      case 'launch-file':
+        return {
+          startupPlan: planned.plan,
+          launchFile: planned.launchFile,
+          launchPrompt: args.draftContent,
+          promptOnLaunchCommand: true,
+          startupPlanFailed: false
+        }
+      case 'paste-after-ready':
+        return {
+          startupPlan: planned.cleanPlan,
+          promptOnLaunchCommand: false,
+          startupPlanFailed: false
+        }
     }
   }
-  const draftLaunchPlan =
-    args.promptDelivery === 'submit-after-ready'
-      ? null
-      : buildAgentDraftLaunchPlan({
-          agent: args.agent,
-          draft: args.draftContent,
-          cmdOverrides: args.settings?.agentCmdOverrides ?? {},
-          platform: args.launchPlatform,
-          isRemote: args.isRemote,
-          agentArgs: effectiveAgentArgs,
-          agentEnv: effectiveAgentEnv,
-          sessionOptions
-        })
+  const draftLaunchPlan = buildAgentDraftLaunchPlan({
+    agent: args.agent,
+    draft: args.draftContent,
+    cmdOverrides: args.settings?.agentCmdOverrides ?? {},
+    platform: args.launchPlatform,
+    isRemote: args.isRemote,
+    agentArgs: effectiveAgentArgs,
+    agentEnv: effectiveAgentEnv,
+    sessionOptions
+  })
 
   if (draftLaunchPlan) {
     return {
@@ -110,7 +129,6 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
         agent: draftLaunchPlan.agent,
         launchCommand: draftLaunchPlan.launchCommand,
         expectedProcess: draftLaunchPlan.expectedProcess,
-        followupPrompt: null,
         launchConfig: draftLaunchPlan.launchConfig,
         ...(draftLaunchPlan.sessionOptions
           ? { sessionOptions: draftLaunchPlan.sessionOptions }
@@ -153,7 +171,9 @@ export function buildDirectWorkItemStartupOpts(
   /** Unsent launch context, for the view-mode decision only. Set it for every
    *  draft launch — a natively-prefilled plan carries no `draftPrompt`. */
   launchDraftText?: string,
-  launchFile?: LaunchFile
+  /** What the launch command carries: its launch file, and the submitted prompt (see
+   *  `PtyPaneStartup.launchPrompt`). */
+  carried: { launchFile?: LaunchFile; launchPrompt?: string } = {}
 ): {
   startup?: {
     command: string
@@ -165,6 +185,7 @@ export function buildDirectWorkItemStartupOpts(
     sessionOptions?: AgentStartupPlan['sessionOptions']
     startupCommandDelivery?: StartupCommandDelivery
     launchFile?: LaunchFile
+    launchPrompt?: string
     telemetry?: AgentStartedTelemetry
   }
 } {
@@ -187,7 +208,8 @@ export function buildDirectWorkItemStartupOpts(
       ...(plan.startupCommandDelivery
         ? { startupCommandDelivery: plan.startupCommandDelivery }
         : {}),
-      ...(launchFile ? { launchFile } : {}),
+      ...(carried.launchFile ? { launchFile: carried.launchFile } : {}),
+      ...(carried.launchPrompt ? { launchPrompt: carried.launchPrompt } : {}),
       ...(telemetry ? { telemetry } : {})
     }
   }

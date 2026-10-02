@@ -1,14 +1,12 @@
-import type { GlobalSettings } from '../../../shared/global-settings-types'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-client-target'
+import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session-environment'
 import { isWebClientLocation } from './web-client-location'
 
 /**
- * Whether the host a launch lands on writes the launch file its line names. A paired host (another
- * Orca this client drives) is sent a command and never the file, so a prompt that would need one is
- * pasted after the agent is ready instead. Temporary, until paired hosts are sent the prompt itself.
+ * Whether a launch lands on a paired Orca: another Orca this client drives, which may be an older
+ * build that neither stages a long line nor writes a launch file. `carryLaunchPrompt` then keeps
+ * the line to the typed budget and pastes the rest after the agent is ready. Temporary, until paired
+ * hosts advertise both.
  */
-export function launchHostWritesLaunchFile(
-  ownerSettings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined
-): boolean {
-  return !isWebClientLocation() && getActiveRuntimeTarget(ownerSettings).kind === 'local'
+export function launchHostIsPaired(runtimeEnvironmentId: string | null | undefined): boolean {
+  return isWebClientLocation() || isWebRuntimeSessionActive(runtimeEnvironmentId)
 }

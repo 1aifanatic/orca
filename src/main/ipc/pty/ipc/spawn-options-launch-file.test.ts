@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { buildPtyIpcSpawnOptions } from './spawn-options'
-import { launchFilePromptForPane } from '../../../agent-hooks/launch-file-prompt-by-pane'
+import { launchPromptShownForPane } from '../../../agent-hooks/launch-file-prompt-by-pane'
+import { buildLaunchFilePointer } from '../../../../shared/launch-prompt-file'
 import { createPtyIpcSpawnState } from './spawn-state'
 import type { PtySpawnIpcArgs, PtySpawnIpcDeps } from './spawn-types'
 
@@ -59,8 +60,8 @@ describe('renderer pty spawn: launch file', () => {
     expect(options.launchFile).toBeUndefined()
   })
 
-  // Why: the agent's hook reports only the pointer, so the first-work rename reads this instead.
-  it('keeps the prompt a launch file carries for its pane, never a sensitive one', async () => {
+  // Why: the agent's hook reports only the pointer; Orca shows the prompt it points at instead.
+  it('shows the prompt a launch file carries for its pane, never a sensitive one', async () => {
     await spawnOptionsFor(
       { cols: 80, rows: 24, command, launchFile: LAUNCH_FILE },
       command,
@@ -76,7 +77,9 @@ describe('renderer pty spawn: launch file', () => {
       command,
       'tab-b:leaf-b'
     )
-    expect(launchFilePromptForPane('tab-a:leaf-a')).toBe('the whole task')
-    expect(launchFilePromptForPane('tab-b:leaf-b')).toBeUndefined()
+    const pointer = buildLaunchFilePointer('/tmp/orca-launch-file-a1/task-context.md')
+    expect(launchPromptShownForPane('tab-a:leaf-a', pointer)).toBe('the whole task')
+    expect(launchPromptShownForPane('tab-b:leaf-b', pointer)).toBe(pointer)
+    expect(launchPromptShownForPane('tab-a:leaf-a', 'a later prompt')).toBe('a later prompt')
   })
 })

@@ -2,6 +2,7 @@
 import { OrcaRuntimeWithWaitForMobileTerminalSurface } from './orca-runtime-wait-for-mobile-terminal-surface'
 import { runtimeWorktreeIdsEqual } from './runtime-worktree-path-identity'
 import { parsePaneKey } from '../../shared/stable-pane-id'
+import { onTerminalLaunchRefusal, takeTerminalLaunchRefusal } from './terminal-launch-refusals'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { RuntimeMobileSessionCreateTerminalResult } from '../../shared/runtime-types'
 
@@ -137,26 +138,43 @@ export class OrcaRuntimeWithRestoreLivePairedRendererSessionOwnedMobileTerminals
     }
 
     return new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const stop = (): void => {
+        clearTimeout(timer)
+        stopRefusal()
         const idx = this.graphSyncCallbacks.indexOf(check)
         if (idx !== -1) {
           this.graphSyncCallbacks.splice(idx, 1)
         }
+      }
+      const timer = setTimeout(() => {
+        stop()
         reject(new Error('Timed out waiting for terminal handle after creation'))
       }, timeoutMs)
+      // Why: a host that refused the spawn's launch file never registers a handle.
+      const refuse = (message: string): void => {
+        stop()
+        reject(new Error(message))
+      }
+      const stopRefusal = onTerminalLaunchRefusal((refusedTabId) => {
+        const message = refusedTabId === tabId ? takeTerminalLaunchRefusal(tabId) : undefined
+        if (message) {
+          refuse(message)
+        }
+      })
 
       const check = (): void => {
         const handle = this.resolveHandleForTab(tabId)
         if (handle) {
-          clearTimeout(timer)
-          const idx = this.graphSyncCallbacks.indexOf(check)
-          if (idx !== -1) {
-            this.graphSyncCallbacks.splice(idx, 1)
-          }
+          stop()
           resolve(handle)
         }
       }
       this.graphSyncCallbacks.push(check)
+      const recorded = takeTerminalLaunchRefusal(tabId)
+      if (recorded) {
+        refuse(recorded)
+        return
+      }
       // Why: graph sync may have fired between the initial check and registration; re-check to avoid a missed wake-up.
       check()
     })

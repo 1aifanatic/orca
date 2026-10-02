@@ -68,8 +68,8 @@ export type FirstWorkBranchRenameDeps = {
   resolveWorktreeIdForTab: (tabId: string) => string | undefined
   /** Invalidate caches + notify the renderer so the new branch name surfaces. */
   onRenamed: (repoId: string) => void
-  /** The prompt a launch file carried for this pane, when its hook reports only the pointer. */
-  getLaunchFilePrompt?: (paneKey: string) => string | undefined
+  /** The prompt Orca shows for a pane's reported one (`launchPromptShownForPane`). */
+  showLaunchPrompt?: (paneKey: string, prompt: string) => string
 }
 
 // inFlight blocks concurrent generation; settled caches definitive verdicts (transient bails stay unsettled to retry later).
@@ -121,10 +121,10 @@ export async function maybeAutoRenameBranchOnFirstWork(
   // Why the pointer: a launch that carried its prompt in a file names only that file here, which
   // would name the branch after "read the task file". Its real prompt, when main kept it, names it
   // instead; otherwise (a worker brief) a later prompt of the user's own can.
-  const prompt =
-    hookPrompt && isLaunchFilePointer(hookPrompt)
-      ? deps.getLaunchFilePrompt?.(event.paneKey)?.trim()
-      : hookPrompt
+  const shown = hookPrompt
+    ? (deps.showLaunchPrompt?.(event.paneKey, hookPrompt) ?? hookPrompt).trim()
+    : undefined
+  const prompt = shown && !isLaunchFilePointer(shown) ? shown : undefined
   if (!prompt) {
     return
   }

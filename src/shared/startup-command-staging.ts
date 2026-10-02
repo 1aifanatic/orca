@@ -68,9 +68,14 @@ export function shouldStageStartupCommand(args: {
     return args.orcaBuiltLine === true
   }
   return (
-    !typedStartupLineFits(stripSubmitTerminator(args.command)) &&
+    startupLineNeedsStaging(args.command) &&
     (SOURCING_SHELLS.has(shellName) || args.orcaBuiltLine === true)
   )
+}
+
+/** Whether a line is too long or multi-line to type as it is, in a shell that can source a script. */
+export function startupLineNeedsStaging(command: string): boolean {
+  return !typedStartupLineFits(stripSubmitTerminator(command))
 }
 
 function stagedScriptLine(shellName: string | null, quotedPath: string): string {

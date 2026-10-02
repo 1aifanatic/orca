@@ -2,7 +2,6 @@
 import * as dependencies from './orca-runtime-create-terminal-dependencies'
 import type { OrcaRuntimeWithCreateTerminal } from './orca-runtime-create-terminal'
 import type { RuntimeTerminalPresentation } from '../../shared/runtime-types'
-import { removeLaunchFile, writeLaunchFile } from '../../shared/launch-file-writing'
 
 export async function createDesktopTerminal(
   runtime: OrcaRuntimeWithCreateTerminal,
@@ -25,11 +24,6 @@ export async function createDesktopTerminal(
     throw new Error(
       `--shell ${opts.shellOverride} needs a workspace, because the shell is resolved on the workspace's execution host. No terminal was created.`
     )
-  }
-  if (launchOpts.launchFile && !workspace?.connectionId) {
-    // Why: a pane whose host refuses the launch-file write never registers a handle, so this create
-    // would only time out; failing the same local write here reports the refusal at once.
-    removeLaunchFile(writeLaunchFile({ launchFile: launchOpts.launchFile }))
   }
   const worktreeId = workspace?.id
   const cwd = workspace

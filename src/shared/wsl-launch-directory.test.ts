@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LaunchFileUnavailableError, writeSpawnLaunchFile } from './launch-file-writing'
-import { buildLaunchFilePointer, planLaunchPrompt, type LaunchFile } from './launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile, type LaunchFile } from './launch-prompt-file'
 import { stageStartupCommand } from './startup-command-staging'
 import { parseWslLaunchDirectory, type WslLaunchDirectory } from './wsl-launch-directory'
 
@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 function launchFile(content = 'fix the build'): LaunchFile {
-  const planned = planLaunchPrompt(content, { sensitive: true })
+  const planned = carryInLaunchFile(content, true)
   return { ...planned.launchFile!, quoting: 'posix' }
 }
 

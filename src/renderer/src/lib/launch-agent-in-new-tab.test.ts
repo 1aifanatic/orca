@@ -14,6 +14,7 @@ const mockMarkNativeChatLaunchPromptFailed = vi.fn()
 const mockTrack = vi.fn()
 const mockToastMessage = vi.fn()
 const mockWaitForAgentReady = vi.fn()
+const mockWaitForLaunchPromptReceipt = vi.fn()
 
 const store = {
   activeRepoId: 'repo-1',
@@ -117,6 +118,10 @@ vi.mock('@/lib/agent-ready-wait', () => ({
   waitForAgentReady: mockWaitForAgentReady
 }))
 
+vi.mock('@/lib/agent-launch-prompt-receipt', () => ({
+  waitForLaunchPromptReceipt: mockWaitForLaunchPromptReceipt
+}))
+
 vi.mock('@/lib/telemetry', () => ({
   track: mockTrack,
   tuiAgentToAgentKind: (agent: string) => agent
@@ -137,6 +142,7 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 describe('launchAgentInNewTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockWaitForLaunchPromptReceipt.mockResolvedValue(true)
     mockIsWebRuntimeSessionActive.mockReturnValue(false)
     mockCreateWebRuntimeSessionTerminal.mockResolvedValue({ status: 'created' })
     mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft.mockResolvedValue({ status: 'created' })
@@ -699,7 +705,14 @@ describe('launchAgentInNewTab', () => {
       promptDelivery: 'submit-after-ready'
     })
 
-    expect(result?.promptDeliveryResult).toBeUndefined()
+    // Why: the launch line carried it, so delivery is the agent's receipt, never the tab existing.
+    await expect(result?.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+    expect(mockWaitForLaunchPromptReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 'tab-1', agent: 'command-code' })
+    )
     expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
     // Why: Command Code has no prompt-submit hook, so the spawn seeds working from this prompt.
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
@@ -839,12 +852,34 @@ describe('launchAgentInNewTab', () => {
       promptDelivery: 'submit-after-ready'
     })
 
-    expect(result?.promptDeliveryResult).toBeUndefined()
+    await expect(result?.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
     expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
     const queued = mockQueueTabStartupCommand.mock.calls[0]?.[1]
+    // Handed back to copy if the host refuses to write the file.
+    expect(queued?.launchPrompt).toBe(prompt)
     expect(queued?.launchFile).toMatchObject({ content: prompt, sensitive: false })
     expect(queued?.command).toContain(queued?.launchFile?.placeholder)
     expect(queued?.command).not.toContain('xxxx')
+  })
+
+  it('reports a carried prompt undelivered when the agent never received it', async () => {
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+    mockWaitForLaunchPromptReceipt.mockResolvedValue(false)
+    const onPromptDelivered = vi.fn()
+
+    const result = launchAgentInNewTab({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: 'resolve these threads',
+      promptDelivery: 'submit-after-ready',
+      onPromptDelivered
+    })
+
+    await expect(result?.promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+    expect(onPromptDelivered).not.toHaveBeenCalled()
   })
 
   it('queues per-launch CLI arguments ahead of the generated prompt on argv', async () => {

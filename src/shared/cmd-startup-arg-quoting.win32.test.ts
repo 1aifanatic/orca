@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { planLaunchForTest } from './launch-prompt-plan.test-fixture'
 import { runProcess } from './child-process/run-process'
 import {
   WINDOWS_ARGUMENT_CORPUS,
@@ -9,7 +10,6 @@ import {
 } from './child-process/__fixtures__/windows-argument-corpus'
 import { removeTreeSync } from './windows-transient-lock-removal'
 import { quoteStartupArg } from './tui-agent-startup-shell'
-import { buildAgentStartupPlan } from './tui-agent-startup'
 import { removeLaunchFile, writeLaunchFile } from './launch-file-writing'
 
 /**
@@ -64,7 +64,7 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
   it('never lets a multi-line prompt reach cmd as commands: the line names a launch file', async () => {
     const marker = join(dir, 'pwned.txt')
     const prompt = `Fix the build\r\n& echo PWNED> "${marker}"\nthen run the tests`
-    const plan = buildAgentStartupPlan({
+    const plan = planLaunchForTest({
       agent: 'claude',
       prompt,
       cmdOverrides: { claude: shim },
@@ -97,7 +97,7 @@ describeOnWindows('cmd launch-line prompt quoting', () => {
   it('names a launch file under a home with an apostrophe, accents, CJK and `%`', async () => {
     const home = join(dir, "O'Brien José 张伟 100%")
     mkdirSync(home)
-    const plan = buildAgentStartupPlan({
+    const plan = planLaunchForTest({
       agent: 'claude',
       prompt: 'Fix the build\nthen run the tests',
       cmdOverrides: { claude: shim },

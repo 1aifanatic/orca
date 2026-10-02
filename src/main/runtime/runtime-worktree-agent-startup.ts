@@ -8,8 +8,13 @@ import { getRepoSshConnectionId } from '../../shared/execution-host'
 import { isTuiAgent } from '../../shared/tui-agent-config'
 import { isTuiAgentEnabled, pickTuiAgent } from '../../shared/tui-agent-selection'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
-import { planStartupWithLaunchPrompt } from '../../shared/startup-line-prompt-carry'
+import {
+  buildAgentDraftLaunchPlan,
+  buildAgentStartupPlan,
+  planLaunchPrompt,
+  type AgentStartupPlan
+} from '../../shared/tui-agent-startup'
+import type { LaunchFile } from '../../shared/launch-prompt-file'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents
@@ -149,15 +154,31 @@ export function buildWorktreeStartupForAgent(
     ...(environment.agentArgs !== undefined ? { agentArgs: environment.agentArgs } : {}),
     sessionOptions: environment.toSessionOptions(environment.launchPreferences)
   })
-  const { plan: startupPlan, launchFile } = planStartupWithLaunchPrompt(
-    planInputs,
-    environment.prompt ?? ''
-  )
-  if (!startupPlan) {
+  const planned = planLaunchPrompt({ ...planInputs, prompt: environment.prompt ?? '' })
+  if (!planned) {
     throw new Error(`Could not build launch command for ${agent}.`)
   }
-  if (environment.onPromptCarry && environment.prompt?.trim()) {
-    environment.onPromptCarry(startupPlan.followupPrompt === null)
+  let startupPlan: AgentStartupPlan
+  let launchFile: LaunchFile | undefined
+  let followup: WorktreeStartupFollowup | undefined
+  switch (planned.carry) {
+    case 'none':
+      startupPlan = planned.plan
+      break
+    case 'on-line':
+    case 'launch-file':
+      startupPlan = planned.plan
+      launchFile = planned.carry === 'launch-file' ? planned.launchFile : undefined
+      environment.onPromptCarry?.(true)
+      break
+    case 'paste-after-ready':
+      startupPlan = planned.cleanPlan
+      if (environment.onPromptCarry) {
+        environment.onPromptCarry(false)
+      } else {
+        followup = { expectedProcess: startupPlan.expectedProcess, prompt: planned.text }
+      }
+      break
   }
   return {
     agent,
@@ -171,13 +192,6 @@ export function buildWorktreeStartupForAgent(
       ...(launchFile ? { launchFile } : {}),
       telemetry: agentStartedTelemetry(agent, environment.launchSource)
     },
-    ...(startupPlan.followupPrompt && !environment.onPromptCarry
-      ? {
-          followup: {
-            expectedProcess: startupPlan.expectedProcess,
-            prompt: startupPlan.followupPrompt
-          }
-        }
-      : {})
+    ...(followup ? { followup } : {})
   }
 }

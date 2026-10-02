@@ -4,7 +4,7 @@ import { getConnectionId } from '@/lib/connection-context'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
-import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
+import { launchHostIsPaired } from '@/lib/launch-file-host'
 import type { LaunchFile } from '../../../shared/launch-prompt-file'
 import type {
   AgentSessionLaunchPlan,
@@ -21,6 +21,7 @@ export type DirectWorkItemAgentLaunchPreparation = {
   effectiveAgent: TuiAgent | null
   startupPlan: ReturnType<typeof buildDirectWorkItemStartup>['startupPlan']
   launchFile?: LaunchFile
+  launchPrompt?: string
   promptOnLaunchCommand: boolean
   startupPlanFailed: boolean
   structuredLaunch: boolean
@@ -74,7 +75,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
         // Non-critical: activation still has the explicit startup below.
       })
   }
-  const { startupPlan, launchFile, promptOnLaunchCommand, startupPlanFailed } =
+  const { startupPlan, launchFile, launchPrompt, promptOnLaunchCommand, startupPlanFailed } =
     buildDirectWorkItemStartup({
       agent: effectiveAgent,
       agentArgs: args.agentArgs,
@@ -92,7 +93,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
               CLIENT_PLATFORM
             ) ?? args.repoProjectRuntime)
           : undefined,
-      launchesOnPairedHost: isWebRuntimeSessionActive(
+      launchHostIsPaired: launchHostIsPaired(
         getRuntimeEnvironmentIdForWorktree(args.latestStore, args.worktreeId)
       )
     })
@@ -115,6 +116,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
     effectiveAgent,
     startupPlan,
     ...(launchFile ? { launchFile } : {}),
+    ...(launchPrompt ? { launchPrompt } : {}),
     promptOnLaunchCommand,
     startupPlanFailed,
     structuredLaunch,

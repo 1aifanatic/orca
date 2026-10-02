@@ -34,7 +34,7 @@ describe('OrcaRuntimeService', () => {
         agent: 'aider',
         agentPrompt: 'Review this diff'
       })
-    ).rejects.toThrow('does not support startup prompt quick commands')
+    ).rejects.toThrow('aider takes its prompt only after it starts')
     expect(spawn).not.toHaveBeenCalled()
   })
 

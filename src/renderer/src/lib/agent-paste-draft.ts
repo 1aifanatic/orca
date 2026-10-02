@@ -42,7 +42,7 @@ export const POST_PASTE_SUBMIT_DELAY_MS = AGENT_PROMPT_POST_PASTE_SUBMIT_DELAY_M
 // hasn't appeared in 8s means the launch itself failed — waiting the (longer)
 // composer budget on top would only delay that verdict. Keeping them distinct
 // also stops one slow step from spending the other's budget (STA-3367).
-const PTY_SPAWN_TIMEOUT_MS = 8000
+export const PTY_SPAWN_TIMEOUT_MS = 8000
 
 export function getSettingsForAgentTabRuntimeOwner(
   tabId: string
@@ -273,7 +273,7 @@ async function sendBracketedPasteToAgent(args: {
   }
 }
 
-function waitForAgentDraftInputReadyOnTab(args: {
+export function waitForAgentDraftInputReadyOnTab(args: {
   tabId: string
   spawnTimeoutMs: number
   readinessTimeoutMs: number

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { createMockSubprocess } from './daemon-pty-adapter-test-harness'
 import { TerminalHost } from './terminal-host'
 import type { TerminalHostOptions } from './terminal-host-options'
-import { buildLaunchFilePointer, planLaunchPrompt } from '../../shared/launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile } from '../../shared/launch-prompt-file'
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
 
 vi.mock('../pty-descendant-termination', () => ({ killWithDescendantSweep: vi.fn() }))
@@ -33,7 +33,7 @@ describe('a daemon WSL session with a launch file', () => {
   })
 
   function create(wslLaunchDirectory: WslLaunchDirectory | undefined) {
-    const { prompt, launchFile } = planLaunchPrompt('secret brief', { sensitive: true })
+    const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
     return host.createOrAttach({
       sessionId: 'wsl-session',
       cols: 80,

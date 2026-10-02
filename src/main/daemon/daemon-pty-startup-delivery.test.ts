@@ -9,7 +9,7 @@ import {
   type DaemonAdapterHarness,
   type SpawnSubprocess
 } from './daemon-pty-adapter-test-harness'
-import { buildLaunchFilePointer, planLaunchPrompt } from '../../shared/launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile } from '../../shared/launch-prompt-file'
 
 const itOnPosix = process.platform === 'win32' ? it.skip : it
 
@@ -141,7 +141,7 @@ describe('DaemonPtyAdapter startup delivery', () => {
     vi.stubEnv('TMPDIR', stagingDir)
     nextShellPath = '/bin/zsh'
     try {
-      const { prompt, launchFile } = planLaunchPrompt('secret brief', { sensitive: true })
+      const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
       await adapter.spawn({
         cols: 80,
         rows: 24,

@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { launchHostWritesLaunchFile } from './launch-file-host'
+import { launchHostIsPaired } from './launch-file-host'
 import { buildQuickComposerStartup } from '@/hooks/composer-state/quick-startup-plan'
 
-describe('whether a launch host writes its launch file', () => {
+describe('whether a launch lands on a paired host', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('is true for this machine and false for a paired host or a web client', () => {
-    expect(launchHostWritesLaunchFile({ activeRuntimeEnvironmentId: null })).toBe(true)
-    expect(launchHostWritesLaunchFile({ activeRuntimeEnvironmentId: 'env-1' })).toBe(false)
+  it('is false for this machine and true for another Orca or a web client', () => {
+    expect(launchHostIsPaired(null)).toBe(false)
+    expect(launchHostIsPaired('env-1')).toBe(true)
     vi.stubGlobal('window', { __ORCA_WEB_CLIENT__: true })
-    expect(launchHostWritesLaunchFile({ activeRuntimeEnvironmentId: null })).toBe(false)
+    expect(launchHostIsPaired(null)).toBe(true)
   })
 })
 
@@ -26,11 +26,11 @@ describe('the quick composer on a paired host', () => {
       platform: 'win32',
       shell: 'powershell',
       isRemote: false,
-      hostWritesLaunchFile: false,
+      launchHostIsPaired: true,
       telemetrySource: 'sidebar'
     })
     expect(startup.backendStartup).toBeUndefined()
     expect(startup.startupPlan?.launchFile).toBeUndefined()
-    expect(startup.startupPlan?.followupPrompt).toBe('fix the build\nthen run the tests')
+    expect(startup.startupPlan?.pastePromptAfterReady).toBe('fix the build\nthen run the tests')
   })
 })

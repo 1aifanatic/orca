@@ -34,7 +34,7 @@ vi.mock('../main/shell-prompt-readiness-probe', () => ({
 
 import type { PtyHandler } from './pty-handler'
 import { beginPtyHandlerTest, endPtyHandlerTest } from './pty-handler-test-harness'
-import { buildLaunchFilePointer, planLaunchPrompt } from '../shared/launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile } from '../shared/launch-prompt-file'
 import type { MockDispatcher } from './pty-handler-test-harness'
 
 const describePosix = process.platform === 'win32' ? describe.skip : describe
@@ -114,7 +114,7 @@ describePosix('relay startup command staging', () => {
   })
 
   it('writes a launch file before typing the line that names it, and removes it on exit', async () => {
-    const { prompt, launchFile } = planLaunchPrompt('secret brief', { sensitive: true })
+    const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
     await dispatcher.callRequest('pty.spawn', {
       command: `claude '${prompt}'`,
       commandDelivery: 'provider',

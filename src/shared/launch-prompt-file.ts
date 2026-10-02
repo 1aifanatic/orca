@@ -49,20 +49,6 @@ export function isLaunchFilePointer(prompt: string): boolean {
   )
 }
 
-/**
- * The prompt a launch line carries, and the file behind it when the prompt is too
- * long or sensitive. The pointer names a placeholder the execution host replaces.
- */
-export function planLaunchPrompt(
-  prompt: string,
-  options: { sensitive?: boolean } = {}
-): { prompt: string; launchFile?: LaunchFile } {
-  const sensitive = options.sensitive === true
-  return sensitive || prompt.length > MAX_INLINE_LAUNCH_PROMPT_CHARS
-    ? carryInLaunchFile(prompt, sensitive)
-    : { prompt }
-}
-
 export function carryInLaunchFile(
   content: string,
   sensitive: boolean
@@ -103,9 +89,17 @@ export function parseLaunchFile(value: unknown): LaunchFile | undefined {
 
 const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
 
-/** The refusal a host sends when it could not write a launch file; it reaches the user as is. */
-export function describeLaunchFileUnavailable(reason: string): string {
-  return `Orca could not write the file that carries the agent's prompt (${reason}), so the agent was not started. [${LAUNCH_FILE_UNAVAILABLE_CODE}]`
+/** The refusal a host sends when it could not write what carries the prompt (a launch file, or the
+ *  staged script holding a long line); it reaches the user as is. */
+export function describeLaunchFileUnavailable(
+  reason: string,
+  carrier: 'file' | 'staged-line' = 'file'
+): string {
+  const what =
+    carrier === 'file'
+      ? "the file that carries the agent's prompt"
+      : "the script that carries the agent's launch line and prompt"
+  return `Orca could not write ${what} (${reason}), so the agent was not started. [${LAUNCH_FILE_UNAVAILABLE_CODE}]`
 }
 
 /** Also matches the `launch_file_unavailable: <reason>` form earlier builds sent. */

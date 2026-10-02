@@ -2,18 +2,18 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { planLaunchForTest } from './launch-prompt-plan.test-fixture'
 import { writeLaunchFile } from './launch-file-writing'
 import {
   buildLaunchFilePointer,
   carryInLaunchFile,
   launchFileDirectoryPlaceholder
 } from './launch-prompt-file'
-import { buildAgentStartupPlan } from './tui-agent-startup'
 import type { TuiAgent } from './tui-agent'
 
 function planWithLaunchFile(agent: TuiAgent, shell: 'posix' | 'cmd' | 'powershell' = 'posix') {
   const { prompt, launchFile } = carryInLaunchFile('the brief', true)
-  const plan = buildAgentStartupPlan({
+  const plan = planLaunchForTest({
     agent,
     prompt,
     cmdOverrides: {},
@@ -53,7 +53,7 @@ describe('the launch-file directory grant on the agent command line', () => {
     const { plan, pointer } = planWithLaunchFile('codex')
     expect(plan?.launchCommand).toBe(`codex '${pointer}'`)
     expect(
-      buildAgentStartupPlan({
+      planLaunchForTest({
         agent: 'claude',
         prompt: 'fix it',
         cmdOverrides: {},

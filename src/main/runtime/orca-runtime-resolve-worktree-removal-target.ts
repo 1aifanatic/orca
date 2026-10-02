@@ -19,14 +19,8 @@ import { terminalShellOverrideRefusal } from './terminal-shell-override-host-sup
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtime-resolution'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
-import {
-  agentPromptRidesLaunchCommand,
-  buildAgentStartupPlan
-} from '../../shared/tui-agent-startup'
-import {
-  planStartupWithLaunchPrompt,
-  type LaunchPromptStartupPlan
-} from '../../shared/startup-line-prompt-carry'
+import { agentPromptRidesLaunchCommand, planLaunchPrompt } from '../../shared/tui-agent-startup'
+import { launchPromptNeedsPasteRefusal } from '../../shared/launch-prompt-carry'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -277,21 +271,12 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
     })
     // A caller that wrote its own launch file already passes the pointer to it as the prompt.
-    const prompt = opts.startupPrompt ?? ''
-    let planned: LaunchPromptStartupPlan
-    if (opts.launchFile) {
-      const plan = buildAgentStartupPlan({
-        ...planInputs,
-        prompt,
-        allowEmptyPromptLaunch: true,
-        launchFile: opts.launchFile
-      })
-      planned = { plan, launchFile: plan?.launchFile ?? opts.launchFile }
-    } else {
-      planned = planStartupWithLaunchPrompt(planInputs, prompt)
-    }
-    const { plan: startupPlan, launchFile } = planned
-    if (!startupPlan) {
+    const planned = planLaunchPrompt({
+      ...planInputs,
+      prompt: opts.startupPrompt ?? '',
+      ...(opts.launchFile ? { launchFile: opts.launchFile } : {})
+    })
+    if (!planned) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare
       // shell that never reaches agent readiness.
       if (opts.startupAgent) {
@@ -299,16 +284,29 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       }
       return opts
     }
-    if (opts.startupPrompt?.trim()) {
-      const carried = startupPlan.followupPrompt === null
-      if (!carried && !opts.onStartupPromptCarry) {
-        // Why: this create returns options, not a live PTY, so the prompt would be dropped.
-        throw new Error(
-          `${agent} cannot take this prompt on its command line here, so no terminal was created. ` +
-            'Start the agent without it and paste the prompt once it opens.'
-        )
-      }
-      opts.onStartupPromptCarry?.(carried)
+    let startupPlan
+    let launchFile
+    switch (planned.carry) {
+      case 'none':
+        startupPlan = planned.plan
+        break
+      case 'on-line':
+        startupPlan = planned.plan
+        opts.onStartupPromptCarry?.(true)
+        break
+      case 'launch-file':
+        startupPlan = planned.plan
+        launchFile = planned.launchFile
+        opts.onStartupPromptCarry?.(true)
+        break
+      case 'paste-after-ready':
+        if (!opts.onStartupPromptCarry) {
+          // Why: this create returns options, not a live PTY, so the prompt would be dropped.
+          throw new Error(launchPromptNeedsPasteRefusal(agent, 'terminal'))
+        }
+        startupPlan = planned.cleanPlan
+        opts.onStartupPromptCarry(false)
+        break
     }
 
     return {

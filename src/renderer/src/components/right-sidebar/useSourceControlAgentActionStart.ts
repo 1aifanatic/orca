@@ -9,6 +9,9 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { buildSourceControlAgentDeliveryPlan } from './buildSourceControlAgentDeliveryPlan'
+import { useAppStore } from '@/store'
+import { launchHostIsPaired } from '@/lib/launch-file-host'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { SourceControlAgentActionDeliveryPlanState } from './SourceControlAgentActionDialogForm'
 import { runSourceControlAgentActionStart } from './runSourceControlAgentActionStart'
 import { buildSourceControlAgentConnectionErrorPlan } from './source-control-agent-action-dialog-support'
@@ -116,7 +119,10 @@ export function useSourceControlAgentActionStart({
         detectedAgents: currentDetectedAgents,
         connectionUnavailable,
         launchPlatform,
-        isRemote
+        isRemote,
+        launchHostIsPaired: launchHostIsPaired(
+          getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
+        )
       })
     },
     [
@@ -128,7 +134,8 @@ export function useSourceControlAgentActionStart({
       refreshDetectedAgents,
       selectedAgent,
       launchPlatform,
-      isRemote
+      isRemote,
+      worktreeId
     ]
   )
 

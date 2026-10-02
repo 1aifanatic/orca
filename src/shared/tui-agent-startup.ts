@@ -13,9 +13,9 @@ import type { LaunchFile } from './launch-prompt-file'
 import {
   carryLaunchPrompt,
   launchFileDirectoryGrant,
-  launchFileProps,
-  windowsShellDamagesPrompt
-} from './startup-plan-launch-file'
+  windowsShellDamagesPrompt,
+  type LaunchPromptPlan
+} from './launch-prompt-carry'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import { buildSleepingAgentLaunchConfig } from './sleeping-agent-launch-config'
@@ -31,7 +31,6 @@ export type AgentStartupPlan = {
   agent: TuiAgent
   launchCommand: string
   expectedProcess: string
-  followupPrompt: string | null
   launchConfig: SleepingAgentLaunchConfig
   launchToken?: string
   draftPrompt?: string | null
@@ -40,21 +39,17 @@ export type AgentStartupPlan = {
   /** Values actually emitted into this launch command, kept as base model ids
    * so the native-chat surface can render only launch-backed state. */
   sessionOptions?: Record<string, SessionOptionValue>
-  /** Holds the prompt the command points at; the host writes it before typing the command. */
-  launchFile?: LaunchFile
 }
 
 function appliedSessionOptionProps(values: Record<string, SessionOptionValue>) {
   return Object.keys(values).length > 0 ? { sessionOptions: { ...values } } : {}
 }
 
-export type AgentStartupPlanArgs = {
+export type AgentStartupPlanInputs = {
   agent: TuiAgent
-  prompt: string
   cmdOverrides: Partial<Record<TuiAgent, string>>
   platform: NodeJS.Platform
   shell?: AgentStartupShell
-  allowEmptyPromptLaunch?: boolean
   agentArgs?: string | null
   agentEnv?: Record<string, string> | null
   sessionOptions?: Record<string, SessionOptionValue>
@@ -62,25 +57,38 @@ export type AgentStartupPlanArgs = {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must be skipped for remote launches. */
   isRemote?: boolean
-  /** The file `prompt` points at, when the caller already moved the prompt into one. */
+}
+
+/** An agent launch with no prompt; a launch that offers one is planned by `planLaunchPrompt`. */
+export function buildAgentStartupPlan(
+  args: AgentStartupPlanInputs & { prompt?: ''; allowEmptyPromptLaunch?: boolean }
+): AgentStartupPlan | null {
+  return args.allowEmptyPromptLaunch === true
+    ? buildPlanWithPromptOnLine({ ...args, prompt: '' })
+    : null
+}
+
+export type AgentLaunchPromptArgs = AgentStartupPlanInputs & {
+  prompt: string
+  /** The file `prompt` already points at, when the caller wrote its own. */
   launchFile?: LaunchFile
-  /** False for a paired host, which is sent a command and never a launch file: a prompt that would
-   *  need one launches clean and is left in `followupPrompt` for the paste after ready. */
-  hostWritesLaunchFile?: boolean
-  /** The caller minted a secret in the prompt: it rides a launch file, never argv or history. */
-  sensitive?: boolean
+  /** Another Orca this client drives; see `CarriedPlanArgs`. */
+  launchHostIsPaired?: boolean
 }
 
 /**
- * The one place that decides whether a launch prompt rides the line, a launch file, or the paste
- * after ready (`carryLaunchPrompt`); every launch path builds through it.
+ * A launch that offers a prompt: where it rides (`carryLaunchPrompt`) and the plan to launch. Every
+ * launch path plans its prompt here, and must switch on the outcome to reach the plan.
  */
-export function buildAgentStartupPlan(args: AgentStartupPlanArgs): AgentStartupPlan | null {
+export function planLaunchPrompt(
+  args: AgentLaunchPromptArgs
+): LaunchPromptPlan<AgentStartupPlan> | null {
   return carryLaunchPrompt(args, buildPlanWithPromptOnLine)
 }
 
-function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan | null {
-  const { agent, prompt, cmdOverrides, platform, allowEmptyPromptLaunch = false } = args
+/** Builds the line with `prompt` on it; the carry rule decides whether it should. */
+function buildPlanWithPromptOnLine(args: AgentLaunchPromptArgs): AgentStartupPlan | null {
+  const { agent, prompt, cmdOverrides, platform } = args
   const shell = resolveStartupShell(platform, args.shell)
   const trimmedPrompt = prompt.trim()
   const config = TUI_AGENT_CONFIG[agent]
@@ -108,24 +116,18 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
   })
 
   if (!trimmedPrompt) {
-    if (!allowEmptyPromptLaunch) {
-      return null
-    }
     return {
       agent,
       launchCommand,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
       ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
 
-  const launchFile = args.launchFile
   const quotedPrompt = quoteStartupArg(trimmedPrompt, shell)
-  const fileProps = launchFileProps(launchFile, shell)
-  const grant = launchFileDirectoryGrant(agent, launchFile, shell)
+  const grant = launchFileDirectoryGrant(agent, args.launchFile, shell)
 
   if (config.promptInjectionMode === 'argv') {
     const promptSeparator = config.argvPromptSeparator ? ` ${config.argvPromptSeparator}` : ''
@@ -140,12 +142,10 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
             )
           : `${launchCommand}${grant}${promptSeparator} ${quotedPrompt}`,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
       ...(agent === 'codex' ? { startupCommandDelivery: 'shell-ready' as const } : {}),
-      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {}),
-      ...fileProps
+      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
 
@@ -154,11 +154,9 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
       agent,
       launchCommand: `${launchCommand}${grant} --prompt ${quotedPrompt}`,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {}),
-      ...fileProps
+      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
 
@@ -181,12 +179,9 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
       // only bounds and quotes the native invocation before starting the TUI.
       launchCommand: queryPlan.command,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-      ...(queryPlan.env ? { env: queryPlan.env } : {}),
-      // Hermes reads its prompt from the env, where a line break is harmless.
-      ...launchFileProps(args.launchFile, shell)
+      ...(queryPlan.env ? { env: queryPlan.env } : {})
     }
   }
 
@@ -195,11 +190,9 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
       agent,
       launchCommand: `${launchCommand}${grant} --prompt-interactive ${quotedPrompt}`,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {}),
-      ...fileProps
+      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
 
@@ -208,29 +201,20 @@ function buildPlanWithPromptOnLine(args: AgentStartupPlanArgs): AgentStartupPlan
       agent,
       launchCommand: `${launchCommand}${grant} -i ${quotedPrompt}`,
       expectedProcess: config.expectedProcess,
-      followupPrompt: null,
       launchConfig,
       ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {}),
-      ...fileProps
+      ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
     }
   }
 
-  return {
-    agent,
-    launchCommand,
-    expectedProcess: config.expectedProcess,
-    followupPrompt: trimmedPrompt,
-    launchConfig,
-    ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
-    ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
-  }
+  // `stdin-after-start`: no line carries its prompt; `carryLaunchPrompt` pastes it instead.
+  return null
 }
 
 /**
  * Whether this agent's prompt rides the launch command rather than the live PTY.
  *
- * The same question `buildAgentStartupPlan` answers by returning `followupPrompt: null`, asked
+ * The same question `planLaunchPrompt` answers with any outcome but `paste-after-ready`, asked
  * before a command exists — a caller deciding how to deliver a prompt has to know which half it is
  * getting while it is still choosing what to create. Derived from the one injection table rather
  * than restating it, and pinned against the builder for every agent by

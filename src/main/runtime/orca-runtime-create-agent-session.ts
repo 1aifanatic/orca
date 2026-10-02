@@ -20,9 +20,12 @@ import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-i
 import {
   agentPromptRidesLaunchCommand,
   buildAgentDraftLaunchPlan,
-  buildAgentStartupPlan
+  planLaunchPrompt
 } from '../../shared/tui-agent-startup'
-import { windowsDraftRefusal } from '../../shared/startup-plan-launch-file'
+import {
+  launchPromptNeedsPasteRefusal,
+  windowsDraftRefusal
+} from '../../shared/launch-prompt-carry'
 import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
@@ -165,31 +168,39 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         ...(request.agentArgs !== undefined ? { agentArgs: request.agentArgs } : {}),
         sessionOptions: this.toAgentSessionOptions(request.launchPreferences)
       })
-      const startup =
-        request.promptDelivery === 'draft'
-          ? buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' })
-          : buildAgentStartupPlan({
-              ...startupArgs,
-              prompt: request.prompt ?? '',
-              allowEmptyPromptLaunch: true
-            })
-      if (!startup) {
-        const refusal =
-          request.promptDelivery === 'draft'
-            ? windowsDraftRefusal(
-                request.prompt ?? '',
-                resolveStartupShell(startupArgs.platform, startupArgs.shell)
-              )
-            : null
-        throw new Error(refusal ?? 'agent_session_identity_required')
-      }
-      if (startup.followupPrompt && agentPromptRidesLaunchCommand(request.agent)) {
-        // Why: this create has no paste after ready, so a prompt left for one would be dropped.
-        throw new Error(
-          `${request.agent} cannot take this prompt on its command line here (too long, private, or ` +
-            "broken by the host's Windows shell), so the session was not started. Start it without " +
-            'the prompt and paste the prompt once it opens.'
-        )
+      let startup
+      let launchFile
+      if (request.promptDelivery === 'draft') {
+        startup = buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' })
+        if (!startup) {
+          const refusal = windowsDraftRefusal(
+            request.prompt ?? '',
+            resolveStartupShell(startupArgs.platform, startupArgs.shell)
+          )
+          throw new Error(refusal ?? 'agent_session_identity_required')
+        }
+      } else {
+        const planned = planLaunchPrompt({ ...startupArgs, prompt: request.prompt ?? '' })
+        if (!planned) {
+          throw new Error('agent_session_identity_required')
+        }
+        switch (planned.carry) {
+          case 'none':
+          case 'on-line':
+            startup = planned.plan
+            break
+          case 'launch-file':
+            startup = planned.plan
+            launchFile = planned.launchFile
+            break
+          case 'paste-after-ready':
+            // Why: a stdin agent's prompt is the session's to submit; an argv agent's would be dropped.
+            if (agentPromptRidesLaunchCommand(request.agent)) {
+              throw new Error(launchPromptNeedsPasteRefusal(request.agent, 'session'))
+            }
+            startup = planned.cleanPlan
+            break
+        }
       }
       if (caller.signal?.aborted) {
         throw new Error('client_disconnected')
@@ -222,9 +233,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           launchAgent: request.agent,
           terminalKittyKeyboardProtocol: request.terminalKittyKeyboardProtocol,
           startupCommandDelivery: startup.startupCommandDelivery,
-          ...('launchFile' in startup && startup.launchFile
-            ? { launchFile: startup.launchFile }
-            : {}),
+          ...(launchFile ? { launchFile } : {}),
           // A fresh agent this host built; the request has no surface field, so it counts as `unknown`.
           telemetry: agentStartedTelemetry(request.agent, undefined),
           cwd: startupCwd,

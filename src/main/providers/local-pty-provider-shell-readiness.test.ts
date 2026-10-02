@@ -118,7 +118,7 @@ vi.mock('../shell-prompt-readiness-probe', () => ({
 
 import { LocalPtyProvider } from './local-pty-provider'
 import { POSIX_SHELL_STARTUP_COMMAND_ENV } from '../pty/posix-shell-startup-command'
-import { buildLaunchFilePointer, planLaunchPrompt } from '../../shared/launch-prompt-file'
+import { buildLaunchFilePointer, carryInLaunchFile } from '../../shared/launch-prompt-file'
 import {
   applyLocalPtyProviderMockDefaults,
   createLocalPtyMockProcess,
@@ -273,7 +273,7 @@ describe('LocalPtyProvider', () => {
       vi.useFakeTimers()
       try {
         process.env.SHELL = '/bin/sh'
-        const { prompt, launchFile } = planLaunchPrompt('secret brief', { sensitive: true })
+        const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
 
         await provider.spawn({ cols: 80, rows: 24, command: `claude '${prompt}'`, launchFile })
 

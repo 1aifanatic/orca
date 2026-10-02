@@ -288,7 +288,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'aider',
         launchCommand: 'aider',
         expectedProcess: 'aider',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })
@@ -311,7 +311,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'aider',
         launchCommand: 'aider',
         expectedProcess: 'aider',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })
@@ -333,7 +333,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'aider',
         launchCommand: 'aider',
         expectedProcess: 'aider',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })
@@ -355,7 +355,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'claude',
         launchCommand: 'claude',
         expectedProcess: 'claude',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })
@@ -374,7 +374,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'aider',
         launchCommand: 'aider',
         expectedProcess: 'aider',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })
@@ -389,7 +389,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'claude',
         launchCommand: 'claude',
         expectedProcess: 'claude',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'review this before sending'
       }
@@ -416,7 +415,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
           agent: 'aider',
           launchCommand: 'aider',
           expectedProcess: 'aider',
-          followupPrompt: 'fix the spinner',
+          pastePromptAfterReady: 'fix the spinner',
           launchConfig: { agentArgs: '', agentEnv: {} }
         }
       })
@@ -432,7 +431,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'claude',
         launchCommand: 'claude',
         expectedProcess: 'claude',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'review this before sending'
       }
@@ -476,7 +474,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'codex',
         launchCommand: 'codex',
         expectedProcess: 'codex',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'Linear context draft'
       }
@@ -506,7 +503,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'codex',
         launchCommand: 'codex',
         expectedProcess: 'codex',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'https://github.com/stablyai/orca/pull/2051'
       }
@@ -563,7 +559,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'codex',
         launchCommand: 'codex',
         expectedProcess: 'codex',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'linked draft'
       }
@@ -645,7 +640,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'codex',
         launchCommand: 'codex',
         expectedProcess: 'codex',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'linked draft'
       }
@@ -684,7 +678,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
       agent: 'codex' as const,
       launchCommand: 'codex',
       expectedProcess: 'codex',
-      followupPrompt: null,
       launchConfig: { agentArgs: '', agentEnv: {} },
       draftPrompt: 'linked draft',
       launchToken: 'launch-token-1'
@@ -714,7 +707,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
       agent: 'codex' as const,
       launchCommand: 'codex',
       expectedProcess: 'codex',
-      followupPrompt: null,
       launchConfig: { agentArgs: '', agentEnv: {} },
       draftPrompt: 'linked draft',
       launchToken: 'launch-token-1'
@@ -775,7 +767,6 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'codex',
         launchCommand: 'codex',
         expectedProcess: 'codex',
-        followupPrompt: null,
         launchConfig: { agentArgs: '', agentEnv: {} },
         draftPrompt: 'old linked draft',
         launchToken: 'launch-token-old'
@@ -827,7 +818,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
         agent: 'aider',
         launchCommand: 'aider',
         expectedProcess: 'aider',
-        followupPrompt: 'fix the spinner',
+        pastePromptAfterReady: 'fix the spinner',
         launchConfig: { agentArgs: '', agentEnv: {} }
       }
     })

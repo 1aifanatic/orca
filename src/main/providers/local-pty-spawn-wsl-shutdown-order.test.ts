@@ -4,11 +4,11 @@ import type * as SpawnStateModule from './local-pty-spawn-state'
 import { ptyShutdownOperations, type PtyShutdownOperation } from './local-pty-provider-state'
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
 
-const { resolveWslLaunchDirectory, reattachLocalPty } = vi.hoisted(() => ({
-  resolveWslLaunchDirectory: vi.fn(),
+const { resolveSpawnWslLaunchDirectory, reattachLocalPty } = vi.hoisted(() => ({
+  resolveSpawnWslLaunchDirectory: vi.fn(),
   reattachLocalPty: vi.fn()
 }))
-vi.mock('./wsl-launch-directory-resolution', () => ({ resolveWslLaunchDirectory }))
+vi.mock('./wsl-launch-directory-resolution', () => ({ resolveSpawnWslLaunchDirectory }))
 vi.mock('./local-pty-launch-plan', async (importOriginal) => ({
   ...(await importOriginal<typeof LaunchPlanModule>()),
   resolveLocalPtyWslDistro: () => 'Ubuntu'
@@ -30,7 +30,7 @@ describe('a WSL respawn racing a shutdown of the same session id', () => {
   // starts during it would otherwise be missed and race the new PTY.
   it('waits for a shutdown that began while the distro directory was being resolved', async () => {
     let resolveDirectory!: (directory: WslLaunchDirectory | undefined) => void
-    resolveWslLaunchDirectory.mockReturnValue(
+    resolveSpawnWslLaunchDirectory.mockReturnValue(
       new Promise((resolve) => {
         resolveDirectory = resolve
       })
@@ -40,7 +40,9 @@ describe('a WSL respawn racing a shutdown of the same session id', () => {
       { cols: 80, rows: 24, sessionId: 'wsl-session', command: 'claude' },
       () => ({})
     )
-    await vi.waitFor(() => expect(resolveWslLaunchDirectory).toHaveBeenCalledWith('Ubuntu'))
+    await vi.waitFor(() =>
+      expect(resolveSpawnWslLaunchDirectory).toHaveBeenCalledWith('Ubuntu', expect.anything())
+    )
 
     let finishShutdown!: () => void
     const shutdown: PtyShutdownOperation = {

@@ -191,11 +191,13 @@ function handleConnectError(
   if (message.includes('was explicitly killed')) {
     return undefined
   }
-  // Why the transport's file: the spawn sends it unless the connect call named its own command.
-  const { launchFile } = context.transportOptions
-  if (launchFile && !options.command && isLaunchFileUnavailableMessage(message)) {
+  // Why the transport's prompt: the spawn carries it unless the connect call named its own command.
+  // The host refuses a launch file, or a WSL line it cannot stage, with the same code.
+  const { launchFile, launchPrompt } = context.transportOptions
+  const refusedPrompt = launchFile?.content ?? launchPrompt
+  if (refusedPrompt && !options.command && isLaunchFileUnavailableMessage(message)) {
     // The pane gets no shell; the notice holds the only copy of the prompt.
-    showAgentLaunchNotStartedNotice({ prompt: launchFile.content })
+    showAgentLaunchNotStartedNotice({ prompt: refusedPrompt })
   }
   if (connectionId && options.sessionId && message.includes(SSH_PTY_CONNECTION_MISMATCH_MARKER)) {
     // Why not `sessionExpired`: this string is minted by `toRelaySshPtyId`/`toAppSshPtyId` from a
