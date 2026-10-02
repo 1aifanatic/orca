@@ -7266,7 +7266,7 @@
             "defaultViewTerminal": "Terminal chat",
             "defaultViewNative": "Chat UI",
             "structuredTitle": "Use updated structured native chat",
-            "structuredCopy": "Opt in to the host-owned structured chat runtime for Codex and Claude. Off keeps the existing terminal-backed chat path.",
+            "structuredCopy": "Open new Codex and Claude agents as structured chats. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
             "structuredScope": "Local sessions only for now. WSL and remote execution hosts (including SSH) continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
             "structuredToggleLabel": "Toggle updated structured native chat",
             "resumeTitle": "Resume working chats automatically after a restart",
@@ -17952,6 +17952,12 @@
         "label": "Context {{used}} of {{window}} tokens, {{percent}}% used",
         "title": "Context",
         "estimated": "Estimated from the last response."
+      },
+      "contextMenu": {
+        "copyOrcaSessionId": "Copy Orca Session ID",
+        "orcaSessionIdCopied": "Orca session ID copied",
+        "orcaSessionIdCopyFailed": "Unable to copy Orca session ID",
+        "orcaSessionIdTooltip": "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
       },
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
