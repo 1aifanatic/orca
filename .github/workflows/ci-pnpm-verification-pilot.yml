@@ -137,7 +137,6 @@ jobs:
         sample: [1, 2, 3]
         store: [restore-only, 'false']
     env:
-      ORCA_CI_PNPM_STORE_PILOT_RECEIPT: ${{ runner.temp }}/pnpm-root-store-sample.json
       ORCA_CI_PNPM_STORE_PILOT_ARM: ${{ matrix.store }}
       ORCA_CI_PNPM_STORE_PILOT_SAMPLE: ${{ matrix.sample }}
       ORCA_CI_PNPM_STORE_PILOT_EXPECTED_VERIFICATION_KEY: ${{ needs.mac-store-seed.outputs.verification-key }}
@@ -155,6 +154,8 @@ jobs:
           persist-credentials: false
       - name: Measure the actual dependency action
         uses: ./.github/actions/install-node-dependencies
+        env:
+          ORCA_CI_PNPM_STORE_PILOT_RECEIPT: ${{ runner.temp }}/pnpm-root-store-sample.json
         with:
           node-version: '24.21.0'
           cache-pnpm-store: ${{ matrix.store }}
