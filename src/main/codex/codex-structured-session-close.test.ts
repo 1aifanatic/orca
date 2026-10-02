@@ -96,7 +96,7 @@ describe('Codex structured session close lifecycle', () => {
       connection,
       backgroundTasks: new CodexBackgroundTaskTracker('thread-1'),
       ended: false,
-      requestedClose,
+      ...(requestedClose ? { orcaClose: { requested: true, reason: new Error('closed') } } : {}),
       fence: 7,
       acquisitionGeneration: 'generation-1',
       threadId: THREAD,

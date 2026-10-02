@@ -53,7 +53,6 @@ describe('requested-close durable turn timing', () => {
         },
         backgroundTasks: new CodexBackgroundTaskTracker('thread-1'),
         ended: false,
-        requestedClose: false,
         fence: 7,
         acquisitionGeneration: 'generation-1',
         threadId: 'thread-1',

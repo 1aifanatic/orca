@@ -108,7 +108,9 @@ export type CodexSession = {
   ended: boolean
   /** First observed child exit survives rejected settlement admission. */
   exitObservedAt?: number
-  requestedClose: boolean
+  /** The close Orca began for this child: asked for, or forced as a death, and why. Whatever ends
+   *  the child after it (that close, or the exit the connection reports meanwhile) keeps this. */
+  orcaClose?: { requested: boolean; reason: Error }
   fence: number
   acquisitionGeneration: string
   threadId: string
@@ -149,13 +151,9 @@ export function mintCodexAcquisitionGeneration(deps: CodexStructuredSessionAdapt
 export function codexSessionLifecycle(
   fence: number,
   acquisitionGeneration: string
-): Pick<
-  CodexSession,
-  'ended' | 'requestedClose' | 'fence' | 'acquisitionGeneration' | 'turnOpenWaits'
-> {
+): Pick<CodexSession, 'ended' | 'fence' | 'acquisitionGeneration' | 'turnOpenWaits'> {
   return {
     ended: false,
-    requestedClose: false,
     fence,
     acquisitionGeneration,
     turnOpenWaits: createCodexTurnOpenWaits()

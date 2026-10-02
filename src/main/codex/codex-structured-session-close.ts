@@ -32,12 +32,13 @@ export function handleCodexSessionExit(input: {
   const event: StructuredAgentSessionEndedEvent = {
     type: 'ended',
     sessionId: input.sessionId,
-    reason: input.error.message,
+    // The connection reports the exit inside the close it ends; the close's own reason is the why.
+    reason: ((input.closedByOrca && session.orcaClose?.reason) || input.error).message,
     // Only the child's own exit blames Codex; a close Orca made, for any reason, is Orca's.
     failure: input.closedByOrca
       ? agentSessionFailureFact('hostFault')
       : agentSessionFailureFact('providerExited', { detail: providerDiagnosticOf(input.error) }),
-    cause: session.requestedClose ? 'requested-close' : 'unexpected-exit',
+    cause: session.orcaClose?.requested ? 'requested-close' : 'unexpected-exit',
     fence: session.fence,
     acquisitionGeneration: session.acquisitionGeneration,
     observedAt: session.exitObservedAt
@@ -92,7 +93,10 @@ export async function closeCodexPublishedSession(
   }
   // Sink-failure recovery force-closes the child but must preserve the
   // observed-exit cause so host lease settlement runs as an unexpected death.
-  session.requestedClose = options?.requestedClose ?? true
+  session.orcaClose = {
+    requested: options?.requestedClose ?? true,
+    reason: options?.unexpectedReason ?? new Error('codex session closed')
+  }
   // Keep the session indexed until the child exit is observed. A timeout or
   // failed kill must leave the live connection available for a safe retry.
   const exited = await session.connection.close()
@@ -104,7 +108,7 @@ export async function closeCodexPublishedSession(
       sessions,
       sessionId,
       connection: session.connection,
-      error: options?.unexpectedReason ?? new Error('codex session closed'),
+      error: session.orcaClose.reason,
       closedByOrca: true,
       prompts: session.prompts,
       ...(onEvent ? { onEvent } : {}),
