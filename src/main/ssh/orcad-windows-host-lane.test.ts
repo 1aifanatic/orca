@@ -7,7 +7,7 @@
 // Run: ORCA_RUN_SSH_WINDOWS_HOST=1 ORCA_SSH_WINDOWS_HOST_CELL=<descriptor.json> pnpm test <this file>
 import { randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 vi.mock('electron', () => ({ app: { getAppPath: () => process.cwd() } }))
 
@@ -62,13 +62,15 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
         { id: descriptor.cell, remoteRuntime: 'pinned-node' },
         randomUUID()
       )
-      const exec = vi.spyOn(SshConnection.prototype, 'exec')
+      let exec: MockInstance<SshConnection['exec']> | null = null
       const receipt: Record<string, unknown> = { cell: descriptor.cell, target: descriptor.target }
       let conn: SshConnection | null = null
       try {
         conn = await connectHostileHost(sshTarget)
         // A relay-hosted source first: conversion may proceed only once its terminals exited.
         Object.assign(receipt, await proveWindowsRelayTerminalGate(conn, sshTarget.id))
+        // After the prelude: its relay deploy re-spies `exec`, which is the same spy, and restores it.
+        exec = vi.spyOn(SshConnection.prototype, 'exec')
         const context = await resolveOrcadRemoteContext(sshTarget, conn)
         expect(context.host.os).toBe('win32')
         const options: OrcadSlotOptions = {
@@ -128,7 +130,7 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
         }
         receipt.passed = true
       } finally {
-        exec.mockRestore()
+        exec?.mockRestore()
         await conn?.disconnect().catch(() => {})
         writeFileSync(descriptor.receipt, `${JSON.stringify(receipt, null, 2)}\n`)
       }
