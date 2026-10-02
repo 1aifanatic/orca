@@ -90,7 +90,7 @@ export function VaultSessionRow({
   searchHit?: AiVaultSearchHit
 }) {
   const resumeLabel = isAntigravityReferenceSession(session)
-    ? translate('components.aiVault.continueInCli', 'Continue in CLI')
+    ? translate('aiVault.continueInCli', 'Continue in CLI')
     : defaultResumeLabel
   const updatedAt = session.updatedAt ?? session.modifiedAt
   const detailsId = getSessionDetailsId(session.id)

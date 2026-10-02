@@ -103,7 +103,7 @@ export function SessionInlineDetails({
             >
               <Play className="size-3.5" />
               {referenceSession
-                ? translate('components.aiVault.continueInCli', 'Continue in CLI')
+                ? translate('aiVault.continueInCli', 'Continue in CLI')
                 : translate(
                     'auto.components.right.sidebar.AiVaultSessionDetails.resumeInWorktree',
                     'Resume in Worktree'
@@ -125,7 +125,7 @@ export function SessionInlineDetails({
             >
               <Play className="size-3.5" />
               {referenceSession
-                ? translate('components.aiVault.continueInCliNewTab', 'Continue in CLI in New Tab')
+                ? translate('aiVault.continueInCliNewTab', 'Continue in CLI in New Tab')
                 : translate(
                     'auto.components.right.sidebar.AiVaultSessionRow.resumeInNewTab',
                     'Resume in New Tab'
