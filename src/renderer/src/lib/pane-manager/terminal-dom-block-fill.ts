@@ -84,9 +84,13 @@ export function applyDomBlockFills(root: ParentNode, range?: RenderedRows): void
   const start = range?.start ?? 0
   const end = Math.min(range?.end ?? rows.children.length - 1, rows.children.length - 1)
   for (let row = start; row <= end; row++) {
-    for (const span of rows.children[row]!.querySelectorAll<HTMLElement>('span')) {
-      fillBlockSpan(span)
-    }
+    fillBlockRow(rows.children[row]!)
+  }
+}
+
+function fillBlockRow(row: Element): void {
+  for (const span of row.querySelectorAll<HTMLElement>('span')) {
+    fillBlockSpan(span)
   }
 }
 
@@ -119,17 +123,50 @@ function fillBlockSpan(span: HTMLElement): void {
   span.style.backgroundRepeat = 'repeat-x'
 }
 
-export function attachDomBlockFill(terminal: {
-  onRender?: (cb: (range: RenderedRows) => void) => { dispose: () => void }
-  element?: HTMLElement | undefined
-}): () => void {
-  const run = (range?: RenderedRows): void => {
-    if (terminal.element) {
-      applyDomBlockFills(terminal.element, range)
+function collectAddedBlockRows(node: Node, rows: Set<HTMLElement>): void {
+  if (!(node instanceof HTMLElement)) {
+    return
+  }
+  if (node.parentElement?.classList.contains('xterm-rows')) {
+    rows.add(node)
+    return
+  }
+  const containers = node.matches('.xterm-rows') ? [node] : node.querySelectorAll('.xterm-rows')
+  for (const container of containers) {
+    for (const row of container.children) {
+      if (row instanceof HTMLElement) {
+        rows.add(row)
+      }
     }
   }
-  run()
-  // xterm emits this after replacing the changed DOM rows; no second full scan is needed.
-  const renderDisposable = terminal.onRender?.(run)
-  return () => renderDisposable?.dispose()
+}
+
+export function attachDomBlockFill(terminal: { element?: HTMLElement | undefined }): () => void {
+  const root = terminal.element
+  if (!root || typeof MutationObserver === 'undefined') {
+    return () => undefined
+  }
+  applyDomBlockFills(root)
+  // DOM focus, selection and link paints replace rows without xterm's public onRender event.
+  const observer = new MutationObserver((records) => {
+    const rows = new Set<HTMLElement>()
+    for (const record of records) {
+      const row =
+        record.target instanceof HTMLElement ? record.target.closest('.xterm-rows > div') : null
+      if (row instanceof HTMLElement) {
+        rows.add(row)
+        continue
+      }
+      for (const node of record.addedNodes) {
+        collectAddedBlockRows(node, rows)
+      }
+    }
+    for (const row of rows) {
+      if (root.contains(row)) {
+        fillBlockRow(row)
+      }
+    }
+  })
+  observer.observe(root, { childList: true, subtree: true })
+  return () => observer.disconnect()
 }

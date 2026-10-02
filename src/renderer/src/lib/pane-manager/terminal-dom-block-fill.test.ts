@@ -182,32 +182,50 @@ describe('applyDomBlockFills', () => {
 })
 
 describe('attachDomBlockFill', () => {
-  it('applies fills after onRender and disposes the listener', () => {
+  it('fills row replacements from focus/selection without rescanning untouched rows', async () => {
+    const element = document.createElement('div')
     const rows = document.createElement('div')
     rows.className = 'xterm-rows'
+    element.appendChild(rows)
+    const untouched = document.createElement('div')
+    const original = document.createElement('span')
+    original.textContent = 'ordinary text'
+    untouched.appendChild(original)
+    rows.appendChild(untouched)
+    const changed = document.createElement('div')
+    rows.appendChild(changed)
+    const detach = attachDomBlockFill({ element })
+    const unread = vi.spyOn(original, 'textContent', 'get')
     const span = document.createElement('span')
     span.textContent = '▀▀'
     span.style.color = 'rgb(1, 2, 3)'
+    changed.replaceChildren(span)
+
+    await vi.waitFor(() => expect(span.style.color).toBe('transparent'))
+    expect(unread).not.toHaveBeenCalled()
+    detach()
+    const replacement = document.createElement('span')
+    replacement.textContent = '▄▄'
+    replacement.style.color = 'rgb(1, 2, 3)'
+    changed.replaceChildren(replacement)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(replacement.style.color).toBe('rgb(1, 2, 3)')
+  })
+
+  it('fills a new DOM renderer container after a GPU mode change', async () => {
+    const element = document.createElement('div')
+    const detach = attachDomBlockFill({ element })
+    const rows = document.createElement('div')
+    rows.className = 'xterm-rows'
     const row = document.createElement('div')
+    const span = document.createElement('span')
+    span.textContent = '▀▀'
+    span.style.color = 'rgb(1, 2, 3)'
     row.appendChild(span)
     rows.appendChild(row)
-    const element = document.createElement('div')
     element.appendChild(rows)
 
-    let render: ((range: { start: number; end: number }) => void) | undefined
-    const dispose = vi.fn()
-    const terminal = {
-      element,
-      onRender: (cb: (range: { start: number; end: number }) => void) => {
-        render = cb
-        return { dispose }
-      }
-    }
-
-    const detach = attachDomBlockFill(terminal)
-    render?.({ start: 0, end: 0 })
-    expect(span.style.color).toBe('transparent')
+    await vi.waitFor(() => expect(span.style.color).toBe('transparent'))
     detach()
-    expect(dispose).toHaveBeenCalledTimes(1)
   })
 })
