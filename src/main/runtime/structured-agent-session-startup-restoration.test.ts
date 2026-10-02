@@ -21,9 +21,11 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-observations'
 import { OrcaRuntimeService } from './orca-runtime'
 import { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
+import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 type PrepareInternals = {
   structuredAgentSessionStartupGate: StructuredAgentSessionStartupGate
+  structuredAgentSessionStartupLogger: StructuredAgentSessionLogger
   store: { getWorkspaceSession: () => unknown }
   hasPersistedStructuredAgentSessionStore(): boolean
   refreshMobileSessionPtyRecords(): Promise<Set<string> | null>
@@ -124,6 +126,27 @@ it('lets held commands go before the shortest client timeout on a held call (the
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('reports a failed startup step to the diagnostics logger, not only the console', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  const runtime = restartedRuntime()
+  const internal = internals(runtime)
+  const failure = new Error('host build failed')
+  internal.ensureStructuredAgentSessionHost = async () => {
+    throw failure
+  }
+  const warn = vi.spyOn(internal.structuredAgentSessionStartupLogger, 'warn')
+
+  runtime.startStructuredAgentSessionStartupAfter(Promise.resolve())
+
+  await vi.waitFor(() =>
+    expect(warn).toHaveBeenCalledWith('the chat startup step failed', {
+      scope: 'startup-step-failed',
+      error: failure
+    })
+  )
 })
 
 it('closes the gate once per launch: a hold after it opened leaves it open', async () => {

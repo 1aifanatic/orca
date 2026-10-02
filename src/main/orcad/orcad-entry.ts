@@ -312,9 +312,7 @@ async function startOrcadRuntime(
   // settles crashed ones itself, before any client connects. Chat commands a client sends meanwhile
   // wait for that settle.
   runtime.holdStructuredAgentSessionCommandsForStartup()
-  void runtime.prepareStructuredAgentSessionStartupRestoration().catch((error: unknown) => {
-    console.warn('[structured-agent-session] startup restoration failed', error)
-  })
+  runtime.prepareStructuredAgentSessionStartupRestorationAfter(Promise.resolve())
 
   const bindHost = resolveOrcadBindHost(options.bind)
   const rpc = new OrcaRuntimeRpcServer({
