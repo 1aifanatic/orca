@@ -7,7 +7,14 @@ import { claudeRecord, claudeText } from './claude-structured-item-translation'
 // journal identity, and the final frame lands on it in block order instead of
 // appending a duplicate under its own uuid.
 
-export type ClaudeStreamedTextDelta = { identity: AgentJournalItemIdentity; text: string }
+export type ClaudeStreamedTextDelta = {
+  identity: AgentJournalItemIdentity
+  text: string
+  /** The block's own scope, which this registry already keys its map on. Streamed
+   *  prose has no message envelope when it is persisted, so the producer travels
+   *  with the delta rather than being re-read from a frame that is long gone. */
+  parentToolUseId: string | null
+}
 
 type StreamedMessage = {
   messageId: string | null
@@ -66,7 +73,8 @@ export function createClaudeStreamedBlockRegistry(
       if (frame.type !== 'stream_event' || !event || !sessionId || !uuid) {
         return null
       }
-      const scope = scopeKey(sessionId, claudeText(frame.parent_tool_use_id))
+      const parentToolUseId = claudeText(frame.parent_tool_use_id)
+      const scope = scopeKey(sessionId, parentToolUseId)
       if (event.type === 'message_start') {
         messages.set(scope, {
           messageId: claudeText(claudeRecord(event.message)?.id),
@@ -83,7 +91,7 @@ export function createClaudeStreamedBlockRegistry(
         }
         const identity = mint(messageFor(scope), sessionId, index, uuid)
         const text = claudeText(block[blockType])
-        return text ? { identity, text } : null
+        return text ? { identity, text, parentToolUseId } : null
       }
       if (event.type !== 'content_block_delta') {
         return null
@@ -95,7 +103,7 @@ export function createClaudeStreamedBlockRegistry(
       }
       const streamed = messageFor(scope)
       const identity = streamed.blocks.get(index) ?? mint(streamed, sessionId, index, uuid)
-      return { identity, text }
+      return { identity, text, parentToolUseId }
     },
     reconcile: (frame) => {
       const streamed = messages.get(scopeKey(frame.sessionId, frame.parentToolUseId))

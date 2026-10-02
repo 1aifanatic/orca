@@ -1,3 +1,7 @@
+import {
+  AiVaultSearchRequestSchema,
+  AiVaultSearchStatusRequestSchema
+} from '../../shared/ai-vault-search-contract'
 import { ipcMain, type BrowserWindow } from 'electron'
 import type { Store } from '../persistence'
 import { SshConnectionStore } from '../ssh/ssh-connection-store'
@@ -73,6 +77,8 @@ import { broadcastPortForwards, relayStateOverrides } from './ssh-renderer-broad
 import { resetSshShutdownDrain } from './ssh-shutdown-drain'
 import { registerSshTargetCrudHandlers } from './ssh-target-crud-handlers'
 import { targetLifecycleInFlight } from './ssh-target-lifecycle-queue'
+import { disposeOrcadManagedTunnels } from '../ssh/orcad-managed-tunnel'
+import { getAppEnvironment } from '../../shared/app-environment'
 
 const SSH_IPC_CHANNELS = [
   'ssh:listTargets',
@@ -112,6 +118,27 @@ export function getActiveSshAiVaultHostInfos(): SshRelayAiVaultHostInfo[] {
     const info = session.getAiVaultHostInfo()
     return info ? [info] : []
   })
+}
+
+export async function requestActiveSshSessionSearch(
+  targetId: string,
+  method: string,
+  params: unknown
+): Promise<unknown> {
+  if (isRuntimeOwnedSshTargetId(targetId)) {
+    throw new Error('SSH target belongs to another runtime')
+  }
+  const session = activeSessions.get(targetId)
+  if (!session) {
+    throw new Error('SSH relay is not ready')
+  }
+  if (method === 'aiVault.searchSessions') {
+    return session.requestSessionSearch(method, AiVaultSearchRequestSchema.parse(params))
+  }
+  if (method === 'aiVault.searchStatus') {
+    return session.requestSessionSearch(method, AiVaultSearchStatusRequestSchema.parse(params))
+  }
+  throw new Error('Unknown session search method')
 }
 
 export async function requestActiveSshAiVaultSessionList(
@@ -184,7 +211,7 @@ export function registerSshHandlers(
     }
   })
   refreshActiveRelaySessions()
-  registerPowerMonitorReconnect()
+  registerPowerMonitorReconnect(() => getAppEnvironment().getPath('userData'))
   registerSshBrowseHandler(() => connectionManager)
   setSshConnectionManagerResolver(() => connectionManager)
 
@@ -228,6 +255,7 @@ export async function resetSshHandlerStateForTests(): Promise<void> {
   resetSshShutdownDrain()
 
   await connectionManager?.disconnectAll()
+  disposeOrcadManagedTunnels()
   portForwardManager?.dispose()
   setConnectionManager(null)
   setSshConnectionManagerResolver(null)

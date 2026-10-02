@@ -5,6 +5,7 @@ import CommentMarkdown, {
 } from '@/components/sidebar/CommentMarkdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
+import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import { formatNativeChatDuration } from '../../../../shared/native-chat-turn-status'
 
 export function NativeChatReasoningRow({
@@ -93,6 +94,7 @@ export function NativeChatReasoningRow({
           content={markdown}
           variant="document"
           className="text-sm"
+          renderCodeBlock={NativeChatCodeBlock}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}

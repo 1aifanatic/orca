@@ -25,6 +25,7 @@ import {
   CODEX_USER_INPUT_METHOD
 } from './codex-structured-prompt-replies'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 
 const SESSION_ID = 'session-1'
 const THREAD_ID = 'thread-abc'
@@ -129,6 +130,7 @@ function deferredTarget(
 
 function hardWatermarkDeferred() {
   return createDeferredStructuredAgentSessionEventSink({
+    ...testEventSinkLogging(),
     watermarks: {
       pauseQueuedBytes: 1,
       maxQueuedBytes: 1,
@@ -218,12 +220,10 @@ describe('codex journal translation', () => {
     await expect(deferred.lifecycleBarrier()).resolves.toEqual({ ok: true })
 
     expect(bodies).toEqual([
-      expect.objectContaining({
-        kind: 'status',
-        turnLifecycle: { turnId: TURN_ID, state: 'running' }
-      }),
+      expect.objectContaining({ kind: 'turn', turnId: TURN_ID, state: 'running' }),
       expect.objectContaining({ kind: 'tool-call', state: 'running' }),
-      expect.objectContaining({ kind: 'tool-call', state: 'failed' })
+      expect.objectContaining({ kind: 'tool-call', state: 'failed' }),
+      expect.objectContaining({ kind: 'turn', turnId: TURN_ID, state: 'completed' })
     ])
     expect(publishes).toHaveLength(2)
   })
@@ -263,10 +263,7 @@ describe('codex journal translation', () => {
     await expect(deferred.lifecycleBarrier()).resolves.toEqual({ ok: true })
 
     expect(bodies).toEqual([
-      expect.objectContaining({
-        kind: 'status',
-        turnLifecycle: { turnId: TURN_ID, state: 'running' }
-      }),
+      expect.objectContaining({ kind: 'turn', turnId: TURN_ID, state: 'running' }),
       expect.objectContaining({
         kind: 'approval',
         resolution: expect.objectContaining({ state: 'pending' })
@@ -275,7 +272,7 @@ describe('codex journal translation', () => {
         kind: 'approval',
         resolution: expect.objectContaining({ state: 'cancelled' })
       }),
-      { kind: 'status', text: 'Provider exited: lost child' }
+      expect.objectContaining({ kind: 'turn', turnId: TURN_ID, state: 'interrupted' })
     ])
     expect(publishes).toHaveLength(2)
   })
@@ -347,9 +344,9 @@ describe('codex journal translation', () => {
           })
         }),
         expect.objectContaining({
-          body: { kind: 'status', text: 'Provider exited: lost child' }
-        }),
-        expect.objectContaining({ kind: 'tombstone' })
+          kind: 'item',
+          body: expect.objectContaining({ kind: 'turn', turnId: TURN_ID, state: 'interrupted' })
+        })
       ])
     )
   })
@@ -417,12 +414,11 @@ describe('codex journal translation', () => {
           `provider-exit:${SESSION_ID}:7:generation-1:${index + 1}/${batches.length}`
       )
     )
-    expect(flattened).toHaveLength(122)
-    expect(flattened.at(-2)).toMatchObject({
+    expect(flattened).toHaveLength(121)
+    expect(flattened.at(-1)).toMatchObject({
       kind: 'item',
-      body: { kind: 'status', text: 'Provider exited: lost child' }
+      body: { kind: 'turn', state: 'interrupted' }
     })
-    expect(flattened.at(-1)).toMatchObject({ kind: 'tombstone' })
     expectLifecycleBatchBounds(batches)
   })
 
@@ -542,15 +538,24 @@ describe('codex journal translation', () => {
               output: expect.objectContaining({ head: 'partial' })
             })
           }),
-          expect.objectContaining({
-            kind: 'tombstone',
+          {
+            kind: 'item',
             identity: {
               provider: 'legacy',
               agent: 'codex',
               sessionId: SESSION_ID,
               recordId: `turn-lifecycle:${TURN_ID}`
-            }
-          })
+            },
+            body: {
+              kind: 'turn',
+              turnId: TURN_ID,
+              state: 'completed',
+              userItemId: `codex:${THREAD_ID}:${TURN_ID}:0`,
+              startedAt: expect.any(Number),
+              completedAt: expect.any(Number)
+            },
+            turnScope: { kind: 'thread' }
+          }
         ]
       }
     ])

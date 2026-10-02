@@ -9,7 +9,20 @@ export const RUNTIME_ENVIRONMENT_HANDLER_CHANNELS = [
   'runtimeEnvironments:retryControlConnection',
   'runtimeEnvironments:prepareBrowserClientHostPlacement',
   'runtimeEnvironments:getStatus',
+  'runtimeEnvironments:getStatusSnapshots',
   'runtimeEnvironments:call',
   'runtimeEnvironments:subscribe',
-  'runtimeEnvironments:unsubscribe'
+  'runtimeEnvironments:unsubscribe',
+  'runtimeEnvironments:linkSshAccess',
+  'runtimeEnvironments:unlinkSshAccess',
+  'runtimeEnvironments:deployOrcad',
+  'runtimeEnvironments:getOrcadStatus',
+  'runtimeEnvironments:updateOrcad',
+  'runtimeEnvironments:rollbackOrcad',
+  'runtimeEnvironments:recoverOrcad',
+  'runtimeEnvironments:stopOrcad',
+  'runtimeEnvironments:cancelOrcadStop',
+  'runtimeEnvironments:createOrcadSshHost',
+  'runtimeEnvironments:resumeOrcadSshHost',
+  'runtimeEnvironments:listPendingOrcadSshProvisioning'
 ] as const

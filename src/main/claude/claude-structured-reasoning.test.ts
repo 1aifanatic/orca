@@ -7,7 +7,12 @@ function setup() {
   const rows = new Map<string, AgentJournalItemBody>()
   const translator = createClaudeJournalTranslator({
     sink: {
-      appendItem: (identity, body) => rows.set(agentJournalItemKey(identity), body),
+      // Output also opens its turn; these tests read only the content rows.
+      appendItem: (identity, body) => {
+        if (body.kind !== 'turn') {
+          rows.set(agentJournalItemKey(identity), body)
+        }
+      },
       appendTombstone: vi.fn(),
       publish: vi.fn()
     }
@@ -145,6 +150,40 @@ describe('structured Claude reasoning', () => {
     final('next-final', [{ type: 'thinking', thinking: 'Next thought' }])
     expect([...rows.keys()]).toEqual([key])
     expect(translator.pendingStreamedBlocks).toBe(0)
+    translator.dispose()
+  })
+
+  it('writes streamed thinking into the turn its first delta opened', () => {
+    vi.useFakeTimers()
+    const scopes: unknown[] = []
+    const translator = createClaudeJournalTranslator({
+      sink: {
+        appendItem: (_identity, body, options) => {
+          if (body.kind === 'message' && body.role === 'reasoning') {
+            scopes.push(options.turnScope)
+          }
+        },
+        appendTombstone: vi.fn(),
+        publish: vi.fn()
+      }
+    })
+    translator.handle({
+      type: 'message',
+      sessionId: 'orca-session',
+      message: {
+        type: 'stream_event',
+        session_id: 'session',
+        parent_tool_use_id: null,
+        uuid: 'delta',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'thinking_delta', thinking: 'Considering' }
+        }
+      }
+    })
+    translator.flush()
+    expect(scopes).toEqual([{ kind: 'turn', turnItemId: expect.stringContaining('turn') }])
     translator.dispose()
   })
 
