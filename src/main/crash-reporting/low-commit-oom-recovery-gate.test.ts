@@ -125,6 +125,21 @@ describe('createLowCommitOomRecoveryGate', () => {
     })
   })
 
+  it.each([Number.NaN, Infinity, -1])(
+    'does not block recovery on an invalid commit reading (%s)',
+    (commitMB) => {
+      expect(observeTwice(sample(commitMB), OOM, 34_100, 'win32', goneTime(commitMB))[1]).toBeNull()
+    }
+  )
+
+  it.each([Number.NaN, Infinity, -1])('ignores an invalid sample age (%s)', (ageMs) => {
+    expect(observeTwice(sample(60, ageMs), OOM, 34_100, 'win32', goneTime(2_029))[1]).toBeNull()
+  })
+
+  it.each([0, -1])('does not block recovery when the clock fails to advance (%s)', (gapMs) => {
+    expect(observeTwice(sample(60), OOM, gapMs, 'win32', goneTime(60))[1]).toBeNull()
+  })
+
   it('does not start the repeat window for an OOM that was never recovered', () => {
     const verdict = withPlatform('win32', () => {
       const gate = createLowCommitOomRecoveryGate(sample(60, 2_000), NO_GONE_TIME_READING)

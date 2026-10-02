@@ -32,6 +32,10 @@ function usablePreGoneCommitMB(sample: MemoryDetails, sincePreviousOomMs: number
   if (
     typeof availableCommitMB !== 'number' ||
     typeof sampleAgeMs !== 'number' ||
+    !Number.isFinite(availableCommitMB) ||
+    availableCommitMB < 0 ||
+    !Number.isFinite(sampleAgeMs) ||
+    sampleAgeMs < 0 ||
     sampleAgeMs > LOW_COMMIT_MAX_SAMPLE_AGE_MS ||
     // Why: a reading from before the previous OOM misses the commit that corpse released.
     sampleAgeMs >= sincePreviousOomMs
@@ -54,6 +58,8 @@ export function createLowCommitOomRecoveryGate(
         process.platform !== 'win32' ||
         details.reason !== 'oom' ||
         previous === null ||
+        !Number.isFinite(now) ||
+        now <= previous ||
         now - previous > LOW_COMMIT_REPEAT_OOM_WINDOW_MS
       ) {
         return null
@@ -67,6 +73,8 @@ export function createLowCommitOomRecoveryGate(
       const availableCommitMB = preGoneMB ?? goneTimeMB
       if (
         typeof availableCommitMB !== 'number' ||
+        !Number.isFinite(availableCommitMB) ||
+        availableCommitMB < 0 ||
         availableCommitMB >= LOW_COMMIT_AVAILABLE_MB_THRESHOLD
       ) {
         return null

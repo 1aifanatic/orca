@@ -18537,7 +18537,7 @@
     "crashLoopMessage": "The app window crashed repeatedly and stopped reloading automatically.",
     "lowCommitMessage": "Windows is out of memory.",
     "lowCommitDetail": "Windows has only {{availableMB}} MB of memory left for apps, so the window ran out of memory again after reloading.",
-    "lowCommitAdvice": "Close other apps or increase the Windows page file size, then click Reload."
+    "lowCommitAdvice": "Free memory by closing unused apps or Orca workspaces, or increase the Windows page file size, then click Reload."
   },
   "notifications": {
     "agentStatus": {

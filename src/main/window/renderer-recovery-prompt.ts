@@ -51,7 +51,7 @@ export async function presentRendererRecoveryPrompt(
     const causeDetail = lowCommit
       ? translateMain(
           'rendererRecovery.lowCommitAdvice',
-          'Close other apps or increase the Windows page file size, then click Reload.'
+          'Free memory by closing unused apps or Orca workspaces, or increase the Windows page file size, then click Reload.'
         )
       : diagnosis
         ? `${diagnosis.detail}\n\n${translateMain(
