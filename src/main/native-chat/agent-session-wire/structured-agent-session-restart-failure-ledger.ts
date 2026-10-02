@@ -78,8 +78,8 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
   adapter: StructuredAgentSessionAdapter
   /** The predicate a retry applies to the failure's marker. */
   retryable: (marker: AgentSessionResumeMarker) => boolean
-  /** Whether the chat's open journal is read-only here: its failure is kept but not shown, since
-   *  no retry can land until Orca is updated. */
+  /** Whether the chat is a newer Orca's here (its whole database, or its open journal): its
+   *  failure is kept but not shown, since no retry can land until Orca is updated. */
   readOnly: (sessionId: string) => boolean
   /** Makes the failed chats readable here, so `retryable` reads each one's journal. */
   reveal: (markers: readonly AgentSessionResumeMarker[]) => Promise<void>

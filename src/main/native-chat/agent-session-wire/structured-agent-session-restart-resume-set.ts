@@ -79,7 +79,7 @@ export type StructuredAgentSessionResumeSetInput = {
   latestPrompt: (sessionId: string) => string
   /** Whether the chat moved on since the offer was taken; false when its journal is not open here. */
   movedOn: (marker: AgentSessionResumeMarker) => boolean
-  /** Whether the chat's open journal is read-only here (a newer Orca's); false when not open. */
+  /** Whether the chat is a newer Orca's here: its whole database, or its open journal. */
   readOnly: (sessionId: string) => boolean
   /**
    * Whether the lease must be free.

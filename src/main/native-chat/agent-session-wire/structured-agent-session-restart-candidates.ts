@@ -2,7 +2,7 @@
 //
 // A different question from storage: the durable record decides which markers are still present;
 // this decides which of those a resume may act on. The offer, the click and the pre-send check all
-// ask it, and all get the same answer.
+// ask it; only the pre-send check is built not to skip a newer Orca's chat (see the host).
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
@@ -30,7 +30,7 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
   adapter: StructuredAgentSessionAdapter
   /** Whether the chat moved on since the offer was taken; see the offer withdrawal. */
   movedOn: (marker: AgentSessionResumeMarker) => boolean
-  /** Whether the chat's open journal is read-only here. */
+  /** Whether the chat is a newer Orca's here: its whole database, or its open journal. */
   readOnly: (sessionId: string) => boolean
 }): StructuredAgentSessionRestartCandidateReader {
   return (markers, leaseState) =>

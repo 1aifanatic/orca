@@ -7,8 +7,8 @@ import type { AgentSessionWriteNoticeSentence } from './agent-session-write-noti
 export const AGENT_SESSION_READ_ONLY_REASONS = ['written-by-newer-orca'] as const
 export type AgentSessionReadOnlyReason = (typeof AGENT_SESSION_READ_ONLY_REASONS)[number]
 
-/** The notice for a reason this client knows; none for one a newer host names, which this client
- *  cannot word truthfully. */
+/** The words for a reason this client knows, shown as the locked composer's placeholder; none
+ *  for one a newer host names, which this client cannot word truthfully. */
 export function agentSessionReadOnlyNoticeParts(
   reason: AgentSessionReadOnlyReason | undefined
 ): AgentSessionWriteNoticeSentence[] | null {
