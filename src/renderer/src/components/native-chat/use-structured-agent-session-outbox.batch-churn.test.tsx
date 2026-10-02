@@ -85,7 +85,7 @@ it('writes nothing to storage across 50 batches while a message waits in doubt',
     { initialProps: { items: streamed(1), submissions: [inDoubt('doubt')] } }
   )
   await act(async () => {})
-  const writes = vi.spyOn(Storage.prototype, 'setItem')
+  const writes = vi.spyOn(localStorage, 'setItem')
 
   for (let sequence = 2; sequence <= 51; sequence += 1) {
     // Each batch is a new journal array and a new submissions array with the same content.
