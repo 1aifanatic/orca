@@ -41,6 +41,15 @@ describe("the gate's key", () => {
     expect(nativeChatReasoningGateKey(open, 'turn-2')).toBe('')
   })
 
+  it('keeps ids apart whatever characters they hold', () => {
+    const key = (subagents: string[]) =>
+      nativeChatReasoningGateKey({ ...open, reasoning: { session: false, subagents } }, 'turn-1')
+    expect(key(['a\nb'])).not.toBe(key(['a', 'b']))
+    expect(key(['b', 'a'])).toBe(key(['a', 'b']))
+    const gate = nativeChatReasoningGate(key(['a\nb']))
+    expect([gate('a\nb'), gate('a'), gate('b'), gate()]).toEqual([true, false, false, false])
+  })
+
   it('answers through the gate it keys exactly as the gate does', () => {
     for (const reasoning of [
       { session: true, subagents: [] },

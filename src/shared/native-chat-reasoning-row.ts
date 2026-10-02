@@ -25,7 +25,7 @@ export function nativeChatReasoningGateKey(
   liveTurnId: string | null
 ): string {
   const reasoning = liveTurnId && activity?.turnId === liveTurnId ? activity.reasoning : undefined
-  return reasoning ? [reasoning.session ? 'session' : '', ...reasoning.subagents].join('\n') : ''
+  return reasoning ? JSON.stringify([reasoning.session, [...reasoning.subagents].sort()]) : ''
 }
 
 const NOTHING_OPEN = (): boolean => false
@@ -35,8 +35,12 @@ export function nativeChatReasoningGate(key: string): (agentId?: string) => bool
   if (!key) {
     return NOTHING_OPEN
   }
-  const [session, ...subagents] = key.split('\n')
-  return (agentId) => (agentId === undefined ? session === 'session' : subagents.includes(agentId))
+  const parsed: unknown = JSON.parse(key)
+  const [session, ids] = Array.isArray(parsed) ? parsed : []
+  const subagents = new Set(
+    Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
+  )
+  return (agentId) => (agentId === undefined ? session === true : subagents.has(agentId))
 }
 
 /** A reasoning row still being written while the host reports its reasoning open. It draws nothing

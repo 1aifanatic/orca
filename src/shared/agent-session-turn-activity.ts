@@ -26,6 +26,10 @@ export function agentSessionTurnActivityEqual(
     a.turnId === b.turnId &&
     a.text === b.text &&
     a.reasoning?.session === b.reasoning?.session &&
-    (a.reasoning?.subagents ?? []).join('\n') === (b.reasoning?.subagents ?? []).join('\n')
+    sameIds(a.reasoning?.subagents ?? [], b.reasoning?.subagents ?? [])
   )
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index])
 }
