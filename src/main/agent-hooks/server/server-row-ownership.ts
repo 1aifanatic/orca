@@ -113,6 +113,9 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
     )
   }
 
+  /** A row write recorded a live owner; the owner recheck arms itself from here. */
+  protected noteLiveAgentOwner(): void {}
+
   protected commitStatusRowMutation(
     before: EnrichedAgentHookEventPayload | null | undefined,
     after: EnrichedAgentHookEventPayload | null | undefined,
@@ -123,6 +126,9 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
     // Why: the one place every row write passes, so no deletion path can strand a renderer owner.
     if (owner && !(carried && isSameAgentProcess(carried, owner))) {
       this.emitAgentPresenceReleased({ paneKey: before.paneKey, process: owner })
+    }
+    if (carried && !after?.agentPresence?.ended) {
+      this.noteLiveAgentOwner()
     }
     if (
       before?.terminalHandle &&

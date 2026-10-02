@@ -13,6 +13,7 @@ import {
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isUncheckableAgentOwner } from './server-status-identity'
 import { AgentHookServerLifecycle } from './server-lifecycle'
+import { AgentOwnerLivenessRecheck } from '../../../shared/agent-owner-liveness-recheck'
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
   // Why keyed by pane and owner: every hook rewrites the row, and one owner needs only one probe.
@@ -24,6 +25,22 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       successor?: AgentProcessPresence
     }
   >()
+  private readonly ownerLivenessRecheck = new AgentOwnerLivenessRecheck({
+    listLiveOwnerPaneKeys: () =>
+      [...this.state.lastStatusByPaneKey.values()]
+        .filter((row) => row.connectionId === null && this.hasVerifiableAgentProcess(row.paneKey))
+        .map((row) => row.paneKey),
+    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+  })
+
+  protected noteLiveAgentOwner(): void {
+    this.ownerLivenessRecheck.noteLiveOwner()
+  }
+
+  stop(): void {
+    this.ownerLivenessRecheck.stop()
+    super.stop()
+  }
 
   /** A live hook proves its own process alive; only another process's hook casts doubt on the owner. */
   checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {

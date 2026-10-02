@@ -1,8 +1,5 @@
 import { handleRelayHookRequest } from './agent-hook-request'
-import {
-  ownerDoubtFromHook,
-  transitionHookPresence
-} from '../shared/agent-hook-presence-transition'
+import { transitionHookPresence } from '../shared/agent-hook-presence-transition'
 import { RelayAgentPresence } from './relay-agent-presence'
 import type { AgentProcessPresence } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -93,7 +90,10 @@ export class RelayAgentHookServer {
   private fixedToken: string | undefined
   private preferredPort: number
   private portFallbackApplied = false
-  private readonly presenceChecks = new RelayAgentPresence()
+  private readonly presenceChecks = new RelayAgentPresence({
+    rows: () => this.state.lastStatusByPaneKey.values(),
+    checkOwner: (paneKey, successor) => this.checkAgentPresence(paneKey, successor)
+  })
   private retryScheduler: AgentHookResultRetryScheduler
 
   constructor(options: RelayHookServerOptions) {
@@ -196,6 +196,7 @@ export class RelayAgentHookServer {
   }
 
   stop(): void {
+    this.presenceChecks.stop()
     this.server?.close()
     this.server = null
     this.port = 0
@@ -326,11 +327,7 @@ export class RelayAgentHookServer {
     this.forward(
       buildRelayHookEnvelope(event, source, env, version, { isReplay: options.isReplay })
     )
-    // Why: a live hook proves its own process alive; only another process's hook casts doubt on the owner.
-    const doubt = options.checkPresence === false ? undefined : ownerDoubtFromHook(incoming, event)
-    if (doubt) {
-      void this.checkAgentPresence(event.paneKey, doubt.successor)
-    }
+    this.presenceChecks.observeHook(incoming, event, options.checkPresence !== false)
     // Why: retries compare against the cached row by identity, so they must hold that exact row.
     return this.state.lastStatusByPaneKey.get(event.paneKey)
   }

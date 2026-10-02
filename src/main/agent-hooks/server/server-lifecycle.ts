@@ -65,6 +65,8 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       for (let worker = 0; worker < RESTORED_OWNER_RECHECK_CONCURRENCY; worker += 1) {
         void recheckNext()
       }
+      // Hydrated owners skip the row-write path that arms the recheck beat.
+      this.noteLiveAgentOwner()
       this.ownerStateInitialized = true
     }
     const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
