@@ -1,5 +1,5 @@
 /**
- * The shape of a desktop file request, which decides what main checks. Absent means the path must
+ * The kind of file access a desktop request declares, which decides what main checks. Absent means the path must
  * be inside a project root main recognises.
  */
 export type LocalFileAccess =

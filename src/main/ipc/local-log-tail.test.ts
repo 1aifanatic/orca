@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
 
 vi.mock('node:fs', () => ({ watch: watchMock }))
 
-vi.mock('./filesystem-request-shape', () => ({
+vi.mock('./local-file-access-resolution', () => ({
   resolveUserNamedRegularFile: resolveAuthorizedPathMock
 }))
 

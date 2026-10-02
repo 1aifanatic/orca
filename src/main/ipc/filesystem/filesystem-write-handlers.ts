@@ -9,7 +9,7 @@ import type { LocalFileAccess } from '../../../shared/local-file-access'
 import {
   resolveDesktopAuthorizedPath,
   resolveLocalWriteRequestPath
-} from '../filesystem-request-shape'
+} from '../local-file-access-resolution'
 import { isENOENT } from '../filesystem-path-containment'
 import { registerFilesystemMutationHandlers } from '../filesystem-mutations'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'

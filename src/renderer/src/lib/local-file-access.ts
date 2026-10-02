@@ -38,7 +38,7 @@ type EditorTabAccessFile = Pick<
 >
 
 /**
- * The shape a persisted editor tab reads and saves with. A tab the user opened outside its owner's
+ * The file access a persisted editor tab reads and saves with. A tab the user opened outside its owner's
  * root (a floating-workspace tab, or one stored with an absolute path) is user-named, so it reads
  * the same before and after a restart; every other tab stays inside its project root.
  */

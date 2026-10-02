@@ -17,7 +17,7 @@ export type RuntimeFileReadArgs = {
   connectionId?: string
   expectedExternalSshTargetId?: string
   includeLocalLogMetadata?: boolean
-  /** Shape of the local fallback read; remote reads stay root-relative. */
+  /** File access of the local fallback read; remote reads stay root-relative. */
   access?: LocalFileAccess
 }
 

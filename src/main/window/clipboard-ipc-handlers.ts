@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process'
 import { open, stat } from 'node:fs/promises'
 import type { Store } from '../persistence'
 import { PATH_ACCESS_DENIED_MESSAGE } from '../ipc/filesystem-auth'
-import { resolveDesktopAuthorizedPath } from '../ipc/filesystem-request-shape'
+import { resolveDesktopAuthorizedPath } from '../ipc/local-file-access-resolution'
 import { isENOENT } from '../ipc/filesystem-path-containment'
 import {
   assertClipboardTextWriteWithinLimitWithYield,

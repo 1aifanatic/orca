@@ -4,7 +4,7 @@ import type { Store } from '../persistence'
 import {
   resolveDesktopAuthorizedPath,
   resolveUserNamedRegularFile
-} from './filesystem-request-shape'
+} from './local-file-access-resolution'
 import { startNotebookKernel, type NotebookKernel } from '../notebook/notebook-kernel'
 import {
   createNotebookVenv,

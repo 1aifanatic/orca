@@ -71,7 +71,7 @@ function transcriptImageIdentity(
   }`
 }
 
-// Why one shape for every role: a turn's role says who sent it, not who chose the path, and these
+// Why one access kind for every role: a turn's role says who sent it, not who chose the path, and these
 // load on scroll with no click, so main only serves local image files by their real type.
 const TRANSCRIPT_IMAGE_ACCESS = chatImageAccess()
 

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Renders the real MarkdownPreview and pins the shape its images are read with: a resource of the
+// Renders the real MarkdownPreview and pins the file access its images are read with: a resource of the
 // document showing them, so main limits them to that document's roots or folder.
 
 import { act } from 'react'

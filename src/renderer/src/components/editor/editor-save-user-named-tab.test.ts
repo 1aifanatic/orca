@@ -85,7 +85,7 @@ describe('saving a restored tab', () => {
     }
   })
 
-  it('saves a project tab inside its root, with no shape', async () => {
+  it('saves a project tab inside its root, with no declared access', async () => {
     const store = createEditorStore()
     store.getState().openFile({
       filePath: '/repo/a.ts',

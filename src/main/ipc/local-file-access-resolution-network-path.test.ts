@@ -40,7 +40,7 @@ vi.mock('node:fs', async (importOriginal) => {
 vi.mock('electron', () => ({ app: { getPath: () => 'C:\\Users\\me\\AppData\\Roaming\\Orca' } }))
 vi.mock('../repo-worktrees', () => ({ listRepoWorktreeGraph: vi.fn(async () => []) }))
 
-import { resolveLocalFileRequestPath } from './filesystem-request-shape'
+import { resolveLocalFileRequestPath } from './local-file-access-resolution'
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members.
 const store = {
@@ -92,7 +92,7 @@ describe('document images on a network share', () => {
     }
   )
 
-  it('refuses it with no shape too', async () => {
+  it('refuses it with no declared access too', async () => {
     await expect(resolveLocalFileRequestPath(networkTargets[0], undefined, store)).rejects.toThrow(
       'Access denied'
     )
@@ -190,7 +190,7 @@ describe('automatic image loads and dot segments that resolve to a device name',
   })
 
   it.each(['C:\\d\\NUL.png\\.', 'C:\\d\\COM1.png\\x\\..', 'C:/d/COM1.jpg/.'])(
-    'refuses %s in both shapes without touching it',
+    'refuses %s for both access kinds without touching it',
     async (target) => {
       await expect(resolveLocalFileRequestPath(target, CHAT_IMAGE, store)).rejects.toThrow(
         'Access denied'

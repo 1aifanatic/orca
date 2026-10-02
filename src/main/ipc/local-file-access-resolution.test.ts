@@ -9,7 +9,7 @@ import {
   resolveDesktopAuthorizedPath,
   resolveLocalFileRequestPath,
   resolveLocalWriteRequestPath
-} from './filesystem-request-shape'
+} from './local-file-access-resolution'
 import { readLocalFileContent } from './filesystem/filesystem-file-content-inspection'
 import {
   assertLocalWriteTargetIsRegularFile,
@@ -63,7 +63,7 @@ let outside: string
 
 beforeEach(async () => {
   invalidateAuthorizedRootsCache()
-  base = await mkdtemp(join(await realpath(tmpdir()), 'orca-request-shape-'))
+  base = await mkdtemp(join(await realpath(tmpdir()), 'orca-file-access-'))
   project = join(base, 'project')
   outside = join(base, 'outside')
   userData.path = join(base, 'user-data')
@@ -123,7 +123,7 @@ describe('user-file requests', () => {
   })
 })
 
-describe('requests with no shape (roots only)', () => {
+describe('requests with no declared access (roots only)', () => {
   it('refuse a file outside every project, even one a user-file request may read', async () => {
     const store = makeStore({ repoPaths: [project] })
 

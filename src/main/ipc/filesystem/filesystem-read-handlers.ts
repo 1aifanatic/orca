@@ -13,7 +13,7 @@ import type { LocalFileAccess } from '../../../shared/local-file-access'
 import {
   resolveDesktopAuthorizedPath,
   resolveLocalFileRequestPath
-} from '../filesystem-request-shape'
+} from '../local-file-access-resolution'
 import { isENOENT } from '../filesystem-path-containment'
 import { listMarkdownDocuments, markdownDocumentsFromRelativePaths } from '../markdown-documents'
 import { getLocalGitOptionsForRegisteredWorktree } from '../local-worktree-runtime-options'

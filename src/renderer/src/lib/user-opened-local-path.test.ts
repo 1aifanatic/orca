@@ -17,7 +17,7 @@ const project: RuntimeFileOperationArgs = {
   worktreePath: '/repo'
 }
 
-/** Main's answers: a contained (no-shape) stat only sees paths that stay in the project. */
+/** Main's answers: a contained stat (no declared access) only sees paths that stay in the project. */
 function answer(containedOk: boolean, userNamedOk: boolean, isDirectory = false): void {
   mocks.statRuntimePath.mockImplementation(
     async (_context: unknown, _path: string, access?: { kind: string }) => {

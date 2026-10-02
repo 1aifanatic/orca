@@ -419,7 +419,7 @@ describe('loadLocalImageSrc', () => {
     expect(renders).toEqual([undefined])
   })
 
-  it('never shares a cached image across request shapes', () => {
+  it('never shares a cached image across access kinds', () => {
     const userFile = getLocalImageCacheKey('/tmp/a.png', undefined, undefined, {
       kind: 'user-file'
     })

@@ -165,7 +165,7 @@ export function useEditorPanelFileContentLoader({
         const access = restoredOpenFile
           ? editorTabFileAccess(useAppStore.getState(), restoredOpenFile)
           : undefined
-        // Why the shape in the key: a contained tab must not share a read made as a user-named one.
+        // Why the access kind in the key: a contained tab must not share a read made as a user-named one.
         const key = `${inFlightReadKey(readScope, filePath)}::${access?.kind ?? ''}`
         const registeredRead = inFlightFileReads.get(key)
         if (

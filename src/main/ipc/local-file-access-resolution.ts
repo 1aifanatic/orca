@@ -162,7 +162,7 @@ export async function resolveChatImagePath(targetPath: string, store: Store): Pr
   return realTarget
 }
 
-// Why parse: IPC input is untyped, and an unrecognised shape must fall back to roots only.
+// Why parse: IPC input is untyped, and an unrecognised access kind must fall back to roots only.
 function parseLocalFileAccess(access: unknown): LocalFileAccess | undefined {
   if (typeof access !== 'object' || access === null || !('kind' in access)) {
     return undefined
@@ -183,26 +183,26 @@ function parseLocalFileAccess(access: unknown): LocalFileAccess | undefined {
   return undefined
 }
 
-/** Resolves a desktop read/stat request by its declared shape; no shape means roots only. */
+/** Resolves a desktop read/stat request by its declared file access; none means roots only. */
 export async function resolveLocalFileRequestPath(
   targetPath: string,
   access: unknown,
   store: Store
 ): Promise<string> {
-  const shape = parseLocalFileAccess(access)
-  if (shape?.kind === 'user-file') {
+  const fileAccess = parseLocalFileAccess(access)
+  if (fileAccess?.kind === 'user-file') {
     return resolveUserNamedLocalPath(targetPath)
   }
-  if (shape?.kind === 'document-resource') {
-    return resolveDocumentResourcePath(targetPath, shape.documentPath, store)
+  if (fileAccess?.kind === 'document-resource') {
+    return resolveDocumentResourcePath(targetPath, fileAccess.documentPath, store)
   }
-  if (shape?.kind === 'chat-image') {
+  if (fileAccess?.kind === 'chat-image') {
     return resolveChatImagePath(targetPath, store)
   }
   return resolveDesktopAuthorizedPath(targetPath, store)
 }
 
-/** Writes accept only the user-file shape: saving the open file the user named. */
+/** Writes accept only user-file access: saving the open file the user named. */
 export async function resolveLocalWriteRequestPath(
   targetPath: string,
   access: unknown,

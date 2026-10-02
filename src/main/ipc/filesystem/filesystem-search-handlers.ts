@@ -25,7 +25,7 @@ import {
   getSshFilesystemProvider,
   requireSshFilesystemProvider
 } from '../../providers/ssh-filesystem-dispatch'
-import { resolveDesktopAuthorizedPath } from '../filesystem-request-shape'
+import { resolveDesktopAuthorizedPath } from '../local-file-access-resolution'
 import { listQuickOpenFiles } from '../filesystem-list-files'
 import {
   isFileNameFilterQueryTooLarge,

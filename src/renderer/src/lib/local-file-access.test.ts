@@ -37,9 +37,9 @@ function makeWorktree(overrides: Partial<Worktree> & { id: string; repoId: strin
 
 const localWorktreeId = 'repo-local::/Users/me/project'
 
-type TabShape = Parameters<typeof editorTabFileAccess>[1]
+type TabFileAccessFields = Parameters<typeof editorTabFileAccess>[1]
 
-function accessKind(file: TabShape): string | undefined {
+function accessKind(file: TabFileAccessFields): string | undefined {
   return editorTabFileAccess(useAppStore.getState(), file)?.kind
 }
 
@@ -60,7 +60,7 @@ describe('editorTabFileAccess', () => {
     useAppStore.setState(initialState, true)
   })
 
-  it.each<[string, TabShape, string | undefined]>([
+  it.each<[string, TabFileAccessFields, string | undefined]>([
     [
       'a floating-workspace tab stored relative to ~',
       {
@@ -150,7 +150,7 @@ describe('editorTabFileAccess', () => {
 
 // Why a ratchet: a content-driven reader that adopted user-file would bring back the round-1 leak.
 // These scans only see the two ways a renderer file can produce user-file today, by name and by
-// pattern: building the shape directly, and opening a tab the tab rule reads as user-named. They
+// pattern: building user-file access directly, and opening a tab the tab rule reads as user-named. They
 // cannot see a decision laundered through props or a helper, so they are a tripwire for review, not
 // a proof; a branded user-named path type is the follow-up that would make it one.
 const USER_NAMED_ACCESS_IMPORTERS = [
@@ -227,7 +227,7 @@ function rendererFilesMatching(test: (source: string) => boolean): string[] {
 }
 
 describe('user-named file access ratchet', () => {
-  it('lists every file that builds the user-file shape', () => {
+  it('lists every file that builds user-file access', () => {
     expect(
       rendererFilesMatching((source) => /\buserNamedFileAccess\b|kind: 'user-file'/.test(source))
     ).toEqual(USER_NAMED_ACCESS_IMPORTERS)
