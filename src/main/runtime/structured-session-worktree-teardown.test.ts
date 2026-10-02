@@ -202,18 +202,31 @@ describe('worktree teardown and structured agent sessions', () => {
     })
   })
 
-  it('closes an open chat whose previous agent recovery has not proven gone, and refuses until it is', async () => {
-    const recovering = record('s1', WORKTREE)
-    recovering.lease.handoffStage = 'recovering'
-    const host = installHost({ records: [recovering], unverifiable: new Set(['s1']) })
-    expect(listStructuredSessionsForWorktree(WORKTREE, {}).live).toEqual([
-      { sessionId: 's1', agent: 'claude' }
-    ])
+  it.each([
+    ['recovery has not proven gone', { handoffStage: 'recovering' }],
+    ['a failed startup reconciliation left unadjudicated', { unreconciled: true }]
+  ] as const)(
+    'closes an open chat whose previous agent %s, and refuses until it settles',
+    async (_label, lease) => {
+      const unproven = record('s1', WORKTREE)
+      Object.assign(unproven.lease, lease)
+      const host = installHost({ records: [unproven], unverifiable: new Set(['s1']) })
+      expect(listStructuredSessionsForWorktree(WORKTREE, {}).live).toEqual([
+        { sessionId: 's1', agent: 'claude' }
+      ])
 
-    await expect(killAllProcessesForWorktree(WORKTREE, destructiveDeps())).rejects.toThrow(
-      /1 agent session \(claude\)/
-    )
-    expect(host.closed).toEqual(['s1'])
+      await expect(killAllProcessesForWorktree(WORKTREE, destructiveDeps())).rejects.toThrow(
+        /1 agent session \(claude\)/
+      )
+      expect(host.closed).toEqual(['s1'])
+    }
+  )
+
+  it('never counts an open chat released before the restart as live while it is unreconciled', () => {
+    const released = record('s1', WORKTREE)
+    Object.assign(released.lease, { claimStatus: 'released', unreconciled: true })
+    installHost({ records: [released] })
+    expect(listStructuredSessionsForWorktree(WORKTREE, {}).live).toEqual([])
   })
 
   it('closes a live session on an ordinary removal instead of refusing it', async () => {

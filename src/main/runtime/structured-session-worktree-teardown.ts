@@ -96,10 +96,14 @@ export function structuredSessionTeardownHostId(
 export type StructuredSessionsForWorktree = {
   /** Every session bound to this workspace on the fenced host, attached or not. */
   members: StructuredSessionInWorkspace[]
-  /** The subset with a proven-live provider child, or an open chat whose child's exit is still
-   *  unproven: what the sweep closes and may refuse over. */
+  /** The subset with a proven-live provider child, or an open chat whose previous child's exit is
+   *  still unproven or unadjudicated: what the sweep closes and may refuse over. */
   live: StructuredSessionInWorkspace[]
 }
+
+/** Lease states of an open chat whose previous child may still run: recovery has not concluded
+ *  about it, or restart reconciliation has not yet adjudicated it. A clean release is never either. */
+const OWNER_UNPROVEN: ReadonlySet<string> = new Set(['recovering', 'reconciling'])
 
 /**
  * Structured sessions in this worktree, on the fenced host only.
@@ -138,8 +142,8 @@ export function listStructuredSessionsForWorktree(
     live: members.filter(
       ({ sessionId }) =>
         observeStructuredWorker({ sessionId }).status === 'live' ||
-        // Why: recovery has not proven its child gone, so a close must settle it before a delete.
-        (host.hasSession(sessionId) && host.leaseState(sessionId)?.state === 'recovering')
+        // Why: nothing has proven the previous child gone, so a close must settle it before a delete.
+        (host.hasSession(sessionId) && OWNER_UNPROVEN.has(host.leaseState(sessionId)?.state ?? ''))
     )
   }
 }

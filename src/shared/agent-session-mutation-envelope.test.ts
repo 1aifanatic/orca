@@ -151,6 +151,25 @@ describe('admitAgentSessionMutation', () => {
     })
   })
 
+  it('names the adjudication for a clean release that reads free while unreconciled', () => {
+    const admission = admitAgentSessionMutation({
+      ...base,
+      lease: {
+        ...LEASE,
+        claimStatus: 'released',
+        ownerProcess: null,
+        reservedSpawnToken: null,
+        unreconciled: true
+      },
+      ownerProof: null,
+      ledger: ADMIT('f'.repeat(64))
+    })
+    expect(admission).toMatchObject({
+      decision: 'refused',
+      refusal: { code: 'execution_owner_reconciling', details: { reason: 'hostReconciling' } }
+    })
+  })
+
   it('refuses a writer while the chat is still starting', () => {
     const admission = admitAgentSessionMutation({
       ...base,

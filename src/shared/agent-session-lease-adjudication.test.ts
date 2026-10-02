@@ -144,6 +144,20 @@ describe('acquisition compare-and-swap', () => {
     })
   })
 
+  it('refuses a clean release that reads free until its adjudication lands', () => {
+    const released = lease({
+      claimStatus: 'released',
+      ownerProcess: null,
+      reservedSpawnToken: null,
+      unreconciled: true
+    })
+    expect(acquire(released, { outcome: 'reservation-unused' })).toEqual({
+      decision: 'refused',
+      code: 'execution_owner_reconciling',
+      details: { reason: 'hostReconciling' }
+    })
+  })
+
   it('keeps a conflicted claim conflicted regardless of proof', () => {
     // Restart adjudication and recovery resolution are what retire it, once its owner is gone.
     expect(acquire(lease({ claimStatus: 'conflicted' }), { outcome: 'exit-observed' })).toEqual({
