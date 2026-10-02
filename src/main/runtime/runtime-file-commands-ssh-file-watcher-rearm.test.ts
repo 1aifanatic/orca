@@ -1,19 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IFilesystemProvider } from '../providers/types'
-import { SshFilesystemProvider } from '../providers/ssh-filesystem-provider'
 import {
   createSshDisposalError,
-  SSH_MUX_REQUEST_TIMEOUT_CODE,
-  SshChannelMultiplexer,
-  type MultiplexerTransport
+  SSH_MUX_REQUEST_TIMEOUT_CODE
 } from '../ssh/ssh-channel-multiplexer'
-import {
-  encodeJsonRpcFrame,
-  HEADER_LENGTH,
-  MessageType,
-  parseJsonRpcMessage,
-  type JsonRpcMessage
-} from '../ssh/relay-protocol'
+import { createSshFileExplorerWatchTestConnection as createWatchConnection } from './ssh-file-explorer-watch-test-connection'
 import { armSshFileExplorerWatchRearm } from './runtime-file-commands-ssh-file-watcher-rearm'
 
 type WatchProvider = Pick<IFilesystemProvider, 'watch'>
@@ -53,51 +44,6 @@ function pendingWatch() {
     reject = rejectPromise
   })
   return { watch: vi.fn<IFilesystemProvider['watch']>(() => promise), resolve, reject }
-}
-
-function createWatchConnection() {
-  const written: Buffer[] = []
-  let receive: (data: Buffer) => void = () => undefined
-  let sequence = 1
-  const transport: MultiplexerTransport = {
-    write: (data) => {
-      written.push(data)
-    },
-    onData: (callback) => {
-      receive = callback
-    },
-    onClose: () => undefined
-  }
-  const mux = new SshChannelMultiplexer(transport)
-  const provider = new SshFilesystemProvider('ssh-1', mux)
-  const messages = (): JsonRpcMessage[] =>
-    written
-      .filter((frame) => frame[0] === MessageType.Regular)
-      .map((frame) => parseJsonRpcMessage(frame.subarray(HEADER_LENGTH)))
-  const send = (message: JsonRpcMessage): void => {
-    receive(encodeJsonRpcFrame(message, sequence++, 0))
-  }
-  return {
-    mux,
-    provider,
-    countRequests: (method: string) =>
-      messages().filter((message) => 'method' in message && message.method === method).length,
-    settleWatch: () => {
-      const request = messages().find(
-        (message) => 'method' in message && message.method === 'fs.watch'
-      )
-      if (!request || !('id' in request)) {
-        throw new Error('No pending fs.watch request')
-      }
-      send({ jsonrpc: '2.0', id: request.id, result: null })
-    },
-    emitChange: () =>
-      send({
-        jsonrpc: '2.0',
-        method: 'fs.changed',
-        params: { events: [{ kind: 'update', absolutePath: '/remote/repo/current.ts' }] }
-      })
-  }
 }
 
 describe('SSH file explorer watcher rearm', () => {

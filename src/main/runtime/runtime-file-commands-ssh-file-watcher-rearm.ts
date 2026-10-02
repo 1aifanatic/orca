@@ -19,7 +19,13 @@ export function armSshFileExplorerWatchRearm(args: {
   signal?: AbortSignal
   initialUnwatch: () => void
   initialProvider: Pick<IFilesystemProvider, 'watch'>
-}): { unsubscribe: () => Promise<void> } {
+}): {
+  initialCallbacks: {
+    callback: (events: FsChangeEvent[]) => void
+    onTerminalError: (error: Error) => void
+  }
+  unsubscribe: () => Promise<void>
+} {
   const key = runtimeWatcherReleaseKey(args.runtimeId, args.connectionId, args.rootPath)
   let currentUnwatch = args.initialUnwatch
   let currentProvider = args.initialProvider
@@ -44,6 +50,7 @@ export function armSshFileExplorerWatchRearm(args: {
     }
     const isCurrent = (): boolean =>
       !stopped &&
+      !args.signal?.aborted &&
       generation === providerGeneration &&
       provider === getSshFilesystemProvider(args.connectionId)
     let nextUnwatch: () => void
@@ -98,6 +105,7 @@ export function armSshFileExplorerWatchRearm(args: {
       .catch((error: unknown) => {
         if (
           !stopped &&
+          !args.signal?.aborted &&
           generation === providerGeneration &&
           attemptProvider === getSshFilesystemProvider(args.connectionId)
         ) {
@@ -132,8 +140,25 @@ export function armSshFileExplorerWatchRearm(args: {
   if (getSshFilesystemProvider(args.connectionId) !== args.initialProvider) {
     scheduleReinstall()
   }
+  const isInitialCurrent = (): boolean =>
+    !stopped &&
+    !args.signal?.aborted &&
+    providerGeneration === 0 &&
+    args.initialProvider === getSshFilesystemProvider(args.connectionId)
 
   return {
+    initialCallbacks: {
+      callback: (events) => {
+        if (isInitialCurrent()) {
+          args.callback(events)
+        }
+      },
+      onTerminalError: (error) => {
+        if (isInitialCurrent()) {
+          reportTerminalError(error)
+        }
+      }
+    },
     unsubscribe: () => {
       stop()
       const close = async (): Promise<void> => currentUnwatch()
