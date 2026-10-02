@@ -15,8 +15,8 @@ import { stopAgentSessionProviderRoot } from './structured-agent-session-provide
 import { releaseStoredStructuredAgentSessionOwnerAfterExit } from './structured-agent-session-lease-release'
 import { isSurfaceReleasableAgentSessionRecord } from '../../runtime/agent-session-surface-release-transition'
 
-/** What a caller learned about the child's exit: proven, or not. A close that ran out of its own
- *  escalation, or a host Orca lost contact with, reads `unverifiable`, never `exited`. */
+/** What a caller learned about the child's exit: proven, or not. A root still there after the
+ *  close's kill reads `unverifiable`, never `exited`. */
 export type StructuredAgentSessionChildCloseVerdict = 'exited' | 'unverifiable'
 
 /** Joins the child's close and, once its root's exit is proven, ends the record. */
