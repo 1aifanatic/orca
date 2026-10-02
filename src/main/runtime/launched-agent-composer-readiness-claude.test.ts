@@ -17,6 +17,17 @@ import {
 } from './launched-agent-composer-readiness'
 import { resolveRemoteForegroundEvidence } from '../providers/agent-foreground-process'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
+import type * as TerminalForegroundGroup from './terminal-foreground-group'
+
+// What `ps` limited to the pane's terminal answers; the verdict over it stays the real one.
+const paneTerminal = vi.hoisted(() => {
+  const state: { rows: ProcessTableRow[] | null } = { rows: null }
+  return state
+})
+vi.mock('./terminal-foreground-group', async (importOriginal) => ({
+  ...(await importOriginal<typeof TerminalForegroundGroup>()),
+  readTerminalProcessRows: vi.fn(async () => paneTerminal.rows)
+}))
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -140,47 +151,78 @@ describe('what holds a launched agent’s terminal', () => {
     Object.defineProperty(process, 'platform', originalPlatform)
   })
 
-  describe('macOS and Linux: one fresh foreground read decides', () => {
-    beforeEach(() => setPlatform('darwin'))
-
-    it.each([
-      // For its first 5 s the daemon's cached read names the launch agent while zsh is in front.
-      ['claude', 'zsh', 'shell'],
-      // A stub agent that crashed: the cached read can still name it after zsh took the terminal.
-      ['python3', 'zsh', 'shell'],
-      ['claude', 'claude', 'agent'],
-      // A native Claude names itself by its version.
-      ['zsh', '2.1.285', 'agent'],
-      ['zsh', 'node', 'agent'],
-      ['-zsh', '-zsh', 'shell'],
-      ['bash', 'bash', 'shell'],
-      [null, 'zsh', 'shell'],
-      ['claude', null, 'unknown']
-    ] as const)('cached %s, scan %s: %s', async (foregroundProcess, scanned, found) => {
-      const scan = vi.fn()
-      const proof = vi.fn()
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Claude Code',
-        foregroundProcess,
-        confirmedForegroundProcess: scanned,
-        onForegroundScan: scan,
-        shellForegroundProven: false,
-        onShellForegroundProof: proof,
-        launchAgent: 'claude',
-        data: ''
-      })
-
-      await expect(
-        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
-      ).resolves.toBe(found)
-      expect(scan).toHaveBeenCalledOnce()
-      expect(proof).not.toHaveBeenCalled()
+  describe('macOS and Linux: the pane terminal’s own foreground group decides', () => {
+    beforeEach(() => {
+      setPlatform('darwin')
+      paneTerminal.rows = null
     })
 
-    it('proves nothing on a controller without a fresh scan', async () => {
+    // Captured with `ps -o pid=,ppid=,pgid=,tpgid=,stat=,command=` on a pane spawned the way a macOS
+    // pane is, under `login`: zsh holds the terminal in its own group, never the root's.
+    const login = (tpgid: number): ProcessTableRow => ({
+      pid: 60404,
+      ppid: 60394,
+      pgid: 60404,
+      tpgid,
+      stat: 'Ss',
+      command: '/usr/bin/login -flpq user /bin/bash --noprofile --norc -p -c'
+    })
+    const zshAt = (tpgid: number): ProcessTableRow => ({
+      pid: 60406,
+      ppid: 60404,
+      pgid: 60406,
+      tpgid,
+      stat: tpgid === 60406 ? 'S+' : 'S',
+      command: '-/bin/zsh -f'
+    })
+
+    it.each([
+      // A crashed stub's name can outlive it in the cached read; the rows show zsh back in front.
+      ['zsh back at its prompt', [login(60406), zshAt(60406)], 'shell'],
+      [
+        'claude in front',
+        [
+          login(60500),
+          zshAt(60500),
+          { pid: 60500, ppid: 60406, pgid: 60500, tpgid: 60500, stat: 'S+', command: 'claude' }
+        ],
+        'agent'
+      ]
+    ] as const)(
+      '%s: answers from the rows, never the cached name or a whole-machine scan',
+      async (_label, rows, found) => {
+        paneTerminal.rows = [...rows]
+        const scan = vi.fn()
+        const inspection = vi.fn()
+        const { runtime } = await createTranscriptPane({
+          paneTitle: 'Claude Code',
+          foregroundProcess: 'python3',
+          confirmedForegroundProcess: 'claude',
+          onForegroundScan: scan,
+          processInspection: { foregroundProcess: 'claude', hasChildProcesses: true },
+          onProcessInspection: inspection,
+          paneRootPid: 60404,
+          launchAgent: 'claude',
+          data: ''
+        })
+
+        await expect(
+          runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
+        ).resolves.toBe(found)
+        expect(scan).not.toHaveBeenCalled()
+        expect(inspection).not.toHaveBeenCalled()
+      }
+    )
+
+    it.each([
+      ['without the pane’s root process', undefined, [login(60406), zshAt(60406)]],
+      ['when ps cannot read the pane’s terminal', 60404, null]
+    ] as const)('proves nothing %s', async (_label, paneRootPid, rows) => {
+      paneTerminal.rows = rows ? [...rows] : null
       const { runtime } = await createTranscriptPane({
         paneTitle: 'Claude Code',
         foregroundProcess: 'claude',
+        ...(paneRootPid ? { paneRootPid } : {}),
         launchAgent: 'claude',
         data: ''
       })
@@ -189,85 +231,13 @@ describe('what holds a launched agent’s terminal', () => {
         runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
       ).resolves.toBe('unknown')
     })
+  })
 
-    // Captured with `ps -o pid=,ppid=,pgid=,tpgid=,stat=,command=` on a pane spawned the way a macOS
-    // pane is, under `login`: zsh holds the terminal in its own group, never the root's.
-    it('reads a login-wrapped pane’s zsh at its prompt as the shell', async () => {
-      const rows: ProcessTableRow[] = [
-        {
-          pid: 60404,
-          ppid: 60394,
-          pgid: 60404,
-          tpgid: 60406,
-          stat: 'Ss',
-          tty: 'ttys004',
-          startTime: 'Fri Oct  2 01:20:11 2026',
-          command: '/usr/bin/login -flpq user /bin/bash --noprofile --norc -p -c'
-        },
-        {
-          pid: 60406,
-          ppid: 60404,
-          pgid: 60406,
-          tpgid: 60406,
-          stat: 'S+',
-          tty: 'ttys004',
-          startTime: 'Fri Oct  2 01:20:11 2026',
-          command: '-/bin/zsh -f'
-        }
-      ]
-      const inspection = {
-        foregroundProcess: 'zsh',
-        hasChildProcesses: true,
-        foregroundProcessEvidence: resolveRemoteForegroundEvidence(
-          { rootPid: 60404, fallbackProcess: 'zsh' },
-          {
-            ptyId: TRANSCRIPT_PANE_PTY_ID,
-            ptyIncarnationId: 'inc-1',
-            authorityGeneration: 'gen-1',
-            observationEpoch: 1,
-            capturedAgeMs: 0,
-            platform: 'darwin'
-          },
-          rows
-        )
-      }
-      // Presence precondition: the fence is live, and its foreground group is not the root's.
-      expect(inspection.foregroundProcessEvidence).toMatchObject({
-        verdict: 'live',
-        fence: { shellPid: 60404, foregroundPgid: 60406 }
-      })
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Terminal',
-        foregroundProcess: 'python3',
-        processInspection: inspection,
-        confirmedForegroundProcess: '-zsh',
-        launchAgent: 'claude',
-        data: ''
-      })
+  // A tcsh or nu launch line runs the agent from `/bin/sh '<script>'`, which leads the terminal's
+  // foreground group with the agent a member of it, so the relay's name is `sh`.
+  describe('SSH: the relay’s process-group observation, then its name', () => {
+    beforeEach(() => setPlatform('darwin'))
 
-      await expect(
-        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'claude')
-      ).resolves.toBe('shell')
-    })
-
-    // A wrapper that does not `exec` an agent the scan cannot recognize keeps its own name in front,
-    // which reads as a shell: the prompt stays undelivered rather than risk the user's shell.
-    it('reads a bash wrapper still in front of an unrecognized agent as a shell', async () => {
-      const { runtime } = await createTranscriptPane({
-        paneTitle: 'Terminal',
-        foregroundProcess: 'bash',
-        confirmedForegroundProcess: 'bash',
-        launchAgent: 'copilot',
-        data: ''
-      })
-
-      await expect(
-        runtime.readLaunchedAgentForeground(TRANSCRIPT_PANE_PTY_ID, 'copilot')
-      ).resolves.toBe('shell')
-    })
-
-    // A tcsh or nu launch line runs the agent from `/bin/sh '<script>'`, which leads the terminal's
-    // foreground group with the agent a member of it, so the scan names `sh`.
     const shLeadsClaude = (capturedAgeMs: number, agentCommand: string) => {
       const row = (pid: number, ppid: number, stat: string, command: string): ProcessTableRow => ({
         pid,
@@ -275,8 +245,8 @@ describe('what holds a launched agent’s terminal', () => {
         pgid: 40210,
         tpgid: 40210,
         stat,
-        tty: 'ttys007',
-        startTime: 'Fri Oct  2 09:30:01 2026',
+        tty: 'pts/7',
+        startTime: '1790950000',
         command
       })
       return {
@@ -290,7 +260,7 @@ describe('what holds a launched agent’s terminal', () => {
             authorityGeneration: 'gen-1',
             observationEpoch: 1,
             capturedAgeMs,
-            platform: 'darwin'
+            platform: 'linux'
           },
           [
             { ...row(40100, 40090, 'Ss', '-tcsh'), pgid: 40100 },
@@ -308,14 +278,14 @@ describe('what holds a launched agent’s terminal', () => {
         '/opt/bin/claude',
         'agent'
       ],
-      // Older than the quiet a ready signal needs, it may predate the agent's exit.
+      // Reused from before the read was asked for, it may predate the agent's exit.
       [
-        'takes the fresh read over an observation too old to trust',
+        'takes the relay’s name over an observation too old to trust',
         1_500,
         '/opt/bin/claude',
         'shell'
       ],
-      ['takes the fresh read when the group holds another agent', 0, '/opt/bin/codex', 'shell']
+      ['takes the relay’s name when the group holds another agent', 0, '/opt/bin/codex', 'shell']
     ] as const)('%s', async (_label, capturedAgeMs, agentCommand, found) => {
       const inspection = shLeadsClaude(capturedAgeMs, agentCommand)
       // Presence precondition: the observation is live and names the agent in the group.
@@ -327,7 +297,7 @@ describe('what holds a launched agent’s terminal', () => {
         paneTitle: 'Terminal',
         foregroundProcess: 'sh',
         processInspection: inspection,
-        confirmedForegroundProcess: 'sh',
+        connectionId: 'ssh-1',
         launchAgent: 'claude',
         data: ''
       })

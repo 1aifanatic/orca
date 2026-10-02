@@ -7,6 +7,7 @@ import { isShellProcess } from '../../shared/shell-process-detection'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
+import { judgeTerminalForeground, readTerminalProcessRows } from './terminal-foreground-group'
 
 /**
  * What holds a launched agent's terminal: the agent (anything but the pane's shell), the shell
@@ -28,18 +29,15 @@ function isLaunchedAgent(processName: string, agent: TuiAgent): boolean {
 }
 
 /**
- * First the host's process-group observation, which only ever proves the agent: the launched agent
- * among the members of the terminal's foreground group finds it behind a wrapper that did not
- * `exec` it (a script, or the `/bin/sh` a tcsh or nu launch line runs), whose own name leads the
- * group. It counts only from a capture begun after this read was asked for, less the window a
- * shared capture is reused across, and never by how long `ps` took on a loaded host. It never
- * proves a shell: a macOS pane's shell runs under `login`, so the group's root is not the shell,
- * and a capture that ran out of time is no answer.
+ * On a local macOS or Linux host, one `ps` limited to the pane's own terminal
+ * (`terminal-foreground-group`): its foreground process group decides, read fresh in a few
+ * milliseconds. Never the whole-machine capture behind a fresh scan or `inspectProcess`, which
+ * took seconds a read on a loaded host and gated every paste behind it, and never the cached name a
+ * tab icon uses, which can still name a process that already exited.
  *
- * Otherwise one fresh read of the terminal's foreground process: on a local POSIX host the scan
- * behind `confirmForegroundProcess`, and on an SSH host the relay's name, which it reads from the
- * terminal when asked. Never the cached name a tab icon uses: it can still name a process that
- * already exited.
+ * On an SSH host, the relay's process-group observation when it names the launched agent in the
+ * foreground group (a wrapper that did not `exec` it leads the group), then the relay's own name,
+ * which it reads from the terminal when asked. The observation never proves a shell.
  *
  * Windows has no foreground process group, and its scan names the pane's shell for an agent it
  * cannot recognize, while Git Bash and WSL keep other processes in the shell's job, so nothing
@@ -48,10 +46,7 @@ function isLaunchedAgent(processName: string, agent: TuiAgent): boolean {
 export async function readLaunchedAgentForeground(
   controller: Pick<
     RuntimePtyController,
-    | 'getForegroundProcess'
-    | 'confirmForegroundProcess'
-    | 'confirmShellForeground'
-    | 'inspectProcess'
+    'getForegroundProcess' | 'confirmShellForeground' | 'inspectProcess' | 'listProcesses'
   > | null,
   host: { remote: boolean; windows: boolean },
   ptyId: string,
@@ -65,6 +60,13 @@ export async function readLaunchedAgentForeground(
       // An SSH pane has no such check, so on a Windows relay nothing proves a shell.
       return (await controller.confirmShellForeground?.(ptyId)) ? 'shell' : 'unknown'
     }
+    if (!host.remote) {
+      const rootPid = (await controller.listProcesses?.(null))?.find(
+        (pane) => pane.id === ptyId
+      )?.rootProcessId
+      const rows = rootPid ? await readTerminalProcessRows(rootPid) : null
+      return rows && rootPid ? judgeTerminalForeground(rows, rootPid, agent) : 'unknown'
+    }
     const askedAt = Date.now()
     const evidence = (await controller.inspectProcess?.(ptyId))?.foregroundProcessEvidence
     if (
@@ -76,9 +78,7 @@ export async function readLaunchedAgentForeground(
     ) {
       return 'agent'
     }
-    const foreground = host.remote
-      ? await controller.getForegroundProcess(ptyId)
-      : ((await controller.confirmForegroundProcess?.(ptyId)) ?? null)
+    const foreground = await controller.getForegroundProcess(ptyId)
     if (!foreground) {
       return 'unknown'
     }
