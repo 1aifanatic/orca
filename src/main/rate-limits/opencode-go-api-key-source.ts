@@ -93,6 +93,14 @@ export function readOpenCodeAuthFileGoKey(
   }
 }
 
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+  )
+}
+
 function selectCredentialKey(database: Database.Database): string | null {
   if (!tableExists(database, 'credential')) {
     return null
@@ -130,16 +138,23 @@ function selectCredentialKey(database: Database.Database): string | null {
  * The table itself is not a version marker — 1.18.x creates it too (verified
  * empty on a real 1.18.16 install), so probe it regardless of version.
  * @returns The key; `missing` when no database, table, or row carries one;
- * `unreadable` when none had a key but at least one failed to open or query.
+ * `unreadable` when none had a key but discovery failed for a reason other than
+ * absence, or at least one database failed to open or query.
  */
 export async function readOpenCodeCredentialDatabaseGoKey(): Promise<OpenCodeCredentialDatabaseGoKeyRead> {
+  let sawUnreadable = false
   let paths: string[]
   try {
-    paths = [...(await listOpenCodeDatabases())].sort(compareOpenCodeClaimPriority)
+    const listed = await listOpenCodeDatabases(undefined, (path, error) => {
+      // A UNC location is never opened here (below), so failing to list it is no evidence either.
+      if (!isWslUncPath(path) && !isMissingPathError(error)) {
+        sawUnreadable = true
+      }
+    })
+    paths = [...listed].sort(compareOpenCodeClaimPriority)
   } catch {
     return { status: 'missing' }
   }
-  let sawUnreadable = false
   for (const path of paths) {
     // A synchronous open against a 9p/UNC share can hang the main process, and
     // the status bar is never worth that; the other tiers still apply.
