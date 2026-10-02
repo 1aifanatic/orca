@@ -25,6 +25,7 @@ export const ZCODE_PLAN_SITE_CONSOLE_URLS: Record<ZcodePlanSite, string> = {
 }
 
 export type ZcodePlanCredentialsStatus = {
+  detailsUnavailable?: boolean
   apiKeyConfigured: boolean
   zcodeCliConfigured: boolean
   apiKeyProtection: SecretAtRestProtection | null

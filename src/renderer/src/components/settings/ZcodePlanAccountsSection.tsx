@@ -53,8 +53,9 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
   const now = useNow(60_000)
 
   const credentialEditable = !isWebClientLocation()
-  const site = settings?.zcodePlanSite ?? 'zai'
-  const consoleUrl = ZCODE_PLAN_SITE_CONSOLE_URLS[site]
+  const site = settings?.zcodePlanSite ?? (credentialEditable ? 'zai' : undefined)
+  const detailsUnavailable = !credentialEditable || status?.detailsUnavailable === true
+  const consoleUrl = site ? ZCODE_PLAN_SITE_CONSOLE_URLS[site] : undefined
   const apiKeyConfigured = status?.apiKeyConfigured === true
 
   const handleSiteChange = (value: string): void => {
@@ -96,18 +97,20 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
             )}
           </p>
         </div>
-        <a
-          href={consoleUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {translate(
-            'auto.components.settings.ZcodePlanAccountsSection.consoleLink',
-            'Get API key'
-          )}
-          <ExternalLink className="size-3" />
-        </a>
+        {consoleUrl ? (
+          <a
+            href={consoleUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {translate(
+              'auto.components.settings.ZcodePlanAccountsSection.consoleLink',
+              'Get API key'
+            )}
+            <ExternalLink className="size-3" />
+          </a>
+        ) : null}
       </div>
 
       <div
@@ -123,13 +126,20 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
           )}
         />
         <div className="min-w-0 flex-1 space-y-0.5">
-          {apiKeyConfigured ? (
+          {detailsUnavailable ? (
+            <p className="text-xs text-muted-foreground">
+              {translate(
+                'auto.components.settings.ZcodePlanAccountsSection.detailsUnavailable',
+                'Plan credential details are only readable on the computer running Orca.'
+              )}
+            </p>
+          ) : apiKeyConfigured ? (
             <>
               <p className="text-xs font-medium">
                 {translate(
                   'auto.components.settings.ZcodePlanAccountsSection.keyStored',
                   'API key saved · {{value0}}',
-                  { value0: siteLabel(site) }
+                  { value0: siteLabel(site ?? 'zai') }
                 )}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -216,12 +226,17 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
           {translate('auto.components.settings.ZcodePlanAccountsSection.siteTitle', 'Plan site')}
         </Label>
         <Select
-          value={site}
+          value={site ?? ''}
           onValueChange={handleSiteChange}
           disabled={credentialBusy || !credentialEditable}
         >
           <SelectTrigger id="zcode-plan-site" size="sm" className="w-full">
-            <SelectValue />
+            <SelectValue
+              placeholder={translate(
+                'auto.components.settings.ZcodePlanAccountsSection.siteUnavailable',
+                'Host plan site unavailable'
+              )}
+            />
           </SelectTrigger>
           <SelectContent>
             {(['zai', 'bigmodel'] as const).map((option) => (
@@ -247,15 +262,17 @@ export function ZcodePlanAccountsSection(): React.JSX.Element {
             <Label htmlFor="zcode-plan-api-key">
               {translate('auto.components.settings.ZcodePlanAccountsSection.keyTitle', 'API key')}
             </Label>
-            <Badge variant={apiKeyConfigured ? 'secondary' : 'outline'}>
-              {apiKeyConfigured ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
-              {apiKeyConfigured
-                ? translate('auto.components.settings.ZcodePlanAccountsSection.saved', 'Saved')
-                : translate(
-                    'auto.components.settings.ZcodePlanAccountsSection.notSaved',
-                    'Not saved'
-                  )}
-            </Badge>
+            {!detailsUnavailable ? (
+              <Badge variant={apiKeyConfigured ? 'secondary' : 'outline'}>
+                {apiKeyConfigured ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
+                {apiKeyConfigured
+                  ? translate('auto.components.settings.ZcodePlanAccountsSection.saved', 'Saved')
+                  : translate(
+                      'auto.components.settings.ZcodePlanAccountsSection.notSaved',
+                      'Not saved'
+                    )}
+              </Badge>
+            ) : null}
           </div>
         </div>
         <UnsealedCredentialNotice

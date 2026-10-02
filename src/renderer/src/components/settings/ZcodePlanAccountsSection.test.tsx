@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
-  const settings: { zcodePlanSite: ZcodePlanSite } = { zcodePlanSite: 'zai' }
+  const settings: { zcodePlanSite?: ZcodePlanSite } = { zcodePlanSite: 'zai' }
   return {
     isWeb: vi.fn(() => false),
     getStatus: vi.fn(),
@@ -93,6 +93,36 @@ describe('ZcodePlanAccountsSection', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('Zhipu · BigModel')
     expect(screen.getByPlaceholderText('Paste your GLM Coding Plan API key')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('keeps paired host credentials unknown beside successful quota', async () => {
+    mocks.isWeb.mockReturnValue(true)
+    mocks.zcodeUsage.mockReturnValue({
+      provider: 'zcode',
+      status: 'ok',
+      error: null,
+      planType: null,
+      session: { usedPercent: 42, windowMinutes: 300, resetsAt: null, resetDescription: null },
+      weekly: null,
+      monthly: null,
+      updatedAt: 1
+    })
+    render(<ZcodePlanAccountsSection />)
+    expect(await screen.findByText('42%')).toBeInTheDocument()
+    expect(
+      screen.getByText('Plan credential details are only readable on the computer running Orca.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No GLM Coding Plan linked')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not saved')).not.toBeInTheDocument()
+  })
+
+  it('does not invent a site or console link for an older host', async () => {
+    mocks.isWeb.mockReturnValue(true)
+    delete mocks.settings.zcodePlanSite
+    render(<ZcodePlanAccountsSection />)
+    expect(await screen.findByText('Host plan site unavailable')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Get API key' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeDisabled()
   })
 
   it('shows the unlinked state when neither an API key nor a CLI config exists', async () => {

@@ -90,7 +90,9 @@ describe('GLM credential mutation refresh races', () => {
       value: { zcodePlanCredentials: createZcodePlanCredentialsApi() }
     })
     const { result } = renderHook(() => useZcodePlanCredentials(1))
-    await waitFor(() => expect(result.current.status).toEqual(unlinked))
+    await waitFor(() =>
+      expect(result.current.status).toEqual({ ...unlinked, detailsUnavailable: true })
+    )
     act(() => result.current.setApiKeyDraft('synthetic-web-key'))
     await act(() => result.current.saveApiKey())
     expect(result.current.apiKeyDraft).toBe('synthetic-web-key')

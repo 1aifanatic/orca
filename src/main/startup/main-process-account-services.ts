@@ -142,7 +142,7 @@ export function initializeMainProcessAccountServices(): void {
     }
   })
   state.rateLimits.setZcodePlanConfigResolver(() => ({
-    site: store.getSettings().zcodePlanSite,
+    site: store.getSettings().zcodePlanSite ?? 'zai',
     apiKey: readZcodePlanApiKey() ?? ''
   }))
   state.rateLimits.setGeminiCliOAuthEnabledResolver(() => store.getSettings().geminiCliOAuthEnabled)
