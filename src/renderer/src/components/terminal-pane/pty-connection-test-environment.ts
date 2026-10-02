@@ -35,19 +35,16 @@ export function buildAgentStatusModuleMock(
   }
 }
 
-export function installTerminalTestGlobals(): void {
+export async function installTerminalTestGlobals(): Promise<void> {
   statusSnapshot?.dispose()
   resetStatusSnapshot?.dispose()
   statusSnapshot = agentStatusStartupSnapshot.registerAgentStatusStartupSnapshot()
   statusSnapshot.settle()
   resetStatusSnapshot = undefined
   // Import after resetModules so the seeded store and connection share one bridge.
-  vi.doMock('@/hooks/ipc-events/agent-status-startup-snapshot', async (importOriginal) => {
-    const actual = await importOriginal<typeof agentStatusStartupSnapshot>()
-    resetStatusSnapshot = actual.registerAgentStatusStartupSnapshot()
-    resetStatusSnapshot.settle()
-    return actual
-  })
+  const actual = await import('@/hooks/ipc-events/agent-status-startup-snapshot')
+  resetStatusSnapshot = actual.registerAgentStatusStartupSnapshot()
+  resetStatusSnapshot.settle()
   ;(globalThis as unknown as { window: unknown }).window = {
     api: {
       ssh: {
@@ -129,7 +126,6 @@ export async function restoreTerminalTestGlobals(): Promise<void> {
   resetStatusSnapshot?.dispose()
   statusSnapshot = undefined
   resetStatusSnapshot = undefined
-  vi.doUnmock('@/hooks/ipc-events/agent-status-startup-snapshot')
   vi.restoreAllMocks()
   if (originalRequestAnimationFrame) {
     globalThis.requestAnimationFrame = originalRequestAnimationFrame
