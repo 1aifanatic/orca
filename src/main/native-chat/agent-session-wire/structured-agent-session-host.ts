@@ -145,7 +145,7 @@ export class StructuredAgentSessionHost {
       // Site 10: cannot overwrite a live entry — the restorer returns early on
       // `hasSession` inside the same serialized step as this `set`.
       onReadable: this.conversationDelivery.adoptOpened,
-      seedStatus: this.clientDelivery.seedStatus
+      chatStatus: this.clientDelivery
     })
     this.eventRecovery = new StructuredAgentSessionEventRecovery({
       deps,

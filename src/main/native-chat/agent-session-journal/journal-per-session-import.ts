@@ -83,6 +83,8 @@ type PerSessionJournalImportDeps = {
   commitChars?: number
   /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
   yieldTask?: () => Promise<void>
+  /** Stops the copy at its next batch, publishing nothing; the chat stays owed. */
+  signal?: AbortSignal
 }
 
 export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported' | 'kept'
@@ -234,7 +236,7 @@ async function copyLegacyJournal(
   const yieldTask = input.yieldTask ?? yieldToEventLoop
   // What an earlier try that stopped midway left, a batch per task as the copy's own rows go in.
   for (let deleted = batchRows; deleted === batchRows;) {
-    assertImportNotAborted(input.database, sessionId)
+    assertImportNotAborted(input.database, sessionId, input.signal)
     deleted = input.database.unsyncedTransaction((db) =>
       deleteUnpublishedJournalRows(db, sessionId, batchRows)
     )
@@ -249,7 +251,7 @@ async function copyLegacyJournal(
       await yieldTask()
     }
     first = false
-    assertImportNotAborted(input.database, sessionId)
+    assertImportNotAborted(input.database, sessionId, input.signal)
     // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
     input.database.unsyncedTransaction((db) => {
       const insert = db.prepare(INSERT_ROW)
@@ -273,13 +275,14 @@ async function copyLegacyJournal(
       batchRows,
       batchChars,
       legacyDirectory: input.legacyDirectory,
-      yieldTask
+      yieldTask,
+      ...(input.signal ? { signal: input.signal } : {})
     },
     charBoundedBatches(legacyRowBatches(source, sessionId, epoch, batchRows), batchChars)
   )
   await yieldTask()
   const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
-  assertImportNotAborted(input.database, sessionId)
+  assertImportNotAborted(input.database, sessionId, input.signal)
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
     if (repair) {

@@ -1,6 +1,7 @@
 // The background copy as the host builds it (reveal, the copy control, the job), not a job a test
 // assembles: a restored chat's own owed import is charged to the copy's pace but runs unpaced, and
-// the pace waits only between chats.
+// the pace waits only between chats; and a chat that streams on that host holds the copy off, through
+// the host's own status feed.
 
 import { setTimeout as sleep } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,11 +10,13 @@ import type * as PerSessionImport from '../agent-session-journal/journal-per-ses
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { StructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy'
 import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
+import { PER_CHAT_FILE_COPY_QUIET_MS } from './structured-agent-session-per-chat-file-copy-activity'
 import {
   copyJobDeps,
   createChats,
   createCopyTestRig,
   moveToPerChatFiles,
+  openLiveChat,
   perChatFilesLeft,
   type CopyTestRig
 } from './structured-agent-session-per-chat-file-copy-test-rig'
@@ -128,4 +131,94 @@ describe('a restored chat’s copy (G2, R6)', () => {
     expect(waits.length).toBeGreaterThan(0)
     expect(waits.filter((inside) => inside)).toEqual([])
   }, 20_000)
+})
+
+describe('a chat streaming on the host the copy runs on (G3)', () => {
+  const startCopy = (rig: CopyTestRig) => {
+    rig.host.startPerChatFileCopy({
+      listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
+      isRuntimeChatWorkActive: () => false
+    })
+    rig.clock.now += 11_000
+  }
+
+  it('holds off the copy the host starts, which goes on once the chats are quiet', async () => {
+    const rig = await restoredAndUnlisted()
+    const live = await openLiveChat(rig, 'session-live')
+    await live.streamTurn()
+    // Opening the live chat looked for its old file.
+    vi.mocked(importPerSessionJournal).mockClear()
+
+    startCopy(rig)
+    // Several of the copy's ticks.
+    await sleep(2_500)
+    expect(importPerSessionJournal).not.toHaveBeenCalled()
+    expect(await perChatFilesLeft(rig)).toBe(2)
+
+    await live.endTurn()
+    rig.clock.now += PER_CHAT_FILE_COPY_QUIET_MS
+    await vi.waitFor(async () => expect(await perChatFilesLeft(rig)).toBe(0), {
+      timeout: 15_000,
+      interval: 100
+    })
+    expect(restoredJournal(rig).importPending).toBe(false)
+  }, 30_000)
+
+  it('stops a restored chat’s owed import at its next batch, still owed, when one starts', async () => {
+    const rig = await restoredAndUnlisted()
+    const live = await openLiveChat(rig, 'session-live')
+    const actual = await vi.importActual<typeof PerSessionImport>(
+      '../agent-session-journal/journal-per-session-import'
+    )
+    const ends: string[] = []
+    let yieldsAfterWork = 0
+    vi.mocked(importPerSessionJournal).mockImplementation(async (input) => {
+      let yields = 0
+      try {
+        const result = await actual.importPerSessionJournal({
+          ...input,
+          batchRows: 1,
+          yieldTask: async () => {
+            await (input.yieldTask?.() ?? sleep(0))
+            yields += 1
+            if (ends.length === 0 && input.identity.sessionId === 'session-listed') {
+              if (yields === 2) {
+                await live.streamTurn()
+              } else if (yields > 2) {
+                yieldsAfterWork += 1
+              }
+            }
+          }
+        })
+        ends.push(`${input.identity.sessionId}:${result.outcome}`)
+        return result
+      } catch (error) {
+        ends.push(`${input.identity.sessionId}:stopped`)
+        throw error
+      }
+    })
+
+    startCopy(rig)
+    await vi.waitFor(() => expect(ends).toEqual(['session-listed:stopped']), {
+      timeout: 15_000,
+      interval: 50
+    })
+    expect(yieldsAfterWork).toBe(0)
+    expect(restoredJournal(rig).importPending).toBe(true)
+    await sleep(2_500)
+    expect(ends).toEqual(['session-listed:stopped'])
+
+    await live.endTurn()
+    rig.clock.now += PER_CHAT_FILE_COPY_QUIET_MS
+    await vi.waitFor(async () => expect(await perChatFilesLeft(rig)).toBe(0), {
+      timeout: 15_000,
+      interval: 100
+    })
+    expect(ends).toEqual([
+      'session-listed:stopped',
+      'session-listed:imported',
+      'session-unlisted:imported'
+    ])
+    expect(restoredJournal(rig).importPending).toBe(false)
+  }, 30_000)
 })

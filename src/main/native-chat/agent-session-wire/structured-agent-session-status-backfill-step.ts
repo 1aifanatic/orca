@@ -4,7 +4,8 @@
 // chat is, so startup never has to find it. A chat this host cannot settle (its record is gone, or
 // its provider is not served here) is skipped: startup drops such a row, so writing it would loop
 // every launch. A row that fails for good is given up on while the chat's rows and the app version
-// stay as they were (journal-background-failures.ts).
+// stay as they were (journal-background-failures.ts). A chat starting work stops the step, which
+// is owed again once the chats are quiet.
 
 import {
   classifyJournalBackgroundFailure,
@@ -21,8 +22,9 @@ import {
   readJournalSessionIdsWithoutStatus
 } from '../agent-session-journal/journal-session-status-owed'
 import type { PerChatFileCopyDeps } from './structured-agent-session-per-chat-file-copy'
+import type { PerChatFileCopyChat } from './structured-agent-session-per-chat-file-copy-activity'
 
-export type StatusBackfillStep = 'backfilled' | 'skipped' | 'done'
+export type StatusBackfillStep = 'backfilled' | 'skipped' | 'stop' | 'done'
 
 type StatusBackfillDeps = Pick<
   PerChatFileCopyDeps,
@@ -38,6 +40,7 @@ type StatusBackfillDeps = Pick<
 > & {
   /** Runs a step inside the chat's lock, handing it the yield that ends each of its tasks. */
   inChat: <T>(sessionId: string, task: (yieldTask: () => Promise<void>) => Promise<T>) => Promise<T>
+  forChat: () => PerChatFileCopyChat
 }
 
 /** The chats the phase owes a row, in the order it writes them. */
@@ -90,15 +93,15 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
   }
   const underSerialize = async (
     sessionId: string,
-    yieldTask: () => Promise<void>
+    { yieldTask, signal }: { yieldTask: () => Promise<void>; signal: AbortSignal }
   ): Promise<boolean> => {
-    // An open chat writes its own row; quit writes nothing more.
-    if (deps.isDisposed() || deps.database.importsAborted || deps.openJournal(sessionId)) {
+    // An open chat writes its own row; a stopped step writes nothing more.
+    if (deps.isDisposed() || signal.aborted || deps.openJournal(sessionId)) {
       return false
     }
     const written = await backfillJournalSessionStatus(deps.database, sessionId, {
       yieldTask,
-      signal: deps.database.importsSignal
+      signal
     })
     if (written) {
       await settleWrittenChat(deps, sessionId, written)
@@ -133,13 +136,23 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
       if (sessionId === undefined) {
         return 'done'
       }
+      const chat = deps.forChat()
+      const stopForWork = (): StatusBackfillStep => {
+        owed?.unshift(sessionId)
+        return 'stop'
+      }
       try {
         const wrote = await deps.inChat(sessionId, (yieldTask) =>
-          underSerialize(sessionId, yieldTask)
+          underSerialize(sessionId, { yieldTask, signal: chat.signal })
         )
-        return wrote ? 'backfilled' : 'skipped'
+        if (wrote) {
+          return 'backfilled'
+        }
+        return chat.stoppedByWork() ? stopForWork() : 'skipped'
       } catch (error) {
-        return onFailure(sessionId, error)
+        return chat.stoppedByWork() ? stopForWork() : onFailure(sessionId, error)
+      } finally {
+        chat.release()
       }
     }
   }

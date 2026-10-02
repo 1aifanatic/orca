@@ -19,6 +19,7 @@ import {
   StructuredAgentSessionTurnCompletionFeed,
   type StructuredAgentSessionTurnCompletionSubscriber
 } from './structured-agent-session-turn-completion-feed'
+import type { StructuredAgentSessionChatWork } from './structured-agent-session-per-chat-file-copy-activity'
 
 /** Owns every host-to-client publication edge, including compatibility waits. */
 export class StructuredAgentSessionClientDelivery {
@@ -98,6 +99,12 @@ export class StructuredAgentSessionClientDelivery {
 
   publishRestored = (sessionId: string): void =>
     this.statusFeed.publish(sessionId, undefined, { replay: true })
+
+  /** Whether a chat this host holds open is working, and each time one starts or stops. */
+  readonly chatWork: StructuredAgentSessionChatWork = {
+    live: () => this.statusFeed.working.any(),
+    onWork: (listener) => this.statusFeed.working.onWork(listener)
+  }
 
   /** A row from the state stored beside a journal nobody has opened. */
   seedStatus: StructuredAgentSessionStatusFeed['seed'] = (record, stored) =>

@@ -369,6 +369,7 @@ describe('starting and stopping (T17b, T6)', () => {
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
         record !== null,
       isHostChatWorkActive: () => false,
+      chatWork: rig.host['clientDelivery'].chatWork,
       isDisposed: () => false,
       logger: createStructuredAgentSessionLogger(),
       now: () => 0,
@@ -405,6 +406,7 @@ describe('starting and stopping (T17b, T6)', () => {
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
         record !== null,
       isHostChatWorkActive: () => false,
+      chatWork: rig.host['clientDelivery'].chatWork,
       isDisposed: () => false,
       logger: createStructuredAgentSessionLogger(),
       now: () => 0,

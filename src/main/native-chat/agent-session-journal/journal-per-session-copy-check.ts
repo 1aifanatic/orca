@@ -18,10 +18,15 @@ import type { ImportBatch } from './journal-per-session-source'
 import { charBoundedBatches } from './journal-session-status-backfill'
 import { readJournalRowsAfter } from './journal-row-table'
 
-/** Throws once quit has stopped imports: before every batch, so a stop waits at most one. */
-export function assertImportNotAborted(database: JournalHostDatabase, sessionId: string): void {
-  if (database.importsAborted) {
-    throw new JournalImportAbortedError(`per-chat journal copy of ${sessionId} stopped for quit`)
+/** Throws once quit has stopped imports, or the caller's `signal` stopped this one: before every
+ *  batch, so a stop waits at most one. */
+export function assertImportNotAborted(
+  database: JournalHostDatabase,
+  sessionId: string,
+  signal?: AbortSignal
+): void {
+  if (database.importsAborted || signal?.aborted) {
+    throw new JournalImportAbortedError(`per-chat journal copy of ${sessionId} stopped`)
   }
 }
 
@@ -37,6 +42,8 @@ type CopyCheckInput = {
   legacyDirectory: string
   /** Ends each batch's task. */
   yieldTask?: () => Promise<void>
+  /** Stops the verify at its next batch. */
+  signal?: AbortSignal
 }
 
 /** Mismatches already logged, so a chat refused on every open logs once. */
@@ -90,7 +97,7 @@ async function readCopyFacts(
       await (input.yieldTask ?? yieldToEventLoop)()
     }
     first = false
-    assertImportNotAborted(input.database, input.sessionId)
+    assertImportNotAborted(input.database, input.sessionId, input.signal)
     rows += batch.rows.length
     for (const row of batch.rows) {
       tip = Math.max(tip, row.seq)

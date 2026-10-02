@@ -1,11 +1,15 @@
 // Chats an earlier build left in per-chat files, on a real host, and the background copy job driven
-// a run at a time on a clock the test moves.
+// a run at a time on a clock the test moves; and a chat on that host that works meanwhile.
 
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemBody
+} from '../../../shared/agent-session-journal-types'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import {
   moveChatToPerChatFile,
@@ -23,6 +27,7 @@ import {
 import {
   createRestTestRig,
   restTestChat,
+  sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
 import { createStructuredAgentSessionStartupState } from './structured-agent-session-startup-state'
@@ -127,6 +132,8 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     store: rig.store,
     listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
     isStartupChatWorkActive: () => false,
+    // The host's own: its status feed's `working`.
+    chatWork: rig.host['clientDelivery'].chatWork,
     serialize,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
     settleClosedChat: vi.fn(startup.settleClosedChat),
@@ -161,4 +168,46 @@ export async function runToEnd(
     }
   }
   throw new Error(`the copy did not finish within ${limit} ticks`)
+}
+
+/** A chat open on the rig's host whose provider streams a turn, or takes a send it never answers. */
+export type LiveTestChat = {
+  streamTurn: () => Promise<void>
+  endTurn: () => Promise<void>
+  sendUnanswered: () => Promise<void>
+}
+
+export async function openLiveChat(rig: RestTestRig, sessionId: string): Promise<LiveTestChat> {
+  await restTestChat(rig, sessionId, { listed: false, message: 'first' })
+  await rig.host.flushStreamedEvents(sessionId)
+  const [{ events }] = rig.adapter.acquire.mock.calls.at(-1)!
+  if (!events) {
+    throw new Error(`no provider events for ${sessionId}`)
+  }
+  let ordinal = 1
+  let turnId = ''
+  const provider = async (body: (turnId: string) => AgentJournalItemBody) => {
+    ordinal += 1
+    const row = { provider: 'codex' as const, threadId: `thread-${sessionId}`, turnId, ordinal }
+    events.appendItem(row, body(turnId), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    events.publish()
+    await rig.host.flushStreamedEvents(sessionId)
+  }
+  return {
+    streamTurn: async () => {
+      turnId = `turn-live-${ordinal}`
+      await provider((id) => ({ kind: 'turn', turnId: id, state: 'running' }))
+    },
+    endTurn: () =>
+      provider((id) => ({ kind: 'turn', turnId: id, state: 'completed', outcome: 'success' })),
+    sendUnanswered: async () => {
+      // Written and handed over; the provider has neither opened a turn for it nor answered it.
+      rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+      const sent = await sendRestTestMessage(rig, sessionId, 'and then')
+      if (!sent.ok) {
+        throw new Error(`send refused: ${sent.refusal.code}`)
+      }
+      await rig.host.flushStreamedEvents(sessionId)
+    }
+  }
 }
