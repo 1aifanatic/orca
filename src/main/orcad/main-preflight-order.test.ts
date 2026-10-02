@@ -88,4 +88,32 @@ describe('orcad entry', () => {
       expect(order).toEqual([`managed-stop:${flag} {}`])
     }
   )
+
+  it('runs the Windows breakaway launcher without preflights or a runtime', async () => {
+    vi.spyOn(process, 'argv', 'get').mockReturnValue([
+      'runtime',
+      'orcad.js',
+      '--windows-breakaway-launch',
+      '--stdout-file',
+      'out',
+      '--stderr-file',
+      'err',
+      '--orcad-args',
+      '--json'
+    ])
+    const write = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((_chunk: unknown, callback?: unknown) => {
+        if (typeof callback === 'function') {
+          callback()
+        }
+        return true
+      })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub only records the call; nothing reads its never return.
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    await import('./main')
+    await vi.waitFor(() => expect(exit).toHaveBeenCalled())
+    expect(String(write.mock.calls[0]?.[0])).toMatch(/^ORCA_ORCAD_LAUNCH /u)
+    expect(order).toEqual([])
+  })
 })

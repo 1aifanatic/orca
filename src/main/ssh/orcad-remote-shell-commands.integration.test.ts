@@ -37,6 +37,11 @@ import {
   parseOrcadStopOutcome,
   stopOrcadCommand
 } from './orcad-remote-process-control'
+import { shellEscape } from './ssh-connection-utils'
+import {
+  orcadReadinessWaitCommand,
+  parseOrcadReadinessWaitOutput
+} from './orcad-remote-readiness-wait'
 import {
   captureOrcadStateSnapshotCommand,
   compareOrcadStateSnapshotCommand,
@@ -510,5 +515,45 @@ describe('liveness and stop commands, run for real', () => {
         sh(stopOrcadCommand(host, versionDir, { waitSeconds: 1, nodePath: process.execPath }))
       )
     ).toBe('no-pid')
+  })
+})
+
+describe('host-side readiness wait, run for real', () => {
+  const readiness = () => join(versionDir, ORCAD_READINESS_FILENAME)
+  const line = `${JSON.stringify({ type: 'orca_server_ready', runtimeId: 'r1' })}\n`
+
+  it('returns a finished line without waiting out its bound', () => {
+    writeFileSync(readiness(), line)
+    const started = Date.now()
+    const result = parseOrcadReadinessWaitOutput(
+      host,
+      sh(orcadReadinessWaitCommand(host, versionDir, 10))
+    )
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(result).toMatchObject({ state: 'ready', readiness: { runtimeId: 'r1' } })
+  })
+
+  it('waits for a line still being written, and answers pending when its bound ends', () => {
+    writeFileSync(readiness(), line.slice(0, 10))
+    // The writer finishes after the wait starts; the shell must pick it up mid-wait.
+    sh(
+      `(sleep 1; printf '%s\\n' ${shellEscape(line.trimEnd().slice(10))} >> ${shellEscape(readiness())}) >/dev/null 2>&1 &`
+    )
+    expect(
+      parseOrcadReadinessWaitOutput(host, sh(orcadReadinessWaitCommand(host, versionDir, 10)))
+    ).toMatchObject({ state: 'ready' })
+    writeFileSync(readiness(), '{"type":"orca_ser')
+    expect(
+      parseOrcadReadinessWaitOutput(host, sh(orcadReadinessWaitCommand(host, versionDir, 1)))
+    ).toEqual({ state: 'pending' })
+  })
+
+  it('reads a missing file as pending', () => {
+    expect(
+      parseOrcadReadinessWaitOutput(
+        host,
+        sh(orcadReadinessWaitCommand(host, `${versionDir}-none`, 0))
+      )
+    ).toEqual({ state: 'pending' })
   })
 })

@@ -43,6 +43,7 @@ import {
 } from './ssh-relay-versioned-install'
 import { emptyOrcadActivationRecord, withActivatedVersion } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
+import { isReadinessRead } from './orcad-activation-host-test-harness'
 import type { SshConnection } from './ssh-connection'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 
@@ -127,7 +128,7 @@ function scriptHost(script: HostScript): void {
     if (text.includes('orcad.lock') && text.includes('orca-runtime.json')) {
       return 'CLEAR'
     }
-    if (text.includes('.orcad-readiness') && text.startsWith('head -c ')) {
+    if (text.includes('.orcad-readiness') && isReadinessRead(text)) {
       if (script.readinessAtMs !== undefined && Date.now() < script.readinessAtMs) {
         return ''
       }

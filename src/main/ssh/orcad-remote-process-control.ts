@@ -5,18 +5,15 @@
  * current owner; SIGKILL would skip flushing state and releasing the instance lock.
  */
 import { shellEscape } from './ssh-connection-utils'
-import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import { ORCAD_READINESS_FILENAME } from './orcad-remote-launch'
 import {
   ORCAD_STOP_REQUEST_FILENAME,
   ORCAD_STOP_REQUESTS_CAPABILITY
 } from '../../shared/orcad-stop-request'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
-import {
-  assertPosixOrcadHost as assertPosixHost,
-  ORCAD_PID_FILENAME,
-  posixProcessAliveShellFunction
-} from './orcad-remote-host-support'
+import { ORCAD_PID_FILENAME, posixProcessAliveShellFunction } from './orcad-remote-host-support'
+import { windowsStopOrcadCommand } from './orcad-remote-process-control-windows'
 
 /**
  * Ask the orcad recorded in a version dir to stop, and wait for it to go.
@@ -25,6 +22,7 @@ import {
  * request file, which only that orcad watches; older builds keep receiving SIGTERM. Both need
  * the readiness PID to corroborate the launcher's PID first, so a reused PID is never stopped.
  * `justLaunched` is only for this client's fixed exec launcher, including pre-readiness exits.
+ * Windows has no graceful signal, so it only ever writes the request file.
  */
 export function stopOrcadCommand(
   host: RemoteHostPlatform,
@@ -34,7 +32,12 @@ export function stopOrcadCommand(
     | { justLaunched?: false; nodePath: string }
   )
 ): string {
-  assertPosixHost(host)
+  if (isWindowsRemoteHost(host)) {
+    return windowsStopOrcadCommand(host, remoteInstallDir, {
+      waitSeconds: options.waitSeconds,
+      justLaunched: options.justLaunched === true
+    })
+  }
   const pidFile = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_PID_FILENAME))
   const readiness = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_READINESS_FILENAME))
   const requestFile = shellEscape(
@@ -78,6 +81,8 @@ export type OrcadStopOutcome =
   | 'no-pid'
   | 'still-running'
   | 'signal-failed'
+  /** Windows only: the build cannot be asked to stop, and terminating it would skip shutdown. */
+  | 'unsupported'
   | 'unknown'
 
 export function parseOrcadStopOutcome(output: string): OrcadStopOutcome {
@@ -92,6 +97,8 @@ export function parseOrcadStopOutcome(output: string): OrcadStopOutcome {
       return 'still-running'
     case 'SIGNAL_FAILED':
       return 'signal-failed'
+    case 'UNSUPPORTED':
+      return 'unsupported'
     default:
       return 'unknown'
   }

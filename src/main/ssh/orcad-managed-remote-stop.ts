@@ -5,6 +5,7 @@
  * payload (runtime ID, PID, capability) and the data root's instance lock (PID, start time,
  * nonce). The slot's own `orcad.js` then writes the request and proves exit on the host.
  */
+import { randomUUID } from 'node:crypto'
 import { shellEscape } from './ssh-connection-utils'
 import { assertPosixOrcadHost } from './orcad-remote-host-support'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
@@ -12,11 +13,15 @@ import { parseOrcadReadinessOutput, readOrcadReadinessCommand } from './orcad-re
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import { readBoundedOrcadRemoteRecord } from './orcad-remote-record-file'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
-import { joinRemotePath } from './ssh-remote-platform'
+import { isWindowsRemoteHost, joinRemotePath } from './ssh-remote-platform'
+import { removeRemoteFileCommand } from './ssh-remote-commands'
+import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
+import { orcadWindowsSlotNodeCommand } from './orcad-remote-windows-node'
 import { ORCAD_LOCK_FILE_NAME, parseOrcadInstanceLockRecord } from '../orcad/orcad-instance-lock'
 import {
   ORCAD_CANCEL_MANAGED_STOP_FLAG,
   ORCAD_COMPLETE_MANAGED_STOP_FLAG,
+  ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG,
   ORCAD_STOP_REQUESTS_CAPABILITY,
   OrcadManagedStopCancellationSchema,
   OrcadManagedStopCompletionSchema,
@@ -104,11 +109,13 @@ async function runSlotCommand(
 ): Promise<unknown> {
   const slotDir = orcadSlotDir(options, request.version)
   const entry = joinRemotePath(options.host, slotDir, 'orcad.js')
-  const output = await execOrcadRemote(
-    options,
-    `${selectOrcadSlotRuntimeCommand(options.host, slotDir, options.nodePath)} && ` +
-      `"$orcad_runtime" ${shellEscape(entry)} ${flag} ${shellEscape(JSON.stringify(request))}`
-  )
+  const output = isWindowsRemoteHost(options.host)
+    ? await runWindowsSlotCommand(options, slotDir, entry, request, flag)
+    : await execOrcadRemote(
+        options,
+        `${selectOrcadSlotRuntimeCommand(options.host, slotDir, options.nodePath)} && ` +
+          `"$orcad_runtime" ${shellEscape(entry)} ${flag} ${shellEscape(JSON.stringify(request))}`
+      )
   const line = output
     .trim()
     .split('\n')
@@ -125,4 +132,39 @@ async function runSlotCommand(
     throw new Error('orcad managed stop command answered another transaction')
   }
   return parsed
+}
+
+/** Windows passes the request as a staged file: JSON on a command line meets two quoting layers. */
+async function runWindowsSlotCommand(
+  options: OrcadSlotOptions,
+  slotDir: string,
+  entry: string,
+  request: OrcadManagedStopRequest,
+  flag: string
+): Promise<string> {
+  const staged = joinRemotePath(options.host, slotDir, `.orcad-stop-command-${randomUUID()}.json`)
+  let removeStaged = true
+  try {
+    await options.conn.writeFile(staged, JSON.stringify(request), {
+      hostPlatform: options.host,
+      signal: options.signal
+    })
+    return await execOrcadRemote(
+      options,
+      orcadWindowsSlotNodeCommand(options.host, slotDir, [
+        entry,
+        flag,
+        ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG,
+        staged
+      ])
+    )
+  } catch (error) {
+    // The command may still be reading it.
+    removeStaged = !isUnconfirmedSshCommandTermination(error)
+    throw error
+  } finally {
+    if (removeStaged) {
+      await execOrcadRemote(options, removeRemoteFileCommand(options.host, staged)).catch(() => {})
+    }
+  }
 }

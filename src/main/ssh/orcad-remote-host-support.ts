@@ -3,9 +3,9 @@
  * discovered at runtime.
  *
  * The install transaction is host-agnostic — it is the relay's, and the relay runs on
- * Windows. The launch, liveness and stop path is not: it uses `nohup`, a redirected stdout,
- * `kill -0` and `ps`. Emitting a PowerShell-shaped approximation of that would produce a
- * deploy that reports success on a host where nothing is running.
+ * Windows. Launch, readiness, liveness, stop, build hash and record files have Windows
+ * branches; snapshots, the deploy and rollback drivers, preflight and managed stop do not yet,
+ * so the managed lifecycle still refuses Windows hosts at context resolution.
  */
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
@@ -14,8 +14,8 @@ export class OrcadRemoteLaunchUnsupportedError extends Error {
   constructor(hostLabel: string) {
     super(
       `Deploying orcad to a ${hostLabel} host is not implemented. The install transaction is ` +
-        'host-agnostic, but the launch and readiness path is POSIX-only: it uses nohup, a ' +
-        'redirected stdout and `kill -0` liveness. Use the relay for this host.'
+        'host-agnostic, but state snapshots, preflight, rollback and managed stop are ' +
+        'POSIX-only. Use the relay for this host.'
     )
     this.name = 'OrcadRemoteLaunchUnsupportedError'
   }
@@ -29,6 +29,8 @@ export function assertPosixOrcadHost(host: RemoteHostPlatform): void {
 
 /** PID of the launched orcad, written into its own version dir at launch. */
 export const ORCAD_PID_FILENAME = '.orcad-pid'
+/** Windows' `.orcad-pid`: `{"pid":N,"creationTimeMs":M|null}`, since a PID alone is no identity there. */
+export const ORCAD_WINDOWS_PROCESS_FILENAME = '.orcad-process.json'
 
 /**
  * A shell function answering whether a PID is a *running* process.

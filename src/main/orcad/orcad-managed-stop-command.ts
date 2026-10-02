@@ -1,6 +1,7 @@
 /**
  * `orcad --complete-managed-stop <request-json>`: one stop, one JSON verdict line on stdout.
  * `orcad --cancel-managed-stop <request-json>`: one cancellation, one JSON outcome line.
+ * Either takes `--request-file <path>` in place of the JSON.
  *
  * Exit 0 means a result was printed — read it, the exit code does not carry it. 64 is a
  * malformed invocation; 1 is a failure before any result, which is never evidence of exit.
@@ -8,6 +9,7 @@
 import {
   ORCAD_CANCEL_MANAGED_STOP_FLAG,
   ORCAD_COMPLETE_MANAGED_STOP_FLAG,
+  ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG,
   OrcadManagedStopRequestSchema,
   type OrcadManagedStopCancellation,
   type OrcadManagedStopCompletion,
@@ -15,6 +17,7 @@ import {
 } from '../../shared/orcad-stop-request'
 import { cancelOrcadManagedStop } from './orcad-managed-stop-cancellation'
 import { readOrcadCompletedStopReceipt } from './orcad-completed-stop-receipt'
+import { readOrcadManagedStopRequest } from './orcad-managed-stop-request'
 import { ZodError } from 'zod'
 import {
   completeOrcadManagedStop,
@@ -56,7 +59,16 @@ export function runOrcadManagedStopCancelCommand(
 }
 
 function parseRequestArgument(argv: readonly string[], flag: string): OrcadManagedStopRequest {
-  if (argv.length !== 2 || argv[0] !== flag || !argv[1]) {
+  if (argv[0] !== flag) {
+    throw new Error('orcad_managed_stop_invalid_arguments')
+  }
+  if (argv[1] === ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG) {
+    if (argv.length !== 3 || !argv[2]) {
+      throw new Error('orcad_managed_stop_invalid_arguments')
+    }
+    return readOrcadManagedStopRequest(argv[2])
+  }
+  if (argv.length !== 2 || !argv[1]) {
     throw new Error('orcad_managed_stop_invalid_arguments')
   }
   return OrcadManagedStopRequestSchema.parse(JSON.parse(argv[1]))

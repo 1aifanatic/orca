@@ -12,6 +12,11 @@ import {
   ORCAD_CANCEL_MANAGED_STOP_FLAG,
   ORCAD_COMPLETE_MANAGED_STOP_FLAG
 } from '../../shared/orcad-stop-request'
+import {
+  ORCAD_WINDOWS_BREAKAWAY_CONTRACT,
+  WINDOWS_BREAKAWAY_LAUNCH_FLAG
+} from '../../shared/windows-breakaway-launch'
+import { runWindowsBreakawayLaunchIfRequested } from '../../shared/windows-breakaway-launcher'
 
 // Why exit before the preflight: reaching this line means the whole module graph resolved
 // under plain Node, which is all the build guard needs to prove. Probing natives or
@@ -34,8 +39,10 @@ function failStartup(error: unknown): void {
   process.exit(resolveOrcadExitCode(error))
 }
 
-// Why before the bundled handoff and preflights: completing a stop must not start a runtime.
-if (
+// Why before the bundled handoff and preflights: launching or completing a stop must not start a runtime.
+if (process.argv[2] === WINDOWS_BREAKAWAY_LAUNCH_FLAG) {
+  runWindowsBreakawayLaunchIfRequested(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, process.argv)
+} else if (
   process.argv[2] === ORCAD_COMPLETE_MANAGED_STOP_FLAG ||
   process.argv[2] === ORCAD_CANCEL_MANAGED_STOP_FLAG
 ) {

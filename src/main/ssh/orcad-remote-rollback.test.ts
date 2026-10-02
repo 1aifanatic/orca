@@ -25,6 +25,7 @@ import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
 import { rollbackOrcad, type OrcadRollbackOptions } from './orcad-remote-rollback'
 import { emptyOrcadActivationRecord, type OrcadActivationRecord } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
+import { isReadinessRead } from './orcad-activation-host-test-harness'
 import type { SshConnection } from './ssh-connection'
 
 const mockExec = vi.mocked(execCommand)
@@ -124,7 +125,7 @@ function scriptHost(log: string[], overrides: HostOverrides = {}): void {
       log.push(`launch:${text.includes(ACTIVE) ? ACTIVE : TARGET}`)
       return '9999'
     }
-    if (text.startsWith('head -c ') && text.includes('.orcad-readiness')) {
+    if (isReadinessRead(text) && text.includes('.orcad-readiness')) {
       if (overrides.readinessAtMs !== undefined && Date.now() < overrides.readinessAtMs) {
         return ''
       }
