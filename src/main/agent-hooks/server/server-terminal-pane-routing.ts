@@ -49,6 +49,9 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
       this.takeRetiredPaneRestartId(toPaneKey)
       this.repointPaneKeyAliases(fromPaneKey, toPaneKey)
       const toRow = this.statusRow(toPaneKey)
+      if (toRow && executionHostConnectionId(toRow.connectionId) !== connectionId) {
+        continue
+      }
       // Why evidence age: a spool replay is stamped with a fresh receivedAt for old evidence.
       if (toRow && (!fromRow || evidenceAge(fromRow) <= evidenceAge(toRow))) {
         // The pane's own row wins, so its launch authority stays as is.

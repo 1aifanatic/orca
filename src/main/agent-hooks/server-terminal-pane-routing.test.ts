@@ -149,6 +149,28 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([PANE])
   })
 
+  it('never replaces a row another host filed on the destination pane', async () => {
+    await postFromSpawnedPane(server, 'local')
+    server.ingestRemote(
+      {
+        paneKey: FRESH_PANE,
+        tabId: 'tab-fresh',
+        worktreeId: 'wt-1',
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'remote', agentType: 'claude' }
+      },
+      'ssh-other'
+    )
+    await postFromSpawnedPane(server, 'local, newer')
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+
+    expect(
+      Object.fromEntries(server.getStatusSnapshot().map((row) => [row.paneKey, row.prompt]))
+    ).toEqual({ [OLD_PANE]: 'local, newer', [FRESH_PANE]: 'remote' })
+  })
+
   it('never moves a row posted by another host onto a terminal’s pane', async () => {
     server.ingestRemote(
       {
