@@ -8,7 +8,7 @@
 // share of the main thread (structured-agent-session-per-chat-file-copy-pace.ts). A run waits while
 // startup chat work is in flight (startup restoration not yet settled, a tab listing, a history
 // restore, the settle step), re-derived before every run and every chat. It takes no time at all
-// while a chat streams or a send is in flight, nor for a quiet period after
+// while a send is in flight or within a quiet period of any chat's last provider frame
 // (structured-agent-session-per-chat-file-copy-activity.ts). What is owed is derived
 // from the files on disk, so nothing stored can disagree with it
 // (structured-agent-session-per-chat-file-queue.ts). A file whose copy failed for good is skipped
@@ -40,9 +40,9 @@ import { copyPerChatFileUnderSerialize } from './structured-agent-session-per-ch
 import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import {
   StructuredAgentSessionPerChatFileCopyActivity,
-  type PerChatFileCopyChat,
-  type StructuredAgentSessionChatWork
+  type PerChatFileCopyChat
 } from './structured-agent-session-per-chat-file-copy-activity'
+import type { StructuredAgentSessionChatWork } from './structured-agent-session-chat-activity'
 import { StructuredAgentSessionPerChatFileQueue } from './structured-agent-session-per-chat-file-queue'
 import {
   removeEmptyPerChatDirectories,
@@ -69,8 +69,7 @@ export type PerChatFileCopyDeps = {
   /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
    *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
-  /** A chat has a turn running (under a prompt too) or a send in flight: the copy takes no
-   *  main-thread time then. */
+  /** Sends in flight and provider frames: the copy takes no main-thread time while the chats work. */
   chatWork: StructuredAgentSessionChatWork
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The chat's journal, when it is open on this host. */
@@ -181,7 +180,7 @@ export class StructuredAgentSessionPerChatFileCopy {
     this.pace.begin()
     for (;;) {
       // Re-derived per chat: a listing that starts mid-run pauses the job after the chat in hand;
-      // a chat that starts working stops the chat in hand at its next batch.
+      // a provider frame stops the chat in hand at its next batch.
       if (this.stopped() || this.waitsForChatWork()) {
         return
       }
@@ -325,7 +324,7 @@ export class StructuredAgentSessionPerChatFileCopy {
     this.tally.set(key, (this.tally.get(key) ?? 0) + 1)
   }
 
-  /** Startup chat work, or a chat working now or within the quiet period. */
+  /** Startup chat work, a send in flight, or a provider frame within the quiet period. */
   private waitsForChatWork(): boolean {
     return this.deps.isStartupChatWorkActive() || !this.activity.quiet()
   }

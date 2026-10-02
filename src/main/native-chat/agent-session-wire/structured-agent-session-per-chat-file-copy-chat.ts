@@ -1,6 +1,6 @@
 // One chat's copy, inside that chat's host serialize. A chat a restore opened from its old file
 // copies through its own owed import, in its write queue; any other through the importer, handed
-// the copy's yield and the signal that stops it at quit or when a chat starts working.
+// the copy's yield and the signal that stops it at quit or at a chat's next provider frame.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'

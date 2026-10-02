@@ -42,7 +42,6 @@ import {
   StructuredAgentSessionStatusOwnership,
   type StructuredAgentSessionStatusSink
 } from './structured-agent-session-status-ownership'
-import { StructuredAgentSessionWorkingChats } from './structured-agent-session-status-working'
 
 export type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-ownership'
 
@@ -113,10 +112,6 @@ export class StructuredAgentSessionStatusFeed {
    *  settled children. */
   private readonly acceptedSends = new Map<string, string>()
   private readonly projections = new StructuredAgentSessionJournalProjections()
-  readonly working = new StructuredAgentSessionWorkingChats(
-    () => this.deps.sessions,
-    (sessionId) => this.statusState(sessionId)?.owesWork === true
-  )
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
 
@@ -263,7 +258,6 @@ export class StructuredAgentSessionStatusFeed {
     this.published.set(sessionId, summary)
     this.sink(summary, location)
     this.broadcast({ type: 'status', session: summary })
-    this.working.publishedSummary(summary, previous)
     if (summary.hostExecutionPhase === 'ready' && previous?.hostExecutionPhase !== 'ready') {
       this.deps.onAgentStarted?.(sessionId)
     }

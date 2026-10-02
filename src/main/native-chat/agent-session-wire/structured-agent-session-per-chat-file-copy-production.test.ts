@@ -140,7 +140,7 @@ describe('a restored chat’s copy (G2, R6)', () => {
   }, 20_000)
 })
 
-describe('a chat streaming on the host the copy runs on (G3)', () => {
+describe('a chat working on the host the copy runs on (G3)', () => {
   const startCopy = (rig: CopyTestRig) => {
     rig.host.startPerChatFileCopy({
       listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
@@ -149,7 +149,7 @@ describe('a chat streaming on the host the copy runs on (G3)', () => {
     rig.clock.now += 11_000
   }
 
-  it('holds off the copy the host starts, which goes on once the chats are quiet', async () => {
+  it('holds off the copy the host starts while frames arrive, which goes on once they stop', async () => {
     const rig = await restoredAndUnlisted()
     const live = await openLiveChat(rig, 'session-live')
     await live.streamTurn()
@@ -157,12 +157,16 @@ describe('a chat streaming on the host the copy runs on (G3)', () => {
     vi.mocked(importPerSessionJournal).mockClear()
 
     startCopy(rig)
-    // Several of the copy's ticks.
-    await sleep(2_500)
+    // A stream's deltas, through several of the copy's ticks.
+    const streaming = setInterval(live.frame, 100)
+    try {
+      await sleep(2_500)
+    } finally {
+      clearInterval(streaming)
+    }
     expect(importPerSessionJournal).not.toHaveBeenCalled()
     expect(await perChatFilesLeft(rig)).toBe(2)
 
-    await live.endTurn()
     rig.clock.now += PER_CHAT_FILE_COPY_QUIET_MS
     await vi.waitFor(async () => expect(await perChatFilesLeft(rig)).toBe(0), {
       timeout: 15_000,
@@ -174,18 +178,18 @@ describe('a chat streaming on the host the copy runs on (G3)', () => {
   it('never starts a chat while the chats never go quiet, and every chat still opens whole', async () => {
     const rig = await restoredAndUnlisted()
     const live = await openLiveChat(rig, 'session-live')
-    // A turn that streams for the whole test.
-    await live.streamTurn()
     const deps = copyJobDeps(rig)
     const inChat = vi.spyOn(deps.pace!, 'inChat')
     const job = new StructuredAgentSessionPerChatFileCopy(deps)
+    // A turn that streams for the whole test: a frame between every two ticks.
+    await live.streamTurn()
 
     for (let tick = 0; tick < 120; tick += 1) {
+      live.frame()
       rig.copyClock.now += 1_000
       await job.tick()
     }
 
-    expect(rig.host['clientDelivery'].chatWork.live()).toBe(true)
     expect(inChat).not.toHaveBeenCalled()
     expect(await perChatFilesLeft(rig)).toBe(2)
     // The read path a chat not yet copied takes today: the restored chat from its preview, the

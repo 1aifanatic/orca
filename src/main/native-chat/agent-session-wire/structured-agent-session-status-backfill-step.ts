@@ -4,8 +4,8 @@
 // chat is, so startup never has to find it. A chat this host cannot settle (its record is gone, or
 // its provider is not served here) is skipped: startup drops such a row, so writing it would loop
 // every launch. A row that fails for good is given up on while the chat's rows and the app version
-// stay as they were (journal-background-failures.ts). A chat starting work stops the step, which
-// is owed again once the chats are quiet.
+// stay as they were (journal-background-failures.ts). A provider frame stops the step, which is
+// owed again once the chats are quiet.
 
 import {
   classifyJournalBackgroundFailure,

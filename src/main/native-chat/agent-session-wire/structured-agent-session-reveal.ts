@@ -88,7 +88,7 @@ export function createStructuredAgentSessionHostRestore(
   > & {
     reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
     resolveRecovery: (sessionId: string) => Promise<unknown>
-    /** Rows seeded from stored state, and whether a chat is working: the host's status feed. */
+    /** Rows seeded from stored state, and the chats' sends in flight and provider frames. */
     chatStatus: Pick<StructuredAgentSessionClientDelivery, 'seedStatus' | 'chatWork'>
     sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
   }

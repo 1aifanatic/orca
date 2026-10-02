@@ -504,7 +504,7 @@ const copyJobDeps = {
   store: { getRecord: () => null, listRecords: () => [] },
   listedIds: [],
   isStartupChatWorkActive: () => false,
-  chatWork: { live: () => false, onWork: () => () => undefined },
+  chatWork: { sendInFlight: () => false, onActivity: () => () => undefined },
   serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
   openJournal: () => undefined,
   settleClosedChat: async () => false,

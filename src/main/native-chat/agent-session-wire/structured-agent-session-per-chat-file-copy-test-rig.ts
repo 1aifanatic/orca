@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -170,8 +170,11 @@ export async function runToEnd(
   throw new Error(`the copy did not finish within ${limit} ticks`)
 }
 
-/** A chat open on the rig's host whose provider streams a turn, or takes a send it never answers. */
+/** A chat open on the rig's host whose provider streams a turn, or takes a send it never answers.
+ *  Each provider frame is noted on the sink first, as an adapter does at receipt. */
 export type LiveTestChat = {
+  /** A frame that writes no row: a streamed delta between the journal's checkpoints. */
+  frame: () => void
   streamTurn: () => Promise<void>
   /** An approval the running turn waits on: the row reads `attention`, the turn still runs. */
   askUnderTurn: () => Promise<void>
@@ -188,14 +191,28 @@ export async function openLiveChat(rig: RestTestRig, sessionId: string): Promise
   }
   let ordinal = 1
   let turnId = ''
+  const frame = () => {
+    if (!events.noteProviderFrame) {
+      throw new Error('the host sink takes no provider frames')
+    }
+    events.noteProviderFrame()
+  }
   const provider = async (body: (turnId: string) => AgentJournalItemBody) => {
+    frame()
     ordinal += 1
     const row = { provider: 'codex' as const, threadId: `thread-${sessionId}`, turnId, ordinal }
     events.appendItem(row, body(turnId), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     events.publish()
     await rig.host.flushStreamedEvents(sessionId)
   }
+  // The first message's turn ends, so the chat is idle and its next send goes to the provider.
+  const opened = await rig.adapter.dispatch.mock.results.at(-1)!.value
+  if (opened.state === 'accepted') {
+    turnId = opened.providerIdentity.turnId
+    await provider((id) => ({ kind: 'turn', turnId: id, state: 'completed', outcome: 'success' }))
+  }
   return {
+    frame,
     streamTurn: async () => {
       turnId = `turn-live-${ordinal}`
       await provider((id) => ({ kind: 'turn', turnId: id, state: 'running' }))
@@ -213,10 +230,14 @@ export async function openLiveChat(rig: RestTestRig, sessionId: string): Promise
     sendUnanswered: async () => {
       // Written and handed over; the provider has neither opened a turn for it nor answered it.
       rig.adapter.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+      const dispatched = rig.adapter.dispatch.mock.calls.length
       const sent = await sendRestTestMessage(rig, sessionId, 'and then')
       if (!sent.ok) {
         throw new Error(`send refused: ${sent.refusal.code}`)
       }
+      await vi.waitFor(() =>
+        expect(rig.adapter.dispatch.mock.calls.length).toBeGreaterThan(dispatched)
+      )
       await rig.host.flushStreamedEvents(sessionId)
     }
   }

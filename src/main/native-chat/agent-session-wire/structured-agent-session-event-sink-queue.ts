@@ -5,9 +5,9 @@ import type {
   StructuredAgentSessionReadingControl,
   StructuredAgentSessionSinkAdmission,
   StructuredAgentSessionSinkBarrier,
-  StructuredAgentSessionSinkState,
-  StructuredAgentSessionSinkWatermarks
+  StructuredAgentSessionSinkState
 } from './structured-agent-session-event-sink'
+import type { StructuredAgentSessionSinkWatermarks } from './structured-agent-session-event-sink-watermarks'
 
 export type StructuredAgentSessionSinkOperation = {
   sequence: number
@@ -81,6 +81,11 @@ export class StructuredAgentSessionSinkQueue {
         this.readingControl = undefined
       }
     }
+  }
+
+  /** A provider frame arrived; not queued, so it reaches the bound target at once. */
+  noteActivity = (): void => {
+    this.target?.noteActivity?.()
   }
 
   bind(target: StructuredAgentSessionEventTarget): void {

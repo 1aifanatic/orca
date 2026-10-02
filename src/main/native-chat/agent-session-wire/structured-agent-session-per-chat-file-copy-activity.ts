@@ -1,31 +1,26 @@
-// The background copy takes no main-thread time while any chat works: a turn running (a prompt it
-// waits on included), or a send in flight (the projection behind the host's status feed says
-// which, for every provider). It starts no chat then, nor
-// until the chats have been quiet for a while, and a chat whose copy is under way when one starts
-// working stops at its next batch, publishing nothing and staying owed.
+// The background copy takes no main-thread time while the chats work: while a send is in flight,
+// or until 5 s after the last provider frame any chat received (structured-agent-session-chat-
+// activity.ts says why frames). It starts no chat then, and a chat whose copy is under way when a
+// frame arrives stops at its next batch, publishing nothing and staying owed. A turn that is
+// running but silent, or parked on a prompt, holds nothing: the main thread is idle for it.
 
-/** How long the chats stay quiet before the copy goes on: past the moments after a turn when a
- *  user reads its answer and sends again, short enough that an idle host soon resumes. */
+import type { StructuredAgentSessionChatWork } from './structured-agent-session-chat-activity'
+
+/** How long after the last frame the copy waits: past the gaps inside a streaming answer and the
+ *  moments after a turn when a user reads it and sends again, short enough that an idle host soon
+ *  resumes. */
 export const PER_CHAT_FILE_COPY_QUIET_MS = 5_000
 
-/** The host's chats' work, from the projection's `owesWork` behind its status feed. */
-export type StructuredAgentSessionChatWork = {
-  /** A chat this host holds open has a turn running, even under a prompt, or a send in flight. */
-  live: () => boolean
-  /** Calls `listener` each time one starts or stops working; returns the unsubscribe. */
-  onWork: (listener: () => void) => () => void
-}
-
-/** One chat's copy: its signal stops it at quit, or the moment a chat starts working. */
+/** One chat's copy: its signal stops it at quit, or the moment a provider frame arrives. */
 export type PerChatFileCopyChat = {
   signal: AbortSignal
-  /** Stopped because a chat started working, not for quit: no failure, and still owed. */
+  /** Stopped because a chat worked, not for quit: no failure, and still owed. */
   stoppedByWork: () => boolean
   release: () => void
 }
 
 export class StructuredAgentSessionPerChatFileCopyActivity {
-  /** When a chat was last seen working: a tick saw it, or it started or stopped. */
+  /** When the job last saw a provider frame. */
   private lastWorkAt = Number.NEGATIVE_INFINITY
   private chat: AbortController | null = null
   private readonly unsubscribe: () => void
@@ -33,20 +28,18 @@ export class StructuredAgentSessionPerChatFileCopyActivity {
   constructor(
     private readonly deps: { chatWork: StructuredAgentSessionChatWork; now: () => number }
   ) {
-    this.unsubscribe = deps.chatWork.onWork(() => {
+    this.unsubscribe = deps.chatWork.onActivity(() => {
       this.lastWorkAt = deps.now()
       this.chat?.abort()
     })
   }
 
-  /** No chat works now, and none has for the quiet period: re-derived at every call. */
+  /** No send in flight, and no frame for the quiet period: re-derived at every call. */
   quiet(): boolean {
-    const now = this.deps.now()
-    if (this.deps.chatWork.live()) {
-      this.lastWorkAt = now
-      return false
-    }
-    return now - this.lastWorkAt >= PER_CHAT_FILE_COPY_QUIET_MS
+    return (
+      !this.deps.chatWork.sendInFlight() &&
+      this.deps.now() - this.lastWorkAt >= PER_CHAT_FILE_COPY_QUIET_MS
+    )
   }
 
   forChat(quit: AbortSignal): PerChatFileCopyChat {

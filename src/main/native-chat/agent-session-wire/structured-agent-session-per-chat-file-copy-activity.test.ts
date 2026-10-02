@@ -1,6 +1,7 @@
-// The background copy against chats that work on the same host, through the host's own status
-// feed: no chat starts while one streams or has a send in flight, a chat whose copy is under way
-// stops at its next batch when one starts, and the copy goes on once the chats have been quiet.
+// The background copy against chats that work on the same host, through the host's own chat
+// activity (provider frames, sends in flight): no chat starts while frames arrive or a send is in
+// flight, a chat whose copy is under way stops at its next batch when a frame arrives, and the
+// copy goes on once no frame has come for the quiet period, a parked or silent turn included.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from '../../sqlite/sync-database'
@@ -66,7 +67,7 @@ async function oldChatsAndALiveOne(): Promise<{
   moveToPerChatFiles(rig, OLD)
   await rig.boot()
   const live = await openLiveChat(rig, 'session-live')
-  expect(rig.host['clientDelivery'].chatWork.live()).toBe(false)
+  expect(rig.host['clientDelivery'].chatWork.sendInFlight()).toBe(false)
   return { rig, live, statusBefore }
 }
 
@@ -133,64 +134,94 @@ const published = (rig: CopyTestRig, sessionId: string) =>
     .get(sessionId)
 
 describe('a chat working on the same host (G3)', () => {
+  /** The job's ticks, a second of its clock apart, with `each` run before every one. */
+  async function tickFor(
+    rig: CopyTestRig,
+    job: ReturnType<typeof copyJob>,
+    seconds: number,
+    each: () => unknown = () => undefined
+  ): Promise<void> {
+    for (let tick = 0; tick < seconds; tick += 1) {
+      await each()
+      rig.copyClock.now += 1_000
+      await job.tick()
+    }
+  }
+
   it.each([
-    ['streams a turn', (live: LiveTestChat) => live.streamTurn(), 'working'],
-    ['has a send in flight', (live: LiveTestChat) => live.sendUnanswered(), 'working'],
+    ['streams a turn', (live: LiveTestChat) => live.streamTurn()],
     [
-      'waits on an approval inside a running turn',
+      'is parked on an approval while its turn still sends frames',
       async (live: LiveTestChat) => {
         await live.streamTurn()
         await live.askUnderTurn()
-      },
-      'attention'
+      }
     ]
-  ] as const)('starts no chat while one %s', async (_case, work, row) => {
+  ] as const)('starts no chat while a chat that %s', async (_case, work) => {
     const { rig, live } = await oldChatsAndALiveOne()
     const importJournal = rowPerBatchImport()
     const job = copyJob(rig, { importJournal })
     await work(live)
-    const rows = rig.statusEvents.flatMap((event) =>
-      event.type === 'status' && event.session.sessionId === 'session-live'
-        ? [event.session.status]
-        : []
-    )
-    expect(rows.at(-1)).toBe(row)
 
-    for (let tick = 0; tick < 2 * (PER_CHAT_FILE_COPY_QUIET_MS / 1_000); tick += 1) {
-      rig.copyClock.now += 1_000
-      await job.tick()
-    }
+    // Frames a second apart, as a stream's deltas or a subagent's output arrive.
+    await tickFor(rig, job, 3 * (PER_CHAT_FILE_COPY_QUIET_MS / 1_000), live.frame)
 
     expect(importJournal).not.toHaveBeenCalled()
     expect(await perChatFilesLeft(rig)).toBe(OLD.length)
   })
 
-  it('goes on once the chats have been quiet for the quiet period, and not before', async () => {
+  it('starts no chat while a send is in flight, with no frame at all', async () => {
     const { rig, live } = await oldChatsAndALiveOne()
     const importJournal = rowPerBatchImport()
     const job = copyJob(rig, { importJournal })
-    await live.streamTurn()
-    await job.tick()
-    await live.endTurn()
-    expect(rig.host['clientDelivery'].chatWork.live()).toBe(false)
+    // Long past any frame of its own: only the send holds the copy.
+    rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS
+    await live.sendUnanswered()
+    expect(rig.host['clientDelivery'].chatWork.sendInFlight()).toBe(true)
 
-    rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS - 1
-    await job.tick()
+    await tickFor(rig, job, 3 * (PER_CHAT_FILE_COPY_QUIET_MS / 1_000))
+
     expect(importJournal).not.toHaveBeenCalled()
-
-    rig.copyClock.now += 1
-    await job.tick()
-    expect(await perChatFilesLeft(rig)).toBe(0)
-    expect(OLD.map((sessionId) => published(rig, sessionId))).toEqual([{ n: 1 }, { n: 1 }])
+    expect(await perChatFilesLeft(rig)).toBe(OLD.length)
   })
 
-  it('counts the quiet period from when a turn no tick saw ended', async () => {
+  it.each([
+    ['is parked on an approval', (live: LiveTestChat) => live.askUnderTurn()],
+    ['runs a turn that has gone silent (a long tool call)', async () => undefined]
+  ] as const)(
+    'copies every chat once a chat that %s has sent no frame for the quiet period',
+    async (_case, park) => {
+      const { rig, live } = await oldChatsAndALiveOne()
+      const importJournal = rowPerBatchImport()
+      const job = copyJob(rig, { importJournal })
+      await live.streamTurn()
+      await park(live)
+      const rows = rig.statusEvents.flatMap((event) =>
+        event.type === 'status' && event.session.sessionId === 'session-live'
+          ? [event.session.status]
+          : []
+      )
+      // Its turn is still running: the row reads working, or attention over the prompt.
+      expect(['working', 'attention']).toContain(rows.at(-1))
+
+      rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS - 1
+      await job.tick()
+      expect(importJournal).not.toHaveBeenCalled()
+
+      rig.copyClock.now += 1
+      await job.tick()
+      expect(await perChatFilesLeft(rig)).toBe(0)
+      expect(OLD.map((sessionId) => published(rig, sessionId))).toEqual([{ n: 1 }, { n: 1 }])
+    }
+  )
+
+  it('times the quiet period from the last frame, which a tick need not see', async () => {
     const { rig, live } = await oldChatsAndALiveOne()
     const importJournal = rowPerBatchImport()
     const job = copyJob(rig, { importJournal })
     await live.streamTurn()
     rig.copyClock.now += 3_000
-    await live.endTurn()
+    live.frame()
 
     rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS - 1
     await job.tick()
@@ -202,11 +233,11 @@ describe('a chat working on the same host (G3)', () => {
   })
 
   it.each([
-    ['streaming a turn', (live: LiveTestChat) => live.streamTurn(), true],
-    ['a send', (live: LiveTestChat) => live.sendUnanswered(), false]
+    ['opens a turn', (live: LiveTestChat) => live.streamTurn()],
+    ['streams a delta that writes no row', async (live: LiveTestChat) => live.frame()]
   ] as const)(
-    'stops the chat whose copy is under way at its next batch when one starts %s',
-    async (_case, work, ends) => {
+    'stops the chat whose copy is under way at its next batch when a chat %s',
+    async (_case, work) => {
       const { rig, live } = await oldChatsAndALiveOne()
       let yieldsAfterWork = 0
       let working = false
@@ -236,11 +267,7 @@ describe('a chat working on the same host (G3)', () => {
       expect(failuresRecorded(rig)).toEqual({ n: 0 })
       expect(deps.settleClosedChat).not.toHaveBeenCalled()
       expect(job.isFinished).toBe(false)
-      if (!ends) {
-        return
-      }
 
-      await live.endTurn()
       rig.copyClock.now += PER_CHAT_FILE_COPY_QUIET_MS
       await job.tick()
 
@@ -436,14 +463,14 @@ describe('a chat working on the same host (G3)', () => {
 })
 
 describe('one chat’s copy', () => {
-  it('starts stopped when a chat began working after the gate let it through', () => {
-    let live = false
+  it('starts stopped when a send went in flight after the gate let it through', () => {
+    let inFlight = false
     const activity = new StructuredAgentSessionPerChatFileCopyActivity({
-      chatWork: { live: () => live, onWork: () => () => undefined },
+      chatWork: { sendInFlight: () => inFlight, onActivity: () => () => undefined },
       now: () => 0
     })
     expect(activity.quiet()).toBe(true)
-    live = true
+    inFlight = true
 
     const chat = activity.forChat(new AbortController().signal)
 
