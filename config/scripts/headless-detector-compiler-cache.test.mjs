@@ -162,6 +162,7 @@ it('uses exact optional restores, seeds only main and retains full dependency fa
   const save = steps.find((step) => step.uses === 'actions/cache/save@v5')
   expect(save.if).toContain("github.ref == 'refs/heads/main'")
   expect(save.if).toContain("github.event_name != 'pull_request'")
+  expect(save['continue-on-error']).toBe(true)
   expect(save.with).toEqual(restore.with)
   const workflow = parse(readFileSync('.github/workflows/node-server-tests.yml', 'utf8'))
   const detector = workflow.jobs.changes.steps

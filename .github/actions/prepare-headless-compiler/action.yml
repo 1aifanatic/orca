@@ -39,6 +39,7 @@ runs:
     - name: Save compiler only from main
       if: inputs.seed == 'true' && steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
       uses: actions/cache/save@v5
+      continue-on-error: true
       with:
         path: ${{ steps.identity.outputs.path }}
         key: ${{ steps.identity.outputs.key }}
