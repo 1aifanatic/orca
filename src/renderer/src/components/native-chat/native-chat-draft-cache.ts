@@ -149,8 +149,8 @@ export function writeNativeChatDraftCache(
   }
 }
 
-/** Waits (briefly) until the chat's last write, such as the clear at send, is on disk. */
-export function awaitNativeChatDraftCleared(draftKey: string): Promise<void> {
+/** Waits (briefly) until the chat's last write, such as the clear at send, is written. */
+export function awaitNativeChatDraftWritten(draftKey: string): Promise<void> {
   return awaitNativeChatDraftSaved(draftKey)
 }
 

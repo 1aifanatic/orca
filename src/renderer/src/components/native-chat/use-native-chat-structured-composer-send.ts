@@ -10,10 +10,12 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { appendNativeChatDraftNow, restoreNativeChatDraftIfEmpty } from './native-chat-draft-cache'
 import {
-  awaitNativeChatDraftCleared,
-  restoreNativeChatDraftIfEmpty
-} from './native-chat-draft-cache'
+  awaitDraftClearBeforeSend,
+  nativeChatDraftAttachmentsOf
+} from './native-chat-send-after-draft-clear'
+import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -27,6 +29,8 @@ export type UseNativeChatStructuredComposerSendArgs = {
   setHistory: (updater: (previous: HistoryState) => HistoryState) => void
   setDraft: (value: string) => void
   setCaret: (caret: number) => void
+  /** Lets a Stop, Escape or pane swap cancel a send still waiting for its clear to be written. */
+  trackPendingSend: NativeChatSendLifecycle['trackPendingSend']
 }
 
 /** Send through the structured journal transport (the PTY path has its own sibling hook). A
@@ -42,7 +46,8 @@ export function useNativeChatStructuredComposerSend({
   clearSkillOrigin,
   setHistory,
   setDraft,
-  setCaret
+  setCaret,
+  trackPendingSend
 }: UseNativeChatStructuredComposerSendArgs): (
   text: string,
   attachments?: readonly NativeChatComposerImageAttachment[]
@@ -71,33 +76,26 @@ export function useNativeChatStructuredComposerSend({
         clearImageAttachments()
       }
       let cleared = false
+      const content = { text, attachments: nativeChatDraftAttachmentsOf(attachments) }
       // A refused message goes back, unless something was typed since.
       const putBack = (): void => {
         if (cleared) {
-          void restoreNativeChatDraftIfEmpty(draftKey, {
-            text,
-            attachments: attachments.map(({ id, path, connectionId, location }) => ({
-              id,
-              path,
-              ...(connectionId ? { connectionId } : {}),
-              ...(location ? { location } : {})
-            }))
-          })
+          void restoreNativeChatDraftIfEmpty(draftKey, content)
         }
       }
-      void dispatchNativeChatStructuredComposerText(
-        structuredTransport,
-        text,
-        attachments,
-        async () => {
-          // Why awaited: once the message is out, a crash must not bring it back as a draft.
-          cleared = true
-          clearComposer()
-          await awaitNativeChatDraftCleared(draftKey)
-        }
-      )
+      void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments, () => {
+        // Why awaited: once the message is out, a crash must not bring it back as a draft.
+        cleared = true
+        clearComposer()
+        return awaitDraftClearBeforeSend(draftKey, trackPendingSend)
+      })
         .then(
-          ({ accepted, error }) => {
+          ({ accepted, error, cancelled }) => {
+            if (cancelled) {
+              // As if Stop had come before Enter: the message is back in the box.
+              void appendNativeChatDraftNow(draftKey, content)
+              return
+            }
             structuredTransport.onError(error)
             if (!accepted) {
               putBack()
@@ -140,7 +138,8 @@ export function useNativeChatStructuredComposerSend({
       setCaret,
       setDraft,
       setHistory,
-      structuredTransport
+      structuredTransport,
+      trackPendingSend
     ]
   )
 }

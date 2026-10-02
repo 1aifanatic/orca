@@ -57,7 +57,8 @@ function send(structuredTransport: NativeChatStructuredComposerTransport): (text
       clearSkillOrigin: vi.fn(),
       setHistory: vi.fn(),
       setDraft: vi.fn(),
-      setCaret: vi.fn()
+      setCaret: vi.fn(),
+      trackPendingSend: vi.fn()
     })
   )
   return result.current

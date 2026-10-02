@@ -19,14 +19,18 @@ import type { NativeChatPickerState } from './use-native-chat-picker-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
 import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-types'
-import { awaitNativeChatDraftCleared } from './native-chat-draft-cache'
+import { appendNativeChatDraftNow, type NativeChatDraftAttachment } from './native-chat-draft-cache'
+import {
+  nativeChatDraftAttachmentsOf,
+  writeToPtyAfterDraftClear
+} from './native-chat-send-after-draft-clear'
 
 export function useNativeChatPtyComposerSend(args: {
   agent: AgentType
   /** The chat's draft (`nativeChatDraftKey`); its clear is saved before the PTY write. */
   draftKey: string
   draft: string
-  imageAttachments: readonly { path: string }[]
+  imageAttachments: readonly NativeChatDraftAttachment[]
   disabled: boolean
   isDispatchingSessionOption: boolean
   launchDraft?: NativeChatLaunchDraft | null
@@ -85,8 +89,6 @@ export function useNativeChatPtyComposerSend(args: {
             }
           }
         : launchSendOptions
-    // The box empties at Enter; the write waits (briefly) for the cleared draft to be on disk, so
-    // a crash after the agent got the message cannot bring it back as a draft.
     if (classification === 'chat') {
       pendingId = args.onOptimisticSend?.(text, imagePaths)
     }
@@ -97,7 +99,7 @@ export function useNativeChatPtyComposerSend(args: {
     args.clearImageAttachments()
     args.setNotice(null)
     useAppStore.getState().clearNativeChatLaunchDraft(args.terminalTabId)
-    void awaitNativeChatDraftCleared(args.draftKey).then(() => {
+    const write = (): NativeChatSendHandle | null => {
       let pendingHandle: NativeChatSendHandle | null = null
       // Why: slash-like text must not silently drop its attached images.
       if (classification !== 'chat' && imagePaths.length === 0) {
@@ -119,9 +121,6 @@ export function useNativeChatPtyComposerSend(args: {
       } else {
         submitNativeChatPrompt(target.settings, target.ptyId)
       }
-      if (pendingHandle) {
-        args.trackPendingSend(pendingHandle, pendingId)
-      }
       if (classification === 'command') {
         args.onSlashCommand?.(text.trim())
         args.sessionOptionsSurface?.recordOutgoingCommand(text.trim())
@@ -130,6 +129,15 @@ export function useNativeChatPtyComposerSend(args: {
         agent: args.agent,
         runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
       })
+      return pendingHandle
+    }
+    const attachments = nativeChatDraftAttachmentsOf(args.imageAttachments)
+    void writeToPtyAfterDraftClear({
+      draftKey: args.draftKey,
+      trackPendingSend: args.trackPendingSend,
+      pendingId,
+      write,
+      putBack: () => void appendNativeChatDraftNow(args.draftKey, { text, attachments })
     })
   }, [args])
 }

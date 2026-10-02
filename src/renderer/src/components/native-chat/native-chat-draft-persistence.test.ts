@@ -9,7 +9,10 @@ import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
 import type * as NativeChatDraftCache from './native-chat-draft-cache'
-import { installLocalStorageNativeChatDrafts } from './native-chat-draft-store.test-support'
+import {
+  installHeldNativeChatDrafts,
+  installLocalStorageNativeChatDrafts
+} from './native-chat-draft-store.test-support'
 
 const PREFIX = 'orca:nativeChatComposerDraft:v1:'
 const SCOPE = 'structured-agent-session-s1:pane'
@@ -114,6 +117,7 @@ describe('composer draft persistence', () => {
   })
 
   it.each([
+    ['beforeunload', () => window.dispatchEvent(new Event('beforeunload'))],
     ['pagehide', () => window.dispatchEvent(new Event('pagehide'))],
     [
       'the page becoming hidden',
@@ -367,11 +371,62 @@ describe('another window of the web client', () => {
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('from the other tab')
   })
 
+  // This tab hears other tabs only once a chat first reads drafts, so that read must be live.
+  it("misses no send another tab made before this tab's chat first read its draft", async () => {
+    cache.writeNativeChatDraftCache(SCOPE, 'deploy to prod', 'now')
+    const next = await relaunch()
+    await (await import('./native-chat-draft-storage')).preloadNativeChatDrafts()
+
+    localStorage.removeItem(`${PREFIX}${encodeURIComponent(SCOPE)}`)
+
+    expect(next.readNativeChatDraftCache(SCOPE)).toBe('')
+  })
+
   it("keeps this tab's unsaved typing over another tab's write", () => {
     cache.writeNativeChatDraftCache(SCOPE, 'typing here', 'after-pause')
 
     otherWindowSaves(SCOPE, JSON.stringify({ text: 'older', attachments: [] }))
 
     expect(cache.readNativeChatDraftCache(SCOPE)).toBe('typing here')
+  })
+})
+
+// A send goes ahead without a saved clear only when saving failed or was slow; say so in the log.
+describe('a clear that was not saved before the send went on', () => {
+  it('is logged once with its chat and why, never its text', async () => {
+    const writes = installHeldNativeChatDrafts()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    cache.writeNativeChatDraftCache(SCOPE, 'secret plan', 'now')
+    writes.shift()?.settle('persisted')
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
+
+    const waited = cache.awaitNativeChatDraftWritten(SCOPE)
+    await vi.advanceTimersByTimeAsync(250)
+    await waited
+
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { scopeKey: SCOPE, reason: 'timed out' })
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret plan')
+  })
+
+  it('is logged when the store refused the clear', async () => {
+    const writes = installHeldNativeChatDrafts()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
+
+    const waited = cache.awaitNativeChatDraftWritten(SCOPE)
+    writes.forEach((write) => write.settle('failed'))
+    await waited
+
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { scopeKey: SCOPE, reason: 'failed' })
+  })
+
+  it('is not logged when it was saved', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    cache.writeNativeChatDraftCache(SCOPE, '', 'now')
+
+    await cache.awaitNativeChatDraftWritten(SCOPE)
+
+    expect(warn).not.toHaveBeenCalled()
   })
 })

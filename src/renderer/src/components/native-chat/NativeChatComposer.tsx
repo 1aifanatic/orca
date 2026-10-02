@@ -258,7 +258,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       clearSkillOrigin,
       setHistory,
       setDraft,
-      setCaret
+      setCaret,
+      trackPendingSend
     })
 
     const sendPty = useNativeChatPtyComposerSend({
@@ -308,6 +309,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     const dispatchPtyPickerCommand = useNativeChatPickerCommandDispatch({
       agent,
+      draftKey,
       disabled,
       isDispatchingSessionOption,
       resolveTarget,

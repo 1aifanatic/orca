@@ -85,7 +85,7 @@ export type NativeChatDraftsApi = {
   load: () => Promise<SavedNativeChatDraft[]>
   /** The same, blocking; only for a renderer that needs drafts before `load` returned. */
   loadSync: () => SavedNativeChatDraft[]
-  /** `null` clears. Resolves once the draft is on disk (or the write failed). */
+  /** `null` clears. Resolves once written to the file (no fsync), or once the write failed. */
   write: (
     scopeKey: string,
     draft: PersistedNativeChatDraft | null

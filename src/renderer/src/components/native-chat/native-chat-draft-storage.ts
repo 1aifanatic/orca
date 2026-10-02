@@ -1,8 +1,10 @@
 // Saved copy of the composer drafts, so a half-typed message survives quitting Orca. Typing is
-// saved after a short pause and flushed when the page hides; a clear or a put-back is saved at
-// once. On desktop the main process confirms each write once it is on disk, and a send waits (up
-// to a bound) for its clear, so a crash after Enter cannot bring sent text back. The web client
-// keeps browser storage, which reaches disk on the browser's own delay, so a browser crash can.
+// saved after a short pause and flushed when the page hides or unloads; a clear or a put-back is
+// saved at once. On desktop the main process confirms each write once the file op returned, and a
+// send waits (up to a bound) for its clear, so a crash after Enter cannot bring sent text back,
+// except when that save failed or outlasted the bound, and for host commands, which still clear
+// once the host accepts them. The web client keeps browser storage, which reaches disk on the
+// browser's own delay, so a browser crash can.
 
 import type {
   NativeChatDraftStoreResult,
@@ -27,7 +29,10 @@ const SEND_WAIT_FOR_CLEAR_MS = 250
 
 const pendingDrafts = new Map<string, PersistedNativeChatDraft | null>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const latestWrites = new Map<string, Promise<NativeChatDraftWriteResult>>()
+// Why three outcomes: only a write the store refused is worth a warning; no store is expected.
+type WriteOutcome = 'persisted' | 'failed' | 'unavailable'
+
+const latestWrites = new Map<string, Promise<WriteOutcome>>()
 let flushListenersInstalled = false
 let preloaded: SavedNativeChatDraft[] | null = null
 
@@ -42,16 +47,16 @@ function draftStore() {
 async function writeToStore(
   scopeKey: string,
   draft: PersistedNativeChatDraft | null
-): Promise<NativeChatDraftWriteResult> {
+): Promise<WriteOutcome> {
   const store = draftStore()
   if (!store) {
-    return 'memory-only'
+    return 'unavailable'
   }
   try {
     const result: NativeChatDraftStoreResult = await store.write(scopeKey, draft)
-    return result === 'persisted' ? 'persisted' : 'memory-only'
+    return result
   } catch {
-    return 'memory-only'
+    return 'failed'
   }
 }
 
@@ -77,12 +82,13 @@ export function persistNativeChatDraftNow(
       latestWrites.delete(scopeKey)
     }
   })
-  return write
+  return write.then((outcome) => (outcome === 'persisted' ? 'persisted' : 'memory-only'))
 }
 
 /**
- * Settles once the newest write asked for this draft is on disk, or after a short bound: a send
- * waits here for its clear, so a crash after it cannot bring the sent text back.
+ * Settles once the newest write asked for this draft is written to its file, or after a short
+ * bound. A send waits here for its clear, so a crash after it cannot bring the sent text back,
+ * unless that write failed or outlasted the bound; both are logged, and the send goes ahead.
  */
 export async function awaitNativeChatDraftSaved(scopeKey: string): Promise<void> {
   const write = latestWrites.get(scopeKey)
@@ -90,13 +96,16 @@ export async function awaitNativeChatDraftSaved(scopeKey: string): Promise<void>
     return
   }
   let timer: ReturnType<typeof setTimeout> | undefined
-  await Promise.race([
+  const outcome = await Promise.race([
     write,
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, SEND_WAIT_FOR_CLEAR_MS)
+    new Promise<'timed out'>((resolve) => {
+      timer = setTimeout(() => resolve('timed out'), SEND_WAIT_FOR_CLEAR_MS)
     })
   ])
   clearTimeout(timer)
+  if (outcome === 'failed' || outcome === 'timed out') {
+    console.warn('[native-chat] draft not saved before going on', { scopeKey, reason: outcome })
+  }
 }
 
 export function flushNativeChatDraftPersists(): void {
@@ -114,6 +123,7 @@ function installFlushListeners(): void {
     return
   }
   flushListenersInstalled = true
+  window.addEventListener('beforeunload', flushNativeChatDraftPersists)
   window.addEventListener('pagehide', flushNativeChatDraftPersists)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -144,8 +154,14 @@ export function scheduleNativeChatDraftPersist(
 
 /** Loads the saved drafts during startup, before any chat mounts. Never fails startup. */
 export async function preloadNativeChatDrafts(): Promise<void> {
+  const store = draftStore()
+  // Why not where other windows write too (web tabs): a snapshot now would miss their changes
+  // until a chat first reads drafts, so that read goes to the store instead.
+  if (!store || store.onExternalChange) {
+    return
+  }
   try {
-    preloaded = (await draftStore()?.load()) ?? []
+    preloaded = await store.load()
   } catch (error) {
     // The first chat to mount reads them synchronously instead.
     console.warn('[native-chat] could not load saved drafts', error)

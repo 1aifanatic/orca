@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatSendClassification } from '../../../../shared/native-chat-slash-commands'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
+import { useNativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import { sendNativeChatMessage } from './native-chat-runtime-send'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 import {
   clearNativeChatDraftCacheForTests,
+  readNativeChatDraftAttachments,
+  readNativeChatDraftCache,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
 import {
@@ -37,36 +40,58 @@ function press(
   draft: string,
   imagePaths: string[] = []
 ) {
-  const callbacks = { rejected: vi.fn(), unconfirmed: vi.fn(), setDraft: vi.fn() }
-  const { result } = renderHook(() =>
-    useNativeChatPtyComposerSend({
-      agent,
-      draftKey: DRAFT_KEY,
-      draft,
-      imageAttachments: imagePaths.map((path) => ({ path })),
-      disabled: false,
-      isDispatchingSessionOption: false,
-      launchDraftResolved: true,
-      resolveTarget: () => ({ ptyId: 'pty', settings: null }),
-      classifySend: () => classification,
-      onOptimisticSend: () => 'pending-1',
-      optimisticSendOutcome: { reject: callbacks.rejected, holdUnconfirmed: callbacks.unconfirmed },
-      sessionOptionsSurface: null,
-      terminalTabId: 'tab',
-      trackPendingSend: vi.fn(),
-      setHistory: vi.fn(),
-      // As the composer's draft hook does: a clear is saved at once.
-      setDraft: (value) => {
-        callbacks.setDraft(value)
-        writeNativeChatDraftCache(DRAFT_KEY, value, 'now')
-      },
-      setCaret: vi.fn(),
-      clearSkillOrigin: vi.fn(),
-      clearImageAttachments: vi.fn(),
-      setNotice: vi.fn()
-    })
+  const callbacks = {
+    rejected: vi.fn(),
+    unconfirmed: vi.fn(),
+    setDraft: vi.fn(),
+    canceled: vi.fn(),
+    cancelPendingSends: () => {},
+    swapPane: () => {}
+  }
+  const { result, rerender } = renderHook(
+    ({ ptyId }: { ptyId: string }) => {
+      // The composer's real lifecycle: Stop, Escape and a pane swap cancel what it tracks.
+      const lifecycle = useNativeChatSendLifecycle('tab', ptyId, callbacks.canceled)
+      const sendPty = useNativeChatPtyComposerSend({
+        agent,
+        draftKey: DRAFT_KEY,
+        draft,
+        imageAttachments: imagePaths.map((path, index) => ({
+          id: `image-${index}`,
+          path,
+          location: 'local' as const
+        })),
+        disabled: false,
+        isDispatchingSessionOption: false,
+        launchDraftResolved: true,
+        resolveTarget: () => ({ ptyId: 'pty', settings: null }),
+        classifySend: () => classification,
+        onOptimisticSend: () => 'pending-1',
+        optimisticSendOutcome: {
+          reject: callbacks.rejected,
+          holdUnconfirmed: callbacks.unconfirmed
+        },
+        sessionOptionsSurface: null,
+        terminalTabId: 'tab',
+        trackPendingSend: lifecycle.trackPendingSend,
+        setHistory: vi.fn(),
+        // As the composer's draft hook does: a clear is saved at once.
+        setDraft: (value) => {
+          callbacks.setDraft(value)
+          writeNativeChatDraftCache(DRAFT_KEY, value, 'now')
+        },
+        setCaret: vi.fn(),
+        clearSkillOrigin: vi.fn(),
+        clearImageAttachments: vi.fn(),
+        setNotice: vi.fn()
+      })
+      return { sendPty, cancelPendingSends: lifecycle.cancelPendingSends }
+    },
+    { initialProps: { ptyId: 'pty' } }
   )
-  result.current()
+  callbacks.cancelPendingSends = () => result.current.cancelPendingSends()
+  callbacks.swapPane = () => rerender({ ptyId: 'other-pty' })
+  result.current.sendPty()
   return callbacks
 }
 
@@ -159,5 +184,43 @@ describe('the saved draft at send', () => {
     expect(sendNativeChatMessage).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(50)
     expect(sendNativeChatMessage).toHaveBeenCalledOnce()
+  })
+
+  it('sends nothing, drops the bubble and puts the message back when Stop comes meanwhile', async () => {
+    const writes = installHeldNativeChatDrafts()
+    const callbacks = press('claude', 'chat', 'look', ['/tmp/shot.png'])
+
+    act(() => callbacks.cancelPendingSends())
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+
+    expect(sendNativeChatMessageWithImageAttachments).not.toHaveBeenCalled()
+    expect(callbacks.canceled).toHaveBeenCalledWith('pending-1')
+    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('look')
+    expect(readNativeChatDraftAttachments(DRAFT_KEY)).toEqual([
+      { id: 'image-0', path: '/tmp/shot.png', location: 'local' }
+    ])
+  })
+
+  it('sends nothing when the pane swaps to another terminal meanwhile', async () => {
+    const writes = installHeldNativeChatDrafts()
+    const callbacks = press('codex', 'chat', 'hello')
+
+    act(() => callbacks.swapPane())
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+
+    expect(sendNativeChatMessage).not.toHaveBeenCalled()
+    expect(readNativeChatDraftCache(DRAFT_KEY)).toBe('hello')
+  })
+
+  // The wait's own entry is gone once the write happened; only the write's entry is cancelled.
+  it('cancels a written message once, as before, when Stop comes later', async () => {
+    handle.settleAfterMs = 10_000
+    const callbacks = await send('claude', 'chat', 'hello')
+
+    act(() => callbacks.cancelPendingSends())
+    handle.settleAfterMs = 0
+
+    expect(callbacks.canceled).toHaveBeenCalledOnce()
+    expect(callbacks.canceled).toHaveBeenCalledWith('pending-1')
   })
 })

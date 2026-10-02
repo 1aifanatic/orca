@@ -346,6 +346,20 @@ describe('the clear at send', () => {
     expect(structured.send).toHaveBeenCalledOnce()
   })
 
+  // As if Stop had come before Enter: nothing goes out, and the message is back in the box.
+  it('sends nothing, and puts the message back, when Escape comes while the clear is saved', async () => {
+    const structured = transport()
+    const { input, writes } = await pressEnterOnTypedDraft(structured)
+
+    act(() => {
+      fireEvent.keyDown(input, { key: 'Escape' })
+    })
+    await act(async () => writes.forEach((write) => write.settle('persisted')))
+
+    expect(structured.send).not.toHaveBeenCalled()
+    expect(promptValue(input)).toBe('ship it')
+  })
+
   it('still sends when the clear could not be saved', async () => {
     const structured = transport()
     const { writes } = await pressEnterOnTypedDraft(structured)

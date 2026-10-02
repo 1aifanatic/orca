@@ -49,7 +49,8 @@ function harness(
       clearSkillOrigin: vi.fn(),
       setHistory: vi.fn(),
       setDraft: vi.fn(),
-      setCaret: vi.fn()
+      setCaret: vi.fn(),
+      trackPendingSend: vi.fn()
     })
   )
   return { send: result.current, structuredTransport }
