@@ -9,6 +9,7 @@ import { isWslUncPath } from '../../shared/wsl-paths'
 import { resolveOpenCodeDataDirectory } from '../opencode/opencode-data-directory'
 import Database from '../sqlite/sync-database'
 import { getManagedDataAccountService } from '../managed-data-accounts/service'
+import { restoreManagedDataAccountEnvironment } from '../../shared/managed-data-account-environment'
 
 /** OpenCode's provider/integration id for the Go subscription. */
 const OPENCODE_GO_INTEGRATION_ID = 'opencode-go'
@@ -179,9 +180,10 @@ export async function resolveOpenCodeGoApiKey(input: {
   settingsOverride?: string
   environment?: NodeJS.ProcessEnv
 }): Promise<OpenCodeGoApiKeyResolution> {
-  const environment = input.environment ?? {
-    ...process.env,
-    ...getManagedDataAccountService().launchEnvironment('opencode')
+  const environment = input.environment ?? { ...process.env }
+  if (!input.environment) {
+    restoreManagedDataAccountEnvironment(environment)
+    Object.assign(environment, getManagedDataAccountService().launchEnvironment('opencode'))
   }
   const override = trimmedKey(input.settingsOverride)
   if (override) {
