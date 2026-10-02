@@ -10,9 +10,9 @@ import {
   disableCodexSharedServerAutoStartOnOrcaMirror,
   stopCodexSharedServer
 } from '../../../codex/codex-shared-server-fix'
-import { getLegacyDaemonProtocolVersionForPty } from '../../../daemon/daemon-provider-routing'
+import { getLegacyDaemonAdapters } from '../../../daemon/daemon-provider-routing'
 import { supportsCodexNoDaemonShellLaunch } from '../../../daemon/daemon-protocol-version'
-import type { CodexSharedServerJoin } from '../../../../shared/codex-shared-server-command'
+import type { CodexSharedServerStatus } from '../../../../shared/codex-shared-server-command'
 import { ptyOwnership } from '../provider/ownership-state'
 import { getProviderForPty, hasPtyProviderForInspection } from '../provider/registry'
 
@@ -56,18 +56,18 @@ function handleLocalPane<T>(
   })
 }
 
-async function readPaneSharedServerJoin(
+async function readPaneSharedServerStatus(
   id: string,
   rootPid: number
-): Promise<CodexSharedServerJoin> {
+): Promise<CodexSharedServerStatus> {
   if (!(await isPaneCodexOnSharedServer(id, rootPid))) {
     return { joined: false }
   }
   // Why: an older daemon's shell has no codex wrapper, so a new terminal is the whole fix.
-  const legacyProtocol = getLegacyDaemonProtocolVersionForPty(getProviderForPty(id), id)
-  return legacyProtocol !== null && !supportsCodexNoDaemonShellLaunch(legacyProtocol)
-    ? { joined: true, openedBeforeWrapper: true }
-    : { joined: true }
+  const openedBeforeWrapper = getLegacyDaemonAdapters(getProviderForPty(id)).some(
+    (adapter) => adapter.hasPty(id) && !supportsCodexNoDaemonShellLaunch(adapter.protocolVersion)
+  )
+  return openedBeforeWrapper ? { joined: true, openedBeforeWrapper } : { joined: true }
 }
 
 /** Runs a fix command against the pane's own CODEX_HOME, never a guessed one. */
@@ -89,7 +89,7 @@ function disableForPane(id: string): Promise<boolean> {
 
 // Why its own read: only a pane already showing Codex asks, so no cadence poll pays for argv.
 export function installPtyCodexSharedServerIpcHandler(deps: Deps): void {
-  handleLocalPane(deps, 'pty:isCodexOnSharedServer', readPaneSharedServerJoin, { joined: false })
+  handleLocalPane(deps, 'pty:isCodexOnSharedServer', readPaneSharedServerStatus, { joined: false })
   handleLocalPane(deps, 'pty:disableCodexSharedServerAutoStart', disableForPane, false)
   handleLocalPane(deps, 'pty:stopCodexSharedServer', runForPaneHome(stopCodexSharedServer), false)
 }

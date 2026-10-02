@@ -19,17 +19,6 @@ export function getLegacyDaemonAdapters(provider: IPtyProvider): DaemonPtyAdapte
   return []
 }
 
-/** The protocol of the older daemon still serving this PTY; null when this build's daemon or an in-process provider owns it. */
-export function getLegacyDaemonProtocolVersionForPty(
-  provider: IPtyProvider,
-  ptyId: string
-): number | null {
-  return (
-    getLegacyDaemonAdapters(provider).find((adapter) => adapter.hasPty(ptyId))?.protocolVersion ??
-    null
-  )
-}
-
 export function disposeProviderSubscriptionsOnly(provider: DaemonProvider): void {
   if (provider instanceof DaemonPtyRouter) {
     provider.disposeRouterOnly()

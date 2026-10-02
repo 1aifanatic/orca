@@ -1,25 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { createAdapter } from './daemon-pty-router-test-fixture'
 import { DaemonPtyRouter } from './daemon-pty-router'
-import { getLegacyDaemonProtocolVersionForPty } from './daemon-provider-routing'
-import { PROTOCOL_VERSION } from './daemon-protocol-version'
+import { getLegacyDaemonAdapters } from './daemon-provider-routing'
 import { LocalPtyProvider } from '../providers/local-pty-provider'
 
-describe('getLegacyDaemonProtocolVersionForPty', () => {
-  const router = new DaemonPtyRouter({
-    current: createAdapter('current', ['fresh'], undefined, PROTOCOL_VERSION),
-    legacy: [createAdapter('v36', ['old'], undefined, 36)]
+describe('getLegacyDaemonAdapters', () => {
+  it("lists the older daemons a router keeps, not this build's", () => {
+    const current = createAdapter('current')
+    const legacy = createAdapter('v36', [], undefined, 36)
+    expect(getLegacyDaemonAdapters(new DaemonPtyRouter({ current, legacy: [legacy] }))).toEqual([
+      legacy
+    ])
   })
 
-  it('names the protocol of the older daemon still serving a PTY', () => {
-    expect(getLegacyDaemonProtocolVersionForPty(router, 'old')).toBe(36)
-  })
-
-  it("reads null for a PTY on this build's daemon", () => {
-    expect(getLegacyDaemonProtocolVersionForPty(router, 'fresh')).toBeNull()
-  })
-
-  it('reads null for the in-process fallback provider, which has no daemon', () => {
-    expect(getLegacyDaemonProtocolVersionForPty(new LocalPtyProvider(), 'old')).toBeNull()
+  it('lists none for a lone daemon or the in-process fallback provider', () => {
+    expect(getLegacyDaemonAdapters(createAdapter('current'))).toEqual([])
+    expect(getLegacyDaemonAdapters(new LocalPtyProvider())).toEqual([])
   })
 })

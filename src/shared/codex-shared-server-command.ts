@@ -122,7 +122,7 @@ export const CODEX_DISABLE_AUTO_START_COMMAND = `codex ${CODEX_DISABLE_SHARED_SE
 export const CODEX_STOP_SHARED_SERVER_COMMAND = `codex ${CODEX_STOP_SHARED_SERVER_ARGS.join(' ')}`
 
 /** Whether a local pane's Codex is a client of Codex's shared server. */
-export type CodexSharedServerJoin = {
+export type CodexSharedServerStatus = {
   joined: boolean
   /** The pane's shell predates Orca's codex wrapper, which a new terminal gets. */
   openedBeforeWrapper?: boolean

@@ -11,10 +11,13 @@ import { CodexSharedServerBanner } from './CodexSharedServerBanner'
 import {
   CODEX_DISABLE_AUTO_START_COMMAND,
   CODEX_STOP_SHARED_SERVER_COMMAND,
-  type CodexSharedServerJoin
+  type CodexSharedServerStatus
 } from '../../../../shared/codex-shared-server-command'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { Tab } from '../../../../shared/tab-types'
+
+const activateAndRevealWorktree = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/worktree-activation', () => ({ activateAndRevealWorktree }))
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -27,7 +30,9 @@ const OLD_TAB_JOINED = { joined: true, openedBeforeWrapper: true }
 const TITLE = 'This Codex is sharing a server'
 let paneElement: HTMLDivElement
 let root: Root
-let isCodexOnSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<CodexSharedServerJoin>>>
+let isCodexOnSharedServer: ReturnType<
+  typeof vi.fn<(id: string) => Promise<CodexSharedServerStatus>>
+>
 let disableCodexSharedServerAutoStart: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
 let stopCodexSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
 let writeClipboardText: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
@@ -74,6 +79,7 @@ function button(label: string): HTMLButtonElement {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  activateAndRevealWorktree.mockClear()
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   useAppStore.setState(useAppStore.getInitialState(), true)
   ptyId = `pty-${(nextPtyId += 1)}`
@@ -81,7 +87,7 @@ beforeEach(() => {
   paneElement.className = 'pane'
   document.body.appendChild(paneElement)
   root = createRoot(paneElement)
-  isCodexOnSharedServer = vi.fn(() => Promise.resolve<CodexSharedServerJoin>(JOINED))
+  isCodexOnSharedServer = vi.fn(() => Promise.resolve<CodexSharedServerStatus>(JOINED))
   disableCodexSharedServerAutoStart = vi.fn(() => Promise.resolve(true))
   stopCodexSharedServer = vi.fn(() => Promise.resolve(true))
   writeClipboardText = vi.fn(() => Promise.resolve())
@@ -290,27 +296,38 @@ describe('CodexSharedServerBanner', () => {
       expect(paneElement.textContent).not.toContain('agent status may be wrong')
       expect(() => button('Fix')).toThrow()
       expect(() => button('Learn more')).toThrow()
-      expect(button("Don't show again")).toBeDefined()
-      expect(button('Dismiss')).toBeDefined()
+      button("Don't show again")
+      button('Dismiss')
     })
 
-    it('opens a new terminal tab in the same group', async () => {
-      const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
-      setState({})
-      useAppStore.setState({
-        activeWorktreeId: 'wt-1',
-        unifiedTabsByWorktree: { 'wt-1': [terminalTab('wt-1', 'group-2')] },
-        openNewTerminalTabInActiveWorkspace
-      })
-      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
-      await renderBanner()
-      await advance(1_000)
+    it.each([
+      ['its worktree is active', 'wt-1', false],
+      ['Activity shows it from another worktree', 'wt-other', true]
+    ])(
+      'opens a new terminal tab in the same group when %s',
+      async (_label, activeWorktreeId, activates) => {
+        const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
+        setState({})
+        useAppStore.setState({
+          activeWorktreeId,
+          unifiedTabsByWorktree: { 'wt-1': [terminalTab('wt-1', 'group-2')] },
+          openNewTerminalTabInActiveWorkspace
+        })
+        isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+        await renderBanner()
+        await advance(1_000)
 
-      await act(async () => button('Open new terminal').click())
+        await act(async () => button('Open new terminal').click())
 
-      expect(openNewTerminalTabInActiveWorkspace).toHaveBeenCalledWith('group-2')
-      expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
-      expect(stopCodexSharedServer).not.toHaveBeenCalled()
-    })
+        if (activates) {
+          expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-1')
+        } else {
+          expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+        }
+        expect(openNewTerminalTabInActiveWorkspace).toHaveBeenCalledWith('group-2')
+        expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
+        expect(stopCodexSharedServer).not.toHaveBeenCalled()
+      }
+    )
   })
 })

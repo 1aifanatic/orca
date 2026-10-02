@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   disable: vi.fn<(home: string) => Promise<boolean>>(),
   disableOnMirror: vi.fn<(home: string) => Promise<boolean>>(),
   stop: vi.fn<(home: string) => Promise<boolean>>(),
-  legacyProtocol: vi.fn<(id: string) => number | null>()
+  legacyAdapters: new Array<{ protocolVersion: number; hasPty: (id: string) => boolean }>()
 }))
 vi.mock('../../pty-host-bindings', () => ({
   getPtyIpc: () => ({
@@ -31,7 +31,7 @@ vi.mock('../../../codex/codex-shared-server-fix', () => ({
   stopCodexSharedServer: mocks.stop
 }))
 vi.mock('../../../daemon/daemon-provider-routing', () => ({
-  getLegacyDaemonProtocolVersionForPty: (_provider: unknown, id: string) => mocks.legacyProtocol(id)
+  getLegacyDaemonAdapters: () => mocks.legacyAdapters
 }))
 vi.mock('../provider/registry', () => ({
   hasPtyProviderForInspection: mocks.hasProvider,
@@ -69,7 +69,7 @@ beforeEach(() => {
   mocks.disable.mockResolvedValue(true)
   mocks.disableOnMirror.mockResolvedValue(true)
   mocks.stop.mockResolvedValue(true)
-  mocks.legacyProtocol.mockReturnValue(null)
+  mocks.legacyAdapters = []
   installPtyCodexSharedServerIpcHandler({ getLocalPtyProviderStartupPromise: () => undefined })
 })
 
@@ -78,24 +78,28 @@ describe('Codex shared-server IPC', () => {
     expect(await invoke(channel, 'local-1')).toEqual(answer)
   })
 
+  const ownedBy = (protocolVersion: number, ptyId = 'local-1') => ({
+    protocolVersion,
+    hasPty: (id: string) => id === ptyId
+  })
+
   it.each([
-    [
-      'an older daemon from before the codex wrapper',
-      36,
-      { joined: true, openedBeforeWrapper: true }
-    ],
-    ['an older daemon that has the codex wrapper', 37, { joined: true }],
-    ["this build's daemon or an in-process provider", null, { joined: true }]
-  ])('marks a joined pane served by %s', async (_label, protocol, answer) => {
-    mocks.legacyProtocol.mockReturnValue(protocol)
-    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual(answer)
-    expect(mocks.legacyProtocol).toHaveBeenCalledWith('local-1')
+    ['an older daemon from before the codex wrapper', [ownedBy(36)], true],
+    ['an older daemon that has the codex wrapper', [ownedBy(37)], false],
+    ["this build's daemon or an in-process provider", [ownedBy(36, 'other')], false]
+  ])('tells whether a joined pane is served by %s', async (_label, adapters, old) => {
+    mocks.legacyAdapters = adapters
+    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual(
+      old ? { joined: true, openedBeforeWrapper: true } : { joined: true }
+    )
   })
 
   it('reads no daemon owner for a pane that has not joined', async () => {
+    const hasPty = vi.fn(() => true)
+    mocks.legacyAdapters = [{ protocolVersion: 36, hasPty }]
     mocks.isPaneCodexOnSharedServer.mockResolvedValue(false)
     expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual({ joined: false })
-    expect(mocks.legacyProtocol).not.toHaveBeenCalled()
+    expect(hasPty).not.toHaveBeenCalled()
   })
 
   it('runs the fix against the pane home', async () => {
