@@ -68,6 +68,10 @@ import {
   installOrcadSourceExportPersistenceContext
 } from '../migrating-orcad-catalog/orcad-source-export'
 import {
+  OrcadSourceRetirementPersistence,
+  installOrcadSourceRetirementPersistenceContext
+} from '../migrating-orcad-catalog/orcad-source-retirement'
+import {
   OrcadCatalogImportPersistence,
   installOrcadCatalogImportPersistenceContext
 } from '../migrating-orcad-catalog/orcad-catalog-import'
@@ -88,6 +92,7 @@ export type StoreDomainOperations = WriteSchedulingOperations &
   RetiredWorktreeNamePersistence &
   SshLeaseRecoveryOperations &
   OrcadSourceExportPersistence &
+  OrcadSourceRetirementPersistence &
   OrcadCatalogImportPersistence &
   WriteFlushBarrierOperations
 
@@ -114,6 +119,7 @@ export type StoreDomains = {
   retiredWorktreeNames: RetiredWorktreeNamePersistence
   sshLeases: SshLeaseRecoveryOperations
   orcadSourceExport: OrcadSourceExportPersistence
+  orcadSourceRetirement: OrcadSourceRetirementPersistence
   orcadCatalogImports: OrcadCatalogImportPersistence
 }
 
@@ -134,6 +140,7 @@ export const STORE_DOMAIN_OPERATION_CLASSES = [
   RetiredWorktreeNamePersistence,
   SshLeaseRecoveryOperations,
   OrcadSourceExportPersistence,
+  OrcadSourceRetirementPersistence,
   OrcadCatalogImportPersistence,
   WriteFlushBarrierOperations
 ] as const
@@ -155,6 +162,7 @@ export function installStoreDomainContexts(target: Store, domains: StoreDomains)
   installRetiredWorktreeNamePersistenceContext(target, domains.retiredWorktreeNames)
   installSshLeaseRecoveryOperationsContext(target, domains.sshLeases)
   installOrcadSourceExportPersistenceContext(target, domains.orcadSourceExport)
+  installOrcadSourceRetirementPersistenceContext(target, domains.orcadSourceRetirement)
   installOrcadCatalogImportPersistenceContext(target, domains.orcadCatalogImports)
   installWriteFlushBarrierOperationsContext(target, domains.flushBarriers)
 }
@@ -216,6 +224,7 @@ export function createStoreDomains(runtime: StoreRuntimeState): StoreDomains {
     sshLeases,
     // Read-only: holds the runtime state and nothing that writes.
     orcadSourceExport: new OrcadSourceExportPersistence(runtime),
+    orcadSourceRetirement: new OrcadSourceRetirementPersistence(runtime, repos, scheduling),
     orcadCatalogImports
   }
 }
