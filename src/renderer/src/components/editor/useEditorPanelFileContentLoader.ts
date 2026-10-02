@@ -19,6 +19,7 @@ import {
 } from './editor-panel-content-types'
 import type { EditorPanelContentLoadOptions } from './useEditorPanelExternalContentEvents'
 import { migrateRestoredEditorFileOwner } from './migrate-restored-editor-file-owner'
+import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
 
 const inFlightFileReads = new Map<string, InFlightContentRead<FileContent>>()
 
@@ -155,13 +156,20 @@ export function useEditorPanelFileContentLoader({
               throw new Error('External local files are not available for remote workspaces.')
             }
             if (!externalSshOwnerId) {
-              // Why: plain reads and saves no longer need it, but other file features
-              // (e.g. running a notebook) still check this in-memory grant.
-              await window.api.fs.authorizeExternalPath({ targetPath: filePath })
+              await refreshEditorTabExternalPathGrant(currentState, restoredOpenFile)
               // Why: that grant covers the client path, so this read must stay off the
               // worktree's SSH host.
               readConnectionId = undefined
             }
+          }
+        } else if (restoredOpenFile?.filePath === filePath) {
+          // Why: a floating-workspace tab stores a root-relative path, but its root isn't authorized.
+          const pathGrant = refreshEditorTabExternalPathGrant(
+            useAppStore.getState(),
+            restoredOpenFile
+          )
+          if (pathGrant) {
+            await pathGrant
           }
         }
         const readScope = getRuntimeFileReadScope(readSettings, readConnectionId)

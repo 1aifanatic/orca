@@ -5,11 +5,7 @@ import { assertSshMutationExpectation } from '../../ssh/ssh-connection-generatio
 import { runSshProviderContinuation } from '../../ssh/ssh-provider-continuations'
 import { requireSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { tryDeleteWslUncPath } from '../../wsl-unc-delete'
-import {
-  authorizeExternalPath,
-  resolveAuthorizedPath,
-  resolveUserNamedPath
-} from '../filesystem-auth'
+import { authorizeExternalPath, resolveAuthorizedPath } from '../filesystem-auth'
 import { isENOENT } from '../filesystem-path-containment'
 import { registerFilesystemMutationHandlers } from '../filesystem-mutations'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
@@ -21,12 +17,7 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
     'fs:writeFile',
     async (
       _event,
-      args: {
-        filePath: string
-        content: string
-        connectionId?: string
-        savesOpenEditorFile?: boolean
-      } & SshMutationExpectation
+      args: { filePath: string; content: string; connectionId?: string } & SshMutationExpectation
     ): Promise<void> => {
       assertSshMutationExpectation(
         args.connectionId,
@@ -40,11 +31,7 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
           provider.writeFile(args.filePath, args.content)
         )
       }
-      // Why: saving an open editor tab writes the file the user opened, so it needs no grant outside
-      // projects; every other write stays inside them.
-      const filePath = args.savesOpenEditorFile
-        ? await resolveUserNamedPath(args.filePath, store)
-        : await resolveAuthorizedPath(args.filePath, store)
+      const filePath = await resolveAuthorizedPath(args.filePath, store)
       try {
         const fileStats = await lstat(filePath)
         if (fileStats.isDirectory()) {

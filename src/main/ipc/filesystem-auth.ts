@@ -1,4 +1,4 @@
-import { resolve, dirname, basename, isAbsolute } from 'node:path'
+import { resolve, dirname, basename } from 'node:path'
 import { realpathSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import type { Store } from '../persistence'
@@ -137,48 +137,6 @@ export async function resolveAuthorizedPath(
     }
     return resolveAuthorizedMissingPath(resolvedTarget, store, allowedRoots)
   }
-}
-
-/**
- * Resolves a local path the user named directly, such as an editor tab's file.
- *
- * A path inside a project keeps the full containment check, so a project's symlinks still cannot
- * escape it. A path outside every project is the user's own file and resolves in place, with no
- * in-memory grant that a restart would lose.
- */
-export async function resolveUserNamedPath(targetPath: string, store: Store): Promise<string> {
-  if (!isAbsolute(targetPath)) {
-    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-  }
-  try {
-    return await resolveAuthorizedPath(targetPath, store)
-  } catch (error) {
-    if (!(error instanceof Error && error.message === PATH_ACCESS_DENIED_MESSAGE)) {
-      throw error
-    }
-    const resolvedTarget = resolve(targetPath)
-    if (await isInsideAllowedRoot(resolvedTarget, store)) {
-      throw error
-    }
-    return resolvedTarget
-  }
-}
-
-async function isInsideAllowedRoot(resolvedTarget: string, store: Store): Promise<boolean> {
-  if (await isPathAllowedIncludingRegisteredWorktrees(resolvedTarget, store)) {
-    return true
-  }
-  let canonicalParent: string
-  try {
-    canonicalParent = resolve(await realpath(dirname(resolvedTarget)))
-  } catch {
-    return false
-  }
-  // Why: macOS /var→/private/var; a project registered by its canonical path must still count.
-  return isPathAllowedIncludingRegisteredWorktrees(
-    resolve(canonicalParent, basename(resolvedTarget)),
-    store
-  )
 }
 
 async function resolveAuthorizedMissingPath(

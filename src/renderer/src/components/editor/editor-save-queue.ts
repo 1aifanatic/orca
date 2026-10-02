@@ -110,9 +110,7 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
             : undefined
         )
         try {
-          await writeRuntimeFile(fileContext, liveFile.filePath, contentToSave, {
-            savesOpenEditorFile: true
-          })
+          await writeRuntimeFile(fileContext, liveFile.filePath, contentToSave)
         } catch (error) {
           // Why: the self-write stamp is only valid after a real write; clear on failure so it can't suppress a real update.
           clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)

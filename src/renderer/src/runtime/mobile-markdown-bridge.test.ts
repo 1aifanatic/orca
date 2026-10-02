@@ -7,6 +7,7 @@ import {
 import { attachEditorAutosaveController } from '../components/editor/editor-autosave-controller'
 import { registerPendingEditorFlush } from '../components/editor/editor-pending-flush'
 import { useAppStore } from '../store'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { attachMobileMarkdownBridge } from './mobile-markdown-bridge'
 import {
   cleanupMobileMarkdownBridgeHarness,
@@ -59,6 +60,38 @@ describe('mobile markdown bridge', () => {
       })
     } finally {
       unregisterFlush()
+      detach()
+    }
+  })
+
+  it('grants a restored floating-workspace tab before reading it for mobile', async () => {
+    useAppStore.getState().openFile({
+      filePath: '/Users/me/notes.md',
+      relativePath: 'notes.md',
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      language: 'markdown',
+      mode: 'edit'
+    })
+    const tabId = useAppStore.getState().openFiles[0]!.id
+    const readFile = vi.fn().mockResolvedValue({ content: '# notes', isBinary: false })
+    const authorizeExternalPath = vi.fn().mockResolvedValue(undefined)
+    setupWindow({ readFile, authorizeExternalPath })
+    const detach = attachMobileMarkdownBridge()
+
+    try {
+      const response = await sendRequest({
+        id: 'read-floating',
+        operation: 'read',
+        worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+        tabId
+      })
+
+      expect(response).toMatchObject({ ok: true, result: { content: '# notes', source: 'file' } })
+      expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: '/Users/me/notes.md' })
+      expect(authorizeExternalPath.mock.invocationCallOrder[0]).toBeLessThan(
+        readFile.mock.invocationCallOrder[0]
+      )
+    } finally {
       detach()
     }
   })
@@ -117,8 +150,7 @@ describe('mobile markdown bridge', () => {
         filePath: '/repo/README.md',
         content: 'mobile edit',
         connectionId: undefined,
-        expectedExecutionHostId: 'local',
-        savesOpenEditorFile: true
+        expectedExecutionHostId: 'local'
       })
       expect(response).toMatchObject({
         id: 'save-2',

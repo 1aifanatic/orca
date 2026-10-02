@@ -32,22 +32,13 @@ export async function readRuntimeDirectory(
 export async function writeRuntimeFile(
   context: RuntimeFileOperationArgs,
   filePath: string,
-  content: string,
-  options?: { savesOpenEditorFile?: boolean }
+  content: string
 ): Promise<void> {
   const remoteArgs = getRemoteFileArgs(context, filePath)
   if (!remoteArgs) {
     assertLocalFilesystemFallbackAllowed(context)
     await window.api.fs.writeFile(
-      withSshMutationExpectation(context, {
-        filePath,
-        content,
-        connectionId: context.connectionId,
-        // Why: only a local write consults the flag; an SSH host owns its own file access.
-        ...(options?.savesOpenEditorFile && !context.connectionId
-          ? { savesOpenEditorFile: true }
-          : {})
-      })
+      withSshMutationExpectation(context, { filePath, content, connectionId: context.connectionId })
     )
     return
   }

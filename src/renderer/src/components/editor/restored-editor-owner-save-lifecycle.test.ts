@@ -120,7 +120,6 @@ describe('restored editor owner save lifecycle', () => {
     await vi.waitFor(() => expect(mocks.writeRuntimeFile).toHaveBeenCalledTimes(3))
     expect(mocks.writeRuntimeFile.mock.calls[2]?.[0]).toMatchObject({ worktreeId: TARGET })
     expect(mocks.writeRuntimeFile.mock.calls[2]?.[2]).toBe('autosave destination')
-    expect(mocks.writeRuntimeFile.mock.calls[2]?.[3]).toEqual({ savesOpenEditorFile: true })
   })
 
   it('rejects a concurrent migration without clearing the active migration gate', async () => {

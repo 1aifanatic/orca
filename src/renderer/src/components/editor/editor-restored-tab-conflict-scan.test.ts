@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { createEditorSlice } from '@/store/slices/editor'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { AppState } from '@/store'
 import { attachRestoredTabConflictScan } from './editor-restored-tab-conflict-scan'
 import { getDiskBaselineSignature } from './diff-content-signature'
@@ -8,7 +9,8 @@ import { getDiskBaselineSignature } from './diff-content-signature'
 const mocks = vi.hoisted(() => ({
   readRuntimeFileContent: vi.fn(),
   getConnectionIdForFile: vi.fn(),
-  pathExists: vi.fn()
+  pathExists: vi.fn(),
+  authorizeExternalPath: vi.fn()
 }))
 
 vi.mock('@/runtime/runtime-file-client', () => ({
@@ -18,13 +20,16 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
   settingsForRuntimeOwner: () => null
 }))
 vi.mock('@/lib/connection-context', () => ({
-  getConnectionIdForFile: mocks.getConnectionIdForFile
+  getConnectionIdForFile: mocks.getConnectionIdForFile,
+  isWorktreeConnectionResolved: () => true
 }))
 
 function createEditorStore(): StoreApi<AppState> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createStore<any>()((...args: any[]) => ({
     settings: {},
+    worktreesByRepo: {},
+    folderWorkspaces: [],
     ...createEditorSlice(...(args as Parameters<typeof createEditorSlice>))
   })) as unknown as StoreApi<AppState>
 }
@@ -62,7 +67,13 @@ describe('attachRestoredTabConflictScan', () => {
     mocks.getConnectionIdForFile.mockReturnValue(undefined)
     mocks.pathExists.mockReset()
     mocks.pathExists.mockResolvedValue(true)
-    vi.stubGlobal('window', { api: { fs: { pathExists: mocks.pathExists } } })
+    mocks.authorizeExternalPath.mockReset()
+    mocks.authorizeExternalPath.mockResolvedValue(undefined)
+    vi.stubGlobal('window', {
+      api: {
+        fs: { pathExists: mocks.pathExists, authorizeExternalPath: mocks.authorizeExternalPath }
+      }
+    })
   })
 
   afterEach(() => {
@@ -245,6 +256,56 @@ describe('attachRestoredTabConflictScan', () => {
       expect(tab?.pendingDiskBaselineVerification).toBe(true)
       expect(tab?.externalMutation).toBeUndefined()
       expect(mocks.readRuntimeFileContent.mock.calls.length).toBeGreaterThan(1)
+    } finally {
+      detach()
+    }
+  })
+
+  it('grants a restored dirty floating-workspace tab before verifying it', async () => {
+    // Why: without the grant the read is denied forever and the tab's autosave never resumes.
+    mocks.readRuntimeFileContent.mockResolvedValue({
+      content: 'original baseline',
+      isBinary: false
+    })
+    mocks.getConnectionIdForFile.mockReturnValue(null)
+    const store = createEditorStore()
+    openRestoredDirtyTab(store, '/Users/me/notes.txt', 'original baseline')
+    store.setState({
+      openFiles: store.getState().openFiles.map((file) => ({
+        ...file,
+        relativePath: 'notes.txt',
+        worktreeId: FLOATING_TERMINAL_WORKTREE_ID
+      }))
+    } as never)
+
+    const detach = attachRestoredTabConflictScan(store)
+    try {
+      await vi.advanceTimersByTimeAsync(10)
+      expect(mocks.authorizeExternalPath).toHaveBeenCalledWith({
+        targetPath: '/Users/me/notes.txt'
+      })
+      expect(mocks.authorizeExternalPath.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.readRuntimeFileContent.mock.invocationCallOrder[0]
+      )
+      expect(store.getState().openFiles[0]?.pendingDiskBaselineVerification).toBeUndefined()
+    } finally {
+      detach()
+    }
+  })
+
+  it('does not grant a restored dirty project tab', async () => {
+    mocks.readRuntimeFileContent.mockResolvedValue({
+      content: 'original baseline',
+      isBinary: false
+    })
+    const store = createEditorStore()
+    openRestoredDirtyTab(store, '/repo/file.ts', 'original baseline')
+
+    const detach = attachRestoredTabConflictScan(store)
+    try {
+      await vi.advanceTimersByTimeAsync(10)
+      expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
+      expect(mocks.authorizeExternalPath).not.toHaveBeenCalled()
     } finally {
       detach()
     }

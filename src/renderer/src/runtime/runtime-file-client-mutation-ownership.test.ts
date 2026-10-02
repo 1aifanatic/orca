@@ -110,19 +110,6 @@ describe('runtime file client', () => {
     })
   })
 
-  it('marks a local write as an open editor file save only when the caller asks', async () => {
-    const context = { settings: null, worktreeId: 'wt-1', worktreePath: '/repo' }
-
-    await writeRuntimeFile(context, '/Users/me/notes.txt', 'saved', { savesOpenEditorFile: true })
-    await writeRuntimeFile(context, '/repo/src/index.ts', 'written')
-
-    expect(fsWriteFile).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ filePath: '/Users/me/notes.txt', savesOpenEditorFile: true })
-    )
-    expect(fsWriteFile.mock.calls[1]?.[0]).not.toHaveProperty('savesOpenEditorFile')
-  })
-
   it('refuses HUB-local mutations before RPC when the HUB lacks ownership support', async () => {
     runtimeEnvironmentTransportCall.mockImplementation((args: { method: string }) => {
       if (args.method === 'status.get') {

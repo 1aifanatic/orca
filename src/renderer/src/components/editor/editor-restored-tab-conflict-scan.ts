@@ -3,6 +3,7 @@ import type { StoreApi } from 'zustand'
 import type { AppState } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import { getConnectionIdForFile } from '@/lib/connection-context'
+import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
 import { readRuntimeFileContent } from '@/runtime/runtime-file-client'
 import { settingsForRuntimeOwner } from '@/runtime/runtime-rpc-client'
 import { canAutoSaveOpenFile } from './editor-autosave'
@@ -60,6 +61,11 @@ export function attachRestoredTabConflictScan(store: AppStoreApi): () => void {
     let retryScheduled = false
     try {
       const state = store.getState()
+      // Why: this runs at startup for unopened tabs too, before the loader re-grants their path.
+      const pathGrant = refreshEditorTabExternalPathGrant(state, file)
+      if (pathGrant) {
+        await pathGrant
+      }
       const result = await readRuntimeFileContent({
         settings: settingsForRuntimeOwner(state.settings, file.runtimeEnvironmentId),
         filePath: file.filePath,
