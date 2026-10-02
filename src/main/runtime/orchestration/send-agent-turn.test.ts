@@ -115,7 +115,7 @@ describe('sendAgentTurn to a structured session', () => {
   })
 
   it('returns the host refusal for the caller to read', async () => {
-    const refusal = { code: 'agent_session_not_attached' as const, message: 'not attached' }
+    const refusal = { code: 'agent_session_conflict' as const, message: 'conflict' }
     const fake = structuredHost({ ok: false, refusal })
     await expect(sendAgentTurn(target(fake.host), turn)).resolves.toEqual({
       kind: 'refused',
