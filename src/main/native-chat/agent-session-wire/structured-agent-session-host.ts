@@ -139,7 +139,7 @@ export class StructuredAgentSessionHost {
     this.restore = createStructuredAgentSessionHostRestore(deps, {
       reconcileLeases: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
-      tasks: this.tasks,
+      serialize: (sessionId, task) => this.serialize(sessionId, task),
       sessions: this.sessions,
       isDisposed: () => this.lifetime.isDisposed(),
       // Site 10: cannot overwrite a live entry — the restorer returns early on
@@ -358,6 +358,6 @@ export class StructuredAgentSessionHost {
     runtimeState: this.runtimeState,
     conversationDelivery: this.conversationDelivery,
     lifetime: this.lifetime,
-    tasks: this.tasks
+    serialize: this.serialize
   })
 }

@@ -100,8 +100,7 @@ export function copyJob(
 /** The job's dependencies over the rig's current host. Its settle is the startup state's own,
  *  counted, and its rule for which chats this host settles is the rig adapter's. */
 export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
-  const { sessions, tasks } = rig.host.collaboratorsForTests()
-  const { serialize } = tasks
+  const { sessions, serialize } = rig.host.collaboratorsForTests()
   const database = openTestJournalHostDatabase(rig.root)
   // The rig adapter's own rule.
   const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
@@ -128,7 +127,7 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     store: rig.store,
     listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
     isStartupChatWorkActive: () => false,
-    tasks,
+    serialize,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
     settleClosedChat: vi.fn(startup.settleClosedChat),
     canSettle,

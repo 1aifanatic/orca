@@ -41,7 +41,6 @@ import {
   StructuredAgentSessionPerChatFileCopyPace
 } from './structured-agent-session-per-chat-file-copy-pace'
 import { restTestChat } from './structured-agent-session-rest-test-rig'
-import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
@@ -505,7 +504,7 @@ const copyJobDeps = {
   store: { getRecord: () => null, listRecords: () => [] },
   listedIds: [],
   isStartupChatWorkActive: () => false,
-  tasks: new StructuredAgentSessionTaskQueue(),
+  serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
   openJournal: () => undefined,
   settleClosedChat: async () => false,
   canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => record !== null,
@@ -646,8 +645,7 @@ describe('the missing-row phase (L2, A8)', () => {
       throw new Error('malformed row')
     })
 
-    const { tasks } = rig.host.collaboratorsForTests()
-    await runToEnd(rig, copyJob(rig, { tasks: { ...tasks, serialize: failing } }))
+    await runToEnd(rig, copyJob(rig, { serialize: failing }))
 
     expect(failing).toHaveBeenCalledOnce()
     // The next launch: the same rows under the same version owe nothing.
@@ -674,8 +672,7 @@ describe('the missing-row phase (L2, A8)', () => {
       throw Object.assign(new Error('database is locked'), { code: 'ERR_SQLITE_ERROR', errcode: 5 })
     })
 
-    const { tasks } = rig.host.collaboratorsForTests()
-    await runToEnd(rig, copyJob(rig, { tasks: { ...tasks, serialize: locked } }))
+    await runToEnd(rig, copyJob(rig, { serialize: locked }))
 
     const job = startJob(rig)
     expect(job).not.toBeNull()

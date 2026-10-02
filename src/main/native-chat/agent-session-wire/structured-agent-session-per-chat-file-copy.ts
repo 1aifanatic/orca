@@ -45,7 +45,6 @@ import {
   removeEmptyPerChatDirectories,
   roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
-import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type {
   StructuredAgentSessionStartupState,
@@ -67,8 +66,7 @@ export type PerChatFileCopyDeps = {
   /** Startup chat work is in flight: startup restoration not yet settled, a tab listing, a history
    *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
-  /** Each chat's lock, and who waits for it: the copy gives way to them inside a chat. */
-  tasks: StructuredAgentSessionChatLocks
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The chat's journal, when it is open on this host. */
   openJournal: (
     sessionId: string
@@ -242,10 +240,8 @@ export class StructuredAgentSessionPerChatFileCopy {
     return file
   }
 
-  private inChat = <T>(
-    sessionId: string,
-    task: (yieldTask: () => Promise<void>) => Promise<T>
-  ): Promise<T> => this.pace.inChat(this.deps.tasks, sessionId, task)
+  private inChat = <T>(sessionId: string, task: (yieldTask: () => Promise<void>) => Promise<T>) =>
+    this.pace.inChat(this.deps.serialize, sessionId, task)
 
   private async copyUnderSerialize(
     record: AgentSessionRecord,
@@ -258,9 +254,9 @@ export class StructuredAgentSessionPerChatFileCopy {
     const { sessionId } = record
     const open = this.deps.openJournal(sessionId)
     if (open?.importPending) {
-      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue
-      // and paced like any other.
-      await open.whenImported({ yieldTask })
+      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue.
+      // Its wall time is charged, whoever started it; the debt is paid between chats.
+      await open.whenImported()
       this.count('copied')
       return
     }

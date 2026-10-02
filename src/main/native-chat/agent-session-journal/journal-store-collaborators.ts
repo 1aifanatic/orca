@@ -3,7 +3,6 @@
 // Split out of the store itself so the class stays a description of the public
 // surface rather than sixty lines of constructor plumbing.
 
-import type { OwedJournalWork } from './journal-write-queue'
 import type {
   AgentJournalCursor,
   AgentSessionJournalIdentity
@@ -51,7 +50,7 @@ export type JournalStoreHost = {
   /** A fold of the chat the opener already holds, used in place of the open's replay. */
   suppliedLoad: JournalLoad | null
   /** Work the chat's next write waits for. */
-  owe: (work: OwedJournalWork) => void
+  owe: (work: () => Promise<void>) => void
   database: () => JournalHostDatabase
   state: () => JournalReducerState
   readOnly: () => boolean

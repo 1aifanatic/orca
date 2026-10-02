@@ -777,7 +777,7 @@ describe('an unexpected provider exit', () => {
     })
     // The retry recording the exit queues is refused too; once the journal writes again, the next
     // acquire re-derives it.
-    await host.collaboratorsForTests().tasks.serialize(SESSION, async () => {})
+    await host.collaboratorsForTests().serialize(SESSION, async () => {})
     refusing.mockRestore()
 
     dispatch.mockResolvedValueOnce({

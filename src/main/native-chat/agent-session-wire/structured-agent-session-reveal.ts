@@ -10,7 +10,6 @@
 // a send does. And a journal it cannot open is not a refusal — the chat shows that failure with a
 // Retry, so the tab is worth publishing either way.
 
-import type { StructuredAgentSessionChatLocks } from './structured-agent-session-task-queue'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sessionTabListed } from './structured-agent-session-host-tabs'
@@ -85,14 +84,12 @@ export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     StructuredAgentSessionReadRestoreDeps,
-    'openDeps' | 'reconcile' | 'resolveRecovery' | 'isListed' | 'hasSession' | 'serialize'
+    'openDeps' | 'reconcile' | 'resolveRecovery' | 'isListed' | 'hasSession'
   > & {
     reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
     resolveRecovery: (sessionId: string) => Promise<unknown>
     seedStatus: StructuredAgentSessionStartupStateDeps['seedStatus']
     sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
-    /** Each chat's lock, and who waits for it. */
-    tasks: StructuredAgentSessionChatLocks
   }
 ): {
   reconcileRestartLeases: () => Promise<void>
@@ -100,12 +97,8 @@ export function createStructuredAgentSessionHostRestore(
   startPerChatFileCopy: (input: PerChatFileCopyStart) => void
   stopPerChatFileCopy: () => Promise<void>
 } & StructuredAgentSessionStartupState {
-  const { reconcileLeases, resolveRecovery, seedStatus, sessions, tasks, ...wired } = wiring
-  const rest = {
-    ...wired,
-    serialize: <T>(sessionId: string, task: () => Promise<T>) => tasks.serialize(sessionId, task),
-    hasSession: (sessionId: string) => sessions.has(sessionId)
-  }
+  const { reconcileLeases, resolveRecovery, seedStatus, sessions, ...wired } = wiring
+  const rest = { ...wired, hasSession: (sessionId: string) => sessions.has(sessionId) }
   const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
   const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
@@ -142,7 +135,7 @@ export function createStructuredAgentSessionHostRestore(
   const perChatFileCopy = createStructuredAgentSessionPerChatFileCopyControl({
     database: deps.journalDatabase,
     store: deps.store,
-    tasks,
+    serialize: rest.serialize,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
     settleClosedChat: startup.settleClosedChat,
     canSettle,

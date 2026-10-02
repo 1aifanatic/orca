@@ -6,15 +6,12 @@
 
 import { AgentSessionJournalError } from './journal-write-guards'
 
-/** Work a chat owes before its next write; `yieldTask` ends each of its tasks when given. */
-export type OwedJournalWork = (yieldTask?: () => Promise<void>) => Promise<void>
-
 /** Admission is checked at ENQUEUE and is permanent. */
 export class JournalWriteQueue {
   private writes: Promise<unknown> = Promise.resolve()
   private closed = false
   /** Runs before the next write, and stays owed until it succeeds. */
-  private owed: OwedJournalWork | null = null
+  private owed: (() => Promise<void>) | null = null
 
   constructor(private readonly sessionId: string) {}
 
@@ -22,8 +19,7 @@ export class JournalWriteQueue {
     this.closed = true
   }
 
-  /** `owedYield`, when this write pays the owed work, ends each of that work's tasks. */
-  serialize<T>(run: () => Promise<T>, owedYield?: () => Promise<void>): Promise<T> {
+  serialize<T>(run: () => Promise<T>): Promise<T> {
     if (this.closed) {
       return Promise.reject(
         new AgentSessionJournalError(
@@ -32,10 +28,10 @@ export class JournalWriteQueue {
         )
       )
     }
-    return this.serializePastGate(run, owedYield)
+    return this.serializePastGate(run)
   }
 
-  owe(work: OwedJournalWork): void {
+  owe(work: () => Promise<void>): void {
     this.owed = work
   }
 
@@ -43,10 +39,10 @@ export class JournalWriteQueue {
     return this.owed !== null
   }
 
-  private async payOwed(owedYield?: () => Promise<void>): Promise<void> {
+  private payOwed = async (): Promise<void> => {
     const owed = this.owed
     if (owed) {
-      await owed(owedYield)
+      await owed()
       this.owed = null
     }
   }
@@ -56,11 +52,9 @@ export class JournalWriteQueue {
     return this.writes.then(() => undefined)
   }
 
-  private serializePastGate<T>(run: () => Promise<T>, owedYield?: () => Promise<void>): Promise<T> {
+  private serializePastGate<T>(run: () => Promise<T>): Promise<T> {
     // Only a write admitted while work is owed takes the extra step, so no other write's timing moves.
-    const started = this.owed
-      ? this.writes.then(() => this.payOwed(owedYield)).then(run)
-      : this.writes.then(run)
+    const started = this.owed ? this.writes.then(this.payOwed).then(run) : this.writes.then(run)
     this.writes = started.catch(() => undefined)
     return started
   }

@@ -24,7 +24,6 @@ import {
 import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { StructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy'
 import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
-import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
@@ -364,7 +363,7 @@ describe('starting and stopping (T17b, T6)', () => {
     const control = createStructuredAgentSessionPerChatFileCopyControl({
       database,
       store: rig.store,
-      tasks: rig.host.collaboratorsForTests().tasks,
+      serialize: rig.host.collaboratorsForTests().serialize,
       openJournal: () => undefined,
       settleClosedChat: async () => false,
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>
@@ -400,7 +399,7 @@ describe('starting and stopping (T17b, T6)', () => {
         },
         listRecords: () => []
       },
-      tasks: new StructuredAgentSessionTaskQueue(),
+      serialize: async (_sessionId, task) => task(),
       openJournal: () => undefined,
       settleClosedChat: async () => false,
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>

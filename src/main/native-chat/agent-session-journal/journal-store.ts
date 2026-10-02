@@ -216,11 +216,10 @@ export class AgentSessionJournal {
   /**
    * Resolves once the chat's rows are in the host's database. A restore's open serves a chat still
    * in its per-chat file from a read-only fold of it; the copy runs before the chat's first write,
-   * and a reader that needs rows (forward pages, catch-up) awaits it here. `yieldTask`, from a
-   * caller that runs the copy itself, ends each of its tasks.
+   * and a reader that needs rows (forward pages, catch-up) awaits it here.
    */
-  whenImported(options?: { yieldTask?: () => Promise<void> }): Promise<void> {
-    return this.queue.serialize(async () => undefined, options?.yieldTask)
+  whenImported(): Promise<void> {
+    return this.queue.serialize(async () => undefined)
   }
 
   get importPending(): boolean {

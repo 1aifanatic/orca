@@ -99,37 +99,43 @@ describe('the copy’s share of each second (C3)', () => {
     await expect(pace.yieldTask()).resolves.toBeUndefined()
   })
 
-  it('keeps the debt of a chat it gave way in, and pays it between chats', async () => {
-    const clock = { now: 0 }
-    const waits: number[] = []
-    const pace = new StructuredAgentSessionPerChatFileCopyPace(
-      () => clock.now,
-      async (ms) => {
-        waits.push(ms)
-        // Someone starts waiting for the chat 100 ms in: the wait ends there.
-        clock.now += inChat ? 100 : ms
-      }
-    )
-    let inChat = false
-    const locks = {
-      serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
-      hasQueuedBehind: () => false,
-      nextQueued: () => new Promise<void>(() => {})
-    }
+  it('never waits inside a chat, and pays that chat’s debt at the next yield between chats', async () => {
+    const { clock, waits, pace } = pacedClock()
     pace.begin()
 
-    await pace.inChat(locks, 'session-held', async (yieldTask) => {
-      inChat = true
-      clock.now += 200
-      await yieldTask()
-      inChat = false
-    })
+    await pace.inChat(
+      (_sessionId, task) => task(),
+      'session-held',
+      async (yieldTask) => {
+        for (let part = 0; part < 4; part += 1) {
+          clock.now += 50
+          await yieldTask()
+        }
+      }
+    )
+    expect(waits).toEqual([])
     await pace.yieldTask()
 
-    // 200 ms of work against a 50 ms burst: a debt of 120 ms (800 ms of wait). The chat's wait
-    // ended after 100 ms (15 ms paid), so the wait between chats is for the rest.
+    // 200 ms of work against a 50 ms burst: a debt of 120 ms, paid as 800 ms of wait.
     const debt = 200 - PER_CHAT_FILE_COPY_BURST_MS - 200 * PER_CHAT_FILE_COPY_SHARE
-    expect(waits[0]).toBe(debt / PER_CHAT_FILE_COPY_SHARE)
-    expect(waits[1]).toBeCloseTo((debt - 100 * PER_CHAT_FILE_COPY_SHARE) / PER_CHAT_FILE_COPY_SHARE)
+    expect(waits).toEqual([debt / PER_CHAT_FILE_COPY_SHARE])
+  })
+
+  it('charges nothing while it waits for a chat’s lock', async () => {
+    const { clock, waits, pace } = pacedClock()
+    pace.begin()
+
+    await pace.inChat(
+      async (_sessionId, task) => {
+        // Someone else holds the chat for two seconds.
+        clock.now += 2_000
+        return task()
+      },
+      'session-held',
+      async () => undefined
+    )
+    await pace.yieldTask()
+
+    expect(waits).toEqual([])
   })
 })

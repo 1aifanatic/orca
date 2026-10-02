@@ -33,10 +33,10 @@ export async function restoreJournalStore(
   // A restore reads a chat still in its per-chat file from there, and copies it before its first use.
   const preview = host.deferPerSessionImport ? await previewPerSessionJournal(source) : null
   if (preview) {
-    host.owe(async (yieldTask) => {
+    host.owe(async () => {
       // The copy's own fold is what a replay would return; another copy first means a replay.
       const imported =
-        (await importPerSessionJournal({ ...source, ...(yieldTask ? { yieldTask } : {}) })).load ??
+        (await importPerSessionJournal(source)).load ??
         replayJournal(source.database.db, host.identity.sessionId)
       if (!imported) {
         throw new Error(`per-chat journal of ${host.identity.sessionId} was gone before its copy`)
