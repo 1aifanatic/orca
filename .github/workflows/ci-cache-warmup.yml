@@ -30,13 +30,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: pnpm/setup@v2
-        with:
-          install: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: package.json
-          package-manager-cache: false
+      - uses: ./.github/actions/install-node-dependencies
+      - name: Prepare the existing process wrapper outside measurement
+        run: |-
+          node --input-type=module <<'NODE'
+          import { build } from 'esbuild'
+          import { join } from 'node:path'
+          await build({ stdin: { contents: 'export { runProcessSync } from "./src/shared/child-process/run-process.ts"', resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'esm', outfile: join(process.env.RUNNER_TEMP, 'linux-store-process.mjs'), logLevel: 'silent' })
+          NODE
       - name: Start with a fresh dependency tree
         id: first-reset
         run: node config/scripts/ci-linux-root-store-trial.mjs reset

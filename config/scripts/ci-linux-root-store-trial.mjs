@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
-import { runProcessSync } from './script-child-process.mjs'
+import { pathToFileURL } from 'node:url'
 
 const root = resolve(import.meta.dirname, '../..')
 if (
@@ -13,6 +13,9 @@ if (
 ) {
   throw new Error('Disposable hosted Linux checkout required')
 }
+const { runProcessSync } = await import(
+  pathToFileURL(join(process.env.RUNNER_TEMP, 'linux-store-process.mjs')).href
+)
 const output = join(process.env.RUNNER_TEMP, 'linux-root-store-comparison')
 mkdirSync(output, { recursive: true })
 const pnpm = resolvePnpmCliInvocation()
