@@ -2,6 +2,7 @@ import type { OrcadMigrationCatalogPayload } from '../../../shared/orcad-migrati
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { SshTarget } from '../../../shared/ssh-types'
 import type { Store } from '../../persistence'
+import { orcadSourceFolderWorkspaceIds, repoBelongsToOrcadSource } from './orcad-source-ownership'
 
 type OrcadSourceCatalogStore = Pick<Store, 'getFolderWorkspaces' | 'getProjectGroups' | 'getRepos'>
 
@@ -9,19 +10,18 @@ export function collectOrcadMigrationSourceCatalog(
   store: OrcadSourceCatalogStore,
   target: Pick<SshTarget, 'id'>
 ): OrcadMigrationCatalogPayload {
-  const repositories = store
-    .getRepos()
-    .filter((repo) => repo.connectionId === target.id)
-    .map((repo) => structuredClone(repo))
+  const allRepos = store.getRepos()
   const allGroups = store.getProjectGroups()
-  const groupConnectionById = new Map(allGroups.map((group) => [group.id, group.connectionId]))
-  const folderWorkspaces = store
-    .getFolderWorkspaces()
-    .filter(
-      (workspace) =>
-        (workspace.connectionId ?? groupConnectionById.get(workspace.projectGroupId) ?? null) ===
-        target.id
-    )
+  const allFolders = store.getFolderWorkspaces()
+  const repositories = allRepos
+    .filter((repo) => repoBelongsToOrcadSource(repo, target.id))
+    .map((repo) => structuredClone(repo))
+  const ownedFolderIds = orcadSourceFolderWorkspaceIds(
+    { repos: allRepos, projectGroups: allGroups, folderWorkspaces: allFolders },
+    target.id
+  )
+  const folderWorkspaces = allFolders
+    .filter((workspace) => ownedFolderIds.has(workspace.id))
     .map((workspace) => structuredClone(workspace))
   const projectGroups = collectProjectGroups(
     allGroups,

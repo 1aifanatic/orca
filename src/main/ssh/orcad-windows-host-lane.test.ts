@@ -1,4 +1,5 @@
-// Managed orcad on a real Win32-OpenSSH host, one cell per DefaultShell: resolve the context
+// Managed orcad on a real Win32-OpenSSH host, one cell per DefaultShell: prove the conversion's
+// terminal gate against the pinned relay already serving the host, then resolve the context
 // (pinned node.exe, host script), deploy and activate, prove readiness and liveness, decommission
 // through the instance-bound stop request, prove exit, and run a GC pass. config/ci/windows-ssh-provider/invoke-pinned-relay-cells.ps1
 // provisions the account and runs this file for `orcad-*` cells; ssh-windows-hosts.yml runs that.
@@ -16,6 +17,7 @@ import {
   installHostileHostAppEnvironment
 } from './ssh-hostile-host-test-harness'
 import { resolveOrcadRemoteContext } from './orcad-remote-context'
+import { proveWindowsRelayTerminalGate } from './orcad-windows-relay-terminal-gate-cell'
 import { deployOrcad } from './orcad-remote-deploy'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
@@ -65,6 +67,8 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
       let conn: SshConnection | null = null
       try {
         conn = await connectHostileHost(sshTarget)
+        // A relay-hosted source first: conversion may proceed only once its terminals exited.
+        Object.assign(receipt, await proveWindowsRelayTerminalGate(conn, sshTarget.id))
         const context = await resolveOrcadRemoteContext(sshTarget, conn)
         expect(context.host.os).toBe('win32')
         const options: OrcadSlotOptions = {
