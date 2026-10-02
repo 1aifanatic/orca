@@ -707,58 +707,28 @@ describe('StructuredAgentSessionStatusBridge', () => {
     render(<PhaseProbe />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 1 }
-        })
-      })
-    )
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'starting' }) }))
     const rendersWhileStarting = phases.length
     act(() =>
       feed().emit({
         type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 1 },
-          latestPrompt: 'next',
-          updatedAt: 2
-        })
+        session: summary({ hostExecutionPhase: 'starting', latestPrompt: 'next', updatedAt: 2 })
       })
     )
     expect(phases).toHaveLength(rendersWhileStarting)
+    // Older hosts (v1.4.218 on) also send which provider child is starting; nothing reads it.
+    const olderHostChild = { hostExecutionChild: { generation: 'child-1', fence: 2 } }
     act(() =>
       feed().emit({
         type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 2 }
-        })
+        session: summary({ hostExecutionPhase: 'starting', ...olderHostChild })
       })
     )
     expect(phases).toHaveLength(rendersWhileStarting)
 
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'ready',
-          hostExecutionChild: { generation: 'child-1', fence: 1 }
-        })
-      })
-    )
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'ready' }) }))
     expect(phases.at(-1)).toBe('ready')
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-2', fence: 2 }
-        })
-      })
-    )
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'starting' }) }))
     expect(phases.at(-1)).toBe('starting')
   })
 })
