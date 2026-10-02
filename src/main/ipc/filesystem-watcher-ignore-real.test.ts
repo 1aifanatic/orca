@@ -42,11 +42,19 @@ describe('filesystem watcher native ignores', () => {
       buildParcelWatcherIgnoreOptions(WATCHER_IGNORE_DIRS)
     )
 
+    const generatedNames = Array.from({ length: 20 }, (_, index) => `generated-${index}.js`)
+    // Windows forbids control characters in filenames.
+    if (process.platform !== 'win32') {
+      generatedNames.push('generated\nnewline.js')
+    }
     const generatedFiles = [rootModules, nestedModules].flatMap((directory) =>
-      Array.from({ length: 20 }, (_, index) => join(directory, `generated-${index}.js`))
+      generatedNames.map((name) => join(directory, name))
     )
     await Promise.all(generatedFiles.map((file) => writeFile(file, 'generated')))
     const sourceFiles = [join(root, 'source.ts'), join(nestedSource, 'source.ts')]
+    if (process.platform !== 'win32') {
+      sourceFiles.push(join(root, 'source\nnewline.ts'), join(nestedSource, 'source\nnewline.ts'))
+    }
     await Promise.all(sourceFiles.map((file) => writeFile(file, 'source')))
 
     await vi.waitFor(

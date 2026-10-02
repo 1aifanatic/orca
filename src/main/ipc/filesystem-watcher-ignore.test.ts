@@ -56,6 +56,21 @@ describe('buildParcelWatcherIgnoreOptions', () => {
     }
   })
 
+  it('matches newline-containing paths only under ignored names', () => {
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      setPlatform(platform)
+      const options = buildParcelWatcherIgnoreOptions(WATCHER_IGNORE_DIRS)
+      const regex = new RegExp(options.ignoreGlobs?.[0] ?? '(?!)')
+      expect(regex.test('packages/app/node_modules/generated\nnewline.js')).toBe(true)
+      expect(regex.test('packages/app/src/source\nnewline.ts')).toBe(false)
+      expect(regex.test('packages/app/node_modules-cache/generated\nnewline.js')).toBe(false)
+      expect(regex.test('packages\\app\\node_modules\\generated\nnewline.js')).toBe(
+        platform === 'win32'
+      )
+      expect(regex.test('packages\\app\\src\\source\nnewline.ts')).toBe(false)
+    }
+  })
+
   it('uses one lookahead-free native regex for nested ignores on Linux/Windows', () => {
     for (const platform of ['linux', 'win32'] as const) {
       setPlatform(platform)
