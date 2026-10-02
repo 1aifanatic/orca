@@ -34,20 +34,22 @@ function turn() {
   }
   translator.handle(notification('turn/started', { turn: { id: TURN_ID } }))
   const latest = () => activities.at(-1) ?? null
-  return { translator, item, latest }
+  return { translator, item, latest, activities }
 }
 
 describe("Codex's open reasoning, as the host reports it live", () => {
   it('opens at item/started, summaries or not, and closes at its completion', () => {
-    const { item, latest } = turn()
+    const { item, latest, activities } = turn()
     item('item/started', 'reasoning', 'r-1')
     expect(latest()).toEqual({
       turnId: TURN_ID,
       text: 'Thinking through the request',
       reasoning: { session: true, subagents: [] }
     })
+    const before = activities.length
     item('item/completed', 'reasoning', 'r-1')
-    expect(latest()).toBeNull()
+    // Words and reasoning end in one frame: no "Thinking" flashes between them.
+    expect(activities.slice(before)).toEqual([null])
   })
 
   it('closes when the turn completes or the provider exits', () => {

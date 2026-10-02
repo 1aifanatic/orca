@@ -52,6 +52,25 @@ describe('the live turn activity channel', () => {
     expect(sent.at(-1)).toBeNull()
   })
 
+  it("publishes one event's updates once, as their net result", () => {
+    const { sent, activity } = channel()
+    activity.setText('turn-1', 'Thinking through the request')
+    activity.setReasoning('turn-1', OPEN)
+    sent.length = 0
+    activity.batch(() => {
+      activity.setText('turn-1', null)
+      activity.setReasoning('turn-1', CLOSED)
+    })
+    expect(sent).toEqual([null])
+    activity.batch(() => {
+      activity.clear()
+      activity.setReasoning('turn-2', OPEN)
+    })
+    expect(sent).toEqual([null, { turnId: 'turn-2', text: '', reasoning: OPEN }])
+    activity.batch(() => {})
+    expect(sent).toHaveLength(2)
+  })
+
   it('names each subagent once, in a stable order, and boundedly', () => {
     const { sent, activity } = channel()
     activity.setReasoning('turn-1', { session: false, subagents: ['b', 'a', 'b'] })

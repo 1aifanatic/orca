@@ -31,6 +31,7 @@ import type {
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
 import type { AgentTurnOutcome } from './agent-turn-outcome'
+import type { AgentSessionTurnActivity } from './agent-session-turn-activity'
 import {
   agentSessionScopeKey,
   type AgentSessionExecutionLocation,
@@ -59,17 +60,10 @@ export type {
 } from './agent-session-background-task-wire'
 export { agentSessionBackgroundTasksEqual } from './agent-session-background-task-wire'
 
-export type AgentSessionTurnActivity = {
-  turnId: string
-  /** The provider's own words; '' when the host reports only open reasoning. */
-  text: string
-  /** Who has a reasoning block or item open in this turn right now. Absent from older hosts and
-   *  when nothing is open. */
-  reasoning?: AgentSessionOpenReasoning
-}
-
-/** `subagents` names producer agentIds, the ids subagent sections are keyed by. */
-export type AgentSessionOpenReasoning = { session: boolean; subagents: string[] }
+export type {
+  AgentSessionOpenReasoning,
+  AgentSessionTurnActivity
+} from './agent-session-turn-activity'
 
 export const AGENT_SESSION_ID_MAX_LENGTH = 512
 

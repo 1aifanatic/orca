@@ -292,9 +292,11 @@ export function createCodexJournalTranslator(
       })
     },
     handle: (event) => {
-      const admission = handle(event)
-      publishReasoning()
-      return admission
+      return activity.batch(() => {
+        const admission = handle(event)
+        publishReasoning()
+        return admission
+      })
     },
     beginCommand: (command) => commands.begin(command),
     forgetCommand: (turnId) => commands.forget(turnId),

@@ -1,7 +1,8 @@
-import type {
-  AgentSessionOpenReasoning,
-  AgentSessionTurnActivity
-} from '../../../shared/agent-session-wire'
+import {
+  agentSessionTurnActivitiesEqual,
+  type AgentSessionOpenReasoning,
+  type AgentSessionTurnActivity
+} from '../../../shared/agent-session-turn-activity'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 
 /** Bounds the published list; a turn running more reasoning subagents at once is not plausible. */
@@ -16,25 +17,13 @@ export type TurnActivityChannel = {
   setReasoning: (turnId: string | null, reasoning: AgentSessionOpenReasoning) => void
   /** The turn ended or a new one opened: nothing it said is current any more. */
   clear: () => void
+  /** Runs one provider event's updates, publishing their net result once at the end: an item that
+   *  clears its words and closes its reasoning must not show the half-way state between them. */
+  batch: <T>(run: () => T) => T
 }
 
 function isOpen(reasoning: AgentSessionOpenReasoning): boolean {
   return reasoning.session || reasoning.subagents.length > 0
-}
-
-function sameActivity(
-  a: AgentSessionTurnActivity | null,
-  b: AgentSessionTurnActivity | null
-): boolean {
-  if (a === null || b === null) {
-    return a === b
-  }
-  return (
-    a.turnId === b.turnId &&
-    a.text === b.text &&
-    a.reasoning?.session === b.reasoning?.session &&
-    (a.reasoning?.subagents ?? []).join('\n') === (b.reasoning?.subagents ?? []).join('\n')
-  )
 }
 
 /** One turn's live activity line, composed from the provider's words and its open reasoning, so
@@ -46,6 +35,9 @@ export function createTurnActivityChannel(
   let text = ''
   let reasoning = NOTHING_OPEN
   let published: AgentSessionTurnActivity | null = null
+  let batching = false
+  /** Inside a batch: whether anything asked to publish, and whether any of it had to be sent. */
+  let owed: { force: boolean } | null = null
 
   const retarget = (next: string): void => {
     if (next !== turnId) {
@@ -55,11 +47,15 @@ export function createTurnActivityChannel(
     }
   }
   const publish = (force = false): void => {
+    if (batching) {
+      owed = { force: force || owed?.force === true }
+      return
+    }
     const next: AgentSessionTurnActivity | null =
       turnId !== null && (text || isOpen(reasoning))
         ? { turnId, text, ...(isOpen(reasoning) ? { reasoning } : {}) }
         : null
-    if (force || !sameActivity(next, published)) {
+    if (force || !agentSessionTurnActivitiesEqual(next, published)) {
       published = next
       sink.setActivity?.(next)
     }
@@ -95,6 +91,22 @@ export function createTurnActivityChannel(
       text = ''
       reasoning = NOTHING_OPEN
       publish(true)
+    },
+    batch: (run) => {
+      if (batching) {
+        return run()
+      }
+      batching = true
+      try {
+        return run()
+      } finally {
+        batching = false
+        const due = owed
+        owed = null
+        if (due) {
+          publish(due.force)
+        }
+      }
     }
   }
 }
