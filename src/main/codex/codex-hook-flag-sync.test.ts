@@ -509,9 +509,14 @@ describe('syncCodexHookFlags', () => {
     await syncCodexHookFlags()
     expect(openWatches(bin)).toHaveLength(1)
 
-    // Why: a folder an update replaced under the same name needs a new watch.
-    rmSync(bin, { recursive: true })
-    mocks.state.mainPath = writeBinary(join(bin, 'codex'))
+    // Why: a folder an update replaced under the same name needs a new watch. Swapped
+    // in while the old one still exists, as updaters do: a delete-then-mkdir can get
+    // the freed inode back on Linux, which a dev:ino check cannot tell apart.
+    writeBinary(join(root, 'bin.next', 'codex'))
+    renameSync(bin, join(root, 'bin.old'))
+    renameSync(join(root, 'bin.next'), bin)
+    rmSync(join(root, 'bin.old'), { recursive: true })
+    mocks.state.mainPath = join(bin, 'codex')
     versions.set(mocks.state.mainPath, 'codex-cli 0.159.2')
     await syncCodexHookFlags()
     expect(openWatches(bin)).toHaveLength(1)
