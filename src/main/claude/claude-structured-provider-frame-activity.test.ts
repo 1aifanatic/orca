@@ -1,8 +1,8 @@
-// Every Claude frame reaches the host's chat activity as it is delivered, a streamed delta the
-// journal has not written a row for included: what background work gives way to.
+// Claude frames that reach the host only as a noted frame: a text delta between the journal's
+// checkpoints, and a thinking delta, which no row write, publish or activity update carries.
 
-import { describe, expect, it, vi } from 'vitest'
-import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import { describe, expect, it } from 'vitest'
+import { recordingEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink-call-recorder'
 import {
   adapterFor,
   fakeClaude,
@@ -12,73 +12,47 @@ import {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 100))
 
-describe('Claude provider frames as chat activity', () => {
-  it('notes a streamed delta that writes no row', async () => {
-    const claude = fakeClaude()
-    const sink = {
-      appendItem: vi.fn(),
-      appendTombstone: vi.fn(),
-      publish: vi.fn(),
-      noteProviderFrame: vi.fn()
-    } satisfies StructuredAgentSessionEventSink
-    const adapter = adapterFor(claude)
-    await adapter.acquire({
-      identity: identityFor(),
-      fence: 7,
-      spawnToken: 'spawn-9',
-      events: sink
-    })
-    const delta = (uuid: string) =>
-      claude.connections[0]!.handlers.onMessage?.({
-        type: 'stream_event',
-        event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'x' } },
-        session_id: PROVIDER_SESSION_ID,
-        uuid
-      })
-    // The block's first text is its first checkpoint; later deltas wait for it to grow.
-    delta('stream-1')
-    await settle()
-    const frames = sink.noteProviderFrame.mock.calls.length
-    const appends = sink.appendItem.mock.calls.length
-
-    delta('stream-2')
-    await settle()
-
-    expect(sink.noteProviderFrame.mock.calls.length).toBe(frames + 1)
-    expect(sink.appendItem.mock.calls.length).toBe(appends)
+async function acquiredWithRecordingSink() {
+  const claude = fakeClaude()
+  const recorder = recordingEventSink()
+  const adapter = adapterFor(claude)
+  await adapter.acquire({
+    identity: identityFor(),
+    fence: 7,
+    spawnToken: 'spawn-9',
+    events: recorder.sink
   })
-
-  it('notes a thinking delta, which neither the text coalescer nor a row write sees', async () => {
-    const claude = fakeClaude()
-    const sink = {
-      appendItem: vi.fn(),
-      appendTombstone: vi.fn(),
-      publish: vi.fn(),
-      noteProviderFrame: vi.fn()
-    } satisfies StructuredAgentSessionEventSink
-    const adapter = adapterFor(claude)
-    await adapter.acquire({
-      identity: identityFor(),
-      fence: 7,
-      spawnToken: 'spawn-9',
-      events: sink
-    })
-    const frames = sink.noteProviderFrame.mock.calls.length
-    const appends = sink.appendItem.mock.calls.length
-
+  const frame = (delta: Record<string, unknown>, uuid: string) =>
     claude.connections[0]!.handlers.onMessage?.({
       type: 'stream_event',
-      event: {
-        type: 'content_block_delta',
-        index: 0,
-        delta: { type: 'thinking_delta', thinking: 'weighing the options' }
-      },
+      event: { type: 'content_block_delta', index: 0, delta },
       session_id: PROVIDER_SESSION_ID,
-      uuid: 'thinking-1'
+      uuid
     })
+  return { ...recorder, frame }
+}
+
+describe('Claude frames as chat activity', () => {
+  it('reaches the sink only as a noted frame for a text delta between checkpoints', async () => {
+    const { calls, frame } = await acquiredWithRecordingSink()
+    // The block's first text is its first checkpoint; later deltas wait for it to grow.
+    frame({ type: 'text_delta', text: 'x' }, 'stream-1')
+    await settle()
+    const before = calls.length
+
+    frame({ type: 'text_delta', text: 'x' }, 'stream-2')
     await settle()
 
-    expect(sink.noteProviderFrame.mock.calls.length).toBe(frames + 1)
-    expect(sink.appendItem.mock.calls.length).toBe(appends)
+    expect(calls.slice(before)).toEqual(['noteProviderFrame'])
+  })
+
+  it('reaches the sink only as a noted frame for a thinking delta', async () => {
+    const { calls, frame } = await acquiredWithRecordingSink()
+    const before = calls.length
+
+    frame({ type: 'thinking_delta', thinking: 'weighing the options' }, 'thinking-1')
+    await settle()
+
+    expect(calls.slice(before)).toEqual(['noteProviderFrame'])
   })
 })
