@@ -82,6 +82,8 @@ export const KnownRuntimeEnvironmentSchema = PersistedRuntimeEnvironmentSchema.e
   sshAccess: RuntimeSshAccessLinkSchema.optional(),
   pendingSshAccessOperation: RuntimeSshAccessOperationSchema.optional(),
   orcadDeployment: OrcadDeploymentLinkSchema.optional(),
+  /** When a migration into this managed server began committing; older snapshots predate it. */
+  orcadMigratedAt: z.string().datetime().optional(),
   reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
 })
   .refine(

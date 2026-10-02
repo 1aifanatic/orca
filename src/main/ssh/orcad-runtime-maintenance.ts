@@ -37,6 +37,7 @@ import { readRemoteOrcadBuildHash } from './orcad-remote-build-hash'
 import { deployOrcad } from './orcad-remote-deploy'
 import { rollbackOrcad } from './orcad-remote-rollback'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
+import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
 import { tunneledOrcadPairingCode } from './orcad-tunneled-pairing'
 
 type LifecycleArgs = { selector: string; signal?: AbortSignal }
@@ -138,6 +139,10 @@ export function rollbackManagedOrcadEnvironment(
           reason: 'This server has no previous version to roll back to.'
         }
       }
+      const crossing = migrationRollbackRefusal(userDataPath, environment, record.activatedAt)
+      if (crossing) {
+        return crossing
+      }
       const census = await collectManagedTerminalCensus(userDataPath, environment, record)
       // Why idle only: this client cannot read the older build's daemon protocol, so it cannot show
       // that build would reach terminals that are still running.
@@ -212,4 +217,33 @@ export function recoverManagedOrcadEnvironment(
       }
     }
   )
+}
+
+/**
+ * A rollback restores the snapshot taken when the current version activated. If a migration
+ * began after that, the snapshot predates the imported catalog and restoring it would drop it.
+ */
+function migrationRollbackRefusal(
+  userDataPath: string,
+  environment: KnownRuntimeEnvironment,
+  activatedAt: string | null
+): OrcadManagedRollbackResult | null {
+  if (findIncompleteManagedOrcadMigration(userDataPath, environment.id)) {
+    return {
+      outcome: 'refused',
+      code: 'orcad_rollback_migration_in_progress',
+      reason: 'A migration into this server is still running. Finish it before rolling back.'
+    }
+  }
+  const migratedAt = environment.orcadMigratedAt
+  if (migratedAt && (activatedAt === null || Date.parse(activatedAt) < Date.parse(migratedAt))) {
+    return {
+      outcome: 'refused',
+      code: 'orcad_rollback_crosses_migration',
+      reason:
+        "The previous version's state predates the projects migrated onto this server; " +
+        'rolling back would lose them. Deploy forward instead.'
+    }
+  }
+  return null
 }

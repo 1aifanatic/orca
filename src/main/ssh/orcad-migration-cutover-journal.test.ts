@@ -2,9 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ORCAD_MIGRATION_MANIFEST_VERSION } from '../../shared/orcad-migration-manifest'
-import type { OrcadMigrationSourceCutover } from '../../shared/orcad-migration-source-cutover'
-import { computeOrcadMigrationManifestSha256 } from '../orcad/orcad-migration-manifest-digest'
+import { orcadMigrationCutoverFixture as cutover } from './orcad-migration-cutover-fixture'
 import {
   findOrcadMigrationSourceCutoverForTarget,
   listOrcadMigrationSourceCutovers,
@@ -18,32 +16,6 @@ beforeEach(() => {
   userDataPath = mkdtempSync(join(tmpdir(), 'orcad-cutover-journal-'))
 })
 afterEach(() => rmSync(userDataPath, { recursive: true, force: true }))
-
-function cutover(migrationId = 'migration-1', sshTargetId = 'ssh-1'): OrcadMigrationSourceCutover {
-  const unsigned = {
-    version: ORCAD_MIGRATION_MANIFEST_VERSION,
-    migrationId,
-    createdAt: '2026-10-01T00:00:00.000Z',
-    source: { sshTargetId, sshTargetGeneration: 2, targetLabel: 'Prod' },
-    payload: { repositories: [], projectGroups: [], folderWorkspaces: [] },
-    destinationEnvironmentId: 'env-1'
-  }
-  const manifest = { ...unsigned, manifestSha256: computeOrcadMigrationManifestSha256(unsigned) }
-  return {
-    version: 1,
-    migrationId,
-    phase: 'source-fenced',
-    startedAt: '2026-10-01T00:00:00.000Z',
-    updatedAt: '2026-10-01T00:00:00.000Z',
-    destinationEnvironmentId: 'env-1',
-    destinationName: 'Managed',
-    sshTargetId,
-    sshTargetGeneration: 2,
-    manifestSha256: manifest.manifestSha256,
-    provenPtyIds: [],
-    manifest
-  }
-}
 
 const journalPath = (id: string) =>
   join(orcadMigrationCutoverJournalDirectory(userDataPath), `${id}.json`)

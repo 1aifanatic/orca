@@ -90,6 +90,11 @@ export class SshConnectionStore {
     return new SshTargetOrcadClaims(this.store)
   }
 
+  /** The profile reads and scrollback reservations a migration exports from. */
+  getOrcadMigrationSource(): Store {
+    return this.store
+  }
+
   updateTarget(id: string, updates: Partial<Omit<SshTarget, 'id'>>): SshTarget | null {
     const existing = this.store.getSshTarget(id)
     // Why: a new runtime choice or endpoint must re-run the ladder, not replay the old rung.

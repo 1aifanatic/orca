@@ -26,6 +26,8 @@ import { resolveOrcadRemoteContext } from './orcad-remote-context'
 import { deployOrcad } from './orcad-remote-deploy'
 import { tunneledOrcadPairingCode } from './orcad-tunneled-pairing'
 import { hasRegisteredDirectSshAuthority } from './ssh-target-registry'
+import { resolveOrcadMigrationFence } from './orcad-migration-source-fence'
+import type { SshTarget } from '../../shared/ssh-types'
 import {
   isForceableOrcadDeferral,
   managedOrcadSlot,
@@ -35,7 +37,14 @@ import {
 
 export async function createManagedOrcadEnvironment(
   userDataPath: string,
-  args: { name: string; sshTargetId: string; force?: boolean; signal?: AbortSignal }
+  args: {
+    name: string
+    sshTargetId: string
+    force?: boolean
+    signal?: AbortSignal
+    /** Deploying into a target fenced by a migration journal rather than claiming an empty one. */
+    migration?: boolean
+  }
 ): Promise<OrcadManagedDeployResult> {
   return runTargetLifecycle(args.sshTargetId, async () => {
     const { connectionManager, targetStore, claims } = requireManagedOrcadInfrastructure()
@@ -57,10 +66,15 @@ export async function createManagedOrcadEnvironment(
       throw new Error('Disconnect this SSH host before converting it to a managed Orca server.')
     }
     const current = targetStore.getTarget(args.sshTargetId)
+    if (args.migration) {
+      assertMigrationFence(userDataPath, current, environmentId, args.name)
+    }
     const claimed = claims.claim(args.sshTargetId, environmentId, {
-      deployName: args.name,
-      // Why: this deploy's own claim left a provisioning intent, or the server it registered.
-      ownerRecorded: Boolean(current?.orcadProvisioning) || Boolean(registered)
+      // A migration records itself in its journal, not as a provisioning intent.
+      ...(args.migration ? {} : { deployName: args.name }),
+      // Why: this deploy's own claim left a provisioning intent or a journal, or registered a server.
+      ownerRecorded:
+        Boolean(args.migration) || Boolean(current?.orcadProvisioning) || Boolean(registered)
     })
     await claims.flush(args.signal)
     const targetGeneration = claimed.generation
@@ -154,4 +168,20 @@ export async function createManagedOrcadEnvironment(
       }
     }
   })
+}
+
+function assertMigrationFence(
+  userDataPath: string,
+  target: SshTarget | undefined,
+  environmentId: string,
+  name: string
+): void {
+  const fence = target ? resolveOrcadMigrationFence(userDataPath, target) : null
+  if (
+    fence?.state !== 'fenced' ||
+    fence.cutover.destinationEnvironmentId !== environmentId ||
+    fence.cutover.destinationName !== name
+  ) {
+    throw new Error('orcad_migration_fence_required')
+  }
 }
