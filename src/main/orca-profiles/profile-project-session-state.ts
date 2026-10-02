@@ -45,6 +45,10 @@ export function mergeWorkspaceSessions(
   const base = existing ?? getDefaultWorkspaceSession()
   return {
     ...base,
+    // Why: the focus scalars below fall back to incoming together, so a borrowed worktree keeps its repo and host.
+    activeRepoId: base.activeRepoId ?? incoming.activeRepoId,
+    activeWorkspaceExecutionHostId:
+      base.activeWorkspaceExecutionHostId ?? incoming.activeWorkspaceExecutionHostId,
     tabsByWorktree: { ...base.tabsByWorktree, ...incoming.tabsByWorktree },
     terminalLayoutsByTabId: {
       ...base.terminalLayoutsByTabId,
@@ -111,6 +115,14 @@ export function mergeWorkspaceSessions(
       ...base.terminalSurfaceTombstonesByPaneKey,
       ...incoming.terminalSurfaceTombstonesByPaneKey
     },
+    ...(base.sleepingAgentSessionsByPaneKey || incoming.sleepingAgentSessionsByPaneKey
+      ? {
+          sleepingAgentSessionsByPaneKey: {
+            ...base.sleepingAgentSessionsByPaneKey,
+            ...incoming.sleepingAgentSessionsByPaneKey
+          }
+        }
+      : {}),
     activeWorktreeIdsOnShutdown: [
       ...(base.activeWorktreeIdsOnShutdown ?? []),
       ...(incoming.activeWorktreeIdsOnShutdown ?? [])
