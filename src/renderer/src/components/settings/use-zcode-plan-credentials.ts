@@ -9,33 +9,36 @@ export function useZcodePlanCredentials(updatedAt: number | undefined) {
   const [status, setStatus] = useState<ZcodePlanCredentialsStatus | null>(null)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [credentialBusy, setCredentialBusy] = useState(false)
-  const generation = useRef(0)
+  const readGeneration = useRef(0)
   const mutationPending = useRef(false)
 
   useEffect(() => {
     if (mutationPending.current) {
       return
     }
-    const request = ++generation.current
+    const request = ++readGeneration.current
     void window.api.zcodePlanCredentials.getStatus().then(
       (next) => {
-        if (request === generation.current) {
+        if (request === readGeneration.current) {
           setStatus(next)
         }
       },
       () => {
-        if (request === generation.current) {
+        if (request === readGeneration.current) {
           setStatus(null)
         }
       }
     )
     return () => {
-      generation.current += 1
+      readGeneration.current += 1
     }
-  }, [updatedAt])
+  }, [updatedAt, credentialBusy])
 
   const updateCredential = async (action: 'save' | 'clear'): Promise<void> => {
-    const request = ++generation.current
+    if (mutationPending.current) {
+      return
+    }
+    readGeneration.current += 1
     mutationPending.current = true
     setCredentialBusy(true)
     try {
@@ -43,9 +46,16 @@ export function useZcodePlanCredentials(updatedAt: number | undefined) {
         action === 'save'
           ? await window.api.zcodePlanCredentials.saveApiKey(apiKeyDraft.trim())
           : await window.api.zcodePlanCredentials.clearApiKey()
-      if (request === generation.current) {
-        setStatus(next)
+      if (
+        !next ||
+        typeof next.apiKeyConfigured !== 'boolean' ||
+        typeof next.zcodeCliConfigured !== 'boolean'
+      ) {
+        throw new Error(
+          'GLM Coding Plan keys can only be changed in the desktop app on the computer running Orca.'
+        )
       }
+      setStatus(next)
       setApiKeyDraft('')
       recordFeatureInteraction('usage-tracking')
       if (action === 'save') {

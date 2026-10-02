@@ -52,8 +52,8 @@ import { ZcodePlanAccountsSection } from './ZcodePlanAccountsSection'
 describe('ZcodePlanAccountsSection', () => {
   beforeEach(() => {
     mocks.getStatus.mockResolvedValue({ apiKeyConfigured: false, zcodeCliConfigured: false })
-    mocks.saveApiKey.mockResolvedValue({ apiKeyConfigured: true })
-    mocks.clearApiKey.mockResolvedValue({ apiKeyConfigured: false })
+    mocks.saveApiKey.mockResolvedValue({ apiKeyConfigured: true, zcodeCliConfigured: false })
+    mocks.clearApiKey.mockResolvedValue({ apiKeyConfigured: false, zcodeCliConfigured: false })
     mocks.refreshRateLimits.mockResolvedValue(undefined)
     mocks.updateSettings.mockResolvedValue(undefined)
     mocks.recordFeatureInteraction.mockReset()
@@ -193,6 +193,11 @@ describe('GLM credential status races', () => {
 
   it('keeps the saved status when an earlier status read finishes late', async () => {
     let finishRead: ((value: unknown) => void) | undefined
+    mocks.getStatus.mockResolvedValue({
+      apiKeyConfigured: true,
+      zcodeCliConfigured: false,
+      apiKeyProtection: 'sealed'
+    })
     mocks.getStatus.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
