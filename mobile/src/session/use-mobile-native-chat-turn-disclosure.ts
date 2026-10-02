@@ -27,7 +27,11 @@ export type MobileNativeChatTurnRow = {
   /** Set only on a settled turn — the one row that has activity to disclose. */
   turnKey?: string
   activeTurnIsWorking: boolean
+  /** The host reports this row's agent reasoning right now, in this row's live turn. */
+  reasoningOpen: boolean
 }
+
+const NO_OPEN_REASONING = (): boolean => false
 
 /** Owns the transcript's per-turn status rows and their disclosure state, and
  *  resolves what one list row needs. Bridge-lane chats pass `enabled: false` and
@@ -40,6 +44,7 @@ export function useMobileNativeChatTurnDisclosure({
   settledTurns,
   turnJournal = null,
   thinking = false,
+  isReasoningOpen = NO_OPEN_REASONING,
   activityText = null,
   scopeKey
 }: {
@@ -51,8 +56,10 @@ export function useMobileNativeChatTurnDisclosure({
   settledTurns?: NativeChatSettledTurns | null
   /** The journal that places each row in its turn; absent groups rows by position. */
   turnJournal?: NativeChatTurnJournal | null
-  /** Whether the turn is reasoning right now, derived from its journal content. */
+  /** Whether the host reports the session's own agent reasoning right now. */
   thinking?: boolean
+  /** The host's live reasoning gate for the live turn, per row scope. */
+  isReasoningOpen?: (agentId?: string) => boolean
   /** What the provider says the live turn is doing; outranks the other labels. */
   activityText?: string | null
   /** Host/worktree/tab identity for timing and disclosure isolation. */
@@ -156,10 +163,12 @@ export function useMobileNativeChatTurnDisclosure({
         // Liveness is the live turn's rows, not the newest prompt's: a running turn's rows stay live
         // while a newer message waits behind it. With no user boundary at all, the session's
         // working state stays authoritative.
-        activeTurnIsWorking: enabled && isWorking && turnKey === liveTurnKey
+        activeTurnIsWorking: enabled && isWorking && turnKey === liveTurnKey,
+        reasoningOpen: enabled && turnKey === liveTurnKey && isReasoningOpen(message.agentId)
       }
     },
     [
+      isReasoningOpen,
       turnKeys,
       waiting,
       bars,

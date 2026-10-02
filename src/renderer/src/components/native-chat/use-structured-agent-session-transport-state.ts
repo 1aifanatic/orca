@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { activeStructuredAgentSessionTurnId } from '../../../../shared/structured-agent-session-projection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../../shared/structured-agent-session-main-agent-working'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
 import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { selectStructuredAgentTurnActivity } from '../../../../shared/native-chat-turn-activity'
+import { nativeChatReasoningOpen } from '../../../../shared/native-chat-reasoning-row'
 import { structuredSessionBackgroundTasksView } from './structured-session-background-tasks-view'
 import { useStructuredAgentTurnTiming } from './use-structured-agent-turn-timing'
 
@@ -22,9 +23,14 @@ export function useStructuredAgentSessionTransportState(
   const turnId = activeStructuredAgentSessionTurnId(journalItems)
   // The rule the host projects every session list's Working from, so this chat cannot disagree.
   const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, submissions, fence)
+  const activity = enabled ? state.activity : null
   const turnActivity = useMemo(
-    () => selectStructuredAgentTurnActivity(journalItems, turnId, enabled ? state.activity : null),
-    [enabled, journalItems, state.activity, turnId]
+    () => selectStructuredAgentTurnActivity(journalItems, turnId, activity),
+    [activity, journalItems, turnId]
+  )
+  const isReasoningOpen = useCallback(
+    (agentId?: string) => nativeChatReasoningOpen(activity, turnId, agentId),
+    [activity, turnId]
   )
   const turnTiming = useStructuredAgentTurnTiming(
     {
@@ -42,6 +48,7 @@ export function useStructuredAgentSessionTransportState(
     turnId,
     isWorking,
     turnActivity,
+    isReasoningOpen,
     turnTiming,
     // null = no drafts or no claim; the projection treats both as an empty list.
     queuedMessages: (enabled ? state.queuedMessages : null) ?? null,

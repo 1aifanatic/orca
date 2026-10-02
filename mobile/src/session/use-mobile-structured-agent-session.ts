@@ -3,11 +3,9 @@ import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-c
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
-import {
-  activeStructuredAgentSessionTurnId,
-  isStructuredAgentSessionThinking
-} from '../../../src/shared/structured-agent-session-live-turn'
+import { activeStructuredAgentSessionTurnId } from '../../../src/shared/structured-agent-session-live-turn'
 import { selectStructuredAgentTurnActivity } from '../../../src/shared/native-chat-turn-activity'
+import { nativeChatReasoningOpen } from '../../../src/shared/native-chat-reasoning-row'
 import {
   pendingStructuredApproval,
   pendingStructuredQuestion,
@@ -165,8 +163,14 @@ export function useMobileStructuredAgentSession(args: {
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
-  const thinking = isStructuredAgentSessionThinking(state.items)
-  const turnIndicator = useMemo(() => ({ thinking, activityText }), [thinking, activityText])
+  const isReasoningOpen = useCallback(
+    (agentId?: string) => nativeChatReasoningOpen(state.activity, turnId, agentId),
+    [state.activity, turnId]
+  )
+  const turnIndicator = useMemo(
+    () => ({ thinking: isReasoningOpen(), activityText, isReasoningOpen }),
+    [isReasoningOpen, activityText]
+  )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(
     () => state.items.find(pendingStructuredApproval) ?? null,
