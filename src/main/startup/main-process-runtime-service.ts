@@ -181,7 +181,11 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   agentHookServer.subscribeEnrichedStatus((enriched) => {
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
     if (!enriched.providerSessionOnly) {
-      runtime.observeAgentPresenceEvidence(enriched.paneKey, enriched.payload.state !== 'working')
+      runtime.observeAgentPresenceEvidence(
+        enriched.paneKey,
+        enriched.payload.agentType ?? 'unknown',
+        enriched.payload.state !== 'working'
+      )
     }
   })
   // Why before anything can attach: a client host that reattaches to a restarted runtime is only

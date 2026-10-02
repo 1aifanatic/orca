@@ -284,7 +284,11 @@ async function startOrcadRuntime(
   // pane's status row changes, and orcad's whole job is serving paired clients.
   agentHookServer.subscribeEnrichedStatus((enriched) => {
     if (!enriched.providerSessionOnly) {
-      runtime.observeAgentPresenceEvidence(enriched.paneKey, enriched.payload.state !== 'working')
+      runtime.observeAgentPresenceEvidence(
+        enriched.paneKey,
+        enriched.payload.agentType ?? 'unknown',
+        enriched.payload.state !== 'working'
+      )
     }
   })
   agentHookServer.setWindowsAgentOwnerProbe((paneKey, identity) =>

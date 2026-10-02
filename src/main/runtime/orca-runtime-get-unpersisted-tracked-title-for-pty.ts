@@ -1,5 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { hasCompatibleAgentTitleIdentity } from '../../shared/agent-title-owner'
+import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import { OrcaRuntimeWithEmitDaemonPtyTransientFact } from './orca-runtime-emit-daemon-pty-transient-fact'
 import { getDecorativeTitleGateKey } from '../../shared/agent-decorative-title-signature'
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
@@ -68,7 +68,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           if (!decorativeOnly && !meta?.staleWorkingTitleClear) {
             this.recheckAgentPresenceEvidence(
               ptyId,
-              hasCompatibleAgentTitleIdentity(normalizedTitle)
+              resolveExplicitTerminalTitleAgentType(normalizedTitle)
             )
           }
           if (live) {

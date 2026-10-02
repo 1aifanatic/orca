@@ -71,10 +71,9 @@ describe('runtime foreground admission', () => {
     expect(f.capture).toHaveBeenCalledTimes(1)
   })
 
-  it('does not read when an identified owner appears before the scheduled observation', async () => {
+  it('lets a command-start doubt an owner, while owner-explained evidence costs nothing', async () => {
     vi.useFakeTimers()
     const f = fixture()
-    f.data('\x1b]133;C\x07')
     f.setRows([
       {
         paneKey,
@@ -85,12 +84,17 @@ describe('runtime foreground admission', () => {
         prompt: '',
         receivedAt: 1,
         stateStartedAt: 1,
-        agentPresence: owner,
-        providerSessionOnly: true
+        agentPresence: owner
       }
     ])
-    await vi.advanceTimersByTimeAsync(1_000)
+    f.runtime.observeAgentPresenceEvidence(paneKey, 'codex')
+    f.data('\x1b]0;⠋ Codex\x07')
+    await vi.advanceTimersByTimeAsync(10)
     expect(f.capture).not.toHaveBeenCalled()
+    // A shell running commands proves the owner is not in front (Ctrl-Z, then another agent).
+    f.data('\x1b]133;C\x07')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenCalledTimes(1)
   })
 
   it.each(['command end', 'controller replacement', 'terminal release'])(
@@ -148,5 +152,84 @@ describe('runtime foreground admission', () => {
       expect.objectContaining({ paneKey: makePaneKey('tab-2', reattachedLeaf) }),
       owner
     )
+  })
+
+  it('reads once per command and agent from hooks, so a pane that never admits an owner stays cheap', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.capture.mockResolvedValue(undefined)
+    f.data('\x1b]133;C\x07')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 30; i += 1) {
+      f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
+      await vi.advanceTimersByTimeAsync(200)
+    }
+    expect(f.capture).toHaveBeenCalledTimes(2)
+    f.runtime.observeAgentPresenceEvidence(paneKey, 'codex')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.capture).toHaveBeenCalledTimes(3)
+    f.data('\x1b]133;D;0\x07\x1b]133;C\x07')
+    f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.capture).toHaveBeenCalledTimes(4)
+  })
+
+  it.each([
+    ['⠋ Codex', 'codex'],
+    ['✳ Claude Code', 'claude'],
+    ['Cursor Agent', 'cursor'],
+    ['π ⠋ my-session', 'pi']
+  ])('reads once when a title names an agent (%s)', async (title) => {
+    vi.useFakeTimers()
+    const f = fixture()
+    for (let i = 0; i < 5; i += 1) {
+      f.data(`\x1b]0;${title}\x07`)
+      f.data('\x1b]0;zsh\x07')
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(f.capture).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads a launched pane after its own command-start even when the shell starts slowly', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    let agentRunning = false
+    f.capture.mockImplementation(async () => (agentRunning ? owner : undefined))
+    const launchedLeaf = '33333333-3333-4333-8333-333333333333'
+    f.runtime.registerPty('launched', 'folder', null, {
+      tabId: 'tab-3',
+      leafId: launchedLeaf,
+      incarnationId: 'launch-1',
+      agentLaunchAuthority: { launchToken: 'launch-token', launchAgent: 'codex' }
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(200)
+    f.runtime.onPtyData('launched', '\x1b]133;A\x07\x1b]133;C\x07', Date.now())
+    agentRunning = true
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(f.capture).toHaveBeenCalledTimes(2)
+    expect(f.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ paneKey: makePaneKey('tab-3', launchedLeaf) }),
+      owner
+    )
+  })
+
+  it('bounds production reads: idle zero, one per command lasting a second, none per marker', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.capture.mockResolvedValue(undefined)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.capture).not.toHaveBeenCalled()
+    for (let i = 0; i < 25; i += 1) {
+      f.data('\x1b]133;C\x07')
+      f.data('\x1b]133;C\x07')
+      await vi.advanceTimersByTimeAsync(i % 2 === 0 ? 2_000 : 300)
+      f.data('\x1b]133;D;0\x07')
+    }
+    await vi.advanceTimersByTimeAsync(60_000)
+    // 13 of the 25 commands ran past the one-second mark; markers and idle time add nothing.
+    expect(f.capture).toHaveBeenCalledTimes(13)
   })
 })

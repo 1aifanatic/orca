@@ -2,7 +2,7 @@
 import { AgentPresenceCommandObserver } from '../shared/agent-presence-command-observer'
 import { captureAgentForegroundIdentity } from '../shared/agent-foreground-identity'
 import type { AgentProcessPresence } from '../shared/agent-process-presence'
-import { hasCompatibleAgentTitleIdentity } from '../shared/agent-title-owner'
+import { resolveExplicitTerminalTitleAgentType } from '../shared/terminal-title-agent-type'
 import { createPtyForegroundResolver } from '../main/daemon/pty-subprocess/spawn-file-foreground-process'
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
@@ -736,27 +736,39 @@ export class PtyHandler {
     ) => void
   }
   private readonly presenceDiscoveries = new Set<ManagedPty>()
-  private readonly presenceCommands = new AgentPresenceCommandObserver(async (id, current) => {
-    const managed = this.ptys.get(id)
-    if (managed) {
-      await this.discoverAgentOwner(managed, current)
+  private readonly presenceCommands = new AgentPresenceCommandObserver(
+    async (id, current, kind) => {
+      const managed = this.ptys.get(id)
+      if (managed) {
+        await this.discoverAgentOwner(managed, current, kind === 'command')
+      }
     }
-  })
+  )
 
   setAgentPresenceAdmission(admission: NonNullable<PtyHandler['presenceAdmission']>): void {
     this.presenceAdmission = admission
   }
 
-  async discoverPaneAgentOwner(paneKey: string): Promise<void> {
+  /** Hook evidence names its agent; each agent costs at most one read per shell command. */
+  discoverPaneAgentOwner(paneKey: string, agent: string): void {
     const managed = [...this.ptys.values()].find((pty) => pty.paneKey === paneKey)
     if (managed) {
-      await this.discoverAgentOwner(managed)
+      this.claimAgentOwnerEvidence(managed, agent)
     }
+  }
+
+  private claimAgentOwnerEvidence(managed: ManagedPty, agent: string): void {
+    this.presenceCommands.evidence(
+      managed.id,
+      agent,
+      () => !managed.disposed && this.ptys.get(managed.id) === managed
+    )
   }
 
   private async discoverAgentOwner(
     managed: ManagedPty,
-    current: () => boolean = () => true
+    current: () => boolean = () => true,
+    doubtOwner = false
   ): Promise<void> {
     const admission = this.presenceAdmission
     const paneKey = managed.paneKey
@@ -765,7 +777,7 @@ export class PtyHandler {
       !paneKey ||
       managed.disposed ||
       process.platform === 'win32' ||
-      admission.hasOwner(paneKey) ||
+      (!doubtOwner && admission.hasOwner(paneKey)) ||
       this.presenceDiscoveries.has(managed)
     ) {
       return
@@ -782,7 +794,7 @@ export class PtyHandler {
         managed.disposed ||
         this.ptys.get(managed.id) !== managed ||
         managed.incarnationId !== incarnation ||
-        admission.hasOwner(paneKey)
+        (!doubtOwner && admission.hasOwner(paneKey))
       ) {
         return
       }
@@ -1112,22 +1124,19 @@ export class PtyHandler {
         // Why: spinner frames arrive several times a second; only a real title change re-checks.
         const gateKey = getDecorativeTitleGateKey(rawTitle, normalizedTitle)
         if (gateKey !== lastTitleGateKey && !meta?.staleWorkingTitleClear) {
+          const titleAgent = resolveExplicitTerminalTitleAgentType(normalizedTitle)
           void recheckAgentPresence().then(() => {
-            if (hasCompatibleAgentTitleIdentity(normalizedTitle)) {
-              return this.discoverAgentOwner(managed)
+            if (titleAgent) {
+              this.claimAgentOwnerEvidence(managed, titleAgent)
             }
-            return undefined
           })
         }
         lastTitleGateKey = gateKey
       },
       onCommandStarted: () => {
         recheckAgentPresence()
-        if (
-          process.platform !== 'win32' &&
-          managed.paneKey &&
-          !this.presenceAdmission?.hasOwner(managed.paneKey)
-        ) {
+        // Why no owner check: a shell running commands proves its owner is not in front.
+        if (process.platform !== 'win32' && managed.paneKey) {
           this.presenceCommands.start(
             managed.id,
             () => !managed.disposed && this.ptys.get(managed.id) === managed

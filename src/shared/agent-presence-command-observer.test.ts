@@ -19,9 +19,53 @@ describe('one foreground observation per command', () => {
     expect(resolve).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(resolve).toHaveBeenCalledTimes(1)
-    observer.start('pane')
     await vi.advanceTimersByTimeAsync(60_000)
     expect(resolve).toHaveBeenCalledTimes(1)
+    // A command-start after the read ran is the next command, even when no command-end arrived.
+    observer.start('pane')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(resolve).toHaveBeenCalledTimes(2)
+    observer.stop()
+  })
+
+  it('reads once per command and agent for evidence, and every command resets the key', async () => {
+    vi.useFakeTimers()
+    const observe = vi.fn(async () => {})
+    const observer = new AgentPresenceCommandObserver(observe)
+    for (let i = 0; i < 20; i += 1) {
+      observer.evidence('pane', 'claude')
+    }
+    observer.evidence('pane', 'codex')
+    expect(observe.mock.calls.map(([, , kind]) => kind)).toEqual(['evidence', 'evidence'])
+    observer.start('pane')
+    observer.evidence('pane', 'claude')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(observe.mock.calls.map(([, , kind]) => kind)).toEqual([
+      'evidence',
+      'evidence',
+      'evidence',
+      'command'
+    ])
+    observer.evidence('pane', 'claude')
+    expect(observe).toHaveBeenCalledTimes(4)
+    observer.stop()
+  })
+
+  it('keeps a delayed launch read off the command slot and cancels it with the terminal', async () => {
+    vi.useFakeTimers()
+    const observe = vi.fn(async () => {})
+    const observer = new AgentPresenceCommandObserver(observe)
+    observer.evidence('launched', 'codex', () => true, 1_000)
+    await vi.advanceTimersByTimeAsync(500)
+    observer.start('launched')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(observe.mock.calls.map(([, , kind]) => kind)).toEqual([])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(observe.mock.calls.map(([, , kind]) => kind)).toEqual(['command'])
+    observer.evidence('gone', 'codex', () => true, 1_000)
+    observer.end('gone')
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(observe).toHaveBeenCalledTimes(1)
     observer.stop()
   })
 

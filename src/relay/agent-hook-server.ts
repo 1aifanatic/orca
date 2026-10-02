@@ -68,7 +68,7 @@ export class RelayAgentHookServer {
   >()
   private forward: RelayHookForward
   private isPaneSurfaceRetired: (paneKey: string) => boolean
-  private readonly onAgentEvidence?: (paneKey: string) => void
+  private readonly onAgentEvidence?: (paneKey: string, agent: string) => void
   private fixedToken: string | undefined
   private preferredPort: number
   private portFallbackApplied = false

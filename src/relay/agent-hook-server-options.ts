@@ -17,7 +17,7 @@ export type RelayHookServerOptions = {
    * any client owns. Defaults to "never retired", which is the pre-existing behaviour — a listener
    * with no PTY handler behind it (the WSL relay) keeps forwarding everything.
    */
-  onAgentEvidence?: (paneKey: string) => void
+  onAgentEvidence?: (paneKey: string, agent: string) => void
   isPaneSurfaceRetired?: (paneKey: string) => boolean
 }
 

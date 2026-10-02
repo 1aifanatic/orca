@@ -1,4 +1,3 @@
-// @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 
@@ -12,15 +11,10 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     })
   }
 
+  /** A command-start doubts any owner: a shell running commands proves the owner is not in front. */
   protected scheduleAgentPresenceDiscovery(ptyId: string): void {
     const pty = this.ptysById.get(ptyId)
-    if (
-      !pty ||
-      pty.isWsl ||
-      pty.connectionId ||
-      process.platform === 'win32' ||
-      this.hasAgentPresenceOwner(this.collectAgentStatusPaneKeysForPty(ptyId))
-    ) {
+    if (!pty || pty.isWsl || pty.connectionId || process.platform === 'win32') {
       return
     }
     const incarnation = pty.incarnationId
@@ -46,44 +40,83 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     return 'unverifiable'
   }
 
-  observeAgentPresenceEvidence(paneKey: string, checkOwner = false): void {
+  /** Hook evidence names its agent; each agent costs at most one read per shell command. */
+  observeAgentPresenceEvidence(paneKey: string, agent: string, checkOwner = false): void {
     for (const [id] of this.ptysById) {
       if (this.collectAgentStatusPaneKeysForPty(id).has(paneKey)) {
         if (checkOwner) {
-          this.recheckAgentPresenceEvidence(id, true)
+          this.recheckAgentPresenceEvidence(id, agent)
         } else {
-          void this.discoverAgentPresence(id)
+          this.claimAgentPresenceEvidence(id, agent)
         }
         return
       }
     }
   }
 
-  protected recheckAgentPresenceEvidence(id: string, discover: boolean): void {
+  protected recheckAgentPresenceEvidence(id: string, agent: string | null): void {
     const pty = this.ptysById.get(id)
     const incarnation = pty?.incarnationId
     const controller = this.ptyController
     void this.recheckHookAgentPresenceForPty(id).then(() => {
       if (
-        discover &&
+        agent &&
         this.ptysById.get(id) === pty &&
         pty?.incarnationId === incarnation &&
         this.ptyController === controller
       ) {
-        void this.discoverAgentPresence(id)
+        this.claimAgentPresenceEvidence(id, agent)
       }
     })
   }
 
-  protected discoverLaunchedAgentPresence(pty: { ptyId: string; launchAgent: unknown }): void {
-    if (pty.launchAgent) {
-      this.scheduleAgentPresenceDiscovery(pty.ptyId)
+  protected async recheckHookAgentPresenceForPty(
+    ptyId: string
+  ): Promise<'live' | 'unverifiable' | 'exited' | null> {
+    const check = this.checkHookAgentPresenceFn
+    if (!check) {
+      return null
     }
+    const verdicts = await Promise.all(
+      Array.from(this.collectAgentStatusPaneKeysForPty(ptyId), (paneKey) => check(paneKey))
+    )
+    if (verdicts.includes('live')) {
+      return 'live'
+    }
+    if (verdicts.includes('unverifiable')) {
+      return 'unverifiable'
+    }
+    return verdicts.includes('exited') ? 'exited' : null
+  }
+
+  /** A launch is evidence for its agent, not a command, so the launch's own command-start still reads. */
+  protected discoverLaunchedAgentPresence(pty: {
+    ptyId: string
+    launchAgent: string | null
+  }): void {
+    if (pty.launchAgent) {
+      this.claimAgentPresenceEvidence(pty.ptyId, pty.launchAgent, 1_000)
+    }
+  }
+
+  private claimAgentPresenceEvidence(ptyId: string, agent: string, delayMs = 0): void {
+    const pty = this.ptysById.get(ptyId)
+    if (!pty || pty.isWsl || pty.connectionId) {
+      return
+    }
+    const incarnation = pty.incarnationId
+    this.agentPresenceCommands.evidence(
+      ptyId,
+      agent,
+      () => this.ptysById.get(ptyId) === pty && pty.incarnationId === incarnation,
+      delayMs
+    )
   }
 
   protected discoverAgentPresence(
     ptyId: string,
-    commandCurrent: () => boolean = () => true
+    commandCurrent: () => boolean = () => true,
+    doubtOwner = false
   ): Promise<void> {
     const pty = this.ptysById.get(ptyId)
     const controller = this.ptyController
@@ -97,8 +130,9 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
       return pending
     }
     const keys = [...this.collectAgentStatusPaneKeysForPty(ptyId)]
-    const hasOwner = () => this.hasAgentPresenceOwner(keys)
-    if (hasOwner()) {
+    // Why: evidence an owner already explains costs nothing; a command-start must still look.
+    const settled = () => !doubtOwner && this.hasAgentPresenceOwner(keys)
+    if (settled()) {
       return Promise.resolve()
     }
     const current = () =>
@@ -108,11 +142,11 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     const discovery = controller
       .captureAgentPresence(ptyId)
       .then((presence) => {
-        if (!presence || !commandCurrent() || !current() || hasOwner()) {
+        if (!presence || !commandCurrent() || !current() || settled()) {
           return
         }
         for (const paneKey of keys) {
-          this.onForegroundAgentPresence?.(
+          void this.onForegroundAgentPresence?.(
             {
               paneKey,
               connectionId: null,

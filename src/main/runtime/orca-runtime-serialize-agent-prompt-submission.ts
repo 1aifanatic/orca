@@ -70,26 +70,6 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     return this.ptyForegroundAgent.read(ptyId, afterTitleObservation)
   }
 
-  protected async recheckHookAgentPresenceForPty(
-    ptyId: string
-  ): Promise<'live' | 'unverifiable' | 'exited' | null> {
-    if (!this.checkHookAgentPresenceFn) {
-      return null
-    }
-    const verdicts = await Promise.all(
-      Array.from(this.collectAgentStatusPaneKeysForPty(ptyId), (paneKey) =>
-        this.checkHookAgentPresenceFn(paneKey)
-      )
-    )
-    if (verdicts.includes('live')) {
-      return 'live'
-    }
-    if (verdicts.includes('unverifiable')) {
-      return 'unverifiable'
-    }
-    return verdicts.includes('exited') ? 'exited' : null
-  }
-
   protected confirmPtyAgentExit(ptyId: string, recoverCompletedHook = false): void {
     const current = this.ptysById.get(ptyId)
     const incarnation = current?.incarnationId

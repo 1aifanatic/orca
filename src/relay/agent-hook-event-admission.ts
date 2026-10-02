@@ -21,7 +21,7 @@ type RelayEventHost = {
   >
   forward: RelayHookForward
   presenceChecks: RelayAgentPresence
-  onAgentEvidence?: (paneKey: string) => void
+  onAgentEvidence?: (paneKey: string, agent: string) => void
 }
 export type RelayEventOptions = {
   isReplay?: boolean
@@ -83,15 +83,16 @@ export function applyRelayAgentEvent(
       { isReplay: options.isReplay }
     )
   )
+  const evidenceAgent = event.payload.agentType ?? 'unknown'
   const check = host.presenceChecks.observeHook(
     incoming,
     event,
     !options.hostPresence && options.checkPresence !== false
   )
   if (check) {
-    void check.then(() => host.onAgentEvidence?.(event.paneKey))
+    void check.then(() => host.onAgentEvidence?.(event.paneKey, evidenceAgent))
   } else if (!options.hostPresence && options.checkPresence !== false) {
-    host.onAgentEvidence?.(event.paneKey)
+    host.onAgentEvidence?.(event.paneKey, evidenceAgent)
   }
   // Why: retries compare against the cached row by identity, so they must hold that exact row.
   return host.state.lastStatusByPaneKey.get(event.paneKey)
