@@ -11,6 +11,7 @@ import { useRepoAssigneesBySlug } from '@/hooks/useGitHubSlugMetadata'
 import { getSettingsForRepoRuntimeOwner } from '@/lib/repo-runtime-owner'
 import {
   parseOwnerRepoFromItemUrl,
+  resolvePullRequestRepo,
   type GitHubWorkItemProjectOrigin
 } from '@/components/github/github-work-item-identity'
 import { runIssueUpdate } from '@/components/github/github-work-item-edit-mutations'
@@ -82,6 +83,7 @@ export function PRAssigneesPanel({
   )
   const assigneeLogins = useMemo(() => localAssignees.map((user) => user.login), [localAssignees])
   const assigneeSlug = useMemo(() => parseOwnerRepoFromItemUrl(item.url), [item.url])
+  const prRepo = useMemo(() => resolvePullRequestRepo(item, projectOrigin), [item, projectOrigin])
   const slugOwner = projectOrigin?.owner ?? assigneeSlug?.owner ?? null
   const slugRepo = projectOrigin?.repo ?? assigneeSlug?.repo ?? null
   const repoAssigneesBySlug = useRepoAssigneesBySlug(
@@ -118,6 +120,7 @@ export function PRAssigneesPanel({
             repoPath,
             sourceContext,
             projectOrigin,
+            issueRepo: prRepo,
             number: item.number,
             updates: isAssigned ? { removeAssignees: [login] } : { addAssignees: [login] }
           }),
@@ -147,6 +150,7 @@ export function PRAssigneesPanel({
       onMutated,
       patchProjectRowIfNeeded,
       patchWorkItem,
+      prRepo,
       projectOrigin,
       repoPath,
       run,

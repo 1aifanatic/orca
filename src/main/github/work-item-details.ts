@@ -79,7 +79,12 @@ export async function getWorkItemDetails(
     if (!isValidGitHubApiRepository(repositoryOverride)) {
       return null
     }
-    issueRepositoryOverride = repositoryOverride
+    issueRepositoryOverride = (
+      await resolveGitHubRepoExecution(repoPath, repositoryOverride, connectionId, localGitOptions)
+    ).ownerRepo
+    if (!issueRepositoryOverride) {
+      return null
+    }
   }
   const { item, repository: selectedRepository } = issueRepositoryOverride
     ? {
@@ -108,22 +113,9 @@ export async function getWorkItemDetails(
   // Keep the conversation in the same repository as the selected issue.
   const resolvedRepository =
     item.type === 'issue'
-      ? issueRepositoryOverride
-        ? (
-            await resolveGitHubRepoExecution(
-              repoPath,
-              issueRepositoryOverride,
-              connectionId,
-              localGitOptions
-            )
-          ).ownerRepo
-        : selectedRepository
+      ? selectedRepository
       : (await resolveGitHubRepoExecution(repoPath, item.prRepo, connectionId, localGitOptions))
           .ownerRepo
-
-  if (issueRepositoryOverride && !resolvedRepository) {
-    return null
-  }
 
   if (item.type === 'issue') {
     return withWorkItemDetailsPermit(async () => {

@@ -8,7 +8,12 @@ import type * as WorkItemLookup from './client/fetch/get-work-item'
 import { runProcess } from '../../shared/child-process/run-process'
 
 const { ghMock, fixture } = vi.hoisted(() => {
-  const fixture: { path: string; requests: string[][] } = { path: '', requests: [] }
+  const fixture: {
+    path: string
+    initialHost: string
+    replacementUrl: string
+    requests: { args: string[]; host?: string }[]
+  } = { path: '', initialHost: '', replacementUrl: '', requests: [] }
   return { ghMock: vi.fn(), fixture }
 })
 
@@ -55,6 +60,7 @@ vi.mock('./rate-limit', () => ({
 import { getWorkItemDetails } from './work-item-details'
 import { _resetOwnerRepoCache } from './github-repository-identity'
 import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+import { _resetGitHubHostAuthCache } from './github-enterprise-repository'
 
 async function fixtureGit(args: string[]): Promise<void> {
   const result = await runProcess({
@@ -77,23 +83,29 @@ beforeEach(async () => {
   await fixtureGit(['remote', 'add', 'origin', 'https://github.com/fork-owner/widgets.git'])
   _resetOwnerRepoCache()
   _resetOriginGitHubApiRepositoryCache()
+  _resetGitHubHostAuthCache()
+  fixture.initialHost = 'github.com'
+  fixture.replacementUrl = 'https://github.com/replacement-owner/widgets.git'
   fixture.requests = []
   ghMock.mockReset()
-  ghMock.mockImplementation(async (args: string[]) => {
-    fixture.requests.push(args)
+  ghMock.mockImplementation(async (args: string[], options: { host?: string }) => {
+    fixture.requests.push({ args, host: options.host })
+    if (args[0] === 'auth' && args[1] === 'status') {
+      return {
+        stdout: ['github.com', 'github.enterprise.test']
+          .map((host) => `${host}\n  Logged in to ${host} account fixture (keyring)`)
+          .join('\n'),
+        stderr: ''
+      }
+    }
     if (args.includes('repos/fork-owner/widgets/issues/5')) {
-      await fixtureGit([
-        'remote',
-        'set-url',
-        'origin',
-        'https://github.com/replacement-owner/widgets.git'
-      ])
+      await fixtureGit(['remote', 'set-url', 'origin', fixture.replacementUrl])
       return {
         stdout: JSON.stringify({
           number: 5,
           title: 'ORIGIN title',
           state: 'open',
-          html_url: 'https://github.com/fork-owner/widgets/issues/5',
+          html_url: `https://${fixture.initialHost}/fork-owner/widgets/issues/5`,
           labels: [],
           updated_at: '2026-10-02T00:00:00Z',
           user: { login: 'fork-author' }
@@ -102,7 +114,7 @@ beforeEach(async () => {
       }
     }
     if (args.includes('graphql')) {
-      const original = args.includes('owner=fork-owner')
+      const original = args.includes('owner=fork-owner') && options.host === fixture.initialHost
       const marker = original ? 'ORIGIN' : 'REPLACEMENT'
       return {
         stdout: JSON.stringify({
@@ -118,7 +130,7 @@ beforeEach(async () => {
                       databaseId: 1,
                       body: `${marker} comment`,
                       createdAt: '2026-10-02T00:00:00Z',
-                      url: 'https://github.com/fork-owner/widgets/issues/5#issuecomment-1',
+                      url: `https://${options.host}/fork-owner/widgets/issues/5#issuecomment-1`,
                       author: { login: `${marker}-author`, avatarUrl: '' }
                     }
                   ]
@@ -149,7 +161,7 @@ it.each(['issue', undefined] as const)(
     expect(details?.body).toBe('ORIGIN body')
     expect(details?.assignees).toEqual(['ORIGIN-assignee'])
     expect(details?.comments.map((comment) => comment.body)).toEqual(['ORIGIN comment'])
-    expect(fixture.requests[1]).toContain('owner=fork-owner')
+    expect(fixture.requests[1].args).toContain('owner=fork-owner')
   }
 )
 
@@ -162,3 +174,34 @@ it('keeps an explicit local Tasks identity through the same real config change',
   expect(details?.item.title).toBe('ORIGIN title')
   expect(details?.body).toBe('ORIGIN body')
 })
+
+it.each([
+  { from: 'github.com', to: 'github.enterprise.test', qualified: false },
+  { from: 'github.enterprise.test', to: 'github.com', qualified: false },
+  { from: 'github.com', to: 'github.enterprise.test', qualified: true },
+  { from: 'github.enterprise.test', to: 'github.com', qualified: true }
+])(
+  'keeps explicit host from $from to $to (qualified=$qualified)',
+  async ({ from, to, qualified }) => {
+    fixture.initialHost = from
+    fixture.replacementUrl = `https://${to}/fork-owner/widgets.git`
+    await fixtureGit(['remote', 'set-url', 'origin', `https://${from}/fork-owner/widgets.git`])
+    const details = await getWorkItemDetails(fixture.path, 5, 'issue', null, {}, 'origin', {
+      owner: 'fork-owner',
+      repo: 'widgets',
+      ...(qualified ? { host: from } : {})
+    })
+    expect(details?.item.url).toBe(`https://${from}/fork-owner/widgets/issues/5`)
+    expect(details?.body).toBe('ORIGIN body')
+    expect(details?.assignees).toEqual(['ORIGIN-assignee'])
+    expect(details?.comments.map((comment) => comment.body)).toEqual(['ORIGIN comment'])
+    const conversationRequests = fixture.requests.filter(
+      ({ args }) => args.includes('graphql') || args.some((arg) => arg.includes('/timeline?'))
+    )
+    expect(conversationRequests.some(({ args }) => args.includes('graphql'))).toBe(true)
+    expect(
+      conversationRequests.some(({ args }) => args.some((arg) => arg.includes('/timeline?')))
+    ).toBe(true)
+    expect(conversationRequests.map(({ host }) => host)).toEqual([from, from])
+  }
+)
