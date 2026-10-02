@@ -1,5 +1,6 @@
 import type { FsChangeEvent } from '../../shared/filesystem-entry-types'
 import type { IFilesystemProvider } from '../providers/types'
+import { toRemoteRuntimeClientErrorLike } from '../../shared/remote-runtime-client-error-classification'
 import {
   runtimeWatcherReleaseKey,
   sshFileExplorerWatchRearms
@@ -26,8 +27,18 @@ export function armSshFileExplorerWatchRearm(args: {
   let reinstalling: Promise<void> | null = null
   let providerGeneration = 0
 
-  const reinstall = async (generation: number): Promise<void> => {
-    const provider = getSshFilesystemProvider(args.connectionId)
+  const reportTerminalError = (error: unknown): void => {
+    // Connection loss leaves the established stream armed for the next provider.
+    if (toRemoteRuntimeClientErrorLike(error).code === 'CONNECTION_LOST') {
+      return
+    }
+    args.onTerminalError(error instanceof Error ? error : new Error(String(error)))
+  }
+
+  const reinstall = async (
+    generation: number,
+    provider: Pick<IFilesystemProvider, 'watch'> | undefined
+  ): Promise<void> => {
     if (stopped || generation !== providerGeneration || !provider) {
       return
     }
@@ -48,7 +59,7 @@ export function armSshFileExplorerWatchRearm(args: {
           signal: args.signal,
           onTerminalError: (error) => {
             if (isCurrent()) {
-              args.onTerminalError(error)
+              reportTerminalError(error)
             }
           }
         }
@@ -77,12 +88,20 @@ export function armSshFileExplorerWatchRearm(args: {
       return
     }
     const generation = ++providerGeneration
+    let attemptProvider: Pick<IFilesystemProvider, 'watch'> | undefined
     // Why: obsolete reconnect attempts cannot terminate the stream or publish a stale refresh.
     const attempt = (reinstalling ?? Promise.resolve())
-      .then(() => reinstall(generation))
+      .then(() => {
+        attemptProvider = getSshFilesystemProvider(args.connectionId)
+        return reinstall(generation, attemptProvider)
+      })
       .catch((error: unknown) => {
-        if (!stopped && generation === providerGeneration) {
-          args.onTerminalError(error instanceof Error ? error : new Error(String(error)))
+        if (
+          !stopped &&
+          generation === providerGeneration &&
+          attemptProvider === getSshFilesystemProvider(args.connectionId)
+        ) {
+          reportTerminalError(error)
         }
       })
       .finally(() => {

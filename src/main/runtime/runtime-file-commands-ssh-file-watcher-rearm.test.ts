@@ -1,5 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IFilesystemProvider } from '../providers/types'
+import { SshFilesystemProvider } from '../providers/ssh-filesystem-provider'
+import {
+  createSshDisposalError,
+  SSH_MUX_REQUEST_TIMEOUT_CODE,
+  SshChannelMultiplexer,
+  type MultiplexerTransport
+} from '../ssh/ssh-channel-multiplexer'
+import {
+  encodeJsonRpcFrame,
+  HEADER_LENGTH,
+  MessageType,
+  parseJsonRpcMessage,
+  type JsonRpcMessage
+} from '../ssh/relay-protocol'
 import { armSshFileExplorerWatchRearm } from './runtime-file-commands-ssh-file-watcher-rearm'
 
 type WatchProvider = Pick<IFilesystemProvider, 'watch'>
@@ -41,8 +55,54 @@ function pendingWatch() {
   return { watch: vi.fn<IFilesystemProvider['watch']>(() => promise), resolve, reject }
 }
 
+function createWatchConnection() {
+  const written: Buffer[] = []
+  let receive: (data: Buffer) => void = () => undefined
+  let sequence = 1
+  const transport: MultiplexerTransport = {
+    write: (data) => {
+      written.push(data)
+    },
+    onData: (callback) => {
+      receive = callback
+    },
+    onClose: () => undefined
+  }
+  const mux = new SshChannelMultiplexer(transport)
+  const provider = new SshFilesystemProvider('ssh-1', mux)
+  const messages = (): JsonRpcMessage[] =>
+    written
+      .filter((frame) => frame[0] === MessageType.Regular)
+      .map((frame) => parseJsonRpcMessage(frame.subarray(HEADER_LENGTH)))
+  const send = (message: JsonRpcMessage): void => {
+    receive(encodeJsonRpcFrame(message, sequence++, 0))
+  }
+  return {
+    mux,
+    provider,
+    countRequests: (method: string) =>
+      messages().filter((message) => 'method' in message && message.method === method).length,
+    settleWatch: () => {
+      const request = messages().find(
+        (message) => 'method' in message && message.method === 'fs.watch'
+      )
+      if (!request || !('id' in request)) {
+        throw new Error('No pending fs.watch request')
+      }
+      send({ jsonrpc: '2.0', id: request.id, result: null })
+    },
+    emitChange: () =>
+      send({
+        jsonrpc: '2.0',
+        method: 'fs.changed',
+        params: { events: [{ kind: 'update', absolutePath: '/remote/repo/current.ts' }] }
+      })
+  }
+}
+
 describe('SSH file explorer watcher rearm', () => {
   let unsubscribe: (() => Promise<void>) | undefined
+  const connections: ReturnType<typeof createWatchConnection>[] = []
 
   beforeEach(() => {
     getProvider.mockReset()
@@ -51,13 +111,22 @@ describe('SSH file explorer watcher rearm', () => {
   })
 
   afterEach(async () => {
+    for (const { mux } of connections) {
+      mux.dispose()
+    }
     await unsubscribe?.()
     unsubscribe = undefined
+    for (const { provider } of connections.splice(0)) {
+      provider.dispose()
+    }
     expect(registrationListeners.size).toBe(0)
     expect(rearms.size).toBe(0)
   })
 
-  function install(initialProvider: WatchProvider = { watch: vi.fn() }, initialUnwatch = vi.fn()) {
+  function install(
+    initialProvider: WatchProvider = { watch: vi.fn() },
+    initialUnwatch: () => void = vi.fn()
+  ) {
     if (!getProvider.getMockImplementation()) {
       getProvider.mockReturnValue(initialProvider)
     }
@@ -162,6 +231,144 @@ describe('SSH file explorer watcher rearm', () => {
     await vi.waitFor(() => expect(onTerminalError).toHaveBeenCalledExactlyOnceWith(error))
     expect(onEvents).not.toHaveBeenCalled()
   })
+
+  it.each(['setup', 'terminal callback'] as const)(
+    'waits for registration after a current-provider %s loses its connection',
+    async (stage) => {
+      const { onTerminalError, onEvents, controller } = install()
+      const lost = pendingWatch()
+      registerProvider(lost)
+      await vi.waitFor(() => expect(lost.watch).toHaveBeenCalledOnce())
+      const error = createSshDisposalError('connection_lost')
+      if (stage === 'setup') {
+        lost.reject(error)
+      } else {
+        lost.resolve(vi.fn())
+        await vi.waitFor(() => expect(onEvents).toHaveBeenCalledOnce())
+        lost.watch.mock.calls[0]?.[2]?.onTerminalError?.(error)
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(onTerminalError).not.toHaveBeenCalled()
+      expect(controller.signal.aborted).toBe(false)
+
+      const currentUnwatch = vi.fn()
+      const current = { watch: vi.fn(async () => currentUnwatch) }
+      registerProvider(current)
+      await vi.waitFor(() => expect(current.watch).toHaveBeenCalledOnce())
+      expect(onEvents).toHaveBeenLastCalledWith([
+        { kind: 'overflow', absolutePath: '/remote/repo' }
+      ])
+      await unsubscribe?.()
+      expect(currentUnwatch).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each([
+    ['shutdown', createSshDisposalError('shutdown')],
+    [
+      'timeout',
+      Object.assign(new Error('watch timed out'), { code: SSH_MUX_REQUEST_TIMEOUT_CODE })
+    ],
+    ['uncoded connection message', new Error('CONNECTION_LOST')]
+  ])('reports a current-provider %s setup failure', async (_label, error) => {
+    const { onTerminalError } = install()
+    registerProvider({
+      watch: vi.fn(async () => {
+        throw error
+      })
+    })
+    await vi.waitFor(() => expect(onTerminalError).toHaveBeenCalledExactlyOnceWith(error))
+  })
+
+  it.each(['active', 'canceled'] as const)(
+    'keeps an %s owner correct through actual multiplexer loss and later registration',
+    async (owner) => {
+      const connect = () => {
+        const connection = createWatchConnection()
+        connections.push(connection)
+        return connection
+      }
+      const first = connect()
+      getProvider.mockReturnValue(first.provider)
+      const initialSetup = first.provider.watch('/remote/repo', vi.fn())
+      first.settleWatch()
+      const { onEvents, onTerminalError, controller } = install(first.provider, await initialSetup)
+      first.mux.dispose('connection_lost')
+      first.provider.dispose()
+      const next = connect()
+      registerProvider(next.provider)
+      await vi.waitFor(() => expect(next.countRequests('fs.watch')).toBe(1))
+      next.mux.dispose('connection_lost')
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(getProvider('ssh-1')).toBe(next.provider)
+      expect(onTerminalError).not.toHaveBeenCalled()
+      expect(controller.signal.aborted).toBe(false)
+      expect(onEvents).not.toHaveBeenCalled()
+      if (owner === 'canceled') {
+        await unsubscribe?.()
+      }
+
+      next.provider.dispose()
+      const current = connect()
+      registerProvider(current.provider)
+      if (owner === 'canceled') {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(current.countRequests('fs.watch')).toBe(0)
+        return
+      }
+      await vi.waitFor(() => expect(current.countRequests('fs.watch')).toBe(1))
+      current.settleWatch()
+      await vi.waitFor(() =>
+        expect(onEvents).toHaveBeenCalledExactlyOnceWith([
+          { kind: 'overflow', absolutePath: '/remote/repo' }
+        ])
+      )
+      current.emitChange()
+      expect(onEvents).toHaveBeenLastCalledWith([
+        { kind: 'update', absolutePath: '/remote/repo/current.ts' }
+      ])
+      await unsubscribe?.()
+      expect(current.countRequests('fs.unwatch')).toBe(1)
+      current.emitChange()
+      expect(onEvents).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it.each(['unregistered', 'replaced'] as const)(
+    'ignores a setup failure when its provider is %s between rejection handlers',
+    async (change) => {
+      const { onTerminalError, onEvents, controller } = install()
+      const old = pendingWatch()
+      registerProvider(old)
+      await vi.waitFor(() => expect(old.watch).toHaveBeenCalledOnce())
+      const current = { watch: vi.fn(async () => vi.fn()) }
+      const checkedWhileCurrent = vi.fn(() => {
+        queueMicrotask(() => {
+          if (change === 'replaced') {
+            registerProvider(current)
+          } else {
+            getProvider.mockReturnValue(undefined)
+          }
+        })
+        return old
+      })
+      getProvider.mockImplementationOnce(checkedWhileCurrent)
+      old.reject(new Error('previous setup failed'))
+      await new Promise<void>((resolve) => setImmediate(resolve))
+
+      expect(checkedWhileCurrent).toHaveBeenCalledOnce()
+      expect(onTerminalError).not.toHaveBeenCalled()
+      expect(controller.signal.aborted).toBe(false)
+      if (change === 'replaced') {
+        expect(current.watch).toHaveBeenCalledOnce()
+        expect(onEvents).toHaveBeenCalledExactlyOnceWith([
+          { kind: 'overflow', absolutePath: '/remote/repo' }
+        ])
+      } else {
+        expect(onEvents).not.toHaveBeenCalled()
+      }
+    }
+  )
 
   it('ignores late terminal callbacks from a superseded provider', async () => {
     const { onTerminalError, controller } = install()

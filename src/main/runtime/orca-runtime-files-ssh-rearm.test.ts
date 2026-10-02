@@ -89,19 +89,24 @@ describe('remote file-explorer watch re-arm', () => {
     // nothing else tells this watch it died.
     const firstUnwatch = vi.fn()
     const secondUnwatch = vi.fn()
-    const watch = vi.fn().mockResolvedValueOnce(firstUnwatch).mockResolvedValueOnce(secondUnwatch)
-    getSshFilesystemProviderMock.mockReturnValue({ watch })
+    const firstProvider = { watch: vi.fn().mockResolvedValue(firstUnwatch) }
+    const secondProvider = { watch: vi.fn().mockResolvedValue(secondUnwatch) }
+    getSshFilesystemProviderMock.mockReturnValue(firstProvider)
     const commands = createRuntimeFileCommands()
     const onEvents = vi.fn()
 
-    await commands.watchFileExplorer('id:wt-1', onEvents)
-    expect(watch).toHaveBeenCalledTimes(1)
+    const unsubscribe = await commands.watchFileExplorer('id:wt-1', onEvents)
+    expect(firstProvider.watch).toHaveBeenCalledOnce()
 
+    getSshFilesystemProviderMock.mockReturnValue(secondProvider)
     emitProviderRegistered(CONNECTION_ID)
-    await vi.waitFor(() => expect(watch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(secondProvider.watch).toHaveBeenCalledOnce())
 
     expect(onEvents).toHaveBeenCalledWith(OVERFLOW_EVENTS)
     // The dead transport's handle must not be closed against the fresh registration.
+    expect(firstUnwatch).not.toHaveBeenCalled()
+    await unsubscribe()
+    expect(secondUnwatch).toHaveBeenCalledOnce()
     expect(firstUnwatch).not.toHaveBeenCalled()
   })
 
