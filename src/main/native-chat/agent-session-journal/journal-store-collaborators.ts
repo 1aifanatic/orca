@@ -91,6 +91,20 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     wroteBeforeOpen: (sequence) => host.journal().wroteBeforeOpen(sequence),
     committed: host.notifyCommitted
   })
+  const rowWriter = new JournalRowWriter({
+    sessionId: host.identity.sessionId,
+    now: host.now,
+    serialize: host.serialize,
+    database: host.database,
+    readOnly: host.readOnly,
+    highestFence: () => host.state().highestFence,
+    nextSequence: () => host.state().lastSequence + 1,
+    commit: host.commit,
+    // Every rejection is a dispatch row through this one writer; the draft
+    // returned-transition rides it so no path can bypass the hook.
+    inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
+    rolledBack: () => queuedMessages.invalidate()
+  })
   return {
     epochController,
     queuedMessages,
@@ -101,20 +115,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       restoreJournalStore(host, { epochController }).then(() =>
         queuedMessages.repairAndPruneAtOpen()
       ),
-    rowWriter: new JournalRowWriter({
-      sessionId: host.identity.sessionId,
-      now: host.now,
-      serialize: host.serialize,
-      database: host.database,
-      readOnly: host.readOnly,
-      highestFence: () => host.state().highestFence,
-      nextSequence: () => host.state().lastSequence + 1,
-      commit: host.commit,
-      // Every rejection is a dispatch row through this one writer; the draft
-      // returned-transition rides it so no path can bypass the hook.
-      inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
-      rolledBack: () => queuedMessages.invalidate()
-    }),
+    rowWriter,
     itemAppender: new JournalItemAppender({
       state: host.state,
       enqueue: host.enqueue
@@ -122,7 +123,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     lifecycleBatchAppender: new JournalLifecycleBatchAppender({
       state: host.state,
       cursor: host.cursor,
-      enqueue: host.enqueue
+      enqueue: host.enqueue,
+      enqueueRows: (plan) => rowWriter.enqueueRows(plan)
     })
   }
 }

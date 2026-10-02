@@ -144,6 +144,25 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ).toMatchObject({ journalPosition: { sequence: 3, index: 0 }, source: 'transcript' })
   })
 
+  // An older host never moves it to its rejection: it stays at its submission, still drawn.
+  it('keeps the position an older host gave it, however far back', () => {
+    const later = Array.from({ length: 300 }, (_, index) => answer(4 + index))
+    const items = [...SEED_ROWS, userItem('waited', 3, 'fix the parser'), ...later]
+    const messages = projectStructuredAgentSessionMessages(
+      items,
+      [],
+      [SEED, restartRejected('waited', 'fix the parser', 3)],
+      NO_CARDS
+    )
+
+    expect(
+      messages.find((message) => message.id === agentJournalSubmissionKey('waited'))
+    ).toMatchObject({
+      unsent: true,
+      journalPosition: { sequence: 3, index: 0 }
+    })
+  })
+
   it('says why from the host fact, with no Retry', () => {
     const notices = structuredAgentSessionDeliveryNotices(
       [],

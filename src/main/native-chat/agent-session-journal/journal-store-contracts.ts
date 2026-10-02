@@ -70,6 +70,9 @@ export type JournalLifecycleBatchInput = {
   mutations: readonly JournalLifecycleMutationInput[]
   fence: number
   recovered?: true
+  /** Rejects the sends still queued with this first, in the same append: a failed start's row
+   *  follows the messages it failed, and no reader meets one without the other. */
+  rejectsQueued?: AgentJournalDispatchRejection
 }
 
 export type JournalSubmissionInput = {
