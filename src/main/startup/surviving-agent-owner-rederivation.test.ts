@@ -3,6 +3,7 @@ import { rederiveSurvivingAgentOwners } from './surviving-agent-owner-rederivati
 import type { SessionInfo } from '../daemon/types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { makePaneKey } from '../../shared/stable-pane-id'
+import { AGENT_OWNER_BOOT_PROBE_CONCURRENCY } from '../../shared/agent-process-presence'
 
 const WORKTREE = 'repo::/tmp/surviving'
 const TAB = '50000000-0000-4000-8000-000000000001'
@@ -56,6 +57,40 @@ describe('owners of terminals that survived a restart, at startup', () => {
       },
       owner
     )
+  })
+
+  it('captures surviving sessions a few at a time, like the boot owner probes', async () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `pty-${i}`)
+    const leafIds = ids.map((_, i) => `60000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the fields the persisted surface index reads.
+    const workspace = {
+      tabsByWorktree: { [WORKTREE]: [{ id: TAB }] },
+      terminalLayoutsByTabId: {
+        [TAB]: { ptyIdsByLeafId: Object.fromEntries(leafIds.map((leaf, i) => [leaf, ids[i]])) }
+      },
+      terminalPtyIncarnationsByPaneKey: Object.fromEntries(
+        leafIds.map((leaf) => [makePaneKey(TAB, leaf), 'inc-1'])
+      )
+    } as unknown as WorkspaceSessionState
+    let inFlight = 0
+    let peak = 0
+    const capture = vi.fn(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      inFlight -= 1
+      return owner
+    })
+    const admit = vi.fn(async () => {})
+    await rederiveSurvivingAgentOwners({
+      listSessions: async () => ids.map((id) => session(id)),
+      readWorkspaceSession: () => workspace,
+      capture,
+      admit
+    })
+    expect(capture).toHaveBeenCalledTimes(12)
+    expect(admit).toHaveBeenCalledTimes(12)
+    expect(peak).toBe(AGENT_OWNER_BOOT_PROBE_CONCURRENCY)
   })
 
   it('does nothing when the daemon cannot list its sessions', async () => {
