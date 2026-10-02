@@ -193,7 +193,7 @@ export function preGoneLinuxOomKillDetails(nowMs: number): CrashReportDetails {
     return {}
   }
   try {
-    const current = readLinuxOomKillCounters()
+    const current = readLinuxOomKillCounters(baseline.counters.daemonCgroupPath)
     return current
       ? linuxOomKillDetails(baseline.counters, nowMs - baseline.sampledAtMs, current)
       : {}

@@ -252,7 +252,7 @@ describe('linuxOomKillDetails', () => {
     expect(details).not.toHaveProperty('linuxOomKillScope')
   })
 
-  it('drops the daemon delta when the daemon moved to a new scope in the window', () => {
+  it('leaves the kill unattributed when the baseline daemon scope cannot be compared', () => {
     const details = linuxOomKillDetails(
       {
         vmstatOomKill: 5,
@@ -270,7 +270,7 @@ describe('linuxOomKillDetails', () => {
     )
     expect(details).not.toHaveProperty('linuxOomKillDaemonCgroupDelta')
     expect(details).toMatchObject({
-      linuxOomKillVerdict: 'oom-kill-outside-orca-cgroups'
+      linuxOomKillVerdict: 'host-oom-kill-unattributed'
     })
   })
 
@@ -329,6 +329,40 @@ describe('preGoneLinuxOomKillDetails', () => {
       linuxOomKillCgroupDelta: 1,
       linuxOomKillVerdict: 'orca-cgroup-oom-kill'
     })
+  })
+
+  it('reads the baseline daemon scope by path after the OOM-killed daemon pid is gone', async () => {
+    const state = { hostKills: 0, cgroupKills: 0, daemonCgroup: DAEMON_SCOPE, daemonKills: 0 }
+    setLinuxOomKillFileReaderForTest(fakeHost(state), 'linux')
+    setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
+    await samplePreGoneSystemMemory(10_000)
+    state.hostKills = 1
+    state.daemonKills = 1
+    state.daemonCgroup = ''
+    expect(preGoneLinuxOomKillDetails(10_050)).toMatchObject({
+      linuxOomKillDaemonCgroupDelta: 1,
+      linuxOomKillVerdict: 'daemon-cgroup-oom-kill'
+    })
+  })
+
+  it('leaves a host kill unattributed when the baseline daemon scope is no longer readable', async () => {
+    const state = { hostKills: 0, cgroupKills: 0, daemonCgroup: DAEMON_SCOPE }
+    let daemonScopeRemoved = false
+    const host = fakeHost(state)
+    setLinuxOomKillFileReaderForTest(
+      (path) =>
+        daemonScopeRemoved && path === `/sys/fs/cgroup${DAEMON_SCOPE}/memory.events`
+          ? undefined
+          : host(path),
+      'linux'
+    )
+    setLinuxOomKillDaemonPidSource(() => DAEMON_PID)
+    await samplePreGoneSystemMemory(10_000)
+    state.hostKills = 1
+    daemonScopeRemoved = true
+    const details = preGoneLinuxOomKillDetails(10_050)
+    expect(details).not.toHaveProperty('linuxOomKillDaemonCgroupDelta')
+    expect(details).toMatchObject({ linuxOomKillVerdict: 'host-oom-kill-unattributed' })
   })
 
   it('is empty off Linux', async () => {

@@ -92,7 +92,25 @@ function cgroupLeafKind(cgroupPath: string): LinuxCgroupLeafKind {
 // Why the prefix check: a stale pid record can point at a recycled pid in an unrelated cgroup.
 const DAEMON_SCOPE_LEAF = /^(orca-daemon-|app-orca-).*\.scope$/
 
-function readDaemonCgroup(counters: LinuxOomKillCounters, ownPath: string): void {
+function readDaemonScopeCounter(counters: LinuxOomKillCounters, daemonPath: string): void {
+  counters.daemonSharesCgroup = false
+  counters.daemonCgroupPath = daemonPath
+  counters.daemonCgroupOomKill = keyedCounter(
+    fileReader(`${cgroupDir(daemonPath)}/memory.events`),
+    'oom_kill'
+  )
+}
+
+function readDaemonCgroup(
+  counters: LinuxOomKillCounters,
+  ownPath: string,
+  pinnedDaemonPath: string | undefined
+): void {
+  // Why pinned: an OOM-killed or respawned daemon no longer leads to the baseline's scope by pid.
+  if (pinnedDaemonPath) {
+    readDaemonScopeCounter(counters, pinnedDaemonPath)
+    return
+  }
   const pid = daemonPidSource?.()
   if (!pid || pid <= 0) {
     return
@@ -108,12 +126,7 @@ function readDaemonCgroup(counters: LinuxOomKillCounters, ownPath: string): void
   if (!DAEMON_SCOPE_LEAF.test(daemonPath.split('/').at(-1) ?? '')) {
     return
   }
-  counters.daemonSharesCgroup = false
-  counters.daemonCgroupPath = daemonPath
-  counters.daemonCgroupOomKill = keyedCounter(
-    fileReader(`${cgroupDir(daemonPath)}/memory.events`),
-    'oom_kill'
-  )
+  readDaemonScopeCounter(counters, daemonPath)
 }
 
 function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } | undefined {
@@ -129,7 +142,10 @@ function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } 
   return undefined
 }
 
-export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
+/** `pinnedDaemonCgroupPath`: the baseline's daemon scope, read by path at process-gone time. */
+export function readLinuxOomKillCounters(
+  pinnedDaemonCgroupPath?: string
+): LinuxOomKillCounters | null {
   if (counterPlatform !== 'linux') {
     return null
   }
@@ -144,7 +160,7 @@ export function readLinuxOomKillCounters(): LinuxOomKillCounters | null {
     )
     counters.cgroupLeafKind = cgroupLeafKind(cgroupPath)
     try {
-      readDaemonCgroup(counters, cgroupPath)
+      readDaemonCgroup(counters, cgroupPath, pinnedDaemonCgroupPath)
     } catch {
       // Why: the daemon split is optional; Orca's own counters still stand.
     }
@@ -181,7 +197,8 @@ function counterDelta(before: number | undefined, after: number | undefined): nu
 function oomKillVerdict(
   vmstatDelta: number | undefined,
   cgroupDelta: number | undefined,
-  daemonCgroupDelta: number | undefined
+  daemonCgroupDelta: number | undefined,
+  daemonScopeUncompared: boolean
 ): LinuxOomKillVerdict {
   // Why Orca's cgroup first: renderers live there, while a host kill may be anyone's.
   if ((cgroupDelta ?? 0) > 0) {
@@ -194,7 +211,9 @@ function oomKillVerdict(
     return 'no-kernel-oom-kill'
   }
   // Why: the kernel bumps the victim's memcg on every OOM kill, so a still counter clears that cgroup.
-  return cgroupDelta === 0 ? 'oom-kill-outside-orca-cgroups' : 'host-oom-kill-unattributed'
+  return cgroupDelta === 0 && !daemonScopeUncompared
+    ? 'oom-kill-outside-orca-cgroups'
+    : 'host-oom-kill-unattributed'
 }
 
 function oomKillScope(
@@ -250,7 +269,10 @@ export function linuxOomKillDetails(
   if (current.daemonSharesCgroup !== undefined) {
     details.linuxOomKillDaemonSharesCgroup = current.daemonSharesCgroup
   }
-  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta)
+  // Why: a separate daemon scope that cannot be compared may hold the kill, so nothing is cleared.
+  const daemonScopeUncompared =
+    baseline.daemonCgroupPath !== undefined && daemonCgroupDelta === undefined
+  const verdict = oomKillVerdict(vmstatDelta, cgroupDelta, daemonCgroupDelta, daemonScopeUncompared)
   details.linuxOomKillVerdict = verdict
   const scope = verdict === 'orca-cgroup-oom-kill' ? oomKillScope(baseline, current) : undefined
   if (scope) {
