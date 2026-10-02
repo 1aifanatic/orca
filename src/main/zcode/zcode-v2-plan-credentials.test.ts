@@ -348,4 +348,22 @@ describe('external v2 file boundaries', () => {
     writeFileSync(path, JSON.stringify(config))
     expect(readZcodeV2PlanCredential(host).status).toBe('ok')
   })
+
+  it.each([
+    { providerConfigRules: null },
+    { providerConfigRules: { providerRules: 42 } },
+    { providerConfigRules: { providerRules: [], unknown: true } },
+    { modelConfigRules: null },
+    { modelConfigRules: { providerModelRules: 42, manualProviderModelRules: [] } },
+    { modelConfigRules: { providerModelRules: [], manualProviderModelRules: [null] } },
+    { modelConfigRules: { providerModelRules: [{}], manualProviderModelRules: [] } }
+  ])('rejects upstream-invalid rule containers %j without legacy fallback', (changed) => {
+    install()
+    legacy()
+    const path = join(dir, '.zcode', 'v2', 'provider_config.json')
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    Object.assign(config.config, changed)
+    writeFileSync(path, JSON.stringify(config))
+    expect(readZcodeUsageCredentials({ credentialHost: host }).status).toBe('error')
+  })
 })
