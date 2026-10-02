@@ -15,6 +15,7 @@ import {
   assertOrcadMigrationSourceDormantStateRetired,
   retireOrcadMigrationSourceDormantState
 } from './orcad-source-dormant-retirement'
+import { retireOrcadSourceReconnectHint } from './orcad-source-workspace-session-retirement'
 
 const orcadSourceRetirementContext = Symbol('OrcadSourceRetirementPersistence')
 type OrcadSourceRetirementContext = {
@@ -41,6 +42,7 @@ export class OrcadSourceRetirementPersistence {
     const state = context.runtime.state
     retireOrcadSourceCatalogState(state, manifest)
     retireOrcadMigrationSourceDormantState(state, manifest)
+    retireOrcadSourceReconnectHint(state, manifest.source.sshTargetId)
     syncProjectHostSetupCompatibilityState(context.repos)
     scheduleSave(context.scheduling)
   }

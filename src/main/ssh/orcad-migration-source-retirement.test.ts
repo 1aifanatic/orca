@@ -102,6 +102,8 @@ async function setup(options: { commit?: boolean; localRepoInGroup?: boolean } =
 describe('retiring a migrated source', () => {
   it('removes the migrated rows, folder workspaces and proven leases, then marks the journal', async () => {
     const h = await setup()
+    // The renderer may still be writing the reconnect hint for the released session.
+    h.store.patchWorkspaceSession({ activeConnectionIdsAtShutdown: [TARGET.id, 'ssh-other'] })
     await expect(h.retire()).resolves.toMatchObject({ phase: 'source-retired' })
     expect(h.store.getRepos()).toEqual([])
     expect(h.store.getFolderWorkspaces()).toEqual([])
@@ -109,6 +111,7 @@ describe('retiring a migrated source', () => {
     expect(h.store.getSshRemotePtyLeases(TARGET.id)).toEqual([])
     // The target stays: it carries the managed server's tunnel now.
     expect(h.store.getSshTarget(TARGET.id)).toBeDefined()
+    expect(h.store.getWorkspaceSession().activeConnectionIdsAtShutdown).toEqual(['ssh-other'])
   })
 
   it('refuses to retire anything before the destination proved its commit', async () => {

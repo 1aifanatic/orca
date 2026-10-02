@@ -34,6 +34,18 @@ export function retireOrcadMigrationSourceWorkspaceSession(
   }
 }
 
+/** The census lets this hint through, so retirement drops it: a restart must not dial a managed host. */
+export function retireOrcadSourceReconnectHint(state: PersistedState, targetId: string): void {
+  const sessions = [state.workspaceSession, ...Object.values(state.workspaceSessionsByHostId ?? {})]
+  for (const session of sessions) {
+    if (!session?.activeConnectionIdsAtShutdown?.includes(targetId)) {
+      continue
+    }
+    const remaining = session.activeConnectionIdsAtShutdown.filter((id) => id !== targetId)
+    session.activeConnectionIdsAtShutdown = remaining.length > 0 ? remaining : undefined
+  }
+}
+
 export function assertOrcadMigrationSourceWorkspaceSessionRetired(
   state: PersistedState,
   manifest: OrcadMigrationManifest
