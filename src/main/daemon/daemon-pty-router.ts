@@ -70,10 +70,6 @@ export class DaemonPtyRouter implements IPtyProvider {
     return this.retirement.requestIdleRetirement()
   }
 
-  releaseIdleRetirementFence(): void {
-    this.retirement.releaseFence()
-  }
-
   supportsGitCredentialGuardHost(sessionId?: string): boolean {
     const adapter = sessionId ? this.adapterFor(sessionId) : this.current
     return adapter.supportsGitCredentialGuardHost()

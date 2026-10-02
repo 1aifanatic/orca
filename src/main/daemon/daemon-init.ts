@@ -10,7 +10,6 @@ export {
   listLiveDaemonPtyIds,
   listLiveDaemonSessions,
   requestIdleDaemonRetirement,
-  releaseDaemonRetirementFence,
   readDaemonPidRecord,
   replaceDaemonProvider,
   shutdownDaemon,
