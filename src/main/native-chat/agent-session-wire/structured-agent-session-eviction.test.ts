@@ -5,10 +5,6 @@ import {
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
   type StructuredAgentSessionEvictionContext
 } from './structured-agent-session-eviction'
-import {
-  AgentSessionAcquisitionRootExitObservedError,
-  AgentSessionPreSpawnError
-} from './structured-agent-session-adapter'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
@@ -27,12 +23,6 @@ function context(): StructuredAgentSessionEvictionContext & { order: string[] } 
       }),
       close: vi.fn(() => order.push('close'))
     } as unknown as StructuredAgentSessionEvictionContext['eventSink'],
-    adapter: {
-      closeSession: vi.fn(async () => {
-        order.push('closeSession')
-        return true
-      })
-    } as unknown as StructuredAgentSessionEvictionContext['adapter'],
     acknowledgeRelease: vi.fn(() => {
       order.push('acknowledgeRelease')
     }),
@@ -55,12 +45,11 @@ function runtimeState(): StructuredAgentSessionHostRuntimeState {
   } as never)
 }
 
-describe('structured agent session eviction', () => {
-  it('stops the child before it lets the sink go, then acknowledges the release', async () => {
+describe('the wind-down after a proven exit', () => {
+  it('drains what the child said before it lets the sink go, then acknowledges the release', async () => {
     const ctx = context()
     await evictStructuredAgentSession(ctx)
     expect(ctx.order).toEqual([
-      'closeSession',
       'drained',
       'settleWork',
       'unbind',
@@ -71,24 +60,8 @@ describe('structured agent session eviction', () => {
     ])
   })
 
-  it('uses disposal rather than handoff close when the chat is removed', async () => {
-    const ctx = context()
-    const closeSession = vi.fn(async () => {
-      throw new Error('resume cursor unavailable')
-    })
-    const disposeSession = vi.fn(async () => true)
-    ctx.adapter = { ...ctx.adapter, closeSession, disposeSession }
-
-    await evictStructuredAgentSession(ctx)
-
-    expect(disposeSession).toHaveBeenCalledWith('session-1')
-    expect(closeSession).not.toHaveBeenCalled()
-  })
-
-  it('names every step, so a half-finished eviction says which one failed', () => {
+  it('names every step, so a failure says which one it was', () => {
     expect(STRUCTURED_AGENT_SESSION_EVICTION_STEPS.map((step) => step.name)).toEqual([
-      'snapshot-before-stop',
-      'stop-provider-child',
       'drain-published',
       'settle-dead-generation',
       'stop-publishing',
@@ -99,94 +72,21 @@ describe('structured agent session eviction', () => {
     ])
   })
 
-  it('still stops the child when the pre-stop snapshot cannot drain the sink', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      const ctx = context()
-      const snapshot = vi.fn()
-      ctx.beforeProviderChildStop = snapshot
-      // A journal write that never settles, then a healthy sink once the child is stopped.
-      vi.mocked(ctx.eventSink.drained).mockReturnValueOnce(new Promise<never>(() => {}))
-
-      const eviction = evictStructuredAgentSession(ctx)
-      await vi.advanceTimersByTimeAsync(1_000)
-
-      expect(snapshot).toHaveBeenCalledOnce()
-      expect(ctx.adapter.closeSession).toHaveBeenCalledOnce()
-      await eviction
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('aborts after a failed drain barrier without unbinding or acknowledging the release', async () => {
-    const ctx = context()
+  // Bookkeeping for a process already gone: none of it may keep the child on record.
+  it('reports a failed step with its name and still runs every step after it', async () => {
+    const recorded = recordingStructuredAgentSessionLogger()
+    const ctx = { ...context(), logger: recorded.logger }
     ctx.eventSink.drained = vi.fn(async () => {
       ctx.order.push('drained')
       return { ok: false, error: new Error('append failed') }
     }) as unknown as StructuredAgentSessionEvictionContext['eventSink']['drained']
-
-    await expect(evictStructuredAgentSession(ctx)).rejects.toMatchObject({
-      step: 'drain-published'
-    })
-    expect(ctx.eventSink.unbind).not.toHaveBeenCalled()
-    expect(ctx.eventSink.close).not.toHaveBeenCalled()
-    expect(ctx.discardSink).not.toHaveBeenCalled()
-    expect(ctx.releaseLease).not.toHaveBeenCalled()
-    expect(ctx.acknowledgeRelease).not.toHaveBeenCalled()
-    expect(ctx.order).toEqual(['closeSession', 'drained'])
-  })
-})
-
-// Closing the codex child is not silent: the adapter emits its `ended` event and flushes coalesced
-// text as it shuts down, and those rows are what clear the running-turn marker. If the sink is
-// already closed the journal keeps claiming the agent is working, forever.
-describe('rows the provider emits while closing', () => {
-  it('still reach the journal', async () => {
-    const state = runtimeState()
-    const sessionId = 'session-closing-rows'
-    const sink = state.eventSinkFor(sessionId)
-    const published: string[] = []
-    sink.bind({ journal: {} as never, fence: 1, publish: () => published.push('final-flush') })
-
-    await evictStructuredAgentSession({
-      sessionId,
-      logger: recordingStructuredAgentSessionLogger().logger,
-      eventSink: sink,
-      adapter: {
-        closeSession: async () => {
-          // What codex-structured-session-close does on its way out.
-          sink.sink.publish()
-          return true
-        }
-      } as never,
-      discardSink: () => state.discardEventSink(sessionId),
-      releaseLease: async () => {},
-      acknowledgeRelease: () => {}
+    ctx.releaseLease = vi.fn(async () => {
+      ctx.order.push('releaseLease')
+      throw new Error('store unavailable')
     })
 
-    expect(published).toEqual(['final-flush'])
-  })
-})
+    await expect(evictStructuredAgentSession(ctx)).resolves.toBeUndefined()
 
-// `closeSession` returning false means the adapter could not prove the child exited and has kept
-// the session indexed on purpose so a retry can reach it.
-describe('a child that will not stop', () => {
-  it.each([
-    new AgentSessionAcquisitionRootExitObservedError(new Error('root exited')),
-    new AgentSessionPreSpawnError(new Error('spawn failed'))
-  ])('continues eviction after an actionable provider verdict', async (error) => {
-    const ctx = context()
-    ctx.adapter.closeSession = vi.fn(async () => {
-      throw error
-    })
-    const stopped = vi.fn()
-    ctx.onProviderChildStopped = stopped
-
-    await evictStructuredAgentSession(ctx)
-
-    // The host ends its child on the one reading of the verdict, not a second one of its own.
-    expect(stopped).toHaveBeenCalledWith({ rootGone: true })
     expect(ctx.order).toEqual([
       'drained',
       'settleWork',
@@ -196,31 +96,11 @@ describe('a child that will not stop', () => {
       'releaseLease',
       'acknowledgeRelease'
     ])
-  })
-
-  it('aborts without acknowledging the release, so the next stop is a real retry', async () => {
-    const ctx = context()
-    ctx.adapter.closeSession = vi.fn(async () => false)
-
-    await expect(evictStructuredAgentSession(ctx)).rejects.toMatchObject({
-      step: 'stop-provider-child'
-    })
-    expect(ctx.acknowledgeRelease).not.toHaveBeenCalled()
-    expect(ctx.discardSink).not.toHaveBeenCalled()
-    expect(ctx.order).toEqual([])
-  })
-
-  it('reports the failing step and leaves the sink usable for the retry', async () => {
-    const ctx = context()
-    ctx.adapter.closeSession = vi.fn(async () => {
-      throw new Error('child would not stop')
-    })
-
-    await expect(evictStructuredAgentSession(ctx)).rejects.toBeInstanceOf(
-      StructuredAgentSessionEvictionError
-    )
-    expect(ctx.eventSink.close).not.toHaveBeenCalled()
-    expect(ctx.acknowledgeRelease).not.toHaveBeenCalled()
+    expect(recorded.entries.map((entry) => entry.fields.error)).toEqual([
+      expect.objectContaining({ step: 'drain-published' }),
+      expect.objectContaining({ step: 'release-lease' })
+    ])
+    expect(recorded.entries[0]?.fields.error).toBeInstanceOf(StructuredAgentSessionEvictionError)
   })
 })
 
@@ -235,8 +115,8 @@ describe('eviction against the real sink cache', () => {
       sessionId,
       logger: recordingStructuredAgentSessionLogger().logger,
       eventSink: state.eventSinkFor(sessionId),
-      adapter: { closeSession: async () => true } as never,
       discardSink: () => state.discardEventSink(sessionId),
+      settleWork: async () => {},
       releaseLease: async () => {},
       acknowledgeRelease: () => {}
     })

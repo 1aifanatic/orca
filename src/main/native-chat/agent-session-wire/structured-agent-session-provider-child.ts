@@ -5,13 +5,11 @@
 // an exit, a failed re-attach, a Stop and an eviction. Each is matched on the child's generation
 // and fence, so an ending that arrives late for an older child cannot end a newer one.
 
-import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
-  StructuredAgentSessionOwedWindDown,
   StructuredAgentSessionProviderChild,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
@@ -48,12 +46,9 @@ export function markProviderChildStarted(
   return child !== null
 }
 
-/** `endedAt` is a stop's ask; an exit ends where the journal stands. */
 export function endProviderChild(
   session: ChildBearer,
-  ended: Omit<StructuredAgentSessionEndedChild, 'endedAt' | 'startedFor'> & {
-    endedAt?: AgentJournalCursor
-  }
+  ended: Omit<StructuredAgentSessionEndedChild, 'endedAt' | 'startedFor'>
 ): boolean {
   const child = matchingChild(session, ended)
   if (!child) {
@@ -63,7 +58,7 @@ export function endProviderChild(
   session.lastEndedChild = {
     ...ended,
     ...(child.startedFor === undefined ? {} : { startedFor: child.startedFor }),
-    endedAt: ended.endedAt ?? session.journal.cursor()
+    endedAt: session.journal.cursor()
   }
   return true
 }
@@ -75,15 +70,6 @@ export function failedProviderChildStart(
 ): StructuredAgentSessionEndedChild | null {
   const ended = session.lastEndedChild
   return !session.child && ended?.duringStartup && ended.cause !== 'user-stop' ? ended : null
-}
-
-/** The owed wind-down an operation reaching the provider finishes first. One owed for another child
- *  never outranks the child in front of it, which that child's own stop finishes. */
-export function pendingProviderChildWindDown(
-  session: Pick<StructuredAgentSessionHostSession, 'child' | 'owesProviderChildWindDown'>
-): StructuredAgentSessionOwedWindDown | undefined {
-  const { child, owesProviderChildWindDown: owed } = session
-  return owed && (!child || sameProviderChild(child, owed)) ? owed : undefined
 }
 
 export function sameProviderChild(

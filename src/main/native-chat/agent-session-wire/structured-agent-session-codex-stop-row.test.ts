@@ -58,12 +58,12 @@ beforeEach(async () => {
     return {}
   }
   const store = await openTestAgentSessionRecordStore(root)
-  // The runtime's wiring: an echo accepts its send, and an exit reaches the host.
+  // The runtime's wiring: an echo accepts its send, and every exit reaches the host.
   launch = {}
   const adapter = adapterFor(codex, launch, [], {
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     onEvent: (event) => {
-      if (event.type === 'ended' && 'cause' in event && event.cause === 'unexpected-exit') {
+      if (event.type === 'ended' && 'cause' in event) {
         void host.handleAdapterEvent(event)
       }
     }
@@ -448,16 +448,17 @@ describe('a Codex Stop whose interrupt failed', () => {
 })
 
 describe('a message after a Codex Stop whose exit was unproven', () => {
-  it('retries that stop first, then goes to a fresh Codex, never to the old one', async () => {
+  /** A Stop whose interrupt fails ends the child, whose close cannot prove the exit `failures`
+   *  times. As the real connection, it refuses every request once a close begins. */
+  async function stopWithUnprovenClose(failures: number) {
     await runningTurn()
     codex.routes['turn/interrupt'] = () => {
       throw interruptFailure('internal error')
     }
-    // As the real connection: once a close begins it refuses every request, proven or not.
     const old = codex.connections.at(-1)!
     const close = old.close
     const request = old.request
-    let unproven = 1
+    let unproven = failures
     old.close = async () => {
       old.closed = true
       if (unproven === 0) {
@@ -470,28 +471,66 @@ describe('a message after a Codex Stop whose exit was unproven', () => {
       old.closed
         ? Promise.reject(new Error('codex app-server is closing'))
         : request(method, params)
-
     await stop()
     await host.flushStreamedEvents(SESSION)
-    expect(host['sessions'].get(SESSION)?.owesProviderChildWindDown).toBeDefined()
+    return old
+  }
+
+  const startedWith = (connection: (typeof codex.connections)[number], text: string) =>
+    connection.calls.some(
+      (call) => call.method === 'turn/start' && JSON.stringify(call.params).includes(text)
+    )
+
+  it('rejects the message while the close stays unverifiable, and starts no Codex beside it', async () => {
+    const old = await stopWithUnprovenClose(2)
+
+    const sent = await send('carry on')
+    if (!sent.ok || !('submission' in sent.value)) {
+      throw new Error(JSON.stringify(sent))
+    }
+    const id = sent.value.submission.clientMessageId
+    await vi.waitFor(async () =>
+      expect(
+        (await host.journalSnapshot(SESSION)).submissions.find(
+          (entry) => entry.clientMessageId === id
+        )
+      ).toMatchObject({
+        dispatchState: 'rejected',
+        reason:
+          "Orca couldn't confirm Codex's previous process ended. Send your message to try again."
+      })
+    )
+    expect(codex.connections).toHaveLength(1)
+    expect(startedWith(old, 'carry on')).toBe(false)
+    expect(host['sessions'].get(SESSION)?.child?.close).toBeDefined()
+  })
+
+  it('ends the record when the root exits after its close gave up, with no one asking again', async () => {
+    const old = await stopWithUnprovenClose(1)
+    const handled = vi.spyOn(host, 'handleAdapterEvent')
+
+    old.handlers.onExit?.(new Error('codex app-server exited'), { expected: true })
+
+    // The close Orca began, ended: Orca's, never blamed on Codex as a crash.
+    expect(handled).toHaveBeenCalledWith(
+      expect.objectContaining({ cause: 'requested-close', failure: { kind: 'hostFault' } })
+    )
+    await vi.waitFor(() => expect(host['sessions'].get(SESSION)?.child).toBeNull())
+    expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'user-stop' })
+    expect(codex.connections).toHaveLength(1)
+  })
+
+  it('joins that close first, then goes to a fresh Codex, never to the old one', async () => {
+    const old = await stopWithUnprovenClose(1)
+    expect(host['sessions'].get(SESSION)?.child?.close).toMatchObject({ cause: 'user-stop' })
     // The next start resumes the chat's thread, as the runtime's launch resolves it from the record.
     launch.resumeThreadId = THREAD
 
     const sent = await send('carry on')
     expect(sent).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(codex.connections).toHaveLength(2))
-    await vi.waitFor(() =>
-      expect(
-        codex.connections[1]!.calls.some(
-          (call) => call.method === 'turn/start' && JSON.stringify(call.params).includes('carry on')
-        )
-      ).toBe(true)
-    )
-    expect(
-      old.calls.some(
-        (call) => call.method === 'turn/start' && JSON.stringify(call.params).includes('carry on')
-      )
-    ).toBe(false)
-    expect(host['sessions'].get(SESSION)?.owesProviderChildWindDown).toBeUndefined()
+    await vi.waitFor(() => expect(startedWith(codex.connections[1]!, 'carry on')).toBe(true))
+    expect(startedWith(old, 'carry on')).toBe(false)
+    expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({ cause: 'user-stop' })
   })
 })

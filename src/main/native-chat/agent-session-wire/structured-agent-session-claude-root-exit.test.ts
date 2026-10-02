@@ -135,7 +135,8 @@ describe('Claude root-exit stop', () => {
           runtimeState,
           sessions,
           now: () => NOW + 30 * 60_000,
-          publishStatus
+          publishStatus,
+          serialize: (_sessionId, task) => task()
         },
         'session-1',
         { cause: 'evict' }

@@ -1,12 +1,9 @@
-// A bound on how long teardown may take, expressed as a wrapper around the eviction steps rather
-// than a change to them.
+// A bound on how long a caller waits on teardown, never on the teardown itself.
 //
-// The step list is ordered and abort-on-failure for reasons that have nothing to do with time, and
-// a deadline must not disturb either. Wrapping each step's `run` keeps the order, and a timeout
-// surfaces as that step failing — which is exactly the behavior wanted here: the rest of the
-// eviction aborts, the session stays indexed, and the child stays LOADED. A stuck app-server that
-// is still holding a conversation is a better outcome than one killed out from under it; the next
-// close retries.
+// Two uses. A caller joining a child's close waits this long for the exit's proof and then answers
+// `unverifiable`; the close keeps running, and a proof that lands later still ends the record. Each
+// wind-down step after the exit is bounded the same way, so one hung step is reported and the rest
+// still run.
 
 import type { StructuredAgentSessionEvictionStep } from './structured-agent-session-eviction'
 

@@ -8,6 +8,8 @@ import type {
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import { settleStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
 import { settleUnexpectedStructuredAgentSessionExit } from './structured-agent-session-unexpected-exit'
+import { endClosedStructuredAgentSessionChild } from './structured-agent-session-child-close'
+import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 
 export class StructuredAgentSessionEventRecovery {
   private readonly sinkFailures = new Set<string>()
@@ -22,11 +24,17 @@ export class StructuredAgentSessionEventRecovery {
       publishStatus?: (sessionId: string) => void
       serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
       now: () => number
+      /** Where a close the host asked for ends the child's record. */
+      lifetime: () => StructuredAgentSessionLifetimeContext
     }
   ) {}
 
   private get exitContext() {
-    return { ...this.context, logger: this.context.deps.logger }
+    return {
+      ...this.context,
+      logger: this.context.deps.logger,
+      wakeDelivery: this.context.lifetime().wakeDelivery
+    }
   }
 
   recoverAfterSinkFailure(sessionId: string, error: unknown): void {
@@ -72,11 +80,15 @@ export class StructuredAgentSessionEventRecovery {
       .finally(() => this.sinkFailures.delete(sessionId))
   }
 
-  /** An exit is settled and shown; nothing restarts the child. The next send does, through the
-   *  delivery loop, which also owns any message still queued. */
+  /** Every child's exit ends its record here, expected or not. An exit is settled and shown;
+   *  nothing restarts the child. The next send does, through the delivery loop, which also owns any
+   *  message still queued. */
   async handle(event: StructuredAgentSessionLifecycleEvent): Promise<void> {
     if (event.type === 'started') {
       return settleStructuredAgentSessionProviderStarted(this.context, event)
+    }
+    if (event.cause === 'requested-close') {
+      return endClosedStructuredAgentSessionChild(this.context.lifetime(), event)
     }
     await settleUnexpectedStructuredAgentSessionExit(this.exitContext, event)
   }

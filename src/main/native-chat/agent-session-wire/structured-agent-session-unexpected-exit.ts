@@ -36,6 +36,8 @@ export type StructuredAgentSessionUnexpectedExitContext<
   flushLifecycle: (sessionId: string) => Promise<StructuredAgentSessionSinkBarrier>
   publishFence: (sessionId: string, session: TSession) => void
   publishStatus?: (sessionId: string) => void
+  /** The delivery loop hands over whatever is queued once the child is off the record. */
+  wakeDelivery?: (sessionId: string) => void
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   logger: StructuredAgentSessionLogger
@@ -143,6 +145,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
         if (released) {
           context.publishFence(unexpectedEvent.sessionId, session)
         }
+        context.wakeDelivery?.(unexpectedEvent.sessionId)
       }
     }
   })

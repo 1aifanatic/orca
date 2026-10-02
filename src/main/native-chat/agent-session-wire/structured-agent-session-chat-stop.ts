@@ -73,6 +73,21 @@ export function mutateWithChatStop<TValue>(
           agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
         const child = context.sessions.get(ctx.sessionId)?.child
+        if (child?.close) {
+          // A close an earlier stop began: this Stop joins it, retrying the exit's proof, rather
+          // than asking a child that takes no input to stop again.
+          if (withdrawn.length > 0) {
+            await tookEffect()
+          }
+          await stopChild().catch((error: unknown) =>
+            context.deps.logger.warn('ending the agent process on Stop failed', {
+              scope: 'stop-child',
+              sessionId,
+              error
+            })
+          )
+          return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+        }
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           await tookEffect()

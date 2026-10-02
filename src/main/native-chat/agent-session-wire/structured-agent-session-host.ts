@@ -158,7 +158,8 @@ export class StructuredAgentSessionHost {
         ),
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
-      now: () => this.now()
+      now: () => this.now(),
+      lifetime: () => this.lifetimeContext()
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
       ...structuredAgentSessionRestartResumeSurfaces(this, this.now),
@@ -193,7 +194,8 @@ export class StructuredAgentSessionHost {
       sessions: this.sessions,
       now: () => this.now(),
       publishStatus: this.clientDelivery.publishStatus,
-      wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId)
+      wakeDelivery: (sessionId: string) => this.conversationDelivery.loop.wake(sessionId),
+      serialize: this.serialize
     } satisfies StructuredAgentSessionLifetimeContext
   }
 
@@ -279,11 +281,8 @@ export class StructuredAgentSessionHost {
       openConversation: this.conversationDelivery.open,
       ensureAgent: (sessionId) =>
         agentStart.ensureStructuredAgentSessionAgentForOperation(this.attachContext(), sessionId),
-      finishOwedStop: (sessionId) =>
-        agentStart.finishOwedStructuredAgentSessionStopForProviderWrite(
-          this.attachContext(),
-          sessionId
-        ),
+      joinChildClose: (sessionId) =>
+        agentStart.joinClosingStructuredAgentSessionChild(this.attachContext(), sessionId),
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       stopAgent: (sessionId, ending) => this.lifetime.stopAgent(sessionId, ending),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
