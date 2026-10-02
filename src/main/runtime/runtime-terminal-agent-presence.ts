@@ -21,7 +21,10 @@ import {
   classifyLatestAgentTitle,
   getLatestAgentCandidateTitle,
   getLatestLeafTitle,
-  ptyTitleProvesAgentPresence
+  getLeafDisplayRecord,
+  getPtyDisplayRecord,
+  ptyTitleProvesAgentPresence,
+  type TitleDisplayClear
 } from './runtime-worktree-status-projection'
 
 const WRAPPER_RETRY_INTERVAL_MS = 150
@@ -37,6 +40,8 @@ type RuntimeTerminalAgentPresenceDependencies = {
   getTrackedPty(ptyId: string): RuntimePtyWorktreeRecord | null
   getTabTitle(tabId: string): string | null
   getForegroundProcess(ptyId: string): Promise<string | null> | null
+  /** The stale-working timer's display-only clear of the PTY's own title, if one stands. */
+  getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
 }
 
 export type RuntimeTerminalAgentPresenceOptions = {
@@ -87,11 +92,25 @@ export class RuntimeTerminalAgentPresence {
     }
     const presence = this.deps.getAgentPresence?.(handle)
     try {
+      // Why display records: presence reads what the pane shows, as before the stale-working
+      // clear stopped rewriting records. A cwd spinner clears to a neutral title, so the
+      // foreground process decides for an agent that exited behind it.
       const pty = this.deps.getLivePty(handle)
       if (pty) {
-        return await this.isPtyRunning(pty, this.deps.getPrimaryLeaf(pty.ptyId), options, presence)
+        const clear = this.deps.getTitleDisplayClear(pty.ptyId)
+        const leaf = this.deps.getPrimaryLeaf(pty.ptyId)
+        return await this.isPtyRunning(
+          getPtyDisplayRecord(pty, clear),
+          leaf ? getLeafDisplayRecord(leaf, clear) : null,
+          options,
+          presence
+        )
       }
-      const leaf = this.deps.getLiveLeaf(handle)
+      const liveLeaf = this.deps.getLiveLeaf(handle)
+      const leaf = getLeafDisplayRecord(
+        liveLeaf,
+        liveLeaf.ptyId ? this.deps.getTitleDisplayClear(liveLeaf.ptyId) : null
+      )
       const tracked = leaf.ptyId ? this.deps.getTrackedPty(leaf.ptyId) : null
       const trackedPty = tracked && withoutEndedOwnerLaunch(tracked, presence)
       const paneTitle = withoutEndedOwnerTitle(getLatestLeafTitle(leaf, null), presence)
