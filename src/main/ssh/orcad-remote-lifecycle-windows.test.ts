@@ -87,7 +87,7 @@ function scriptWindowsHost(log: string[], activeRecord: string | null = null): v
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
     log.push(text)
-    const op = /\.js ([a-z-]+)(?: |$)/u.exec(text)?.[1]
+    const op = /\.js ([a-z-]+)(?: |$)/u.exec(text)?.[1] ?? ''
     switch (op) {
       case 'record-read':
         return activeRecord && text.includes('orcad-active.json')
