@@ -26,7 +26,7 @@ describe('rewind recovery of newer durable records', () => {
 
   // Retained by its place, never by its kind, so an updated Orca still has it after the rewind.
   it('carries an item of a kind this build does not know as it was, and records it', () => {
-    const body = { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }
+    const body = { kind: 'plan-card', title: 'by a newer build' }
     expect(restoreRewindJournalBody(body)).toBe(body)
     expect(
       AgentSessionRewindRecordSchema.safeParse({
