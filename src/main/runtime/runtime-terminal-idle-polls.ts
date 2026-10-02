@@ -5,6 +5,15 @@ import type {
 } from '../../shared/runtime-types'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import {
+  hasQuietReadyRules,
+  readsTrustedScreen
+} from './agent-state-rules/agent-state-rules-engine'
+import {
+  RuntimeTerminalProviderScreen,
+  type ProviderScreenDependencies,
+  type TuiIdleProviderScreen
+} from './runtime-terminal-provider-screen'
+import {
   buildPtyTerminalWaitBlockedResult,
   buildPtyTerminalWaitResult,
   buildTerminalWaitBlockedResult,
@@ -49,23 +58,26 @@ function isQuietForQuiescence(
 import type { TerminalWaiter } from './runtime-terminal-contracts'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 
-type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource & {
-  intervalMs: number
-  getForegroundProcess(ptyId: string): Promise<string | null> | null
-  /** Whether the pane's running command has painted anything of its own. */
-  hasCommandPainted(ptyId: string): boolean
-  /** The pane's rendered viewport, or null when the runtime holds no screen model for it. */
-  readVisibleScreen(ptyId: string): Promise<string | null> | null
-  /** Re-read the record the waiter registered against; see `sample` below. */
-  getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
-  resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
-}
+type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource &
+  ProviderScreenDependencies & {
+    intervalMs: number
+    getForegroundProcess(ptyId: string): Promise<string | null> | null
+    /** Whether the pane's running command has painted anything of its own. */
+    hasCommandPainted(ptyId: string): boolean
+    /** The pane's rendered viewport, or null when the runtime holds no screen model for it. */
+    readVisibleScreen(ptyId: string): Promise<string | null> | null
+    /** Re-read the record the waiter registered against; see `sample` below. */
+    getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
+    resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
+  }
 
-type IdlePollEntry = {
+type IdlePollRegistration = {
   waiter: TerminalWaiter
   foregroundPollInFlight: boolean
   screenReadInFlight: boolean
 } & ({ kind: 'leaf'; leaf: RuntimeLeafRecord } | { kind: 'pty'; pty: RuntimePtyWorktreeRecord })
+
+type IdlePollEntry = IdlePollRegistration & { providerScreen: RuntimeTerminalProviderScreen }
 
 /** One reading of a waiter's pane, and the results it would settle with. */
 type IdlePollSample = {
@@ -74,6 +86,7 @@ type IdlePollSample = {
   ready(): RuntimeTerminalWait
   blocked(reason: RuntimeTerminalWaitBlockedReason): RuntimeTerminalWait
   isQuiet(lane: QuietForegroundLane): boolean
+  providerEligible: boolean
 }
 
 const IDLE_ENTRY_FLAGS = { foregroundPollInFlight: false, screenReadInFlight: false }
@@ -98,7 +111,14 @@ export class RuntimeTerminalIdlePolls {
     return this.sweepTimer ? 1 : 0
   }
 
-  private start(entry: IdlePollEntry, verdict: TuiIdleVerdict | undefined): void {
+  private start(initial: IdlePollRegistration, verdict: TuiIdleVerdict | undefined): void {
+    const entry: IdlePollEntry = {
+      ...initial,
+      providerScreen: new RuntimeTerminalProviderScreen(
+        this.deps,
+        initial.kind === 'pty' ? initial.pty.ptyId : initial.leaf.ptyId
+      )
+    }
     this.entries.add(entry)
     entry.waiter.cancelIdlePoll = () => this.stop(entry)
     // Why one shared timer for every waiter: a per-waiter interval multiplied idle
@@ -124,8 +144,15 @@ export class RuntimeTerminalIdlePolls {
     }
   }
 
-  private sample(entry: IdlePollEntry): IdlePollSample {
+  private sample(entry: IdlePollEntry, screen?: TuiIdleProviderScreen): IdlePollSample {
     const { handle } = entry.waiter
+    const source: TuiIdleEvidenceSource = screen
+      ? {
+          ...this.deps,
+          readScreenLines: () => screen.lines,
+          readScreenRuledLines: () => screen.lines
+        }
+      : this.deps
     if (entry.kind === 'pty') {
       // Why no re-read here: `ptysById` has a single create-once `set` site, so PTY
       // records are mutated in place rather than swapped, and a capture stays live.
@@ -133,7 +160,8 @@ export class RuntimeTerminalIdlePolls {
       const readWaitText = () =>
         buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
       return {
-        verdict: evaluateTuiIdle(ptyTuiIdleEvidence(this.deps, pty, readWaitText)),
+        verdict: evaluateTuiIdle(ptyTuiIdleEvidence(source, pty, readWaitText)),
+        providerEligible: canReadQuietProvider(pty),
         ptyId: pty.ptyId,
         ready: () => buildPtyTerminalWaitResult(handle, 'tui-idle', pty),
         blocked: (reason) => buildPtyTerminalWaitBlockedResult(handle, 'tui-idle', pty, reason),
@@ -152,7 +180,11 @@ export class RuntimeTerminalIdlePolls {
       buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
     const live = () => this.deps.getLiveLeaf(entry.leaf)
     return {
-      verdict: evaluateTuiIdle(leafTuiIdleEvidence(this.deps, leaf, readWaitText)),
+      verdict: evaluateTuiIdle(leafTuiIdleEvidence(source, leaf, readWaitText)),
+      providerEligible:
+        leaf.ptyId === entry.leaf.ptyId &&
+        leaf.ptyGeneration === entry.leaf.ptyGeneration &&
+        canReadQuietProvider(leaf),
       ptyId: leaf.ptyId,
       ready: () => buildTerminalWaitResult(handle, 'tui-idle', live()),
       blocked: (reason) => buildTerminalWaitBlockedResult(handle, 'tui-idle', live(), reason),
@@ -167,7 +199,7 @@ export class RuntimeTerminalIdlePolls {
   }
 
   private async tick(entry: IdlePollEntry): Promise<void> {
-    if (!this.entries.has(entry)) {
+    if (!this.entries.has(entry) || !entry.providerScreen.isCurrent()) {
       return
     }
     let startedForegroundPoll = false
@@ -187,6 +219,20 @@ export class RuntimeTerminalIdlePolls {
       // Why no screen read while working: its output can quote dialog wording (a diff of this
       // detector), and the dialogs only the screen shows are start-up ones, painted before any title.
       if (verdict.kind === 'working' || entry.screenReadInFlight) {
+        return
+      }
+      const agent = this.deps.getPaneAgent(ptyId)
+      const wholeScreen = readsTrustedScreen(agent)
+        ? this.deps.readScreenRuledLines?.(ptyId)
+        : this.deps.readScreenLines(ptyId)
+      if (
+        entry.providerScreen.available &&
+        wholeScreen == null &&
+        hasQuietReadyRules(agent) &&
+        sample.providerEligible &&
+        sample.isQuiet('open')
+      ) {
+        await this.readProviderVerdict(entry)
         return
       }
       const screenRead = ptyId ? this.readScreenBlockedReason(entry, ptyId) : null
@@ -227,6 +273,38 @@ export class RuntimeTerminalIdlePolls {
     }
   }
 
+  private async readProviderVerdict(entry: IdlePollEntry): Promise<void> {
+    entry.screenReadInFlight = true
+    try {
+      const screen = await entry.providerScreen.read()
+      if (!this.entries.has(entry) || !entry.providerScreen.isCurrent() || !screen?.isCurrent()) {
+        return
+      }
+      const sample = this.sample(entry, screen)
+      if (!sample.providerEligible || !screen.isCurrent()) {
+        return
+      }
+      const isCurrent = (): boolean => {
+        if (!screen.isCurrent()) {
+          return false
+        }
+        const latest = this.sample(entry, screen)
+        return (
+          latest.providerEligible &&
+          latest.verdict.kind === sample.verdict.kind &&
+          screen.isCurrent()
+        )
+      }
+      if (sample.verdict.kind === 'blocked') {
+        this.settle(entry, sample.blocked(sample.verdict.reason), isCurrent)
+      } else if (sample.verdict.kind === 'ready-strong') {
+        this.settle(entry, sample.ready(), isCurrent)
+      }
+    } finally {
+      entry.screenReadInFlight = false
+    }
+  }
+
   /** Why the screen too: a dialog that parks the cursor above its own options (Claude's
    *  workspace trust) loses those rows from the line tail; the rendered screen still has them. */
   private readScreenBlockedReason(
@@ -245,7 +323,14 @@ export class RuntimeTerminalIdlePolls {
       })
   }
 
-  private settle(entry: IdlePollEntry, result: RuntimeTerminalWait): void {
+  private settle(
+    entry: IdlePollEntry,
+    result: RuntimeTerminalWait,
+    isCurrent: () => boolean = () => true
+  ): void {
+    if (!this.entries.has(entry) || !entry.providerScreen.isCurrent() || !isCurrent()) {
+      return
+    }
     this.stop(entry)
     this.deps.resolve(entry.waiter, result)
   }
@@ -260,4 +345,12 @@ export class RuntimeTerminalIdlePolls {
       this.sweepTimer = null
     }
   }
+}
+
+function canReadQuietProvider(record: RuntimeLeafRecord | RuntimePtyWorktreeRecord): boolean {
+  return (
+    record.lastOutputAt !== null &&
+    record.lastAgentStatus !== 'working' &&
+    record.lastAgentStatus !== 'permission'
+  )
 }
