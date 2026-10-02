@@ -203,6 +203,16 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
     await settledTurn(journal, 'turn-1')
     await send(journal, 'send-recovered', 'lost in a crash')
     await journal.markPendingSubmissionsUnknown(CORPUS_FENCE)
+  },
+  // A person's Stop found the turn running, then Orca died before the provider ended it.
+  "running turn a person's Stop found": async (journal: AgentSessionJournal) => {
+    await item(journal, codexItem('turn-2', 0), {
+      kind: 'turn',
+      turnId: 'turn-2',
+      state: 'running',
+      startedAt: 10
+    })
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-2' }, CORPUS_FENCE)
   }
 } satisfies Record<string, (journal: AgentSessionJournal) => Promise<void>>
 
@@ -229,7 +239,8 @@ export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   'refused send': false,
   'running turn on a legacy status row': true,
   'running work settled by a batch': false,
-  'unknown send recovered': false
+  'unknown send recovered': false,
+  "running turn a person's Stop found": true
 }
 
 export const JOURNAL_SESSION_STATE_CASES = Object.keys(JOURNAL_SESSION_STATE_CORPUS).filter(
@@ -252,5 +263,12 @@ export const CORPUS_DEATH_EVIDENCE: Record<string, AgentSessionDeathEvidence | n
     detail: 'exit',
     observedAt: 70,
     ownerFence: CORPUS_FENCE + 1
+  },
+  // Observed after every journal clock in the corpus: after a Stop event, too.
+  'names the writer, after a Stop': {
+    kind: 'pid-absent',
+    detail: 'gone',
+    observedAt: 10_000_000,
+    ownerFence: CORPUS_FENCE
   }
 }
