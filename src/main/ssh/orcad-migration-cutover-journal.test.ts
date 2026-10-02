@@ -40,6 +40,7 @@ function cutover(migrationId = 'migration-1', sshTargetId = 'ssh-1'): OrcadMigra
     sshTargetId,
     sshTargetGeneration: 2,
     manifestSha256: manifest.manifestSha256,
+    provenPtyIds: [],
     manifest
   }
 }
