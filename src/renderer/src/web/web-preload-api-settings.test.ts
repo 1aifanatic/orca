@@ -256,6 +256,34 @@ describe('web settings preload API', () => {
     expect(stored.autoRenameBranchFromWorkDefaultedOn).toBe(true)
   })
 
+  it('reads the host GLM site without sending site or secret changes back', async () => {
+    const runtimeCalls: { method: string; params: unknown }[] = []
+    vi.doMock('./web-runtime-client', () => ({
+      WebRuntimeClient: class {
+        call(method: string, params?: unknown): Promise<RuntimeRpcResponse<unknown>> {
+          runtimeCalls.push({ method, params })
+          return Promise.resolve({
+            id: 'site-read',
+            ok: true,
+            result: { settings: { zcodePlanSite: 'bigmodel' } },
+            _meta: { runtimeId: 'runtime-1' }
+          })
+        }
+        close(): void {}
+      }
+    }))
+    const globals = installBrowserGlobals('Linux')
+    writeStoredRuntimeEnvironment(globals.storage)
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+    expect((await globals.window.api.settings.get()).zcodePlanSite).toBe('bigmodel')
+    await globals.window.api.settings.set({ zcodePlanSite: 'zai' })
+    await expect(
+      globals.window.api.zcodePlanCredentials.saveApiKey('synthetic-key')
+    ).rejects.toThrow()
+    expect(runtimeCalls).toEqual([{ method: 'settings.get', params: undefined }])
+  })
+
   it('hydrates compact worktree cards from paired runtime settings', async () => {
     const runtimeCalls: { method: string; params: unknown }[] = []
     vi.doMock('./web-runtime-client', () => ({

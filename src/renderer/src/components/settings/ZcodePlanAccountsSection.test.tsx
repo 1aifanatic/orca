@@ -82,6 +82,7 @@ describe('ZcodePlanAccountsSection', () => {
 
   it('disables site and secret editing on a paired web client', async () => {
     mocks.isWeb.mockReturnValue(true)
+    mocks.settings.zcodePlanSite = 'bigmodel'
     render(<ZcodePlanAccountsSection />)
     expect(
       await screen.findByText(
@@ -89,6 +90,7 @@ describe('ZcodePlanAccountsSection', () => {
       )
     ).toBeInTheDocument()
     expect(screen.getByRole('combobox')).toBeDisabled()
+    expect(screen.getByRole('combobox')).toHaveTextContent('Zhipu · BigModel')
     expect(screen.getByPlaceholderText('Paste your GLM Coding Plan API key')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })

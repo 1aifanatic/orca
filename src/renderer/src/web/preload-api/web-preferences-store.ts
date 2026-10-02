@@ -139,6 +139,9 @@ export async function getRuntimeBackedStoredSettings(): Promise<GlobalSettings> 
     if (typeof result.settings.minimaxUsageModels === 'string') {
       runtimeSettings.minimaxUsageModels = result.settings.minimaxUsageModels
     }
+    if (result.settings.zcodePlanSite === 'zai' || result.settings.zcodePlanSite === 'bigmodel') {
+      runtimeSettings.zcodePlanSite = result.settings.zcodePlanSite
+    }
     if (
       result.settings.minimaxEndpoint === 'overseas' ||
       result.settings.minimaxEndpoint === 'cn'
