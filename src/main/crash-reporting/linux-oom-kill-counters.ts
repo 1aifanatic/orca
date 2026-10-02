@@ -26,12 +26,19 @@ export type LinuxOomKillCounters = {
   daemonCgroupOomKill?: number
   /** True when the daemon shares Orca main's cgroup, so `cgroupOomKill` covers agents too. */
   daemonSharesCgroup?: boolean
-  /** Nearest memory.max at or above Orca's cgroup; undefined when unlimited. */
+  /** Smallest memory.max at or above Orca's cgroup (the effective limit); undefined when unlimited. */
   cgroupMemoryMaxMB?: number
-  /** memory.events `oom` (limit reached) of the cgroup owning that memory.max. */
-  memoryLimitOomEvents?: number
+  /** Every limited cgroup at or above Orca's, deepest first. */
+  memoryLimits?: LinuxCgroupMemoryLimit[]
   /** PSI `some avg10` from /proc/pressure/memory, percent. */
   memoryPressureSomeAvg10?: number
+}
+
+export type LinuxCgroupMemoryLimit = {
+  dir: string
+  maxMB: number
+  /** memory.events.local `oom`: this cgroup's own limit was hit (5.2+), not a descendant's. */
+  localOomEvents?: number
 }
 
 type FileReader = (path: string) => string | undefined
@@ -148,17 +155,23 @@ function resolveDaemonCgroupPath(): string | undefined {
   return path
 }
 
-function nearestMemoryLimit(cgroupPath: string): { dir: string; maxMB: number } | undefined {
-  // Why walk up: uwsm/systemd usually puts the limit on a parent slice, not the app scope.
+function ancestorMemoryLimits(cgroupPath: string): LinuxCgroupMemoryLimit[] {
+  // Why every ancestor: the tightest limit, and the one that fired, may sit on any slice above.
   const segments = cgroupPath.split('/').filter(Boolean)
+  const limits: LinuxCgroupMemoryLimit[] = []
   for (let depth = segments.length; depth >= 0; depth--) {
     const dir = `/sys/fs/cgroup/${segments.slice(0, depth).join('/')}`.replace(/\/$/, '')
     const raw = fileReader(`${dir}/memory.max`)?.trim()
     if (raw && /^\d+$/.test(raw)) {
-      return { dir, maxMB: Math.round(Number(raw) / (1024 * 1024)) }
+      limits.push({
+        dir,
+        maxMB: Math.round(Number(raw) / (1024 * 1024)),
+        // Why local: hierarchical `oom` also moves when a sibling hits its own smaller limit.
+        localOomEvents: keyedCounter(fileReader(`${dir}/memory.events.local`), 'oom')
+      })
     }
   }
-  return undefined
+  return limits
 }
 
 /** `pinnedDaemonCgroupPath`: the baseline's daemon scope, read by path at process-gone time. */
@@ -183,11 +196,10 @@ export function readLinuxOomKillCounters(
     } catch {
       // Why: the daemon split is optional; Orca's own counters still stand.
     }
-    const limit = nearestMemoryLimit(cgroupPath)
-    if (limit) {
-      counters.cgroupMemoryMaxMB = limit.maxMB
-      // Why the limit owner's file: `oom` propagates up from the limited memcg, not down to Orca's leaf.
-      counters.memoryLimitOomEvents = keyedCounter(fileReader(`${limit.dir}/memory.events`), 'oom')
+    const limits = ancestorMemoryLimits(cgroupPath)
+    if (limits.length > 0) {
+      counters.memoryLimits = limits
+      counters.cgroupMemoryMaxMB = Math.min(...limits.map((limit) => limit.maxMB))
     }
   }
   const avg10 = fileReader('/proc/pressure/memory')?.match(/^some avg10=([\d.]+)/m)?.[1]
@@ -239,14 +251,20 @@ function oomKillScope(
   baseline: LinuxOomKillCounters,
   current: LinuxOomKillCounters
 ): LinuxOomKillScope | undefined {
-  if (current.cgroupMemoryMaxMB === undefined) {
+  const limits = current.memoryLimits ?? []
+  if (limits.length === 0) {
     return 'global'
   }
-  const limitOomDelta = counterDelta(baseline.memoryLimitOomEvents, current.memoryLimitOomEvents)
-  if (limitOomDelta === undefined) {
-    return undefined
+  let unknown = false
+  for (const limit of limits) {
+    const before = baseline.memoryLimits?.find((b) => b.dir === limit.dir)?.localOomEvents
+    const delta = counterDelta(before, limit.localOomEvents)
+    if ((delta ?? 0) > 0) {
+      return 'memcg-limit'
+    }
+    unknown ||= delta === undefined
   }
-  return limitOomDelta > 0 ? 'memcg-limit' : 'global'
+  return unknown ? undefined : 'global'
 }
 
 /**

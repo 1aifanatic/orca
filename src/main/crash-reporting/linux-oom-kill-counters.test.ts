@@ -23,6 +23,11 @@ function fakeHost(state: {
   cgroupKills: number
   memoryMax?: string
   sliceOomEvents?: number
+  sliceLocalOomEvents?: number
+  scopeMemoryMax?: string
+  scopeLocalOomEvents?: number
+  userSliceMemoryMax?: string
+  userSliceLocalOomEvents?: number
   daemonCgroup?: string
   daemonKills?: number
 }) {
@@ -39,17 +44,33 @@ function fakeHost(state: {
       case `/sys/fs/cgroup${SCOPE}/memory.events`:
         return `low 0\nhigh 0\nmax 12\noom 1\noom_kill ${state.cgroupKills}\noom_group_kill 0\n`
       case `/sys/fs/cgroup${SCOPE}/memory.max`:
-        return 'max\n'
+        return state.scopeMemoryMax ?? 'max\n'
+      case `/sys/fs/cgroup${SCOPE}/memory.events.local`:
+        return `max 0\noom ${state.scopeLocalOomEvents ?? 0}\noom_kill 0\n`
+      case '/sys/fs/cgroup/user.slice/memory.max':
+        return state.userSliceMemoryMax ?? 'max\n'
+      case '/sys/fs/cgroup/user.slice/memory.events.local':
+        return `max 0\noom ${state.userSliceLocalOomEvents ?? 0}\noom_kill 0\n`
       case '/sys/fs/cgroup/user.slice/user-1000.slice/memory.max':
         return state.memoryMax ?? 'max\n'
       case '/sys/fs/cgroup/user.slice/user-1000.slice/memory.events':
         return `low 0\nhigh 0\nmax 40\noom ${state.sliceOomEvents ?? 0}\noom_kill 0\n`
+      case '/sys/fs/cgroup/user.slice/user-1000.slice/memory.events.local':
+        return `low 0\nhigh 0\nmax 40\noom ${state.sliceLocalOomEvents ?? 0}\noom_kill 0\n`
       case '/proc/pressure/memory':
         return 'some avg10=42.50 avg60=10.00 avg300=2.00 total=1\nfull avg10=30.00 avg60=0 avg300=0 total=1\n'
       default:
         return undefined
     }
   }
+}
+
+function readCountersOrThrow() {
+  const counters = readLinuxOomKillCounters()
+  if (!counters) {
+    throw new Error('expected Linux counters')
+  }
+  return counters
 }
 
 afterEach(() => {
@@ -69,7 +90,8 @@ describe('readLinuxOomKillCounters', () => {
         hostKills: 3,
         cgroupKills: 1,
         memoryMax: `${8 * 1024 * 1024 * 1024}\n`,
-        sliceOomEvents: 2
+        sliceOomEvents: 5,
+        sliceLocalOomEvents: 2
       }),
       'linux'
     )
@@ -78,7 +100,9 @@ describe('readLinuxOomKillCounters', () => {
       cgroupOomKill: 1,
       cgroupLeafKind: 'orca',
       cgroupMemoryMaxMB: 8192,
-      memoryLimitOomEvents: 2,
+      memoryLimits: [
+        { dir: '/sys/fs/cgroup/user.slice/user-1000.slice', maxMB: 8192, localOomEvents: 2 }
+      ],
       memoryPressureSomeAvg10: 42.5
     })
   })
@@ -174,7 +198,7 @@ describe('linuxOomKillDetails', () => {
           vmstatOomKill: 5,
           cgroupOomKill: 0,
           cgroupMemoryMaxMB: 600,
-          memoryLimitOomEvents: 3,
+          memoryLimits: [{ dir: '/s', maxMB: 600, localOomEvents: 3 }],
           memoryPressureSomeAvg10: 61
         },
         12_000,
@@ -182,7 +206,7 @@ describe('linuxOomKillDetails', () => {
           vmstatOomKill: 6,
           cgroupOomKill: 1,
           cgroupMemoryMaxMB: 600,
-          memoryLimitOomEvents: 4
+          memoryLimits: [{ dir: '/s', maxMB: 600, localOomEvents: 4 }]
         }
       )
     ).toEqual({
@@ -212,17 +236,60 @@ describe('linuxOomKillDetails', () => {
           vmstatOomKill: 5,
           cgroupOomKill: 0,
           cgroupMemoryMaxMB: 8192,
-          memoryLimitOomEvents: 2
+          memoryLimits: [{ dir: '/s', maxMB: 8192, localOomEvents: 2 }]
         },
         5_000,
         {
           vmstatOomKill: 6,
           cgroupOomKill: 1,
           cgroupMemoryMaxMB: 8192,
-          memoryLimitOomEvents: 2
+          memoryLimits: [{ dir: '/s', maxMB: 8192, localOomEvents: 2 }]
         }
       )
     ).toMatchObject({
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
+      linuxOomKillScope: 'global'
+    })
+  })
+
+  it('names a memcg-limit kill by a tighter limit further up the tree', () => {
+    const GiB = 1024 * 1024 * 1024
+    const host = {
+      hostKills: 5,
+      cgroupKills: 0,
+      scopeMemoryMax: `${8 * GiB}\n`,
+      userSliceMemoryMax: `${4 * GiB}\n`,
+      userSliceLocalOomEvents: 0
+    }
+    setLinuxOomKillFileReaderForTest(fakeHost(host), 'linux')
+    const before = readCountersOrThrow()
+    setLinuxOomKillFileReaderForTest(
+      fakeHost({ ...host, hostKills: 6, cgroupKills: 1, userSliceLocalOomEvents: 1 }),
+      'linux'
+    )
+    expect(linuxOomKillDetails(before, 10_000, readCountersOrThrow())).toMatchObject({
+      linuxOomKillVerdict: 'orca-cgroup-oom-kill',
+      linuxOomKillScope: 'memcg-limit',
+      linuxCgroupMemoryMaxMB: 4096
+    })
+  })
+
+  it('scopes as global when only a sibling hit its own limit under the limited slice', () => {
+    const host = {
+      hostKills: 5,
+      cgroupKills: 0,
+      memoryMax: `${4 * 1024 * 1024 * 1024}\n`,
+      sliceOomEvents: 0,
+      sliceLocalOomEvents: 0
+    }
+    setLinuxOomKillFileReaderForTest(fakeHost(host), 'linux')
+    const before = readCountersOrThrow()
+    // Hierarchical `oom` moved from the sibling; the slice's local count did not.
+    setLinuxOomKillFileReaderForTest(
+      fakeHost({ ...host, hostKills: 7, cgroupKills: 1, sliceOomEvents: 1 }),
+      'linux'
+    )
+    expect(linuxOomKillDetails(before, 10_000, readCountersOrThrow())).toMatchObject({
       linuxOomKillVerdict: 'orca-cgroup-oom-kill',
       linuxOomKillScope: 'global'
     })
