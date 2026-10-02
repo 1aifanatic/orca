@@ -122,6 +122,13 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     homepageUrl: 'https://deepseek-harness.github.io/deepseek-harness/'
   },
   {
+    id: 'qoder-cn',
+    label: translate('auto.lib.agent.catalog.qoder_cn_label', 'Qoder CLI China'),
+    cmd: 'qoderclicn',
+    faviconDomain: 'qoder.cn',
+    homepageUrl: 'https://docs.qoder.cn/cli/overview'
+  },
+  {
     id: 'qoder',
     label: translate('auto.lib.agent.catalog.qoder_label', 'Qoder CLI'),
     cmd: 'qodercli',
@@ -391,10 +398,7 @@ export function AgentIcon({
   if (agent === 'copilot') {
     return <CopilotIcon size={size} />
   }
-  if (agent === 'opencode') {
-    return <OpenCodeIcon size={size} />
-  }
-  if (agent === 'opencode2') {
+  if (agent === 'opencode' || agent === 'opencode2') {
     return <OpenCodeIcon size={size} />
   }
   const catalogEntry = getAgentCatalog().find((a) => a.id === agent)

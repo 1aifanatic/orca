@@ -271,7 +271,7 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
     return { kind: 'blocked', reason: blockedReason }
   }
   // Qoder publishes "Ready" before its trust dialog is dismissed; only its composer proves input is live.
-  if (input.agent === 'qoder') {
+  if (input.agent === 'qoder' || input.agent === 'qoder-cn') {
     if (
       hasFreshWorkingFirstPartyStatus(input.firstPartyStatus) ||
       input.record.lastAgentStatus === 'working'
@@ -442,7 +442,9 @@ export function ptyTuiIdleEvidence(
     record: pty,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     readPositiveBodyEvidence: () =>
-      (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
+      (agent !== 'qoder' &&
+        agent !== 'qoder-cn' &&
+        source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
       isKnownReadyPromptBody(waitText(), agent, readScreen, pty.lastOutputAt !== null),
     readQuietReadyBodyEvidence: () => isQuietReadyScreenBody(waitText(), agent, readScreen),
     readAgentRuleVerdict: () => readAgentRuleVerdict(agent, pty, readScreen, waitText),
