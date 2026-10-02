@@ -1,7 +1,8 @@
-// Saved copy of the composer drafts, so a half-typed message survives quitting Orca. The desktop
-// app keeps it in the main process, which confirms a write once it is on disk; the web client
-// keeps it in browser storage. Typing is saved after a short pause and flushed when the page
-// hides; a clear or a put-back is saved at once, and a send waits for its clear (up to a bound).
+// Saved copy of the composer drafts, so a half-typed message survives quitting Orca. Typing is
+// saved after a short pause and flushed when the page hides; a clear or a put-back is saved at
+// once. On desktop the main process confirms each write once it is on disk, and a send waits (up
+// to a bound) for its clear, so a crash after Enter cannot bring sent text back. The web client
+// keeps browser storage, which reaches disk on the browser's own delay, so a browser crash can.
 
 import type {
   NativeChatDraftStoreResult,
