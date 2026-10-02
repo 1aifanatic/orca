@@ -93,7 +93,8 @@ export type PerSessionJournalImport = {
   outcome: PerSessionJournalImportOutcome
   /** `imported` only: the copy's own fold, exactly what a replay of the published chat returns. */
   load?: JournalLoad
-  /** `imported` only: the status row the publish wrote from that fold. */
+  /** `imported` only: the status row the publish wrote from that fold; none for a corrupt history,
+   *  which gets no row so its open rebuilds it (as the startup pass leaves one). */
   status?: JournalSessionStatus
 }
 
@@ -179,7 +180,11 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImport> 
   }
   // The open's replay of what was just copied is a long task of its own; don't add this one to it.
   await (input.yieldTask ?? yieldToEventLoop)()
-  return { outcome: 'imported', load: copied.load, status: copied.status }
+  return {
+    outcome: 'imported',
+    load: copied.load,
+    ...(copied.status ? { status: copied.status } : {})
+  }
 }
 
 /**
@@ -218,7 +223,7 @@ export async function previewPerSessionJournal(
  *  before the verify read it. */
 type CopiedJournal = {
   load: JournalLoad
-  status: JournalSessionStatus
+  status: JournalSessionStatus | null
   verifiedFile: PerChatFileState | null
 }
 
@@ -286,7 +291,10 @@ async function copyLegacyJournal(
   )
   await yieldTask()
   assertImportNotAborted(input.database, sessionId, input.signal)
-  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
+  // A corrupt history gets no row, as the startup pass leaves one, so its open rebuilds it.
+  const status = load.corrupt
+    ? null
+    : deriveJournalSessionStatus(load.state, { settlesRosters: true })
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
     if (repair) {
@@ -300,7 +308,9 @@ async function copyLegacyJournal(
     writePerSessionImportMarker(db, sessionId, legacy)
     deleteJournalBackgroundFailure(db, { sessionId, step: 'copy' })
     // From the copy's own fold, which is what a replay of these rows reads: no second fold here.
-    writeJournalSessionStatus(db, sessionId, status)
+    if (status) {
+      writeJournalSessionStatus(db, sessionId, status)
+    }
   })
   return { load, status, verifiedFile }
 }

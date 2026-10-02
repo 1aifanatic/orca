@@ -3,8 +3,8 @@
 // Each is keyed to the step's input as the failing try left it, plus the app version:
 // - `copy`: a per-chat file that will not open, or whose copy did not read back as the file; keyed
 //   to the size and mtime of `journal.db` and of its `-wal`.
-// - `status`: a chat in the host's database whose missing status row could not be written; keyed
-//   to its epoch and tip.
+// - `status`: a chat in the host's database whose missing status row could not be written, or whose
+//   history is corrupt (it gets no row, so its open rebuilds it); keyed to its epoch and tip.
 // Any change (a write, a checkpoint, an update) makes the chat owed again, for one more try. A
 // user's own open of the chat still tries the copy, and writes its own status row.
 //

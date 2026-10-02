@@ -4,8 +4,9 @@
 // chat is, so startup never has to find it. A chat this host cannot settle (its record is gone, or
 // its provider is not served here) is skipped: startup drops such a row, so writing it would loop
 // every launch. A row that fails for good is given up on while the chat's rows and the app version
-// stay as they were (journal-background-failures.ts). A provider frame stops the step, which is
-// owed again once the chats are quiet.
+// stay as they were (journal-background-failures.ts), and so is a corrupt history, which gets no
+// row, as the startup pass leaves one, so its open rebuilds it. A provider frame stops the step,
+// which is owed again once the chats are quiet.
 
 import {
   classifyJournalBackgroundFailure,
@@ -16,7 +17,10 @@ import {
   isUnsettledJournalSessionStatus,
   type JournalSessionStatus
 } from '../agent-session-journal/journal-session-state'
-import { backfillJournalSessionStatus } from '../agent-session-journal/journal-session-status-backfill'
+import {
+  foldJournalSessionStatus,
+  writeJournalSessionStatuses
+} from '../agent-session-journal/journal-session-status-backfill'
 import {
   journalStatusInput,
   readJournalSessionIdsWithoutStatus
@@ -99,27 +103,41 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
     if (deps.isDisposed() || signal.aborted || deps.openJournal(sessionId)) {
       return false
     }
-    const written = await backfillJournalSessionStatus(deps.database, sessionId, {
-      yieldTask,
-      signal
-    })
+    const folded = await foldJournalSessionStatus(deps.database, sessionId, { yieldTask, signal })
+    if (!folded || signal.aborted) {
+      return false
+    }
+    if (folded.load.corrupt) {
+      giveUpCorrupt(sessionId)
+      return false
+    }
+    const [written] = writeJournalSessionStatuses(deps.database, [folded])
     // A stopped settle leaves the row to startup's settle, as a failed one does.
     if (written && !signal.aborted) {
       await settleWrittenChat(deps, sessionId, written)
     }
-    return written !== null
+    return written !== undefined
+  }
+  const giveUp = (sessionId: string, error: unknown): void =>
+    recordJournalBackgroundFailure(deps.database.db, {
+      sessionId,
+      step: 'status',
+      readInput: () => journalStatusInput(deps.database.db, sessionId),
+      appVersion: deps.appVersion,
+      error,
+      failedAt: deps.now()
+    })
+  /** As the startup pass leaves one: no row, so its open rebuilds it. Given up on until its rows
+   *  change, which the rebuild does; folding it every launch would keep the job alive for it. */
+  const giveUpCorrupt = (sessionId: string): void => {
+    const error = new Error('the chat history is corrupt; its open rebuilds it')
+    giveUp(sessionId, error)
+    warnOnce(sessionId, 'a chat with no status row has a corrupt history', error)
   }
   const onFailure = (sessionId: string, error: unknown): StatusBackfillStep => {
     const kind = classifyJournalBackgroundFailure(error)
     if (kind === 'deterministic') {
-      recordJournalBackgroundFailure(deps.database.db, {
-        sessionId,
-        step: 'status',
-        readInput: () => journalStatusInput(deps.database.db, sessionId),
-        appVersion: deps.appVersion,
-        error,
-        failedAt: deps.now()
-      })
+      giveUp(sessionId, error)
     }
     warnOnce(sessionId, `writing a missing chat status failed (${kind})`, error)
     return 'skipped'

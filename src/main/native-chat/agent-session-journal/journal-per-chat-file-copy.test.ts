@@ -171,10 +171,9 @@ describe('the status a copy publishes (T3, T3b, T3c)', () => {
     const replayed = replayJournal(openTestJournalHostDatabase(root).db, 'session-repaired')
     expect(replayed?.corrupt).toBe(true)
     expect(result.load).toEqual(replayed)
-    // A corrupt fold still gets its row, without the rosters its rebuild owns.
-    expect(readTestJournalSessionStatus(root, 'session-repaired')).toEqual(
-      deriveJournalSessionStatus(replayed!.state, { settlesRosters: false })
-    )
+    // A corrupt history gets no row, as the startup pass leaves one, so its open rebuilds it.
+    expect(readTestJournalSessionStatus(root, 'session-repaired')).toBeNull()
+    expect(result.status).toBeUndefined()
   })
 })
 
