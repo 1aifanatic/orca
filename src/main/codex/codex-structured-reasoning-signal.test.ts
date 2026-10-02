@@ -77,15 +77,18 @@ describe("Codex's open reasoning, as the host reports it live", () => {
 })
 
 describe("a Codex item's activity words", () => {
-  it('end with the item that set them', () => {
+  it("end with the reasoning item that set them, and with no other item's completion", () => {
     const { item, latest } = turn()
-    item('item/started', 'commandExecution', 'c-1')
-    expect(latest()?.text).toBe('Running a command')
-    item('item/completed', 'commandExecution', 'c-1')
+    item('item/started', 'reasoning', 'r-1')
+    item('item/completed', 'reasoning', 'r-1')
     expect(latest()).toBeNull()
+    // A completion need not end the work: a spawn completes while its subagent runs on.
+    item('item/started', 'commandExecution', 'c-1')
+    item('item/completed', 'commandExecution', 'c-1')
+    expect(latest()).toEqual({ turnId: TURN_ID, text: 'Running a command' })
   })
 
-  it('stay when an item that did not set them completes', () => {
+  it('stay when the reasoning that completes did not set them', () => {
     const { item, latest } = turn()
     item('item/started', 'reasoning', 'r-1')
     item('item/started', 'commandExecution', 'c-1')

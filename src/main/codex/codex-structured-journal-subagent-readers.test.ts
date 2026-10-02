@@ -175,8 +175,10 @@ describe("a Codex subagent's rows on the parent's surfaces", () => {
     expect(activities.map((activity) => activity?.text)).not.toContain(
       'Compacting the conversation'
     )
-    // The spawn item's completion cleared its own copy; the child's compaction set none.
-    expect(selectStructuredAgentTurnActivity(rows, PARENT_TURN, activities.at(-1))).toBeNull()
+    expect(selectStructuredAgentTurnActivity(rows, PARENT_TURN, activities.at(-1))).toEqual({
+      kind: 'description',
+      text: 'Coordinating with another agent'
+    })
     expect(
       rows.some((row) => row.body.kind === 'status' && row.body.text === 'Context compacted')
     ).toBe(true)

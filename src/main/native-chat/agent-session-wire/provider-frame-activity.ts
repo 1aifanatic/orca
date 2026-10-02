@@ -131,13 +131,12 @@ export function claudeProviderFrameActivity(kind: string, payload: unknown): Act
 /** The item a frame's activity copy speaks for. */
 function activityItemId(method: string, payload: unknown): unknown {
   const source = record(payload)
-  return method === 'item/started' || method === 'item/completed'
-    ? record(source?.item)?.id
-    : source?.itemId
+  return method === 'item/started' ? record(source?.item)?.id : source?.itemId
 }
 
-/** Retain only the current summary headline, never materialize the growing transcript. The line
- *  belongs to the item that set it: that item's completion clears it, any other item's leaves it. */
+/** Retain only the current summary headline, never materialize the growing transcript. A reasoning
+ *  item's completion clears the words it set: reasoning that ended is not going on. Other items keep
+ *  theirs, since a completion can come while their work goes on (a subagent spawn). */
 export function createCodexProviderActivityReader(): (
   method: string,
   payload: unknown
@@ -146,8 +145,8 @@ export function createCodexProviderActivityReader(): (
   let owner: unknown
   return (method, payload) => {
     if (method === 'item/completed') {
-      const itemId = activityItemId(method, payload)
-      if (owner === undefined || itemId !== owner) {
+      const item = record(record(payload)?.item)
+      if (owner === undefined || item?.type !== 'reasoning' || item.id !== owner) {
         return undefined
       }
       owner = undefined
