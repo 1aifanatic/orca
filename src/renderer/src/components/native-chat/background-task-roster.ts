@@ -146,14 +146,15 @@ export function backgroundTaskStateReason(state: RunState): string | null {
   }
 }
 
-/** The state word after a count ("2 agents …"), where "no recent update" does not read. */
-export function backgroundTaskStateCountWord(state: RunState): string {
+/** A count and its state ("2 agents waiting"); after a count, "no recent update" needs a "with". */
+export function backgroundTaskCountedState(counted: string | number, state: RunState): string {
   return state === 'unverifiable'
     ? translate(
         'components.native-chat.backgroundTasks.stateUnverifiableCount',
-        'status unavailable'
+        '{{value0}} with no recent update',
+        { value0: counted }
       )
-    : backgroundTaskStateWord(state)
+    : `${counted} ${backgroundTaskStateWord(state)}`
 }
 
 function tokenScaleText(value: number): string {

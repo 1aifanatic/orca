@@ -206,11 +206,14 @@ const REASON_WORDS = {
     journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain'),
     journalWrittenByNewerOrca: causeWords('savedByNewerOrca', 'updateOrca', 'updateOrcaToKeepUsing')
   },
-  // Thrown, so a client meets these only as an RPC error; the code's words stand.
+  // Thrown, so a client meets these only as an RPC error. The code's own words ask for an update,
+  // which only a method the host doesn't know proves; no reason here means an older Orca. An
+  // unsupported location or agent, or no chat host, is not fixed by updating, and a client missing
+  // the capability words this with its own older copy.
   structured_agent_session_unsupported: {
-    clientCapabilityMissing: codeWords('updateOrca'),
-    hostDisabled: codeWords('hostFinding'),
-    hostUnsupported: codeWords('updateOrca')
+    clientCapabilityMissing: causeWords('notAvailable', 'hostFinding'),
+    hostDisabled: causeWords('notAvailable', 'hostFinding'),
+    hostUnsupported: causeWords('notAvailable', 'hostFinding')
   },
   agent_session_owner_restart_failed: {}
 } satisfies {
@@ -236,6 +239,7 @@ function causeParts(
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticeSentence[] {
   const saysNotDone =
+    cause === 'notAvailable' ||
     (write === 'read-history' && AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(cause)) ||
     (cause === 'questionChanged' && write === 'answer')
   return saysNotDone ? [cause] : [cause, NOT_DONE[write]]

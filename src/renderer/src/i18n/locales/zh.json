@@ -17366,7 +17366,7 @@
         "providerRateLimited": "{{agent}} 已被限流，正在重试。",
         "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
         "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。",
-        "previousExitUnverifiable": "之前的 {{agent}} 可能仍在运行。Orca 会持续检查，并在它停止后发送您的消息。"
+        "previousExitUnverifiable": "之前的 {{agent}} 可能仍在运行。它停止后，您的消息就会发送。"
       },
       "writeNotice": {
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
@@ -17391,6 +17391,7 @@
         "savedByNewerOrca": "这些聊天由更新版本的 Orca 保存。",
         "updateOrcaToKeepUsing": "请更新 Orca 以继续使用这些聊天。",
         "unsupported": "运行此聊天的计算机需要更新版本的 Orca。请在该计算机上更新 Orca 后重试。",
+        "notAvailable": "此聊天中无法使用此功能。",
         "unreachable": "Orca 无法连接到智能体。",
         "recordFailed": "Orca 无法将此内容保存到聊天历史记录中。",
         "conversationCleared": "此对话已被清除。",
@@ -17581,9 +17582,7 @@
         },
         "error": {
           "title": "无法加载对话",
-          "subtitle": "无法读取记录。请切回终端继续工作。",
-          "retryingSubtitle": "Orca 会继续尝试加载此聊天。",
-          "keepsTrying": "Orca 会继续尝试加载。"
+          "subtitle": "无法读取记录。请切回终端继续工作。"
         },
         "reconnecting": "正在重新连接此聊天…",
         "pairHost": "配对主机以查看智能体聊天记录。",
@@ -17698,7 +17697,7 @@
         "stateDone": "完毕",
         "stateIdle": "停止了",
         "stateUnverifiable": "暂无近期更新",
-        "stateUnverifiableCount": "状态不可用",
+        "stateUnverifiableCount": "{{value0}} 暂无近期更新",
         "reasonWaiting": "需要批准",
         "reasonBlocked": "失败的",
         "groupAgents": "代理",
@@ -17730,7 +17729,7 @@
           "idleCount": "{{value0}} 空闲",
           "failedCount": "{{value0}} 失败",
           "stoppedCount": "{{value0}} 已停止",
-          "unverifiableCount": "{{value0}} 状态不可用"
+          "unverifiableCount": "{{value0}} 暂无近期更新"
         },
         "startedOne": "踢掉 1 个子代理",
         "startedN": "启动 {{value0}} 子代理",

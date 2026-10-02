@@ -112,6 +112,26 @@ describe('NativeChatPickerMenu', () => {
     expect(onRetry).toHaveBeenCalledOnce()
   })
 
+  it('announces the same unavailable sentence it shows, with no Retry', () => {
+    render(
+      <NativeChatPickerMenu
+        autocomplete={autocomplete({
+          items: [],
+          skillStatus: 'error',
+          skillErrorKind: 'unavailable'
+        })}
+        activeIndex={0}
+        listboxId="picker"
+        onChoose={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    )
+
+    expect(screen.getAllByText("Skills aren't available in SSH chats")).toHaveLength(2)
+    expect(screen.queryByText("Couldn't load skills")).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
   it('uses command-only empty copy for a picker without skill support', () => {
     render(
       <NativeChatPickerMenu

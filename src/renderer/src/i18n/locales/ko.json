@@ -17401,7 +17401,7 @@
         "providerRateLimited": "{{agent}}이(가) 속도 제한에 걸려 다시 시도하고 있습니다.",
         "providerRetrying": "{{agent}}에 일시적인 문제가 발생하여 다시 시도하고 있습니다.",
         "providerRetryingQuoted": "{{agent}}이(가) 다시 시도하고 있습니다: {{detail}}.",
-        "previousExitUnverifiable": "이전에 실행된 {{agent}}이(가) 아직 실행 중일 수 있습니다. Orca가 계속 확인하며, 중지되면 메시지를 전송합니다."
+        "previousExitUnverifiable": "이전에 실행된 {{agent}}이(가) 아직 실행 중일 수 있습니다. 중지되면 메시지가 전송됩니다."
       },
       "writeNotice": {
         "notDoneReadHistory": "이 채팅의 기록을 불러오지 못했습니다.",
@@ -17426,6 +17426,7 @@
         "savedByNewerOrca": "채팅이 최신 버전의 Orca에서 저장되었습니다.",
         "updateOrcaToKeepUsing": "계속 사용하려면 Orca를 업데이트하세요.",
         "unsupported": "이 채팅을 실행 중인 컴퓨터에 최신 버전의 Orca가 필요합니다. 해당 컴퓨터에서 Orca를 업데이트한 후 다시 시도하세요.",
+        "notAvailable": "이 채팅에서는 사용할 수 없습니다.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
         "recordFailed": "Orca가 이 내용을 채팅 기록에 저장하지 못했습니다.",
         "conversationCleared": "이 대화는 지워졌습니다.",
@@ -17616,9 +17617,7 @@
         },
         "error": {
           "title": "대화를 로드할 수 없습니다.",
-          "subtitle": "스크립트를 읽을 수 없습니다. 계속 작업하려면 terminal로 다시 전환하세요.",
-          "retryingSubtitle": "Orca가 이 채팅을 계속 다시 불러오려고 시도합니다.",
-          "keepsTrying": "Orca가 계속 다시 불러오기를 시도합니다."
+          "subtitle": "스크립트를 읽을 수 없습니다. 계속 작업하려면 terminal로 다시 전환하세요."
         },
         "reconnecting": "이 채팅에 다시 연결하는 중…",
         "pairHost": "호스트를 페어링하여 에이전트 채팅 기록을 확인하세요.",
@@ -17733,7 +17732,7 @@
         "stateDone": "완료",
         "stateIdle": "중지됨",
         "stateUnverifiable": "최근 업데이트 없음",
-        "stateUnverifiableCount": "상태를 확인할 수 없음",
+        "stateUnverifiableCount": "{{value0}} 최근 업데이트 없음",
         "reasonWaiting": "승인이 필요합니다",
         "reasonBlocked": "실패한",
         "groupAgents": "에이전트",
@@ -17765,7 +17764,7 @@
           "idleCount": "{{value0}} 유휴",
           "failedCount": "{{value0}} 실패",
           "stoppedCount": "{{value0}} 중지됨",
-          "unverifiableCount": "{{value0}} 상태를 확인할 수 없음"
+          "unverifiableCount": "{{value0}} 최근 업데이트 없음"
         },
         "startedOne": "서브에이전트 1명 추방",
         "startedN": "{{value0}} 하위 에이전트가 시작되었습니다.",

@@ -79,7 +79,7 @@ function subagentStateLabel(
     case 'unverifiable':
       return translate(
         'components.native-chat.subagents.state.unverifiableCount',
-        '{{value0}} status unavailable',
+        '{{value0}} with no recent update',
         { value0: count }
       )
   }

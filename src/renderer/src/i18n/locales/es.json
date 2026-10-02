@@ -14999,7 +14999,7 @@
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
         "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}.",
-        "previousExitUnverifiable": "Es posible que {{agent}} siga en ejecución desde antes. Orca sigue comprobándolo y enviará sus mensajes cuando se detenga."
+        "previousExitUnverifiable": "Es posible que {{agent}} siga en ejecución desde antes. Sus mensajes se enviarán cuando se detenga."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
@@ -15024,6 +15024,7 @@
         "savedByNewerOrca": "Los chats se guardaron con una versión más reciente de Orca.",
         "updateOrcaToKeepUsing": "Actualice Orca para seguir usándolos.",
         "unsupported": "Esto requiere una versión más reciente de Orca en el equipo que ejecuta este chat. Actualice Orca allí y vuelva a intentarlo.",
+        "notAvailable": "Esto no está disponible en este chat.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo guardar esto en el historial del chat.",
         "conversationCleared": "Esta conversación se borró.",
@@ -15135,9 +15136,7 @@
         },
         "error": {
           "title": "No se pudo cargar la conversación",
-          "subtitle": "No se pudo leer la transcripción. Vuelva a la terminal para seguir trabajando.",
-          "retryingSubtitle": "Orca sigue intentando cargar este chat.",
-          "keepsTrying": "Orca sigue intentando cargarlo."
+          "subtitle": "No se pudo leer la transcripción. Vuelva a la terminal para seguir trabajando."
         },
         "reconnecting": "Reconectando con este chat…",
         "pairHost": "Empareje un host para ver el historial de chat del agente.",

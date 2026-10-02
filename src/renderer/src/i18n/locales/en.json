@@ -17556,7 +17556,7 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "{{agent}} may still be running from before. Orca keeps checking and will send your messages once it stops."
+        "previousExitUnverifiable": "{{agent}} from before may still be running. Your messages will send once it stops."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17581,6 +17581,7 @@
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "updateOrcaToKeepUsing": "Update Orca to keep using them.",
         "unsupported": "This needs a newer Orca on the computer running this chat. Update Orca there, then try again.",
+        "notAvailable": "This isn't available in this chat.",
         "unreachable": "Orca couldn't reach the agent.",
         "recordFailed": "Orca couldn't save this to the chat's history.",
         "conversationCleared": "This conversation has been cleared.",
@@ -17829,7 +17830,7 @@
         "stateDone": "done",
         "stateIdle": "stopped",
         "stateUnverifiable": "no recent update",
-        "stateUnverifiableCount": "status unavailable",
+        "stateUnverifiableCount": "{{value0}} with no recent update",
         "reasonWaiting": "needs approval",
         "reasonBlocked": "failed",
         "groupAgents": "Agents",
@@ -17850,9 +17851,7 @@
         },
         "error": {
           "title": "Could not load conversation",
-          "subtitle": "The transcript could not be read. Toggle back to the terminal to keep working.",
-          "retryingSubtitle": "Orca keeps trying to load this chat.",
-          "keepsTrying": "Orca keeps trying to load it."
+          "subtitle": "The transcript could not be read. Toggle back to the terminal to keep working."
         },
         "reconnecting": "Reconnecting to this chat…",
         "pairHost": "Pair a host to view agent chat history.",
@@ -17920,7 +17919,7 @@
           "idleCount": "{{value0}} idle",
           "failedCount": "{{value0}} failed",
           "stoppedCount": "{{value0}} stopped",
-          "unverifiableCount": "{{value0}} status unavailable"
+          "unverifiableCount": "{{value0}} with no recent update"
         },
         "startedOne": "Kicked off 1 subagent",
         "startedN": "Kicked off {{value0}} subagents",

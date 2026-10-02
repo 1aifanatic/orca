@@ -38,6 +38,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   updateOrcaToKeepUsing: 'Update Orca to keep using them.',
   unsupported:
     'This needs a newer Orca on the computer running this chat. Update Orca there, then try again.',
+  notAvailable: "This isn't available in this chat.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't save this to the chat's history.",
   conversationCleared: 'This conversation has been cleared.',
@@ -88,16 +89,3 @@ export type AgentSessionWriteNoticePart =
  *  again. */
 export const AGENT_SESSION_HISTORY_UNREAD_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> =
   new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable', 'savedByNewerOrca'])
-
-/** Whether these words already say this chat's history didn't load, so a pane headed by them need
- *  only add that it keeps trying. "Chats were saved by a newer Orca" names no one chat for "it". */
-export function agentSessionNoticeSaysThisChatUnread(
-  parts: readonly AgentSessionWriteNoticePart[]
-): boolean {
-  return parts.some(
-    (part) =>
-      typeof part === 'string' &&
-      part !== 'savedByNewerOrca' &&
-      (part === 'notDoneReadHistory' || AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(part))
-  )
-}

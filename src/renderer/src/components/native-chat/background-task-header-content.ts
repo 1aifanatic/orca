@@ -8,8 +8,8 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import { translate } from '@/i18n/i18n'
 import {
+  backgroundTaskCountedState,
   backgroundTaskElapsedLabel,
-  backgroundTaskStateCountWord,
   backgroundTaskStateReason,
   backgroundTaskStateWord,
   type BackgroundTaskGroup
@@ -149,7 +149,7 @@ export function backgroundTasksHeaderContent(
     return {
       segments: [
         {
-          text: `${kindCountLabel(group.kind, count)} ${backgroundTaskStateCountWord(uniformState)}`,
+          text: backgroundTaskCountedState(kindCountLabel(group.kind, count), uniformState),
           kind: group.kind
         }
       ],
@@ -186,7 +186,7 @@ export function backgroundTasksHeaderContent(
     detail:
       stateCounts.length > 0
         ? stateCounts
-            .map((entry) => `${entry.count} ${backgroundTaskStateCountWord(entry.state)}`)
+            .map((entry) => backgroundTaskCountedState(entry.count, entry.state))
             .join(', ')
         : null
   }

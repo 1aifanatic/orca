@@ -189,7 +189,7 @@ describe('NativeChatSubagentRun', () => {
     )
 
     const row = screen.getByRole('button')
-    expect(row).toHaveTextContent('1 status unavailable')
+    expect(row).toHaveTextContent('1 with no recent update')
     expect(row.textContent).not.toContain('·')
   })
 
