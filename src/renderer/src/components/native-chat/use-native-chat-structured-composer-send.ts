@@ -15,10 +15,8 @@ import {
   restoreNativeChatDraftIfEmpty
 } from './native-chat-draft-cache'
 import { nativeChatDraftAttachmentsOf } from './native-chat-draft-save-after-send'
-import {
-  structuredAgentSessionOutboxEntryIds,
-  whenStructuredAgentSessionOutboxEntriesLeave
-} from './structured-agent-session-outbox-storage'
+import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
+import { whenStructuredAgentSessionHostHasMessages } from './structured-agent-session-message-delivery'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -93,7 +91,11 @@ export function useNativeChatStructuredComposerSend({
         // The box empties now; its saved draft keeps the message until the host has it, so a
         // crash before then restores it unsent, and a crash after cannot bring it back.
         cleared = true
-        outboxBefore = structuredAgentSessionOutboxEntryIds(structuredTransport.sessionId)
+        outboxBefore = new Set(
+          getStructuredAgentSessionOutbox(structuredTransport.sessionId).map(
+            (entry) => entry.clientMessageId
+          )
+        )
         saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer)
       })
         .then(
@@ -103,12 +105,14 @@ export function useNativeChatStructuredComposerSend({
               putBack()
               return
             }
-            // The host has it once its outbox entry is gone: accepted, withdrawn back into the
-            // box, or dropped.
+            // Saved once the host answers ok or its journal shows the message, or the message is
+            // withdrawn back into the box; a refused or unconfirmed one keeps its saved copy.
             if (cleared) {
-              void whenStructuredAgentSessionOutboxEntriesLeave(
+              void whenStructuredAgentSessionHostHasMessages(
                 structuredTransport.sessionId,
-                outboxBefore
+                getStructuredAgentSessionOutbox(structuredTransport.sessionId).filter(
+                  (entry) => !outboxBefore.has(entry.clientMessageId)
+                )
               ).then(saveDraft)
             }
             emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })

@@ -131,7 +131,9 @@ function persistedDraft(draftKey: string): PersistedNativeChatDraft | null {
 
 // Chats whose box is being cleared for a send; that clear is saved once the host has the message.
 const clearingForSend = new Set<string>()
-const sendsAwaitingHost = new Map<string, number>()
+// Per chat, the sends whose message the host does not have yet, by send order.
+const sendsAwaitingHost = new Map<string, Set<number>>()
+let sendSequence = 0
 
 function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
   if (clearingForSend.has(draftKey)) {
@@ -142,17 +144,20 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
 
 /**
  * Empties the chat's box for a send (`clear`) without saving that, so a crash before the host has
- * the message restores it unsent. Returns `save`, to call once the host accepted, refused or lost
- * the message: it saves the draft as it is then, keeping whatever was typed since Enter. With
- * several sends in flight on one chat, the last to settle saves. A store that saves a send's clear
- * at once (the web client's browser storage) saves it now instead.
+ * the message restores it unsent. Returns `save`: call it once the host has the message, or once
+ * the message is back in the box; a message that stays undelivered never calls it. It saves the
+ * draft as it is then, keeping whatever was typed since Enter, unless a later send on the chat is
+ * still waiting for its host. A store that saves a send's clear at once (the web client's browser
+ * storage) saves it now instead.
  */
 export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.
   if (hasPendingNativeChatDraftPersist(draftKey)) {
     void persistNow(draftKey)
   }
-  sendsAwaitingHost.set(draftKey, (sendsAwaitingHost.get(draftKey) ?? 0) + 1)
+  const sequence = (sendSequence += 1)
+  const awaiting = sendsAwaitingHost.get(draftKey) ?? new Set()
+  sendsAwaitingHost.set(draftKey, awaiting.add(sequence))
   if (nativeChatDraftStoreSavesSendClearAtOnce()) {
     clear()
   } else {
@@ -163,18 +168,18 @@ export function clearNativeChatDraftForSend(draftKey: string, clear: () => void)
       clearingForSend.delete(draftKey)
     }
   }
-  let saved = false
   return () => {
-    if (saved) {
+    if (!awaiting.delete(sequence)) {
       return
     }
-    saved = true
-    const awaiting = (sendsAwaitingHost.get(draftKey) ?? 1) - 1
-    if (awaiting > 0) {
-      sendsAwaitingHost.set(draftKey, awaiting)
+    if (awaiting.size === 0) {
+      sendsAwaitingHost.delete(draftKey)
+    }
+    // A later send still waiting keeps its own message saved, and saves once the host has it. An
+    // earlier one that never lands (held for Retry) holds nothing up.
+    if (Array.from(awaiting).some((later) => later > sequence)) {
       return
     }
-    sendsAwaitingHost.delete(draftKey)
     void persistNow(draftKey)
   }
 }

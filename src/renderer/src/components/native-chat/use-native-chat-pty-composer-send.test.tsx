@@ -178,4 +178,17 @@ describe('the saved draft at send', () => {
     finishSecond()
     await vi.waitFor(() => expect(saved.at(-1)).toBeNull())
   })
+
+  // A rejected write delivered nothing, so the message must still be there after a relaunch.
+  it('keeps the message saved when the terminal rejected the write', async () => {
+    writeNativeChatDraftCache(DRAFT_KEY, 'hello', 'now')
+    const finish = writeRuns()
+    send('claude', 'chat', 'hello')
+
+    vi.mocked(sendNativeChatMessage).mock.calls[0]?.[3]?.onWriteRejected?.()
+    finish()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(saved).toEqual(['hello'])
+  })
 })

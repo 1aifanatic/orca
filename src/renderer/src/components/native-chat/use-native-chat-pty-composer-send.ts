@@ -70,11 +70,13 @@ export function useNativeChatPtyComposerSend(args: {
       readScreen: () => args.readTerminalScreen?.()
     })
     let pendingId: string | undefined
+    let writeRejected = false
     const sendOptions =
       args.agent === 'claude' && classification === 'chat'
         ? {
             ...launchSendOptions,
             onWriteRejected: () => {
+              writeRejected = true
               if (pendingId) {
                 args.optimisticSendOutcome?.reject(pendingId)
               }
@@ -135,6 +137,11 @@ export function useNativeChatPtyComposerSend(args: {
       args.setNotice(null)
       useAppStore.getState().clearNativeChatLaunchDraft(args.terminalTabId)
     })
-    saveNativeChatDraftAfterPtyWrite(pendingHandle, saveDraft)
+    // A rejected write delivered nothing: the saved draft keeps the message.
+    saveNativeChatDraftAfterPtyWrite(pendingHandle, () => {
+      if (!writeRejected) {
+        saveDraft()
+      }
+    })
   }, [args])
 }

@@ -73,8 +73,10 @@ import {
 } from './native-chat-draft-store.test-support'
 import {
   appendStructuredAgentSessionOutboxMessage,
-  commitStructuredAgentSessionOutbox
+  commitStructuredAgentSessionOutbox,
+  getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
+import { noteStructuredAgentSessionMessagesDelivered } from './structured-agent-session-message-delivery'
 import {
   appendNativeChatDraftNow,
   clearNativeChatDraftCacheForTests,
@@ -349,6 +351,18 @@ describe('the saved draft at send', () => {
     return structured
   }
 
+  // A settled refusal: the message stays for Retry under a new id.
+  function hostRefusesWithNewId(
+    structured: NativeChatStructuredComposerTransport,
+    entry: ReturnType<typeof getStructuredAgentSessionOutbox>[number]
+  ): void {
+    act(() => {
+      commitStructuredAgentSessionOutbox(structured.sessionId, [
+        { ...entry, clientMessageId: 'rotated-id', state: 'rejected' }
+      ])
+    })
+  }
+
   function hostTakes(structured: NativeChatStructuredComposerTransport): void {
     act(() => {
       commitStructuredAgentSessionOutbox(structured.sessionId, [])
@@ -375,6 +389,75 @@ describe('the saved draft at send', () => {
     hostTakes(structured)
     await act(async () => {})
     expect(savedText()).toBeNull()
+  })
+
+  // "Sent" is the host's ok reply: a message it holds for the provider must not come back.
+  it('saves the box once the host answers ok, while the message waits for the provider', async () => {
+    const structured = outboxTransport()
+    await sendTyped(structured, 'mid-turn message')
+    const [pending] = getStructuredAgentSessionOutbox(structured.sessionId)
+
+    act(() =>
+      noteStructuredAgentSessionMessagesDelivered(structured.sessionId, [pending.clientMessageId])
+    )
+    await act(async () => {})
+
+    expect(getStructuredAgentSessionOutbox(structured.sessionId)).toHaveLength(1)
+    expect(savedText()).toBeNull()
+  })
+
+  it('keeps a message the host refused, under its new id, until that one is delivered', async () => {
+    const structured = outboxTransport()
+    await sendTyped(structured, 'refused message')
+    const [first] = getStructuredAgentSessionOutbox(structured.sessionId)
+
+    hostRefusesWithNewId(structured, first)
+    expect(savedText()).toBe('refused message')
+
+    act(() => noteStructuredAgentSessionMessagesDelivered(structured.sessionId, ['rotated-id']))
+    await act(async () => {})
+    expect(savedText()).toBeNull()
+  })
+
+  it('saves a later send even while an earlier one is held for Retry', async () => {
+    const structured = outboxTransport()
+    const input = await sendTyped(structured, 'message A')
+    const [held] = getStructuredAgentSessionOutbox(structured.sessionId)
+    act(() => {
+      commitStructuredAgentSessionOutbox(structured.sessionId, [{ ...held, state: 'rejected' }])
+    })
+
+    changePrompt(input, 'message B')
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    await act(async () => pressEnter(input))
+    const later = getStructuredAgentSessionOutbox(structured.sessionId).filter(
+      (entry) => entry.clientMessageId !== held.clientMessageId
+    )
+    act(() =>
+      noteStructuredAgentSessionMessagesDelivered(
+        structured.sessionId,
+        later.map((entry) => entry.clientMessageId)
+      )
+    )
+    await act(async () => {})
+
+    expect(savedText()).toBeNull()
+  })
+
+  it("does not save an earlier send's clear while a later send still waits", async () => {
+    const structured = outboxTransport()
+    const input = await sendTyped(structured, 'message A')
+    const [first] = getStructuredAgentSessionOutbox(structured.sessionId)
+    changePrompt(input, 'message B')
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    await act(async () => pressEnter(input))
+
+    act(() =>
+      noteStructuredAgentSessionMessagesDelivered(structured.sessionId, [first.clientMessageId])
+    )
+    await act(async () => {})
+
+    expect(savedText()).toBe('message B')
   })
 
   it('keeps what was typed after Enter when the host takes the message', async () => {
