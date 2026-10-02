@@ -105,6 +105,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // A real journal's sequence only ever advances, so the feed's projection
       // cache must miss on every publish here: this test is about the rename.
       let sequence = 0
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (snapshot, cursor, its projection, activity, read-only).
       const journal = {
         snapshot: () => ({ items }),
         lastActivityAt: () => 1,
@@ -214,6 +215,7 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         }
       }
     ]
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (snapshot, cursor, its projection, activity, read-only).
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,
