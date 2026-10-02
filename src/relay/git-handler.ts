@@ -33,7 +33,8 @@ import {
 export class GitHandler {
   private dispatcher: RelayDispatcher
   private readonly gitDiffReadDedupe = new GitStatusReadLeaseOwner<unknown>(
-    MAX_IN_FLIGHT_PROMISE_DEDUPE_ENTRIES
+    MAX_IN_FLIGHT_PROMISE_DEDUPE_ENTRIES,
+    30_000
   )
   private readonly gitCapabilities = new GitCapabilityCache()
   // Why: cache .gitmodules per instance to avoid SSH reads and test leakage.
