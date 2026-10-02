@@ -73,6 +73,9 @@ export type ZcodePlanResolvedConfig = {
 }
 
 export type GeminiCliOAuthEnabledResolver = () => boolean
+
+/** Whether the user is actually showing Antigravity usage, so the `agy` probe is worth spawning. */
+export type AntigravityUsageEnabledResolver = () => boolean
 export type ActiveRateLimitProvider = ProviderRateLimits['provider']
 export type ActiveProviderState = {
   provider: ActiveRateLimitProvider
