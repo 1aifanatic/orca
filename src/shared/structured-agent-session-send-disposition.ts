@@ -30,16 +30,18 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 
-/** A send outcome the composer reports itself; each surface words it. */
-export type StructuredAgentSessionSendDispositionError =
-  /** A retry of a message whose delivery was never confirmed, which the host will not send again. */
-  'redeliveryRefused'
-
 export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
-  error: StructuredAgentSessionSendDispositionError | null
+  error: AgentSessionWriteNoticePart[] | null
 }
+
+/** A message this client couldn't store to send; the composer's draft or the row's Retry still
+ *  has it. */
+export const STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED: readonly AgentSessionWriteNoticePart[] = [
+  'messageNotSaved',
+  'tryAgain'
+]
 
 type SendDispositionInput = {
   entries: readonly StructuredAgentSessionOutboxEntry[]
@@ -252,7 +254,7 @@ export function disposeStructuredAgentSessionSendResult(
   if (refusedRedelivery(input.entry, submission)) {
     return {
       entries: dropEntry(input),
-      error: 'redeliveryRefused'
+      error: ['sendOutcomeLost']
     }
   }
   if (submission.dispatchState === 'accepted') {

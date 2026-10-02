@@ -17372,6 +17372,7 @@
         "notDoneReadHistory": "无法加载此聊天的历史记录。",
         "notDoneSend": "您的消息未发送。",
         "tryAgainComposerSend": "请重新发送。",
+        "messageNotSaved": "无法保存您的消息。",
         "notDoneStop": "智能体未停止。",
         "notDoneStopTask": "后台任务未停止。",
         "notDoneStopTasks": "后台任务未停止。",
@@ -17382,6 +17383,7 @@
         "restartFailed": "智能体无法重新启动。",
         "capacity": "Orca 在过去一天内收到的请求过多。",
         "outcomeUnknown": "Orca 无法确认发生了什么。请查看聊天。",
+        "sendOutcomeLost": "Orca 无法确认你的消息已送达代理。请查看聊天，如有需要请重新发送。",
         "questionChanged": "此问题已被回答或已更改。",
         "historyUnreadable": "Orca 无法读取此聊天的已保存历史记录。",
         "historyUnusable": "无法加载此聊天。",
@@ -17796,10 +17798,6 @@
         "queuePausedCleared": "清除对话后，队列已暂停",
         "queuePaused": "队列已暂停",
         "resume": "继续"
-      },
-      "outbox": {
-        "saveFailed": "无法保存您的消息。请重试。",
-        "redeliveryRefused": "无法确认您的消息是否已发送。请先查看聊天，再重新发送。"
       }
     },
     "tab": {

@@ -17407,6 +17407,7 @@
         "notDoneReadHistory": "このチャットの履歴を読み込めませんでした。",
         "notDoneSend": "メッセージは送信されませんでした。",
         "tryAgainComposerSend": "もう一度送信してください。",
+        "messageNotSaved": "メッセージを保存できませんでした。",
         "notDoneStop": "Agent は停止されませんでした。",
         "notDoneStopTask": "バックグラウンドタスクは停止されませんでした。",
         "notDoneStopTasks": "バックグラウンドタスクは停止されませんでした。",
@@ -17417,6 +17418,7 @@
         "restartFailed": "Agent を再起動できませんでした。",
         "capacity": "Orca が過去 1 日に受け取ったリクエストが多すぎます。",
         "outcomeUnknown": "Orca は何が起きたかを確認できませんでした。チャットを確認してください。",
+        "sendOutcomeLost": "Orca はメッセージが Agent に届いたことを確認できませんでした。チャットを確認し、必要であればもう一度送信してください。",
         "questionChanged": "この質問はすでに回答済みか、変更されています。",
         "historyUnreadable": "Orca はこのチャットの保存済み履歴を読み取れませんでした。",
         "historyUnusable": "このチャットを読み込めません。",
@@ -17831,10 +17833,6 @@
         "queuePausedCleared": "会話を消去したため、キューを一時停止しました",
         "queuePaused": "キューは一時停止中です",
         "resume": "再開"
-      },
-      "outbox": {
-        "saveFailed": "メッセージを保存できませんでした。もう一度お試しください。",
-        "redeliveryRefused": "メッセージが送信されたか確認できませんでした。もう一度送信する前にチャットを確認してください。"
       }
     },
     "tab": {

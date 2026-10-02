@@ -15005,6 +15005,7 @@
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
         "notDoneSend": "Su mensaje no se envió.",
         "tryAgainComposerSend": "Vuelva a enviarlo.",
+        "messageNotSaved": "No se pudo guardar su mensaje.",
         "notDoneStop": "El agente no se detuvo.",
         "notDoneStopTask": "La tarea en segundo plano no se detuvo.",
         "notDoneStopTasks": "Las tareas en segundo plano no se detuvieron.",
@@ -15015,6 +15016,7 @@
         "restartFailed": "El agente no pudo reiniciarse.",
         "capacity": "Orca ha recibido demasiadas solicitudes en el último día.",
         "outcomeUnknown": "Orca no pudo confirmar qué pasó. Revise el chat.",
+        "sendOutcomeLost": "Orca no pudo confirmar que su mensaje llegó al agente. Revise el chat y vuelva a enviarlo si es necesario.",
         "questionChanged": "Esta pregunta ya se respondió o ha cambiado.",
         "historyUnreadable": "Orca no pudo leer el historial guardado de este chat.",
         "historyUnusable": "No se puede cargar este chat.",
@@ -15211,10 +15213,6 @@
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar"
-      },
-      "outbox": {
-        "saveFailed": "No se pudo guardar su mensaje. Vuelva a intentarlo.",
-        "redeliveryRefused": "No se pudo confirmar que su mensaje se envió. Revise el chat antes de volver a enviarlo."
       }
     },
     "tab": {

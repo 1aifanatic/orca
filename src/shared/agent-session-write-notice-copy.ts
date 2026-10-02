@@ -17,6 +17,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   notDoneReadHistory: "This chat's history couldn't be loaded.",
   notDoneSend: 'Your message was not sent.',
   tryAgainComposerSend: 'Send it again.',
+  messageNotSaved: "Couldn't save your message.",
   notDoneStop: "The agent wasn't stopped.",
   notDoneStopTask: "The background task wasn't stopped.",
   notDoneStopTasks: "The background tasks weren't stopped.",
@@ -27,6 +28,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   restartFailed: "The agent couldn't restart.",
   capacity: 'Orca has received too many requests in the last day.',
   outcomeUnknown: "Orca couldn't confirm what happened. Check the chat.",
+  sendOutcomeLost:
+    "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed.",
   questionChanged: 'This question was already answered or has changed.',
   historyUnreadable: "Orca couldn't read this chat's saved history.",
   historyUnusable: 'Unable to load this chat.',
