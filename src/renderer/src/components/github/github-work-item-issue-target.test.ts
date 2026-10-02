@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runIssueUpdate, runWorkItemBodyUpdate } from './github-work-item-edit-mutations'
 import type { GitHubWorkItem } from '../../../../shared/github/work-item-types'
+import type { TaskSourceContext } from '../../../../shared/task-source-context'
 import { runGHEditLabelToggle } from '../github-item-dialog/edit-item-fields/gh-edit-section-mutations'
 
 vi.mock('@/store', () => ({ useAppStore: { getState: vi.fn() } }))
@@ -9,6 +10,22 @@ vi.mock('@/components/github/github-work-item-comment-mutations', () => ({
 }))
 
 const ORIGIN = { owner: 'fork-owner', repo: 'widgets', host: 'github.com' }
+const UPSTREAM = { owner: 'upstream-owner', repo: 'widgets', host: 'github.com' }
+const projectOrigin = {
+  ...UPSTREAM,
+  number: 12,
+  type: 'issue' as const,
+  projectId: 'project-1',
+  projectItemId: 'project-item-12',
+  cacheKey: 'project-cache'
+}
+const localSource: TaskSourceContext = {
+  kind: 'task-source',
+  provider: 'github',
+  projectId: 'project-1',
+  hostId: 'local',
+  repoId: 'repo-1'
+}
 const item: GitHubWorkItem = {
   id: 'issue:12',
   type: 'issue',
@@ -49,6 +66,51 @@ describe('issue edits retain the displayed repository', () => {
       ownerRepo: ORIGIN
     })
     expect(window.api.gh.updateIssueBySlug).not.toHaveBeenCalled()
+  })
+
+  it('saves a Project row body in its upstream repository instead of the fork workspace', async () => {
+    vi.mocked(window.api.gh.updateIssueBySlug).mockResolvedValue({ ok: true })
+
+    await runWorkItemBodyUpdate({
+      item: { ...item, url: 'https://github.com/upstream-owner/widgets/issues/12' },
+      repoPath: '/home/fixture/fork-widgets',
+      sourceContext: localSource,
+      projectOrigin,
+      body: 'Project edit',
+      parsedSlug: UPSTREAM
+    })
+
+    expect(window.api.gh.updateIssueBySlug).toHaveBeenCalledWith({
+      ...UPSTREAM,
+      number: 12,
+      updates: { body: 'Project edit' }
+    })
+    expect(window.api.gh.updateIssue).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { state: 'closed' as const },
+    { addLabels: ['bug'] },
+    { addAssignees: ['upstream-assignee'] }
+  ])('keeps Project field edits in the row repository: %j', async (updates) => {
+    vi.mocked(window.api.gh.updateIssueBySlug).mockResolvedValue({ ok: true })
+
+    await runIssueUpdate({
+      repoPath: '/home/fixture/fork-widgets',
+      repoId: item.repoId,
+      sourceContext: localSource,
+      projectOrigin,
+      issueRepo: UPSTREAM,
+      number: 12,
+      updates
+    })
+
+    expect(window.api.gh.updateIssueBySlug).toHaveBeenCalledWith({
+      ...UPSTREAM,
+      number: 12,
+      updates
+    })
+    expect(window.api.gh.updateIssue).not.toHaveBeenCalled()
   })
 
   it.each([

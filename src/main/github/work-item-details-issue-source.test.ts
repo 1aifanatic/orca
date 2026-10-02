@@ -185,6 +185,19 @@ describe('getWorkItemDetails issue source', () => {
     expect(ghExecFileAsyncMock).not.toHaveBeenCalled()
   })
 
+  it('rejects an invalid runtime issue host before calling the repository lookup', async () => {
+    await expect(
+      getWorkItemDetails('/repo-root', 5, 'issue', null, {}, 'upstream', {
+        ...REMOTES.origin,
+        host: 42
+      })
+    ).resolves.toBeNull()
+
+    expect(getWorkItemByOwnerRepoMock).not.toHaveBeenCalled()
+    expect(getWorkItemMock).not.toHaveBeenCalled()
+    expect(ghExecFileAsyncMock).not.toHaveBeenCalled()
+  })
+
   it('ignores an issue repository override on an untyped lookup', async () => {
     ghExecFileAsyncMock
       .mockResolvedValueOnce(graphQLIssueResponse('fork-assignee'))

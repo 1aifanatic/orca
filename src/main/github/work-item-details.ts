@@ -9,6 +9,7 @@ import {
   resolveIssueGitHubApiRepositorySource,
   type GitHubApiRepository
 } from './github-api-repository'
+import { isValidGitHubApiRepository } from './github-api-repository-validation'
 import { getIssueBodyAndComments, getIssueDetailsViaGraphQL } from './issue-work-item-details'
 import {
   getPRFiles,
@@ -70,9 +71,15 @@ export async function getWorkItemDetails(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {},
   preference?: IssueSourcePreference,
-  repositoryOverride?: GitHubApiRepository | null
+  repositoryOverride?: unknown
 ): Promise<GitHubWorkItemDetails | null> {
-  const issueRepositoryOverride = type === 'issue' ? repositoryOverride : null
+  let issueRepositoryOverride: GitHubApiRepository | null = null
+  if (type === 'issue' && repositoryOverride != null) {
+    if (!isValidGitHubApiRepository(repositoryOverride)) {
+      return null
+    }
+    issueRepositoryOverride = repositoryOverride
+  }
   const item: Omit<GitHubWorkItem, 'repoId'> | null = issueRepositoryOverride
     ? await getWorkItemByOwnerRepo(
         repoPath,
