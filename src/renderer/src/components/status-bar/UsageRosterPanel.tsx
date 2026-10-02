@@ -293,7 +293,7 @@ export function UsageRosterPanel({
               label: translate('auto.components.status.bar.UsageRosterPanel.compact', 'Compact'),
               tooltip: translate(
                 'auto.components.status.bar.UsageRosterPanel.compactTooltip',
-                'Condensed usage: only the tightest window'
+                'Condensed usage: one summary per provider'
               )
             }
           ]}
