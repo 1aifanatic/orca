@@ -224,7 +224,14 @@ export const getAccountsAntigravitySearchEntries = createLocalizedCatalog(() => 
       'accounts.antigravity.searchDescription',
       'Save and select native agy Google accounts on the execution host.'
     ),
-    keywords: ['antigravity', 'agy', 'google', 'accounts', 'login', 'usage']
+    keywords: [
+      ...translateSearchKeyword('accounts.antigravity.keyword.antigravity', 'antigravity'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.agy', 'agy'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.google', 'google'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.accounts', 'accounts'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.a9f3d7b5c8', 'login'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.cursor.kw.usage', 'usage')
+    ]
   }
 ])
 

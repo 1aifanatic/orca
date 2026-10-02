@@ -143,7 +143,7 @@ export function AntigravityAccountsSection({
       <div className="space-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           <AgentIcon agent="antigravity" size={16} />
-          Antigravity
+          {translate('accounts.antigravity.title', 'Antigravity')}
         </h3>
         <p className="text-xs text-muted-foreground">
           {translate('accounts.antigravity.scope', 'Manage the native agy account on {{host}}.', {

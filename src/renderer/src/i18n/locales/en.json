@@ -18764,7 +18764,14 @@
       "remove": "Remove",
       "sessions": "Selection applies to new agy sessions on this host. Existing sessions may keep their previous account.",
       "searchTitle": "Antigravity Accounts",
-      "searchDescription": "Save and select native agy Google accounts on the execution host."
+      "searchDescription": "Save and select native agy Google accounts on the execution host.",
+      "title": "Antigravity",
+      "keyword": {
+        "antigravity": "antigravity",
+        "agy": "agy",
+        "google": "google",
+        "accounts": "accounts"
+      }
     }
   }
 }
