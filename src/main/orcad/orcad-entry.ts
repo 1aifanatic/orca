@@ -26,6 +26,7 @@ import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadManagedStopContext } from '../../shared/orcad-stop-request'
+import { agentRunEvidence } from '../../shared/agent-presence-command-observer'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -287,7 +288,8 @@ async function startOrcadRuntime(
       runtime.observeAgentPresenceEvidence(
         enriched.paneKey,
         enriched.payload.agentType ?? 'unknown',
-        enriched.payload.state !== 'working'
+        enriched.payload.state !== 'working',
+        agentRunEvidence(enriched)
       )
     }
   })

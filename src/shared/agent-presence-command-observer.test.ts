@@ -145,6 +145,42 @@ describe('one foreground observation per command', () => {
     observer.stop()
   })
 
+  it('reads a new run of a backed-off agent at once, while repeats of one run stay backed off', async () => {
+    vi.useFakeTimers()
+    const readAt: number[] = []
+    const observe = vi.fn(
+      async (
+        _id: string,
+        _current: () => boolean,
+        _kind: AgentPresenceObservationKind,
+        _evidenceAtMs: number
+      ) => {
+        readAt.push(Date.now())
+        return false
+      }
+    )
+    const observer = new AgentPresenceCommandObserver(observe)
+    const start = Date.now()
+    const at = () => readAt.map((t) => Math.round((t - start) / 100) * 100)
+    // A storm of one session's hooks keeps the doubling bound.
+    for (let i = 0; i < 200; i += 1) {
+      observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'a' })
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(at()).toEqual([0, 5_000, 15_000])
+    // A session the key has not seen reads at once; then it backs off again.
+    observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'b' })
+    observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'b' })
+    await vi.advanceTimersByTimeAsync(100)
+    observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'b' })
+    expect(at()).toEqual([0, 5_000, 15_000, 20_000])
+    // A session start reads at once even when it resumes the same session.
+    await vi.advanceTimersByTimeAsync(1_000)
+    observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'b', started: true })
+    expect(at()).toEqual([0, 5_000, 15_000, 20_000, 21_100])
+    observer.stop()
+  })
+
   it('keeps a launch key apart from the agent key it names', async () => {
     vi.useFakeTimers()
     const observe = observeMock()

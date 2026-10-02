@@ -1,3 +1,4 @@
+import type { AgentRunEvidence } from '../shared/agent-presence-command-observer'
 import type { AgentHookRelayEnvelope } from '../shared/agent-hook-relay'
 export type RelayHookForward = (envelope: AgentHookRelayEnvelope) => void
 
@@ -17,7 +18,7 @@ export type RelayHookServerOptions = {
    * any client owns. Defaults to "never retired", which is the pre-existing behaviour — a listener
    * with no PTY handler behind it (the WSL relay) keeps forwarding everything.
    */
-  onAgentEvidence?: (paneKey: string, agent: string) => void
+  onAgentEvidence?: (paneKey: string, agent: string, run: AgentRunEvidence) => void
   isPaneSurfaceRetired?: (paneKey: string) => boolean
 }
 

@@ -8,6 +8,10 @@ import type { AgentHookResultRetryScheduler } from './agent-hook-result-retry-sc
 import { cacheRelayLegacyAgentStatus } from '../shared/agent-status-legacy-relay-cache'
 import { MAX_CACHED_PANES } from './agent-hook-cached-pane-status'
 import { buildRelayHookEnvelope } from './agent-hook-envelope-build'
+import {
+  agentRunEvidence,
+  type AgentRunEvidence
+} from '../shared/agent-presence-command-observer'
 
 type RelayEventHost = {
   state: HookListenerState
@@ -21,7 +25,7 @@ type RelayEventHost = {
   >
   forward: RelayHookForward
   presenceChecks: RelayAgentPresence
-  onAgentEvidence?: (paneKey: string, agent: string) => void
+  onAgentEvidence?: (paneKey: string, agent: string, run: AgentRunEvidence) => void
 }
 export type RelayEventOptions = {
   isReplay?: boolean
@@ -126,15 +130,16 @@ export function applyRelayAgentEvent(
     )
   )
   const evidenceAgent = event.payload.agentType ?? 'unknown'
+  const run = agentRunEvidence(incoming)
   const check = host.presenceChecks.observeHook(
     incoming,
     event,
     !options.hostPresence && options.checkPresence !== false
   )
   if (check) {
-    void check.then(() => host.onAgentEvidence?.(event.paneKey, evidenceAgent))
+    void check.then(() => host.onAgentEvidence?.(event.paneKey, evidenceAgent, run))
   } else if (!options.hostPresence && options.checkPresence !== false) {
-    host.onAgentEvidence?.(event.paneKey, evidenceAgent)
+    host.onAgentEvidence?.(event.paneKey, evidenceAgent, run)
   }
   // Why: retries compare against the cached row by identity, so they must hold that exact row.
   return host.state.lastStatusByPaneKey.get(event.paneKey)

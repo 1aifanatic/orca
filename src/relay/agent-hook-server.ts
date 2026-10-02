@@ -1,3 +1,4 @@
+import type { AgentRunEvidence } from '../shared/agent-presence-command-observer'
 import { applyRelayAgentEvent, type RelayEventOptions } from './agent-hook-event-admission'
 import type {
   RelayHookForward,
@@ -68,7 +69,11 @@ export class RelayAgentHookServer {
   >()
   private forward: RelayHookForward
   private isPaneSurfaceRetired: (paneKey: string) => boolean
-  private readonly onAgentEvidence?: (paneKey: string, agent: string) => void
+  private readonly onAgentEvidence?: (
+    paneKey: string,
+    agent: string,
+    run: AgentRunEvidence
+  ) => void
   private fixedToken: string | undefined
   private preferredPort: number
   private portFallbackApplied = false

@@ -125,6 +125,28 @@ describe('evidence reads in panes without command marks', () => {
     expect(f.capture.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 
+  it('reads a new run of a backed-off agent at once instead of waiting out the backoff', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.runtime.registerPty('pty', 'folder', null, { tabId: 'tab', leafId })
+    // tmux hid the first run: its session's hooks keep missing and back off.
+    for (let i = 0; i < 100; i += 1) {
+      f.runtime.observeAgentPresenceEvidence(paneKey, 'claude', false, { sessionId: 'a' })
+      await vi.advanceTimersByTimeAsync(200)
+    }
+    const misses = f.capture.mock.calls.length
+    expect(misses).toBe(3)
+    // Detached from tmux, the same agent starts again: its session start is read immediately.
+    f.setForeground(claudeAgain)
+    f.runtime.observeAgentPresenceEvidence(paneKey, 'claude', false, {
+      sessionId: 'b',
+      started: true
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.capture).toHaveBeenCalledTimes(misses + 1)
+    expect(f.publish).toHaveBeenLastCalledWith(expect.objectContaining({ paneKey }), claudeAgain)
+  })
+
   it('costs no read for evidence an existing owner explains, however often it arrives', async () => {
     vi.useFakeTimers()
     const f = fixture()

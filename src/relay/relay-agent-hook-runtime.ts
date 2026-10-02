@@ -41,7 +41,8 @@ export class RelayAgentHookRuntime {
       forward: (envelope) => publishAgentHookEnvelope(dispatcher, envelope),
       // Why: the PTY handler is the only component that knows which panes still have a client
       // surface, so it — not the client — decides whether a hook post describes a live pane.
-      onAgentEvidence: (paneKey, agent) => ptyHandler.discoverPaneAgentOwner(paneKey, agent),
+      onAgentEvidence: (paneKey, agent, run) =>
+        ptyHandler.discoverPaneAgentOwner(paneKey, agent, run),
       isPaneSurfaceRetired: (paneKey) => ptyHandler.isPaneSurfaceRetired(paneKey)
     })
   }

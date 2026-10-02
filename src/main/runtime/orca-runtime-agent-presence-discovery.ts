@@ -1,4 +1,5 @@
 import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/agent-process-presence'
+import type { AgentRunEvidence } from '../../shared/agent-presence-command-observer'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 
 export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithControllerKnowsPtyIsLive {
@@ -53,20 +54,29 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
   }
 
   /** Hook evidence names its agent; each agent costs at most one read per shell command. */
-  observeAgentPresenceEvidence(paneKey: string, agent: string, checkOwner = false): void {
+  observeAgentPresenceEvidence(
+    paneKey: string,
+    agent: string,
+    checkOwner = false,
+    run?: AgentRunEvidence
+  ): void {
     for (const [id] of this.ptysById) {
       if (this.collectAgentStatusPaneKeysForPty(id).has(paneKey)) {
         if (checkOwner) {
-          this.recheckAgentPresenceEvidence(id, agent)
+          this.recheckAgentPresenceEvidence(id, agent, run)
         } else {
-          this.claimAgentPresenceEvidence(id, agent)
+          this.claimAgentPresenceEvidence(id, agent, 0, run)
         }
         return
       }
     }
   }
 
-  protected recheckAgentPresenceEvidence(id: string, agent: string | null): void {
+  protected recheckAgentPresenceEvidence(
+    id: string,
+    agent: string | null,
+    run?: AgentRunEvidence
+  ): void {
     const pty = this.ptysById.get(id)
     const incarnation = pty?.incarnationId
     const controller = this.ptyController
@@ -77,7 +87,7 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
         pty?.incarnationId === incarnation &&
         this.ptyController === controller
       ) {
-        this.claimAgentPresenceEvidence(id, agent)
+        this.claimAgentPresenceEvidence(id, agent, 0, run)
       }
     })
   }
@@ -112,7 +122,12 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     }
   }
 
-  private claimAgentPresenceEvidence(ptyId: string, key: string, delayMs = 0): void {
+  private claimAgentPresenceEvidence(
+    ptyId: string,
+    key: string,
+    delayMs = 0,
+    run?: AgentRunEvidence
+  ): void {
     const pty = this.ptysById.get(ptyId)
     if (!pty || pty.isWsl || pty.connectionId) {
       return
@@ -122,7 +137,8 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
       ptyId,
       key,
       () => this.ptysById.get(ptyId) === pty && pty.incarnationId === incarnation,
-      delayMs
+      delayMs,
+      run
     )
   }
 

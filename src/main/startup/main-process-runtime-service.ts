@@ -28,6 +28,7 @@ import type { RuntimeDesktopWindowStatus } from '../../shared/runtime-types'
 import { ArtifactCloudService } from '../artifacts/artifact-cloud-service'
 import { SkillCloudService } from '../skills/skill-cloud-service'
 import { isArtifactSharingEnabled } from '../../shared/artifact-sharing-gate'
+import { agentRunEvidence } from '../../shared/agent-presence-command-observer'
 import {
   AgentStatusObservedPaneIdentities,
   recordObservedAgentStatusPaneIdentity
@@ -184,7 +185,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
       runtime.observeAgentPresenceEvidence(
         enriched.paneKey,
         enriched.payload.agentType ?? 'unknown',
-        enriched.payload.state !== 'working'
+        enriched.payload.state !== 'working',
+        agentRunEvidence(enriched)
       )
     }
   })

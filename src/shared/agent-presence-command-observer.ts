@@ -7,6 +7,17 @@ type EvidenceClaim = {
   explained: boolean
   misses: number
   missedAtMs: number
+  sessionId?: string
+}
+
+/** What a hook says about the agent run behind it; a new run is fresh evidence, never backed off. */
+export type AgentRunEvidence = { sessionId?: string; started?: boolean }
+
+export function agentRunEvidence(event: {
+  hookEventName?: string
+  providerSession?: { id: string }
+}): AgentRunEvidence {
+  return { sessionId: event.providerSession?.id, started: event.hookEventName === 'SessionStart' }
 }
 
 type ShellCommand = {
@@ -60,20 +71,44 @@ export class AgentPresenceCommandObserver {
    * re-checks on new evidence (no process read while that owner lives, a read once it has gone);
    * a key whose read found nothing waits out a doubling delay, so a hook storm on a pane that can
    * never be captured (tmux) stays a handful of reads. Panes without command marks rely on this,
-   * since only a command boundary resets the keys.
+   * since only a command boundary resets the keys. A new run of the agent (a session start, or a
+   * session it has not reported before) clears that wait, so only repeats of one run back off.
    */
-  evidence(id: string, key: string, isCurrent: () => boolean = () => true, delayMs = 0): void {
+  evidence(
+    id: string,
+    key: string,
+    isCurrent: () => boolean = () => true,
+    delayMs = 0,
+    agentRun?: AgentRunEvidence
+  ): void {
     const command = this.commands.get(id) ?? this.open(id)
     const existing = command.claims.get(key)
     if (
       existing &&
+      (agentRun?.started ||
+        (agentRun?.sessionId && agentRun.sessionId !== existing.sessionId))
+    ) {
+      existing.misses = 0
+    }
+    if (existing && agentRun?.sessionId) {
+      existing.sessionId = agentRun.sessionId
+    }
+    if (
+      existing &&
       (existing.reading ||
         (!existing.explained &&
+          existing.misses > 0 &&
           Date.now() - existing.missedAtMs < missedEvidenceRetryMs(existing.misses)))
     ) {
       return
     }
-    const claim = existing ?? { reading: false, explained: false, misses: 0, missedAtMs: 0 }
+    const claim = existing ?? {
+      reading: false,
+      explained: false,
+      misses: 0,
+      missedAtMs: 0,
+      sessionId: agentRun?.sessionId
+    }
     claim.reading = true
     command.claims.set(key, claim)
     const evidenceAtMs = Date.now()

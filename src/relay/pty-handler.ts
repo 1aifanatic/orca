@@ -1,5 +1,8 @@
 /* oxlint-disable max-lines */
-import { AgentPresenceCommandObserver } from '../shared/agent-presence-command-observer'
+import {
+  AgentPresenceCommandObserver,
+  type AgentRunEvidence
+} from '../shared/agent-presence-command-observer'
 import { captureAgentForegroundIdentity } from '../shared/agent-foreground-identity'
 import type { AgentProcessPresence } from '../shared/agent-process-presence'
 import { resolveExplicitTerminalTitleAgentType } from '../shared/terminal-title-agent-type'
@@ -750,18 +753,20 @@ export class PtyHandler {
   }
 
   /** Hook evidence names its agent; each agent costs at most one read per shell command. */
-  discoverPaneAgentOwner(paneKey: string, agent: string): void {
+  discoverPaneAgentOwner(paneKey: string, agent: string, run?: AgentRunEvidence): void {
     const managed = [...this.ptys.values()].find((pty) => pty.paneKey === paneKey)
     if (managed) {
-      this.claimAgentOwnerEvidence(managed, agent)
+      this.claimAgentOwnerEvidence(managed, agent, run)
     }
   }
 
-  private claimAgentOwnerEvidence(managed: ManagedPty, agent: string): void {
+  private claimAgentOwnerEvidence(managed: ManagedPty, agent: string, run?: AgentRunEvidence): void {
     this.presenceCommands.evidence(
       managed.id,
       agent,
-      () => !managed.disposed && this.ptys.get(managed.id) === managed
+      () => !managed.disposed && this.ptys.get(managed.id) === managed,
+      0,
+      run
     )
   }
 
