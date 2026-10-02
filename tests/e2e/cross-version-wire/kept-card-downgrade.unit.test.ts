@@ -17,7 +17,8 @@ import { importReleaseCheckoutModule, materializeReleaseCheckout } from './relea
 // column, placed ahead of the queue: no new state or column. A build with the queue but without
 // this change reads an unknown hold as a plain one: it must list the card first and never send it,
 // even after a person's turn ends a restart's pause, and must still settle a send this build's quit
-// left queued. The main commit this change branched from, which has the queue; move it to the
+// left queued. One exception lives in that build's own code: its /clear carries every card over
+// without its hold, so the replacement's next turn sends a carried kept card. The main commit this change branched from, which has the queue; move it to the
 // newest release that has the queue and predates this change. A baseline holding this change tests
 // no downgrade.
 const BASELINE_REF = '5a56636f6679071d6ec68b851ef7932cd3222560'
