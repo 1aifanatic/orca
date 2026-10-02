@@ -532,6 +532,28 @@ describe('hook-less agent rows identified by the foreground process', () => {
     ])
   })
 
+  it('rows an owner in an unfocused, untitled split pane', () => {
+    const ownedPane = makePaneKey('tab-1', LEAF_ID_2)
+    const rows = buildWorktreeAgentRows({
+      agentPresenceByPaneKey: {
+        [ownedPane]: {
+          presence: { agent: 'aider', process: { pid: 7, platform: 'linux', startTime: 'boot:7' } },
+          receivedAt: 1,
+          connectionId: null
+        }
+      },
+      tabs: [makeTab('tab-1', { title: 'zsh', defaultTitle: 'Terminal 1' })],
+      entries: [],
+      retained: [],
+      ptyIdsByTabId: { 'tab-1': ['pty-a', 'pty-b'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSplitLayout() },
+      now: 2000
+    })
+    expect(rows.map((row) => [row.paneKey, row.agentType, row.state])).toEqual([
+      [ownedPane, 'aider', 'idle']
+    ])
+  })
+
   it('scopes process evidence to its own pane inside a split', () => {
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1', { launchAgent: 'claude' })],

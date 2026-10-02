@@ -145,7 +145,7 @@ export function buildTitleDerivedAgentRows(args: {
  * Constructs a dashboard agent row from a terminal tab's title fallback,
  * normalising Pi-compatible agent names to their owner.
  */
-function buildTitleDerivedAgentRow(args: {
+export function buildTitleDerivedAgentRow(args: {
   tab: TerminalTab
   leafId: string
   title: string
