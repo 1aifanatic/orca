@@ -92,6 +92,15 @@ export async function restoreStructuredAgentSessionsOnRestart(
   await mapWithConcurrency(input.records, JOURNAL_RESTORE_CONCURRENCY, async ({ sessionId }) => {
     // A journal open is synchronous SQLite: without a macrotask per chat the restore is one long task.
     await yieldToEventLoop()
-    await restoreOneStructuredAgentSessionRead(input, sessionId, settleLeases)
+    // One chat that cannot open must not keep the rest from restoring; a read of it still refuses.
+    await restoreOneStructuredAgentSessionRead(input, sessionId, settleLeases).catch(
+      (error: unknown) => {
+        input.openDeps.logger.warn('restoring a chat at startup failed', {
+          scope: 'restart-restore',
+          sessionId,
+          error
+        })
+      }
+    )
   })
 }
