@@ -139,6 +139,51 @@ describe('resolveOpenCodeGoApiKey', () => {
     })
   })
 
+  it('does not fall back to OPENCODE_API_KEY when the credential database is unreadable', async () => {
+    process.env.OPENCODE_API_KEY = ENVIRONMENT_KEY
+    const path = join(dataHome, 'opencode-unreadable.db')
+    writeFileSync(path, 'not a sqlite database')
+    process.env.OPENCODE_DB = path
+
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({
+      status: 'credential-database-unreadable'
+    })
+  })
+
+  it('reports missing for an unreadable database when no env key could be misused', async () => {
+    const path = join(dataHome, 'opencode-unreadable.db')
+    writeFileSync(path, 'not a sqlite database')
+    process.env.OPENCODE_DB = path
+
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({ status: 'missing' })
+  })
+
+  it('still falls back to OPENCODE_API_KEY when a readable database holds no Go key', async () => {
+    process.env.OPENCODE_API_KEY = ENVIRONMENT_KEY
+    const { path } = writeCredentialDatabase([])
+    process.env.OPENCODE_DB = path
+
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({
+      status: 'found',
+      key: ENVIRONMENT_KEY,
+      tier: 'environment'
+    })
+  })
+
+  it('prefers a database key over OPENCODE_API_KEY', async () => {
+    process.env.OPENCODE_API_KEY = ENVIRONMENT_KEY
+    const { path } = writeCredentialDatabase([
+      { value: JSON.stringify({ type: 'key', key: DATABASE_KEY }), active: 1, created: 1 }
+    ])
+    process.env.OPENCODE_DB = path
+
+    await expect(resolveOpenCodeGoApiKey({})).resolves.toEqual({
+      status: 'found',
+      key: DATABASE_KEY,
+      tier: 'opencode-credential-database'
+    })
+  })
+
   it('reports missing when no tier holds a key', async () => {
     writeAuthFile({ 'opencode-go': { type: 'oauth', refresh: 'r', access: 'a', expires: 1 } })
 
