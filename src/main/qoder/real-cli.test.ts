@@ -1,4 +1,14 @@
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile
+} from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
 import type * as Os from 'node:os'
@@ -7,6 +17,7 @@ import { expect, it, vi } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
 import { createHookListenerState } from '../../shared/agent-hook-listener/listener-state'
 import { normalizeAndAccept } from '../../shared/agent-hook-listener-test-harness'
+import { parseQoderSessionFile } from '../ai-vault/session-scanner-qoder-parser'
 
 const sandbox = vi.hoisted(() => ({ home: '' }))
 vi.mock('node:os', async (importOriginal) => {
@@ -21,7 +32,7 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
   'generates and resumes a real task through managed hooks',
   async () => {
     const realHome = homedir()
-    sandbox.home = await mkdtemp(join(tmpdir(), 'orca-qoder-real-'))
+    sandbox.home = await realpath(await mkdtemp(join(tmpdir(), 'orca-qoder-real-')))
     const config = join(sandbox.home, '.qoder')
     const workspace = join(sandbox.home, 'folder')
     const statuses: {
@@ -116,6 +127,23 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
       })
       expect(resumed.code).toBe(0)
       expect(resumed.stdout.trim()).toBe('QODER_MANAGED_PROOF')
+      const projects = join(config, 'projects')
+      const transcript = (await readdir(projects, { recursive: true })).find(
+        (path) => path.endsWith(`${session}.jsonl`) && !path.includes('subagents')
+      )
+      if (!transcript) {
+        throw new Error('Qoder did not persist the generated and resumed session')
+      }
+      const path = join(projects, transcript)
+      const modified = await stat(path)
+      const history = await parseQoderSessionFile({
+        path,
+        mtimeMs: modified.mtimeMs,
+        modifiedAt: modified.mtime.toISOString()
+      })
+      expect(history).toMatchObject({ agent: 'qoder', sessionId: session, cwd: workspace })
+      expect(history?.previewMessages.at(-1)?.text).toBe('QODER_MANAGED_PROOF')
+      expect(history?.resumeCommand).toContain(`qodercli --resume '${session}'`)
       expect(statuses).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -133,7 +161,17 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
         await writeFile(
           evidencePath,
           JSON.stringify(
-            { generated: generated.stdout.trim(), resumed: resumed.stdout.trim(), statuses },
+            {
+              generated: generated.stdout.trim(),
+              resumed: resumed.stdout.trim(),
+              statuses,
+              history: {
+                agent: history?.agent,
+                sessionId: history?.sessionId,
+                lastReply: history?.previewMessages.at(-1)?.text,
+                resumeVerified: true
+              }
+            },
             null,
             2
           )
