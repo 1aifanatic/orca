@@ -31,8 +31,13 @@ export const PS_TIMEOUT_MS = 15_000
  * a UTC, C-locale read. Pin only time; LC_ALL=C would also rewrite non-ASCII command text.
  */
 export function processTableEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const { LC_ALL, ...rest } = env
-  return { ...rest, ...(LC_ALL ? { LC_CTYPE: LC_ALL } : {}), LC_TIME: 'C', TZ: 'UTC0' }
+  const ctype = env.LC_ALL || env.LC_CTYPE || env.LANG
+  // Why every locale variable goes: one naming a locale that is not installed (a Linux-spelled
+  // LANG, a bogus LC_MESSAGES) drops ps to C, which escapes non-ASCII command text.
+  const rest = Object.fromEntries(
+    Object.entries(env).filter(([name]) => name !== 'LANG' && !name.startsWith('LC_'))
+  )
+  return { ...rest, ...(ctype ? { LC_CTYPE: ctype } : {}), LC_TIME: 'C', TZ: 'UTC0' }
 }
 
 type ProcessTableCapture = {

@@ -284,12 +284,12 @@ describe('shared process-table capture', () => {
       TZ: 'Asia/Shanghai',
       PATH: '/usr/bin'
     })
-    expect(pinned).toEqual({
-      LANG: 'zh_CN.UTF-8',
-      LC_CTYPE: 'zh_CN.UTF-8',
+    expect(pinned).toEqual({ LC_CTYPE: 'zh_CN.UTF-8', LC_TIME: 'C', TZ: 'UTC0', PATH: '/usr/bin' })
+    // The character set falls back LC_ALL, then LC_CTYPE, then LANG; no other locale name survives.
+    expect(processTableEnv({ LANG: 'en_US.UTF-8', LC_MESSAGES: 'xx_YY.bogus' })).toEqual({
+      LC_CTYPE: 'en_US.UTF-8',
       LC_TIME: 'C',
-      TZ: 'UTC0',
-      PATH: '/usr/bin'
+      TZ: 'UTC0'
     })
   })
 
