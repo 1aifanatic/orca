@@ -62,6 +62,7 @@ export function nativeChatSubagentSectionSlots({
   choices,
   live,
   receipts,
+  liveTurnKey,
   isReasoningOpen,
   slots
 }: {
@@ -69,6 +70,7 @@ export function nativeChatSubagentSectionSlots({
   choices: NativeChatSubagentChoices
   live: ReadonlySet<string>
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
+  liveTurnKey: string | undefined
   isReasoningOpen: (agentId?: string) => boolean
   slots: NativeChatTranscriptSlot[]
 }) {
@@ -101,7 +103,12 @@ export function nativeChatSubagentSectionSlots({
       if (
         receipt === undefined &&
         (!nativeChatRowRendersContent(message.blocks) ||
-          isNativeChatReasoningUnderway(message, isReasoningOpen(agentId)))
+          isNativeChatReasoningUnderway(
+            message,
+            // As for the session's own rows: open reasoning is the live turn's, never an earlier one's.
+            (liveTurnKey ? turnKey === liveTurnKey : turnKey === undefined) &&
+              isReasoningOpen(agentId)
+          ))
       ) {
         continue
       }

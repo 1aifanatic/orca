@@ -333,7 +333,10 @@ describe('MobileNativeChatMessage', () => {
     })
 
     it('says only what the host saw', () => {
-      expect(textIn(render(reasoning({ state: 'running' })).root)).toContain('Thought')
+      // Not ended yet: neutral, never past tense.
+      const open = textIn(render(reasoning({ state: 'running' })).root)
+      expect(open).toContain('Reasoning')
+      expect(open).not.toContain('Thought')
       const unknown = render(reasoning({ state: undefined, completedAt: undefined }))
       expect(textIn(unknown.root)).toContain('Reasoning')
       // No "Reasoning: Reasoning".

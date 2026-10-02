@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   isNativeChatReasoningUnderway,
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey,
   nativeChatReasoningOpen,
   nativeChatReasoningHeadline,
   nativeChatReasoningHeadlineText
@@ -27,6 +29,36 @@ describe('the live reasoning gate', () => {
   })
 })
 
+describe("the gate's key", () => {
+  const open = { turnId: 'turn-1', text: '', reasoning: { session: true, subagents: ['task-1'] } }
+
+  it('changes only when an answer does, never with the words', () => {
+    const key = nativeChatReasoningGateKey(open, 'turn-1')
+    expect(nativeChatReasoningGateKey({ ...open, text: 'Running a command' }, 'turn-1')).toBe(key)
+    expect(
+      nativeChatReasoningGateKey({ ...open, reasoning: { session: true, subagents: [] } }, 'turn-1')
+    ).not.toBe(key)
+    expect(nativeChatReasoningGateKey(open, 'turn-2')).toBe('')
+  })
+
+  it('answers through the gate it keys exactly as the gate does', () => {
+    for (const reasoning of [
+      { session: true, subagents: [] },
+      { session: false, subagents: ['task-1', 'task-2'] },
+      { session: true, subagents: ['task-2'] }
+    ]) {
+      const gate = nativeChatReasoningGate(
+        nativeChatReasoningGateKey({ ...open, reasoning }, 'turn-1')
+      )
+      for (const agentId of [undefined, 'task-1', 'task-2', 'session', '']) {
+        expect(gate(agentId)).toBe(
+          agentId === undefined ? reasoning.session : reasoning.subagents.includes(agentId)
+        )
+      }
+    }
+  })
+})
+
 describe('the reasoning row every client draws', () => {
   it('is hidden only while its block is still being written and the host reports it open', () => {
     expect(isNativeChatReasoningUnderway({ role: 'reasoning', state: 'running' }, true)).toBe(true)
@@ -46,7 +78,8 @@ describe('the reasoning row every client draws', () => {
     expect(text({ state: 'completed', completedAt: 66_000 })).toBe('Thought for 1m 5s')
     expect(text({ state: 'completed', completedAt: 1_300 })).toBe('Thought for 1s')
     expect(text({ state: 'completed' })).toBe('Thought')
-    expect(text({ state: 'running' })).toBe('Thought')
+    // Not ended yet: nothing past tense.
+    expect(text({ state: 'running' })).toBe('Reasoning')
     expect(text({})).toBe('Reasoning')
   })
 })

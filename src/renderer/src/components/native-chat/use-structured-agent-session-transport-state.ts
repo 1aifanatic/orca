@@ -1,10 +1,13 @@
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { activeStructuredAgentSessionTurnId } from '../../../../shared/structured-agent-session-projection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../../shared/structured-agent-session-main-agent-working'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
 import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { selectStructuredAgentTurnActivity } from '../../../../shared/native-chat-turn-activity'
-import { nativeChatReasoningOpen } from '../../../../shared/native-chat-reasoning-row'
+import {
+  nativeChatReasoningGate,
+  nativeChatReasoningGateKey
+} from '../../../../shared/native-chat-reasoning-row'
 import { structuredSessionBackgroundTasksView } from './structured-session-background-tasks-view'
 import { useStructuredAgentTurnTiming } from './use-structured-agent-turn-timing'
 
@@ -28,10 +31,9 @@ export function useStructuredAgentSessionTransportState(
     () => selectStructuredAgentTurnActivity(journalItems, turnId, activity),
     [activity, journalItems, turnId]
   )
-  const isReasoningOpen = useCallback(
-    (agentId?: string) => nativeChatReasoningOpen(activity, turnId, agentId),
-    [activity, turnId]
-  )
+  // Keyed on what it answers, not on the frame: activity text changes must not rebuild the transcript.
+  const reasoningKey = nativeChatReasoningGateKey(activity, turnId)
+  const isReasoningOpen = useMemo(() => nativeChatReasoningGate(reasoningKey), [reasoningKey])
   const turnTiming = useStructuredAgentTurnTiming(
     {
       items: journalItems,

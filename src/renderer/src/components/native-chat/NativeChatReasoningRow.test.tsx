@@ -84,17 +84,19 @@ describe('the reasoning headline', () => {
     ).toContain('Thought for 1s')
   })
 
-  it('claims no duration it never saw, and draws an open row in a settled turn as Thought', () => {
+  it('claims no duration it never saw', () => {
     expect(headline({ timestamp: STARTED, state: 'completed' })).toBe('Reasoning: Thought')
-    cleanup()
-    expect(headline({ timestamp: STARTED, state: 'running' })).toBe('Reasoning: Thought')
+  })
+
+  it('reads neutral, never past tense, while the row has not ended', () => {
+    expect(headline({ timestamp: STARTED, state: 'running' })).toBe('Reasoning')
   })
 
   it('stays neutral for a row from a host that kept no lifecycle', () => {
     expect(headline({ timestamp: STARTED })).toBe('Reasoning')
   })
 
-  it('draws through the message row as its closed headline', () => {
+  it('draws through the message row, neutral until it closes', () => {
     const message: NativeChatMessage = {
       id: 'reasoning-1',
       role: 'reasoning',
@@ -112,7 +114,7 @@ describe('the reasoning headline', () => {
       />
     )
     // Hiding a row the host reports open is the transcript's call, not the row's.
-    expect(screen.getByRole('button')).toHaveTextContent('Thought')
+    expect(screen.getByRole('button')).toHaveTextContent(/^Reasoning$/)
     rerender(
       <MessageRow
         message={{ ...message, state: 'completed', completedAt: STARTED + 3_000 }}

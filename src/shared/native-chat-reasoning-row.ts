@@ -15,12 +15,28 @@ export function nativeChatReasoningOpen(
   liveTurnId: string | null,
   agentId?: string
 ): boolean {
-  if (!liveTurnId || activity?.turnId !== liveTurnId || !activity.reasoning) {
-    return false
+  return nativeChatReasoningGate(nativeChatReasoningGateKey(activity, liveTurnId))(agentId)
+}
+
+/** What the gate answers for one activity, as a key that changes only when some answer does, so a
+ *  client rebuilds the gate (and everything reading it) only then. '' when nothing is open. */
+export function nativeChatReasoningGateKey(
+  activity: AgentSessionTurnActivity | null | undefined,
+  liveTurnId: string | null
+): string {
+  const reasoning = liveTurnId && activity?.turnId === liveTurnId ? activity.reasoning : undefined
+  return reasoning ? [reasoning.session ? 'session' : '', ...reasoning.subagents].join('\n') : ''
+}
+
+const NOTHING_OPEN = (): boolean => false
+
+/** The gate a key answers with. */
+export function nativeChatReasoningGate(key: string): (agentId?: string) => boolean {
+  if (!key) {
+    return NOTHING_OPEN
   }
-  return agentId === undefined
-    ? activity.reasoning.session === true
-    : activity.reasoning.subagents.includes(agentId)
+  const [session, ...subagents] = key.split('\n')
+  return (agentId) => (agentId === undefined ? session === 'session' : subagents.includes(agentId))
 }
 
 /** A reasoning row still being written while the host reports its reasoning open. It draws nothing
@@ -33,7 +49,7 @@ export function isNativeChatReasoningUnderway(
 }
 
 export type NativeChatReasoningHeadline =
-  /** From a host that kept no lifecycle: nothing is claimed. */
+  /** From a host that kept no lifecycle, or not ended yet: nothing is claimed. */
   | { kind: 'reasoning' }
   /** Ended, with no span the host saw. */
   | { kind: 'thought' }
@@ -42,15 +58,12 @@ export type NativeChatReasoningHeadline =
 export function nativeChatReasoningHeadline(
   message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
 ): NativeChatReasoningHeadline {
-  if (message.state === undefined) {
+  // A row still open draws when the host's live signal is absent or closed (an older host, a
+  // dropped frame); it has not ended, so it does not read past tense.
+  if (message.state !== 'completed') {
     return { kind: 'reasoning' }
   }
-  // An open row in a turn that is no longer live ended unseen, so it claims no duration.
-  if (
-    message.state !== 'completed' ||
-    message.completedAt === undefined ||
-    message.timestamp === null
-  ) {
+  if (message.completedAt === undefined || message.timestamp === null) {
     return { kind: 'thought' }
   }
   return {

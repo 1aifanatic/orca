@@ -2,8 +2,8 @@ import { useContext } from 'react'
 import { translate } from '@/i18n/i18n'
 import { NativeChatReasoningOpenContext } from './native-chat-reasoning-open-context'
 
-/** "Thinking" beside a subagent's name while the host reports its reasoning open, in the words and
- *  tone the turn's own activity line uses for the same fact. */
+/** "Thinking" beside a subagent's name while the host reports its reasoning open: the turn line's
+ *  word, in the type the entry's own state text ("working") uses. */
 export function NativeChatSubagentThinking({
   agentId
 }: {
@@ -14,7 +14,7 @@ export function NativeChatSubagentThinking({
     return null
   }
   return (
-    <span className="shrink-0 text-sm text-foreground/85">
+    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
       {translate('components.native-chat.status.thinking', 'Thinking')}
     </span>
   )
