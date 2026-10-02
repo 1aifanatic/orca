@@ -6,6 +6,7 @@ import type { RelayDispatcher, RequestContext } from './dispatcher'
 import { applyTerminalGitCredentialPromptGuard } from '../shared/terminal-git-credential-guard'
 import { mergeGitConfigEnvProtocol } from '../shared/git-credential-prompt-env'
 import { terminateRelaySubprocessTree } from './subprocess-tree-termination'
+import { resolveLoginShellEnvironment } from '../main/startup/login-shell-environment'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const MAX_TIMEOUT_MS = 5 * 60 * 1000
@@ -76,6 +77,7 @@ type ExecParams = {
   timeoutMs: unknown
   env: unknown
   operation: unknown
+  shell: unknown
 }
 
 type CancelParams = {
@@ -88,7 +90,7 @@ function laneKeyFor(cwd: string, operation: unknown): string {
   return JSON.stringify([op, cwd])
 }
 
-type InFlightExec = { child: ChildProcess; cancel: () => void }
+type InFlightExec = { child?: ChildProcess; cancel: () => void }
 
 type ExecResult = {
   stdout: string
@@ -149,14 +151,32 @@ export class AgentExecHandler {
       params.env && typeof params.env === 'object' && !Array.isArray(params.env)
         ? (params.env as Record<string, string>)
         : null
-    const baseEnv = mergeCommandEnvironment(
-      process.env,
-      extraEnv ? {} : undefined,
-      process.platform
-    )
+    let hostEnv = process.env
+    if (params.shell === true) {
+      let canceled = false
+      const key = this.laneKey(cwd ?? '', params.operation)
+      const pending = {
+        cancel: (): void => {
+          canceled = true
+        }
+      }
+      this.inFlightByLane.get(key)?.cancel()
+      this.inFlightByLane.set(key, pending)
+      try {
+        hostEnv = await resolveLoginShellEnvironment({ env: process.env })
+      } finally {
+        if (this.inFlightByLane.get(key) === pending) {
+          this.inFlightByLane.delete(key)
+        }
+      }
+      if (canceled || context?.signal?.aborted) {
+        return { stdout: '', stderr: '', exitCode: null, timedOut: false, canceled: true }
+      }
+    }
+    const baseEnv = mergeCommandEnvironment(hostEnv, extraEnv ? {} : undefined, process.platform)
     const overrides = mergeCommandEnvironment({}, extraEnv ?? undefined, process.platform)
     const spawnEnv = Object.fromEntries(
-      Object.entries(mergeGitConfigEnvProtocol(baseEnv ?? process.env, overrides)).filter(
+      Object.entries(mergeGitConfigEnvProtocol(baseEnv ?? hostEnv, overrides)).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string'
       )
     )

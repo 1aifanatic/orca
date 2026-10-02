@@ -77,12 +77,13 @@ describe('planCommitMessageGeneration', () => {
           '--agent',
           'build',
           '--format',
-          'default',
+          'json',
           '--variant',
           'high'
         ],
         stdinPayload: 'PROMPT',
-        label: 'OpenCode'
+        label: 'OpenCode',
+        outputFormat: 'opencode-json'
       }
     })
   })
@@ -109,10 +110,11 @@ describe('planCommitMessageGeneration', () => {
           '--agent',
           'build',
           '--format',
-          'default'
+          'json'
         ],
         stdinPayload: 'PROMPT',
-        label: 'OpenCode'
+        label: 'OpenCode',
+        outputFormat: 'opencode-json'
       }
     })
   })
@@ -481,7 +483,7 @@ describe('planCommitMessageGeneration', () => {
     expect(result).toMatchObject({
       ok: true,
       plan: {
-        args: ['run', '--model', 'opencode/gpt-5.5', '--agent', 'build', '--format', 'default'],
+        args: ['run', '--model', 'opencode/gpt-5.5', '--agent', 'build', '--format', 'json'],
         stdinPayload: 'PROMPT'
       }
     })
@@ -496,7 +498,7 @@ describe('planCommitMessageGeneration', () => {
     expect(result).toMatchObject({
       ok: true,
       plan: {
-        args: ['run', '-m', 'opencode/gpt-5.5', '--agent', 'build', '--format', 'default']
+        args: ['run', '-m', 'opencode/gpt-5.5', '--agent', 'build', '--format', 'json']
       }
     })
   })
@@ -546,7 +548,7 @@ describe('planCommitMessageGeneration', () => {
           '--agent',
           'build',
           '--format',
-          'default',
+          'json',
           '--share'
         ],
         stdinPayload: 'PROMPT'
@@ -567,7 +569,7 @@ describe('planCommitMessageGeneration', () => {
     expect(result).toMatchObject({
       ok: true,
       plan: {
-        args: ['run', '--model', 'opencode/first', '--agent', 'build', '--format', 'default']
+        args: ['run', '--model', 'opencode/first', '--agent', 'build', '--format', 'json']
       }
     })
   })
@@ -610,7 +612,7 @@ describe('planCommitMessageGeneration', () => {
           '--agent',
           'build',
           '--format',
-          'default'
+          'json'
         ]
       }
     })
@@ -641,7 +643,7 @@ describe('planCommitMessageGeneration', () => {
           '--agent',
           'build',
           '--format',
-          'default'
+          'json'
         ]
       }
     })
@@ -662,7 +664,7 @@ describe('planCommitMessageGeneration', () => {
       ok: true,
       plan: {
         binary: 'opencode',
-        args: ['run', '--model', 'opencode/from-recipe', '--agent', 'build', '--format', 'default']
+        args: ['run', '--model', 'opencode/from-recipe', '--agent', 'build', '--format', 'json']
       }
     })
   })
