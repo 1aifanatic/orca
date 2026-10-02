@@ -294,7 +294,8 @@ describe('importing a per-chat journal', () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const database = openTestJournalHostDatabase(root)
-    setImmediate(() => closeTestJournalHostDatabases())
+    // Closed once the first page is written: its read and its write are tasks of their own.
+    setImmediate(() => setImmediate(() => closeTestJournalHostDatabases()))
 
     await expect(
       importPerSessionJournal({

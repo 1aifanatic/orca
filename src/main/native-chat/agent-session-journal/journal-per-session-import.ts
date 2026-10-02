@@ -46,6 +46,7 @@ import {
   type PerSessionJournalHead
 } from './journal-per-session-reimport'
 import { charBoundedBatches, IMPORT_BATCH_CHARS } from './journal-session-status-backfill'
+import { JournalImportPage } from './journal-import-page'
 import {
   foldLegacyJournal,
   IMPORT_BATCH_ROWS,
@@ -54,6 +55,7 @@ import {
   openLegacySource,
   readLegacyHead,
   readLegacyRepair,
+  readLegacyRowsAfter,
   retireLegacyJournal,
   samePerChatFileState,
   statPerChatFile,
@@ -76,6 +78,7 @@ type PerSessionJournalImportDeps = {
   openSource?: (path: string) => Database.Database
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void
+  /** Most rows per page; a task that runs long shrinks the next (journal-import-page.ts). */
   batchRows?: number
   /** Row JSON per verify batch; see `IMPORT_BATCH_CHARS`. */
   batchChars?: number
@@ -83,6 +86,8 @@ type PerSessionJournalImportDeps = {
   commitChars?: number
   /** Ends each of the copy's tasks: the next macrotask by default; the background copy paces here. */
   yieldTask?: () => Promise<void>
+  /** Times each task for the page size; a test supplies its own. */
+  clock?: () => number
   /** Stops the copy at its next batch, publishing nothing; the chat stays owed. */
   signal?: AbortSignal
 }
@@ -240,37 +245,58 @@ async function copyLegacyJournal(
   const { sessionId } = input.identity
   const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
-  const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
   const batchChars = input.batchChars ?? IMPORT_BATCH_CHARS
-  const yieldTask = input.yieldTask ?? yieldToEventLoop
-  // What an earlier try that stopped midway left, a batch per task as the copy's own rows go in.
-  for (let deleted = batchRows; deleted === batchRows;) {
+  const page = new JournalImportPage(
+    input.batchRows ?? IMPORT_BATCH_ROWS,
+    input.yieldTask ?? (() => yieldToEventLoop()),
+    input.clock
+  )
+  const yieldTask = page.yieldTask
+  // What an earlier try that stopped midway left, a page per task as the copy's own rows go in.
+  for (;;) {
     assertImportNotAborted(input.database, sessionId, input.signal)
-    deleted = input.database.unsyncedTransaction((db) =>
-      deleteUnpublishedJournalRows(db, sessionId, batchRows)
+    const want = page.rows
+    const deleted = input.database.unsyncedTransaction((db) =>
+      deleteUnpublishedJournalRows(db, sessionId, want)
     )
-    if (deleted > 0) {
-      await yieldTask()
+    if (deleted === 0) {
+      break
+    }
+    await yieldTask()
+    if (deleted < want) {
+      break
     }
   }
-  let first = true
-  const batches = legacyRowBatches(source, sessionId, epoch, batchRows)
-  for (const batch of charBoundedBatches(batches, input.commitChars ?? IMPORT_COMMIT_CHARS)) {
+  // Each page is read in a task, and written in a task of its own.
+  for (let afterSeq = Number.MIN_SAFE_INTEGER, first = true; ; first = false) {
     if (!first) {
       await yieldTask()
     }
-    first = false
     assertImportNotAborted(input.database, sessionId, input.signal)
-    // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
-    input.database.unsyncedTransaction((db) => {
-      const insert = db.prepare(INSERT_ROW)
-      for (const row of batch.rows) {
-        // Copied as stored: the bytes are the row, its epoch and sequence included.
-        insert.run(sessionId, epoch, row.seq, row.ts, row.rowJson)
-      }
-    })
+    const want = page.rows
+    const rows = readLegacyRowsAfter(source, sessionId, epoch, afterSeq, want)
+    for (const part of charBoundedBatches(
+      [{ rows, last: true }],
+      input.commitChars ?? IMPORT_COMMIT_CHARS
+    )) {
+      await yieldTask()
+      assertImportNotAborted(input.database, sessionId, input.signal)
+      // Unsynced: no reader follows these rows, and the publish's synced commit covers them.
+      input.database.unsyncedTransaction((db) => {
+        const insert = db.prepare(INSERT_ROW)
+        for (const row of part.rows) {
+          // Copied as stored: the bytes are the row, its epoch and sequence included.
+          insert.run(sessionId, epoch, row.seq, row.ts, row.rowJson)
+        }
+      })
+    }
+    const last = rows.at(-1)
+    if (!last || rows.length < want) {
+      break
+    }
+    afterSeq = last.seq
   }
-  // Each step of the copy is a task of its own: the last batch, the verify, the publish.
+  // Each step of the copy is a task of its own: the last page, the verify, the publish.
   await yieldTask()
   // Before the verify reads the file: a write after this is either read by it (a mismatch, never
   // published) or changes the file from this (kept).
@@ -281,13 +307,16 @@ async function copyLegacyJournal(
       sessionId,
       epoch,
       repairedFrom: repair?.epoch === epoch ? Number(repair.content_from) : null,
-      batchRows,
+      batchRows: () => page.rows,
       batchChars,
       legacyDirectory: input.legacyDirectory,
       yieldTask,
       ...(input.signal ? { signal: input.signal } : {})
     },
-    charBoundedBatches(legacyRowBatches(source, sessionId, epoch, batchRows), batchChars)
+    charBoundedBatches(
+      legacyRowBatches(source, sessionId, epoch, () => page.rows),
+      batchChars
+    )
   )
   await yieldTask()
   assertImportNotAborted(input.database, sessionId, input.signal)

@@ -99,21 +99,34 @@ export function readLegacyHead(
   return { epoch, tip: typeof tip === 'number' ? tip : 0 }
 }
 
-/** The file's rows, one bounded page per batch, read as each batch is written. */
+/** Up to `limit` of the file's rows after `afterSeq`, in order. */
+export function readLegacyRowsAfter(
+  source: Database.Database,
+  sessionId: string,
+  epoch: string,
+  afterSeq: number,
+  limit: number
+): ImportedRow[] {
+  return source
+    .prepare(SELECT_LEGACY_ROWS)
+    .all(sessionId, epoch, afterSeq, limit)
+    .map((row) => ({ seq: Number(row.seq), ts: Number(row.ts), rowJson: String(row.row_json) }))
+}
+
+/** The file's rows, one bounded page per batch, read as each batch is written. `batchRows` may be
+ *  read again before every page (a copy's page follows its tasks' time). */
 export function* legacyRowBatches(
   source: Database.Database,
   sessionId: string,
   epoch: string,
-  batchRows: number
+  batchRows: number | (() => number)
 ): Generator<ImportBatch> {
-  const select = source.prepare(SELECT_LEGACY_ROWS)
   let afterSeq = Number.MIN_SAFE_INTEGER
   for (;;) {
-    const rows = select
-      .all(sessionId, epoch, afterSeq, batchRows)
-      .map((row) => ({ seq: Number(row.seq), ts: Number(row.ts), rowJson: String(row.row_json) }))
+    const want = typeof batchRows === 'number' ? batchRows : batchRows()
+    const rows = readLegacyRowsAfter(source, sessionId, epoch, afterSeq, want)
     const lastSeq = rows.at(-1)?.seq
-    const last = rows.length < batchRows || lastSeq === undefined
+    const last = rows.length < want || lastSeq === undefined
     yield { rows, last }
     if (last) {
       return

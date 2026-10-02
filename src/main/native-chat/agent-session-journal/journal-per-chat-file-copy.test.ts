@@ -28,6 +28,7 @@ import {
   type PerChatJournalRepair
 } from './journal-per-chat-file-test-support'
 import { importPerSessionJournal } from './journal-per-session-import'
+import { openLegacySource } from './journal-per-session-source'
 import {
   charBoundedBatches,
   foldJournalSessionStatus,
@@ -527,5 +528,108 @@ describe('a file written after its copy began verifying (T20)', () => {
     expect(written).toBe(true)
     expect(result.outcome).toBe('imported')
     expect(existsSync(legacyJournalDatabaseFile(directory))).toBe(true)
+  })
+})
+
+describe('a page per task sized by its time (J2)', () => {
+  /** Rows each copy commit wrote, on a clock that each commit moves by `commitMs(n)` for the n-th;
+   *  and every read of the file's rows, write and yield, in order. */
+  async function commitsOf(sessionId: string, commitMs: (commit: number) => number) {
+    const { directory, rows } = await stageChat(sessionId, (journal) => manyItems(journal, 1_100))
+    const database = openTestJournalHostDatabase(root)
+    let now = 0
+    const written: number[] = []
+    const steps: string[] = []
+    const count = () =>
+      Number(
+        database.db
+          .prepare('SELECT count(*) AS n FROM journal_rows WHERE session_id = ?')
+          .get(sessionId)?.n
+      )
+    const commit = database.unsyncedTransaction.bind(database)
+    vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
+      const before = count()
+      const out = commit(run)
+      const added = count() - before
+      if (added > 0) {
+        now += commitMs(written.length)
+        written.push(added)
+        steps.push(`write ${added}`)
+      }
+      return out
+    })
+    // The file's row reads, by the rows each asks for.
+    const openSource = (path: string) => {
+      const source = openLegacySource(path)
+      const prepare = source.prepare.bind(source)
+      vi.spyOn(source, 'prepare').mockImplementation((sql) => {
+        const statement = prepare(sql)
+        if (!sql.includes('ORDER BY seq ASC LIMIT ?')) {
+          return statement
+        }
+        const all = statement.all.bind(statement)
+        return {
+          ...statement,
+          all: (...args: Parameters<typeof statement.all>) => {
+            steps.push(`read ${String(args[3])}`)
+            return all(...args)
+          }
+        }
+      })
+      return source
+    }
+
+    const result = await importChat(sessionId, directory, {
+      clock: () => now,
+      openSource,
+      yieldTask: async () => {
+        steps.push('yield')
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+    })
+
+    expect(result.outcome).toBe('imported')
+    expect(written.reduce((sum, page) => sum + page, 0)).toBe(rows.length)
+    return { written, steps }
+  }
+
+  it('commits whole 512-row pages while every task is fast', async () => {
+    const { written, steps } = await commitsOf('session-fast', () => 0)
+    // Each page is read in a task, and written in the next one.
+    const copy = steps.slice(0, steps.indexOf(`write ${written.at(-1)}`) + 1)
+    expect(
+      copy
+        .filter((step) => step !== 'yield')
+        .every((step, index) => step.startsWith(index % 2 === 0 ? 'read' : 'write'))
+    ).toBe(true)
+    for (let at = 1; at < copy.length; at += 1) {
+      if (copy[at].startsWith('write')) {
+        expect(copy[at - 1]).toBe('yield')
+      }
+    }
+    expect(written.slice(0, -1).every((page) => page === 512)).toBe(true)
+    expect(written.length).toBe(Math.ceil(written.reduce((a, b) => a + b, 0) / 512))
+  })
+
+  it('halves the next page after a slow commit, down to its floor, and grows back when fast', async () => {
+    // The first six commits each take 100 ms; every task after is fast.
+    const { written, steps } = await commitsOf('session-slow', (commit) => (commit < 6 ? 100 : 0))
+    expect(written.slice(0, 7)).toEqual([512, 256, 128, 64, 32, 16, 8])
+    // The reads ask for the same shrinking page, and so does the verify that follows the copy.
+    const reads = steps
+      .filter((step) => step.startsWith('read'))
+      .map((step) => Number(step.slice(5)))
+    expect(reads.slice(0, 7)).toEqual([512, 256, 128, 64, 32, 16, 8])
+    const lastWrite = steps.lastIndexOf(`write ${written.at(-1)}`)
+    const verifyReads = steps
+      .slice(lastWrite)
+      .filter((step) => step.startsWith('read'))
+      .map((step) => Number(step.slice(5)))
+    expect(verifyReads.length).toBeGreaterThan(0)
+    expect(Math.max(...verifyReads)).toBeLessThan(512)
+    expect(Math.min(...written.slice(0, -1))).toBeGreaterThanOrEqual(8)
+    // Then a quarter more per fast page (its read and its write), back toward whole pages.
+    expect(written.slice(7, 9)).toEqual([10, 13])
+    expect(Math.max(...written)).toBeLessThanOrEqual(512)
   })
 })

@@ -316,8 +316,8 @@ describe('a chat working on the same host (G3)', () => {
       const stopped = importJournal.mock.calls[0][0].identity.sessionId
       expect(yieldsAfterWork).toBe(0)
       expect(published(rig, stopped)).toEqual({ n: 0 })
-      // Its first batches went in, unpublished.
-      expect(rowsOf(rig, stopped)).toEqual({ n: 2 })
+      // Its first page went in, unpublished; the next page's read never ran.
+      expect(rowsOf(rig, stopped)).toEqual({ n: 1 })
       expect(hasPerChatFile(rig, stopped)).toBe(true)
       expect(await perChatFilesLeft(rig)).toBe(OLD.length)
       // Not a failure: nothing recorded, no settle.

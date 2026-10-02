@@ -36,7 +36,8 @@ type CopyCheckInput = {
   epoch: string
   /** The sequence a pending repair in the file left free, as the publish will store it. */
   repairedFrom: number | null
-  batchRows: number
+  /** Rows per page, read again before every page. */
+  batchRows: () => number
   batchChars: number
   /** Where the copy came from, for the log line. */
   legacyDirectory: string
@@ -113,15 +114,16 @@ async function readCopyFacts(
 function* copiedBatches(input: CopyCheckInput): Generator<ImportBatch> {
   let afterSeq = Number.MIN_SAFE_INTEGER
   for (;;) {
+    const want = input.batchRows()
     const rows = readJournalRowsAfter(
       input.database.db,
       input.sessionId,
       input.epoch,
       afterSeq,
-      input.batchRows
+      want
     )
     const lastSeq = rows.at(-1)?.seq
-    const last = rows.length < input.batchRows || lastSeq === undefined
+    const last = rows.length < want || lastSeq === undefined
     yield { rows, last }
     if (last) {
       return
