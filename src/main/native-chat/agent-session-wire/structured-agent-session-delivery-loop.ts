@@ -47,6 +47,7 @@ import {
   structuredAgentSessionWindDownWaitHolds
 } from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
+import { structuredAgentSessionStoppingNow } from './structured-agent-session-stopping'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
@@ -187,6 +188,11 @@ export class StructuredAgentSessionDeliveryLoop {
     // A running command takes no input while its child carries it; its end is a commit, which
     // wakes the loop again. With no child it is a gone generation's, which the start below settles.
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
+      return this.stop(sessionId)
+    }
+    // Never steer into a turn a person's Stop is ending: the message runs after it, as its own
+    // turn. The turn's end is a commit, which wakes the loop again.
+    if (session.child && structuredAgentSessionStoppingNow(session.journal)) {
       return this.stop(sessionId)
     }
     // Already waiting on a stop that could not prove its child gone: a new message retries it, and

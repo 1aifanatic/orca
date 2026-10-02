@@ -38,7 +38,7 @@ function newestTurnItem(
  * A press that took is never overwritten by a later no-effect one, so one that took keeps it.
  */
 export function structuredAgentSessionStopping(
-  journal: Pick<AgentSessionJournal, 'stopMarks'>,
+  journal: Pick<AgentSessionJournal, 'stopMarks' | 'itemBody'>,
   items: readonly AgentJournalRenderItem[]
 ): boolean {
   const stop = journal.stopMarks.latest()
@@ -62,13 +62,22 @@ export function structuredAgentSessionStopping(
     answerTurnId === undefined
       ? null
       : agentJournalItemKey(structuredAgentSessionStopNoteIdentity(answerTurnId))
-  let answered = false
-  for (const item of items) {
+  // The turn's note, whenever it was first written, by its key.
+  const turnNote = turnAnswer === null ? null : journal.itemBody(turnAnswer)
+  if (turnNote !== null && !stopNoteTookNoEffect(turnNote)) {
+    return true
+  }
+  let answered = turnNote !== null
+  // The snapshot is in journal order, so the notes written since the Stop are its tail.
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (!item || item.sequence <= stop.sequence) {
+      break
+    }
     const answers =
-      item.itemId === turnAnswer ||
-      (item.sequence > stop.sequence &&
-        isStructuredAgentSessionStopNote(item.itemId) &&
-        (item.turnScope?.kind !== 'turn' || item.turnScope.turnItemId === live?.item.itemId))
+      item.itemId !== turnAnswer &&
+      isStructuredAgentSessionStopNote(item.itemId) &&
+      (item.turnScope?.kind !== 'turn' || item.turnScope.turnItemId === live?.item.itemId)
     if (answers) {
       if (!stopNoteTookNoEffect(item.body)) {
         return true
@@ -77,4 +86,15 @@ export function structuredAgentSessionStopping(
     }
   }
   return !answered
+}
+
+/** The same derivation read straight off the journal, for a host step that must not act into
+ *  a turn a person's Stop is ending. */
+export function structuredAgentSessionStoppingNow(
+  journal: Pick<AgentSessionJournal, 'stopMarks' | 'itemBody' | 'snapshot'>
+): boolean {
+  return (
+    journal.stopMarks.latest() !== null &&
+    structuredAgentSessionStopping(journal, journal.snapshot().items)
+  )
 }

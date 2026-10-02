@@ -10,6 +10,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity,
+  type AgentJournalRenderItem,
   type AgentJournalStatusItem
 } from '../../../shared/agent-session-journal-types'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
@@ -94,5 +95,32 @@ describe("a person's Stop's answers", () => {
     })
 
     expect(stopping()).toBe(true)
+  })
+
+  it('reads only the journal from the running turn on, however long the chat before it', async () => {
+    for (let index = 0; index < 40; index += 1) {
+      await journal.appendItem(
+        { provider: 'orca', clientMessageId: `earlier-${index}` },
+        { kind: 'status', text: `earlier row ${index}` },
+        { fence: FENCE, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+      )
+    }
+    await turn('turn-1', 'running')
+    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, FENCE)
+    const items = journal.snapshot().items
+    const turnIndex = items.findIndex((item) => item.body.kind === 'turn')
+    let lowestRead = items.length
+    const counted: AgentJournalRenderItem[] = []
+    items.forEach((item, index) =>
+      Object.defineProperty(counted, index, {
+        enumerable: true,
+        get: () => {
+          lowestRead = Math.min(lowestRead, index)
+          return item
+        }
+      })
+    )
+    expect(structuredAgentSessionStopping(journal, counted)).toBe(true)
+    expect(lowestRead).toBe(turnIndex)
   })
 })
