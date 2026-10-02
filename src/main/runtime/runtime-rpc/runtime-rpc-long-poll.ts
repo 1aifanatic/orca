@@ -26,6 +26,16 @@ export function classifyRuntimeLongPoll(request: RpcRequest): RuntimeLongPollCla
   if (request.method === 'orchestration.workerStart') {
     return 'wait'
   }
+  // A launch with a prompt waits for the agent's readiness before writing it, up to 60 s, and a
+  // reply lost to the 30 s idle timer reads as a dead runtime instead of an undelivered prompt.
+  if (
+    (request.method === 'agent.launch' || request.method === 'agent.launchReplay') &&
+    typeof request.params === 'object' &&
+    request.params !== null &&
+    (request.params as { prompt?: unknown }).prompt !== undefined
+  ) {
+    return 'wait'
+  }
   if (request.method === 'browser.clientHost.attach') {
     return 'browser-host'
   }
