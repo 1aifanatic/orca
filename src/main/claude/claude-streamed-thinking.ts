@@ -174,6 +174,8 @@ export function createClaudeStreamedThinking(deps: {
           session = true
           continue
         }
+        // Generic over scope, but the CLI (2.1.280) sends subagent thinking only as finished frames,
+        // so on the real CLI this list stays empty.
         const agentId = deps.producer.settledLinkageFor(block.parentToolUseId).linkage.agentId
         if (agentId) {
           subagents.push(agentId)

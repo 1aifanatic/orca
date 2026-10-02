@@ -153,12 +153,39 @@ describe("Claude's open reasoning, as the host reports it live", () => {
     translator.dispose()
   })
 
-  it("reports a subagent's block as that subagent's, not the session's", () => {
-    const { messageStart, blockStart, open, translator } = setup()
-    messageStart(1_000)
-    blockStart(1_010, 'toolu-task')
-    expect(open()?.session).toBe(false)
-    expect(open()?.subagents).toHaveLength(1)
-    translator.dispose()
-  })
+  // Claude CLI 2.1.280 streams no subagent frames: a subagent's thinking arrives only finished, as an
+  // assistant frame with parent_tool_use_id set (captured: c9/capture/run-bg-allow/stdout.jsonl:98,
+  // 0 of 98 stream_events there carry a parent_tool_use_id).
+  it.each([
+    ['blank, as captured', ''],
+    ['with summary text', 'Reading the diff']
+  ])(
+    "closes a subagent's finished thinking frame (%s) without opening any signal",
+    (_, thinking) => {
+      const { log, frame, messageStart, rows, translator } = setup()
+      messageStart(1_000)
+      frame(
+        {
+          type: 'assistant',
+          uuid: 'b63dc3d2-fb90-43ad-a36a-a8cd4923cd25',
+          parent_tool_use_id: 'toolu_0113cofGsD2kJXoxmbapdZbE',
+          subagent_type: 'general-purpose',
+          message: {
+            model: 'claude-opus-5-5',
+            id: 'msg_011CfMvBq8rZaPhJdxDXwLMU',
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'thinking', thinking, signature: 'sig' }],
+            stop_reason: null
+          }
+        },
+        2_000
+      )
+      expect(log.some((e) => e.kind === 'activity' && e.activity?.reasoning !== undefined)).toBe(
+        false
+      )
+      expect(rows()).toEqual(thinking ? [expect.objectContaining({ state: 'completed' })] : [])
+      translator.dispose()
+    }
+  )
 })
