@@ -429,8 +429,11 @@ describe('the draft saved to disk', () => {
     expect(
       screen.getByRole('button', { name: /Image no longer available\. Remove it to send\./ })
     ).toBeTruthy()
+    // The reason Send is held is shown without hovering the chip.
+    expect(screen.getByText('Image no longer available. Remove it to send.')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    expect(screen.queryByText('Image no longer available. Remove it to send.')).toBeNull()
     await act(async () => pressEnter(textarea()))
     expect(structured.send).toHaveBeenCalledWith('look at this', [])
   })

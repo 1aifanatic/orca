@@ -227,6 +227,15 @@ export function NativeChatComposerField({
                 ))}
               </div>
             ) : null}
+            {/* Why visible: Send stays disabled while a chip is missing, and a tooltip alone hides the reason. */}
+            {imageAttachments.some((attachment) => attachment.missing) ? (
+              <p className="mb-2 px-1 text-xs text-destructive">
+                {translate(
+                  'components.native-chat.composer.imageMissing',
+                  'Image no longer available. Remove it to send.'
+                )}
+              </p>
+            ) : null}
             <NativeChatPromptEditor
               key={composerScopeKey}
               scopeKey={composerScopeKey}
