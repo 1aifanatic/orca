@@ -177,3 +177,21 @@ it('preserves real v2 user image files with or without accompanying text', () =>
     [{ type: 'image-ref', url: `data:${file.mime};base64,${file.data}`, alt: 'tiny.png' }]
   ])
 })
+
+it('prefers the migrated live v2 session over retained legacy tables for pages and signals', () => {
+  const { db, path, insert } = fixture()
+  db.exec(`CREATE TABLE session (id TEXT PRIMARY KEY);
+    CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+    CREATE TABLE part (id TEXT, message_id TEXT, session_id TEXT, time_updated INTEGER, data TEXT);
+    INSERT INTO session VALUES ('session');
+    INSERT INTO message VALUES ('old', 'session', 1, 1, '{"role":"user"}');
+    INSERT INTO part VALUES ('part', 'old', 'session', 1, '{"type":"text","text":"frozen legacy"}');`)
+  insert('imported', 'user', { text: 'migrated prompt' })
+  insert('live', 'assistant', { content: [{ type: 'text', text: 'live reply' }] })
+  expect(readOpenCodeTranscriptSignal(path, 'session')?.messageCount).toBe(2)
+  expect(
+    readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'session', limit: 10 })?.items.map(
+      (item) => item.message.id
+    )
+  ).toEqual(['opencode:imported', 'opencode:live'])
+})

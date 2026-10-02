@@ -70,8 +70,12 @@ export function readOpenCodeTranscriptSignal(
 ): OpenCodeTranscriptSignal | null {
   const db = openOpenCodeDatabaseReadonly(dbPath)
   try {
+    const v2 = readOpenCode2TranscriptSignal(db, sessionId)
+    if (v2) {
+      return v2
+    }
     if (!sessionExists(db, sessionId)) {
-      return readOpenCode2TranscriptSignal(db, sessionId)
+      return null
     }
     // Aggregates without GROUP BY always yield exactly one row, so [0] is it.
     const [messageRow] = rowsOf<{ message_count: number; max_message_rowid: number }>(
@@ -105,8 +109,12 @@ export function readOpenCodeTranscriptPage(args: {
 }): OpenCodeTranscriptPage | null {
   const db = openOpenCodeDatabaseReadonly(args.dbPath)
   try {
+    const v2 = readOpenCode2TranscriptPage(db, args)
+    if (v2) {
+      return v2
+    }
     if (!sessionExists(db, args.sessionId)) {
-      return readOpenCode2TranscriptPage(db, args)
+      return null
     }
     const limit = Math.min(2400, Math.max(1, Math.floor(args.limit)))
     // The upper bound is always bound: batching advances the cursor mid-page,
