@@ -9,7 +9,7 @@ import {
   finalizeClaudeSessionParseState,
   type ClaudeSessionParseState
 } from './session-scanner-primary-parsers'
-import { extractString, parseJsonObject } from './session-scanner-values'
+import { asRecord, extractString, parseJsonObject } from './session-scanner-values'
 import {
   remoteSessionContentLines,
   type RemoteSessionContent
@@ -33,10 +33,16 @@ function createQoderState(
 
 function consumeQoderLine(state: ClaudeSessionParseState, line: string): void {
   // Qoder 1.1.64 shares Claude's turns, titles and tool blocks, with extra startup records.
-  consumeClaudeSessionLine(state, line)
   const record = parseJsonObject(line)
   if (!record) {
     return
+  }
+  const message = asRecord(record.message)
+  if (message && Array.isArray(message.content)) {
+    const content = message.content.filter((block) => asRecord(block)?.type === 'text')
+    consumeClaudeSessionLine(state, JSON.stringify({ ...record, message: { ...message, content } }))
+  } else {
+    consumeClaudeSessionLine(state, line)
   }
   if (
     record.type === 'workspace-directories' &&

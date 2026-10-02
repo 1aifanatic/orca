@@ -53,6 +53,11 @@ it('decodes a real generated and resumed Qoder 1.1.64 session for preview and se
     true
   )
   expect(messages.some((m) => m.text.includes("I'm creating the file now"))).toBe(false)
+  expect(messages.every((message) => message.role !== 'tool')).toBe(true)
+  expect(messages.some((message) => message.text.includes('File created successfully'))).toBe(false)
+  expect(
+    after?.previewMessages.some((message) => message.text.includes('File created successfully'))
+  ).toBe(false)
   const remote = await parseQoderSessionContent(file, content, 'linux', {
     executionHostId: 'ssh:test'
   })
