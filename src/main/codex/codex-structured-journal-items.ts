@@ -141,21 +141,17 @@ export class CodexJournalItems {
         if (!admission.accepted) {
           return { handled: true, admission }
         }
-        // Reasoning writes its row only with its first text; the row still starts here.
-        this.track(
-          event.threadId,
-          turnId,
-          item,
-          identity,
-          item.type === 'reasoning' ? receivedAt : undefined
-        )
+        // An item whose row waits for its first text still started here.
+        this.track(event.threadId, turnId, item, identity, receivedAt)
       }
       return { handled: true, admission: CODEX_JOURNAL_ADMITTED }
     }
+    // Whichever write creates the row, the row starts with its item: a completion can be the first
+    // write when its text came within one coalescing window.
+    const startedAt = event.method === 'item/completed' ? active?.startedAt : receivedAt
     const admission = this.appendTranslated(event.method, identity, translated, {
       ...this.deps.attributionFor(event.threadId, turnId),
-      // A completion can be the row's first write: its text came within one coalescing window.
-      ...(active?.startedAt === undefined ? {} : { observedAt: active.startedAt })
+      ...(startedAt === undefined ? {} : { observedAt: startedAt })
     })
     if (!admission.accepted) {
       return { handled: true, admission }
@@ -168,7 +164,7 @@ export class CodexJournalItems {
       if (!trimAdmission.accepted) {
         return { handled: true, admission: trimAdmission }
       }
-      this.track(event.threadId, turnId, item, identity)
+      this.track(event.threadId, turnId, item, identity, receivedAt)
     }
     return { handled: true, admission: CODEX_JOURNAL_ADMITTED }
   }

@@ -255,4 +255,13 @@ describe('a Codex reasoning row', () => {
       text: 'File changes were interrupted before completion.'
     })
   })
+
+  it('keeps the start of an item whose started frame already carried text', () => {
+    const { translator, rows, firstObservedAt } = coalescedTurn()
+    translator.handle(notification('item/started', reasoning('r-1', ['Plan']), 2_000))
+    expect(rows.get(ROW)).toMatchObject({ state: 'running' })
+    translator.handle(notification('item/completed', reasoning('r-1', ['Plan']), 7_000))
+    expect(firstObservedAt.get(ROW)).toBe(2_000)
+    expect(rows.get(ROW)).toMatchObject({ state: 'completed', completedAt: 7_000 })
+  })
 })
