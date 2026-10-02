@@ -15,6 +15,7 @@ import { drainAgentHookSpool, type SpoolRecord } from '../../../shared/agent-hoo
 import { clearAllListenerCaches } from '../../../shared/agent-hook-listener/listener-state'
 import { trackEmptyPaneKeyHook } from './server-transport-rules'
 import { AgentHookServerRuntimeEnv } from './server-runtime-env'
+import { OPENCODE_STARTUP_PROMPT_CLAIM_PATH } from '../../../shared/opencode-startup-prompt'
 
 export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv {
   /** Start the loopback listener after hydration and spool replay have settled. */
@@ -22,10 +23,12 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     env?: string
     userDataPath?: string
     endpointNamespace?: string
+    statusHooksEnabled?: boolean
   }): Promise<void> {
     if (this.server) {
       return
     }
+    this.statusHooksEnabled = options?.statusHooksEnabled !== false
 
     if (options?.env) {
       this.env = options.env
@@ -37,7 +40,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     this.token = randomUUID()
     this.endpointFileWritten = false
     this.lastWrittenJson = null
-    if (!this.ownerStateInitialized) {
+    if (this.statusHooksEnabled && !this.ownerStateInitialized) {
       // Why: hydrate before binding the listener so an early hook POST runs against a populated map.
       if (this.lastStatusFilePath) {
         this.hydrateLastStatusFromDisk()
@@ -84,6 +87,16 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
       try {
         const body = await readRequestBody(req)
+        if (pathname === OPENCODE_STARTUP_PROMPT_CLAIM_PATH) {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ allowed: this.onStartupPromptClaim?.(body) === true }))
+          return
+        }
+        if (!this.statusHooksEnabled) {
+          res.writeHead(404)
+          res.end()
+          return
+        }
         if (pathname === CLAUDE_STATUSLINE_PATHNAME) {
           const statusLineEvent = parseClaudeStatusLineBody(body)
           if (statusLineEvent) {
@@ -147,6 +160,11 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
         res.writeHead(204)
         res.end()
       } catch (error) {
+        if (pathname === OPENCODE_STARTUP_PROMPT_CLAIM_PATH) {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end('{"allowed":false}')
+          return
+        }
         // Why (#11217): an authenticated POST whose body dies short of its own Content-Length was cut
         // by something on the loopback path, not by a bad payload. Fail open as before, but count it —
         // this is the one failure mode that silently stops status for every runtime at once.
@@ -187,7 +205,9 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       this.rollbackTransportStart()
       throw error
     }
-    this.startOpenCodeBinderLoop()
+    if (this.statusHooksEnabled) {
+      this.startOpenCodeBinderLoop()
+    }
   }
 
   private rollbackTransportStart(): void {
@@ -200,12 +220,17 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
 
   stop(): void {
     // Why: flush the pending debounced write before clearing the map, else a hook <250ms before quit is lost on relaunch.
-    this.flushStatusPersistSync()
+    if (this.statusHooksEnabled) {
+      this.flushStatusPersistSync()
+    }
     this.stopOpenCodeBinderLoop()
     this.rollbackTransportStart()
     this.env = 'production'
     this.onAgentStatus = null
     this.onClaudeStatusLine = null
+    this.clearStartupPromptClaims?.()
+    this.clearStartupPromptClaims = null
+    this.onStartupPromptClaim = null
     this.onPaneStatusCleared = null
     this.onTransportInterference = null
     this.transportInterference.reset()
