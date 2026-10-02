@@ -58,7 +58,9 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       void forEachWithConcurrency(
         [...this.state.lastStatusByPaneKey.keys()],
         AGENT_OWNER_BOOT_PROBE_CONCURRENCY,
-        (paneKey) => this.checkAgentPresence(paneKey)
+        async (paneKey) => {
+          await this.checkAgentPresence(paneKey)
+        }
       ).catch(() => undefined)
       // Hydrated owners skip the row-write path that arms the recheck beat.
       this.noteLiveAgentOwner()
