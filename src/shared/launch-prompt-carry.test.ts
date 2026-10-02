@@ -181,7 +181,12 @@ describe('a host that types the line raw', () => {
     // A local WSL pane: a Linux line, on a Windows host that cannot read what holds it.
     const extra = {
       platform: 'linux' as const,
-      host: { paired: false, provesAgentInFront: false, takesLaunchFile: true }
+      host: {
+        paired: false,
+        provesAgentInFront: false,
+        takesLaunchFile: true,
+        windowsPowerShell: null
+      }
     }
     const prompt = 'fix the build\nthen run the tests'
     expect(plan('gemini', prompt, extra)?.carry).toBe('on-line')
@@ -216,7 +221,12 @@ describe('a host that types the line raw', () => {
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {
     const extra = {
       platform: 'linux' as const,
-      host: { paired: true, provesAgentInFront: true, takesLaunchFile: false }
+      host: {
+        paired: true,
+        provesAgentInFront: true,
+        takesLaunchFile: false,
+        windowsPowerShell: null
+      }
     }
     expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')
     expect(plan('claude', 'first line\nsecond line', extra)?.carry).toBe('paste-after-ready')

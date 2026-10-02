@@ -186,7 +186,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           prompt: request.prompt ?? '',
           host: thisOrcaLaunchHost({
             launchPlatform: startupArgs.platform,
-            isRemote: Boolean(workspace.connectionId)
+            isRemote: Boolean(workspace.connectionId),
+            settings
           }),
           // Why: this create returns before the agent is ready, so nothing pastes after it.
           paste: 'never'

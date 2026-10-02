@@ -1,9 +1,31 @@
-import { describeLaunchHost, type LaunchHost } from '../../shared/launch-host'
+import { cachedPwshAvailability } from '../pwsh'
+import {
+  describeLaunchHost,
+  spawnedWindowsPowerShell,
+  type LaunchHost,
+  type WindowsShellSettings
+} from '../../shared/launch-host'
 
 /** The host facts for a launch this Orca runs itself, locally or over its own SSH connection. */
 export function thisOrcaLaunchHost(args: {
   launchPlatform: NodeJS.Platform
   isRemote: boolean
+  settings: WindowsShellSettings
+  /** The shell this launch asked for (`--shell`), which outranks the setting. */
+  windowsShellOverride?: string | null
 }): LaunchHost {
-  return describeLaunchHost({ ...args, hostPlatform: process.platform, paired: false })
+  const local = !args.isRemote && args.launchPlatform === 'win32' && process.platform === 'win32'
+  return describeLaunchHost({
+    launchPlatform: args.launchPlatform,
+    isRemote: args.isRemote,
+    hostPlatform: process.platform,
+    paired: false,
+    windowsPowerShell: local
+      ? spawnedWindowsPowerShell({
+          settings: args.settings,
+          windowsShellOverride: args.windowsShellOverride,
+          pwshAvailable: cachedPwshAvailability()
+        })
+      : null
+  })
 }

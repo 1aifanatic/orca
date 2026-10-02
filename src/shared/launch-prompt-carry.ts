@@ -170,7 +170,9 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
     return { carry: 'on-line', plan }
   }
   const windowsLine =
-    args.platform === 'win32' ? windowsLaunchLineVerdict(text, plan.launchCommand, shell) : 'exact'
+    args.platform === 'win32'
+      ? windowsLaunchLineVerdict(text, plan.launchCommand, shell, args.host.windowsPowerShell)
+      : 'exact'
   // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
   if (
     windowsLine === 'damaged' ||

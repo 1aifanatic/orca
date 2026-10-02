@@ -271,7 +271,12 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       ...planInputs,
       prompt: opts.startupPrompt ?? '',
       ...(opts.launchFile ? { launchFile: opts.launchFile } : {}),
-      host: thisOrcaLaunchHost({ launchPlatform: platform, isRemote }),
+      host: thisOrcaLaunchHost({
+        launchPlatform: platform,
+        isRemote,
+        settings,
+        windowsShellOverride: opts.shellOverride
+      }),
       paste: opts.onStartupPromptCarry ? 'when-host-proves-agent' : 'never'
     })
     if (!planned) {

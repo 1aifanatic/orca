@@ -95,7 +95,12 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
       cmdOverrides: {},
       platform: 'win32',
       shell: 'powershell',
-      host: { paired: true, provesAgentInFront: false, takesLaunchFile: false }
+      host: {
+        paired: true,
+        provesAgentInFront: false,
+        takesLaunchFile: false,
+        windowsPowerShell: null
+      }
     })
     expect(startup?.launchFile).toBeUndefined()
     expect(startup?.launchCommand).toContain('fix the build')

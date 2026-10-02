@@ -16,7 +16,12 @@ describe('the full composer’s renderer-spawned startup', () => {
         cmdOverrides: {},
         platform: 'linux',
         isRemote: true,
-        host: { paired: false, provesAgentInFront: true, takesLaunchFile: true },
+        host: {
+          paired: false,
+          provesAgentInFront: true,
+          takesLaunchFile: true,
+          windowsPowerShell: null
+        },
         paste: 'when-host-proves-agent'
       }),
       prompt

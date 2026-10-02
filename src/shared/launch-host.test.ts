@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeLaunchHost } from './launch-host'
+import { describeLaunchHost, spawnedWindowsPowerShell } from './launch-host'
 
 describe('what a launch host can do with its prompt', () => {
   it.each([
@@ -19,8 +19,76 @@ describe('what a launch host can do with its prompt', () => {
       expect(describeLaunchHost({ isRemote, paired, launchPlatform, hostPlatform })).toEqual({
         paired,
         provesAgentInFront: proves,
-        takesLaunchFile
+        takesLaunchFile,
+        windowsPowerShell: null
       })
     }
   )
+})
+
+// Why: the PowerShell decides how `"` and a trailing `\` reach the agent, and this Orca picks it.
+describe('the PowerShell a local Windows pane is spawned as', () => {
+  it.each([
+    ['the pwsh shell', { terminalWindowsShell: 'pwsh.exe' }, undefined, null, 'pwsh.exe'],
+    [
+      'a requested pwsh over the setting',
+      { terminalWindowsShell: 'cmd.exe' },
+      'pwsh',
+      null,
+      'pwsh.exe'
+    ],
+    [
+      'Windows PowerShell chosen explicitly',
+      {
+        terminalWindowsShell: 'powershell.exe',
+        terminalWindowsPowerShellImplementation: 'powershell.exe'
+      },
+      undefined,
+      true,
+      'powershell.exe'
+    ],
+    [
+      'auto with pwsh installed',
+      { terminalWindowsShell: '', terminalWindowsPowerShellImplementation: 'auto' },
+      undefined,
+      true,
+      'pwsh.exe'
+    ],
+    [
+      'auto without pwsh',
+      { terminalWindowsShell: 'powershell.exe', terminalWindowsPowerShellImplementation: 'auto' },
+      undefined,
+      false,
+      'powershell.exe'
+    ],
+    [
+      'auto before the probe answers',
+      { terminalWindowsShell: 'powershell.exe', terminalWindowsPowerShellImplementation: 'auto' },
+      undefined,
+      null,
+      null
+    ],
+    ['cmd', { terminalWindowsShell: 'cmd.exe' }, undefined, true, null],
+    ['Git Bash', { terminalWindowsShell: 'git-bash' }, undefined, true, null]
+  ] as const)('%s', (_label, settings, windowsShellOverride, pwshAvailable, expected) => {
+    expect(spawnedWindowsPowerShell({ settings, windowsShellOverride, pwshAvailable })).toBe(
+      expected
+    )
+  })
+
+  it('is not this machine’s to know for an SSH or paired host', () => {
+    for (const where of [
+      { isRemote: true, paired: false },
+      { isRemote: false, paired: true }
+    ]) {
+      expect(
+        describeLaunchHost({
+          ...where,
+          launchPlatform: 'win32',
+          hostPlatform: 'win32',
+          windowsPowerShell: 'powershell.exe'
+        }).windowsPowerShell
+      ).toBeNull()
+    }
+  })
 })

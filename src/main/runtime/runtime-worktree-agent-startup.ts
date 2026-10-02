@@ -160,7 +160,8 @@ export function buildWorktreeStartupForAgent(
     prompt: environment.prompt ?? '',
     host: thisOrcaLaunchHost({
       isRemote: repoIsRemote(repo),
-      launchPlatform: environment.getLaunchPlatform()
+      launchPlatform: environment.getLaunchPlatform(),
+      settings
     }),
     // The caller, or else the host's follow-up, pastes what the line leaves once the agent runs.
     paste: 'when-host-proves-agent'

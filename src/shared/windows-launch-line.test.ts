@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeLaunchHost } from './launch-host'
+import { describeLaunchHost, type WindowsPowerShell } from './launch-host'
 import { planLaunchPrompt } from './tui-agent-startup'
 import type { AgentStartupShell } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
@@ -31,11 +31,22 @@ const PROMPTS = {
 
 type Row = keyof typeof PROMPTS
 
+function windowsHost(windowsPowerShell: WindowsPowerShell | null) {
+  return describeLaunchHost({
+    launchPlatform: 'win32',
+    isRemote: false,
+    hostPlatform: 'win32',
+    paired: false,
+    windowsPowerShell
+  })
+}
+
 function carry(
   agent: TuiAgent,
   row: Row,
   shell: AgentStartupShell,
-  command = `node C:/Users/neil/orca-qa/stack-final/win/bin/stub.js --qa-as=${agent}`
+  command = `node C:/Users/neil/orca-qa/stack-final/win/bin/stub.js --qa-as=${agent}`,
+  windowsPowerShell: WindowsPowerShell | null = null
 ) {
   return planLaunchPrompt({
     agent,
@@ -43,12 +54,7 @@ function carry(
     cmdOverrides: { [agent]: command },
     platform: 'win32',
     shell,
-    host: describeLaunchHost({
-      launchPlatform: 'win32',
-      isRemote: false,
-      hostPlatform: 'win32',
-      paired: false
-    }),
+    host: windowsHost(windowsPowerShell),
     paste: 'when-host-proves-agent'
   })?.carry
 }
@@ -72,9 +78,9 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
     ['powershell', 'ml5', 'exact on 5.1 and 7', 'on-line'],
     ['powershell', 'ml9k', 'damaged on 5.1, lines run as commands on 7', 'launch-file'],
     ['powershell', 'e8191', 'exact on 5.1 and 7', 'on-line'],
-    ['powershell', 'pq', 'exact on 7, damaged on 5.1 (version unknown here)', 'on-line'],
+    ['powershell', 'pq', 'exact on 7, damaged on 5.1 (PowerShell unknown here)', 'on-line'],
     ['powershell', 'ppct', 'exact on 5.1 and 7', 'on-line'],
-    ['powershell', 'pbs', 'exact on 7, damaged on 5.1 (version unknown here)', 'on-line'],
+    ['powershell', 'pbs', 'exact on 7, damaged on 5.1 (PowerShell unknown here)', 'on-line'],
     ['posix', 'p2k', 'exact in Git Bash', 'on-line'],
     ['posix', 'p20k', 'never started in Git Bash', 'launch-file'],
     ['posix', 'ml5', 'exact in Git Bash', 'on-line'],
@@ -86,6 +92,25 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
   ])('%s %s (main: %s) rides %s', (shell, row, _main, expected) => {
     expect(carry('claude', row, shell)).toBe(expected)
     expect(carry('codex', row, shell)).toBe(expected)
+  })
+
+  // Why: this Orca spawns the pane, so it knows which PowerShell gets the line. 5.1's measured
+  // damage gets a launch file, better than main; 7 keeps the line it carried exactly.
+  it.each<[Row, WindowsPowerShell, string, 'on-line' | 'launch-file']>([
+    ['pq', 'powershell.exe', 'damaged on 5.1', 'launch-file'],
+    ['pbs', 'powershell.exe', 'damaged on 5.1', 'launch-file'],
+    ['ppct', 'powershell.exe', 'exact on 5.1', 'on-line'],
+    ['ml5', 'powershell.exe', 'exact on 5.1', 'on-line'],
+    ['p20k', 'powershell.exe', 'exact on 5.1', 'on-line'],
+    ['pq', 'pwsh.exe', 'exact on 7', 'on-line'],
+    ['pbs', 'pwsh.exe', 'exact on 7', 'on-line'],
+    ['ppct', 'pwsh.exe', 'exact on 7', 'on-line'],
+    ['ml9k', 'pwsh.exe', 'lines run as commands on 7', 'launch-file']
+  ])('powershell %s spawned as %s (main: %s) rides %s', (row, ps, _main, expected) => {
+    const command = (agent: TuiAgent) =>
+      `node C:/Users/neil/orca-qa/stack-final/win/bin/stub.js --qa-as=${agent}`
+    expect(carry('claude', row, 'powershell', command('claude'), ps)).toBe(expected)
+    expect(carry('codex', row, 'powershell', command('codex'), ps)).toBe(expected)
   })
 
   // Why: a shim's cmd.exe re-reads the line, so cmd's cap, its `%NAME%` expansion and a cut at a

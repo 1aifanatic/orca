@@ -4,6 +4,7 @@
  * `exact` arrived byte for byte, `damaged` was measured lost or changed, and `uncertain` was not
  * measured, so the caller does there what main does on its path.
  */
+import type { WindowsPowerShell } from './launch-host'
 import type { AgentStartupShell } from './tui-agent-startup-shell'
 import { TYPED_STARTUP_LINE_BUDGET_BYTES } from './typed-startup-line'
 
@@ -72,7 +73,9 @@ function shellVerdict(line: string, shell: AgentStartupShell): WindowsLineVerdic
 export function windowsLaunchLineVerdict(
   prompt: string,
   line: string,
-  shell: AgentStartupShell
+  shell: AgentStartupShell,
+  /** The PowerShell the pane is spawned as (`LaunchHost.windowsPowerShell`), when known. */
+  windowsPowerShell: WindowsPowerShell | null
 ): WindowsLineVerdict {
   if (hasKeyByte(line)) {
     return 'damaged'
@@ -80,9 +83,16 @@ export function windowsLaunchLineVerdict(
   const verdict = shellVerdict(line, shell)
   const legacyArgsDamage = prompt.includes('"') || prompt.endsWith('\\')
   if (shell === 'cmd' || !launchesThroughCmdShim(line)) {
-    // Why: 5.1 hands every native command `"` and a trailing `\` the legacy way, 7 only a shim;
-    // this client cannot tell which PowerShell runs.
-    return shell === 'powershell' && verdict === 'exact' && legacyArgsDamage ? 'uncertain' : verdict
+    if (shell !== 'powershell' || verdict !== 'exact' || !legacyArgsDamage) {
+      return verdict
+    }
+    // Measured: 5.1 hands every native command `"` and a trailing `\` the legacy way and breaks
+    // them; 7 carried them exactly. Where the PowerShell is not known, main's delivery decides.
+    return windowsPowerShell === 'powershell.exe'
+      ? 'damaged'
+      : windowsPowerShell === 'pwsh.exe'
+        ? 'exact'
+        : 'uncertain'
   }
   // Measured (#23962 W-1): PowerShell hands a shim `"` and a trailing `\` the legacy way, and the
   // shim's cmd.exe expands `%NAME%`.
