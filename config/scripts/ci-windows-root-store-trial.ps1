@@ -30,7 +30,10 @@ function Get-Digests([string[]]$Files) {
 if ($Phase -eq 'reset') {
   $store = (& pnpm store path --silent).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Could not resolve pnpm store.' }
-  if (-not [IO.Path]::IsPathRooted($store) -or $store -notmatch '[\\/](?:\.pnpm-store|pnpm[\\/]store)[\\/]v\d+$') {
+  $setupStore = [IO.Path]::GetRelativePath([IO.Path]::GetFullPath($env:PNPM_HOME), $store)
+  $knownStore = $store -match '[\\/](?:\.pnpm-store|pnpm[\\/]store)[\\/]v\d+$'
+  $knownSetupStore = $setupStore -match '^store[\\/]v\d+$'
+  if (-not [IO.Path]::IsPathRooted($store) -or (-not $knownStore -and -not $knownSetupStore)) {
     throw "Refusing to remove an unexpected store: $store"
   }
   $cache = (& pnpm cache path).Trim()

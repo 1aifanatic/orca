@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        os: [windows-2022, windows-11-arm]
+        os: [windows-11-arm]
         sample: [1, 2, 3]
     env:
       COST_SAMPLE: ${{ matrix.sample }}
