@@ -52,6 +52,11 @@ export type OrcadMigrationBlocker =
       owner: NonNullable<SshTarget['owner']>
     }
   | {
+      /** Owned by the asking environment, but no durable record of why. */
+      code: 'orcad_migration_owner_unrecorded'
+      category: 'exclusive-ownership'
+    }
+  | {
       code: 'orcad_migration_direct_ssh_repositories'
       category: 'drainable-static-state'
       repositories: OrcadMigrationRepository[]

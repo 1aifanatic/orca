@@ -56,7 +56,12 @@ export async function createManagedOrcadEnvironment(
     if (hasRegisteredDirectSshAuthority(args.sshTargetId)) {
       throw new Error('Disconnect this SSH host before converting it to a managed Orca server.')
     }
-    const claimed = claims.claim(args.sshTargetId, environmentId, args.name)
+    const current = targetStore.getTarget(args.sshTargetId)
+    const claimed = claims.claim(args.sshTargetId, environmentId, {
+      deployName: args.name,
+      // Why: this deploy's own claim left a provisioning intent, or the server it registered.
+      ownerRecorded: Boolean(current?.orcadProvisioning) || Boolean(registered)
+    })
     await claims.flush(args.signal)
     const targetGeneration = claimed.generation
     if (targetGeneration === undefined) {

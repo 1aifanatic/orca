@@ -137,12 +137,21 @@ describe('migration export preflight', () => {
     )
   })
 
-  it('refuses a target another runtime owns, and passes the owner its own claim', () => {
+  it('refuses a target another runtime owns, and passes the owner only with its journal', () => {
     const owned = preflightStore((store) =>
       store.addSshTarget({ ...TARGET, owner: createManagedOrcadSshOwner('env-1') })
     )
     expect(preflightOrcadMigrationExport(owned, TARGET.id).claimable).toBe(false)
-    expect(preflightOrcadMigrationExport(owned, TARGET.id, 'env-1').claimable).toBe(true)
+    expect(
+      preflightOrcadMigrationExport(owned, TARGET.id, { environmentId: 'env-1', recorded: true })
+        .claimable
+    ).toBe(true)
+    expect(
+      preflightOrcadMigrationExport(owned, TARGET.id, { environmentId: 'env-1', recorded: false })
+    ).toMatchObject({
+      claimable: false,
+      blockers: [{ code: 'orcad_migration_owner_unrecorded' }]
+    })
   })
 
   it('reports an unknown target', () => {
