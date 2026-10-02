@@ -81,6 +81,11 @@ describe('findPaneCodex', () => {
     expect(findPaneCodex([shell, row(101, SHELL, 'codex')], SHELL)?.shell).toBe(name)
   })
 
+  it('leaves fish without config unnamed, since it never loads the codex function', () => {
+    const fish = row(SHELL, 1, '/opt/homebrew/bin/fish -l -N')
+    expect(findPaneCodex([fish, row(101, SHELL, 'codex')], SHELL)?.shell).toBeNull()
+  })
+
   it('ignores Codex outside this pane and non-Codex children', () => {
     const rows = [row(SHELL, 1, '-zsh'), row(101, SHELL, 'vim'), row(201, 1, 'codex')]
     expect(findPaneCodex(rows, SHELL)).toBeNull()

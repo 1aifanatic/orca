@@ -9,6 +9,7 @@ import {
 import { getProcessTableSnapshot } from '../../shared/process-table-snapshot-reader'
 import { readWindowsProcessTable } from '../windows/windows-process-table'
 import { isShellStartupEnvProbeSupported } from '../pty/shell-startup-env'
+import { fishArgsSkipConfig } from '../fish-xdg-data-dirs-handoff'
 import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getCodexPaneAccount } from './codex-pane-account-registry'
 import { probeCodexSharedServer } from './codex-shared-server-probe'
@@ -55,7 +56,11 @@ export function findPaneCodex(
     return null
   }
   const parent = index.byPid.get(outermost.ppid)
-  return { command: outermost.command, shell: parent ? executableName(parent) : null }
+  const shell = parent ? executableName(parent) : null
+  // Why: fish without config never loads Orca's codex function, so it counts as unwrapped.
+  const unwrappedFish =
+    shell === 'fish' && fishArgsSkipConfig(parent?.command.trim().split(/\s+/).slice(1) ?? [])
+  return { command: outermost.command, shell: unwrappedFish ? null : shell }
 }
 
 /**
