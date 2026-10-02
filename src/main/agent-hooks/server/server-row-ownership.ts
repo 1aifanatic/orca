@@ -257,6 +257,14 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
     return Boolean(recordedProcess && !same)
   }
 
+  /** A live turn after the owner's exit is something new in the pane; the exited owner's record
+   *  must not label it. A replay restates history, so it leaves the record to suppress it. */
+  protected supersedeEndedOwner(row: Pick<AgentHookEventPayload, 'paneKey' | 'isReplay'>): void {
+    if (!row.isReplay && this.agentOwnerByPaneKey.get(row.paneKey)?.presence.ended) {
+      this.writeAgentOwner(row.paneKey, undefined)
+    }
+  }
+
   /** Version adapter, removable once the supported relay floor stamps exits on its own host: an
    *  older relay's hook-claimed exit may clear the pane's turn, never mint one, and never end an
    *  owner this side recorded. */

@@ -140,7 +140,8 @@ describe('host-owned hook presence', () => {
     expect(visible(server)).toBe(false)
     await hook(server, 'Stop')
     expect(visible(server)).toBe(true)
-    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
+    // The exited owner is superseded by the new turn rather than labelling it.
+    expect(server.getAgentOwner(PANE)).toBeUndefined()
   })
 
   it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {

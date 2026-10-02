@@ -32,7 +32,8 @@ function endedProcessDisposition(
   owner: AgentPaneOwner | undefined,
   evidence: EndedProcessEvidence
 ): PaneOwnerDisposition | null {
-  const process = owner?.presence.process
+  // Why: an exited owner no longer speaks for the pane, so it must not shield a later turn.
+  const process = owner?.presence.ended ? undefined : owner?.presence.process
   if (evidence.kind === 'terminal-ended') {
     return 'released'
   }

@@ -91,6 +91,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
         return undefined
       }
       this.commitStatusRowMutation(rowBefore, enriched)
+      this.supersedeEndedOwner(enriched)
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
       this.emitEnrichedStatus(enriched)
@@ -240,6 +241,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       return undefined
     }
     this.commitStatusRowMutation(rowBefore, enriched)
+    this.supersedeEndedOwner(enriched)
     // Why skipped for structured rows: the serializer drops them, so the whole walk and stringify
     // can only ever reproduce the last file — once per debounce window for a streaming chat.
     if (!enriched.structuredHost) {

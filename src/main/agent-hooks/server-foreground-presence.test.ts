@@ -230,4 +230,40 @@ describe('host foreground ownership', () => {
     expect(server.getStatusSnapshot()).toEqual([])
     expect(server.getAgentOwner(PANE)).toBeUndefined()
   })
+
+  it('drops an exited owner once a later live turn arrives, so it never labels that turn', async () => {
+    const server = host()
+    const released = vi.fn()
+    server.setAgentPresenceReleaseListener(released)
+    server.ingestForegroundPresence(scope, owner)
+    probe.mockResolvedValue('exited')
+    expect(await server.checkAgentPresence(PANE)).toBe('exited')
+    server.turn({
+      source: 'claude',
+      hookEventName: 'UserPromptSubmit',
+      isReplay: true,
+      payload: { agentType: 'codex', state: 'working', prompt: 'replayed' }
+    })
+    expect(server.getAgentOwner(PANE)?.presence.ended).toBe(true)
+    server.turn({
+      source: 'claude',
+      hookEventName: 'UserPromptSubmit',
+      payload: { agentType: 'claude', state: 'working', prompt: 'second agent' }
+    })
+    expect(server.getAgentOwner(PANE)).toBeUndefined()
+    expect(server.getStatusSnapshot()[0]).toMatchObject({ prompt: 'second agent' })
+    expect(server.getStatusSnapshot()[0]).not.toHaveProperty('agentPresence')
+    expect(released).toHaveBeenCalledWith({ paneKey: PANE, process: owner.process })
+  })
+
+  it('lets legacy shell evidence settle a later turn despite an exited owner', async () => {
+    const server = host()
+    server.ingestForegroundPresence(scope, owner)
+    probe.mockResolvedValue('exited')
+    await server.checkAgentPresence(PANE)
+    server.turn({ isReplay: true })
+    expect(
+      server.reconcileEndedProcessForPaneKeys([PANE], { kind: 'legacy-shell-foreground' })
+    ).toBe(1)
+  })
 })
