@@ -30,7 +30,7 @@ class LifecycleServer extends AgentHookServer {
   }
 
   publish(overrides: Partial<AgentHookEventPayload> = {}): void {
-    this.applyNormalizedStatus({
+    const event: AgentHookEventPayload = {
       paneKey: PANE,
       tabId: 'tab-1',
       worktreeId: 'folder-1',
@@ -40,7 +40,20 @@ class LifecycleServer extends AgentHookServer {
       agentPresence: owner,
       payload: { agentType: 'claude', state: 'working', prompt: 'task' },
       ...overrides
-    })
+    }
+    if (event.connectionId) {
+      this.applyNormalizedStatus({ ...event, agentPresenceFromExecutionHost: true })
+    } else if (event.agentPresence?.ended) {
+      this.reconcileEndedProcessForPaneKeys([event.paneKey], {
+        kind: 'owner-exited',
+        presence: event.agentPresence
+      })
+    } else {
+      if (event.agentPresence) {
+        this.ingestForegroundPresence(event, event.agentPresence)
+      }
+      this.applyNormalizedStatus(event)
+    }
   }
 
   /** What the HTTP ingest does for every admitted hook. */
@@ -153,7 +166,7 @@ describe('host owner lifecycle', () => {
   })
 
   it.each(['silent death', 'dismissal', 'unverified cleanup'])(
-    'hands the pane to the process whose hook proved the old owner dead (%s)',
+    'admits the foreground successor after exact-owner exit proof (%s)',
     async (howOwnerWasLeft) => {
       const server = createServer()
       server.publish()
@@ -165,13 +178,18 @@ describe('host owner lifecycle', () => {
       const live = vi.fn()
       server.subscribeEnrichedStatus(live)
       vi.mocked(probeAgentProcessPresence).mockResolvedValue('exited')
+      await server.checkAgentPresence(PANE)
+      server.ingestForegroundPresence(
+        { paneKey: PANE, tabId: 'tab-1', worktreeId: 'folder-1', connectionId: null },
+        replacement
+      )
       server.hook({ agentPresence: replacement })
       await flush()
       expect(server.getStatusSnapshot()).toEqual([
         expect.objectContaining({ state: 'working', agentPresence: replacement })
       ])
       expect(server.getStatusSnapshot()[0]?.providerSessionOnly).toBeUndefined()
-      expect(live.mock.calls.some(([row]) => row.agentPresence?.ended)).toBe(false)
+      expect(live.mock.calls.some(([row]) => row.agentPresence?.ended)).toBe(true)
     }
   )
 

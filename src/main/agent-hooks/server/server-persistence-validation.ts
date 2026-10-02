@@ -139,7 +139,8 @@ export function sanitizeHydratedEntry(
   if (
     providerSessionOnly &&
     !isValidPiProviderSessionOnly(providerSession, payload.agentType) &&
-    !validRetainedIdentity
+    !validRetainedIdentity &&
+    !agentPresence?.process
   ) {
     return null
   }

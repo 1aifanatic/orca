@@ -12,7 +12,7 @@ import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-
 import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { StructuredAgentSessionStatusSink } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { ObservedAgentStatusPaneIdentity } from '../ipc/agent-status-ipc-boundary'
-import type { AgentHookAuthorityAttestation } from '../agent-hooks/server'
+import type { AgentHookServer, AgentHookAuthorityAttestation } from '../agent-hooks/server'
 import type { RuntimeDesktopWindowStatus } from '../../shared/runtime-types'
 import type {
   AiVaultPrepareSessionResumeArgs,
@@ -88,9 +88,13 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
       }) => AgentHookAuthorityAttestation | null)
     | null
 
-  protected readonly retireAgentHookCompatibilityAuthorityFn: ((paneKey: string) => void) | null
+  protected readonly retireAgentHookCompatibilityAuthorityFn:
+    | ((paneKey: string, options?: { authorityOnly?: boolean }) => void)
+    | null
 
   protected readonly dropAgentStatusForWorktreeFn: ((worktreeId: string) => void) | null
+
+  protected readonly onForegroundAgentPresence: AgentHookServer['ingestForegroundPresence'] | null
 
   protected readonly checkHookAgentPresenceFn:
     | ((paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>)

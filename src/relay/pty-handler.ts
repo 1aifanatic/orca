@@ -1,4 +1,9 @@
 /* oxlint-disable max-lines */
+import { AgentPresenceCommandObserver } from '../shared/agent-presence-command-observer'
+import { captureAgentForegroundIdentity } from '../shared/agent-foreground-identity'
+import type { AgentProcessPresence } from '../shared/agent-process-presence'
+import { hasCompatibleAgentTitleIdentity } from '../shared/agent-title-owner'
+import { createPtyForegroundResolver } from '../main/daemon/pty-subprocess/spawn-file-foreground-process'
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
 import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
@@ -717,9 +722,73 @@ export class PtyHandler {
     return this.graceTimeMs
   }
 
-  private agentPresenceTrigger: ((paneKey: string) => void) | null = null
+  private presenceAdmission?: {
+    hasOwner: (paneKey: string) => boolean
+    admit: (
+      scope: { paneKey: string; tabId?: string; worktreeId?: string },
+      presence: AgentProcessPresence
+    ) => void
+  }
+  private readonly presenceDiscoveries = new Set<ManagedPty>()
+  private readonly presenceCommands = new AgentPresenceCommandObserver(async (id, current) => {
+    const managed = this.ptys.get(id)
+    if (managed) {
+      await this.discoverAgentOwner(managed, current)
+    }
+  })
 
-  setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
+  setAgentPresenceAdmission(admission: NonNullable<PtyHandler['presenceAdmission']>): void {
+    this.presenceAdmission = admission
+  }
+
+  async discoverPaneAgentOwner(paneKey: string): Promise<void> {
+    const managed = [...this.ptys.values()].find((pty) => pty.paneKey === paneKey)
+    if (managed) {
+      await this.discoverAgentOwner(managed)
+    }
+  }
+
+  private async discoverAgentOwner(
+    managed: ManagedPty,
+    current: () => boolean = () => true
+  ): Promise<void> {
+    const admission = this.presenceAdmission
+    const paneKey = managed.paneKey
+    if (
+      !admission ||
+      !paneKey ||
+      managed.disposed ||
+      process.platform === 'win32' ||
+      admission.hasOwner(paneKey) ||
+      this.presenceDiscoveries.has(managed)
+    ) {
+      return
+    }
+    const incarnation = managed.incarnationId
+    this.presenceDiscoveries.add(managed)
+    try {
+      const presence = await captureAgentForegroundIdentity(() =>
+        createPtyForegroundResolver(managed.pty)(managed.pty.pid, managed.pty.process || null)
+      )
+      if (
+        !presence ||
+        !current() ||
+        managed.disposed ||
+        this.ptys.get(managed.id) !== managed ||
+        managed.incarnationId !== incarnation ||
+        admission.hasOwner(paneKey)
+      ) {
+        return
+      }
+      admission.admit({ paneKey, tabId: managed.tabId, worktreeId: managed.worktreeId }, presence)
+    } finally {
+      this.presenceDiscoveries.delete(managed)
+    }
+  }
+
+  private agentPresenceTrigger: ((paneKey: string) => Promise<void>) | null = null
+
+  setAgentPresenceTrigger(listener: ((paneKey: string) => Promise<void>) | null): void {
     this.agentPresenceTrigger = listener
   }
 
@@ -1027,22 +1096,41 @@ export class PtyHandler {
         }
       })
     }
-    const recheckAgentPresence = (): void => {
-      if (managed.paneKey) {
-        this.agentPresenceTrigger?.(managed.paneKey)
-      }
-    }
+    const recheckAgentPresence = (): Promise<void> =>
+      managed.paneKey
+        ? (this.agentPresenceTrigger?.(managed.paneKey) ?? Promise.resolve())
+        : Promise.resolve()
     let lastTitleGateKey: string | null = null
     const presenceTriggers = createTerminalTitleTracker({
       onTitle: (normalizedTitle, rawTitle, meta) => {
         // Why: spinner frames arrive several times a second; only a real title change re-checks.
         const gateKey = getDecorativeTitleGateKey(rawTitle, normalizedTitle)
         if (gateKey !== lastTitleGateKey && !meta?.staleWorkingTitleClear) {
-          recheckAgentPresence()
+          void recheckAgentPresence().then(() => {
+            if (hasCompatibleAgentTitleIdentity(normalizedTitle)) {
+              return this.discoverAgentOwner(managed)
+            }
+          })
         }
         lastTitleGateKey = gateKey
       },
-      onCommandFinished: recheckAgentPresence
+      onCommandStarted: () => {
+        recheckAgentPresence()
+        if (
+          process.platform !== 'win32' &&
+          managed.paneKey &&
+          !this.presenceAdmission?.hasOwner(managed.paneKey)
+        ) {
+          this.presenceCommands.start(
+            managed.id,
+            () => !managed.disposed && this.ptys.get(managed.id) === managed
+          )
+        }
+      },
+      onCommandFinished: () => {
+        this.presenceCommands.end(managed.id)
+        recheckAgentPresence()
+      }
     })
     managed.pty.onData((data: string) => {
       presenceTriggers.handleChunk(data)
@@ -1067,6 +1155,7 @@ export class PtyHandler {
       }
     })
     managed.pty.onExit(({ exitCode }: { exitCode: number }) => {
+      this.presenceCommands.end(managed.id)
       presenceTriggers.dispose()
       managed.physicalExit?.markExited()
       if (managed.disposed) {
@@ -3293,6 +3382,7 @@ export class PtyHandler {
   }
 
   private async disposePtys(waitForPhysicalExit: boolean): Promise<void> {
+    this.presenceCommands.stop()
     this.cancelGraceTimer()
     await this.waitForPendingPtyCreations()
     for (const managed of this.ptys.values()) {

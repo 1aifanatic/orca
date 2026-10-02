@@ -9,7 +9,7 @@ export const HOST_AGENT_PRESENCE_STATUS = Symbol('host-agent-presence-status')
 
 export function projectHostAgentPresenceStatus(
   rows: readonly AgentStatusIpcPayload[]
-): AgentStatusEntry | undefined {
+): AgentStatusEntry | Pick<AgentStatusEntry, 'agentPresence'> | undefined {
   const row = rows.reduce<AgentStatusIpcPayload | undefined>(
     (latest, candidate) =>
       !latest || candidate.receivedAt > latest.receivedAt ? candidate : latest,
@@ -17,6 +17,9 @@ export function projectHostAgentPresenceStatus(
   )
   if (!row?.agentPresence?.process) {
     return undefined
+  }
+  if (row.providerSessionOnly && !row.agentPresence.ended) {
+    return { agentPresence: row.agentPresence }
   }
   const identity = {
     agentPresence: row.agentPresence,

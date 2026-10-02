@@ -1,3 +1,4 @@
+import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
 import type { DaemonPtyAdapter } from './daemon-pty-adapter'
 import { DaemonPtyAdapterSubscriptionFanout } from './daemon-pty-adapter-subscription-fanout'
 import type {
@@ -183,6 +184,14 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   async hasChildProcesses(id: string): Promise<boolean> {
     return this.adapterFor(id).hasChildProcesses(id)
+  }
+
+  async probeAgentPresence(id: string, identity: AgentProcessIdentity) {
+    return this.adapterFor(id).probeAgentPresence?.(id, identity) ?? ('unverifiable' as const)
+  }
+
+  async captureAgentPresence(id: string) {
+    return this.adapterFor(id).captureAgentPresence?.(id)
   }
 
   async getForegroundProcess(id: string): Promise<string | null> {

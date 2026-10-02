@@ -1,4 +1,9 @@
 import type {
+  AgentProcessPresence,
+  AgentProcessIdentity,
+  AgentProcessVerdict
+} from '../../shared/agent-process-presence'
+import type {
   AgentSessionClaimedSpawnResult,
   AgentSessionExecutionClaim,
   AgentSessionSurfaceBinding
@@ -115,6 +120,8 @@ export type RuntimePtyController = {
    *  host reconnects. True only when an order was written; local PTYs have no later host to ask. */
   recordUnconfirmedStop?(ptyId: string): boolean
   getCwd?(ptyId: string): Promise<string | null>
+  probeAgentPresence?(id: string, identity: AgentProcessIdentity): Promise<AgentProcessVerdict>
+  captureAgentPresence?(id: string): Promise<AgentProcessPresence | undefined>
   getForegroundProcess(ptyId: string): Promise<string | null>
   inspectProcess?(
     ptyId: string,

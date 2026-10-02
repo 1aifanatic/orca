@@ -99,6 +99,16 @@ describe('headless mobile owner projection', () => {
     })
   })
 
+  it('publishes a hookless live owner as identity without inventing a done turn', () => {
+    const { setRows, tabFor } = projection()
+    setRows([{ ...ownerRow(false), providerSessionOnly: true }])
+    expect(tabFor(capable)).toMatchObject({
+      agentPresence: { agent: 'claude', process: processIdentity }
+    })
+    expect(tabFor(capable)).not.toHaveProperty('agentStatus')
+    expect(tabFor([])).not.toHaveProperty('agentPresence')
+  })
+
   it('carries a positive exit through the snapshot even with a stale launch hint', () => {
     const { setRows, tabFor } = projection()
     setRows([

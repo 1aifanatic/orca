@@ -1,3 +1,4 @@
+import { readAgentProcessPresence } from '../../../../shared/agent-process-presence'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
@@ -21,6 +22,9 @@ export function projectSessionTabPresenceForClient(
       // The symbol is produced only by the execution host's in-process projection.
       if (!supported || !status || typeof status !== 'object' || !('agentPresence' in status)) {
         return legacy
+      }
+      if (!('state' in status)) {
+        return { ...legacy, agentPresence: readAgentProcessPresence(status.agentPresence) }
       }
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This private symbol is minted only by projectHostAgentPresenceStatus; JSON cannot supply it.
       const hostStatus = status as AgentStatusEntry

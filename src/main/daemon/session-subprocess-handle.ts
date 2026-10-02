@@ -1,9 +1,16 @@
+import type {
+  AgentProcessIdentity,
+  AgentProcessPresence,
+  AgentProcessVerdict
+} from '../../shared/agent-process-presence'
 import type { PtyChildProcessVerdict } from '../../shared/terminal-process-inspection'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 
 import type { JobTerminationOutcome } from '../windows/windows-pty-job'
 
 export type SubprocessHandle = {
+  captureAgentPresence?(): Promise<AgentProcessPresence | undefined>
+  probeAgentPresence?(identity: AgentProcessIdentity): Promise<AgentProcessVerdict>
   pid: number
   processNameIsSpawnFile?: boolean
   inspectChildProcesses?(): PtyChildProcessVerdict

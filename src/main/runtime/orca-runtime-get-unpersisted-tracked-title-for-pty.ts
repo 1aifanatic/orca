@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { hasCompatibleAgentTitleIdentity } from '../../shared/agent-title-owner'
 import { OrcaRuntimeWithEmitDaemonPtyTransientFact } from './orca-runtime-emit-daemon-pty-transient-fact'
 import { getDecorativeTitleGateKey } from '../../shared/agent-decorative-title-signature'
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
@@ -65,7 +66,10 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           const gateKey = this.makeDecorativeTitleGateKey(rawTitle, normalizedTitle)
           const decorativeOnly = live?.lastMobileTitleGateKey === gateKey
           if (!decorativeOnly && !meta?.staleWorkingTitleClear) {
-            void this.recheckHookAgentPresenceForPty(ptyId)
+            this.recheckAgentPresenceEvidence(
+              ptyId,
+              hasCompatibleAgentTitleIdentity(normalizedTitle)
+            )
           }
           if (live) {
             live.lastMobileTitleGateKey = gateKey
@@ -143,11 +147,14 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           this.confirmPtyAgentExit(ptyId)
         },
         onCommandStarted: () => {
+          void this.recheckHookAgentPresenceForPty(ptyId)
+          this.scheduleAgentPresenceDiscovery(ptyId)
           this.openCodeRunLifetime.onCommandStarted(ptyId)
         },
         onCommandFinished: (exitCode: number | null) => {
+          this.agentPresenceCommands.end(ptyId)
           void this.recheckHookAgentPresenceForPty(ptyId)
-          this.retirePtyAgentLaunchAuthority(ptyId)
+          this.retirePtyAgentLaunchAuthority(ptyId, true)
           this.recordTerminalSideEffectFact(ptyId, { kind: 'command-finished', exitCode })
           this.openCodeRunLifetime.onCommandFinished(ptyId, exitCode)
         },

@@ -63,6 +63,10 @@ describe('relay process presence', () => {
         expect(response.status).toBe(204)
       }
       await post('SessionStart', 'a')
+      server.ingestForegroundPresence(
+        { paneKey, tabId: 'tab-1', worktreeId: 'wt-1' },
+        { agent: 'claude', process: { pid: 4001, platform: 'linux', startTime: 'birth-4001' } }
+      )
       expect(forward.mock.lastCall?.[0].agentPresence?.process?.pid).toBe(4001)
       expect(probe).not.toHaveBeenCalled()
       const retryHost = retryHosts[0]
@@ -84,10 +88,15 @@ describe('relay process presence', () => {
       await post('SessionStart', 'b')
       await post('SessionEnd', 'nested', 'other', 4002)
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBeUndefined()
+      probe.mockResolvedValueOnce('exited')
       await post('SessionEnd', 'b', 'prompt_input_exit')
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBe(true)
       expect(forward.mock.lastCall?.[0].providerSessionOnly).toBe(true)
       await post('SessionStart', 'c', undefined, 4003)
+      server.ingestForegroundPresence(
+        { paneKey, tabId: 'tab-1', worktreeId: 'wt-1' },
+        { agent: 'claude', process: { pid: 4003, platform: 'linux', startTime: 'birth-4003' } }
+      )
       expect(forward.mock.lastCall?.[0].agentPresence?.process?.pid).toBe(4003)
       probe.mockResolvedValue('exited')
       await server.checkAgentPresence(paneKey)

@@ -23,12 +23,13 @@ import { AgentHookServerStatusApplication } from './server-status-application'
 
 export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusApplication {
   protected applyNormalizedStatus(
-    incoming: AgentHookEventPayload & { authorityRestartId?: string },
+    event: AgentHookEventPayload & { authorityRestartId?: string },
     onAccepted?: () => void,
     origin: AgentStatusObservationOrigin = 'hook',
     observedAt?: number,
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
+    const incoming = this.withLiveLaunchToken(event)
     // Why: a relay already chose the live owner on its own host; re-deciding against a record it
     // replaced would pin the pane to an owner this desktop can never check. Exits still need our
     // fence, except the host-stamped replay of the relay's own settled exit.
@@ -37,16 +38,11 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     const stored = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
       | EnrichedAgentHookEventPayload
       | undefined
-    const storedOwner = stored?.agentPresence?.process
-    // Why: a replayed exit only settles the owner it names against a different identified stored
-    // owner; with no stored process it goes through the transition, which drops an ownerless exit.
-    const relayDecided =
-      relayOwner?.process &&
-      (!relayOwner.ended ||
-        (incoming.agentPresenceFromExecutionHost &&
-          incoming.isReplay === true &&
-          storedOwner !== undefined &&
-          !isSameAgentProcess(storedOwner, relayOwner.process)))
+    // An old owner exit must not retire a later unidentified turn.
+    if (relayOwner?.ended && stored && !stored.agentPresence?.process) {
+      return undefined
+    }
+    const relayDecided = Boolean(incoming.agentPresenceFromExecutionHost && relayOwner?.process)
     const transitioned = relayDecided ? incoming : transitionHookPresence(incoming, stored)
     if (!transitioned) {
       return undefined
@@ -107,9 +103,23 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     if (terminalOwnedPayload.providerSessionOnly) {
       // Why: identity-only rows survive replay but must not emit prompt telemetry or a fabricated status.
       onAccepted?.()
+      const identityPayload =
+        previous && !previous.providerSessionOnly && !previous.agentPresence?.ended
+          ? {
+              ...previous,
+              agentPresence: terminalOwnedPayload.agentPresence,
+              providerSession: terminalOwnedPayload.providerSession ?? previous.providerSession
+            }
+          : terminalOwnedPayload
       const enriched = {
-        ...this.attachStatusTiming(terminalOwnedPayload, now),
-        observation: this.stampObservation(terminalOwnedPayload, origin, now)
+        ...this.attachStatusTiming(
+          identityPayload,
+          now,
+          previous && !previous.providerSessionOnly
+            ? (previous.evidenceObservedAt ?? previous.receivedAt)
+            : undefined
+        ),
+        observation: this.stampObservation(identityPayload, origin, now)
       }
       this.clearAssistantMessageRetry(enriched.paneKey)
       this.runtimeObservedStatusPaneKeys.delete(enriched.paneKey)
@@ -119,7 +129,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       this.commitStatusRowMutation(rowBefore, enriched)
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
-      this.emitEnrichedStatus(enriched)
+      this.emitEnrichedStatus({ ...enriched, providerSessionOnly: true })
       return enriched
     }
     const stateReconciledPayload =

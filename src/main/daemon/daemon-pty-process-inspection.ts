@@ -1,3 +1,8 @@
+import {
+  readAgentProcessPresence,
+  type AgentProcessIdentity,
+  type AgentProcessVerdict
+} from '../../shared/agent-process-presence'
 import { isShellProcess } from '../../shared/agent-detection'
 import { DaemonPtyBufferSnapshots } from './daemon-pty-buffer-snapshots'
 import { parsePtySessionId } from './pty-session-id'
@@ -51,6 +56,29 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
       // Additive: an older daemon ignores it and pays for the full capture.
       ...(options?.steadyState === true ? { steadyState: true } : {})
     })
+  }
+
+  async probeAgentPresence(
+    id: string,
+    identity: AgentProcessIdentity
+  ): Promise<AgentProcessVerdict> {
+    const result = await this.client.request<{ agentPresenceVerdict?: unknown }>(
+      'getForegroundProcess',
+      { sessionId: id, probeAgentPresence: identity }
+    )
+    const verdict = result.agentPresenceVerdict
+    return verdict === 'live' || verdict === 'exited' ? verdict : 'unverifiable'
+  }
+
+  async captureAgentPresence(id: string) {
+    if (this.protocolVersion < GET_FOREGROUND_PROCESS_PROTOCOL_VERSION) {
+      return undefined
+    }
+    const result = await this.client.request<{ agentPresence?: unknown }>('getForegroundProcess', {
+      sessionId: id,
+      captureAgentPresence: true
+    })
+    return readAgentProcessPresence(result.agentPresence)
   }
 
   async getForegroundProcess(id: string): Promise<string | null> {

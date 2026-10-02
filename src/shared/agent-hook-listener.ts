@@ -1,4 +1,3 @@
-import { readAgentProcessIdentity } from './agent-process-presence'
 import { normalizeAgentStatusPayload } from './agent-status-types'
 import type { AgentHookSource } from './agent-hook-relay'
 import { extractAgentProviderSession } from './agent-session-resume'
@@ -145,14 +144,10 @@ export function normalizeHookPayload(
     }
   }
 
-  // Why: presence needs the agent's own process; without it the hook cannot speak for liveness.
-  const agentProcess =
-    source === 'claude' ? readAgentProcessIdentity(record.agentProcess) : undefined
-  const agentPresence = agentProcess ? { agent: source, process: agentProcess } : undefined
   const sessionEndReason = readString(hookPayloadRecord, 'reason')
   if (
     eventName === 'SessionEnd' &&
-    agentPresence &&
+    source === 'claude' &&
     !readString(hookPayloadRecord, 'agent_id') &&
     // Why: only reasons that end the process; /clear and /resume keep it running, and an unknown
     // reason is left to the process check rather than guessed.
@@ -174,7 +169,6 @@ export function normalizeHookPayload(
       connectionId: null,
       providerSession: providerSession ?? undefined,
       hookEventName: 'SessionEnd',
-      agentPresence: { ...agentPresence, ended: true as const },
       payload
     }
   }
@@ -211,7 +205,6 @@ export function normalizeHookPayload(
   return {
     paneKey,
     source,
-    agentPresence,
     launchToken,
     tabId,
     worktreeId,

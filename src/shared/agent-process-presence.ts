@@ -7,7 +7,7 @@ export type AgentProcessIdentity = {
   startTime: string
 }
 
-/** The agent that owns a pane, from its first hook until it ends; the process when a hook proved it. */
+/** Execution-host identity of the agent owning a terminal, independent of its current turn. */
 export type AgentProcessPresence = {
   agent: AgentType
   process?: AgentProcessIdentity

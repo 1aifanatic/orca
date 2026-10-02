@@ -15,6 +15,8 @@ import {
   confirmShellForegroundFromRuntimeController,
   getCwdFromRuntimeController,
   getForegroundProcessFromRuntimeController,
+  captureAgentPresenceFromRuntimeController,
+  probeAgentPresenceFromRuntimeController,
   getRendererSerializerGenerationFromRuntimeController,
   getSizeFromRuntimeController,
   hasChildProcessesFromRuntimeController,
@@ -64,6 +66,9 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
         ptyId,
         reversible: runtime?.intentionalPtyStops?.isReversibleStopInFlight(ptyId) ?? false
       }),
+    probeAgentPresence: (ptyId, identity) =>
+      probeAgentPresenceFromRuntimeController(ptyId, identity),
+    captureAgentPresence: (ptyId) => captureAgentPresenceFromRuntimeController(ptyId),
     getForegroundProcess: (ptyId) => getForegroundProcessFromRuntimeController(ptyId),
     inspectProcess: (ptyId, options) => inspectProcessFromRuntimeController(ptyId, options),
     confirmForegroundProcess: (ptyId) => confirmForegroundProcessFromRuntimeController(ptyId),

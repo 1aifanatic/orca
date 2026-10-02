@@ -1,3 +1,4 @@
+import type { AgentProcessIdentity } from '../../../../shared/agent-process-presence'
 import type { IPtyProvider } from '../../../providers/types'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import { parseAppSshPtyId } from '../../../providers/ssh-pty-id'
@@ -285,4 +286,15 @@ export async function serializeProviderBufferFromRuntimeController(
   } catch {
     return null
   }
+}
+
+export async function captureAgentPresenceFromRuntimeController(ptyId: string) {
+  return getProviderForPty(ptyId).captureAgentPresence?.(ptyId)
+}
+
+export async function probeAgentPresenceFromRuntimeController(
+  ptyId: string,
+  identity: AgentProcessIdentity
+) {
+  return getProviderForPty(ptyId).probeAgentPresence?.(ptyId, identity) ?? ('unverifiable' as const)
 }

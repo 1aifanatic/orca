@@ -1,3 +1,4 @@
+import type { AgentForegroundObservation } from '../../shared/agent-foreground-identity'
 import {
   isAgentForegroundWrapperProcess,
   isExpectedAgentProcess,
@@ -34,24 +35,12 @@ export type AgentForegroundResolutionOptions = {
   anchorProcessName?: string
 }
 
-export type WindowsAgentForegroundResolution = {
-  available: boolean
-  processName: string | null
-  /**
-   * Pid of the process the name belongs to — the liveness anchor a caller may
-   * check against the pane's job. The OUTER wrapper's pid when the name
-   * collapsed onto one (its embedded leaf may exit first). Absent when the
-   * name came from a fallback or when sibling leaves left no single anchor.
-   */
-  processId?: number
+export type WindowsAgentForegroundResolution = AgentForegroundObservation & {
   /** True when the scan proves `anchorProcessId` now belongs to a non-agent. */
   anchorPidForeign?: boolean
 }
 
-type WindowsForegroundIdentity = {
-  processName: string | null
-  processId?: number
-}
+type WindowsForegroundIdentity = Omit<AgentForegroundObservation, 'available'>
 
 export function shouldInspectWindowsAgentForeground(fallbackProcess: string): boolean {
   const recognized = recognizeAgentProcess(fallbackProcess)
@@ -144,6 +133,16 @@ function windowsCandidatesContainRecognizedAgent(
 }
 
 export function resolveWindowsForegroundIdentity(
+  candidates: readonly WindowsProcessCandidate[],
+  fallbackProcess: string,
+  contextPaths: readonly string[] | undefined
+): WindowsForegroundIdentity {
+  const identity = selectWindowsForegroundIdentity(candidates, fallbackProcess, contextPaths)
+  const start = candidates.find((candidate) => candidate.pid === identity.processId)?.creationTimeMs
+  return { ...identity, ...(start !== undefined ? { processStartTime: String(start) } : {}) }
+}
+
+function selectWindowsForegroundIdentity(
   candidates: readonly WindowsProcessCandidate[],
   fallbackProcess: string,
   contextPaths: readonly string[] | undefined

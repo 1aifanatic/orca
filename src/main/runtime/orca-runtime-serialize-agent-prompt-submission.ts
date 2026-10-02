@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
-import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
+import { OrcaRuntimeWithAgentPresenceDiscovery } from './orca-runtime-agent-presence-discovery'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
@@ -14,7 +14,7 @@ import type {
 import { readAgentPromptWaitText } from './agent-prompt-submission-verification'
 import type { AgentStatus } from '../../shared/agent-detection'
 
-export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWithControllerKnowsPtyIsLive {
+export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWithAgentPresenceDiscovery {
   protected async serializeAgentPromptSubmission<T>(
     ptyId: string,
     generation: number,

@@ -167,7 +167,7 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
     )
     if (
       envelope.providerSessionOnly === true &&
-      !readAgentProcessPresence(envelope.agentPresence)?.ended &&
+      !readAgentProcessPresence(envelope.agentPresence)?.process &&
       !isValidPiProviderSessionOnly(providerSession, normalizedPayload.agentType)
     ) {
       return

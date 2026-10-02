@@ -24,7 +24,7 @@ class PublicationServer extends AgentHookServer {
   }
 
   publish(overrides: Partial<AgentHookEventPayload> = {}): void {
-    this.applyNormalizedStatus({
+    const event: AgentHookEventPayload = {
       paneKey: PANE,
       tabId: 'tab-1',
       worktreeId: 'folder-1',
@@ -34,7 +34,20 @@ class PublicationServer extends AgentHookServer {
       agentPresence: owner,
       payload: { agentType: 'claude', state: 'done', prompt: '' },
       ...overrides
-    })
+    }
+    if (event.connectionId) {
+      this.applyNormalizedStatus({ ...event, agentPresenceFromExecutionHost: true })
+    } else if (event.agentPresence?.ended) {
+      this.reconcileEndedProcessForPaneKeys([event.paneKey], {
+        kind: 'owner-exited',
+        presence: event.agentPresence
+      })
+    } else {
+      if (event.agentPresence) {
+        this.ingestForegroundPresence(event, event.agentPresence)
+      }
+      this.applyNormalizedStatus(event)
+    }
   }
 }
 

@@ -115,8 +115,10 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
       agentHookServer.getStatusSnapshotForPane(paneKey),
     attestAgentHookCompatibilityAuthority: (candidate) =>
       agentHookServer.attestCompatibilityAuthority(candidate),
-    retireAgentHookCompatibilityAuthority: (paneKey) =>
-      agentHookServer.retirePaneAuthority(paneKey),
+    retireAgentHookCompatibilityAuthority: (paneKey, options) =>
+      agentHookServer.retirePaneAuthority(paneKey, undefined, options),
+    onForegroundAgentPresence: (scope, presence) =>
+      agentHookServer.ingestForegroundPresence(scope, presence),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys, { kind: 'terminal-ended' }),
@@ -165,12 +167,21 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   })
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
+  agentHookServer.setWindowsAgentOwnerProbe((paneKey, identity) =>
+    runtime.probeWindowsAgentOwner(paneKey, identity)
+  )
+  agentHookServer.setPaneLaunchAuthorityReader((paneKey) =>
+    runtime.readPaneLaunchAuthority(paneKey)
+  )
   agentHookServer.setPaneTerminalSleepStopProbe((paneKey) =>
     runtime.isPaneTerminalSleepStopInFlight(paneKey)
   )
-  agentHookServer.subscribeEnrichedStatus((enriched) =>
+  agentHookServer.subscribeEnrichedStatus((enriched) => {
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
-  )
+    if (!enriched.providerSessionOnly) {
+      runtime.observeAgentPresenceEvidence(enriched.paneKey, enriched.payload.state !== 'working')
+    }
+  })
   // Why before anything can attach: a client host that reattaches to a restarted runtime is only
   // handed its pages back if the runtime found them first.
   runtime.rehydrateClientHostedBrowserPages()

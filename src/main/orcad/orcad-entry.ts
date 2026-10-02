@@ -236,6 +236,10 @@ async function startOrcadRuntime(
         agentHookServer.ingestStructuredChildWork(subject, evidence, provider),
       readChildWork: (subject) => agentHookServer.getStructuredChildWorkViews(subject)
     },
+    retireAgentHookCompatibilityAuthority: (paneKey, options) =>
+      agentHookServer.retirePaneAuthority(paneKey, undefined, options),
+    onForegroundAgentPresence: (scope, presence) =>
+      agentHookServer.ingestForegroundPresence(scope, presence),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys, { kind: 'terminal-ended' }),
@@ -262,6 +266,17 @@ async function startOrcadRuntime(
 
   // Why here too and not only on the desktop: nothing else republishes `session.tabs` when a
   // pane's status row changes, and orcad's whole job is serving paired clients.
+  agentHookServer.subscribeEnrichedStatus((enriched) => {
+    if (!enriched.providerSessionOnly) {
+      runtime.observeAgentPresenceEvidence(enriched.paneKey, enriched.payload.state !== 'working')
+    }
+  })
+  agentHookServer.setWindowsAgentOwnerProbe((paneKey, identity) =>
+    runtime.probeWindowsAgentOwner(paneKey, identity)
+  )
+  agentHookServer.setPaneLaunchAuthorityReader((paneKey) =>
+    runtime.readPaneLaunchAuthority(paneKey)
+  )
   agentHookServer.setPaneTerminalSleepStopProbe((paneKey) =>
     runtime.isPaneTerminalSleepStopInFlight(paneKey)
   )

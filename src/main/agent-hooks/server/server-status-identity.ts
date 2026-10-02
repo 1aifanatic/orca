@@ -51,8 +51,7 @@ export function isValidPiProviderSessionOnly(
   return Boolean(providerSession && agentType === 'pi' && getAgentResumeArgv('pi', providerSession))
 }
 
-/** Temporary until step 3 forwards the check to the WSL relay, which owns no PTY triggers: an
- *  owner no host can ever check must not disable the pane's legacy exit rules. */
+/** Temporary: presence-wsl-guest-binding must bind a guest shell before WSL can own a process. */
 export function isUncheckableAgentOwner(
   entry: Pick<AgentHookEventPayload, 'connectionId'>
 ): boolean {

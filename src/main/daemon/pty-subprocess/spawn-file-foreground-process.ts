@@ -14,7 +14,7 @@ import {
   getProcessTableSnapshot
 } from '../../../shared/process-table-snapshot-reader'
 import { selectForegroundProcessCandidate } from '../../../shared/foreground-process-selection'
-import { resolveOuterWrapperForegroundProcess } from '../../../shared/foreground-wrapper-agent'
+import { resolveOuterWrapperForegroundIdentity } from '../../../shared/foreground-wrapper-agent'
 import { recognizeAgentProcess } from '../../../shared/agent-process-recognition'
 import {
   resolveAgentForegroundProcessWithAvailability,
@@ -68,13 +68,15 @@ export function resolveSpawnFileForegroundFromRows(
     ''
   )
   const selected = selectForegroundProcessCandidate(candidates, tree)
+  const identity = selected
+    ? resolveOuterWrapperForegroundIdentity(selected.recognized, selected.candidate, tree)
+    : undefined
   return {
+    ...(identity ? { processStartTime: index.byPid.get(identity.processId)?.startTime } : {}),
     available: name.length > 0,
-    processName: selected
-      ? resolveOuterWrapperForegroundProcess(selected.recognized, selected.candidate, tree)
-      : recognizeAgentProcess(name)
-        ? null
-        : name || null
+    ...(selected
+      ? resolveOuterWrapperForegroundIdentity(selected.recognized, selected.candidate, tree)
+      : { processName: recognizeAgentProcess(name) ? null : name || null })
   }
 }
 

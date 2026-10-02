@@ -1,3 +1,4 @@
+import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
 import { isValidPtySize } from './daemon-pty-size'
 import type { SessionOutputPlane, AttachedClient } from './session-output-plane'
 import { createSessionOutputPipeline } from './session-output-pipeline'
@@ -247,21 +248,20 @@ export class Session {
     return this.output.getCwd()
   }
 
-  inspectChildProcesses(): PtyChildProcessVerdict {
-    return this.subprocess.inspectChildProcesses?.() ?? 'unverifiable'
-  }
+  inspectChildProcesses = (): PtyChildProcessVerdict =>
+    this.subprocess.inspectChildProcesses?.() ?? 'unverifiable'
+  captureAgentPresence = () => this.subprocess.captureAgentPresence?.()
+  probeAgentPresence = (identity: AgentProcessIdentity) =>
+    this.subprocess.probeAgentPresence?.(identity) ?? Promise.resolve('unverifiable' as const)
 
-  getForegroundProcess(options?: { rawFallback?: boolean }): string | null {
-    return this.subprocess.getForegroundProcess(options)
-  }
+  getForegroundProcess = (options?: { rawFallback?: boolean }): string | null =>
+    this.subprocess.getForegroundProcess(options)
 
   async confirmForegroundProcess(): Promise<string | null> {
     return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
   }
 
-  confirmShellForeground(): Promise<boolean> {
-    return this.recoveryBarrier.confirmOwnerSettled()
-  }
+  confirmShellForeground = (): Promise<boolean> => this.recoveryBarrier.confirmOwnerSettled()
 
   async settleShellOwnershipConfirmation(): Promise<void> {
     await this.recoveryBarrier.awaitProofSettled()

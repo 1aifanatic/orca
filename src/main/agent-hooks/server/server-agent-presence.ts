@@ -1,3 +1,4 @@
+import { admitAgentForeground } from '../../../shared/agent-foreground-admission'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import {
   isSameAgentProcess,
@@ -6,30 +7,74 @@ import {
   type AgentProcessVerdict
 } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
-import {
-  handOverDeadOwner,
-  ownerDoubtFromHook
-} from '../../../shared/agent-hook-presence-transition'
+import { ownerDoubtFromHook } from '../../../shared/agent-hook-presence-transition'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isUncheckableAgentOwner } from './server-status-identity'
 import { AgentHookServerLifecycle } from './server-lifecycle'
 
 export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecycle {
+  private windowsOwnerProbe?: (
+    paneKey: string,
+    identity: AgentProcessIdentity
+  ) => Promise<AgentProcessVerdict>
+
+  setWindowsAgentOwnerProbe(
+    probe: (paneKey: string, identity: AgentProcessIdentity) => Promise<AgentProcessVerdict>
+  ): void {
+    this.windowsOwnerProbe = probe
+  }
+
   // Why keyed by pane and owner: every hook rewrites the row, and one owner needs only one probe.
   private readonly presenceChecks = new Map<
     string,
     {
       owner: AgentProcessIdentity
       check: Promise<AgentProcessVerdict | null>
-      successor?: AgentProcessPresence
     }
   >()
 
-  /** A live hook proves its own process alive; only another process's hook casts doubt on the owner. */
+  ingestForegroundPresence(
+    scope: Pick<
+      AgentHookEventPayload,
+      'paneKey' | 'connectionId' | 'worktreeId' | 'tabId' | 'terminalHandle'
+    >,
+    presence: AgentProcessPresence
+  ): void {
+    if (
+      this.closedAgentStatusPaneKeys.has(scope.paneKey) ||
+      this.isClosedAgentStatusTabForPaneKey(scope.paneKey)
+    ) {
+      return
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Every server store write attaches receipt and turn clocks.
+    const before = this.state.lastStatusByPaneKey.get(scope.paneKey) as
+      | EnrichedAgentHookEventPayload
+      | undefined
+    const admitted = admitAgentForeground(before, presence, scope)
+    if (!admitted) {
+      return
+    }
+    const now = Date.now()
+    const enriched = {
+      ...(before && !before.providerSessionOnly && !before.agentPresence?.ended
+        ? { ...before, ...admitted, receivedAt: now }
+        : this.attachStatusTiming(admitted, now)),
+      observation: this.stampObservation({ ...admitted, providerSessionOnly: true }, 'process', now)
+    }
+    if (!this.writeLegacyStatusRow(enriched)) {
+      return
+    }
+    this.commitStatusRowMutation(before, enriched)
+    this.scheduleStatusPersist()
+    this.notifyStatusChangeListeners()
+    this.emitEnrichedStatus({ ...enriched, providerSessionOnly: true })
+  }
+
+  /** Idle and exit hooks trigger exact-owner checks. */
   checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {
     const doubt = ownerDoubtFromHook(event, row)
     if (doubt) {
-      void this.checkAgentPresence(row.paneKey, undefined, doubt.successor)
+      void this.checkAgentPresence(row.paneKey)
     }
   }
 
@@ -43,11 +88,10 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     return !isUncheckableAgentOwner(row)
   }
 
-  /** `successor` is the live process whose hook raised the doubt; it inherits a proven-dead owner's pane. */
+  /** Checks the recorded process without granting ownership to the triggering event. */
   checkAgentPresence(
     paneKey: string,
-    expectedProcess?: AgentProcessIdentity,
-    successor?: AgentProcessPresence
+    expectedProcess?: AgentProcessIdentity
   ): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
@@ -72,17 +116,18 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     }
     const pending = this.presenceChecks.get(resolved)
     if (pending && isSameAgentProcess(pending.owner, owner)) {
-      // Why: one probe per owner; the first doubter started after the death, a later one may be
-      // an agent it launched.
-      pending.successor = pending.successor ?? successor
       return pending.check
     }
     const entry: {
       owner: AgentProcessIdentity
       check: Promise<AgentProcessVerdict | null>
-      successor?: AgentProcessPresence
-    } = { owner, check: Promise.resolve(null), successor }
-    entry.check = probeAgentProcessPresence(owner)
+    } = { owner, check: Promise.resolve(null) }
+    const probe =
+      owner.platform === 'win32'
+        ? (this.windowsOwnerProbe?.(resolved, owner) ?? Promise.resolve('unverifiable' as const))
+        : probeAgentProcessPresence(owner)
+    entry.check = probe
+      .catch(() => 'unverifiable' as const)
       .then((verdict) => {
         // Why: fence on the owner, not the row object — cleanup can rewrite the row mid-probe.
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Server admission enriches every stored row with receipt and turn clocks.
@@ -100,14 +145,10 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
         if (verdict !== 'exited' || currentOwner.ended) {
           return verdict
         }
-        if (entry.successor) {
-          this.adoptPaneOwner(current, entry.successor)
-        } else {
-          this.reconcileEndedProcessForPaneKeys([resolved], {
-            kind: 'owner-exited',
-            presence: { ...presence, ended: true }
-          })
-        }
+        this.reconcileEndedProcessForPaneKeys([resolved], {
+          kind: 'owner-exited',
+          presence: { ...presence, ended: true }
+        })
         return verdict
       })
       .finally(() => {
@@ -117,22 +158,5 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
       })
     this.presenceChecks.set(resolved, entry)
     return entry.check
-  }
-
-  /** The row already carries the successor's own status; only the recorded owner was stale. */
-  private adoptPaneOwner(
-    current: EnrichedAgentHookEventPayload,
-    successor: AgentProcessPresence
-  ): void {
-    const adopted: EnrichedAgentHookEventPayload = {
-      ...current,
-      ...handOverDeadOwner(current, successor)
-    }
-    if (!this.writeLegacyStatusRow(adopted)) {
-      return
-    }
-    this.commitStatusRowMutation(current, adopted)
-    this.scheduleStatusPersist()
-    this.emitEnrichedStatus(adopted)
   }
 }

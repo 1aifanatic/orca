@@ -112,6 +112,7 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       pty.launchToken = agentLaunchAuthority.launchToken
       pty.launchIncarnationId = binding.incarnationId
       pty.launchAgent = agentLaunchAuthority.launchAgent
+      this.scheduleAgentPresenceDiscovery(ptyId)
     }
     const providerReattachLaunchIdentity = binding?.providerReattachLaunchIdentity
     if (
@@ -124,6 +125,7 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
     ) {
       // Why: daemon metadata owns the surviving process; its incarnation fence restores identity without minting renderer launch authority.
       pty.launchAgent = providerReattachLaunchIdentity.launchAgent
+      void this.discoverAgentPresence(ptyId)
     }
     const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
     if (

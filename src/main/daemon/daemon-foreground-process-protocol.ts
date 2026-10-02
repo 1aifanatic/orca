@@ -1,7 +1,10 @@
+import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
 export type GetForegroundProcessRequest = {
   id: string
   type: 'getForegroundProcess'
   payload: {
+    probeAgentPresence?: AgentProcessIdentity
+    captureAgentPresence?: boolean
     sessionId: string
   }
 }
