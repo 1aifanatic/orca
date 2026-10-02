@@ -52,7 +52,7 @@ async function reserveLoopbackPort(): Promise<number> {
   })
   return address.port
 }
-function electronServeEnvironment(): NodeJS.ProcessEnv {
+function electronServeEnvironment(userDataPath: string): NodeJS.ProcessEnv {
   const environment = { ...process.env }
   for (const key of [
     'ORCA_E2E_USER_DATA_DIR',
@@ -71,6 +71,10 @@ function electronServeEnvironment(): NodeJS.ProcessEnv {
     'AGENT_BROWSER_STATE'
   ]) {
     delete environment[key]
+  }
+  // Keep Electron's native home override active in isolated sidecars.
+  if (process.env.ORCA_E2E_USER_DATA_DIR || process.env.ORCA_E2E_HOME_DIR) {
+    environment.ORCA_E2E_USER_DATA_DIR = userDataPath
   }
   return environment
 }
@@ -115,7 +119,7 @@ export class ElectronServeBrowserProcess {
         '--serve-no-pairing',
         `--user-data-dir=${userDataPath}`
       ],
-      env: electronServeEnvironment()
+      env: electronServeEnvironment(userDataPath)
     })
     this.child = child
     for (const stream of [child.stdout, child.stderr]) {
