@@ -141,6 +141,11 @@ export type PreloadApi = {
   runtime: RuntimeApi['runtime']
   runtimeEnvironments: RuntimeApi['runtimeEnvironments']
   rateLimits: RateLimitsApi
+  opencodeGoCredentials: {
+    getStatus: () => Promise<{ apiKeyConfigured: boolean }>
+    saveApiKey: (key: string) => Promise<{ apiKeyConfigured: boolean }>
+    clearApiKey: () => Promise<{ apiKeyConfigured: boolean }>
+  }
   minimaxCredentials: MinimaxCredentialsApi
   grokAccounts: GrokAccountsApi
   cursorAccounts: CursorAccountsApi
