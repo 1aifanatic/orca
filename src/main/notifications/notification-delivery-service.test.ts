@@ -21,7 +21,7 @@ function makeSettings(overrides: Partial<NotificationSettings> = {}): Notificati
     customSoundId: 'system',
     customSoundPath: null,
     customSoundVolume: 1,
-    mutedExecutionHostIds: [],
+    mutedNotificationSourceIds: [],
     ...overrides
   }
 }
@@ -127,10 +127,10 @@ describe('createNotificationDeliveryService', () => {
   })
 
   it('skips the desktop banner for a muted machine but still reaches the phone', () => {
-    const harness = makeHarness(makeSettings({ mutedExecutionHostIds: ['runtime:m4air'] }))
+    const harness = makeHarness(makeSettings({ mutedNotificationSourceIds: ['runtime:m4air'] }))
     const service = createNotificationDeliveryService(harness.deps)
 
-    expect(service.dispatch(makeRequest({ executionHostId: 'runtime:m4air' }))).toEqual({
+    expect(service.dispatch(makeRequest({ notificationSourceId: 'runtime:m4air' }))).toEqual({
       delivered: false,
       reason: 'host-muted'
     })
@@ -142,7 +142,7 @@ describe('createNotificationDeliveryService', () => {
     // Other machines, and requests whose machine is unknown, still notify.
     expect(
       service.dispatch(
-        makeRequest({ executionHostId: 'local', worktreeId: 'wt-2', worktreeLabel: 'wt-2' })
+        makeRequest({ notificationSourceId: 'local', worktreeId: 'wt-2', worktreeLabel: 'wt-2' })
       )
     ).toEqual({ delivered: true })
     expect(service.dispatch(makeRequest({ worktreeId: 'wt-3', worktreeLabel: 'wt-3' }))).toEqual({
@@ -152,11 +152,11 @@ describe('createNotificationDeliveryService', () => {
 
   it('reports the master switch over a muted machine', () => {
     const harness = makeHarness(
-      makeSettings({ enabled: false, mutedExecutionHostIds: ['runtime:m4air'] })
+      makeSettings({ enabled: false, mutedNotificationSourceIds: ['runtime:m4air'] })
     )
     expect(
       createNotificationDeliveryService(harness.deps).dispatch(
-        makeRequest({ executionHostId: 'runtime:m4air' })
+        makeRequest({ notificationSourceId: 'runtime:m4air' })
       )
     ).toEqual({ delivered: false, reason: 'disabled' })
   })
@@ -214,14 +214,14 @@ it.each<Partial<NotificationSettings>>([{}, { enabled: false }, { agentTaskCompl
         devices: [{ deviceId: 'phone', pushRegistration: registration() }]
       })
       const harness = makeHarness(
-        makeSettings({ ...overrides, mutedExecutionHostIds: muted ? ['runtime:qa'] : [] })
+        makeSettings({ ...overrides, mutedNotificationSourceIds: muted ? ['runtime:qa'] : [] })
       )
       harness.deps.dispatchMobileNotification = (event) => {
         events.push(event)
         push.dispatcher.enqueue({ ...event, notificationSeq: 1, notificationEpoch: 'epoch' })
       }
       createNotificationDeliveryService(harness.deps).dispatch(
-        makeRequest({ executionHostId: 'runtime:qa', agentState: 'done' })
+        makeRequest({ notificationSourceId: 'runtime:qa', agentState: 'done' })
       )
       await flush()
       expect(push.sends).toHaveLength(
@@ -233,23 +233,23 @@ it.each<Partial<NotificationSettings>>([{}, { enabled: false }, { agentTaskCompl
 )
 
 it('changing a machine mute preserves mobile cooldown and does not reserve desktop cooldown', () => {
-  const settings = makeSettings({ mutedExecutionHostIds: ['runtime:qa'] })
+  const settings = makeSettings({ mutedNotificationSourceIds: ['runtime:qa'] })
   const harness = makeHarness(settings)
   const service = createNotificationDeliveryService(harness.deps)
-  const request = makeRequest({ executionHostId: 'runtime:qa' })
+  const request = makeRequest({ notificationSourceId: 'runtime:qa' })
   expect(service.dispatch(request)).toEqual({ delivered: false, reason: 'host-muted' })
-  settings.mutedExecutionHostIds = []
+  settings.mutedNotificationSourceIds = []
   expect(service.dispatch(request)).toEqual({ delivered: true })
   expect(harness.dispatchMobileNotification).toHaveBeenCalledTimes(1)
 })
 
 it('reports a muted host before a disabled source', () => {
   const harness = makeHarness(
-    makeSettings({ agentTaskComplete: false, mutedExecutionHostIds: ['runtime:qa'] })
+    makeSettings({ agentTaskComplete: false, mutedNotificationSourceIds: ['runtime:qa'] })
   )
   expect(
     createNotificationDeliveryService(harness.deps).dispatch(
-      makeRequest({ executionHostId: 'runtime:qa' })
+      makeRequest({ notificationSourceId: 'runtime:qa' })
     )
   ).toEqual({ delivered: false, reason: 'host-muted' })
 })

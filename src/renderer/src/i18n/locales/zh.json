@@ -12061,7 +12061,7 @@
         },
         "NotificationHostToggles": {
           "machines": "机器",
-          "machinesDescription": "显示每台机器上工作区的通知。"
+          "machinesDescription": "显示各台已连接机器的通知。已配对服务器的开关也控制通过该服务器开展的工作。"
         }
       },
       "right": {

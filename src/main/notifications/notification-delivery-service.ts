@@ -81,8 +81,8 @@ export function createNotificationDeliveryService(
 
       const settings = deps.readNotificationSettings()
       const hostMuted =
-        request.executionHostId !== undefined &&
-        settings.mutedExecutionHostIds.includes(request.executionHostId)
+        request.notificationSourceId !== undefined &&
+        settings.mutedNotificationSourceIds.includes(request.notificationSourceId)
       // Machine mutes leave mobile eligibility and its cooldown unchanged.
       const desktopAllowed =
         settings.enabled &&

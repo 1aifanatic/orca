@@ -7,8 +7,8 @@ import { buildExecutionHostRegistry } from '../../../../shared/execution-host-re
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { NotificationsPane } from './NotificationsPane'
 
-vi.mock('./use-notification-host-options', () => ({
-  useNotificationHostOptions: () =>
+vi.mock('./use-notification-source-options', () => ({
+  useNotificationSourceOptions: () =>
     buildExecutionHostRegistry({
       repos: [],
       settings: null,
@@ -51,7 +51,7 @@ it('applies each machine change to the pending settings while saves are unresolv
       expect(button).not.toBeNull()
       await act(async () => button?.click())
     }
-    expect(writes.map((write) => write.notifications?.mutedExecutionHostIds)).toEqual([
+    expect(writes.map((write) => write.notifications?.mutedNotificationSourceIds)).toEqual([
       ['ssh:a'],
       ['ssh:a', 'ssh:b']
     ])

@@ -12164,7 +12164,7 @@
         },
         "NotificationHostToggles": {
           "machines": "Machines",
-          "machinesDescription": "Afficher les notifications des espaces de travail de chaque machine."
+          "machinesDescription": "Affichez les notifications de chaque machine connectée. Le réglage d’un serveur associé couvre aussi le travail effectué par son intermédiaire."
         }
       },
       "right": {

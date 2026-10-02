@@ -1,4 +1,3 @@
-import { getNotificationExecutionHostId } from '@/attention/notification-execution-host'
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
@@ -313,26 +312,4 @@ describe('notification workspace labels', () => {
       })
     }
   )
-})
-
-describe('notification machine', () => {
-  it('names the machine a remote workspace runs on', () => {
-    const state = stateWithWorkspace()
-    state.worktreesByRepo.repo = [
-      makeWorktree({ id: 'remote', repoId: 'repo', hostId: 'runtime:m4air' })
-    ]
-    expect(getNotificationExecutionHostId(state, 'remote')).toEqual({
-      executionHostId: 'runtime:m4air'
-    })
-  })
-
-  it('names this computer for a local workspace', () => {
-    expect(getNotificationExecutionHostId(stateWithWorkspace(), 'wt')).toEqual({
-      executionHostId: 'local'
-    })
-  })
-
-  it('names no machine for an unknown workspace, so a muted machine cannot swallow it', () => {
-    expect(getNotificationExecutionHostId(stateWithWorkspace(), 'missing')).toEqual({})
-  })
 })

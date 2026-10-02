@@ -1,27 +1,27 @@
 import { Server } from 'lucide-react'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { NotificationSourceId } from '../../../../shared/notification-source'
 import { Label } from '../ui/label'
 import { Separator } from '../ui/separator'
 import { NotificationSettingToggle } from './NotificationSettingToggle'
-import { useNotificationHostOptions } from './use-notification-host-options'
+import { useNotificationSourceOptions } from './use-notification-source-options'
 import { translate } from '@/i18n/i18n'
 
 type NotificationHostTogglesProps = {
-  mutedExecutionHostIds: readonly ExecutionHostId[]
+  mutedNotificationSourceIds: readonly NotificationSourceId[]
   disabled: boolean
-  onChange: (hostId: ExecutionHostId, muted: boolean) => void
+  onChange: (hostId: NotificationSourceId, muted: boolean) => void
 }
 
 export function NotificationHostToggles({
-  mutedExecutionHostIds,
+  mutedNotificationSourceIds,
   disabled,
   onChange
 }: NotificationHostTogglesProps): React.JSX.Element | null {
-  const hostOptions = useNotificationHostOptions()
+  const hostOptions = useNotificationSourceOptions()
   // Keep an effective mute reachable after the last remote machine is removed.
   if (
     !hostOptions.some((host) => host.id !== 'local') &&
-    !hostOptions.some((host) => mutedExecutionHostIds.includes(host.id))
+    !hostOptions.some((host) => mutedNotificationSourceIds.includes(host.id))
   ) {
     return null
   }
@@ -38,7 +38,7 @@ export function NotificationHostToggles({
         <p className="text-xs text-muted-foreground">
           {translate(
             'auto.components.settings.NotificationHostToggles.machinesDescription',
-            'Show notifications from workspaces on each machine.'
+            'Show notifications from each connected machine. A paired server’s switch also covers work reached through it.'
           )}
         </p>
       </div>
@@ -47,9 +47,9 @@ export function NotificationHostToggles({
           key={host.id}
           label={host.label}
           description={host.detail}
-          checked={!mutedExecutionHostIds.includes(host.id)}
+          checked={!mutedNotificationSourceIds.includes(host.id)}
           disabled={disabled}
-          onToggle={() => onChange(host.id, !mutedExecutionHostIds.includes(host.id))}
+          onToggle={() => onChange(host.id, !mutedNotificationSourceIds.includes(host.id))}
         />
       ))}
     </>

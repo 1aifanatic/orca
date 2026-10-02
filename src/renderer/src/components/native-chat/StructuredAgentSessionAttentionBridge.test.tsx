@@ -23,7 +23,7 @@ import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 
 type TestStore = {
   getState: () => AppState
-  setState: (state: Partial<AppState> & { testRuntimeOwner?: string | null }) => void
+  setState: (state: Partial<AppState>) => void
 }
 type BridgeMocks = {
   store: TestStore | null
@@ -51,11 +51,6 @@ vi.mock('@/store', async () => {
   mocks.store = useAppStore
   return { useAppStore }
 })
-
-vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
-    state.testRuntimeOwner ?? null
-}))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
   ...(await importOriginal<typeof RuntimeRpcClientModule>()),
@@ -222,7 +217,6 @@ describe('StructuredAgentSessionAttentionBridge', () => {
       unreadTerminalTabs: {},
       unreadTerminalPanes: {},
       unreadAgentCompletionPanes: {},
-      testRuntimeOwner: null,
       // The attention dispatch reads exactly one field; GlobalSettings has no test factory.
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only field read.
       settings: { experimentalTerminalAttention: true } as GlobalSettings
@@ -393,9 +387,36 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     })
   })
 
+  it('subscribes the tab’s exact paired owner while the local sibling is selected', async () => {
+    mocks.store?.setState({
+      activeWorktreeId: WORKSPACE,
+      activeWorkspaceExecutionHostId: 'local',
+      worktreesByRepo: {
+        repo1: [
+          makeWorktree({ id: WORKSPACE, repoId: 'repo1', hostId: 'local' }),
+          makeWorktree({
+            id: WORKSPACE,
+            repoId: 'repo1',
+            hostId: 'ssh:qa',
+            runtimeOwnerEnvironmentId: 'env-1'
+          })
+        ]
+      },
+      unifiedTabsByWorktree: { [WORKSPACE]: [chatTab({ executionHostId: 'runtime:env-1' })] }
+    })
+    render(<StructuredAgentSessionAttentionBridge />)
+    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+    expect(mocks.subscribeCompletions.mock.calls[0]?.[0]).toEqual({
+      kind: 'environment',
+      environmentId: 'env-1'
+    })
+  })
+
   it('does not subscribe a remote host that lacks the capability', async () => {
     mocks.supportsCapability.mockResolvedValue(false)
-    mocks.store?.setState({ testRuntimeOwner: 'env-1' })
+    mocks.store?.setState({
+      unifiedTabsByWorktree: { [WORKSPACE]: [chatTab({ executionHostId: 'runtime:env-1' })] }
+    })
     render(<StructuredAgentSessionAttentionBridge />)
     await act(() => Promise.resolve())
 

@@ -8,8 +8,8 @@ const { hostOptions } = vi.hoisted(() => {
   return { hostOptions: { current } }
 })
 
-vi.mock('./use-notification-host-options', () => ({
-  useNotificationHostOptions: () => hostOptions.current
+vi.mock('./use-notification-source-options', () => ({
+  useNotificationSourceOptions: () => hostOptions.current
 }))
 
 function host(id: SidebarHostOption['id'], label: string): SidebarHostOption {
@@ -27,7 +27,11 @@ describe('NotificationHostToggles', () => {
   it('stays hidden when this computer is the only machine', () => {
     hostOptions.current = [host('local', 'Local Mac')]
     const html = renderToStaticMarkup(
-      <NotificationHostToggles mutedExecutionHostIds={[]} disabled={false} onChange={vi.fn()} />
+      <NotificationHostToggles
+        mutedNotificationSourceIds={[]}
+        disabled={false}
+        onChange={vi.fn()}
+      />
     )
     expect(html).toBe('')
   })
@@ -36,7 +40,7 @@ describe('NotificationHostToggles', () => {
     hostOptions.current = [host('local', 'Local Mac'), host('runtime:m4air', 'M4Air mac')]
     const html = renderToStaticMarkup(
       <NotificationHostToggles
-        mutedExecutionHostIds={['runtime:m4air']}
+        mutedNotificationSourceIds={['runtime:m4air']}
         disabled={false}
         onChange={vi.fn()}
       />
@@ -55,7 +59,7 @@ it('keeps the last listed muted machine reachable without reviving removed machi
   hostOptions.current = [host('local', 'Local Mac')]
   const html = renderToStaticMarkup(
     <NotificationHostToggles
-      mutedExecutionHostIds={['local', 'ssh:removed']}
+      mutedNotificationSourceIds={['local', 'ssh:removed']}
       disabled={false}
       onChange={vi.fn()}
     />
@@ -65,7 +69,7 @@ it('keeps the last listed muted machine reachable without reviving removed machi
   expect(
     renderToStaticMarkup(
       <NotificationHostToggles
-        mutedExecutionHostIds={['ssh:removed']}
+        mutedNotificationSourceIds={['ssh:removed']}
         disabled={false}
         onChange={vi.fn()}
       />

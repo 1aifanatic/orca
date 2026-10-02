@@ -1,3 +1,4 @@
+import type { NotificationWorkspaceOwner } from '../../../../shared/notification-source'
 import type { AgentAttentionUnreadReason } from '@/attention/agent-attention-contract'
 import type { PtyTransport } from './pty-transport'
 import type { SessionRestoredBannerReason } from './session-restored-banner-pane-state'
@@ -123,6 +124,7 @@ export type PtyConnectionDeps = {
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
     ptyId?: string | null
+    workspaceOwner?: NotificationWorkspaceOwner
     terminalTitle?: string
     paneKey?: string
     agentStatusSnapshot?: AgentCompletionStatusSnapshot

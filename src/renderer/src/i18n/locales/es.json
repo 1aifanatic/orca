@@ -10506,7 +10506,7 @@
         },
         "NotificationHostToggles": {
           "machines": "Máquinas",
-          "machinesDescription": "Mostrar notificaciones de los espacios de trabajo en cada máquina."
+          "machinesDescription": "Muestra notificaciones de cada máquina conectada. El interruptor de un servidor vinculado también controla el trabajo al que se accede a través de él."
         }
       },
       "right": {

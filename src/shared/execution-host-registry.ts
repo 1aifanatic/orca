@@ -193,7 +193,6 @@ export function buildExecutionHostRegistry(args: {
   repos: readonly Pick<Repo, 'connectionId' | 'executionHostId'>[]
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined
   hostSource?: ExecutionHostSource
-  includeRuntimeOwnedSshTargets?: boolean
   sshTargetLabels?: ReadonlyMap<string, string>
   sshConnectionStates?: ReadonlyMap<string, SshConnectionState>
   runtimeEnvironments?: readonly RuntimeEnvironmentSummary[]
@@ -259,31 +258,23 @@ export function buildExecutionHostRegistry(args: {
           args.runtimeStatusByEnvironmentId
         )
       }
-      // Recipe VMs stay out of run-target pickers but can have their own notification controls.
-      if (
-        parsedHost?.kind === 'ssh' &&
-        (args.includeRuntimeOwnedSshTargets || !isRuntimeOwnedSshTargetId(parsedHost.targetId))
-      ) {
+      // Why: a VM-backed repo's executionHostId is `ssh:runtime-ssh-<id>`. Runtime-owned
+      // targets are hidden, so they must not become visible SSH run-target hosts here.
+      if (parsedHost?.kind === 'ssh' && !isRuntimeOwnedSshTargetId(parsedHost.targetId)) {
         sshTargetIds.add(parsedHost.targetId)
       }
     }
   }
   for (const targetId of args.sshTargetLabels?.keys() ?? []) {
     const normalized = normalizeHostPart(targetId)
-    if (
-      normalized &&
-      (args.includeRuntimeOwnedSshTargets || !isRuntimeOwnedSshTargetId(normalized))
-    ) {
+    if (normalized && !isRuntimeOwnedSshTargetId(normalized)) {
       sshTargetIds.add(normalized)
     }
   }
   if (args.hostSource !== 'configured-only') {
     for (const repo of args.repos) {
       const targetId = normalizeHostPart(repo.connectionId)
-      if (
-        targetId &&
-        (args.includeRuntimeOwnedSshTargets || !isRuntimeOwnedSshTargetId(targetId))
-      ) {
+      if (targetId && !isRuntimeOwnedSshTargetId(targetId)) {
         sshTargetIds.add(targetId)
       }
     }

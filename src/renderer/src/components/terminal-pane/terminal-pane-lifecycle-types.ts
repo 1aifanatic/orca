@@ -1,3 +1,4 @@
+import type { NotificationWorkspaceOwner } from '../../../../shared/notification-source'
 import type { AgentAttentionUnreadReason } from '@/attention/agent-attention-contract'
 import type { IDisposable } from '@xterm/xterm'
 import type { ParsedAgentStatusPayload } from '../../../../shared/agent-status-types'
@@ -101,6 +102,7 @@ export type UseTerminalPaneLifecycleDeps = {
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
     ptyId?: string | null
+    workspaceOwner?: NotificationWorkspaceOwner
     terminalTitle?: string
     paneKey?: string
     agentStatusSnapshot?: ParsedAgentStatusPayload

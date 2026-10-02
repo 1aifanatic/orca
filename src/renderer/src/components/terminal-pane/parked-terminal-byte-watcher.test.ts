@@ -209,7 +209,8 @@ describe('startParkedTerminalByteWatcher', () => {
   })
 
   it('marks unread on BEL and schedules the delayed terminal-bell OS notification', async () => {
-    const { dispose } = await startWatcher()
+    const workspaceOwner = { executionHostId: 'ssh:qa' as const, runtimeEnvironmentId: 'hub' }
+    const { dispose } = await startWatcher({ workspaceOwner })
 
     emit('build finished\x07')
     flushSideEffects()
@@ -225,7 +226,8 @@ describe('startParkedTerminalByteWatcher', () => {
     expect(dispatchTerminalNotification).toHaveBeenCalledWith(WORKTREE_ID, {
       source: 'terminal-bell',
       paneKey: PANE_KEY,
-      ptyId: PTY_ID
+      ptyId: PTY_ID,
+      workspaceOwner
     })
     dispose()
   })

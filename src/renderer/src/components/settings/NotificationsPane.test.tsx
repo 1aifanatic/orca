@@ -35,7 +35,7 @@ function createSettings(): GlobalSettings {
       customSoundId: 'system',
       customSoundPath: null,
       customSoundVolume: 50,
-      mutedExecutionHostIds: []
+      mutedNotificationSourceIds: []
     }
   })
 }

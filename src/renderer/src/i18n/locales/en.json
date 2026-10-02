@@ -12257,7 +12257,7 @@
         },
         "NotificationHostToggles": {
           "machines": "Machines",
-          "machinesDescription": "Show notifications from workspaces on each machine."
+          "machinesDescription": "Show notifications from each connected machine. A paired server’s switch also covers work reached through it."
         }
       },
       "right": {

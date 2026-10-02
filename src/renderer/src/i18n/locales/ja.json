@@ -12061,7 +12061,7 @@
         },
         "NotificationHostToggles": {
           "machines": "マシン",
-          "machinesDescription": "各マシン上のワークスペースからの通知を表示します。"
+          "machinesDescription": "接続した各マシンからの通知を表示します。ペアリングしたサーバーのスイッチは、そのサーバー経由の作業にも適用されます。"
         }
       },
       "right": {

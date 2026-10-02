@@ -58,13 +58,15 @@ export function normalizeNotificationSettings(value: unknown): NotificationSetti
         ? candidate.customSoundPath
         : defaults.customSoundPath,
     customSoundVolume,
-    mutedExecutionHostIds: normalizeMutedExecutionHostIds(candidate.mutedExecutionHostIds)
+    mutedNotificationSourceIds: normalizeMutedNotificationSourceIds(
+      candidate.mutedNotificationSourceIds
+    )
   }
 }
 
-function normalizeMutedExecutionHostIds(
+function normalizeMutedNotificationSourceIds(
   raw: unknown
-): NotificationSettings['mutedExecutionHostIds'] {
+): NotificationSettings['mutedNotificationSourceIds'] {
   const strings = Array.isArray(raw)
     ? raw.filter((value): value is string => typeof value === 'string')
     : null
