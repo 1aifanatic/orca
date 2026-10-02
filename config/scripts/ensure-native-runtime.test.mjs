@@ -12,7 +12,10 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { runProcessSync } from '../../src/shared/child-process/run-process.ts'
+import {
+  DEFAULT_MAX_OUTPUT_BYTES,
+  runProcessSync
+} from '../../src/shared/child-process/run-process.ts'
 import { resolveCliCommand } from '../../src/shared/node-cli-command-resolution.ts'
 import { removeTreeSync } from '../../src/shared/windows-transient-lock-removal.ts'
 import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
@@ -38,17 +41,23 @@ describe('ensure-native-runtime', () => {
       writeFakeNativeModules(projectDir)
       writeNodePtyPatchFile(projectDir)
       writeFakeNodeGyp(projectDir)
+      const verboseOutputBytes = DEFAULT_MAX_OUTPUT_BYTES + 1024 * 1024
 
       const result = spawnSync(process.execPath, [scriptPath, '--runtime=node'], {
         cwd: projectDir,
         encoding: 'utf8',
+        maxBuffer: DEFAULT_MAX_OUTPUT_BYTES * 4,
         env: envForNativeFixture(projectDir, {
           ORCA_NATIVE_TEST_LOG: logPath,
-          ORCA_NATIVE_TEST_MARKER: markerPath
+          ORCA_NATIVE_TEST_MARKER: markerPath,
+          ORCA_NATIVE_TEST_VERBOSE_OUTPUT_BYTES: String(verboseOutputBytes)
         })
       })
 
       expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout.indexOf('node-gyp stdout complete\n')).toBe(verboseOutputBytes)
+      expect(/^x+$/.test(result.stdout.slice(0, verboseOutputBytes))).toBe(true)
+      expect(result.stderr).toContain('node-gyp stderr complete\n')
       const log = readFileSync(logPath, 'utf8')
       expect(log).toContain(`node-gyp rebuild --arch=${process.arch}\n`)
       expect(log).toContain(join('node_modules', 'node-pty'))
@@ -406,10 +415,18 @@ function writeFakeNodeGyp(projectDir) {
   writeFileSync(
     join(toolDir, 'node-gyp.js'),
     `
-const { appendFileSync, writeFileSync } = require('node:fs')
+const { appendFileSync, writeFileSync, writeSync } = require('node:fs')
 appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, \`node-gyp \${process.argv.slice(2).join(' ')}\\n\`)
 appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, \`cwd=\${process.cwd()}\\n\`)
 appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, \`cxxflags=\${process.env.CXXFLAGS || ''}\\n\`)
+if (process.env.ORCA_NATIVE_TEST_VERBOSE_OUTPUT_BYTES) {
+  const output = Buffer.alloc(Number(process.env.ORCA_NATIVE_TEST_VERBOSE_OUTPUT_BYTES), 'x')
+  for (let offset = 0; offset < output.length;) {
+    offset += writeSync(1, output.subarray(offset))
+  }
+  writeSync(1, 'node-gyp stdout complete\\n')
+  writeSync(2, 'node-gyp stderr complete\\n')
+}
 writeFileSync(process.env.ORCA_NATIVE_TEST_MARKER, 'rebuilt')
 `
   )

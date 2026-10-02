@@ -426,10 +426,9 @@ function runNodeGyp({ args, cwd }) {
     args,
     cwd,
     env,
+    stdio: 'inherit',
     timeoutMs: 300_000
   })
-  process.stdout.write(result.stdout)
-  process.stderr.write(result.stderr)
   if (result.code !== 0) {
     console.error(
       `[native-runtime] node-gyp rebuild failed in ${cwd}: ${describeProcessFailure(result)}`
