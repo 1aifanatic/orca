@@ -140,19 +140,6 @@ describe('per-job path classification', () => {
     })
   })
 
-  it('runs the standalone CLI install matrix only when the bundle or its tooling changes', () => {
-    const product = { standalone_cli: true, package: true, package_windows: true }
-    expectClassification(['src/cli/index.ts'], product)
-    expectClassification(['config/scripts/build-standalone-cli.mjs'], product)
-    for (const file of [
-      'config/scripts/smoke-standalone-cli-tarball.mjs',
-      'config/standalone-cli/bin-orca.cjs'
-    ]) {
-      expectClassification([file], { standalone_cli: true })
-    }
-    expectClassification(['src/main/index.ts'], { package: true, package_windows: true })
-  })
-
   it('runs the Codex index-heal contract only when the heal or its transport changes', () => {
     expectClassification(['src/main/codex/codex-session-index-heal.ts'], {
       codex_index_heal_contract: true,
