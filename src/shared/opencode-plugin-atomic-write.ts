@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -71,13 +72,16 @@ function writeAtomicFile(targetPath: string, content: string): void {
   mkdirSync(dir, { recursive: true })
   let existingMode: number | undefined
   try {
-    existingMode = statSync(targetPath).mode
+    existingMode = statSync(targetPath).mode & 0o777
   } catch {
     // Target does not exist yet.
   }
   const tmpPath = join(dir, `.${basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`)
   try {
     writeFileSync(tmpPath, content, { encoding: 'utf8', mode: existingMode })
+    if (existingMode !== undefined) {
+      chmodSync(tmpPath, existingMode)
+    }
     renameFileWithWindowsRetry(tmpPath, targetPath)
   } finally {
     if (existsSync(tmpPath)) {
