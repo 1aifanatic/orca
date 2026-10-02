@@ -47,7 +47,6 @@ import {
   structuredAgentSessionWindDownWaitHolds
 } from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
-import { structuredAgentSessionStoppingNow } from './structured-agent-session-stopping'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
@@ -74,6 +73,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
+  /** A person's Stop is still ending the session's work: the status feed's own reading. */
+  stopping: (sessionId: string) => boolean
   flushStreamedEvents: (sessionId: string) => Promise<void>
   now: () => number
 }
@@ -190,11 +191,6 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
       return this.stop(sessionId)
     }
-    // Never steer into a turn a person's Stop is ending: the message runs after it, as its own
-    // turn. The turn's end is a commit, which wakes the loop again.
-    if (session.child && structuredAgentSessionStoppingNow(session.journal)) {
-      return this.stop(sessionId)
-    }
     // Already waiting on a stop that could not prove its child gone: a new message retries it, and
     // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
     // Another operation's retry may have failed first, so the row is made sure of here too.
@@ -257,6 +253,12 @@ export class StructuredAgentSessionDeliveryLoop {
           // Gone with no end observed: nothing says the provider stopped.
           { failure: startFailure ?? agentSessionFailureFact('startFailed') }
       })
+    }
+    // Never steer into a turn a person's Stop is ending: the message runs after it, as its own
+    // turn, and the turn's end is a commit that wakes the loop again. Read here, at the handover,
+    // because a Stop can land while this step waits on the child's start.
+    if (this.deps.stopping(sessionId)) {
+      return this.stop(sessionId)
     }
     const next = oldestQueuedSubmission(session)
     if (!next) {

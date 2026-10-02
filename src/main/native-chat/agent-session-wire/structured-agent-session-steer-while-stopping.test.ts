@@ -2,7 +2,7 @@
 // for the turn to end, and runs after it as its own turn. The host owns the rule, so a client of
 // any version gets it.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type {
@@ -106,5 +106,56 @@ describe("a message sent while a person's Stop ends the turn", () => {
     await turn('turn-1', sent, 'interrupted')
 
     await eventually(() => expect(rig.dispatch.mock.calls.length).toBe(dispatched + 1))
+  })
+
+  // The delivery step that judged the send waits on the child's start outside the session's lane.
+  it('holds a send that a Stop overtook while its delivery step waited on the agent', async () => {
+    rig = await createQueuedMessageTestRig()
+    const sent = await rig.workingSend()
+    await rig.settleAccepted(sent, 'sent')
+    await turn('turn-1', sent, 'running')
+    const status = watchStatus()
+    const started = Promise.withResolvers<undefined>()
+    const awaited = rig.awaitStarted.mock.calls.length
+    rig.awaitStarted.mockImplementationOnce(() => started.promise)
+    const first = rig.send('steer this in')
+    expect(await first.result).toMatchObject({ ok: true })
+    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBe(awaited + 1))
+    const dispatched = rig.dispatch.mock.calls.length
+
+    // The Stop withdraws the first send; a second one arrives before the step resumes.
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(status()).toMatchObject({ stopping: true }))
+    const second = rig.send('and this one')
+    expect(await second.result).toMatchObject({ ok: true })
+    started.resolve(undefined)
+    await laneDrained()
+
+    expect(rig.dispatch.mock.calls.length).toBe(dispatched)
+    expect((await rig.submission(second.id))?.handedOverAt).toBeUndefined()
+    await turn('turn-1', sent, 'interrupted')
+    await eventually(() => expect(rig.dispatch.mock.calls.length).toBe(dispatched + 1))
+  })
+
+  // The hold reads the status feed's own projection for the commit, never a journal read of its own.
+  it('reads Stopping once per commit while a send waits on it', async () => {
+    const { cardId } = await stoppingTurn({ card: true })
+    expect(await rig.sendNow(cardId ?? '')).toMatchObject({ ok: true })
+    await laneDrained()
+    const reads = vi.spyOn(journal(), 'snapshot')
+
+    for (let row = 0; row < 3; row += 1) {
+      await journal().appendItem(
+        { provider: 'orca', clientMessageId: `streamed-${row}` },
+        { kind: 'status', text: `still streaming ${row}` },
+        {
+          fence: rig.store.getRecord(HOST_TEST_SESSION)?.lease.runtimeFence ?? 1,
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
+        }
+      )
+      await laneDrained()
+    }
+
+    expect(reads.mock.calls.length).toBeLessThanOrEqual(3)
   })
 })

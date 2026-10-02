@@ -25,8 +25,7 @@ import { structuredAgentSessionProviderSessionMetadata } from './structured-agen
 import { structuredStatusChildWork } from './structured-agent-session-status-child-work'
 import {
   StructuredAgentSessionJournalProjections,
-  type StructuredAgentSessionJournalProjection,
-  type StructuredAgentSessionStatusState
+  type StructuredAgentSessionJournalProjection
 } from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
 import {
@@ -191,15 +190,15 @@ export class StructuredAgentSessionStatusFeed {
     })
   }
 
-  /** The projection behind the session's row and the latest request it read, cached per commit,
-   *  so the completion feed follows the same request without snapshotting the journal again. */
-  statusState(
+  /** The projection behind the session's row, cached per commit: the latest request it read, so
+   *  the completion feed follows it without snapshotting the journal again, and its `stopping`,
+   *  which the steer hold reads instead of deriving it again. */
+  journalProjection(
     sessionId: string,
     journal?: AgentSessionJournal
-  ): StructuredAgentSessionStatusState | null {
-    const session = this.deps.sessions.get(sessionId)
-    const source = journal ?? session?.journal
-    return source ? this.projections.read(source, this.deps.getRecord(sessionId)).state : null
+  ): StructuredAgentSessionJournalProjection | null {
+    const source = journal ?? this.deps.sessions.get(sessionId)?.journal
+    return source ? this.projections.read(source, this.deps.getRecord(sessionId)) : null
   }
 
   /** Re-projects one session after its journal changed; equal projections are not re-sent. */

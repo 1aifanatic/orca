@@ -47,7 +47,8 @@ export class StructuredAgentSessionClientDelivery {
     this.turnCompletionFeed = new StructuredAgentSessionTurnCompletionFeed({
       sessions,
       now,
-      readStatusState: (sessionId, journal) => this.statusFeed.statusState(sessionId, journal)
+      readStatusState: (sessionId, journal) =>
+        this.statusFeed.journalProjection(sessionId, journal)?.state ?? null
     })
     this.sendSettlement = new StructuredAgentSessionSendSettlement((sessionId) =>
       this.requireJournal(sessionId)
@@ -83,6 +84,9 @@ export class StructuredAgentSessionClientDelivery {
 
   publishChildWork = (sessionId: string, evidence: AgentChildWorkEvidence[]): void =>
     this.statusFeed.publishChildWork(sessionId, evidence)
+
+  readStopping = (sessionId: string): boolean =>
+    this.statusFeed.journalProjection(sessionId)?.stopping === true
 
   readChildWork = (sessionId: string): AgentChildWorkView[] | undefined =>
     this.statusFeed.readChildWork(sessionId)

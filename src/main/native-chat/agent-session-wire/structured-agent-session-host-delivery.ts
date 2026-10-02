@@ -55,7 +55,10 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
   reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
-  clientDelivery: Pick<StructuredAgentSessionClientDelivery, 'publishRestored' | 'readChildWork'>
+  clientDelivery: Pick<
+    StructuredAgentSessionClientDelivery,
+    'publishRestored' | 'readChildWork' | 'readStopping'
+  >
   flushStreamedEvents: (sessionId: string) => Promise<void>
 }): StructuredAgentSessionConversationDelivery {
   const { deps, sessions } = input
@@ -81,6 +84,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     logger: deps.logger,
     record: (sessionId) => deps.store.getRecord(sessionId),
     readChildWork: input.clientDelivery.readChildWork,
+    stopping: input.clientDelivery.readStopping,
     flushStreamedEvents: input.flushStreamedEvents,
     now: () => deps.now?.() ?? Date.now()
   })

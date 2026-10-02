@@ -87,14 +87,3 @@ export function structuredAgentSessionStopping(
   }
   return !answered
 }
-
-/** The same derivation read straight off the journal, for a host step that must not act into
- *  a turn a person's Stop is ending. */
-export function structuredAgentSessionStoppingNow(
-  journal: Pick<AgentSessionJournal, 'stopMarks' | 'itemBody' | 'snapshot'>
-): boolean {
-  return (
-    journal.stopMarks.latest() !== null &&
-    structuredAgentSessionStopping(journal, journal.snapshot().items)
-  )
-}
