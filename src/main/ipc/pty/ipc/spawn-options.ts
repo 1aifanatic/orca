@@ -71,6 +71,7 @@ export async function buildPtyIpcSpawnOptions(
     command: ctx.launchCommand,
     agent: isTuiAgent(args.launchAgent) ? args.launchAgent : undefined,
     env: ctx.spawnEnv,
+    envToDelete: (ctx.combinedEnvToDelete ??= []),
     cwd: ctx.cwd,
     connectionId: args.connectionId,
     isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,

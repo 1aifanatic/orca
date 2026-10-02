@@ -67,8 +67,8 @@ export async function probeOpenCodeLaunchCapabilities(options: {
       env: guestEnv,
       cwd,
       hostIdentity: `${options.hostIdentity ?? 'local'}:wsl:${distro ?? 'default'}`,
-      execute: () =>
-        runWslProcess({
+      execute: async () => {
+        const result = await runWslProcess({
           distro,
           loginPath: 'preferred',
           cwd,
@@ -78,6 +78,8 @@ export async function probeOpenCodeLaunchCapabilities(options: {
           timeoutMs: 5_000,
           maxOutputBytes: 4_096
         })
+        return result.environmentResolved ? result : { ...result, code: null }
+      }
     })
   }
   const executablePath = options.resolveExecutable
