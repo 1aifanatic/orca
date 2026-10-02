@@ -22,7 +22,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import { resolveDraftPasteReadyTimeoutMs } from '../../shared/draft-paste-ready-timeout'
 import type { OrcaRuntimeService } from './orca-runtime'
-import { isCodexProvisionalStartupText } from './codex-terminal-readiness'
+import { showsHoldAnchor } from './agent-state-rules/agent-state-text-anchors'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 
 /**
@@ -47,7 +47,7 @@ export type LaunchedAgentReadinessRuntime = Pick<
 
 /**
  * What keeps a ready signal from counting: a startup dialog in the pane's text or on its screen, or
- * Codex 0.157's provisional `model: loading` header, which discards input typed behind it.
+ * a rule file's hold anchor (Codex 0.157's provisional `model: loading` header, which discards input).
  */
 export function readFreshComposerHold(
   waitText: string,
@@ -59,7 +59,7 @@ export function readFreshComposerHold(
   ) {
     return 'dialog'
   }
-  return isCodexProvisionalStartupText(waitText.toLowerCase()) ? 'starting' : null
+  return showsHoldAnchor(waitText.toLowerCase()) ? 'starting' : null
 }
 
 /**
