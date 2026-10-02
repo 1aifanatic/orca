@@ -9,11 +9,12 @@ import {
   type WatcherProcessSubscribeOptions
 } from '../ipc/parcel-watcher-process'
 import {
-  createAliasedWatcherRoot,
+  createAliasedWatcherRoot as createNativeAliasedWatcherRoot,
   removeAliasedWatcherRoot,
   type AliasedWatcherRoot
 } from '../ipc/watcher-aliased-root-fixture'
 import { PluginDevWatcher } from './plugin-dev-watcher'
+import { PluginServiceHousekeeping } from './plugin-service-housekeeping'
 
 vi.mock('../ipc/parcel-watcher-process', () => ({ subscribeViaWatcherProcess: vi.fn() }))
 vi.mock('node:fs/promises', async () => {
@@ -34,12 +35,13 @@ const originalPlatform = process.platform
 const subscribeMock = vi.mocked(subscribeViaWatcherProcess)
 let subscriptions: PluginWatchSubscription[] = []
 let devWatchers: PluginDevWatcher[] = []
+let housekeeping: PluginServiceHousekeeping | null = null
 let aliasedRoot: AliasedWatcherRoot | null = null
 
 beforeEach(() => {
   Object.defineProperty(process, 'platform', {
     configurable: true,
-    value: originalPlatform === 'darwin' ? 'linux' : originalPlatform
+    value: 'linux'
   })
   subscribeMock.mockReset()
   subscribeMock.mockImplementation(async (path, callback, options, hooks = {}) => {
@@ -50,6 +52,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  housekeeping?.dispose()
+  housekeeping = null
   for (const watcher of devWatchers) {
     watcher.dispose()
   }
@@ -59,7 +63,18 @@ afterEach(async () => {
   await removeAliasedWatcherRoot(aliasedRoot)
   aliasedRoot = null
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
+
+async function createAliasedWatcherRoot(prefix: string): Promise<AliasedWatcherRoot> {
+  const watcherPlatform = process.platform
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
+  try {
+    return await createNativeAliasedWatcherRoot(prefix)
+  } finally {
+    Object.defineProperty(process, 'platform', { configurable: true, value: watcherPlatform })
+  }
+}
 
 function startDevWatcher(
   refresh = vi.fn(),
@@ -382,6 +397,73 @@ describe('PluginDevWatcher', () => {
     expect(stat).toHaveBeenCalledTimes(3)
     expect(subscribeMock).toHaveBeenCalledOnce()
     expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('refreshes Windows child creates and deletes without restarting the healthy root', async () => {
+    aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-windows-edits-')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    vi.useFakeTimers()
+    const lifecycle = new PluginServiceHousekeeping()
+    housekeeping = lifecycle
+    const checkBindings = vi.spyOn(PluginDevWatcher.prototype, 'checkRootBindings')
+    const path = aliasedRoot.realRoot
+    const refresh = vi.fn(() => lifecycle.sync(options))
+    const options = { enabled: true, devPaths: [path], refresh, reapIdle: vi.fn() }
+    lifecycle.sync(options)
+    await Promise.resolve()
+    const root = pluginRootSubscription()
+
+    for (const type of ['create', 'delete'] as const) {
+      root.callback(null, [{ type, path: join(path, 'nested', 'manifest.json') }])
+      // Windows also reports the child directory name to its parent's fs.watch.
+      for (const parent of subscriptions.filter((item) => item.options.mode === 'shallow')) {
+        parent.callback(null, [{ type: 'update', path }])
+      }
+      await vi.advanceTimersByTimeAsync(300)
+    }
+
+    expect(refresh).toHaveBeenCalledTimes(2)
+    expect(root.options).toEqual({ backend: 'windows' })
+    expect(root.unsubscribe).not.toHaveBeenCalled()
+    expect(subscribeMock).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(checkBindings).toHaveBeenCalledOnce()
+    await expect(checkBindings.mock.results[0]?.value).resolves.toBe(false)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    expect(subscribeMock).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('recovers a silent Windows root replacement on the existing maintenance tick', async () => {
+    aliasedRoot = await createAliasedWatcherRoot('orca-plugin-dev-windows-replacement-')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    vi.useFakeTimers()
+    const lifecycle = new PluginServiceHousekeeping()
+    housekeeping = lifecycle
+    const path = aliasedRoot.realRoot
+    const refresh = vi.fn(() => lifecycle.sync(options))
+    const options = { enabled: true, devPaths: [path], refresh, reapIdle: vi.fn() }
+    lifecycle.sync(options)
+    await Promise.resolve()
+    const root = pluginRootSubscription()
+    await rename(path, join(aliasedRoot.base, 'old'))
+    await mkdir(path)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    expect(root.unsubscribe).toHaveBeenCalledOnce()
+    expect(subscriptions.map((item) => ({ path: item.path, options: item.options }))).toEqual([
+      { path, options: { backend: 'windows' } },
+      { path, options: { backend: 'windows' } }
+    ])
+    subscriptions.at(-1)?.callback(null, [{ type: 'create', path: join(path, 'manifest.json') }])
+    await vi.advanceTimersByTimeAsync(300)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    expect(subscribeMock).toHaveBeenCalledTimes(2)
+    lifecycle.dispose()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('retries setup failures only for roots that are present', async () => {

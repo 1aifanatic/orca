@@ -75,10 +75,10 @@ export class PluginDevWatcher {
         }
       })
       this.rootBindings.set(requestedRoot, readPluginRootBindingSync(watchRoot))
-      // A dangling symlink still needs its last physical parent watched.
-      const physicalRoot = this.physicalRoots.get(requestedRoot) ?? watchRoot
-      // macOS fs.watch parents still feed recursive FSEvents before filtering.
-      if (process.platform !== 'darwin') {
+      // macOS parent streams are recursive; Windows child edits also report parent names.
+      if (process.platform !== 'darwin' && process.platform !== 'win32') {
+        // A dangling symlink still needs its last physical parent watched.
+        const physicalRoot = this.physicalRoots.get(requestedRoot) ?? watchRoot
         for (const root of new Set([requestedRoot, physicalRoot])) {
           addPluginRootParent(parentNames, root)
         }
