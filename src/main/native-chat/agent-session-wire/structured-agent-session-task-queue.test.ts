@@ -5,10 +5,12 @@ function pendingChainCount(queue: StructuredAgentSessionTaskQueue): number {
   return (queue as unknown as { chains: Map<string, Promise<void>> }).chains.size
 }
 
+/** The size of one of the queue's private per-chat maps: what a leak would grow. */
 function privateMapSize(
   queue: StructuredAgentSessionTaskQueue,
   field: 'pending' | 'queuedListeners'
 ) {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both fields are Maps keyed by chat id on the queue; the test reads only their size.
   return (queue as unknown as Record<typeof field, Map<string, unknown>>)[field].size
 }
 
