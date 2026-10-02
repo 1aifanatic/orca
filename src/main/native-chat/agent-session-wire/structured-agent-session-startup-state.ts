@@ -60,6 +60,8 @@ export type StructuredAgentSessionStartupStateDeps = {
   recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
+  /** Whether the chat still has its tab. */
+  isListed: (sessionId: string) => boolean
   isDisposed: () => boolean
 }
 
@@ -78,9 +80,10 @@ export type StructuredAgentSessionStartupState = {
   settleClosedChat: (record: AgentSessionRecord) => Promise<boolean>
   /**
    * The background pass's first step: each listed chat with history here and no status row gets
-   * its row from its rows alone, opening nothing, one chat at a time in the order given. Answers
-   * the chats still to open: the rest, and any whose rows show work a gone process left or owe a
-   * rebuild, which their open settles or rebuilds.
+   * its row from its rows alone, opening nothing, folded one chat at a time in the order given (the
+   * startup step puts the chats on screen first) and written a slice at a time. A row showing work
+   * a gone process left, or a corrupt history, is stored but never shown. Answers the chats still
+   * to open, which their open settles, rebuilds or gives a row; see `deriveMissingStatuses`.
    */
   deriveMissingStatuses: (sessionIds: readonly string[]) => Promise<string[]>
 }

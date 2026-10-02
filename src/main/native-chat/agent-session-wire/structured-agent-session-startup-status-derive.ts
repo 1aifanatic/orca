@@ -16,10 +16,12 @@ import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-
 const SLICE_CHATS = 16
 const SLICE_MS = 50
 
-type Folded = FoldedJournalSessionStatus & { record: AgentSessionRecord }
+/** `shown` false: a row stored so the next boot selects the chat, but never displayed from rows. */
+type Folded = FoldedJournalSessionStatus & { record: AgentSessionRecord; shown: boolean }
 
-/** Answers the chats still to open, in the order given: the rest, and any whose rows show work a
- *  gone process left or owe a rebuild, which their open settles or rebuilds. */
+/** Answers the chats still to open: the chats it could not fold, and those whose rows show work a
+ *  gone process left or owe a rebuild, which their open settles or rebuilds, in the order given;
+ *  then, after each slice's write, the chats of that slice the write had to skip. */
 export async function deriveMissingStatuses(
   deps: StructuredAgentSessionStartupStateDeps,
   sessionIds: readonly string[]
@@ -49,8 +51,10 @@ export async function deriveMissingStatuses(
       record && deps.canSettle(record) && !deps.hasSession(sessionId)
         ? await foldFromRows(deps, record, { yieldTask, signal: quit.signal })
         : null
-    if (!folded) {
+    if (!folded || !folded.shown) {
       toOpen.push(sessionId)
+    }
+    if (!folded) {
       continue
     }
     if (slice.length === 0) {
@@ -69,7 +73,9 @@ export async function deriveMissingStatuses(
   return toOpen
 }
 
-/** A chat's settled status from its rows; null leaves it to its open. */
+/** A chat's status from its rows; null leaves it to its open. One with work a gone process left,
+ *  or a corrupt history, is still written so startup selects it until its open settles it, but it
+ *  is never shown: only its open, which settles or rebuilds it, publishes its status. */
 async function foldFromRows(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord,
@@ -81,11 +87,11 @@ async function foldFromRows(
       record.sessionId,
       options
     )
-    // Work a gone process left is settled, and a corrupt history rebuilt, by the chat's open.
-    if (!folded || folded.load.corrupt || isUnsettledJournalSessionStatus(folded.status)) {
+    if (!folded) {
       return null
     }
-    return { ...folded, record }
+    const shown = !folded.load.corrupt && !isUnsettledJournalSessionStatus(folded.status)
+    return { ...folded, record, shown }
   } catch (error) {
     deps.openDeps.logger.warn('deriving a chat status from its rows failed', {
       scope: 'startup-status-derive',
@@ -96,8 +102,9 @@ async function foldFromRows(
   }
 }
 
-/** Writes the slice's rows in one transaction and seeds each written chat; answers the chats left to
- *  their open (one a send or an open moved meanwhile, or all of them if the write failed). */
+/** Writes the slice's rows in one transaction and seeds each written chat still listed and closed;
+ *  answers the shown chats left to their open (one a send or an open moved meanwhile, or all of them
+ *  if the write failed). */
 function writeSlice(deps: StructuredAgentSessionStartupStateDeps, slice: Folded[]): string[] {
   let written: FoldedJournalSessionStatus[]
   try {
@@ -107,16 +114,24 @@ function writeSlice(deps: StructuredAgentSessionStartupStateDeps, slice: Folded[
       scope: 'startup-status-derive',
       error
     })
-    return slice.map(({ sessionId }) => sessionId)
+    return slice.flatMap(({ sessionId, shown }) => (shown ? [sessionId] : []))
   }
   const writtenIds = new Set(written.map(({ sessionId }) => sessionId))
   for (const folded of slice) {
-    if (writtenIds.has(folded.sessionId)) {
+    // A tab closed since the fold gets no sidebar row; one opened since publishes its own.
+    if (
+      folded.shown &&
+      writtenIds.has(folded.sessionId) &&
+      deps.isListed(folded.sessionId) &&
+      !deps.hasSession(folded.sessionId)
+    ) {
       deps.seedStatus(folded.record, {
         projected: folded.status.summary,
         lastActivityAt: folded.status.lastActivityAt
       })
     }
   }
-  return slice.flatMap(({ sessionId }) => (writtenIds.has(sessionId) ? [] : [sessionId]))
+  return slice.flatMap(({ sessionId, shown }) =>
+    shown && !writtenIds.has(sessionId) ? [sessionId] : []
+  )
 }

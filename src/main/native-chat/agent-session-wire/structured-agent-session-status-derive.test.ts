@@ -21,13 +21,21 @@ import {
   sendRestTestMessage,
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
+import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
 import {
   latestRestTestStatus,
   restTestOpens
 } from './structured-agent-session-rest-test-observations'
 
 // The chats folded so far, whether or not their slice's rows are written yet.
-const folds = vi.hoisted(() => ({ done: new Set<string>() }))
+const folds = vi.hoisted(() => {
+  const hooks: {
+    done: Set<string>
+    /** Runs as each fold ends, before its slice is written. */
+    after: ((sessionId: string) => Promise<void>) | null
+  } = { done: new Set(), after: null }
+  return hooks
+})
 
 vi.mock('../agent-session-journal/journal-session-status-backfill', async (importOriginal) => {
   const actual = await importOriginal<typeof StatusBackfillModule>()
@@ -38,6 +46,7 @@ vi.mock('../agent-session-journal/journal-session-status-backfill', async (impor
     ) => {
       const folded = await actual.foldJournalSessionStatus(...args)
       folds.done.add(args[1])
+      await folds.after?.(args[1])
       return folded
     }
   }
@@ -47,6 +56,7 @@ const rigs: RestTestRig[] = []
 
 afterEach(async () => {
   folds.done.clear()
+  folds.after = null
   for (const rig of rigs.splice(0)) {
     await rig.dispose()
   }
@@ -74,6 +84,20 @@ async function startupThroughListing(rig: RestTestRig): Promise<string[]> {
   const background = rig.host.seedStoredStatuses(listed)
   await rig.host.settleOwedSessions(listed)
   return background
+}
+
+/** A chat whose turn was still running when Orca died. */
+async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> {
+  await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+  const { providerIdentity } = await rig.adapter.dispatch.mock.results.at(-1)!.value
+  await rig.host
+    .collaboratorsForTests()
+    .sessions.get(sessionId)!
+    .journal.appendItem(
+      { ...providerIdentity, ordinal: 0 },
+      { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+      { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence, turnScope: { kind: 'thread' } }
+    )
 }
 
 /** Appends `count` short status items to each chat's history, as a stopped Orca left them. */
@@ -318,4 +342,67 @@ describe('rowless listed chats after an upgrade', () => {
     expect(derivedCount()).toBe(ids.length)
     expect(ticks).toBeGreaterThanOrEqual(ids.length)
   }, 120_000)
+
+  it('writes the row of a chat whose tab closes mid-pass, but gives it no sidebar row', async () => {
+    const rig = await newRig()
+    for (const sessionId of ['session-kept', 'session-closing']) {
+      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
+    }
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    upgradeToEmptyStatusTable(rig)
+    await rig.boot()
+    const background = await startupThroughListing(rig)
+    // The tab closes after the chat's fold, before its slice is written.
+    folds.after = async (sessionId) => {
+      if (sessionId === 'session-closing') {
+        await rig.host.setSessionTabVisibility(sessionId, false)
+      }
+    }
+
+    await rig.host.restoreReadableSessions(background)
+
+    expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
+      lifecycle: 'idle'
+    })
+    expect(seeded(rig, 'session-closing')).toBe(-1)
+    expect(restTestOpens(rig, 'session-closing')).toBe(0)
+    expect(latestRestTestStatus(rig, 'session-kept')).toMatchObject({ status: 'idle' })
+  })
+
+  it("stores an unfinished chat's row unshown, so a tab closed before its open is still settled on the next boot", async () => {
+    const rig = await newRig()
+    await crashMidTurn(rig, 'session-crashed')
+    await rig.crash()
+    upgradeToEmptyStatusTable(rig)
+    await rig.boot()
+    const background = await startupThroughListing(rig)
+    // Closed after its fold, so the pass's open of it never happens.
+    folds.after = async (sessionId) => {
+      if (sessionId === 'session-crashed') {
+        await rig.host.setSessionTabVisibility(sessionId, false)
+      }
+    }
+
+    await rig.host.restoreReadableSessions(background)
+
+    expect(restTestOpens(rig, 'session-crashed')).toBe(0)
+    expect(seeded(rig, 'session-crashed')).toBe(-1)
+    expect(readTestJournalSessionStatus(rig.root, 'session-crashed')).toMatchObject({
+      lifecycle: 'running'
+    })
+    expect(readUnsettledJournalSessionIds(openTestJournalHostDatabase(rig.root).db)).toEqual([
+      'session-crashed'
+    ])
+
+    // The next boot selects it from its row and settles it, tab or no tab.
+    folds.after = null
+    await rig.crash()
+    await rig.boot()
+    await startupThroughListing(rig)
+    expect(restTestOpens(rig, 'session-crashed')).toBeGreaterThan(0)
+    expect(readTestJournalSessionStatus(rig.root, 'session-crashed')).toMatchObject({
+      lifecycle: 'idle'
+    })
+  })
 })
