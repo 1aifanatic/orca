@@ -31,6 +31,8 @@ export type TranscriptPaneOptions = {
   onProcessInspection?: () => void
   /** What the host's shell-foreground check answers: the spawned shell holds the foreground. */
   shellForegroundProven?: boolean
+  /** The pane's root process the provider reports; absent for a provider without an inventory. */
+  paneRootPid?: number
   onShellForegroundProof?: () => void
 }
 
@@ -79,6 +81,18 @@ export async function createTranscriptPane(
             options.onProcessInspection?.()
             return processInspection
           }
+        }
+      : {}),
+    ...(options.paneRootPid !== undefined
+      ? {
+          listProcesses: async () => [
+            {
+              id: TRANSCRIPT_PANE_PTY_ID,
+              rootProcessId: options.paneRootPid,
+              cwd: '/repo/app',
+              title: 'Terminal'
+            }
+          ]
         }
       : {}),
     ...(options.shellForegroundProven !== undefined
