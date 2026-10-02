@@ -215,7 +215,7 @@ export async function performCancel(
     } else if (!cancelled && input.turnId === undefined) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
       note = stopRefusedNote(ctx, refusal)
-      // No interrupt went out, or the provider had no turn running for it.
+      // Declined only when the provider could not interrupt a turn it runs; else nothing ran for it.
       answer = interruptFailed ? 'declined' : 'no-effect'
     }
   } catch (error) {
