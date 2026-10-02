@@ -115,6 +115,9 @@ export class ElectronServeBrowserProcess {
         String(port),
         '--serve-json',
         '--serve-no-pairing',
+        ...(process.env.ORCA_E2E_USER_DATA_DIR || process.env.ORCA_E2E_HOME_DIR
+          ? ['--password-store=basic', '--use-mock-keychain']
+          : []),
         `--user-data-dir=${userDataPath}`
       ],
       env: electronServeEnvironment()

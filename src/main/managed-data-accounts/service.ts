@@ -28,7 +28,11 @@ export class ManagedDataAccountService {
   private pending: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<() => void>()
 
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    private readonly removeDirectory: (directory: string) => void = (directory) =>
+      rmSync(directory, { recursive: true, force: true })
+  ) {}
 
   list(provider: ManagedDataAccountProvider): ManagedDataAccountsState {
     const path = join(this.root, provider, 'accounts.json')
@@ -89,15 +93,18 @@ export class ManagedDataAccountService {
   ): Promise<ManagedDataAccountsState> {
     return this.mutate(async () => {
       const state = this.list(provider)
-      this.requireAccount(provider, accountId)
-      const result = this.persist(provider, {
+      if (!state.accounts.some((account) => account.id === accountId)) {
+        throw new Error('Managed account not found.')
+      }
+      const directory = join(this.root, provider, accountId)
+      if (existsSync(directory)) {
+        this.assertOwned(directory)
+      }
+      this.removeDirectory(directory)
+      return this.persist(provider, {
         accounts: state.accounts.filter((account) => account.id !== accountId),
         activeAccountId: state.activeAccountId === accountId ? null : state.activeAccountId
       })
-      const directory = join(this.root, provider, accountId)
-      this.assertOwned(directory)
-      rmSync(directory, { recursive: true, force: true })
-      return result
     })
   }
 

@@ -195,6 +195,7 @@ describe('ElectronServeBrowserProcess start-up', () => {
     for (const key of ['ORCA_E2E_USER_DATA_DIR', 'ORCA_USER_DATA', 'ORCA_USER_DATA_PATH']) {
       expect(spec.env).not.toHaveProperty(key)
     }
+    expect(args).toEqual(expect.arrayContaining(['--password-store=basic', '--use-mock-keychain']))
     expect(processHandle.isAvailable()).toBe(true)
   })
 

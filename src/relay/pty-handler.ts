@@ -1,5 +1,6 @@
 /* oxlint-disable max-lines */
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
+import { restoreManagedDataAccountEnvironment } from '../shared/managed-data-account-environment'
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
 import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
@@ -822,9 +823,13 @@ export class PtyHandler {
     },
     envToDelete: readonly string[] = []
   ): Promise<Record<string, string>> {
-    const baseEnv = mergeGitConfigEnvProtocol(
+    const inheritedEnv = stripInheritedBuildModeEnv(process.env)
+    restoreManagedDataAccountEnvironment(inheritedEnv)
+    const explicitEnv = { ...rendererEnv }
+    restoreManagedDataAccountEnvironment(explicitEnv, false)
+    const mergedEnv = mergeGitConfigEnvProtocol(
       {
-        ...stripInheritedBuildModeEnv(process.env),
+        ...inheritedEnv,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         TERM_PROGRAM: 'Orca',
@@ -832,8 +837,11 @@ export class PtyHandler {
           rendererEnv?.ORCA_APP_VERSION || process.env.ORCA_APP_VERSION || '0.0.0-dev',
         FORCE_HYPERLINK: '1'
       },
-      rendererEnv
-    ) as Record<string, string>
+      explicitEnv
+    )
+    const baseEnv: Record<string, string> = Object.fromEntries(
+      Object.entries(mergedEnv).filter(([, value]) => typeof value === 'string')
+    )
     const augmented: Record<string, string> = {}
     for (const augmenter of this.envAugmenters) {
       try {
@@ -844,7 +852,11 @@ export class PtyHandler {
         )
       }
     }
-    const result = mergeGitConfigEnvProtocol(baseEnv, augmented) as Record<string, string>
+    const result: Record<string, string> = Object.fromEntries(
+      Object.entries(mergeGitConfigEnvProtocol(baseEnv, augmented)).filter(
+        ([, value]) => typeof value === 'string'
+      )
+    )
     result[ORCA_IMAGE_PROTOCOL_ENV] = ORCA_IMAGE_PROTOCOL_VALUE
     // Why: an older client may not ask a newly upgraded relay to delete inherited shim state.
     stripLegacyTerminalShimEnv(result, process.platform)

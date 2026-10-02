@@ -1,4 +1,5 @@
 import { getAppEnvironment } from '../../../../shared/app-environment'
+import { getInheritedManagedDataAccountEnvKeysToDelete } from '../../../../shared/managed-data-account-environment'
 import { getLegacyOpenCodeEnvKeysToDelete } from '../../../opencode/legacy-shared-config-dir'
 import type { IPtyProvider, PtySpawnResult } from '../../../providers/types'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
@@ -79,6 +80,7 @@ export async function buildRuntimePtySpawnOptions(
     // Why: disable old hosts without removing ORCA_REAL_* while their Windows shim remains on PATH.
     ctx.isDaemonHostSpawn || args.connectionId ? LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS : [],
     ctx.isDaemonHostSpawn ? getInheritedAgentHookEnvKeysToDelete(ctx.env) : [],
+    ctx.isDaemonHostSpawn ? getInheritedManagedDataAccountEnvKeysToDelete(ctx.env) : [],
     // The daemon must judge its own inherited value; main may have a different config.
     !args.connectionId && !ctx.isDaemonHostSpawn
       ? getLegacyOpenCodeEnvKeysToDelete(ctx.env, getAppEnvironment().getPath('userData'))
