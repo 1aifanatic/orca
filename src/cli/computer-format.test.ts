@@ -93,7 +93,7 @@ describe('formatComputerAction', () => {
         path: 'accessibility',
         actionName: 'click',
         targetWindowId: 42
-    }
+      }
     }
 
     const output = formatComputerAction('click', result)
