@@ -217,4 +217,37 @@ describe('acquireOrcadInstanceLock', () => {
     const next = acquireOrcadInstanceLock(root, hooks())
     expect(next.record.pid).toBe(process.pid)
   })
+
+  it('restricts a Windows data root by ACL, and refuses when the ACL cannot be applied', () => {
+    const root = makeRoot()
+    const restricted: string[] = []
+    const windows = (applied: boolean) =>
+      hooks({
+        platform: 'win32',
+        restrictWindowsDataRoot: (path) => {
+          restricted.push(path)
+          return applied
+        }
+      })
+    expect(() => acquireOrcadInstanceLock(root, windows(false))).toThrow(
+      expect.objectContaining({ code: 'orcad_data_root_shared' })
+    )
+    // Refused before any record was published.
+    expect(() => readFileSync(join(root, ORCAD_LOCK_FILE_NAME))).toThrow()
+    expect(acquireOrcadInstanceLock(root, windows(true)).record.pid).toBe(process.pid)
+    expect(restricted).toEqual([root, root])
+  })
+
+  it.runIf(process.platform === 'win32')(
+    'records a real creation time and leaves a really restricted data root on Windows',
+    () => {
+      const root = makeRoot()
+      const lock = acquireOrcadInstanceLock(root, { identity: () => 'uid-1000' })
+      expect(lock.record.startedAtMs).toEqual(expect.any(Number))
+      expect(
+        Math.abs(lock.record.startedAtMs! - (Date.now() - process.uptime() * 1000))
+      ).toBeLessThan(5_000)
+      lock.release()
+    }
+  )
 })

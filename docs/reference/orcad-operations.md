@@ -102,11 +102,16 @@ It refuses to start when:
 A root that is merely too permissive and that we own is tightened to `0700` rather than
 refused — orcad stores credentials there unsealed (no OS keyring on this host), so the goal
 is a private root, and refusing when we could just fix it helps nobody. We refuse when the
-permissions are not ours to fix. Windows is exempt from the owner and mode checks: ACLs are
-not expressible as a POSIX mode, and `statSync().mode` there reports a synthesized one.
+permissions are not ours to fix. Windows has no owner or mode check, because ACLs are not
+expressible as a POSIX mode and `statSync().mode` there reports a synthesized one. Instead
+orcad restricts the root's ACL to its own user with `icacls` (the same verified restriction
+`secure-file.ts` applies to credential files) and refuses with `orcad_data_root_shared` when
+that cannot be applied.
 
 A dead holder's record is reclaimed (PID plus process start time, so a recycled PID does not
-read as alive). A record belonging to a different identity is never reclaimed.
+read as alive). On Windows the start time is the kernel creation time read through the
+process-tree addon the slot stages; without the addon it is null and the PID alone fences,
+which errs toward "held". A record belonging to a different identity is never reclaimed.
 
 **The lock scopes one role — who is the runtime.** It deliberately says nothing about the
 daemon, which lives under `<data-root>/daemon` and fences its own endpoint with its own PID
@@ -242,6 +247,31 @@ fell back to the service cgroup. To retire a process-scoped deployment, apply th
 above, stop orcad, then stop the daemon named by `health.terminalDaemon.pid`.
 Only report it `exited` after verification on the execution host; loss of contact is
 `unverifiable`.
+
+### Windows hosts
+
+What differs on a Windows SSH host, and what deliberately does not:
+
+- **Stop path.** A signal is TerminateProcess on Windows: no flush, no lock release. The
+  slot's `.orcad-stop-request` file (and the managed, instance-bound request) is therefore the
+  only graceful stop. A detached orcad receives no console control events, so the listener
+  (`fs.watch` plus a one-second poll) is what stops it; the packaged-slot test proves it exits
+  cleanly within the 15 s shutdown deadline on every server lane, Windows included.
+- **Exit proof.** `--complete-managed-stop` proves a reused PID by the addon's creation time.
+  Without the addon a live PID stays `live` or `unverifiable`, never `exited`.
+- **Daemon endpoint.** The terminal daemon listens on a named pipe
+  (`\\?\pipe\orca-terminal-host-v<protocol>-<suffix>`), not a socket under the data root.
+- **Leaving sshd's job.** orcad is started outside the SSH session's kill-on-close job, so the
+  daemon it forks inherits no such job and outlives the connection the same way.
+- **Per-PTY jobs.** Each ConPTY child gets its own job (`windows-pty-job.ts`), and Git Bash /
+  MSYS panes follow [`windows-msys-job-breakaway.md`](./windows-msys-job-breakaway.md)
+  unchanged. A ConPTY smoke test runs inside a process started exactly that way (breakaway,
+  no window) on the Windows server lanes.
+- **No daemon-host relocation.** The desktop copies its runtime to `%LOCALAPPDATA%` because
+  the NSIS updater deletes the install directory under a running daemon
+  ([`windows-daemon-host-relocation.md`](./windows-daemon-host-relocation.md)). orcad slots are
+  versioned directories that nothing deletes while a process runs from them: Windows refuses
+  to delete a running image, and GC treats an in-use slot as live.
 
 ## Health
 
