@@ -21,7 +21,10 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
 import { agentPromptRidesLaunchCommand } from '../../shared/tui-agent-startup'
 import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt-carry'
-import { nameLocalTypedLineShell } from './agent-launch-typed-line-shell'
+import {
+  launchHostProvesAgentInFront,
+  nameLocalTypedLineShell
+} from './agent-launch-typed-line-shell'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -273,13 +276,16 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
         sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
       }),
       opts.startupPrompt ?? '',
-      nameLocalTypedLineShell({
-        isRemote,
-        ...(opts.shellOverride ? { shellOverride: opts.shellOverride } : {}),
-        ...(settings.terminalDefaultShell
-          ? { defaultShellSetting: settings.terminalDefaultShell }
-          : {})
-      })
+      {
+        shellName: nameLocalTypedLineShell({
+          isRemote,
+          ...(opts.shellOverride ? { shellOverride: opts.shellOverride } : {}),
+          ...(settings.terminalDefaultShell
+            ? { defaultShellSetting: settings.terminalDefaultShell }
+            : {})
+        }),
+        provesAgentInFront: launchHostProvesAgentInFront({ isRemote, launchPlatform: platform })
+      }
     )
     if (!startupPlan) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare

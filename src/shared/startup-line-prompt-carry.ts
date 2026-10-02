@@ -1,6 +1,7 @@
 /**
  * Whether a launch prompt rides the command line that gets TYPED into the user's shell, or the agent
- * starts clean and the prompt is pasted once it is ready.
+ * starts clean and the prompt is pasted once it is ready. A paste needs a host that can prove the
+ * agent holds its terminal (`launched-agent-foreground`); elsewhere the line carries it, as on main.
  *
  * Measured on the built line, not the raw prompt: quoting, the launcher, its arguments and session
  * options all land on that line, and every failure a long or multi-line typed line has is a property
@@ -37,10 +38,17 @@ export function startupLineCarriesPrompt(args: {
   withPrompt: AgentStartupPlan | null
   /** The shell the line is typed into, when the host can name it before the spawn. */
   shellName?: string
+  /** Whether the host can prove the launched agent holds its terminal before it pastes. */
+  hostProvesAgentInFront: boolean
 }): boolean {
   const { withPrompt } = args
   if (!withPrompt || withPrompt.followupPrompt !== null) {
     return false
+  }
+  // Where nothing can prove the agent took the terminal, a paste could land in the shell of an
+  // agent that exited, so the line carries the prompt at any size, as it always did.
+  if (!args.hostProvesAgentInFront) {
+    return true
   }
   // Hermes types a fixed line that reads the prompt from the spawn env, so the line never grows
   // with the text; its own env budget already returned null above when the text did not fit.
@@ -93,7 +101,7 @@ type StartupPlanInputs = Omit<
 export function planStartupWithPromptCandidate(
   inputs: StartupPlanInputs,
   prompt: string,
-  shellName?: string
+  host: { shellName?: string; provesAgentInFront: boolean }
 ): { plan: AgentStartupPlan | null; promptCarried: boolean } {
   if (prompt.trim()) {
     const withPrompt = buildAgentStartupPlan({ ...inputs, prompt, allowEmptyPromptLaunch: true })
@@ -101,7 +109,8 @@ export function planStartupWithPromptCandidate(
       startupLineCarriesPrompt({
         agent: inputs.agent,
         withPrompt,
-        ...(shellName ? { shellName } : {})
+        ...(host.shellName ? { shellName: host.shellName } : {}),
+        hostProvesAgentInFront: host.provesAgentInFront
       })
     ) {
       return { plan: withPrompt, promptCarried: true }

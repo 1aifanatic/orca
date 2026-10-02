@@ -107,9 +107,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   if (args.text.trim().length === 0) {
     return false
   }
-  // Before the paste and again before Enter: an agent that exited in between leaves its shell in
-  // the foreground, which must never receive the prompt or its Enter.
-  const guard = args.freshLaunch ? createLaunchedAgentWriteGuard(args.runtime, args.agent) : null
+  // Before the paste and again before Enter, for a reused pane too: a ready signal can come from a
+  // shell whose agent exited, so only a read that finds the agent in front lets the text through.
+  const guard = createLaunchedAgentWriteGuard(args.runtime, args.agent)
   try {
     const wait = await waitThroughBlockingPrompts(
       args.runtime,
@@ -130,7 +130,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       inputKind: 'launch',
       // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
       composerReady: args.freshLaunch,
-      ...(guard ? { beforeWrite: guard.beforeWrite } : {}),
+      beforeWrite: guard.beforeWrite,
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.
@@ -151,6 +151,6 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     )
     return false
   } finally {
-    guard?.dispose()
+    guard.dispose()
   }
 }
