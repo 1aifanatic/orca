@@ -7,17 +7,32 @@ type EvidenceClaim = {
   explained: boolean
   misses: number
   missedAtMs: number
-  sessionId?: string
+  /** Recent sessions this key has reported, so interleaved sessions are not each a "new run". */
+  sessionIds: string[]
 }
+
+const SEEN_SESSIONS_PER_KEY = 8
 
 /** What a hook says about the agent run behind it; a new run is fresh evidence, never backed off. */
 export type AgentRunEvidence = { sessionId?: string; started?: boolean }
 
+/** `started` is the listener's normalized session boundary, never a vendor event name. */
 export function agentRunEvidence(event: {
-  hookEventName?: string
+  payload: { sessionBoundary?: boolean }
   providerSession?: { id: string }
 }): AgentRunEvidence {
-  return { sessionId: event.providerSession?.id, started: event.hookEventName === 'SessionStart' }
+  return { sessionId: event.providerSession?.id, started: event.payload.sessionBoundary === true }
+}
+
+/** Records the run on the claim; true when it is one the key has not seen recently. */
+function noteAgentRun(claim: EvidenceClaim, run: AgentRunEvidence | undefined): boolean {
+  const id = run?.sessionId
+  const unseen = Boolean(id && !claim.sessionIds.includes(id))
+  if (id && unseen) {
+    claim.sessionIds.push(id)
+    claim.sessionIds.splice(0, claim.sessionIds.length - SEEN_SESSIONS_PER_KEY)
+  }
+  return Boolean(run?.started) || unseen
 }
 
 type ShellCommand = {
@@ -72,7 +87,7 @@ export class AgentPresenceCommandObserver {
    * a key whose read found nothing waits out a doubling delay, so a hook storm on a pane that can
    * never be captured (tmux) stays a handful of reads. Panes without command marks rely on this,
    * since only a command boundary resets the keys. A new run of the agent (a session start, or a
-   * session it has not reported before) clears that wait, so only repeats of one run back off.
+   * session it has not reported recently) clears that wait, so only repeats of known runs back off.
    */
   evidence(
     id: string,
@@ -83,15 +98,8 @@ export class AgentPresenceCommandObserver {
   ): void {
     const command = this.commands.get(id) ?? this.open(id)
     const existing = command.claims.get(key)
-    if (
-      existing &&
-      (agentRun?.started ||
-        (agentRun?.sessionId && agentRun.sessionId !== existing.sessionId))
-    ) {
+    if (existing && noteAgentRun(existing, agentRun)) {
       existing.misses = 0
-    }
-    if (existing && agentRun?.sessionId) {
-      existing.sessionId = agentRun.sessionId
     }
     if (
       existing &&
@@ -107,7 +115,7 @@ export class AgentPresenceCommandObserver {
       explained: false,
       misses: 0,
       missedAtMs: 0,
-      sessionId: agentRun?.sessionId
+      sessionIds: agentRun?.sessionId ? [agentRun.sessionId] : []
     }
     claim.reading = true
     command.claims.set(key, claim)

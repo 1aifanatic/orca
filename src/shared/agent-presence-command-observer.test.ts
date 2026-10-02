@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AgentPresenceCommandObserver,
+  agentRunEvidence,
   type AgentPresenceObservationKind
 } from './agent-presence-command-observer'
 import { captureAgentForegroundIdentity } from './agent-foreground-identity'
+import { normalizeHookPayload } from './agent-hook-listener'
+import { createHookListenerState } from './agent-hook-listener/listener-state'
+import { makePaneKey } from './stable-pane-id'
 
 afterEach(() => vi.useRealTimers())
 const observeMock = () =>
@@ -179,6 +183,62 @@ describe('one foreground observation per command', () => {
     observer.evidence('pane', 'claude', () => true, 0, { sessionId: 'b', started: true })
     expect(at()).toEqual([0, 5_000, 15_000, 20_000, 21_100])
     observer.stop()
+  })
+
+  it('keeps the storm bound when two sessions of one agent interleave', async () => {
+    vi.useFakeTimers()
+    const reads = (sessions: string[]) => {
+      const observe = vi.fn(
+        async (
+          _id: string,
+          _current: () => boolean,
+          _kind: AgentPresenceObservationKind,
+          _evidenceAtMs: number
+        ) => false
+      )
+      const observer = new AgentPresenceCommandObserver(observe)
+      return {
+        observe,
+        observer,
+        run: async () => {
+          // Ten minutes of hooks every 200 ms.
+          for (let i = 0; i < 3_000; i += 1) {
+            const sessionId = sessions[i % sessions.length]
+            observer.evidence('pane', 'claude', () => true, 0, { sessionId })
+            await vi.advanceTimersByTimeAsync(200)
+          }
+        }
+      }
+    }
+    const single = reads(['a'])
+    await single.run()
+    const interleaved = reads(['a', 'b'])
+    await interleaved.run()
+    // The second session is new once; after that its hooks are repeats of a known run.
+    expect(interleaved.observe.mock.calls.length).toBeLessThanOrEqual(
+      single.observe.mock.calls.length + 2
+    )
+    expect(single.observe.mock.calls.length).toBeLessThanOrEqual(15)
+    single.observer.stop()
+    interleaved.observer.stop()
+  })
+
+  it('takes a run start from the listener\'s session boundary, not a vendor event name', () => {
+    const run = (source: 'claude' | 'hermes', hookEventName: string) => {
+      const event = normalizeHookPayload(
+        createHookListenerState(),
+        source,
+        {
+          paneKey: makePaneKey('tab', '11111111-1111-4111-8111-111111111111'),
+          payload: { hook_event_name: hookEventName, session_id: 's1', source: 'startup', prompt: 'p' }
+        },
+        'production'
+      )
+      return event ? agentRunEvidence(event).started : undefined
+    }
+    expect(run('claude', 'SessionStart')).toBe(true)
+    expect(run('hermes', 'on_session_start')).toBe(true)
+    expect(run('claude', 'UserPromptSubmit')).toBe(false)
   })
 
   it('keeps a launch key apart from the agent key it names', async () => {
