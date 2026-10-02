@@ -1,5 +1,6 @@
-// The background copy's share of the main thread: no second gives its tasks more than the share,
-// the burst and the one task that crossed it, a stall counts, and quit ends a wait at once.
+// The background copy's share of the main thread: no second gives it more than the share, the
+// burst and the one chat's work that crossed it, a chat's own tasks never wait, a stall counts, and
+// quit ends a wait at once.
 
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -48,7 +49,7 @@ function busiestSecond(tasks: { start: number; end: number }[]): number {
 }
 
 describe('the copy’s share of each second (C3)', () => {
-  it('holds any second to its share, its burst and the one task that crossed it', async () => {
+  it('holds any second to its share, its burst and the one chat that crossed it', async () => {
     const { clock, waits, run } = pacedClock()
     // Idle a long while first: what it saves is capped at the burst.
     clock.now = 10_000

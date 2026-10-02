@@ -313,7 +313,7 @@ describe('a chat opened while the copy holds it (R4P-1)', () => {
     await rig.boot()
     let pacing = Promise.withResolvers<void>()
     const deps = copyJobDeps(rig)
-    // A pace whose every wait lasts until something ends it: only giving way, or quit, does.
+    // A pace whose every wait lasts until quit ends it: a send that met one would never land.
     const pace = new StructuredAgentSessionPerChatFileCopyPace(
       () => rig.copyClock.now,
       (_ms, signal) => {

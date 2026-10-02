@@ -1,6 +1,6 @@
 // The background copy as the host builds it (reveal, the copy control, the job), not a job a test
-// assembles: a restored chat's own owed import is charged to the copy's pace, and a reader of that
-// chat never waits for the pace.
+// assembles: a restored chat's own owed import is charged to the copy's pace but runs unpaced, and
+// the pace waits only between chats.
 
 import { setTimeout as sleep } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -62,9 +62,11 @@ describe('a restored chat’s copy (G2, R6)', () => {
       '../agent-session-journal/journal-per-session-import'
     )
     const at: Record<string, number> = {}
+    const paced: Record<string, boolean> = {}
     vi.mocked(importPerSessionJournal).mockImplementation(async (input) => {
       const { sessionId } = input.identity
       at[`${sessionId}:start`] = performance.now()
+      paced[sessionId] = typeof input.yieldTask === 'function'
       // The restored chat's copy takes 400 ms of the main thread's wall time.
       if (sessionId === 'session-listed') {
         await sleep(400)
@@ -86,35 +88,44 @@ describe('a restored chat’s copy (G2, R6)', () => {
 
     // 400 ms charged against a 50 ms burst is a debt worth about two seconds at the share.
     expect(at['session-unlisted:start'] - at['session-listed:end']).toBeGreaterThan(1_000)
+    // The owed import, which a reader may be waiting on through the chat's write queue, takes no
+    // yield of the copy's; the copy's own import takes its in-chat one.
+    expect(paced).toEqual({ 'session-listed': false, 'session-unlisted': true })
     expect(restoredJournal(rig).importPending).toBe(false)
   }, 30_000)
 
-  it('never holds a reader of the restored chat for the pace', async () => {
+  it('waits only between chats, never inside one', async () => {
     const rig = await restoredAndUnlisted()
-    let paceWaiting = false
     let clock = 0
-    // Every task reads as a second of work, and a wait lasts until quit ends it.
+    let insideChat = false
+    const waits: boolean[] = []
+    // Every task reads as a second of work, so every yield owes a wait.
     const pace = new StructuredAgentSessionPerChatFileCopyPace(
       () => (clock += 1_000),
-      (_ms, signal) => {
-        paceWaiting = true
-        return new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }))
+      async () => {
+        waits.push(insideChat)
       }
     )
+    const inChat = pace.inChat.bind(pace)
+    vi.spyOn(pace, 'inChat').mockImplementation(async (serialize, sessionId, task) =>
+      inChat(serialize, sessionId, async (yieldTask) => {
+        insideChat = true
+        try {
+          return await task(yieldTask)
+        } finally {
+          insideChat = false
+        }
+      })
+    )
     const job = new StructuredAgentSessionPerChatFileCopy({ ...copyJobDeps(rig), pace })
-    const run = job.tick()
 
-    // What a history read, a subscribe or a reveal of the open chat waits for.
-    const read = await Promise.race([
-      restoredJournal(rig)
-        .whenImported()
-        .then(() => 'read'),
-      sleep(5_000).then(() => 'still waiting')
-    ])
+    for (let tick = 0; tick < 20 && !job.isFinished; tick += 1) {
+      await job.tick()
+    }
 
-    expect(read).toBe('read')
-    await vi.waitFor(() => expect(paceWaiting).toBe(true))
-    await job.stop()
-    await run
+    expect(job.isFinished).toBe(true)
+    expect(restoredJournal(rig).importPending).toBe(false)
+    expect(waits.length).toBeGreaterThan(0)
+    expect(waits.filter((inside) => inside)).toEqual([])
   }, 20_000)
 })
