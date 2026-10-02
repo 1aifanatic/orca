@@ -169,6 +169,11 @@ async function removeFailedFinalization(
   }
 }
 
+export type FinalizedPreparedWorktree = AddWorktreeResult & {
+  /** The prepared checkout was not already at the requested commit, so it was reset onto it. */
+  preparedHeadReset: boolean
+}
+
 export async function finalizePreparedWorktree(
   repoPath: string,
   preparedPath: string,
@@ -177,7 +182,7 @@ export async function finalizePreparedWorktree(
   baseBranch: string,
   refreshLocalBaseRef = false,
   options: AddWorktreeOptions = {}
-): Promise<AddWorktreeResult> {
+): Promise<FinalizedPreparedWorktree> {
   const finalizeGitOptions: AddWorktreeOptions = {
     ...options,
     timeout: options.timeout ?? resolveWorktreeAddTimeoutMs()
@@ -217,8 +222,8 @@ export async function finalizePreparedWorktree(
         await baseContext.pendingLocalBaseRefRefresh
         throw preparedResult.reason
       }
-      const preparedHeadOutput = preparedResult.value.stdout
-      if (preparedHeadOutput.trim() !== targetHead) {
+      const preparedHeadReset = preparedResult.value.stdout.trim() !== targetHead
+      if (preparedHeadReset) {
         await gitExecFileAsync(
           [...windowsLongPathGitArgs(preparedPath), 'reset', '--hard', targetHead],
           gitExecOptions(preparedPath, finalizeGitOptions)
@@ -283,6 +288,7 @@ export async function finalizePreparedWorktree(
       // Why: the refresh overlapped the finalize above; it has no bearing on the checkout's content.
       const localBaseRefRefresh = await baseContext.pendingLocalBaseRefRefresh
       return {
+        preparedHeadReset,
         ...(localBaseRefRefresh ? { localBaseRefRefresh } : {}),
         ...(baseContext.localBaseRefUpdateSuggestion
           ? { localBaseRefUpdateSuggestion: baseContext.localBaseRefUpdateSuggestion }

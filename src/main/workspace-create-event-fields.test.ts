@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { eventSchemas } from '../../../../shared/telemetry-event-registry'
-import { createWorktreeCreateTimingRecorder } from '../../../worktree-create-timing'
+import { eventSchemas } from '../shared/telemetry-event-registry'
+import { createWorktreeCreateTimingRecorder } from './worktree-create-timing'
 import {
+  bucketRepoIndexSize,
   bucketWorktreeCount,
   workspaceCreateFailureFields,
   workspaceCreateTimingFields
 } from './workspace-create-event-fields'
+
+const quiet = { otherCreates: 0, preparations: 0 }
 
 describe('workspaceCreateTimingFields', () => {
   it('maps a local create with a prepared-checkout hit', () => {
@@ -15,14 +18,19 @@ describe('workspaceCreateTimingFields', () => {
         phases: [
           { phase: 'refresh_base_ref', startedAtMs: 0, durationMs: 200.6 },
           { phase: 'git_worktree_add', startedAtMs: 200, durationMs: 500 },
-          { phase: 'prepared_checkout_wait', startedAtMs: 200, durationMs: 300 },
+          { phase: 'prepared_checkout_claim', startedAtMs: 200, durationMs: 4 },
+          { phase: 'prepared_checkout_wait', startedAtMs: 204, durationMs: 300 },
           { phase: 'list_created_worktree', startedAtMs: 700, durationMs: 100 }
         ],
-        preparedCheckout: { status: 'hit', retargeted: false },
+        preparedCheckout: { status: 'hit', reset: 'base_moved', origin: 'rearm' },
         executionHost: 'local',
         worktreeCount: 812
       },
-      { concurrentCreates: 1, postCheckoutHook: 'absent' }
+      {
+        entryPoint: 'runtime',
+        concurrency: { otherCreates: 1, preparations: 2 },
+        repoFacts: { postCheckoutHook: 'absent', indexBytes: 3 * 1024 * 1024 }
+      }
     )
 
     expect(fields).toEqual({
@@ -30,13 +38,18 @@ describe('workspaceCreateTimingFields', () => {
       unattributed_ms: 200,
       refresh_base_ref_ms: 201,
       git_worktree_add_ms: 500,
+      prepared_checkout_claim_ms: 4,
       prepared_checkout_wait_ms: 300,
       list_created_worktree_ms: 100,
       prepared_checkout: 'hit',
-      prepared_checkout_retargeted: false,
+      prepared_checkout_reset: 'base_moved',
+      prepared_checkout_origin: 'rearm',
+      create_entry_point: 'runtime',
       execution_host: 'local',
       worktree_count_bucket: '301-1000',
       concurrent_creates: 1,
+      concurrent_preparations: 2,
+      repo_index_size_bucket: '1-10MB',
       post_checkout_hook: 'absent'
     })
     expect(
@@ -55,7 +68,7 @@ describe('workspaceCreateTimingFields', () => {
         phases: [],
         preparedCheckout: { status: 'miss', reason: 'none_armed' }
       },
-      { concurrentCreates: 0 }
+      { entryPoint: 'app', concurrency: quiet }
     )
 
     expect(fields).toEqual({
@@ -63,8 +76,19 @@ describe('workspaceCreateTimingFields', () => {
       unattributed_ms: 50,
       prepared_checkout: 'miss',
       prepared_checkout_miss_reason: 'none_armed',
-      concurrent_creates: 0
+      create_entry_point: 'app',
+      concurrent_creates: 0,
+      concurrent_preparations: 0
     })
+  })
+
+  it('sends the hook but no size when the repo has no readable index', () => {
+    const fields = workspaceCreateTimingFields(
+      { totalDurationMs: 1, phases: [] },
+      { entryPoint: 'app', concurrency: quiet, repoFacts: { postCheckoutHook: 'unknown' } }
+    )
+    expect(fields.post_checkout_hook).toBe('unknown')
+    expect(fields).not.toHaveProperty('repo_index_size_bucket')
   })
 
   it('sums a repeated phase and drops names outside the closed vocabulary', () => {
@@ -77,7 +101,7 @@ describe('workspaceCreateTimingFields', () => {
           { phase: '/Users/alice/repo', startedAtMs: 25, durationMs: 5 }
         ]
       },
-      { concurrentCreates: 0 }
+      { entryPoint: 'app', concurrency: quiet }
     )
 
     expect(fields.refresh_base_ref_ms).toBe(25)
@@ -97,13 +121,19 @@ describe('workspaceCreateFailureFields', () => {
       })
       .catch((caught: unknown) => caught)
 
-    const fields = workspaceCreateFailureFields(recorder, { concurrentCreates: 3, error })
+    const fields = workspaceCreateFailureFields(recorder, {
+      entryPoint: 'app',
+      concurrency: { otherCreates: 3, preparations: 1 },
+      error
+    })
 
     expect(fields).toEqual({
       failed_phase: 'git_worktree_add',
       total_ms: 4_200,
+      create_entry_point: 'app',
       execution_host: 'ssh',
-      concurrent_creates: 3
+      concurrent_creates: 3,
+      concurrent_preparations: 1
     })
     expect(
       eventSchemas.workspace_create_failed.safeParse({
@@ -114,11 +144,50 @@ describe('workspaceCreateFailureFields', () => {
     ).toBe(true)
   })
 
+  it('carries the prepared-checkout outcome and wait of a create that failed after it', async () => {
+    let now = 0
+    const recorder = createWorktreeCreateTimingRecorder(() => now)
+    recorder.recordExecutionHost('local')
+    await recorder.time('prepared_checkout_wait', async () => {
+      now = 200_400
+    })
+    recorder.recordPreparedCheckout({ status: 'miss', reason: 'finalize_failed' })
+    const error = await recorder
+      .time('git_worktree_add', async () => {
+        throw new Error('fatal: a branch named feature already exists')
+      })
+      .catch((caught: unknown) => caught)
+
+    const fields = workspaceCreateFailureFields(recorder, {
+      entryPoint: 'runtime',
+      concurrency: quiet,
+      error
+    })
+
+    expect(fields).toMatchObject({
+      failed_phase: 'git_worktree_add',
+      prepared_checkout: 'miss',
+      prepared_checkout_miss_reason: 'finalize_failed',
+      prepared_checkout_wait_ms: 200_400,
+      create_entry_point: 'runtime'
+    })
+    expect(
+      eventSchemas.workspace_create_failed.safeParse({
+        source: 'unknown',
+        error_class: 'git_failed',
+        ...fields
+      }).success
+    ).toBe(true)
+  })
+
   it('reports untimed when the create failed outside every phase', () => {
     const recorder = createWorktreeCreateTimingRecorder(() => 0)
     expect(
-      workspaceCreateFailureFields(recorder, { concurrentCreates: 0, error: new Error('x') })
-        .failed_phase
+      workspaceCreateFailureFields(recorder, {
+        entryPoint: 'app',
+        concurrency: quiet,
+        error: new Error('x')
+      }).failed_phase
     ).toBe('untimed')
   })
 })
@@ -137,5 +206,18 @@ describe('bucketWorktreeCount', () => {
     [1001, '1001+']
   ] as const)('%i worktrees -> %s', (count, bucket) => {
     expect(bucketWorktreeCount(count)).toBe(bucket)
+  })
+})
+
+describe('bucketRepoIndexSize', () => {
+  it.each([
+    [0, '<100KB'],
+    [100 * 1024 - 1, '<100KB'],
+    [100 * 1024, '100KB-1MB'],
+    [1024 * 1024, '1-10MB'],
+    [10 * 1024 * 1024, '10-50MB'],
+    [50 * 1024 * 1024, '50MB+']
+  ] as const)('%i bytes -> %s', (bytes, bucket) => {
+    expect(bucketRepoIndexSize(bytes)).toBe(bucket)
   })
 })

@@ -8,6 +8,7 @@ import {
   setPlatform
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
+import { beginPreparationWork } from '../worktree-create-concurrency'
 
 const { trackMock, probeHookMock, telemetryEnabledMock } = vi.hoisted(() => ({
   trackMock: vi.fn<(name: string, props: Record<string, unknown>) => void>(),
@@ -101,8 +102,8 @@ vi.mock('../telemetry/client', () => ({
   track: trackMock,
   isTelemetryEnabled: telemetryEnabledMock
 }))
-vi.mock('../git/post-checkout-hook-presence', () => ({
-  probePostCheckoutHookPresence: probeHookMock
+vi.mock('../git/create-event-repo-probe', () => ({
+  probeCreateEventRepoFacts: probeHookMock
 }))
 
 function makeRepo(fields: Record<string, unknown>) {
@@ -164,6 +165,10 @@ function useSshProvider() {
   return provider
 }
 
+function trackedEvents(name: string): Record<string, unknown>[] {
+  return trackMock.mock.calls.filter(([eventName]) => eventName === name).map(([, props]) => props)
+}
+
 function trackedEvent(name: string): Record<string, unknown> | undefined {
   const call = trackMock.mock.calls.find(([eventName]) => eventName === name)
   return call?.[1]
@@ -189,7 +194,7 @@ describe('worktrees:create event timing fields', () => {
   it('sends timing after the create returns, without any further git work', async () => {
     useRepo(makeRepo({}))
     useLocalListing()
-    let resolveProbe: (value: string) => void = () => {}
+    let resolveProbe: (value: { postCheckoutHook: string; indexBytes?: number }) => void = () => {}
     probeHookMock.mockReturnValue(
       new Promise((resolve) => {
         resolveProbe = resolve
@@ -202,7 +207,7 @@ describe('worktrees:create event timing fields', () => {
     expect(trackedEvent('workspace_created')).toBeUndefined()
     const gitCallsAtReturn = gitWorkCallCount()
 
-    resolveProbe('present')
+    resolveProbe({ postCheckoutHook: 'present', indexBytes: 600 * 1024 })
     await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
 
     expect(gitWorkCallCount()).toBe(gitCallsAtReturn)
@@ -211,16 +216,35 @@ describe('worktrees:create event timing fields', () => {
     expect(props).toMatchObject({
       source: 'unknown',
       from_existing_branch: false,
+      create_entry_point: 'app',
       execution_host: 'local',
       worktree_count_bucket: '2-5',
       concurrent_creates: 0,
+      concurrent_preparations: 0,
+      repo_index_size_bucket: '100KB-1MB',
       post_checkout_hook: 'present'
     })
+    // One create, one event: the runtime entry point never runs for an app create.
+    expect(trackedEvents('workspace_created')).toHaveLength(1)
+    expect(trackedEvents('workspace_create_failed')).toHaveLength(0)
     expect(typeof props?.total_ms).toBe('number')
     expect(typeof props?.git_worktree_add_ms).toBe('number')
     expect(props).toHaveProperty('prepared_checkout')
     // Nothing that names the repo, the branch or a path rides along.
     expect(JSON.stringify(props)).not.toMatch(/workspace|wt|repo-1/)
+  })
+
+  it('counts prepared-checkout work that ran alongside the create', async () => {
+    useRepo(makeRepo({}))
+    useLocalListing()
+    probeHookMock.mockResolvedValue({ postCheckoutHook: 'absent' })
+    const build = beginPreparationWork()
+
+    await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
+    build.end()
+    await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
+
+    expect(trackedEvent('workspace_created')).toMatchObject({ concurrent_preparations: 1 })
   })
 
   it('does not read the repo for hooks when telemetry is off', async () => {
@@ -244,7 +268,7 @@ describe('worktrees:create event timing fields', () => {
       setPlatform('win32')
       useRepo(makeRepo({ path: repoPath }))
       useLocalListing()
-      probeHookMock.mockResolvedValue('absent')
+      probeHookMock.mockResolvedValue({ postCheckoutHook: 'absent' })
 
       await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
       await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
@@ -298,9 +322,15 @@ describe('worktrees:create event timing fields', () => {
     const props = trackedEvent('workspace_create_failed')
     expect(props).toMatchObject({
       failed_phase: 'git_worktree_add',
+      create_entry_point: 'app',
       execution_host: 'local',
-      concurrent_creates: 0
+      concurrent_creates: 0,
+      concurrent_preparations: 0,
+      prepared_checkout: 'miss',
+      prepared_checkout_miss_reason: 'none_armed'
     })
+    expect(trackedEvents('workspace_create_failed')).toHaveLength(1)
+    expect(trackedEvents('workspace_created')).toHaveLength(0)
     expect(typeof props?.total_ms).toBe('number')
     expect(JSON.stringify(props)).not.toMatch(/fatal|work tree/)
   })

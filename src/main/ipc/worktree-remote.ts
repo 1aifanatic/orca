@@ -2,7 +2,6 @@
 // Why: worktree create helpers (local + remote) split out of worktrees.ts; the cohesive create flow runs this file just over the per-file line limit.
 
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
-import { wslDistroForCommand } from '../git/command-runner/git-command-resolution'
 import { getRepoHostedReviewExecutionHostId } from '../source-control/hosted-review-execution-host'
 import type { BrowserWindow } from 'electron'
 import { posix, win32 } from 'node:path'
@@ -151,6 +150,7 @@ import { createSequencedSetupAgentCommands } from '../../shared/setup-agent-sequ
 import { shouldWaitForSetupBeforeAgentStartup } from '../../shared/setup-agent-startup-policy'
 import {
   createWorktreeCreateTimingRecorder,
+  localWorktreeCreateExecutionHost,
   type WorktreeCreateTimingRecorder
 } from '../worktree-create-timing'
 import {
@@ -2195,6 +2195,8 @@ export function createLocalWorktree(
   return worktreeCreateGit
     .run(() => performLocalWorktreeCreate(args, repo, store, mainWindow, rearm, timing, runtime))
     .finally(() => {
+      // Closes the create's measured window first, so its own re-arm is not counted against it.
+      timing.finish()
       rearm.fire()
     })
 }
@@ -2216,10 +2218,7 @@ async function performLocalWorktreeCreate(
   )
   const localGitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const localWorktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
-  // Why the routing rule: a \\wsl.localhost repo runs Git in WSL even without a WSL project runtime.
-  timing.recordExecutionHost(
-    wslDistroForCommand(localGitExecOptions.cwd, localGitExecOptions.wslDistro) ? 'wsl' : 'local'
-  )
+  timing.recordExecutionHost(localWorktreeCreateExecutionHost(localGitExecOptions))
   const hasLocalWorktreeGitOptions = Object.keys(localWorktreeGitOptions).length > 0
   const localWorktreeGitOptionArgs: [] | [{ wslDistro?: string }] = hasLocalWorktreeGitOptions
     ? [localWorktreeGitOptions]
@@ -2628,11 +2627,6 @@ async function performLocalWorktreeCreate(
             options: preparedWorktreeOptions,
             timing
           })
-          timing.recordPreparedCheckout(
-            prepared.status === 'hit'
-              ? { status: 'hit', retargeted: prepared.retargeted }
-              : { status: 'miss', reason: prepared.reason }
-          )
           if (prepared.status === 'hit') {
             // Why deferred: re-arming is a full `reset --hard`; started here it would hold a
             // general admission slot for the rest of this create's own git.

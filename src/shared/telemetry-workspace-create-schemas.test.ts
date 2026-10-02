@@ -13,15 +13,20 @@ const fullCreatedPayload = {
   unattributed_ms: 311,
   refresh_base_ref_ms: 2_040,
   git_worktree_add_ms: 4_900,
+  prepared_checkout_claim_ms: 12,
   prepared_checkout_wait_ms: 3_100,
   prepared_checkout_finalize_ms: 120,
   list_created_worktree_ms: 640,
   spawn_startup_terminal_ms: 90,
   prepared_checkout: 'hit',
-  prepared_checkout_retargeted: true,
+  prepared_checkout_reset: 'retargeted',
+  prepared_checkout_origin: 'prefetch',
+  create_entry_point: 'runtime',
   execution_host: 'wsl',
   worktree_count_bucket: '301-1000',
+  repo_index_size_bucket: '10-50MB',
   concurrent_creates: 2,
+  concurrent_preparations: 1,
   post_checkout_hook: 'present'
 }
 
@@ -64,7 +69,12 @@ describe('workspace_created timing fields', () => {
     ['total_ms', -1],
     ['git_worktree_add_ms', 1.5],
     ['concurrent_creates', -1],
+    ['concurrent_preparations', 0.5],
     ['prepared_checkout', 'maybe'],
+    ['prepared_checkout_reset', 'hard'],
+    ['prepared_checkout_origin', 'dialog'],
+    ['create_entry_point', 'cli'],
+    ['repo_index_size_bucket', '12MB'],
     ['prepared_checkout_miss_reason', 'the branch alice/feature was missing'],
     ['execution_host', 'docker'],
     ['worktree_count_bucket', '812'],
@@ -85,8 +95,22 @@ describe('workspace_create_failed timing fields', () => {
       error_class: 'git_failed',
       failed_phase: 'git_worktree_add',
       total_ms: 120_000,
+      create_entry_point: 'app',
       execution_host: 'ssh',
-      concurrent_creates: 0
+      concurrent_creates: 0,
+      concurrent_preparations: 0
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('accepts the prepared-checkout outcome and wait of the failed create', () => {
+    const parsed = failed.safeParse({
+      source: 'sidebar',
+      error_class: 'git_failed',
+      failed_phase: 'git_worktree_add',
+      prepared_checkout: 'miss',
+      prepared_checkout_miss_reason: 'finalize_failed',
+      prepared_checkout_wait_ms: 209_000
     })
     expect(parsed.success).toBe(true)
   })
@@ -109,12 +133,12 @@ describe('workspace_create_failed timing fields', () => {
     expect(parsed.success).toBe(false)
   })
 
-  it('rejects success-only fields via .strict()', () => {
-    const parsed = failed.safeParse({
-      source: 'sidebar',
-      error_class: 'git_failed',
-      prepared_checkout: 'hit'
-    })
+  it.each([
+    ['post_checkout_hook', 'present'],
+    ['repo_index_size_bucket', '<100KB'],
+    ['git_worktree_add_ms', 10]
+  ])('rejects the success-only field %s via .strict()', (key, value) => {
+    const parsed = failed.safeParse({ source: 'sidebar', error_class: 'git_failed', [key]: value })
     expect(parsed.success).toBe(false)
   })
 })

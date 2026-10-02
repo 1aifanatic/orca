@@ -270,11 +270,9 @@ export function addWorktreeCreatePhaseAttributes(
   if (timing.preparedCheckout) {
     span.setAttribute('worktree.create.prepared_checkout', timing.preparedCheckout.status)
     if (timing.preparedCheckout.status === 'hit') {
-      // A retargeted hit still pays a reset, so it must not be read as a free hit.
-      span.setAttribute(
-        'worktree.create.prepared_checkout_retargeted',
-        timing.preparedCheckout.retargeted
-      )
+      // A hit that had to reset still paid for it, so it must not be read as a free hit.
+      span.setAttribute('worktree.create.prepared_checkout_reset', timing.preparedCheckout.reset)
+      span.setAttribute('worktree.create.prepared_checkout_origin', timing.preparedCheckout.origin)
     } else {
       span.setAttribute('worktree.create.prepared_checkout_miss', timing.preparedCheckout.reason)
     }

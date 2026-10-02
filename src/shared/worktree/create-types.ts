@@ -21,6 +21,8 @@ import type {
 } from './launch-types'
 import type {
   PreparedCheckoutMissReason,
+  PreparedCheckoutOrigin,
+  PreparedCheckoutReset,
   WorktreeCreateExecutionHost
 } from './create-timing-vocabulary'
 import type {
@@ -29,7 +31,12 @@ import type {
   WorktreeBaseStatusEvent
 } from './base-ref-drift-types'
 
-export type { PreparedCheckoutMissReason, WorktreeCreateExecutionHost }
+export type {
+  PreparedCheckoutMissReason,
+  PreparedCheckoutOrigin,
+  PreparedCheckoutReset,
+  WorktreeCreateExecutionHost
+}
 
 export type SetupDecision = 'inherit' | 'run' | 'skip'
 
@@ -40,10 +47,9 @@ export type WorktreeCreateTimingPhase = {
 }
 
 /** Whether a create reused a prewarmed checkout, and when it did not, which part of
- *  the claim key disagreed. `retargeted` marks a hit that had to reset the prepared
- *  checkout onto a different ref in the same base family. */
+ *  the claim key disagreed. A hit says what reset it needed and who armed it. */
 export type PreparedCheckoutOutcome =
-  | { status: 'hit'; retargeted: boolean }
+  | { status: 'hit'; reset: PreparedCheckoutReset; origin: PreparedCheckoutOrigin }
   | { status: 'miss'; reason: PreparedCheckoutMissReason }
 
 export type WorktreeCreateTiming = {

@@ -218,6 +218,9 @@ describe('worktree create preparation registry', () => {
     ).resolves.toEqual({
       status: 'hit',
       retargeted: true,
+      // The mocked finalize found the checkout already at the requested commit.
+      reset: 'none',
+      origin: 'prefetch',
       result: {},
       rearm: expect.any(Function)
     })
@@ -299,6 +302,8 @@ describe('worktree create preparation registry', () => {
     ).resolves.toEqual({
       status: 'hit',
       retargeted: false,
+      reset: 'none',
+      origin: 'prefetch',
       result: {},
       rearm: expect.any(Function)
     })
@@ -604,6 +609,9 @@ describe('worktree create preparation registry', () => {
     ).resolves.toEqual({
       status: 'hit',
       retargeted: false,
+      reset: 'none',
+      // Built by the burst re-arm after the second create, not by a prefetch.
+      origin: 'rearm',
       result: {},
       rearm: expect.any(Function)
     })

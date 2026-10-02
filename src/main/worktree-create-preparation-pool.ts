@@ -10,6 +10,7 @@ import {
 import type { AddWorktreeOptions } from './git/worktree'
 import { prepareWorktreeCreateCheckout } from './git/worktree-create-preparation'
 import { toHostFilesystemPath } from './host-tree-removal'
+import { beginPreparationWork, type PreparationWork } from './worktree-create-concurrency'
 import { preparationEntryKey, preparationPathKey } from './worktree-create-preparation-claim'
 import {
   startStalePreparationCleanup,
@@ -41,6 +42,9 @@ export type PreparationEntry = {
   expiration: NodeJS.Timeout
   controller: AbortController
   checkoutStarted: boolean
+  kind: DeferredPreparation['kind']
+  /** Counts the build as disk work competing with creates until `ready` settles. */
+  work: PreparationWork
 }
 
 export type StartPreparationArgs = {
@@ -235,16 +239,13 @@ export function startPreparation(
   if (deferPreparationForClaim(args, kind)) {
     return Promise.resolve()
   }
-  return worktreePreparationGit.run(() => startBackgroundPreparation(args))
+  return worktreePreparationGit.run(() => startBackgroundPreparation(args, kind))
 }
 
-function startBackgroundPreparation({
-  repoPath,
-  workspaceRoot,
-  baseBranch,
-  canonicalBase,
-  options
-}: StartPreparationArgs): Promise<void> {
+function startBackgroundPreparation(
+  { repoPath, workspaceRoot, baseBranch, canonicalBase, options }: StartPreparationArgs,
+  kind: DeferredPreparation['kind']
+): Promise<void> {
   const repoPathKey = preparationPathKey(repoPath)
   const workspaceRootKey = preparationPathKey(workspaceRoot)
   const wslDistro = options.wslDistro ?? ''
@@ -262,6 +263,7 @@ function startBackgroundPreparation({
     ? AbortSignal.any([options.signal, controller.signal])
     : controller.signal
   const entry = {} as PreparationEntry
+  const work = beginPreparationWork()
   const expiration = setTimeout(() => expireEntry(entry), WORKTREE_CREATE_PREPARATION_TTL_MS)
   expiration.unref()
   Object.assign(entry, {
@@ -279,6 +281,8 @@ function startBackgroundPreparation({
     expiration,
     controller,
     checkoutStarted: false,
+    kind,
+    work,
     ready: (async () => {
       await startStalePreparationCleanup(
         preparationHostKey(repoPathKey, wslDistro),
@@ -297,6 +301,10 @@ function startBackgroundPreparation({
     })()
   } satisfies PreparationEntry)
   preparations.set(key, entry)
+  void entry.ready.then(
+    () => work.end(),
+    () => work.end()
+  )
   void entry.ready.catch(() => {
     if (preparations.get(key) === entry) {
       preparations.delete(key)
