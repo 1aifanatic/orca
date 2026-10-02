@@ -8,7 +8,7 @@
 import { createRequire } from 'node:module'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { quoteWindowsArgument } from '../../shared/child-process/windows-command-line'
 import {
@@ -66,8 +66,9 @@ describe.skipIf(skip || !windows)('ConPTY in a broken-away, windowless orcad pro
     writeFileSync(script, SMOKE)
     const stdoutPath = join(root, 'smoke.out')
     const stderrPath = join(root, 'smoke.err')
+    // From out/orcad, not the temp slot: a loaded .node stays mapped and pins its directory.
     const addon: unknown = createRequire(import.meta.url)(
-      join(slotDir, ORCAD_WINDOWS_PROCESS_TREE_FILENAME)
+      resolve('out/orcad', ORCAD_WINDOWS_PROCESS_TREE_FILENAME)
     )
     const spawn =
       addon && typeof addon === 'object' && 'spawnOutsideJob' in addon
