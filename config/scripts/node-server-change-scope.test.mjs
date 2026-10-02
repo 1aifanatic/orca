@@ -141,6 +141,7 @@ it.each([
     )
   )
   const changes = join(root, 'changes')
+  const stepOutput = join(root, 'step-output')
   writeFileSync(changes, scenario.files.map((file) => `${file}\0`).join(''))
   const result = runProcessSync({
     program: process.execPath,
@@ -151,18 +152,18 @@ it.each([
       ...(scenario.deferred ? ['--defer-graph'] : [])
     ],
     cwd: root,
+    env: { ...process.env, GITHUB_OUTPUT: stepOutput },
     timeoutMs: 5_000
   })
   expect(result.code).toBe(0)
-  expect(result.stdout).toContain(scenario.expected)
+  const output = readFileSync(stepOutput, 'utf8')
+  expect(output).toContain(scenario.expected)
   if (scenario.expected === 'graph_required=true') {
-    expect(result.stdout).not.toContain('should_run=')
-    expect(result.stdout).not.toContain('runners=')
+    expect(output).not.toContain('should_run=')
+    expect(output).not.toContain('runners=')
   } else {
-    expect(result.stdout).toContain(`qualification=${scenario.qualification !== false}`)
-    expect(result.stdout).toContain(
-      `runners=${JSON.stringify(scenario.runners ?? NODE_SERVER_RUNNERS)}`
-    )
+    expect(output).toContain(`qualification=${scenario.qualification !== false}`)
+    expect(output).toContain(`runners=${JSON.stringify(scenario.runners ?? NODE_SERVER_RUNNERS)}`)
   }
 })
 
