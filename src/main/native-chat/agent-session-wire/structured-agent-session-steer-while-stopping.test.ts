@@ -69,7 +69,7 @@ async function laneDrained(): Promise<void> {
 }
 
 /** Turn `turn-1` running, a person's Stop ending it, and what was dispatched by then. */
-async function stoppingTurn(options: { card?: true } = {}) {
+async function stoppingTurn(options: { card?: true; refused?: true } = {}) {
   rig = await createQueuedMessageTestRig()
   const sent = await rig.workingSend()
   await rig.settleAccepted(sent, 'sent')
@@ -81,6 +81,9 @@ async function stoppingTurn(options: { card?: true } = {}) {
     await eventually(async () => expect(await rig.drafts()).toHaveLength(1))
     cardId = (await rig.drafts())[0]?.messageId
   }
+  if (options.refused) {
+    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false })
+  }
   expect(await rig.stop()).toMatchObject({ ok: true })
   await eventually(() => expect(status()).toMatchObject({ stopping: true }))
   return { sent, status, cardId, dispatched: rig.dispatch.mock.calls.length }
@@ -88,10 +91,14 @@ async function stoppingTurn(options: { card?: true } = {}) {
 
 describe("a message sent while a person's Stop ends the turn", () => {
   it.each([
-    ['a queued card sent now', true],
-    ['a send', false]
-  ])('waits for the turn to end, then runs as its own turn: %s', async (_, fromCard) => {
-    const { sent, status, cardId, dispatched } = await stoppingTurn(fromCard ? { card: true } : {})
+    ['a queued card sent now', true, false],
+    ['a send', false, false],
+    ['a send, after a Stop the agent declined', false, true]
+  ])('waits for the turn to end, then runs as its own turn: %s', async (_, fromCard, refused) => {
+    const { sent, status, cardId, dispatched } = await stoppingTurn({
+      ...(fromCard ? { card: true as const } : {}),
+      ...(refused ? { refused: true as const } : {})
+    })
 
     const result = cardId ? await rig.sendNow(cardId) : await rig.send('one more thing').result
     expect(result).toMatchObject({ ok: true })

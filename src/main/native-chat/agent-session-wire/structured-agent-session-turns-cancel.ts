@@ -12,7 +12,8 @@ import { latestJournalDispatchObservation } from '../agent-session-journal/journ
 import type { AgentSessionCancelOutcome } from './structured-agent-session-adapter'
 import {
   isStructuredAgentSessionCommandTurnId,
-  structuredAgentSessionCommandWasStopped
+  structuredAgentSessionCommandWasStopped,
+  structuredAgentSessionStopNoteIdentity
 } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionStopWindDown } from './structured-agent-session-stop-wind-down'
 import {
@@ -23,11 +24,8 @@ import {
   STOP_NOTE_CANCELLATION_REQUESTED,
   stopNoteTookNoEffect,
   structuredAgentSessionNamedTurnScope,
-  structuredAgentSessionStopEventTurnId,
   structuredAgentSessionStopNamesTurnNotLive,
-  structuredAgentSessionStopNoteKey,
-  structuredAgentSessionStoppedTurnId,
-  type StructuredAgentSessionStopTarget
+  structuredAgentSessionStoppedTurnId
 } from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -100,9 +98,6 @@ export async function performCancel(
     /** Hands the child's end to the Stop's next serialized step, for a provider whose Stop ends
      *  its session. */
     endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
-    /** The person's Stop this runs for, as its event read it, which keys its note. Absent: a Stop
-     *  with no event, keyed by the turn it names. */
-    stopTarget?: StructuredAgentSessionStopTarget
     /** The host already withdrew queued messages for this Stop. */
     withdrewQueued?: boolean
     /** The session's child records: a background Stop reaches the tasks they offer a stop. */
@@ -120,22 +115,10 @@ export async function performCancel(
     kind: 'status',
     text: STOP_NOTE_CANCELLATION_REQUESTED
   }
-  // Read while the child is live: a provider whose Stop is a session boundary loses it next.
-  const endsSession =
-    input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
-  // The turn the Stop's event records, read before the cancel settles it: the note sits on that
-  // turn and is keyed by it, as every reader of the Stop's answer looks it up.
-  const eventTurnId = structuredAgentSessionStopEventTurnId(
-    ctx.journal,
-    input.stopTarget ?? {
-      ...(input.turnId !== undefined ? { namedTurnId: input.turnId } : {}),
-      endsSession: false
-    }
-  )
-  const noteIdentity = structuredAgentSessionStopNoteKey(eventTurnId, input.clientOperationId)
+  // The turn the Stop names, read before the cancel settles it: the note reports on that turn.
   const turnScope =
-    (eventTurnId !== null && !input.scope
-      ? structuredAgentSessionNamedTurnScope(ctx.journal, eventTurnId)
+    (input.turnId !== undefined && !input.scope
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, input.turnId)
       : null) ?? ctx.journal.liveTurnScope()
   // Only the provider's end or the child's ends a command. A command the provider has not opened a
   // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
@@ -151,6 +134,13 @@ export async function performCancel(
     !namesTurnNotLive
   const stoppedBefore =
     runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, liveTurnId)
+  // Read while the child is live: a provider whose Stop is a session boundary loses it next.
+  const endsSession =
+    input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
+  // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
+  const noteIdentity = structuredAgentSessionStopNoteIdentity(
+    stoppedTurnId ?? input.clientOperationId
+  )
   const stoppedAt = Date.now()
   // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
   let taken: boolean | undefined
@@ -257,7 +247,6 @@ export async function performCancel(
   if (input.scope || note === null || noteKeepsTakenAnswer(ctx.journal, noteIdentity, note)) {
     return { ok: true, value }
   }
-  // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
   await ctx.journal.appendItem(noteIdentity, note, { fence: ctx.fence, turnScope })
   return { ok: true, value }
 }

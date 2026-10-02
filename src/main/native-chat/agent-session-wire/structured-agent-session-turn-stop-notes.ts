@@ -4,12 +4,10 @@
 
 import type {
   AgentJournalItemBody,
-  AgentJournalItemIdentity,
   AgentJournalTurnScope
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { structuredAgentSessionStopNoteIdentity } from './structured-agent-session-command-turn'
 
 export const STOP_NOTE_CANCELLATION_REQUESTED = 'Cancellation requested.'
 
@@ -38,32 +36,6 @@ export function structuredAgentSessionNamedTurnScope(
     .snapshot()
     .items.findLast((item) => readAgentJournalTurn(item.body)?.turnId === turnId)
   return turn ? { kind: 'turn', turnItemId: turn.itemId } : null
-}
-
-/** What a person's Stop is aimed at, read once per Stop for both its event and its note. */
-export type StructuredAgentSessionStopTarget = { namedTurnId?: string; endsSession: boolean }
-
-/**
- * The turn a person's Stop records on its event, and so keys its note by: the one it named, unless
- * the Stop ends the provider's session (then whatever runs), else the one running. Null: none ran.
- */
-export function structuredAgentSessionStopEventTurnId(
-  journal: Pick<AgentSessionJournal, 'activeTurnId'>,
-  stop: StructuredAgentSessionStopTarget
-): string | null {
-  return structuredAgentSessionStoppedTurnId(
-    journal,
-    stop.endsSession ? undefined : stop.namedTurnId
-  )
-}
-
-/** The one key of a Stop's note, for its writer and every reader: the turn its event records
- *  (`structuredAgentSessionStopEventTurnId`), else, with no turn, the Stop's own operation. */
-export function structuredAgentSessionStopNoteKey(
-  eventTurnId: string | null | undefined,
-  clientOperationId: string
-): AgentJournalItemIdentity {
-  return structuredAgentSessionStopNoteIdentity(eventTurnId ?? clientOperationId)
 }
 
 /** A Stop's note saying it did not take: the agent refused it, or it went unconfirmed. */

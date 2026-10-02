@@ -1,5 +1,5 @@
-// Which notes answer a person's Stop for "Stopping…": the note keyed by the turn its event records,
-// whenever it was first written, and notes written after the event that no other turn owns.
+// "Stopping…" read straight off a journal: it holds from a person's Stop until the work it stopped
+// ends, whatever the Stop's answer, and reads only the journal's tail to tell.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -69,32 +69,20 @@ function stopping(): boolean {
   return structuredAgentSessionStopping(journal, journal.snapshot().items)
 }
 
-describe("a person's Stop's answers", () => {
-  it('reads the answer to a later Stop of the same turn from the note an earlier one wrote', async () => {
+describe("a person's Stop's Stopping", () => {
+  // The Stop is the person's whatever the agent answered; only the turn's end clears it.
+  it('holds through an answer that says the Stop stopped nothing, until the turn ends', async () => {
     await turn('turn-1', 'running')
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, FENCE)
     await journal.appendItem(structuredAgentSessionStopNoteIdentity('turn-1'), unconfirmed, {
       fence: FENCE,
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
-    // A send made since gives the next Stop of this turn an event of its own; its press revised
-    // the turn's note in place, so that note keeps its first position.
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1' }, FENCE)
+    expect(stopping()).toBe(true)
+
+    await turn('turn-1', 'completed')
 
     expect(stopping()).toBe(false)
-  })
-
-  it("never reads a Stop of an ended turn as the answer to the running turn's Stop", async () => {
-    const ended = await turn('turn-1', 'completed')
-    await turn('turn-2', 'running')
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-2' }, FENCE)
-    // A phone's late Stop of the ended turn, whose interrupt went unconfirmed.
-    await journal.appendItem(structuredAgentSessionStopNoteIdentity('turn-1'), unconfirmed, {
-      fence: FENCE,
-      turnScope: { kind: 'turn', turnItemId: ended.itemId }
-    })
-
-    expect(stopping()).toBe(true)
   })
 
   it('reads only the journal from the running turn on, however long the chat before it', async () => {
