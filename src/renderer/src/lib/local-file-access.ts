@@ -1,0 +1,55 @@
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import type { LocalFileAccess } from '../../../shared/local-file-access'
+import { settingsForRuntimeOwner } from '@/runtime/runtime-client-target'
+import type { OpenFile } from '@/store/slices/editor'
+import type { AppState } from '@/store/types'
+import { getConnectionIdForFile } from './connection-context'
+
+const USER_FILE_ACCESS: LocalFileAccess = { kind: 'user-file' }
+
+/** For a path the user named by a gesture (click, drop, typed path); never for document content. */
+export function userNamedFileAccess(): LocalFileAccess {
+  return USER_FILE_ACCESS
+}
+
+/** For an image or PDF a document's content references; main limits it to the document's roots. */
+export function documentResourceAccess(documentPath: string): LocalFileAccess {
+  return { kind: 'document-resource', documentPath }
+}
+
+type EditorTabAccessFile = Pick<
+  OpenFile,
+  | 'filePath'
+  | 'relativePath'
+  | 'worktreeId'
+  | 'runtimeEnvironmentId'
+  | 'externalSshTargetId'
+  | 'readOnly'
+  | 'liveTail'
+>
+
+/**
+ * The shape a persisted editor tab reads and saves with. A tab the user opened outside its owner's
+ * root (a floating-workspace tab, or one stored with an absolute path) is user-named, so it reads
+ * the same before and after a restart; every other tab stays inside its project root.
+ */
+export function editorTabFileAccess(
+  state: Pick<AppState, 'settings'>,
+  file: EditorTabAccessFile
+): LocalFileAccess | undefined {
+  // Why: AI Vault logs are client-local files the user opened, whatever the worktree's host.
+  if (file.readOnly === true && file.liveTail === true) {
+    return USER_FILE_ACCESS
+  }
+  const runtimeOwner = settingsForRuntimeOwner(state.settings, file.runtimeEnvironmentId)
+  if (file.externalSshTargetId?.trim() || runtimeOwner?.activeRuntimeEnvironmentId?.trim()) {
+    return undefined
+  }
+  const outsideOwnerRoot =
+    file.worktreeId === FLOATING_TERMINAL_WORKTREE_ID || file.relativePath === file.filePath
+  // Why null only: an SSH, ambiguous or not-yet-loaded owner may mean the path lives on another host.
+  if (!outsideOwnerRoot || getConnectionIdForFile(file.worktreeId, file.filePath) !== null) {
+    return undefined
+  }
+  return USER_FILE_ACCESS
+}

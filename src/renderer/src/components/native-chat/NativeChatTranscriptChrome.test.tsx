@@ -206,4 +206,27 @@ describe('NativeChatImageAttachments', () => {
     expect(container.firstElementChild).toBe(observedElement)
     root.unmount()
   })
+
+  it.each([
+    ['pasted or attached by the user', true, { kind: 'user-file' }],
+    ['produced by the agent', false, undefined]
+  ])('reads an image %s with the matching shape', async (_label, attachedByUser, access) => {
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        createElement(NativeChatImageAttachments, {
+          blocks: [{ type: 'image-ref' as const, path: '/tmp/orca-paste-1.png' }],
+          runtimeContext: runtimeContext('wt-1'),
+          attachedByUser
+        })
+      )
+      await flushPromises()
+    })
+
+    const request = vi.mocked(window.api.fs.readFile).mock.calls[0]?.[0]
+    expect(request?.filePath).toBe('/tmp/orca-paste-1.png')
+    expect(request?.access).toEqual(access)
+    root.unmount()
+  })
 })

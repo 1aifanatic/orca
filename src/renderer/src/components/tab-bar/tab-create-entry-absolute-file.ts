@@ -6,6 +6,7 @@ import {
   validateNewTabEntryAbsolutePath,
   type TabEntryLocalPlatform
 } from './tab-create-entry-path-validation'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 type AbsoluteFileOperations = {
   assertAbsolutePathAllowed: () => void
@@ -32,7 +33,7 @@ export async function openAbsoluteTabEntryFile(args: {
   args.operations.assertAbsolutePathAllowed()
   let stat: Awaited<ReturnType<typeof statRuntimePath>>
   try {
-    stat = await args.operations.statRuntimePath(args.context, filePath)
+    stat = await args.operations.statRuntimePath(args.context, filePath, userNamedFileAccess())
   } catch {
     throw new Error(`File not found: ${filePath}`)
   }

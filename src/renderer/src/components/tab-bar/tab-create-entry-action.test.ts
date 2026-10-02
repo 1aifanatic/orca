@@ -267,7 +267,8 @@ describe('openTabEntryWithOperations', () => {
     expect(operations.authorizeExternalPath).toHaveBeenCalledWith({ targetPath: '/tmp/notes.md' })
     expect(operations.statRuntimePath).toHaveBeenCalledWith(
       baseArgs.runtimeContext,
-      '/tmp/notes.md'
+      '/tmp/notes.md',
+      { kind: 'user-file' }
     )
     expect(operations.openFile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -351,7 +352,8 @@ describe('openTabEntryWithOperations', () => {
     })
     expect(operations.statRuntimePath).toHaveBeenCalledWith(
       baseArgs.runtimeContext,
-      'C:/tmp/notes.md'
+      'C:/tmp/notes.md',
+      { kind: 'user-file' }
     )
   })
 

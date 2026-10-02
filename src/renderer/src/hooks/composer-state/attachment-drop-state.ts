@@ -30,6 +30,7 @@ import {
 import { applyComposerNativeFileDrop } from '../composer-native-file-drop'
 import { useMountedRef } from '../useMountedRef'
 import { useComposerDropListener } from './composer-drop-listener'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 // Local drops bypass the runtime importer's skip classification.
 function localDropFailure(detail: string | undefined): ComposerDropFailure {
@@ -224,7 +225,7 @@ export function useAttachmentDropState(input: AttachmentDropStateInput) {
           if (!mountedRef.current) {
             return
           }
-          const stat = await window.api.fs.stat({ filePath })
+          const stat = await window.api.fs.stat({ filePath, access: userNamedFileAccess() })
           results.push({
             status: 'imported',
             destPath: filePath,

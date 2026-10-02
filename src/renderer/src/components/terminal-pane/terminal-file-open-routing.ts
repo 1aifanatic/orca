@@ -23,6 +23,7 @@ import {
   toSshExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 export type FileOpenFailure = {
   /** `missing` is a verified absence; `unverifiable` means the host could not answer (dropped SSH, timeout, denied path). */
@@ -177,7 +178,7 @@ export function openDetectedFilePath(
       if (canOpenWithSystemDefault) {
         await window.api.fs.authorizeExternalPath({ targetPath: mappedFilePath })
       }
-      statResult = await statRuntimePath(fileContext, mappedFilePath)
+      statResult = await statRuntimePath(fileContext, mappedFilePath, userNamedFileAccess())
     } catch (error) {
       if (requestId === latestOpenDetectedFilePathRequestId && deps.onOpenFailure) {
         // Why: loss of contact with the host is not evidence the file is gone.

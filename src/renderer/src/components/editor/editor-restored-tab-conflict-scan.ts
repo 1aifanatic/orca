@@ -3,6 +3,7 @@ import type { StoreApi } from 'zustand'
 import type { AppState } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import { getConnectionIdForFile } from '@/lib/connection-context'
+import { editorTabFileAccess } from '@/lib/local-file-access'
 import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
 import { readRuntimeFileContent } from '@/runtime/runtime-file-client'
 import { settingsForRuntimeOwner } from '@/runtime/runtime-rpc-client'
@@ -45,9 +46,12 @@ export function attachRestoredTabConflictScan(store: AppStoreApi): () => void {
       return false
     }
     try {
+      const connectionId = getFileConnectionId(file)
+      const access = connectionId ? undefined : editorTabFileAccess(store.getState(), file)
       const exists = await globalThis.window?.api?.fs?.pathExists?.({
         filePath: file.filePath,
-        connectionId: getFileConnectionId(file)
+        connectionId,
+        ...(access ? { access } : {})
       })
       return exists === false
     } catch {
@@ -72,7 +76,8 @@ export function attachRestoredTabConflictScan(store: AppStoreApi): () => void {
         relativePath: file.relativePath,
         worktreeId: file.worktreeId,
         connectionId: getFileConnectionId(file),
-        expectedExternalSshTargetId: file.externalSshTargetId
+        expectedExternalSshTargetId: file.externalSshTargetId,
+        access: editorTabFileAccess(state, file)
       })
       if (disposed) {
         return

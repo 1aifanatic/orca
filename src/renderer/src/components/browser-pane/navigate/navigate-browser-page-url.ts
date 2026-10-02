@@ -25,6 +25,7 @@ import type {
   BrowserTabPageState
 } from '../describe-page/browser-page-types'
 import type { MutableRefObject } from 'react'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 export type NavigateBrowserPageToUrlArgs = {
   url: string
@@ -110,7 +111,7 @@ export function navigateBrowserPageToUrl({
         if (!isRemoteRuntimeFileOperation(fileContext, notebookPath)) {
           await window.api.fs.authorizeExternalPath({ targetPath: notebookPath })
         }
-        const stat = await statRuntimePath(fileContext, notebookPath)
+        const stat = await statRuntimePath(fileContext, notebookPath, userNamedFileAccess())
         if (stat.isDirectory) {
           navigateBrowserUrl(url)
           return

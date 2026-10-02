@@ -15,6 +15,8 @@ import {
 } from '@/components/editor/useLocalImageSrc'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
+import type { LocalFileAccess } from '../../../../shared/local-file-access'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 type VisibilityListener = (isVisible: boolean) => void
 
@@ -72,10 +74,12 @@ function transcriptImageIdentity(
 
 function TranscriptImagePreview({
   block,
-  runtimeContext
+  runtimeContext,
+  access
 }: {
   block: Extract<NativeChatBlock, { type: 'image-ref' }>
   runtimeContext: RuntimeFileOperationArgs | null | undefined
+  access: LocalFileAccess | undefined
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [near, setNear] = useState(false)
@@ -90,7 +94,8 @@ function TranscriptImagePreview({
     leaseActive && !external && runtimeContext !== undefined ? source : undefined,
     filePath,
     runtimeContext?.connectionId,
-    runtimeContext
+    runtimeContext,
+    access
   )
   const displaySrc = external && leaseActive ? source : localSrc
   const label =
@@ -124,10 +129,10 @@ function TranscriptImagePreview({
       return
     }
     if (!leaseActive) {
-      releaseLocalImageSrc(source, filePath, context.connectionId, context)
+      releaseLocalImageSrc(source, filePath, context.connectionId, context, access)
     }
-    return () => releaseLocalImageSrc(source, filePath, context.connectionId, context)
-  }, [external, filePath, leaseActive, runtimeContext, source])
+    return () => releaseLocalImageSrc(source, filePath, context.connectionId, context, access)
+  }, [access, external, filePath, leaseActive, runtimeContext, source])
 
   const showPreview =
     leaseActive &&
@@ -183,12 +188,15 @@ function TranscriptImagePreview({
 export function NativeChatImageAttachments({
   blocks,
   runtimeContext,
-  enablePreview = runtimeContext !== undefined
+  enablePreview = runtimeContext !== undefined,
+  attachedByUser = false
 }: {
   blocks: NativeChatBlock[]
   runtimeContext?: RuntimeFileOperationArgs | null
   /** Keep legacy terminal chips unchanged until that lane opts into previews. */
   enablePreview?: boolean
+  /** The user pasted or attached these, so they show wherever they live; agent images stay in the project. */
+  attachedByUser?: boolean
 }): React.JSX.Element | null {
   const images = blocks.filter((block) => block.type === 'image-ref')
   if (images.length === 0) {
@@ -236,6 +244,7 @@ export function NativeChatImageAttachments({
             key={`${imageKeyBase}-${identity}-${occurrence}`}
             block={image}
             runtimeContext={runtimeContext}
+            access={attachedByUser ? userNamedFileAccess() : undefined}
           />
         )
       })}

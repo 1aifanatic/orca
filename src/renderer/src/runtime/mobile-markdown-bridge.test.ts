@@ -100,6 +100,9 @@ describe('mobile markdown bridge', () => {
         ok: true,
         result: { content: '# notes', source: 'file' }
       })
+      expect(readFile).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/Users/me/notes.md', access: { kind: 'user-file' } })
+      )
     } finally {
       detach()
     }

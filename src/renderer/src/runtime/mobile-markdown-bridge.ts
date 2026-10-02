@@ -7,6 +7,7 @@ import {
 } from '@/components/editor/editor-autosave'
 import { flushPendingEditorChange } from '@/components/editor/editor-pending-flush'
 import { getConnectionIdForFile } from '@/lib/connection-context'
+import { editorTabFileAccess } from '@/lib/local-file-access'
 import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
 import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
@@ -255,7 +256,8 @@ async function readFileContent(file: OpenFile): Promise<string> {
     relativePath: file.relativePath,
     worktreeId: file.worktreeId,
     connectionId,
-    expectedExternalSshTargetId: file.externalSshTargetId
+    expectedExternalSshTargetId: file.externalSshTargetId,
+    access: editorTabFileAccess(state, file)
   })) as FileContent
   if (result.isBinary) {
     throw new Error('binary_file')

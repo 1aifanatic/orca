@@ -70,7 +70,11 @@ describe('createFilePathLinkProvider range bounds', () => {
     await flushAsyncWork()
     await flushDoubleRaf()
 
-    expect(statMock).toHaveBeenCalledWith({ filePath: mappedPath })
+    expect(statMock).toHaveBeenCalledWith({
+      filePath: mappedPath,
+      connectionId: undefined,
+      access: { kind: 'user-file' }
+    })
     expect(openFileMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: mappedPath }), {
       forceContentReload: true
     })

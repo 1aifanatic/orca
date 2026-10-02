@@ -154,6 +154,7 @@ export const MessageRow = memo(function MessageRow({
                 blocks={prose}
                 runtimeContext={runtimeContext}
                 enablePreview={runtimeContext !== undefined}
+                attachedByUser
               />
               <CommentMarkdown
                 content={markdown}
@@ -169,6 +170,7 @@ export const MessageRow = memo(function MessageRow({
               blocks={prose}
               runtimeContext={runtimeContext}
               enablePreview={runtimeContext !== undefined}
+              attachedByUser
             />
           )}
         </div>

@@ -294,7 +294,9 @@ describe('attachRestoredTabConflictScan', () => {
 
       finishGrant()
       await vi.advanceTimersByTimeAsync(10)
-      expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
+      expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/Users/me/notes.txt', access: { kind: 'user-file' } })
+      )
       expect(store.getState().openFiles[0]?.pendingDiskBaselineVerification).toBeUndefined()
     } finally {
       detach()

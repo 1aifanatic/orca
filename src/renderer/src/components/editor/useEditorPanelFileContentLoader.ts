@@ -20,6 +20,7 @@ import {
 import type { EditorPanelContentLoadOptions } from './useEditorPanelExternalContentEvents'
 import { migrateRestoredEditorFileOwner } from './migrate-restored-editor-file-owner'
 import { refreshEditorTabExternalPathGrant } from '@/lib/editor-tab-external-path-grant'
+import { editorTabFileAccess } from '@/lib/local-file-access'
 
 const inFlightFileReads = new Map<string, InFlightContentRead<FileContent>>()
 
@@ -173,7 +174,11 @@ export function useEditorPanelFileContentLoader({
           }
         }
         const readScope = getRuntimeFileReadScope(readSettings, readConnectionId)
-        const key = inFlightReadKey(readScope, filePath)
+        const access = restoredOpenFile
+          ? editorTabFileAccess(useAppStore.getState(), restoredOpenFile)
+          : undefined
+        // Why the shape in the key: a contained tab must not share a read made as a user-named one.
+        const key = `${inFlightReadKey(readScope, filePath)}::${access?.kind ?? ''}`
         const registeredRead = inFlightFileReads.get(key)
         if (
           options?.force &&
@@ -193,7 +198,8 @@ export function useEditorPanelFileContentLoader({
             worktreeId: readWorktreeId,
             connectionId: readConnectionId,
             expectedExternalSshTargetId: restoredOpenFile?.externalSshTargetId,
-            includeLocalLogMetadata: isLiveTailLogTab
+            includeLocalLogMetadata: isLiveTailLogTab,
+            access
           }) as Promise<FileContent>
           pending = { externalEventGeneration: options?.externalEventGeneration, promise }
           inFlightFileReads.set(key, pending)

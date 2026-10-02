@@ -21,6 +21,7 @@ import {
 } from '../../../shared/native-file-drop'
 import { captureWorktreeSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
 import { describeDropTempCopyFailure } from '@/lib/drop-temp-copy-failure-copy'
+import { userNamedFileAccess } from '@/lib/local-file-access'
 
 export function getEditorFileDropSettingsForWorktree(
   store: WorktreeRuntimeOwnerState,
@@ -165,7 +166,7 @@ export function useGlobalFileDrop(): void {
             if (!connectionId && !isRemoteRuntimePath) {
               await window.api.fs.authorizeExternalPath({ targetPath: filePath })
             }
-            const stat = await statRuntimePath(fileContext, filePath)
+            const stat = await statRuntimePath(fileContext, filePath, userNamedFileAccess())
             if (stat.isDirectory) {
               return
             }

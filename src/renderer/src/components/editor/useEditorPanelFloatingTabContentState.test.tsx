@@ -138,7 +138,11 @@ describe('restored client-local editor tabs', () => {
 
       await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('# local'))
       expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
-        expect.objectContaining({ filePath, connectionId: undefined })
+        expect.objectContaining({
+          filePath,
+          connectionId: undefined,
+          access: { kind: 'user-file' }
+        })
       )
     }
   )
