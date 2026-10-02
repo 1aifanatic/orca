@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   return {
     target,
     floatingFocused: false,
+    visibleModal: false,
     requestScrollAnchor: vi.fn(),
     notifyTerminalCapture: vi.fn(),
     store: {
@@ -32,6 +33,10 @@ vi.mock('@/hooks/requestVirtualizedScrollAnchorRecord', () => ({
 
 vi.mock('@/lib/floating-workspace-terminal-actions', () => ({
   isFloatingWorkspacePanelFocused: () => mocks.floatingFocused
+}))
+
+vi.mock('@/lib/visible-overlay', () => ({
+  hasVisibleOverlay: () => mocks.visibleModal
 }))
 
 vi.mock('@/lib/terminal-shortcut-capture-notification', () => ({
@@ -79,6 +84,7 @@ describe('child workspaces toggle app command', () => {
     vi.clearAllMocks()
     mocks.target.groupKey = 'lineage:parent'
     mocks.floatingFocused = false
+    mocks.visibleModal = false
     mocks.store.activeModal = 'none'
     mocks.store.collapsedGroups = new Set()
   })
@@ -130,6 +136,17 @@ describe('child workspaces toggle app command', () => {
     expect(runToggle(input)).toBe(false)
     expect(input.preventDefault).not.toHaveBeenCalled()
     expect(mocks.store.toggleCollapsedGroup).not.toHaveBeenCalled()
+  })
+
+  it('leaves locally controlled modal input and persistence untouched', () => {
+    mocks.visibleModal = true
+    const input = shortcutInput()
+
+    expect(runToggle(input)).toBe(false)
+    expect(input.preventDefault).not.toHaveBeenCalled()
+    expect(mocks.store.toggleCollapsedGroup).not.toHaveBeenCalled()
+    expect(mocks.requestScrollAnchor).not.toHaveBeenCalled()
+    expect(mocks.store.setSidebarOpen).not.toHaveBeenCalled()
   })
 
   it('reports a claimed terminal shortcut through the existing notification policy', () => {

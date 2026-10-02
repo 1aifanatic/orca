@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { canShowRightSidebarForView } from '@/lib/right-sidebar-visibility'
 import { isFloatingWorkspacePanelFocused } from '@/lib/floating-workspace-terminal-actions'
+import { hasVisibleOverlay } from '@/lib/visible-overlay'
 import { requestScrollToCurrentWorkspaceRevealAndRename } from '@/lib/scroll-to-current-workspace-status'
 import { requestVirtualizedScrollAnchorRecord } from '@/hooks/requestVirtualizedScrollAnchorRecord'
 import { showTerminalShortcutCaptureNotification } from '@/lib/terminal-shortcut-capture-notification'
@@ -187,7 +188,12 @@ export function createAppCommandHandlers(
       'sidebar.childWorkspaces.toggle',
       () => {
         const store = useAppStore.getState()
-        if (store.activeModal !== 'none' || floatingWorkspaceFocused) {
+        // Locally controlled dialogs do not set activeModal.
+        if (
+          store.activeModal !== 'none' ||
+          floatingWorkspaceFocused ||
+          hasVisibleOverlay({ ignoreMatches: '[role="listbox"], [role="menu"]' })
+        ) {
           return false
         }
         const groupKey = resolveChildWorkspacesToggleGroupKey(
