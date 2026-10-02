@@ -1,5 +1,5 @@
 // The turn-end rule as a Stop that named no turn binds it: every turn that ends while the Stop
-// settles, then only the turn it stopped. A cancellation already written stays one.
+// settles, then only the turn it stopped.
 
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
@@ -24,16 +24,6 @@ type TurnBody = Extract<AgentJournalItemBody, { kind: 'turn' }>
 
 function ended(turnId: string): TurnBody {
   return { kind: 'turn', turnId, state: 'interrupted', completedAt: STOPPED_AT + 10 }
-}
-
-function withTurn(state: JournalReducerState, body: AgentJournalItemBody): void {
-  state.items.set('turn-item', {
-    itemId: 'turn-item',
-    revision: 1,
-    body,
-    sequence: 3,
-    observedAt: STOPPED_AT
-  })
 }
 
 const turnless: JournalStopEvent = { reason: 'user-stop', at: STOPPED_AT }
@@ -96,24 +86,5 @@ describe('a Stop with nothing in memory to bind', () => {
     ['a host stop', { reason: 'host-stop', at: STOPPED_AT }]
   ] satisfies [string, JournalStopEvent][])('opens no settle: %s', (_label, event) => {
     expect(beginJournalStopSettle(stateWith(event))).toBeNull()
-  })
-})
-
-describe('an end already written as a cancellation', () => {
-  it('stays one when a later end with no verdict is written over it', () => {
-    const state = stateWith()
-    withTurn(state, { ...ended('turn-a'), outcome: 'cancellation' })
-
-    expect(turnEndAfterStop(state, 'turn-item', ended('turn-a'))).toMatchObject({
-      outcome: 'cancellation'
-    })
-  })
-
-  it("gives way to the provider's own verdict", () => {
-    const state = stateWith()
-    withTurn(state, { ...ended('turn-a'), outcome: 'cancellation' })
-    const failed: TurnBody = { ...ended('turn-a'), outcome: 'failure' }
-
-    expect(turnEndAfterStop(state, 'turn-item', failed)).toEqual(failed)
   })
 })

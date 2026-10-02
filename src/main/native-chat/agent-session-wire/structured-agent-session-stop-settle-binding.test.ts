@@ -74,7 +74,7 @@ describe('a Codex Stop whose answered turn did not open in time', () => {
   async function stopOfAnsweredSend(): Promise<string> {
     rig = await createQueuedMessageTestRig()
     const sent = await rig.workingSend()
-    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: {} })
+    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: { turnMayOpen: true } })
     return sent
   }
 
@@ -102,6 +102,22 @@ describe('a Codex Stop whose answered turn did not open in time', () => {
   })
 })
 
+describe('a Codex Stop that could not reach a turn still able to open, whose kill failed', () => {
+  it('says the Stop is unconfirmed, never that no turn was running', async () => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    rig.cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: { turnMayOpen: true } })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+
+    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+
+    const rows = journal()
+      .snapshot()
+      .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.failure?.kind] : []))
+    expect(rows).toEqual(['cancelUnconfirmed'])
+  })
+})
+
 describe('a Claude Stop pressed before its send echoed', () => {
   it('reads the turn that opens before its child end is proven as interrupted by the Stop', async () => {
     rig = await createQueuedMessageTestRig({ stopEndsSession: true })
@@ -117,5 +133,24 @@ describe('a Claude Stop pressed before its send echoed', () => {
     expect(rig.closeSession).toHaveBeenCalled()
     expect(openedTurn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     expect(nothingRuns()).toBe(true)
+  })
+})
+
+describe("a person's close pressed before its send's turn showed", () => {
+  it('reads the turn its child end cut as interrupted by the person', async () => {
+    rig = await createQueuedMessageTestRig()
+    const sent = await rig.workingSend()
+    rig.closeSession.mockImplementationOnce(async () => {
+      await turnOpens(sent)
+      return true
+    })
+
+    await rig.host.close(HOST_TEST_SESSION, 'user-close')
+
+    const { items } = await rig.host.journalSnapshot(HOST_TEST_SESSION)
+    const turn = items
+      .map((item) => readAgentJournalTurn(item.body))
+      .find((entry) => entry?.turnId === 'turn-opened')
+    expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
 })

@@ -142,8 +142,13 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     expect(outcome).toBe('held')
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(outcome).toEqual({ cancelled: false, refusal: {} })
+    expect(outcome).toEqual({ cancelled: false, refusal: { turnMayOpen: true } })
     expect(rig.interrupts()).toEqual([])
+    // A second Stop spends no wait on that turn, and still finds it able to open.
+    expect(await settledWithin(stop(rig), 0)).toEqual({
+      cancelled: false,
+      refusal: { turnMayOpen: true }
+    })
   })
 })
 
@@ -157,7 +162,7 @@ describe('a no-turn Stop with no turn Codex answered', () => {
       dispatchStatus: { state: 'unknown', recovered: false }
     })
 
-    expect(outcome).toEqual({ cancelled: false, refusal: {} })
+    expect(outcome).toEqual({ cancelled: false, refusal: { turnMayOpen: true } })
     expect(rig.interrupts()).toEqual([])
   })
 

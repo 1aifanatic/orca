@@ -138,6 +138,26 @@ describe('a restart between a Stop and its turn end', () => {
     expect(errorRows).toEqual([])
   })
 
+  // A Stop naming its turn, as the phone sends one: its event names the turn, which is what a
+  // relaunch reads, so it still counts though Orca died with its interrupt out.
+  it.each([
+    ['Claude', CLAUDE_TURN],
+    ['Codex', CODEX_TURN]
+  ])('reads Interrupted after N for a %s Stop that named its turn', async (_label, identity) => {
+    await runningTurn(identity)
+    rig.cancelTurn.mockImplementationOnce(() => new Promise<never>(() => undefined))
+    void rig.host.cancel(QUEUED_RIG_CALLER, {
+      envelope: rig.envelope({ turnId: TURN }, 'agentSession.cancel', hostTestOperationId()),
+      turnId: TURN
+    })
+    await expect.poll(() => journal().stopMarks.latest()?.event.turnId).toBe(TURN)
+
+    await restartAndSettle()
+
+    expect(settled().turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    expect(settled().label).toMatch(/^Interrupted after /)
+  })
+
   it('reads Interrupted after N, marked interrupted: a close of the chat that died midway', async () => {
     await runningTurn(CODEX_TURN)
     // The host dies inside the close: the provider's close never answers, and nothing settles.

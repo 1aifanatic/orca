@@ -60,7 +60,7 @@ async function cancelCodexConversation(
   }
   if (target === null || 'opening' in target) {
     return target !== null || sendInDoubt(request.dispatchStatus)
-      ? { cancelled: false, refusal: {} }
+      ? { cancelled: false, refusal: { turnMayOpen: true } }
       : { cancelled: false }
   }
   const turnId = liveTurnId === null ? target.turnId : providerTurnId(session, liveTurnId)

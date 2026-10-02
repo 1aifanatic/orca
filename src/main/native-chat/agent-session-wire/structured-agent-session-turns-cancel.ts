@@ -59,25 +59,27 @@ async function stillRunsStoppedTurn(
   return stoppedTurnId === null || ctx.journal.activeTurnId() === stoppedTurnId
 }
 
-/** The row for a Stop the provider declined, in its words when it gave any. */
+/** The row for a Stop the provider declined, in its words when it gave any. One that could not
+ *  reach a turn still able to open says the Stop is unconfirmed, never that nothing ran. */
 function stopRefusedNote(
   ctx: Pick<AgentSessionTurnContext, 'failureTextContext'>,
   refusal: AgentSessionCancelOutcome['refusal']
 ): AgentJournalStatusItem {
   const detail = refusal?.detail
+  const fact = refusal?.turnMayOpen
+    ? agentSessionFailureFact('cancelUnconfirmed')
+    : agentSessionFailureFact('stopRefused', detail ? { detail } : {})
   return {
     kind: 'status',
-    ...agentSessionFailureWords(agentSessionFailureFact('stopRefused', detail ? { detail } : {}), {
-      ...ctx.failureTextContext,
-      surface: 'row'
-    })
+    ...agentSessionFailureWords(fact, { ...ctx.failureTextContext, surface: 'row' })
   }
 }
 
 /** What a Stop that ends the provider's session leaves its next serialized step: whether the
  *  provider took the interrupt, so its wind-down is worth waiting on, and when the interrupt went
  *  out. No turn id: that step runs right behind the Stop, so no later turn can slip in between.
- *  `settled` closes the Stop's settle once the child's end is proven: until then, what ends is its. */
+ *  `settled` closes the Stop's settle once the wind-down finishes, whether or not the child's exit
+ *  was proven: until then, what ends is the Stop's. */
 export type StructuredAgentSessionStopWindDown = {
   waitsForProvider: boolean
   stoppedAt: number
@@ -150,7 +152,7 @@ export async function performCancel(
     }
   }
   // A person's Stop that named no turn binds what ends while it settles (`beginJournalStopSettle`).
-  const settle = input.scope ? null : ctx.journal.stopMarks.beginSettle()
+  const settle = input.opensSettle ? ctx.journal.stopMarks.beginSettle() : null
   const binding: StopSettleBinding = {}
   const close = (): void => ctx.journal.stopMarks.settled(settle, binding.turnId)
   try {
@@ -184,6 +186,8 @@ type PerformCancelInput = {
   withdrewQueued?: boolean
   /** The session's child records: a background Stop reaches the tasks they offer a stop. */
   childWork?: () => readonly AgentChildWorkView[] | undefined
+  /** The latest Stop event is this press's own, or the in-force one it repeats: its settle binds. */
+  opensSettle?: true
 }
 
 async function cancelAndNote(
