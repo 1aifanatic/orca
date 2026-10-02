@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { SidebarHostOption } from '../sidebar/sidebar-host-options'
-import { NotificationHostToggles, toggleMutedExecutionHost } from './NotificationHostToggles'
+import { NotificationHostToggles } from './NotificationHostToggles'
 
 const { hostOptions } = vi.hoisted(() => {
   const current: SidebarHostOption[] = []
   return { hostOptions: { current } }
 })
 
-vi.mock('../sidebar/use-sidebar-host-scope-options', () => ({
-  useSidebarHostScopeOptions: () => ({ hostOptions: hostOptions.current, hostScopeOptions: [] })
+vi.mock('./use-notification-host-options', () => ({
+  useNotificationHostOptions: () => hostOptions.current
 }))
 
 function host(id: SidebarHostOption['id'], label: string): SidebarHostOption {
@@ -49,9 +49,26 @@ describe('NotificationHostToggles', () => {
       /aria-label="M4Air mac"[^>]*data-state="unchecked"|data-state="unchecked"[^>]*aria-label="M4Air mac"/
     )
   })
+})
 
-  it('toggles a machine in and out of the muted list', () => {
-    expect(toggleMutedExecutionHost([], 'runtime:m4air')).toEqual(['runtime:m4air'])
-    expect(toggleMutedExecutionHost(['runtime:m4air', 'local'], 'runtime:m4air')).toEqual(['local'])
-  })
+it('keeps the last listed muted machine reachable without reviving removed machines', () => {
+  hostOptions.current = [host('local', 'Local Mac')]
+  const html = renderToStaticMarkup(
+    <NotificationHostToggles
+      mutedExecutionHostIds={['local', 'ssh:removed']}
+      disabled={false}
+      onChange={vi.fn()}
+    />
+  )
+  expect(html).toContain('aria-label="Local Mac"')
+  expect(html).not.toContain('removed')
+  expect(
+    renderToStaticMarkup(
+      <NotificationHostToggles
+        mutedExecutionHostIds={['ssh:removed']}
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    )
+  ).toBe('')
 })

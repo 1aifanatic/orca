@@ -110,7 +110,7 @@ export function startParkedTerminalByteWatcher(
         return
       }
       pendingBellNotification = false
-      dispatchTerminalNotification(worktreeId, { source: 'terminal-bell', paneKey })
+      dispatchTerminalNotification(worktreeId, { source: 'terminal-bell', paneKey, ptyId })
     }, PARKED_NOTIFICATION_GRACE_MS)
   }
 
@@ -166,7 +166,8 @@ export function startParkedTerminalByteWatcher(
         dispatchTerminalNotification(worktreeId, {
           source: 'agent-task-complete',
           terminalTitle: title,
-          paneKey
+          paneKey,
+          ptyId
         })
       }, PARKED_NOTIFICATION_GRACE_MS)
     },

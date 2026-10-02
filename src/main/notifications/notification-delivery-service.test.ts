@@ -1,3 +1,8 @@
+import {
+  createHarness as createPushHarness,
+  registration,
+  flush
+} from '../runtime/push/push-dispatcher.test-fixture'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 import { createNotificationDeliveryService } from './notification-delivery-service'
@@ -130,7 +135,7 @@ describe('createNotificationDeliveryService', () => {
       reason: 'host-muted'
     })
     expect(harness.dispatchMobileNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ desktopAllowed: false })
+      expect.not.objectContaining({ desktopAllowed: false })
     )
     expect(harness.deliverNative).not.toHaveBeenCalled()
 
@@ -196,4 +201,55 @@ describe('createNotificationDeliveryService', () => {
     ).resolves.toEqual({ delivered: false, reason: 'blocked-by-system' })
     expect(harness.deliverNative).not.toHaveBeenCalled()
   })
+})
+
+it.each<Partial<NotificationSettings>>([{}, { enabled: false }, { agentTaskComplete: false }])(
+  'preserves mobile event content and push eligibility when a machine is muted (%j)',
+  async (overrides) => {
+    const events: Parameters<
+      NonNullable<NotificationDeliveryDependencies['dispatchMobileNotification']>
+    >[0][] = []
+    for (const muted of [false, true]) {
+      const push = createPushHarness({
+        devices: [{ deviceId: 'phone', pushRegistration: registration() }]
+      })
+      const harness = makeHarness(
+        makeSettings({ ...overrides, mutedExecutionHostIds: muted ? ['runtime:qa'] : [] })
+      )
+      harness.deps.dispatchMobileNotification = (event) => {
+        events.push(event)
+        push.dispatcher.enqueue({ ...event, notificationSeq: 1, notificationEpoch: 'epoch' })
+      }
+      createNotificationDeliveryService(harness.deps).dispatch(
+        makeRequest({ executionHostId: 'runtime:qa', agentState: 'done' })
+      )
+      await flush()
+      expect(push.sends).toHaveLength(
+        overrides.enabled === false || overrides.agentTaskComplete === false ? 0 : 1
+      )
+    }
+    expect(events[1]).toEqual(events[0])
+  }
+)
+
+it('changing a machine mute preserves mobile cooldown and does not reserve desktop cooldown', () => {
+  const settings = makeSettings({ mutedExecutionHostIds: ['runtime:qa'] })
+  const harness = makeHarness(settings)
+  const service = createNotificationDeliveryService(harness.deps)
+  const request = makeRequest({ executionHostId: 'runtime:qa' })
+  expect(service.dispatch(request)).toEqual({ delivered: false, reason: 'host-muted' })
+  settings.mutedExecutionHostIds = []
+  expect(service.dispatch(request)).toEqual({ delivered: true })
+  expect(harness.dispatchMobileNotification).toHaveBeenCalledTimes(1)
+})
+
+it('reports a muted host before a disabled source', () => {
+  const harness = makeHarness(
+    makeSettings({ agentTaskComplete: false, mutedExecutionHostIds: ['runtime:qa'] })
+  )
+  expect(
+    createNotificationDeliveryService(harness.deps).dispatch(
+      makeRequest({ executionHostId: 'runtime:qa' })
+    )
+  ).toEqual({ delivered: false, reason: 'host-muted' })
 })

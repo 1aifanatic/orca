@@ -83,9 +83,9 @@ export function createNotificationDeliveryService(
       const hostMuted =
         request.executionHostId !== undefined &&
         settings.mutedExecutionHostIds.includes(request.executionHostId)
+      // Machine mutes leave mobile eligibility and its cooldown unchanged.
       const desktopAllowed =
         settings.enabled &&
-        !hostMuted &&
         (request.source !== 'agent-task-complete' || settings.agentTaskComplete) &&
         (request.source !== 'terminal-bell' || settings.terminalBell)
 
@@ -122,7 +122,7 @@ export function createNotificationDeliveryService(
         }
       }
 
-      if (!desktopAllowed) {
+      if (!desktopAllowed || hostMuted) {
         return {
           delivered: false,
           reason: !settings.enabled ? 'disabled' : hostMuted ? 'host-muted' : 'source-disabled'

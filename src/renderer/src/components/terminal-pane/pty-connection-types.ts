@@ -122,6 +122,7 @@ export type PtyConnectionDeps = {
   // main process can also emit `'test'` from the settings-pane button.
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
+    ptyId?: string | null
     terminalTitle?: string
     paneKey?: string
     agentStatusSnapshot?: AgentCompletionStatusSnapshot

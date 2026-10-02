@@ -1,3 +1,4 @@
+import { getNotificationExecutionHostId } from '@/attention/notification-execution-host'
 import { useCallback } from 'react'
 import { useAppStore } from '@/store'
 import { resolveCommittedTitleAgentType } from '@/lib/pane-agent-evidence'
@@ -13,10 +14,7 @@ import type {
   AgentCompletionDispatchMeta,
   AgentCompletionStatusSnapshot
 } from './agent-completion-coordinator-types'
-import {
-  getNotificationExecutionHostId,
-  getNotificationWorkspaceLabels
-} from './terminal-notification-state'
+import { getNotificationWorkspaceLabels } from './terminal-notification-state'
 import { createTerminalAttentionSurface } from './terminal-attention-surface'
 import {
   applyAgentAttention,
@@ -55,6 +53,7 @@ export type TerminalNotificationEvent = {
   source: 'terminal-bell' | 'agent-task-complete'
   terminalTitle?: string
   paneKey?: string
+  ptyId?: string | null
   agentStatusSnapshot?: AgentCompletionStatusSnapshot
   agentCompletionSource?: AgentCompletionDispatchMeta['source']
 }
@@ -173,7 +172,10 @@ export function dispatchTerminalNotification(
         worktreeId: request.workspaceId,
         paneKey: request.subjectKey ?? undefined,
         ...getNotificationWorkspaceLabels(state, request.workspaceId, event.terminalTitle),
-        ...getNotificationExecutionHostId(state, request.workspaceId),
+        ...getNotificationExecutionHostId(state, request.workspaceId, {
+          paneKey: event.paneKey,
+          ptyId: event.ptyId
+        }),
         terminalTitle: event.terminalTitle,
         isActiveWorktree: request.workspaceIsActive,
         ...agentSnapshot

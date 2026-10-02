@@ -210,15 +210,6 @@ function findNotificationRepo(
   return findIndexedRepoOwnerForHost(state.repos, repoId, owningHost) ?? undefined
 }
 
-/** The machine main checks against the muted-host setting; omitted when ownership is unresolved. */
-export function getNotificationExecutionHostId(
-  state: StoreSnapshot,
-  workspaceId: string
-): { executionHostId?: ExecutionHostId } {
-  const executionHostId = getResolvedExecutionHostIdForWorktree(state, workspaceId)
-  return executionHostId ? { executionHostId } : {}
-}
-
 export function getNotificationWorkspaceLabels(
   state: StoreSnapshot,
   workspaceId: string,

@@ -1,3 +1,4 @@
+import { getNotificationExecutionHostId } from '@/attention/notification-execution-host'
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
@@ -9,10 +10,7 @@ import {
 } from '@/store/slices/worktrees/listing/worktree-host-ownership'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import {
-  getNotificationExecutionHostId,
-  getNotificationWorkspaceLabels
-} from './terminal-notification-state'
+import { getNotificationWorkspaceLabels } from './terminal-notification-state'
 
 function stateWithWorkspace() {
   return {

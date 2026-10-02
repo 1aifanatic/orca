@@ -3,21 +3,13 @@ import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { Label } from '../ui/label'
 import { Separator } from '../ui/separator'
 import { NotificationSettingToggle } from './NotificationSettingToggle'
-import { useSidebarHostScopeOptions } from '../sidebar/use-sidebar-host-scope-options'
-import { shouldShowHostScopeControls } from '../sidebar/sidebar-host-options'
+import { useNotificationHostOptions } from './use-notification-host-options'
 import { translate } from '@/i18n/i18n'
-
-export function toggleMutedExecutionHost(
-  muted: readonly ExecutionHostId[],
-  hostId: ExecutionHostId
-): ExecutionHostId[] {
-  return muted.includes(hostId) ? muted.filter((id) => id !== hostId) : [...muted, hostId]
-}
 
 type NotificationHostTogglesProps = {
   mutedExecutionHostIds: readonly ExecutionHostId[]
   disabled: boolean
-  onChange: (mutedExecutionHostIds: ExecutionHostId[]) => void
+  onChange: (hostId: ExecutionHostId, muted: boolean) => void
 }
 
 export function NotificationHostToggles({
@@ -25,9 +17,12 @@ export function NotificationHostToggles({
   disabled,
   onChange
 }: NotificationHostTogglesProps): React.JSX.Element | null {
-  const { hostOptions } = useSidebarHostScopeOptions()
-  // Why: with only this computer there is nothing to choose between.
-  if (!shouldShowHostScopeControls(hostOptions)) {
+  const hostOptions = useNotificationHostOptions()
+  // Keep an effective mute reachable after the last remote machine is removed.
+  if (
+    !hostOptions.some((host) => host.id !== 'local') &&
+    !hostOptions.some((host) => mutedExecutionHostIds.includes(host.id))
+  ) {
     return null
   }
   return (
@@ -54,7 +49,7 @@ export function NotificationHostToggles({
           description={host.detail}
           checked={!mutedExecutionHostIds.includes(host.id)}
           disabled={disabled}
-          onToggle={() => onChange(toggleMutedExecutionHost(mutedExecutionHostIds, host.id))}
+          onToggle={() => onChange(host.id, !mutedExecutionHostIds.includes(host.id))}
         />
       ))}
     </>

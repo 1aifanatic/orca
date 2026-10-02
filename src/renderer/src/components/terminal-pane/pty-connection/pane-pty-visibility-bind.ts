@@ -263,7 +263,11 @@ export function installPanePtyVisibilityBind(session: ConnectPanePtySession): vo
         return
       }
       session.pendingTerminalBellNotification = false
-      session.deps.dispatchNotification({ source: 'terminal-bell', paneKey: session.cacheKey })
+      session.deps.dispatchNotification({
+        source: 'terminal-bell',
+        paneKey: session.cacheKey,
+        ptyId: session.transport.getPtyId()
+      })
     }, AGENT_TASK_COMPLETE_NOTIFICATION_GRACE_MS)
   }
 

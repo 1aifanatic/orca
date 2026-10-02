@@ -82,6 +82,7 @@ export function installAgentTaskCompleteNotify(session: ConnectPanePtySession): 
         source: 'agent-task-complete',
         terminalTitle: title,
         paneKey: session.cacheKey,
+        ptyId: session.transport.getPtyId(),
         ...(options.agentCompletionSource
           ? { agentCompletionSource: options.agentCompletionSource }
           : {}),
