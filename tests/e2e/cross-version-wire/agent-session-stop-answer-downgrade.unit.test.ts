@@ -17,7 +17,7 @@ import {
 
 // A Stop's answer rides its note as an optional key (Rule 1). Whatever the newest release knows of
 // it, that release's host must keep the note when it replays this build's journal, and its client
-// must admit the note it is published and print its text. Both hold for every version, so the
+// must fold the note it is published and print its text. Both hold for every version, so the
 // baseline rolls with each cut.
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
 const NOTE_TEXT = 'Codex had no turn running to stop.'
@@ -40,6 +40,8 @@ function releaseExport<T>(module: Record<string, unknown>, name: string): T {
   return value as T
 }
 
+type OldClientState = { status: string; items: { itemId: string; body: { text?: string } }[] }
+
 type OldReplay = {
   state: { items: Map<string, { body: { text?: string } }> }
   corrupt: boolean
@@ -47,20 +49,20 @@ type OldReplay = {
   truncateFrom?: number
 }
 
-test("an older build keeps a Stop's note carrying its answer, folds the rows after it, and publishes it to a client that admits it", async () => {
+test("an older build keeps a Stop's note carrying its answer, folds the rows after it, and publishes it to a client that folds it", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-stop-answer-downgrade-'))
   const journals = createTrackedJournalOpener()
   try {
     // This build: a Stop's event, its note with the answer, then more history.
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
     const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-    await journal.appendStopEvent({ reason: 'user-stop', caller: 'client-1' }, 1)
+    const eventId = 'stop-event-1'
+    await journal.appendStopEvent({ id: eventId, reason: 'user-stop', caller: 'client-1' }, 1)
     const before = journal.cursor()
-    const eventAt = journal.stopMarks.latest()!.event.at
     const note = { provider: 'orca' as const, clientMessageId: 'stop:operation-1' }
     await journal.appendItem(
       note,
-      { kind: 'status', text: NOTE_TEXT, stop: { answer: 'no-effect', eventAt } },
+      { kind: 'status', text: NOTE_TEXT, stop: { answer: 'no-effect', eventId } },
       scope
     )
     await journal.appendItem(
@@ -74,16 +76,23 @@ test("an older build keeps a Stop's note carrying its answer, folds the rows aft
     }
     const rows: JournalRow[] = since.rows
     const noteId = agentJournalItemKey(note)
+    // The rows under test carry what this build writes, or the test proves nothing.
+    expect(rows.find((row) => row.kind === 'item' && row.itemId === noteId)).toMatchObject({
+      body: { stop: { answer: 'no-effect', eventId } }
+    })
+    expect(rows.find((row) => row.kind === 'tombstone' && row.stopEvent)).toMatchObject({
+      stopEvent: { id: eventId }
+    })
 
     const checkout = await materializeReleaseCheckout(resolveBaselineReleaseRef())
-    const [database, table, open, reducer, batch, schemas] = await Promise.all(
+    const [database, table, open, reducer, batch, client] = await Promise.all(
       [
         `${JOURNAL}/journal-database.ts`,
         `${JOURNAL}/journal-row-table.ts`,
         `${JOURNAL}/journal-open.ts`,
         `${JOURNAL}/journal-reducer.ts`,
         'src/main/native-chat/agent-session-wire/agent-session-journal-batch.ts',
-        'src/shared/agent-session-journal-schemas.ts'
+        'src/shared/structured-agent-session-reducer.ts'
       ].map((path) => importReleaseCheckoutModule(checkout, path))
     )
     const openJournalDatabase = releaseExport<(path: string) => { db: { close: () => void } }>(
@@ -108,13 +117,14 @@ test("an older build keeps a Stop's note carrying its answer, folds the rows aft
     const projectJournalBatch = releaseExport<
       (input: { rows: readonly JournalRow[]; snapshot: unknown; afterSequence: number }) => {
         ok: boolean
-        batch?: { items: { itemId: string; body: { text?: string } }[] }
+        batch?: { cursor: unknown; items: unknown[] }
       }
     >(batch, 'projectJournalBatch')
-    const isAdmissibleAgentJournalRenderItem = releaseExport<(value: unknown) => boolean>(
-      schemas,
-      'isAdmissibleAgentJournalRenderItem'
-    )
+    const reduceStructuredAgentSession = releaseExport<
+      (state: unknown, action: unknown, receivedAt?: number) => OldClientState
+    >(client, 'reduceStructuredAgentSession')
+    const emptyClientState = client.EMPTY_STRUCTURED_AGENT_SESSION
+    expect(emptyClientState).toMatchObject({ status: 'idle', items: [] })
 
     const { db } = openJournalDatabase(join(directory, 'older-build-journal.sqlite'))
     try {
@@ -129,18 +139,40 @@ test("an older build keeps a Stop's note carrying its answer, folds the rows aft
       expect(replayed?.state.items.get(noteId)?.body.text).toBe(NOTE_TEXT)
       expect(replayed?.state.items.size).toBe(2)
 
-      // Older client against a host publishing the note: it admits the item and reads its text.
+      // Older client against a host publishing the note: its reducer folds the batch from the
+      // Stop on, and the note shows its text.
       const projected = projectJournalBatch({
         rows: rows.filter((row) => row.seq > before.sequence),
         snapshot: renderJournalState(replayed?.state),
         afterSequence: before.sequence
       })
       expect(projected.ok).toBe(true)
-      const published = projected.batch?.items.find((item) => item.itemId === noteId)
-      expect(published?.body.text).toBe(NOTE_TEXT)
-      expect(isAdmissibleAgentJournalRenderItem(published)).toBe(true)
-      const current = journal.snapshot().items.find((item) => item.itemId === noteId)
-      expect(isAdmissibleAgentJournalRenderItem(current)).toBe(true)
+      const attached = reduceStructuredAgentSession(emptyClientState, {
+        type: 'event',
+        event: {
+          type: 'snapshot',
+          sessionId: IDENTITY.sessionId,
+          fence: 1,
+          page: {
+            sessionId: IDENTITY.sessionId,
+            epoch: journal.epoch,
+            direction: 'tail',
+            items: [],
+            removedItemIds: [],
+            submissions: [],
+            window: { oldest: null, newest: null, nextCursor: before },
+            liveCursor: before,
+            hasOlder: false,
+            hasNewer: false
+          }
+        }
+      })
+      const folded = reduceStructuredAgentSession(attached, {
+        type: 'event',
+        event: { type: 'batch', sessionId: IDENTITY.sessionId, batch: projected.batch, fence: 1 }
+      })
+      expect(folded.status).toBe('ready')
+      expect(folded.items.map((item) => item.body.text)).toEqual([NOTE_TEXT, 'after the Stop'])
     } finally {
       db.close()
     }

@@ -354,7 +354,7 @@ describe('/clear starts nothing', () => {
   it("ends a running source's agent as the user closing the chat", async () => {
     const session = host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)!
     await session.journal.appendStopEvent(
-      { reason: 'host-stop' },
+      { id: 'stop-host', reason: 'host-stop' },
       store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence
     )
     const commit = store.commitConversationClear

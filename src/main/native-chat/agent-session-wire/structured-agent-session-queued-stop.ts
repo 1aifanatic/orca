@@ -6,6 +6,7 @@
 // the pause for the rest until that card's turn starts. The event is bookkeeping: a
 // failure is reported and never gates the interrupt.
 
+import { randomUUID } from 'node:crypto'
 import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -32,15 +33,15 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  * That writes the Stop's event, whatever the queue holds, so a card its interrupt later withdraws
  * comes back to waiting under the pause, and whatever ends the child finds the event already
  * written. A Stop that throws before then, or stops nothing (`stopRecordedWork`), changed
- * nothing and writes nothing. `tookEffect` resolves to the event as written, which the Stop's
- * answer names; undefined when the write failed.
+ * nothing and writes nothing. `tookEffect` resolves to the id it gave the event, which the
+ * Stop's answer names; undefined when the write failed.
  * The drain cannot slip a card in between: the Stop runs on the drain's serialized lane.
  */
 export async function runRecordedStop<TValue>(
   ctx: AgentSessionTurnContext,
   /** `turnId` absent: the turn running when the Stop takes effect, if any. */
-  event: Omit<JournalStopEvent, 'at'>,
-  stop: (tookEffect: () => Promise<JournalStopEvent | undefined>) => Promise<TurnOutcome<TValue>>
+  event: Omit<JournalStopEvent, 'at' | 'id'>,
+  stop: (tookEffect: () => Promise<string | undefined>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
   const skipped = (error: unknown): undefined => {
     report(ctx, 'event row', error)
@@ -49,12 +50,10 @@ export async function runRecordedStop<TValue>(
   return stop(() => {
     try {
       const turnId = structuredAgentSessionStoppedTurnId(ctx.journal, event.turnId) ?? undefined
+      const id = randomUUID()
       return ctx.journal
-        .appendStopEvent({ ...event, ...(turnId ? { turnId } : {}) }, ctx.fence)
-        .then((written) => {
-          const latest = ctx.journal.stopMarks.latest()
-          return latest?.sequence === written.sequence ? latest.event : undefined
-        }, skipped)
+        .appendStopEvent({ ...event, id, ...(turnId ? { turnId } : {}) }, ctx.fence)
+        .then(() => id, skipped)
     } catch (error) {
       // A throw before the append is queued is reported too: the Stop still interrupts.
       return Promise.resolve(skipped(error))

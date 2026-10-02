@@ -142,7 +142,7 @@ async function journalRows() {
     answers: items.flatMap((item) => {
       const stop = readAgentJournalStopAnswer(item.body)
       const event = host['sessions'].get(SESSION)?.journal.stopMarks.latest()?.event
-      return stop ? [stop.eventAt === event?.at ? stop.answer : 'another event'] : []
+      return stop ? [stop.eventId === event?.id ? stop.answer : 'another event'] : []
     })
   }
 }
@@ -350,6 +350,28 @@ describe('a Codex Stop whose interrupt failed', () => {
       expect((await journalRows()).turns).toEqual(['completed'])
     }
   )
+
+  it('answers no-effect when a Stop naming no turn finds none running, and the one it waits for never opens', async () => {
+    const sent = await send('count to 40')
+    if (!sent.ok) {
+      throw new Error(JSON.stringify(sent.refusal))
+    }
+    await vi.waitFor(() => expect(turns.turnId).toBe('turn-1'))
+
+    const stopping = stop()
+    // Codex goes idle without opening the turn it answered the send into.
+    setTimeout(
+      () => notify('thread/status/changed', { threadId: THREAD, status: { type: 'idle' } }),
+      20
+    )
+    const stopped = await stopping
+    await host.flushStreamedEvents(SESSION)
+
+    expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+    expect(childEndedByStop()).toBe(false)
+    expect((await journalRows()).statuses).toEqual(['Codex had no turn running to stop.'])
+    expect((await journalRows()).answers).toEqual(['no-effect'])
+  })
 
   it('keeps the child at rest, and writes no row, when a Stop names a turn that already ended', async () => {
     await runningTurn()

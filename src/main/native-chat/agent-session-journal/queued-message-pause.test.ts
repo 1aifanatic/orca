@@ -97,7 +97,7 @@ function acceptTurn(journal: AgentSessionJournal, id: string) {
 
 /** A person's Stop taking effect. */
 function userStop(journal: AgentSessionJournal) {
-  return journal.appendStopEvent({ reason: 'user-stop' }, 0)
+  return journal.appendStopEvent({ id: 'stop-person', reason: 'user-stop' }, 0)
 }
 
 function reason(journal: AgentSessionJournal): string | null {
@@ -231,7 +231,10 @@ describe("the queue's pause, derived from the journal", () => {
   it('rides a tombstone of an id no item takes, so an older build reads it and changes nothing', async () => {
     const journal = await open()
     await turn(journal, 'typed', 'client')
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 0)
+    await journal.appendStopEvent(
+      { id: 'stop-1', reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' },
+      0
+    )
     const db = new Database(journalDatabasePath(root), { readonly: true })
     const stored = liveTestJournalRows(db, IDENTITY.sessionId)
     db.close()
@@ -240,7 +243,7 @@ describe("the queue's pause, derived from the journal", () => {
       ok: true,
       row: {
         kind: 'tombstone',
-        stopEvent: { reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }
+        stopEvent: { id: 'stop-1', reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }
       }
     })
     if (!parsed.ok || parsed.row.kind !== 'tombstone') {
@@ -337,11 +340,11 @@ describe("the queue's pause, derived from the journal", () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
     for (const reason of ['user-close', 'host-stop', 'evict'] as const) {
-      await journal.appendStopEvent({ reason }, 0)
+      await journal.appendStopEvent({ id: `stop-${reason}`, reason }, 0)
     }
     // A newer build's reason this one does not know.
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: deliberately outside the type, as a newer build could write it.
-    await journal.appendStopEvent({ reason: 'future-reason' as 'evict' }, 0)
+    await journal.appendStopEvent({ id: 'stop-future', reason: 'future-reason' as 'evict' }, 0)
     expect(reason(journal)).toBeNull()
   })
 
@@ -351,7 +354,7 @@ describe("the queue's pause, derived from the journal", () => {
     for (const later of ['host-stop', 'evict', 'user-close'] as const) {
       await userStop(journal)
       expect(held(journal)).toEqual([['draft-1', true]])
-      await journal.appendStopEvent({ reason: later }, 0)
+      await journal.appendStopEvent({ id: `stop-${later}`, reason: later }, 0)
       expect(reason(journal)).toBeNull()
       expect(held(journal)).toEqual([['draft-1', false]])
     }
@@ -366,14 +369,23 @@ describe("the queue's pause, derived from the journal", () => {
     expect(held(journal)).toEqual([['held', true]])
   })
 
-  it('the restated Stop is the same event: its reason, turn, caller and time', async () => {
+  it('the restated Stop is the same event: its id, reason, turn, caller and time', async () => {
     const journal = await open()
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-7', caller: 'phone' }, 0)
+    await journal.appendStopEvent(
+      { id: 'stop-7', reason: 'user-stop', turnId: 'turn-7', caller: 'phone' },
+      0
+    )
     const stopped = stopEvents()
     await journal.replaceEpochItems('handle_forked', 0, [])
     expect(stopEvents()).toEqual(stopped)
     expect(stopped).toEqual([
-      { reason: 'user-stop', turnId: 'turn-7', caller: 'phone', at: expect.any(Number) }
+      {
+        id: 'stop-7',
+        reason: 'user-stop',
+        turnId: 'turn-7',
+        caller: 'phone',
+        at: expect.any(Number)
+      }
     ])
   })
 

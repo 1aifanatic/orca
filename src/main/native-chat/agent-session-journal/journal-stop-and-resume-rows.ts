@@ -40,10 +40,14 @@ export function buildJournalQueueResumeRow(input: RowPlace): JournalTombstoneRow
   }
 }
 
+/** A Stop event as its writer hands it over: with the id the writer minted, so the writer can name
+ *  the event without reading it back, and untimed. */
+export type JournalNewStopEvent = Omit<JournalStopEvent, 'at' | 'id'> & { id: string }
+
 /** A Stop taking effect now: its event's time is its row's. */
 export function journalStopEventRowBuilder(
   state: () => JournalReducerState,
-  event: Omit<JournalStopEvent, 'at'>,
+  event: JournalNewStopEvent,
   fence: number
 ): (seq: number, ts: number) => JournalTombstoneRow {
   return (seq, ts) =>

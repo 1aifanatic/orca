@@ -60,8 +60,8 @@ function answers(): (AgentJournalStopNoteAnswer & { text: string })[] {
     })
 }
 
-function latestEventAt(): number | undefined {
-  return journal().stopMarks.latest()?.event.at
+function latestEventId(): string | undefined {
+  return journal().stopMarks.latest()?.event.id
 }
 
 /** Turn `turn-1` as Codex writes it: opened by `clientMessageId`, running or cut off. */
@@ -128,8 +128,9 @@ describe('a Stop pressed before its send opened a turn, which interrupted nothin
   it('answers no-effect, naming the event it wrote', async () => {
     await stoppedBeforeTheTurn(NOTHING_TO_INTERRUPT)
 
+    expect(latestEventId()).toEqual(expect.any(String))
     expect(answers()).toEqual([
-      { answer: 'no-effect', eventAt: latestEventAt(), text: 'Codex had no turn running to stop.' }
+      { answer: 'no-effect', eventId: latestEventId(), text: 'Codex had no turn running to stop.' }
     ])
   })
 
@@ -159,22 +160,31 @@ describe('a Stop pressed before its send opened a turn, which interrupted nothin
 
     // The press repeats the Stop in force: no event of its own, an answer to that one's.
     expect(stopEventCount()).toBe(1)
-    expect(answers().map(({ answer, eventAt }) => ({ answer, eventAt }))).toEqual([
-      { answer: 'no-effect', eventAt: latestEventAt() },
-      { answer: 'took', eventAt: latestEventAt() }
+    expect(answers().map(({ answer, eventId }) => ({ answer, eventId }))).toEqual([
+      { answer: 'no-effect', eventId: latestEventId() },
+      { answer: 'took', eventId: latestEventId() }
     ])
     expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
 })
 
-describe("a host stop after a person's Stop that named no turn", () => {
-  /** A send handed over with no turn open, and a Stop of it the provider answered with `answer`. */
-  async function stoppedUnopenedSend(answer: AgentSessionCancelOutcome): Promise<void> {
+describe("an eviction after a person's Stop that named no turn", () => {
+  /** A send handed over with no turn open, a card queued behind it, and a Stop of that send the
+   *  provider answered with `answer`; the card's id. */
+  async function stoppedUnopenedSend(answer: AgentSessionCancelOutcome): Promise<string> {
     rig = await createQueuedMessageTestRig()
-    await rig.workingSend()
+    const sent = await rig.workingSend()
+    const queued = await rig.send('then this', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error(`expected a queued receipt: ${JSON.stringify(queued)}`)
+    }
     rig.cancelTurn.mockResolvedValueOnce(answer)
     expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(await rig.queuePause()).toMatchObject({ reason: 'stopped' })
+    stoppedSend = sent
+    return queued.value.queued.messageId
   }
+  let stoppedSend = ''
 
   /** The Stop events' reasons as the eviction's provider close finds them. */
   async function evicted(): Promise<string[]> {
@@ -192,16 +202,35 @@ describe("a host stop after a person's Stop that named no turn", () => {
     return atClose
   }
 
-  it("defers to a Stop that took, writing nothing of the host's", async () => {
-    await stoppedUnopenedSend({ cancelled: true })
+  // The latest Stop is what holds the person's pause, so the host never writes over theirs.
+  it.each([
+    ['took', { cancelled: true }],
+    ['interrupted nothing', NOTHING_TO_INTERRUPT]
+  ] as const)(
+    "defers to a Stop that %s, so the person's pause still holds the card queued before it",
+    async (_case, answer) => {
+      const card = await stoppedUnopenedSend(answer)
+
+      expect(await evicted()).toEqual(['user-stop'])
+
+      expect(await rig.queuePause()).toMatchObject({ reason: 'stopped' })
+      expect(await rig.drafts()).toEqual([{ messageId: card, state: 'waiting' }])
+      expect(await rig.handoff(card)).toBeUndefined()
+    }
+  )
+
+  it('defers to a Stop that interrupted nothing once its send opened a turn, and that turn still ends as news', async () => {
+    const card = await stoppedUnopenedSend(NOTHING_TO_INTERRUPT)
+    await rig.settleAccepted(stoppedSend, 'stopped')
+    await turnOpenedBy(stoppedSend, 'running')
 
     expect(await evicted()).toEqual(['user-stop'])
-  })
+    expect(await rig.queuePause()).toMatchObject({ reason: 'stopped' })
+    expect(await rig.handoff(card)).toBeUndefined()
+    await turnOpenedBy(stoppedSend, 'interrupted')
 
-  it('records its own event over a Stop that interrupted nothing', async () => {
-    await stoppedUnopenedSend(NOTHING_TO_INTERRUPT)
-
-    expect(await evicted()).toEqual(['user-stop', 'evict'])
+    expect(turn()).toMatchObject({ state: 'interrupted' })
+    expect(turn()).not.toHaveProperty('outcome')
   })
 })
 
@@ -223,7 +252,7 @@ describe('a Stop of a running turn', () => {
     await restartAndSettle()
 
     expect(answers()).toEqual([
-      { answer: 'took', eventAt: latestEventAt(), text: 'Cancellation requested.' }
+      { answer: 'took', eventId: latestEventId(), text: 'Cancellation requested.' }
     ])
     expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
@@ -235,7 +264,7 @@ describe('a Stop of a running turn', () => {
     expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
     expect(answers()).toEqual([
-      { answer: 'end-owed', eventAt: latestEventAt(), text: 'Cancellation requested.' }
+      { answer: 'end-owed', eventId: latestEventId(), text: 'Cancellation requested.' }
     ])
   })
 
@@ -249,7 +278,7 @@ describe('a Stop of a running turn', () => {
 
     expect(await stopNaming(TURN)).toMatchObject({ ok: true, value: { cancelled: false } })
     expect(answers()).toEqual([
-      { answer: 'declined', eventAt: latestEventAt(), text: expect.stringContaining("didn't stop") }
+      { answer: 'declined', eventId: latestEventId(), text: expect.stringContaining("didn't stop") }
     ])
 
     await restartAndSettle()
@@ -267,7 +296,7 @@ describe('a Stop of a running turn', () => {
 
     expect(stopEventCount()).toBe(1)
     expect(answers()).toEqual([
-      { answer: 'took', eventAt: latestEventAt(), text: 'Cancellation requested.' }
+      { answer: 'took', eventId: latestEventId(), text: 'Cancellation requested.' }
     ])
     await restartAndSettle()
     expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })

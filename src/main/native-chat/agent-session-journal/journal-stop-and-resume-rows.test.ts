@@ -95,7 +95,7 @@ describe("a Stop's event and a Resume", () => {
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const cursor = journal.cursor()
-    await journal.appendStopEvent({ reason: 'user-stop' }, 1)
+    await journal.appendStopEvent({ id: 'stop-1', reason: 'user-stop' }, 1)
     await journal.appendQueueResume(1)
     const since = journal.readSince(cursor)
     if (!since.ok) {

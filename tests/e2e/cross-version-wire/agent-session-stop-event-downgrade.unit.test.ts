@@ -17,7 +17,8 @@ import type { JournalRow } from '../../../src/main/native-chat/agent-session-jou
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
 // A release that knows neither the Stop event nor the Resume marker: an unknown row kind would
-// make it delete the journal from that row on, so both ride a tombstone it already reads.
+// make it delete the journal from that row on, so both ride a tombstone it already reads, and any
+// key the event carries, its id included, is one it never looks at.
 const BASELINE_REF = 'v1.4.218'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
 // A main build that shares this one's host database and schema version, so a downgrade to it opens
@@ -68,8 +69,11 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
       )
     await append(0, 'before the Stop')
     const beforeMarks = journal.cursor()
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
-    await journal.appendStopEvent({ reason: 'user-close', turnId: 'turn-1' }, 1)
+    await journal.appendStopEvent(
+      { id: 'stop-1', reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' },
+      1
+    )
+    await journal.appendStopEvent({ id: 'stop-2', reason: 'user-close', turnId: 'turn-1' }, 1)
     await journal.appendQueueResume(1)
     const afterMarks = journal.cursor()
     await append(1, 'after the Stop')
@@ -78,6 +82,10 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
       throw new Error(`expected rows, got reset ${since.reset}`)
     }
     const rows: JournalRow[] = since.rows
+    // The events under test carry what this build writes, or the test proves nothing.
+    expect(
+      rows.flatMap((row) => (row.kind === 'tombstone' && row.stopEvent ? [row.stopEvent.id] : []))
+    ).toEqual(['stop-1', 'stop-2'])
 
     // The older build, after a downgrade, replays the same rows from its own database.
     const checkout = await materializeReleaseCheckout(BASELINE_REF)
@@ -182,7 +190,10 @@ test("an older build opens this build's journal writable and appends to it; the 
     const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
     const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     await journal.appendItem(item(0), { kind: 'status', text: 'before the Stop' }, scope)
-    await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
+    await journal.appendStopEvent(
+      { id: 'stop-1', reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' },
+      1
+    )
     await journal.appendItem(item(1), { kind: 'status', text: 'after the Stop' }, scope)
     const wrote = { cursor: journal.cursor(), items: itemIds(journal) }
     expect(journal.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
@@ -210,11 +221,13 @@ test("an older build opens this build's journal writable and appends to it; the 
     expect(rowsAfter.slice(0, rowsBefore.length)).toEqual(rowsBefore)
     expect(rowsAfter).toHaveLength(rowsBefore.length + 1)
 
-    // Upgraded again: the older build's row folds, and the person's Stop still pauses the queue.
+    // Upgraded again: the older build's row folds, and the person's Stop, still the same event,
+    // still pauses the queue.
     const upgraded = await journals.open({ identity: IDENTITY, stateDirectory: directory })
     expect(upgraded.isReadOnly).toBe(false)
     expect(upgraded.cursor().sequence).toBe(wrote.cursor.sequence + 1)
     expect(itemIds(upgraded)).toEqual([...wrote.items, 'codex:thread-1:turn-1:2'])
+    expect(upgraded.stopMarks.latest()?.event.id).toBe('stop-1')
     expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
       'stopped'
     ])

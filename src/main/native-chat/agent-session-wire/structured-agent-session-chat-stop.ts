@@ -92,13 +92,13 @@ export function mutateWithChatStop<TValue>(
         // Awaited until journal appends are synchronous; then issued here, and a `finally` awaits it.
         const recorded = withdrawn.length > 0 ? 'unrecorded' : await stopRecordedWork(ctx, turnId)
         // The event this Stop's answer is for: the one it writes, or the one in force it repeats.
-        const answers = recorded === 'unrecorded' ? await tookEffect() : recorded
+        const stopEventId = recorded === 'unrecorded' ? await tookEffect() : recorded?.id
         return performCancel(
           { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
           {
             clientOperationId: envelope.clientOperationId,
             ...named,
-            ...(answers ? { stopEventAt: answers.at } : {}),
+            ...(stopEventId !== undefined ? { stopEventId } : {}),
             stopChild,
             onStopChildError: (error) =>
               context.deps.logger.warn('ending the agent process on Stop failed', {

@@ -485,7 +485,7 @@ describe('startup restore of chats still in their per-chat files', () => {
 
     // In the Stop's order: its event, then the stopped turn's end, then a row the kill writes.
     const [stopped, ended, killed] = await Promise.all([
-      journal.appendStopEvent({ reason: 'user-stop' }, 1),
+      journal.appendStopEvent({ id: 'stop-1', reason: 'user-stop' }, 1),
       journal.appendItem(
         { provider: 'codex', threadId: 'thread-chat-a', turnId: 't', ordinal: 9 },
         { kind: 'turn', turnId: 't', state: 'interrupted', startedAt: 1 },

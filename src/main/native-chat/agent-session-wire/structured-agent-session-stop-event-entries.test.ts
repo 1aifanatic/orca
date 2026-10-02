@@ -95,7 +95,9 @@ describe('every Stop entry writes its event, with its reason, before it ends the
 
     await rig.host.close(HOST_TEST_SESSION, cause)
 
-    expect(atClose.events).toEqual([{ reason: cause, turnId: 'turn-1', at: expect.any(Number) }])
+    expect(atClose.events).toEqual([
+      { id: expect.any(String), reason: cause, turnId: 'turn-1', at: expect.any(Number) }
+    ])
   })
 
   it("a person's Stop of a running turn", async () => {
@@ -131,7 +133,9 @@ describe('every Stop entry writes its event, with its reason, before it ends the
 
     await idleSweep().tick()
 
-    expect(atClose.events).toEqual([{ reason: 'host-stop', at: expect.any(Number) }])
+    expect(atClose.events).toEqual([
+      { id: expect.any(String), reason: 'host-stop', at: expect.any(Number) }
+    ])
   })
 
   it('writes nothing when it ends nothing: a close of a chat at rest', async () => {
@@ -298,7 +302,9 @@ describe('every Stop entry writes its event, with its reason, before it ends the
       await rig.host.close(HOST_TEST_SESSION, cause).catch(() => undefined)
       expect(session().child).not.toBeNull()
       expect(session().owesProviderChildWindDown).toMatchObject({ cause })
-      expect(stopEvents()).toEqual([{ reason: cause, turnId: 'turn-1', at: expect.any(Number) }])
+      expect(stopEvents()).toEqual([
+        { id: expect.any(String), reason: cause, turnId: 'turn-1', at: expect.any(Number) }
+      ])
 
       await idleSweep().tick()
 
@@ -368,7 +374,7 @@ describe("a person's Stop pause and the Stop events after it", () => {
       'starting'
     )
     // A person's Stop of an earlier turn still pauses the queue.
-    await journal().appendStopEvent({ reason: 'user-stop', caller: 'client-1' }, 1)
+    await journal().appendStopEvent({ id: 'stop-1', reason: 'user-stop', caller: 'client-1' }, 1)
     expect(journal().queuedMessages.userStopInForce()).not.toBeNull()
     const atClose = stopEventsAtClose()
 

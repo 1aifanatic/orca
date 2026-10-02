@@ -285,9 +285,9 @@ export type AgentJournalStopAnswer = (typeof AGENT_JOURNAL_STOP_ANSWERS)[number]
 /** A Stop's answer, on the note it writes. */
 export type AgentJournalStopNoteAnswer = {
   answer: AgentJournalStopAnswer
-  /** The Stop event this answers, by its `at`, which a rewind's restatement keeps: the event the
-   *  Stop wrote, or the one in force it repeated. Absent: it answers no recorded Stop. */
-  eventAt?: number
+  /** The id of the Stop event this answers: the event the Stop wrote, or the one in force it
+   *  repeated. Absent: it answers no recorded Stop. */
+  eventId?: string
 }
 
 type AgentJournalStatusItemFields = {

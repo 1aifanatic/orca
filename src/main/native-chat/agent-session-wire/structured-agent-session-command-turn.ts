@@ -18,8 +18,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import {
   agentJournalItemKey,
-  agentJournalSubmissionKey,
-  parseAgentJournalItemKey
+  agentJournalSubmissionKey
 } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -31,6 +30,7 @@ import type { AgentSessionConversationCommand } from '../../../shared/agent-sess
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
+import { isStructuredAgentSessionStopNote } from '../../../shared/agent-session-stop-answer'
 import {
   agentJournalTurnBody,
   readAgentJournalTurn
@@ -116,19 +116,6 @@ export function structuredAgentSessionCommandRunning(
 
 export function isStructuredAgentSessionCommandTurnId(turnId: string): boolean {
   return turnId.startsWith('compact:')
-}
-
-const STOP_NOTE_PREFIX = 'stop:'
-
-/** A Stop's note, keyed by the turn it stopped (or, with no turn, by its operation). */
-export function structuredAgentSessionStopNoteIdentity(stopKey: string): AgentJournalItemIdentity {
-  return { provider: 'orca', clientMessageId: `${STOP_NOTE_PREFIX}${stopKey}` }
-}
-
-/** Whether a journal row is a Stop's note. */
-export function isStructuredAgentSessionStopNote(itemId: string): boolean {
-  const identity = parseAgentJournalItemKey(itemId)
-  return identity?.provider === 'orca' && identity.clientMessageId.startsWith(STOP_NOTE_PREFIX)
 }
 
 /** Whether an earlier Stop already asked the running command `turnId` names to end. Read from the

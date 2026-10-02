@@ -9,15 +9,15 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalStopAnswerReplaces,
-  readAgentJournalStopAnswer
+  readAgentJournalStopAnswer,
+  structuredAgentSessionStopNoteIdentity
 } from '../../../shared/agent-session-stop-answer'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
 import type { AgentSessionCancelOutcome } from './structured-agent-session-adapter'
 import {
   isStructuredAgentSessionCommandTurnId,
-  structuredAgentSessionCommandWasStopped,
-  structuredAgentSessionStopNoteIdentity
+  structuredAgentSessionCommandWasStopped
 } from './structured-agent-session-command-turn'
 import {
   answerCancelOfSettledPrompt,
@@ -129,9 +129,9 @@ export async function performCancel(
     endSession?: (windDown: StructuredAgentSessionStopWindDown) => void
     /** The host already withdrew queued messages for this Stop. */
     withdrewQueued?: boolean
-    /** The Stop event this Stop answers (`JournalStopEvent.at`): the one it wrote, or the one in
-     *  force it repeated. Absent: its answer names none. */
-    stopEventAt?: number
+    /** The id of the Stop event this Stop answers: the one it wrote, or the one in force it
+     *  repeated. Absent: its answer names none. */
+    stopEventId?: string
     /** The session's child records: a background Stop reaches the tasks they offer a stop. */
     childWork?: () => readonly AgentChildWorkView[] | undefined
   }
@@ -288,7 +288,7 @@ export async function performCancel(
   const identity = structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId)
   const stop = {
     answer,
-    ...(input.stopEventAt !== undefined ? { eventAt: input.stopEventAt } : {})
+    ...(input.stopEventId !== undefined ? { eventId: input.stopEventId } : {})
   }
   const previous = readAgentJournalStopAnswer(
     ctx.journal.itemBody(agentJournalItemKey(identity)) ?? undefined

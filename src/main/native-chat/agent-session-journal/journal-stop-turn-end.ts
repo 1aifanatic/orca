@@ -121,9 +121,25 @@ function stopIsTurnCancellation(
   return opener !== undefined && isStopTarget(state, stop, opener)
 }
 
+/** Whether `stop`, a person's, reaches the end of turn `turnId`, opened by `userItemId` and ending
+ *  at `endedAt`, whatever it answered. An exit the provider saw before the Stop was news, whenever
+ *  its end is written. */
+function stopCoversTurnEnd(
+  state: TurnEndState,
+  stop: JournalLatestStop,
+  turnId: string,
+  userItemId: string | undefined,
+  endedAt: number | undefined
+): boolean {
+  return (
+    stopIsTurnCancellation(state, stop, turnId, userItemId) &&
+    (endedAt === undefined || endedAt >= stop.event.at)
+  )
+}
+
 /** THE rule: whether the latest Stop makes turn `turnId`, opened by `userItemId` and ending at
- *  `endedAt` with no verdict of its own, a person's cancellation. An exit the provider saw before
- *  the Stop was news, whenever its end is written. */
+ *  `endedAt` with no verdict of its own, a person's cancellation: it reaches that end and still
+ *  counts. */
 function stopEndsTurnAsCancellation(
   state: TurnEndState,
   turnId: string,
@@ -133,8 +149,7 @@ function stopEndsTurnAsCancellation(
   const stop = state.queuePauseMarks.latestStop
   return (
     stop !== null &&
-    stopIsTurnCancellation(state, stop, turnId, userItemId) &&
-    (endedAt === undefined || endedAt >= stop.event.at) &&
+    stopCoversTurnEnd(state, stop, turnId, userItemId, endedAt) &&
     journalStopStillCounts(state, stop.event)
   )
 }
@@ -150,11 +165,45 @@ function unansweredSendsAreStopTargets(state: TurnEndState, stop: JournalLatestS
   )
 }
 
+/** The latest Stop when it is a person's and reaches turn `turnId` (null: the sends in flight with
+ *  no turn running), ending at `endedAt`, whatever it answered; else null. */
+function personStopCoveringTurn(
+  state: TurnEndState,
+  turnId: string | null,
+  endedAt: number | undefined,
+  openedBy: string | undefined
+): JournalLatestStop | null {
+  const stop = state.queuePauseMarks.latestStop
+  if (stop === null || !stopIsAPersons(stop.event.reason)) {
+    return null
+  }
+  if (turnId === null) {
+    return stop.event.turnId === undefined && unansweredSendsAreStopTargets(state, stop)
+      ? stop
+      : null
+  }
+  const turn = [...state.items.values()]
+    .map((item) => readAgentJournalTurn(item.body))
+    .find((candidate) => candidate?.turnId === turnId)
+  const userItemId =
+    turn?.userItemId ?? (openedBy === undefined ? undefined : agentJournalSubmissionKey(openedBy))
+  return stopCoversTurnEnd(state, stop, turnId, userItemId, endedAt) ? stop : null
+}
+
+/**
+ * Whether a person's Stop is in force for turn `turnId` (null: the sends in flight with no turn
+ * running), whatever it answered: a host stop defers to it, so the person's pause on the queue
+ * holds and their reason stays the latest. Not who owns the end; that is `personStopDecidesTurn`.
+ */
+export function personStopCoversTurn(state: TurnEndState, turnId: string | null): boolean {
+  return personStopCoveringTurn(state, turnId, undefined, undefined) !== null
+}
+
 /**
  * Whether a person's Stop decides the end of turn `turnId` (null: the sends in flight with no turn
  * running), by `turnEndAfterStop`'s rule: ending at `endedAt` it is their cancellation, and still
- * running it is theirs to end. For a writer that must choose before the end is written: a host
- * stop must not supersede it, and a Claude error result naming no reason leaves its verdict to it.
+ * running it is theirs to end. For a writer that must choose before the end is written, such as a
+ * Claude error result naming no reason, which leaves its verdict to it.
  */
 export function personStopDecidesTurn(
   state: TurnEndState,
@@ -163,23 +212,8 @@ export function personStopDecidesTurn(
   /** The submission that opened the turn, for one whose rows have yet to land. */
   openedBy?: string
 ): boolean {
-  const stop = state.queuePauseMarks.latestStop
-  if (stop === null || !stopIsAPersons(stop.event.reason)) {
-    return false
-  }
-  if (turnId === null) {
-    return (
-      stop.event.turnId === undefined &&
-      unansweredSendsAreStopTargets(state, stop) &&
-      journalStopStillCounts(state, stop.event)
-    )
-  }
-  const turn = [...state.items.values()]
-    .map((item) => readAgentJournalTurn(item.body))
-    .find((candidate) => candidate?.turnId === turnId)
-  const userItemId =
-    turn?.userItemId ?? (openedBy === undefined ? undefined : agentJournalSubmissionKey(openedBy))
-  return stopEndsTurnAsCancellation(state, turnId, userItemId, endedAt)
+  const stop = personStopCoveringTurn(state, turnId, endedAt, openedBy)
+  return stop !== null && journalStopStillCounts(state, stop.event)
 }
 
 /**

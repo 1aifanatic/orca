@@ -276,7 +276,7 @@ async function stopAnswers(): Promise<{ answer: string; answersLatestStop: boole
   return (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
     const stop = readAgentJournalStopAnswer(item.body)
     return stop
-      ? [{ answer: stop.answer, answersLatestStop: stop.eventAt === latest?.event.at }]
+      ? [{ answer: stop.answer, answersLatestStop: stop.eventId === latest?.event.id }]
       : []
   })
 }

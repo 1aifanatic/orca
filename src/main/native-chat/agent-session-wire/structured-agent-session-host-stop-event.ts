@@ -1,6 +1,7 @@
 // The Stop event a host stop writes (`JournalStopEvent`): whether it ends work its event must
 // record, and the write itself, issued before the kill.
 
+import { randomUUID } from 'node:crypto'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
@@ -63,10 +64,11 @@ export async function stopEndsWork(
       journal.submissions(),
       child.fence
     )
-  // A host stop of work a person's Stop is already ending must not supersede that Stop's reason.
+  // A host stop of work a person's Stop is already ending must not supersede that Stop's reason,
+  // whatever it answered: the latest Stop is what holds their queue's pause.
   return (
     working &&
-    (ending.cause === 'user-close' || !journal.stopMarks.personStopDecides(journal.activeTurnId()))
+    (ending.cause === 'user-close' || !journal.stopMarks.personStopCovers(journal.activeTurnId()))
   )
 }
 
@@ -84,7 +86,7 @@ export function recordStopEvent(
   const turnId = session.journal.activeTurnId()
   return session.journal
     .appendStopEvent(
-      { reason: ending.cause, ...(turnId !== null ? { turnId } : {}) },
+      { id: randomUUID(), reason: ending.cause, ...(turnId !== null ? { turnId } : {}) },
       structuredAgentSessionConversationFence(context.deps.store, sessionId)
     )
     .then(

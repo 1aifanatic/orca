@@ -84,11 +84,14 @@ export type JournalTombstoneRow = JournalRowBase & {
  *  `journal-store-open.ts`) but ignores an unknown key; a row kind of its own once released hosts
  *  skip unknown kinds instead. */
 export type JournalStopEvent = {
+  /** Identity, minted by the writer; a rewind's restatement keeps it. Absent only on rows dev
+   *  builds wrote before it, which no answer names. */
+  id?: string
   /** Persisted: never rename an arm. Only `user-stop` pauses the queue. */
   reason: StructuredAgentSessionStopCause
   /** The turn the Stop named, else the one running when it took effect. */
   turnId?: string
-  /** When it took effect; a rewind's restatement keeps it. */
+  /** When it took effect: timing only, never identity. A rewind's restatement keeps it. */
   at: number
   /** Who asked (`StructuredAgentSessionCaller.callerKey`). */
   caller?: string

@@ -91,6 +91,7 @@ describe("a Stop's event", () => {
     expect(rig.cancelTurn).toHaveBeenCalledTimes(1)
     expect(atInterrupt).toEqual([
       {
+        id: expect.any(String),
         reason: 'user-stop',
         turnId: 'turn-named',
         caller: QUEUED_RIG_CALLER.callerKey,
@@ -150,7 +151,12 @@ describe("a Stop's event", () => {
     expect(rig.cancelTurn).not.toHaveBeenCalled()
     expect(rig.closeSession).toHaveBeenCalledTimes(1)
     expect(atEnd).toEqual([
-      { reason: 'user-stop', caller: QUEUED_RIG_CALLER.callerKey, at: expect.any(Number) }
+      {
+        id: expect.any(String),
+        reason: 'user-stop',
+        caller: QUEUED_RIG_CALLER.callerKey,
+        at: expect.any(Number)
+      }
     ])
   })
 
@@ -165,7 +171,12 @@ describe("a Stop's event", () => {
     release()
     expect(rig.cancelTurn).not.toHaveBeenCalled()
     expect(stopEvents()).toEqual([
-      { reason: 'user-stop', caller: QUEUED_RIG_CALLER.callerKey, at: expect.any(Number) }
+      {
+        id: expect.any(String),
+        reason: 'user-stop',
+        caller: QUEUED_RIG_CALLER.callerKey,
+        at: expect.any(Number)
+      }
     ])
   })
 
@@ -279,7 +290,7 @@ describe("a Stop's event", () => {
     vi.spyOn(open, 'appendSubmission').mockImplementation(async (input, consume) => {
       if (input.origin === 'host' && consume?.messageId === draftId && !injected) {
         injected = true
-        await open.appendStopEvent({ reason: 'user-stop' }, input.fence)
+        await open.appendStopEvent({ id: 'stop-injected', reason: 'user-stop' }, input.fence)
       }
       return appendSubmission(input, consume)
     })

@@ -35,5 +35,5 @@ export const AgentJournalFailureFactSchema = z.object({
  *  `readAgentJournalStopAnswer` reads an unknown one as no answer. */
 export const AgentJournalStopNoteAnswerSchema = z.object({
   answer: z.string().min(1),
-  eventAt: z.number().finite().optional()
+  eventId: z.string().min(1).optional()
 })

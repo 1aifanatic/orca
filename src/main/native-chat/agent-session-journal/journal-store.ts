@@ -60,9 +60,10 @@ import type {
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
 import {
   journalQueueResumeRowBuilder,
-  journalStopEventRowBuilder
+  journalStopEventRowBuilder,
+  type JournalNewStopEvent
 } from './journal-stop-and-resume-rows'
-import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
+import type { AgentJournalEpochReason } from './journal-row-schema'
 import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
@@ -315,7 +316,7 @@ export class AgentSessionJournal {
   }
 
   /** A Stop that took effect, timed by its row (`JournalStopEvent`). */
-  appendStopEvent(event: Omit<JournalStopEvent, 'at'>, fence: number): Promise<AgentJournalCursor> {
+  appendStopEvent(event: JournalNewStopEvent, fence: number): Promise<AgentJournalCursor> {
     return this.rowWriter.append(journalStopEventRowBuilder(() => this.state, event, fence))
   }
 
