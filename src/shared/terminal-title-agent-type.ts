@@ -47,7 +47,7 @@ export function isGeminiTerminalTitle(title: string): boolean {
   if (isQoderTerminalTitle(title)) {
     return false
   }
-  if (isDshTerminalTitle(title)) {
+  if (isDshTerminalTitle(title) || isDeepSeekBuildTerminalTitle(title)) {
     return false
   }
   // Why: Gemini OSC glyphs are stronger evidence than any cwd/session text.

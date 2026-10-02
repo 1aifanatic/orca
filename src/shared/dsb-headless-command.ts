@@ -10,8 +10,44 @@ const VALUE_OPTIONS = new Set([
   '--base-url',
   '--session',
   '--worktree-ref',
-  '--effort'
+  '--effort',
+  '--model',
+  '-m',
+  '--rules',
+  '--append-system-prompt',
+  '--system-prompt',
+  '--system-prompt-override',
+  '--permission-mode',
+  '--output-format',
+  '--json-schema',
+  '--allow',
+  '--allowedTools',
+  '--deny',
+  '--disallowedTools',
+  '--reasoning-effort',
+  '--compaction-mode',
+  '--compaction-detail',
+  '--load',
+  '--session-id',
+  '-s',
+  '--ref',
+  '--agent',
+  '--agents',
+  '--tools',
+  '--disallowed-tools',
+  '--max-turns',
+  '--background-wait-timeout',
+  '--sandbox',
+  '--storage-mode',
+  '--client-identifier',
+  '--hunk-tracker-mode',
+  '--installer',
+  '--debug-file'
 ])
+
+const OPTIONAL_VALUE_OPTIONS = new Set(['--resume', '-r', '--worktree', '-w'])
+
+const ONE_SHOT_OPTIONS = new Set(['-p', '--single', '--print', '--prompt-json', '--prompt-file'])
 
 function isDsbScriptEntrypoint(token: string): boolean {
   const base = token.split(/[\\/]/).pop()?.toLowerCase() ?? ''
@@ -20,7 +56,7 @@ function isDsbScriptEntrypoint(token: string): boolean {
   )
 }
 
-// Why: `dsb run` exits after one message; Node preload arguments precede the npm shim.
+// Outer `agent` forwards native one-shot flags; preload arguments precede npm shims.
 export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean {
   const command =
     comparablePath(tokens[0] ?? '')
@@ -40,11 +76,27 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
     if (!token || token === '--') {
       return false
     }
-    if (VALUE_OPTIONS.has(token)) {
+    const name = token.split('=', 1)[0]
+    if (ONE_SHOT_OPTIONS.has(name) || /^-p[^-]/.test(token)) {
+      return true
+    }
+    if (VALUE_OPTIONS.has(name) && !token.includes('=')) {
+      index += 1
+      continue
+    }
+    if (
+      OPTIONAL_VALUE_OPTIONS.has(name) &&
+      !token.includes('=') &&
+      tokens[index + 1] &&
+      !tokens[index + 1].startsWith('-')
+    ) {
       index += 1
       continue
     }
     if (token.startsWith('-')) {
+      continue
+    }
+    if (token === 'agent') {
       continue
     }
     return token === 'run'

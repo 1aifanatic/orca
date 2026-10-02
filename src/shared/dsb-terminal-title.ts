@@ -4,9 +4,10 @@ import {
   GEMINI_PERMISSION,
   GEMINI_SILENT_WORKING,
   GEMINI_WORKING,
-  containsAgentSpinnerGlyph,
-  isDshTerminalTitle
-} from './agent-title-core'
+  containsAgentSpinnerGlyph
+} from './agent-title-glyphs'
+import { isDshTerminalTitle } from './dsh-terminal-title'
+import type { AgentStatus } from './agent-title-core'
 import { getWrapperTitleSegments } from './terminal-title-wrapper-segments'
 
 const DSB_TITLE_RE = /(?:^| - )deepseek build$/i
@@ -40,4 +41,15 @@ export function isDeepSeekBuildTerminalTitle(title: string): boolean {
       DSB_TITLE_RE.test(segment) &&
       (!containsAgentSpinnerGlyph(segment) || DSB_WORKING_TITLE_RE.test(segment))
   )
+}
+
+export function getDeepSeekBuildTitleStatus(title: string): AgentStatus | null {
+  if (!isDeepSeekBuildTerminalTitle(title)) {
+    return null
+  }
+  const segments = getWrapperTitleSegments(title.trim())
+  if (segments.some((segment) => segment.startsWith('⚠ Action Required - '))) {
+    return 'permission'
+  }
+  return segments.some((segment) => DSB_WORKING_TITLE_RE.test(segment)) ? 'working' : 'idle'
 }

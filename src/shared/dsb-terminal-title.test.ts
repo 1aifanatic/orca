@@ -1,3 +1,5 @@
+import { isGeminiTerminalTitle as isCoreGeminiTitle } from './agent-title-core'
+import { detectAgentStatusFromTitle, normalizeTerminalTitle } from './agent-title-status'
 import { describe, expect, it } from 'vitest'
 import { isClaudeAgent as isIdentityClaudeAgent, getAgentLabel } from './agent-title-identity'
 import { isDeepSeekBuildTerminalTitle } from './dsb-terminal-title'
@@ -58,12 +60,23 @@ describe('DeepSeek Build terminal titles', () => {
   it.each(['✦', '⏲', '◇', '✋'])('keeps task glyph %s from changing a DSB owner', (glyph) => {
     const busy = `⠋ - Review ${glyph} rendering - DeepSeek Build`
     for (const title of [busy, `zsh | ${busy}`, `⚠ Action Required - ${busy}`]) {
+      expect(isCoreGeminiTitle(title)).toBe(false)
+      expect(normalizeTerminalTitle(title)).toBe(title)
+      expect(detectAgentStatusFromTitle(title)).toBe(
+        title.startsWith('⚠') ? 'permission' : 'working'
+      )
       expect(resolveTerminalTitleAgentType(title)).toBe('dsb')
       expect(getAgentLabel(title)).toBe('DeepSeek Build')
       expect(getTerminalTitleAgentLabel(title)).toBe('DeepSeek Build')
       expect(collectAgentTitleEvidence(title).agent).toBe('dsb')
       expect(resolveCanonicalPaneAgentIdentity({ title }).agent).toBe('dsb')
     }
+  })
+
+  it.each(['✦', '⏲', '◇', '✋'])('keeps idle task glyph %s from changing Build status', (glyph) => {
+    const title = `Review ${glyph} rendering - DeepSeek Build`
+    expect(detectAgentStatusFromTitle(title)).toBe('idle')
+    expect(normalizeTerminalTitle(title)).toBe(title)
   })
 
   it('matches the product segment and not a mention inside another task', () => {

@@ -52,6 +52,27 @@ describe('manually started DeepSeek Build terminals', () => {
     ])
   })
 
+  it.each(['✦', '⏲', '◇', '✋'])(
+    'preserves Build title and identity through OSC normalization with task glyph %s',
+    async (glyph) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture supplies the store subset used by terminal observations.
+      const runtime = new OrcaRuntimeService(makeStore() as never)
+      runtime.setPtyController({
+        spawn: async () => ({ id: 'pty-dsb' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => null
+      })
+      const terminal = await runtime.createTerminal('path:/tmp/worktree-a')
+      const title = `⠋ - Review ${glyph} rendering - DeepSeek Build`
+      runtime.onPtyData('pty-dsb', `\x1b]0;${title}\x07`, Date.now())
+      const listing = await runtime.listTerminals()
+      expect(listing.terminals).toEqual([
+        expect.objectContaining({ handle: terminal.handle, agentIdentity: 'dsb', title })
+      ])
+    }
+  )
+
   it('publishes observed DSB identity and sends a prompt with generic input behavior', async () => {
     vi.useFakeTimers()
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture supplies the store subset exercised by terminal recognition and prompt submission.
