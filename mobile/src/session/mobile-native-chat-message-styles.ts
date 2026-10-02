@@ -36,7 +36,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingVertical: 3
+    // With the toggle's 6 pt hitSlop above and below, a 44 pt touch target.
+    minHeight: 32
   },
   reasoningPressed: {
     opacity: 0.6

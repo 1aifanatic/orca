@@ -24,6 +24,8 @@ export function MobileNativeChatReasoningRow({
   onOpenFile?: (relativePath: string) => void
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const headline = nativeChatReasoningHeadlineText(nativeChatReasoningHeadline(message))
+  const label = nativeChatReasoningHeadlineText({ kind: 'reasoning' })
   return (
     <View>
       <Pressable
@@ -32,9 +34,11 @@ export function MobileNativeChatReasoningRow({
         hitSlop={6}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
+        // Desktop's screen-reader prefix: the headline alone does not say what was thought.
+        accessibilityLabel={headline === label ? label : `${label}: ${headline}`}
       >
         <Text style={styles.reasoningHeadline} numberOfLines={1}>
-          {nativeChatReasoningHeadlineText(nativeChatReasoningHeadline(message))}
+          {headline}
         </Text>
         <View style={expanded ? styles.reasoningCaretOpen : undefined}>
           <ChevronRight size={14} color={colors.textMuted} strokeWidth={2} />

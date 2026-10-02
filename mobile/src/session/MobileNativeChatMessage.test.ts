@@ -307,6 +307,9 @@ describe('MobileNativeChatMessage', () => {
       const tree = render(reasoning())
       expect(textIn(tree.root)).toContain('Thought for 3s')
       expect(toggleOf(tree).props.accessibilityState).toEqual({ expanded: false })
+      // Said with what it is, as desktop's screen-reader prefix does, on a 32 + 2 × 6 pt target.
+      expect(toggleOf(tree).props.accessibilityLabel).toBe('Reasoning: Thought for 3s')
+      expect(toggleOf(tree).props.hitSlop).toBe(6)
       expect(markdownIn(tree)).toHaveLength(0)
     })
 
@@ -328,9 +331,10 @@ describe('MobileNativeChatMessage', () => {
 
     it('says only what the host saw', () => {
       expect(textIn(render(reasoning({ state: 'running' })).root)).toContain('Thought')
-      expect(
-        textIn(render(reasoning({ state: undefined, completedAt: undefined })).root)
-      ).toContain('Reasoning')
+      const unknown = render(reasoning({ state: undefined, completedAt: undefined }))
+      expect(textIn(unknown.root)).toContain('Reasoning')
+      // No "Reasoning: Reasoning".
+      expect(toggleOf(unknown).props.accessibilityLabel).toBe('Reasoning')
       expect(textIn(render(reasoning({ completedAt: 1_300 })).root)).toContain('Thought for 1s')
     })
   })

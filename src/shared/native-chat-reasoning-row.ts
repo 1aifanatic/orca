@@ -44,7 +44,7 @@ export function nativeChatReasoningHeadline(
 }
 
 /** English copy for clients without a translation catalog; desktop translates the same three. */
-export const NATIVE_CHAT_REASONING_COPY = {
+const NATIVE_CHAT_REASONING_COPY = {
   reasoning: 'Reasoning',
   thought: 'Thought',
   thoughtFor: (duration: string) => `Thought for ${duration}`
