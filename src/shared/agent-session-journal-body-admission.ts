@@ -11,11 +11,19 @@ import {
 export type AgentJournalContentVerdict = 'readable' | 'unreadable' | 'malformed'
 
 export function readAgentJournalItemBody(body: unknown): AgentJournalContentVerdict {
-  const parsed = AgentJournalItemBodySchema.safeParse(body, { reportInput: true })
+  return readAgentJournalContent(AgentJournalItemBodySchema, body)
+}
+
+/** The verdict for `value` against any journal schema, by the rule above. */
+export function readAgentJournalContent(
+  schema: z.ZodType,
+  value: unknown
+): AgentJournalContentVerdict {
+  const parsed = schema.safeParse(value, { reportInput: true })
   if (parsed.success) {
     return 'readable'
   }
-  // A newer build's value anywhere wins over damage beside it: never delete what a newer build wrote.
+  // A newer build's value anywhere wins over damage beside it: never delete what it wrote.
   return parsed.error.issues.some(isOutsideClosedSet) ? 'unreadable' : 'malformed'
 }
 
@@ -28,8 +36,9 @@ export function readAgentJournalMessageBody(body: unknown): AgentJournalContentV
 }
 
 /** A new string where a closed set of strings expects one of its own: the set's type, so never a
- *  changed one. A plain union's branches are all searched: each in the body schemas pairs a
- *  discriminated union with an open fallback, whose failure is never a closed-set one. */
+ *  changed one. zod reports every branch of a plain union only when each branch aborts; the body
+ *  schemas' plain unions pair a discriminated union with an aborting open fallback
+ *  (`unknownDiscriminantArm`), whose own failure is never a closed-set one. */
 function isOutsideClosedSet(issue: z.core.$ZodIssue): boolean {
   if (issue.code === 'invalid_value') {
     return (

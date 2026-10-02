@@ -216,6 +216,29 @@ describe("a newer build's content inside a known row", () => {
   })
 })
 
+describe("a turn's context usage of a newer shape", () => {
+  it('is dropped like an unusable annotation: the chat stays writable and keeps the row', async () => {
+    const { written } = await journalWith((epoch) => [
+      itemRow(epoch, 'codex:thread-1:turn-1:2', {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'completed',
+        contextUsage: { used: { kind: 'measured', capturedAt: 1 } }
+      })
+    ])
+    const journal = await open()
+    expect(journal.isReadOnly).toBe(false)
+    expect(journal.repair).toEqual({ malformedRows: 0 })
+    expect(journal.snapshot().items[2]?.body).toEqual({
+      kind: 'turn',
+      turnId: 'turn-1',
+      state: 'completed'
+    })
+    await journals.closeAll()
+    expect(stored()).toEqual(written)
+  })
+})
+
 describe('damage', () => {
   it.each([
     ['a broken required field', { kind: 'diff', path: 'a.ts', patch: { head: 'x' } }],

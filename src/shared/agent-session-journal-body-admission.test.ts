@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
+  readAgentJournalContent,
   readAgentJournalItemBody,
   readAgentJournalMessageBody
 } from './agent-session-journal-body-admission'
+import { unknownDiscriminantArm } from './agent-session-journal-schemas'
 
 const RESOLUTION = { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
 const QUESTION_ENTRY = {
@@ -75,13 +78,27 @@ describe("a value outside a closed set this build knows: a newer build's", () =>
   it.each([
     ['a body kind', { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }],
     ['a nested literal', { ...PLAN_APPROVAL, subject: { kind: 'diff', path: 'a.ts' } }],
-    [
-      'a nested discriminant',
-      { kind: 'turn', turnId: 't', state: 'done', contextUsage: { used: { kind: 'measured' } } }
-    ],
     ['one beside damage', { ...PLAN_APPROVAL, title: 5, subject: { kind: 'diff' } }]
   ])('is unreadable: %s', (_name, body) => {
     expect(readAgentJournalItemBody(body)).toBe('unreadable')
+  })
+})
+
+describe('a closed set inside a known arm of an open union, as blocks and goal changes are built', () => {
+  const OpenBlock = z.union([
+    z.discriminatedUnion('type', [
+      z.object({ type: z.literal('text'), text: z.string(), tone: z.enum(['info']).optional() })
+    ]),
+    unknownDiscriminantArm('type', new Set(['text']))
+  ])
+
+  it("reads a new value there as a newer build's, damage there as damage", () => {
+    expect(readAgentJournalContent(OpenBlock, { type: 'text', text: 'x', tone: 'critical' })).toBe(
+      'unreadable'
+    )
+    expect(readAgentJournalContent(OpenBlock, { type: 'text', text: 5 })).toBe('malformed')
+    expect(readAgentJournalContent(OpenBlock, { type: 'chart' })).toBe('readable')
+    expect(readAgentJournalContent(OpenBlock, { type: 5 })).toBe('malformed')
   })
 })
 

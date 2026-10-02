@@ -13,10 +13,11 @@
 // reader first and is written only once no supported build lacks that reader,
 // or is written at a bumped `v`.
 //
-// Inside a known row the same holds a level down. A lifecycle mutation of a kind this build does
-// not know, or a body holding a value outside a closed set it knows (a body kind, a nested
-// discriminant, a literal), is UNREADABLE, whatever else in the row fails. Any other failure is
-// damage, which the open repairs. Builds from before this rule delete the journal from such a
+// Inside a known row with that envelope the same holds a level down. A lifecycle mutation of a kind
+// this build does not know, or a body holding a value outside a closed set it knows (a body kind,
+// a nested discriminant, a literal), is UNREADABLE, whatever else in the row fails; a turn's
+// context usage is the exception, dropped like the other unusable annotations. Any other failure
+// is damage, which the open repairs. Builds from before this rule delete the journal from such a
 // row, so the same reader-first-or-`v` rule applies to a new value in a closed set.
 
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'

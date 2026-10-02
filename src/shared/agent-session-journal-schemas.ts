@@ -14,11 +14,14 @@
 // newer build must not be misread as malformed (see journal-row-schema.ts).
 //
 // A newer writer extends a body only by new keys, new values in a closed set (a kind, a
-// discriminant, a literal), or a bumped row `v`, never by changing a field's type. A value outside
-// a closed set reads as a newer build's, so the chat goes read-only and nothing is deleted
-// (agent-session-journal-body-admission.ts); any other failure is damage. A new value of an open
-// string (turn, resolution, tool or goal `state`, a block `type`) reads as-is in older builds, so
-// it must be safe for them there or ride a bumped `v`.
+// discriminant, a literal), or a bumped row `v`, never by changing a field's type or a bound this
+// build checks. A value outside a closed set reads as a newer build's, so the chat goes read-only
+// and nothing is deleted (agent-session-journal-body-admission.ts); the one exception is a turn's
+// context usage, which is dropped (journal-row-unusable-annotations.ts). Any other failure is
+// damage. A new value of an open string (turn, resolution, tool or goal `state`, a block `type`)
+// is no newer build's: older builds read it as-is, a rewind keeps only the states it knows
+// (structured-rewind-journal-body.ts), and history pages carry no row `v`, so older clients see
+// it too. Such a value must be safe for every older build.
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
@@ -58,6 +61,12 @@ const KNOWN_BLOCK_TYPES = new Set([
   'subagent-group',
   'background-task'
 ])
+
+/** The arm a discriminant this build does not know reads through. It aborts, so a known arm's
+ *  own failure still reaches the reader (agent-session-journal-body-admission.ts). */
+export function unknownDiscriminantArm(key: string, known: ReadonlySet<string>) {
+  return z.object({ [key]: z.string() }).refine((v) => !known.has(v[key] ?? ''), { abort: true })
+}
 
 /** Provider IDs are opaque; reject all-whitespace values without rewriting valid IDs. */
 const ProviderCallId = z
@@ -130,7 +139,7 @@ const Block = z.union([
       settledAt: z.number().optional()
     })
   ]),
-  z.object({ type: z.string() }).refine((block) => !KNOWN_BLOCK_TYPES.has(block.type))
+  unknownDiscriminantArm('type', KNOWN_BLOCK_TYPES)
 ])
 
 const PromptOption = z.object({
@@ -201,7 +210,7 @@ const ThreadGoalState = z.union([
     z.object({ state: z.literal('set'), goal: ThreadGoal }),
     z.object({ state: z.literal('cleared') })
   ]),
-  z.object({ state: z.string() }).refine((value) => !['set', 'cleared'].includes(value.state))
+  unknownDiscriminantArm('state', new Set(['set', 'cleared']))
 ])
 
 /** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
