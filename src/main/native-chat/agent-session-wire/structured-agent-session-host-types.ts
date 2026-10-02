@@ -125,6 +125,8 @@ export type StructuredAgentSessionHostDeps = {
   now?: () => number
   /** The idle sweep's period and window. Tests drive these; production takes the defaults. */
   idleSweep?: { intervalMs?: number; idleMs?: number }
+  /** How long startup waits on each chat's recovery. Tests shorten it; production takes the default. */
+  startupRecoveryBudgetMs?: number
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   /** Where every failure the host carries on past is reported. Required: a host without one would

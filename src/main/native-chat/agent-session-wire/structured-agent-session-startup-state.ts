@@ -50,8 +50,12 @@ export type StructuredAgentSessionStartupStateDeps = {
   /** Resolves a `recovering` lease; never throws (a failure is reported and left to the next
    *  attach or send). */
   resolveRecovery: (sessionId: string) => Promise<boolean>
-  /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish). */
-  restoreListed: (records: AgentSessionRecord[]) => Promise<void>
+  /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish), resolving
+   *  recovery through `resolveRecovery`. */
+  restoreListed: (
+    records: AgentSessionRecord[],
+    resolveRecovery: (sessionId: string) => Promise<boolean>
+  ) => Promise<void>
   /** Tests shorten it; production takes the default. */
   recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
@@ -226,7 +230,7 @@ async function settleOwedSessions(
     if (database.readOnly) {
       return
     }
-    await resolveRecoveringLeases(deps)
+    const outlasted = await resolveRecoveringLeases(deps)
     const listedOrder = new Map(listedIds.map((sessionId, index) => [sessionId, index]))
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
@@ -246,7 +250,11 @@ async function settleOwedSessions(
       (left, right) =>
         (listedOrder.get(left.sessionId) ?? 0) - (listedOrder.get(right.sessionId) ?? 0)
     )
-    await deps.restoreListed(listed)
+    // A recovery that outlasted its budget is still running: a second one beside it could hang the
+    // same way, so its chat is opened unverified and the next attach or send resolves it.
+    await deps.restoreListed(listed, (sessionId) =>
+      outlasted.has(sessionId) ? Promise.resolve(true) : deps.resolveRecovery(sessionId)
+    )
     // A listed chat the worker left closed (its tab closed meanwhile) is settled like any other.
     others.push(...listed.filter((record) => !deps.hasSession(record.sessionId)))
     for (const record of others) {
@@ -300,21 +308,26 @@ function dropUnreachableStatus(
 
 /** Every lease a crash left `recovering`, listed or not: a provider process that outlived the crash
  *  is stopped and its death recorded, so the settle below reads one verdict per turn. */
-async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateDeps) {
+async function resolveRecoveringLeases(
+  deps: StructuredAgentSessionStartupStateDeps
+): Promise<Set<string>> {
   const recovering = deps.openDeps.store
     .listRecords()
     .filter((record) => record.lease.handoffStage === 'recovering')
   const budgetMs = deps.recoveryBudgetMs ?? RECOVERY_BUDGET_MS
+  const outlasted = new Set<string>()
   await forEachWithConcurrency(recovering, RECOVERY_CONCURRENCY, async ({ sessionId }) => {
     if (
       (await withTimeout<boolean | null>(deps.resolveRecovery(sessionId), budgetMs, null)) === null
     ) {
+      outlasted.add(sessionId)
       deps.openDeps.logger.warn('a chat recovery outlasted startup; left unverified', {
         scope: 'startup-recovery-timeout',
         sessionId
       })
     }
   })
+  return outlasted
 }
 
 /** A chat nothing holds open: settled and closed, never indexed, so it gets no status row. */
