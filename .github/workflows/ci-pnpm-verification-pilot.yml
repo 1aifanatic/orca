@@ -1,13 +1,17 @@
-name: CI fixture setup comparison (temporary)
+name: Daemon fixture image comparison (temporary)
 
 on:
   workflow_dispatch:
+    inputs:
+      baseline-sha:
+        description: Exact commit before the Dockerfile trim.
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-fixture-pilot-${{ github.event.pull_request.number || github.ref }}
+  group: daemon-fixture-trim-pilot-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -16,23 +20,23 @@ env:
 jobs:
   compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 50
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: none
-          cache-electron-package: 'true'
-      - name: Install the pinned Electron package binary
-        run: pnpm exec node config/scripts/install-electron-package-binary.mjs
-      - name: Compare the full WebRTC egress probe under an isolated display
-        run: xvfb-run --auto-servernum pnpm exec node config/scripts/ci-webrtc-egress-pilot.mjs --output "$RUNNER_TEMP/webrtc-egress-pilot"
+      - name: Compare full fixture images and fresh daemon restores
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.baseline-sha }}
+        run: pnpm exec node config/scripts/ci-daemon-fixture-trim-pilot.mjs
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: webrtc-egress-pilot-${{ github.run_id }}
-          path: ${{ runner.temp }}/webrtc-egress-pilot
+          name: daemon-fixture-trim-pilot-${{ github.run_id }}
+          path: ${{ runner.temp }}/daemon-fixture-trim-pilot
           retention-days: 7
           compression-level: 0
