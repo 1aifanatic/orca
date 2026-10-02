@@ -12,7 +12,7 @@ import {
 } from './orca-runtime-postlude'
 import { projectTerminalVisibleLines } from './orca-runtime-terminal-projection'
 import { visibleNonBlankTerminalLines } from './terminal-tail-read'
-import type { RuledScreen } from './screen-ruled-agent-readiness'
+import type { RuledScreen } from './screen-input-veto'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
 import { withTimeout } from './runtime-async-boundaries'
 

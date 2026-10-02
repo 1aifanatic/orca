@@ -18,10 +18,21 @@ export const SERVER_TARGETS = [
 
 export type ServerTarget = (typeof SERVER_TARGETS)[number]
 
-// Managed SSH deployment supports POSIX hosts; Windows uses standalone builds.
-export const ORCAD_TEMPLATE_TARGETS = SERVER_TARGETS.filter(
-  (target) => !target.startsWith('win32-')
-)
+// Opt-in runtimes outside the default set: the unofficial glibc 2.17 x64 build (design D6 rung B).
+export const COMPAT_SERVER_TARGETS = ['linux-x64-glibc217'] as const
+
+export type CompatServerTarget = (typeof COMPAT_SERVER_TARGETS)[number]
+
+export type NodeRuntimeTarget = ServerTarget | CompatServerTarget
+
+/** The default target a compat runtime stands in for: same host, older glibc. */
+export const COMPAT_SERVER_TARGET_BASES: Record<CompatServerTarget, ServerTarget> = {
+  'linux-x64-glibc217': 'linux-x64-glibc'
+}
+
+// Every target: Windows SSH relays take their node-pty/ConPTY slot from here (design D5), even
+// though managed orcad launch stays POSIX-only (orcad-remote-host-support.ts).
+export const ORCAD_TEMPLATE_TARGETS: readonly ServerTarget[] = SERVER_TARGETS
 
 export type NodeRuntimePin = {
   version: string
@@ -30,7 +41,11 @@ export type NodeRuntimePin = {
   /** Highest N-API version the runtime supports (NODE_API_SUPPORTED_VERSION_MAX). */
   napi: number
   headers: { file: string; sha256: string }
+  /** node.lib per Windows target: node-gyp --nodedir links against it, and the headers tarball omits it. */
+  windowsImportLibs: Record<WindowsServerTarget, { file: string; sha256: string }>
 }
+
+export type WindowsServerTarget = Extract<ServerTarget, `win32-${string}`>
 
 /** unofficial-builds.nodejs.org publishes no SHASUMS signature, so its hash is trusted at pin time. */
 export type NodeRuntimeAssetSource = 'official' | 'unofficial'
@@ -51,6 +66,16 @@ export const NODE_RUNTIME_PIN: NodeRuntimePin = {
   headers: {
     file: 'node-v24.21.0-headers.tar.gz',
     sha256: '57c6bee2e30bbbee5bd51d6cc343eb992e174b56a2a1d0eab7a7510771c20ea2'
+  },
+  windowsImportLibs: {
+    'win32-arm64': {
+      file: 'win-arm64/node.lib',
+      sha256: '2c0c3215d59c09d7c136da4949696dae121a299e9bdfc64cd9130a58610af63d'
+    },
+    'win32-x64': {
+      file: 'win-x64/node.lib',
+      sha256: 'a0a84aa03917b578d286010b7521837e9ff1136ffb2e4a406c14316c33fd06f7'
+    }
   }
 }
 
@@ -112,7 +137,37 @@ export const NODE_RUNTIME_ASSETS: Record<ServerTarget, NodeRuntimeAsset> = {
     executableSize: 93580104
   }
 }
+
+export const NODE_RUNTIME_COMPAT_ASSETS: Record<CompatServerTarget, NodeRuntimeAsset> = {
+  'linux-x64-glibc217': {
+    source: 'unofficial',
+    archive: 'node-v24.21.0-linux-x64-glibc-217.tar.gz',
+    archiveSha256: 'b1d164136d4b218d663e664f40ba5e260ebc07f90e2bd784c63a57d8c0e6aa8a',
+    executableSha256: '1e75c95b1af4ec41e83d75816856b205f00c9427fd7d2dadd81472b38ff53d2c',
+    executableSize: 139511096
+  }
+}
 // @generated-end
+
+export function isCompatServerTarget(target: string): target is CompatServerTarget {
+  return COMPAT_SERVER_TARGETS.some((known) => known === target)
+}
+
+/** The pinned asset for a known default or compat target. */
+export function pinnedNodeRuntimeAsset(target: NodeRuntimeTarget): NodeRuntimeAsset {
+  return isCompatServerTarget(target)
+    ? NODE_RUNTIME_COMPAT_ASSETS[target]
+    : NODE_RUNTIME_ASSETS[target]
+}
+
+/** The pinned asset for a default or compat target; undefined for anything else. */
+export function nodeRuntimeAsset(target: string): NodeRuntimeAsset | undefined {
+  if (isCompatServerTarget(target)) {
+    return NODE_RUNTIME_COMPAT_ASSETS[target]
+  }
+  const server = SERVER_TARGETS.find((known) => known === target)
+  return server ? NODE_RUNTIME_ASSETS[server] : undefined
+}
 
 const NODE_RUNTIME_BASE_URLS: Record<NodeRuntimeAssetSource, string> = {
   official: 'https://nodejs.org/dist',
@@ -127,8 +182,16 @@ export function nodeRuntimeReleaseUrl(
   return `${NODE_RUNTIME_BASE_URLS[source]}/v${version}/${file}`
 }
 
+export function nodeRuntimeHeadersUrl(pin: NodeRuntimePin = NODE_RUNTIME_PIN): string {
+  return nodeRuntimeReleaseUrl('official', pin.headers.file, pin.version)
+}
+
+export function isWindowsServerTarget(target: string): target is WindowsServerTarget {
+  return target === 'win32-x64' || target === 'win32-arm64'
+}
+
 /** Archive-relative path of the executable, e.g. node-v24.21.0-linux-x64/bin/node. */
-export function nodeRuntimeExecutablePath(target: ServerTarget, archive: string): string {
+export function nodeRuntimeExecutablePath(target: NodeRuntimeTarget, archive: string): string {
   const topLevel = archive.replace(/\.(?:tar\.gz|tar\.xz|zip)$/, '')
   return target.startsWith('win32-') ? `${topLevel}/node.exe` : `${topLevel}/bin/node`
 }

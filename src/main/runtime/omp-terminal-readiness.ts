@@ -1,5 +1,5 @@
 import { getPiStateTitleStatus } from '../../shared/pi-state-title-marker'
-import type { RuledScreen } from './screen-ruled-agent-readiness'
+import type { RuledScreen } from './screen-input-veto'
 
 /**
  * OMP 18.4 runs its first-run setup wizard (splash, steps, outro) as a fullscreen overlay on the

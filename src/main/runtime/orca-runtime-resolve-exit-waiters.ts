@@ -11,13 +11,8 @@ import {
 import type { AgentStatus } from '../../shared/agent-detection'
 import { detectExplicitIdleStatusFromTitle } from './terminal-wait-detection'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
-import {
-  evaluateTuiIdle,
-  isTuiIdleReadyVerdict,
-  leafTuiIdleEvidence,
-  ptyTuiIdleEvidence,
-  type TuiIdleVerdict
-} from './tui-idle-evidence'
+import { evaluateTuiIdle, isTuiIdleReadyVerdict, type TuiIdleVerdict } from './tui-idle-evidence'
+import { leafTuiIdleEvidence, ptyTuiIdleEvidence } from './tui-idle-evidence-source'
 import { TUI_IDLE_QUIESCENCE_MS } from './orca-runtime-postlude'
 
 export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyIncarnationHandle {
