@@ -72,8 +72,12 @@ describe('web stored settings agent permissions', () => {
     expect(settings.agentDefaultArgs).toEqual({})
   })
 
-  // The host replies to settings.update with launch-ready args (flag inline).
-  it('keeps the typed shape when merging a paired host reply', async () => {
+  // The host replies to settings.update with its own launch-ready args (flag inline).
+  it('keeps its own agent launch settings when merging a paired host reply', async () => {
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ agentDefaultArgs: { claude: '--model opus' } })
+    )
     runtimeMock.environment = { id: 'env-1' }
     runtimeMock.reply = {
       compactWorktreeCards: true,
@@ -86,8 +90,10 @@ describe('web stored settings agent permissions', () => {
       getStoredSettings()
     )
 
+    expect(next.compactWorktreeCards).toBe(true)
     expect(next.agentDefaultArgs?.claude).toBe('--model opus')
-    expect(next.agentPermissionModeOverrides?.codex).toBe('ask')
+    expect(next.agentPermissionModeOverrides).toMatchObject({ claude: 'ask' })
+    expect(next.agentPermissionModeOverrides?.codex).toBeUndefined()
     runtimeMock.environment = null
   })
 })

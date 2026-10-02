@@ -1,4 +1,5 @@
 import type { GlobalSettings } from './global-settings-types'
+import { isTuiAgent } from './tui-agent-config'
 import {
   composeTuiAgentLaunchArgsRecord,
   composeTuiAgentLaunchEnvRecord,
@@ -74,7 +75,10 @@ export function liftComposedAgentLaunchProfile(
   return { agentDefaultArgs, agentDefaultEnv, agentPermissionMode, agentPermissionModeOverrides }
 }
 
-/** Applies a paired client's launch-ready args/env write; as before, it replaces the whole record. */
+/**
+ * Applies a paired client's launch-ready args/env write. Only agents the write names change; an
+ * older client that doesn't know an agent leaves that agent's mode and text alone.
+ */
 export function applyComposedAgentLaunchUpdate(
   current: Partial<
     Pick<
@@ -89,24 +93,57 @@ export function applyComposedAgentLaunchUpdate(
 ): Partial<
   Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'>
 > {
+  const writtenArgs = normalizeTuiAgentArgsRecord(update.agentDefaultArgs)
+  const writtenEnv = normalizeTuiAgentEnvRecord(update.agentDefaultEnv)
   const lifted = liftComposedAgentLaunchProfile({
-    agentDefaultArgs: update.agentDefaultArgs ?? composeTuiAgentLaunchArgsRecord(current),
-    agentDefaultEnv: update.agentDefaultEnv ?? composeTuiAgentLaunchEnvRecord(current)
+    agentDefaultArgs: { ...composeTuiAgentLaunchArgsRecord(current), ...writtenArgs },
+    agentDefaultEnv: { ...composeTuiAgentLaunchEnvRecord(current), ...writtenEnv }
   })
   const defaultMode = resolveDefaultAgentPermissionMode(current)
   const agentPermissionModeOverrides: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
   for (const agent of PERMISSION_AGENT_IDS) {
+    const named = agent in writtenArgs || agent in writtenEnv
     // Text that sets permissions itself decides the launch, so it says nothing about the mode.
-    const mode = tuiAgentArgsSetPermissions(agent, lifted.agentDefaultArgs[agent])
-      ? resolveAgentPermissionMode(agent, current)
-      : resolveAgentPermissionMode(agent, lifted)
+    const mode =
+      named && !tuiAgentArgsSetPermissions(agent, lifted.agentDefaultArgs[agent])
+        ? resolveAgentPermissionMode(agent, lifted)
+        : resolveAgentPermissionMode(agent, current)
     if (mode !== defaultMode) {
       agentPermissionModeOverrides[agent] = mode
     }
   }
   return {
-    ...(update.agentDefaultArgs !== undefined ? { agentDefaultArgs: lifted.agentDefaultArgs } : {}),
-    ...(update.agentDefaultEnv !== undefined ? { agentDefaultEnv: lifted.agentDefaultEnv } : {}),
+    ...(update.agentDefaultArgs !== undefined
+      ? {
+          agentDefaultArgs: {
+            ...current.agentDefaultArgs,
+            ...pickWritten(lifted.agentDefaultArgs, writtenArgs)
+          }
+        }
+      : {}),
+    ...(update.agentDefaultEnv !== undefined
+      ? {
+          agentDefaultEnv: {
+            ...current.agentDefaultEnv,
+            ...pickWritten(lifted.agentDefaultEnv, writtenEnv)
+          }
+        }
+      : {}),
     agentPermissionModeOverrides
   }
+}
+
+/** The lifted entries for the agents a write named. */
+function pickWritten<T>(
+  lifted: Partial<Record<TuiAgent, T>>,
+  written: Partial<Record<TuiAgent, unknown>>
+): Partial<Record<TuiAgent, T>> {
+  const picked: Partial<Record<TuiAgent, T>> = {}
+  for (const agent of Object.keys(written)) {
+    const value = isTuiAgent(agent) ? lifted[agent] : undefined
+    if (isTuiAgent(agent) && value !== undefined) {
+      picked[agent] = value
+    }
+  }
+  return picked
 }

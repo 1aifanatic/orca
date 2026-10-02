@@ -137,7 +137,9 @@ export function applyAgentPermissionModeToAll(
 
 /** Option names in this agent's arguments that change its permission posture, in order. */
 export function agentPermissionOptionNames(agent: TuiAgent): readonly string[] {
-  const bypassName = YOLO_TUI_AGENT_ARGS[agent]?.split(/\s+/)[0]
-  const extra = EXTRA_PERMISSION_OPTION_NAMES[agent] ?? []
-  return bypassName && !extra.includes(bypassName) ? [bypassName, ...extra] : extra
+  // Every option the bypass flag sets (Devin's sets two), then the agent's other permission options.
+  const bypassNames = (YOLO_TUI_AGENT_ARGS[agent] ?? '')
+    .split(/\s+/)
+    .filter((token) => token.startsWith('-'))
+  return [...new Set([...bypassNames, ...(EXTRA_PERMISSION_OPTION_NAMES[agent] ?? [])])]
 }

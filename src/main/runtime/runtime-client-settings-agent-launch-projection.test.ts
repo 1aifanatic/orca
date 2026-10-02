@@ -66,21 +66,27 @@ describe('RuntimeClientSettingsController agent launch projection', () => {
     expect(published.agentDefaultArgs?.codex).toBe(`${CODEX_BYPASS} -m o3`)
   })
 
-  it('reads an agent the written record leaves out as the shipped bypass default', async () => {
-    const { controller } = controllerFor(
+  // An older client may not know newer agents; leaving one out must not change it.
+  it('leaves agents the written record does not name untouched', async () => {
+    const { controller, store } = controllerFor(
       hostSettings({
         agentPermissionMode: 'ask',
-        agentPermissionModeOverrides: {},
+        agentPermissionModeOverrides: { gemini: 'bypass' },
         agentDefaultArgs: { claude: '--model opus' },
         agentDefaultEnv: {}
       })
     )
 
-    await controller.update({ agentDefaultArgs: { codex: '' } })
+    await controller.update({ agentDefaultArgs: { codex: `${CODEX_BYPASS}` } })
 
-    const published = controller.get()
-    expect(published.agentDefaultArgs?.claude).toBe(CLAUDE_BYPASS)
-    expect(published.agentDefaultArgs?.codex).toBe('')
+    expect(store.getSettings().agentPermissionModeOverrides).toEqual({
+      gemini: 'bypass',
+      codex: 'bypass'
+    })
+    expect(store.getSettings().agentDefaultArgs).toMatchObject({
+      claude: '--model opus',
+      codex: ''
+    })
   })
 
   it('keeps the mode of an agent whose written text sets permissions itself', async () => {

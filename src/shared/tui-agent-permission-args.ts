@@ -121,9 +121,14 @@ export function liftTuiAgentBypassArgs(
   let text = original
   let bypass = false
   while (flag.length > 0 && text) {
-    const tokens = optionTokens(text, 'posix')
-    const at = tokens.ok ? findTokenSequence(tokens.tokens, flag) : -1
-    if (!tokens.ok || at === -1) {
+    // Why the fallback: a Windows path like "C:\dir\" only parses under the Windows grammars.
+    const tokens = [
+      optionTokens(text, 'posix'),
+      optionTokens(text, 'powershell'),
+      optionTokens(text, 'cmd')
+    ].find((candidate) => candidate.ok)
+    const at = tokens?.ok ? findTokenSequence(tokens.tokens, flag) : -1
+    if (!tokens?.ok || at === -1) {
       break
     }
     bypass = true

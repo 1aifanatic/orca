@@ -104,14 +104,28 @@ export function AgentsPane({
   const agentDefaultEnv = settings.agentDefaultEnv ?? {}
   const permissionOverrides = settings.agentPermissionModeOverrides ?? {}
   const defaultPermissionMode = resolveDefaultAgentPermissionMode(settings)
+  const { agentDefaultEnv: launchEnv, agentPermissionMode, terminalWindowsShell } = settings
   const permissionPostures = useMemo(() => {
     const platform = getRendererAppPlatform()
+    const profile = {
+      agentDefaultArgs: settings.agentDefaultArgs,
+      agentDefaultEnv: launchEnv,
+      agentPermissionMode,
+      agentPermissionModeOverrides: settings.agentPermissionModeOverrides,
+      terminalWindowsShell
+    }
     return new Map(
       getAgentCatalog()
         .filter((agent) => agentHasPermissionMode(agent.id))
-        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, settings, platform)])
+        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, profile, platform)])
     )
-  }, [settings])
+  }, [
+    settings.agentDefaultArgs,
+    launchEnv,
+    agentPermissionMode,
+    settings.agentPermissionModeOverrides,
+    terminalWindowsShell
+  ])
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))

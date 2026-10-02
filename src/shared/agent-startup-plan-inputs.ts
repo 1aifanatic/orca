@@ -46,7 +46,8 @@ export function resolveAgentStartupPlanInputs(args: {
   settings: AgentStartupSettings
   platform: NodeJS.Platform
   isRemote: boolean
-  /** Replaces the configured default args for this launch; `null` is "no arguments". */
+  /** Launch-ready args for this launch (a client already applied its permission mode); `null` is
+   *  "no arguments at all". Omit it to compose from this host's settings. */
   agentArgs?: string | null
   /** A requested shell is the one this PTY will be, so it owns the quoting family. */
   windowsShellOverride?: string | null

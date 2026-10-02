@@ -248,14 +248,10 @@ export async function syncRuntimeBackedSettings(
       webRuntimeState.worktreeVisibilityDefaultsRuntimeValue = updatedVisibilityDefaults
     }
     delete runtimeSettings.worktreeVisibilityDefaults
-    // Why: the host replies with launch-ready args (flag inline); keep the local typed shape.
-    const { agentDefaultArgs, agentDefaultEnv, ...rest } = runtimeSettings
-    const next = mergeSettings(localNext, {
-      ...rest,
-      ...(agentDefaultArgs || agentDefaultEnv
-        ? liftComposedAgentLaunchProfile({ agentDefaultArgs, agentDefaultEnv })
-        : {})
-    })
+    // Why: agent launch settings stay client-owned here, as on load; the host's are launch-ready.
+    delete runtimeSettings.agentDefaultArgs
+    delete runtimeSettings.agentDefaultEnv
+    const next = mergeSettings(localNext, runtimeSettings)
     writeStoredSettings(next)
     return next
   } catch (error) {

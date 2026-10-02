@@ -77,7 +77,8 @@ describe('resolveTuiAgentLaunchArgs', () => {
     ['gemini', '--approval-mode auto_edit'],
     ['qwen-code', '-y'],
     ['codex', '-anever'],
-    ['codex', '-sread-only']
+    ['codex', '-sread-only'],
+    ['devin', '--respect-workspace-trust true']
   ] as const)('adds no flag beside %s permission text %j', (agent, args) => {
     expect(resolveTuiAgentLaunchArgs(agent, { agentDefaultArgs: { [agent]: args } })).toBe(args)
   })
@@ -151,6 +152,16 @@ describe('liftTuiAgentBypassArgs', () => {
     expect(liftTuiAgentBypassArgs('claude', `${CLAUDE_BYPASS} --permission-mode plan`)).toEqual({
       bypass: true,
       extraArgs: `${CLAUDE_BYPASS} --permission-mode plan`
+    })
+  })
+
+  // The POSIX grammar cannot parse a Windows path ending in a backslash before its closing quote.
+  it('lifts the flag from Windows-quoted text', () => {
+    expect(
+      liftTuiAgentBypassArgs('claude', `${CLAUDE_BYPASS} --add-dir "C:\\Users\\me\\"`)
+    ).toEqual({
+      bypass: true,
+      extraArgs: '--add-dir "C:\\Users\\me\\"'
     })
   })
 
