@@ -175,7 +175,7 @@ describe('MobileNativeChatPermission', () => {
       return { onRespond, onCancel, options: actions.findAllByType('Pressable') }
     }
 
-    it('with no detail: says so, answers nothing, and the cancel ends the turn', async () => {
+    it('with no detail: says so, answers nothing, and only its cancel reaches the host', async () => {
       const { onRespond, onCancel, options } = await renderNewer(undefined)
       expect(
         renderer!.root.findByProps({ testID: 'native-chat-approval-needs-newer-orca' }).props

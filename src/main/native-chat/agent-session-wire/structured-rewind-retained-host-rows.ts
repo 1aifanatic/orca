@@ -1,10 +1,12 @@
 // Provider preflight returns provider items only. The host's lifecycle rows are its own record, so
 // a rewind that takes the provider list as the new epoch must splice those rows back beside the
-// provider item each one followed. Provider items carry neither turn scope nor producer, so each
-// keeps the ones its retained row held.
+// provider item each one followed; so is an item of a kind a newer Orca wrote, which no provider
+// holds. Provider items carry neither turn scope nor producer, so each keeps the ones its retained
+// row held.
 
 import { parseCodexGoalJournalItemId } from '../../codex/codex-goal-journal-identity'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { AGENT_JOURNAL_ITEM_BODY_KINDS } from '../../../shared/agent-session-journal-schemas'
 import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity,
@@ -28,7 +30,7 @@ export function isRetainedHostLifecycleRow(item: RetainedRow): boolean {
   )
 }
 
-/** `reference` fixes where each host row sits; provider items are the ordered spine. */
+/** `reference` fixes where each carried row sits; provider items are the ordered spine. */
 export function mergeRetainedHostLifecycleRows(
   reference: readonly RetainedRow[],
   providerItems: readonly RetainedRow[]
@@ -38,7 +40,9 @@ export function mergeRetainedHostLifecycleRows(
   const rowsAfter = new Map<number, RetainedRow[]>()
   let anchor = -1
   for (const item of reference) {
-    if (!isRetainedHostLifecycleRow(item)) {
+    const carried =
+      isRetainedHostLifecycleRow(item) || !AGENT_JOURNAL_ITEM_BODY_KINDS.has(item.body.kind)
+    if (!carried) {
       anchor = spineIndex.get(item.itemId) ?? anchor
     } else if (!spineIndex.has(item.itemId)) {
       rowsAfter.set(anchor, [...(rowsAfter.get(anchor) ?? []), item])

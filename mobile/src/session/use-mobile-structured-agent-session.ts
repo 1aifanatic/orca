@@ -98,6 +98,7 @@ export function useMobileStructuredAgentSession(args: {
   // Old host ⇒ exactly today's behavior: no delivery field, no cards, plain Stop.
   const queueCapable = hostSupport?.queuedMessages === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
+  const conversationStopSupported = hostSupport?.conversationStop ?? null
   const hostAnswersRepeatedStops = hostSupport?.quietRepeatedStop ?? null
   const sessionKey = encodeNativeChatTranscriptIdentity([sourceIdentity, agent, sessionId])
   const commandPendingRef = useRef(false)
@@ -204,6 +205,7 @@ export function useMobileStructuredAgentSession(args: {
         onSendError,
         prompt,
         promptCancelSupported,
+        conversationStopSupported,
         sessionId,
         stateRef
       }),
@@ -213,6 +215,7 @@ export function useMobileStructuredAgentSession(args: {
       hostAnswersRepeatedStops,
       onSendError,
       promptCancelSupported,
+      conversationStopSupported,
       sessionId,
       stateRef
     ]

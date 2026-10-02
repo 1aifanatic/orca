@@ -47,7 +47,7 @@ const NEWER_APPROVAL: AgentJournalRenderItem = JSON.parse(
   })
 )
 
-it("hands the card a newer Orca's subject in a writable chat, and its cancel ends the turn", () => {
+it("hands the card a newer Orca's subject in a writable chat, and its cancel goes to the host with the card", () => {
   mocks.turnId = 'turn-1'
   mocks.promptItems = [NEWER_APPROVAL]
   render(
@@ -67,6 +67,25 @@ it("hands the card a newer Orca's subject in a writable chat, and its cancel end
   expect(mocks.approvalCardProps?.approval).not.toHaveProperty('detail')
   mocks.approvalCardProps?.onCancel?.()
   expect(mocks.cancel).toHaveBeenCalledWith('turn-1', {
+    itemId: 'approval-item',
+    expectedRevision: 3
+  })
+})
+
+it('sends the card to the host even when no turn is running, so its cancel still answers it', () => {
+  mocks.promptItems = [NEWER_APPROVAL]
+  render(
+    <NativeChatStructuredSession
+      isVisible
+      isFocusedGroup
+      tabId="newer-approval-tab"
+      sessionId="newer-approval-session"
+      target={{ kind: 'local' }}
+      agent="claude"
+    />
+  )
+  mocks.approvalCardProps?.onCancel?.()
+  expect(mocks.cancel).toHaveBeenCalledWith(null, {
     itemId: 'approval-item',
     expectedRevision: 3
   })

@@ -3,7 +3,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { ShieldQuestion, X } from 'lucide-react-native'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
-import { isNewerApprovalSubject } from '../../../src/shared/agent-session-approval-subject'
+import {
+  isNewerApprovalSubject,
+  isPlanApprovalSubject
+} from '../../../src/shared/agent-session-approval-subject'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 
 // Renders a detected agent permission ask as a card with tappable options.
@@ -24,7 +27,7 @@ function MobileNativeChatPermissionImpl({
   const [inFlight, setSubmitting] = useState(false)
   const submitting = inFlight || disabled
   const submittingRef = useRef(false)
-  // A newer Orca's subject: its detail is shown, and only the cancel that ends the turn answers.
+  // A newer Orca's subject: its detail is shown, and only the card's cancel answers.
   const newerSubject = isNewerApprovalSubject(permission.subject)
   const hasContext = Boolean(
     permission.description ||
@@ -100,7 +103,7 @@ function MobileNativeChatPermissionImpl({
               {permission.matchedAskRule.source}
             </Text>
           ) : null}
-          {permission.subject?.kind === 'plan' ? (
+          {isPlanApprovalSubject(permission.subject) ? (
             <View>
               <MobileMarkdown content={permission.subject.text} />
               {permission.subject.filePath ? (

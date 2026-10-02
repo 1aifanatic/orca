@@ -36,6 +36,7 @@ import {
   readAgentJournalMessageBody,
   type AgentJournalContentVerdict
 } from '../../../shared/agent-session-journal-body-admission'
+import { isJournalTag } from '../../../shared/agent-session-journal-open-union'
 import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
 import { dropUnusableRowAnnotations } from './journal-row-unusable-annotations'
 
@@ -267,7 +268,7 @@ function journalRowContent(record: Record<string, unknown>): AgentJournalContent
     return contentCheck(record)
   }
   // A newer build's kind is placed by the envelope every row keeps.
-  return typeof kind === 'string' && kind !== '' ? 'unreadable' : 'malformed'
+  return isJournalTag(kind) ? 'unreadable' : 'malformed'
 }
 
 function isJournalRow(record: Record<string, unknown>): record is JournalRow {
@@ -373,7 +374,7 @@ function lifecycleMutationContent(value: unknown): AgentJournalContentVerdict {
   if (contentCheck) {
     return contentCheck(value)
   }
-  return typeof kind === 'string' && kind !== '' ? 'unreadable' : 'malformed'
+  return isJournalTag(kind) ? 'unreadable' : 'malformed'
 }
 
 /** Approximate on-disk cost of a row, used for the per-session size bound. */

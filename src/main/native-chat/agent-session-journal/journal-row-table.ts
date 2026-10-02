@@ -50,7 +50,7 @@ export function insertJournalRow(
   if (!readBack.ok || readBack.row.seq !== row.seq) {
     throw new AgentSessionJournalError(
       'journal_row_rejected',
-      `a ${row.kind} row for ${sessionId} would not read back, so it was not written`
+      `the ${row.kind} row for ${sessionId} would not read back, so it was not written`
     )
   }
   db.prepare(INSERT_ROW).run(sessionId, row.epoch, row.seq, row.ts, rowJson)

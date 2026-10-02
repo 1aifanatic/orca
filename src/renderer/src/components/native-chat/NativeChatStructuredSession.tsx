@@ -154,7 +154,7 @@ export function NativeChatStructuredSession(
       }
     : null
   const cancelPrompt = () => {
-    if (controller.turnId && prompt) {
+    if (prompt) {
       void controller.cancel(controller.turnId, {
         itemId: prompt.itemId,
         expectedRevision: prompt.revision

@@ -86,6 +86,12 @@ describe('anything else that fails: damage', () => {
     ['a body that is a list', [{ kind: 'status' }]],
     ['no kind', { text: 'x' }],
     ['an empty kind', { kind: '' }],
+    ['a kind of only whitespace', { kind: '  ' }],
+    ['a block type of only whitespace', { kind: 'message', role: 'user', blocks: [{ type: ' ' }] }],
+    [
+      'a plan subject kind of only whitespace',
+      { ...PLAN_APPROVAL, subject: { kind: ' ', text: 'x' } }
+    ],
     ['a kind that is not a string', { kind: 7 }],
     [
       'a nested literal that is not a string',
@@ -142,6 +148,7 @@ describe("a submission's body", () => {
       'readable'
     )
     expect(readAgentJournalMessageBody({ kind: 'voice-note', clip: 'x' })).toBe('unreadable')
+    expect(readAgentJournalMessageBody({ kind: ' ' })).toBe('malformed')
     expect(readAgentJournalMessageBody({ kind: 'status', text: 'x' })).toBe('malformed')
     expect(
       readAgentJournalMessageBody({ kind: 'message', role: 'user', blocks: [{ type: 'text' }] })

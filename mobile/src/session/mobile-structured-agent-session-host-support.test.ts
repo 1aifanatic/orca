@@ -10,6 +10,7 @@ import { structuredAgentSessionHostSupport } from './mobile-structured-agent-ses
 describe('structuredAgentSessionHostSupport', () => {
   it('reads each structured-session feature from the host capability list', () => {
     expect(structuredAgentSessionHostSupport([])).toEqual({
+      conversationStop: false,
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: false,
@@ -18,6 +19,7 @@ describe('structuredAgentSessionHostSupport', () => {
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY])
     ).toEqual({
+      conversationStop: false,
       promptCancel: false,
       questionAnswers: true,
       queuedMessages: false,
@@ -26,6 +28,7 @@ describe('structuredAgentSessionHostSupport', () => {
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY])
     ).toEqual({
+      conversationStop: false,
       promptCancel: true,
       questionAnswers: false,
       queuedMessages: false,
@@ -34,6 +37,7 @@ describe('structuredAgentSessionHostSupport', () => {
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
     ).toEqual({
+      conversationStop: false,
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: true,
@@ -42,6 +46,7 @@ describe('structuredAgentSessionHostSupport', () => {
     expect(
       structuredAgentSessionHostSupport([AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY])
     ).toEqual({
+      conversationStop: false,
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: false,

@@ -33,7 +33,7 @@ describe('NativeChatApprovalCard', () => {
       return { onChoose, onCancel }
     }
 
-    it('with no detail: says so, answers nothing, and the cancel ends the turn', () => {
+    it('with no detail: says so, answers nothing, and only its cancel reaches the host', () => {
       const { onChoose, onCancel } = renderNewer(undefined)
       expect(screen.getByText(NEEDS_NEWER_ORCA)).toBeTruthy()
       for (const label of ['Approve', 'Deny']) {

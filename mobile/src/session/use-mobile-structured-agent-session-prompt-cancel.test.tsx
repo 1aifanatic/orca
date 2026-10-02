@@ -109,10 +109,12 @@ const client: RpcClient = {
 
 function Harness({
   promptCancelSupported,
-  questionAnswersSupported = false
+  questionAnswersSupported = false,
+  conversationStopSupported = false
 }: {
   promptCancelSupported: boolean
   questionAnswersSupported?: boolean
+  conversationStopSupported?: boolean
 }): null {
   hook = useMobileStructuredAgentSession({
     client,
@@ -122,6 +124,7 @@ function Harness({
     connected: true,
     agent: 'codex',
     hostSupport: {
+      conversationStop: conversationStopSupported,
       promptCancel: promptCancelSupported,
       questionAnswers: questionAnswersSupported,
       queuedMessages: false,
@@ -204,6 +207,34 @@ describe('mobile structured prompt cancellation', () => {
     const call = mocks.sendRequest.mock.calls.find(([method]) => method === 'agentSession.cancel')
     expect(call?.[1]).toMatchObject({ turnId: 'turn-1' })
     expect(call?.[1]).not.toHaveProperty('prompt')
+  })
+
+  it('cancels a card that outlived its turn on a host that takes a cancel naming no turn', async () => {
+    state = { ...state, items: [pendingApproval()] }
+    act(() => {
+      renderer = create(
+        createElement(Harness, { promptCancelSupported: true, conversationStopSupported: true })
+      )
+    })
+    await act(async () => {
+      expect(await hook.cancelPrompt()).toBe(true)
+    })
+    const call = mocks.sendRequest.mock.calls.find(([method]) => method === 'agentSession.cancel')
+    expect(call?.[1]).toMatchObject({ prompt: { itemId: 'approval-1', expectedRevision: 4 } })
+    expect(call?.[1]).not.toHaveProperty('turnId')
+  })
+
+  it('sends nothing for a card with no turn to an older host', async () => {
+    state = { ...state, items: [pendingApproval()] }
+    act(() => {
+      renderer = create(createElement(Harness, { promptCancelSupported: true }))
+    })
+    await act(async () => {
+      expect(await hook.cancelPrompt()).toBe(false)
+    })
+    expect(mocks.sendRequest.mock.calls.some(([method]) => method === 'agentSession.cancel')).toBe(
+      false
+    )
   })
 
   it('cancels a question card with its item identity', async () => {

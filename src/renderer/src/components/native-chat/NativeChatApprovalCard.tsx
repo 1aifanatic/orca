@@ -5,7 +5,10 @@ import { translate } from '@/i18n/i18n'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
 } from '@/components/sidebar/CommentMarkdown'
-import { isNewerApprovalSubject } from '../../../../shared/agent-session-approval-subject'
+import {
+  isNewerApprovalSubject,
+  isPlanApprovalSubject
+} from '../../../../shared/agent-session-approval-subject'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import type { ChatApproval } from './native-chat-interactive-prompt'
 
@@ -38,7 +41,7 @@ export function NativeChatApprovalCard({
   allowFileUriLinks = false
 }: NativeChatApprovalCardProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
-  // A newer Orca's subject: its detail is shown, and only the cancel that ends the turn answers.
+  // A newer Orca's subject: its detail is shown, and only the card's cancel answers.
   const newerSubject = isNewerApprovalSubject(approval.subject)
   const hasContext = Boolean(
     approval.description ||
@@ -128,7 +131,7 @@ export function NativeChatApprovalCard({
                   </span>
                 </p>
               ) : null}
-              {approval.subject?.kind === 'plan' ? (
+              {isPlanApprovalSubject(approval.subject) ? (
                 <div data-native-chat-approval-plan="true">
                   <CommentMarkdown
                     content={approval.subject.text}

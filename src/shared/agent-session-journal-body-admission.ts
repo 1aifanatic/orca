@@ -8,6 +8,7 @@ import {
   isAdmissibleAgentJournalItemBody,
   isAdmissibleAgentJournalMessageBody
 } from './agent-session-journal-schemas'
+import { isJournalTag } from './agent-session-journal-open-union'
 
 /** `unreadable` is never damage: the caller keeps the row and stops writing, as for a newer `v`. */
 export type AgentJournalContentVerdict = 'readable' | 'unreadable' | 'malformed'
@@ -24,7 +25,5 @@ export function readAgentJournalMessageBody(body: unknown): AgentJournalContentV
     return verdict
   }
   const kind = typeof body === 'object' && body !== null && 'kind' in body ? body.kind : undefined
-  return typeof kind === 'string' && kind !== '' && !AGENT_JOURNAL_ITEM_BODY_KINDS.has(kind)
-    ? 'unreadable'
-    : 'malformed'
+  return isJournalTag(kind) && !AGENT_JOURNAL_ITEM_BODY_KINDS.has(kind) ? 'unreadable' : 'malformed'
 }

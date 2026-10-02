@@ -171,6 +171,7 @@ describe('parsing a row of a kind this build does not know', () => {
     ['a string timestamp', { ts: '5007' }],
     ['an empty epoch', { epoch: '' }],
     ['an empty kind', { kind: '' }],
+    ['a kind of only whitespace', { kind: ' \t' }],
     ['a kind that is not a string', { kind: 7 }]
   ])('reads one with %s as malformed', (_name, broken) => {
     const parsed = parseJournalRow(JSON.stringify(newerRow('epoch-1', 7, broken)))

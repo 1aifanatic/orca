@@ -247,11 +247,17 @@ export function useStructuredAgentSession(args: {
         : Promise.resolve(null)
     },
     queuedMessages: queuedController,
-    cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
+    cancel: async (turnId: string | null, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
       // older hosts reject the strict prompt field.
       const promptSupported =
         prompt !== undefined && (await supportsStructuredAgentSessionPromptCancel(target))
+      // A card that outlived its turn: the host declines it without a turn to name.
+      if (turnId === null) {
+        return promptSupported && stopsConversation
+          ? mutate('agentSession.cancel', 'agentSession.cancel', { prompt })
+          : null
+      }
       return mutate('agentSession.cancel', 'agentSession.cancel', {
         turnId,
         ...(promptSupported ? { prompt } : {})
