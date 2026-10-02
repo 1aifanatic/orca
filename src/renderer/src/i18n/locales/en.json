@@ -12310,7 +12310,9 @@
           "usageTitle": "Plan usage",
           "usageDescription": "Live quota windows for the linked Coding Plan, refreshed with the status bar usage cycle.",
           "planLevel": "Plan: {{value0}}",
-          "hostOnly": "Change the plan site and API key in the desktop app on the computer running Orca."
+          "hostOnly": "Change the plan site and API key in the desktop app on the computer running Orca.",
+          "detailsUnavailable": "Plan credential details are only readable on the computer running Orca.",
+          "siteUnavailable": "Host plan site unavailable"
         }
       },
       "right": {
