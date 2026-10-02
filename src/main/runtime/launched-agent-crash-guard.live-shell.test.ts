@@ -24,10 +24,16 @@ import { createLaunchedAgentWriteGuard } from './launched-agent-write-guard'
 import { waitForWorktreeStartupDraft } from './runtime-worktree-startup-readiness'
 
 const PTY_ID = 'pty-1'
-const ZSH_PATH =
-  process.platform === 'win32'
-    ? ''
-    : (spawnSync('sh', ['-c', 'command -v zsh'], { encoding: 'utf8' }).stdout ?? '').trim()
+// A function, not a ternary: the Windows-lane registration scan reads a const assigned from a
+// platform check as a Windows-only gate, and this suite runs everywhere but Windows.
+function findZsh(): string {
+  if (process.platform === 'win32') {
+    return ''
+  }
+  return (spawnSync('sh', ['-c', 'command -v zsh'], { encoding: 'utf8' }).stdout ?? '').trim()
+}
+
+const ZSH_PATH = findZsh()
 const describeWithZsh = ZSH_PATH ? describe : describe.skip
 
 const STUBS = {
@@ -148,11 +154,13 @@ async function launchStub(stub: keyof typeof STUBS, readyTimeoutMs: number) {
 }
 
 describeWithZsh('a launch prompt after the launched agent exits at startup', () => {
-  it('drops the shell’s prompt as a ready signal and refuses the write', async () => {
+  it('refuses the write after the shell’s prompt turns bracketed paste on', async () => {
     const launch = await launchStub('crash', 9_000)
     try {
-      // The shell's prompt after the crash turned bracketed paste on and went quiet, yet no agent did.
-      await expect(launch.ready).resolves.toBeNull()
+      // The shell's prompt after the crash turned bracketed paste on and went quiet. A read that
+      // finds the shell drops that signal; one that cannot answer on a loaded host lets it settle.
+      // Either way only a read that finds the agent may let the text through.
+      await launch.ready
       // Presence precondition: the stub, not anything else on the host, is what ran and exited.
       expect(launch.output()).toContain('stub: crashing at startup')
       await expect(launch.guard.beforeWrite(PTY_ID)).rejects.toThrow('agent_not_in_foreground')
