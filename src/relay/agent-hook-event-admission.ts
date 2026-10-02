@@ -29,6 +29,34 @@ export type RelayEventOptions = {
   hostPresence?: boolean
 }
 
+/** Mirrors the desktop's claim rule so a reconnect replay cannot bring the ended turn back. */
+function settleExitClaimInCache(
+  host: RelayEventHost,
+  claim: AgentHookEventPayload,
+  cached: AgentHookEventPayload | undefined
+): void {
+  if (
+    !cached ||
+    cached.providerSessionOnly ||
+    cached.payload.agentType !== claim.agentPresence?.agent ||
+    !claim.providerSession ||
+    cached.providerSession?.id !== claim.providerSession.id
+  ) {
+    return
+  }
+  const { launchToken: _launchToken, ...resumeIdentity } = cached
+  if (
+    !cacheRelayLegacyAgentStatus(
+      host.state,
+      { ...resumeIdentity, providerSessionOnly: true },
+      MAX_CACHED_PANES,
+      (paneKey) => host.clearPaneState(paneKey)
+    )
+  ) {
+    host.clearPaneState(claim.paneKey)
+  }
+}
+
 export function applyRelayAgentEvent(
   host: RelayEventHost,
   incoming: AgentHookEventPayload,
@@ -46,11 +74,12 @@ export function applyRelayAgentEvent(
   version ??= meta?.version
   const cached = host.state.lastStatusByPaneKey.get(incoming.paneKey)
   // Why: an exit claim is never a row here either. A live owner is checked; otherwise the desktop
-  // decides it against its own turn, so it is forwarded without touching the replay cache.
+  // decides it against its own turn, and the replay cache settles the same way.
   if (!options.hostPresence && incoming.agentPresence?.ended && !incoming.agentPresence.process) {
     if (cached?.agentPresence?.process && !cached.agentPresence.ended) {
       void host.presenceChecks.observeHook(incoming, cached, true)
     } else if (!host.isPaneSurfaceRetired(incoming.paneKey)) {
+      settleExitClaimInCache(host, incoming, cached)
       host.forward(buildRelayHookEnvelope(incoming, source, env, version, options))
     }
     return undefined

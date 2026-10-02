@@ -284,4 +284,38 @@ describe('owner handover across execution hosts', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('never replays an exited remote turn as Done after a reconnect or a desktop restart', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'owner-handover-'))
+    try {
+      const rig = await relayRig(dir)
+      await rig.post('UserPromptSubmit', 'a', 4001)
+      await rig.post('Stop', 'a', 4001)
+      rig.pump()
+      const live = (server: AgentHookServer) =>
+        server.getStatusSnapshot().filter((row) => !row.providerSessionOnly)
+      expect(live(rig.desktop).map((row) => row.state)).toEqual(['done'])
+      await rig.post('SessionEnd', 'a', 4001, { reason: 'prompt_input_exit' })
+      rig.pump()
+      expect(live(rig.desktop)).toEqual([])
+
+      expect(rig.relay.replayCachedPayloadsForPanes()).toBe(1)
+      rig.pump()
+      expect(live(rig.desktop)).toEqual([])
+
+      const fresh = new Desktop()
+      servers.push(fresh)
+      rig.relay.replayCachedPayloadsForPanes()
+      const replay = rig.sent.length
+      rig.pump()
+      for (const envelope of rig.sent.slice(replay)) {
+        fresh.ingestRemote(envelope, 'ssh-1')
+      }
+      expect(live(fresh)).toEqual([])
+      // Resume identity survives the exit, as it does on the desktop.
+      expect(rig.sent.at(-1)).toMatchObject({ providerSessionOnly: true })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
