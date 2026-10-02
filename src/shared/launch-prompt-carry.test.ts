@@ -103,6 +103,21 @@ describe('a host that types the line raw', () => {
     )
   })
 
+  // Why: a host that cannot prove the agent holds its terminal refuses a paste (#24257), so the
+  // line carries what the paste would have, as main typed it; Claude and Codex still get the file.
+  it('keeps a prompt on the line of a host that cannot paste, unless a file can carry it', () => {
+    const extra = {
+      platform: 'win32' as const,
+      shell: 'cmd' as const,
+      hostProvesAgentInFront: false
+    }
+    const prompt = 'fix the build\nthen run the tests'
+    expect(plan('gemini', prompt, extra)?.carry).toBe('on-line')
+    expect(plan('gemini', 'y'.repeat(600), extra)?.carry).toBe('on-line')
+    expect(plan('claude', prompt, extra)?.carry).toBe('launch-file')
+    expect(plan('aider', prompt, extra)?.carry).toBe('paste-after-ready')
+  })
+
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {
     const extra = { platform: 'linux' as const, launchHostIsPaired: true }
     expect(plan('claude', 'fix it', extra)?.carry).toBe('on-line')

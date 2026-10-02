@@ -74,6 +74,8 @@ export type AgentLaunchPromptArgs = AgentStartupPlanInputs & {
   launchFile?: LaunchFile
   /** Another Orca this client drives; see `CarriedPlanArgs`. */
   launchHostIsPaired?: boolean
+  /** See `CarriedPlanArgs`. */
+  hostProvesAgentInFront?: boolean
 }
 
 /**

@@ -9,7 +9,8 @@
  * a composer from a startup dialog drawn in the same mode, so it counts only while the pane shows no
  * startup dialog and no Codex provisional header (`readFreshComposerHold`). Unlike the desktop's
  * paste it reads only output after the shell's last `?2004l`, and drops a signal while a shell is
- * proven in front (`isLaunchShellInFront`).
+ * proven in front (`readLaunchedAgentForeground`). A signal is never proof by itself: a shell back
+ * at its prompt turns bracketed paste on too, so the write still needs the agent found in front.
  *
  * Where the desktop pasted blind once its budget ran out, the host falls back to the `tui-idle`
  * evidence ranking (idle titles, known ready screens), which also reports a dialog left up. A few

@@ -78,6 +78,9 @@ export type CarriedPlanArgs = {
   /** Another Orca this client drives, possibly an older one: it is sent a command it may neither
    *  stage nor accompany with a launch file. Temporary, until paired hosts advertise both. */
   launchHostIsPaired?: boolean
+  /** False where the host cannot prove the launched agent holds its terminal (a Windows host),
+   *  so it refuses a paste (`launched-agent-foreground`). */
+  hostProvesAgentInFront?: boolean
 }
 
 export function agentReadsLaunchFile(agent: TuiAgent): boolean {
@@ -90,7 +93,8 @@ export function agentReadsLaunchFile(agent: TuiAgent): boolean {
  * when a Windows shell would damage it, or when the host types the line raw (a Windows host, a
  * paired Orca) and the line is past the typed budget. A launch file goes only to an agent measured
  * reading one, on a host that writes it; otherwise the agent starts clean and the prompt is pasted
- * once it is ready.
+ * once it is ready, except where the host cannot prove the agent is in front to paste into: there
+ * the line carries it, as main typed it.
  */
 export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchCommand: string }>(
   args: A,
@@ -115,10 +119,14 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (mode === 'stdin-after-start') {
     return pasteAfterReady()
   }
+  const lineOrPaste = (): LaunchPromptPlan<P> | null => {
+    const plan = args.hostProvesAgentInFront === false ? buildLine(args) : null
+    return plan ? { carry: 'on-line', plan } : pasteAfterReady()
+  }
   const viaLaunchFile = (): LaunchPromptPlan<P> | null => {
     // Why: an agent not measured reading the file would stop on an approval or refuse the path.
     if (args.launchHostIsPaired === true || !agentReadsLaunchFile(args.agent)) {
-      return pasteAfterReady()
+      return lineOrPaste()
     }
     const pointer = carryInLaunchFile(text, false)
     const plan = buildLine({ ...args, prompt: pointer.prompt, launchFile: pointer.launchFile })

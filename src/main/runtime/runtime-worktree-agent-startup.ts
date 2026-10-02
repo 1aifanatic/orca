@@ -15,6 +15,7 @@ import {
   type AgentStartupPlan
 } from '../../shared/tui-agent-startup'
 import type { LaunchFile } from '../../shared/launch-prompt-file'
+import { launchHostProvesAgentInFront } from './launch-host-agent-in-front'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents
@@ -154,7 +155,14 @@ export function buildWorktreeStartupForAgent(
     ...(environment.agentArgs !== undefined ? { agentArgs: environment.agentArgs } : {}),
     sessionOptions: environment.toSessionOptions(environment.launchPreferences)
   })
-  const planned = planLaunchPrompt({ ...planInputs, prompt: environment.prompt ?? '' })
+  const planned = planLaunchPrompt({
+    ...planInputs,
+    prompt: environment.prompt ?? '',
+    hostProvesAgentInFront: launchHostProvesAgentInFront({
+      isRemote: repoIsRemote(repo),
+      launchPlatform: environment.getLaunchPlatform()
+    })
+  })
   if (!planned) {
     throw new Error(`Could not build launch command for ${agent}.`)
   }

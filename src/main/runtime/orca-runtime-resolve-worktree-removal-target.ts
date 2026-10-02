@@ -21,6 +21,7 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
 import { agentPromptRidesLaunchCommand, planLaunchPrompt } from '../../shared/tui-agent-startup'
 import { launchPromptNeedsPasteRefusal } from '../../shared/launch-prompt-carry'
+import { launchHostProvesAgentInFront } from './launch-host-agent-in-front'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -274,7 +275,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     const planned = planLaunchPrompt({
       ...planInputs,
       prompt: opts.startupPrompt ?? '',
-      ...(opts.launchFile ? { launchFile: opts.launchFile } : {})
+      ...(opts.launchFile ? { launchFile: opts.launchFile } : {}),
+      hostProvesAgentInFront: launchHostProvesAgentInFront({ isRemote, launchPlatform: platform })
     })
     if (!planned) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare

@@ -33,7 +33,10 @@ import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
 import { readFreshComposerHold } from './launched-agent-composer-readiness'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
-import { isShellInFrontOfLaunchedAgent } from './launched-agent-shell-foreground'
+import {
+  readLaunchedAgentForeground,
+  type LaunchedAgentForeground
+} from './launched-agent-foreground'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -208,7 +211,8 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         timeoutMs,
         requireComposerMarker,
         signal: stop.signal,
-        isShellInFront: (ownerPtyId) => this.isLaunchShellInFront(ownerPtyId, agent),
+        isShellInFront: async (ownerPtyId) =>
+          (await this.readLaunchedAgentForeground(ownerPtyId, agent)) === 'shell',
         accept: (readyPtyId) => {
           const pty = this.ptysById.get(readyPtyId)
           const hold = pty
@@ -234,12 +238,17 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     return this.buildTuiIdleProbeResult(handle, null)
   }
 
-  /** Whether a shell, not the agent a launch started, is proven to be in the terminal's foreground. */
-  isLaunchShellInFront(ptyId: string, agent: TuiAgent): Promise<boolean> {
+  /** What holds the terminal a launch started its agent in, read fresh from the execution host. */
+  readLaunchedAgentForeground(ptyId: string, agent: TuiAgent): Promise<LaunchedAgentForeground> {
     const pty = this.ptysById.get(ptyId)
-    return isShellInFrontOfLaunchedAgent(
+    const remote = !!pty?.connectionId
+    return readLaunchedAgentForeground(
       this.ptyController,
-      { remote: !!pty?.connectionId, windows: this.pathFlavorForPty(pty) === 'win32' },
+      // A local WSL pane still runs on a Windows host, whose process reads cannot see into it.
+      {
+        remote,
+        windows: remote ? this.pathFlavorForPty(pty) === 'win32' : process.platform === 'win32'
+      },
       ptyId,
       agent
     )
