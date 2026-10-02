@@ -2,9 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
 import { describeLaunchFileUnavailable } from '../../../../shared/launch-prompt-file'
 
-const mocks = vi.hoisted(() => ({ showNotStarted: vi.fn() }))
+const mocks = vi.hoisted(() => {
+  const ptyIdsByTabId: Record<string, string[]> = {}
+  return { showNotStarted: vi.fn(), closeTerminalTab: vi.fn(), ptyIdsByTabId }
+})
 vi.mock('@/lib/agent-launch-prompt-not-delivered-notice', () => ({
   showAgentLaunchNotStartedNotice: mocks.showNotStarted
+}))
+vi.mock('@/components/terminal/terminal-tab-actions', () => ({
+  closeTerminalTab: mocks.closeTerminalTab
+}))
+vi.mock('@/store', () => ({
+  useAppStore: { getState: () => ({ ptyIdsByTabId: mocks.ptyIdsByTabId }) }
 }))
 
 describe('a pane spawn the host refused for what carries its prompt', () => {
@@ -13,6 +22,7 @@ describe('a pane spawn the host refused for what carries its prompt', () => {
   beforeEach(() => {
     vi.resetModules()
     mocks.showNotStarted.mockReset()
+    mocks.closeTerminalTab.mockReset()
     installIpcPtyWindow(originalWindow, { data: () => {}, exit: () => {} })
   })
 
@@ -33,6 +43,55 @@ describe('a pane spawn the host refused for what carries its prompt', () => {
     }).connect({ url: '', callbacks: { onError: vi.fn() } })
 
     expect(mocks.showNotStarted).toHaveBeenCalledWith({ prompt: 'a long prompt' })
+  })
+
+  // Why (stack QA, new agent tab with the temp folder read-only): the empty pane's recovery spawned
+  // it again, so the notice showed twice, under a red error panel, in a tab left open with nothing.
+  it('tells the user once, with no error panel, and closes the tab it left empty', async () => {
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const refusal = new Error(describeLaunchFileUnavailable('EACCES', 'staged-line'))
+    vi.mocked(window.api.pty.spawn).mockRejectedValue(refusal)
+    const onError = vi.fn()
+    const connect = () =>
+      createIpcPtyTransport({
+        command: "claude 'a long prompt'",
+        launchPrompt: 'a long prompt',
+        tabId: 'tab-refused',
+        worktreeId: 'wt-1'
+      }).connect({ url: '', callbacks: { onError } })
+
+    await connect()
+    await connect()
+
+    expect(mocks.showNotStarted).toHaveBeenCalledTimes(1)
+    expect(onError).not.toHaveBeenCalled()
+    await vi.waitFor(() =>
+      expect(mocks.closeTerminalTab).toHaveBeenCalledWith('tab-refused', {
+        force: true,
+        skipRunningProcessConfirm: true,
+        captureRecentlyClosed: false
+      })
+    )
+  })
+
+  it('leaves a tab that still holds a live terminal', async () => {
+    mocks.ptyIdsByTabId['tab-with-shell'] = ['pty-live']
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    vi.mocked(window.api.pty.spawn).mockRejectedValueOnce(
+      new Error(describeLaunchFileUnavailable('EACCES', 'staged-line'))
+    )
+
+    await createIpcPtyTransport({
+      command: "claude 'a long prompt'",
+      launchPrompt: 'a long prompt',
+      tabId: 'tab-with-shell',
+      worktreeId: 'wt-1'
+    }).connect({ url: '', callbacks: { onError: vi.fn() } })
+
+    expect(mocks.showNotStarted).toHaveBeenCalledTimes(1)
+    // The close reads the store after a lazy import; let it settle before asserting it did not run.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(mocks.closeTerminalTab).not.toHaveBeenCalled()
   })
 
   it('stays quiet for any other spawn failure', async () => {

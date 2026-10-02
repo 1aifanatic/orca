@@ -8,7 +8,15 @@
  * by the host that owns the PTY, at the moment it accepts the spawn.
  */
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import { quoteStartupArg } from './tui-agent-startup-shell'
@@ -31,6 +39,10 @@ export type StartupCommandStaging = {
   scriptPath?: string
   /** Why staging failed, for the host's log. */
   failure?: string
+  /** The failed write's folder was unusable before it (this host's temp folder, unwritable), which
+   *  the launch's plan also saw, so it chose main's typed line; otherwise the folder looked usable
+   *  (a WSL distro's, found by its probe) and the write still failed. */
+  folderUnusable?: true
 }
 
 // Why only these type any short line as is: Orca's portable quoting is verified literal in these. Any
@@ -137,13 +149,23 @@ export function stageStartupCommand(args: {
     return {
       command: args.command,
       delivery: 'typed-after-stage-failed',
-      failure: error instanceof Error ? error.message : String(error)
+      failure: error instanceof Error ? error.message : String(error),
+      ...(!wsl && !folderWritable(directory) ? { folderUnusable: true } : {})
     }
   }
   return {
     command: stagedScriptLine(shellName, quotedPath),
     delivery: 'staged',
     scriptPath
+  }
+}
+
+function folderWritable(directory: string): boolean {
+  try {
+    accessSync(directory, constants.W_OK)
+    return true
+  } catch {
+    return false
   }
 }
 

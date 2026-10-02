@@ -6,7 +6,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { planLaunchPrompt } from '../../shared/tui-agent-startup'
-import { thisOrcaLaunchHost } from './this-orca-launch-host'
+import { probedThisOrcaLaunchHost } from './this-orca-launch-host'
 import { launchPromptNeedsPasteRefusal } from '../../shared/launch-prompt-carry'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 
@@ -61,11 +61,12 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
         isRemote
       }),
       prompt: opts.agentPrompt ?? '',
-      host: thisOrcaLaunchHost({
+      host: await probedThisOrcaLaunchHost({
         launchPlatform,
         isRemote,
         settings,
-        workspacePath: workspace.path
+        workspacePath: workspace.path,
+        prompt: opts.agentPrompt
       }),
       // Why: a quick command has no paste after ready.
       paste: 'never'

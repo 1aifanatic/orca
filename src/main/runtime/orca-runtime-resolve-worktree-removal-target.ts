@@ -21,7 +21,7 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
 import { planLaunchPrompt } from '../../shared/tui-agent-startup'
 import { launchPromptNeedsPasteRefusal } from '../../shared/launch-prompt-carry'
-import { thisOrcaLaunchHost } from './this-orca-launch-host'
+import { probedThisOrcaLaunchHost } from './this-orca-launch-host'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -271,12 +271,14 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       ...planInputs,
       prompt: opts.startupPrompt ?? '',
       ...(opts.launchFile ? { launchFile: opts.launchFile } : {}),
-      host: thisOrcaLaunchHost({
+      host: await probedThisOrcaLaunchHost({
         launchPlatform: platform,
         isRemote,
         settings,
         windowsShellOverride: opts.shellOverride,
-        workspacePath: workspace.path
+        workspacePath: workspace.path,
+        // A caller's own launch file already carries the prompt, so no line needs staging.
+        ...(opts.launchFile ? {} : { prompt: opts.startupPrompt })
       }),
       paste: opts.onStartupPromptCarry ? 'when-host-proves-agent' : 'never'
     })

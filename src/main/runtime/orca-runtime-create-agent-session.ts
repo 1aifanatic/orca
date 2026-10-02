@@ -27,7 +27,7 @@ import {
   windowsDraftRefusal
 } from '../../shared/launch-prompt-carry'
 import { resolveStartupShell } from '../../shared/tui-agent-startup-shell'
-import { thisOrcaLaunchHost } from './this-orca-launch-host'
+import { probedThisOrcaLaunchHost } from './this-orca-launch-host'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
   AgentSessionCreateOperation,
@@ -184,11 +184,12 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         const planned = planLaunchPrompt({
           ...startupArgs,
           prompt: request.prompt ?? '',
-          host: thisOrcaLaunchHost({
+          host: await probedThisOrcaLaunchHost({
             launchPlatform: startupArgs.platform,
             isRemote: Boolean(workspace.connectionId),
             settings,
-            workspacePath: workspace.path
+            workspacePath: workspace.path,
+            prompt: request.prompt
           }),
           // Why: this create returns before the agent is ready, so nothing pastes after it.
           paste: 'never'

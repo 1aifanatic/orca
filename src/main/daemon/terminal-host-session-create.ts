@@ -130,7 +130,6 @@ async function spawnAndPublishSession(
     launchFile: opts.launchFile,
     command: opts.command,
     env: opts.env,
-    orcaBuiltLine: opts.launchAgent !== undefined,
     wslDistro,
     wslDirectory
   })
@@ -220,7 +219,12 @@ async function spawnAndPublishSession(
     })
     // Why refuse: typed in full, a long agent line can leave the shell at a quote prompt with the
     // prompt lost while the launch reports success; the refusal hands the user the prompt instead.
-    if (staging.failure !== undefined && opts.launchAgent !== undefined) {
+    // A folder already unusable is not refused: the plan saw it too and chose main's typed line.
+    if (
+      staging.failure !== undefined &&
+      opts.launchAgent !== undefined &&
+      staging.folderUnusable !== true
+    ) {
       deps.sessions.set(opts.sessionId, session)
       await session.forceKillAndDisposeSubprocess()
       removeLaunchFile(launchFile)

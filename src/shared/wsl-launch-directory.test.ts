@@ -31,7 +31,6 @@ describe('a WSL launch file', () => {
     const written = writeSpawnLaunchFile({
       launchFile: file,
       command: `claude '${buildLaunchFilePointer(file.placeholder)}'`,
-      orcaBuiltLine: true,
       wslDistro: 'Ubuntu',
       wslDirectory: directory
     })!
@@ -48,7 +47,6 @@ describe('a WSL launch file', () => {
       writeSpawnLaunchFile({
         launchFile: launchFile(),
         command: 'claude',
-        orcaBuiltLine: true,
         wslDistro: 'Ubuntu',
         wslDirectory
       })
@@ -57,17 +55,13 @@ describe('a WSL launch file', () => {
     expect(readdirSync(join(windowsSide, '..'))).toEqual([])
   })
 
-  it('refuses a long agent line it would otherwise type raw, and types a short one', () => {
-    const line = (command: string) => () =>
-      writeSpawnLaunchFile({
-        command,
-        orcaBuiltLine: true,
-        wslDistro: 'Ubuntu',
-        wslDirectory: undefined
-      })
-    expect(line(`claude '${'x'.repeat(600)}'`)).toThrow(LaunchFileUnavailableError)
-    expect(line(`claude 'one\ntwo'`)).toThrow(LaunchFileUnavailableError)
-    expect(line(`claude 'fix it'`)()).toBeUndefined()
+  // Why: the plan read the same probe, so with no folder it chose main's delivery, typed as is.
+  it('leaves a line of any length to be typed when the distro has no folder', () => {
+    for (const command of [`claude '${'x'.repeat(600)}'`, `claude 'one\ntwo'`, `claude 'fix it'`]) {
+      expect(
+        writeSpawnLaunchFile({ command, wslDistro: 'Ubuntu', wslDirectory: undefined })
+      ).toBeUndefined()
+    }
   })
 })
 

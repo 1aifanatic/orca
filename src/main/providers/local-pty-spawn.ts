@@ -62,7 +62,6 @@ export async function spawnLocalPty(
       launchFile: args.launchFile,
       command: args.command,
       env: args.env,
-      orcaBuiltLine: args.launchAgent !== undefined,
       wslDistro,
       wslDirectory: wslLaunchDirectory
     })

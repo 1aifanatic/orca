@@ -190,27 +190,20 @@ export function spawnNeedsWslLaunchDirectory(args: {
 
 /**
  * The write site's launch file for a spawn. A WSL session writes it into the distro, and refuses
- * when the distro directory is unknown and a file or a staged line needs it: a Windows path means
- * nothing to an agent in the distro, and a long line typed raw is cut or submitted early.
+ * when the distro directory is unknown: a Windows path means nothing to an agent in the distro. A
+ * line is not refused here: with no directory the host types it as is, which is the delivery the
+ * plan chose, from the same probe, for a distro whose folder is unusable.
  */
 export function writeSpawnLaunchFile(args: {
   launchFile?: LaunchFile
   command?: string
   env?: Record<string, string>
-  orcaBuiltLine: boolean
   wslDistro: string | null | undefined
   wslDirectory: WslLaunchDirectory | undefined
 }): WrittenLaunchFile | undefined {
   const wslDirectory = args.wslDistro ? args.wslDirectory : undefined
-  if (
-    args.wslDistro &&
-    spawnNeedsWslLaunchDirectory(args) &&
-    wslDirectory?.distro !== args.wslDistro
-  ) {
-    throw new LaunchFileUnavailableError(
-      "the WSL distro's home directory could not be reached",
-      args.launchFile ? 'file' : 'staged-line'
-    )
+  if (args.wslDistro && args.launchFile && wslDirectory?.distro !== args.wslDistro) {
+    throw new LaunchFileUnavailableError("the WSL distro's home directory could not be reached")
   }
   return args.launchFile
     ? writeLaunchFile({

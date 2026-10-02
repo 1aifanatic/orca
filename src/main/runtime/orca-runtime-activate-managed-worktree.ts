@@ -4,6 +4,8 @@ import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import { navigationTargetsClients, navigationTargetsHost } from '../../shared/runtime-navigation'
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
+import { repoIsRemote } from '../../shared/agent-launch-remote'
+import { probeWslLaunchFolderBeforePlanning } from './this-orca-launch-host'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
@@ -143,7 +145,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     })
   }
 
-  protected buildStartupForAgent(
+  protected async buildStartupForAgent(
     repo: Repo,
     agent: TuiAgent,
     prompt: string | undefined,
@@ -153,10 +155,20 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       launchSource?: string
       onPromptCarry?: (carried: boolean) => void
     }
-  ): { agent: TuiAgent; startup: WorktreeStartupLaunch; followup?: WorktreeStartupFollowup } {
+  ): Promise<{
+    agent: TuiAgent
+    startup: WorktreeStartupLaunch
+    followup?: WorktreeStartupFollowup
+  }> {
     if (!this.store) {
       throw new Error('runtime_unavailable')
     }
+    await probeWslLaunchFolderBeforePlanning({
+      launchPlatform: this.getAgentLaunchPlatformForRepo(repo),
+      isRemote: repoIsRemote(repo),
+      workspacePath: repo.path,
+      prompt
+    })
     return buildWorktreeStartupForAgent({
       repo,
       agent,
