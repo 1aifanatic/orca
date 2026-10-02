@@ -106,7 +106,21 @@ export class ManagedDataAccountService {
     if (!state.activeAccountId) {
       return {}
     }
-    const directory = this.requireAccount(provider, state.activeAccountId)
+    return this.profileEnvironment(provider, state.activeAccountId)
+  }
+
+  transcriptEnvironments(provider: ManagedDataAccountProvider): Record<string, string>[] {
+    const state = this.list(provider)
+    const selected = state.accounts.filter((account) => account.id === state.activeAccountId)
+    const others = state.accounts.filter((account) => account.id !== state.activeAccountId)
+    return [...selected, ...others].map((account) => this.profileEnvironment(provider, account.id))
+  }
+
+  private profileEnvironment(
+    provider: ManagedDataAccountProvider,
+    accountId: string
+  ): Record<string, string> {
+    const directory = this.requireAccount(provider, accountId)
     return {
       XDG_DATA_HOME: join(directory, 'data'),
       XDG_STATE_HOME: join(directory, 'state'),

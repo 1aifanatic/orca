@@ -105,6 +105,20 @@ describe('managed data accounts', () => {
     expect(service.list('devin').accounts.map((account) => account.label)).toEqual(['One', 'Two'])
   })
 
+  it('keeps registered transcript roots available when selection changes', async () => {
+    const first = await service.add('devin', source, 'One')
+    const firstEnvironment = service.launchEnvironment('devin')
+    await service.add('devin', source, 'Two')
+    const secondEnvironment = service.launchEnvironment('devin')
+    expect(service.transcriptEnvironments('devin')).toEqual([secondEnvironment, firstEnvironment])
+    await service.select('devin', first.accounts[0].id)
+    expect(service.transcriptEnvironments('devin')).toEqual([firstEnvironment, secondEnvironment])
+    await service.select('devin', null)
+    expect(service.transcriptEnvironments('devin')).toEqual([firstEnvironment, secondEnvironment])
+    await service.remove('devin', first.accounts[0].id)
+    expect(service.transcriptEnvironments('devin')).toEqual([secondEnvironment])
+  })
+
   it('rejects a credential symlink without touching its target', async () => {
     const original = join(source, 'devin', 'credentials.toml')
     const target = join(root, 'private.toml')
