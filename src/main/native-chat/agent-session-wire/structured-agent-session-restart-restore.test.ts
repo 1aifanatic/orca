@@ -30,7 +30,6 @@ afterAll(() => {
 const NO_OPEN_DEPS = {
   store: { getRecord: () => null, listRecords: () => [] },
   journalDatabase: openTestJournalHostDatabase(stateDirectory),
-  adapter: {},
   logger: recordingStructuredAgentSessionLogger().logger
 }
 
@@ -52,8 +51,7 @@ describe('restart journal restoration', () => {
           params: { location: { workspaceId: 'workspace-1' }, provider: 'codex' },
           child: null,
           sessionId
-        },
-        reset: null
+        }
       }
     })
     const records = Array.from(
@@ -139,8 +137,7 @@ describe('restart journal restoration', () => {
       runtimeKind: 'native'
     }
     const restored = {
-      session: { journal: {}, params, child: null },
-      reset: null
+      session: { journal: {}, params, child: null }
     }
     // The open is what settles: it runs after recovery resolution and before the publish.
     restoreRead.mockImplementation(async () => {
@@ -224,7 +221,7 @@ describe('restart journal restoration', () => {
       if (sessionId === 'session-0') {
         throw new Error('this chat cannot be opened')
       }
-      return { session: { journal: {}, params: {}, child: null, sessionId }, reset: null }
+      return { session: { journal: {}, params: {}, child: null, sessionId } }
     })
     const readable: string[] = []
     const log = recordingStructuredAgentSessionLogger()
@@ -258,8 +255,7 @@ describe('restart journal restoration', () => {
 
   it('does not settle again when a second restore finds the session already open', async () => {
     restoreRead.mockResolvedValue({
-      session: { journal: {}, params: {}, child: null },
-      reset: null
+      session: { journal: {}, params: {}, child: null }
     })
 
     await restoreStructuredAgentSessionsOnRestart({
