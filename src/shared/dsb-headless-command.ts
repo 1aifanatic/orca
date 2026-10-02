@@ -89,7 +89,7 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
       return false
     }
     const name = token.split('=', 1)[0]
-    if (ONE_SHOT_OPTIONS.has(name) || /^-c*p(?:[^-]|$)/.test(token)) {
+    if (ONE_SHOT_OPTIONS.has(name) || /^-c*p/.test(token)) {
       return true
     }
     if (VALUE_OPTIONS.has(name) && !token.includes('=')) {
