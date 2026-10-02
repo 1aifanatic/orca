@@ -36,7 +36,9 @@ export async function openJournalStoreState(input: {
   readOnly: () => boolean
 }): Promise<void> {
   const loaded = input.replay()
-  if (!loaded) {
+  // An epoch named but holding no row (a crash inside an older build's repair) has nothing to
+  // keep, so it is founded afresh like a chat with no journal; no row is deleted.
+  if (!loaded || (!loaded.readOnly && !loaded.damage && loaded.state.lastSequence === 0)) {
     input.start()
     await discloseFileFormatRemnant(input)
     return

@@ -34,6 +34,8 @@ export type StructuredAgentSessionReadRestoreDeps = {
   resolveRecovery: (sessionId: string) => Promise<boolean>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
+  /** A chat whose open failed: it still has its record, so it keeps its tab. */
+  onUnopened?: (sessionId: string) => void
   onReadable: (
     sessionId: string,
     opened: OpenedStructuredAgentSessionConversation
@@ -100,6 +102,7 @@ export async function restoreStructuredAgentSessionsOnRestart(
           sessionId,
           error
         })
+        input.onUnopened?.(sessionId)
       }
     )
   })

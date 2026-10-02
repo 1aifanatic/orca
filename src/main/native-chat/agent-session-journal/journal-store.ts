@@ -359,8 +359,8 @@ export class AgentSessionJournal {
     return rejectJournalQueuedSubmissions(this, fence, rejection, which)
   }
 
-  /** The escape hatch for corruption, an unreconcilable prefix, a forked handle,
-   *  and an unreadable schema. It invalidates every cursor; clients reload. */
+  /** The escape hatch for a forked handle and an unreadable schema. It invalidates every cursor;
+   *  clients reload. */
   async rollEpoch(reason: AgentJournalEpochReason, fence: number): Promise<AgentJournalCursor> {
     return this.epochController.roll(reason, fence)
   }

@@ -5,7 +5,8 @@
 // always named: `SELECT *` is uncacheable and can drop a column.
 
 import type Database from '../../sqlite/sync-database'
-import { serializeJournalRow, type JournalRow } from './journal-row-schema'
+import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
+import { AgentSessionJournalError } from './journal-write-guards'
 
 export type JournalStoredRow = { epoch: string; seq: number; ts: number; rowJson: string }
 
@@ -43,6 +44,15 @@ export function insertJournalRow(
   row: JournalRow
 ): number {
   const rowJson = serializeJournalRow(row)
+  // A row the reader rejects would fail the chat's next load, so it is never written: the throw
+  // rolls back the caller's transaction.
+  const readBack = parseJournalRow(rowJson)
+  if (!readBack.ok || readBack.row.seq !== row.seq) {
+    throw new AgentSessionJournalError(
+      'journal_row_rejected',
+      `a ${row.kind} row for ${sessionId} would not read back, so it was not written`
+    )
+  }
   db.prepare(INSERT_ROW).run(sessionId, row.epoch, row.seq, row.ts, rowJson)
   return Buffer.byteLength(rowJson, 'utf8')
 }

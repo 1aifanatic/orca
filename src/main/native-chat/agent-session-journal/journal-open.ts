@@ -63,8 +63,10 @@ export function startJournalRowFold(input: { sessionId: string; epoch: string })
   let damage: JournalDamage | null = null
   let anchored = false
   let latched = false
+  let empty = true
 
   const add = (entry: { seq: number; rowJson: string }): boolean => {
+    empty = false
     const parsed = parseJournalRow(entry.rowJson)
     if (!parsed.ok && parsed.unreadable) {
       latched = true
@@ -100,17 +102,19 @@ export function startJournalRowFold(input: { sessionId: string; epoch: string })
   }
   const finish = (): JournalLoad => {
     state.oldestSequence = FIRST_JOURNAL_SEQUENCE
-    // An epoch with no rows at all never had its first row written.
+    // An epoch with no rows at all holds nothing to lose: the open founds a fresh one over it.
     const found =
       damage ??
-      (anchored ? null : { sequence: FIRST_JOURNAL_SEQUENCE, cause: 'no-epoch-row' as const })
+      (anchored || empty
+        ? null
+        : { sequence: FIRST_JOURNAL_SEQUENCE, cause: 'no-epoch-row' as const })
     return { state, readOnly: latched, damage: latched ? null : found }
   }
   return { add, finish }
 }
 
-/** Rows after a cursor, in sequence order. Stops at the first row this build
- *  cannot parse, exactly as replay does. */
+/** Rows after a cursor, in sequence order. Stops at the first row this build cannot parse: rows
+ *  past it are never served. */
 export function readJournalRowsAfterCursor(
   db: Database.Database,
   sessionId: string,

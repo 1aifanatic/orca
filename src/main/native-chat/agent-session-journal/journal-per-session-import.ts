@@ -150,8 +150,8 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
  * The chat a first copy would import, folded straight from its per-chat file and copying nothing:
  * for a restore, which must not import. Null when the open has to import now instead: the chat is
  * already in the host's database or was copied before (the reimport rules decide), its file holds
- * no chat, or a newer build wrote it. A damaged file fails the load, copied nowhere. The file is
- * closed before this returns.
+ * no chat or no rows, or a newer build wrote it. A damaged file fails the load, copied nowhere. The
+ * file is closed before this returns.
  */
 export async function previewPerSessionJournal(
   input: Pick<ImportInput, 'database' | 'identity' | 'legacyDirectory' | 'openSource'>
@@ -174,7 +174,8 @@ export async function previewPerSessionJournal(
     }
     const loaded = await foldLegacyJournal(source, sessionId, legacy)
     failLoadOnJournalDamage(sessionId, loaded)
-    return loaded.readOnly ? null : loaded
+    // An empty one is copied now, so its open founds the chat's epoch in the host's database.
+    return loaded.readOnly || loaded.state.lastSequence === 0 ? null : loaded
   } finally {
     source.close()
   }

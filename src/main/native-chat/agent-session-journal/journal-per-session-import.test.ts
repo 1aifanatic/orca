@@ -410,6 +410,24 @@ describe('importing a per-chat journal', () => {
     expect(rowCount(database.db)).toBe(rows.length)
   })
 
+  it('opens a file whose chat has no rows as a fresh chat, losing nothing', async () => {
+    const { epoch } = await historyRows()
+    await writeLegacyJournal(epoch, [])
+    const database = openTestJournalHostDatabase(root)
+    const db = new Database(legacyJournalDatabaseFile(legacyDir()))
+    db.prepare('INSERT INTO journal_sessions VALUES (?, ?, ?)').run(IDENTITY.sessionId, epoch, 1)
+    db.close()
+
+    await expect(
+      previewPerSessionJournal({ database, identity: IDENTITY, legacyDirectory: legacyDir() })
+    ).resolves.toBeNull()
+    const journal = await openChat()
+
+    expect(journal.isReadOnly).toBe(false)
+    expect(journal.snapshot().items).toEqual([])
+    expect(journal.cursor().sequence).toBe(1)
+  })
+
   it('keeps a damaged file whole, copies none of it, and refuses the chat on every open', async () => {
     const { epoch, rows } = await historyRows()
     // A gap: the reply's row is gone from the file.

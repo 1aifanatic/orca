@@ -169,3 +169,79 @@ function storedRowJson(db: Database.Database, seq: number): string {
   }
   return row.rowJson
 }
+
+describe('a row the reader would reject', () => {
+  // TypeScript accepts it; the persisted reader rejects a call id that is only spaces.
+  const blankCallId: AgentJournalItemBody = {
+    kind: 'message',
+    role: 'assistant',
+    blocks: [{ type: 'tool-call', name: 'Bash', input: null, callId: '   ' }]
+  }
+  const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+
+  it('is refused when it is written, and the chat still loads with every other row', async () => {
+    const journal = await open()
+    await journal.appendItem(item(0), body('before'), scope)
+    await expect(journal.appendItem(item(1), blankCallId, scope)).rejects.toMatchObject({
+      code: 'journal_row_rejected'
+    })
+    await journal.appendItem(item(2), body('after'), scope)
+    await journal.close()
+
+    const reopened = await open()
+    expect(reopened.isReadOnly).toBe(false)
+    expect(reopened.snapshot().items.map((entry) => entry.body)).toEqual([
+      body('before'),
+      body('after')
+    ])
+    expect(storedRows().map((row) => row.seq)).toEqual([1, 2, 3])
+  })
+
+  it('rolls back a whole epoch replacement that holds one, keeping the epoch it would replace', async () => {
+    const journal = await open()
+    await journal.appendItem(item(0), body('kept'), scope)
+    // The open journal's own database: closing it here would close the journal's too.
+    const liveRows = () =>
+      liveTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId)
+    const before = liveRows()
+
+    await expect(
+      journal.replaceEpochItems('legacy_import', 1, [
+        { identity: item(5), body: body('replacement') },
+        { identity: item(6), body: blankCallId }
+      ])
+    ).rejects.toMatchObject({ code: 'journal_row_rejected' })
+
+    expect(liveRows()).toEqual(before)
+    await journal.appendItem(item(1), body('still writable'), scope)
+    await journal.close()
+    await expect(open()).resolves.toBeTruthy()
+  })
+})
+
+describe('an epoch named with no rows at all', () => {
+  // A crash inside an older build's repair: the suffix deleted, its new epoch not yet published.
+  it('is founded afresh on open, with nothing deleted, and takes writes', async () => {
+    await writeChat()
+    withJournalDatabase((db) => {
+      for (const row of liveTestJournalRows(db, IDENTITY.sessionId)) {
+        deleteTestJournalRow(db, IDENTITY.sessionId, row.seq)
+      }
+    })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({
+      readOnly: false,
+      damage: null,
+      state: { lastSequence: 0 }
+    })
+
+    const journal = await open()
+    await journal.appendItem(item(0), body('after'), {
+      fence: 1,
+      turnScope: AGENT_JOURNAL_THREAD_SCOPE
+    })
+    await journal.close()
+
+    const reopened = await open()
+    expect(reopened.snapshot().items.map((entry) => entry.body)).toEqual([body('after')])
+  })
+})

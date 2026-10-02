@@ -9,7 +9,8 @@ export class AgentSessionJournalError extends Error {
       | 'journal_read_only'
       | 'journal_stale_fence'
       | 'journal_closed'
-      | 'journal_submission_exists',
+      | 'journal_submission_exists'
+      | 'journal_row_rejected',
     message: string,
     options?: ErrorOptions
   ) {
