@@ -181,9 +181,10 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     expect(mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft).not.toHaveBeenCalled()
   })
 
-  it('pastes a multi-line AI-button prompt on Windows, as main did, instead of a launch file', async () => {
+  // Why: a 9 KB multi-line PowerShell line was measured losing its line breaks; main pasted it.
+  it('pastes a long multi-line AI-button prompt on Windows, as main did, instead of a launch file', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-    const prompt = 'Fix the failing checks.\nThen push.'
+    const prompt = `Fix the failing checks.\n${'Then push. '.repeat(900)}Done.`
 
     launchAgentInNewTab({
       agent: 'codex',

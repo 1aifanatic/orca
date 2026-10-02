@@ -5,11 +5,13 @@ import { buildAgentDraftLaunchPlan } from './tui-agent-startup'
 import type { AgentStartupShell } from './tui-agent-startup-shell'
 import { windowsDraftRefusal } from './launch-prompt-carry'
 
-function plan(prompt: string, shell: AgentStartupShell) {
+const SHIM = 'C:/Users/ada/AppData/Roaming/npm/claude.cmd'
+
+function plan(prompt: string, shell: AgentStartupShell, command?: string) {
   return planLaunchForTest({
     agent: 'claude',
     prompt,
-    cmdOverrides: {},
+    cmdOverrides: command ? { claude: command } : {},
     platform: shell === 'posix' ? 'darwin' : 'win32',
     shell
   })
@@ -18,7 +20,9 @@ function plan(prompt: string, shell: AgentStartupShell) {
 describe('a prompt a Windows shell would damage on the launch line', () => {
   // Measured (ps-quoting-matrix.md): PowerShell 5.1, and 7.x through a .cmd shim, split a `"` out of
   // the plain literal and turn a trailing backslash into `"`; the legacy-passing escape would let a
-  // .cmd shim's cmd.exe run `&` and `<>` from inside the user's quotes. So these ride a launch file.
+  // .cmd shim's cmd.exe run `&` and `<>` from inside the user's quotes. A spelled-out shim gets a
+  // launch file. A bare name may be a native executable, where 7 carried them exactly (stack QA),
+  // so its line is typed as main typed it.
   it.each([
     ['P1', 'fix the "foo bar" bug'],
     ['P2', '"leading quote" then text'],
@@ -27,12 +31,16 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
     ['P5', 'back\\slash\\\\ "q" end\\'],
     ['P7', 'replace "<b>" with "a & b"'],
     ['a bare path', 'see C:\\dir\\']
-  ])('moves %s into a launch file on PowerShell', (_, prompt) => {
-    const startup = plan(prompt, 'powershell')
-    expect(startup?.launchFile?.content).toBe(prompt)
-    expect(startup?.launchCommand).not.toContain('"')
-    expect(startup?.launchCommand).not.toContain('Legacy')
-  })
+  ])(
+    'moves %s into a launch file through a PowerShell shim, and types it for a bare name',
+    (_, prompt) => {
+      const startup = plan(prompt, 'powershell', SHIM)
+      expect(startup?.launchFile?.content).toBe(prompt)
+      expect(startup?.launchCommand).not.toContain('"')
+      expect(startup?.launchCommand).not.toContain('Legacy')
+      expect(plan(prompt, 'powershell')?.launchFile).toBeUndefined()
+    }
+  )
 
   // Measured form F-A: a pointer to a spaced path passed in every PowerShell and target.
   it('types P6, the backtick pointer, and quote-free prompts as a plain literal', () => {
@@ -41,9 +49,13 @@ describe('a prompt a Windows shell would damage on the launch line', () => {
     expect(plan("fix Bob's build", 'powershell')?.launchCommand).toBe("claude 'fix Bob''s build'")
   })
 
-  // Measured (QA-WIN R0-R2): through a `.cmd` shim, `%PATH%` reached the agent as 1,795 characters.
-  it('moves a %NAME% pair into a launch file on PowerShell and keeps a lone percent typed', () => {
-    expect(plan('echo %PATH% for me', 'powershell')?.launchFile?.content).toBe('echo %PATH% for me')
+  // Measured (QA-WIN R0-R2): through a `.cmd` shim, `%PATH%` reached the agent as 1,795 characters;
+  // to a native executable it arrived (stack QA).
+  it('moves a %NAME% pair into a launch file through a shim and keeps a lone percent typed', () => {
+    expect(plan('echo %PATH% for me', 'powershell', SHIM)?.launchFile?.content).toBe(
+      'echo %PATH% for me'
+    )
+    expect(plan('echo %PATH% for me', 'powershell')?.launchFile).toBeUndefined()
     expect(plan('coverage is 80% now', 'powershell')?.launchCommand).toBe(
       "claude 'coverage is 80% now'"
     )

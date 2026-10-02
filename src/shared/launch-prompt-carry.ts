@@ -15,6 +15,7 @@ import {
 import { hasControlByte, typedStartupLineFits } from './typed-startup-line'
 import type { TuiAgent } from './tui-agent'
 import type { LaunchHost } from './launch-host'
+import { windowsLaunchLineVerdict } from './windows-launch-line'
 
 /**
  * Whether a Windows shell would damage `prompt` as one quoted argument. No quoting keeps a control
@@ -98,28 +99,13 @@ export function agentReadsLaunchFile(agent: TuiAgent): boolean {
 
 const utf8 = new TextEncoder()
 
-/** cmd.exe's documented line cap, the smallest of the Windows shells Orca types into. */
-export const WINDOWS_TYPED_LINE_MAX_CHARS = 8191
-
-/**
- * Whether a Windows shell carries `prompt` exactly on `line`. Nothing stages a Windows line, so it
- * must hold no control byte, fit cmd's cap, and survive the shell's quoting (measured matrix:
- * `windowsShellDamagesPrompt`).
- */
-function windowsLineCarriesExactly(prompt: string, line: string, shell: AgentStartupShell) {
-  return (
-    !hasControlByte(line) &&
-    line.length <= WINDOWS_TYPED_LINE_MAX_CHARS &&
-    !windowsShellDamagesPrompt(prompt, shell)
-  )
-}
-
 /**
  * The one carry rule. The prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
- * stages it when it is long or multi-line, and a Windows host types it when its shell carries the
- * text exactly. When the line cannot (past the argv ceiling, damaged by a Windows shell, past a
- * paired host's typed budget), a caller whose paste main used gets that paste, so the agent receives
- * the user's text. Otherwise it rides a launch file, which goes only to an agent measured reading
+ * stages it when it is long or multi-line, and a Windows host types it when its shell was measured
+ * carrying such a line exactly (`windowsLaunchLineVerdict`); an unmeasured one does what main does
+ * on the caller's path. When the line cannot (past the argv ceiling, measured damaged by a Windows
+ * shell, past a paired host's typed budget), a caller whose paste main used gets that paste, so the
+ * agent receives the user's text. Otherwise it rides a launch file, which goes only to an agent measured reading
  * one, on a host that writes it. Failing a file it is pasted once the agent is ready, unless the
  * caller's paste cannot reach the agent on this host: then the line carries it, as main typed it.
  */
@@ -183,12 +169,18 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (readsEnv) {
     return { carry: 'on-line', plan }
   }
-  if (args.platform === 'win32' && !windowsLineCarriesExactly(text, plan.launchCommand, shell)) {
+  const windowsLine =
+    args.platform === 'win32' ? windowsLaunchLineVerdict(text, plan.launchCommand, shell) : 'exact'
+  // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
+  if (
+    windowsLine === 'damaged' ||
+    (args.host.paired && !typedStartupLineFits(plan.launchCommand))
+  ) {
     return viaLaunchFile()
   }
-  // Why #24257's typed budget: an older paired host may type the line raw, truncated past it.
-  if (args.host.paired && !typedStartupLineFits(plan.launchCommand)) {
-    return viaLaunchFile()
+  // Why: unmeasured, so this path does what main does: its paste, or the line it typed.
+  if (windowsLine === 'uncertain' && args.paste === 'once-agent-runs') {
+    return pasteAfterReady()
   }
   return { carry: 'on-line', plan }
 }

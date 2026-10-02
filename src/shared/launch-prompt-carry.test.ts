@@ -6,7 +6,10 @@ import { RUNTIME_CAPABILITIES } from './protocol-version'
 import { AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY } from './agent-launch-runtime-capability'
 import { TYPED_STARTUP_LINE_BUDGET_BYTES, typedStartupLineFits } from './typed-startup-line'
 import { describeLaunchHost } from './launch-host'
-import { WINDOWS_TYPED_LINE_MAX_CHARS } from './launch-prompt-carry'
+import {
+  WINDOWS_CMD_LINE_MAX_CHARS,
+  WINDOWS_POWERSHELL_LINE_MAX_CHARS
+} from './windows-launch-line'
 
 function plan(
   agent: TuiAgent,
@@ -105,33 +108,21 @@ describe('where a launch prompt rides', () => {
 })
 
 describe('a host that types the line raw', () => {
-  // Why: the user's own words stay in the agent's history wherever a Windows line carries them.
-  it.each<['cmd' | 'powershell']>([['cmd'], ['powershell']])(
-    'keeps an exact %s line up to cmd’s cap and points Claude at a file past it',
-    (shell) => {
-      expect(plan('claude', 'fix it', { platform: 'win32', shell })?.carry).toBe('on-line')
-      expect(plan('claude', 'y'.repeat(4_000), { platform: 'win32', shell })?.carry).toBe('on-line')
-      const past = plan('claude', 'y'.repeat(WINDOWS_TYPED_LINE_MAX_CHARS), {
-        platform: 'win32',
-        shell
-      })
-      expect(past?.carry).toBe('launch-file')
-    }
-  )
+  // Why: the user's own words stay in the agent's history wherever a Windows line carries them;
+  // the per-shell measurements are in windows-launch-line.test.ts.
+  it('keeps an exact cmd line up to cmd’s cap and points Claude at a file past it', () => {
+    const extra = { platform: 'win32' as const, shell: 'cmd' as const }
+    expect(plan('claude', 'y'.repeat(4_000), extra)?.carry).toBe('on-line')
+    expect(plan('claude', 'y'.repeat(WINDOWS_CMD_LINE_MAX_CHARS), extra)?.carry).toBe('launch-file')
+  })
 
-  // The measured matrix (#23962 W-1): PowerShell splits at `"`, turns a trailing `\` into `"`, and
-  // a .cmd shim expands `%NAME%`; everything else arrives byte for byte.
-  it.each([
-    ['a double quote', 'say "hi"', 'launch-file'],
-    ['a trailing backslash', 'see C:\\dir\\', 'launch-file'],
-    ['a %NAME% pair', 'echo %PATH%', 'launch-file'],
-    ['a lone percent and an apostrophe', "it's 100% done", 'on-line']
-  ] as const)(
-    'carries a PowerShell prompt with %s by the measured matrix',
-    (_label, text, carry) => {
-      expect(plan('claude', text, { platform: 'win32', shell: 'powershell' })?.carry).toBe(carry)
-    }
-  )
+  it('keeps a PowerShell line to CreateProcess’s cap and points Claude at a file past it', () => {
+    const extra = { platform: 'win32' as const, shell: 'powershell' as const }
+    expect(plan('claude', 'y'.repeat(20_000), extra)?.carry).toBe('on-line')
+    expect(plan('claude', 'y'.repeat(WINDOWS_POWERSHELL_LINE_MAX_CHARS), extra)?.carry).toBe(
+      'launch-file'
+    )
+  })
 
   it('points Codex at a file for a Windows-damaged prompt, and keeps it on Gemini’s line', () => {
     const prompt = 'fix the build\nthen run the tests'
@@ -213,7 +204,7 @@ describe('a host that types the line raw', () => {
       paired: false
     })
     const prompt = 'fix the build\nthen run the tests'
-    const extra = { platform: 'win32' as const, shell: 'powershell' as const, host }
+    const extra = { platform: 'win32' as const, shell: 'cmd' as const, host }
     expect(plan('claude', prompt, extra)?.carry).toBe('on-line')
     expect(plan('codex', 'y'.repeat(MAX_LINE_PROMPT_BYTES + 1), extra)?.carry).toBe('on-line')
     expect(plan('claude', prompt, { ...extra, paste: 'once-agent-runs' })?.carry).toBe(

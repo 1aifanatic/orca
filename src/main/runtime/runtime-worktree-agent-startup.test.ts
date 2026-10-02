@@ -135,10 +135,15 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
     expect(result.startup.command).not.toContain('xxxx')
   })
 
-  it('points a multi-line prompt at a launch file on a Windows host, which cannot stage', () => {
-    const result = build('summarize the diff\nthen list the risks', 'win32')
-    expect(result.startup.launchFile?.content).toBe('summarize the diff\nthen list the risks')
-    expect(result.startup.command).not.toContain('summarize')
+  // Why: measured on PowerShell, a short multi-line line arrives and a 9 KB one does not.
+  it('keeps a short multi-line prompt on a Windows line and points a long one at a file', () => {
+    expect(build('summarize the diff\nthen list the risks', 'win32').startup.command).toContain(
+      'summarize the diff\nthen list the risks'
+    )
+    const long = Array.from({ length: 20 }, (_, i) => `step ${i} `.padEnd(500, 'x')).join('\n')
+    const result = build(long, 'win32')
+    expect(result.startup.launchFile?.content).toBe(long)
+    expect(result.startup.command).not.toContain('step 1 ')
   })
 
   it('leaves a prompt needing a file the agent is not known to read as the follow-up paste', () => {

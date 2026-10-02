@@ -229,7 +229,7 @@ describe('agent launch caller prompt transport', () => {
     ['past the argv ceiling', 'gemini', 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1), 'darwin'],
     ['a Windows-damaged prompt', 'gemini', 'say "hi"', 'win32'],
     ['past the argv ceiling', 'claude', 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1), 'darwin'],
-    ['a multi-line Windows prompt', 'codex', 'Fix the checks.\nThen push.', 'win32']
+    ['a 9 KB multi-line Windows prompt', 'codex', `Fix the checks.\n${'x'.repeat(9_100)}`, 'win32']
   ] as const)(
     'pastes %s for %s, and waits for that paste',
     async (_label, agent, prompt, launchPlatform) => {
