@@ -23,8 +23,7 @@ function boundedSet(set, value, max) {
   if (set.size > max) set.delete(set.values().next().value);
 }
 
-// Why storage.memory: OpenCode keeps it across plugin hot reloads and drops it when the TUI
-// exits, so a reload mid-turn keeps this pane's sessions and what it last reported.
+// Memory survives hot reloads and ends with the TUI.
 function paneStatusMemory(ctx) {
   const initial = { owned: [], last: "idle:", lastRoot: "", started: false, endings: [] };
   if (typeof ctx.storage?.memory === "function") return ctx.storage.memory("pane-status", { initial });
@@ -51,7 +50,6 @@ async function setupOpenCode2Tui(ctx) {
     let disposed = false;
     let lastLevel = null;
     let ticks = 0;
-    // Root sessions this TUI saw start before it owned them: their SessionStart and prompt.
     const early = new Map();
     // Why: a permission/form list fetched on reconnect can land after the reply event and restore it.
     const resolved = new Set();
@@ -64,7 +62,6 @@ async function setupOpenCode2Tui(ctx) {
       const route = ctx.ui.router.current();
       return route?.type === "session" && typeof route.sessionID === "string" ? rootOf(route.sessionID) : undefined;
     };
-    // First open permission, else first form, across the root's family.
     const blocker = (root, seenPermissions) => {
       let form;
       for (const member of family(root)) {
@@ -90,7 +87,14 @@ async function setupOpenCode2Tui(ctx) {
       const rootState = rootRunning
         ? level.kind === "waiting" && level.blocker.request.sessionID === level.root ? "waiting" : "working"
         : "done";
-      const errorName = !rootRunning && (memory.endings || []).find(([id]) => id === level.root)?.[1];
+      const session = data.get?.(level.root);
+      const ending = (memory.endings || []).find(([id]) => id === level.root);
+      const idleAt = session?.time?.idle;
+      const sameTurn = Number.isFinite(idleAt) && ending?.[2] === idleAt;
+      // Current session data repairs a whole turn missed while the plugin was unloaded.
+      const errorName = !rootRunning && (session?.outcome === "failed"
+        ? (sameTurn && ending[1]) || "UnknownError"
+        : session?.outcome === "interrupted" && sameTurn ? ending[1] : "");
       return { root_state: rootState, ...(errorName ? { root_turn_error_name: errorName } : {}) };
     }
 
@@ -145,7 +149,6 @@ async function setupOpenCode2Tui(ctx) {
         if (level.kind !== "idle") draft.lastRoot = level.root;
       });
       lastLevel = level;
-      // Why the lifecycle queue: posts keep the order the levels were derived in.
       void enqueueLifecycle(() => deliver(level, true));
     }
 
@@ -164,7 +167,6 @@ async function setupOpenCode2Tui(ctx) {
         await setDeliveryTarget("waiting", levelKey(level), hookEventName, { ...translated.properties, ...properties }, factoryID);
         return;
       }
-      // Why flush first: the done-state preview must show the completed reply.
       if (level.kind === "idle") await flushPendingAssistantPart(true);
       await setDeliveryTarget(level.kind, levelKey(level), level.kind === "busy" ? "SessionBusy" : "SessionIdle", properties, factoryID);
     }
@@ -223,7 +225,7 @@ async function setupOpenCode2Tui(ctx) {
           // A hot reload keeps the terminal verdict; only this root's next turn replaces it.
           setMemory((draft) => {
             draft.endings = (draft.endings || []).filter(([id]) => id !== root);
-            if (errorName) draft.endings = [...draft.endings, [root, errorName]].slice(-TUI_EARLY_ROOTS_MAX);
+            if (errorName) draft.endings = [...draft.endings, [root, errorName, data.get?.(root)?.time?.idle]].slice(-TUI_EARLY_ROOTS_MAX);
           });
         }
       }
