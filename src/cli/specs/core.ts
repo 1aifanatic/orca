@@ -158,7 +158,7 @@ export const CORE_COMMAND_SPECS: CommandSpec[] = [
     notes: [
       'Workspace status ids match the board columns (defaults: todo, in-progress, in-review, completed); custom statuses use their configured id.',
       'Pass --linear-issue null to clear the Linear issue link.',
-      '--manual-order accepts a finite rank, including negative, zero, and fractional values. Larger ranks sort earlier in existing Manual mode within pin, status, and project groups; this does not change the sort mode. Omission preserves the current rank. Git worktrees and registered folder-repo records are supported; standalone folder:<id> workspaces use the separate folderWorkspace.update RPC.'
+      '--manual-order accepts a finite rank, including negative, zero, and fractional values. Larger ranks sort earlier in existing Manual mode within pin, status, and project groups; this does not change the sort mode. Omission preserves the current rank. Git worktrees and registered folder-repo records are supported; standalone folder workspaces use the separate folderWorkspace.update RPC.'
     ],
     examples: [
       'orca worktree set --worktree active --linear-issue STA-335 --json',
