@@ -19,7 +19,7 @@ import {
 export type QueuedMessageCardHold =
   | 'turn'
   /** Held since a Stop, restart or /clear: no caption and no promise of when it sends — not even
-   *  after an answer. Its Steer, or any new send, releases it. */
+   *  after an answer. Its own Send or Steer, or any new message, releases it. */
   | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'

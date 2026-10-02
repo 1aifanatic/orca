@@ -54,7 +54,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
-  // Held cards carry no caption; each card's Steer, or any new send, releases them.
+  // Held cards carry no caption; each card's Send or Steer, or any new message, releases them.
   const queuePaused = args.queuePause !== null
 
   const cards = useMemo(

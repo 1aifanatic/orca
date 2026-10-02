@@ -456,7 +456,7 @@ describe('which cards a pause holds', () => {
       journal.appendSubmission(
         {
           clientMessageId: `drain-${messageId}`,
-          origin: 'host',
+          origin: 'client',
           payloadFingerprint: `fp-${messageId}`,
           body: message(messageId),
           fence: 0,
