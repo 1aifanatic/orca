@@ -303,8 +303,7 @@ export function codexStreamingJournalItem(item: CodexThreadItem, text: string): 
     return { body: codexStreamingMessageBody(text), handled: true }
   }
   if (item.type === 'reasoning') {
-    // A stream only ever carries an item that has not completed yet.
-    return { body: codexReasoningBody(text, { state: 'running' }), handled: true }
+    return { body: codexReasoningBody(text), handled: true }
   }
   if (item.type === 'commandExecution') {
     return commandItem({ ...item, aggregatedOutput: text })

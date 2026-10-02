@@ -857,8 +857,7 @@ describe('codex item bodies', () => {
       body: {
         kind: 'message',
         role: 'reasoning',
-        blocks: [{ type: 'text', text: 'thinking' }],
-        state: 'running'
+        blocks: [{ type: 'text', text: 'thinking' }]
       }
     })
     expect(codexStreamingJournalItem({ type: 'reasoning', id: 'r' }, ' \n ')).toEqual({
