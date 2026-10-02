@@ -16,12 +16,14 @@ import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-
 const SLICE_CHATS = 16
 const SLICE_MS = 50
 
-/** `shown` false: a row stored so the next boot selects the chat, but never displayed from rows. */
+/** `shown` false: an unfinished chat's row, stored so the next boot selects the chat until its open
+ *  settles it, but never displayed from rows. */
 type Folded = FoldedJournalSessionStatus & { record: AgentSessionRecord; shown: boolean }
 
-/** Answers the chats still to open: the chats it could not fold, and those whose rows show work a
- *  gone process left or owe a rebuild, which their open settles or rebuilds, in the order given;
- *  then, after each slice's write, the chats of that slice the write had to skip. */
+/** Answers the chats still to open: the chats it could not fold, those with a corrupt history
+ *  (given no row, so every boot opens one until its rebuild), and those whose rows show work a gone
+ *  process left, which their open settles, in the order given; then, after each slice's write, the
+ *  chats of that slice the write had to skip. */
 export async function deriveMissingStatuses(
   deps: StructuredAgentSessionStartupStateDeps,
   sessionIds: readonly string[]
@@ -73,9 +75,10 @@ export async function deriveMissingStatuses(
   return toOpen
 }
 
-/** A chat's status from its rows; null leaves it to its open. One with work a gone process left,
- *  or a corrupt history, is still written so startup selects it until its open settles it, but it
- *  is never shown: only its open, which settles or rebuilds it, publishes its status. */
+/** A chat's status from its rows; null leaves it to its open, rowless, as for a corrupt history: a
+ *  stored row would let the next boot seed it and skip the open its rebuild needs. One with work a
+ *  gone process left is still written, so startup selects it until its open settles it, but it is
+ *  never shown: only its open publishes its status. */
 async function foldFromRows(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord,
@@ -87,11 +90,10 @@ async function foldFromRows(
       record.sessionId,
       options
     )
-    if (!folded) {
+    if (!folded || folded.load.corrupt) {
       return null
     }
-    const shown = !folded.load.corrupt && !isUnsettledJournalSessionStatus(folded.status)
-    return { ...folded, record, shown }
+    return { ...folded, record, shown: !isUnsettledJournalSessionStatus(folded.status) }
   } catch (error) {
     deps.openDeps.logger.warn('deriving a chat status from its rows failed', {
       scope: 'startup-status-derive',

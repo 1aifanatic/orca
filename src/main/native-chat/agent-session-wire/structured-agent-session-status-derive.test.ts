@@ -8,10 +8,13 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
 import type * as StatusBackfillModule from '../agent-session-journal/journal-session-status-backfill'
+import type * as JournalRecoveryModule from './agent-session-journal-recovery'
 import {
   closeTestJournalHostDatabases,
   insertTestJournalRow,
+  insertTestJournalRowJson,
   liveTestJournalRows,
+  loadTestJournal,
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
 } from '../agent-session-journal/journal-host-database-test-support'
@@ -22,6 +25,7 @@ import {
   type RestTestRig
 } from './structured-agent-session-rest-test-rig'
 import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
+import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
 import {
   latestRestTestStatus,
   restTestOpens
@@ -52,11 +56,34 @@ vi.mock('../agent-session-journal/journal-session-status-backfill', async (impor
   }
 })
 
+// Each chat an open found corrupt and sent through its rebuild.
+const rebuilds = vi.hoisted(() => {
+  const opened: { sessionIds: string[] } = { sessionIds: [] }
+  return opened
+})
+
+vi.mock('./agent-session-journal-recovery', async (importOriginal) => {
+  const actual = await importOriginal<typeof JournalRecoveryModule>()
+  return {
+    ...actual,
+    openAgentSessionJournalWithRecovery: async (
+      ...args: Parameters<typeof actual.openAgentSessionJournalWithRecovery>
+    ) => {
+      const opened = await actual.openAgentSessionJournalWithRecovery(...args)
+      if (opened.recovery?.trigger === 'journal_corrupt') {
+        rebuilds.sessionIds.push(args[0].identity.sessionId)
+      }
+      return opened
+    }
+  }
+})
+
 const rigs: RestTestRig[] = []
 
 afterEach(async () => {
   folds.done.clear()
   folds.after = null
+  rebuilds.sessionIds.length = 0
   for (const rig of rigs.splice(0)) {
     await rig.dispose()
   }
@@ -404,5 +431,39 @@ describe('rowless listed chats after an upgrade', () => {
     expect(readTestJournalSessionStatus(rig.root, 'session-crashed')).toMatchObject({
       lifecycle: 'idle'
     })
+  })
+
+  it('gives a corrupt rowless chat no row, so the next boot still opens it and its rebuild runs', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-corrupt', { message: 'asked' })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    const { db } = openTestJournalHostDatabase(rig.root)
+    const tip = liveTestJournalRows(db, 'session-corrupt').at(-1)!
+    insertTestJournalRowJson(db, 'session-corrupt', tip.seq + 1, '{')
+    upgradeToEmptyStatusTable(rig)
+    expect(loadTestJournal(rig.root, 'session-corrupt')).toMatchObject({ corrupt: true })
+    await rig.boot()
+    // Orca quits after the pass's rows, before the restore that follows opens anything.
+    const restore = vi
+      .spyOn(StructuredAgentSessionReadableRestorer.prototype, 'restore')
+      .mockResolvedValue(undefined)
+
+    await rig.host.restoreReadableSessions(await startupThroughListing(rig))
+
+    expect(folds.done.has('session-corrupt')).toBe(true)
+    expect(restore).toHaveBeenCalledWith(['session-corrupt'])
+    expect(readTestJournalSessionStatus(rig.root, 'session-corrupt')).toBeNull()
+    expect(seeded(rig, 'session-corrupt')).toBe(-1)
+
+    restore.mockRestore()
+    await rig.crash()
+    await rig.boot()
+    const background = await startupThroughListing(rig)
+    expect(background).toEqual(['session-corrupt'])
+    await rig.host.restoreReadableSessions(background)
+
+    expect(restTestOpens(rig, 'session-corrupt')).toBeGreaterThan(0)
+    expect(rebuilds.sessionIds).toEqual(['session-corrupt'])
   })
 })
