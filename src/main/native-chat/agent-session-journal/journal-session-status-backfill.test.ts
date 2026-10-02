@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import {
+  closeTestJournalHostDatabase,
   createTrackedJournalOpener,
   insertTestJournalRowJson,
   publishTestJournalEpoch,
@@ -15,7 +17,6 @@ import {
 } from './journal-host-database-test-support'
 import * as JournalOpen from './journal-open'
 import {
-  backfillJournalSessionStatus,
   foldJournalSessionStatus,
   writeJournalSessionStatuses,
   type FoldedJournalSessionStatus
@@ -60,6 +61,15 @@ const database = () => openTestJournalHostDatabase(root)
 const dropRow = (sessionId: string) =>
   database().db.prepare('DELETE FROM journal_session_state WHERE session_id = ?').run(sessionId)
 
+/** The chat's fold, and its row written as a batch of one; null when either declines. */
+async function foldAndWrite(
+  sessionId: string,
+  options?: Parameters<typeof foldJournalSessionStatus>[2]
+): Promise<FoldedJournalSessionStatus | null> {
+  const folded = await foldJournalSessionStatus(database(), sessionId, options)
+  return folded && writeJournalSessionStatuses(database(), [folded]).length > 0 ? folded : null
+}
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-status-backfill-'))
   clock = 1_000
@@ -84,13 +94,13 @@ describe('a row from the rows alone', () => {
     await journals.closeAll()
     dropRow(name)
 
-    const derived = await backfillJournalSessionStatus(database(), name)
+    const derived = await foldAndWrite(name)
 
     expect(derived?.status ?? null).toEqual(byOpen)
     expect(readTestJournalSessionStatus(root, name)).toEqual(byOpen)
   })
 
-  it('equals the row an open writes for a chat whose history is corrupt', async () => {
+  it('folds a chat whose history is corrupt to the status an open writes, and writes nothing', async () => {
     const journal = await open('corrupt')
     await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](journal)
     const tip = journal.cursor()
@@ -103,12 +113,25 @@ describe('a row from the rows alone', () => {
     await journals.closeAll()
     dropRow('corrupt')
 
-    const derived = await backfillJournalSessionStatus(database(), 'corrupt')
+    // Folded only: the startup pass leaves a corrupt chat rowless, for its open to rebuild.
+    const derived = await foldJournalSessionStatus(database(), 'corrupt')
 
     // The rebuild the corruption owes decides the roster, so neither row counts it as live work.
     expect(derived?.load.corrupt).toBe(true)
     expect(byOpen?.liveChildWork).toBe(false)
     expect(derived?.status ?? null).toEqual(byOpen)
+    expect(readTestJournalSessionStatus(root, 'corrupt')).toBeNull()
+  })
+
+  it("folds nothing from a newer build's database", async () => {
+    await JOURNAL_SESSION_STATE_CORPUS.settled(await open('newer'))
+    await journals.closeAll()
+    dropRow('newer')
+    database().db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+    closeTestJournalHostDatabase(root)
+    expect(database().readOnly).toBe(true)
+
+    expect(await foldJournalSessionStatus(database(), 'newer')).toBeNull()
   })
 
   it('folds a large chat a bounded part per task', async () => {
@@ -139,7 +162,7 @@ describe('a row from the rows alone', () => {
     })
     const budget = 20_000
 
-    const derived = await backfillJournalSessionStatus(database(), 'large', {
+    const derived = await foldAndWrite('large', {
       batchRows: 64,
       batchChars: budget,
       yieldTask: async () => {
@@ -161,7 +184,7 @@ describe('a row from the rows alone', () => {
     dropRow('moving')
     // An append lands between parts: the fold read a tip the chat has left.
     let appended = false
-    const moved = await backfillJournalSessionStatus(database(), 'moving', {
+    const moved = await foldAndWrite('moving', {
       batchRows: 1,
       yieldTask: async () => {
         if (!appended) {
@@ -180,7 +203,7 @@ describe('a row from the rows alone', () => {
     expect(readTestJournalSessionStatus(root, 'moving')).toBeNull()
 
     const quit = new AbortController()
-    const stopped = await backfillJournalSessionStatus(database(), 'moving', {
+    const stopped = await foldJournalSessionStatus(database(), 'moving', {
       batchRows: 1,
       signal: quit.signal,
       yieldTask: async () => quit.abort()
@@ -189,13 +212,13 @@ describe('a row from the rows alone', () => {
     expect(readTestJournalSessionStatus(root, 'moving')).toBeNull()
 
     // Still in a per-chat file, or never written: no epoch here.
-    expect(await backfillJournalSessionStatus(database(), 'never-written')).toBeNull()
+    expect(await foldJournalSessionStatus(database(), 'never-written')).toBeNull()
 
-    await backfillJournalSessionStatus(database(), 'moving')
+    await foldAndWrite('moving')
     const row = readTestJournalSessionStatus(root, 'moving')
     expect(row).not.toBeNull()
     // A row already there is never rewritten.
-    expect(await backfillJournalSessionStatus(database(), 'moving')).toBeNull()
+    expect(await foldJournalSessionStatus(database(), 'moving')).toBeNull()
   })
 
   it('writes a whole batch in one transaction, each row the row an open writes', async () => {
