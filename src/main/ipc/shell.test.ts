@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalize, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -738,6 +738,53 @@ describe('registerShellHandlers', () => {
 
       await expect(handler({}, filePath)).resolves.toBe(false)
       expect(openPathMock).toHaveBeenCalledWith(normalize(filePath))
+    })
+
+    describe('on Linux, where Electron never settles shell.openPath', () => {
+      let platformDescriptor: PropertyDescriptor | undefined
+
+      beforeEach(() => {
+        vi.useFakeTimers()
+        platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+        Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+        openPathMock.mockReturnValue(new Promise<string>(() => {}))
+      })
+
+      afterEach(() => {
+        vi.useRealTimers()
+        if (platformDescriptor) {
+          Object.defineProperty(process, 'platform', platformDescriptor)
+        }
+      })
+
+      it('resolves file-path opens once the launcher has been handed the path', async () => {
+        const filePath = resolve('note.md')
+        const handler = getHandler('shell:openFilePath')
+
+        const result = handler({}, filePath)
+        await vi.advanceTimersByTimeAsync(5_000)
+
+        await expect(result).resolves.toBe(true)
+        expect(openPathMock).toHaveBeenCalledWith(normalize(filePath))
+      })
+
+      it('resolves file-URI opens once the launcher has been handed the path', async () => {
+        const filePath = resolve('note.md')
+        const handler = getHandler('shell:openFileUri')
+
+        const result = handler({}, pathToFileURL(filePath).toString())
+        await vi.advanceTimersByTimeAsync(5_000)
+
+        await expect(result).resolves.toBeUndefined()
+        expect(openPathMock).toHaveBeenCalledWith(normalize(filePath))
+      })
+
+      it('still reports launcher errors that settle before the bound', async () => {
+        openPathMock.mockResolvedValueOnce('no default app')
+        const handler = getHandler('shell:openFilePath')
+
+        await expect(handler({}, resolve('note.md'))).resolves.toBe(false)
+      })
     })
 
     it('does not open non-file URIs', async () => {
