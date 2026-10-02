@@ -433,6 +433,42 @@ describe('syncCodexHookFlags', () => {
     })
   })
 
+  // Why: npm unlinks codex mid-update, and its relink is the event that publishes the new version.
+  it('keeps watching while codex is briefly gone, then publishes the relinked one', async () => {
+    await start()
+    const bin = join(root, 'bin')
+    const codexPath = mocks.state.mainPath
+    rmSync(codexPath)
+    mocks.state.mainPath = 'codex'
+    await syncCodexHookFlags()
+    expect(openWatches(bin)).toHaveLength(1)
+
+    writeBinary(codexPath, 'codex, relinked')
+    mocks.state.mainPath = codexPath
+    versions.set(codexPath, 'codex-cli 0.160.0')
+    openWatches(bin)[0].fire()
+
+    await vi.waitFor(() => expect(entryFor('codex-cli 0.160.0')).not.toBeNull(), {
+      timeout: 5_000
+    })
+  })
+
+  // Why: macOS assesses a new binary on its first run, measured at 10-12 s for codex.
+  it("gives a new codex's first run time to pass macOS's assessment, and status a short wait", async () => {
+    await start()
+    const derivation = mocks.runProcess.mock.calls.find(
+      ([options]) => options.args[0] === '--version'
+    )
+    expect(derivation?.[0].timeoutMs).toBeGreaterThanOrEqual(30_000)
+    stop()
+    _internals.resetForTesting()
+    mocks.runProcess.mockClear()
+
+    await learnCodexHookFlagVersion()
+    const status = mocks.runProcess.mock.calls.find(([options]) => options.args[0] === '--version')
+    expect(status?.[0].timeoutMs).toBe(5_000)
+  })
+
   it('keeps one watch per folder, follows a moved or replaced codex, and closes them when hooks turn off', async () => {
     await start()
     const bin = join(root, 'bin')

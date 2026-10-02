@@ -306,12 +306,13 @@ async function fingerprintCodex(codexPath: string): Promise<string> {
 
 // Why both folders: a brew or winget update relinks the PATH entry, npm or a standalone one rewrites the target.
 async function watchCodexBinary(mainPath: string): Promise<void> {
-  const folders = isAbsolute(mainPath) ? [dirname(mainPath)] : []
+  // Why keep watching when codex is gone: npm unlinks it mid-update, and the relink is the event that matters.
+  if (!isAbsolute(mainPath)) {
+    return
+  }
+  const folders = [dirname(mainPath)]
   // Why not on Windows: a watch holds its folder open, and an updater replacing that folder would fail.
-  const realPath =
-    folders.length > 0 && process.platform !== 'win32'
-      ? await realpath(mainPath).catch(() => null)
-      : null
+  const realPath = process.platform === 'win32' ? null : await realpath(mainPath).catch(() => null)
   if (realPath) {
     folders.push(dirname(realPath))
   }

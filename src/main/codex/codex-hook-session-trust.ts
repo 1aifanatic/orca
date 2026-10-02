@@ -30,6 +30,8 @@ import {
  */
 
 const VERSION_TIMEOUT_MS = 5_000
+// Why longer off the launch path: macOS assesses a new codex on its first run, measured at 10-12 s.
+const DERIVE_VERSION_TIMEOUT_MS = 30_000
 // Why 0.133: from it, hooks/list lists all 8 hook events, SubagentStart/Stop included.
 export const MIN_CODEX_HOOK_FLAG_VERSION = '0.133.0'
 // Why retried: an 8.3 lookup that failed may only have timed out on a loaded machine.
@@ -74,7 +76,7 @@ export async function deriveCodexHookFlagEntry(
     transient: false
   })
   try {
-    const probe = await probeCodexVersion(codexPath)
+    const probe = await probeCodexVersion(codexPath, DERIVE_VERSION_TIMEOUT_MS)
     codexVersion = probe.version
     if (!codexVersion) {
       return failed(`${codexPath} did not report its version`, probe.timedOut)
@@ -202,13 +204,14 @@ export async function readCodexVersion(codexCommand: string): Promise<string | n
 }
 
 async function probeCodexVersion(
-  codexCommand: string
+  codexCommand: string,
+  timeoutMs = VERSION_TIMEOUT_MS
 ): Promise<{ version: string | null; timedOut: boolean }> {
   const result = await runProcess({
     program: codexCommand,
     args: ['--version'],
     env: withCliRuntimeOnPath(codexCommand, { ...process.env }),
-    timeoutMs: VERSION_TIMEOUT_MS
+    timeoutMs
   })
   const version = result.code === 0 ? result.stdout.trim() : ''
   return { version: version || null, timedOut: result.timedOut === true }
