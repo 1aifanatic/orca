@@ -62,38 +62,42 @@ export function getActiveDispatchMailboxOwners(
   handle: string,
   paneKey?: string
 ): DispatchContextRow[] {
-  const byHandle = this.db
+  const handleRows = this.db
     .prepare(
-      `SELECT * FROM dispatch_contexts
+      `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts
        WHERE assignee_handle = ? AND status IN ('pending', 'dispatched')
        ORDER BY rowid DESC`
     )
-    .all(handle) as DispatchContextRow[]
+    .all(handle)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The exhaustive DispatchContextRow projection is verified against the migrated schema and complete wildcard results.
+  const byHandle = handleRows as DispatchContextRow[]
   if (byHandle.length > 0 || !paneKey) {
     return byHandle
   }
 
-  const byExactPane = this.db
+  const exactPaneRows = this.db
     .prepare(
-      `SELECT * FROM dispatch_contexts
+      `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts
        WHERE assignee_pane_key = ? AND status IN ('pending', 'dispatched')
        ORDER BY rowid DESC`
     )
-    .all(paneKey) as DispatchContextRow[]
+    .all(paneKey)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The same exhaustive DispatchContextRow projection preserves every migrated-schema field for this pane lookup.
+  const byExactPane = exactPaneRows as DispatchContextRow[]
   if (byExactPane.length > 0 || !parsePaneKey(paneKey)) {
     return byExactPane
   }
-  return (
-    this.db
-      .prepare(
-        `SELECT * FROM dispatch_contexts
+  const suffixRows = this.db
+    .prepare(
+      `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts
          WHERE assignee_pane_key IS NOT NULL
            AND status IN ('pending', 'dispatched') AND instr(assignee_pane_key, ':') > 1
            AND ${DISPATCH_PANE_KEY_MATCH_SUFFIX_SQL} = ?
          ORDER BY rowid DESC`
-      )
-      .all(paneKeyMatchSuffix(paneKey)) as DispatchContextRow[]
-  ).filter(
+    )
+    .all(paneKeyMatchSuffix(paneKey))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The exhaustive DispatchContextRow projection preserves the schema; the unchanged predicate still decides leaf identity.
+  return (suffixRows as DispatchContextRow[]).filter(
     (dispatch) =>
       dispatch.assignee_pane_key !== null &&
       isEquivalentPaneKey(dispatch.assignee_pane_key, paneKey)

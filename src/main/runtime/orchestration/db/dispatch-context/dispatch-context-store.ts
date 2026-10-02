@@ -10,6 +10,7 @@ import type { OrchestrationDb } from '../orchestration-db'
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
 import { taskNotFoundError, taskNotStartableError } from '../../task-dispatch-refusal'
 import { dispatchAssigneeOrcaSessionId } from '../../dispatch-assignee-orca-session-id'
+import { DISPATCH_CONTEXT_COLUMN_LIST } from '../row-column-lists'
 
 export function createDispatchContext(
   this: OrchestrationDb,
@@ -96,9 +97,11 @@ export function createDispatchContext(
       from: 'ready',
       to: 'dispatched'
     })
-    const dispatch = this.db
-      .prepare('SELECT * FROM dispatch_contexts WHERE id = ?')
-      .get(id) as DispatchContextRow
+    const dispatchRow = this.db
+      .prepare(`SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE id = ?`)
+      .get(id)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The claimed row exists inside this savepoint, and the exhaustive projection matches DispatchContextRow and the migrated schema.
+    const dispatch = dispatchRow as DispatchContextRow
     this.db.exec('RELEASE create_dispatch_context')
     this.hasAnyDispatchContextsCache = true
     return dispatch
@@ -113,18 +116,24 @@ export function getDispatchContext(
   this: OrchestrationDb,
   taskId: string
 ): DispatchContextRow | undefined {
-  return this.db
-    .prepare('SELECT * FROM dispatch_contexts WHERE task_id = ? ORDER BY rowid DESC LIMIT 1')
-    .get(taskId) as DispatchContextRow | undefined
+  const dispatch = this.db
+    .prepare(
+      `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE task_id = ? ORDER BY rowid DESC LIMIT 1`
+    )
+    .get(taskId)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The exhaustive existing projection matches DispatchContextRow and the migrated schema; missing rows remain undefined.
+  return dispatch as DispatchContextRow | undefined
 }
 
 export function getDispatchContextById(
   this: OrchestrationDb,
   dispatchId: string
 ): DispatchContextRow | undefined {
-  return this.db.prepare('SELECT * FROM dispatch_contexts WHERE id = ?').get(dispatchId) as
-    | DispatchContextRow
-    | undefined
+  const dispatch = this.db
+    .prepare(`SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE id = ?`)
+    .get(dispatchId)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing column list exhaustively matches DispatchContextRow and the migrated schema, verified by schema and complete-row parity tests.
+  return dispatch as DispatchContextRow | undefined
 }
 
 export function commitDispatchLaunchTokenHash(

@@ -1,16 +1,19 @@
 import type { DispatchContextRow } from '../../types'
 import type { OrchestrationDb } from '../orchestration-db'
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
+import { DISPATCH_CONTEXT_COLUMN_LIST } from '../row-column-lists'
 
 export function getActiveDispatchForTask(
   db: OrchestrationDb,
   taskId: string
 ): DispatchContextRow | undefined {
-  return db.db
+  const dispatch = db.db
     .prepare(
-      "SELECT * FROM dispatch_contexts WHERE task_id = ? AND status IN ('pending', 'dispatched') ORDER BY rowid DESC LIMIT 1"
+      `SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE task_id = ? AND status IN ('pending', 'dispatched') ORDER BY rowid DESC LIMIT 1`
     )
-    .get(taskId) as DispatchContextRow | undefined
+    .get(taskId)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing exhaustive projection matches DispatchContextRow and the migrated schema; absent active rows remain undefined.
+  return dispatch as DispatchContextRow | undefined
 }
 
 export function reconcileTaskAfterDispatchInterruption(

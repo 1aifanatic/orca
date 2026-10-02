@@ -83,9 +83,11 @@ export function listRuns(
   params: { limit?: number; cursor?: string } = {}
 ): RunListPage {
   if (params.limit === undefined && params.cursor === undefined) {
-    const rows = this.db
-      .prepare('SELECT * FROM runs ORDER BY created_at DESC, id DESC')
-      .all() as RunRow[]
+    const rawRows = this.db
+      .prepare(`SELECT ${RUN_COLUMN_LIST} FROM runs ORDER BY created_at DESC, id DESC`)
+      .all()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing RunRow projection exhaustively matches its type and migrated schema, verified by complete-row parity tests.
+    const rows = rawRows as RunRow[]
     return { runs: rows.map(exposeRunTimestamps), nextCursor: null }
   }
   const limit = Math.min(
@@ -93,20 +95,20 @@ export function listRuns(
     ORCHESTRATION_RUN_PAGE_LIMIT
   )
   const cursor = params.cursor ? decodeRunListCursor(params.cursor) : undefined
-  const rows = (
-    cursor
-      ? this.db
-          .prepare(
-            `SELECT * FROM runs
+  const rawRows = cursor
+    ? this.db
+        .prepare(
+          `SELECT ${RUN_COLUMN_LIST} FROM runs
            WHERE created_at < ? OR (created_at = ? AND id < ?)
            ORDER BY created_at DESC, id DESC
            LIMIT ?`
-          )
-          .all(cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
-      : this.db
-          .prepare('SELECT * FROM runs ORDER BY created_at DESC, id DESC LIMIT ?')
-          .all(limit + 1)
-  ) as RunRow[]
+        )
+        .all(cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
+    : this.db
+        .prepare(`SELECT ${RUN_COLUMN_LIST} FROM runs ORDER BY created_at DESC, id DESC LIMIT ?`)
+        .all(limit + 1)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Both page branches use the exhaustive RunRow projection; native bindings, ordering, and cursor filtering are unchanged.
+  const rows = rawRows as RunRow[]
   const hasMore = rows.length > limit
   const pageRows = hasMore ? rows.slice(0, limit) : rows
   return {
