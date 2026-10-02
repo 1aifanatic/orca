@@ -18,12 +18,20 @@ const ROW = 'orca:codex-item%3Athread-abc%3Ar-1'
 
 function recorder() {
   const rows = new Map<string, AgentJournalItemBody>()
+  /** The host time each row's first write asked to be stamped with. */
+  const firstObservedAt = new Map<string, number | undefined>()
   const sink: StructuredAgentSessionEventSink = {
-    appendItem: (identity, body) => rows.set(agentJournalItemKey(identity), body),
+    appendItem: (identity, body, options) => {
+      const key = agentJournalItemKey(identity)
+      if (!rows.has(key)) {
+        firstObservedAt.set(key, options.observedAt)
+      }
+      rows.set(key, body)
+    },
     appendTombstone: () => {},
     publish: () => {}
   }
-  return { rows, sink }
+  return { rows, sink, firstObservedAt }
 }
 
 function notification(
@@ -46,7 +54,7 @@ function reasoning(id: string, summary: string[] = []) {
 }
 
 function streamingTurn() {
-  const { rows, sink } = recorder()
+  const { rows, sink, firstObservedAt } = recorder()
   const translator = createCodexJournalTranslator({
     sink,
     primaryThreadId: () => THREAD_ID,
@@ -62,7 +70,7 @@ function streamingTurn() {
   translator.handle(
     notification('item/reasoning/summaryTextDelta', { itemId: 'r-1', delta: 'Planning' }, 3_000)
   )
-  return { rows, translator }
+  return { rows, translator, firstObservedAt }
 }
 
 describe('a Codex reasoning row', () => {
@@ -74,6 +82,11 @@ describe('a Codex reasoning row', () => {
     expect(rows.get(ROW)).toBeUndefined()
     const streamed = streamingTurn()
     expect(streamed.rows.get(ROW)).toMatchObject({ state: 'running' })
+  })
+
+  it('starts when its item started, though its first text came later', () => {
+    const { firstObservedAt } = streamingTurn()
+    expect(firstObservedAt.get(ROW)).toBe(2_000)
   })
 
   it('ends when its item completes, at the completion it saw', () => {

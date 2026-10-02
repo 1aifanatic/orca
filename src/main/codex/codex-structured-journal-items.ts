@@ -126,7 +126,9 @@ export class CodexJournalItems {
         this.streams.forget(event.threadId, item.id)
         this.activeItems.delete(itemKey)
       } else {
-        this.track(event.threadId, turnId, item, identity)
+        // Reasoning writes its row only with its first text; the row still starts here.
+        const startedAt = item.type === 'reasoning' ? (event.observedAt ?? Date.now()) : undefined
+        this.track(event.threadId, turnId, item, identity, startedAt)
         const admission = this.trimActiveState()
         if (!admission.accepted) {
           return { handled: true, admission }
@@ -199,12 +201,13 @@ export class CodexJournalItems {
     threadId: string,
     turnId: string | null,
     item: CodexThreadItem,
-    identity: AgentJournalItemIdentity
+    identity: AgentJournalItemIdentity,
+    startedAt?: number
   ): void {
     const retainedItem = codexCommandOutlivesTurn(item)
       ? (boundStreamItem(item) as CodexThreadItem)
       : item
-    this.streams.track(threadId, turnId, retainedItem, identity)
+    this.streams.track(threadId, turnId, retainedItem, identity, startedAt)
     this.activeItems.set(codexStructuredItemKey(threadId, item.id), {
       threadId,
       turnId,

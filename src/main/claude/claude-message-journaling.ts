@@ -94,8 +94,9 @@ export function journalClaudeMessage(
   const outputEnvelope = claudeOutputEnvelope(envelope)
   const body = claudeMessageBody(outputEnvelope)
   const identity =
-    (body && envelope.role === 'assistant' ? ctx.streamedBlocks.reconcile(envelope) : null) ??
-    claudeMessageIdentity(envelope)
+    (body && envelope.role === 'assistant'
+      ? ctx.streamedBlocks.reconcile(envelope)?.identity
+      : null) ?? claudeMessageIdentity(envelope)
   ctx.streamedText.forget(agentJournalItemKey(identity))
   const thinking = ctx.streamedThinking.finalize(outputEnvelope, observedAt)
   const source: ClaudeTurnSource = {
@@ -155,6 +156,7 @@ export function journalClaudeMessage(
     // The write that ends the row: shed under pressure, the row would read open for good.
     ctx.sink.appendItem(thinking.identity, thinking.body, {
       ...stamp(thinking.identity, thinking.body),
+      ...(thinking.startedAt === undefined ? {} : { observedAt: thinking.startedAt }),
       lifecycle: true
     })
     changed = true

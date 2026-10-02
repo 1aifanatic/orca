@@ -62,6 +62,13 @@ function streamScope(frame: Record<string, unknown>): string | null {
 
 export type ClaudeStreamedThinking = ReturnType<typeof createClaudeStreamedThinking>
 
+/** A thinking block's closing row, and when the block began if it was seen streaming. */
+export type ClaudeReasoningFinal = {
+  identity: AgentJournalItemIdentity
+  body: AgentJournalMessageItem
+  startedAt?: number
+}
+
 /** Thinking blocks streamed under --include-partial-messages, written to the same row their
  *  final assistant frame later lands on, and open until that frame or the turn's end. */
 export function createClaudeStreamedThinking(deps: {
@@ -72,8 +79,8 @@ export function createClaudeStreamedThinking(deps: {
   schedule?: AgentSessionDeltaCoalescerDeps['schedule']
 }) {
   const blocks = createClaudeStreamedBlockRegistry('thinking')
-  /** The stream each open block belongs to. */
-  const scopes = new Map<string, string>()
+  /** Each open block's stream, and when it began. */
+  const open = new Map<string, { scope: string; startedAt: number }>()
   const checkpoints = createClaudeStreamedTextCheckpoints({
     ...(deps.coalesceMs === undefined ? {} : { coalesceMs: deps.coalesceMs }),
     ...(deps.schedule ? { schedule: deps.schedule } : {}),
@@ -81,9 +88,12 @@ export function createClaudeStreamedThinking(deps: {
     persist: (identity, text, options, ended) => {
       const body = claudeReasoningBody(text, ended ? endedLifecycle(ended) : { state: 'running' })
       if (body) {
+        const startedAt = open.get(agentJournalItemKey(identity))?.startedAt
         deps.sink.appendItem(identity, body, {
           ...options,
           turnScope: deps.turnScope(),
+          // The row starts with its block, not with its first text or a queued write.
+          ...(startedAt === undefined ? {} : { observedAt: startedAt }),
           // An end the sink sheds under pressure would leave the row open with nothing to close it.
           ...(ended ? { lifecycle: true } : {})
         })
@@ -92,10 +102,13 @@ export function createClaudeStreamedThinking(deps: {
     }
   })
   const finish = (ended: ClaudeStreamedBlockEnd, scope?: string): void => {
-    checkpoints.finish(ended, scope === undefined ? undefined : (key) => scopes.get(key) === scope)
-    for (const [key, blockScope] of scopes) {
-      if (scope === undefined || blockScope === scope) {
-        scopes.delete(key)
+    checkpoints.finish(
+      ended,
+      scope === undefined ? undefined : (key) => open.get(key)?.scope === scope
+    )
+    for (const [key, block] of open) {
+      if (scope === undefined || block.scope === scope) {
+        open.delete(key)
       }
     }
   }
@@ -108,16 +121,16 @@ export function createClaudeStreamedThinking(deps: {
       if (restarted !== null) {
         finish({ completedAt: observedAt }, restarted)
       }
-      const delta = blocks.observe(frame)
+      const delta = blocks.observe(frame, observedAt)
       if (!delta) {
         return false
       }
       const identity = delta.identity
       if (identity.provider === 'claude') {
-        scopes.set(
-          agentJournalItemKey(identity),
-          `${identity.sessionId}/${delta.parentToolUseId ?? ''}`
-        )
+        open.set(agentJournalItemKey(identity), {
+          scope: `${identity.sessionId}/${delta.parentToolUseId ?? ''}`,
+          startedAt: delta.startedAt
+        })
       }
       checkpoints.append(identity, delta.text, delta.parentToolUseId)
       return true
@@ -127,22 +140,25 @@ export function createClaudeStreamedThinking(deps: {
     finalize: (
       envelope: ClaudeMessageEnvelope,
       observedAt: number
-    ): { identity: AgentJournalItemIdentity; body: AgentJournalMessageItem } | null => {
+    ): ClaudeReasoningFinal | null => {
       if (!envelope.content.some((part) => claudeRecord(part)?.type === 'thinking')) {
         return null
       }
       const streamed = blocks.reconcile(envelope)
-      const identity = streamed ?? claudeThinkingIdentity(envelope.sessionId, envelope.uuid)
+      const identity =
+        streamed?.identity ?? claudeThinkingIdentity(envelope.sessionId, envelope.uuid)
       const key = agentJournalItemKey(identity)
       // A final frame with no text of its own still ends the row its stream wrote.
       const text = claudeThinkingText(envelope) ?? checkpoints.latest(key) ?? ''
       checkpoints.forget(key)
-      scopes.delete(key)
+      open.delete(key)
       const body = claudeReasoningBody(
         text,
         endedLifecycle(streamed ? { completedAt: observedAt } : {})
       )
-      return body ? { identity, body } : null
+      return body
+        ? { identity, body, ...(streamed ? { startedAt: streamed.startedAt } : {}) }
+        : null
     },
     /** End every block still open, for a turn that is ending. */
     finishOpen: (completedAt: number): void => {
@@ -153,7 +169,7 @@ export function createClaudeStreamedThinking(deps: {
     reattribute: checkpoints.reattribute,
     dispose: (): void => {
       blocks.clear()
-      scopes.clear()
+      open.clear()
       checkpoints.dispose()
     },
     get pending() {

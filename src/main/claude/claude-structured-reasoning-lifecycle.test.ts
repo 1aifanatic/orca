@@ -143,4 +143,37 @@ describe('a streamed reasoning row the provider never finishes', () => {
     )
     expect(reasoningWrites()).toEqual([])
   })
+
+  // Timings of the first block in a captured 2.1.280 session with summarized display.
+  it('spans from the block start to its final frame, though text arrives seconds later', () => {
+    const { translator, message, thinkingDelta, reasoningWrites } = setup()
+    const stream = (uuid: string, event: Record<string, unknown>, observedAt: number): void =>
+      translator.handle(message({ type: 'stream_event', uuid, event }, observedAt))
+    stream('start', { type: 'message_start', message: { id: 'm-1' } }, 3_400)
+    stream(
+      'block',
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      3_510
+    )
+    thinkingDelta('delta', 'Planning the module', 8_085)
+    translator.handle(
+      message(
+        {
+          type: 'assistant',
+          uuid: 'final',
+          message: {
+            id: 'm-1',
+            role: 'assistant',
+            content: [{ type: 'thinking', thinking: 'Planning the module', signature: 's' }]
+          }
+        },
+        8_160
+      )
+    )
+    const writes = reasoningWrites()
+    expect(writes.length).toBeGreaterThan(0)
+    // Every write names the block's start, so whichever creates the row starts it there.
+    expect(writes.every((write) => write.options.observedAt === 3_510)).toBe(true)
+    expect(writes.at(-1)?.body).toMatchObject({ state: 'completed', completedAt: 8_160 })
+  })
 })

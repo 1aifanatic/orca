@@ -157,7 +157,7 @@ export function createClaudeJournalTranslator(
   }
 
   const handleStream = (message: Record<string, unknown>, observedAt: number): boolean => {
-    const delta = streamedBlocks.observe(message)
+    const delta = streamedBlocks.observe(message, observedAt)
     const thinking = streamedThinking.observe(message, observedAt)
     // `message_start` is the provider's turn boundary. Keep the first content
     // delta as a compatibility fallback for streams that omit it.
