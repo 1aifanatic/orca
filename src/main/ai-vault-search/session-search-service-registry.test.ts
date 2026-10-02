@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeSearchService } from '../../shared/ai-vault-search-test-fixture'
-import { unavailableSessionSearchStatus } from '../../shared/ai-vault-search-client'
-import { createSessionSearchClient } from '../../shared/ai-vault-search-client'
+import {
+  unavailableSessionSearchStatus,
+  createSessionSearchClient
+} from '../../shared/ai-vault-search-client'
 import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import {
   setSessionSearchService,
