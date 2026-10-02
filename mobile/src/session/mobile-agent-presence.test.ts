@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import type { AgentProcessPresence } from '../../../src/shared/agent-process-presence'
-import { resolveMobileNativeChat } from './mobile-native-chat-eligibility'
+import type { TuiAgent } from '../../../src/shared/tui-agent'
+import { resolveMobileNativeChat, type MobileNativeChatTab } from './mobile-native-chat-eligibility'
 import { resolveMobileTerminalTabAgentId } from './mobile-terminal-tab-agent'
 
 // The host publishes its owner beside the turn (`tab.agentPresence`), never inside `agentStatus`.
-function tab(ended?: true) {
+type PresenceTab = MobileNativeChatTab & { title: string; launchAgent?: TuiAgent | null }
+
+function tab(ended?: true): PresenceTab {
   const agentStatus: AgentStatusEntry = {
     state: 'done',
     prompt: '',
@@ -16,7 +19,7 @@ function tab(ended?: true) {
     agentType: 'claude',
     providerSession: { key: 'session_id', id: 'session' }
   }
-  const agentPresence: AgentProcessPresence | undefined = {
+  const agentPresence: AgentProcessPresence = {
     agent: 'claude',
     process: { pid: 42, platform: 'linux', startTime: 'boot:42' },
     ...(ended ? { ended } : {})
@@ -24,7 +27,7 @@ function tab(ended?: true) {
   return {
     type: 'terminal',
     title: 'claude',
-    launchAgent: 'claude' as const,
+    launchAgent: 'claude',
     agentStatus,
     agentPresence
   }
