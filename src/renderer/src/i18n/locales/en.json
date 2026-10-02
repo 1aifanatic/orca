@@ -119,6 +119,11 @@
       "tooLarge": "File is larger than the {{limit}} rich editing limit. Showing source mode instead.",
       "openAnyway": "Open anyway"
     },
+    "markdownPreview": {
+      "tooLarge": "File is larger than the {{limit}} preview limit. Open the file to view its source.",
+      "tooLargeInDiff": "File is larger than the {{limit}} preview limit. Switch to source mode to view the diff.",
+      "renderAnyway": "Render anyway"
+    },
     "fileLoad": {
       "hostUnresolved": "The host couldn't find this file's workspace. It may have been removed, or the host may not know about it yet. Retry, or close this tab from the tab strip."
     }
@@ -127,6 +132,12 @@
     "retrying": "Retrying…"
   },
   "settings": {
+    "terminal": {
+      "optionLayoutAlt": "ABC or U.S. — Option sends Alt/Esc sequences",
+      "optionLayoutCompose": "layout uses Option to compose characters like @, €, [, ]",
+      "optionLayoutUnknown": "unknown layout — Option composes characters (safe default)",
+      "optionShortcutHint": "Choose Both for Option shortcuts, Off for accents and symbols, or Left/Right to use one Option key for each."
+    },
     "appearance": {
       "language": {
         "title": "Language",
@@ -18528,7 +18539,15 @@
     "genericDetail": "This is often a graphics-driver or installation problem. Reload to try again, or quit and relaunch Orca.",
     "title": "Orca keeps failing to load",
     "stalledMessage": "The app window stopped responding while reloading after a crash.",
-    "crashLoopMessage": "The app window crashed repeatedly and stopped reloading automatically."
+    "crashLoopMessage": "The app window crashed repeatedly and stopped reloading automatically.",
+    "lowCommitMessage": "Windows is out of memory.",
+    "lowCommitDetail": "Windows has only {{availableMB}} MB of memory left for apps, so the window ran out of memory again after reloading.",
+    "lowCommitAdvice": "Free memory by closing unused apps or Orca workspaces, or increase the Windows page file size, then click Reload.",
+    "tryAgain": "Try Again",
+    "launchFailedMessage": "Orca couldn't start the process that draws its window.",
+    "launchFailedDetail": "Orca retried {{recoveryCount}} times without success.",
+    "processLimitDetail": "The system refused to create a new process because your user account reached its process limit. This is often caused by runaway terminals, dev servers, or agents. Close some of them, then click Try Again.",
+    "launchFailedGenericDetail": "The system refused to start it. Free up memory or close other apps, then click Try Again. If this keeps happening, reinstall Orca."
   },
   "notifications": {
     "agentStatus": {
