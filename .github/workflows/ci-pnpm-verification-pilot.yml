@@ -1,65 +1,916 @@
-name: pnpm verification cache pilot
-
+name: Sequential heavy preflight comparison
+run-name: Heavy comparison ${{ inputs.sample }} ${{ inputs.arm }} | fixed cc73 source
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      arm:
+        description: Frozen paired arm
+        required: true
+        type: choice
+        options:
+          - original
+          - combined
+        default: original
+      sample:
+        description: Frozen schedule position (1 original, 2 combined, 3 combined, 4 original)
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+        default: "1"
+concurrency:
+  group: sequential-heavy-comparison-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  ORCA_BACKGROUND_LAUNCH: "1"
+  ORCA_SHARD_SOURCE_SHA: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  code_paths:
+    name: detect changes and check repository guards
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      should_run: ${{ steps.filter.outputs.should_run }}
+      reused_run_id: ${{ steps.readiness.outputs.run_id }}
+      mobile_dependencies: ${{ steps.filter.outputs.mobile_dependencies }}
+      mobile_web_app: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.mobile_web_app }}
+      static_analysis: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.static_analysis }}
+      typecheck: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.typecheck }}
+      git_compatibility: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.git_compatibility }}
+      codex_index_heal_contract: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.codex_index_heal_contract }}
+      xterm_patch_sync: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.xterm_patch_sync }}
+      shell_contracts: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.shell_contracts }}
+      test: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.test }}
+      orcad_browser: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.orcad_browser }}
+      cross-version-wire: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.cross-version-wire }}
+      managed_hook_node18: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.managed_hook_node18 }}
+      package: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.package }}
+      package_windows: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.package_windows }}
+      e2e_should_run: ${{ steps.e2e_filter.outputs.should_run }}
+      test_files: ${{ steps.e2e_filter.outputs.test_files }}
+      e2e_run_changed: ${{ steps.e2e_filter.outputs.e2e_run_changed }}
+      e2e_needs_build: ${{ steps.e2e_filter.outputs.e2e_needs_build }}
+      ssh_source_changed: ${{ steps.e2e_filter.outputs.ssh_source_changed }}
+      native_ime_source_changed: ${{ steps.e2e_filter.outputs.native_ime_source_changed }}
+      wsl_source_changed: ${{ steps.e2e_filter.outputs.wsl_source_changed }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
+          fetch-depth: 50
+          filter: blob:none
+          sparse-checkout: |
+            /config/scripts/git-pull-request-diff-base.mjs
+            /package.json
+            /README.md
+            /docs/readme/
+            /.github/scripts/check-root-directory-entries.mjs
+            /config/scripts/check-readme-local-links.mjs
+            /config/scripts/pr-code-change-scope.mjs
+            /config/scripts/pr-e2e-source-routing.mjs
+            /config/scripts/ci-e2e-job-selection.mjs
+            /config/scripts/pr-ready-check-reuse.mjs
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - name: Reject new root-level files and folders
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          node .github/scripts/check-root-directory-entries.mjs "$DIFF_BASE" HEAD
+      - name: Check README local links
+        run: node config/scripts/check-readme-local-links.mjs
+      - name: Find identical successful required checks
+        id: readiness
+        if: github.event.action == 'ready_for_review'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_CHECK_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: node config/scripts/pr-ready-check-reuse.mjs
+      - name: Classify changed paths
+        id: filter
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          set -euo pipefail
+          # Why HEAD^1 and not --merge-base: HEAD is the pull request merge commit, so its first
+          # parent is the base side already. Computing a merge base instead would require the
+          # payload base SHA to be in the graph, which is what forced a full-history checkout.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          # Why --no-renames: name-only rename detection can report only the destination.
+          # A code file moved under docs/ must still expose its code-side deletion.
+          CHANGED="$(git diff --name-only --no-renames --diff-filter=ACDMR "$DIFF_BASE" HEAD)"
+          echo "Changed paths:"
+          printf '%s\n' "$CHANGED"
+          printf '%s\n' "$CHANGED" | node config/scripts/pr-code-change-scope.mjs | tee -a "$GITHUB_OUTPUT"
+      - name: Filter changed E2E specs
+        id: e2e_filter
+        if: github.event.pull_request.draft != true && steps.filter.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          BASE="b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE")"
+          CHANGED="$(git diff --name-only --diff-filter=AMCR "$DIFF_BASE" HEAD)"
+          # Source routes are executable contracts so a test can prove exact
+          # authorities, exclusions, and sentinels without evaluating workflow shell.
+          TEST_FILES_JSON="$(printf '%s\n' "$CHANGED" | node config/scripts/pr-e2e-source-routing.mjs)"
+          echo "test_files=$TEST_FILES_JSON" >> "$GITHUB_OUTPUT"
+          # Why a separate signal: the Docker-SSH lane must trigger on SSH source, not on a
+          # spec name surviving in a route's list. Same routes, so the two cannot drift.
+          SSH_SOURCE_CHANGED="$(printf '%s\n' "$CHANGED" | node config/scripts/pr-e2e-source-routing.mjs --ssh-source)"
+          echo "ssh_source_changed=$SSH_SOURCE_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "SSH source changed: $SSH_SOURCE_CHANGED"
+          printf '%s\n' "$TEST_FILES_JSON" | E2E_SSH_SOURCE_CHANGED="$SSH_SOURCE_CHANGED" node config/scripts/ci-e2e-job-selection.mjs --job-outputs >> "$GITHUB_OUTPUT"
+          # Why its own signal: the real-IME lane is a whole ibus session, not a spec, so it must
+          # trigger on IME source rather than on a spec name in some route's list.
+          NATIVE_IME_SOURCE_CHANGED="$(printf '%s\n' "$CHANGED" | node config/scripts/pr-e2e-source-routing.mjs --native-ime-source)"
+          echo "native_ime_source_changed=$NATIVE_IME_SOURCE_CHANGED" >> "$GITHUB_OUTPUT"
+          WSL_CHANGED="$(git diff --name-only --no-renames --diff-filter=ACDMR "$DIFF_BASE" HEAD)"
+          WSL_SOURCE_CHANGED="$(printf '%s\n' "$WSL_CHANGED" | node config/scripts/pr-e2e-source-routing.mjs --wsl-source)"
+          echo "wsl_source_changed=$WSL_SOURCE_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Native IME source changed: $NATIVE_IME_SOURCE_CHANGED"
+          SHOULD_RUN="$(printf '%s\n' "$CHANGED" | node config/scripts/pr-e2e-source-routing.mjs --reusable-workflow)"
+          if [ "$SHOULD_RUN" = true ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Changed E2E specs: $TEST_FILES_JSON"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "No specs requiring the reusable E2E workflow"
+          fi
+      - name: Require the fixed heavy-check cohort and counterbalanced sample
+        env:
+          ARM: ${{ inputs.arm }}
+          SAMPLE: ${{ inputs.sample }}
+          STATIC_SELECTED: ${{ steps.filter.outputs.static_analysis }}
+          TYPE_SELECTED: ${{ steps.filter.outputs.typecheck }}
+          UNIT_SELECTED: ${{ steps.filter.outputs.test }}
+          PACKAGE_SELECTED: ${{ steps.filter.outputs.package }}
+          WINDOWS_PACKAGE_SELECTED: ${{ steps.filter.outputs.package_windows }}
+        run: |-
+          case "$SAMPLE:$ARM" in
+            1:original|2:combined|3:combined|4:original) ;;
+            *) echo "::error::Use the frozen original/combined/combined/original schedule"; exit 2 ;;
+          esac
+          test "$STATIC_SELECTED" = true
+          test "$TYPE_SELECTED" = true
+          test "$UNIT_SELECTED" = true
+          test "$PACKAGE_SELECTED" = true
+          test "$WINDOWS_PACKAGE_SELECTED" = true
+  static_analysis:
+    name: static analysis
+    needs:
+      - code_paths
+    if: inputs.arm == 'original' && (needs.code_paths.outputs.static_analysis == 'true')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies != 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies == 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - name: Lint
+        id: root-lint
+        background: true
+        run: pnpm exec oxlint --format github
+      - name: Reject low-evidence patterns
+        run: pnpm run audit:anti-slop
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        id: native-code-quality
+        background: true
+        run: pnpm run audit:code-quality:native
+      - name: Enforce type-aware code-quality baseline
+        run: pnpm run audit:code-quality:type-aware
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies == 'true'
+      - name: Enforce changed-code quality
+        id: changed-code-quality
+        background: true
+        run: pnpm run check:code-quality:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+      - name: Enforce React Doctor on changed lines
+        run: pnpm run check:react-doctor:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        run: pnpm run check:zustand-selector-fanout
+      - name: Check reliability gate manifest
+        run: pnpm run check:reliability-gates
+      - name: Enforce dead design-system classes
+        run: pnpm run check:dead-classes
+      - name: Check VM runtime rollback compatibility
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+      - name: Enforce max-lines ratchet
+        run: pnpm run check:max-lines-ratchet
+      - name: Enforce ts-nocheck ratchet
+        run: pnpm run check:ts-nocheck-ratchet
+      - name: Enforce runtime Electron-import ratchet
+        run: pnpm run check:runtime-electron-ratchet
+      - name: Check Node runtime pin
+        run: pnpm run check:node-runtime-pin
+      - name: Verify localization extraction
+        id: localization-extraction
+        background: true
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - name: Boot orcad and round-trip a terminal
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+      - name: Verify the generated RPC params catalog
+        run: pnpm run verify:rpc-params-catalog
+      - name: Verify bundled skill guides
+        run: pnpm run verify:bundled-skill-guides
+      - name: Verify skill freshness manifest
+        run: pnpm run verify:skill-bundle-manifest
+      - name: Verify localization catalogs
+        id: localization-catalogs
+        background: true
+        run: pnpm run verify:localization-catalogs
+      - name: Verify localization coverage
+        run: pnpm run verify:localization-coverage
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+      - name: Check feature wall asset budget
+        run: pnpm check:feature-wall-assets
+      - name: Verify macOS entitlements
+        run: pnpm verify:macos-entitlements
+  typecheck:
+    needs:
+      - code_paths
+    if: inputs.arm == 'original' && (needs.code_paths.outputs.typecheck == 'true')
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      shards: ${{ steps.unit-plan.outputs.shards }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - uses: ./.github/actions/install-node-dependencies
+      - name: Cache TypeScript incremental state
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+      - name: Plan unit selection
+        id: unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: node config/scripts/ci-unit-plan.mjs
+      - run: pnpm run typecheck
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unit-selection-attempt-${{ github.run_attempt }}
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+  shared_checks:
+    name: static analysis and typecheck
+    needs:
+      - code_paths
+    if: inputs.arm == 'combined' && ((needs.code_paths.outputs.static_analysis == 'true') || (needs.code_paths.outputs.typecheck == 'true'))
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies != 'true')
+        with:
+          native-runtime: node
+          node-version: "24"
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - uses: ./.github/actions/install-node-dependencies
+        if: (needs.code_paths.outputs.typecheck == 'true') && !(needs.code_paths.outputs.static_analysis == 'true')
+      - name: Lint
+        id: root-lint
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm exec oxlint --format github
+        if: "!cancelled()"
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Reject low-evidence patterns
+        run: pnpm run audit:anti-slop
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        id: native-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run audit:code-quality:native
+        if: "!cancelled()"
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce type-aware code-quality baseline
+        run: pnpm run audit:code-quality:type-aware
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.mobile_dependencies == 'true')
+      - name: Enforce changed-code quality
+        id: changed-code-quality
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run check:code-quality:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: "!cancelled()"
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Enforce React Doctor on changed lines
+        run: pnpm run check:react-doctor:changed -- "b94c75c4bd6b1e7454e614b489c0ffd591970ec0"
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        run: pnpm run check:zustand-selector-fanout
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check reliability gate manifest
+        run: pnpm run check:reliability-gates
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce dead design-system classes
+        run: pnpm run check:dead-classes
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check VM runtime rollback compatibility
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce max-lines ratchet
+        run: pnpm run check:max-lines-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce ts-nocheck ratchet
+        run: pnpm run check:ts-nocheck-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Enforce runtime Electron-import ratchet
+        run: pnpm run check:runtime-electron-ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check Node runtime pin
+        run: pnpm run check:node-runtime-pin
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization extraction
+        id: localization-extraction
+        background: true
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+        if: "!cancelled()"
+      - name: Boot orcad and round-trip a terminal
+        env:
+          BASE_SHA: b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify the generated RPC params catalog
+        run: pnpm run verify:rpc-params-catalog
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify bundled skill guides
+        run: pnpm run verify:bundled-skill-guides
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify skill freshness manifest
+        run: pnpm run verify:skill-bundle-manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify localization catalogs
+        id: localization-catalogs
+        background: true
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          pnpm run verify:localization-catalogs
+        if: "!cancelled()"
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+      - name: Verify localization coverage
+        run: pnpm run verify:localization-coverage
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Check feature wall asset budget
+        run: pnpm check:feature-wall-assets
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Verify macOS entitlements
+        run: pnpm verify:macos-entitlements
+        if: needs.code_paths.outputs.static_analysis == 'true'
+      - name: Require the selected static checks to pass
+        id: static-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Restore the compiler and planner Node version
+        id: typecheck-node
+        if: (needs.code_paths.outputs.static_analysis == 'true') && (needs.code_paths.outputs.typecheck == 'true')
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Cache TypeScript incremental state
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-b94c75c4bd6b1e7454e614b489c0ffd591970ec0
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        if: needs.code_paths.outputs.typecheck == 'true'
+      - name: Plan unit selection
+        id: unit-plan
+        background: true
+        env:
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+          ORCA_PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" != true ] || [ "$ORCA_PREFLIGHT_PRIOR_SUCCESS" != true ]; then
+            echo "Logical preflight phase is unselected or blocked; no work started."
+            exit 0
+          fi
+          node config/scripts/ci-unit-plan.mjs
+        if: "!cancelled()"
+      - run: pnpm run typecheck
+        if: needs.code_paths.outputs.typecheck == 'true'
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unit-selection-attempt-${{ github.run_attempt }}
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+        if: needs.code_paths.outputs.typecheck == 'true'
+      - name: Require the selected compiler and joined plan to pass
+        id: typecheck-complete
+        env:
+          ORCA_PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+        run: |-
+          if [ "$ORCA_PREFLIGHT_PHASE_SELECTED" = true ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+          fi
+    permissions:
+      contents: read
+    timeout-minutes: 360
+    outputs:
+      static_result: ${{ steps.static-complete.outputs.result || 'blocked' }}
+      typecheck_result: ${{ steps.typecheck-complete.outputs.result || 'blocked' }}
+      shards: ${{ steps.unit-plan.outputs.shards }}
+  original_eligible:
+    name: "original: unit and package dependency eligibility"
+    needs:
+      - code_paths
+      - static_analysis
+      - typecheck
+    if: "!cancelled() && inputs.arm == 'original' && needs.code_paths.result == 'success' && needs.code_paths.outputs.test == 'true' && needs.code_paths.outputs.package == 'true' && needs.code_paths.outputs.package_windows == 'true' && needs.static_analysis.result == 'success' && needs.typecheck.result == 'success'"
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require real successful heavy gates and preserve provenance
+        env:
+          SAMPLE: ${{ inputs.sample }}
+          SHARDS: ${{ needs.typecheck.outputs.shards }}
+          ROUTER_RESULT: ${{ needs.code_paths.result }}
+          STATIC_PHYSICAL: ${{ needs.static_analysis.result }}
+          TYPE_PHYSICAL: ${{ needs.typecheck.result }}
+          SHARED_PHYSICAL: ""
+          STATIC_RESULT: ${{ needs.static_analysis.result }}
+          TYPE_RESULT: ${{ needs.typecheck.result }}
+          STATIC_SELECTED: ${{ needs.code_paths.outputs.static_analysis }}
+          TYPE_SELECTED: ${{ needs.code_paths.outputs.typecheck }}
+          UNIT_SELECTED: ${{ needs.code_paths.outputs.test }}
+          PACKAGE_SELECTED: ${{ needs.code_paths.outputs.package }}
+          WINDOWS_PACKAGE_SELECTED: ${{ needs.code_paths.outputs.package_windows }}
+          MOBILE_DEPENDENCIES: ${{ needs.code_paths.outputs.mobile_dependencies }}
+        run: |-
+          node <<'ORCA_ELIGIBILITY_RECEIPT'
+          const assert = require('node:assert/strict')
+          const fs = require('node:fs')
+          const receipt = {
+            "arm": "original",
+            "sourceSha": "cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2",
+            "baseSha": "b94c75c4bd6b1e7454e614b489c0ffd591970ec0",
+            "sourceWorkflowSha256": "cd755c8e3f125c6a7af54f23b0478e55798e1372e479c2e435596fc2a742aad8",
+            "candidateWorkflowSha256": "181b5dd2110274ebf6c907246278a65dc45fb43cdd272fa53550c562394a8706",
+            "expectedCensusDriverSha256": "10b189d4fe05e130561a0acd8ff8feeb8f8a24f56c830cfb4c2481ac06516452",
+            "expectedCensusWorkflowSha256": "dd5b9f0d00e61ef942e496645a039089eb6ef5690c57a0045eb694a155ca2cb5",
+            "censusProof": {
+              "runId": "37069472888",
+              "runAttempt": "1",
+              "sourceSha": "cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2",
+              "qualificationSha256": "46baf9f4f9881a782e5bec4ae2989bda20f80080ae865ca67c7a5bc1e11d024d",
+              "driverSha256": "10b189d4fe05e130561a0acd8ff8feeb8f8a24f56c830cfb4c2481ac06516452",
+              "compilerHost": {
+                "version": "v24.21.0",
+                "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+                "platform": "linux",
+                "arch": "arm64"
+              },
+              "compilerVersion": "7.0.2",
+              "counts": [
+                {
+                  "state": "separate-tc",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                },
+                {
+                  "state": "shared-root",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                },
+                {
+                  "state": "shared-mixed",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                }
+              ],
+              "timingClaim": false
+            },
+            "preservedSourcePolicies": {
+              ".github/workflows/pr.yml": "cd755c8e3f125c6a7af54f23b0478e55798e1372e479c2e435596fc2a742aad8",
+              "package.json": "33ce3cbb97500af0690cc32bd26e60db9fb7628692fbdeb7b99e98557aa966ff",
+              "pnpm-lock.yaml": "3b50e687509eac4606bdc60cd890e4485862a4c5fcfca44317ac8802f5a849c1",
+              "pnpm-workspace.yaml": "c6a151d1b5d2734bc6be54d48104a0aa6a18da0cd22e3e4799c99fd9665f7d04",
+              ".npmrc": null,
+              ".pnpmfile.cjs": null,
+              ".github/actions/install-node-dependencies/action.yml": "0fca9590b7e623f361baef85f5f88fe2e64be273bc5bca0de9d983c678d5148e",
+              ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+              ".github/actions/install-mobile-dependencies/action.yml": "cdbd5c905201ccd8e8332f55a61729e9180d044ab0927f6c1b3fd30da66bcce2",
+              ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+              "mobile/package.json": "c7d0398fa4dbdf3dddd2e0a844ee41baac9f5cb11bf779328938d55cc89e2189",
+              "mobile/pnpm-lock.yaml": "6f040cddf647a4f464c5bdc573e5972d710fd42f7eadabec1c74e6f7c47eea59",
+              "mobile/pnpm-workspace.yaml": "e6e241deb2600a90e923dba1934509cabd169c2c1edcdb868972f2e2708cb0fd",
+              "mobile/.npmrc": null,
+              "config/scripts/pr-code-change-scope.mjs": "df81e121bd37ef0550e928b2505e9cfb13e2b8e43b8011f3b3e47471b82fd992",
+              ".github/workflows/unit-tests.yml": "421f3662dd935bb0e8bb7e14a1e8b08e42b3fcbff9b2eac74597c58de41378ef",
+              "config/scripts/ci-unit-plan.mjs": "3a813ea675f5dcffbf0699d77ac1c8e97f666250ea6c17168c86509fc8a71b56",
+              "config/scripts/ci-unit-files.mjs": "1f57d80257f49d70f13b4d6238d22d928aa0bde77e6bb013efb6dd32cbd1847b",
+              "config/scripts/ci-unit-selection.mjs": "6de346fd1fa9135a52203f1df839672de6273fbb1ef53a082c11fcf9a3d61f3b",
+              "config/scripts/ci-unit-dependency-graph.mjs": "dd3c4333caccb2a5785680b853ae137baa3524e86312119e9f4ee670e80a7e98",
+              "config/scripts/ci-shard-assignment.mjs": "a7b57ff68bdbfab909b753bc117edbcc0da2029b552ab1176d815b2d2142f49b",
+              "config/scripts/ci-shard-timings.json": "acc2c1cdc8e5e2e94baa15c35f302a9d2f158810b18871974daed5f8383cb859",
+              "config/scripts/pr-ready-check-reuse.mjs": "84760d8ebb99923debdd81796a3214b87ca421965404abe93fbd1bfce6dd2019",
+              "config/scripts/run-typecheck-projects-in-parallel.mjs": "fe76f86de22faf8318349b037001e379a5128c051b2fdff8f019879b1f9286e4",
+              "config/tsconfig.node.json": "58060851a677b3d5790857987c751199404cb11212ff872a31c66cd7c972d834",
+              "config/tsconfig.tc.cli.json": "e46781282b7fca16ac73d0054534daa8f0527d5ba238b4ee7da0bc0086285cd9",
+              "config/tsconfig.tc.web.json": "e8a5f7faa6cee4389968d29ad417357cdc1a90391333d0c00a0b027f11723e8e",
+              "config/tsconfig.cli.json": "d3c91fef05377ff762fd591298b8bd201cddeeaa6391a4356c9a9e00763f697e",
+              "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672"
+            },
+            "caveats": [
+              "Fixed named source, not the current workflow merge tree.",
+              "Manual dispatch cache/store behavior differs from pull_request; both arms share that event.",
+              "The normal compiler planner is a full reference under workflow_dispatch; PR modes require the separate census.",
+              "Only actual heavy checks and dependency eligibility run here; no full unit/package/platform matrix.",
+              "Sentinel runner admission is separate from dependency eligibility; external job timestamps measure both."
+            ]
+          }
+          const shards = JSON.parse(process.env.SHARDS)
+          assert.deepEqual(shards, Array.from({ length: 5 }, (_, index) => ({ index: index + 1, count: 5 })))
+          assert.equal(process.env.ROUTER_RESULT, 'success')
+          assert.equal(process.env.STATIC_RESULT, 'success')
+          assert.equal(process.env.TYPE_RESULT, 'success')
+          assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch')
+          for (const key of ['STATIC_SELECTED', 'TYPE_SELECTED', 'UNIT_SELECTED', 'PACKAGE_SELECTED', 'WINDOWS_PACKAGE_SELECTED']) assert.equal(process.env[key], 'true')
+          if (receipt.arm === 'original') {
+            assert.equal(process.env.STATIC_PHYSICAL, 'success')
+            assert.equal(process.env.TYPE_PHYSICAL, 'success')
+          } else {
+            assert.equal(process.env.SHARED_PHYSICAL, 'success')
+          }
+          receipt.sample = Number(process.env.SAMPLE)
+          receipt.workflowContext = { sourceSha: process.env.GITHUB_SHA, workflowSha: process.env.GITHUB_WORKFLOW_SHA, event: process.env.GITHUB_EVENT_NAME, ref: process.env.GITHUB_REF, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT }
+          receipt.physicalResults = { router: process.env.ROUTER_RESULT, static: process.env.STATIC_PHYSICAL, type: process.env.TYPE_PHYSICAL, shared: process.env.SHARED_PHYSICAL }
+          receipt.logicalResults = { static: process.env.STATIC_RESULT, type: process.env.TYPE_RESULT }
+          receipt.selectors = { static: process.env.STATIC_SELECTED, type: process.env.TYPE_SELECTED, test: process.env.UNIT_SELECTED, package: process.env.PACKAGE_SELECTED, package_windows: process.env.WINDOWS_PACKAGE_SELECTED, mobileDependencies: process.env.MOBILE_DEPENDENCIES }
+          receipt.shards = shards
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/heavy-eligibility.json', JSON.stringify(receipt, null, 2) + '\n')
+          ORCA_ELIGIBILITY_RECEIPT
+      - uses: actions/upload-artifact@v7
+        with:
+          name: heavy-eligibility-original-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heavy-eligibility.json
+          retention-days: 14
+          if-no-files-found: error
+  combined_eligible:
+    name: "combined: unit and package dependency eligibility"
+    needs:
+      - code_paths
+      - shared_checks
+    if: "!cancelled() && inputs.arm == 'combined' && needs.code_paths.result == 'success' && needs.code_paths.outputs.test == 'true' && needs.code_paths.outputs.package == 'true' && needs.code_paths.outputs.package_windows == 'true' && needs.shared_checks.result == 'success' && needs.shared_checks.outputs.static_result == 'success' && needs.shared_checks.outputs.typecheck_result == 'success'"
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require real successful heavy gates and preserve provenance
+        env:
+          SAMPLE: ${{ inputs.sample }}
+          SHARDS: ${{ needs.shared_checks.outputs.shards }}
+          ROUTER_RESULT: ${{ needs.code_paths.result }}
+          STATIC_PHYSICAL: ""
+          TYPE_PHYSICAL: ""
+          SHARED_PHYSICAL: ${{ needs.shared_checks.result }}
+          STATIC_RESULT: ${{ needs.shared_checks.outputs.static_result }}
+          TYPE_RESULT: ${{ needs.shared_checks.outputs.typecheck_result }}
+          STATIC_SELECTED: ${{ needs.code_paths.outputs.static_analysis }}
+          TYPE_SELECTED: ${{ needs.code_paths.outputs.typecheck }}
+          UNIT_SELECTED: ${{ needs.code_paths.outputs.test }}
+          PACKAGE_SELECTED: ${{ needs.code_paths.outputs.package }}
+          WINDOWS_PACKAGE_SELECTED: ${{ needs.code_paths.outputs.package_windows }}
+          MOBILE_DEPENDENCIES: ${{ needs.code_paths.outputs.mobile_dependencies }}
+        run: |-
+          node <<'ORCA_ELIGIBILITY_RECEIPT'
+          const assert = require('node:assert/strict')
+          const fs = require('node:fs')
+          const receipt = {
+            "arm": "combined",
+            "sourceSha": "cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2",
+            "baseSha": "b94c75c4bd6b1e7454e614b489c0ffd591970ec0",
+            "sourceWorkflowSha256": "cd755c8e3f125c6a7af54f23b0478e55798e1372e479c2e435596fc2a742aad8",
+            "candidateWorkflowSha256": "181b5dd2110274ebf6c907246278a65dc45fb43cdd272fa53550c562394a8706",
+            "expectedCensusDriverSha256": "10b189d4fe05e130561a0acd8ff8feeb8f8a24f56c830cfb4c2481ac06516452",
+            "expectedCensusWorkflowSha256": "dd5b9f0d00e61ef942e496645a039089eb6ef5690c57a0045eb694a155ca2cb5",
+            "censusProof": {
+              "runId": "37069472888",
+              "runAttempt": "1",
+              "sourceSha": "cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2",
+              "qualificationSha256": "46baf9f4f9881a782e5bec4ae2989bda20f80080ae865ca67c7a5bc1e11d024d",
+              "driverSha256": "10b189d4fe05e130561a0acd8ff8feeb8f8a24f56c830cfb4c2481ac06516452",
+              "compilerHost": {
+                "version": "v24.21.0",
+                "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+                "platform": "linux",
+                "arch": "arm64"
+              },
+              "compilerVersion": "7.0.2",
+              "counts": [
+                {
+                  "state": "separate-tc",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                },
+                {
+                  "state": "shared-root",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                },
+                {
+                  "state": "shared-mixed",
+                  "compilerProjects": 3,
+                  "compilerFiles": [
+                    14612,
+                    14942,
+                    3568
+                  ],
+                  "unitFiles": 10477
+                }
+              ],
+              "timingClaim": false
+            },
+            "preservedSourcePolicies": {
+              ".github/workflows/pr.yml": "cd755c8e3f125c6a7af54f23b0478e55798e1372e479c2e435596fc2a742aad8",
+              "package.json": "33ce3cbb97500af0690cc32bd26e60db9fb7628692fbdeb7b99e98557aa966ff",
+              "pnpm-lock.yaml": "3b50e687509eac4606bdc60cd890e4485862a4c5fcfca44317ac8802f5a849c1",
+              "pnpm-workspace.yaml": "c6a151d1b5d2734bc6be54d48104a0aa6a18da0cd22e3e4799c99fd9665f7d04",
+              ".npmrc": null,
+              ".pnpmfile.cjs": null,
+              ".github/actions/install-node-dependencies/action.yml": "0fca9590b7e623f361baef85f5f88fe2e64be273bc5bca0de9d983c678d5148e",
+              ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+              ".github/actions/install-mobile-dependencies/action.yml": "cdbd5c905201ccd8e8332f55a61729e9180d044ab0927f6c1b3fd30da66bcce2",
+              ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+              "mobile/package.json": "c7d0398fa4dbdf3dddd2e0a844ee41baac9f5cb11bf779328938d55cc89e2189",
+              "mobile/pnpm-lock.yaml": "6f040cddf647a4f464c5bdc573e5972d710fd42f7eadabec1c74e6f7c47eea59",
+              "mobile/pnpm-workspace.yaml": "e6e241deb2600a90e923dba1934509cabd169c2c1edcdb868972f2e2708cb0fd",
+              "mobile/.npmrc": null,
+              "config/scripts/pr-code-change-scope.mjs": "df81e121bd37ef0550e928b2505e9cfb13e2b8e43b8011f3b3e47471b82fd992",
+              ".github/workflows/unit-tests.yml": "421f3662dd935bb0e8bb7e14a1e8b08e42b3fcbff9b2eac74597c58de41378ef",
+              "config/scripts/ci-unit-plan.mjs": "3a813ea675f5dcffbf0699d77ac1c8e97f666250ea6c17168c86509fc8a71b56",
+              "config/scripts/ci-unit-files.mjs": "1f57d80257f49d70f13b4d6238d22d928aa0bde77e6bb013efb6dd32cbd1847b",
+              "config/scripts/ci-unit-selection.mjs": "6de346fd1fa9135a52203f1df839672de6273fbb1ef53a082c11fcf9a3d61f3b",
+              "config/scripts/ci-unit-dependency-graph.mjs": "dd3c4333caccb2a5785680b853ae137baa3524e86312119e9f4ee670e80a7e98",
+              "config/scripts/ci-shard-assignment.mjs": "a7b57ff68bdbfab909b753bc117edbcc0da2029b552ab1176d815b2d2142f49b",
+              "config/scripts/ci-shard-timings.json": "acc2c1cdc8e5e2e94baa15c35f302a9d2f158810b18871974daed5f8383cb859",
+              "config/scripts/pr-ready-check-reuse.mjs": "84760d8ebb99923debdd81796a3214b87ca421965404abe93fbd1bfce6dd2019",
+              "config/scripts/run-typecheck-projects-in-parallel.mjs": "fe76f86de22faf8318349b037001e379a5128c051b2fdff8f019879b1f9286e4",
+              "config/tsconfig.node.json": "58060851a677b3d5790857987c751199404cb11212ff872a31c66cd7c972d834",
+              "config/tsconfig.tc.cli.json": "e46781282b7fca16ac73d0054534daa8f0527d5ba238b4ee7da0bc0086285cd9",
+              "config/tsconfig.tc.web.json": "e8a5f7faa6cee4389968d29ad417357cdc1a90391333d0c00a0b027f11723e8e",
+              "config/tsconfig.cli.json": "d3c91fef05377ff762fd591298b8bd201cddeeaa6391a4356c9a9e00763f697e",
+              "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672"
+            },
+            "caveats": [
+              "Fixed named source, not the current workflow merge tree.",
+              "Manual dispatch cache/store behavior differs from pull_request; both arms share that event.",
+              "The normal compiler planner is a full reference under workflow_dispatch; PR modes require the separate census.",
+              "Only actual heavy checks and dependency eligibility run here; no full unit/package/platform matrix.",
+              "Sentinel runner admission is separate from dependency eligibility; external job timestamps measure both."
+            ]
+          }
+          const shards = JSON.parse(process.env.SHARDS)
+          assert.deepEqual(shards, Array.from({ length: 5 }, (_, index) => ({ index: index + 1, count: 5 })))
+          assert.equal(process.env.ROUTER_RESULT, 'success')
+          assert.equal(process.env.STATIC_RESULT, 'success')
+          assert.equal(process.env.TYPE_RESULT, 'success')
+          assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch')
+          for (const key of ['STATIC_SELECTED', 'TYPE_SELECTED', 'UNIT_SELECTED', 'PACKAGE_SELECTED', 'WINDOWS_PACKAGE_SELECTED']) assert.equal(process.env[key], 'true')
+          if (receipt.arm === 'original') {
+            assert.equal(process.env.STATIC_PHYSICAL, 'success')
+            assert.equal(process.env.TYPE_PHYSICAL, 'success')
+          } else {
+            assert.equal(process.env.SHARED_PHYSICAL, 'success')
+          }
+          receipt.sample = Number(process.env.SAMPLE)
+          receipt.workflowContext = { sourceSha: process.env.GITHUB_SHA, workflowSha: process.env.GITHUB_WORKFLOW_SHA, event: process.env.GITHUB_EVENT_NAME, ref: process.env.GITHUB_REF, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT }
+          receipt.physicalResults = { router: process.env.ROUTER_RESULT, static: process.env.STATIC_PHYSICAL, type: process.env.TYPE_PHYSICAL, shared: process.env.SHARED_PHYSICAL }
+          receipt.logicalResults = { static: process.env.STATIC_RESULT, type: process.env.TYPE_RESULT }
+          receipt.selectors = { static: process.env.STATIC_SELECTED, type: process.env.TYPE_SELECTED, test: process.env.UNIT_SELECTED, package: process.env.PACKAGE_SELECTED, package_windows: process.env.WINDOWS_PACKAGE_SELECTED, mobileDependencies: process.env.MOBILE_DEPENDENCIES }
+          receipt.shards = shards
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/heavy-eligibility.json', JSON.stringify(receipt, null, 2) + '\n')
+          ORCA_ELIGIBILITY_RECEIPT
+      - uses: actions/upload-artifact@v7
+        with:
+          name: heavy-eligibility-combined-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heavy-eligibility.json
+          retention-days: 14
+          if-no-files-found: error
