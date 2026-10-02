@@ -164,15 +164,18 @@ describe('the startup status catch-up', () => {
     expect(stored?.every(({ status }) => status?.lifecycle === 'idle')).toBe(true)
   })
 
-  it('writes nothing more after quit, and the next launch redoes what is left', async () => {
-    const ids = Array.from({ length: 20 }, (_, index) => `session-${index}`)
+  it.each([
+    ['mid-way', 'session-2'],
+    ['during the last fold', 'session-9']
+  ])('writes nothing after quit %s, and the next launch redoes it', async (_when, quitDuring) => {
+    // Fewer than one batch, so nothing is due a write before the end.
+    const ids = Array.from({ length: 10 }, (_, index) => `session-${index}`)
     await chats(ids, { rowless: true })
     const disposed = { value: false }
-    // Quit lands during the third fold; every task is due a yield, which sees it.
     let clock = 0
     vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
     trace.afterFold = (sessionId) => {
-      if (sessionId === 'session-2') {
+      if (sessionId === quitDuring) {
         disposed.value = true
       }
     }
@@ -181,7 +184,6 @@ describe('the startup status catch-up', () => {
 
     expect(await catchUpMissingStatuses(stand, ids)).toBeNull()
 
-    // Quit came before the first batch was due, so nothing was written at all.
     expect(transaction).not.toHaveBeenCalled()
     expect(ids.some((sessionId) => readTestJournalSessionStatus(root, sessionId))).toBe(false)
 

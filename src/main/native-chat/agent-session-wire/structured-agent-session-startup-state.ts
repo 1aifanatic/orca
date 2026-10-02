@@ -279,7 +279,7 @@ async function settleClosed(
   deps: StructuredAgentSessionStartupStateDeps,
   record: AgentSessionRecord
 ): Promise<boolean> {
-  if (deps.isDisposed() || deps.hasSession(record.sessionId) || !deps.canSettle(record)) {
+  if (deps.isDisposed() || deps.hasSession(record.sessionId)) {
     return false
   }
   const opened = await openStructuredAgentSessionConversationJournal(deps.openDeps, record, {
