@@ -23,6 +23,7 @@ export const AiVaultSearchRequestSchema = z
     limit: z.number().optional().transform(resolveSessionSearchLimit),
     cursor: z.string().optional(),
     filters: AiVaultSearchFiltersSchema.optional(),
+    supportsQoderHistory: z.boolean().optional(),
     /** Scope by identity, resolved into paths by whichever host answers. */
     within: AiVaultSearchScopeIdentitySchema.optional(),
     debug: z.boolean().optional()

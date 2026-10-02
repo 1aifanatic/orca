@@ -48,7 +48,7 @@ export function createSessionSearchClient(
       const parsed = AiVaultSearchRequestSchema.parse(request)
       let raw: unknown
       try {
-        raw = await call('aiVault.searchSessions', parsed)
+        raw = await call('aiVault.searchSessions', { ...parsed, supportsQoderHistory: true })
       } catch (error) {
         if (isUnknownSessionSearchMethod(error)) {
           return { kind: 'unavailable', reason: 'no-service' }

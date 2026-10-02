@@ -51,7 +51,10 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
       await mkdir(workspace)
       await mkdir(config)
       await cp(join(realHome, '.qoder', '.auth'), join(config, '.auth'), { recursive: true })
-      await writeFile(join(config, 'settings.json'), '{}')
+      await writeFile(
+        join(config, 'settings.json'),
+        JSON.stringify({ general: { enableAutoUpdate: false } })
+      )
       expect(qoderHookService.install().state).toBe('installed')
       markQoderWorkspaceTrusted(workspace, sandbox.home)
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
