@@ -107,6 +107,7 @@ export type FilesystemApi = {
         oldPath: string
         newPath: string
         connectionId?: string
+        access?: LocalFileAccess
       } & SshMutationExpectation
     ) => Promise<void>
     copy: (
@@ -154,6 +155,7 @@ export type FilesystemApi = {
         destDir: string
         connectionId?: string
         ensureDir?: boolean
+        access?: LocalFileAccess
       } & SshMutationExpectation
     ) => Promise<{ results: ImportItemResult[] }>
     stageExternalPathsForRuntimeUpload: (args: {

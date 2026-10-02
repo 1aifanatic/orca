@@ -6,7 +6,7 @@ import type { Worktree } from '../../../shared/worktree/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { useAppStore } from '@/store'
-import { editorTabFileAccess } from './local-file-access'
+import { editorTabDocumentFolderAccess, editorTabFileAccess } from './local-file-access'
 
 const initialState = useAppStore.getInitialState()
 
@@ -148,6 +148,57 @@ describe('editorTabFileAccess', () => {
   })
 })
 
+describe('editorTabDocumentFolderAccess', () => {
+  beforeEach(() => {
+    useAppStore.setState({
+      repos: [
+        makeRepo({ id: 'repo-local', path: '/Users/me/project' }),
+        makeRepo({ id: 'repo-ssh', path: '/work/project', connectionId: 'ssh-1' })
+      ],
+      worktreesByRepo: {
+        'repo-local': [makeWorktree({ id: localWorktreeId, repoId: 'repo-local' })]
+      }
+    })
+  })
+
+  afterEach(() => {
+    useAppStore.setState(initialState, true)
+  })
+
+  it('scopes writes on a local user-named tab to that file and its own folder', () => {
+    expect(
+      editorTabDocumentFolderAccess(useAppStore.getState(), {
+        filePath: '/Users/me/notes.md',
+        relativePath: 'notes.md',
+        worktreeId: FLOATING_TERMINAL_WORKTREE_ID
+      })
+    ).toEqual({ kind: 'document-folder', documentPath: '/Users/me/notes.md' })
+  })
+
+  it.each<[string, TabFileAccessFields]>([
+    [
+      'a project tab',
+      { filePath: '/Users/me/project/a.md', relativePath: 'a.md', worktreeId: localWorktreeId }
+    ],
+    [
+      'an absolute tab owned by an SSH workspace',
+      { filePath: '/work/x.md', relativePath: '/work/x.md', worktreeId: 'repo-ssh::/work/project' }
+    ],
+    [
+      'an AI Vault log tab',
+      {
+        filePath: '/Users/me/.codex/session.jsonl',
+        relativePath: '/Users/me/.codex/session.jsonl',
+        worktreeId: 'repo-ssh::/work/project',
+        readOnly: true,
+        liveTail: true
+      }
+    ]
+  ])('grants no folder writes to %s', (_label, file) => {
+    expect(editorTabDocumentFolderAccess(useAppStore.getState(), file)).toBeUndefined()
+  })
+})
+
 // Why a ratchet: a content-driven reader that adopted user-file would bring back the round-1 leak.
 // These scans only see the two ways a renderer file can produce user-file today, by name and by
 // pattern: building user-file access directly, and opening a tab the tab rule reads as user-named. They
@@ -165,6 +216,15 @@ const USER_NAMED_ACCESS_IMPORTERS = [
 // Files whose openFile call can store relativePath === filePath (read and saved as user-named by
 // the tab rule) or open a floating-workspace tab. The scan matches by value, so a few listed files
 // only look like it (their relativePath is genuinely relative); review each new entry by hand.
+// Files that build write access beside an opened document; each must derive it from the tab rule.
+const DOCUMENT_FOLDER_ACCESS_BUILDERS = [
+  'components/editor/editor-header-file-rename.ts',
+  'components/editor/rich-markdown-image-insert.ts',
+  'components/tab-bar/EditorFileTab.tsx',
+  'lib/execute-open-editor-path-move.ts',
+  'lib/local-file-access.ts'
+]
+
 const USER_NAMED_TAB_OPENERS = [
   'components/browser-pane/navigate/navigate-browser-page-url.ts',
   'components/editor/markdown-preview-link-actions.ts',
@@ -231,6 +291,14 @@ describe('user-named file access ratchet', () => {
     expect(
       rendererFilesMatching((source) => /\buserNamedFileAccess\b|kind: 'user-file'/.test(source))
     ).toEqual(USER_NAMED_ACCESS_IMPORTERS)
+  })
+
+  it('lists every file that builds document-folder write access', () => {
+    expect(
+      rendererFilesMatching((source) =>
+        /\b(editorTab)?[dD]ocumentFolderAccess\b|kind: 'document-folder'/.test(source)
+      )
+    ).toEqual(DOCUMENT_FOLDER_ACCESS_BUILDERS)
   })
 
   it('lists every file that can open a tab read as user-named', () => {

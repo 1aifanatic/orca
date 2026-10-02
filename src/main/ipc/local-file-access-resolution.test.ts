@@ -253,15 +253,15 @@ describe('document-resource requests', () => {
     await writeFile(join(outside, 'doc-folder', 'sibling.png'), 'png')
   })
 
-  it('limit a project document to every project root, images and PDFs only', async () => {
+  it('limit a project document to every project root, whatever the file type', async () => {
     const store = makeStore({ repoPaths: [project, otherProject] })
     const access = documentResource(join(project, 'docs', 'README.md'))
     const outcome = (path: string) => settles(resolveLocalFileRequestPath(path, access, store))
 
     expect(await outcome(join(project, 'logo.png'))).toBe('ok')
     expect(await outcome(join(otherProject, 'shared.png'))).toBe('ok')
+    expect(await outcome(join(project, 'notes.txt'))).toBe('ok')
     expect(await outcome(join(outside, 'outside.png'))).toBe('denied')
-    expect(await outcome(join(project, 'notes.txt'))).toBe('denied')
   })
 
   it('limit a document outside every project to its own folder', async () => {
@@ -291,24 +291,23 @@ describe('document-resource requests', () => {
   )
 
   it.skipIf(process.platform === 'win32')(
-    'refuse an image-named link to a text file, in a project or beside the document',
+    'read a link of any name in a project or beside the document when its target stays there',
     async () => {
-      await writeFile(join(project, '.env'), 'PROJECT_KEY=secret\n')
-      await symlink(join(project, '.env'), join(project, 'logo-link.png'))
-      await writeFile(join(outside, 'doc-folder', 'notes.env'), 'API_KEY=secret\n')
-      await symlink(join(outside, 'doc-folder', 'notes.env'), join(outside, 'doc-folder', 'a.png'))
+      await writeFile(join(outside, 'doc-folder', 'diagram'), 'png')
+      await symlink(join(outside, 'doc-folder', 'diagram'), join(outside, 'doc-folder', 'a.png'))
+      await symlink(join(project, 'notes.txt'), join(project, 'notes-link'))
       const store = makeStore({ repoPaths: [project] })
 
       const inProject = documentResource(join(project, 'docs', 'README.md'))
       const besideDoc = documentResource(join(outside, 'doc-folder', 'note.md'))
       expect(
-        await settles(resolveLocalFileRequestPath(join(project, 'logo-link.png'), inProject, store))
-      ).toBe('denied')
+        await settles(resolveLocalFileRequestPath(join(project, 'notes-link'), inProject, store))
+      ).toBe('ok')
       expect(
         await settles(
           resolveLocalFileRequestPath(join(outside, 'doc-folder', 'a.png'), besideDoc, store)
         )
-      ).toBe('denied')
+      ).toBe('ok')
     }
   )
 })
@@ -327,6 +326,30 @@ describe('chat-image requests', () => {
       mimeType: 'image/png'
     })
   })
+
+  it.each(['shot.avif', 'shot.bmp', 'shot.ico', 'shot.svg', 'shot.webp'])(
+    'read %s',
+    async (name) => {
+      await writeFile(join(outside, name), 'image')
+      expect(
+        await settles(resolveLocalFileRequestPath(join(outside, name), CHAT_IMAGE, makeStore({})))
+      ).toBe('ok')
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'judge a link by its target: an extensionless link to an image loads',
+    async () => {
+      await writeFile(join(outside, 'shot.png'), 'png')
+      await symlink(join(outside, 'shot.png'), join(outside, 'latest-screenshot'))
+
+      expect(
+        await settles(
+          resolveLocalFileRequestPath(join(outside, 'latest-screenshot'), CHAT_IMAGE, makeStore({}))
+        )
+      ).toBe('ok')
+    }
+  )
 
   it.each(['notes.txt', 'missing.png'])('refuse %s', async (name) => {
     expect(

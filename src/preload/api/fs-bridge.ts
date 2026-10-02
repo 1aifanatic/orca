@@ -103,7 +103,12 @@ export const fsApi = {
     args: { dirPath: string; connectionId?: string } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:createDir', args),
   rename: (
-    args: { oldPath: string; newPath: string; connectionId?: string } & SshMutationExpectation
+    args: {
+      oldPath: string
+      newPath: string
+      connectionId?: string
+      access?: LocalFileAccess
+    } & SshMutationExpectation
   ): Promise<void> => ipcRenderer.invoke('fs:rename', args),
   copy: (
     args: {
@@ -162,6 +167,7 @@ export const fsApi = {
       destDir: string
       connectionId?: string
       ensureDir?: boolean
+      access?: LocalFileAccess
     } & SshMutationExpectation
   ): Promise<{ results: ImportItemResult[] }> => ipcRenderer.invoke('fs:importExternalPaths', args),
   stageExternalPathsForRuntimeUpload: (args: {

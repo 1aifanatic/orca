@@ -96,14 +96,20 @@ export async function createRuntimePath(
 export async function renameRuntimePath(
   context: RuntimeFileOperationArgs,
   oldPath: string,
-  newPath: string
+  newPath: string,
+  access?: LocalFileAccess
 ): Promise<void> {
   const oldRemoteArgs = getRemoteFileArgs(context, oldPath)
   const newRelativePath = getRelativePathInsideWorktree(context.worktreePath, newPath)
   if (!oldRemoteArgs || newRelativePath === null) {
     assertLocalFilesystemFallbackAllowed(context)
     await window.api.fs.rename(
-      withSshMutationExpectation(context, { oldPath, newPath, connectionId: context.connectionId })
+      withSshMutationExpectation(context, {
+        oldPath,
+        newPath,
+        connectionId: context.connectionId,
+        ...localAccess(context.connectionId, access)
+      })
     )
     return
   }

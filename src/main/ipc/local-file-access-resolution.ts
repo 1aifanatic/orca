@@ -1,4 +1,4 @@
-import { dirname, extname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, resolve } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import type { Store } from '../persistence'
 import type { LocalFileAccess } from '../../shared/local-file-access'
@@ -19,8 +19,6 @@ import { NOT_A_REGULAR_FILE_MESSAGE } from './filesystem/local-regular-file-read
 
 export const USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE =
   'Access denied: a file opened by name needs an absolute path.'
-export const DOCUMENT_RESOURCE_TYPE_MESSAGE =
-  'Access denied: a document can only load images and PDFs it references.'
 export const CHAT_IMAGE_TYPE_MESSAGE = 'Access denied: a chat can only show local image files.'
 
 /** Desktop IPC's root check: the project roots plus the app-owned floating-workspace folder. */
@@ -62,12 +60,10 @@ async function isInsideDesktopRoots(documentPath: string, store: Store): Promise
   }
 }
 
-function isPreviewableBinary(filePath: string): boolean {
-  return Boolean(PREVIEWABLE_BINARY_MIME_TYPES[extname(filePath).toLowerCase()])
-}
-
+// Why every previewable type but PDF: chat shows these in an <img>, which renders no PDF.
 function isChatImage(filePath: string): boolean {
-  return isPreviewableBinary(filePath) && extname(filePath).toLowerCase() !== '.pdf'
+  const extension = extname(filePath).toLowerCase()
+  return Boolean(PREVIEWABLE_BINARY_MIME_TYPES[extension]) && extension !== '.pdf'
 }
 
 // Why the resolved path: `NUL.png\.` and `COM1.png\x\..` resolve to a device name.
@@ -76,10 +72,10 @@ function isRefusedAutomaticLoadPath(filePath: string): boolean {
 }
 
 /**
- * An image or PDF a document references: limited to every project root when the document is in
- * one, else to the document's own folder. A target outside that scope, or a network share outside
- * every project, is refused by its path text before any filesystem call; a symlink inside the scope
- * is still resolved by the scope check.
+ * A file a document references (an image, typically): limited to every project root when the
+ * document is in one, else to the document's own folder, like the common markdown-preview rule.
+ * A target outside that scope, or a network share outside every project, is refused by its path
+ * text before any filesystem call; a symlink inside the scope is still resolved by the scope check.
  */
 export async function resolveDocumentResourcePath(
   targetPath: string,
@@ -97,9 +93,6 @@ export async function resolveDocumentResourcePath(
   const resolvedTarget = resolve(targetPath)
   if (isRefusedAutomaticLoadPath(resolvedTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-  }
-  if (!isPreviewableBinary(resolvedTarget)) {
-    throw new Error(DOCUMENT_RESOURCE_TYPE_MESSAGE)
   }
   let realTarget: string
   if (await isInsideDesktopRoots(documentPath, store)) {
@@ -120,10 +113,6 @@ export async function resolveDocumentResourcePath(
   if (isRefusedAutomaticLoadPath(realTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  // Why the real target too: `logo.png -> .env` would otherwise return text.
-  if (!isPreviewableBinary(realTarget)) {
-    throw new Error(DOCUMENT_RESOURCE_TYPE_MESSAGE)
-  }
   return realTarget
 }
 
@@ -141,9 +130,6 @@ export async function resolveChatImagePath(targetPath: string, store: Store): Pr
   if (isRefusedAutomaticLoadPath(resolvedTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  if (!isChatImage(resolvedTarget)) {
-    throw new Error(CHAT_IMAGE_TYPE_MESSAGE)
-  }
   // Why the roots check for a share: it refuses by path text first, so an outside share is never contacted.
   const realTarget = isNetworkSharePath(resolvedTarget)
     ? await resolveDesktopAuthorizedPath(resolvedTarget, store)
@@ -155,11 +141,54 @@ export async function resolveChatImagePath(targetPath: string, store: Store): Pr
     // Why: a local link may still lead onto a share; that is readable only inside a project.
     await resolveDesktopAuthorizedPath(realTarget, store)
   }
-  // Why the real target too: `shot.png -> ~/.ssh/id_rsa` must not be read as an image.
+  // Why the real target's type: `shot.png -> ~/.ssh/id_rsa` must not be read as an image.
   if (!isChatImage(realTarget)) {
     throw new Error(CHAT_IMAGE_TYPE_MESSAGE)
   }
   return realTarget
+}
+
+/**
+ * A write beside a document the user opened: the target must stay inside the document's own
+ * folder, symlinks included. With `preserveLeaf`, a rename acts on the named entry, not its target.
+ */
+export async function resolveDocumentFolderPath(
+  targetPath: string,
+  documentPath: string,
+  { preserveLeaf = false }: { preserveLeaf?: boolean } = {}
+): Promise<string> {
+  if (
+    typeof targetPath !== 'string' ||
+    !isAbsolute(targetPath) ||
+    typeof documentPath !== 'string' ||
+    !isAbsolute(documentPath)
+  ) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  const resolvedTarget = resolve(targetPath)
+  const documentFolder = dirname(resolve(documentPath))
+  if (
+    isRefusedAutomaticLoadPath(resolvedTarget) ||
+    !isDescendantOrEqual(resolvedTarget, documentFolder)
+  ) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  const realTarget = preserveLeaf
+    ? resolve(await realpath(dirname(resolvedTarget)), basename(resolvedTarget))
+    : resolve(await realpath(resolvedTarget))
+  if (
+    isRefusedAutomaticLoadPath(realTarget) ||
+    !isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))
+  ) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  return realTarget
+}
+
+/** The document a write is scoped to, when the request declares one. */
+export function documentFolderAccessPath(access: unknown): string | undefined {
+  const fileAccess = parseLocalFileAccess(access)
+  return fileAccess?.kind === 'document-folder' ? fileAccess.documentPath : undefined
 }
 
 // Why parse: IPC input is untyped, and an unrecognised access kind must fall back to roots only.
@@ -172,6 +201,13 @@ function parseLocalFileAccess(access: unknown): LocalFileAccess | undefined {
   }
   if (access.kind === 'chat-image') {
     return { kind: 'chat-image' }
+  }
+  if (
+    access.kind === 'document-folder' &&
+    'documentPath' in access &&
+    typeof access.documentPath === 'string'
+  ) {
+    return { kind: 'document-folder', documentPath: access.documentPath }
   }
   if (
     access.kind === 'document-resource' &&

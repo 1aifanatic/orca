@@ -44,7 +44,10 @@ vi.mock('node:fs', async (importOriginal) => {
 vi.mock('electron', () => ({ app: { getPath: () => 'C:\\Users\\me\\AppData\\Roaming\\Orca' } }))
 vi.mock('../repo-worktrees', () => ({ listRepoWorktreeGraph: vi.fn(async () => []) }))
 
-import { resolveLocalFileRequestPath } from './local-file-access-resolution'
+import {
+  resolveDocumentFolderPath,
+  resolveLocalFileRequestPath
+} from './local-file-access-resolution'
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization reads only these Store members.
 const store = {
@@ -168,6 +171,28 @@ describe('Windows reserved device names in automatic image loads', () => {
           { kind: 'document-resource', documentPath: 'C:\\Users\\me\\notes\\todo.md' },
           store
         )
+      ).rejects.toThrow('Access denied')
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it.each(deviceTargets)(
+    'refuses %s as a new file beside an opened document without touching it',
+    async (target) => {
+      await expect(
+        resolveDocumentFolderPath(target, 'C:\\Users\\me\\notes\\todo.md', {
+          preserveLeaf: true
+        })
+      ).rejects.toThrow('Access denied')
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it.each([...networkTargets, 'C:\\Users\\me\\other\\shot.png'])(
+    'refuses %s outside an opened document folder without touching it',
+    async (target) => {
+      await expect(
+        resolveDocumentFolderPath(target, 'C:\\Users\\me\\notes\\todo.md')
       ).rejects.toThrow('Access denied')
       expect(fsCalls).toEqual([])
     }

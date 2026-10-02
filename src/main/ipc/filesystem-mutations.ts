@@ -1,9 +1,15 @@
 import { app, ipcMain } from 'electron'
 import { constants } from 'node:fs'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import type { Store } from '../persistence'
-import { resolveDesktopAuthorizedPath } from './local-file-access-resolution'
+import {
+  documentFolderAccessPath,
+  resolveDesktopAuthorizedPath,
+  resolveDocumentFolderPath
+} from './local-file-access-resolution'
+import { PATH_ACCESS_DENIED_MESSAGE } from './filesystem-auth'
+import type { LocalFileAccess } from '../../shared/local-file-access'
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { resolveLocalDroppedPathsForAgent } from './dropped-path-resolution'
 import { importExternalPathsSsh } from './filesystem-import-ssh'
@@ -89,7 +95,12 @@ export function registerFilesystemMutationHandlers(store: Store): void {
     'fs:rename',
     async (
       _event,
-      args: { oldPath: string; newPath: string; connectionId?: string } & SshMutationExpectation
+      args: {
+        oldPath: string
+        newPath: string
+        connectionId?: string
+        access?: LocalFileAccess
+      } & SshMutationExpectation
     ): Promise<void> => {
       assertSshMutationExpectation(
         args.connectionId,
@@ -107,6 +118,19 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // target file (potentially elsewhere in the worktree) and leave the
       // symlink dangling. newPath must also preserve its leaf so we don't
       // accidentally write into a symlinked destination name.
+      const documentPath = documentFolderAccessPath(args.access)
+      if (documentPath !== undefined) {
+        // Why: renaming the document the user opened works wherever it lives, but only that
+        // document, and only to a new name inside its own folder.
+        if (resolve(args.oldPath) !== resolve(documentPath)) {
+          throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+        }
+        await renameLocalPathSerializedByDestination(
+          await resolveDocumentFolderPath(args.oldPath, documentPath, { preserveLeaf: true }),
+          await resolveDocumentFolderPath(args.newPath, documentPath, { preserveLeaf: true })
+        )
+        return
+      }
       const oldPath = await resolveDesktopAuthorizedPath(args.oldPath, store, {
         preserveSymlink: true
       })
@@ -159,6 +183,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
         destDir: string
         connectionId?: string
         ensureDir?: boolean
+        access?: LocalFileAccess
       } & SshMutationExpectation
     ): Promise<{ results: ImportItemResult[] }> => {
       assertSshMutationExpectation(
@@ -184,7 +209,12 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // destination is outside allowed roots, the entire import fails.
       // This only applies to local imports — remote paths are authorized by
       // the SSH connection boundary (see importExternalPathsSsh).
-      const resolvedDest = await resolveDesktopAuthorizedPath(args.destDir, store)
+      // An image inserted into a document the user opened lands in that document's own folder.
+      const documentPath = documentFolderAccessPath(args.access)
+      const resolvedDest =
+        documentPath === undefined
+          ? await resolveDesktopAuthorizedPath(args.destDir, store)
+          : await resolveDocumentFolderPath(args.destDir, documentPath)
 
       const results: ImportItemResult[] = []
       const reservedNames = new Set<string>()
