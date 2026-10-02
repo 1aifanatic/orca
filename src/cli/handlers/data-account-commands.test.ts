@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { RuntimeClient } from '../runtime-client'
 import { DATA_ACCOUNT_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
-import { addDataAccount } from './data-account-commands'
+import { addDataAccount, listDataAccounts } from './data-account-commands'
 
 const client = new RuntimeClient(join(tmpdir(), 'orca-login-test'), 1000, null, null)
 const context = {
@@ -18,6 +18,30 @@ const context = {
 afterEach(() => vi.restoreAllMocks())
 
 describe('managed data account enrollment', () => {
+  it.each(['opencode', 'devin'])(
+    'shows the active System default for an empty %s roster',
+    async (provider) => {
+      vi.spyOn(client, 'call')
+        .mockResolvedValueOnce({
+          id: 'test',
+          ok: true,
+          result: { capabilities: [DATA_ACCOUNT_RUNTIME_CAPABILITY] },
+          _meta: { runtimeId: 'test' }
+        })
+        .mockResolvedValueOnce({
+          id: 'test',
+          ok: true,
+          result: { [provider]: { accounts: [], activeAccountId: null } },
+          _meta: { runtimeId: 'test' }
+        })
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      await listDataAccounts({ ...context, json: false }, provider)
+      expect(log).toHaveBeenCalledWith(
+        `No managed ${provider} accounts.\n  system  System default (active)`
+      )
+    }
+  )
+
   it('refuses an old host before starting login', async () => {
     vi.spyOn(client, 'call').mockResolvedValue({
       id: 'test',

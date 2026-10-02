@@ -12,7 +12,11 @@ type AccountsBlock = {
 }
 
 export function formatDataAccounts(label: string, state: ManagedDataAccountsState): string {
-  return `Managed ${label} accounts (${state.accounts.length}):\n${state.accounts
+  const system = `  system  System default${state.activeAccountId === null ? ' (active)' : ''}`
+  if (state.accounts.length === 0) {
+    return `No managed ${label} accounts.\n${system}`
+  }
+  return `Managed ${label} accounts (${state.accounts.length}):\n${system}\n${state.accounts
     .map(
       (account) =>
         `  ${account.id}  ${account.label}${account.id === state.activeAccountId ? ' (active)' : ''}`
