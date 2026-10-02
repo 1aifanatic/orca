@@ -9,7 +9,8 @@ import type { ClaudePromptRegistry } from './claude-structured-prompt-replies'
 import { claudeProviderFrameActivity } from '../native-chat/agent-session-wire/provider-frame-activity'
 import {
   claudeProviderFrameKind,
-  createClaudeProviderFrameFallback
+  createClaudeProviderFrameFallback,
+  isClaudeProgressFrame
 } from './claude-structured-provider-fallback'
 import { taskFrameSentence } from './claude-background-task-frames'
 import { ClaudeBackgroundTaskRows } from './claude-background-task-rows'
@@ -134,11 +135,9 @@ export function createClaudeJournalTranslator(
     }
   })
   const streamedThinking = createClaudeStreamedThinking({
-    sink: deps.sink,
+    ...deps,
     producer: subagents.linkage,
-    turnScope,
-    ...(deps.coalesceMs === undefined ? {} : { coalesceMs: deps.coalesceMs }),
-    ...(deps.schedule ? { schedule: deps.schedule } : {})
+    turnScope
   })
   const flush = (): void => {
     streamedText.flush()
@@ -238,7 +237,10 @@ export function createClaudeJournalTranslator(
       // writes, so an announcement landing in this same pass has to be visible
       // to it or the row is stamped provisionally one line too early.
       const announced = event.type === 'message' && subagents.observeSystemFrame(event.message)
-      flush()
+      // Only ahead of a frame that can write a row: one per thinking token rewrote the whole row.
+      if (!(event.type === 'message' && isClaudeProgressFrame(event.message))) {
+        flush()
+      }
       if (announced) {
         corrections.retry()
         streamedText.reattribute()
