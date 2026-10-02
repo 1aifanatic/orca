@@ -1,8 +1,8 @@
-import { isMobileFolderNativeChatReadable } from './mobile-native-chat-eligibility'
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import {
   canShowMobileNativeChat,
+  isMobileFolderNativeChatReadable,
   isMobileNativeChatTranscriptReadable,
   resolveMobileNativeChat
 } from './mobile-native-chat-eligibility'
