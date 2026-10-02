@@ -33,7 +33,8 @@ async function startRefusing(stderr: string) {
   const support = createClaudeThinkingDisplaySupport({
     probe,
     keyOf: async (command, cwd) => `${command}\n${cwd}`,
-    budgetMs: 1_000
+    budgetMs: 1_000,
+    now: () => performance.now()
   })
   const flag = await support.argsFor({ command: FAKE_CLI, cwd: dir, env })
   const { openConnection } = openClaudeConnectionOf({ claudeThinkingDisplay: support })

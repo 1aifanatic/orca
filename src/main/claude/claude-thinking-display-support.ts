@@ -5,8 +5,13 @@ import { claudeVersionReaches, probeClaudeCliVersion } from './claude-hook-event
 // on it before the session starts. Found by reading published packages, not by running them.
 const CLAUDE_THINKING_DISPLAY_FIRST_VERSION = '2.1.94'
 
-/** About 3x the p95 of this probe against a warm CLI (66 ms over 10 runs on an M-series Mac). */
-export const CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS = 200
+/** How long a launch waits on a binary nothing is known about yet. A warm probe answers in tens of
+ *  milliseconds; this covers a cold disk, a node install and an antivirus scan, paid once per key
+ *  during a start that already takes seconds. */
+export const CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS = 1_500
+
+/** A probe still running by now is killed, and its binary gets no flag. */
+const PROBE_KILL_AFTER_MS = 10_000
 
 /** Commander's refusal, exactly: any other startup failure says nothing about the flag. */
 const UNKNOWN_FLAG_DIAGNOSTIC = "unknown option '--thinking-display'"
@@ -22,12 +27,17 @@ export type ClaudeThinkingDisplayLaunch = {
   env: Record<string, string>
 }
 
+type ClaudeVersionProbe = (
+  command: string,
+  launch: { cwd: string; env: Record<string, string>; timeoutMs: number }
+) => Promise<string | null>
+
 export type ClaudeThinkingDisplaySupport = {
   /**
    * Asks for readable thinking: under Orca's launch the CLI otherwise streams thinking blocks with
    * no text. Only the display is set, never `--thinking`, so a user who turned thinking off keeps
-   * it off. A binary not yet known is probed with the launch's own cwd and env, for at most the
-   * budget; past it the launch goes without the flag and the next one asks again.
+   * it off. A binary not yet known is probed with the launch's own cwd and env, waited on for at
+   * most the budget from when its probe began; past it the launch goes without the flag.
    */
   argsFor: (launch: ClaudeThinkingDisplayLaunch) => Promise<Readonly<Record<string, string>>>
   /** A child that exited refusing the flag: that binary, in that workspace, never gets it again. */
@@ -47,20 +57,19 @@ async function claudeBinaryKey(command: string, cwd: string): Promise<string | n
 
 export function createClaudeThinkingDisplaySupport(
   deps: {
-    probe: (
-      command: string,
-      launch: { cwd: string; env: Record<string, string> }
-    ) => Promise<string | null>
+    probe: ClaudeVersionProbe
     keyOf: (command: string, cwd: string) => Promise<string | null>
     budgetMs: number
+    now: () => number
   } = {
     probe: probeClaudeCliVersion,
     keyOf: claudeBinaryKey,
-    budgetMs: CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS
+    budgetMs: CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS,
+    now: () => performance.now()
   }
 ): ClaudeThinkingDisplaySupport {
   const known = new Map<string, boolean>()
-  const probing = new Map<string, Promise<string | null>>()
+  const probing = new Map<string, { settled: Promise<void>; startedAt: number }>()
   const remember = (key: string, supported: boolean): void => {
     known.delete(key)
     known.set(key, supported)
@@ -71,23 +80,28 @@ export function createClaudeThinkingDisplaySupport(
       known.delete(stale)
     }
   }
-  const probe = (key: string, launch: ClaudeThinkingDisplayLaunch): Promise<string | null> => {
-    let pending = probing.get(key)
-    if (!pending) {
-      pending = deps.probe(launch.command, { cwd: launch.cwd, env: launch.env }).then(
-        (version) => {
-          // Only an answer is kept; a probe that failed is asked again next launch.
-          if (version !== null) {
-            remember(key, claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION))
-          }
-          return version
-        },
-        () => null
-      )
-      probing.set(key, pending)
-      void pending.finally(() => probing.delete(key))
+  // Every outcome is kept for the binary's life: one that hung, failed or printed no version
+  // would otherwise cost every launch a spawn and the whole wait. A refusal seen meanwhile wins.
+  const settle = (key: string, supported: boolean): void => {
+    if (!known.has(key)) {
+      remember(key, supported)
     }
-    return pending
+  }
+  const probe = (key: string, launch: ClaudeThinkingDisplayLaunch) => {
+    const settled = deps
+      .probe(launch.command, { cwd: launch.cwd, env: launch.env, timeoutMs: PROBE_KILL_AFTER_MS })
+      .then(
+        (version) =>
+          settle(
+            key,
+            version !== null && claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION)
+          ),
+        () => settle(key, false)
+      )
+      .finally(() => probing.delete(key))
+    const started = { settled, startedAt: deps.now() }
+    probing.set(key, started)
+    return started
   }
 
   return {
@@ -97,15 +111,20 @@ export function createClaudeThinkingDisplaySupport(
         return {}
       }
       if (!known.has(key)) {
-        let timer: ReturnType<typeof setTimeout> | undefined
-        await Promise.race([
-          probe(key, launch),
-          new Promise<void>((resolve) => {
-            timer = setTimeout(resolve, deps.budgetMs)
-            timer.unref?.()
-          })
-        ])
-        clearTimeout(timer)
+        const running = probing.get(key) ?? probe(key, launch)
+        // The budget is the probe's, not each launch's: one already past it is not waited on again.
+        const remainingMs = running.startedAt + deps.budgetMs - deps.now()
+        if (remainingMs > 0) {
+          let timer: ReturnType<typeof setTimeout> | undefined
+          await Promise.race([
+            running.settled,
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, remainingMs)
+              timer.unref?.()
+            })
+          ])
+          clearTimeout(timer)
+        }
       }
       return known.get(key) === true ? SUMMARIZED : {}
     },

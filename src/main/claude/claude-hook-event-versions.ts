@@ -64,7 +64,7 @@ export function claudeKnowsStatusLine(version: string | null | undefined): boole
  *  manager's shim picks the same CLI the launch will. */
 export async function probeClaudeCliVersion(
   executablePath: string,
-  launch?: { cwd: string; env: Record<string, string> }
+  launch?: { cwd: string; env: Record<string, string>; timeoutMs?: number }
 ): Promise<string | null> {
   try {
     const pathKey = process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH'
@@ -82,7 +82,7 @@ export async function probeClaudeCliVersion(
           : executableDir
       },
       ...(launch ? { cwd: launch.cwd } : {}),
-      timeoutMs: 5_000,
+      timeoutMs: launch?.timeoutMs ?? 5_000,
       maxOutputBytes: 4_096
     })
     return result.code === 0 ? parseClaudeCliVersion(`${result.stdout}\n${result.stderr}`) : null

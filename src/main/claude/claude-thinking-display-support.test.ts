@@ -8,26 +8,41 @@ const UNKNOWN_FLAG = new Error(
 
 type Probe = (
   command: string,
-  launch: { cwd: string; env: Record<string, string> }
+  launch: { cwd: string; env: Record<string, string>; timeoutMs: number }
 ) => Promise<string | null>
 
-function supportWith(probe: Probe) {
+function supportWith(probe: Probe, budgetMs = 20) {
   const calls = vi.fn(probe)
   const support = createClaudeThinkingDisplaySupport({
     probe: calls,
     keyOf: async (command, cwd) => `${command}\n${cwd}`,
-    budgetMs: 20
+    budgetMs,
+    now: () => performance.now()
   })
   return { support, calls }
 }
 
+/** A probe the test answers by hand. */
+function heldProbe() {
+  let answer: (version: string | null) => void = () => {}
+  const probe: Probe = () =>
+    new Promise((resolve) => {
+      answer = resolve
+    })
+  return { probe, answer: (version: string | null) => answer(version) }
+}
+
 describe('the thinking-display flag a launch passes', () => {
-  it("probes with the launch's own cwd and env, then answers from memory", async () => {
+  it("probes with the launch's own cwd and env and its own kill timeout, then remembers", async () => {
     const { support, calls } = supportWith(async () => '2.1.280')
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({ 'thinking-display': 'summarized' })
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({ 'thinking-display': 'summarized' })
     expect(calls).toHaveBeenCalledTimes(1)
-    expect(calls).toHaveBeenCalledWith('/bin/claude', { cwd: '/repo', env: { PATH: '/shims' } })
+    expect(calls).toHaveBeenCalledWith('/bin/claude', {
+      cwd: '/repo',
+      env: { PATH: '/shims' },
+      timeoutMs: 10_000
+    })
   })
 
   it('asks again per workspace: a shim can pick a different CLI there', async () => {
@@ -44,22 +59,35 @@ describe('the thinking-display flag a launch passes', () => {
     expect(calls).toHaveBeenCalledTimes(1)
   })
 
-  it('launches without the flag past the budget, and caches nothing', async () => {
-    const { support, calls } = supportWith(() => new Promise<string | null>(() => {}))
-    await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
-    expect(calls).toHaveBeenCalledTimes(1)
-    const answering = supportWith(async () => null)
-    await expect(answering.support.argsFor(LAUNCH)).resolves.toEqual({})
-    await answering.support.argsFor(LAUNCH)
-    // A failed probe is asked again: only an answer is kept.
-    expect(answering.calls).toHaveBeenCalledTimes(2)
+  it('remembers a probe that printed no version, failed or was killed, as no flag', async () => {
+    for (const probe of [async () => null, () => Promise.reject(new Error('spawn failed'))]) {
+      const { support, calls } = supportWith(probe)
+      await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+      await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+      expect(calls).toHaveBeenCalledTimes(1)
+    }
   })
 
   it('waits for a probe that answers within the budget', async () => {
     const { support } = supportWith(
-      () => new Promise((resolve) => setTimeout(() => resolve('2.1.280'), 5))
+      () => new Promise((resolve) => setTimeout(() => resolve('2.1.280'), 5)),
+      1_000
     )
     await expect(support.argsFor(LAUNCH)).resolves.toEqual({ 'thinking-display': 'summarized' })
+  })
+
+  it('does not wait again on a probe already past its budget, and keeps its late answer', async () => {
+    const held = heldProbe()
+    const { support, calls } = supportWith(held.probe, 30)
+    await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+    const started = performance.now()
+    await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
+    expect(performance.now() - started).toBeLessThan(25)
+    held.answer('2.1.280')
+    await vi.waitFor(async () =>
+      expect(await support.argsFor(LAUNCH)).toEqual({ 'thinking-display': 'summarized' })
+    )
+    expect(calls).toHaveBeenCalledTimes(1)
   })
 
   it('stops passing the flag to a binary that exited refusing it', async () => {
@@ -68,6 +96,17 @@ describe('the thinking-display flag a launch passes', () => {
     support.observeExit(LAUNCH, UNKNOWN_FLAG)
     await vi.waitFor(async () => expect(await support.argsFor(LAUNCH)).toEqual({}))
     expect(calls).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a refusal seen while a probe was still running', async () => {
+    const held = heldProbe()
+    const { support } = supportWith(held.probe, 10)
+    await support.argsFor(LAUNCH)
+    support.observeExit(LAUNCH, UNKNOWN_FLAG)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    held.answer('2.1.280')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await expect(support.argsFor(LAUNCH)).resolves.toEqual({})
   })
 
   it('records nothing for any other startup failure', async () => {
