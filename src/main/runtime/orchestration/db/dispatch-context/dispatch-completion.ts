@@ -122,11 +122,9 @@ export function failDispatch(
   // Why: reserve the WAL writer before lifecycle reads so a concurrent commit cannot cause SQLITE_BUSY_SNAPSHOT.
   const transaction = beginLifecycleWriteTransaction(this.db, FAIL_DISPATCH_SAVEPOINT)
   try {
-    const rawBefore = this.db
-      .prepare(`SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE id = ?`)
-      .get(ctxId)
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The schema-pinned complete Dispatch projection returns one Dispatch row or undefined; the adapter exposes unknown.
-    const before = rawBefore as DispatchContextRow | undefined
+    const before = this.db.prepare('SELECT * FROM dispatch_contexts WHERE id = ?').get(ctxId) as
+      | DispatchContextRow
+      | undefined
     const workerBefore = this.getWorkerDispatch(ctxId)
     if (!before || !['pending', 'dispatched'].includes(before.status)) {
       const worker = workerBefore
@@ -216,11 +214,9 @@ export function failDispatch(
       })
     }
     this.closeQuestionsForDispatch(ctxId)
-    const rawUpdated = this.db
-      .prepare(`SELECT ${DISPATCH_CONTEXT_COLUMN_LIST} FROM dispatch_contexts WHERE id = ?`)
-      .get(ctxId)
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The schema-pinned complete Dispatch projection returns one Dispatch row or undefined; the adapter exposes unknown.
-    const updated = rawUpdated as DispatchContextRow | undefined
+    const updated = this.db.prepare('SELECT * FROM dispatch_contexts WHERE id = ?').get(ctxId) as
+      | DispatchContextRow
+      | undefined
     commitLifecycleWriteTransaction(this.db, transaction)
     return updated
   } catch (cause) {
