@@ -20,6 +20,7 @@ import {
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
 import { isJournalStopOrResumeRow, parseJournalRow, type JournalRow } from './journal-row-schema'
+import { journalReadRow, type JournalReadRow } from './journal-skipped-row'
 
 /** Every epoch row is sequence 1, and no compaction moves that floor. */
 const FIRST_JOURNAL_SEQUENCE = 1
@@ -30,8 +31,9 @@ export type JournalLoad = {
   readOnly: boolean
   /** Set when the surviving prefix is unusable and the caller must roll the epoch. */
   corrupt: boolean
-  /** Rows skipped because their body failed to parse (future-version rows are
-   *  `readOnly`, never counted here). The store discloses these in the timeline. */
+  /** Rows dropped because their body failed to parse (a future version latches `readOnly`, and
+   *  a newer build's unknown kind is skipped and kept; neither counts here). The store discloses
+   *  these in the timeline. */
   malformedRows: number
   /** Directory-internal: the first sequence of an unusable suffix. The store
    *  deletes from here before it accepts a write; a probe leaves it alone. */
@@ -92,13 +94,14 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
 
   const add = (entry: { seq: number; rowJson: string }): boolean => {
     const parsed = parseJournalRow(entry.rowJson)
-    if (!parsed.ok) {
+    // A newer build's kind still holds its place, so it is sequence-checked like any row.
+    const row = journalReadRow(parsed)
+    if (!row) {
       truncateFrom = entry.seq
-      latched = parsed.unreadable
-      malformedRows = parsed.unreadable ? 0 : 1
+      latched = !parsed.ok && parsed.unreadable
+      malformedRows = latched ? 0 : 1
       return false
     }
-    const row = parsed.row
     // Parse past a gap so an unreadable future row still latches read-only.
     if (gapSequence !== undefined) {
       return true
@@ -119,6 +122,9 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
       return true
     }
     applyJournalRow(state, row)
+    if (row.kind === 'skipped') {
+      return true
+    }
     const disclosure = row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID
     // A Stop or Resume is no history, so it never reads as a rebuilt or provider-backed epoch.
     if (!disclosure && !isJournalStopOrResumeRow(row)) {
@@ -147,22 +153,22 @@ export function startJournalRowFold(input: JournalRowFoldInput): {
   return { add, finish }
 }
 
-/** Rows after a cursor, in sequence order. Stops at the first row this build
- *  cannot parse, exactly as replay does. */
+/** Rows after a cursor, in sequence order, a newer build's kinds as placeholders that keep the
+ *  sequence whole. Stops at the first row this build cannot parse, exactly as replay does. */
 export function readJournalRowsAfterCursor(
   db: Database.Database,
   sessionId: string,
   epoch: string,
   afterSequence: number,
   limit?: number
-): JournalRow[] {
-  const rows: JournalRow[] = []
+): JournalReadRow[] {
+  const rows: JournalReadRow[] = []
   for (const stored of readJournalRowsAfter(db, sessionId, epoch, afterSequence, limit)) {
-    const parsed = parseJournalRow(stored.rowJson)
-    if (!parsed.ok) {
+    const row = journalReadRow(parseJournalRow(stored.rowJson))
+    if (!row) {
       break
     }
-    rows.push(parsed.row)
+    rows.push(row)
   }
   return rows
 }

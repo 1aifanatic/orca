@@ -19,6 +19,8 @@ const INSERT_ROW =
 const SELECT_ROWS_AFTER = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER_LIMITED = `${SELECT_ROWS_AFTER} LIMIT ?`
+const SELECT_ROW = `SELECT ts, row_json FROM journal_rows
+WHERE session_id = ? AND epoch = ? AND seq = ?`
 const DELETE_SUFFIX = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq >= ?'
 const DELETE_EPOCH = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const DELETE_UNPUBLISHED = `DELETE FROM journal_rows WHERE session_id = ?
@@ -46,6 +48,27 @@ export function insertJournalRow(
   const rowJson = serializeJournalRow(row)
   db.prepare(INSERT_ROW).run(sessionId, row.epoch, row.seq, row.ts, rowJson)
   return Buffer.byteLength(rowJson, 'utf8')
+}
+
+/** A row stored as given, for one this build cannot type: a newer build's kind it carries. */
+export function insertJournalStoredRow(
+  db: Database.Database,
+  sessionId: string,
+  row: JournalStoredRow
+): void {
+  db.prepare(INSERT_ROW).run(sessionId, row.epoch, row.seq, row.ts, row.rowJson)
+}
+
+export function readJournalRow(
+  db: Database.Database,
+  sessionId: string,
+  epoch: string,
+  seq: number
+): JournalStoredRow | null {
+  const row = db.prepare(SELECT_ROW).get(sessionId, epoch, seq)
+  return row && typeof row.ts === 'number' && typeof row.row_json === 'string'
+    ? { epoch, seq, ts: row.ts, rowJson: row.row_json }
+    : null
 }
 
 // Why pages, not `.iterate()`: a lazily consumed cursor pins a read snapshot for as long as the

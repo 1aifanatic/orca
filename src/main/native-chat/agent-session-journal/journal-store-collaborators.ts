@@ -78,6 +78,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
         host.state().queuePauseMarks,
         host.state().latestPersonTurnSequence
       ),
+    skippedSequences: () => host.state().skippedSequences,
     cursor: host.cursor,
     adopt: host.adopt
   })

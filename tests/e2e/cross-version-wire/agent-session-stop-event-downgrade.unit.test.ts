@@ -77,7 +77,7 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     if (!since.ok) {
       throw new Error(`expected rows, got reset ${since.reset}`)
     }
-    const rows: JournalRow[] = since.rows
+    const rows = since.rows.flatMap((row): JournalRow[] => (row.kind === 'skipped' ? [] : [row]))
 
     // The older build, after a downgrade, replays the same rows from its own database.
     const checkout = await materializeReleaseCheckout(BASELINE_REF)

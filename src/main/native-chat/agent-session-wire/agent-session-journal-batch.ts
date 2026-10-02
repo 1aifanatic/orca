@@ -14,10 +14,8 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournalBatch } from '../../../shared/agent-session-wire'
 import { findSequenceGap } from '../agent-session-journal/journal-cursor'
-import {
-  isJournalStopOrResumeRow,
-  type JournalRow
-} from '../agent-session-journal/journal-row-schema'
+import { isJournalStopOrResumeRow } from '../agent-session-journal/journal-row-schema'
+import type { JournalReadRow } from '../agent-session-journal/journal-skipped-row'
 
 export type JournalBatchProjection =
   | { ok: true; batch: AgentSessionJournalBatch }
@@ -26,7 +24,7 @@ export type JournalBatchProjection =
   | { ok: false; reset: 'journal_gap' }
 
 export function projectJournalBatch(input: {
-  rows: readonly JournalRow[]
+  rows: readonly JournalReadRow[]
   snapshot: AgentJournalSnapshot
   /** Sequence the subscriber has already applied. */
   afterSequence: number
@@ -43,6 +41,10 @@ export function projectJournalBatch(input: {
   const touchedItemIds = new Set<string>()
   const touchedClientMessageIds = new Set<string>()
   for (const row of input.rows) {
+    if (row.kind === 'skipped') {
+      // A newer build's row: it keeps the sequence whole and touches nothing this build renders.
+      continue
+    }
     if (row.kind === 'lifecycle-batch') {
       for (const mutation of row.mutations) {
         touchedItemIds.add(

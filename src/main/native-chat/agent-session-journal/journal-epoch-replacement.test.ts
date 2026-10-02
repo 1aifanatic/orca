@@ -67,7 +67,8 @@ function replace(input: {
     reason: 'legacy_import',
     fence: 1,
     items: input.items,
-    queuePause: { lifted: false, liveStop: null },
+    queuePause: { liftedAt: 0, liveStop: null },
+    skippedSequences: [],
     now,
     mintEpoch: () => `epoch-${clock}`,
     onPublished: input.onPublished ?? (() => undefined)

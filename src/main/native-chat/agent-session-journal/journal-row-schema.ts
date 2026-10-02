@@ -4,6 +4,10 @@
 // in-place rewrite. A row whose version this build does not understand is
 // UNREADABLE, not skippable: the caller must degrade to read-only rather than
 // render a partial timeline or compact past a row it cannot interpret.
+//
+// A row whose KIND this build does not know, in an envelope it can place, is a
+// newer build's addition at the same version: it is SKIPPED (no fold, no
+// render) and kept on disk, so a newer kind needs no version bump.
 
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
@@ -21,6 +25,11 @@ import {
 } from '../../../shared/agent-session-journal-schemas'
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
 import type { StructuredAgentSessionStopCause } from '../agent-session-wire/structured-agent-session-stop-cause'
+import {
+  hasJournalRowEnvelope,
+  skippedJournalRow,
+  type JournalSkippedRow
+} from './journal-skipped-row'
 
 /** Producer linkage rides the row BASE rather than the body: the two nested
  *  prompt shapes are `.strict()`, so an unknown key on a body would make the
@@ -79,10 +88,9 @@ export type JournalTombstoneRow = JournalRowBase & {
   queueResume?: true
 }
 
-/** One Stop that took effect. Temporary carrier: a tombstone's extra key, because a released host
- *  deletes the journal from the first row kind it does not know (`journal-open.ts` then
- *  `journal-store-open.ts`) but ignores an unknown key; a row kind of its own once released hosts
- *  skip unknown kinds instead. */
+/** One Stop that took effect. Temporary carrier: a tombstone's extra key, because a host released
+ *  before unknown kinds were skipped deletes the journal from the first row kind it does not know
+ *  but ignores an unknown key; a row kind of its own once no supported build predates the skip. */
 export type JournalStopEvent = {
   /** Persisted: never rename an arm. Only `user-stop` pauses the queue. */
   reason: StructuredAgentSessionStopCause
@@ -179,9 +187,11 @@ export type JournalRow =
 export type JournalRowParse =
   | { ok: true; row: JournalRow }
   /** Malformed JSON or a shape this build rejects outright. */
-  | { ok: false; unreadable: false }
+  | { ok: false; unreadable: false; skipped?: undefined }
   /** A future schema version. The host must not write or compact this journal. */
-  | { ok: false; unreadable: true }
+  | { ok: false; unreadable: true; skipped?: undefined }
+  /** A kind this build does not know, in a well-formed envelope: skipped, never repaired away. */
+  | { ok: false; unreadable: false; skipped: JournalSkippedRow }
 
 const ROW_KINDS = new Set([
   'epoch',
@@ -230,7 +240,11 @@ export function parseJournalRow(line: string): JournalRowParse {
     }
   }
   dropUnusableContextUsage(upcast)
-  return isJournalRow(upcast) ? { ok: true, row: upcast } : { ok: false, unreadable: false }
+  if (isJournalRow(upcast)) {
+    return { ok: true, row: upcast }
+  }
+  const skipped = skippedJournalRow(upcast, ROW_KINDS)
+  return skipped ? { ok: false, unreadable: false, skipped } : { ok: false, unreadable: false }
 }
 
 /** Linkage ids this build cannot trust, removed from a row it still keeps.
@@ -320,14 +334,7 @@ function isJournalRow(record: Record<string, unknown>): record is JournalRow {
   if (typeof record.kind !== 'string' || !ROW_KINDS.has(record.kind)) {
     return false
   }
-  if (
-    typeof record.epoch !== 'string' ||
-    !record.epoch ||
-    !Number.isInteger(record.seq) ||
-    (record.seq as number) < 1 ||
-    !Number.isInteger(record.fence) ||
-    typeof record.ts !== 'number'
-  ) {
+  if (!hasJournalRowEnvelope(record)) {
     return false
   }
   if (record.kind === 'item') {

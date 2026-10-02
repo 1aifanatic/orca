@@ -23,6 +23,8 @@ export class JournalEpochController {
       highestFence: () => number
       /** What of the live epoch's Stop and Resume a replacement restates. */
       queuePauseRestatement: () => JournalQueuePauseRestatement
+      /** The live epoch's rows of a newer build's kind, which a replacement carries. */
+      skippedSequences: () => readonly number[]
       cursor: () => AgentJournalCursor
       adopt: (loaded: JournalLoad) => void
     }
@@ -71,6 +73,7 @@ export class JournalEpochController {
         fence,
         items,
         queuePause: this.deps.queuePauseRestatement(),
+        skippedSequences: this.deps.skippedSequences(),
         now: this.deps.now,
         mintEpoch: this.deps.mintEpoch,
         onPublished: this.deps.adopt
