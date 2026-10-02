@@ -1218,8 +1218,8 @@ contains this collision; it does not establish a recurring or whole-CI saving.
 
 ## Daemon shutdown fixture: remove build tools after compilation
 
-The fixture now removes compiler, Python, npm and node-gyp build caches in the
-same Docker layer that installs node-pty. It restores the base image's manual
+The fixture now removes compiler and Python build dependencies, plus npm and
+node-gyp caches, in the same Docker layer that installs node-pty. It restores the base image's manual
 package marks, keeps procps and util-linux, and retains the packages owning the
 shared libraries used by Node and the actually loaded PTY addon. This extends
 the [official Node image's package-ownership approach](https://github.com/nodejs/docker-node/blob/main/22/bookworm-slim/Dockerfile)
