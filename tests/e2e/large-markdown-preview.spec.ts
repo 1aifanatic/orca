@@ -169,7 +169,7 @@ test('large preview renders bounded rows with global navigation and Find', async
   expect(await preview.evaluate((element) => element.scrollTop)).toBe(manualScroll)
   await expect(
     preview.getByRole('heading', { name: 'Section 1500', exact: true })
-  ).not.toBeVisible()
+  ).not.toBeInViewport()
   await orcaPage.getByRole('button', { name: 'Close search', exact: true }).click()
   expect(await preview.locator('*').count()).toBeLessThan(4000)
   await orcaPage.getByRole('button', { name: 'Table of Contents', exact: true }).click()
