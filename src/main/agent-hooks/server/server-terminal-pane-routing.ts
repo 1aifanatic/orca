@@ -2,6 +2,7 @@ import {
   clearPaneCacheState,
   paneHasStateClaims
 } from '../../../shared/agent-hook-listener/listener-state'
+import { isWslHookRelayConnectionId } from '../../../shared/wsl-hook-relay-contract'
 import { AgentHookServerAuthorityFences } from './server-authority-fences'
 import { isValidPaneKey } from './server-status-identity'
 import type { EnrichedAgentHookEventPayload } from './server-types'
@@ -11,6 +12,13 @@ export type TerminalPaneMove = {
   toPaneKey: string
   /** The host that runs the terminal; rows from any other host are never moved. */
   connectionId: string | null
+  /** Follows an alias this terminal's own pane move minted, and no other. */
+  ptyId: string
+}
+
+/** A WSL relay id is transport provenance; the terminal it names is local. */
+export function executionHostConnectionId(connectionId: string | null | undefined): string | null {
+  return isWslHookRelayConnectionId(connectionId) ? null : (connectionId ?? null)
 }
 
 /** Moves state filed under a terminal's exported pane key to the pane it shows now; no alias is minted. */
@@ -22,14 +30,17 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
   }
 
   reconcileMovedTerminalPaneKeys(moves: readonly TerminalPaneMove[]): void {
-    for (const { fromPaneKey, toPaneKey, connectionId } of moves) {
+    for (const move of moves) {
+      const { toPaneKey, connectionId } = move
+      const fromPaneKey = this.followOwnAlias(move)
       const fromRow = this.statusRow(fromPaneKey)
       if (
         fromPaneKey === toPaneKey ||
         !isValidPaneKey(fromPaneKey) ||
         !isValidPaneKey(toPaneKey) ||
         !this.holdsPaneAuthorityState(fromPaneKey) ||
-        (fromRow !== undefined && (fromRow.connectionId ?? null) !== connectionId) ||
+        (fromRow !== undefined &&
+          executionHostConnectionId(fromRow.connectionId) !== connectionId) ||
         this.isClosedAgentStatusTabForPaneKey(toPaneKey)
       ) {
         continue
@@ -38,8 +49,9 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
       this.takeRetiredPaneRestartId(toPaneKey)
       this.repointPaneKeyAliases(fromPaneKey, toPaneKey)
       const toRow = this.statusRow(toPaneKey)
-      if (toRow && (!fromRow || fromRow.receivedAt <= toRow.receivedAt)) {
-        this.carryLaunchAuthority(fromPaneKey, toPaneKey)
+      // Why evidence age: a spool replay is stamped with a fresh receivedAt for old evidence.
+      if (toRow && (!fromRow || evidenceAge(fromRow) <= evidenceAge(toRow))) {
+        // The pane's own row wins, so its launch authority stays as is.
         this.clearRawPaneState(fromPaneKey)
         continue
       }
@@ -49,6 +61,15 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
       }
       this.commitMovedPaneAuthorityState(this.movePaneAuthorityState(fromPaneKey, toPaneKey), true)
     }
+  }
+
+  // Why: a pane detach aliased the exported key to the pane it moved to, so the state lives there.
+  private followOwnAlias(move: TerminalPaneMove): string {
+    const alias = this.legacyPaneKeyAliases.get(move.fromPaneKey)
+    if (!alias || alias.ptyId !== move.ptyId || alias.stablePaneKey === move.toPaneKey) {
+      return move.fromPaneKey
+    }
+    return alias.stablePaneKey
   }
 
   private repointPaneKeyAliases(fromPaneKey: string, toPaneKey: string): void {
@@ -61,21 +82,6 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
     }
     if (changed) {
       this.notifyPaneKeyAliasPersistenceListener()
-    }
-  }
-
-  // Why: the superseded key's process still posts; keep its launch authority where the pane lacks one.
-  private carryLaunchAuthority(fromPaneKey: string, toPaneKey: string): void {
-    const tokenHash = this.hydratedLaunchTokenHashByPaneKey.get(fromPaneKey)
-    if (tokenHash && !this.hydratedLaunchTokenHashByPaneKey.has(toPaneKey)) {
-      this.hydratedLaunchTokenHashByPaneKey.set(toPaneKey, tokenHash)
-    }
-    const commitment = this.persistedAuthorityCommitmentsByPaneKey.get(fromPaneKey)
-    if (commitment && !this.persistedAuthorityCommitmentsByPaneKey.has(toPaneKey)) {
-      this.persistedAuthorityCommitmentsByPaneKey.set(
-        toPaneKey,
-        Object.freeze({ ...commitment, paneKey: toPaneKey })
-      )
     }
   }
 
@@ -115,4 +121,8 @@ export abstract class AgentHookServerTerminalPaneRouting extends AgentHookServer
       this.restartedStatusLaunchTokenHashByPaneKey.has(paneKey)
     )
   }
+}
+
+function evidenceAge(row: EnrichedAgentHookEventPayload): number {
+  return row.evidenceObservedAt ?? row.receivedAt
 }

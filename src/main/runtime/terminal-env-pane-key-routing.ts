@@ -58,6 +58,7 @@ export type MovedEnvPaneKey = {
   fromPaneKey: string
   toPaneKey: string
   connectionId: string | null
+  ptyId: string
 }
 
 /** Every exported key whose terminal now shows another pane, in one indexed pass over the records. */
@@ -88,7 +89,12 @@ export function collectMovedEnvPaneKeys<T extends EnvPaneKeyTerminal>(
     }
     const toPaneKey = currentPaneOf(terminal, fromPaneKey, source)
     if (toPaneKey) {
-      moved.push({ fromPaneKey, toPaneKey, connectionId: terminal.connectionId })
+      moved.push({
+        fromPaneKey,
+        toPaneKey,
+        connectionId: terminal.connectionId,
+        ptyId: terminal.ptyId
+      })
     }
   }
   return moved

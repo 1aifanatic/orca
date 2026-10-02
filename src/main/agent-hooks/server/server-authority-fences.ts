@@ -1,5 +1,6 @@
 import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { isWslHookRelayConnectionId } from '../../../shared/wsl-hook-relay-contract'
 import { AgentHookServerAuthorityAliases } from './server-authority-aliases'
 import type {
   EnrichedAgentHookEventPayload,
@@ -220,7 +221,9 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
 
   // Why ingress only: cleanup is handed layout keys, which must never reach the pane a process moved to.
   protected resolveHookPaneKey(paneKey: string, connectionId: string | null): string {
-    return this.terminalPaneResolver?.(paneKey, connectionId) ?? this.resolvePaneKeyAlias(paneKey)
+    // A WSL relay id is transport provenance: the terminal it names is local.
+    const host = isWslHookRelayConnectionId(connectionId) ? null : connectionId
+    return this.terminalPaneResolver?.(paneKey, host) ?? this.resolvePaneKeyAlias(paneKey)
   }
 
   protected revokeHydratedAuthorityForPaneKeys(paneKeys: ReadonlySet<string>): boolean {

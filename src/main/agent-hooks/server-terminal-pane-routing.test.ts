@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, _internals } from './server'
-import { buildBody, FRESH_PANE, OLD_PANE, postHookEvent } from './server.test-fixtures'
+import { buildBody, FRESH_PANE, OLD_PANE, PANE, postHookEvent } from './server.test-fixtures'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({
@@ -14,7 +14,12 @@ vi.mock('../telemetry/cohort-classifier', () => ({
 // FRESH_PANE (a tab the adoption path minted with a new id).
 const movedTerminal = (paneKey: string): string | undefined =>
   paneKey === OLD_PANE ? FRESH_PANE : undefined
-const MOVE = { fromPaneKey: OLD_PANE, toPaneKey: FRESH_PANE, connectionId: null }
+const MOVE = {
+  fromPaneKey: OLD_PANE,
+  toPaneKey: FRESH_PANE,
+  connectionId: null,
+  ptyId: 'pty-moved'
+}
 
 function postFromSpawnedPane(server: AgentHookServer, prompt: string): Promise<Response> {
   return postHookEvent(
@@ -94,6 +99,54 @@ describe('agent status follows the terminal, not the pane key it was spawned wit
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'newer from the process' })
     ])
+  })
+
+  it('judges a replayed row by the age of its evidence, not its delivery', async () => {
+    const post = (paneKey: string, prompt: string, isReplay = false): void =>
+      server.ingestRemote(
+        {
+          paneKey,
+          tabId: paneKey.split(':')[0],
+          worktreeId: 'wt-1',
+          source: 'claude',
+          hookEventName: 'UserPromptSubmit',
+          ...(isReplay ? { isReplay: true } : {}),
+          payload: { state: 'working', prompt, agentType: 'claude' }
+        },
+        null
+      )
+    post(OLD_PANE, 'old evidence')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    post(FRESH_PANE, 'live')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    post(OLD_PANE, 'old evidence', true)
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'live' })
+    ])
+  })
+
+  it('follows the alias its own pane move minted to the state filed there', async () => {
+    await postFromSpawnedPane(server, 'before detach')
+    server.transferPaneAuthority(OLD_PANE, PANE, 'pty-moved')
+    expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([PANE])
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({ paneKey: FRESH_PANE, prompt: 'before detach' })
+    ])
+  })
+
+  it('leaves state under another process’s alias alone', async () => {
+    await postFromSpawnedPane(server, 'other process')
+    server.transferPaneAuthority(OLD_PANE, PANE, 'pty-other')
+
+    server.reconcileMovedTerminalPaneKeys([MOVE])
+
+    expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([PANE])
   })
 
   it('never moves a row posted by another host onto a terminal’s pane', async () => {

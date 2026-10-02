@@ -158,6 +158,25 @@ describe('hook status follows a terminal that outlived its pane', () => {
     expect(runtime.resolveAgentHookTerminalPane(OLD_PANE)).toBeUndefined()
   })
 
+  it('routes a WSL relay post to the local terminal it came from', async () => {
+    await runtime.readInventory()
+    runtime.reattachInto(NEW_TAB, NEW_LEAF)
+
+    wiring.statusStore.ingestRemote(
+      {
+        paneKey: OLD_PANE,
+        tabId: OLD_TAB,
+        worktreeId: WORKTREE,
+        source: 'claude',
+        hookEventName: 'UserPromptSubmit',
+        payload: { state: 'working', prompt: 'from wsl', agentType: 'claude' }
+      },
+      'wsl:Ubuntu'
+    )
+
+    expect(statusPaneKeys()).toEqual([NEW_PANE])
+  })
+
   it('does not route a relay post from another host onto this terminal’s pane', async () => {
     await runtime.readInventory()
     runtime.reattachInto(NEW_TAB, NEW_LEAF)

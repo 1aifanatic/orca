@@ -96,7 +96,7 @@ describe('collectMovedEnvPaneKeys', () => {
           { ptyId: 'pty-3', paneKey: OTHER, connectionId: null }
         ])
       )
-    ).toEqual([{ fromPaneKey: OLD, toPaneKey: NEW, connectionId: null }])
+    ).toEqual([{ fromPaneKey: OLD, toPaneKey: NEW, connectionId: null, ptyId: 'pty-1' }])
   })
 
   it.each<[string, Terminal[]]>([
@@ -122,8 +122,8 @@ describe('collectMovedEnvPaneKeys', () => {
       connectionId: 'ssh-a'
     }
     expect(collectMovedEnvPaneKeys(source([moved, remote]))).toEqual([
-      { fromPaneKey: OLD, toPaneKey: NEW, connectionId: null },
-      { fromPaneKey: OLD, toPaneKey: OTHER, connectionId: 'ssh-a' }
+      { fromPaneKey: OLD, toPaneKey: NEW, connectionId: null, ptyId: 'pty-1' },
+      { fromPaneKey: OLD, toPaneKey: OTHER, connectionId: 'ssh-a', ptyId: 'pty-2' }
     ])
   })
 })
