@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import { normalize, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -699,6 +700,18 @@ describe('registerShellHandlers', () => {
   })
 
   describe('legacy file open handlers', () => {
+    let hostPlatform: PropertyDescriptor | undefined
+
+    beforeEach(() => {
+      hostPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+    })
+
+    afterEach(() => {
+      if (hostPlatform) {
+        Object.defineProperty(process, 'platform', hostPlatform)
+      }
+    })
     it('does not open relative file paths', async () => {
       const handler = getHandler('shell:openFilePath')
 
@@ -748,6 +761,11 @@ describe('registerShellHandlers', () => {
         platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
         Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
         openPathMock.mockReturnValue(new Promise<string>(() => {}))
+        spawnMock.mockImplementation(() => {
+          const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+          queueMicrotask(() => child.emit('exit', 0, null))
+          return child
+        })
       })
 
       afterEach(() => {
@@ -757,7 +775,7 @@ describe('registerShellHandlers', () => {
         }
       })
 
-      it('resolves file-path opens once the launcher has been handed the path', async () => {
+      it('resolves file-path opens after the Linux opener exits successfully', async () => {
         const filePath = resolve('note.md')
         const handler = getHandler('shell:openFilePath')
 
@@ -765,10 +783,14 @@ describe('registerShellHandlers', () => {
         await vi.advanceTimersByTimeAsync(5_000)
 
         await expect(result).resolves.toBe(true)
-        expect(openPathMock).toHaveBeenCalledWith(normalize(filePath))
+        expect(spawnMock).toHaveBeenCalledWith(
+          'xdg-open',
+          [normalize(filePath)],
+          expect.objectContaining({ shell: false, stdio: 'ignore' })
+        )
       })
 
-      it('resolves file-URI opens once the launcher has been handed the path', async () => {
+      it('resolves file-URI opens after the Linux opener exits successfully', async () => {
         const filePath = resolve('note.md')
         const handler = getHandler('shell:openFileUri')
 
@@ -776,14 +798,35 @@ describe('registerShellHandlers', () => {
         await vi.advanceTimersByTimeAsync(5_000)
 
         await expect(result).resolves.toBeUndefined()
-        expect(openPathMock).toHaveBeenCalledWith(normalize(filePath))
+        expect(spawnMock).toHaveBeenCalledWith(
+          'xdg-open',
+          [normalize(filePath)],
+          expect.objectContaining({ shell: false, stdio: 'ignore' })
+        )
       })
 
-      it('still reports launcher errors that settle before the bound', async () => {
-        openPathMock.mockResolvedValueOnce('no default app')
+      it('still reports launcher failures before the bound', async () => {
+        spawnMock.mockReturnValueOnce(createSpawnedProcess('error'))
         const handler = getHandler('shell:openFilePath')
 
         await expect(handler({}, resolve('note.md'))).resolves.toBe(false)
+      })
+
+      it('returns false for a nonzero Linux opener exit', async () => {
+        spawnMock.mockImplementationOnce(() => {
+          const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+          queueMicrotask(() => child.emit('exit', 1, null))
+          return child
+        })
+        const handler = getHandler('shell:openFilePath')
+        await expect(handler({}, resolve('note.md'))).resolves.toBe(false)
+      })
+
+      it('returns false when the Linux opener outcome remains unknown', async () => {
+        spawnMock.mockReturnValueOnce(Object.assign(new EventEmitter(), { unref: vi.fn() }))
+        const result = getHandler('shell:openFilePath')({}, resolve('note.md'))
+        await vi.advanceTimersByTimeAsync(5_000)
+        await expect(result).resolves.toBe(false)
       })
     })
 

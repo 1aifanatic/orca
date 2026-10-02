@@ -1,30 +1,47 @@
 import { shell } from 'electron'
+import { dirname } from 'node:path'
+import { spawnProcess } from '../shared/child-process/run-process'
+import { withTimeout } from '../shared/promise-timeout-fallback'
 
-// Electron's Linux shell.openPath hands the path to xdg-open without waiting and
-// never settles its promise, so an awaiting IPC handler strands its reply.
+// Electron's Linux shell.openPath drops its completion callback.
 export const LINUX_OPEN_PATH_SETTLE_BOUND_MS = 1_500
 
-/**
- * shell.openPath that always settles: '' means handed off, otherwise the
- * launcher's error message. On Linux a pending result after the bound is
- * treated as launched because xdg-open has already been spawned.
- */
+/** Linux opens must reply without treating an unknown launcher outcome as success. */
 export function openPathWithSystemDefault(targetPath: string): Promise<string> {
-  const opened = shell.openPath(targetPath)
   if (process.platform !== 'linux') {
-    return opened
+    return shell.openPath(targetPath)
   }
-  return new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => resolve(''), LINUX_OPEN_PATH_SETTLE_BOUND_MS)
-    opened.then(
-      (errorMessage) => {
-        clearTimeout(timer)
-        resolve(errorMessage)
-      },
-      (error: unknown) => {
-        clearTimeout(timer)
-        reject(error)
-      }
-    )
+  const opened = new Promise<string>((resolve, reject) => {
+    const child = spawnProcess({
+      program: 'xdg-open',
+      args: [targetPath],
+      cwd: dirname(targetPath),
+      env: { ...process.env, MM_NOTTTY: '1' },
+      detached: true,
+      stdio: 'ignore'
+    })
+    child.once('error', reject)
+    child.once('exit', (code) => {
+      resolve(code === 0 ? '' : 'The system default application could not open this path.')
+    })
+    // A slow opener may be the application itself; timing out must not kill it.
+    child.unref()
+  })
+  const settled = opened.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error })
+  )
+  return withTimeout<Awaited<typeof settled> | null>(
+    settled,
+    LINUX_OPEN_PATH_SETTLE_BOUND_MS,
+    null
+  ).then((result) => {
+    if (result === null) {
+      return 'The system opener has not confirmed the file was opened. It may still open.'
+    }
+    if ('error' in result) {
+      throw result.error
+    }
+    return result.value
   })
 }
