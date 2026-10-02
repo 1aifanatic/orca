@@ -18642,7 +18642,6 @@
       "oldTerminalDialogTitle": "Why this Codex shares a server",
       "oldTerminalDialogRisk": "Codex sessions that share a server can end together, and agent status can be wrong.",
       "oldTerminalDialogCause": "Older terminals still share a Codex server. Open a new terminal to run Codex on a separate server.",
-      "turnOffSharingEverywhere": "Turn off sharing everywhere",
       "fix": "Fix",
       "openNewTerminal": "Open new terminal",
       "dontShowAgain": "Don't show again",

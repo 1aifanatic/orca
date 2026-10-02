@@ -345,14 +345,18 @@ describe('CodexSharedServerBanner', () => {
       return document.querySelector('[role="dialog"]')
     }
 
-    it('explains the old terminal in Learn more, without the Fix steps', async () => {
+    it('explains the old terminal in Learn more, with no global fix', async () => {
       await renderOldTab('wt-1')
       expect(dialog()).toBeNull()
       await act(async () => button('Learn more').click())
 
       expect(dialog()?.textContent).toContain('Why this Codex shares a server')
-      expect(dialog()?.textContent).toContain('New terminals get one automatically.')
+      expect(dialog()?.textContent).toContain(
+        'Open a new terminal to run Codex on a separate server.'
+      )
+      expect(dialog()?.textContent).not.toContain('Turn off sharing everywhere')
       expect(document.body.textContent).not.toContain(CODEX_DISABLE_AUTO_START_COMMAND)
+      expect(document.body.textContent).not.toContain(CODEX_STOP_SHARED_SERVER_COMMAND)
     })
 
     it('opens a new terminal from Learn more and closes the dialog', async () => {
@@ -366,19 +370,6 @@ describe('CodexSharedServerBanner', () => {
       expect(openNewTerminal).toHaveBeenCalledWith('group-2')
       expect(dialog()).toBeNull()
       expect(paneElement.textContent).toContain(OLD_TAB_BODY)
-    })
-
-    it('reaches the Fix steps through Turn off sharing everywhere, running nothing yet', async () => {
-      await renderOldTab('wt-1')
-      await act(async () => button('Learn more').click())
-      await act(async () => button('Turn off sharing everywhere').click())
-
-      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
-      expect(dialog()?.textContent).toContain('Give each Codex tab its own server')
-      expect(document.body.textContent).toContain(CODEX_DISABLE_AUTO_START_COMMAND)
-      expect(document.body.textContent).toContain(CODEX_STOP_SHARED_SERVER_COMMAND)
-      expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
-      expect(stopCodexSharedServer).not.toHaveBeenCalled()
     })
 
     async function clickOpenNewTerminal(worktreeId: string): Promise<() => Promise<void>> {

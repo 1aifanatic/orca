@@ -13,13 +13,11 @@ import { translate } from '@/i18n/i18n'
 export function CodexOldTerminalDialog({
   open,
   onOpenChange,
-  onOpenNewTerminal,
-  onTurnOffSharing
+  onOpenNewTerminal
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onOpenNewTerminal: () => void
-  onTurnOffSharing: () => void
 }): React.JSX.Element {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -44,14 +42,8 @@ export function CodexOldTerminalDialog({
             'Older terminals still share a Codex server. Open a new terminal to run Codex on a separate server.'
           )}
         </p>
-        <DialogFooter className="sm:justify-between">
-          <Button type="button" variant="ghost" onClick={onTurnOffSharing}>
-            {translate(
-              'terminal.codexSharedServerBanner.turnOffSharingEverywhere',
-              'Turn off sharing everywhere'
-            )}
-          </Button>
-          {/* Why autoFocus: the dialog opens on its primary action, not the first footer button. */}
+        {/* Why no global fix: a new terminal already runs Codex on its own server here. */}
+        <DialogFooter>
           <Button type="button" autoFocus onClick={onOpenNewTerminal}>
             {translate('terminal.codexSharedServerBanner.openNewTerminal', 'Open new terminal')}
           </Button>

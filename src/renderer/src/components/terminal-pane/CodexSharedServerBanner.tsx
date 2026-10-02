@@ -212,7 +212,6 @@ export function CodexSharedServerBanner({
           setOpenDialog(null)
           openTerminalBesideTab(tabId)
         }}
-        onTurnOffSharing={() => setOpenDialog('fix')}
       />
       <CodexSharedServerFixDialog
         ptyId={ptyId}
