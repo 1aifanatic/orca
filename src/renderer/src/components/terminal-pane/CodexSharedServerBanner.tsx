@@ -8,7 +8,8 @@ import type { CodexSharedServerStatus } from '../../../../shared/codex-shared-se
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { createFloatingWorkspaceTerminalTab } from '@/lib/floating-workspace-tab-creation'
-import { activateAndRevealWorktree } from '@/lib/worktree-activation'
+import { revealFloatingWorkspacePanel } from '@/lib/floating-workspace-panel-reveal'
+import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
 import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
 import { retireCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
 
@@ -79,12 +80,13 @@ function openTerminalBesideTab(terminalTabId: string): void {
     return
   }
   if (tab.worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
+    revealFloatingWorkspacePanel(state)
     void createFloatingWorkspaceTerminalTab(state)
     return
   }
-  // Why: Activity shows panes from worktrees that are not active.
-  if (tab.worktreeId !== state.activeWorktreeId) {
-    activateAndRevealWorktree(tab.worktreeId)
+  // Why always: Activity can show this pane behind its own view even when its workspace is active.
+  if (activateAndRevealWorkspace(tab.worktreeId) === false) {
+    return
   }
   void useAppStore.getState().openNewTerminalTabInActiveWorkspace(tab.groupId)
 }
@@ -144,17 +146,26 @@ export function CodexSharedServerBanner({
   if (!status && !fixOpen) {
     return null
   }
-  const openedBeforeWrapper = status?.openedBeforeWrapper === true
-  return (
-    <>
-      <CodexSharedServerBannerFrame
-        body={
-          openedBeforeWrapper ? (
-            translate(
-              'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
-              "This terminal was opened before Orca's last update."
-            )
-          ) : (
+  const { body, primaryAction } =
+    status?.joined && status.openedBeforeWrapper
+      ? {
+          body: translate(
+            'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
+            "This terminal was opened before Orca's last update."
+          ),
+          primaryAction: (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => openTerminalBesideTab(tabId)}
+            >
+              {translate('terminal.codexSharedServerBanner.openNewTerminal', 'Open new terminal')}
+            </Button>
+          )
+        }
+      : {
+          body: (
             <>
               {translate(
                 'terminal.codexSharedServerBanner.body',
@@ -168,24 +179,18 @@ export function CodexSharedServerBanner({
                 {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
               </button>
             </>
-          )
-        }
-        primaryAction={
-          openedBeforeWrapper ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => openTerminalBesideTab(tabId)}
-            >
-              {translate('terminal.codexSharedServerBanner.openNewTerminal', 'Open new terminal')}
-            </Button>
-          ) : (
+          ),
+          primaryAction: (
             <Button type="button" variant="outline" size="xs" onClick={() => setFixOpen(true)}>
               {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
             </Button>
           )
         }
+  return (
+    <>
+      <CodexSharedServerBannerFrame
+        body={body}
+        primaryAction={primaryAction}
         onDismiss={() => {
           dismissedPtyIds.add(ptyId)
           setDismissed(true)

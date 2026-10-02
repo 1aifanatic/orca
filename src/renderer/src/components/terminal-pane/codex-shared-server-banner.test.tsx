@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
-import { getDefaultSettings } from '../../../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import { CodexSharedServerBanner } from './CodexSharedServerBanner'
 import {
   CODEX_DISABLE_AUTO_START_COMMAND,
@@ -16,17 +16,29 @@ import {
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { Tab } from '../../../../shared/tab-types'
 
-const activateAndRevealWorktree = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/worktree-activation', () => ({ activateAndRevealWorktree }))
+const routing = vi.hoisted(() => ({
+  activateAndRevealWorkspace: vi.fn<(id: string) => unknown>(),
+  revealFloatingWorkspacePanel: vi.fn(),
+  createFloatingWorkspaceTerminalTab: vi.fn()
+}))
+vi.mock('@/lib/worktree-activation', () => ({
+  activateAndRevealWorkspace: routing.activateAndRevealWorkspace
+}))
+vi.mock('@/lib/floating-workspace-panel-reveal', () => ({
+  revealFloatingWorkspacePanel: routing.revealFloatingWorkspacePanel
+}))
+vi.mock('@/lib/floating-workspace-tab-creation', () => ({
+  createFloatingWorkspaceTerminalTab: routing.createFloatingWorkspaceTerminalTab
+}))
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const TAB_ID = 'tab-1'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = makePaneKey(TAB_ID, LEAF_ID)
-const JOINED = { joined: true }
-const NOT_JOINED = { joined: false }
-const OLD_TAB_JOINED = { joined: true, openedBeforeWrapper: true }
+const JOINED: CodexSharedServerStatus = { joined: true, openedBeforeWrapper: false }
+const NOT_JOINED: CodexSharedServerStatus = { joined: false }
+const OLD_TAB_JOINED: CodexSharedServerStatus = { joined: true, openedBeforeWrapper: true }
 const TITLE = 'This Codex is sharing a server'
 let paneElement: HTMLDivElement
 let root: Root
@@ -79,7 +91,8 @@ function button(label: string): HTMLButtonElement {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  activateAndRevealWorktree.mockClear()
+  vi.clearAllMocks()
+  routing.activateAndRevealWorkspace.mockReturnValue({ primaryTabId: null })
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   useAppStore.setState(useAppStore.getInitialState(), true)
   ptyId = `pty-${(nextPtyId += 1)}`
@@ -300,34 +313,46 @@ describe('CodexSharedServerBanner', () => {
       button('Dismiss')
     })
 
+    async function clickOpenNewTerminal(worktreeId: string): Promise<() => Promise<void>> {
+      const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
+      setState({})
+      useAppStore.setState({
+        activeWorktreeId: 'wt-1',
+        activeView: 'activity',
+        unifiedTabsByWorktree: { [worktreeId]: [terminalTab(worktreeId, 'group-2')] },
+        openNewTerminalTabInActiveWorkspace
+      })
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+      await act(async () => button('Open new terminal').click())
+      expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
+      expect(stopCodexSharedServer).not.toHaveBeenCalled()
+      return openNewTerminalTabInActiveWorkspace
+    }
+
     it.each([
-      ['its worktree is active', 'wt-1', false],
-      ['Activity shows it from another worktree', 'wt-other', true]
-    ])(
-      'opens a new terminal tab in the same group when %s',
-      async (_label, activeWorktreeId, activates) => {
-        const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
-        setState({})
-        useAppStore.setState({
-          activeWorktreeId,
-          unifiedTabsByWorktree: { 'wt-1': [terminalTab('wt-1', 'group-2')] },
-          openNewTerminalTabInActiveWorkspace
-        })
-        isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
-        await renderBanner()
-        await advance(1_000)
+      ['an active worktree viewed from Activity', 'wt-1'],
+      ['another worktree', 'wt-other'],
+      ['a folder workspace', 'folder:notes']
+    ])('activates %s, then opens a terminal in its group', async (_label, worktreeId) => {
+      const openNewTerminal = await clickOpenNewTerminal(worktreeId)
+      expect(routing.activateAndRevealWorkspace).toHaveBeenCalledWith(worktreeId)
+      expect(openNewTerminal).toHaveBeenCalledWith('group-2')
+    })
 
-        await act(async () => button('Open new terminal').click())
+    it('opens nothing when its workspace cannot be activated', async () => {
+      routing.activateAndRevealWorkspace.mockReturnValue(false)
+      const openNewTerminal = await clickOpenNewTerminal('folder:unmounted')
+      expect(openNewTerminal).not.toHaveBeenCalled()
+    })
 
-        if (activates) {
-          expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-1')
-        } else {
-          expect(activateAndRevealWorktree).not.toHaveBeenCalled()
-        }
-        expect(openNewTerminalTabInActiveWorkspace).toHaveBeenCalledWith('group-2')
-        expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
-        expect(stopCodexSharedServer).not.toHaveBeenCalled()
-      }
-    )
+    it('reveals the floating panel and opens a floating terminal', async () => {
+      const openNewTerminal = await clickOpenNewTerminal(FLOATING_TERMINAL_WORKTREE_ID)
+      expect(routing.revealFloatingWorkspacePanel).toHaveBeenCalledTimes(1)
+      expect(routing.createFloatingWorkspaceTerminalTab).toHaveBeenCalledTimes(1)
+      expect(routing.activateAndRevealWorkspace).not.toHaveBeenCalled()
+      expect(openNewTerminal).not.toHaveBeenCalled()
+    })
   })
 })

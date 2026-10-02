@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
   sessions: new Array<Session>(),
   hasProvider: vi.fn<(id: string) => boolean>(),
-  isPaneCodexOnSharedServer: vi.fn<(id: string, rootPid: number) => Promise<boolean>>(),
+  findPaneCodexOnSharedServer:
+    vi.fn<
+      (id: string, rootPid: number) => Promise<{ command: string; shell: string | null } | null>
+    >(),
   resolveCodexPaneHome: vi.fn<(id: string) => string | null>(),
   isOnOrcaMirror: vi.fn<(id: string) => boolean>(),
   disable: vi.fn<(home: string) => Promise<boolean>>(),
@@ -22,7 +25,7 @@ vi.mock('../../pty-host-bindings', () => ({
 }))
 vi.mock('../../../codex/codex-shared-server-pane', () => ({
   isCodexPaneOnOrcaMirrorHome: mocks.isOnOrcaMirror,
-  isPaneCodexOnSharedServer: mocks.isPaneCodexOnSharedServer,
+  findPaneCodexOnSharedServer: mocks.findPaneCodexOnSharedServer,
   resolveCodexPaneHome: mocks.resolveCodexPaneHome
 }))
 vi.mock('../../../codex/codex-shared-server-fix', () => ({
@@ -44,7 +47,7 @@ import { installPtyCodexSharedServerIpcHandler } from './codex-shared-server'
 
 // Each channel with its answer for a local pane and its answer when it refuses one.
 const CHANNELS = [
-  ['pty:isCodexOnSharedServer', { joined: true }, { joined: false }],
+  ['pty:isCodexOnSharedServer', { joined: true, openedBeforeWrapper: false }, { joined: false }],
   ['pty:disableCodexSharedServerAutoStart', true, false],
   ['pty:stopCodexSharedServer', true, false]
 ] as const
@@ -63,7 +66,7 @@ beforeEach(() => {
   ptyOwnership.clear()
   mocks.sessions = [{ id: 'local-1', rootProcessId: 100 }]
   mocks.hasProvider.mockReturnValue(true)
-  mocks.isPaneCodexOnSharedServer.mockResolvedValue(true)
+  mocks.findPaneCodexOnSharedServer.mockResolvedValue({ command: 'codex', shell: 'zsh' })
   mocks.resolveCodexPaneHome.mockReturnValue('/home/me/.codex')
   mocks.isOnOrcaMirror.mockReturnValue(false)
   mocks.disable.mockResolvedValue(true)
@@ -84,20 +87,27 @@ describe('Codex shared-server IPC', () => {
   })
 
   it.each([
-    ['an older daemon from before the codex wrapper', [ownedBy(36)], true],
-    ['an older daemon that has the codex wrapper', [ownedBy(37)], false],
-    ["this build's daemon or an in-process provider", [ownedBy(36, 'other')], false]
-  ])('tells whether a joined pane is served by %s', async (_label, adapters, old) => {
+    ['zsh on a v36 daemon', 'zsh', [ownedBy(36)], true],
+    ['zsh on a v37 daemon', 'zsh', [ownedBy(37)], false],
+    ['fish on a v37 daemon', 'fish', [ownedBy(37)], true],
+    ['fish on a v38 daemon', 'fish', [ownedBy(38)], true],
+    ['fish on a v39 daemon', 'fish', [ownedBy(39)], false],
+    ['cmd.exe, which never gets the codex function', 'cmd', [ownedBy(36)], false],
+    ['an unknown shell', null, [ownedBy(36)], false],
+    ['zsh where the older daemon does not hold this pane', 'zsh', [ownedBy(36, 'other')], false]
+  ])('tells whether a new terminal would fix %s', async (_label, shell, adapters, old) => {
+    mocks.findPaneCodexOnSharedServer.mockResolvedValue({ command: 'codex', shell })
     mocks.legacyAdapters = adapters
-    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual(
-      old ? { joined: true, openedBeforeWrapper: true } : { joined: true }
-    )
+    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual({
+      joined: true,
+      openedBeforeWrapper: old
+    })
   })
 
   it('reads no daemon owner for a pane that has not joined', async () => {
     const hasPty = vi.fn(() => true)
     mocks.legacyAdapters = [{ protocolVersion: 36, hasPty }]
-    mocks.isPaneCodexOnSharedServer.mockResolvedValue(false)
+    mocks.findPaneCodexOnSharedServer.mockResolvedValue(null)
     expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual({ joined: false })
     expect(hasPty).not.toHaveBeenCalled()
   })
@@ -141,7 +151,7 @@ describe('Codex shared-server IPC', () => {
   )('%s refuses %s', async (channel, _label, id, arrange, refused) => {
     arrange()
     expect(await invoke(channel, id)).toEqual(refused)
-    expect(mocks.isPaneCodexOnSharedServer).not.toHaveBeenCalled()
+    expect(mocks.findPaneCodexOnSharedServer).not.toHaveBeenCalled()
     expect(mocks.disable).not.toHaveBeenCalled()
     expect(mocks.disableOnMirror).not.toHaveBeenCalled()
     expect(mocks.stop).not.toHaveBeenCalled()
