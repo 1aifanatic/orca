@@ -40,3 +40,21 @@ it('refuses ambiguous aliases instead of selecting a different provider grammar'
     })
   ).toThrow('multiple launchers')
 })
+
+it.each([
+  'echo;/tmp/opencode-private',
+  'echo&&/tmp/opencode-private',
+  '$(echo /tmp)/opencode-private',
+  '`echo /tmp`/opencode-private'
+])('refuses shell-divergent override %s', (opencode) => {
+  expect(resolveConfiguredWorkerAgent('opencode-private', { opencode }, 'linux')).toBeUndefined()
+})
+it('uses target POSIX grammar for an escaped-space guest executable', () => {
+  const command = '/opt/My\\ Agent/opencode-private'
+  expect(resolveConfiguredWorkerAgent('opencode-private', { opencode: command }, 'linux')).toBe(
+    'opencode'
+  )
+  expect(
+    resolveConfiguredWorkerAgent('opencode-private', { opencode: command }, 'win32')
+  ).toBeUndefined()
+})

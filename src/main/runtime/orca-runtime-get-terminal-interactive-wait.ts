@@ -14,6 +14,7 @@ import { selectExactWorkerProviderSession } from './orchestration/worker-provide
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { OrchestrationError } from './orchestration/orchestration-error'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { resolveConfiguredWorkerAgent } from './orchestration/configured-worker-agent-selector'
 import { applyManagedDataAccountEnvironment } from '../managed-data-accounts/launch-environment'
 import { probeOpenCodeModelAvailability } from '../opencode/opencode-model-availability'
@@ -186,8 +187,32 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
     })
   }
 
-  resolveOrchestrationAgentLauncher(selector: string): TuiAgent | undefined {
-    return resolveConfiguredWorkerAgent(selector, this.store?.getSettings().agentCmdOverrides ?? {})
+  resolveOrchestrationAgentLauncher(
+    selector: string,
+    platform: NodeJS.Platform = process.platform
+  ): TuiAgent | undefined {
+    return resolveConfiguredWorkerAgent(
+      selector,
+      this.store?.getSettings().agentCmdOverrides ?? {},
+      platform
+    )
+  }
+
+  async resolveOrchestrationAgentLauncherForTarget(
+    selector: string,
+    target: { repo?: string; worktree?: string }
+  ): Promise<TuiAgent | undefined> {
+    if (isTuiAgent(selector)) {
+      return selector
+    }
+    const repo = target.repo ? await this.resolveRepoSelector(target.repo) : null
+    const workspace = repo
+      ? { repo, path: repo.path, connectionId: repo.connectionId }
+      : await this.resolveTerminalWorkspaceLaunchScope(target.worktree)
+    return this.resolveOrchestrationAgentLauncher(
+      selector,
+      this.getAgentLaunchPlatformForWorkspace(workspace)
+    )
   }
 
   async probeOrchestrationOpenCodeModelLaunchSupport(target: {

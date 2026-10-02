@@ -22,6 +22,7 @@ import {
 } from './federation-setup'
 import { FederationAttachStartParams } from './federation-start-schema'
 import { failFederatedAttachmentWithReceipt } from './federation-start-receipt'
+import { resolveWorkerConfiguredAgentParams } from '../worker/worker-configured-agent-preflight'
 import {
   isWorkerStartTimeoutWithinTimerLimit,
   resolveWorkerStartReadinessTimeoutMs
@@ -54,8 +55,11 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
         )
       }
       const createsWorktree = params.worktree === 'new-top-level'
+      const launchParams = await resolveWorkerConfiguredAgentParams(runtime, params, async () =>
+        createsWorktree ? { repo: params.repo } : { worktree: params.worktree }
+      )
       const { agent, launch } = await prepareFederationWorkerLaunchOnHost({
-        params,
+        params: launchParams,
         createsWorktree,
         runtime
       })
