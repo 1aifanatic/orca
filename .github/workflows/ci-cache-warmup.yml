@@ -1,10 +1,10 @@
-name: Alpine verification record comparison
+name: Alpine verification without host toolchain
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: alpine-verification-comparison-${{ github.ref }}
+  group: alpine-verification-light-comparison-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   compare:
@@ -84,20 +84,23 @@ jobs:
         run: bash "$RUNNER_TEMP/verification-comparison/run-comparison.sh"
       - name: Start the cached interval
         run: node -e 'require("node:fs").writeFileSync(require("node:path").join(process.env.RUNNER_TEMP,"verification-comparison","cached-start"), process.hrtime.bigint().toString())'
-      - uses: pnpm/setup@v2
-        with:
-          install: false
-      - name: Resolve the existing main cache identity
+      - name: Resolve the existing main cache without installing host pnpm
         id: identity
         env:
           POLICY_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc') }}
         run: |
-          cache_directory="$(pnpm cache path)"
-          {
-            printf 'directory=%s\n' "$cache_directory"
-            printf 'path=%s/lockfile-verified.jsonl\n' "$cache_directory"
-            printf 'key=pnpm-verification-v1-%s-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$(pnpm --version)" "$POLICY_HASH"
-          } >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'IDENTITY'
+          import { readFileSync, appendFileSync } from 'node:fs'
+          import { homedir } from 'node:os'
+          import { join } from 'node:path'
+          if (process.platform !== 'linux') throw new Error('This trial requires a Linux runner')
+          const manifest=JSON.parse(readFileSync('package.json','utf8'))
+          const version=/^pnpm@([^+]+)/.exec(manifest.packageManager)?.[1]
+          if (!version) throw new Error('A pinned pnpm version is required')
+          const directory=join(process.env.XDG_CACHE_HOME || join(homedir(),'.cache'),'pnpm')
+          const key=`pnpm-verification-v1-${process.env.RUNNER_OS}-${process.env.RUNNER_ARCH}-${version}-${process.env.POLICY_HASH}`
+          appendFileSync(process.env.GITHUB_OUTPUT,`directory=${directory}\npath=${join(directory,'lockfile-verified.jsonl')}\nkey=${key}\n`)
+          IDENTITY
       - uses: actions/cache/restore@v5
         id: restore
         with:
