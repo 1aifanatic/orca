@@ -12,6 +12,11 @@ import {
   type ResumeFailure
 } from './native-chat-resume-on-restart-grouping'
 import {
+  forgetUnsentResumes,
+  markUnsentResumes,
+  withUnsentResumes
+} from './native-chat-resume-unsent-requests'
+import {
   consumeNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
@@ -72,7 +77,8 @@ function publish(next: NativeChatRestartOffer): void {
 
 /** A confirmed host answer. One with nothing left also retires any open request for the dialog,
  *  which has nothing to show; a failed read only hides rows, so it keeps the request. */
-function publishAnswer(next: NativeChatRestartOffer): void {
+function publishAnswer(answer: NativeChatRestartOffer): void {
+  const next = withUnsentResumes(answer)
   publish(next)
   if (next.candidates.length === 0 && next.failed.length === 0) {
     consumeNativeChatResumeOnRestartDialogRequest()
@@ -262,12 +268,14 @@ export async function refreshNativeChatRestartOffer(): Promise<
  *
  * Says nothing itself: each chat's own note tells what happened to it, and the status bar keeps
  * whatever the host still lists. Never rejects; a lost answer is followed by a re-read, never a retry.
+ * The chats a rejected request named and the host still offers show as failed, with Retry.
  */
 export async function continueNativeChatRestartOffer(
   sessionIds: readonly string[] | undefined,
   reported: readonly string[] = sessionIds ?? []
 ): Promise<void> {
   actionsBegun += 1
+  forgetUnsentResumes(sessionIds)
   const batch = [...reported]
   resumeBatches.add(batch)
   syncResuming()
@@ -287,6 +295,7 @@ export async function continueNativeChatRestartOffer(
       await refreshNativeChatRestartOffer()
     }
   } catch {
+    markUnsentResumes(batch, Date.now())
     await refreshNativeChatRestartOffer()
   } finally {
     actionsSettled += 1
@@ -298,11 +307,12 @@ export async function continueNativeChatRestartOffer(
 /**
  * Turning the offer down for good, which explicitly deletes the pending durable records.
  *
- * A failed write or unreachable host leaves the durable record untouched; the re-read puts it back
- * in the status bar, which is how the user sees the dismissal did not land.
+ * A failed write or unreachable host leaves the durable record untouched. The re-read puts it back
+ * in the status bar; if that read fails too, the entry stays hidden until the next launch reads it.
  */
 export async function dismissNativeChatRestartOffer(sessionIds?: readonly string[]): Promise<void> {
   actionsBegun += 1
+  forgetUnsentResumes(sessionIds)
   try {
     const result = await callStructuredAgentSession<HostOfferPayload>(
       LOCAL,
@@ -387,6 +397,7 @@ export function useNativeChatRestartResuming(): readonly string[] {
 export function _resetNativeChatRestartOffer(): void {
   releaseOfferedChatWatch()
   offer = EMPTY
+  forgetUnsentResumes(undefined)
   resumeBatches.clear()
   resuming = NOTHING_RESUMING
   actionsBegun = 0

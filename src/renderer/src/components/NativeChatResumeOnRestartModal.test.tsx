@@ -547,14 +547,32 @@ it('keeps the offer listed after an unreadable resume response', async () => {
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
 
-it('re-reads the offer after a lost resume response without retrying the action', async () => {
+// A request that fails before the host reserved anything leaves it nothing to record, so the chats
+// it named are reported here once, as failed with Retry, until a host answer or Retry ends it.
+it('reports the chats a lost resume request named once, as failed, until it is retried', async () => {
+  let sessions = offered
+  let continueFails = true
   rpc.mockImplementation(async (_target, method) => {
     if (method === 'agentSession.restartResumable') {
-      return { sessions: offered }
+      return { sessions, failed: [] }
     }
-    throw new Error('response lost')
+    if (continueFails) {
+      throw new Error('response lost')
+    }
+    sessions = []
+    return {
+      resumed: [{ sessionId: 'b', outcome: 'resumed' }],
+      continued: [{ sessionId: 'b', outcome: 'continued' }],
+      sessions,
+      failed: []
+    }
   })
-  await mount(<NativeChatResumeOnRestartModal />)
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
   await act(async () => button('Resume 2 chats').click())
   expect(toast).not.toHaveBeenCalled()
   // A lost action response is followed by a read-only reconciliation, never a retry.
@@ -563,8 +581,30 @@ it('re-reads the offer after a lost resume response without retrying the action'
     ['agentSession.restartContinue', { sessionIds: ['a', 'b'] }],
     ['agentSession.restartResumable', undefined]
   ])
-  expect(offerIds()).toEqual(['a', 'b'])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(offerIds()).toEqual([])
+  expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a', 'b'])
+  expect(button('2 chats failed to resume. Click for details.')).toBeTruthy()
+  expect(document.body.textContent).not.toContain('chats to resume')
+
+  // A host answer that no longer offers a chat ends its mark.
+  sessions = [offered[1]!]
+  await act(async () => {
+    await refreshNativeChatRestartOffer()
+  })
+  expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['b'])
+
+  continueFails = false
+  await act(async () => requestNativeChatResumeOnRestartDialog())
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+    'Orca couldn’t resume this chat. Open it to continue manually.'
+  )
+  await act(async () => button('Retry').click())
+  expect(rpc.mock.calls.at(-1)?.slice(1)).toEqual([
+    'agentSession.restartContinue',
+    { sessionIds: ['b'] }
+  ])
+  expect(getNativeChatRestartOffer()).toMatchObject({ candidates: [], failed: [] })
 })
 
 /** Every button in the dialog, in order; row checkboxes are buttons too, so they are left out. */
