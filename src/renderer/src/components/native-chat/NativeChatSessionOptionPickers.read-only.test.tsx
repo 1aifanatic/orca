@@ -23,9 +23,8 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
       children: React.ReactNode
       defaultOpen?: boolean
     }) => {
-      React.useEffect(() => {
-        mounts.push(Boolean(defaultOpen))
-      }, [])
+      // A lazy initial state runs once per mount.
+      React.useState(() => mounts.push(Boolean(defaultOpen)))
       return <div>{children}</div>
     },
     DropdownMenuTrigger: Pass,
