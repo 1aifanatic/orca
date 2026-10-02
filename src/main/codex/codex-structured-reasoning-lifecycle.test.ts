@@ -202,4 +202,57 @@ describe('a Codex reasoning row', () => {
       state: 'completed'
     })
   })
+
+  it('ends with its streamed text when the completion itself carries none', () => {
+    const { translator, rows } = coalescedTurn()
+    translator.handle(notification('item/started', reasoning('r-1'), 2_000))
+    translator.handle(
+      notification('item/reasoning/summaryTextDelta', { itemId: 'r-1', delta: '**Plan**' })
+    )
+    translator.handle(notification('item/completed', reasoning('r-1'), 7_000))
+    expect(rows.get(ROW)).toEqual({
+      kind: 'message',
+      role: 'reasoning',
+      blocks: [{ type: 'text', text: '**Plan**' }],
+      state: 'completed',
+      completedAt: 7_000
+    })
+  })
+
+  it('claims no span for a completion whose start was never seen', () => {
+    const { translator, rows } = coalescedTurn()
+    translator.handle(notification('item/completed', reasoning('r-1', ['Planned']), 7_000))
+    expect(rows.get(ROW)).toMatchObject({ state: 'completed' })
+    expect(rows.get(ROW)).not.toHaveProperty('completedAt')
+  })
+
+  it('leaves an evicted file change what a settle would, not its command output as a patch', () => {
+    const { rows, sink } = recorder()
+    const items = new CodexJournalItems(
+      {
+        sink,
+        attributionFor: () => ({ turnScope: AGENT_JOURNAL_THREAD_SCOPE }),
+        schedule: () => () => {}
+      },
+      () => TURN_ID,
+      () => {}
+    )
+    const changes = [{ path: 'src/app.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@' }]
+    items.handle({
+      threadId: THREAD_ID,
+      method: 'item/started',
+      params: { item: { type: 'fileChange', id: 'patch-1', changes, status: 'inProgress' } }
+    })
+    items.streams.handle(THREAD_ID, 'item/fileChange/outputDelta', {
+      itemId: 'patch-1',
+      delta: 'Success. Updated the following files:'
+    })
+    for (let index = 2; index <= MAX_CODEX_ACTIVE_ITEMS + 1; index += 1) {
+      items.handle({ threadId: THREAD_ID, method: 'item/started', params: reasoning(`r-${index}`) })
+    }
+    expect(rows.get('orca:codex-item%3Athread-abc%3Apatch-1')).toEqual({
+      kind: 'status',
+      text: 'File changes were interrupted before completion.'
+    })
+  })
 })

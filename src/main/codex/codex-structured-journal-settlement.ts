@@ -13,12 +13,7 @@ import type {
   StructuredAgentSessionSinkAdmission
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { cancelledJournalPromptBody } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
-import {
-  codexJournalItem,
-  codexStreamingJournalItem,
-  type CodexThreadItem,
-  type CodexTurnOrdinals
-} from './codex-structured-item-translation'
+import type { CodexThreadItem, CodexTurnOrdinals } from './codex-structured-item-translation'
 import type { CodexStructuredItemStreams } from './codex-structured-item-streams'
 import type { CodexHelperName } from './codex-collab-agent-item-translation'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
@@ -28,7 +23,7 @@ import {
   codexTurnLifecycleIdentity
 } from './codex-structured-journal-translation-turns'
 import { appendCodexLifecycleMutations } from './codex-structured-journal-sink'
-import { endedCodexReasoning, withCodexReasoningLifecycle } from './codex-reasoning-lifecycle'
+import { codexActiveItemBody, interruptedCodexItemBody } from './codex-unfinished-item-body'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
 
 export type CodexActiveJournalItem = {
@@ -70,12 +65,8 @@ export function settleCodexJournalSession(input: {
   const mutations: JournalLifecycleMutationInput[] = []
   const turnOrdinalsToForget: { threadId: string; turnId: string }[] = []
   for (const active of input.activeItems.values()) {
-    const streamed = input.streams.snapshot(active.threadId, active.item.id)
-    const translated = streamed
-      ? codexStreamingJournalItem(active.item, streamed.text)
-      : codexJournalItem(active.item, active.helperName)
-    const body = interruptedBody(
-      translated.body,
+    const body = interruptedCodexItemBody(
+      codexActiveItemBody(active, input.streams),
       input.event.observedAt ?? input.now?.() ?? Date.now()
     )
     if (body) {
@@ -147,11 +138,10 @@ export function settleCodexJournalTurn(input: {
     if (codexCommandOutlivesTurn(active.item)) {
       continue
     }
-    const streamed = input.streams.snapshot(active.threadId, active.item.id)
-    const translated = streamed
-      ? codexStreamingJournalItem(active.item, streamed.text)
-      : codexJournalItem(active.item, active.helperName)
-    const body = interruptedBody(translated.body, input.completedAt)
+    const body = interruptedCodexItemBody(
+      codexActiveItemBody(active, input.streams),
+      input.completedAt
+    )
     if (body) {
       mutations.push(settledRow(input.attributionFor, active, body))
     }
@@ -203,25 +193,6 @@ function settledRow(
   body: AgentJournalItemBody
 ): JournalLifecycleMutationInput {
   return journalLifecycleItemMutation(attributionFor(row.threadId, row.turnId), row.identity, body)
-}
-
-/** The row an item still open when its turn ends is left with: the end is the turn's, seen live. */
-function interruptedBody(
-  body: AgentJournalItemBody | null,
-  endedAt: number
-): AgentJournalItemBody | null {
-  if (!body) {
-    return null
-  }
-  if (body.kind === 'tool-call') {
-    return { ...body, state: 'failed' }
-  }
-  if (body.kind === 'message') {
-    return withCodexReasoningLifecycle(body, endedCodexReasoning(endedAt))
-  }
-  return body.kind === 'diff'
-    ? { kind: 'status', text: 'File changes were interrupted before completion.' }
-    : body
 }
 
 function exitSettlementId(event: Extract<CodexStructuredSessionEvent, { type: 'ended' }>): string {

@@ -31,7 +31,11 @@ import type { CodexActiveJournalItem } from './codex-structured-journal-settleme
 import { readCodexJournalString } from './codex-structured-journal-translation-values'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import { readCodexDispatchEcho } from './codex-structured-dispatch-echo'
-import { evictedCodexItemBody } from './codex-structured-journal-eviction'
+import {
+  codexActiveItemBody,
+  codexCompletedItem,
+  interruptedCodexItemBody
+} from './codex-unfinished-item-body'
 import {
   endedCodexReasoning,
   withCodexReasoningLifecycle,
@@ -106,13 +110,20 @@ export class CodexJournalItems {
     const itemKey = codexStructuredItemKey(event.threadId, item.id)
     const active = event.method === 'item/completed' ? this.activeItems.get(itemKey) : undefined
     const receivedAt = event.observedAt ?? this.deps.now?.() ?? Date.now()
-    const translated = withItemLifecycle(
-      codexJournalItem(item, this.helperName, active?.item),
+    const lifecycle: CodexReasoningLifecycle =
       source === 'history'
         ? endedCodexReasoning()
         : event.method === 'item/completed'
-          ? endedCodexReasoning(receivedAt)
+          ? // A completion with no start on record claims no span it never saw.
+            endedCodexReasoning(active?.startedAt === undefined ? undefined : receivedAt)
           : { state: 'running' }
+    const translated = withItemLifecycle(
+      codexCompletedItem(
+        codexJournalItem(item, this.helperName, active?.item),
+        active,
+        this.streams
+      ),
+      lifecycle
     )
     const command = readCodexJournalString(item, 'command')
     if (command) {
@@ -266,7 +277,7 @@ export class CodexJournalItems {
       }
       const evicted = this.activeItems.get(oldest)
       if (evicted) {
-        const body = evictedCodexItemBody(evicted, this.streams, this.helperName)
+        const body = interruptedCodexItemBody(codexActiveItemBody(evicted, this.streams))
         if (body) {
           const admission = appendCodexLifecycleItem(this.deps.sink, evicted.identity, body, {
             ...this.deps.attributionFor(evicted.threadId, evicted.turnId),
