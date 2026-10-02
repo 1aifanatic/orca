@@ -147,34 +147,36 @@ describe('runtime foreground admission', () => {
     })
     await Promise.resolve()
     await Promise.resolve()
-    expect(f.capture).toHaveBeenCalledExactlyOnceWith('reattached', {
-      snapshotNotBeforeMs: expect.any(Number)
-    })
+    expect(f.capture).toHaveBeenCalledExactlyOnceWith(
+      'reattached',
+      expect.objectContaining({ snapshotNotBeforeMs: expect.any(Number) })
+    )
     expect(f.publish).toHaveBeenCalledWith(
       expect.objectContaining({ paneKey: makePaneKey('tab-2', reattachedLeaf) }),
       owner
     )
   })
 
-  it('reads once per command and agent from hooks, so a pane that never admits an owner stays cheap', async () => {
+  it('bounds hook reads per command and agent, so a pane that never admits an owner stays cheap', async () => {
     vi.useFakeTimers()
     const f = fixture()
     f.capture.mockResolvedValue(undefined)
     f.data('\x1b]133;C\x07')
     await vi.advanceTimersByTimeAsync(1_000)
     expect(f.capture).toHaveBeenCalledTimes(1)
+    // 30 hooks over 6 s: the first read misses, so the next waits 5 s.
     for (let i = 0; i < 30; i += 1) {
       f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
       await vi.advanceTimersByTimeAsync(200)
     }
-    expect(f.capture).toHaveBeenCalledTimes(2)
+    expect(f.capture).toHaveBeenCalledTimes(3)
     f.runtime.observeAgentPresenceEvidence(paneKey, 'codex')
     await vi.advanceTimersByTimeAsync(10)
-    expect(f.capture).toHaveBeenCalledTimes(3)
+    expect(f.capture).toHaveBeenCalledTimes(4)
     f.data('\x1b]133;D;0\x07\x1b]133;C\x07')
     f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
     await vi.advanceTimersByTimeAsync(10)
-    expect(f.capture).toHaveBeenCalledTimes(4)
+    expect(f.capture).toHaveBeenCalledTimes(5)
   })
 
   it.each([
@@ -242,11 +244,17 @@ describe('runtime foreground admission', () => {
     f.capture.mockResolvedValue(undefined)
     f.data('\x1b]133;C\x07')
     await vi.advanceTimersByTimeAsync(1_000)
-    expect(f.capture).toHaveBeenLastCalledWith('pty', { snapshotNotBeforeMs: 50_000 })
+    expect(f.capture).toHaveBeenLastCalledWith(
+      'pty',
+      expect.objectContaining({ snapshotNotBeforeMs: 50_000 })
+    )
     vi.setSystemTime(60_000)
     f.runtime.observeAgentPresenceEvidence(paneKey, 'claude')
     await vi.advanceTimersByTimeAsync(1)
-    expect(f.capture).toHaveBeenLastCalledWith('pty', { snapshotNotBeforeMs: 60_000 })
+    expect(f.capture).toHaveBeenLastCalledWith(
+      'pty',
+      expect.objectContaining({ snapshotNotBeforeMs: 60_000 })
+    )
   })
 
   it('reads for a newer command instead of joining a read still waiting on an older one', async () => {

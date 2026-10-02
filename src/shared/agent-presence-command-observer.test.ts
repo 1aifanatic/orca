@@ -110,4 +110,49 @@ describe('one foreground observation per command', () => {
     expect(current?.()).toBe(false)
     observer.stop()
   })
+
+  it('re-checks an owned key on every evidence and backs a missed key off 5 s, 10 s, 20 s', async () => {
+    vi.useFakeTimers()
+    let owned = true
+    const observe = vi.fn(
+      async (
+        _id: string,
+        _current: () => boolean,
+        _kind: AgentPresenceObservationKind,
+        _evidenceAtMs: number
+      ) => owned
+    )
+    const observer = new AgentPresenceCommandObserver(observe)
+    for (let i = 0; i < 3; i += 1) {
+      observer.evidence('pane', 'claude')
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    expect(observe).toHaveBeenCalledTimes(3)
+    owned = false
+    const readAt: number[] = []
+    observe.mockImplementation(async () => {
+      readAt.push(Date.now())
+      return false
+    })
+    const start = Date.now()
+    for (let i = 0; i < 400; i += 1) {
+      observer.evidence('pane', 'claude')
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(readAt.map((at) => Math.round((at - start) / 100) * 100)).toEqual([
+      0, 5_000, 15_000, 35_000
+    ])
+    observer.stop()
+  })
+
+  it('keeps a launch key apart from the agent key it names', async () => {
+    vi.useFakeTimers()
+    const observe = observeMock()
+    const observer = new AgentPresenceCommandObserver(observe)
+    observer.evidence('pane', 'launch:claude', () => true, 1_000)
+    await vi.advanceTimersByTimeAsync(1_000)
+    observer.evidence('pane', 'claude')
+    expect(observe).toHaveBeenCalledTimes(2)
+    observer.stop()
+  })
 })

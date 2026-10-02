@@ -733,7 +733,7 @@ export class PtyHandler {
     admit: (
       scope: { paneKey: string; tabId?: string; worktreeId?: string },
       presence: AgentProcessPresence
-    ) => void
+    ) => Promise<void> | void
   }
   private readonly presenceDiscoveries = new Set<string>()
   private readonly presenceCommands = new AgentPresenceCommandObserver(
@@ -765,14 +765,16 @@ export class PtyHandler {
     )
   }
 
+  /** Resolves whether the pane is owned afterwards, so evidence knows to back off or re-check. */
   private async discoverAgentOwner(
     managed: ManagedPty,
     current: () => boolean,
     doubtOwner: boolean,
     evidenceAtMs: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     const admission = this.presenceAdmission
     const paneKey = managed.paneKey
+    const owned = () => Boolean(paneKey && admission?.hasOwner(paneKey))
     // Why the evidence time: a newer command must not be dropped behind a read for an older one.
     const discoveryKey = `${managed.id}\0${evidenceAtMs}`
     if (
@@ -780,12 +782,17 @@ export class PtyHandler {
       !paneKey ||
       managed.disposed ||
       process.platform === 'win32' ||
-      (!doubtOwner && admission.hasOwner(paneKey)) ||
+      (!doubtOwner && owned()) ||
       this.presenceDiscoveries.has(discoveryKey)
     ) {
-      return
+      return owned()
     }
     const incarnation = managed.incarnationId
+    const wanted = () =>
+      current() &&
+      !managed.disposed &&
+      this.ptys.get(managed.id) === managed &&
+      managed.incarnationId === incarnation
     this.presenceDiscoveries.add(discoveryKey)
     try {
       // Why the bound: a process table that began before the evidence cannot show what it started.
@@ -794,17 +801,13 @@ export class PtyHandler {
           snapshotNotBeforeMs: evidenceAtMs
         })
       )
-      if (
-        !presence ||
-        !current() ||
-        managed.disposed ||
-        this.ptys.get(managed.id) !== managed ||
-        managed.incarnationId !== incarnation ||
-        (!doubtOwner && admission.hasOwner(paneKey))
-      ) {
-        return
+      if (presence && wanted() && (doubtOwner || !owned())) {
+        await admission.admit(
+          { paneKey, tabId: managed.tabId, worktreeId: managed.worktreeId },
+          presence
+        )
       }
-      admission.admit({ paneKey, tabId: managed.tabId, worktreeId: managed.worktreeId }, presence)
+      return owned()
     } finally {
       this.presenceDiscoveries.delete(discoveryKey)
     }

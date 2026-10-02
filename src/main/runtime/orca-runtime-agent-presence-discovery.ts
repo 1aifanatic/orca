@@ -2,7 +2,7 @@ import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/age
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 
 export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithControllerKnowsPtyIsLive {
-  private readonly agentPresenceDiscovery = new Map<string, Promise<void>>()
+  private readonly agentPresenceDiscovery = new Map<string, Promise<boolean>>()
 
   private hasAgentPresenceOwner(keys: Iterable<string>): boolean {
     return [...keys].some((key) => {
@@ -95,11 +95,12 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     launchAgent: string | null
   }): void {
     if (pty.launchAgent) {
-      this.claimAgentPresenceEvidence(pty.ptyId, pty.launchAgent, 1_000)
+      // Its own key: a read that ran before the agent existed must not use up the agent's evidence.
+      this.claimAgentPresenceEvidence(pty.ptyId, `launch:${pty.launchAgent}`, 1_000)
     }
   }
 
-  private claimAgentPresenceEvidence(ptyId: string, agent: string, delayMs = 0): void {
+  private claimAgentPresenceEvidence(ptyId: string, key: string, delayMs = 0): void {
     const pty = this.ptysById.get(ptyId)
     if (!pty || pty.isWsl || pty.connectionId) {
       return
@@ -107,7 +108,7 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     const incarnation = pty.incarnationId
     this.agentPresenceCommands.evidence(
       ptyId,
-      agent,
+      key,
       () => this.ptysById.get(ptyId) === pty && pty.incarnationId === incarnation,
       delayMs
     )
@@ -118,11 +119,11 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     commandCurrent: () => boolean = () => true,
     doubtOwner = false,
     evidenceAtMs = Date.now()
-  ): Promise<void> {
+  ): Promise<boolean> {
     const pty = this.ptysById.get(ptyId)
     const controller = this.ptyController
     if (!pty?.connected || pty.isWsl || pty.connectionId || !controller?.captureAgentPresence) {
-      return Promise.resolve()
+      return Promise.resolve(false)
     }
     const incarnation = pty.incarnationId
     // Why the evidence time: a newer command must not join a read that answers an older one.
@@ -135,7 +136,7 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
     // Why: evidence an owner already explains costs nothing; a command-start must still look.
     const settled = () => !doubtOwner && this.hasAgentPresenceOwner(keys)
     if (settled()) {
-      return Promise.resolve()
+      return Promise.resolve(true)
     }
     const current = () =>
       this.ptysById.get(ptyId) === pty &&
@@ -161,6 +162,8 @@ export class OrcaRuntimeWithAgentPresenceDiscovery extends OrcaRuntimeWithContro
         }
       })
       .catch(() => undefined)
+      // Why: tells evidence whether the pane is now owned, so a miss backs off and a hit re-checks.
+      .then(() => this.hasAgentPresenceOwner(keys))
       .finally(() => this.agentPresenceDiscovery.delete(discoveryKey))
     this.agentPresenceDiscovery.set(discoveryKey, discovery)
     return discovery

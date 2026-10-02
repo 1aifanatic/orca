@@ -1,13 +1,29 @@
 export type AgentPresenceObservationKind = 'command' | 'evidence'
 
+/** One evidence key's reads within a command. */
+type EvidenceClaim = {
+  reading: boolean
+  /** The last read found the pane owned; while it stays owned a re-check costs no process read. */
+  explained: boolean
+  misses: number
+  missedAtMs: number
+}
+
 type ShellCommand = {
   timer: ReturnType<typeof setTimeout> | null
-  /** Agents whose evidence (launch, title, hook) already bought this command's read. */
-  claimed: Set<string>
+  claims: Map<string, EvidenceClaim>
   evidenceTimers: Set<ReturnType<typeof setTimeout>>
 }
 
-/** One read per shell command, plus one per agent its evidence names; nothing renews either. */
+const MISSED_EVIDENCE_RETRY_MS = 5_000
+const MISSED_EVIDENCE_RETRY_MAX_MS = 60_000
+
+/** After `misses` reads in a row found nothing, new evidence for that key waits this long. */
+export function missedEvidenceRetryMs(misses: number): number {
+  return Math.min(MISSED_EVIDENCE_RETRY_MAX_MS, MISSED_EVIDENCE_RETRY_MS * 2 ** (misses - 1))
+}
+
+/** One read per shell command, plus reads its evidence buys per key (an agent, or a launch). */
 export class AgentPresenceCommandObserver {
   private readonly commands = new Map<string, ShellCommand>()
 
@@ -18,7 +34,7 @@ export class AgentPresenceCommandObserver {
       kind: AgentPresenceObservationKind,
       /** When the evidence arrived; a process table older than this cannot answer it. */
       evidenceAtMs: number
-    ) => Promise<void>
+    ) => Promise<boolean | void>
   ) {}
 
   /** Repeats inside the pending second coalesce; a start after the read ran is the next command. */
@@ -39,19 +55,41 @@ export class AgentPresenceCommandObserver {
     command.timer.unref?.()
   }
 
-  /** Evidence naming `agent` reads at most once per command, so repeated hooks or titles cost nothing. */
-  evidence(id: string, agent: string, isCurrent: () => boolean = () => true, delayMs = 0): void {
+  /**
+   * Evidence buys a read for its key unless one is running. A key whose read found the pane owned
+   * re-checks on new evidence (no process read while that owner lives, a read once it has gone);
+   * a key whose read found nothing waits out a doubling delay, so a hook storm on a pane that can
+   * never be captured (tmux) stays a handful of reads. Panes without command marks rely on this,
+   * since only a command boundary resets the keys.
+   */
+  evidence(id: string, key: string, isCurrent: () => boolean = () => true, delayMs = 0): void {
     const command = this.commands.get(id) ?? this.open(id)
-    if (command.claimed.has(agent)) {
+    const existing = command.claims.get(key)
+    if (
+      existing &&
+      (existing.reading ||
+        (!existing.explained &&
+          Date.now() - existing.missedAtMs < missedEvidenceRetryMs(existing.misses)))
+    ) {
       return
     }
-    command.claimed.add(agent)
+    const claim = existing ?? { reading: false, explained: false, misses: 0, missedAtMs: 0 }
+    claim.reading = true
+    command.claims.set(key, claim)
     const evidenceAtMs = Date.now()
     const current = () => this.commands.get(id) === command && isCurrent()
+    const settle = (explained: boolean | void): void => {
+      claim.reading = false
+      claim.explained = explained === true
+      claim.misses = claim.explained ? 0 : claim.misses + 1
+      claim.missedAtMs = Date.now()
+    }
     const run = () => {
-      if (current()) {
-        void this.observe(id, current, 'evidence', evidenceAtMs).catch(() => undefined)
+      if (!current()) {
+        settle(false)
+        return
       }
+      void this.observe(id, current, 'evidence', evidenceAtMs).then(settle, () => settle(false))
     }
     if (delayMs <= 0) {
       run()
@@ -83,7 +121,7 @@ export class AgentPresenceCommandObserver {
   }
 
   private open(id: string): ShellCommand {
-    const command: ShellCommand = { timer: null, claimed: new Set(), evidenceTimers: new Set() }
+    const command: ShellCommand = { timer: null, claims: new Map(), evidenceTimers: new Set() }
     this.commands.set(id, command)
     return command
   }
