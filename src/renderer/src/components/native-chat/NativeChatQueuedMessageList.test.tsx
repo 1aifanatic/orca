@@ -30,6 +30,7 @@ import {
 } from './use-structured-agent-session-queued-messages'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type { AgentSessionQueuePause } from '../../../../shared/agent-session-queued-message-wire'
 
 function renderList(owner: StructuredAgentSessionQueuedMessagesController) {
   // The app root mounts the provider; tests supply the same context.
@@ -236,6 +237,8 @@ describe('NativeChatQueuedMessageList', () => {
   it.each(['stopped', 'restarted', 'cleared', 'some-newer-reason'])(
     "a queue the host holds ('%s') shows no header and no Resume; each card's Steer sends it",
     (reason) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
+      const queuePause = { reason } as AgentSessionQueuePause
       const mutate = vi.fn(async (..._call: [string, string, Record<string, unknown>]) => null)
       const waiting: AgentSessionQueuedMessage = {
         messageId: 'held',
@@ -247,7 +250,7 @@ describe('NativeChatQueuedMessageList', () => {
         const owner = useStructuredAgentSessionQueuedMessages({
           enabled: true,
           queuedMessages: [waiting],
-          queuePause: { reason },
+          queuePause,
           submissions: [],
           hasPendingPrompt: false,
           composerScopeKey: undefined,
