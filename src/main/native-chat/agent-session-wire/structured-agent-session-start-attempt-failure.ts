@@ -163,7 +163,7 @@ export function leftoverRejection(
 }
 
 /** The oldest queued message that may go now: not waiting out a refused start, or due again. Later
- *  messages overtake one that is waiting. */
+ *  messages overtake one that is waiting; one the person's Retry queued again goes first. */
 export function nextDeliverableSubmission(
   journal: Pick<AgentSessionJournal, 'submissions'>,
   now: number
@@ -173,12 +173,19 @@ export function nextDeliverableSubmission(
     if (
       isQueuedAgentJournalSubmission(submission) &&
       (submission.startRetry === undefined || submission.startRetry.nextAttemptAt <= now) &&
-      (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))
+      (oldest === undefined || deliversBefore(submission, oldest))
     ) {
       oldest = submission
     }
   }
   return oldest
+}
+
+function deliversBefore(a: AgentJournalSubmission, b: AgentJournalSubmission): boolean {
+  if (a.retriedInPlace !== b.retriedInPlace) {
+    return a.retriedInPlace === true
+  }
+  return (a.acceptedSequence ?? 0) < (b.acceptedSequence ?? 0)
 }
 
 /** When the earliest message waiting out a refused start comes due after `now`; null when none

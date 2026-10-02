@@ -270,8 +270,8 @@ describe('a waiting message rejected before any handover', () => {
   )
 })
 
-// A Retry queues the message again behind what was queued before it: it is drawn where it now waits,
-// in the order the queue sends.
+// A Retry sends the message now: ahead of what was queued before the Retry, and drawn there, in the
+// order the queue sends.
 describe('a message queued again by its Retry', () => {
   const sent = (clientMessageId: string, seq: number): JournalRow => ({
     ...accepted,
@@ -289,26 +289,41 @@ describe('a message queued again by its Retry', () => {
       ...base(seq)
     })
 
-  it('is drawn behind a message queued before the Retry, and that one goes first', () => {
-    const view = renderJournalState(
-      fold([
-        sent('cm_1', 1),
-        dispatch('cm_1', 2, {
-          state: 'rejected',
-          reason: 'Codex could not start.',
-          rejection: { kind: 'providerStartFailed' }
-        }),
-        sent('cm_2', 3),
-        dispatch('cm_1', 4, { state: 'pending', requeued: true })
-      ])
-    )
+  const failed = (clientMessageId: string, seq: number) =>
+    dispatch(clientMessageId, seq, {
+      state: 'rejected',
+      reason: 'Codex could not start.',
+      rejection: { kind: 'providerStartFailed' }
+    })
+  const next = (rows: JournalRow[]) =>
+    nextDeliverableSubmission({ submissions: () => renderJournalState(fold(rows)).submissions }, 0)
 
-    expect(view.items.map((entry) => entry.itemId)).toEqual([
-      agentJournalSubmissionKey('cm_2'),
-      agentJournalSubmissionKey('cm_1')
+  it('goes ahead of a message queued before the Retry, and is drawn ahead of it', () => {
+    const rows = [
+      sent('cm_1', 1),
+      failed('cm_1', 2),
+      sent('cm_2', 3),
+      dispatch('cm_1', 4, { state: 'pending', requeued: true })
+    ]
+
+    expect(renderJournalState(fold(rows)).items.map((entry) => entry.itemId)).toEqual([
+      agentJournalSubmissionKey('cm_1'),
+      agentJournalSubmissionKey('cm_2')
     ])
+    expect(next(rows)).toMatchObject({ clientMessageId: 'cm_1' })
+  })
+
+  it('goes in the order its Retry was pressed among others queued again', () => {
     expect(
-      nextDeliverableSubmission({ submissions: () => view.submissions }, 10_000)
-    ).toMatchObject({ clientMessageId: 'cm_2' })
+      next([
+        sent('cm_1', 1),
+        failed('cm_1', 2),
+        sent('cm_3', 3),
+        failed('cm_3', 4),
+        sent('cm_2', 5),
+        dispatch('cm_3', 6, { state: 'pending', requeued: true }),
+        dispatch('cm_1', 7, { state: 'pending', requeued: true })
+      ])
+    ).toMatchObject({ clientMessageId: 'cm_3' })
   })
 })

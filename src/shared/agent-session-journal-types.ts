@@ -434,6 +434,8 @@ export type AgentJournalSubmission = {
    *  its own — the chat closing or Orca restarting. `rejection` stays the start failure it was
    *  waiting out; this says its end was the person's doing, not news. */
   rejectionCause?: AgentJournalRejectionCause
+  /** Host-only: the person's Retry queued it again, to be sent now, ahead of the queue. */
+  retriedInPlace?: true
   /** On a queued message only: the agent start it was for failed and another is booked. A start
    *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
   startRetry?: AgentJournalStartRetry
