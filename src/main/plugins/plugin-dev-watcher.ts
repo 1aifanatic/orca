@@ -1,28 +1,13 @@
+import { realpathSync } from 'node:fs'
+import { basename, dirname, resolve } from 'node:path'
 import {
   subscribeViaWatcherProcess,
+  type WatcherProcessSubscribeOptions,
   type WatcherProcessSubscription
 } from '../ipc/parcel-watcher-process'
+import { resolveWatcherRootPaths } from '../ipc/watcher-event-root-path-rewrite'
 
-type SubscribePluginPath = (
-  path: string,
-  onEvent: (error: Error | null) => void,
-  onInterruption: () => void
-) => Promise<WatcherProcessSubscription>
-
-const subscribePluginPath: SubscribePluginPath = (path, onEvent, onInterruption) =>
-  subscribeViaWatcherProcess(
-    path,
-    (error) => onEvent(error),
-    {},
-    {
-      onInterruption,
-      onTerminalError: onEvent
-    }
-  )
-
-// Why: Parcel unsubscribe rejects when the watch root is already gone (common
-// in tests that rm temp dirs). Fire-and-forget callers must not leave that as
-// an unhandled rejection that fails the Vitest process.
+// Deleted roots can reject unsubscribe after the native stream has stopped.
 function releaseSubscription(subscription: WatcherProcessSubscription): void {
   void subscription.unsubscribe().catch(() => undefined)
 }
@@ -30,62 +15,62 @@ function releaseSubscription(subscription: WatcherProcessSubscription): void {
 /** Owns debounced manifest/panel refresh watchers for mutable dev plugins. */
 export class PluginDevWatcher {
   private readonly subscriptions: WatcherProcessSubscription[] = []
+  private readonly physicalRoots = new Map<string, string>()
   private refreshTimer: ReturnType<typeof setTimeout> | null = null
   private generation = 0
 
-  constructor(private readonly subscribePath: SubscribePluginPath = subscribePluginPath) {}
+  constructor(private readonly subscribePath = subscribeViaWatcherProcess) {}
 
   start(devPaths: readonly string[], refresh: () => void, onWatcherError?: () => void): void {
-    const generation = ++this.generation
-    for (const devPath of devPaths) {
-      let subscription: WatcherProcessSubscription | null = null
-      let failedBeforeReady = false
-      const fail = (): void => {
-        if (generation !== this.generation) {
-          return
-        }
-        failedBeforeReady = true
-        if (subscription) {
-          this.removeSubscription(subscription)
-          releaseSubscription(subscription)
-        }
-        onWatcherError?.()
-        this.scheduleRefresh(refresh)
+    this.stopSubscriptions()
+    const requestedRoots = new Set(devPaths.map((path) => resolve(path)))
+    for (const path of this.physicalRoots.keys()) {
+      if (!requestedRoots.has(path)) {
+        this.physicalRoots.delete(path)
       }
-      void this.subscribePath(
-        devPath,
-        (error) => {
-          if (error) {
-            fail()
-          } else if (generation === this.generation) {
-            this.scheduleRefresh(refresh)
-          }
-        },
-        () => {
-          if (generation === this.generation) {
-            // The watcher process recovered, but changes during the gap were
-            // lost, so refresh the complete plugin projection once.
-            this.scheduleRefresh(refresh)
-          }
+    }
+    const parentNames = new Map<string, Set<string>>()
+    for (const requestedRoot of requestedRoots) {
+      const { watchRoot } = resolveWatcherRootPaths(requestedRoot, {
+        realpath: (candidate) => {
+          const physicalRoot = realpathSync.native(candidate)
+          this.physicalRoots.set(requestedRoot, physicalRoot)
+          return physicalRoot
         }
+      })
+      // A dangling symlink still needs its last physical parent watched.
+      const physicalRoot = this.physicalRoots.get(requestedRoot) ?? watchRoot
+      for (const root of new Set([requestedRoot, physicalRoot])) {
+        const { watchRoot: parent } = resolveWatcherRootPaths(dirname(root))
+        const names = parentNames.get(parent) ?? new Set<string>()
+        names.add(basename(root))
+        parentNames.set(parent, names)
+      }
+      this.subscribe(
+        requestedRoot,
+        process.platform === 'win32' ? { backend: 'windows' } : {},
+        false,
+        refresh,
+        onWatcherError
       )
-        .then((created) => {
-          subscription = created
-          if (generation !== this.generation || failedBeforeReady) {
-            releaseSubscription(created)
-            return
-          }
-          this.subscriptions.push(created)
-        })
-        .catch(() => {
-          if (generation === this.generation) {
-            onWatcherError?.()
-          }
-        })
+    }
+    for (const [parent, names] of parentNames) {
+      this.subscribe(
+        parent,
+        { mode: 'shallow', include: [...names] },
+        true,
+        refresh,
+        onWatcherError
+      )
     }
   }
 
   dispose(): void {
+    this.stopSubscriptions()
+    this.physicalRoots.clear()
+  }
+
+  private stopSubscriptions(): void {
     this.generation += 1
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer)
@@ -94,6 +79,69 @@ export class PluginDevWatcher {
     for (const subscription of this.subscriptions.splice(0)) {
       releaseSubscription(subscription)
     }
+  }
+
+  private subscribe(
+    path: string,
+    options: WatcherProcessSubscribeOptions,
+    parent: boolean,
+    refresh: () => void,
+    onWatcherError?: () => void
+  ): void {
+    const generation = this.generation
+    let subscription: WatcherProcessSubscription | null = null
+    let closed = false
+    const isActive = (): boolean => generation === this.generation && !closed
+    const requestRetry = (): void => {
+      if (isActive()) {
+        onWatcherError?.()
+        this.scheduleRefresh(refresh)
+      }
+    }
+    const fail = (): void => {
+      if (!isActive()) {
+        return
+      }
+      requestRetry()
+      closed = true
+      if (subscription) {
+        this.removeSubscription(subscription)
+        releaseSubscription(subscription)
+      }
+    }
+    void this.subscribePath(
+      path,
+      (error, events) => {
+        if (!isActive()) {
+          return
+        }
+        if (error || events.some((event) => event.type === 'delete' && event.path === path)) {
+          fail()
+        } else if (parent) {
+          // Root replacement stops recursive watching without reporting an error.
+          requestRetry()
+        } else {
+          this.scheduleRefresh(refresh)
+        }
+      },
+      options,
+      { onInterruption: requestRetry, onOverflow: requestRetry, onTerminalError: fail }
+    )
+      .then((created) => {
+        subscription = created
+        if (!isActive()) {
+          releaseSubscription(created)
+          return
+        }
+        this.subscriptions.push(created)
+      })
+      .catch(() => {
+        if (isActive()) {
+          closed = true
+          // The parent watch or maintenance interval retries missing roots.
+          onWatcherError?.()
+        }
+      })
   }
 
   private removeSubscription(subscription: WatcherProcessSubscription): void {

@@ -5,6 +5,7 @@ export class PluginServiceHousekeeping {
   private readonly devWatcher = new PluginDevWatcher()
   private reapTimer: ReturnType<typeof setInterval> | null = null
   private watchedPathsKey: string | null = null
+  private retryRefresh: (() => void) | null = null
 
   sync(options: {
     enabled: boolean
@@ -16,19 +17,23 @@ export class PluginServiceHousekeeping {
       this.stop()
       return
     }
+    this.retryRefresh = options.refresh
     if (!this.reapTimer) {
-      this.reapTimer = setInterval(options.reapIdle, 60_000)
+      this.reapTimer = setInterval(() => {
+        options.reapIdle()
+        if (this.watchedPathsKey === null) {
+          this.retryRefresh?.()
+        }
+      }, 60_000)
       this.reapTimer.unref?.()
     }
     const pathsKey = JSON.stringify(options.devPaths)
     if (pathsKey !== this.watchedPathsKey) {
-      this.devWatcher.dispose()
+      this.watchedPathsKey = pathsKey
       this.devWatcher.start(options.devPaths, options.refresh, () => {
-        // The next refresh retries a failed watcher even when the configured
-        // path list itself did not change.
+        // Retry failed registration even when the configured paths are unchanged.
         this.watchedPathsKey = null
       })
-      this.watchedPathsKey = pathsKey
     }
   }
 
@@ -43,5 +48,6 @@ export class PluginServiceHousekeeping {
     }
     this.devWatcher.dispose()
     this.watchedPathsKey = null
+    this.retryRefresh = null
   }
 }
