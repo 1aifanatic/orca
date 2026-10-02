@@ -56,25 +56,48 @@ function texts(
 }
 
 describe('the notice on each message that did not go through', () => {
-  it('in a read-only chat says only that the message was not sent, with no Retry that cannot land', () => {
+  it('in a read-only chat shortens only the newer-Orca refusal; every failure loses its Retry', () => {
     const outbox = [
-      entry('refused', {
+      entry('newer-orca', {
         state: 'rejected',
-        lastFailure: { kind: 'rejected', reason: 'Chats were saved by a newer Orca.' }
+        lastFailure: {
+          kind: 'refused',
+          code: 'agent_session_journal_unreadable',
+          details: { reason: 'journalWrittenByNewerOrca' }
+        }
+      }),
+      entry('provider', {
+        state: 'rejected',
+        lastFailure: { kind: 'rejected', reason: 'Prompt is too long' }
+      }),
+      entry('expired', {
+        lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
       })
     ]
-    const notices = structuredAgentSessionDeliveryNotices(
-      outbox,
-      'Claude',
-      () => {},
-      [],
-      [],
-      new Set(['refused']),
-      true
-    )
-    expect(notices.get(agentJournalSubmissionKey('refused'))).toEqual({
+    const failedHere = new Set(['newer-orca', 'provider', 'expired'])
+    const notices = (readOnly: boolean) =>
+      structuredAgentSessionDeliveryNotices(
+        outbox,
+        'Claude',
+        () => {},
+        [],
+        [],
+        failedHere,
+        readOnly
+      )
+    const readOnly = notices(true)
+    const writable = notices(false)
+    expect(readOnly.get(agentJournalSubmissionKey('newer-orca'))).toEqual({
       text: 'Your message was not sent.'
     })
+    for (const id of ['provider', 'expired']) {
+      const key = agentJournalSubmissionKey(id)
+      expect(readOnly.get(key)?.text).toBe(writable.get(key)?.text)
+    }
+    expect(readOnly.get(agentJournalSubmissionKey('expired'))?.text).toBe(
+      "Orca couldn't confirm what happened. Check the chat."
+    )
+    expect([...readOnly.values()].some((notice) => notice.onRetry)).toBe(false)
   })
 
   it('gives two failed messages each their own reason and their own Retry', () => {

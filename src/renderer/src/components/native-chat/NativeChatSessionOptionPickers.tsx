@@ -287,7 +287,7 @@ function NativeChatSessionOptionPickersInner({
           ) : null}
           <DescriptorMenuRows
             descriptor={model}
-            pending={pendingId !== null}
+            pending={disabled || pendingId !== null}
             setValue={(value) => setOption(model, value)}
             invokeAction={() => invokeAction(model)}
           />
@@ -321,7 +321,7 @@ function NativeChatSessionOptionPickersInner({
                   ) : null}
                   <DescriptorMenuRows
                     descriptor={descriptor}
-                    pending={pendingId !== null}
+                    pending={disabled || pendingId !== null}
                     setValue={(value) => setOption(descriptor, value)}
                     invokeAction={() => invokeAction(descriptor)}
                   />
