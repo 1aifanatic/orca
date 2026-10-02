@@ -1,6 +1,6 @@
 // Stop writes one event row before it interrupts, and the queue's pause is derived from it:
-// through the real host, the cards queued before a Stop wait, a card queued after it sends
-// normally but never ahead of them, a withdrawn card comes back under it, a crash keeps it, it
+// through the real host, the cards queued before a Stop wait, a card queued after it sends past
+// them, a withdrawn card comes back under it, a crash keeps it, it
 // never hides a restart's pause, and no stored pause is ever written.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -105,7 +105,7 @@ describe("Stop's event", () => {
     await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
   })
 
-  it('a card queued after the Stop waits behind the cards it holds, then all send in order', async () => {
+  it('a card queued after the Stop sends past the cards it holds, which stay held', async () => {
     const working = await rig.workingSend()
     const held = await queuedDraft('queued before the stop')
     await rig.stop()
@@ -113,18 +113,13 @@ describe("Stop's event", () => {
     const mail = await mailTurn()
     const later = await queuedDraft('queued during the mail turn')
     await rig.settleAccepted(mail, 'mail')
-    // The queue never reorders: the newer card waits behind the held one, with no caption of its own.
-    await expectHeld('stopped', held, later)
-    expect(await rig.drafts()).toEqual([
-      { messageId: held, state: 'waiting' },
-      { messageId: later, state: 'waiting' }
-    ])
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
-    await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
-    expect(await rig.handoff(later)).toBeUndefined()
-    await eventually(async () => expect((await rig.handoff(held))?.handedOverAt).toBeDefined())
-    await rig.settleAccepted(await rig.handoffId(held), 'held')
+    // Held cards are skipped, not waited on: the newer card goes; the held one stays.
     await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
+    expect(await rig.handoff(held)).toBeUndefined()
+    expect(await rig.drafts()).toEqual([{ messageId: held, state: 'waiting' }])
+    // The drain's send is the queue's own, not a person's turn: it lifts nothing.
+    await rig.settleAccepted(await rig.handoffId(later), 'later')
+    await expectHeld('stopped', held)
   })
 
   it("a person's accepted turn lifts it; a host turn and a later Stop do not", async () => {
