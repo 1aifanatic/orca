@@ -17642,7 +17642,9 @@
       "notices": {
         "compaction": "Context compacted",
         "details": "Details",
-        "plan": "Plan"
+        "plan": "Plan",
+        "historyRepaired": "Part of this chat's history couldn't be loaded.",
+        "historyItemTooLarge": "This part of the chat was too large to show."
       },
       "composer": {
         "imageUnsupported": "Image paste is not supported for this agent.",

@@ -17693,7 +17693,9 @@
       "notices": {
         "compaction": "圧縮されたコンテキスト",
         "details": "詳細",
-        "plan": "プラン"
+        "plan": "プラン",
+        "historyRepaired": "このチャットの履歴の一部を読み込めませんでした。",
+        "historyItemTooLarge": "チャットのこの部分は大きすぎるため表示できません。"
       },
       "providerFrame": {
         "byteLength": "{{value0}}バイト"

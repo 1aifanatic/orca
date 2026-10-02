@@ -4,7 +4,6 @@ import {
   boundHistoryItemsByBytes,
   historyEntryBytes,
   newestWholeSequenceGroups,
-  OVERSIZED_HISTORY_ITEM_TEXT,
   oversizedHistoryItem
 } from './agent-session-history-page-bounds'
 
@@ -155,7 +154,8 @@ it('matches eager byte bounding at every budget boundary in both directions', ()
             if (
               actual.items.some(
                 (entry) =>
-                  entry.body.kind === 'status' && entry.body.text === OVERSIZED_HISTORY_ITEM_TEXT
+                  entry.body.kind === 'status' &&
+                  entry.body.presentation === 'history-item-too-large'
               )
             ) {
               truncatedCases += 1

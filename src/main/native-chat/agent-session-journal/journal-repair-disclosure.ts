@@ -4,8 +4,12 @@
 // nothing but its anchor and this row is a repair that has not been
 // reconstructed yet, not a timeline.
 
+import { agentSessionHostStatusBody } from '../../../shared/agent-session-host-status-rows'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemIdentity,
+  AgentJournalPlainStatusItem
+} from '../../../shared/agent-session-journal-types'
 
 /** One stable identity, so a reopen upserts the same row instead of adding one. */
 export const JOURNAL_REPAIR_DISCLOSURE_IDENTITY: AgentJournalItemIdentity = {
@@ -19,13 +23,13 @@ export const JOURNAL_REPAIR_DISCLOSURE_ITEM_ID = agentJournalItemKey(
 
 export type JournalRepairDisclosure = {
   identity: AgentJournalItemIdentity
-  body: { kind: 'status'; text: string }
+  body: AgentJournalPlainStatusItem
 }
 
 /** Disclosed when a repair skipped a row it could not read. */
 export function journalRepairDisclosure(): JournalRepairDisclosure {
   return {
     identity: JOURNAL_REPAIR_DISCLOSURE_IDENTITY,
-    body: { kind: 'status', text: "Part of this chat's history couldn't be loaded." }
+    body: agentSessionHostStatusBody('history-repaired')
   }
 }

@@ -17757,7 +17757,9 @@
       "notices": {
         "compaction": "Contexte compacté",
         "details": "Détails",
-        "plan": "Plan"
+        "plan": "Plan",
+        "historyRepaired": "Une partie de l'historique de ce chat n'a pas pu être chargée.",
+        "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée."
       },
       "providerFrame": {
         "byteLength": "{{value0}} octets"

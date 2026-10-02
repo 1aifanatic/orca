@@ -17658,7 +17658,9 @@
       "notices": {
         "compaction": "上下文压缩",
         "details": "细节",
-        "plan": "计划"
+        "plan": "计划",
+        "historyRepaired": "此聊天的部分历史记录无法加载。",
+        "historyItemTooLarge": "聊天的这一部分过大，无法显示。"
       },
       "providerFrame": {
         "byteLength": "{{value0}} 字节"

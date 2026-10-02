@@ -2779,6 +2779,10 @@
         "theAgent": "The agent",
         "writeFailed": "Orca couldn't hand this message to the agent, so it was not sent."
       },
+      "notices": {
+        "historyItemTooLarge": "This part of the chat was too large to show.",
+        "historyRepaired": "Part of this chat's history couldn't be loaded."
+      },
       "question": {
         "other": "Other…"
       },

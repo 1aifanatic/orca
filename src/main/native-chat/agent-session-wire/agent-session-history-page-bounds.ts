@@ -7,6 +7,7 @@ import type {
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES } from '../../../shared/remote-runtime-memory-limits'
+import { agentSessionHostStatusBody } from '../../../shared/agent-session-host-status-rows'
 
 export const AGENT_SESSION_HISTORY_MAX_PAGE_BYTES = REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES / 2
 
@@ -46,13 +47,11 @@ export function submissionBytesByItemId(
   return bytes
 }
 
-export const OVERSIZED_HISTORY_ITEM_TEXT = 'This part of the chat was too large to show.'
-
 export function oversizedHistoryItem(item: AgentJournalRenderItem): AgentJournalRenderItem {
   return {
     ...item,
     itemId: boundJournalKeyComponent(item.itemId),
-    body: { kind: 'status', text: OVERSIZED_HISTORY_ITEM_TEXT }
+    body: agentSessionHostStatusBody('history-item-too-large')
   }
 }
 
