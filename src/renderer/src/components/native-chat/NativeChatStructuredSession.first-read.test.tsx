@@ -115,6 +115,25 @@ describe('NativeChatStructuredSession before its first read settles', () => {
     }
   })
 
+  it.each([
+    ['failed', 'Chat could not be started.'],
+    ['visibility-unknown', 'Chat connection could not be confirmed.']
+  ] as const)(
+    'leaves a %s resume blank beside its Retry line, since nothing is reading it',
+    (lifecycle, line) => {
+      mocks.messages = []
+      mocks.launchLifecycle = lifecycle
+      mocks.launchResumes = true
+      mocks.status = 'ready'
+      render(sessionView())
+
+      expect(loadingCue()).toBeNull()
+      expect(screen.queryByText(START_A_CHAT)).toBeNull()
+      expect(screen.getByText(line)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    }
+  )
+
   it('does not invite a first message into a resumed chat whose history is not read yet', () => {
     mocks.messages = []
     mocks.launchLifecycle = 'pending'

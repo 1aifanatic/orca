@@ -57,20 +57,29 @@ export function selectNativeChatViewState(
 }
 
 /**
- * Whether a structured chat's history is still unknown: not empty, just not read yet. A chat this
- * pane started as a new conversation has nothing to read; a cancelled launch reads nothing either,
- * so neither holds the pane.
+ * A structured chat's history before its first read: `reading` while a read or a resuming launch
+ * can still deliver it, `unread` when nothing will (a failed or unconfirmed resume, whose Retry line
+ * says so), else `known`. A chat this pane started new has nothing to read; a cancelled launch reads
+ * nothing either.
  */
-export function structuredChatFirstReadPending(
+export function structuredChatHistoryPhase(
   launch: {
     launch?: { kind: 'new' | 'resume' }
     lifecycle: StructuredAgentSessionLaunchLifecycle | null
     transportEnabled: boolean
   },
   readStatus: 'idle' | 'loading' | 'ready' | 'error'
-): boolean {
+): 'reading' | 'unread' | 'known' {
   if (launch.launch?.kind === 'new') {
-    return false
+    return 'known'
   }
-  return launch.transportEnabled ? readStatus !== 'ready' : launch.lifecycle !== 'cancelled'
+  if (launch.transportEnabled) {
+    return readStatus === 'ready' ? 'known' : 'reading'
+  }
+  if (launch.lifecycle === 'pending') {
+    return 'reading'
+  }
+  return launch.lifecycle === 'failed' || launch.lifecycle === 'visibility-unknown'
+    ? 'unread'
+    : 'known'
 }

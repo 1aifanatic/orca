@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { NativeChatMessage, NativeChatSession } from '../../../../shared/native-chat-types'
-import { selectNativeChatViewState, structuredChatFirstReadPending } from './native-chat-view-state'
+import { selectNativeChatViewState, structuredChatHistoryPhase } from './native-chat-view-state'
 
 const message: NativeChatMessage = {
   id: 'a',
@@ -104,26 +104,29 @@ describe('selectNativeChatViewState', () => {
   })
 })
 
-describe('structuredChatFirstReadPending', () => {
+describe('structuredChatHistoryPhase', () => {
   const reopened = { lifecycle: null, transportEnabled: true }
 
-  it('holds a reopened chat until its first read settles', () => {
-    expect(structuredChatFirstReadPending(reopened, 'idle')).toBe(true)
-    expect(structuredChatFirstReadPending(reopened, 'loading')).toBe(true)
-    expect(structuredChatFirstReadPending(reopened, 'ready')).toBe(false)
+  it('reads a reopened chat until its first read settles', () => {
+    expect(structuredChatHistoryPhase(reopened, 'idle')).toBe('reading')
+    expect(structuredChatHistoryPhase(reopened, 'loading')).toBe('reading')
+    expect(structuredChatHistoryPhase(reopened, 'ready')).toBe('known')
   })
 
-  it('holds a resume whose launch has not published, since its history is unread', () => {
+  it('reads a resume only while its launch is in flight', () => {
     const resume = { launch: { kind: 'resume' as const }, transportEnabled: false }
-    expect(structuredChatFirstReadPending({ ...resume, lifecycle: 'pending' }, 'ready')).toBe(true)
-    expect(structuredChatFirstReadPending({ ...resume, lifecycle: 'failed' }, 'ready')).toBe(true)
+    expect(structuredChatHistoryPhase({ ...resume, lifecycle: 'pending' }, 'ready')).toBe('reading')
+    expect(structuredChatHistoryPhase({ ...resume, lifecycle: 'failed' }, 'ready')).toBe('unread')
+    expect(
+      structuredChatHistoryPhase({ ...resume, lifecycle: 'visibility-unknown' }, 'ready')
+    ).toBe('unread')
   })
 
-  it('never holds a chat this pane started new, nor a cancelled launch', () => {
+  it('knows a chat this pane started new, and a cancelled launch', () => {
     const fresh = { launch: { kind: 'new' as const }, lifecycle: null, transportEnabled: true }
-    expect(structuredChatFirstReadPending(fresh, 'idle')).toBe(false)
+    expect(structuredChatHistoryPhase(fresh, 'idle')).toBe('known')
     expect(
-      structuredChatFirstReadPending({ lifecycle: 'cancelled', transportEnabled: false }, 'ready')
-    ).toBe(false)
+      structuredChatHistoryPhase({ lifecycle: 'cancelled', transportEnabled: false }, 'ready')
+    ).toBe('known')
   })
 })
