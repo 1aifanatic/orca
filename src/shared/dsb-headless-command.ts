@@ -71,9 +71,19 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
     }
     commandIndex = tokens.indexOf(entrypoint, 1)
   }
+  let forwardsNativeArgs = false
+  let outerSeparatorConsumed = false
   for (let index = commandIndex + 1; index < tokens.length; index += 1) {
     const token = tokens[index]
-    if (!token || token === '--') {
+    if (!token) {
+      return false
+    }
+    if (token === '--') {
+      // Outer trailing_var_arg consumes its first separator before native parsing.
+      if (forwardsNativeArgs && !outerSeparatorConsumed) {
+        outerSeparatorConsumed = true
+        continue
+      }
       return false
     }
     const name = token.split('=', 1)[0]
@@ -97,6 +107,7 @@ export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean 
       continue
     }
     if (token === 'agent') {
+      forwardsNativeArgs = command !== 'deepseek-build-agent'
       continue
     }
     return token === 'run'

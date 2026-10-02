@@ -6,6 +6,8 @@ import { selectForegroundProcessCandidate } from './foreground-process-selection
 describe('DeepSeek Build native one-shot identity exclusion', () => {
   it.each([
     'dsb agent -p task',
+    'dsb agent -- --print task',
+    'deepseek-build agent -- --prompt-file task.txt',
     'deepseek-build agent --single task',
     'dsb agent --print task',
     'dsb agent --prompt-json "[]"',
@@ -29,6 +31,7 @@ describe('DeepSeek Build native one-shot identity exclusion', () => {
   it.each([
     'dsb agent "explain --print and -p"',
     'deepseek-build-agent -- "--print"',
+    'dsb agent -- -- "--print"',
     'deepseek-build-agent --model=--print',
     'deepseek-build-agent --rules "use --prompt-file"',
     'deepseek-build-agent --system-prompt "run"',
