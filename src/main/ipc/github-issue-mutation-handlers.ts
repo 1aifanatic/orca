@@ -15,7 +15,14 @@ import { broadcastGitHubWorkItemMutation } from './github-work-item-mutation-eve
 export function registerGitHubIssueMutationHandlers(store: Store): void {
   ipcMain.handle(
     'gh:updateIssue',
-    async (event, args: GitHubRepoScopedArgs & { number: number; updates: GitHubIssueUpdate }) => {
+    async (
+      event,
+      args: GitHubRepoScopedArgs & {
+        number: number
+        updates: GitHubIssueUpdate
+        ownerRepo?: GitHubOwnerRepo
+      }
+    ) => {
       const repo = assertRegisteredGitHubRepo(args, store)
       if (typeof args.number !== 'number' || !Number.isInteger(args.number) || args.number < 1) {
         return { ok: false, error: 'Invalid issue number' }
@@ -28,7 +35,9 @@ export function registerGitHubIssueMutationHandlers(store: Store): void {
         args.number,
         args.updates,
         getGitHubRepoConnectionId(repo),
-        ...getGitHubLocalGitOptionArgs(store, repo)
+        getGitHubLocalGitOptionArgs(store, repo)[0],
+        repo.issueSourcePreference,
+        ...(args.ownerRepo ? [args.ownerRepo] : [])
       )
       if (result.ok) {
         broadcastGitHubWorkItemMutation(
@@ -67,7 +76,9 @@ export function registerGitHubIssueMutationHandlers(store: Store): void {
         args.body.trim(),
         getGitHubRepoConnectionId(repo),
         args.prRepo ?? null,
-        ...getGitHubLocalGitOptionArgs(store, repo)
+        getGitHubLocalGitOptionArgs(store, repo)[0],
+        // Why: the issue source selector only scopes issues; PR comments keep their resolution.
+        args.type === 'pr' ? undefined : repo.issueSourcePreference
       )
       if (result.ok) {
         broadcastGitHubWorkItemMutation(

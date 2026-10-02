@@ -1,8 +1,10 @@
 import type { PRCheckDetail } from '../../../../../shared/github/check-types'
 import type {
   GitHubAssignableUser,
+  GitHubOwnerRepo,
   GitHubPRFileViewedState
 } from '../../../../../shared/github/pull-request-types'
+import { githubRepoIdentityKey } from '../../../../../shared/github/repository-identity-key'
 import type { GitHubWorkItemDetails } from '../../../../../shared/github/work-item-types'
 import { onGitHubWorkItemDetailsCacheMutation } from '@/lib/github-work-item-details-cache-events'
 
@@ -39,18 +41,16 @@ export function getWorkItemDetailsCacheKey(args: {
   sourceCacheScope?: string | null
   type: 'issue' | 'pr'
   number: number
+  ownerRepo?: GitHubOwnerRepo | null
 }): string {
   // Why: key on every axis that changes which (repo, item) the IPC resolves to; `\0` separator avoids ambiguity with fields containing `:` or `/`.
   // Why: repoPath is the second part so match-based invalidation can find entries from a cross-window event that carries only the path.
+  const sourceKey = args.ownerRepo
+    ? githubRepoIdentityKey(args.ownerRepo)
+    : (args.issueSourcePreference ?? 'auto')
   const keyParts = args.sourceCacheScope
-    ? [
-        args.repoId,
-        args.repoPath,
-        args.sourceCacheScope,
-        args.issueSourcePreference ?? 'auto',
-        args.type
-      ]
-    : [args.repoId, args.repoPath, args.issueSourcePreference ?? 'auto', args.type]
+    ? [args.repoId, args.repoPath, args.sourceCacheScope, sourceKey, args.type]
+    : [args.repoId, args.repoPath, sourceKey, args.type]
   return [...keyParts, args.number].join('\0')
 }
 

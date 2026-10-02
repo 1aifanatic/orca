@@ -10,6 +10,7 @@ import {
 import { assertTaskPageGitHubDialogStateAuthority } from '@/components/task-page-github-dialog-state-authority'
 import { runIssueUpdate } from '@/components/github/github-work-item-edit-mutations'
 import type { GitHubWorkItem } from '../../../../../shared/github/work-item-types'
+import type { GitHubOwnerRepo } from '../../../../../shared/github/pull-request-types'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import { translate } from '@/i18n/i18n'
 import type { GitHubItemDialogProjectOrigin } from '../load-item-details/github-item-dialog-types'
@@ -28,6 +29,7 @@ type GHEditMutationBase = {
   repoPath: string | null
   sourceContext?: TaskSourceContext | null
   projectOrigin: GitHubItemDialogProjectOrigin | undefined
+  issueRepo?: GitHubOwnerRepo | null
   run: GHEditMutationRun
   patchProjectRowIfNeeded: (patch: GHEditProjectRowPatch) => void
   onMutated: () => void
@@ -43,6 +45,7 @@ export function runGHEditStateChange({
   repoPath,
   sourceContext,
   projectOrigin,
+  issueRepo,
   run,
   onStateChange,
   patchWorkItem,
@@ -76,6 +79,7 @@ export function runGHEditStateChange({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         number: itemNumber,
         updates:
           newState === 'closed' && closeAction
@@ -145,6 +149,7 @@ export function runGHEditLabelToggle({
   repoPath,
   sourceContext,
   projectOrigin,
+  issueRepo,
   run,
   onLabelsChange,
   patchWorkItem,
@@ -166,35 +171,6 @@ export function runGHEditLabelToggle({
   const prevLabels = localLabels
   const newLabels = isAdding ? [...prevLabels, label] : prevLabels.filter((l) => l !== label)
 
-  if (isAdding) {
-    void run('labels', {
-      mutate: () =>
-        runIssueUpdate({
-          repoId: itemRepoId,
-          repoPath,
-          sourceContext,
-          projectOrigin,
-          number: itemNumber,
-          updates: { addLabels: [label] }
-        }),
-      onOptimistic: () => {
-        onLabelsChange(newLabels)
-        patchWorkItem(itemId, { labels: newLabels }, itemRepoId, { sourceContext })
-        patchProjectRowIfNeeded({ labels: newLabels })
-      },
-      onSuccess: () => {
-        useAppStore.getState().recordFeatureInteraction('github-tasks')
-        onMutated()
-      },
-      onRevert: () => {
-        onLabelsChange(prevLabels)
-        patchWorkItem(itemId, { labels: prevLabels }, itemRepoId, { sourceContext })
-        patchProjectRowIfNeeded({ labels: prevLabels })
-      },
-      onError: (err) => toast.error(err)
-    })
-    return
-  }
   void run('labels', {
     mutate: () =>
       runIssueUpdate({
@@ -202,8 +178,9 @@ export function runGHEditLabelToggle({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         number: itemNumber,
-        updates: { removeLabels: [label] }
+        updates: isAdding ? { addLabels: [label] } : { removeLabels: [label] }
       }),
     onOptimistic: () => {
       onLabelsChange(newLabels)
@@ -233,6 +210,7 @@ export function runGHEditAssigneeToggle({
   repoPath,
   sourceContext,
   projectOrigin,
+  issueRepo,
   run,
   setLocalAssignees,
   patchProjectRowIfNeeded,
@@ -260,6 +238,7 @@ export function runGHEditAssigneeToggle({
           repoPath,
           sourceContext,
           projectOrigin,
+          issueRepo,
           number: itemNumber,
           updates: { removeAssignees: [login] }
         }),
@@ -288,6 +267,7 @@ export function runGHEditAssigneeToggle({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         number: itemNumber,
         updates: { addAssignees: [login] }
       }),

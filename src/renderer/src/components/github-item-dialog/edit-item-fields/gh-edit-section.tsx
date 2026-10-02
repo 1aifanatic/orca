@@ -101,7 +101,8 @@ export function GHEditSection({
     [projectOrigin, patchProjectRowContent]
   )
 
-  // Why: with projectOrigin set, read labels/assignees from the row's repo, not the workspace path, or popovers list a different repo than writes target.
+  const issueRepo = useMemo(() => parseOwnerRepoFromItemUrl(item.url), [item.url])
+  // Project metadata comes from the row repository.
   const slugOwner = projectOrigin?.owner ?? null
   const slugRepo = projectOrigin?.repo ?? null
   const repoLabelsByPath = useRepoLabels(
@@ -187,6 +188,7 @@ export function GHEditSection({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         run,
         onStateChange,
         patchWorkItem,
@@ -202,6 +204,7 @@ export function GHEditSection({
       repoPath,
       sourceContext,
       projectOrigin,
+      issueRepo,
       patchWorkItem,
       patchProjectRowIfNeeded,
       run,
@@ -253,6 +256,7 @@ export function GHEditSection({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         run,
         onLabelsChange,
         patchWorkItem,
@@ -268,6 +272,7 @@ export function GHEditSection({
       repoPath,
       sourceContext,
       projectOrigin,
+      issueRepo,
       patchWorkItem,
       patchProjectRowIfNeeded,
       run,
@@ -288,6 +293,7 @@ export function GHEditSection({
         repoPath,
         sourceContext,
         projectOrigin,
+        issueRepo,
         run,
         setLocalAssignees,
         patchProjectRowIfNeeded,
@@ -301,6 +307,7 @@ export function GHEditSection({
       repoPath,
       sourceContext,
       projectOrigin,
+      issueRepo,
       localAssignees,
       patchProjectRowIfNeeded,
       run,
