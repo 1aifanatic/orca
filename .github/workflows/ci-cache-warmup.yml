@@ -1,160 +1,76 @@
-name: Warm shared CI caches
-
+name: Hosted headless compiler helper validation
 on:
-  # Cache-input pushes seed immediately; this schedule repairs eviction and image changes.
-  schedule:
-    - cron: '41 */6 * * *'
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/install-node-dependencies/**'
-      - '.github/actions/restore-pnpm-verification/**'
-      - '.github/actions/prepare-native-runtime/**'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-headless-compiler/**'
-      - 'config/scripts/headless-detector-compiler-cache*'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.npmrc'
-      - '.pnpmfile.cjs'
-      - 'config/tsconfig*.json'
-      - 'config/scripts/ensure-native-runtime.mjs'
-      - 'config/scripts/rebuild-native-deps.mjs'
-      - 'config/scripts/node-pty-job-ownership.cjs'
-      - 'config/scripts/windows-pe-machine.cjs'
-      - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
-      - 'config/scripts/windows-process-tree-creation-time.cjs'
-      - 'config/scripts/install-electron-package-binary.mjs'
-      - 'config/scripts/electron-platform-path.mjs'
-      - 'config/scripts/zip-extractor-command.mjs'
-      - 'src/shared/zip-extractor-command.ts'
-      - 'config/scripts/shared-electron-dist-cache.mjs'
-      - 'config/scripts/space-sharing-copy.mjs'
-      - 'config/patches/**'
-      - 'native/windows-registry/**'
-  pull_request:
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-headless-compiler/**'
-      - 'config/scripts/headless-detector-compiler-cache*'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'config/scripts/ci-cache-warmup-workflow.test.mjs'
-
+  workflow_dispatch: null
 permissions:
   contents: read
-
-concurrency:
-  group: ci-cache-warmup-${{ github.event.pull_request.number || github.ref }}
-  # Scheduled retries must let an active warmer finish publishing its caches.
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
-
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
 jobs:
-  warm:
+  seed:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      # Default-branch caches can be restored by every PR; PR caches cannot.
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-
-      - uses: ./.github/actions/prepare-headless-compiler
-        with:
-          seed: 'true'
-
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-
-      - uses: ./.github/actions/prepare-git-compatibility
-
-      - name: Cache TypeScript incremental state
-        id: typecheck-cache
-        uses: actions/cache@v5
-        with:
-          path: config/*.tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.sha }}
-          restore-keys: |
-            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
-
-      - name: Refresh TypeScript state for this commit
-        if: steps.typecheck-cache.outputs.cache-hit != 'true'
-        run: pnpm run typecheck
-
-  warm-linux-arm:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
+    outputs:
+      digest: ${{ steps.scope.outputs.digest }}
+      count: ${{ steps.scope.outputs.count }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
+      - id: scope
+        run: |-
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { appendFileSync } from 'node:fs'
+          import { collectNodeServerInputs } from './config/scripts/node-server-change-scope.mjs'
+          const inputs = [...(await collectNodeServerInputs())].sort()
+          const digest = createHash('sha256').update(JSON.stringify(inputs)).digest('hex')
+          if (process.env.EXPECTED_DIGEST && (digest !== process.env.EXPECTED_DIGEST || String(inputs.length) !== process.env.EXPECTED_COUNT)) throw new Error('Compiler graph differs')
+          appendFileSync(process.env.GITHUB_OUTPUT, 'digest=' + digest + '\ncount=' + inputs.length + '\n')
+          console.log(JSON.stringify({ inputs: inputs.length, digest }))
+          NODE
+      - id: identity
+        env:
+          COMPILER_POLICY_HASH: ${{ hashFiles('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', '.pnpmfile.cjs', 'config/patches/**', '.github/actions/install-node-dependencies/**', '.github/actions/restore-pnpm-verification/**', 'config/scripts/headless-detector-compiler-cache.mjs', '.github/actions/prepare-headless-compiler/action.yml') }}
+        run: node config/scripts/headless-detector-compiler-cache.mjs identity
+      - env:
+          COMPILER_CACHE_KEY: ${{ steps.identity.outputs.key }}
+          COMPILER_CACHE_PATH: ${{ steps.identity.outputs.path }}
+        run: node config/scripts/headless-detector-compiler-cache.mjs pack
+      - uses: actions/cache/save@v5
         with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2022, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-linux-package-fixtures:
+          path: ${{ steps.identity.outputs.path }}
+          key: ${{ steps.identity.outputs.key }}
+  restore:
+    needs: seed
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/prepare-linux-package-fixture
+      - uses: actions/setup-node@v6
         with:
-          fixture: daemon-shutdown-descendants
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: headless-serve-shutdown
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: cli-launch-contract
-          save-cache: ${{ github.event_name != 'pull_request' }}
+          node-version-file: package.json
+          package-manager-cache: false
+      - id: compiler
+        uses: ./.github/actions/prepare-headless-compiler
+      - name: Require a production-helper hit
+        env:
+          AVAILABLE: ${{ steps.compiler.outputs.available }}
+        run: test "$AVAILABLE" = true
+      - name: Compare the real graph
+        env:
+          EXPECTED_DIGEST: ${{ needs.seed.outputs.digest }}
+          EXPECTED_COUNT: ${{ needs.seed.outputs.count }}
+        run: |-
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { appendFileSync } from 'node:fs'
+          import { collectNodeServerInputs } from './config/scripts/node-server-change-scope.mjs'
+          const inputs = [...(await collectNodeServerInputs())].sort()
+          const digest = createHash('sha256').update(JSON.stringify(inputs)).digest('hex')
+          if (process.env.EXPECTED_DIGEST && (digest !== process.env.EXPECTED_DIGEST || String(inputs.length) !== process.env.EXPECTED_COUNT)) throw new Error('Compiler graph differs')
+          appendFileSync(process.env.GITHUB_OUTPUT, 'digest=' + digest + '\ncount=' + inputs.length + '\n')
+          console.log(JSON.stringify({ inputs: inputs.length, digest }))
+          NODE
