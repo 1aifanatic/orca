@@ -56,19 +56,16 @@ export function agentJournalStopAnswerTook(answer: AgentJournalStopAnswer): bool
   }
 }
 
-/** Whether `next` may replace `previous` on one note. A later answer that the Stop did not take
- *  never hides one that says the same Stop did; only the failure of an owed end revises that. */
+/** Whether a later press's answer `next` may replace `previous` on one note: never when the same
+ *  Stop already took, so a press that reaches nothing never hides one that did, nor an end owed. */
 export function agentJournalStopAnswerReplaces(
   previous: AgentJournalStopNoteAnswer | undefined,
   next: AgentJournalStopNoteAnswer
 ): boolean {
-  if (
+  return (
     previous === undefined ||
     previous.eventId !== next.eventId ||
     !agentJournalStopAnswerTook(previous.answer) ||
     agentJournalStopAnswerTook(next.answer)
-  ) {
-    return true
-  }
-  return previous.answer === 'end-owed' && next.answer === 'interrupt-unconfirmed'
+  )
 }

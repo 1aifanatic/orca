@@ -79,6 +79,19 @@ async function turnOpenedBy(
   )
 }
 
+/** The red row a settle writes when the agent stopped on its own. */
+const AGENT_STOPPED =
+  'The agent stopped while this response was in progress. You can continue in this conversation.'
+
+/** Every red row's text. */
+function errorRows(): string[] {
+  return journal()
+    .snapshot()
+    .items.flatMap((item) =>
+      item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+    )
+}
+
 function turn() {
   return journal()
     .snapshot()
@@ -143,13 +156,14 @@ describe('a Stop pressed before its send opened a turn, which interrupted nothin
     expect(turn()).not.toHaveProperty('outcome')
   })
 
-  it('reads that turn as news when a restart settles it', async () => {
+  it('reads that turn as news when a restart settles it, with the red row saying the agent stopped', async () => {
     await stoppedBeforeTheTurn(NOTHING_TO_INTERRUPT)
 
     await restartAndSettle()
 
     expect(turn()).toMatchObject({ state: 'interrupted' })
     expect(turn()).not.toHaveProperty('outcome')
+    expect(errorRows()).toEqual([AGENT_STOPPED])
   })
 
   it('reads the same turn as the cancellation once a second press of the same Stop took', async () => {
@@ -235,7 +249,9 @@ describe("an eviction after a person's Stop that named no turn", () => {
 })
 
 describe('a Stop of a running turn', () => {
-  async function runningTurn(options: { stopEndsSession?: true } = {}): Promise<void> {
+  async function runningTurn(
+    options: { stopEndsSession?: true | (() => boolean) } = {}
+  ): Promise<void> {
     rig = await createQueuedMessageTestRig(options)
     await rig.workingSend()
     await journal().appendItem(
@@ -255,6 +271,8 @@ describe('a Stop of a running turn', () => {
       { answer: 'took', eventId: latestEventId(), text: 'Cancellation requested.' }
     ])
     expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    // A person's cancellation is muted: no row says the agent stopped on its own.
+    expect(errorRows()).toEqual([])
   })
 
   it('answers end-owed when the Stop ends the provider process next, whatever it answered', async () => {
@@ -268,7 +286,27 @@ describe('a Stop of a running turn', () => {
     ])
   })
 
-  it('answers declined when the interrupt failed and the child could not be ended, and a crash reads as news', async () => {
+  it('keeps an owed end when the same Stop, pressed again after its agent stopped taking Stops, cannot reach it', async () => {
+    let endsSession = true
+    await runningTurn({ stopEndsSession: () => endsSession })
+    // Neither the owed end nor the second press's kill is proven, so the chat keeps its child.
+    rig.closeSession.mockResolvedValueOnce(false).mockResolvedValueOnce(false)
+    expect(await rig.stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    // As when the agent's adapter has closed: its Stop ends nothing more, and its interrupt throws.
+    endsSession = false
+    rig.cancelTurn.mockRejectedValueOnce(new Error('no live structured adapter owns session-alpha'))
+
+    await rig.stop()
+
+    expect(stopEventCount()).toBe(1)
+    expect(answers()).toEqual([
+      { answer: 'end-owed', eventId: latestEventId(), text: 'Cancellation requested.' }
+    ])
+    await restartAndSettle()
+    expect(turn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+  })
+
+  it('answers declined when the interrupt failed and the child could not be ended, and a crash reads as news with its red row', async () => {
     await runningTurn()
     rig.cancelTurn.mockResolvedValueOnce({
       cancelled: false,
@@ -285,6 +323,7 @@ describe('a Stop of a running turn', () => {
 
     expect(turn()).toMatchObject({ state: 'interrupted' })
     expect(turn()).not.toHaveProperty('outcome')
+    expect(errorRows()).toEqual([AGENT_STOPPED])
   })
 
   it('keeps the answer that it took when the same Stop, pressed again, finds nothing to interrupt', async () => {

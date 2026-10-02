@@ -98,13 +98,13 @@ describe('agentJournalStopAnswerReplaces', () => {
     ).toBe(false)
   })
 
-  it('lets an owed end that failed revise its answer', () => {
+  it('never lets a later press revise an owed end, whatever it met', () => {
     expect(
       agentJournalStopAnswerReplaces(
         { answer: 'end-owed', eventId: 'stop-a' },
         { answer: 'interrupt-unconfirmed', eventId: 'stop-a' }
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('lets a later Stop, a taken answer, or a first answer write', () => {

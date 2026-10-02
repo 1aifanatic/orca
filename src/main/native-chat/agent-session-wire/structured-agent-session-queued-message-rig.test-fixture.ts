@@ -44,8 +44,8 @@ export async function createQueuedMessageTestRig(
     starting?: true
     /** Lets a test sweep idle chats on its own `tick`. */
     idleSweep?: { idleMs: number; intervalMs: number }
-    /** The provider's Stop ends its child, as Claude's does. */
-    stopEndsSession?: true
+    /** The provider's Stop ends its child, as Claude's does; a function answers per Stop. */
+    stopEndsSession?: true | (() => boolean)
   } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
@@ -105,7 +105,12 @@ export async function createQueuedMessageTestRig(
         releaseAcquisition: vi.fn(async () => true),
         compact,
         cancelTurn,
-        ...(options.stopEndsSession ? { stopEndsSession: () => true } : {}),
+        ...(options.stopEndsSession
+          ? {
+              stopEndsSession:
+                options.stopEndsSession === true ? () => true : options.stopEndsSession
+            }
+          : {}),
         answerPrompt: vi.fn(async () => undefined),
         setOption: vi.fn(async () => undefined)
       },
