@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
@@ -77,6 +78,8 @@ export type CodexStructuredSessionAdapterDeps = {
   /** Host capability seam; production uses the native Windows process table. */
   isWindowsProcessStartTimeAvailable?: () => boolean
   onEvent?: (event: CodexStructuredSessionEvent) => void
+  /** Where bookkeeping a close or exit does after the child is gone reports a failure. */
+  logger?: StructuredAgentSessionLogger
   /** What the session's child work did, delivered after the journal handled the frame. */
   onChildWorkEvidence?: (sessionId: string, evidence: AgentChildWorkEvidence[]) => void
   /** A send admitted earlier: its identity once Codex echoes it, or its rejection when the turn

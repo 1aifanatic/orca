@@ -8,6 +8,7 @@ import {
   type CodexStructuredSessionEvent
 } from './codex-structured-session-state'
 import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 export function handleCodexSessionExit(input: {
   sessions: Map<string, CodexSession>
@@ -18,6 +19,7 @@ export function handleCodexSessionExit(input: {
   closedByOrca?: true
   prompts?: CodexSession['prompts']
   onEvent?: (event: CodexStructuredSessionEvent) => void
+  logger?: StructuredAgentSessionLogger
 }): boolean {
   const session = input.sessions.get(input.sessionId)
   if (!session || session.connection !== input.connection || session.ended) {
@@ -43,7 +45,14 @@ export function handleCodexSessionExit(input: {
   // A synchronous sink rejection (usually backpressure) leaves the terminal rows to the host's
   // exit settlement, which writes its own bounded fallback. The exit itself is observed, so the
   // session ends either way: holding a dead child as unproven over a refused row would strand it.
-  session.translator?.handle(event)
+  const admission = session.translator?.handle(event) ?? { accepted: true }
+  if (!admission.accepted) {
+    input.logger?.warn("Codex's final rows were refused; the host settles the turn instead", {
+      scope: 'codex-exit-rows',
+      sessionId: input.sessionId,
+      reason: admission.reason
+    })
+  }
   session.ended = true
   // Nothing can echo for this child any more; the journal's pending-submission
   // recovery is what settles the sends these were armed for.
@@ -63,6 +72,7 @@ export async function closeCodexPublishedSession(
   sessionId: string,
   onEvent?: (event: CodexStructuredSessionEvent) => void,
   options?: {
+    logger?: StructuredAgentSessionLogger
     requestedClose?: boolean
     expectedFence?: number
     expectedAcquisitionGeneration?: string
@@ -97,7 +107,8 @@ export async function closeCodexPublishedSession(
       error: options?.unexpectedReason ?? new Error('codex session closed'),
       closedByOrca: true,
       prompts: session.prompts,
-      ...(onEvent ? { onEvent } : {})
+      ...(onEvent ? { onEvent } : {}),
+      ...(options?.logger ? { logger: options.logger } : {})
     })
   }
   sessions.delete(sessionId)
@@ -108,7 +119,8 @@ export async function closeCodexSession(
   sessionId: string,
   sessions: Map<string, CodexSession>,
   acquisitions: CodexAcquisitionRegistry,
-  onEvent?: (event: CodexStructuredSessionEvent) => void
+  onEvent?: (event: CodexStructuredSessionEvent) => void,
+  logger?: StructuredAgentSessionLogger
 ): Promise<boolean> {
   const attempt = acquisitions.get(sessionId)
   if (!(await cancelCodexAcquisitionAttempt(attempt))) {
@@ -117,7 +129,7 @@ export async function closeCodexSession(
   if (attempt) {
     acquisitions.deleteIfCurrent(sessionId, attempt)
   }
-  return closeCodexPublishedSession(sessions, sessionId, onEvent)
+  return closeCodexPublishedSession(sessions, sessionId, onEvent, logger ? { logger } : {})
 }
 
 export async function closeAllCodexSessions(

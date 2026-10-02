@@ -126,11 +126,9 @@ describe('Claude published session close lifecycle', () => {
     ).sessions.get('session-1')
     const disposeTranslator = vi.spyOn(session!.translator!, 'dispose')
 
-    // The exit is proven; the failed cursor write is reported, never read as an unproven exit.
-    await expect(adapter.closeSession('session-1')).rejects.toMatchObject({
-      name: 'AgentSessionAcquisitionExitProvenError',
-      cause: persistenceError
-    })
+    // The exit is proven; the failed cursor write after it never reads as an unproven exit.
+    await expect(adapter.closeSession('session-1')).resolves.toBe(true)
+    await vi.waitFor(() => expect(persistHandle).toHaveBeenCalledOnce())
     // The child is provably dead; a failed cursor write may not suppress the end.
     expect(events.filter((event) => event.type === 'ended')).toHaveLength(1)
     expect(events.filter((event) => event.type === 'handle')).toHaveLength(0)

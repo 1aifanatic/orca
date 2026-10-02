@@ -28,8 +28,8 @@ import {
 } from './claude-structured-session-state'
 import {
   closeAllClaudeSessions,
-  closeClaudePublishedSessionForDeps,
-  closeClaudeSession
+  closeClaudeSession,
+  finishClaudeCloseAfterExit
 } from './claude-structured-session-close'
 import { claudeStoppedRequestEndWait } from './claude-request-end-wait'
 import {
@@ -99,14 +99,14 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         emit: (session, _events, event) => this.emit(session, event),
         handleExit: (sessionId, attempt, error) =>
           observeClaudeSessionExit(this.exitLifecycle, sessionId, attempt, error),
-        finishClose: (sessionId, attempt) => {
-          if (this.sessions.get(sessionId)?.connection === attempt.connection) {
-            // Joins a close still running; finalizes one that came back unproven before the exit.
-            void closeClaudePublishedSessionForDeps(this.sessions, sessionId, this.deps).catch(
-              () => undefined
-            )
-          }
-        },
+        finishClose: (sessionId, attempt) =>
+          finishClaudeCloseAfterExit({
+            sessions: this.sessions,
+            sessionId,
+            connection: attempt.connection,
+            deps: this.deps,
+            afterClose: (close) => this.afterClose(sessionId, close)
+          }),
         settleExit: (sessionId, exit) =>
           settleClaudeUnexpectedExit(this.exitLifecycle, sessionId, exit)
       }
@@ -316,7 +316,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       sessions: this.sessions,
       acquisitions: this.acquisitions,
       ...(this.deps.persistHandle ? { persistHandle: this.deps.persistHandle } : {}),
-      ...(this.deps.onEvent ? { onEvent: this.deps.onEvent } : {})
+      ...(this.deps.onEvent ? { onEvent: this.deps.onEvent } : {}),
+      ...(this.deps.logger ? { logger: this.deps.logger } : {})
     })
 
   closeAll = (): Promise<void> =>
