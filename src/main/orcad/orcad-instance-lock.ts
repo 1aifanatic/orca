@@ -63,7 +63,9 @@ const OrcadLockRecordSchema = z.object({
   version: z.string().min(1).max(255),
   acquiredAt: z.iso.datetime({ offset: true }),
   /** Distinguishes our record from a replacement written after we lost the race. */
-  nonce: z.string().min(1).max(255)
+  nonce: z.string().min(1).max(255),
+  /** Absent in records orcad wrote before the desktop app shared this lock. */
+  role: z.enum(['orcad', 'desktop']).optional()
 })
 
 export type OrcadLockRecord = z.infer<typeof OrcadLockRecordSchema>
@@ -90,6 +92,8 @@ export type OrcadInstanceLockHooks = {
   platform?: NodeJS.Platform
   /** Windows: restrict the data root's ACL to this user; false when it could not be applied. */
   restrictWindowsDataRoot?: (dataRoot: string) => boolean
+  /** Who takes the profile. The desktop app takes it too, so the two refuse each other. */
+  role?: 'orcad' | 'desktop'
 }
 
 function defaultIdentity(): string {
@@ -215,7 +219,10 @@ export function acquireOrcadInstanceLock(
       `Cannot create the orcad data root ${dataRoot}: ${(error as Error).message}`
     )
   }
-  assertDataRootIsPrivate(dataRoot, hooks)
+  // The desktop's profile keeps the permissions it was created with; orcad tightens its own.
+  if ((hooks.role ?? 'orcad') === 'orcad') {
+    assertDataRootIsPrivate(dataRoot, hooks)
+  }
 
   const lockPath = join(dataRoot, ORCAD_LOCK_FILE_NAME)
   const record: OrcadLockRecord = {
@@ -224,7 +231,8 @@ export function acquireOrcadInstanceLock(
     identity,
     version: (hooks.version ?? (() => process.env.ORCA_VERSION ?? 'unknown'))(),
     acquiredAt: (hooks.now ?? (() => new Date()))().toISOString(),
-    nonce: randomUUID()
+    nonce: randomUUID(),
+    role: hooks.role ?? 'orcad'
   }
   const serialized = JSON.stringify(record)
 
@@ -268,9 +276,9 @@ export function acquireOrcadInstanceLock(
   if (isAlive(existing.pid) && matchesStartTime(existing.pid, existing.startedAtMs)) {
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_held',
-      `Another orcad (pid ${existing.pid}, started ${existing.acquiredAt || 'unknown'}) already ` +
-        `owns the data root ${dataRoot}. Stop it before starting another, or use a different ` +
-        'ORCA_USER_DATA.'
+      `${describeLockHolder(existing)} (pid ${existing.pid}, started ` +
+        `${existing.acquiredAt || 'unknown'}) already owns the data root ${dataRoot}. Stop it ` +
+        'before starting another, or use a different ORCA_USER_DATA.'
     )
   }
   // Why rename-and-then-publish rather than unlink-and-write: rename claims one exact
@@ -313,6 +321,10 @@ export function acquireOrcadInstanceLock(
     // The canonical record is authoritative; the claim is inert.
   }
   return makeLock(lockPath, record)
+}
+
+function describeLockHolder(record: OrcadLockRecord): string {
+  return record.role === 'desktop' ? 'The Orca desktop app' : 'Another orcad'
 }
 
 /** No-clobber restore: a third contender's newer record at the canonical path stays authoritative. */

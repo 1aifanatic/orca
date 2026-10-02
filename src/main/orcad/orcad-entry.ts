@@ -100,6 +100,11 @@ export type OrcadOptions = {
   json?: boolean
   noPairing?: boolean
   pairingAddress?: string
+  /** Desktop `orca serve` parity: a mobile-scoped offer with a terminal QR. */
+  mobilePairing?: boolean
+  /** Desktop `orca serve` parity: print only the ephemeral-VM recipe line. */
+  recipeJson?: boolean
+  projectRoot?: string
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
 }
@@ -145,6 +150,8 @@ async function startOrcadRuntime(
   closeOrcadObservability = installOrcadObservability()
   const { resolveAdvertisedPairingEndpoint } = await import('../runtime/pairing-endpoint')
   const { ServeReadinessPublisher } = await import('../server/serve-readiness')
+  const { assertServeProjectRoot, renderServePairingQr } =
+    await import('../server/serve-pairing-output')
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
@@ -344,8 +351,8 @@ async function startOrcadRuntime(
       } as const)
     : rpc.createPairingOffer({
         address: options.pairingAddress,
-        name: `CLI ${new Date().toLocaleDateString()}`,
-        scope: 'runtime'
+        name: `${options.mobilePairing ? 'Mobile' : 'CLI'} ${new Date().toLocaleDateString()}`,
+        scope: options.mobilePairing ? 'mobile' : 'runtime'
       })
 
   const readiness: ServeReadiness = {
@@ -362,8 +369,8 @@ async function startOrcadRuntime(
           endpoint: offer.endpoint,
           deviceId: offer.deviceId,
           webClientUrl: offer.webClientUrl,
-          scope: 'runtime',
-          qr: null
+          scope: options.mobilePairing ? 'mobile' : 'runtime',
+          qr: options.mobilePairing ? await renderServePairingQr(offer.pairingUrl) : null
         }
       : offer,
     // Why in the readiness payload: this is the one message a supervisor and a deploy
@@ -372,9 +379,12 @@ async function startOrcadRuntime(
     health: await collectOrcadHealth(getAppEnvironment().getVersion(), profileStateAuthority)
   }
 
-  await new ServeReadinessPublisher().publish(readiness, {
-    mode: options.json ? 'json' : 'human'
-  })
+  await new ServeReadinessPublisher().publish(
+    readiness,
+    options.recipeJson && options.projectRoot
+      ? { mode: 'recipe-json', projectRoot: assertServeProjectRoot(options.projectRoot) }
+      : { mode: options.json ? 'json' : 'human' }
+  )
 
   return { readiness }
 }

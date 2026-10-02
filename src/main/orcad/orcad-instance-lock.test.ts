@@ -254,4 +254,47 @@ describe('acquireOrcadInstanceLock', () => {
       lock.release()
     }
   )
+
+  it('makes the desktop app and orcad refuse each other on one profile', () => {
+    const root = makeRoot()
+    const desktop = acquireOrcadInstanceLock(root, hooks({ role: 'desktop' }))
+    expect(JSON.parse(readFileSync(desktop.path, 'utf8')).role).toBe('desktop')
+    expect(() => acquireOrcadInstanceLock(root, hooks({ processIsAlive: () => true }))).toThrow(
+      expect.objectContaining({
+        code: 'orcad_instance_lock_held',
+        message: expect.stringContaining('The Orca desktop app')
+      })
+    )
+    desktop.release()
+    const orcad = acquireOrcadInstanceLock(root, hooks())
+    expect(() =>
+      acquireOrcadInstanceLock(root, hooks({ role: 'desktop', processIsAlive: () => true }))
+    ).toThrow(
+      expect.objectContaining({
+        code: 'orcad_instance_lock_held',
+        message: expect.stringContaining('Another orcad')
+      })
+    )
+    orcad.release()
+  })
+
+  it.runIf(process.platform !== 'win32')(
+    "leaves the desktop profile's permissions as they were",
+    () => {
+      const root = makeRoot()
+      chmodSync(root, 0o755)
+      const restricted: string[] = []
+      acquireOrcadInstanceLock(root, hooks({ role: 'desktop' })).release()
+      acquireOrcadInstanceLock(
+        root,
+        hooks({
+          role: 'desktop',
+          platform: 'win32',
+          restrictWindowsDataRoot: (path) => restricted.push(path) > 0
+        })
+      ).release()
+      expect(restricted).toEqual([])
+      expect(statSync(root).mode & 0o777).toBe(0o755)
+    }
+  )
 })

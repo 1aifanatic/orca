@@ -32,6 +32,7 @@ export function nodeServerTestPaths({ artifact = false, crossRuntime = false } =
           'src/main/orcad/orcad-node-launcher.integration.test.ts',
           'src/main/orcad/orcad-stop-request-shutdown.integration.test.ts',
           'src/main/orcad/orcad-windows-conpty-breakaway.integration.test.ts',
+          'src/main/orcad/orcad-serve-parity.integration.test.ts',
           'config/scripts/zip-extractor-command.test.mjs'
         ]
       : []),
