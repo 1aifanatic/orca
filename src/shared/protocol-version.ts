@@ -1,10 +1,5 @@
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
-import {
-  AGENT_SESSION_SEND_CLIENT_CAPABILITIES,
-  AGENT_SESSION_SEND_HOST_CAPABILITIES
-} from './agent-session-send-capabilities'
-export * from './agent-session-send-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
   SKILL_BUNDLE_INSTALL_CAPABILITY,
@@ -169,6 +164,16 @@ export const AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY =
 // receive their journal or drive their lifecycle. Mobile may receive a metadata-only placeholder;
 // the host still refuses agentSession.* methods and destructive tab mutations without capability.
 export const STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY = 'agent-session.structured.v1' as const
+// Why: older structured clients render durable pending replies as uncertain delivery. Capable
+// clients skip the host's bounded best-effort settlement observation.
+export const AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY =
+  'agent-session.pending-send-result.v1' as const
+// Why: a send is now answered once the host accepts it, before any agent has it. A client without
+// this cannot show a message rejected after that answer, so the host holds its reply until the
+// message is handed over or rejected. Transitional: drop the hold once no supported desktop or
+// mobile client lacks the capability; mobile must first show a rejected message in place.
+export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
+  'agent-session.accepted-send.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
 // capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
 // PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
@@ -327,7 +332,8 @@ export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
 // host still requires the separate authenticated browser-client lease.
 export const ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   ...NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
-  ...AGENT_SESSION_SEND_CLIENT_CAPABILITIES,
+  AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
+  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
   // Why: only the renderer runs the retirement-proof ledger; CLI and mobile must keep full lists.
@@ -401,9 +407,10 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY,
   AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   // The host side: it accepts a send before any agent has it, and a Stop with no writer before a
   // turn starts, so a client may gate on either.
-  ...AGENT_SESSION_SEND_HOST_CAPABILITIES,
+  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
