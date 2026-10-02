@@ -146,7 +146,7 @@ async function claimPreparedWorktree(
   }
   const { entry, reservation } = reserved
   args.timing?.recordAdoptedPreparation(entry.work)
-  const claimedAt = Date.now()
+  const claimedAt = performance.now()
   try {
     await timePhase(args, 'prepared_checkout_wait', () => entry.ready)
     return { ...reserved, status: 'claimed', claimedAt }
@@ -278,14 +278,14 @@ async function attemptPreparedWorktreeCreate(
     // Consuming the only prepared checkout leaves the next create cold. Re-arm for a user who is
     // creating in a burst; the TTL and the preparation limit still bound an unused replacement.
     const rearm = deferRearmPreparation(entry, reservation, args.baseBranch, claim.canonicalBase)
-    // Pool clock (`createdAt`); a create that waited for the build reports no idle time.
+    // A create that waited for the build reports no idle time.
     const readyAt = entry.readyAt ?? claim.claimedAt
     return {
       status: 'hit',
       retargeted: claim.retargeted,
       reset: preparedCheckoutReset(claim.retargeted, preparedHeadReset),
       origin: preparationOrigin(entry),
-      buildMs: Math.max(0, readyAt - entry.createdAt),
+      buildMs: Math.max(0, readyAt - entry.buildStartedAt),
       idleMs: Math.max(0, claim.claimedAt - readyAt),
       result,
       rearm

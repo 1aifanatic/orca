@@ -268,7 +268,7 @@ describe('prepared checkout create timing', () => {
 
   it('reports how long the build took and how long it sat ready before the claim', async () => {
     let now = 1_000
-    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
     const checkout = Promise.withResolvers<void>()
     mocks.prepare.mockReturnValue(checkout.promise)
     const preparation = prepare()
@@ -284,7 +284,7 @@ describe('prepared checkout create timing', () => {
 
   it('reports no idle time when the create waited for the build', async () => {
     let now = 1_000
-    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
     const checkoutStarted = Promise.withResolvers<void>()
     const checkout = Promise.withResolvers<void>()
     mocks.prepare.mockImplementation(() => {

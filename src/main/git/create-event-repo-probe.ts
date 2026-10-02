@@ -51,7 +51,12 @@ async function readFacts(
   if (!isGitDirectory) {
     return { postCheckoutHook: 'unknown' }
   }
-  const config = await readFile(path.join(gitDir, 'config'), 'utf8').catch(() => null)
+  // `git sparse-checkout --sparse-index` and per-worktree settings write to config.worktree.
+  const [mainConfig, worktreeConfig] = await Promise.all([
+    readFile(path.join(gitDir, 'config'), 'utf8').catch(() => null),
+    readFile(path.join(gitDir, 'config.worktree'), 'utf8').catch(() => '')
+  ])
+  const config = mainConfig === null ? null : `${mainConfig}\n${worktreeConfig}`
   const [postCheckoutHook, indexEntryCount] = await Promise.all([
     readPostCheckoutHook(gitDir, config, platform),
     readIndexEntryCount(gitDir, config)
@@ -59,16 +64,19 @@ async function readFacts(
   return { postCheckoutHook, ...(indexEntryCount !== undefined ? { indexEntryCount } : {}) }
 }
 
+/** `core.sparseCheckout` or `index.sparse` set to anything Git reads as true, bare key included. */
+const SPARSE_CHECKOUT_ON = /^\s*sparse(checkout)?\s*(=(?!\s*(false|no|off|0)\s*$).*)?$/im
+
 /**
  * The entry count from the index header (`DIRC`, version, big-endian count), which is the same in
- * every index version. A split index or sparse index keeps entries elsewhere or collapses them into
- * directories, so its count is not the tracked-file count and is left out.
+ * every index version. A split index keeps entries elsewhere and a sparse index collapses them into
+ * directories, so with either possible (any sparse checkout) the count is left out.
  */
 async function readIndexEntryCount(
   gitDir: string,
   config: string | null
 ): Promise<number | undefined> {
-  if (config === null || /^\s*sparse\s*=\s*true\s*$/im.test(config)) {
+  if (config === null || SPARSE_CHECKOUT_ON.test(config)) {
     return undefined
   }
   try {

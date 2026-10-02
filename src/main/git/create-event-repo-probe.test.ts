@@ -110,6 +110,35 @@ describe('probeCreateEventRepoFacts', () => {
     expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
   })
 
+  it.each([
+    '[index]\n\tsparse = true\n',
+    '[index]\n\tsparse = YES\n',
+    '[index]\n\tsparse\n',
+    '[core]\n\tsparseCheckout = 1\n'
+  ])(
+    'omits the count when config.worktree turns sparse checkout on (%j)',
+    async (worktreeConfig) => {
+      await writeIndex('DIRC', 4, 7)
+      await writeFile(path.join(repo, '.git', 'config.worktree'), worktreeConfig)
+      expect(await probeCreateEventRepoFacts(repo, 'linux')).not.toHaveProperty('indexEntryCount')
+    }
+  )
+
+  it('keeps the count when sparse checkout is explicitly off', async () => {
+    await writeIndex('DIRC', 2, 11)
+    await writeFile(
+      path.join(repo, '.git', 'config'),
+      '[core]\n\tsparseCheckout = false\n\tsparseCheckoutCone = true\n[index]\n\tsparse = off\n'
+    )
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toMatchObject({ indexEntryCount: 11 })
+  })
+
+  it('reports a hooks path set in config.worktree', async () => {
+    await writeFile(path.join(repo, '.git', 'config.worktree'), '[core]\n\thooksPath = .githooks\n')
+    await writeHook(0o755)
+    expect(await hookPresence(repo, 'linux')).toBe('custom_hooks_path')
+  })
+
   it('reports neither fact when the config cannot be read', async () => {
     await rm(path.join(repo, '.git', 'config'))
     await writeIndex('DIRC', 2, 10)

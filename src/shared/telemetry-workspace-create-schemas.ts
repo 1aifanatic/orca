@@ -84,9 +84,10 @@ const preparedCheckoutProperties = {
   prepared_checkout: z.enum(['hit', 'miss']).optional(),
   /** Hit only: the reset the prepared checkout needed before it was handed over. */
   prepared_checkout_reset: z.enum(PREPARED_CHECKOUT_RESETS).optional(),
-  /** Hit only: whether the new-worktree UI or the automatic burst replacement armed it. */
+  /** Hit only: the new-worktree UI's prefetch, the automatic burst replacement, or that
+   *  replacement which the prefetch then asked for too. */
   prepared_checkout_origin: z.enum(PREPARED_CHECKOUT_ORIGINS).optional(),
-  /** Hit only: from arming the prepared checkout to it being ready. */
+  /** Hit only: from the start of the prepared checkout's build to it being ready. */
   prepared_checkout_build_ms: durationMsSchema,
   /** Hit only: how long it sat ready before this create claimed it; 0 when the create waited. */
   prepared_checkout_idle_ms: durationMsSchema,

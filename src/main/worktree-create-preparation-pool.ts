@@ -45,7 +45,8 @@ export type PreparationEntry = {
   kind: DeferredPreparation['kind']
   /** An explicit prefetch also asked for this entry while an automatic build held it. */
   prefetchRequested: boolean
-  /** When `ready` resolved, on the same clock as `createdAt`. */
+  /** Monotonic (`performance.now()`) times the build started and finished, for its duration. */
+  buildStartedAt: number
   readyAt?: number
   /** Counts the build as disk work competing with creates until `ready` settles. */
   work: PreparationWork
@@ -285,6 +286,7 @@ function startBackgroundPreparation(
     preparedPath,
     options,
     createdAt: Date.now(),
+    buildStartedAt: performance.now(),
     expiration,
     controller,
     checkoutStarted: false,
@@ -311,7 +313,7 @@ function startBackgroundPreparation(
   preparations.set(key, entry)
   void entry.ready.then(
     () => {
-      entry.readyAt = Date.now()
+      entry.readyAt = performance.now()
       work.end()
     },
     () => work.end()
