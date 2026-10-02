@@ -238,6 +238,7 @@ export class StructuredAgentSessionHost {
 
   restoreReadableSessions = (ids?: readonly string[]) => this.restore.restoreReadableSessions(ids)
   // Startup, from each chat's stored state: see `structured-agent-session-startup-state`.
+  catchUpMissingStatuses = (ids: readonly string[]) => this.restore.catchUpMissingStatuses(ids)
   seedStoredStatuses = (ids: readonly string[]) => this.restore.seedStoredStatuses(ids)
   settleOwedSessions = (ids: readonly string[]) => this.restore.settleOwedSessions(ids)
 

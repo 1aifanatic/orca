@@ -133,9 +133,9 @@ Two rules the ingest must keep:
   there beside its journal (`journal_session_state`), written in the same
   transaction as the journal rows it describes, so it is always current. A
   chat last written before that table existed has no row at first: a listed
-  chat gets one at startup, computed from its journal rows without opening it
-  (or from its open, when those rows show work a gone process left); any
-  other chat gets one when it is opened.
+  chat gets one at startup, before the tab listing answers, computed from its
+  journal rows without opening it, so the republish and the settle below cover
+  it too; any other chat gets one when it is opened, which also settles it.
   At host startup the host republishes a settled chat's row into the store
   without opening the chat, and settles a chat a gone process left with work
   first. A structured row in `last-status.json` would

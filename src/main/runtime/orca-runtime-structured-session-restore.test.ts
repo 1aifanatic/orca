@@ -21,6 +21,7 @@ type StartupHostMembers = Partial<
 /** A host offering the startup step's seed and settle, plus the members a test drives. */
 function installStartupHost(members: StartupHostMembers): void {
   const host = {
+    catchUpMissingStatuses: async () => undefined,
     seedStoredStatuses: (ids: readonly string[]) => [...ids],
     settleOwedSessions: async () => undefined,
     ...members

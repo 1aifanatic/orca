@@ -5,7 +5,6 @@
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { orderOnScreenStructuredAgentSessionsFirst } from '../../shared/saved-on-screen-structured-agent-sessions'
 import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import type {
@@ -16,7 +15,7 @@ import type {
 /** Named from the host so a rename fails to compile. */
 export type StructuredAgentSessionStartupHost = Pick<
   StructuredAgentSessionHost,
-  'reconcileRestartLeases' | 'seedStoredStatuses' | 'settleOwedSessions'
+  'reconcileRestartLeases' | 'catchUpMissingStatuses' | 'seedStoredStatuses' | 'settleOwedSessions'
 > &
   StructuredAgentSessionListingHost
 
@@ -37,11 +36,13 @@ export async function runStructuredAgentSessionStartupStep(
 ): Promise<string[]> {
   await host.reconcileRestartLeases()
   const listedIds = listedStructuredAgentSessionIds(host, savedSession)
+  // Before the listing answers: the first launch after the upgrade derives the rows listed chats
+  // lack, so the seed and the settle below read stored status for every one of them.
+  await host.catchUpMissingStatuses(listedIds)
   const background = host.seedStoredStatuses(listedIds)
   // Not awaited here: the tab list and paint never wait on it; chat commands do.
   onSettling(host.settleOwedSessions(listedIds))
-  // The rows the window shows at launch fill first.
-  return orderOnScreenStructuredAgentSessionsFirst(background, savedSession)
+  return background
 }
 
 /** The chats with a tab, for the startup step and the tab restore alike: the host's persisted tab

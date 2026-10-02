@@ -1,6 +1,7 @@
 // What host startup does with each chat's stored status, before any client lists a tab.
 //
-// Seed: every settled, listed chat's status row is published from its stored status, so session
+// Catch-up: a listed chat with history here and no stored status yet (the first launch after the
+// upgrade) gets its row from its rows alone, so what follows reads stored status for it too. Seed: every settled, listed chat's status row is published from its stored status, so session
 // lists have it at paint, without opening the chat. Settle: first every lease a crash left
 // `recovering` is resolved (a surviving provider process is stopped and its death recorded), so
 // each verdict below is taken once, from that evidence. Then every chat whose stored status shows
@@ -8,8 +9,8 @@
 // settlement plan. A listed one goes through the restart restore's own per-chat worker and stays
 // open; any other is settled and closed, never indexed or published. Chat commands wait for the
 // settle (see `StructuredAgentSessionHostDeps.commandsReady`); listing, paint and status reads do
-// not. A listed chat with no stored status yet (an older build wrote it last, or a per-chat file is
-// not yet copied) is left to the background restore after the listing, which is the same worker.
+// not. A listed chat whose history is still in a per-chat file, or is corrupt, is left to the
+// background restore after the listing, which is the same worker.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -21,14 +22,15 @@ import {
   deleteJournalSessionStatus,
   isUnsettledJournalSessionStatus,
   readJournalSessionStatuses,
-  readUnsettledJournalSessionIds
+  readUnsettledJournalSessionIds,
+  type StoredJournalSessionStatus
 } from '../agent-session-journal/journal-session-state'
 import {
   openStructuredAgentSessionConversationJournal,
   type StructuredAgentSessionConversationOpenDeps
 } from './structured-agent-session-conversation-open'
 import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
-import { deriveMissingStatuses } from './structured-agent-session-startup-status-derive'
+import { catchUpMissingStatuses } from './structured-agent-session-startup-status-catch-up'
 
 // Record-only (a probe and at most a process stop each), so a few at once.
 const RECOVERY_CONCURRENCY = 4
@@ -60,62 +62,67 @@ export type StructuredAgentSessionStartupStateDeps = {
   recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
-  /** Whether the chat still has its tab. */
-  isListed: (sessionId: string) => boolean
   isDisposed: () => boolean
 }
 
 export type StructuredAgentSessionStartupState = {
+  /** Writes the stored status of every listed chat with history here and none yet, before the
+   *  listing answers. Never rejects. See `catchUpMissingStatuses`. */
+  catchUpMissingStatuses: (listedIds: readonly string[]) => Promise<void>
   /** Seeds settled listed chats; answers the listed ids the background restore still opens. */
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat a gone process left with work, once per host. Never rejects. */
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
-  /**
-   * The one settle of a chat nothing holds open. Call it inside the chat's serialize; it never
-   * waits on the startup gate. True when it opened and closed the chat, whether or not the chat
-   * had work (so a settled chat is opened again). False, opening nothing, when `canSettle` rejects
-   * the chat, the chat is already open, or after quit. Rejects when the open or the close throws,
-   * so callers must catch.
-   */
-  settleClosedChat: (record: AgentSessionRecord) => Promise<boolean>
-  /**
-   * The background pass's first step: each listed chat with history here and no status row gets
-   * its row from its rows alone, opening nothing, folded one chat at a time in the order given (the
-   * startup step puts the chats on screen first) and written a slice at a time. A row showing work
-   * a gone process left is stored but never shown; a corrupt history gets no row, so its open and
-   * rebuild run. Answers the chats still to open, which their open settles, rebuilds or gives a
-   * row; see `deriveMissingStatuses`.
-   */
-  deriveMissingStatuses: (sessionIds: readonly string[]) => Promise<string[]>
+  /** Startup's own chat work: true from the catch-up's start until the settle has ended. */
+  isSettling: () => boolean
 }
 
 export function createStructuredAgentSessionStartupState(
   deps: StructuredAgentSessionStartupStateDeps
 ): StructuredAgentSessionStartupState {
+  let catchingUp = 0
+  // What the catch-up read for a listing, which that listing's seed reads instead of reading again.
+  let caughtUp: { listedIds: readonly string[]; stored: StoredJournalSessionStatus[] } | null = null
   let settling: Promise<void> | null = null
+  let settled = false
   return {
-    seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
+    catchUpMissingStatuses: async (listedIds) => {
+      catchingUp += 1
+      try {
+        const stored = await catchUpMissingStatuses(deps, listedIds)
+        caughtUp = stored ? { listedIds, stored } : null
+      } finally {
+        catchingUp -= 1
+      }
+    },
+    seedStoredStatuses: (listedIds) => {
+      const read = caughtUp?.listedIds === listedIds ? caughtUp.stored : null
+      caughtUp = null
+      return seedStoredStatuses(deps, listedIds, read)
+    },
     settleOwedSessions: (listedIds) => {
-      settling ??= settleOwedSessions(deps, listedIds)
+      settling ??= settleOwedSessions(deps, listedIds).finally(() => {
+        settled = true
+      })
       return settling
     },
-    settleClosedChat: (record) => settleClosed(deps, record),
-    deriveMissingStatuses: (sessionIds) => deriveMissingStatuses(deps, sessionIds)
+    isSettling: () => catchingUp > 0 || (settling !== null && !settled)
   }
 }
 
 function seedStoredStatuses(
   deps: StructuredAgentSessionStartupStateDeps,
-  listedIds: readonly string[]
+  listedIds: readonly string[],
+  read?: readonly StoredJournalSessionStatus[] | null
 ): string[] {
   const database = deps.openDeps.journalDatabase
   // A newer build's database: nothing is stored this build can read, and every chat reads as it does.
   if (database.readOnly) {
     return [...listedIds]
   }
-  let stored: ReturnType<typeof readJournalSessionStatuses>
+  let stored: readonly StoredJournalSessionStatus[]
   try {
-    stored = readJournalSessionStatuses(database.db, listedIds)
+    stored = read ?? readJournalSessionStatuses(database.db, listedIds)
   } catch (error) {
     // Fails open: every listed chat is restored in the background, as before stored status existed.
     deps.openDeps.logger.warn('reading stored chat status failed', {

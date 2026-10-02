@@ -157,7 +157,7 @@ function within<T>(promise: Promise<T>, ms = 2_000): Promise<T | 'still waiting'
 }
 
 describe('listing chat tabs at startup', () => {
-  it('answers before any chat history is read, then gives each chat its status (T1)', async () => {
+  it('answers once each listed chat with no stored status has one, published, opening none (T1)', async () => {
     const ids = ['session-1', 'session-2', 'session-3']
     for (const sessionId of ids) {
       await restTestChat(rig, sessionId, { message: sessionId })
@@ -165,24 +165,16 @@ describe('listing chat tabs at startup', () => {
     await rig.crash()
     await rig.boot()
     forgetStoredChatState()
-    const reads = Promise.withResolvers<void>()
-    releaseHeld = reads.resolve
-    const restore = rig.host.restoreReadableSessions.bind(rig.host)
-    vi.spyOn(rig.host, 'restoreReadableSessions').mockImplementation(async (sessionIds) => {
-      await reads.promise
-      return restore(sessionIds)
-    })
     const { listAll } = restartedRuntime()
 
     expect(await within(listAll())).toEqual(ids)
-    expect(ids.map((id) => readTestJournalSessionStatus(rig.root, id))).toEqual([null, null, null])
 
-    reads.resolve()
-    // From the rows alone: a chat with nothing left over is not opened for its status.
-    await vi.waitFor(() =>
-      ids.forEach((id) => expect(latestRestTestStatus(rig, id)).toMatchObject({ latestPrompt: id }))
-    )
-    expect(ids.map((id) => restTestOpens(rig, id))).toEqual([0, 0, 0])
+    // Derived from their rows before the answer, and published by the seed that follows.
+    for (const sessionId of ids) {
+      expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({ lifecycle: 'idle' })
+      expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ latestPrompt: sessionId })
+      expect(restTestOpens(rig, sessionId)).toBe(0)
+    }
   })
 
   it.each(['listAll', 'subscribeAll'] as const)(
@@ -208,9 +200,9 @@ describe('listing chat tabs at startup', () => {
       const answered =
         method === 'listAll' ? { ids: await listAll(), atAnswer: seen() } : await subscribeAll(seen)
 
-      expect(answered).toEqual({ ids, atAnswer: { started: 0, opens: 0, rows: 0 } })
-      await vi.waitFor(() => expect(rows()).toBe(ids.length))
-      expect(restore).toHaveBeenCalledOnce()
+      // Every row is written before the answer; nothing is opened before or after it.
+      expect(answered).toEqual({ ids, atAnswer: { started: 0, opens: 0, rows: ids.length } })
+      await vi.waitFor(() => expect(restore).toHaveBeenCalledOnce())
       runtime.cleanupSubscriptionsForConnection('connection-1')
     }
   )

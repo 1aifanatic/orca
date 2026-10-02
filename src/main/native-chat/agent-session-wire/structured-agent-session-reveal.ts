@@ -124,20 +124,14 @@ export function createStructuredAgentSessionHostRestore(
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
-    isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
   return {
     reconcileRestartLeases: async () => {
       await reconcile('startup')
     },
-    // The listed chats the tab list left to it: rows derived without an open first, then the rest.
-    restoreReadableSessions: (sessionIds) =>
-      gate.run(async () =>
-        restorer.restore(
-          sessionIds === undefined ? undefined : await startup.deriveMissingStatuses(sessionIds)
-        )
-      ),
+    // The listed chats the tab list left to it: still in a per-chat file, corrupt, or unreadable.
+    restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
     ...startup
   }
 }

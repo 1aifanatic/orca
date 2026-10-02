@@ -83,6 +83,7 @@ async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> 
 /** What startup runs, in order, on the ids the tab list names. */
 async function startup(rig: RestTestRig, listed: readonly string[]) {
   await rig.host.reconcileRestartLeases()
+  await rig.host.catchUpMissingStatuses(listed)
   const background = rig.host.seedStoredStatuses(listed)
   await rig.host.settleOwedSessions(listed)
   await rig.host.restoreReadableSessions(background)
@@ -319,7 +320,8 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
     expect(opened(rig, [...listed, ...unlisted]).toSorted()).toEqual(
       ['session-crashed', ...unlisted, 'session-uncopied'].toSorted()
     )
-    expect(background.toSorted()).toEqual(['session-rowless', 'session-uncopied'].toSorted())
+    // Its row is derived before the seed, so only the per-chat file is left to the restore.
+    expect(background).toEqual(['session-uncopied'])
     expect(latestRestTestStatus(rig, 'session-draft')).toMatchObject({ status: 'idle' })
     // Settled with no user action; the listed one is open and never showed its pre-crash work.
     for (const sessionId of ['session-crashed', ...unlisted]) {
@@ -342,7 +344,7 @@ describe('startup opens only what it must (T6, T7, T14)', () => {
       expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ status: 'idle' })
     }
 
-    // The missing status was written back, and its row published, with no open.
+    // The missing status was written back before the seed, and its row published, with no open.
     expect(readTestJournalSessionStatus(rig.root, 'session-rowless')).toMatchObject({
       lifecycle: 'idle'
     })
@@ -616,7 +618,6 @@ describe('a recovery that never answers', () => {
       restoreListed,
       serialize: (_sessionId, task) => task(),
       hasSession: () => false,
-      isListed: () => true,
       isDisposed: () => false,
       recoveryBudgetMs: 20
     })
@@ -674,43 +675,6 @@ describe('a listed chat whose recovery never answers', () => {
 })
 
 describe('a stored status no settle here can clear (R2A-4)', () => {
-  it('is refused by the shared closed-chat settle, which opens nothing for it', async () => {
-    const opens: string[] = []
-    const openDeps = new Proxy(
-      {},
-      {
-        get: (_target, key) => {
-          opens.push(String(key))
-          throw new Error('the settle opened a chat this host cannot settle')
-        }
-      }
-    )
-    const refused: AgentSessionRecord[] = []
-    const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord => {
-      if (record) {
-        refused.push(record)
-      }
-      return false
-    }
-    const state = createStructuredAgentSessionStartupState({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a refused settle reads no open dependency; any read throws and fails the test.
-      openDeps: openDeps as StructuredAgentSessionStartupStateDeps['openDeps'],
-      canSettle,
-      seedStatus: vi.fn(),
-      resolveRecovery: vi.fn(async () => true),
-      restoreListed: vi.fn(async () => undefined),
-      serialize: (_sessionId, task) => task(),
-      hasSession: () => false,
-      isListed: () => true,
-      isDisposed: () => false
-    })
-    const record = agentSessionRecordFixture()
-
-    await expect(state.settleClosedChat(record)).resolves.toBe(false)
-    expect(refused).toEqual([record])
-    expect(opens).toEqual([])
-  })
-
   it('drops the row of a chat whose record is gone or whose provider this host does not serve, so the next boot selects neither', async () => {
     const rig = await newRig()
     await crashMidSend(rig, 'session-gone', false)

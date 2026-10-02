@@ -21,11 +21,11 @@ import {
 
 /** Row JSON per part, in UTF-16 units: a page of large rows is split, so each main-thread task
  *  handles about the same bytes (a quarter of a full page of the seed's 2.3 KB rows). */
-export const IMPORT_BATCH_CHARS = 256 * 1024
+const IMPORT_BATCH_CHARS = 256 * 1024
 
 /** Each batch split so no part holds more than `maxChars` of row JSON; a larger row is a part alone.
  *  Only a batch's last part keeps its `last`. */
-export function* charBoundedBatches<Row extends { rowJson: string }>(
+function* charBoundedBatches<Row extends { rowJson: string }>(
   batches: Iterable<{ rows: Row[]; last: boolean }>,
   maxChars = IMPORT_BATCH_CHARS
 ): Generator<{ rows: Row[]; last: boolean }> {
@@ -57,7 +57,7 @@ export type FoldedJournalSessionStatus = {
 type FoldOptions = {
   batchRows?: number
   batchChars?: number
-  /** Ends each part's task: the next macrotask by default; a background job paces here. */
+  /** Ends each part's task: the next macrotask by default; a caller can yield only when due. */
   yieldTask?: () => Promise<void>
   /** Quit: the fold stops within one part and nothing is written. */
   signal?: AbortSignal
