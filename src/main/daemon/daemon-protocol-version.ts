@@ -1,6 +1,8 @@
 // Why: daemons survive app updates, so wire behavior must be version-gated.
 // v38 answers OSC 10/11 for each session's whole life from pushed host colours; older owners stay attachable.
 export const PROTOCOL_VERSION = 38
+// Why 38 on this release line: #24284's fish wrapper ships here at v38 (main bumped to 39 for it).
+export const CODEX_FISH_SHELL_FUNCTION_DAEMON_PROTOCOL_VERSION = 38
 // Why: older daemons reject `setColorQueryReplyColors` as an unknown request type.
 export const COLOR_QUERY_REPLY_COLORS_DAEMON_PROTOCOL_VERSION = 38
 export const CODEX_NO_DAEMON_SHELL_LAUNCH_DAEMON_PROTOCOL_VERSION = 37
