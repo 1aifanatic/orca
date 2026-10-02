@@ -145,6 +145,13 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
     if (fact.refusal?.details?.reason === 'claimConflicted') {
       return joinSentences([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
     }
+    // The previous process may still run, so nothing started: that, never that it exited.
+    if (fact.refusal?.details?.reason === 'previousExitUnverifiable') {
+      return joinSentences([
+        say('previousExitUnverifiable', agent(say, context)),
+        ...startRetry(say, context)
+      ])
+    }
     const code = fact.refusal?.code
     return joinSentences(
       code && !START_REFUSAL_RESUMABLE[code]

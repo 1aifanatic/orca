@@ -17401,7 +17401,7 @@
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
-        "previousExitUnverifiable": "Orca は {{agent}} の前のプロセスが終了したことを確認できませんでした。Orca が終了を確認するまで、メッセージは送信を待機します。"
+        "previousExitUnverifiable": "Orca は {{agent}} の前のプロセスが終了したことを確認できませんでした。"
       },
       "writeNotice": {
         "notDoneReadHistory": "このチャットの履歴を読み込めませんでした。",
