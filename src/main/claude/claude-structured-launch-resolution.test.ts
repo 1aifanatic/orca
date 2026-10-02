@@ -555,7 +555,11 @@ describe('readable Claude thinking', () => {
     const asked = argsFor.mock.calls[0]?.[0]
     expect(asked).toMatchObject({ command: '/usr/local/bin/claude', cwd: '/repos/workspace-1' })
     // The launch only adds Orca's own CLI ahead of it, which picks no other `claude` or runtime.
-    expect(launch.env?.PATH?.endsWith(asked?.env.PATH ?? '<none>')).toBe(true)
+    expect(
+      (launch.env?.PATH ?? launch.env?.Path)?.endsWith(
+        asked?.env.PATH ?? asked?.env.Path ?? '<none>'
+      )
+    ).toBe(true)
     expect(asked?.env).toMatchObject({ PROJECT_SHIM: '1' })
     expect(asked?.env).not.toHaveProperty('ANTHROPIC_API_KEY')
     // The launch keeps the credential the user gave it.
