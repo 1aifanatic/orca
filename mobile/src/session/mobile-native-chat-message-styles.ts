@@ -32,6 +32,23 @@ export const styles = StyleSheet.create({
   reasoning: {
     opacity: 0.7
   },
+  reasoningToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: 3
+  },
+  reasoningPressed: {
+    opacity: 0.6
+  },
+  reasoningHeadline: {
+    color: colors.textMuted,
+    fontSize: typography.bodySize,
+    flexShrink: 1
+  },
+  reasoningCaretOpen: {
+    transform: [{ rotate: '90deg' }]
+  },
   toolRun: {
     marginTop: spacing.xs
   },

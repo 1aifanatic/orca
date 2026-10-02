@@ -9,7 +9,7 @@ import {
   subagentGroupBlocks
 } from '../../../../shared/native-chat-subagent-summary'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
-import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-live-reasoning'
+import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-reasoning-row'
 import {
   estimateNativeChatRowHeight,
   nativeChatRowContentMetrics,

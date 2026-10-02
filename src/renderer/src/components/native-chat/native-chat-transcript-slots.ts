@@ -21,7 +21,7 @@ import {
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
-import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-live-reasoning'
+import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-reasoning-row'
 import {
   estimateNativeChatRowHeight,
   nativeChatRowContentMetrics

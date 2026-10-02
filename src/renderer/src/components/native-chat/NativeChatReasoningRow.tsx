@@ -6,31 +6,22 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
-import { formatNativeChatDuration } from '../../../../shared/native-chat-turn-status'
-import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-live-reasoning'
+import {
+  isNativeChatReasoningUnderway,
+  nativeChatReasoningHeadline,
+  type NativeChatReasoningHeadline
+} from '../../../../shared/native-chat-reasoning-row'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 
-/** What the row's own lifecycle says, read from host facts only: the row's start (`timestamp`)
- *  and the end the host saw. A row with no lifecycle came from a host that kept none. */
-function reasoningHeadline(
-  message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
-): string {
-  if (message.state === undefined) {
-    return translate('components.native-chat.reasoning', 'Reasoning')
+function translatedHeadline(headline: NativeChatReasoningHeadline): string {
+  if (headline.kind === 'thoughtFor') {
+    return translate('components.native-chat.thoughtForDuration', 'Thought for {{duration}}', {
+      duration: headline.duration
+    })
   }
-  // An open row in a turn that is no longer live ended unseen, so it claims no duration.
-  if (
-    message.state !== 'completed' ||
-    message.completedAt === undefined ||
-    message.timestamp === null
-  ) {
-    return translate('components.native-chat.thought', 'Thought')
-  }
-  return translate('components.native-chat.thoughtForDuration', 'Thought for {{duration}}', {
-    duration: formatNativeChatDuration(
-      Math.max(1, (message.completedAt - message.timestamp) / 1000)
-    )
-  })
+  return headline.kind === 'thought'
+    ? translate('components.native-chat.thought', 'Thought')
+    : translate('components.native-chat.reasoning', 'Reasoning')
 }
 
 export function NativeChatReasoningRow({
@@ -51,7 +42,7 @@ export function NativeChatReasoningRow({
     return null
   }
   const label = translate('components.native-chat.reasoning', 'Reasoning')
-  const headline = reasoningHeadline(message)
+  const headline = translatedHeadline(nativeChatReasoningHeadline(message))
 
   return (
     <div className="min-w-0 text-sm text-muted-foreground">
