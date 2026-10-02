@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { resolveOpenCodeDataDirectory } from './opencode-data-directory'
 import {
   bindOpenCodeSession,
@@ -224,6 +225,10 @@ export function listOpenCodeDbSessions(
   dbPath: string,
   cursor: OpenCodeSessionCursor
 ): BinderSessionRow[] {
+  // A store that has not been created yet is an expected state, not a read failure.
+  if (!existsSync(dbPath)) {
+    return []
+  }
   try {
     return readOpenCodeDatabase({
       dbPath,
