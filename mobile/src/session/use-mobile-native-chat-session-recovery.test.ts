@@ -153,4 +153,30 @@ describe('same-session mobile transcript recovery', () => {
     expect(harness.current().error).toBe('Newer failure')
     expect(harness.current().messages.map((entry) => entry.id)).toEqual(['new-window'])
   })
+
+  it.each([
+    ['error', 'Newer failure'],
+    ['end', 'Transcript stream ended']
+  ])('invalidates a page started before a stream %s', async (type, error) => {
+    const harness = await mount()
+    await harness.frame({ type: 'appended', messages: [message('live')] })
+    harness.startPage()
+    await harness.frame({ type, message: error })
+
+    expect(harness.current().loadingEarlier).toBe(false)
+    await harness.finishPage({ messages: [message('stale')], beforeOffset: 0 })
+    expect(harness.current().error).toBe(error)
+    expect(harness.current().status).toBe('error')
+    expect(harness.current().messages.map((entry) => entry.id)).toEqual(['retained', 'live'])
+
+    await harness.page({ messages: [message('older')], hasMore: false, beforeOffset: 0 })
+    expect(harness.current().error).toBeUndefined()
+    expect(harness.current().status).toBe('ready')
+    expect(harness.current().messages.map((entry) => entry.id)).toEqual([
+      'older',
+      'retained',
+      'live'
+    ])
+    expect(harness.subscribe).toHaveBeenCalledTimes(1)
+  })
 })

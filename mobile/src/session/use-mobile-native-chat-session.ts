@@ -179,6 +179,10 @@ export function useMobileNativeChatSession(args: {
           return
         }
         if (applied.kind === 'error') {
+          // A page started before this failure cannot establish its recovery.
+          streamGenerationRef.current += 1
+          loadingEarlierRef.current = false
+          setLoadingEarlier(false)
           setRead({ client, identity, status: 'error' })
           setError(applied.error)
           return
