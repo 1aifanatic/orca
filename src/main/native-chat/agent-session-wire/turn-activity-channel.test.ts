@@ -77,25 +77,6 @@ describe('the live turn activity channel', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('sends a value the sink refused again on the next derive, even when it has not changed', () => {
-    const sent: (AgentSessionTurnActivity | null)[] = []
-    let full = true
-    const activity = createTurnActivityChannel({
-      trySetActivity: (next) => {
-        sent.push(next)
-        return full ? { accepted: false, reason: 'backpressure' } : { accepted: true }
-      }
-    })
-    activity.setReasoning('turn-1', OPEN)
-    full = false
-    activity.setReasoning('turn-1', OPEN)
-    activity.setReasoning('turn-1', OPEN)
-    expect(sent).toEqual([
-      { turnId: 'turn-1', text: '', reasoning: OPEN },
-      { turnId: 'turn-1', text: '', reasoning: OPEN }
-    ])
-  })
-
   it("reaches a caught-up client's state through every change of who is reasoning", () => {
     const page = {
       sessionId: 's',

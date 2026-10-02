@@ -95,8 +95,6 @@ export type StructuredAgentSessionEventSink = {
   ): StructuredAgentSessionSinkAdmission
   publish(options?: StructuredAgentSessionAppendOptions): void
   setActivity?(activity: AgentSessionTurnActivity | null): void
-  /** The queue's verdict too: refused when it is full, so the caller can send the value again. */
-  trySetActivity?(activity: AgentSessionTurnActivity | null): StructuredAgentSessionSinkAdmission
   tryAppendItem?(
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
@@ -334,7 +332,6 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       setActivity: (activity) => {
         queue.submit(turnActivityOperation(activity))
       },
-      trySetActivity: (activity) => queue.submit(turnActivityOperation(activity)),
       tryPublish: publish
     },
     bind: (next) => queue.bind(next),
