@@ -93,7 +93,9 @@ export function getDeleteWorktreeDirtyChangePreview(
   )
   const files: DeleteWorktreeDirtyFile[] = []
   for (const [path, status] of statusByPath) {
-    if (files.length === 10) break
+    if (files.length === 10) {
+      break
+    }
     files.push({ path, status, hasUnresolvedConflict: conflictPaths.has(path) })
   }
   return { files, remainingPathCount: statusByPath.size - files.length }
@@ -112,12 +114,16 @@ export function getDeleteWorktreeDirtyChangePreviews({
 }): Map<string, DeleteWorktreeDirtyChangePreview> {
   const result = new Map<string, DeleteWorktreeDirtyChangePreview>()
   for (const item of deleteTargets) {
-    if (item.isMainWorktree || isFolderWorkspaceDelete(repoMap, item)) continue
+    if (item.isMainWorktree || isFolderWorkspaceDelete(repoMap, item)) {
+      continue
+    }
     const resultKey = item.hostId ? getWorktreeHostIdentity(item) : item.id
     const entries = item.hostId
       ? gitStatusByWorktreeIdentity?.get(getWorktreeHostIdentity(item))
       : gitStatusByWorktree[item.id]
-    if (entries?.length) result.set(resultKey, getDeleteWorktreeDirtyChangePreview(entries))
+    if (entries?.length) {
+      result.set(resultKey, getDeleteWorktreeDirtyChangePreview(entries))
+    }
   }
   return result
 }

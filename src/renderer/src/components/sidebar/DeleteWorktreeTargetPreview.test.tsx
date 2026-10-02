@@ -229,14 +229,23 @@ describe('DeleteWorktreeTargetPreview loaded paths', () => {
     const runtimeKey = getWorktreeHostIdentity(runtime)
     renderPreview({
       worktrees: [local, runtime],
-      dirtyChangeCountsByWorktreeId: new Map([[localKey, 1], [runtimeKey, 1]]),
+      dirtyChangeCountsByWorktreeId: new Map([
+        [localKey, 1],
+        [runtimeKey, 1]
+      ]),
       dirtyChangePreviewsByWorktreeId: new Map([
-        [localKey, getDeleteWorktreeDirtyChangePreview([
-          { path: 'local.ts', status: 'deleted', area: 'unstaged' }
-        ])],
-        [runtimeKey, getDeleteWorktreeDirtyChangePreview([
-          { path: 'runtime.ts', status: 'renamed', area: 'staged' }
-        ])]
+        [
+          localKey,
+          getDeleteWorktreeDirtyChangePreview([
+            { path: 'local.ts', status: 'deleted', area: 'unstaged' }
+          ])
+        ],
+        [
+          runtimeKey,
+          getDeleteWorktreeDirtyChangePreview([
+            { path: 'runtime.ts', status: 'renamed', area: 'staged' }
+          ])
+        ]
       ])
     })
     const localRow = screen.getByRole('listitem', { name: /Local/ })

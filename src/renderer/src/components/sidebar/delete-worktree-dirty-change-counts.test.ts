@@ -131,18 +131,26 @@ describe('delete-worktree loaded change previews', () => {
     expect(previews.has(getWorktreeHostIdentity(missing))).toBe(false)
   })
 
-  it.each([undefined, []])('keeps a generic dirty warning without inventing paths: %s', (entries) => {
-    const input = {
-      deleteTargets: [worktree('target')],
-      deleteStateByWorktreeId: {
-        target: { isDeleting: false, error: null, canForceDelete: true, forceDeleteReason: 'dirty' }
-      },
-      gitStatusByWorktree: { target: entries },
-      repoMap: new Map()
-    } satisfies Parameters<typeof getDeleteWorktreeDirtyChangeCounts>[0]
-    expect(getDeleteWorktreeDirtyChangeCounts(input).get('target')).toBe(0)
-    expect(getDeleteWorktreeDirtyChangePreviews(input).size).toBe(0)
-  })
+  it.each([undefined, []])(
+    'keeps a generic dirty warning without inventing paths: %s',
+    (entries) => {
+      const input = {
+        deleteTargets: [worktree('target')],
+        deleteStateByWorktreeId: {
+          target: {
+            isDeleting: false,
+            error: null,
+            canForceDelete: true,
+            forceDeleteReason: 'dirty'
+          }
+        },
+        gitStatusByWorktree: { target: entries },
+        repoMap: new Map()
+      } satisfies Parameters<typeof getDeleteWorktreeDirtyChangeCounts>[0]
+      expect(getDeleteWorktreeDirtyChangeCounts(input).get('target')).toBe(0)
+      expect(getDeleteWorktreeDirtyChangePreviews(input).size).toBe(0)
+    }
+  )
 
   it('skips main and folder workspaces even when their snapshot contains changes', () => {
     const folderRepo: Repo = {
@@ -158,14 +166,15 @@ describe('delete-worktree loaded change previews', () => {
         { ...worktree('main'), isMainWorktree: true },
         { ...worktree('folder'), repoId: folderRepo.id }
       ],
-      deleteStateByWorktreeId: {},
       gitStatusByWorktree: {
         main: [{ path: 'main.txt', status: 'untracked', area: 'untracked' }],
         folder: [{ path: 'folder.txt', status: 'untracked', area: 'untracked' }]
       },
       repoMap: new Map([[folderRepo.id, folderRepo]])
     } satisfies Parameters<typeof getDeleteWorktreeDirtyChangePreviews>[0]
-    expect(getDeleteWorktreeDirtyChangeCounts(input).size).toBe(0)
+    expect(getDeleteWorktreeDirtyChangeCounts({ ...input, deleteStateByWorktreeId: {} }).size).toBe(
+      0
+    )
     expect(getDeleteWorktreeDirtyChangePreviews(input).size).toBe(0)
   })
 })

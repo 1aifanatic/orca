@@ -134,7 +134,12 @@ describe('loaded deletion disclosure and existing hydration', () => {
       throw new Error('First read has not started')
     }
     vi.mocked(getRuntimeGitStatus)
-      .mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve }))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve
+          })
+      )
       .mockRejectedValueOnce(new Error('Status unavailable'))
     const first = target('same')
     const second = target('same', 'runtime:fixture')
@@ -159,19 +164,22 @@ describe('loaded deletion disclosure and existing hydration', () => {
     const descendants = Array.from({ length: 5 }, (_, index) => target(`child-${index}`))
     const preview = getDeleteWorktreeDirtyChangePreview([
       {
-        path: 'conflict.ts', status: 'modified', area: 'unstaged',
-        conflictStatus: 'unresolved', conflictKind: 'both_modified'
+        path: 'conflict.ts',
+        status: 'modified',
+        area: 'unstaged',
+        conflictStatus: 'unresolved',
+        conflictKind: 'both_modified'
       }
     ])
     render(
       <DeleteWorktreeLineageNotice
         descendants={descendants}
-        dirtyChangeCountsByWorktreeId={new Map(
-          descendants.map((child) => [getWorktreeHostIdentity(child), 1])
-        )}
-        dirtyChangePreviewsByWorktreeId={new Map(
-          descendants.map((child) => [getWorktreeHostIdentity(child), preview])
-        )}
+        dirtyChangeCountsByWorktreeId={
+          new Map(descendants.map((child) => [getWorktreeHostIdentity(child), 1]))
+        }
+        dirtyChangePreviewsByWorktreeId={
+          new Map(descendants.map((child) => [getWorktreeHostIdentity(child), preview]))
+        }
       />
     )
     expect(screen.getAllByRole('button')).toHaveLength(4)

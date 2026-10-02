@@ -337,7 +337,7 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="scrollbar-sleek max-h-[calc(100vh-2rem)] max-w-md overflow-y-auto"
+        className="max-w-md"
         onOpenAutoFocus={(event) => {
           if (isMainWorktree) {
             return
@@ -376,24 +376,26 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
           />
         </DialogHeader>
 
-        <DeleteWorktreeTargetPreview
-          isBatchDelete={isBatchDelete}
-          worktree={worktree}
-          worktrees={worktrees}
-          collisionWorktrees={allWorktrees}
-          hostLabelById={hostLabelById}
-          deleteStateByWorktreeId={deleteStateByWorktreeId}
-          dirtyChangeCountsByWorktreeId={dirtyChanges.counts}
-          dirtyChangePreviewsByWorktreeId={dirtyChanges.previews}
-        />
-
-        {hasLineageChildren && (
-          <DeleteWorktreeLineageNotice
-            descendants={lineageDelete.descendants}
+        <div className="scrollbar-sleek max-h-[50vh] min-w-0 space-y-4 overflow-y-auto">
+          <DeleteWorktreeTargetPreview
+            isBatchDelete={isBatchDelete}
+            worktree={worktree}
+            worktrees={worktrees}
+            collisionWorktrees={allWorktrees}
+            hostLabelById={hostLabelById}
+            deleteStateByWorktreeId={deleteStateByWorktreeId}
             dirtyChangeCountsByWorktreeId={dirtyChanges.counts}
             dirtyChangePreviewsByWorktreeId={dirtyChanges.previews}
           />
-        )}
+
+          {hasLineageChildren && (
+            <DeleteWorktreeLineageNotice
+              descendants={lineageDelete.descendants}
+              dirtyChangeCountsByWorktreeId={dirtyChanges.counts}
+              dirtyChangePreviewsByWorktreeId={dirtyChanges.previews}
+            />
+          )}
+        </div>
 
         <DeleteWorktreeWarningPanels
           isMainWorktree={isMainWorktree}
