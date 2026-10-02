@@ -4,7 +4,7 @@ All UI work — layout, color, typography, spacing, component selection, UX beha
 
 ## Status Messages and Notices
 
-Don't add a notice, banner, toast, or status line for a transient or internal state (starting, loading, reconnecting, handing off, confirming). Users read anything that pops up as something going wrong, and a state every normal flow passes through will flash. Show the state through a surface that already exists — the working indicator, the item's own row, a placeholder — and only when the common pattern for that kind of app shows it at all. Say a failure once, in one place, not as a toast plus a line plus a row. If a message flashes, remove it; never hide it behind a delay or threshold. Copy names what the user can do, never Orca internals (host, owner, fence, journal, structured, child process).
+Don't add a notice, banner, toast, or status line for a transient or internal state (starting, loading, reconnecting, handing off, confirming). Users read anything that pops up as something going wrong, and a state every normal flow passes through will flash. Show the state through a surface that already exists — the working indicator, the item's own row, a placeholder — and only when the common pattern for that kind of app shows it at all. Say a failure once, in one place, not as a toast plus a line plus a row. If a message flashes, remove it; don't keep it and hide it behind a delay or threshold. Only a loading placeholder the common pattern shows (a skeleton or spinner, no text) may wait a moment before appearing. Copy names what the user can do, never Orca internals (host, owner, fence, journal, structured, child process).
 
 ## Electron UI Validation
 
