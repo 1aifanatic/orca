@@ -547,7 +547,7 @@ describe('a page per task sized by its time (J2)', () => {
           .get(sessionId)?.n
       )
     const commit = database.unsyncedTransaction.bind(database)
-    vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
+    const commitSpy = vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
       const before = count()
       const out = commit(run)
       const added = count() - before
@@ -588,6 +588,8 @@ describe('a page per task sized by its time (J2)', () => {
       }
     })
 
+    // The database is shared across copies: unwrap it for the next one.
+    commitSpy.mockRestore()
     expect(result.outcome).toBe('imported')
     expect(written.reduce((sum, page) => sum + page, 0)).toBe(rows.length)
     return { written, steps }
@@ -609,6 +611,17 @@ describe('a page per task sized by its time (J2)', () => {
     }
     expect(written.slice(0, -1).every((page) => page === 512)).toBe(true)
     expect(written.length).toBe(Math.ceil(written.reduce((a, b) => a + b, 0) / 512))
+  })
+
+  it('starts every chat’s copy from the whole page, whatever an earlier one shrank it to', async () => {
+    // Each copy measures its own tasks, in memory only: nothing carries a page from one to the next.
+    const slow = await commitsOf('session-slow-first', () => 100)
+    // Its last page holds what is left.
+    expect(Math.min(...slow.written.slice(0, -1))).toBe(8)
+
+    const { written, steps } = await commitsOf('session-fast-after', () => 0)
+    expect(steps.find((step) => step.startsWith('read'))).toBe('read 512')
+    expect(written.slice(0, -1).every((page) => page === 512)).toBe(true)
   })
 
   it('halves the next page after a slow commit, down to its floor, and grows back when fast', async () => {
