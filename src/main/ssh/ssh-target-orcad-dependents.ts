@@ -5,6 +5,7 @@
 import type { Store } from '../persistence'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import { toSshExecutionHostId } from '../../shared/execution-host'
+import { GLOBAL_WORKSPACE_SESSION_FIELDS } from '../../shared/workspace-session-host-field-ownership'
 import {
   ORCAD_MIGRATION_DEPENDENCY_KINDS,
   type OrcadMigrationBlocker,
@@ -112,7 +113,7 @@ export function collectUntransferredDependentBlockers(
     : []
 }
 
-/** Non-default fields of the host's session partition, plus a local session pointed at the host. */
+/** Non-default host-owned fields of the host's partition, plus a local session pointed at the host. */
 function workspaceSessionReferences(store: DependentStateStore, hostId: string): string[] {
   const references: string[] = []
   if (store.getWorkspaceSession().activeWorkspaceExecutionHostId === hostId) {
@@ -122,7 +123,12 @@ function workspaceSessionReferences(store: DependentStateStore, hostId: string):
     return references
   }
   const defaults: Record<string, unknown> = { ...getDefaultWorkspaceSession() }
+  // A partition's global fields are copies of client-wide focus and history, not host state.
+  const globalFields = new Set<string>(GLOBAL_WORKSPACE_SESSION_FIELDS)
   for (const [field, value] of Object.entries(store.getWorkspaceSession(hostId))) {
+    if (globalFields.has(field)) {
+      continue
+    }
     if (!isEmptyValue(value) && JSON.stringify(value) !== JSON.stringify(defaults[field])) {
       references.push(field)
     }

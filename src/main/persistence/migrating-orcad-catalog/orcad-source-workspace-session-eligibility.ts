@@ -97,9 +97,8 @@ export function countUnsupportedSessionState(
       ? 1
       : 0
   count += session.activeWorkspaceExecutionHostId === scope.hostId && !sourceHostPartition ? 1 : 0
-  count += (session.activeConnectionIdsAtShutdown ?? []).filter(
-    (targetId) => targetId === scope.targetId
-  ).length
+  // activeConnectionIdsAtShutdown is not counted: it is the renderer's live "connected now" hint, and
+  // the remote work it can stand for (tab PTYs, remote session ids, leases) is counted on its own.
   count +=
     session.activeTabId && terminalTabIds.has(session.activeTabId) && !sourceHostPartition ? 1 : 0
   for (const [ownerKey, files] of Object.entries(session.openFilesByWorktree ?? {})) {

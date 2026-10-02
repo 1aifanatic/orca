@@ -72,6 +72,18 @@ describe('migration export preflight', () => {
     ])
   })
 
+  it('previews a connected but unused host as movable with no blockers', () => {
+    const store = preflightStore((store) => {
+      store.addSshTarget(TARGET)
+      // What the renderer writes on connect: the reconnect hint names the now-connected target.
+      store.patchWorkspaceSession({ activeConnectionIdsAtShutdown: [TARGET.id] })
+    })
+    expect(preflightOrcadMigrationExport(store, TARGET.id)).toMatchObject({
+      claimable: true,
+      blockers: []
+    })
+  })
+
   it('blocks on a live relay terminal, which cannot move', () => {
     const lease: SshRemotePtyLease = {
       targetId: TARGET.id,

@@ -25,6 +25,29 @@ describe('client state that still references an SSH target', () => {
     expect(blockersFor({ getWorkspaceSessionHostIds: () => ['local', HOST] })).toEqual([])
   })
 
+  it('ignores a connected host: the reconnect hint and global copies in its partition', () => {
+    const connected = {
+      ...getDefaultWorkspaceSession(),
+      activeConnectionIdsAtShutdown: ['ssh-1'],
+      activeWorktreeId: 'local-wt',
+      browserUrlHistory: [
+        {
+          url: 'https://example.com',
+          normalizedUrl: 'https://example.com',
+          title: 'Example',
+          lastVisitedAt: 1,
+          visitCount: 1
+        }
+      ]
+    }
+    expect(
+      blockersFor({
+        getWorkspaceSessionHostIds: () => ['local', HOST],
+        getWorkspaceSession: () => connected
+      })
+    ).toEqual([])
+  })
+
   it('blocks on the host session partition and names the fields holding state', () => {
     const blockers = blockersFor({
       getWorkspaceSessionHostIds: () => ['local', HOST],
