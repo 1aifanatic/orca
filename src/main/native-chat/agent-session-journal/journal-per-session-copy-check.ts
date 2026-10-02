@@ -47,6 +47,8 @@ export async function verifyCopiedJournal(
   expected: Iterable<ImportBatch>
 ): Promise<JournalLoad> {
   const want = await readCopyFacts(input, expected, null)
+  // The file side's last batch and the copy side's first are tasks of their own.
+  await (input.yieldTask ?? yieldToEventLoop)()
   const fold = startJournalRowFold({
     sessionId: input.sessionId,
     epoch: input.epoch,

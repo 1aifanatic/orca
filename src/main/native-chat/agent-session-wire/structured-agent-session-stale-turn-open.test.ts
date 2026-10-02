@@ -61,7 +61,7 @@ async function exitWithUnwrittenSettlement(refusedWrites = 2): Promise<void> {
       deathEvidence: { kind: 'exit-observed' }
     })
   )
-  await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
+  await rig.host.collaboratorsForTests().tasks.serialize(SESSION, async () => {})
 }
 
 async function workingTurnState(): Promise<string | undefined> {

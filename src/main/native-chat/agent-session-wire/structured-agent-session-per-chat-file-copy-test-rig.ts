@@ -15,6 +15,7 @@ import {
   legacyJournalDatabaseFile,
   perChatJournalRoot
 } from '../agent-session-journal/journal-paths'
+import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import {
   StructuredAgentSessionPerChatFileCopy,
   type PerChatFileCopyDeps
@@ -99,7 +100,8 @@ export function copyJob(
 /** The job's dependencies over the rig's current host. Its settle is the startup state's own,
  *  counted, and its rule for which chats this host settles is the rig adapter's. */
 export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
-  const { sessions, serialize } = rig.host.collaboratorsForTests()
+  const { sessions, tasks } = rig.host.collaboratorsForTests()
+  const { serialize } = tasks
   const database = openTestJournalHostDatabase(rig.root)
   // The rig adapter's own rule.
   const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
@@ -126,6 +128,7 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     listedIds: rig.store.getVisibleSessionTabIndex().sessionIds,
     isStartupChatWorkActive: () => false,
     serialize,
+    chatWaiters: tasks,
     openJournal: (sessionId) => sessions.get(sessionId)?.journal,
     settleClosedChat: vi.fn(startup.settleClosedChat),
     canSettle,
@@ -133,7 +136,14 @@ export function copyJobDeps(rig: CopyTestRig): PerChatFileCopyDeps {
     now: () => rig.copyClock.now,
     appVersion: '1.0.0',
     freeBytes: async () => null,
-    startDelayMs: 0
+    startDelayMs: 0,
+    // On the job's clock: work the test charges by moving it is paced, and a wait moves it.
+    pace: new StructuredAgentSessionPerChatFileCopyPace(
+      () => rig.copyClock.now,
+      async (ms) => {
+        rig.copyClock.now += ms
+      }
+    )
   }
 }
 

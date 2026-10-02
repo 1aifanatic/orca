@@ -181,7 +181,10 @@ describe('the accessor', () => {
   it('opens nothing once quit began, for a read that was already waiting on the lock', async () => {
     await restingChat()
     // The host's per-session queue, held so the read waits behind it.
-    const { serialize, lifetime } = rig.host.collaboratorsForTests()
+    const {
+      tasks: { serialize },
+      lifetime
+    } = rig.host.collaboratorsForTests()
     let release = (): void => undefined
     const held = new Promise<void>((started) => {
       void serialize(SESSION, () => {
@@ -435,7 +438,7 @@ describe('an agent exit', () => {
         deathEvidence: { kind: 'exit-observed' }
       })
     )
-    await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
+    await rig.host.collaboratorsForTests().tasks.serialize(SESSION, async () => {})
 
     const sent = await rig.host.send(
       CALLER,

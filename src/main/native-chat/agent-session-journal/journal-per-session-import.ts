@@ -257,6 +257,8 @@ async function copyLegacyJournal(
       }
     })
   }
+  // Each step of the copy is a task of its own: the last batch, the verify, the publish.
+  await yieldTask()
   // Before the verify reads the file: a write after this is either read by it (a mismatch, never
   // published) or changes the file from this (kept).
   const verifiedFile = statPerChatFile(input.legacyDirectory)
@@ -273,6 +275,7 @@ async function copyLegacyJournal(
     },
     charBoundedBatches(legacyRowBatches(source, sessionId, epoch, batchRows), batchChars)
   )
+  await yieldTask()
   const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
   assertImportNotAborted(input.database, sessionId)
   input.database.transaction((db) => {

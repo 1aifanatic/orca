@@ -2,18 +2,20 @@
 // background, so no later launch reads an old file and every chat's status is stored.
 //
 // A chat is copied on its first use too; this job does the rest after startup. Its shape is the
-// common one for background maintenance: a fixed interval, a fixed budget per run checked before
-// each chat, a yield between chats, a run still going skips the next tick, and a failure is logged,
-// never thrown: one chat's skips that chat, and any other ends the job for this launch. A run waits
-// while startup chat work is in flight (startup restoration not yet settled, a tab listing, a
-// history restore, the settle step), re-derived before every run and every chat. What is owed is derived from the files on disk, so
-// nothing stored can disagree with it (structured-agent-session-per-chat-file-queue.ts). A file
-// whose copy failed for good is skipped while it and the app version stay as they were
-// (journal-background-failures.ts). A chat too big for the free space is left for a later launch;
-// below a floor no chat copies until space returns. Each chat copies inside its host serialize, so
-// a send to it goes first or waits for the rest of that copy; any other chat waits one batch.
-// Then, under the same budget and gate, every chat already in the database gets the status row the
-// version 5 migration left it without (structured-agent-session-status-backfill-step.ts).
+// common one for background maintenance: a fixed interval starts a run, a run still going skips the
+// next tick, a yield ends every task, and a failure is logged, never thrown: one chat's skips that
+// chat, and any other ends the job for this launch. One pace holds every task the job runs to a
+// share of the main thread (structured-agent-session-per-chat-file-copy-pace.ts). A run waits while
+// startup chat work is in flight (startup restoration not yet settled, a tab listing, a history
+// restore, the settle step), re-derived before every run and every chat. What is owed is derived
+// from the files on disk, so nothing stored can disagree with it
+// (structured-agent-session-per-chat-file-queue.ts). A file whose copy failed for good is skipped
+// while it and the app version stay as they were (journal-background-failures.ts). A chat too big
+// for the free space is left for a later launch; below a floor no chat copies until space returns.
+// Each chat copies inside its host serialize, so a send to it goes first or waits for the rest of
+// that copy, never for the pace; any other chat waits one batch. Then, under the same pace and
+// gate, every chat already in the database gets the status row the version 5 migration left it
+// without (structured-agent-session-status-backfill-step.ts).
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -43,6 +45,7 @@ import {
   removeEmptyPerChatDirectories,
   roomToCopy
 } from './structured-agent-session-per-chat-file-walk'
+import type { StructuredAgentSessionChatWaiters } from './structured-agent-session-task-queue'
 import type {
   StructuredAgentSessionStartupState,
   StructuredAgentSessionStartupStateDeps
@@ -52,8 +55,6 @@ export const PER_CHAT_FILE_COPY_INTERVAL_MS = 1_000
 /** No run before this long after the job starts, so the first launch's paint goes first; the first
  *  listing goes first by the startup chat work gate. */
 export const PER_CHAT_FILE_COPY_START_DELAY_MS = 10_000
-export const PER_CHAT_FILE_COPY_RUN_BUDGET_MS = 200
-export const PER_CHAT_FILE_COPY_RUN_MAX_CHATS = 8
 /** After a run stopped for low disk, the next free-space probe waits this long. */
 export const PER_CHAT_FILE_COPY_DISK_RETRY_MS = 60_000
 
@@ -66,6 +67,8 @@ export type PerChatFileCopyDeps = {
    *  restore, or the settle step. */
   isStartupChatWorkActive: () => boolean
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+  /** Who waits for a chat's lock: the copy gives way to them inside a chat. */
+  chatWaiters: StructuredAgentSessionChatWaiters
   /** The chat's journal, when it is open on this host. */
   openJournal: (
     sessionId: string
@@ -84,8 +87,6 @@ export type PerChatFileCopyDeps = {
   pace?: StructuredAgentSessionPerChatFileCopyPace
   intervalMs?: number
   startDelayMs?: number
-  runBudgetMs?: number
-  runMaxChats?: number
 }
 
 type TallyKey =
@@ -119,10 +120,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       onLeftover: () => this.count('leftovers'),
       onOrphan: () => this.count('orphans')
     })
-    this.backfill = createStructuredAgentSessionStatusBackfill({
-      ...deps,
-      yieldTask: this.pace.yieldTask
-    })
+    this.backfill = createStructuredAgentSessionStatusBackfill({ ...deps, inChat: this.inChat })
   }
 
   start(): void {
@@ -168,13 +166,10 @@ export class StructuredAgentSessionPerChatFileCopy {
     await this.running
   }
 
+  /** Chats until the end, the gate or the disk stops it; the pace alone sets how fast. */
   private async run(): Promise<void> {
-    const began = this.deps.now()
     this.pace.begin()
-    const budgetMs = this.deps.runBudgetMs ?? PER_CHAT_FILE_COPY_RUN_BUDGET_MS
-    const maxChats = this.deps.runMaxChats ?? PER_CHAT_FILE_COPY_RUN_MAX_CHATS
-    let copies = 0
-    while (copies < maxChats && this.deps.now() - began < budgetMs) {
+    for (;;) {
       // Re-derived per chat: a listing that starts mid-run pauses the job after the chat in hand.
       if (this.stopped() || this.deps.isStartupChatWorkActive()) {
         return
@@ -192,9 +187,6 @@ export class StructuredAgentSessionPerChatFileCopy {
       if (step === 'backfilled') {
         this.count(step)
       }
-      if (step === 'copied' || step === 'backfilled') {
-        copies += 1
-      }
       await this.pace.yieldTask()
     }
   }
@@ -210,6 +202,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       if (!file) {
         return 'skipped'
       }
+      this.pace.pause()
       const room = await roomToCopy(this.deps.database.stateDirectory, file, this.deps.freeBytes)
       if (room === 'wait') {
         this.queue.defer(record)
@@ -220,7 +213,9 @@ export class StructuredAgentSessionPerChatFileCopy {
         this.count('noRoom')
         return 'skipped'
       }
-      await this.deps.serialize(sessionId, () => this.copyUnderSerialize(record, legacyDirectory))
+      await this.inChat(sessionId, (yieldTask) =>
+        this.copyUnderSerialize(record, legacyDirectory, yieldTask)
+      )
       return 'copied'
     } catch (error) {
       return this.onFailure(record, legacyDirectory, error)
@@ -246,9 +241,15 @@ export class StructuredAgentSessionPerChatFileCopy {
     return file
   }
 
+  private inChat = <T>(
+    sessionId: string,
+    task: (yieldTask: () => Promise<void>) => Promise<T>
+  ): Promise<T> => this.pace.inChat(this.deps, sessionId, task)
+
   private async copyUnderSerialize(
     record: AgentSessionRecord,
-    legacyDirectory: string
+    legacyDirectory: string,
+    yieldTask: () => Promise<void>
   ): Promise<void> {
     if (this.stopped()) {
       return
@@ -256,8 +257,11 @@ export class StructuredAgentSessionPerChatFileCopy {
     const { sessionId } = record
     const open = this.deps.openJournal(sessionId)
     if (open?.importPending) {
-      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue.
+      // Previewed by a restore: the copy is that chat's own owed import, run in its write queue,
+      // unpaced and not charged to the copy.
+      this.pace.pause()
       await open.whenImported()
+      this.pace.begin()
       this.count('copied')
       return
     }
@@ -273,7 +277,7 @@ export class StructuredAgentSessionPerChatFileCopy {
       database: this.deps.database,
       identity,
       legacyDirectory,
-      yieldTask: this.pace.yieldTask
+      yieldTask
     })
     if (result.outcome === 'imported') {
       this.count('copied')

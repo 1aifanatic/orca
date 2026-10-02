@@ -262,7 +262,7 @@ function attach(fence: number) {
 
 /** Runs whatever this session's serialize already has queued. */
 function drainSession(): Promise<void> {
-  return host.collaboratorsForTests().serialize(SESSION, async () => {})
+  return host.collaboratorsForTests().tasks.serialize(SESSION, async () => {})
 }
 
 // On desktop the chat on screen at relaunch opens before the startup reconcile has probed its owner,
@@ -334,7 +334,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
 
     await host
       .collaboratorsForTests()
-      .serialize(SESSION, () =>
+      .tasks.serialize(SESSION, () =>
         resettleOpenStructuredAgentSessionConversation(
           host.deps,
           SESSION,

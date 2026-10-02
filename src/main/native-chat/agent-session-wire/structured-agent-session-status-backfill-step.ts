@@ -28,7 +28,6 @@ type StatusBackfillDeps = Pick<
   PerChatFileCopyDeps,
   | 'database'
   | 'store'
-  | 'serialize'
   | 'openJournal'
   | 'settleClosedChat'
   | 'canSettle'
@@ -36,8 +35,8 @@ type StatusBackfillDeps = Pick<
   | 'now'
   | 'appVersion'
 > & {
-  /** Ends each of the phase's tasks, as the copy's pace allows. */
-  yieldTask: () => Promise<void>
+  /** Runs a step inside the chat's lock, handing it the yield that ends each of its tasks. */
+  inChat: <T>(sessionId: string, task: (yieldTask: () => Promise<void>) => Promise<T>) => Promise<T>
 }
 
 /** The chats the phase owes a row, in the order it writes them. */
@@ -80,14 +79,15 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
       console.warn(`[structured-agent-session] ${message}`, details)
     }
   }
-  const underSerialize = async (sessionId: string): Promise<boolean> => {
+  const underSerialize = async (
+    sessionId: string,
+    yieldTask: () => Promise<void>
+  ): Promise<boolean> => {
     // An open chat writes its own row; quit writes nothing more.
     if (deps.isDisposed() || deps.database.importsAborted || deps.openJournal(sessionId)) {
       return false
     }
-    const written = await backfillJournalSessionStatus(deps.database, sessionId, {
-      yieldTask: deps.yieldTask
-    })
+    const written = await backfillJournalSessionStatus(deps.database, sessionId, { yieldTask })
     if (written) {
       await settleWrittenChat(deps, sessionId, written)
     }
@@ -122,7 +122,9 @@ export function createStructuredAgentSessionStatusBackfill(deps: StatusBackfillD
         return 'done'
       }
       try {
-        const wrote = await deps.serialize(sessionId, () => underSerialize(sessionId))
+        const wrote = await deps.inChat(sessionId, (yieldTask) =>
+          underSerialize(sessionId, yieldTask)
+        )
         return wrote ? 'backfilled' : 'skipped'
       } catch (error) {
         return onFailure(sessionId, error)

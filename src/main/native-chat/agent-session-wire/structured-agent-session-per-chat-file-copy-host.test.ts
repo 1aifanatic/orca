@@ -20,7 +20,9 @@ import {
   createStructuredAgentSessionPerChatFileCopyControl,
   startStructuredAgentSessionPerChatFileCopy
 } from './structured-agent-session-per-chat-file-copy-control'
+import { importPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { StructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy'
+import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
@@ -301,6 +303,54 @@ describe('the same chat sent to while it copies (T8, regression guard)', () => {
   })
 })
 
+describe('a chat opened while the copy holds it (R4P-1)', () => {
+  it('waits for the rest of that chat’s copy, never for the copy’s pace', async () => {
+    const rig = await newRig()
+    await createChats(rig, ['session-held'])
+    await rig.crash()
+    moveToPerChatFiles(rig, ['session-held'])
+    await rig.boot()
+    let pacing = Promise.withResolvers<void>()
+    const deps = copyJobDeps(rig)
+    // A pace whose every wait lasts until something ends it: only giving way, or quit, does.
+    const pace = new StructuredAgentSessionPerChatFileCopyPace(
+      () => rig.copyClock.now,
+      (_ms, signal) => {
+        pacing.resolve()
+        return new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }))
+      }
+    )
+    const job = new StructuredAgentSessionPerChatFileCopy({
+      ...deps,
+      pace,
+      // Each of the copy's tasks costs a second, so every yield inside the chat owes a wait.
+      importJournal: (input) =>
+        importPerSessionJournal({
+          ...input,
+          batchRows: 1,
+          yieldTask: async () => {
+            rig.copyClock.now += 1_000
+            await input.yieldTask?.()
+          }
+        })
+    })
+    const run = job.tick()
+    await pacing.promise
+    pacing = Promise.withResolvers<void>()
+
+    const sent = await Promise.race([
+      sendRestTestMessage(rig, 'session-held', 'while it copies'),
+      new Promise<'still waiting'>((resolve) => setTimeout(() => resolve('still waiting'), 5_000))
+    ])
+
+    expect(sent).not.toBe('still waiting')
+    expect(sent === 'still waiting' ? null : sent.ok).toBe(true)
+    expect(db(rig).prepare('SELECT count(*) AS n FROM journal_imports').get()).toEqual({ n: 1 })
+    await job.stop()
+    await run
+  })
+})
+
 describe('starting and stopping (T17b, T6)', () => {
   it('starts one job however often startup runs, and its stop aborts every import first', async () => {
     const rig = await newRig()
@@ -312,7 +362,8 @@ describe('starting and stopping (T17b, T6)', () => {
     const control = createStructuredAgentSessionPerChatFileCopyControl({
       database,
       store: rig.store,
-      serialize: rig.host.collaboratorsForTests().serialize,
+      serialize: rig.host.collaboratorsForTests().tasks.serialize,
+      chatWaiters: rig.host.collaboratorsForTests().tasks,
       openJournal: () => undefined,
       settleClosedChat: async () => false,
       canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord =>

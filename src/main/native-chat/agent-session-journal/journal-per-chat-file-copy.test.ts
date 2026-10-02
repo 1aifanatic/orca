@@ -359,6 +359,40 @@ describe('each task’s end, paced by the background copy (C3)', () => {
   })
 })
 
+describe('each step of a copy is a task of its own (R4P-2)', () => {
+  it('yields between the copy, both sides of the verify and the publish, even for one batch', async () => {
+    const { directory, rows } = await stageChat('session-small', manyItems)
+    expect(rows.length).toBeLessThan(512)
+    const database = openTestJournalHostDatabase(root)
+    const steps: string[] = []
+    const copy = database.unsyncedTransaction.bind(database)
+    vi.spyOn(database, 'unsyncedTransaction').mockImplementation((run) => {
+      steps.push('copy')
+      return copy(run)
+    })
+    const publish = database.transaction.bind(database)
+    vi.spyOn(database, 'transaction').mockImplementation((run) => {
+      if (database.db.pragma('synchronous', { simple: true }) !== 1) {
+        steps.push('publish')
+      }
+      return publish(run)
+    })
+    const yieldTask = vi.fn(async () => {
+      steps.push('yield')
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    })
+
+    await importChat('session-small', directory, { yieldTask })
+
+    // The leftover delete and the one copy batch, then the verify's file side, its copy side and
+    // the publish, each after a yield.
+    const fromCopy = steps.slice(steps.lastIndexOf('copy'))
+    expect(
+      fromCopy.slice(0, fromCopy.indexOf('publish')).filter((s) => s === 'yield')
+    ).toHaveLength(3)
+  })
+})
+
 describe('each task’s share of a chat’s bytes (C3)', () => {
   it('splits a batch so no part holds more than its share of row JSON; a larger row goes alone', () => {
     const row = (seq: number, size: number) => ({ seq, ts: seq, rowJson: 'x'.repeat(size) })

@@ -30,13 +30,20 @@ import {
 } from '../agent-session-journal/journal-per-session-import'
 import {
   PER_CHAT_FILE_COPY_DISK_RETRY_MS,
-  PER_CHAT_FILE_COPY_INTERVAL_MS
+  PER_CHAT_FILE_COPY_INTERVAL_MS,
+  StructuredAgentSessionPerChatFileCopy
 } from './structured-agent-session-per-chat-file-copy'
 import { startStructuredAgentSessionPerChatFileCopy } from './structured-agent-session-per-chat-file-copy-control'
-import { StructuredAgentSessionPerChatFileCopyPace } from './structured-agent-session-per-chat-file-copy-pace'
+import {
+  PER_CHAT_FILE_COPY_BURST_MS,
+  PER_CHAT_FILE_COPY_SHARE,
+  StructuredAgentSessionPerChatFileCopyPace
+} from './structured-agent-session-per-chat-file-copy-pace'
+import { restTestChat } from './structured-agent-session-rest-test-rig'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
+  copyJobDeps as rigCopyJobDeps,
   createChats,
   createCopyTestRig,
   hasPerChatFile,
@@ -118,21 +125,54 @@ function countedImport() {
   )
 }
 
-describe('a fixed budget per run (T2)', () => {
-  it('starts no chat after 200 ms of a run, and none past the 8th', async () => {
+describe('one run, paced (T2, R4P-3)', () => {
+  it('goes on until the end, its pace alone setting the rate between chats', async () => {
     const rig = await newRig()
     await stubChats(rig, 12)
-    const slow = costlyImport(rig, 60)
+    const starts: number[] = []
+    const slow = vi.fn(async (_input: Parameters<typeof importPerSessionJournal>[0]) => {
+      starts.push(rig.copyClock.now)
+      rig.copyClock.now += 60
+      return { outcome: 'imported' as const }
+    })
     const job = copyJob(rig, { importJournal: slow })
 
     await job.tick()
-    // 0, 60, 120 and 180 ms are under the budget; the run ends at 240.
-    expect(slow).toHaveBeenCalledTimes(4)
 
-    const fast = costlyImport(rig, 1)
-    const capped = copyJob(rig, { importJournal: fast })
-    await capped.tick()
-    expect(fast).toHaveBeenCalledTimes(8)
+    // No per-run budget or chat cap: every chat in one run.
+    expect(slow).toHaveBeenCalledTimes(12)
+    // The pace waited between chats (the fake import never yields), so no second holds more than
+    // the share, the burst and one chat.
+    const busiest = Math.max(
+      ...starts.map((from) => starts.filter((at) => at >= from && at < from + 1_000).length * 60)
+    )
+    expect(busiest).toBeLessThanOrEqual(
+      PER_CHAT_FILE_COPY_BURST_MS + PER_CHAT_FILE_COPY_SHARE * 1_000 + 60
+    )
+  })
+
+  it('charges none of the idle time between runs', async () => {
+    const rig = await newRig()
+    await stubChats(rig, 2)
+    let listing = false
+    const fake = vi.fn(async () => {
+      rig.copyClock.now += 60
+      // A listing starts with the first chat: the run ends after it.
+      listing = true
+      return { outcome: 'imported' as const }
+    })
+    const job = copyJob(rig, { importJournal: fake, isStartupChatWorkActive: () => listing })
+    await job.tick()
+    expect(fake).toHaveBeenCalledOnce()
+
+    rig.copyClock.now += 10_000
+    listing = false
+    const resumed = rig.copyClock.now
+    await job.tick()
+
+    expect(fake).toHaveBeenCalledTimes(2)
+    // Ten idle seconds charged as work would make the pace wait about a minute.
+    expect(rig.copyClock.now - resumed).toBeLessThan(1_000)
   })
 
   it('skips a tick while a run is still going, and ticks a second apart', async () => {
@@ -209,18 +249,39 @@ describe('waiting for startup chat work (T16)', () => {
 })
 
 describe('the copy’s share of the main thread (C3)', () => {
-  it('hands its pace to every copy, so a chat’s batches are paced too', async () => {
+  it('runs every copy and missing row inside the chat, handing on that chat’s paced yield', async () => {
     const rig = await newRig()
     await stubChats(rig, 2, true)
-    const pace = new StructuredAgentSessionPerChatFileCopyPace()
+    // A missing row long enough that its fold takes more than one task.
+    await restTestChat(rig, 'session-rowless', { listed: false, message: 'x'.repeat(600_000) })
+    await rig.crash()
+    openTestJournalHostDatabase(rig.root)
+      .db.prepare("DELETE FROM journal_session_state WHERE session_id = 'session-rowless'")
+      .run()
+    await rig.boot()
+    const deps = rigCopyJobDeps(rig)
+    const pace = deps.pace!
+    const handed = new Map<string, () => Promise<void>>()
+    const yields = new Map<string, number>()
+    const inChat = pace.inChat.bind(pace)
+    vi.spyOn(pace, 'inChat').mockImplementation((lock, sessionId, task) =>
+      inChat(lock, sessionId, (yieldTask) => {
+        const counted = () => {
+          yields.set(sessionId, (yields.get(sessionId) ?? 0) + 1)
+          return yieldTask()
+        }
+        handed.set(sessionId, counted)
+        return task(counted)
+      })
+    )
     const fake = costlyImport(rig, 1)
 
-    await runToEnd(rig, copyJob(rig, { importJournal: fake, pace }))
+    await runToEnd(rig, new StructuredAgentSessionPerChatFileCopy({ ...deps, importJournal: fake }))
 
-    expect(fake).toHaveBeenCalledTimes(2)
     for (const [input] of fake.mock.calls) {
-      expect(input.yieldTask).toBe(pace.yieldTask)
+      expect(input.yieldTask).toBe(handed.get(input.identity.sessionId))
     }
+    expect(yields.get('session-rowless')).toBeGreaterThan(0)
   })
 
   it('ends the wait of its pace at quit', async () => {
