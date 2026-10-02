@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import type { WorkerThreadFactory } from '../lazy-worker-thread-host'
+import type { WorkerRequestTransport, WorkerThreadFactory } from '../lazy-worker-thread-host'
 import { WorkerThreadRequestQueue } from '../worker-thread-request-queue'
 import type { CursorDesktopProfileReadResult } from './cursor-desktop-state-db'
 
@@ -29,13 +29,14 @@ export class CursorDesktopProfileWorker {
     CursorDesktopProfileResponse
   >
   private readonly inflight = new Map<string, Promise<CursorDesktopProfileReadResult>>()
+  private retiring = false
 
   constructor(
     factory: WorkerThreadFactory,
     private readonly timeoutMs = 10_000
   ) {
     this.queue = new WorkerThreadRequestQueue({
-      factory,
+      factory: () => this.createWorker(factory),
       idleTeardownMs: 30_000,
       maxConsecutiveDeaths: 2,
       queueCap: { maxQueuedCalls: 8, describeFull: () => READ_ERROR },
@@ -67,6 +68,28 @@ export class CursorDesktopProfileWorker {
   dispose(): void {
     this.queue.dispose()
     this.inflight.clear()
+  }
+
+  private createWorker(factory: WorkerThreadFactory): WorkerRequestTransport {
+    if (this.retiring) {
+      throw new Error(READ_ERROR)
+    }
+    const worker = factory()
+    return {
+      on: (...args) => worker.on(...args),
+      off: (...args) => worker.off(...args),
+      removeAllListeners: () => worker.removeAllListeners(),
+      unref: () => worker.unref(),
+      postMessage: (...args) => worker.postMessage(...args),
+      terminate: () => {
+        // Native SQLite work can delay termination; never overlap retired workers.
+        this.retiring = true
+        return worker.terminate().then((code) => {
+          this.retiring = false
+          return code
+        })
+      }
+    }
   }
 }
 
