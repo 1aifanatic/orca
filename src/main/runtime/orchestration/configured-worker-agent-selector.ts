@@ -1,8 +1,10 @@
+import { extractLeadingEnvAssignments } from '../../../shared/command-environment'
 import { getCommandTokenPathBasename } from '../../../shared/command-token-scanner'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { isTuiAgent } from '../../../shared/tui-agent-config'
 import {
   resolveStartupShell,
+  type AgentStartupShell,
   tokenizeStartupCommand
 } from '../../../shared/tui-agent-startup-shell'
 import { OrchestrationError } from './orchestration-error'
@@ -10,7 +12,8 @@ import { OrchestrationError } from './orchestration-error'
 export function resolveConfiguredWorkerAgent(
   selector: string,
   overrides: Partial<Record<TuiAgent, string>>,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  shell?: AgentStartupShell
 ): TuiAgent | undefined {
   if (isTuiAgent(selector)) {
     return selector
@@ -20,13 +23,16 @@ export function resolveConfiguredWorkerAgent(
     if (!isTuiAgent(agent) || !command) {
       continue
     }
-    const parsed = tokenizeStartupCommand(command, resolveStartupShell(platform))
+    const parsed = tokenizeStartupCommand(command, resolveStartupShell(platform, shell))
     // A command wrapper cannot attest which CLI grammar its arguments implement.
     if (
       !parsed.ok ||
       parsed.tokens.length !== 1 ||
       parsed.spans.some((span) => span.divergesFromShell)
     ) {
+      continue
+    }
+    if (extractLeadingEnvAssignments(parsed.tokens).env) {
       continue
     }
     const executable = parsed.tokens[0]
