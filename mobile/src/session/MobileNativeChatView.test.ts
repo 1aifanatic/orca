@@ -165,6 +165,17 @@ describe('MobileNativeChatView', () => {
     expect(stop.props.disabled).toBe(true)
   })
 
+  it('tells the composer a message sent now runs after the stop', async () => {
+    await render({
+      structuredActivityUi: true,
+      agentWorking: true,
+      canStop: true,
+      turnIndicator: { thinking: false, activityText: null, stopping: true }
+    })
+    const composer = renderer!.root.find((node) => node.type === 'Composer')
+    expect(composer.props.placeholder).toBe('Queue a message to run after the stop')
+  })
+
   // A Stop the provider took and never answered ends only at a repeat Stop.
   it('keeps Stop for the repeat that escalates while the host alone says Stopping', async () => {
     await render({

@@ -17782,6 +17782,7 @@
         "responding": "Agent is responding",
         "working": "Working…",
         "stopping": "Stopping…",
+        "queueAfterStop": "Queue a message to run after the stop",
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",

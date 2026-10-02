@@ -312,9 +312,8 @@ export function NativeChatStructuredSession(
       {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
       <NativeChatQueuedMessageList
         controller={controller.queuedMessages}
-        focusComposer={() => {
-          composerRef.current?.focus()
-        }}
+        steerHeld={stopping}
+        focusComposer={() => composerRef.current?.focus()}
       />
       <NativeChatStructuredSessionStatus
         sessionId={props.sessionId}
@@ -400,7 +399,9 @@ export function NativeChatStructuredSession(
           isWorking={controller.canStop}
           isStopping={stopInFlight}
           onStop={() => void (stopInFlight || controller.stop())}
-          steerQueued={controller.queuedMessages.steerNewest}
+          // Nothing steers into a turn a Stop is ending; a message sent then runs after it.
+          steerQueued={stopping ? undefined : controller.queuedMessages.steerNewest}
+          queuesAfterStop={stopping}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />

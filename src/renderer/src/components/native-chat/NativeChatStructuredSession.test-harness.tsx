@@ -88,6 +88,8 @@ export function createStructuredSessionMocks() {
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
       isStopping?: boolean
+      queuesAfterStop?: boolean
+      steerQueued?: () => boolean
       onStop?: () => void
     }>(),
     approvalCardProps: initialApprovalCardProps,

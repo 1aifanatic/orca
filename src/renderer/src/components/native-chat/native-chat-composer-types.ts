@@ -59,6 +59,8 @@ export type NativeChatComposerProps = {
   isWorking?: boolean
   /** This client's Stop request is in flight: the Stop control is disabled and says so. */
   isStopping?: boolean
+  /** The chat reads Stopping: the placeholder says a message runs after the stop. */
+  queuesAfterStop?: boolean
   /** Interrupt the hosted agent, usually by sending ESC into the PTY. */
   onStop?: () => void
   /** Render an optimistic echo until the real transcript turn lands. */

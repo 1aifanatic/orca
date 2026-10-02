@@ -31,18 +31,21 @@ vi.mock('./NativeChatEmptyState', () => moduleFactories.nativeChatEmptyState())
 vi.mock('./NativeChatApprovalCard', () => moduleFactories.nativeChatApprovalCard())
 vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard())
 
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 
 function renderPane(): void {
   render(
-    <NativeChatStructuredSession
-      isVisible
-      isFocusedGroup
-      tabId="structured-tab-1"
-      sessionId="session-1"
-      target={{ kind: 'local' }}
-      agent="codex"
-    />
+    <TooltipProvider>
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-1"
+        sessionId="session-1"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    </TooltipProvider>
   )
 }
 
@@ -82,9 +85,27 @@ describe("the chat pane while a person's Stop ends the turn", () => {
 
     // A Stop the provider took and never answered (a Codex command) ends only at a second Stop.
     await waitFor(() => expect(mocks.messageListProps).toMatchObject({ stopping: true }))
-    expect(mocks.composerProps).toMatchObject({ isStopping: false })
+    expect(mocks.composerProps).toMatchObject({ isStopping: false, queuesAfterStop: true })
+    // Nothing steers into a turn a Stop is ending.
+    expect(mocks.composerProps?.steerQueued).toBeUndefined()
     mocks.composerProps?.onStop?.()
     expect(mocks.stop).toHaveBeenCalledOnce()
+  })
+
+  it("holds a queued card's Steer while the host says Stopping", async () => {
+    mocks.turnId = 'turn-1'
+    mocks.queuedCards = [
+      { messageId: 'draft-1', position: 1, text: 'one more thing', state: 'waiting', hold: 'turn' }
+    ]
+    renderPane()
+    await waitFor(() => expect(hostStatus.emit).not.toBeNull())
+    const steer = (): HTMLElement | null =>
+      document.querySelector('[data-queued-message-id="draft-1"] button')
+    expect(steer()).toHaveProperty('disabled', false)
+
+    hostSays(true)
+
+    await waitFor(() => expect(steer()).toHaveProperty('disabled', true))
   })
 
   it('reads Stopping from its own press, and holds Stop until that request answers', () => {
@@ -102,7 +123,8 @@ describe("the chat pane while a person's Stop ends the turn", () => {
     mocks.turnId = 'turn-1'
     renderPane()
 
-    expect(mocks.composerProps).toMatchObject({ isStopping: false })
+    expect(mocks.composerProps).toMatchObject({ isStopping: false, queuesAfterStop: false })
+    expect(mocks.composerProps?.steerQueued).toBe(mocks.queuedSteerNewest)
     mocks.composerProps?.onStop?.()
     expect(mocks.stop).toHaveBeenCalledOnce()
   })

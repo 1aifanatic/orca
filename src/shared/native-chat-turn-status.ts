@@ -10,6 +10,8 @@ export const NATIVE_CHAT_TURN_STATUS_COPY = {
   thinking: 'Thinking',
   working: 'Working…',
   stopping: 'Stopping…',
+  /** The composer's placeholder while the chat reads Stopping. */
+  queueAfterStop: 'Queue a message to run after the stop',
   workingFor: 'Working for {{value0}}',
   workedFor: 'Worked for {{value0}}',
   interruptedAfter: 'Interrupted after {{value0}}',

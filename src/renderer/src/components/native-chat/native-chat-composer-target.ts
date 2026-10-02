@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { NATIVE_CHAT_TURN_STATUS_COPY } from '../../../../shared/native-chat-turn-status'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 
@@ -11,7 +12,11 @@ export type NativeChatResolvedTarget = {
  *  pathological clipboard can't stall the round-trip. */
 export const NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES = 16 * 1024 * 1024
 
-export function nativeChatComposerPlaceholder(hasPty: boolean, canSend: boolean): string {
+export function nativeChatComposerPlaceholder(
+  hasPty: boolean,
+  canSend: boolean,
+  queuesAfterStop = false
+): string {
   if (!hasPty) {
     return translate(
       'components.native-chat.composer.noPty',
@@ -20,6 +25,12 @@ export function nativeChatComposerPlaceholder(hasPty: boolean, canSend: boolean)
   }
   if (!canSend) {
     return translate('components.native-chat.composer.locked', 'Input is held by another device.')
+  }
+  if (queuesAfterStop) {
+    return translate(
+      'components.native-chat.status.queueAfterStop',
+      NATIVE_CHAT_TURN_STATUS_COPY.queueAfterStop
+    )
   }
   return translate('components.native-chat.composer.placeholder', 'Send a message…')
 }

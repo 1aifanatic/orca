@@ -37,6 +37,8 @@ export type NativeChatComposerFieldProps = {
   isWorking: boolean
   /** This client's Stop request is in flight: the Stop control is disabled and says so. */
   isStopping?: boolean
+  /** The chat reads Stopping: the placeholder says a message runs after the stop. */
+  queuesAfterStop?: boolean
   attachDisabled: boolean
   dictationDisabled: boolean
   isDictating: boolean
@@ -112,6 +114,7 @@ export function NativeChatComposerField({
   sendButtonDisabled,
   isWorking,
   isStopping = false,
+  queuesAfterStop = false,
   attachDisabled,
   dictationDisabled,
   isDictating,
@@ -270,7 +273,7 @@ export function NativeChatComposerField({
                       'components.native-chat.goal.placeholder',
                       'Describe your goal, define measurable outcomes for best results'
                     )
-                  : nativeChatComposerPlaceholder(hasPty, canSend)
+                  : nativeChatComposerPlaceholder(hasPty, canSend, queuesAfterStop)
               }
               // Why: coarse-pointer min-height follows the app's touch target convention.
               // Editable content grows naturally; the 8lh cap (plus

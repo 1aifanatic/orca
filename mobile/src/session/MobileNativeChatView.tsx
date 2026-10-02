@@ -20,6 +20,7 @@ import {
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import { colors } from '../theme/mobile-theme'
+import { mobileNativeChatComposerPlaceholder } from './mobile-native-chat-composer-placeholder'
 import { styles } from './mobile-native-chat-view-styles'
 import { mobileNativeChatListFooter } from './mobile-native-chat-list-footer'
 import {
@@ -455,13 +456,7 @@ export function MobileNativeChatView({
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
         disabled={lockReason !== null}
-        placeholder={
-          lockReason === 'disconnected'
-            ? 'Reconnecting…'
-            : lockReason === 'waiting'
-              ? 'Waiting for terminal…'
-              : 'Message, @files, /commands'
-        }
+        placeholder={mobileNativeChatComposerPlaceholder(lockReason, stopping)}
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}
       />
