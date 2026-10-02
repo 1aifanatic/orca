@@ -223,7 +223,110 @@ describe('WorktreeMetaDialog issue link row', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
     useAppStore.setState(initialState, true)
+  })
+
+  it.each([
+    'Notes about this worktree...',
+    'Custom display name...',
+    'Issue #, or a GitHub or Linear URL',
+    'PR # or GitHub URL'
+  ])('ignores IME Enter and preserves ordinary Enter in %s', async (placeholder) => {
+    openDialog()
+    const input = screen.getByPlaceholderText(placeholder)
+    for (const marker of [{ isComposing: true, keyCode: 13 }, { keyCode: 229 }]) {
+      expect(fireEvent.keyDown(input, { key: 'Enter', ...marker })).toBe(true)
+      expect(updateWorktreeMeta).not.toHaveBeenCalled()
+      expect(useAppStore.getState().activeModal).toBe('edit-meta')
+    }
+    fireEvent.blur(input)
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 })
+    })
+    expect(updateWorktreeMeta).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().activeModal).toBe('none')
+  })
+
+  it.each(
+    ['before keyup', 'after keyup'].flatMap((order) =>
+      [
+        {
+          placeholder: 'Notes about this worktree...',
+          value: '日本語のノート',
+          updates: { comment: '日本語のノート' }
+        },
+        {
+          placeholder: 'Custom display name...',
+          value: '日本語の名前',
+          updates: { displayName: '日本語の名前' }
+        },
+        {
+          placeholder: 'Issue #, or a GitHub or Linear URL',
+          value: '42',
+          updates: { linkedIssue: 42 }
+        },
+        { placeholder: 'PR # or GitHub URL', value: '43', updates: { linkedPR: 43 } },
+        { placeholder: 'MR ! or GitLab URL', value: '!44', updates: { linkedGitLabMR: 44 } }
+      ].map((field) => ({ ...field, order }))
+    )
+  )(
+    'ignores the IME Enter redispatch $order in $placeholder',
+    async ({ order, placeholder, value, updates }) => {
+      openDialog(placeholder === 'MR ! or GitLab URL' ? { modalReviewProvider: 'gitlab' } : {})
+      const input = screen.getByPlaceholderText(placeholder)
+      const frames: FrameRequestCallback[] = []
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
+        frames.push(callback)
+      )
+      fireEvent.compositionStart(input)
+      fireEvent.keyDown(input, { key: 'Process', keyCode: 229, isComposing: true })
+      fireEvent.change(input, { target: { value } })
+      fireEvent.compositionEnd(input)
+      if (order === 'after keyup') {
+        fireEvent.keyUp(input, { key: 'Enter', keyCode: 13 })
+      }
+      expect(fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 })).toBe(false)
+      expect(updateWorktreeMeta).not.toHaveBeenCalled()
+      expect(useAppStore.getState().activeModal).toBe('edit-meta')
+      fireEvent.keyUp(input, { key: 'Enter', keyCode: 13 })
+      act(() => frames.forEach((callback) => callback(0)))
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 })
+      })
+      expect(updateWorktreeMeta.mock.calls[0]?.[1]).toEqual(expect.objectContaining(updates))
+      expect(updateWorktreeMeta).toHaveBeenCalledTimes(1)
+      expect(useAppStore.getState().activeModal).toBe('none')
+    }
+  )
+
+  it.each([
+    { userAgent: 'Macintosh', modifier: { metaKey: true } },
+    { userAgent: 'Windows', modifier: { ctrlKey: true } },
+    { userAgent: 'Linux', modifier: { ctrlKey: true } }
+  ])(
+    'keeps the save shortcut outside composition on $userAgent',
+    async ({ userAgent, modifier }) => {
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent)
+      openDialog()
+      const input = screen.getByPlaceholderText('Notes about this worktree...')
+      fireEvent.compositionStart(input)
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, ...modifier })
+      expect(updateWorktreeMeta).not.toHaveBeenCalled()
+      fireEvent.compositionEnd(input)
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, ...modifier })
+      })
+      expect(updateWorktreeMeta).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('leaves Shift+Enter available for a newline', () => {
+    openDialog()
+    const input = screen.getByPlaceholderText('Notes about this worktree...')
+    expect(fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, shiftKey: true })).toBe(true)
+    expect(updateWorktreeMeta).not.toHaveBeenCalled()
+    expect(useAppStore.getState().activeModal).toBe('edit-meta')
   })
 
   it('seeds the chip and value from a GitHub link', () => {
