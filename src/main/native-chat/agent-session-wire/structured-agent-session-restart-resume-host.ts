@@ -102,17 +102,21 @@ export function createStructuredAgentSessionRestartResume(
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
+  // Read once the chat is revealed: listing and acting open each marker's journal first.
+  const readOnly = (sessionId: string) => sessions.get(sessionId)?.journal.isReadOnly === true
   const derive = createStructuredAgentSessionRestartCandidateReader({
     sessions,
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
-    movedOn: withdrawal.movedOn
+    movedOn: withdrawal.movedOn,
+    readOnly
   })
   const failures = createStructuredAgentSessionRestartFailureLedger({
     ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
     retryable: (marker) => derive([marker], 'may-be-held').candidates.length === 1,
+    readOnly,
     reveal: (markers) => revealMarkers(markers),
     logger: deps.logger,
     now: surfaces.now,

@@ -455,7 +455,8 @@ describe('the resumable set', () => {
       getRecord: () => claudeRecord('5aed93d6-advanced-leaf'),
       supportsRecord: () => true,
       latestPrompt: () => '',
-      movedOn: () => false
+      movedOn: () => false,
+      readOnly: () => false
     })
 
     expect(candidates).toHaveLength(1)
@@ -470,11 +471,28 @@ describe('the resumable set', () => {
       getRecord: () => claudeRecord(null, 'prov-session-2'),
       supportsRecord: () => true,
       latestPrompt: () => '',
-      movedOn: () => false
+      movedOn: () => false,
+      readOnly: () => false
     })
 
     expect(set.candidates).toEqual([])
     expect(set.superseded).toEqual([forked])
+  })
+
+  // A read-only chat cannot be continued here; its offer is kept for an updated Orca, not spent.
+  it('neither offers nor spends a read-only chat, and offers it once its journal is writable', () => {
+    const offer = marker()
+    expect(resumableSet({ markers: [offer], readOnly: [SESSION] })).toEqual({
+      candidates: [],
+      superseded: []
+    })
+    expect(resumableSet({ markers: [offer] }).candidates).toHaveLength(1)
+  })
+
+  // Read-only does not keep a forked chat's offer alive: the fork still ends it.
+  it('still withdraws a forked read-only chat', () => {
+    const forked = marker({ providerHandleRoot: 'codex:"other-thread"' })
+    expect(resumableSet({ markers: [forked], readOnly: [SESSION] }).superseded).toEqual([forked])
   })
 
   // An offer has no expiry, however old it is.

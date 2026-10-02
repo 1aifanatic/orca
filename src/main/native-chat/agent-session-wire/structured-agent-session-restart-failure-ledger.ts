@@ -78,6 +78,9 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
   adapter: StructuredAgentSessionAdapter
   /** The predicate a retry applies to the failure's marker. */
   retryable: (marker: AgentSessionResumeMarker) => boolean
+  /** Whether the chat's open journal is read-only here: its failure is kept but not shown, since
+   *  no retry can land until Orca is updated. */
+  readOnly: (sessionId: string) => boolean
   /** Makes the failed chats readable here, so `retryable` reads each one's journal. */
   reveal: (markers: readonly AgentSessionResumeMarker[]) => Promise<void>
   logger: StructuredAgentSessionLogger
@@ -101,7 +104,11 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     failure: AgentSessionResumeFailureRecord
   ): StructuredAgentSessionResumeFailure[] => {
     const record = deps.getRecord(failure.marker.sessionId)
-    if (!record || !adapterSupportsRecord(deps.adapter, record)) {
+    if (
+      !record ||
+      !adapterSupportsRecord(deps.adapter, record) ||
+      deps.readOnly(failure.marker.sessionId)
+    ) {
       return []
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)

@@ -30,6 +30,8 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
   adapter: StructuredAgentSessionAdapter
   /** Whether the chat moved on since the offer was taken; see the offer withdrawal. */
   movedOn: (marker: AgentSessionResumeMarker) => boolean
+  /** Whether the chat's open journal is read-only here. */
+  readOnly: (sessionId: string) => boolean
 }): StructuredAgentSessionRestartCandidateReader {
   return (markers, leaseState) =>
     structuredAgentSessionResumableSet({
@@ -37,6 +39,7 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
       getRecord: deps.getRecord,
       supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
       movedOn: deps.movedOn,
+      readOnly: deps.readOnly,
       latestPrompt: (sessionId) =>
         latestStructuredAgentSessionPrompt(
           deps.sessions.get(sessionId)?.journal.snapshot().items ?? []

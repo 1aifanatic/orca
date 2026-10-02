@@ -219,12 +219,15 @@ export function resumableSet(input: {
   markers: AgentSessionResumeMarker[]
   items?: AgentJournalRenderItem[]
   chain?: AgentSessionRecord['providerHandleChain']
+  /** Sessions whose journal is read-only here. */
+  readOnly?: string[]
 }) {
   return structuredAgentSessionResumableSet({
     markers: input.markers,
     getRecord: () => record(input.chain === undefined ? {} : { chain: input.chain }),
     supportsRecord: () => true,
     latestPrompt: () => 'fix the auth bug',
-    movedOn: () => false
+    movedOn: () => false,
+    readOnly: (sessionId) => input.readOnly?.includes(sessionId) === true
   })
 }
