@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
+import { classifyPrJobs, PR_CHECK_JOBS } from './pr-code-change-scope.mjs'
 import { runProcessSync } from './script-child-process.mjs'
 
 const action = parse(readFileSync('.github/actions/install-node-dependencies/action.yml', 'utf8'))
@@ -71,6 +72,13 @@ function resolveRecord({
 }
 
 describe('pnpm-owned verification record', () => {
+  it('qualifies every shared-installer consumer when verification restoration changes', () => {
+    const result = classifyPrJobs(['.github/actions/restore-pnpm-verification/action.yml'])
+    for (const job of PR_CHECK_JOBS) {
+      expect(result[job], job).toBe(true)
+    }
+  })
+
   it.skipIf(process.platform === 'win32')(
     'shares the exact key with containers without invoking host pnpm',
     () => {
