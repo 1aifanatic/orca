@@ -115,9 +115,17 @@ export function runProcess(spec: ProcessSpec): Promise<ProcessResult> {
       act()
     }
 
-    child.stdout?.on('data', (chunk: Buffer | string) => stdout.write(chunk))
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout.write(chunk)
+      if (spec.killOnOutputLimit && stdout.truncated()) {
+        stopAndSettle()
+      }
+    })
     child.stderr?.on('data', (chunk: Buffer | string) => {
       stderr.write(chunk)
+      if (spec.killOnOutputLimit && stderr.truncated()) {
+        stopAndSettle()
+      }
       if (typeof spec.terminationBarrier === 'object') {
         spec.terminationBarrier.observeStderr?.(chunk)
       }
@@ -150,7 +158,8 @@ export function runProcess(spec: ProcessSpec): Promise<ProcessResult> {
         resolve({
           code,
           signal,
-          stdout: stdout.text(),
+          stdout: spec.captureStdoutAsBytes ? '' : stdout.text(),
+          ...(spec.captureStdoutAsBytes ? { stdoutBytes: stdout.buffer() } : {}),
           stderr: stderr.text(),
           timedOut,
           outputTruncated: stdout.truncated() || stderr.truncated()
@@ -347,7 +356,8 @@ export function runProcessSync(spec: ProcessSpec): ProcessResult {
   return {
     code: result.status,
     signal: result.signal,
-    stdout: result.stdout?.toString('utf8') ?? '',
+    stdout: spec.captureStdoutAsBytes ? '' : (result.stdout?.toString('utf8') ?? ''),
+    ...(spec.captureStdoutAsBytes ? { stdoutBytes: result.stdout ?? Buffer.alloc(0) } : {}),
     stderr: result.stderr?.toString('utf8') ?? '',
     // Why always false: spawnSync reports an overrun as an ENOBUFS error, and
     // the guard above rethrows it, so no truncated result reaches this point.

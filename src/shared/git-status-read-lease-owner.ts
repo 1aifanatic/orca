@@ -17,6 +17,8 @@ function getAbortReason(signal: AbortSignal): unknown {
 export class GitStatusReadLeaseOwner<T> {
   private readonly entries = new Map<string, StatusReadEntry<T>>()
 
+  constructor(private readonly maxEntries = Infinity) {}
+
   lease(
     key: string,
     signal: AbortSignal | undefined,
@@ -32,7 +34,9 @@ export class GitStatusReadLeaseOwner<T> {
       const promise = load(controller.signal)
       const createdEntry = { controller, promise, liveLeases: 0, settled: false }
       entry = createdEntry
-      this.entries.set(key, createdEntry)
+      if (this.entries.size < this.maxEntries) {
+        this.entries.set(key, createdEntry)
+      }
       void promise.then(
         () => this.settle(key, createdEntry),
         () => this.settle(key, createdEntry)
@@ -77,6 +81,9 @@ export class GitStatusReadLeaseOwner<T> {
       }
 
       signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) {
+        onAbort()
+      }
       void entry.promise.then(
         (value) => {
           if (release()) {

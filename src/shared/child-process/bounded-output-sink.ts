@@ -9,12 +9,16 @@ import { Buffer } from 'node:buffer'
  */
 export function createOutputSink(maxBytes: number): {
   write: (chunk: Buffer | string) => void
+  buffer: () => Buffer
   text: () => string
   truncated: () => boolean
 } {
   const chunks: Buffer[] = []
   let bytes = 0
+  const buffer = (): Buffer =>
+    chunks.length === 0 ? Buffer.alloc(0) : chunks.length === 1 ? chunks[0] : Buffer.concat(chunks)
   return {
+    buffer,
     write(raw) {
       const chunk = Buffer.isBuffer(raw) ? raw : Buffer.from(raw)
       const remaining = maxBytes - bytes
@@ -25,10 +29,7 @@ export function createOutputSink(maxBytes: number): {
       chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk)
       bytes += chunk.length
     },
-    text: () =>
-      chunks.length === 0
-        ? ''
-        : (chunks.length === 1 ? chunks[0] : Buffer.concat(chunks)).toString('utf8'),
+    text: () => buffer().toString('utf8'),
     // Why: callers that parse the output need to tell a short answer from a
     // clipped one -- truncated JSON or JSONL parses as a smaller valid result.
     truncated: () => bytes > maxBytes

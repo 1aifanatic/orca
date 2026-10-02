@@ -1,7 +1,21 @@
+import {
+  signalProcessTree,
+  forceTerminateProcessTree
+} from '../shared/child-process/process-tree-termination'
+import type { ProcessTerminationBarrier } from '../shared/child-process/process-spec'
 import { runProcess } from '../shared/child-process/run-process'
+import { GitAdmissionScheduler } from '../shared/git-admission-scheduler'
+import type { GitAdmissionRequest } from '../shared/git-admission-state'
+import { gitCommandTimeoutMs } from '../shared/git-command-timeout'
 
 export const MAX_GIT_BUFFER = 10 * 1024 * 1024
-const GIT_REBASE_PROCESS_FALLBACK_TIMEOUT_MS = 2_147_000_000
+let scheduler = new GitAdmissionScheduler()
+
+export function _resetRelayGitAdmissionForTests(replacement = new GitAdmissionScheduler()): void {
+  scheduler = replacement
+}
+
+export const acquireRelayGitAdmission = (request: GitAdmissionRequest) => scheduler.acquire(request)
 
 type GitTerminationOptions = {
   cwd?: string
@@ -9,45 +23,72 @@ type GitTerminationOptions = {
   timeout?: number
   maxBuffer?: number
   signal?: AbortSignal
+  captureStdoutAsBytes?: boolean
+  observeStderr?: ProcessTerminationBarrier['observeStderr']
 }
 
 export async function runGitToTermination(
   args: string[],
   options: GitTerminationOptions,
   stdin: string | undefined
-): Promise<{ stdout: string; stderr: string }> {
+): Promise<{ stdout: string; stderr: string; stdoutBytes?: Buffer }> {
+  const grant = await acquireRelayGitAdmission({
+    args,
+    cwd: options.cwd ?? '.',
+    signal: options.signal
+  })
+  // A rejected capture can precede child termination; the child owns the grant.
   const result = await runProcess({
     program: 'git',
     args,
-    cwd: typeof options.cwd === 'string' ? options.cwd : undefined,
+    cwd: options.cwd,
     env: options.env,
-    timeoutMs:
-      typeof options.timeout === 'number'
-        ? options.timeout
-        : GIT_REBASE_PROCESS_FALLBACK_TIMEOUT_MS,
-    maxOutputBytes: typeof options.maxBuffer === 'number' ? options.maxBuffer : MAX_GIT_BUFFER,
+    timeoutMs: gitCommandTimeoutMs(args, options.timeout) ?? null,
+    maxOutputBytes: options.maxBuffer ?? MAX_GIT_BUFFER,
+    captureStdoutAsBytes: options.captureStdoutAsBytes,
+    killOnOutputLimit: true,
     signal: options.signal,
-    terminationBarrier: true,
+    terminationBarrier: options.observeStderr
+      ? {
+          observeStderr: options.observeStderr,
+          signal: signalProcessTree,
+          force: forceTerminateProcessTree
+        }
+      : true,
+    onChildTerminated: grant.release,
     ...(stdin === undefined ? {} : { input: stdin })
   })
-  if (result.code === 0 && !result.timedOut && !options.signal?.aborted) {
-    return { stdout: result.stdout, stderr: result.stderr }
+  if (
+    result.code === 0 &&
+    !result.signal &&
+    !result.timedOut &&
+    !options.signal?.aborted &&
+    !result.outputTruncated
+  ) {
+    return {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      ...(result.stdoutBytes ? { stdoutBytes: result.stdoutBytes } : {})
+    }
   }
   const error = new Error(
-    result.timedOut
-      ? `git ${args[0] ?? 'command'} timed out.`
-      : options.signal?.aborted
-        ? 'The operation was aborted.'
-        : result.stderr.trim() || `git ${args[0] ?? 'command'} failed.`
+    result.outputTruncated
+      ? 'git output exceeded maxBuffer.'
+      : result.timedOut
+        ? `git ${args[0] ?? 'command'} timed out.`
+        : options.signal?.aborted
+          ? 'The operation was aborted.'
+          : result.stderr.trim() || `git ${args[0] ?? 'command'} failed.`
   )
   if (options.signal?.aborted) {
     error.name = 'AbortError'
   }
   throw Object.assign(error, {
-    code: result.code,
+    code: result.outputTruncated ? 'ENOBUFS' : result.code,
+    timedOut: result.timedOut,
     killed: result.timedOut || result.signal !== null || options.signal?.aborted === true,
     signal: result.signal,
-    stdout: result.stdout,
+    stdout: result.stdoutBytes ?? result.stdout,
     stderr: result.stderr
   })
 }
