@@ -47,6 +47,8 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let releaseAcquisition: Mock<NonNullable<StructuredAgentSessionAdapter['releaseAcquisition']>>
+/** Recovery's stop; never a real signal, since the rig's pids are invented. */
+let stopOwnerProcess: Mock<(pid: number, signal: 'SIGTERM' | 'SIGKILL') => void>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let sink: StructuredAgentSessionEventSink | null
 let logged: { message: string; scope: unknown }[]
@@ -70,6 +72,7 @@ beforeEach(async () => {
     record.lease.ownerProcess ? { outcome: 'pid-absent' } : { outcome: 'reservation-unused' }
   let generation = 0
   releaseAcquisition = vi.fn(async () => true)
+  stopOwnerProcess = vi.fn()
   acquire = vi.fn(async ({ fence, spawnToken, events }) => {
     sink = events ?? null
     return {
@@ -114,6 +117,7 @@ beforeEach(async () => {
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     probeOwner: async (record) => probe(record),
+    stopOwnerProcess: (pid, signal) => stopOwnerProcess(pid, signal),
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
     now: () => NOW
   })
@@ -435,6 +439,44 @@ describe('a failed start whose settlement write failed', () => {
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'reserved',
       handoffStage: 'recovering'
+    })
+  })
+
+  it('never grants a client attach over that owner while its settlement still cannot land', async () => {
+    await failStartLeavingAnUnprovenOwner()
+    const before = store.getRecord(SESSION)!.lease
+    probe = () => ({ outcome: 'identity-matched', matchedOn: ['spawn-token'] })
+    vi.mocked(store.settleFailedAcquisition).mockRejectedValueOnce(
+      new Error('SQLITE_BUSY: database is locked')
+    )
+
+    expect(await host.attach(CALLER, hostTestAttachParams(before.runtimeFence))).toMatchObject({
+      ok: false
+    })
+
+    // No second child over an owner recovery never concluded about.
+    expect(acquire).toHaveBeenCalledTimes(2)
+    expect(store.getRecord(SESSION)?.lease).toBe(before)
+  })
+
+  it('lets recovery stop that owner first once its settlement lands', async () => {
+    await failStartLeavingAnUnprovenOwner()
+    const before = store.getRecord(SESSION)!.lease
+    probe = () => ({ outcome: 'identity-matched', matchedOn: ['spawn-token'] })
+    stopOwnerProcess.mockImplementation(() => {
+      probe = () => ({ outcome: 'pid-absent' })
+    })
+
+    expect(await host.attach(CALLER, hostTestAttachParams(before.runtimeFence))).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_checkpoint_stale' }
+    })
+
+    expect(stopOwnerProcess).toHaveBeenCalledWith(4242, 'SIGTERM')
+    expect(acquire).toHaveBeenCalledTimes(2)
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      runtimeFence: before.runtimeFence + 1
     })
   })
 

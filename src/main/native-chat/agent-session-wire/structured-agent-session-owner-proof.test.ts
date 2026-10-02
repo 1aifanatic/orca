@@ -148,9 +148,11 @@ describe('the proof a failed attempt of its own leaves when its settlement never
       ...RESERVATION,
       ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: null, spawnToken: 'spawn-a' }
     }
-    expect(proofWith(settlement({ exitProof: 'unproven' }), spawned).owner).toMatchObject({
-      kind: 'failed-acquisition',
-      exitProof: 'unproven'
+    const proof = proofWith(settlement({ exitProof: 'unproven' }), spawned)
+    expect(proof.owner).toMatchObject({ kind: 'failed-acquisition', exitProof: 'unproven' })
+    // Never proof of death to an acquisition: the swap refuses as it would on the parked lease.
+    expect(structuredAgentSessionAcquisitionProbe(spawned, proof)).toMatchObject({
+      outcome: 'indeterminate'
     })
   })
 

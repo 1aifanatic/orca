@@ -7,7 +7,10 @@
 // failed attempt at that fence IS the lease's owner. An owner on any other host gets nothing from
 // memory: only a probe may speak for it, and it answers `indeterminate`.
 
-import { isFailedAcquisitionReservation } from '../../../shared/agent-session-failed-acquisition'
+import {
+  failedAcquisitionReleasesReservation,
+  isFailedAcquisitionReservation
+} from '../../../shared/agent-session-failed-acquisition'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import {
   agentSessionLeaseFreeEvidence,
@@ -80,8 +83,9 @@ export function structuredAgentSessionOwnerProof(input: {
 
 /** The probe an acquisition's compare-and-swap reads. A watched exit is `exit-observed`, the
  *  vocabulary's own word for it; this host's child echoed the reserved token when its identity was
- *  committed. No record means nothing was ever reserved. A failed attempt's cleanup accounted for
- *  whatever it spawned: its recorded owner exited, or nothing runs under its reservation. */
+ *  committed. No record means nothing was ever reserved. A failed attempt speaks only where its
+ *  settlement releases the reservation: its recorded owner exited, or nothing runs under it. One
+ *  its settlement would park in recovery proves nothing, so the swap refuses as it would there. */
 export function structuredAgentSessionAcquisitionProbe(
   lease: AgentSessionLease | null,
   proof: AgentSessionHostProof | null
@@ -92,7 +96,10 @@ export function structuredAgentSessionAcquisitionProbe(
     case 'watched-exit':
       return { outcome: 'exit-observed' }
     case 'failed-acquisition':
-      return lease?.ownerProcess ? { outcome: 'exit-observed' } : { outcome: 'reservation-unused' }
+      if (!lease || !failedAcquisitionReleasesReservation(lease, proof.owner.exitProof)) {
+        return { outcome: 'indeterminate', reason: 'a failed start could not prove its owner gone' }
+      }
+      return lease.ownerProcess ? { outcome: 'exit-observed' } : { outcome: 'reservation-unused' }
     case 'probed':
       return proof.owner.probe
     case 'runs':
