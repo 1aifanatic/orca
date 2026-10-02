@@ -40,6 +40,11 @@ export function supportsColorQueryReplyColors(protocolVersion: number): boolean 
   return protocolVersion >= COLOR_QUERY_REPLY_COLORS_DAEMON_PROTOCOL_VERSION
 }
 
+/** Whether this daemon's shells give a typed `codex` Orca's wrapper, which keeps it off Codex's shared server. */
+export function supportsCodexNoDaemonShellLaunch(protocolVersion: number): boolean {
+  return protocolVersion >= CODEX_NO_DAEMON_SHELL_LAUNCH_DAEMON_PROTOCOL_VERSION
+}
+
 export function supportsPtyStartupIngress(protocolVersion: number): boolean {
   return protocolVersion >= PTY_STARTUP_INGRESS_PROTOCOL_VERSION
 }

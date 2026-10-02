@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-type Handler = (event: unknown, args: { id: string }) => Promise<boolean>
+type Handler = (event: unknown, args: { id: string }) => Promise<unknown>
 type Session = { id: string; rootProcessId?: number; wslDistro?: string }
 
 const mocks = vi.hoisted(() => ({
@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   isOnOrcaMirror: vi.fn<(id: string) => boolean>(),
   disable: vi.fn<(home: string) => Promise<boolean>>(),
   disableOnMirror: vi.fn<(home: string) => Promise<boolean>>(),
-  stop: vi.fn<(home: string) => Promise<boolean>>()
+  stop: vi.fn<(home: string) => Promise<boolean>>(),
+  legacyProtocol: vi.fn<(id: string) => number | null>()
 }))
 vi.mock('../../pty-host-bindings', () => ({
   getPtyIpc: () => ({
@@ -29,6 +30,9 @@ vi.mock('../../../codex/codex-shared-server-fix', () => ({
   disableCodexSharedServerAutoStartOnOrcaMirror: mocks.disableOnMirror,
   stopCodexSharedServer: mocks.stop
 }))
+vi.mock('../../../daemon/daemon-provider-routing', () => ({
+  getLegacyDaemonProtocolVersionForPty: (_provider: unknown, id: string) => mocks.legacyProtocol(id)
+}))
 vi.mock('../provider/registry', () => ({
   hasPtyProviderForInspection: mocks.hasProvider,
   getProviderForPty: () => ({ listProcesses: () => Promise.resolve(mocks.sessions) })
@@ -38,13 +42,14 @@ import { toAppSshPtyId } from '../../../providers/ssh-pty-id'
 import { ptyOwnership } from '../provider/ownership-state'
 import { installPtyCodexSharedServerIpcHandler } from './codex-shared-server'
 
+// Each channel with its answer for a local pane and its answer when it refuses one.
 const CHANNELS = [
-  'pty:isCodexOnSharedServer',
-  'pty:disableCodexSharedServerAutoStart',
-  'pty:stopCodexSharedServer'
+  ['pty:isCodexOnSharedServer', { joined: true }, { joined: false }],
+  ['pty:disableCodexSharedServerAutoStart', true, false],
+  ['pty:stopCodexSharedServer', true, false]
 ] as const
 
-function invoke(channel: string, id: string): Promise<boolean> {
+function invoke(channel: string, id: string): Promise<unknown> {
   const handler = mocks.handlers.get(channel)
   if (!handler) {
     throw new Error(`missing ${channel}`)
@@ -64,12 +69,33 @@ beforeEach(() => {
   mocks.disable.mockResolvedValue(true)
   mocks.disableOnMirror.mockResolvedValue(true)
   mocks.stop.mockResolvedValue(true)
+  mocks.legacyProtocol.mockReturnValue(null)
   installPtyCodexSharedServerIpcHandler({ getLocalPtyProviderStartupPromise: () => undefined })
 })
 
 describe('Codex shared-server IPC', () => {
-  it.each(CHANNELS)('%s answers for a local pane', async (channel) => {
-    expect(await invoke(channel, 'local-1')).toBe(true)
+  it.each(CHANNELS)('%s answers for a local pane', async (channel, answer) => {
+    expect(await invoke(channel, 'local-1')).toEqual(answer)
+  })
+
+  it.each([
+    [
+      'an older daemon from before the codex wrapper',
+      36,
+      { joined: true, openedBeforeWrapper: true }
+    ],
+    ['an older daemon that has the codex wrapper', 37, { joined: true }],
+    ["this build's daemon or an in-process provider", null, { joined: true }]
+  ])('marks a joined pane served by %s', async (_label, protocol, answer) => {
+    mocks.legacyProtocol.mockReturnValue(protocol)
+    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual(answer)
+    expect(mocks.legacyProtocol).toHaveBeenCalledWith('local-1')
+  })
+
+  it('reads no daemon owner for a pane that has not joined', async () => {
+    mocks.isPaneCodexOnSharedServer.mockResolvedValue(false)
+    expect(await invoke('pty:isCodexOnSharedServer', 'local-1')).toEqual({ joined: false })
+    expect(mocks.legacyProtocol).not.toHaveBeenCalled()
   })
 
   it('runs the fix against the pane home', async () => {
@@ -104,17 +130,18 @@ describe('Codex shared-server IPC', () => {
     ['a pane no provider holds', 'local-1', () => mocks.hasProvider.mockReturnValue(false)]
   ]
 
-  it.each(CHANNELS.flatMap((channel) => refusals.map((refusal) => [channel, ...refusal] as const)))(
-    '%s refuses %s',
-    async (channel, _label, id, arrange) => {
-      arrange()
-      expect(await invoke(channel, id)).toBe(false)
-      expect(mocks.isPaneCodexOnSharedServer).not.toHaveBeenCalled()
-      expect(mocks.disable).not.toHaveBeenCalled()
-      expect(mocks.disableOnMirror).not.toHaveBeenCalled()
-      expect(mocks.stop).not.toHaveBeenCalled()
-    }
-  )
+  it.each(
+    CHANNELS.flatMap(([channel, , refused]) =>
+      refusals.map((refusal) => [channel, ...refusal, refused] as const)
+    )
+  )('%s refuses %s', async (channel, _label, id, arrange, refused) => {
+    arrange()
+    expect(await invoke(channel, id)).toEqual(refused)
+    expect(mocks.isPaneCodexOnSharedServer).not.toHaveBeenCalled()
+    expect(mocks.disable).not.toHaveBeenCalled()
+    expect(mocks.disableOnMirror).not.toHaveBeenCalled()
+    expect(mocks.stop).not.toHaveBeenCalled()
+  })
 
   it.each(CHANNELS.slice(1))('%s runs nothing when the pane has no Codex home', async (channel) => {
     mocks.resolveCodexPaneHome.mockReturnValue(null)

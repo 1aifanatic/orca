@@ -10,16 +10,24 @@ import { getDefaultSettings } from '../../../../shared/constants'
 import { CodexSharedServerBanner } from './CodexSharedServerBanner'
 import {
   CODEX_DISABLE_AUTO_START_COMMAND,
-  CODEX_STOP_SHARED_SERVER_COMMAND
+  CODEX_STOP_SHARED_SERVER_COMMAND,
+  type CodexSharedServerJoin
 } from '../../../../shared/codex-shared-server-command'
+import { makePaneKey } from '../../../../shared/stable-pane-id'
+import type { Tab } from '../../../../shared/tab-types'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-const PANE_KEY = 'tab-1:leaf-1'
+const TAB_ID = 'tab-1'
+const LEAF_ID = '11111111-1111-4111-8111-111111111111'
+const PANE_KEY = makePaneKey(TAB_ID, LEAF_ID)
+const JOINED = { joined: true }
+const NOT_JOINED = { joined: false }
+const OLD_TAB_JOINED = { joined: true, openedBeforeWrapper: true }
 const TITLE = 'This Codex is sharing a server'
 let paneElement: HTMLDivElement
 let root: Root
-let isCodexOnSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
+let isCodexOnSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<CodexSharedServerJoin>>>
 let disableCodexSharedServerAutoStart: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
 let stopCodexSharedServer: ReturnType<typeof vi.fn<(id: string) => Promise<boolean>>>
 let writeClipboardText: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
@@ -42,7 +50,7 @@ function setState(settings: Partial<GlobalSettings>, agent: 'codex' | null = 'co
 
 async function renderBanner(): Promise<void> {
   await act(async () => {
-    root.render(<CodexSharedServerBanner ptyId={ptyId} paneKey={PANE_KEY} />)
+    root.render(<CodexSharedServerBanner ptyId={ptyId} tabId={TAB_ID} leafId={LEAF_ID} />)
   })
 }
 
@@ -73,7 +81,7 @@ beforeEach(() => {
   paneElement.className = 'pane'
   document.body.appendChild(paneElement)
   root = createRoot(paneElement)
-  isCodexOnSharedServer = vi.fn(() => Promise.resolve(true))
+  isCodexOnSharedServer = vi.fn(() => Promise.resolve<CodexSharedServerJoin>(JOINED))
   disableCodexSharedServerAutoStart = vi.fn(() => Promise.resolve(true))
   stopCodexSharedServer = vi.fn(() => Promise.resolve(true))
   writeClipboardText = vi.fn(() => Promise.resolve())
@@ -127,7 +135,7 @@ describe('CodexSharedServerBanner', () => {
 
   it('keeps asking while Codex starts, then stops once it has an answer', async () => {
     setState({})
-    isCodexOnSharedServer.mockResolvedValueOnce(false)
+    isCodexOnSharedServer.mockResolvedValueOnce(NOT_JOINED)
     await renderBanner()
     await advance(1_000)
     expect(paneElement.textContent).toBe('')
@@ -183,7 +191,7 @@ describe('CodexSharedServerBanner', () => {
     const confirm = Array.from(document.querySelectorAll('button')).filter(
       (candidate) => candidate.textContent?.trim() === 'Stop server'
     )
-    isCodexOnSharedServer.mockResolvedValue(false)
+    isCodexOnSharedServer.mockResolvedValue(NOT_JOINED)
     await act(async () => confirm.at(-1)?.click())
     expect(stopCodexSharedServer).toHaveBeenCalledWith(ptyId)
     expect(document.body.textContent).toContain('Stopped')
@@ -251,5 +259,58 @@ describe('CodexSharedServerBanner', () => {
     expect(paneElement.textContent).toContain(TITLE)
     await act(async () => setState({}, null))
     expect(paneElement.textContent).toBe('')
+  })
+
+  describe('in a terminal opened before the codex wrapper', () => {
+    function terminalTab(worktreeId: string, groupId: string): Tab {
+      return {
+        id: 'unified-1',
+        entityId: TAB_ID,
+        groupId,
+        worktreeId,
+        contentType: 'terminal',
+        label: 'Terminal',
+        customLabel: null,
+        color: null,
+        sortOrder: 0,
+        createdAt: 0
+      }
+    }
+
+    it('says why this terminal shares the server and offers a new one instead of Fix', async () => {
+      setState({})
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+
+      expect(paneElement.textContent).toContain(TITLE)
+      expect(paneElement.textContent).toContain(
+        "This terminal was opened before Orca's last update."
+      )
+      expect(paneElement.textContent).not.toContain('agent status may be wrong')
+      expect(() => button('Fix')).toThrow()
+      expect(() => button('Learn more')).toThrow()
+      expect(button("Don't show again")).toBeDefined()
+      expect(button('Dismiss')).toBeDefined()
+    })
+
+    it('opens a new terminal tab in the same group', async () => {
+      const openNewTerminalTabInActiveWorkspace = vi.fn(() => Promise.resolve())
+      setState({})
+      useAppStore.setState({
+        activeWorktreeId: 'wt-1',
+        unifiedTabsByWorktree: { 'wt-1': [terminalTab('wt-1', 'group-2')] },
+        openNewTerminalTabInActiveWorkspace
+      })
+      isCodexOnSharedServer.mockResolvedValue(OLD_TAB_JOINED)
+      await renderBanner()
+      await advance(1_000)
+
+      await act(async () => button('Open new terminal').click())
+
+      expect(openNewTerminalTabInActiveWorkspace).toHaveBeenCalledWith('group-2')
+      expect(disableCodexSharedServerAutoStart).not.toHaveBeenCalled()
+      expect(stopCodexSharedServer).not.toHaveBeenCalled()
+    })
   })
 })

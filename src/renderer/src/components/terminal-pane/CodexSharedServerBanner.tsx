@@ -4,6 +4,10 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { isCodexSharedServerWarningEnabled } from '../../../../shared/codex-terminal-server-isolation'
+import type { CodexSharedServerJoin } from '../../../../shared/codex-shared-server-command'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { createFloatingWorkspaceTerminalTab } from '@/lib/floating-workspace-tab-creation'
 import { CodexSharedServerFixDialog } from './CodexSharedServerFixDialog'
 import { retireCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
 
@@ -14,22 +18,22 @@ const dismissedPtyIds = new Set<string>()
 
 /** Asks on the ladder until an answer is yes; returns a cancel that drops any later answer. */
 function askUntilOnSharedServer(
-  ask: (ptyId: string) => Promise<boolean>,
+  ask: (ptyId: string) => Promise<CodexSharedServerJoin>,
   ptyId: string,
-  onJoined: () => void
+  onJoined: (join: CodexSharedServerJoin) => void
 ): () => void {
   let cancelled = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const schedule = (attempt: number): void => {
     timer = setTimeout(() => {
       void ask(ptyId)
-        .catch(() => false)
-        .then((joined) => {
+        .catch((): CodexSharedServerJoin => ({ joined: false }))
+        .then((join) => {
           if (cancelled) {
             return
           }
-          if (joined) {
-            onJoined()
+          if (join.joined) {
+            onJoined(join)
           } else if (attempt + 1 < CHECK_DELAYS_MS.length) {
             schedule(attempt + 1)
           }
@@ -43,21 +47,38 @@ function askUntilOnSharedServer(
   }
 }
 
-function usePaneCodexOnSharedServer(ptyId: string, enabled: boolean, recheck: number): boolean {
-  const [joined, setJoined] = useState(false)
+function usePaneCodexSharedServerJoin(
+  ptyId: string,
+  enabled: boolean,
+  recheck: number
+): CodexSharedServerJoin | null {
+  const [join, setJoin] = useState<CodexSharedServerJoin | null>(null)
   useEffect(() => {
     if (!enabled) {
       return
     }
-    const cancel = askUntilOnSharedServer(window.api.pty.isCodexOnSharedServer, ptyId, () =>
-      setJoined(true)
-    )
+    const cancel = askUntilOnSharedServer(window.api.pty.isCodexOnSharedServer, ptyId, setJoin)
     return () => {
       cancel()
-      setJoined(false)
+      setJoin(null)
     }
   }, [enabled, ptyId, recheck])
-  return joined
+  return join
+}
+
+/** Opens a terminal tab beside this one; a new terminal's shell has Orca's codex wrapper. */
+function openTerminalBesideTab(terminalTabId: string): void {
+  const state = useAppStore.getState()
+  const tab = Object.values(state.unifiedTabsByWorktree)
+    .flat()
+    .find(
+      (candidate) => candidate.contentType === 'terminal' && candidate.entityId === terminalTabId
+    )
+  if (tab?.worktreeId === state.activeWorktreeId) {
+    void state.openNewTerminalTabInActiveWorkspace(tab.groupId)
+  } else if (tab?.worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
+    void createFloatingWorkspaceTerminalTab(state)
+  }
 }
 
 /** Reserves the banner's height at the top of its pane so the terminal refits below it. */
@@ -85,11 +106,14 @@ function useReservePaneTopSpace(): React.RefObject<HTMLDivElement | null> {
 
 export function CodexSharedServerBanner({
   ptyId,
-  paneKey
+  tabId,
+  leafId
 }: {
   ptyId: string
-  paneKey: string
+  tabId: string
+  leafId: string
 }): React.JSX.Element | null {
+  const paneKey = makePaneKey(tabId, leafId)
   const [dismissed, setDismissed] = useState(() => dismissedPtyIds.has(ptyId))
   const warningEnabled = useAppStore(
     (state) => state.settings !== null && isCodexSharedServerWarningEnabled(state.settings)
@@ -102,47 +126,91 @@ export function CodexSharedServerBanner({
   )
   // Why a recheck: after the fix stops the server, the banner hides unless a new one is joined.
   const [recheck, setRecheck] = useState(0)
-  const joined = usePaneCodexOnSharedServer(
+  const join = usePaneCodexSharedServerJoin(
     ptyId,
     warningEnabled && codexInPane && !dismissed,
     recheck
   )
   const [fixOpen, setFixOpen] = useState(false)
+  const actions = {
+    onDismiss: () => {
+      dismissedPtyIds.add(ptyId)
+      setDismissed(true)
+    },
+    onDontShowAgain: () =>
+      void useAppStore.getState().updateSettings({ codexSharedServerWarning: false })
+  }
+  if (join?.openedBeforeWrapper) {
+    return (
+      <CodexSharedServerBannerFrame
+        {...actions}
+        body={translate(
+          'terminal.codexSharedServerBanner.openedBeforeUpdateBody',
+          "This terminal was opened before Orca's last update."
+        )}
+        primaryAction={
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => openTerminalBesideTab(tabId)}
+          >
+            {translate('terminal.codexSharedServerBanner.openNewTerminal', 'Open new terminal')}
+          </Button>
+        }
+      />
+    )
+  }
   // Why fixOpen keeps it: stopping the server ends this pane's Codex, which must not close the dialog.
-  if (!joined && !fixOpen) {
+  if (!join && !fixOpen) {
     return null
   }
   return (
-    <CodexSharedServerBannerContent
-      ptyId={ptyId}
-      fixOpen={fixOpen}
-      onFixOpenChange={setFixOpen}
-      onServerStopped={() => setRecheck((count) => count + 1)}
-      onDismiss={() => {
-        dismissedPtyIds.add(ptyId)
-        setDismissed(true)
-      }}
-      onDontShowAgain={() =>
-        void useAppStore.getState().updateSettings({ codexSharedServerWarning: false })
+    <CodexSharedServerBannerFrame
+      {...actions}
+      body={
+        <>
+          {translate(
+            'terminal.codexSharedServerBanner.body',
+            'Sessions may end unexpectedly, and agent status may be wrong.'
+          )}{' '}
+          <button
+            type="button"
+            className="text-foreground underline underline-offset-2 hover:text-foreground/80"
+            onClick={() => setFixOpen(true)}
+          >
+            {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
+          </button>
+        </>
       }
-    />
+      primaryAction={
+        <Button type="button" variant="outline" size="xs" onClick={() => setFixOpen(true)}>
+          {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
+        </Button>
+      }
+    >
+      <CodexSharedServerFixDialog
+        ptyId={ptyId}
+        open={fixOpen}
+        onOpenChange={setFixOpen}
+        onServerStopped={() => setRecheck((count) => count + 1)}
+      />
+    </CodexSharedServerBannerFrame>
   )
 }
 
-function CodexSharedServerBannerContent({
-  ptyId,
-  fixOpen,
-  onFixOpenChange,
-  onServerStopped,
+function CodexSharedServerBannerFrame({
+  body,
+  primaryAction,
   onDismiss,
-  onDontShowAgain
+  onDontShowAgain,
+  children
 }: {
-  ptyId: string
-  fixOpen: boolean
-  onFixOpenChange: (open: boolean) => void
-  onServerStopped: () => void
+  body: React.ReactNode
+  primaryAction: React.ReactNode
   onDismiss: () => void
   onDontShowAgain: () => void
+  children?: React.ReactNode
 }): React.JSX.Element {
   const ref = useReservePaneTopSpace()
   useEffect(retireCodexTerminalServerIsolationNotice, [])
@@ -169,25 +237,11 @@ function CodexSharedServerBannerContent({
                 'This Codex is sharing a server with your other Codex tabs'
               )}
             </p>
-            <p className="text-muted-foreground">
-              {translate(
-                'terminal.codexSharedServerBanner.body',
-                'Sessions may end unexpectedly, and agent status may be wrong.'
-              )}{' '}
-              <button
-                type="button"
-                className="text-foreground underline underline-offset-2 hover:text-foreground/80"
-                onClick={() => onFixOpenChange(true)}
-              >
-                {translate('terminal.codexSharedServerBanner.learnMore', 'Learn more')}
-              </button>
-            </p>
+            <p className="text-muted-foreground">{body}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1 @[44rem]:shrink-0 @max-[44rem]:mt-1.5 @max-[44rem]:pl-6.5">
-          <Button type="button" variant="outline" size="xs" onClick={() => onFixOpenChange(true)}>
-            {translate('terminal.codexSharedServerBanner.fix', 'Fix')}
-          </Button>
+          {primaryAction}
           <Button type="button" variant="ghost" size="xs" onClick={onDontShowAgain}>
             {translate('terminal.codexSharedServerBanner.dontShowAgain', "Don't show again")}
           </Button>
@@ -196,12 +250,7 @@ function CodexSharedServerBannerContent({
           </Button>
         </div>
       </div>
-      <CodexSharedServerFixDialog
-        ptyId={ptyId}
-        open={fixOpen}
-        onOpenChange={onFixOpenChange}
-        onServerStopped={onServerStopped}
-      />
+      {children}
     </div>
   )
 }

@@ -10,6 +10,9 @@ import {
   disableCodexSharedServerAutoStartOnOrcaMirror,
   stopCodexSharedServer
 } from '../../../codex/codex-shared-server-fix'
+import { getLegacyDaemonProtocolVersionForPty } from '../../../daemon/daemon-provider-routing'
+import { supportsCodexNoDaemonShellLaunch } from '../../../daemon/daemon-protocol-version'
+import type { CodexSharedServerJoin } from '../../../../shared/codex-shared-server-command'
 import { ptyOwnership } from '../provider/ownership-state'
 import { getProviderForPty, hasPtyProviderForInspection } from '../provider/registry'
 
@@ -37,19 +40,34 @@ async function findLocalPaneRootPid(deps: Deps, id: unknown): Promise<number | n
   return session?.rootProcessId !== undefined && !session.wslDistro ? session.rootProcessId : null
 }
 
-function handleLocalPane(
+function handleLocalPane<T>(
   deps: Deps,
   channel: string,
-  run: (id: string, rootPid: number) => Promise<boolean>
+  run: (id: string, rootPid: number) => Promise<T>,
+  refused: T
 ): void {
-  getPtyIpc().handle(channel, async (_event, args: { id: string }): Promise<boolean> => {
+  getPtyIpc().handle(channel, async (_event, args: { id: string }): Promise<T> => {
     try {
       const rootPid = await findLocalPaneRootPid(deps, args?.id)
-      return rootPid === null ? false : await run(args.id, rootPid)
+      return rootPid === null ? refused : await run(args.id, rootPid)
     } catch {
-      return false
+      return refused
     }
   })
+}
+
+async function readPaneSharedServerJoin(
+  id: string,
+  rootPid: number
+): Promise<CodexSharedServerJoin> {
+  if (!(await isPaneCodexOnSharedServer(id, rootPid))) {
+    return { joined: false }
+  }
+  // Why: an older daemon's shell has no codex wrapper, so a new terminal is the whole fix.
+  const legacyProtocol = getLegacyDaemonProtocolVersionForPty(getProviderForPty(id), id)
+  return legacyProtocol !== null && !supportsCodexNoDaemonShellLaunch(legacyProtocol)
+    ? { joined: true, openedBeforeWrapper: true }
+    : { joined: true }
 }
 
 /** Runs a fix command against the pane's own CODEX_HOME, never a guessed one. */
@@ -71,7 +89,7 @@ function disableForPane(id: string): Promise<boolean> {
 
 // Why its own read: only a pane already showing Codex asks, so no cadence poll pays for argv.
 export function installPtyCodexSharedServerIpcHandler(deps: Deps): void {
-  handleLocalPane(deps, 'pty:isCodexOnSharedServer', isPaneCodexOnSharedServer)
-  handleLocalPane(deps, 'pty:disableCodexSharedServerAutoStart', disableForPane)
-  handleLocalPane(deps, 'pty:stopCodexSharedServer', runForPaneHome(stopCodexSharedServer))
+  handleLocalPane(deps, 'pty:isCodexOnSharedServer', readPaneSharedServerJoin, { joined: false })
+  handleLocalPane(deps, 'pty:disableCodexSharedServerAutoStart', disableForPane, false)
+  handleLocalPane(deps, 'pty:stopCodexSharedServer', runForPaneHome(stopCodexSharedServer), false)
 }
