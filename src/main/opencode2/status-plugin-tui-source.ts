@@ -25,7 +25,7 @@ function boundedSet(set, value, max) {
 // Why storage.memory: OpenCode keeps it across plugin hot reloads and drops it when the TUI
 // exits, so a reload mid-turn keeps this pane's sessions and what it last reported.
 function paneStatusMemory(ctx) {
-  const initial = { owned: [], last: "idle:", lastRoot: "", started: false };
+  const initial = { owned: [], last: "idle:", lastRoot: "", started: false, endings: [] };
   if (typeof ctx.storage?.memory === "function") return ctx.storage.memory("pane-status", { initial });
   // Why started: without memory a reload looks like a TUI start, and must not reset the pane.
   const local = { ...initial, started: true };
@@ -73,7 +73,18 @@ async function setupOpenCode2Tui(ctx) {
       return form ? { request: form, isPermission: false } : null;
     };
     const levelKey = (level) =>
-      level.kind === "waiting" ? "waiting:" + level.blocker.request.id + ":" + level.root : level.kind + ":" + level.root;
+      (level.kind === "waiting" ? "waiting:" + level.blocker.request.id + ":" + level.root : level.kind + ":" + level.root) +
+      (level.rootFields.root_state ? ":" + JSON.stringify(level.rootFields) : "");
+
+    function rootFields(level) {
+      if (!level.root) return {};
+      const rootRunning = data.status(level.root) === "running";
+      const rootState = rootRunning
+        ? level.kind === "waiting" && level.blocker.request.sessionID === level.root ? "waiting" : "working"
+        : "done";
+      const errorName = !rootRunning && (memory.endings || []).find(([id]) => id === level.root)?.[1];
+      return { root_state: rootState, ...(errorName ? { root_turn_error_name: errorName } : {}) };
+    }
 
     function own(root, owned) {
       const seen = early.get(root);
@@ -108,6 +119,7 @@ async function setupOpenCode2Tui(ctx) {
       let level;
       try {
         level = derive();
+        level.rootFields = rootFields(level);
       } catch {
         // Why: a data read that throws must not kill the listener or the tick.
         return;
@@ -126,7 +138,7 @@ async function setupOpenCode2Tui(ctx) {
     async function deliver(level, changed) {
       // Retires assistant text queued under the previous level (see flushPendingAssistantPart).
       if (changed) stateArrivalRevision += 1;
-      const properties = level.root ? { sessionID: level.root } : {};
+      const properties = level.root ? { sessionID: level.root, ...level.rootFields } : {};
       if (level.kind === "waiting") {
         const { request, isPermission } = level.blocker;
         const translated = isPermission
@@ -134,12 +146,13 @@ async function setupOpenCode2Tui(ctx) {
           : translateOpenCode2Event("form.created", { form: request });
         if (!translated) return;
         const hookEventName = isPermission ? "PermissionRequest" : "AskUserQuestion";
-        await setAttention(hookEventName, { ...translated.properties, ...properties }, factoryID, request.sessionID);
+        await flushPendingAssistantPart(true);
+        await setDeliveryTarget("waiting", levelKey(level), hookEventName, { ...translated.properties, ...properties }, factoryID);
         return;
       }
       // Why flush first: the done-state preview must show the completed reply.
       if (level.kind === "idle") await flushPendingAssistantPart(true);
-      await setStatus(level.kind, properties, factoryID);
+      await setDeliveryTarget(level.kind, levelKey(level), level.kind === "busy" ? "SessionBusy" : "SessionIdle", properties, factoryID);
     }
 
     function postPrompt(root, prompt) {
@@ -188,6 +201,18 @@ async function setupOpenCode2Tui(ctx) {
       }
       const root = rootOf(sessionID);
       const isOwned = memory.owned.includes(root);
+      if (sessionID === root && (isOwned || currentRoute() === root)) {
+        if (event.type === "session.execution.started" || event.type === "session.execution.succeeded" || event.type === "session.execution.failed" || event.type === "session.execution.interrupted") {
+          const errorName = event.type === "session.execution.failed"
+            ? (typeof properties.error?.type === "string" && properties.error.type) || "UnknownError"
+            : event.type === "session.execution.interrupted" && properties.reason === "user" ? "MessageAbortedError" : "";
+          // A hot reload keeps the terminal verdict; only this root's next turn replaces it.
+          setMemory((draft) => {
+            draft.endings = (draft.endings || []).filter(([id]) => id !== root);
+            if (errorName) draft.endings = [...draft.endings, [root, errorName]].slice(-TUI_EARLY_ROOTS_MAX);
+          });
+        }
+      }
       if (event.type === "session.inbox.enqueued") {
         // Why TUI-only: the server takes the prompt from session.hook("prompt"), which a TUI lacks.
         const item = properties.item;

@@ -19,7 +19,12 @@ import { _internals } from './hook-service'
 type Post = {
   paneKey?: string
   opencodeMajor?: number
-  payload?: { hook_event_name?: string; sessionID?: string }
+  payload?: {
+    hook_event_name?: string
+    sessionID?: string
+    root_state?: string
+    root_turn_error_name?: string
+  }
 }
 type BusEvent = { type: string; data: Record<string, unknown> }
 type PluginModule = {
@@ -175,7 +180,11 @@ function fakeTui(version = '2.0.14') {
         sessions.set(sessionID, { id: sessionID, parentID })
       } else if (event.type === 'session.execution.started') {
         running.add(sessionID)
-      } else if (event.type === 'session.execution.succeeded') {
+      } else if (
+        event.type === 'session.execution.succeeded' ||
+        event.type === 'session.execution.failed' ||
+        event.type === 'session.execution.interrupted'
+      ) {
         running.delete(sessionID)
       } else if (event.type === 'permission.asked') {
         permissions.set(sessionID, [...(permissions.get(sessionID) ?? []), toBlocker(event.data)])
@@ -289,6 +298,33 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       await tick()
     }
   }
+
+  it.each([
+    ['session.execution.failed', { error: { type: 'api' } }, 'api'],
+    ['session.execution.failed', {}, 'UnknownError'],
+    ['session.execution.interrupted', { reason: 'user' }, 'MessageAbortedError'],
+    ['session.execution.interrupted', { reason: 'pause' }, undefined],
+    ['session.execution.succeeded', {}, undefined]
+  ])('carries the root verdict for %s', async (type, fields, errorName) => {
+    const reported = await runPane(PANE_A, SES_A, async (tui) => {
+      tui.navigate(SES_A)
+      await pump(tui, turn(SES_A, 'root').start)
+      await pump(tui, [{ type, data: { sessionID: SES_A, ...fields } }])
+    })
+    expect(reported.at(-1)?.payload).toMatchObject({ root_state: 'done' })
+    expect(reported.at(-1)?.payload?.root_turn_error_name).toBe(errorName)
+  })
+
+  it('clears a failed root verdict on its next turn', async () => {
+    const reported = await runPane(PANE_A, SES_A, async (tui) => {
+      tui.navigate(SES_A)
+      await pump(tui, turn(SES_A, 'first').start)
+      await pump(tui, [{ type: 'session.execution.failed', data: { sessionID: SES_A } }])
+      await pump(tui, [{ type: 'session.execution.started', data: { sessionID: SES_A } }])
+      await pump(tui, turn(SES_A, 'next').finish)
+    })
+    expect(reported.at(-1)?.payload?.root_turn_error_name).toBeUndefined()
+  })
 
   // Captured s2 shape: pane A's long turn overlapped by pane B's short one on one server.
   it('gives each overlapping pane only its own session and its own Idle', async () => {
@@ -446,6 +482,49 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       data: { id: 'per_1', sessionID, action: 'bash', resources: ['rm -rf build'] }
     })
 
+    it('publishes a root failure while its child keeps the aggregate Working', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, [...turn(SES_A, 'root').start, ...childStart(SES_A)])
+      await pump(tui, [{ type: 'session.execution.failed', data: { sessionID: SES_A } }])
+      await vi.waitFor(() => {
+        expect(posts.at(-1)?.payload).toMatchObject({
+          hook_event_name: 'SessionBusy',
+          root_state: 'done',
+          root_turn_error_name: 'UnknownError'
+        })
+      })
+      await pump(tui, [{ type: 'session.execution.succeeded', data: { sessionID: SES_CHILD } }])
+      expect(posts.at(-1)?.payload?.root_turn_error_name).toBe('UnknownError')
+      await cleanup?.()
+    })
+
+    it('does not turn a child failure into a root failure', async () => {
+      const reported = await runPane(PANE_A, SES_A, async (tui) => {
+        tui.navigate(SES_A)
+        await pump(tui, [...turn(SES_A, 'root').start, ...childStart(SES_A)])
+        await pump(tui, [{ type: 'session.execution.failed', data: { sessionID: SES_CHILD } }])
+        await pump(tui, turn(SES_A, 'root').finish)
+      })
+      expect(reported.at(-1)?.payload?.root_turn_error_name).toBeUndefined()
+    })
+
+    it('keeps a failed terminal verdict through plugin hot reload', async () => {
+      const tui = fakeTui()
+      const first = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, turn(SES_A, 'root').start)
+      await pump(tui, [{ type: 'session.execution.failed', data: { sessionID: SES_A } }])
+      await first?.()
+      const before = posts.length
+      const second = await start(tui)
+      await tick(150)
+      expect(posts).toHaveLength(before)
+      expect(posts.at(-1)?.payload?.root_turn_error_name).toBe('UnknownError')
+      await second?.()
+    })
+
     // Why: #23700 left this for TUI panes; a reload that misses the end must still reach Done.
     it('shows Done for a turn that ended while the plugin was reloading', async () => {
       const tui = fakeTui()
@@ -591,7 +670,8 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       const a = turn(SES_A, 'A spawns a background task')
       await pump(tui, [...a.start, ...childStart(SES_A), ...a.finish])
       await tick(250)
-      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`])
+      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`, `SessionBusy:${SES_A}`])
+      expect(posts.at(-1)?.payload).toMatchObject({ root_state: 'done' })
       tui.loseEnd(SES_CHILD)
       await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
       await cleanup?.()
