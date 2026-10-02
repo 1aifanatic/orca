@@ -90,12 +90,27 @@ function visible(server: AgentHookServer): boolean {
 }
 
 describe('host-owned hook presence', () => {
-  it('clears the status on SessionEnd while the terminal survives, without a renderer', async () => {
+  it('clears the status once the exact check proves the exit, without a renderer', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
     capture(server)
     expect(visible(server)).toBe(true)
     probe.mockResolvedValueOnce('exited')
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
+    expect(visible(server)).toBe(true)
+    await server.checkAgentPresence(PANE)
+    expect(visible(server)).toBe(false)
+  })
+
+  it('never mints or resurrects a Done from a Claude exit hook', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    expect(server.getStatusSnapshot()).toEqual([])
+    await hook(server, 'UserPromptSubmit')
+    await hook(server, 'Stop')
+    server.dropStatusEntry(PANE)
+    expect(visible(server)).toBe(false)
     await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
     expect(visible(server)).toBe(false)
   })
@@ -110,6 +125,9 @@ describe('host-owned hook presence', () => {
     expect(state(server)).toBe('working')
     probe.mockResolvedValueOnce('exited')
     await hook(server, 'SessionEnd', 'session-b', 'prompt_input_exit')
+    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
+    expect(visible(server)).toBe(true)
+    await server.checkAgentPresence(PANE)
     expect(visible(server)).toBe(false)
   })
 
@@ -138,6 +156,9 @@ describe('host-owned hook presence', () => {
     expect(state(server)).toBe('working')
     probe.mockResolvedValueOnce('exited')
     await hook(server, 'SessionEnd', 'outer', 'other')
+    // The hook leaves the turn alone; the host's exact check (its 2 s beat) proves the exit.
+    expect(visible(server)).toBe(true)
+    await server.checkAgentPresence(PANE)
     expect(visible(server)).toBe(false)
   })
 
@@ -250,6 +271,7 @@ describe('host-owned hook presence', () => {
     expect(identified.hasVerifiableAgentProcess(PANE)).toBe(true)
     probe.mockResolvedValueOnce('exited')
     await hook(identified, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    await identified.checkAgentPresence(PANE)
     expect(identified.hasVerifiableAgentProcess(PANE)).toBe(false)
   })
 

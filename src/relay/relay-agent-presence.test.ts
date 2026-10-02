@@ -117,8 +117,12 @@ describe('relay process presence', () => {
       await post('SessionStart', 'b')
       await post('SessionEnd', 'nested', 'other', 4002)
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBeUndefined()
-      probe.mockResolvedValueOnce('exited')
+      const forwardedBeforeExit = forward.mock.calls.length
       await post('SessionEnd', 'b', 'prompt_input_exit')
+      // The exit hook carries no turn; the relay's exact check (its 2 s beat) proves the exit.
+      expect(forward.mock.calls.length).toBe(forwardedBeforeExit)
+      probe.mockResolvedValueOnce('exited')
+      await server.checkAgentPresence(paneKey)
       expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBe(true)
       expect(forward.mock.lastCall?.[0].providerSessionOnly).toBe(true)
       await post('SessionStart', 'c', undefined, 4003)

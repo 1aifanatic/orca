@@ -24,13 +24,6 @@ import {
 } from './agent-hook-listener/opencode-session-registry'
 import { readString } from './agent-hook-listener/tool-input-preview'
 /** Canonical transport-agnostic normalization entry shared by main and relay listeners. */
-const CLAUDE_EXIT_SESSION_END_REASONS = new Set([
-  'prompt_input_exit',
-  'logout',
-  'other',
-  'bypass_permissions_disabled'
-])
-
 export function normalizeHookPayload(
   state: HookListenerState,
   source: AgentHookSource,
@@ -141,35 +134,6 @@ export function normalizeHookPayload(
     // summarized rather than blanking the row as it clears.
     if (previousStatus?.payload.prompt && !state.lastPromptByPaneKey.has(paneKey)) {
       state.lastPromptByPaneKey.set(paneKey, previousStatus.payload.prompt)
-    }
-  }
-
-  const sessionEndReason = readString(hookPayloadRecord, 'reason')
-  if (
-    eventName === 'SessionEnd' &&
-    source === 'claude' &&
-    !readString(hookPayloadRecord, 'agent_id') &&
-    // Why: only reasons that end the process; /clear and /resume keep it running, and an unknown
-    // reason is left to the process check rather than guessed.
-    sessionEndReason !== undefined &&
-    CLAUDE_EXIT_SESSION_END_REASONS.has(sessionEndReason)
-  ) {
-    const payload =
-      previousStatus?.payload ??
-      normalizeAgentStatusPayload({ state: 'done', prompt: '', agentType: source })
-    if (!payload) {
-      return null
-    }
-    return {
-      paneKey,
-      source,
-      launchToken,
-      tabId,
-      worktreeId,
-      connectionId: null,
-      providerSession: providerSession ?? undefined,
-      hookEventName: 'SessionEnd',
-      payload
     }
   }
 
