@@ -31,4 +31,10 @@ describe('standalone CLI install matrix routing', () => {
       package_windows: true
     })
   })
+
+  it('runs the Windows lane when the named-pipe compat gate test changes', () => {
+    expect(classifyPrJobs(['src/cli/runtime/client-standalone-compat-gate.test.ts'])).toMatchObject(
+      { package_windows: true }
+    )
+  })
 })

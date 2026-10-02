@@ -5,7 +5,7 @@
  * supported Node major and inside node:*-alpine, so it uses only Node builtins.
  */
 // Why direct child_process: this file runs in a bare Node container with no repo
-// dependencies, and only on Linux CI, so the run-process wrapper is unavailable.
+// dependencies, on Linux and macOS CI only, so the run-process wrapper is unavailable.
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

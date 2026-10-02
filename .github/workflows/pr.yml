@@ -893,7 +893,7 @@ jobs:
         run: node config/scripts/smoke-managed-hook-runtime-node18.mjs
 
   # Why: the standalone CLI installs onto whatever Node the user has, so the one packed tarball
-  # is installed offline and run on every supported major and on musl.
+  # is installed offline and run on every supported major, on macOS, and on musl (x64 and arm64).
   standalone_cli_package:
     name: standalone CLI tarball
     needs: [code_paths]
@@ -925,7 +925,7 @@ jobs:
     name: standalone CLI install ${{ matrix.label }}
     needs: [code_paths, standalone_cli_package]
     if: needs.code_paths.outputs.standalone_cli == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -937,8 +937,14 @@ jobs:
             node: '24'
           - label: node 26
             node: '26'
+          - label: node 22 macos
+            node: '22'
+            runner: macos-latest
           - label: node 22 alpine musl
             image: node:22-alpine
+          - label: node 22 alpine musl arm64
+            image: node:22-alpine
+            runner: ubuntu-24.04-arm
 
     steps:
       # Only the dependency-free smoke script is needed; the tarball is the build under test.
@@ -1238,6 +1244,7 @@ jobs:
           src/main/orca-profiles/profile-index-store.test.ts
           src/main/startup/windows-install-dir-acl-repair.win32.test.ts
           src/main/runtime/repo-worktree-admin-fingerprint.test.ts
+          src/cli/runtime/client-standalone-compat-gate.test.ts
           src/main/runtime/worktree-scan-admin-fingerprint-gate.test.ts
           src/shared/secure-file-fsync-flags.test.ts
           src/shared/secure-path-windows-acl.win32.test.ts

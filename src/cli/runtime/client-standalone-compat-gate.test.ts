@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +27,12 @@ async function startLocalRuntime(status: Record<string, unknown>): Promise<{
   methods: string[]
 }> {
   const userDataPath = mkdtempSync(join(tmpdir(), 'orca-standalone-compat-'))
-  const endpoint = join(userDataPath, 'runtime.sock')
+  // Windows runtimes listen on a named pipe, the transport the desktop app publishes there.
+  const transport =
+    process.platform === 'win32'
+      ? { kind: 'named-pipe', endpoint: `\\\\.\\pipe\\orca-standalone-compat-${randomUUID()}` }
+      : { kind: 'unix', endpoint: join(userDataPath, 'runtime.sock') }
+  const { endpoint } = transport
   const methods: string[] = []
   const server = createServer((socket) => {
     sockets.add(socket)
@@ -56,7 +62,7 @@ async function startLocalRuntime(status: Record<string, unknown>): Promise<{
     JSON.stringify({
       runtimeId: 'runtime-1',
       pid: process.pid,
-      transports: [{ kind: 'unix', endpoint }],
+      transports: [transport],
       authToken: 'token',
       startedAt: Date.now()
     }),
@@ -65,7 +71,7 @@ async function startLocalRuntime(status: Record<string, unknown>): Promise<{
   return { userDataPath, methods }
 }
 
-describe.skipIf(process.platform === 'win32')('RuntimeClient local compat gate', () => {
+describe('RuntimeClient local compat gate', () => {
   it('keeps the desktop CLI on a single local request', async () => {
     const { userDataPath, methods } = await startLocalRuntime({})
     const client = new RuntimeClient(userDataPath, 1_000, null, null)
