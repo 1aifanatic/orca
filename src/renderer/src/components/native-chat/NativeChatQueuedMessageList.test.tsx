@@ -51,13 +51,18 @@ function card(overrides: Partial<QueuedMessageCard> & { messageId: string }): Qu
   }
 }
 
-function controller(cards: QueuedMessageCard[]): StructuredAgentSessionQueuedMessagesController & {
+/** `turnRunning` defaults on: a card waiting on the turn implies one is running. */
+function controller(
+  cards: QueuedMessageCard[],
+  turnRunning = true
+): StructuredAgentSessionQueuedMessagesController & {
   steer: ReturnType<typeof vi.fn>
   remove: ReturnType<typeof vi.fn>
   edit: ReturnType<typeof vi.fn>
 } {
   return {
     cards,
+    turnRunning,
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
@@ -235,7 +240,7 @@ describe('NativeChatQueuedMessageList', () => {
   })
 
   it.each(['stopped', 'restarted', 'cleared', 'some-newer-reason'])(
-    "a queue the host holds ('%s') shows no header and no Resume; each card's Steer sends it",
+    "a queue the host holds ('%s') shows no header and no Resume; each card's Send sends it",
     (reason) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
       const queuePause = { reason } as AgentSessionQueuePause
@@ -253,6 +258,8 @@ describe('NativeChatQueuedMessageList', () => {
           queuePause,
           submissions: [],
           hasPendingPrompt: false,
+          // Nothing runs after a Stop, a restart or a /clear.
+          isWorking: false,
           composerScopeKey: undefined,
           // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list only awaits mutate; its answer is never read.
           mutate: mutate as StructuredAgentSessionMutate
@@ -272,7 +279,8 @@ describe('NativeChatQueuedMessageList', () => {
       const row = within(list).getByRole('listitem')
       // The text is the card's only line: no caption under it.
       expect(row.querySelectorAll('p')).toHaveLength(1)
-      fireEvent.click(within(row).getByRole('button', { name: 'Steer' }))
+      expect(within(row).queryByRole('button', { name: 'Steer' })).toBeNull()
+      fireEvent.click(within(row).getByRole('button', { name: 'Send' }))
       expect(mutate).toHaveBeenCalledWith(
         'agentSession.queuedMessageSend',
         'agentSession.queuedMessageSend',
@@ -353,32 +361,33 @@ describe('NativeChatQueuedMessageList', () => {
     expect(group.children).toHaveLength(2)
   })
 
-  it('cards keep Steer, Delete and More actions while the queue is paused', () => {
-    const owner = controller([card({ messageId: 'waiting', hold: 'queue-paused' })])
+  it('a held card keeps Send, Delete and More actions; Steer only while a turn runs', () => {
+    const owner = controller([card({ messageId: 'waiting', hold: 'queue-paused' })], false)
     renderList(owner)
     const row = screen.getByRole('listitem')
-    expect(within(row).getByRole('button', { name: 'Steer' })).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: 'Steer' })).toBeNull()
     expect(within(row).getByRole('button', { name: 'Delete' })).toBeTruthy()
     expect(within(row).getByRole('button', { name: 'More actions' })).toBeTruthy()
     expect(row.querySelectorAll('p')).toHaveLength(1)
-    fireEvent.click(within(row).getByRole('button', { name: 'Steer' }))
+    const send = within(row).getByRole('button', { name: 'Send' })
+    expect(send.querySelector('.lucide-send')).not.toBeNull()
+    fireEvent.click(send)
     expect(owner.steer).toHaveBeenCalledWith('waiting')
+    cleanup()
+    // A turn Orca started (mail, a restart's continuation) runs while the queue stays held.
+    renderList(controller([card({ messageId: 'waiting', hold: 'queue-paused' })], true))
+    expect(screen.getByRole('button', { name: 'Steer' })).toBeTruthy()
   })
 
-  it('only a card still waiting on the turn promises to skip the wait', () => {
-    for (const hold of ['turn', 'awaiting-answer', 'behind-returned'] as const) {
-      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
-        steers: true,
-        label: 'Steer',
-        hint: 'Submit without interrupting the model'
-      })
+  it('Steer only while a turn runs, and never for a card held on its own or returned', () => {
+    const SEND = { steers: false, label: 'Send', hint: 'Send this message now' }
+    const STEER = { steers: true, label: 'Steer', hint: 'Submit without interrupting the model' }
+    for (const hold of ['turn', 'awaiting-answer', 'behind-returned', 'queue-paused'] as const) {
+      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }), true)).toEqual(STEER)
+      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }), false)).toEqual(SEND)
     }
     for (const hold of ['paused', 'returned'] as const) {
-      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
-        steers: false,
-        label: 'Send',
-        hint: 'Send this message now'
-      })
+      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }), true)).toEqual(SEND)
     }
   })
 

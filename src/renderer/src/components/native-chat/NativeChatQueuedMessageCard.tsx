@@ -78,15 +78,18 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
   }
 }
 
-/** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own
- *  or returned is not waiting on the turn, so its action and tooltip are plainly Send. */
-export function queuedMessageCardSendNow(card: QueuedMessageCard): {
+/** Steer names the jump into a running turn; with no turn running, or for a card held on its own
+ *  or returned, the action and tooltip are plainly Send. */
+export function queuedMessageCardSendNow(
+  card: QueuedMessageCard,
+  turnRunning: boolean
+): {
   /** Steer's ↳, or Send's paper plane. */
   steers: boolean
   label: string
   hint: string
 } {
-  if (card.hold === 'paused' || card.hold === 'returned') {
+  if (!turnRunning || card.hold === 'paused' || card.hold === 'returned') {
     return {
       steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),
@@ -105,6 +108,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 
 export function NativeChatQueuedMessageCard({
   card,
+  turnRunning,
   showsSteerShortcut,
   onSteer,
   onDelete,
@@ -112,6 +116,7 @@ export function NativeChatQueuedMessageCard({
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
+  turnRunning: boolean
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
   onSteer: () => void
@@ -121,7 +126,7 @@ export function NativeChatQueuedMessageCard({
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card)
   const returned = card.state === 'returned'
-  const sendNow = queuedMessageCardSendNow(card)
+  const sendNow = queuedMessageCardSendNow(card, turnRunning)
   const isMac = isMacPlatform()
   return (
     <li

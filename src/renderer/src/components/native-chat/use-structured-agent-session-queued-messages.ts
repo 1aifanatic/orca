@@ -24,6 +24,8 @@ import type { StructuredAgentSessionMutate } from './use-structured-agent-sessio
 
 export type StructuredAgentSessionQueuedMessagesController = {
   cards: QueuedMessageCard[]
+  /** A turn is running, so Send-now steers into it rather than starting one. */
+  turnRunning: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
   steer: (messageId: string) => Promise<void>
   remove: (messageId: string) => Promise<void>
@@ -46,6 +48,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
+  /** The main agent is working: a turn is running, whoever started it. */
+  isWorking: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
@@ -147,5 +151,5 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     return true
   }, [enabled, steer])
 
-  return { cards, steer, remove, edit, steerNewest }
+  return { cards, turnRunning: args.isWorking, steer, remove, edit, steerNewest }
 }
