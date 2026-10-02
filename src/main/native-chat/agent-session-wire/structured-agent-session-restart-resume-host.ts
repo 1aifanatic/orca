@@ -44,6 +44,7 @@ import {
 import type { StructuredAgentSessionRestartResumeSurfaces } from './structured-agent-session-restart-resume-wiring'
 import { createStructuredAgentSessionRestartWitnesses } from './structured-agent-session-restart-witnesses'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
+import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 type LiveSession = StructuredAgentSessionRestartOfferSession
@@ -79,6 +80,7 @@ export function createStructuredAgentSessionRestartResume(
     adapter: StructuredAgentSessionAdapter
     recoveryCapsule?: AgentSessionRecoveryCapsule
     logger: StructuredAgentSessionLogger
+    journalDatabase: Pick<JournalHostDatabase, 'readOnly'>
   },
   sessions: ReadonlyMap<string, LiveSession>,
   surfaces: StructuredAgentSessionRestartResumeSurfaces
@@ -102,15 +104,22 @@ export function createStructuredAgentSessionRestartResume(
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
-  // Read once the chat is revealed: listing and acting open each marker's journal first.
-  const readOnly = (sessionId: string) => sessions.get(sessionId)?.journal.isReadOnly === true
-  const derive = createStructuredAgentSessionRestartCandidateReader({
-    sessions,
-    getRecord: deps.store.getRecord,
-    adapter: deps.adapter,
-    movedOn: withdrawal.movedOn,
-    readOnly
-  })
+  // A newer Orca's chat: the whole database is a newer Orca's (so even a journal that fails to open
+  // is one), or the chat's journal, which listing and acting open first, is read-only here.
+  const readOnly = (sessionId: string) =>
+    deps.journalDatabase.readOnly || sessions.get(sessionId)?.journal.isReadOnly === true
+  const reader = (skipReadOnly: (sessionId: string) => boolean) =>
+    createStructuredAgentSessionRestartCandidateReader({
+      sessions,
+      getRecord: deps.store.getRecord,
+      adapter: deps.adapter,
+      movedOn: withdrawal.movedOn,
+      readOnly: skipReadOnly
+    })
+  const derive = reader(readOnly)
+  // The check made right before sending skips nothing for read-only: turning a chat away there
+  // would spend its offer. Its send is refused instead, and settling keeps the offer.
+  const deriveAtSend = reader(() => false)
   const failures = createStructuredAgentSessionRestartFailureLedger({
     ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
     getRecord: deps.store.getRecord,
@@ -154,7 +163,7 @@ export function createStructuredAgentSessionRestartResume(
       deps.store.getRecord(sessionId)
         ? structuredAgentSessionConversationFence(deps.store, sessionId)
         : null,
-    stillResumable: (marker) => derive([marker], 'may-be-held').candidates.length === 1
+    stillResumable: (marker) => deriveAtSend([marker], 'may-be-held').candidates.length === 1
   }
 
   /** One explicit action: reserve the offers, then continue each through `continueOne`, a few at
@@ -198,7 +207,9 @@ export function createStructuredAgentSessionRestartResume(
           admission,
           consumeMarker: async (sessionId) => {
             const marker = markersBySession.get(sessionId)
-            return marker !== undefined && derive([marker], 'may-be-held').candidates.length === 1
+            return (
+              marker !== undefined && deriveAtSend([marker], 'may-be-held').candidates.length === 1
+            )
           },
           resume: async (sessionId) => {
             const marker = markersBySession.get(sessionId)
