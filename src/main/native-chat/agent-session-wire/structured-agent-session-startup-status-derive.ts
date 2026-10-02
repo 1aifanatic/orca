@@ -5,6 +5,7 @@
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
+  foldableJournalSessionEpoch,
   foldJournalSessionStatus,
   writeJournalSessionStatuses,
   type FoldedJournalSessionStatus
@@ -15,6 +16,8 @@ import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-
 // A write per slice, not per chat: each per-chat commit rewrites the same table and index pages.
 const SLICE_CHATS = 16
 const SLICE_MS = 50
+// Chats with nothing to fold go by without a yield each; a run of them still yields once this long.
+const SKIP_RUN_MS = 8
 
 /** `shown` false: an unfinished chat's row, stored so the next boot selects the chat until its open
  *  settles it, but never displayed from rows. */
@@ -42,17 +45,30 @@ export async function deriveMissingStatuses(
   const toOpen: string[] = []
   let slice: Folded[] = []
   let sliceStart = 0
+  let lastYield = performance.now()
   for (const sessionId of sessionIds) {
-    // A task per chat at least: short chats fold in one part, and a pass of them must not be one task.
+    const record = deps.openDeps.store.getRecord(sessionId)
+    if (!record || !canFold(deps, record)) {
+      if (performance.now() - lastYield >= SKIP_RUN_MS) {
+        await yieldTask()
+        lastYield = performance.now()
+      }
+      if (deps.isDisposed()) {
+        return []
+      }
+      toOpen.push(sessionId)
+      continue
+    }
+    // A task per chat that folds: short chats fold in one part, and a pass of them must not be one task.
     await yieldTask()
+    lastYield = performance.now()
     if (deps.isDisposed()) {
       return []
     }
-    const record = deps.openDeps.store.getRecord(sessionId)
-    const folded =
-      record && deps.canSettle(record) && !deps.hasSession(sessionId)
-        ? await foldFromRows(deps, record, { yieldTask, signal: quit.signal })
-        : null
+    // Opened during the yield: its open writes and publishes its row.
+    const folded = deps.hasSession(sessionId)
+      ? null
+      : await foldFromRows(deps, record, { yieldTask, signal: quit.signal })
     if (!folded || !folded.shown) {
       toOpen.push(sessionId)
     }
@@ -73,6 +89,22 @@ export async function deriveMissingStatuses(
   }
   toOpen.push(...writeSlice(deps, slice))
   return toOpen
+}
+
+/** Whether the chat has rows to fold here, decided without a task of its own. A check that throws
+ *  answers yes, so the fold reports the failure. */
+function canFold(
+  deps: StructuredAgentSessionStartupStateDeps,
+  record: AgentSessionRecord
+): boolean {
+  if (!deps.canSettle(record) || deps.hasSession(record.sessionId)) {
+    return false
+  }
+  try {
+    return foldableJournalSessionEpoch(deps.openDeps.journalDatabase, record.sessionId) !== null
+  } catch {
+    return true
+  }
 }
 
 /** A chat's status from its rows; null leaves it to its open, rowless, as for a corrupt history: a
