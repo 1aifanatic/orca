@@ -47,8 +47,8 @@ function kernelsOf(owner: WebContents): Map<string, NotebookKernel> {
   return kernels
 }
 
-// Why the notebook path is user-named, not root-checked: it is an open tab, and it only picks the
-// kernel's cwd and the venv folder.
+// Why the notebook path is user-named: it is an open tab, and it only picks the kernel's cwd and
+// the venv folder. Inside a project it resolves to the real file, so the cwd is its real folder.
 export function registerNotebookHandlers(store: Store): void {
   ipcMain.handle(
     'notebook:listPythonEnvironments',
@@ -56,7 +56,7 @@ export function registerNotebookHandlers(store: Store): void {
       _event,
       args: { filePath: string; rootPath: string | null; runWorkspaceInterpreters: boolean }
     ): Promise<PythonEnvironments> => {
-      await resolveUserNamedRegularFile(args.filePath)
+      await resolveUserNamedRegularFile(args.filePath, store)
       // Why the unresolved path: rootPath is in the same (possibly symlinked) form, e.g. /tmp.
       return listPythonEnvironments(args.filePath, args.rootPath, {
         runWorkspaceInterpreters: args.runWorkspaceInterpreters === true
@@ -73,7 +73,7 @@ export function registerNotebookHandlers(store: Store): void {
     'notebook:startKernel',
     async (event, args: { filePath: string; python: string }): Promise<KernelStartResult> => {
       // Why: run from the notebook's folder so relative imports and data paths resolve as on disk.
-      const cwd = dirname(await resolveUserNamedRegularFile(args.filePath))
+      const cwd = dirname(await resolveUserNamedRegularFile(args.filePath, store))
       const owner = event.sender
       const kernels = kernelsOf(owner)
       kernels.get(args.filePath)?.shutdown()
@@ -111,7 +111,7 @@ export function registerNotebookHandlers(store: Store): void {
       _event,
       args: { filePath: string; rootPath: string | null; python: string }
     ): Promise<CreateVenvResult> => {
-      await resolveUserNamedRegularFile(args.filePath)
+      await resolveUserNamedRegularFile(args.filePath, store)
       if (args.rootPath) {
         await resolveDesktopAuthorizedPath(args.rootPath, store)
       }

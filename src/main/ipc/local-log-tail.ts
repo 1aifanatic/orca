@@ -7,6 +7,7 @@ import type {
   LocalLogTailWatchArgs
 } from '../../shared/local-log-tail-types'
 import { readLocalLogTailRange } from '../ai-vault/local-log-tail-reader'
+import type { Store } from '../persistence'
 import { resolveUserNamedRegularFile } from './local-file-access-resolution'
 import { abortWhenRendererGone } from './renderer-lifetime-abort'
 
@@ -94,7 +95,11 @@ function validateSubscriptionId(value: unknown): string {
   return value
 }
 
-async function startWatch(sender: WebContents, args: LocalLogTailWatchArgs): Promise<void> {
+async function startWatch(
+  sender: WebContents,
+  args: LocalLogTailWatchArgs,
+  store: Store
+): Promise<void> {
   const subscriptionId = validateSubscriptionId(args.subscriptionId)
   if (sender.isDestroyed()) {
     return
@@ -104,7 +109,7 @@ async function startWatch(sender: WebContents, args: LocalLogTailWatchArgs): Pro
   const pending = Symbol(subscriptionId)
   owner.pending.set(key, pending)
   try {
-    const filePath = await resolveUserNamedRegularFile(args.filePath)
+    const filePath = await resolveUserNamedRegularFile(args.filePath, store)
     if (
       sender.isDestroyed() ||
       owner.signal.aborted ||
@@ -138,17 +143,17 @@ async function startWatch(sender: WebContents, args: LocalLogTailWatchArgs): Pro
   }
 }
 
-export function registerLocalLogTailHandlers(): void {
+export function registerLocalLogTailHandlers(store: Store): void {
   ipcMain.handle(
     'fs:readLocalLogTail',
     async (_event, args: LocalLogTailReadArgs): Promise<LocalLogTailReadResult> => {
-      const filePath = await resolveUserNamedRegularFile(args.filePath)
+      const filePath = await resolveUserNamedRegularFile(args.filePath, store)
       return readLocalLogTailRange(filePath, args.fromByteOffset, args.expectedIdentity)
     }
   )
 
   ipcMain.handle('fs:startLocalLogTail', (event, args: LocalLogTailWatchArgs): Promise<void> =>
-    startWatch(event.sender, args)
+    startWatch(event.sender, args, store)
   )
 
   ipcMain.handle('fs:stopLocalLogTail', (event, args: { subscriptionId: string }): void => {

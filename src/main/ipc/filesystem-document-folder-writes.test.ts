@@ -118,6 +118,30 @@ describe('renaming a document the user opened outside every project', () => {
     expect((await readdir(docFolder)).sort()).toEqual(['note.md', 'other.md'])
   })
 
+  it('undoes a rename with the renamed file declared as the document', async () => {
+    const renamed = join(docFolder, 'renamed.md')
+    await call('fs:rename', { oldPath: note, newPath: renamed, access: documentFolder(note) })
+
+    await call('fs:rename', { oldPath: renamed, newPath: note, access: documentFolder(renamed) })
+
+    expect(await readdir(docFolder)).toEqual(['note.md'])
+  })
+
+  it('refuses a rename into a subfolder, whose Undo could not come back', async () => {
+    await mkdir(join(docFolder, 'archive'))
+
+    expect(
+      await settles(
+        call('fs:rename', {
+          oldPath: note,
+          newPath: join(docFolder, 'archive', 'note.md'),
+          access: documentFolder(note)
+        })
+      )
+    ).toBe('denied')
+    expect(await readdir(join(docFolder, 'archive'))).toEqual([])
+  })
+
   it.skipIf(process.platform === 'win32')(
     'refuses a new name through a linked subfolder that leads out',
     async () => {
@@ -150,6 +174,37 @@ describe('inserting an image into a document the user opened outside every proje
     expect((await readdir(docFolder)).sort()).toEqual(['note.md', 'shot.png'])
   })
 
+  it('copies the image into a subfolder of the document folder', async () => {
+    await mkdir(join(docFolder, 'images'))
+
+    await call('fs:importExternalPaths', {
+      sourcePaths: [join(base, 'shot.png')],
+      destDir: join(docFolder, 'images'),
+      access: documentFolder(note)
+    })
+
+    expect(await readdir(join(docFolder, 'images'))).toEqual(['shot.png'])
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses an import through a linked subfolder that leads out',
+    async () => {
+      await mkdir(join(base, 'elsewhere'))
+      await symlink(join(base, 'elsewhere'), join(docFolder, 'linked'))
+
+      expect(
+        await settles(
+          call('fs:importExternalPaths', {
+            sourcePaths: [join(base, 'shot.png')],
+            destDir: join(docFolder, 'linked'),
+            access: documentFolder(note)
+          })
+        )
+      ).toBe('denied')
+      expect(await readdir(join(base, 'elsewhere'))).toEqual([])
+    }
+  )
+
   it('refuses the parent folder, and any outside folder without access', async () => {
     const importInto = (destDir: string, access?: unknown) =>
       settles(
@@ -167,6 +222,23 @@ describe('inserting an image into a document the user opened outside every proje
 })
 
 describe('a project file opened by its full path', () => {
+  it('renames into a subfolder of the project, which the project check allows', async () => {
+    const project = join(base, 'project')
+    await mkdir(join(project, 'docs', 'old'), { recursive: true })
+    await writeFile(join(project, 'docs', 'plan.md'), '# plan\n')
+    projectPaths = [project]
+    invalidateAuthorizedRootsCache()
+    const plan = join(project, 'docs', 'plan.md')
+
+    await call('fs:rename', {
+      oldPath: plan,
+      newPath: join(project, 'docs', 'old', 'plan.md'),
+      access: documentFolder(plan)
+    })
+
+    expect(await readdir(join(project, 'docs', 'old'))).toEqual(['plan.md'])
+  })
+
   it('renames into another folder of the same project, as with no declared access', async () => {
     const project = join(base, 'project')
     await mkdir(join(project, 'docs'), { recursive: true })

@@ -19,10 +19,12 @@ import { NOT_A_REGULAR_FILE_MESSAGE } from './filesystem/local-regular-file-read
 
 export const USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE =
   'Access denied: a file opened by name needs an absolute path.'
+const USER_FILE_ACCESS: LocalFileAccess = { kind: 'user-file' }
+
 export const CHAT_IMAGE_TYPE_MESSAGE = 'Access denied: a chat can only show local image files.'
 
 /** Desktop IPC's root check: the project roots plus the app-owned floating-workspace folder. */
-export function resolveDesktopAuthorizedPath(
+export async function resolveDesktopAuthorizedPath(
   targetPath: string,
   store: Store,
   options: ResolveAuthorizedPathOptions = {}
@@ -42,9 +44,15 @@ export function resolveUserNamedLocalPath(targetPath: string): string {
   return resolve(targetPath)
 }
 
-/** A user-named path that must be an existing regular file, e.g. a notebook or a log being tailed. */
-export async function resolveUserNamedRegularFile(targetPath: string): Promise<string> {
-  const filePath = resolveUserNamedLocalPath(targetPath)
+/**
+ * A user-named path that must be an existing regular file, e.g. a notebook or a log being tailed.
+ * Inside a project it resolves as the default check does, to the real file.
+ */
+export async function resolveUserNamedRegularFile(
+  targetPath: string,
+  store: Store
+): Promise<string> {
+  const filePath = await resolveLocalRequestPath(targetPath, USER_FILE_ACCESS, store, 'read')
   if (!(await stat(filePath)).isFile()) {
     throw new Error(NOT_A_REGULAR_FILE_MESSAGE)
   }
@@ -64,9 +72,9 @@ function isRefusedAutomaticLoadPath(filePath: string): boolean {
 
 /**
  * A file a document references (an image, typically) beyond what the default check allows: one in
- * the document's own folder, like the common markdown-preview rule. A target outside the folder,
- * or a network share, is refused by its path text before any filesystem call; a symlink inside the
- * folder is still resolved by the folder check.
+ * the document's own folder, like the common markdown-preview rule, on a network share too when the
+ * document is on it. A target outside the folder is refused by its path text before any
+ * filesystem call; a symlink inside the folder is still resolved by the folder check.
  */
 async function resolveDocumentResourcePath(
   targetPath: string,
@@ -85,7 +93,9 @@ async function resolveDocumentResourcePath(
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   const documentFolder = dirname(resolve(documentPath))
-  if (isNetworkSharePath(resolvedTarget) || !isDescendantOrEqual(resolvedTarget, documentFolder)) {
+  // Why the folder text check comes first: it refuses every host and share but the document's
+  // own (compared case-insensitively on Windows) before a filesystem call could reach one.
+  if (!isDescendantOrEqual(resolvedTarget, documentFolder)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   const realTarget = resolve(await realpath(resolvedTarget))
@@ -130,14 +140,19 @@ async function resolveChatImagePath(targetPath: string, store: Store): Promise<s
   return realTarget
 }
 
+function isSameFolder(left: string, right: string): boolean {
+  return isDescendantOrEqual(left, right) && isDescendantOrEqual(right, left)
+}
+
 /**
  * A write beside a document the user opened: the target must stay inside the document's own
- * folder, symlinks included. With `preserveLeaf`, a rename acts on the named entry, not its target.
+ * folder, symlinks included. A rename acts on the named entry, not its target, and lands directly
+ * in that folder, so its Undo (declared from the new name) is allowed too.
  */
 async function resolveDocumentFolderPath(
   targetPath: string,
   documentPath: string,
-  { preserveLeaf = false }: { preserveLeaf?: boolean } = {}
+  { rename = false }: { rename?: boolean } = {}
 ): Promise<string> {
   if (
     typeof targetPath !== 'string' ||
@@ -151,17 +166,17 @@ async function resolveDocumentFolderPath(
   const documentFolder = dirname(resolve(documentPath))
   if (
     isRefusedAutomaticLoadPath(resolvedTarget) ||
-    !isDescendantOrEqual(resolvedTarget, documentFolder)
+    !isDescendantOrEqual(resolvedTarget, documentFolder) ||
+    // Why no real-path twin: a rename keeps its leaf, so its real parent is the folder's real path.
+    (rename && !isSameFolder(dirname(resolvedTarget), documentFolder))
   ) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  const realTarget = preserveLeaf
+  const realTarget = rename
     ? resolve(await realpath(dirname(resolvedTarget)), basename(resolvedTarget))
     : resolve(await realpath(resolvedTarget))
-  if (
-    isRefusedAutomaticLoadPath(realTarget) ||
-    !isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))
-  ) {
+  const realFolder = resolve(await realpath(documentFolder))
+  if (isRefusedAutomaticLoadPath(realTarget) || !isDescendantOrEqual(realTarget, realFolder)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   return realTarget
@@ -175,7 +190,7 @@ async function resolveDocumentRenameSource(
   if (typeof targetPath !== 'string' || resolve(targetPath) !== resolve(documentPath)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  return resolveDocumentFolderPath(targetPath, documentPath, { preserveLeaf: true })
+  return resolveDocumentFolderPath(targetPath, documentPath, { rename: true })
 }
 
 // Why parse: IPC input is untyped, and an unrecognised access kind must fall back to roots only.
@@ -236,7 +251,7 @@ function declaredKindRule(
       if (operation === 'rename-to' || operation === 'import-into') {
         return (targetPath) =>
           resolveDocumentFolderPath(targetPath, fileAccess.documentPath, {
-            preserveLeaf: operation === 'rename-to'
+            rename: operation === 'rename-to'
           })
       }
       return undefined

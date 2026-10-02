@@ -44,5 +44,5 @@ export function registerFilesystemHandlers(
   registerFilesystemGitDiffHandlers(context)
   registerFilesystemGitIndexHandlers(context)
   registerFilesystemGitUrlHandlers(context)
-  registerLocalLogTailHandlers()
+  registerLocalLogTailHandlers(store)
 }

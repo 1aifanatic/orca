@@ -19,6 +19,10 @@ import {
   getActiveLocalLogTailWatcherCount,
   registerLocalLogTailHandlers
 } from './local-log-tail'
+import type { Store } from '../persistence'
+
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: path resolution is mocked, so the store is never read.
+const NO_STORE = {} as Store
 
 class Sender extends EventEmitter {
   dead = false
@@ -41,7 +45,7 @@ beforeEach(async () => {
   filePath = join(directory, 'fixture.log')
   await writeFile(filePath, 'test\n')
   authorize.mockReset().mockResolvedValue(filePath)
-  registerLocalLogTailHandlers()
+  registerLocalLogTailHandlers(NO_STORE)
 })
 afterEach(async () => {
   closeAllLocalLogTailWatchers()

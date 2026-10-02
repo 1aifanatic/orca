@@ -198,6 +198,18 @@ describe('Windows reserved device names in automatic image loads', () => {
     }
   )
 
+  it('refuses a rename into a subfolder of an opened document folder without touching it', async () => {
+    await expect(
+      resolveLocalRequestPath(
+        'C:\\Users\\me\\notes\\archive\\todo.md',
+        besideTodo,
+        store,
+        'rename-to'
+      )
+    ).rejects.toThrow('Access denied')
+    expect(fsCalls).toEqual([])
+  })
+
   it('still reads an ordinary image whose name only starts like a device', async () => {
     await expect(
       resolveLocalFileRequestPath('C:\\Users\\me\\notes\\console.png', CHAT_IMAGE, store)
@@ -288,6 +300,11 @@ describe('the default check runs first for every declared kind', () => {
   )
 })
 
+const besideShareDocument = {
+  kind: 'document-resource',
+  documentPath: '\\\\nas\\notes\\todo.md'
+}
+
 describe('automatic image loads on a network share', () => {
   beforeEach(() => {
     fsCalls.length = 0
@@ -314,17 +331,31 @@ describe('automatic image loads on a network share', () => {
     ).rejects.toThrow('Access denied')
   })
 
-  it('refuses a share image outside every project without touching the share', async () => {
+  it('refuses a chat share image outside every project without touching the share', async () => {
     await expect(
       resolveLocalFileRequestPath('\\\\server\\share\\other\\x.png', CHAT_IMAGE, shareProjectStore)
     ).rejects.toThrow('Access denied')
+    expect(fsCalls.filter((call) => call.includes('other'))).toEqual([])
+  })
+
+  it.each(['\\\\nas\\notes\\x.png', '\\\\NAS\\Notes\\img\\y.png', '//nas/notes/z.png'])(
+    'reads %s beside a document opened from that same share',
+    async (target) => {
+      await expect(
+        resolveLocalFileRequestPath(target, besideShareDocument, shareProjectStore)
+      ).resolves.toBeTruthy()
+    }
+  )
+
+  it.each([
+    '\\\\nas\\other\\x.png',
+    '\\\\evil\\notes\\x.png',
+    '\\\\nas\\notes-evil\\x.png',
+    '\\\\attacker.example\\share\\x.png'
+  ])('refuses %s beside a share document without touching any share', async (target) => {
     await expect(
-      resolveLocalFileRequestPath(
-        '\\\\nas\\notes\\x.png',
-        { kind: 'document-resource', documentPath: '\\\\nas\\notes\\todo.md' },
-        shareProjectStore
-      )
+      resolveLocalFileRequestPath(target, besideShareDocument, shareProjectStore)
     ).rejects.toThrow('Access denied')
-    expect(fsCalls.filter((call) => call.includes('other') || call.includes('nas'))).toEqual([])
+    expect(fsCalls).toEqual([])
   })
 })
