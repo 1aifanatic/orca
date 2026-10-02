@@ -15,6 +15,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { OrchestrationError } from './orchestration/orchestration-error'
 import { resolveConfiguredWorkerAgent } from './orchestration/configured-worker-agent-selector'
+import { applyManagedDataAccountEnvironment } from '../managed-data-accounts/launch-environment'
 import { probeOpenCodeModelAvailability } from '../opencode/opencode-model-availability'
 import { probeOpenCodeLaunchCapabilities } from '../opencode/opencode-launch-capabilities'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
@@ -226,10 +227,16 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
     const command =
       settings.agentCmdOverrides?.opencode ||
       getTuiAgentLaunchCommand(TUI_AGENT_CONFIG.opencode, platform)
-    const env = {
+    const env: Record<string, string> = {}
+    for (const [key, value] of Object.entries({
       ...process.env,
       ...resolveTuiAgentLaunchEnv('opencode', settings.agentDefaultEnv)
+    })) {
+      if (value !== undefined) {
+        env[key] = value
+      }
     }
+    applyManagedDataAccountEnvironment(env, { launchAgent: 'opencode', isWsl: Boolean(wsl) })
     const capabilities = await probeOpenCodeLaunchCapabilities({
       command,
       agent: 'opencode',

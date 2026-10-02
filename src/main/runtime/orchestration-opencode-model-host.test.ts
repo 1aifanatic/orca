@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
+import { applyManagedDataAccountEnvironment } from '../managed-data-accounts/launch-environment'
 import { probeOpenCodeModelAvailability } from '../opencode/opencode-model-availability'
 import { probeOpenCodeLaunchCapabilities } from '../opencode/opencode-launch-capabilities'
 import { resolveLocalProjectRuntimeForRepo } from '../project-runtime-git-options'
 
+vi.mock('../managed-data-accounts/launch-environment', () => ({
+  applyManagedDataAccountEnvironment: vi.fn()
+}))
 vi.mock('../opencode/opencode-launch-capabilities', () => ({
   probeOpenCodeLaunchCapabilities: vi.fn()
 }))
@@ -43,6 +47,7 @@ function probe(
 describe('OpenCode worker model execution host', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(applyManagedDataAccountEnvironment).mockReset()
     vi.mocked(probeOpenCodeModelAvailability).mockResolvedValue(true)
     vi.mocked(resolveLocalProjectRuntimeForRepo).mockReturnValue(undefined)
     vi.mocked(probeOpenCodeLaunchCapabilities).mockResolvedValue({
@@ -61,6 +66,25 @@ describe('OpenCode worker model execution host', () => {
         env: expect.objectContaining({ OPENCODE_CONFIG_DIR: '/tmp/private-config' })
       })
     )
+  })
+  it('uses the same selected account environment for version and catalog probes', async () => {
+    vi.mocked(applyManagedDataAccountEnvironment).mockImplementation((env) => {
+      env.XDG_DATA_HOME = '/private/selected-account'
+      env.OPENCODE_AUTH_CONTENT = ''
+      env.OPENCODE_DB = 'opencode.db'
+    })
+    expect(await probe(host())).toBe(true)
+    const env = expect.objectContaining({
+      XDG_DATA_HOME: '/private/selected-account',
+      OPENCODE_AUTH_CONTENT: '',
+      OPENCODE_DB: 'opencode.db'
+    })
+    expect(probeOpenCodeLaunchCapabilities).toHaveBeenCalledWith(expect.objectContaining({ env }))
+    expect(probeOpenCodeModelAvailability).toHaveBeenCalledWith(expect.objectContaining({ env }))
+    expect(applyManagedDataAccountEnvironment).toHaveBeenCalledWith(expect.anything(), {
+      launchAgent: 'opencode',
+      isWsl: false
+    })
   })
   it('rejects an unknown selector rather than claiming the fallback model', async () => {
     vi.mocked(probeOpenCodeModelAvailability).mockResolvedValue(false)
