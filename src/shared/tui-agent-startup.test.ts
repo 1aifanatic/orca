@@ -118,7 +118,7 @@ describe('tui agent startup plans', () => {
 
       expect(plan?.launchCommand).not.toMatch(/[\r\n]/)
       expect(plan?.launchCommand).not.toContain('PWNED')
-      expect(plan?.launchFile).toMatchObject({ content: prompt, sensitive: false })
+      expect(plan?.launchFile).toMatchObject({ content: prompt })
       expect(plan?.launchCommand).toContain(plan?.launchFile?.placeholder)
     }
   )

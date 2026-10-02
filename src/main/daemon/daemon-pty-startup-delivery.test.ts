@@ -141,7 +141,7 @@ describe('DaemonPtyAdapter startup delivery', () => {
     vi.stubEnv('TMPDIR', stagingDir)
     nextShellPath = '/bin/zsh'
     try {
-      const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
+      const { prompt, launchFile } = carryInLaunchFile('secret brief')
       await adapter.spawn({
         cols: 80,
         rows: 24,

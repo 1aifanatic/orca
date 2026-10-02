@@ -84,14 +84,14 @@ describe('a terminal create that is handed a launch prompt', () => {
     await runtime.createTerminal('id:wt-1', { startupAgent: 'claude', startupPrompt: prompt })
 
     const launchFile = spawn.mock.calls[0]?.[0]?.launchFile
-    expect(launchFile).toMatchObject({ content: prompt, sensitive: false, quoting: 'posix' })
+    expect(launchFile).toMatchObject({ content: prompt, quoting: 'posix' })
     expect(spawnedCommand(spawn)).toContain(launchFile.placeholder)
     expect(spawnedCommand(spawn)).not.toContain('xxxx')
   })
 
   it('tells the host how the line quoted a launch file its caller wrote', async () => {
     const { runtime, spawn } = runtimeWithAgentLaunch()
-    const { prompt, launchFile } = carryInLaunchFile('worker brief', true)
+    const { prompt, launchFile } = carryInLaunchFile('worker brief')
 
     await runtime.createTerminal('id:wt-1', {
       startupAgent: 'claude',

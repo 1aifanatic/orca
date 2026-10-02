@@ -120,7 +120,7 @@ export async function maybeAutoRenameBranchOnFirstWork(
   const hookPrompt = event.prompt?.trim()
   // Why the pointer: a launch that carried its prompt in a file names only that file here, which
   // would name the branch after "read the task file". Its real prompt, when main kept it, names it
-  // instead; otherwise (a worker brief) a later prompt of the user's own can.
+  // instead; otherwise (no longer kept, as after a restart) a later prompt of the user's own can.
   const shown = hookPrompt
     ? (deps.showLaunchPrompt?.(event.paneKey, hookPrompt) ?? hookPrompt).trim()
     : undefined

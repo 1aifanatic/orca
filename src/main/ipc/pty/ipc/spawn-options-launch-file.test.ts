@@ -8,8 +8,7 @@ import type { PtySpawnIpcArgs, PtySpawnIpcDeps } from './spawn-types'
 
 const LAUNCH_FILE = {
   placeholder: `orca-launch-file-${'a'.repeat(32)}`,
-  content: 'the whole task',
-  sensitive: false
+  content: 'the whole task'
 }
 
 async function spawnOptionsFor(
@@ -61,21 +60,11 @@ describe('renderer pty spawn: launch file', () => {
   })
 
   // Why: the agent's hook reports only the pointer; Orca shows the prompt it points at instead.
-  it('shows the prompt a launch file carries for its pane, never a sensitive one', async () => {
+  it('shows the prompt a launch file carries for its pane', async () => {
     await spawnOptionsFor(
       { cols: 80, rows: 24, command, launchFile: LAUNCH_FILE },
       command,
       'tab-a:leaf-a'
-    )
-    await spawnOptionsFor(
-      {
-        cols: 80,
-        rows: 24,
-        command,
-        launchFile: { ...LAUNCH_FILE, content: 'dcap brief', sensitive: true }
-      },
-      command,
-      'tab-b:leaf-b'
     )
     const pointer = buildLaunchFilePointer('/tmp/orca-launch-file-a1/task-context.md')
     expect(launchPromptShownForPane('tab-a:leaf-a', pointer)).toBe('the whole task')

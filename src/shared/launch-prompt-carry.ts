@@ -163,7 +163,7 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
     if (!args.host.takesLaunchFile || !agentReadsLaunchFile(args.agent)) {
       return lineOrPaste()
     }
-    const pointer = carryInLaunchFile(text, false)
+    const pointer = carryInLaunchFile(text)
     const plan = buildLine({ ...args, prompt: pointer.prompt, launchFile: pointer.launchFile })
     return (
       plan && { carry: 'launch-file', plan, launchFile: withQuoting(pointer.launchFile, shell) }

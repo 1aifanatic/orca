@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 function launchFile(content = 'fix the build'): LaunchFile {
-  const planned = carryInLaunchFile(content, true)
+  const planned = carryInLaunchFile(content)
   return { ...planned.launchFile!, quoting: 'posix' }
 }
 

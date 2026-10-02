@@ -63,7 +63,7 @@ describe('where a launch prompt rides', () => {
       if (planned?.carry !== 'launch-file') {
         throw new Error(`expected a launch file, got ${planned?.carry}`)
       }
-      expect(planned.launchFile).toMatchObject({ content: prompt, sensitive: false })
+      expect(planned.launchFile).toMatchObject({ content: prompt })
       expect(planned.plan.launchCommand).toContain(planned.launchFile.placeholder)
       expect(planned.plan.launchCommand).not.toContain('yyyy')
     }
@@ -95,7 +95,7 @@ describe('where a launch prompt rides', () => {
   })
 
   it('names a launch file its caller wrote, quoted for the line', () => {
-    const { prompt, launchFile } = carryInLaunchFile('worker brief', true)
+    const { prompt, launchFile } = carryInLaunchFile('worker brief')
     const planned = plan('claude', prompt, { launchFile })
     expect(planned).toMatchObject({
       carry: 'launch-file',

@@ -12,7 +12,7 @@ import {
 import type { TuiAgent } from './tui-agent'
 
 function planWithLaunchFile(agent: TuiAgent, shell: 'posix' | 'cmd' | 'powershell' = 'posix') {
-  const { prompt, launchFile } = carryInLaunchFile('the brief', true)
+  const { prompt, launchFile } = carryInLaunchFile('the brief')
   const plan = planLaunchForTest({
     agent,
     prompt,

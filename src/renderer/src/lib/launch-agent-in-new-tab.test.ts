@@ -857,7 +857,7 @@ describe('launchAgentInNewTab', () => {
     const queued = mockQueueTabStartupCommand.mock.calls[0]?.[1]
     // Handed back to copy if the host refuses to write the file.
     expect(queued?.launchPrompt).toBe(prompt)
-    expect(queued?.launchFile).toMatchObject({ content: prompt, sensitive: false })
+    expect(queued?.launchFile).toMatchObject({ content: prompt })
     expect(queued?.command).toContain(queued?.launchFile?.placeholder)
     expect(queued?.command).not.toContain('xxxx')
   })

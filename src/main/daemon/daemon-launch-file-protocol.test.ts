@@ -43,7 +43,7 @@ describe('a launch file sent to a terminal daemon', () => {
       tokenPath,
       protocolVersion: LAUNCH_FILE_DAEMON_PROTOCOL_VERSION - 1
     })
-    const { prompt, launchFile } = carryInLaunchFile('the whole task', false)
+    const { prompt, launchFile } = carryInLaunchFile('the whole task')
     try {
       await legacy
         .spawn({
@@ -66,7 +66,7 @@ describe('a launch file sent to a terminal daemon', () => {
 
   it('is sent to the current daemon, which writes it', async () => {
     const request = vi.spyOn(DaemonClient.prototype, 'request')
-    const { prompt, launchFile } = carryInLaunchFile('the whole task', false)
+    const { prompt, launchFile } = carryInLaunchFile('the whole task')
     await adapter.spawn({
       cols: 80,
       rows: 24,

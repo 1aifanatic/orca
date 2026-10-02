@@ -149,7 +149,7 @@ describe('SshPlainShellPtyProvider', () => {
       '(no_runtime)'
     )
     // Why: nothing here writes a launch file, so its line would name a file that is not there.
-    const { prompt, launchFile } = carryInLaunchFile('the whole task', false)
+    const { prompt, launchFile } = carryInLaunchFile('the whole task')
     await expect(
       provider.spawn({ cols: 80, rows: 24, command: `claude '${prompt}'`, launchFile })
     ).rejects.toThrow('needs the Orca remote server')

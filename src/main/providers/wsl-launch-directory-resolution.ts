@@ -71,7 +71,7 @@ async function probeWslLaunchDirectory(distro: string): Promise<WslLaunchDirecto
     ...RESOLVE_WSL_LOGIN_SHELL,
     `_orca_root="$HOME"/${quotePosixShell(ORCA_CACHE_RELATIVE)}`,
     // Why chmod in the distro: files written over the UNC share take 9P's default mode, so the
-    // 0700 directory is what keeps a worker brief from other distro users.
+    // 0700 directory is what keeps a launch file's prompt from other distro users.
     'mkdir -p "$_orca_root" && chmod 700 "$_orca_root" || exit 1',
     `printf '%s\\n%s\\n' "$HOME" "$_orca_wsl_shell"`
   ].join('\n')

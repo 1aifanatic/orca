@@ -11,7 +11,7 @@ describe('a status row whose agent reports its launch file’s pointer', () => {
   // Why: the agent's own hook sees only the pointer sentence; every Orca reader of the row (status
   // row, dashboard, phone) must see the prompt the user wrote.
   it('shows the prompt the file carries', () => {
-    rememberLaunchFilePrompt(LAUNCHED, carryInLaunchFile('fix the flaky test', false).launchFile)
+    rememberLaunchFilePrompt(LAUNCHED, carryInLaunchFile('fix the flaky test').launchFile)
     const server = new AgentHookServer()
     server.ingestTerminalStatus({
       paneKey: LAUNCHED,
@@ -22,18 +22,5 @@ describe('a status row whose agent reports its launch file’s pointer', () => {
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ paneKey: LAUNCHED, prompt: 'fix the flaky test' })
     ])
-  })
-
-  it('leaves a sensitive file’s pointer, whose content is never kept', () => {
-    const pane = makePaneKey('tab-sensitive', '66666666-6666-4666-8666-666666666666')
-    rememberLaunchFilePrompt(pane, carryInLaunchFile('token dcap_secret', true).launchFile)
-    const server = new AgentHookServer()
-    server.ingestTerminalStatus({
-      paneKey: pane,
-      tabId: 'tab-sensitive',
-      worktreeId: 'wt-1',
-      payload: { state: 'working', prompt: POINTER }
-    })
-    expect(server.getStatusSnapshot()).toEqual([expect.objectContaining({ prompt: POINTER })])
   })
 })

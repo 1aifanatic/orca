@@ -33,7 +33,7 @@ describe('a daemon WSL session with a launch file', () => {
   })
 
   function create(wslLaunchDirectory: WslLaunchDirectory | undefined) {
-    const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
+    const { prompt, launchFile } = carryInLaunchFile('secret brief')
     return host.createOrAttach({
       sessionId: 'wsl-session',
       cols: 80,

@@ -198,7 +198,7 @@ describeShells('a launch file named on a real command line', () => {
   for (const shell of SHELLS) {
     it(`hands ${shell.name}'s agent a pointer to the full prompt`, async () => {
       const prompt = `${HOSTILE}\n${'z'.repeat(20_000)}\n`
-      const planned = carryInLaunchFile(prompt, false)
+      const planned = carryInLaunchFile(prompt)
       let written: WrittenLaunchFile | undefined
       const run = await launchInRealShell(shell, planned.prompt, (command) => {
         written = writeLaunchFile({

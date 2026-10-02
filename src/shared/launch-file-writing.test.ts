@@ -36,30 +36,29 @@ afterEach(() => {
 describe('carryInLaunchFile', () => {
   it('moves a prompt into a launch file and names it by a pointer', () => {
     const prompt = 'b'.repeat(20_000)
-    const carried = carryInLaunchFile(prompt, false)
-    expect(carried.launchFile).toMatchObject({ content: prompt, sensitive: false })
+    const carried = carryInLaunchFile(prompt)
+    expect(carried.launchFile).toMatchObject({ content: prompt })
     expect(carried.prompt).toBe(buildLaunchFilePointer(carried.launchFile.placeholder))
   })
 
-  it('keeps a sensitive prompt off the pointer', () => {
-    const carried = carryInLaunchFile('token dcap_secret', true)
-    expect(carried.prompt).not.toContain('dcap_secret')
-    expect(carried.launchFile).toMatchObject({ content: 'token dcap_secret', sensitive: true })
+  it('keeps the prompt off the pointer', () => {
+    const carried = carryInLaunchFile('fix the flaky test')
+    expect(carried.prompt).not.toContain('flaky')
   })
 
   it('mints a fresh placeholder each time', () => {
-    const first = carryInLaunchFile('x', true).launchFile.placeholder
-    const second = carryInLaunchFile('x', true).launchFile.placeholder
+    const first = carryInLaunchFile('x').launchFile.placeholder
+    const second = carryInLaunchFile('x').launchFile.placeholder
     expect(first).not.toBe(second)
   })
 })
 
 describe('parseLaunchFile', () => {
   it('accepts what carryInLaunchFile mints and rejects anything else', () => {
-    const { launchFile } = carryInLaunchFile('x', true)
+    const { launchFile } = carryInLaunchFile('x')
     expect(parseLaunchFile(launchFile)).toEqual(launchFile)
     expect(parseLaunchFile({ ...launchFile, placeholder: 'HOME' })).toBeUndefined()
-    expect(parseLaunchFile({ ...launchFile, sensitive: 'yes' })).toBeUndefined()
+    expect(parseLaunchFile({ ...launchFile, content: 7 })).toBeUndefined()
     expect(parseLaunchFile({ ...launchFile, quoting: 'cmd' })).toEqual({
       ...launchFile,
       quoting: 'cmd'
@@ -71,7 +70,7 @@ describe('parseLaunchFile', () => {
 
 describe('writeLaunchFile', () => {
   it('writes a 0600 file in a private 0700 directory and puts its path in the line and env', () => {
-    const { prompt, launchFile } = carryInLaunchFile('c'.repeat(20_000), false)
+    const { prompt, launchFile } = carryInLaunchFile('c'.repeat(20_000))
     const written = writeLaunchFile({
       launchFile: launchFile!,
       command: `claude '${prompt}'`,
@@ -92,7 +91,7 @@ describe('writeLaunchFile', () => {
   it("refuses an apostrophe in the path when the line's quoting is unknown, leaving nothing behind", () => {
     const quoted = join(baseDirectory, "it's")
     mkdirSync(quoted)
-    const { launchFile } = carryInLaunchFile('x', true)
+    const { launchFile } = carryInLaunchFile('x')
     expect(() => writeLaunchFile({ launchFile: launchFile!, baseDirectory: quoted })).toThrow(
       LaunchFileUnavailableError
     )
@@ -100,7 +99,7 @@ describe('writeLaunchFile', () => {
   })
 
   it('refuses when the temp directory cannot be written', () => {
-    const { launchFile } = carryInLaunchFile('x', true)
+    const { launchFile } = carryInLaunchFile('x')
     expect(() =>
       writeLaunchFile({ launchFile: launchFile!, baseDirectory: join(baseDirectory, 'missing') })
     ).toThrow(
@@ -109,7 +108,7 @@ describe('writeLaunchFile', () => {
   })
 
   it('removes the whole directory', () => {
-    const { launchFile } = carryInLaunchFile('x', true)
+    const { launchFile } = carryInLaunchFile('x')
     const written = writeLaunchFile({ launchFile: launchFile!, baseDirectory })
     removeLaunchFile(written)
     expect(existsSync(written.directory)).toBe(false)
@@ -168,7 +167,7 @@ describePosix('a launch line naming a file under an unusual home directory', () 
     async (user) => {
       const home = join(baseDirectory, user)
       mkdirSync(home)
-      const { prompt, launchFile } = carryInLaunchFile('brief', true)
+      const { prompt, launchFile } = carryInLaunchFile('brief')
       const written = writeLaunchFile({
         launchFile: { ...launchFile!, quoting: 'posix' },
         command: `printf '%s' ${quoteStartupArg(prompt, 'posix')}`,
@@ -234,7 +233,7 @@ describe('sweepStaleLaunchFiles', () => {
   })
 
   it('names the owning process in each folder it writes', () => {
-    const { launchFile } = carryInLaunchFile('x', true)
+    const { launchFile } = carryInLaunchFile('x')
     const written = writeLaunchFile({
       launchFile: { ...launchFile, quoting: 'posix' },
       baseDirectory

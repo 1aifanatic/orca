@@ -273,7 +273,7 @@ describe('LocalPtyProvider', () => {
       vi.useFakeTimers()
       try {
         process.env.SHELL = '/bin/sh'
-        const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
+        const { prompt, launchFile } = carryInLaunchFile('secret brief')
 
         await provider.spawn({ cols: 80, rows: 24, command: `claude '${prompt}'`, launchFile })
 

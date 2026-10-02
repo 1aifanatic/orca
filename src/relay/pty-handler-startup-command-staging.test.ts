@@ -114,7 +114,7 @@ describePosix('relay startup command staging', () => {
   })
 
   it('writes a launch file before typing the line that names it, and removes it on exit', async () => {
-    const { prompt, launchFile } = carryInLaunchFile('secret brief', true)
+    const { prompt, launchFile } = carryInLaunchFile('secret brief')
     await dispatcher.callRequest('pty.spawn', {
       command: `claude '${prompt}'`,
       commandDelivery: 'provider',

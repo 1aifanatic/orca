@@ -48,7 +48,7 @@ describe('resolveWslLaunchDirectory', () => {
   })
 
   // Why: files written over the UNC share take 9P's default mode, so only the directory's mode
-  // keeps a worker brief from the distro's other users.
+  // keeps a launch file's prompt from the distro's other users.
   it('makes the cache directory private to the distro user before anything is written there', async () => {
     runWslProcess.mockResolvedValue(answers('/home/ada\n/bin/bash\n'))
     await resolveWslLaunchDirectory('Kali')

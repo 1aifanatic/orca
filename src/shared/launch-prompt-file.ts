@@ -1,7 +1,6 @@
 /**
- * A launch prompt too long for a command line, or carrying a secret, rides in a
- * file the execution host writes; the command line carries only a sentence
- * pointing at it.
+ * A launch prompt its command line cannot carry rides in a file the execution host writes; the
+ * command line carries only a sentence pointing at it.
  */
 
 import type { AgentStartupShell } from './tui-agent-startup-shell'
@@ -15,8 +14,6 @@ export type LaunchFile = {
   /** Stands in for the file's path in the command and env until the host substitutes it. */
   placeholder: string
   content: string
-  /** Set by the caller that minted a secret in `content`; keeps it out of argv and shell history. */
-  sensitive: boolean
   /** How the launch line quoted the placeholder, set where the line is built; the host writes the
    *  path inside that quoting. Absent, the host accepts only a path every quoting carries as is. */
   quoting?: AgentStartupShell
@@ -50,15 +47,12 @@ export function isLaunchFilePointer(prompt: string): boolean {
   )
 }
 
-export function carryInLaunchFile(
-  content: string,
-  sensitive: boolean
-): { prompt: string; launchFile: LaunchFile } {
+export function carryInLaunchFile(content: string): { prompt: string; launchFile: LaunchFile } {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   const placeholder = `orca-launch-file-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
   return {
     prompt: buildLaunchFilePointer(placeholder),
-    launchFile: { placeholder, content, sensitive }
+    launchFile: { placeholder, content }
   }
 }
 
@@ -68,24 +62,22 @@ export function parseLaunchFile(value: unknown): LaunchFile | undefined {
     typeof value !== 'object' ||
     value === null ||
     !('placeholder' in value) ||
-    !('content' in value) ||
-    !('sensitive' in value)
+    !('content' in value)
   ) {
     return undefined
   }
-  const { placeholder, content, sensitive } = value
+  const { placeholder, content } = value
   const quoting = 'quoting' in value ? value.quoting : undefined
   const knownQuoting = LAUNCH_LINE_QUOTINGS.find((candidate) => candidate === quoting)
   if (
     typeof placeholder !== 'string' ||
     !PLACEHOLDER_PATTERN.test(placeholder) ||
     typeof content !== 'string' ||
-    typeof sensitive !== 'boolean' ||
     (quoting !== undefined && knownQuoting === undefined)
   ) {
     return undefined
   }
-  return { placeholder, content, sensitive, ...(knownQuoting ? { quoting: knownQuoting } : {}) }
+  return { placeholder, content, ...(knownQuoting ? { quoting: knownQuoting } : {}) }
 }
 
 export const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
