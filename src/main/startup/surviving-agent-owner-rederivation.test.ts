@@ -93,6 +93,40 @@ describe('owners of terminals that survived a restart, at startup', () => {
     expect(peak).toBe(AGENT_OWNER_BOOT_PROBE_CONCURRENCY)
   })
 
+  it('keeps re-deriving the rest when admits throw', async () => {
+    const ids = Array.from({ length: 5 }, (_, i) => `pty-${i}`)
+    const leafIds = ids.map((_, i) => `70000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the fields the persisted surface index reads.
+    const workspace = {
+      tabsByWorktree: { [WORKTREE]: [{ id: TAB }] },
+      terminalLayoutsByTabId: {
+        [TAB]: { ptyIdsByLeafId: Object.fromEntries(leafIds.map((leaf, i) => [leaf, ids[i]])) }
+      },
+      terminalPtyIncarnationsByPaneKey: Object.fromEntries(
+        leafIds.map((leaf) => [makePaneKey(TAB, leaf), 'inc-1'])
+      )
+    } as unknown as WorkspaceSessionState
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const admitted: string[] = []
+    const admit = vi.fn(async (scope: { paneKey: string }) => {
+      if (admitted.length < 4) {
+        admitted.push('failed')
+        throw new Error('owner listener threw')
+      }
+      admitted.push(scope.paneKey)
+    })
+    await rederiveSurvivingAgentOwners({
+      listSessions: async () => ids.map((id) => session(id)),
+      readWorkspaceSession: () => workspace,
+      capture: async () => owner,
+      admit
+    })
+    expect(admit).toHaveBeenCalledTimes(5)
+    expect(admitted.at(-1)).toBe(makePaneKey(TAB, leafIds[4]))
+    expect(warn).toHaveBeenCalledTimes(4)
+    warn.mockRestore()
+  })
+
   it('does nothing when the daemon cannot list its sessions', async () => {
     const capture = vi.fn()
     await rederiveSurvivingAgentOwners({

@@ -42,15 +42,20 @@ export async function rederiveSurvivingAgentOwners(deps: {
         deps.capture(session.sessionId, { snapshotNotBeforeMs: evidenceAtMs })
       ).catch(() => undefined)
       if (presence) {
-        await deps.admit(
-          {
-            paneKey: surface.paneKey,
-            connectionId: null,
-            worktreeId: surface.worktreeId,
-            tabId: surface.tabId
-          },
-          presence
-        )
+        // Why: one failed admit must not end its worker and skip the sessions queued behind it.
+        await deps
+          .admit(
+            {
+              paneKey: surface.paneKey,
+              connectionId: null,
+              worktreeId: surface.worktreeId,
+              tabId: surface.tabId
+            },
+            presence
+          )
+          .catch((error: unknown) => {
+            console.warn('[agent-presence] surviving owner admit failed:', error)
+          })
       }
     }
   )
