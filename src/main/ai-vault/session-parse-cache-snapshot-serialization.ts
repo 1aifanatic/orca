@@ -23,6 +23,11 @@ const VALIDATE_CHUNK_CHARACTERS = 256 * 1024
 const SERIALIZE_YIELD_STEPS = 1024
 type CacheEntry = [string, PersistedSessionParseCacheEntry]
 type JsonPiece = { text: string; tokens: number }
+type CacheJsonObject = Record<string, unknown>
+
+function isCacheJsonObject(value: unknown): value is CacheJsonObject {
+  return typeof value === 'object' && value !== null
+}
 
 export async function assertSessionParseCacheJsonWithinLimitsCooperatively(
   content: string | Buffer,
@@ -152,7 +157,7 @@ function* cacheJsonPieces(
     yield { text: '"', tokens: 0 }
     return
   }
-  if (value === null || typeof value !== 'object') {
+  if (!isCacheJsonObject(value)) {
     const serialized = JSON.stringify(value)
     if (serialized === undefined) {
       throw new TypeError('Session parse cache value is not serializable')
@@ -183,7 +188,7 @@ function* cacheJsonPieces(
       if (!Object.hasOwn(value, key)) {
         continue
       }
-      const item: unknown = Reflect.get(value, key)
+      const item: unknown = value[key]
       if (item === undefined) {
         yield { text: '', tokens: 0 }
         continue
