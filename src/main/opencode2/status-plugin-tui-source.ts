@@ -8,6 +8,7 @@
 export function getOpenCode2TuiSource(): string[] {
   return String.raw`
 const TUI_TICK_MS = 100;
+const TUI_PERMISSION_SETTLE_MS = 500;
 const TUI_EARLY_ROOTS_MAX = 32;
 const TUI_RESOLVED_REQUESTS_MAX = 256;
 const TUI_ENDPOINT_CHECK_TICKS = 50;
@@ -54,6 +55,7 @@ async function setupOpenCode2Tui(ctx) {
     const early = new Map();
     // Why: a permission/form list fetched on reconnect can land after the reply event and restore it.
     const resolved = new Set();
+    const permissionSeenAt = new Map();
 
     const rootOf = (sessionID) => data.root(sessionID) || sessionID;
     const family = (root) => new Set([root, ...(typeof data.family === "function" ? data.family(root) || [] : [])]);
@@ -63,10 +65,16 @@ async function setupOpenCode2Tui(ctx) {
       return route?.type === "session" && typeof route.sessionID === "string" ? rootOf(route.sessionID) : undefined;
     };
     // First open permission, else first form, across the root's family.
-    const blocker = (root) => {
+    const blocker = (root, seenPermissions) => {
       let form;
       for (const member of family(root)) {
-        const permission = (data.permission?.list?.(member) || []).find((request) => !resolved.has(request.id));
+        const permission = (data.permission?.list?.(member) || []).find((request) => {
+          if (resolved.has(request.id)) return false;
+          seenPermissions.add(request.id);
+          if (!permissionSeenAt.has(request.id)) permissionSeenAt.set(request.id, Date.now());
+          // Auto replies arrive after the request; only an unanswered request needs attention.
+          return Date.now() - permissionSeenAt.get(request.id) >= TUI_PERMISSION_SETTLE_MS;
+        });
         if (permission) return { request: permission, isPermission: true };
         form ??= (data.form?.list?.(member) || []).find((request) => !resolved.has(request.id));
       }
@@ -105,11 +113,17 @@ async function setupOpenCode2Tui(ctx) {
       owned = owned.filter((root) => root === route || running(root));
       if (owned.join("\n") !== memory.owned.join("\n")) setMemory((draft) => { draft.owned = owned; });
       const active = owned.filter(running);
+      const seenPermissions = new Set();
+      let waiting;
       for (const root of active) {
         // Why only while running: a blocker the session data kept after its turn ended is stale.
-        const found = blocker(root);
-        if (found) return { kind: "waiting", root, blocker: found };
+        const found = blocker(root, seenPermissions);
+        if (found && !waiting) waiting = { kind: "waiting", root, blocker: found };
       }
+      for (const id of permissionSeenAt.keys()) {
+        if (!seenPermissions.has(id)) permissionSeenAt.delete(id);
+      }
+      if (waiting) return waiting;
       const busy = active.at(-1);
       return busy ? { kind: "busy", root: busy } : { kind: "idle", root: memory.lastRoot };
     }

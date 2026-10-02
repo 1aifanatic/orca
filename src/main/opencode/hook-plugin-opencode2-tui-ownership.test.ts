@@ -678,6 +678,28 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       expect(posts.every((post) => post.payload?.sessionID === SES_A)).toBe(true)
     })
 
+    it('keeps automatically answered permissions Working without an attention post', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, turn(SES_A, 'auto').start)
+      for (let index = 0; index < 3; index += 1) {
+        tui.emit({
+          type: 'permission.asked',
+          data: { ...permission(SES_A).data, id: `auto_${index}` }
+        })
+        await tick(20)
+        tui.emit({
+          type: 'permission.replied',
+          data: { sessionID: SES_A, requestID: `auto_${index}` }
+        })
+      }
+      await tick(650)
+      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`])
+      await pump(tui, turn(SES_A, 'auto').finish)
+      await cleanup?.()
+    })
+
     it("shows a child's permission as Needs input on the root, then Working after the reply", async () => {
       const tui = fakeTui()
       const cleanup = await start(tui)
