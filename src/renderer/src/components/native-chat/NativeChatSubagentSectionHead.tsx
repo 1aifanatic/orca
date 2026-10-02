@@ -37,7 +37,7 @@ export function NativeChatSubagentSectionHead({
       <code className="min-w-0 truncate font-mono text-[11px] text-foreground/80">
         {entry?.label ?? translate('components.native-chat.subagents.unnamed', 'Subagent')}
       </code>
-      <NativeChatSubagentThinking agentId={agentId} working={state === 'working'} />
+      <NativeChatSubagentThinking agentId={agentId} entry={entry} />
     </button>
   )
 }

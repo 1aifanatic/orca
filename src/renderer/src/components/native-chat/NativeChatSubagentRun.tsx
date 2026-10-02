@@ -14,7 +14,10 @@ import type {
 } from '../../../../shared/native-chat-types'
 import { formatNativeChatDuration } from './NativeChatWorkingStatus'
 import { nativeChatSubagentEntryRuns } from './native-chat-subagent-sections'
-import { NativeChatSubagentThinking } from './NativeChatSubagentThinking'
+import {
+  nativeChatSubagentThinkingLabel,
+  useNativeChatSubagentThinking
+} from './native-chat-reasoning-open-context'
 
 /** Compact token counts: the row shows scale, not an exact ledger. */
 function formatSubagentTokens(tokens: number): string {
@@ -161,6 +164,7 @@ export function NativeChatSubagentEntries({
   onSetSectionOpen?: (agentId: string, open: boolean) => void
   className?: string
 }): React.JSX.Element {
+  const thinking = useNativeChatSubagentThinking()
   return (
     <ul className={cn('space-y-0.5', className)}>
       {agents.map((agent) => {
@@ -177,9 +181,10 @@ export function NativeChatSubagentEntries({
             >
               {agent.label}
             </code>
-            <NativeChatSubagentThinking agentId={agent.id} working={state === 'working'} />
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-              {subagentStateLabel(state, 1, 1)}
+              {thinking(agent.id, agent)
+                ? nativeChatSubagentThinkingLabel()
+                : subagentStateLabel(state, 1, 1)}
               {typeof agent.tokens === 'number' ? ` · ${formatSubagentTokens(agent.tokens)}` : null}
             </span>
           </>

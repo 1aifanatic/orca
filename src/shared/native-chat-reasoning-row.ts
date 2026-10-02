@@ -4,8 +4,9 @@
 // same story about one row.
 
 import type { AgentSessionTurnActivity } from './agent-session-wire'
+import { normalizeSubagentState } from './native-chat-subagent-summary'
 import { formatNativeChatDuration } from './native-chat-turn-status'
-import type { NativeChatMessage } from './native-chat-types'
+import type { NativeChatMessage, NativeChatSubagentEntry } from './native-chat-types'
 
 /** Whether the host reports reasoning open right now in the live turn: for the session's own agent
  *  without `agentId`, else for that subagent. The one gate every live "Thinking" reads; a host that
@@ -41,6 +42,21 @@ export function nativeChatReasoningGate(key: string): (agentId?: string) => bool
     Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
   )
   return (agentId) => (agentId === undefined ? session === true : subagents.has(agentId))
+}
+
+/** Whether a subagent shows "Thinking" now: the host reports its reasoning open and its roster entry
+ *  says it works, so reasoning a host never saw end cannot outlive the agent. Its unfinished
+ *  reasoning row hides exactly then, whichever turn its section sits in. */
+export function isNativeChatSubagentThinking(
+  isReasoningOpen: (agentId?: string) => boolean,
+  agentId: string,
+  entry: Pick<NativeChatSubagentEntry, 'state'> | undefined
+): boolean {
+  return (
+    entry !== undefined &&
+    normalizeSubagentState(entry.state) === 'working' &&
+    isReasoningOpen(agentId)
+  )
 }
 
 /** A reasoning row still being written while the host reports its reasoning open. It draws nothing

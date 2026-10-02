@@ -170,7 +170,6 @@ export function buildNativeChatTranscriptSlots(
     choices,
     live,
     receipts,
-    liveTurnKey,
     isReasoningOpen,
     slots
   })

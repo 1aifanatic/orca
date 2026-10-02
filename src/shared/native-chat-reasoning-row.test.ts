@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isNativeChatReasoningUnderway,
+  isNativeChatSubagentThinking,
   nativeChatReasoningGate,
   nativeChatReasoningGateKey,
   nativeChatReasoningOpen,
@@ -65,6 +66,17 @@ describe("the gate's key", () => {
         )
       }
     }
+  })
+})
+
+describe("a subagent's Thinking", () => {
+  const open = (agentId?: string) => agentId === 'task-1'
+
+  it('shows only while the host reports its reasoning open and its roster says it works', () => {
+    expect(isNativeChatSubagentThinking(open, 'task-1', { state: 'working' })).toBe(true)
+    expect(isNativeChatSubagentThinking(open, 'task-1', { state: 'completed' })).toBe(false)
+    expect(isNativeChatSubagentThinking(open, 'task-1', undefined)).toBe(false)
+    expect(isNativeChatSubagentThinking(open, 'task-2', { state: 'working' })).toBe(false)
   })
 })
 

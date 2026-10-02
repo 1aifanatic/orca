@@ -336,30 +336,27 @@ describe("a subagent's rows live in its own section", () => {
     ])
   })
 
-  it("hides a subagent's unfinished reasoning only while the host reports it open in the live turn", () => {
+  it("hides a subagent's unfinished reasoning exactly while that subagent shows Thinking", () => {
     const thinking = (id: string, agentId: string) =>
       row(id, say('Weighing the diff'), { ...by(agentId), role: 'reasoning', state: 'running' })
-    const live = [
+    const transcript = (state: NativeChatSubagentState, later = false) => [
       row('ask', say('review the PR'), { role: 'user' }),
-      roster('spawn', [['task-1', 'explore the lane', 'working']]),
-      thinking('child-think', 'task-1')
+      roster('spawn', [['task-1', 'explore the lane', state]]),
+      thinking('child-think', 'task-1'),
+      ...(later ? [row('ask-2', say('and the tests?'), { role: 'user' })] : [])
     ]
     const ids = (slots: readonly NativeChatTranscriptSlot[]) =>
       slots.flatMap((slot) => (slot.kind === 'message' ? [slot.message.id] : []))
     const open = (agentId?: string) => agentId === 'task-1'
-    expect(ids(slotsOf(live, { 'task-1': true }, true, {}, undefined, open))).toEqual([
-      'ask',
-      'spawn'
-    ])
+    const drawn = (rows: NativeChatMessage[], gate: (agentId?: string) => boolean) =>
+      ids(slotsOf(rows, { 'task-1': true }, true, {}, undefined, gate)).includes('child-think')
+    expect(drawn(transcript('working'), open)).toBe(false)
+    // A section shown in an earlier turn hides it too: the subagent is thinking now.
+    expect(drawn(transcript('working', true), open)).toBe(false)
     // Another agent reasoning, or none, leaves the row drawn.
-    expect(ids(slotsOf(live, { 'task-1': true }, true, {}, undefined, () => false))).toContain(
-      'child-think'
-    )
-    // A section shown in an earlier turn keeps its row: the signal speaks for the live turn.
-    const earlier = [...live, row('ask-2', say('and the tests?'), { role: 'user' })]
-    expect(ids(slotsOf(earlier, { 'task-1': true }, true, {}, undefined, open))).toContain(
-      'child-think'
-    )
+    expect(drawn(transcript('working'), () => false)).toBe(true)
+    // A helper the roster says is done shows no Thinking, so its row draws, whatever the signal says.
+    expect(drawn(transcript('completed'), open)).toBe(true)
   })
 
   it('places each section in the turn it sits in, for the outline rail', () => {

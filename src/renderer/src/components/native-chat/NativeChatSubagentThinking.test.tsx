@@ -34,7 +34,7 @@ describe("a subagent's live Thinking", () => {
     expect(screen.queryByText('Thinking')).toBeNull()
   })
 
-  it("shows on that subagent's roster entry only", () => {
+  it("shows on that subagent's roster entry only, in place of its state word", () => {
     render(
       <NativeChatReasoningOpenContext.Provider value={isReasoningOpen}>
         <NativeChatSubagentEntries
@@ -47,7 +47,9 @@ describe("a subagent's live Thinking", () => {
     )
     const [review, search] = screen.getAllByRole('listitem')
     expect(within(review!).getByText('Thinking')).toBeInTheDocument()
+    expect(within(review!).queryByText(/working/)).toBeNull()
     expect(within(search!).queryByText('Thinking')).toBeNull()
+    expect(within(search!).getByText(/working/)).toBeInTheDocument()
   })
 
   it('shows only while the roster says the subagent works, whatever the signal says', () => {
