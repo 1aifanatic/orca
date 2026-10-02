@@ -40,6 +40,7 @@ import {
   StructuredAgentSessionPerChatFileCopyPace
 } from './structured-agent-session-per-chat-file-copy-pace'
 import { restTestChat } from './structured-agent-session-rest-test-rig'
+import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import {
   COPY_TEST_WORKSPACE,
   copyJob,
@@ -504,6 +505,7 @@ const copyJobDeps = {
   listedIds: [],
   isStartupChatWorkActive: () => false,
   serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
+  chatWaiters: new StructuredAgentSessionTaskQueue(),
   openJournal: () => undefined,
   settleClosedChat: async () => false,
   canSettle: (record: AgentSessionRecord | null): record is AgentSessionRecord => record !== null,
