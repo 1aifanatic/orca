@@ -2,6 +2,10 @@ name: Install Node dependencies
 description: Installs the Node toolchain and repository dependencies for CI jobs, with optional Electron archive caching.
 
 inputs:
+  cache-pnpm-store:
+    description: Temporary store pilot control (true, false, or restore-only); true retains the production policy.
+    required: false
+    default: 'true'
   cache-pnpm-verification:
     description: Restore pnpm's policy-checked lockfile verification record.
     required: false
@@ -69,7 +73,7 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version-file: package.json
-        cache: ${{ github.event_name != 'pull_request' && 'pnpm' || '' }}
+        cache: ${{ inputs.cache-pnpm-store == 'true' && github.event_name != 'pull_request' && 'pnpm' || '' }}
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
         package-manager-cache: false
 
@@ -79,7 +83,7 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
-        cache: ${{ github.event_name != 'pull_request' && 'pnpm' || '' }}
+        cache: ${{ inputs.cache-pnpm-store == 'true' && github.event_name != 'pull_request' && 'pnpm' || '' }}
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
         package-manager-cache: false
 
@@ -87,8 +91,9 @@ runs:
     - name: Resolve pnpm download store
       id: pnpm-store
       if: >-
-        github.event_name == 'pull_request' &&
-        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml'))
+        inputs.cache-pnpm-store == 'restore-only' || env.ORCA_CI_PNPM_STORE_PILOT_RECEIPT != '' ||
+        (inputs.cache-pnpm-store == 'true' && github.event_name == 'pull_request' &&
+        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml')))
       shell: bash
       env:
         LOCKFILE_HASH: ${{ hashFiles(inputs.cache-dependency-path) }}
@@ -99,16 +104,30 @@ runs:
         printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
         printf 'arch=%s\n' "$(node -p 'require("node:os").arch()')" >> "$GITHUB_OUTPUT"
 
+    - name: Record the fresh Mac Intel pilot store
+      if: env.ORCA_CI_PNPM_STORE_PILOT_RECEIPT != ''
+      shell: bash
+      env:
+        PILOT_STORE_PATH: ${{ steps.pnpm-store.outputs.path }}
+        PILOT_STORE_KEY: node-cache-${{ runner.os }}-${{ steps.pnpm-store.outputs.arch }}-pnpm-${{ hashFiles(inputs.cache-dependency-path) }}
+        ORCA_CI_PNPM_STORE_PILOT_LOCKFILE_HASH: ${{ hashFiles(inputs.cache-dependency-path) }}
+      run: |
+        PILOT_SOURCE_SHA="$(git rev-parse HEAD)" PILOT_PNPM_VERSION="$(pnpm --version)" \
+          node config/scripts/ci-pnpm-root-store-pilot.mjs preflight
+
     # Match setup-node's key and path so existing default-branch stores remain reusable.
     # Hosted Windows x64 mixed installs cost less than restoring their root/mobile store.
     - name: Restore pnpm download store without saving
+      id: pnpm-store-restore
       if: >-
-        github.event_name == 'pull_request' &&
-        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml'))
+        inputs.cache-pnpm-store == 'restore-only' ||
+        (inputs.cache-pnpm-store == 'true' && github.event_name == 'pull_request' &&
+        (runner.os != 'Windows' || runner.arch != 'X64' || !contains(inputs.cache-dependency-path, 'mobile/pnpm-lock.yaml')))
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: node-cache-${{ runner.os }}-${{ steps.pnpm-store.outputs.arch }}-pnpm-${{ hashFiles(inputs.cache-dependency-path) }}
+        fail-on-cache-miss: ${{ inputs.cache-pnpm-store == 'restore-only' }}
 
     - name: Resolve pnpm verification cache
       id: verification-cache
@@ -137,7 +156,12 @@ runs:
       shell: bash
       env:
         NATIVE_RUNTIME: ${{ inputs.native-runtime }}
+        PNPM_STORE_POLICY: ${{ inputs.cache-pnpm-store }}
       run: |
+        case "$PNPM_STORE_POLICY" in
+          true|false|restore-only) ;;
+          *) echo "::error::cache-pnpm-store must be true, false, or restore-only"; exit 2 ;;
+        esac
         case "$NATIVE_RUNTIME" in
           none|node|electron) ;;
           *)
@@ -160,8 +184,20 @@ runs:
     # guard stays so a stale lockfile still fails by name rather than by resolver error.
     - name: Install dependencies
       shell: bash
+      env:
+        PILOT_STORE_CACHE_HIT: ${{ steps.pnpm-store-restore.outputs.cache-hit }}
+        PILOT_STORE_MATCHED_KEY: ${{ steps.pnpm-store-restore.outputs.cache-matched-key }}
+        PILOT_VERIFICATION_CACHE_HIT: ${{ steps.verification-cache-restore.outputs.cache-hit }}
+        PILOT_VERIFICATION_KEY: ${{ steps.verification-cache.outputs.key }}
+        PILOT_VERIFICATION_PATH: ${{ steps.verification-cache.outputs.path }}
       run: |
+        if [ -n "${ORCA_CI_PNPM_STORE_PILOT_RECEIPT:-}" ]; then
+          node config/scripts/ci-pnpm-root-store-pilot.mjs install-start
+        fi
         pnpm install --frozen-lockfile --ignore-scripts
+        if [ -n "${ORCA_CI_PNPM_STORE_PILOT_RECEIPT:-}" ]; then
+          node config/scripts/ci-pnpm-root-store-pilot.mjs install-finished
+        fi
         # Job containers can run composite steps from a source mirror without .git.
         if [ "$(git -C "$GITHUB_WORKSPACE" rev-parse --is-inside-work-tree 2>/dev/null)" = true ]; then
           git -C "$GITHUB_WORKSPACE" diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
