@@ -120,6 +120,8 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys),
+    reconcileAgentStatusForMovedTerminals: (envPaneKeys) =>
+      agentHookServer.reconcileMovedTerminalPaneKeys(envPaneKeys),
     canRecoverPersistentLocalPtys: () => getDaemonProvider() !== null,
     // Why: evaluated per call, not captured — the RPC server that owns the device registry is
     // constructed with this runtime and does not exist yet at this point.
@@ -163,6 +165,10 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   })
   app.once('will-quit', () => sessionSearch?.dispose())
   state.runtime = runtime
+  // Why: hooks post the key their PTY was spawned with; the runtime knows where that terminal is now.
+  agentHookServer.setTerminalPaneResolver((paneKey) =>
+    runtime.resolveAgentHookTerminalPane(paneKey)
+  )
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )

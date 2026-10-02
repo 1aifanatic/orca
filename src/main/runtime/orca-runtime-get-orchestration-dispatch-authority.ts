@@ -15,6 +15,11 @@ import type { ProjectExecutionRuntimeResolution } from '../../shared/project-exe
 import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtime-resolution'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
+  collectMovedEnvPaneKeys,
+  resolveTerminalPaneForEnvPaneKey,
+  type EnvPaneKeyRoutingSource
+} from './terminal-env-pane-key-routing'
+import {
   resolveTerminalOrchestrationCliCommand,
   runtimeOrchestrationCliCommand,
   type OrchestrationCliCommand
@@ -65,7 +70,48 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
         paneKeys.add(paneKey)
       }
     }
+    // Why: the process's hooks post its exported key, so rows filed there before the host could
+    // route them belong to it too, unless another live terminal shows that pane now.
+    const envPaneKey = this.ptysById.get(ptyId)?.envPaneKey
+    if (
+      envPaneKey &&
+      ![...this.ptysById.values()].some(
+        (other) =>
+          other.ptyId !== ptyId &&
+          other.paneKey === envPaneKey &&
+          this.getPtyLivenessVerdict(other.ptyId)?.status !== 'exited'
+      )
+    ) {
+      paneKeys.add(envPaneKey)
+    }
     return paneKeys
+  }
+
+  /** The pane a hook posting `paneKey` belongs to now; see terminal-env-pane-key-routing.ts. */
+  resolveAgentHookTerminalPane(paneKey: string): string | undefined {
+    return resolveTerminalPaneForEnvPaneKey(paneKey, this.envPaneKeyRoutingSource())
+  }
+
+  /** Hands the store every exported key whose terminal now shows another pane, so it moves the rows. */
+  protected reconcileMovedTerminalAgentStatus(): void {
+    if (!this.reconcileAgentStatusForMovedTerminalsFn) {
+      return
+    }
+    const moved = collectMovedEnvPaneKeys(this.envPaneKeyRoutingSource())
+    if (moved.length > 0) {
+      this.reconcileAgentStatusForMovedTerminalsFn(moved)
+    }
+  }
+
+  protected envPaneKeyRoutingSource(): EnvPaneKeyRoutingSource<RuntimePtyWorktreeRecord> {
+    return {
+      // Re-iterable: resolution walks the records once per candidate.
+      terminals: { [Symbol.iterator]: () => this.ptysById.values() },
+      // Loss of contact with an SSH host is not death, so only a certified exit stops routing.
+      isLive: (pty) => this.getPtyLivenessVerdict(pty.ptyId)?.status !== 'exited',
+      currentPaneKeys: (pty) =>
+        this.getLeavesForPty(pty.ptyId).map((leaf) => this.makeRuntimePaneKey(leaf))
+    }
   }
 
   getOrchestrationDispatchAuthority(

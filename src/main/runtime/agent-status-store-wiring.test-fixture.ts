@@ -6,13 +6,15 @@ type WiredRuntime = {
   getTerminalWorktreeIdForPaneKey(paneKey: string): string | null
   scheduleMobileSessionTabsAgentStatusHeartbeatForWorktree(worktreeId: string): void
   touchMobileSessionTabsForWorktree(worktreeId: string): void
+  resolveAgentHookTerminalPane(paneKey: string): string | undefined
 }
 
 /**
  * The agent-status wiring every real host performs, in one place for the runtime specs.
  *
  * `main-process-runtime-service.ts` and `orcad-entry.ts` both hand the runtime's OSC parse to
- * the store, read the listing back out of it, and install the republish signal. A runtime
+ * the store, read the listing back out of it, install the republish signal, and let the store
+ * ask the runtime where a hook's terminal is now. A runtime
  * constructed without these observes agent status and publishes it nowhere, so a spec that
  * exercises OSC 9999 has to compose the same three parts.
  */
@@ -28,6 +30,7 @@ export function makeAgentStatusStoreWiring(): {
     reconcileAgentStatusForEndedProcess: (
       paneKeys: Parameters<AgentHookServer['reconcileEndedProcessForPaneKeys']>[0]
     ) => void
+    reconcileAgentStatusForMovedTerminals: (envPaneKeys: readonly string[]) => void
   }
   /** Call once the runtime exists; returns the republish teardown. */
   attach: (runtime: WiredRuntime) => () => void
@@ -44,8 +47,19 @@ export function makeAgentStatusStoreWiring(): {
         statusStore.getStatusSnapshotForPane(paneKey),
       reconcileAgentStatusForEndedProcess: (paneKeys) => {
         statusStore.reconcileEndedProcessForPaneKeys(paneKeys)
-      }
+      },
+      reconcileAgentStatusForMovedTerminals: (envPaneKeys) =>
+        statusStore.reconcileMovedTerminalPaneKeys(envPaneKeys)
     },
-    attach: (runtime) => installHookStatusSessionTabsRepublish(statusStore, () => runtime)
+    attach: (runtime) => {
+      statusStore.setTerminalPaneResolver((paneKey) =>
+        runtime.resolveAgentHookTerminalPane(paneKey)
+      )
+      const uninstall = installHookStatusSessionTabsRepublish(statusStore, () => runtime)
+      return () => {
+        statusStore.setTerminalPaneResolver(null)
+        uninstall()
+      }
+    }
   }
 }

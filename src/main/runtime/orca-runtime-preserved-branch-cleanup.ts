@@ -98,6 +98,10 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | ((paneKeys: Iterable<string>) => void)
     | null
 
+  protected readonly reconcileAgentStatusForMovedTerminalsFn:
+    | ((envPaneKeys: readonly string[]) => void)
+    | null
+
   protected readonly canRecoverPersistentLocalPtysFn: () => boolean
 
   protected readonly getPairedDeviceNameFn: (pairedDeviceId: string) => string | null

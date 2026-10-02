@@ -218,6 +218,13 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     return this.legacyPaneKeyAliases.get(paneKey)?.stablePaneKey ?? paneKey
   }
 
+  /** Owner of a key a process posted. Only ingress consults the live terminal record: cleanup is
+   *  handed layout keys, and a dead layout key must never reach the pane its process moved to. */
+  protected resolveHookPaneKey(paneKey: string): string {
+    // Why first: the host's live terminal record outranks an alias minted under an older layout.
+    return this.terminalPaneResolver?.(paneKey) ?? this.resolvePaneKeyAlias(paneKey)
+  }
+
   protected revokeHydratedAuthorityForPaneKeys(paneKeys: ReadonlySet<string>): boolean {
     let changed = false
     for (const commitment of this.hydratedAuthorityCommitments) {
@@ -245,11 +252,11 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     }
     const record = body as Record<string, unknown>
     const rawPaneKey = typeof record.paneKey === 'string' ? record.paneKey.trim() : ''
-    const stablePaneKey = this.legacyPaneKeyAliases.get(rawPaneKey)?.stablePaneKey
-    if (!stablePaneKey) {
+    const stablePaneKey = rawPaneKey ? this.resolveHookPaneKey(rawPaneKey) : rawPaneKey
+    if (stablePaneKey === rawPaneKey) {
       return body
     }
-    // Why: detached shells keep posting the immutable physical pane key; normalize pane and tab identity to the current owner.
+    // Why: a live shell keeps posting the pane key exported at spawn; normalize pane and tab identity to the current owner.
     return { ...record, paneKey: stablePaneKey, tabId: parsePaneKey(stablePaneKey)?.tabId }
   }
 }

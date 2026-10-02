@@ -82,7 +82,7 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
     }
     // Why: trim paneKey to match the HTTP path, else remote-vs-local events for one pane diverge.
     const physicalPaneKey = envelope.paneKey.trim()
-    let paneKey = this.resolvePaneKeyAlias(physicalPaneKey)
+    let paneKey = this.resolveHookPaneKey(physicalPaneKey)
     const parsedPaneKey = parsePaneKey(paneKey)
     if (paneKey.length === 0) {
       track('agent_hook_unattributed', { reason: 'empty_pane_key' })
