@@ -9,7 +9,7 @@ import {
   codexTurnLifecycleRig,
   settledWithin
 } from './codex-structured-dispatch-test-support'
-import { CODEX_TURN_OPEN_WAIT_MS } from './codex-structured-turn-open-wait'
+import { CODEX_TURN_OPEN_WAIT_MS, codexLiveWork } from './codex-structured-turn-open-wait'
 
 type Rig = Awaited<ReturnType<typeof codexTurnLifecycleRig>>
 
@@ -163,6 +163,20 @@ describe("Codex's live view of what its child has in flight", () => {
     expect(liveWork(rig)).toEqual({ turnId: null })
     rig.turns.start()
     expect(liveWork(rig)).toEqual({ turnId: 'turn-1' })
+  })
+
+  // Codex carries a command out as a turn of its own, whose rows join the command's turn.
+  it("names a turn carrying a command by the command's journal turn", () => {
+    const work = codexLiveWork({
+      threadId: CODEX_TEST_THREAD_ID,
+      activeTurnIds: new Set(['provider-turn']),
+      dispatchEchoes: { answeredUnopenedTurn: () => null },
+      translator: {
+        commandJournalTurnId: (turnId) => (turnId === 'provider-turn' ? 'command-turn' : turnId)
+      }
+    })
+
+    expect(work).toEqual({ turnId: 'command-turn' })
   })
 
   it('is nothing once the turn ends', async () => {
