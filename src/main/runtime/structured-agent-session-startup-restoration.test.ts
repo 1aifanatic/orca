@@ -111,6 +111,19 @@ it('opens the gate when the startup step fails, never stranding a command', asyn
   )
 })
 
+it('lets held commands go before the shortest client timeout on a held call (the AI vault restore, 5 s)', () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  vi.useFakeTimers()
+  try {
+    const gate = new StructuredAgentSessionStartupGate()
+    gate.hold()
+    vi.advanceTimersByTime(4_500)
+    expect(gate.ready()).toBeNull()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('closes the gate once per launch: a hold after it opened leaves it open', async () => {
   const gate = new StructuredAgentSessionStartupGate()
   gate.hold()

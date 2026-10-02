@@ -14,6 +14,7 @@
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
+import { withTimeout } from '../../../shared/promise-timeout-fallback'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { JournalLoad } from '../agent-session-journal/journal-open'
@@ -31,6 +32,10 @@ import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-rea
 
 // Record-only (a probe and at most a process stop each), so a few at once.
 const RECOVERY_CONCURRENCY = 4
+// A recovery is process probes around at most one stop (its SIGTERM grace is 5.5 s). Past this a
+// probe has stopped answering: the lease stays `recovering`, unverified and never called dead, for
+// the next attach or send to resolve, and the settle goes on.
+const RECOVERY_BUDGET_MS = 15_000
 
 export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
@@ -47,6 +52,8 @@ export type StructuredAgentSessionStartupStateDeps = {
   resolveRecovery: (sessionId: string) => Promise<boolean>
   /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish). */
   restoreListed: (records: AgentSessionRecord[]) => Promise<void>
+  /** Tests shorten it; production takes the default. */
+  recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
   isDisposed: () => boolean
@@ -220,8 +227,18 @@ async function resolveRecoveringLeases(deps: StructuredAgentSessionStartupStateD
   const recovering = deps.openDeps.store
     .listRecords()
     .filter((record) => record.lease.handoffStage === 'recovering')
+  const budgetMs = deps.recoveryBudgetMs ?? RECOVERY_BUDGET_MS
   await forEachWithConcurrency(recovering, RECOVERY_CONCURRENCY, async ({ sessionId }) => {
-    await deps.resolveRecovery(sessionId)
+    if (
+      (await withTimeout<boolean | null>(deps.resolveRecovery(sessionId), budgetMs, null)) === null
+    ) {
+      console.warn(
+        '[structured-agent-session] a chat recovery outlasted startup; left unverified',
+        {
+          sessionId
+        }
+      )
+    }
   })
 }
 
