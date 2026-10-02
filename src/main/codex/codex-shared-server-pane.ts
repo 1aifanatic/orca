@@ -80,8 +80,8 @@ export function resolveCodexPaneHome(ptyId: string): string | null {
       return customHome ?? null
     // Why: an unnamed home (managed account, WSL, pre-route record) skips the
     // warning rather than probing the wrong server. Orca's mirror (shared-home)
-    // is now only a fallback lane and a retired pre-upgrade home refreshed from
-    // ~/.codex, so a fix written there would not stick.
+    // gets none either, as macOS and Linux already did: it is a fallback lane
+    // (custom CODEX_HOME, hook approval) or a pre-upgrade home refreshed from ~/.codex.
     case 'shared-home':
     case 'account-home':
     case 'wsl-home':

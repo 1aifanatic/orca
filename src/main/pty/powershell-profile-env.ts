@@ -31,11 +31,11 @@ const cache = new Map<string, string[]>()
  *
  * Same fidelity as the POSIX rc-file probe: `$env:NAME = value`,
  * `Set-Item env:NAME value` and `[Environment]::SetEnvironmentVariable('NAME',
- * value[, target])` lines; no conditionals or dot-sourced files. `$HOME` and `$env:USERPROFILE` expand in double-quoted and
- * bare values; any other expression is returned verbatim, which callers
- * comparing against a known path read as "something else". Preview and
- * side-by-side PowerShell 7 installs keep their all-users profile elsewhere and
- * are not read.
+ * value[, target])` lines; no conditionals or dot-sourced files. `$HOME` and
+ * `$env:USERPROFILE` expand in double-quoted and bare values; any other
+ * expression is returned verbatim, which callers comparing against a known
+ * path read as "something else". Preview and side-by-side PowerShell 7
+ * installs keep their all-users profile elsewhere and are not read.
  *
  * Memoized: profiles don't change under a running Orca often enough to pay a
  * re-read on every routing check.
