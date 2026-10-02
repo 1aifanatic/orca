@@ -178,6 +178,31 @@ describe('renderer launch-failed recovery', () => {
     expect(load).toHaveBeenCalledTimes(2 + RENDERER_LAUNCH_FAILURE_RETRY_DELAYS_MS.length)
   })
 
+  it('stops recovery when quitting during the long backoff', async () => {
+    const { load } = createSpawnRefusingWindow()
+    let quitting = false
+    const { onRendererRecoveryExhausted } = open({ getIsQuitting: () => quitting })
+    await vi.advanceTimersByTimeAsync(250 + 1_000 + 2_000 + 4_000)
+    const loadsBeforeQuit = load.mock.calls.length
+    quitting = true
+    await vi.advanceTimersByTimeAsync(BACKOFF_TOTAL_MS * 2)
+    expect(load).toHaveBeenCalledTimes(loadsBeforeQuit)
+    expect(onRendererRecoveryExhausted).not.toHaveBeenCalled()
+  })
+
+  it('does not spend retry attempts on duplicate failure events', async () => {
+    const { handlers, load } = createSpawnRefusingWindow()
+    const { onRendererRecoveryExhausted } = open()
+    await vi.advanceTimersByTimeAsync(0)
+    handlers['render-process-gone']?.({}, LAUNCH_FAILED)
+    handlers['render-process-gone']?.({}, LAUNCH_FAILED)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(load).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(onRendererRecoveryExhausted).not.toHaveBeenCalled()
+  })
+
   it('keeps the crash-loop breaker for renderers that actually crash', async () => {
     const { handlers, load, spawn } = createSpawnRefusingWindow()
     spawn.refused = false
