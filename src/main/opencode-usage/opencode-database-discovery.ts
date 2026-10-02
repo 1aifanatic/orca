@@ -10,8 +10,11 @@ type OpenCodeDatabaseOverride = {
   path: string | null
 }
 
-function getOpenCodeDatabaseOverride(dataDirectory: string): OpenCodeDatabaseOverride {
-  const raw = process.env.OPENCODE_DB?.trim()
+function getOpenCodeDatabaseOverride(
+  dataDirectory: string,
+  environment: NodeJS.ProcessEnv
+): OpenCodeDatabaseOverride {
+  const raw = environment.OPENCODE_DB?.trim()
   if (!raw) {
     return { isConfigured: false, path: null }
   }
@@ -30,10 +33,11 @@ function getOpenCodeDatabaseOverride(dataDirectory: string): OpenCodeDatabaseOve
 export async function listOpenCodeDatabases(
   /** Lets a caller report the refusal; an empty list otherwise reads as
    *  "OpenCode not used" rather than "we could not look". */
-  onRefusal?: (path: string, error: WslTranscriptFsError) => void
+  onRefusal?: (path: string, error: WslTranscriptFsError) => void,
+  environment: NodeJS.ProcessEnv = process.env
 ): Promise<string[]> {
-  const dataDirectory = resolveOpenCodeDataDirectory()
-  const databaseOverride = getOpenCodeDatabaseOverride(dataDirectory)
+  const dataDirectory = resolveOpenCodeDataDirectory(environment)
+  const databaseOverride = getOpenCodeDatabaseOverride(dataDirectory, environment)
   if (databaseOverride.isConfigured) {
     if (!databaseOverride.path) {
       return []
