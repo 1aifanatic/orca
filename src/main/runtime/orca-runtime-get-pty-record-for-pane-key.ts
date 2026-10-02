@@ -211,11 +211,16 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
       this.notifyStructuredSessionJournalActivity(summary.sessionId)
       const openDb = () => this.getExistingOrchestrationDb()
       const deliver = (mailbox: string) => this.deliverPendingMessagesForHandle(mailbox)
-      structuredSessionIdleEdgeMailboxes(summary.sessionId, openDb).forEach(deliver)
+      structuredSessionIdleEdgeMailboxes(
+        summary.sessionId,
+        openDb,
+        this.structuredAgentSessionLogger
+      ).forEach(deliver)
     } catch (error) {
-      console.warn('[orchestration] structured session mail redrive failed', {
+      this.structuredAgentSessionLogger.warn('a structured session mail redrive failed', {
+        scope: 'mail-redrive',
         sessionId: summary.sessionId,
-        error: error instanceof Error ? error.message : String(error)
+        error
       })
     }
   }

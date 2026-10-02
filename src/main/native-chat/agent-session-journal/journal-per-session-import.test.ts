@@ -380,7 +380,7 @@ describe('importing a per-chat journal', () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const database = openTestJournalHostDatabase(root)
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const errors = vi.spyOn(database.logger, 'error')
     const input = {
       database,
       identity: IDENTITY,
@@ -403,6 +403,10 @@ describe('importing a per-chat journal', () => {
       total: 0
     })
     expect(errors).toHaveBeenCalledOnce()
+    expect(errors.mock.calls[0]?.[1]).toMatchObject({
+      scope: 'journal-import-verify',
+      sessionId: IDENTITY.sessionId
+    })
     // A copy that reads back whole then imports it, over what the refused ones left.
     const journal = await openChat()
     expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
@@ -416,7 +420,7 @@ describe('importing a per-chat journal', () => {
     expect(rows.filter((row) => row.rowJson.includes('On it.'))).toHaveLength(1)
     await writeLegacyJournal(epoch, rows)
     const database = openTestJournalHostDatabase(root)
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const errors = vi.spyOn(database.logger, 'error')
     const input = {
       database,
       identity: IDENTITY,

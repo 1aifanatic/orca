@@ -25,6 +25,7 @@ import {
   type AgentSessionRecordReader
 } from './structured-session-lineage'
 import type { RunRow } from './types'
+import type { StructuredAgentSessionLogger } from '../../native-chat/agent-session-wire/structured-agent-session-logger'
 
 /**
  * The session a Run's coordinator binding names when that binding has no handle. A structured
@@ -112,15 +113,17 @@ export function structuredSessionOwnedMailboxes(sessionId: string, db: Orchestra
  *  no mail, so `openDb` answers null and nothing is created. */
 export function structuredSessionIdleEdgeMailboxes(
   sessionId: string,
-  openDb: () => OrchestrationDb | null
+  openDb: () => OrchestrationDb | null,
+  logger: StructuredAgentSessionLogger
 ): string[] {
   let db: OrchestrationDb | null
   try {
     db = openDb()
   } catch (error) {
-    console.warn('[orchestration] skipped a structured session mail edge: no database', {
+    logger.warn('a structured session mail edge was skipped: no database', {
+      scope: 'mail-edge-database',
       sessionId,
-      error: error instanceof Error ? error.message : String(error)
+      error
     })
     return []
   }

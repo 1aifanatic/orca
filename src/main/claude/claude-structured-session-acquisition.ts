@@ -27,13 +27,12 @@ import {
   settleClaudeSessionStartup
 } from './claude-structured-session-startup'
 import { createClaudeSessionPublication } from './claude-structured-session-publication'
-import {
-  mintClaudeAcquisitionGeneration,
-  type ClaudeAcquisitionRegistry,
-  type ClaudeSession,
-  type ClaudeSessionExit,
-  type ClaudeStructuredSessionAdapterDeps,
-  type ClaudeAcquireCallbacks
+import type {
+  ClaudeAcquisitionRegistry,
+  ClaudeSession,
+  ClaudeSessionExit,
+  ClaudeStructuredSessionAdapterDeps,
+  ClaudeAcquireCallbacks
 } from './claude-structured-session-state'
 import { resolveClaudeAcquisitionError } from './claude-structured-session-close'
 import { withObservedProviderExit } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
@@ -240,6 +239,8 @@ export async function acquireClaudeSession({
     }
     const publication = createClaudeSessionPublication({
       connection,
+      sessionId,
+      deps,
       providerSessionId: launch.providerSessionId,
       leafUuid: observedLeafUuid,
       turnEndLeafUuid: launch.resumeLeafUuid,
@@ -250,10 +251,7 @@ export async function acquireClaudeSession({
       events: input.events,
       ...(unbindReadingControl ? { unbindReadingControl } : {}),
       process,
-      acquisitionGeneration: mintClaudeAcquisitionGeneration(deps),
-      options: restoredClaudeStructuredSessionOptions(input.options),
-      ...(deps.mintLinkId ? { linkId: deps.mintLinkId() } : {}),
-      observedAt: deps.now?.() ?? Date.now()
+      options: restoredClaudeStructuredSessionOptions(input.options)
     })
     const session = publication.session
     liveSession = session

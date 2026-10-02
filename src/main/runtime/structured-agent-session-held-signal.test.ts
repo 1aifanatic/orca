@@ -20,6 +20,9 @@ import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
+import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+
+const TEST_LOGGER = recordingStructuredAgentSessionLogger().logger
 
 vi.mock('../ai-vault/session-scanner-worker-spawn', () => ({
   scanAiVaultSessionsInWorker: vi.fn(),
@@ -41,7 +44,8 @@ function installHost(): Promise<StructuredAgentSessionHost> {
     claimKeyId: 'key-1',
     resolveWorkspacePath: async () => stateDirectory,
     resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
-    resolveEnvironment: async () => ({})
+    resolveEnvironment: async () => ({}),
+    logger: TEST_LOGGER
   })
 }
 

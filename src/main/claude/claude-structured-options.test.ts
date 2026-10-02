@@ -17,6 +17,9 @@ import {
   observeClaudeFastModeFacts,
   readClaudeStructuredSessionOptions
 } from './claude-structured-session-options'
+import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+
+const TEST_LOGGER = recordingStructuredAgentSessionLogger().logger
 
 function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSession {
   return {
@@ -26,6 +29,8 @@ function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSe
       setModel,
       supportedModels: async (): Promise<unknown[]> => []
     } as ClaudeSession['connection'],
+    sessionId: 'session-1',
+    logger: TEST_LOGGER,
     providerSessionId: 'provider-session',
     leafUuid: null,
     turnEndLeafUuid: null,
