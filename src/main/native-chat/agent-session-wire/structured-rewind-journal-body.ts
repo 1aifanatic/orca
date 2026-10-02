@@ -10,7 +10,8 @@ import { NATIVE_CHAT_ROLES } from '../../../shared/native-chat-types'
 type StoredBody = AgentSessionRewindRecord['retained'][number]['body']
 
 /** A row this build cannot place stays visible as a row, never invented turn or prompt state —
- *  and never as its stored JSON, which is Orca's record, not something a person reads. */
+ *  and never as its stored JSON, which is Orca's record, not something a person reads. An item of
+ *  a kind this build does not know is carried as it was: kept by its place, as every other row. */
 export function restoreRewindJournalBody(body: StoredBody): AgentJournalItemBody {
   let normalized: unknown = body
   // A placeholder, not a failure anyone can act on, so it carries no fact.

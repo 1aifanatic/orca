@@ -92,12 +92,10 @@ const SNAPSHOT = {
   closed: {
     'row.kind': ['dispatch', 'epoch', 'item', 'lifecycle-batch', 'submission', 'tombstone'],
     'row.mutations[].kind': ['item', 'tombstone'],
-    'body.kind': ['approval', 'diff', 'message', 'question', 'status', 'tool-call', 'turn'],
-    'body.subject.kind': ['plan'],
     'body.contextUsage.used.kind': ['estimate', 'report', 'unknown'],
     'body.contextUsage.used.categories[].deferred': [true]
   },
-  catchAll: ['body.blocks[].type', 'body.threadGoal.state']
+  catchAll: ['body.blocks[].type', 'body.subject.kind', 'body.threadGoal.state', 'body.kind']
 }
 
 it('changes no closed set of a journal row without the row version', () => {

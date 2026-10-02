@@ -35,9 +35,9 @@ import {
 
 /**
  * A host that keeps a chat read-only now says why on every whole page (`page.readOnly`), and this
- * build keeps a body holding a value outside a closed set it knows (a body kind, a nested literal)
- * read-only instead of deleting from it. Both meet builds that predate them: an older client is
- * sent the new field (Rule 1), and an older host opens a journal holding such a body.
+ * build keeps a body of a kind it does not know (or a plan subject of one), writable, instead of
+ * deleting from it. Both meet builds that predate them: an older client is sent the new field
+ * (Rule 1), and an older host opens a journal holding such a body.
  */
 const SUITE_TIMEOUT_MS = 180_000
 // A main build that shares this one's host database and schema version, so a downgrade to it opens
@@ -87,9 +87,13 @@ const NEWER_NESTED_LITERAL = {
   subject: { kind: 'diff', path: 'a.ts' }
 }
 
-/** This build's journal of two items, then `body` as a newer build wrote it: closed. */
-async function journalWithNewerBody(
-  body: Record<string, unknown> = NEWER_BODY_KIND
+/** A row of a kind this build does not know: the journal opens read-only. */
+const NEWER_ROW_KIND = { kind: 'future-mark' }
+
+/** This build's journal of two items, then a row as a newer build wrote it: an item holding
+ *  `body`, or `row` itself: closed. */
+async function journalWithNewerRow(
+  row: Record<string, unknown> = NEWER_ROW_KIND
 ): Promise<{ rows: string[]; newer: string }> {
   const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
   await journal.appendItem(
@@ -105,14 +109,11 @@ async function journalWithNewerBody(
   const seq = journal.cursor().sequence + 1
   const newer = JSON.stringify({
     v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-    kind: 'item',
     epoch: journal.epoch,
     seq,
     fence: 1,
     ts: 2_000,
-    itemId: 'codex:thread-1:turn-1:1',
-    revision: 1,
-    body
+    ...row
   })
   await journals.closeAll()
   insertTestJournalRowJson(
@@ -142,7 +143,7 @@ describe('a chat a newer Orca saved, across versions', () => {
   it(
     'old client against new host: the read-only page reduces exactly as the same page without the field',
     async () => {
-      await journalWithNewerBody()
+      await journalWithNewerRow()
       const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
       expect(journal.isReadOnly).toBe(true)
       const page = readAgentSessionHydrationPage(journal, 1)
@@ -173,7 +174,7 @@ describe('a chat a newer Orca saved, across versions', () => {
     async () => {
       rmSync(directory, { recursive: true, force: true })
       directory = mkdtempSync(join(tmpdir(), 'orca-read-only-xv-'))
-      await journalWithNewerBody()
+      await journalWithNewerRow()
       const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
       expect(journal.isReadOnly).toBe(true)
       const request = { sessionId: IDENTITY.sessionId, limit: 1 }
@@ -241,20 +242,26 @@ describe('a chat a newer Orca saved, across versions', () => {
     }
   })
 
-  // Why a new body kind ships its reader first, or rides a bumped `v`: this build keeps one and goes
-  // read-only, but a build from before deletes the journal from it. Move the pinned build to the
-  // first release with this rule, and the older build keeps the row too.
+  // Why a new body kind ships its reader first, or rides a bumped `v`: this build keeps one and
+  // stays writable, but a build from before deletes the journal from it. Move the pinned build to
+  // the first release with this rule, and the older build keeps the row too.
   it.each([
     ['body kind', NEWER_BODY_KIND],
-    ['nested literal', NEWER_NESTED_LITERAL]
+    ['plan subject kind', NEWER_NESTED_LITERAL]
   ])(
-    "this build keeps a newer build's %s and goes read-only; a build before it deletes it",
+    "this build keeps a newer build's %s and stays writable; a build before it deletes it",
     async (_value, body) => {
       rmSync(directory, { recursive: true, force: true })
       directory = mkdtempSync(join(tmpdir(), 'orca-read-only-xv-'))
-      const { rows, newer } = await journalWithNewerBody(body)
+      const { rows, newer } = await journalWithNewerRow({
+        kind: 'item',
+        itemId: 'codex:thread-1:turn-1:1',
+        revision: 1,
+        body
+      })
       const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-      expect(reopened.isReadOnly).toBe(true)
+      expect(reopened.isReadOnly).toBe(false)
+      expect(reopened.repair).toEqual({ malformedRows: 0 })
       await journals.closeAll()
       expect(storedRows()).toEqual(rows)
 

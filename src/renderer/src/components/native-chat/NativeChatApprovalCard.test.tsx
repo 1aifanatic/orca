@@ -7,6 +7,24 @@ import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 afterEach(cleanup)
 
 describe('NativeChatApprovalCard', () => {
+  it('shows the detail of a subject this build cannot draw, so nothing is approved unseen', () => {
+    render(
+      <NativeChatApprovalCard
+        approval={{
+          title: 'Review proposed plan',
+          detail: '# Release\n- Run tests',
+          // A subject kind a newer build wrote; this build draws only plans.
+          subject: JSON.parse('{"kind":"diff","text":"x"}'),
+          options: [{ label: 'Approve', send: 'approve' }]
+        }}
+        onChoose={() => {}}
+      />
+    )
+    expect(document.querySelector('[data-native-chat-approval-detail]')?.textContent).toContain(
+      '# Release'
+    )
+  })
+
   it('a disabled card shows the request with nothing to press, and Escape cancels nothing', () => {
     const onChoose = vi.fn()
     const onCancel = vi.fn()

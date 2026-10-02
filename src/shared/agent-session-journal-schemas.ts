@@ -13,19 +13,22 @@
 // and unknown object keys pass — a same-version row written by a slightly
 // newer build must not be misread as malformed (see journal-row-schema.ts).
 //
-// A newer writer extends a body only by new keys, new values in a closed set (a kind, a
-// discriminant, a literal), or a bumped row `v`, never by changing a field's type or a bound this
-// build checks. A value outside a closed set reads as a newer build's, so the chat goes read-only
-// and nothing is deleted (agent-session-journal-body-admission.ts); the one exception is a turn's
-// context usage, which is dropped (journal-row-unusable-annotations.ts). Any other failure is
-// damage. A new value of an open string (turn, resolution, tool or goal `state`, a block `type`)
-// is no newer build's: older builds read it as-is, except that their rewind replaces an unknown
-// turn, tool or resolution state with a placeholder row and turns an unknown block into a text
-// block of its raw JSON (structured-rewind-journal-body.ts); a goal state is kept. History pages
-// carry no row `v`, so older clients see it too. Such a value must be safe for every older build.
+// A newer writer extends a body only by new keys, new kinds of an open union, new values in a
+// closed set, or a bumped row `v`, never by changing a field's type or a bound this build checks.
+// Open unions (a body's `kind`, a block's `type`, a goal's `state`, an approval subject's `kind`)
+// keep a value this build does not know as-is and nobody draws it; the chat stays writable. A
+// value outside a closed set reads as a newer build's, so the chat goes read-only and nothing is
+// deleted (agent-session-journal-body-admission.ts); a turn's context usage is dropped instead
+// (journal-row-unusable-annotations.ts). Any other failure is damage. A new value of an open
+// string (turn, resolution, tool or goal `state`) is read as-is too, except that an older build's
+// rewind replaces an unknown turn, tool or resolution state with a placeholder row and turns an
+// unknown block into a text block of its raw JSON (structured-rewind-journal-body.ts); an unknown
+// body kind is carried as-is. History pages carry no row `v`, so older clients see such a value
+// too. It must be safe for every older build.
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import { knownTags, openDiscriminatedUnion } from './agent-session-journal-open-union'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -54,21 +57,6 @@ const ToolMetadata = {
   webSearchResults: z.array(z.object({ title: z.string(), url: z.string() })).optional()
 }
 
-const KNOWN_BLOCK_TYPES = new Set([
-  'text',
-  'tool-call',
-  'tool-result',
-  'image-ref',
-  'subagent-group',
-  'background-task'
-])
-
-/** The arm a discriminant this build does not know reads through. It aborts, so a known arm's
- *  own failure still reaches the reader (agent-session-journal-body-admission.ts). */
-export function unknownDiscriminantArm(key: string, known: ReadonlySet<string>) {
-  return z.object({ [key]: z.string() }).refine((v) => !known.has(v[key] ?? ''), { abort: true })
-}
-
 /** Provider IDs are opaque; reject all-whitespace values without rewriting valid IDs. */
 const ProviderCallId = z
   .string()
@@ -88,7 +76,7 @@ const SubagentEntry = z.object({
 /** Renderers select blocks by `type` equality and skip what they cannot draw,
  *  so an unknown block type stays admissible; a known type with a broken
  *  payload does not. */
-const Block = z.union([
+const Block = openDiscriminatedUnion(
   z.discriminatedUnion('type', [
     z.object({
       type: z.literal('text'),
@@ -139,9 +127,8 @@ const Block = z.union([
       startedAt: z.number().optional(),
       settledAt: z.number().optional()
     })
-  ]),
-  unknownDiscriminantArm('type', KNOWN_BLOCK_TYPES)
-])
+  ])
+)
 
 const PromptOption = z.object({
   id: z.string(),
@@ -180,11 +167,13 @@ const ApprovalMatchedAskRule = z.object({
   ruleContent: z.string().optional()
 })
 
-const ApprovalSubject = z.object({
-  kind: z.literal('plan'),
-  text: z.string().min(1),
-  filePath: z.string().optional()
-})
+/** Open like blocks. An approval whose subject this build cannot draw shows its `detail`, which
+ *  Orca's writers fill with the subject's text, so it is never approved unseen. */
+const ApprovalSubject = openDiscriminatedUnion(
+  z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('plan'), text: z.string().min(1), filePath: z.string().optional() })
+  ])
+)
 
 const MessageBody = z.object({
   kind: z.literal('message'),
@@ -206,13 +195,12 @@ const ThreadGoal = z.object({
 })
 
 /** Like blocks: an unknown `state` stays admissible, a known one with a broken payload does not. */
-const ThreadGoalState = z.union([
+const ThreadGoalState = openDiscriminatedUnion(
   z.discriminatedUnion('state', [
     z.object({ state: z.literal('set'), goal: ThreadGoal }),
     z.object({ state: z.literal('cleared') })
-  ]),
-  unknownDiscriminantArm('state', new Set(['set', 'cleared']))
-])
+  ])
+)
 
 /** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
  *  malformed; the fact reader is where an unplaceable one is dropped. */
@@ -222,7 +210,7 @@ const FailureFact = z.object({
   refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
 })
 
-export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
+const KnownItemBody = z.discriminatedUnion('kind', [
   MessageBody,
   z.object({
     kind: z.literal('tool-call'),
@@ -294,6 +282,10 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
     providerTurnId: z.string().min(1).optional()
   })
 ])
+
+/** Every body kind this build knows; a body of another kind is kept as-is and drawn by nobody. */
+export const AGENT_JOURNAL_ITEM_BODY_KINDS = knownTags(KnownItemBody)
+export const AgentJournalItemBodySchema = openDiscriminatedUnion(KnownItemBody)
 
 /** Producer linkage as it rides a render item across the process boundary.
  *  `producerKind` stays an open string for the reason the header gives: a host

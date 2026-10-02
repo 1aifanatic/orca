@@ -117,7 +117,15 @@ describe('a chat the host keeps read-only', () => {
   it.each([
     ['a newer row version', () => ({ ...ITEM, v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1 })],
     ['a newer row kind', () => ({ v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION, kind: 'future-mark' })],
-    ['a newer body kind', () => ({ ...ITEM, body: { kind: 'plan-card', steps: [] } })]
+    [
+      'a newer batch-change kind',
+      () => ({
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+        kind: 'lifecycle-batch',
+        settlementId: 'settle-1',
+        mutations: [{ kind: 'pin', itemId: 'x', revision: 1 }]
+      })
+    ]
   ])('names a newer Orca on every page, for %s', async (_cause, row) => {
     const journal = await reopenedAfter(row)
     expect(journal.isReadOnly).toBe(true)

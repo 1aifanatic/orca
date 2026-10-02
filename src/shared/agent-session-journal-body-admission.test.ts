@@ -5,7 +5,7 @@ import {
   readAgentJournalItemBody,
   readAgentJournalMessageBody
 } from './agent-session-journal-body-admission'
-import { unknownDiscriminantArm } from './agent-session-journal-schemas'
+import { openDiscriminatedUnion } from './agent-session-journal-open-union'
 
 const RESOLUTION = { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
 const QUESTION_ENTRY = {
@@ -68,29 +68,37 @@ describe('a body this build reads', () => {
       'a goal state it does not know',
       { kind: 'status', text: 'Goal', threadGoal: { state: 'paused' } }
     ],
-    ['a turn state it does not know', { kind: 'turn', turnId: 't', state: 'handed-off' }]
+    ['a turn state it does not know', { kind: 'turn', turnId: 't', state: 'handed-off' }],
+    ['a body kind it does not know', { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }],
+    [
+      'a plan subject kind it does not know',
+      { ...PLAN_APPROVAL, subject: { kind: 'diff', path: 'a.ts' } }
+    ]
   ])('is readable: %s', (_name, body) => {
     expect(readAgentJournalItemBody(body)).toBe('readable')
   })
 })
 
 describe("a value outside a closed set this build knows: a newer build's", () => {
+  // A turn's context usage is the closed set left in a body; the row reader drops it before this.
+  const NEWER_USAGE = { used: { kind: 'measured' } }
   it.each([
-    ['a body kind', { kind: 'plan-card', steps: [{ text: 'by a newer build' }] }],
-    ['a nested literal', { ...PLAN_APPROVAL, subject: { kind: 'diff', path: 'a.ts' } }],
-    ['one beside damage', { ...PLAN_APPROVAL, title: 5, subject: { kind: 'diff' } }]
+    [
+      'a nested discriminant',
+      { kind: 'turn', turnId: 't', state: 'done', contextUsage: NEWER_USAGE }
+    ],
+    ['one beside damage', { kind: 'turn', turnId: 5, state: 'done', contextUsage: NEWER_USAGE }]
   ])('is unreadable: %s', (_name, body) => {
     expect(readAgentJournalItemBody(body)).toBe('unreadable')
   })
 })
 
 describe('a closed set inside a known arm of an open union, as blocks and goal changes are built', () => {
-  const OpenBlock = z.union([
+  const OpenBlock = openDiscriminatedUnion(
     z.discriminatedUnion('type', [
       z.object({ type: z.literal('text'), text: z.string(), tone: z.enum(['info']).optional() })
-    ]),
-    unknownDiscriminantArm('type', new Set(['text']))
-  ])
+    ])
+  )
 
   it("reads a new value there as a newer build's, damage there as damage", () => {
     expect(readAgentJournalContent(OpenBlock, { type: 'text', text: 'x', tone: 'critical' })).toBe(

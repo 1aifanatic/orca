@@ -1,7 +1,7 @@
-// Inside a row of a known kind, what a newer build wrote is never repaired away: a mutation of a
-// newer kind, or a body holding a value outside a closed set this build knows, latches the chat
-// read-only with every row kept as it was, even beside damage. Anything else that fails is damage,
-// repaired as before.
+// Inside a row of a known kind, what a newer build wrote is never repaired away. A body of a kind
+// this build does not know (or a plan subject of one) is kept and the chat stays writable; a
+// mutation or sent message of a newer kind latches the chat read-only with every row kept as it
+// was, even beside damage. Anything else that fails is damage, repaired as before.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -125,34 +125,57 @@ async function expectReadOnlyAndKept(written: { seq: number; rowJson: string }[]
   expect(stored()).toEqual(written)
 }
 
-describe("a newer build's content inside a known row", () => {
-  it('latches read-only on an item body of a newer kind, with every row byte-identical', async () => {
+/** Opens writable with nothing repaired, keeps the newer item in the snapshot, takes a write,
+ *  and leaves every earlier row byte-identical. */
+async function expectWritableAndKept(written: { seq: number; rowJson: string }[], itemId: string) {
+  const journal = await open()
+  expect(journal.isReadOnly).toBe(false)
+  expect(journal.repair).toEqual({ malformedRows: 0 })
+  expect(journal.snapshot().items.some((entry) => entry.itemId === itemId)).toBe(true)
+  await journal.appendItem(item(5), { kind: 'status', text: 'taken' }, SCOPE)
+  await journals.closeAll()
+  expect(stored().slice(0, written.length)).toEqual(written)
+}
+
+describe("a newer build's body kind, kept and writable", () => {
+  it.each([
+    ['an item body of a newer kind', NEWER_BODY],
+    ['a plan subject of a newer kind', { ...PLAN_APPROVAL, subject: { kind: 'diff' } }]
+  ])('keeps %s and stays writable', async (_name, body) => {
     const { written } = await journalWith((epoch) => [
-      itemRow(epoch, 'codex:thread-1:turn-1:2', NEWER_BODY)
+      itemRow(epoch, 'codex:thread-1:turn-1:2', body)
     ])
-    await expectReadOnlyAndKept(written)
+    await expectWritableAndKept(written, 'codex:thread-1:turn-1:2')
   })
 
-  it.each([
-    ['of a newer kind', { kind: 'pin', itemId: 'codex:thread-1:turn-1:3', revision: 2 }],
-    [
-      'whose body is a newer kind',
-      { kind: 'item', itemId: 'codex:thread-1:turn-1:4', revision: 1, body: NEWER_BODY }
-    ]
-  ])('latches read-only on a lifecycle mutation %s', async (_name, mutation) => {
+  it('keeps a lifecycle mutation whose body is a newer kind, and stays writable', async () => {
     const { written } = await journalWith((epoch) => [
       batchRow(epoch, [
-        {
-          kind: 'item',
-          itemId: 'codex:thread-1:turn-1:3',
-          revision: 1,
-          body: { kind: 'status', text: 'ok' }
-        },
-        mutation
+        { kind: 'item', itemId: 'codex:thread-1:turn-1:4', revision: 1, body: NEWER_BODY }
       ])
     ])
-    await expectReadOnlyAndKept(written)
+    await expectWritableAndKept(written, 'codex:thread-1:turn-1:4')
   })
+})
+
+describe("a newer build's row content that stays a closed set", () => {
+  it.each([['of a newer kind', { kind: 'pin', itemId: 'codex:thread-1:turn-1:3', revision: 2 }]])(
+    'latches read-only on a lifecycle mutation %s',
+    async (_name, mutation) => {
+      const { written } = await journalWith((epoch) => [
+        batchRow(epoch, [
+          {
+            kind: 'item',
+            itemId: 'codex:thread-1:turn-1:3',
+            revision: 1,
+            body: { kind: 'status', text: 'ok' }
+          },
+          mutation
+        ])
+      ])
+      await expectReadOnlyAndKept(written)
+    }
+  )
 
   it('latches read-only on a submission whose body is a newer kind', async () => {
     const { written } = await journalWith((epoch) => [
@@ -171,13 +194,6 @@ describe("a newer build's content inside a known row", () => {
     await expectReadOnlyAndKept(written)
   })
 
-  it('latches read-only on a newer value of a nested closed set', async () => {
-    const { written } = await journalWith((epoch) => [
-      itemRow(epoch, 'codex:thread-1:turn-1:2', { ...PLAN_APPROVAL, subject: { kind: 'diff' } })
-    ])
-    await expectReadOnlyAndKept(written)
-  })
-
   it('latches read-only on a newer mutation kind that carries no item id', async () => {
     const { written } = await journalWith((epoch) => [
       batchRow(epoch, [{ kind: 'turn-settle', turnId: 'turn-1', outcome: 'done' }])
@@ -187,19 +203,17 @@ describe("a newer build's content inside a known row", () => {
 
   it.each([
     [
-      'a body',
-      (epoch: string) =>
-        itemRow(epoch, 'codex:thread-1:turn-1:2', {
-          ...PLAN_APPROVAL,
-          title: 5,
-          subject: { kind: 'diff' }
-        })
-    ],
-    [
       'a row',
       (epoch: string) => ({
-        ...itemRow(epoch, 'codex:thread-1:turn-1:2', NEWER_BODY),
-        revision: 'x'
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+        epoch,
+        fence: 1,
+        ts: 5_000,
+        kind: 'submission',
+        clientMessageId: 'client-1',
+        payloadFingerprint: 7,
+        providerHandle: IDENTITY.providerHandle,
+        body: { kind: 'voice-note', clip: 'by a newer build' }
       })
     ],
     [
