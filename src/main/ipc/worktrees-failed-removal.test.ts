@@ -1,6 +1,6 @@
 // Desktop IPC for a delete that failed after Git dropped the registration: the leftover stays in
-// `worktrees:list` with the error, Delete retries it, and forget ends it. Git and the disk are
-// mocked; runtime-failed-local-worktree-removal.test.ts runs the real thing.
+// `worktrees:list` with the error, Delete retries it. Git and the disk are mocked;
+// runtime-failed-local-worktree-removal.test.ts runs the real thing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   killAllProcessesForWorktreeMock,
@@ -8,7 +8,6 @@ import {
   removeWorktreeMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
-import type { WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { Worktree } from '../../shared/worktree/types'
@@ -156,11 +155,9 @@ async function failAfterGitDroppedIt(): Promise<void> {
 }
 
 describe('a failed delete Git no longer registers, over desktop IPC', () => {
-  let runtime: WorktreeRuntimeStub
-
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    runtime = setupWorktreeHandlers()
+    setupWorktreeHandlers()
   })
 
   afterEach(() => {
@@ -251,19 +248,5 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
     )
     listWorktreesMock.mockResolvedValue([mockKnownFeatureWorktree()[0]])
     expect(await listFeature()).toBeUndefined()
-  })
-
-  it('forget drops it from Orca without deleting anything', async () => {
-    await failAfterGitDroppedIt()
-
-    // As the sidebar's Remove from Orca sends it for a local row.
-    await handlers['worktrees:forgetLocal'](null, { worktreeId: featureId, hostId: 'local' })
-
-    expect(await listFeature()).toBeUndefined()
-    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(featureId, 'local')
-    // Paired clients list the failed row too, so they must hear it is gone.
-    expect(runtime.notifyWorktreesChangedForRemoteClients).toHaveBeenCalledWith('repo-1')
-    expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
-    expect(removeWorktreeMock).not.toHaveBeenCalled()
   })
 })

@@ -14,7 +14,7 @@ import { useMountedRef } from '@/hooks/useMountedRef'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { runWorktreeDeleteWithToast } from './delete-worktree-flow'
-import { toSshExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
+import { toSshExecutionHostId } from '../../../../shared/execution-host'
 import type { WorktreeRemovalTarget } from '../../../../shared/worktree/removal'
 import type { SshWorkspaceForgetResolution } from './ssh-workspace-forget-resolution'
 
@@ -22,8 +22,6 @@ type ForgetSshWorkspaceModalData = {
   worktreeId: string
   displayName: string
   resolution: SshWorkspaceForgetResolution
-  /** Only with `not-ssh`: a local row whose delete failed partway (ForgetFailedDeleteMenuItem). */
-  executionHostId?: ExecutionHostId
 }
 
 function isForgetModalData(data: unknown): data is ForgetSshWorkspaceModalData {
@@ -55,13 +53,12 @@ export function ForgetSshWorkspaceDialog(): React.JSX.Element | null {
   }
   const { worktreeId, displayName, resolution } = modalData
   const canReconnect = resolution.kind === 'disconnected'
-  const failedLocalDelete = resolution.kind === 'not-ssh'
-  // An SSH workspace's named target IS the host the removal was confirmed against (STA-4343).
+  // This dialog only opens for a workspace pinned to a named SSH target, so that
+  // target IS the host the removal was confirmed against (STA-4343).
   const removalTarget: WorktreeRemovalTarget = {
     id: worktreeId,
-    executionHostId: failedLocalDelete
-      ? (modalData.executionHostId ?? null)
-      : toSshExecutionHostId(resolution.targetId)
+    executionHostId:
+      resolution.kind === 'not-ssh' ? null : toSshExecutionHostId(resolution.targetId)
   }
 
   const done = (): void => {
@@ -101,7 +98,7 @@ export function ForgetSshWorkspaceDialog(): React.JSX.Element | null {
     }
   }
 
-  // Remove Orca's records only — never touches files, worktrees, or branches.
+  // Remove Orca's records only — never touches remote files, worktrees, or branches.
   const handleForget = async (): Promise<void> => {
     setBusy('forget')
     try {
@@ -135,46 +132,33 @@ export function ForgetSshWorkspaceDialog(): React.JSX.Element | null {
       <DialogContent className="sm:max-w-md gap-3 p-5" showCloseButton={false}>
         <DialogHeader className="gap-1">
           <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
-            {failedLocalDelete ? null : <ServerOff className="size-4 text-muted-foreground" />}
-            {failedLocalDelete
-              ? translate(
-                  'auto.components.sidebar.ForgetSshWorkspaceDialog.removeTitle',
-                  'Remove “{{name}}” from Orca?',
-                  { name: displayName }
-                )
-              : translate(
-                  'auto.components.sidebar.ForgetSshWorkspaceDialog.title',
-                  'Delete “{{name}}”?',
-                  {
-                    name: displayName
-                  }
-                )}
+            <ServerOff className="size-4 text-muted-foreground" />
+            {translate(
+              'auto.components.sidebar.ForgetSshWorkspaceDialog.title',
+              'Delete “{{name}}”?',
+              {
+                name: displayName
+              }
+            )}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            {failedLocalDelete
+            {canReconnect
               ? translate(
-                  'auto.components.sidebar.ForgetSshWorkspaceDialog.failedDeleteBody',
-                  'Removes this workspace from Orca only. Its remaining files and its branch stay on disk.'
+                  'auto.components.sidebar.ForgetSshWorkspaceDialog.disconnectedBody',
+                  'The SSH host for this workspace is not connected. Reconnect to delete it on the remote too, or remove it from Orca only.'
                 )
-              : canReconnect
-                ? translate(
-                    'auto.components.sidebar.ForgetSshWorkspaceDialog.disconnectedBody',
-                    'The SSH host for this workspace is not connected. Reconnect to delete it on the remote too, or remove it from Orca only.'
-                  )
-                : translate(
-                    'auto.components.sidebar.ForgetSshWorkspaceDialog.ghostBody',
-                    '{{host}} is no longer a saved SSH host, so this workspace is no longer connected to a live host. It can only be removed from Orca — files and branches on the remote are left untouched.',
-                    { host: hostLabel }
-                  )}
+              : translate(
+                  'auto.components.sidebar.ForgetSshWorkspaceDialog.ghostBody',
+                  '{{host}} is no longer a saved SSH host, so this workspace is no longer connected to a live host. It can only be removed from Orca — files and branches on the remote are left untouched.',
+                  { host: hostLabel }
+                )}
           </DialogDescription>
         </DialogHeader>
 
-        {failedLocalDelete ? null : (
-          <div className="flex items-center gap-2.5 rounded-md border border-border/50 bg-card/40 px-3 py-2">
-            <Server className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-xs font-medium">{hostLabel}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2.5 rounded-md border border-border/50 bg-card/40 px-3 py-2">
+          <Server className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{hostLabel}</span>
+        </div>
 
         {/* Why: the ghost-host description already states files are untouched, so
             only repeat the reassurance on the reconnect (disconnected) path. */}

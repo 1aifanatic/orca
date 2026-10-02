@@ -36,7 +36,6 @@ import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import type { WorktreeContextMenuModel } from './use-worktree-context-menu-model'
 import { WorktreeStatusMenuItems } from './WorktreeStatusMenuItems'
 import { WorktreeContextMenuOverlays } from './WorktreeContextMenuOverlays'
-import { ForgetFailedDeleteMenuItem } from './ForgetFailedDeleteMenuItem'
 import {
   CLOSE_ALL_CONTEXT_MENUS_EVENT,
   WORKTREE_CONTEXT_MENU_SCOPE_ATTR,
@@ -314,9 +313,6 @@ export default function WorktreeContextMenuView({ model }: { model: WorktreeCont
             onSleep={handleCloseTerminals}
             onSleepSubtree={handleSleepSubtree}
           />
-          {!isMultiContext ? (
-            <ForgetFailedDeleteMenuItem worktree={worktree} repo={repo} disabled={isDeleting} />
-          ) : null}
           {/* Why: primary checkout rows can't be git-worktree-removed, so keep a
              disabled Delete Worktree for parity with non-primary cards and pair
              it with the enabled Remove Project action below. */}

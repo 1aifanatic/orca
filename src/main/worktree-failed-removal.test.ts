@@ -1,5 +1,5 @@
 // A delete that fails after Git dropped the checkout's registration: the leftover stays listed with
-// the error until Delete retries it, the checkout disappears, or the user forgets it. Git is mocked
+// the error until Delete retries it, the checkout disappears, or its repo leaves Orca. Git is mocked
 // here so this runs on every platform; the real-Git version is in
 // runtime/runtime-failed-local-worktree-removal.test.ts.
 import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
@@ -25,7 +25,6 @@ import {
   withUnregisteredRemovalCheckouts
 } from './worktree-removal-listing'
 import { readWorktreeRemovalRecords } from './worktree-removal-records'
-import { forgetFailedWorktreeRemoval } from './worktree-removal-table'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
@@ -228,19 +227,6 @@ describe('a delete that fails after Git dropped the registration', () => {
     await failRemoval()
 
     expect(retryFailedWorktreeRemoval(worktreeId, 'ssh:box', vi.fn())).toBeUndefined()
-  })
-
-  it('ends when the user forgets the workspace, leaving the files', async () => {
-    await failRemoval()
-
-    forgetFailedWorktreeRemoval(worktreeId)
-
-    await vi.waitFor(async () =>
-      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
-    )
-    expect(await listRows()).toEqual([mainWorktree])
-    expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
-    expect(await readdir(checkout)).toEqual(['node_modules'])
   })
 
   it('ends at the next listing once the checkout is deleted outside Orca', async () => {

@@ -6182,8 +6182,6 @@
           "reconnectFailed": "重新连接失败",
           "forgetBody": "仅从 Orca 中移除此工作区。文件、Git 工作树和 {{host}} 上的分支保持不变。",
           "title": "从 Orca 中移除“{{name}}”？",
-          "removeTitle": "从 Orca 中移除“{{name}}”？",
-          "failedDeleteBody": "仅从 Orca 中移除此工作区。剩余的文件及其分支保留在磁盘上。",
           "disconnectedBody": "此工作区的 SSH 主机未连接。重新连接以同时在远程删除，或仅从 Orca 中移除。",
           "ghostBody": "{{host}} 不再是已保存的 SSH 主机，因此此工作区不再连接到活跃主机。只能从 Orca 中移除 — 远程文件和分支保持不变。",
           "cancel": "取消",

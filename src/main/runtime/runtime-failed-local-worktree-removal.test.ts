@@ -38,7 +38,6 @@ import {
   writeWorktreeRemovalRecords,
   type WorktreeRemovalRecord
 } from '../worktree-removal-records'
-import { forgetFailedWorktreeRemoval } from '../worktree-removal-table'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
 vi.mock('../project-runtime-git-options', () => ({
@@ -253,16 +252,6 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await listedRows()).toEqual([])
   })
 
-  it('forgetting the workspace ends the record and keeps the files', async () => {
-    await failInSession()
-
-    forgetFailedWorktreeRemoval(worktreeId)
-
-    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([]))
-    expect(existsSync(lockedFile)).toBe(true)
-    expect(await listedRows()).toEqual([])
-  })
-
   it('the record ends once the checkout is deleted outside Orca', async () => {
     await failInSession()
     await setImmutable(false)
@@ -334,7 +323,7 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await isRegistered(nested)).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
-    // The row keeps the refusal, so the user can move the nested worktree or forget this one.
+    // The row keeps the refusal, so the user can move the nested worktree and Delete again.
     expect(await listedRows()).toContainEqual({
       path: worktreePath,
       removalError: expect.stringMatching(/contains another registered worktree/)
