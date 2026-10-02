@@ -98,7 +98,7 @@ export function buildQuickComposerStartup(input: QuickComposerStartupInput): Qui
         shell: input.shell ?? undefined,
         isRemote: input.isRemote,
         host: input.host,
-        canPasteAfterReady: true
+        paste: 'when-host-proves-agent'
       }),
       prompt
     )

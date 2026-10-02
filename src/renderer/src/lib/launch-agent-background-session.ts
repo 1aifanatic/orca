@@ -89,7 +89,7 @@ export async function launchAgentBackgroundSession(
       launchPlatform,
       isRemote
     }),
-    canPasteAfterReady: true
+    paste: 'when-host-proves-agent'
   })
   if (!planned) {
     return null

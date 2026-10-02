@@ -63,7 +63,7 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
       prompt: opts.agentPrompt ?? '',
       host: thisOrcaLaunchHost({ launchPlatform, isRemote }),
       // Why: a quick command has no paste after ready.
-      canPasteAfterReady: false
+      paste: 'never'
     })
     if (!planned) {
       throw new Error(`Could not build launch command for ${opts.agent}.`)

@@ -4,7 +4,7 @@ export type LaunchHost = {
    *  stage nor accompany with a launch file. Temporary, until paired hosts advertise both. */
   paired: boolean
   /** Whether the host can prove the launched agent holds its terminal before a paste
-   *  (`launched-agent-foreground`). A Windows host cannot, so it refuses a paste. */
+   *  (`launched-agent-foreground`). A Windows host cannot, so #24257's guarded paste is refused. */
   provesAgentInFront: boolean
 }
 

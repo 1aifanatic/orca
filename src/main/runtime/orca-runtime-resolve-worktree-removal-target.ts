@@ -272,7 +272,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       prompt: opts.startupPrompt ?? '',
       ...(opts.launchFile ? { launchFile: opts.launchFile } : {}),
       host: thisOrcaLaunchHost({ launchPlatform: platform, isRemote }),
-      canPasteAfterReady: opts.onStartupPromptCarry !== undefined
+      paste: opts.onStartupPromptCarry ? 'when-host-proves-agent' : 'never'
     })
     if (!planned) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare

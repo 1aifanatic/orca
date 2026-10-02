@@ -15,6 +15,7 @@ import {
   carryLaunchPrompt,
   launchFileDirectoryGrant,
   windowsShellDamagesPrompt,
+  type LaunchPromptPaste,
   type LaunchPromptPlan
 } from './launch-prompt-carry'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
@@ -76,7 +77,7 @@ export type AgentLaunchPromptArgs = AgentStartupPlanInputs & {
   /** See `CarriedPlanArgs`. */
   host: LaunchHost
   /** See `CarriedPlanArgs`. */
-  canPasteAfterReady: boolean
+  paste: LaunchPromptPaste
 }
 
 /**

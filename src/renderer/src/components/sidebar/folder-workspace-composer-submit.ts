@@ -134,7 +134,7 @@ export async function submitFolderWorkspaceCreate({
                 launchPlatform,
                 isRemote: launchIsRemote
               }),
-              canPasteAfterReady: true
+              paste: 'when-host-proves-agent'
             }),
             note
           )

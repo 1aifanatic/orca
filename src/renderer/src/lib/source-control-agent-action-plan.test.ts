@@ -55,6 +55,26 @@ describe('planSourceControlAgentActionLaunch', () => {
     expect(result.ok && result.summary).not.toContain('included in the launch command')
   })
 
+  // Why: main pastes an AI button's prompt on Windows, so the agent's history shows the user's
+  // text; only a typed prompt the line would damage rides a launch file.
+  it('pastes a multi-line AI-button prompt on Windows, and files the same prompt typed', () => {
+    const plan = (promptDelivery: 'submit-after-ready' | 'auto-submit') =>
+      planSourceControlAgentActionLaunch({
+        agent: 'claude',
+        commandInput: 'Fix the failing checks.\nThen push.',
+        promptDelivery,
+        detectedAgents: ['claude'],
+        platform: 'win32',
+        terminalWindowsShell: 'cmd.exe'
+      })
+
+    const button = plan('submit-after-ready')
+    expect(button.ok && button.delivery).toBe('paste-submit')
+    expect(button.ok && button.plan.launchCommand).not.toContain('task-context')
+    const typed = plan('auto-submit')
+    expect(typed.ok && typed.summary).toContain('private file')
+  })
+
   it('includes per-action CLI arguments in submit-after-ready launch plans', () => {
     const result = planSourceControlAgentActionLaunch({
       agent: 'codex',

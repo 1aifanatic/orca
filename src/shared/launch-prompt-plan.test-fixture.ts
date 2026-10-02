@@ -18,8 +18,8 @@ export type PlannedLaunchForTest = AgentStartupPlan & {
 /** `planLaunchPrompt`, flattened; null where it answers null, or for an empty prompt unless
  *  `allowEmptyPromptLaunch`, as the builder did before the outcome was explicit. */
 export function planLaunchForTest(
-  args: Omit<AgentLaunchPromptArgs, 'host' | 'canPasteAfterReady'> &
-    Partial<Pick<AgentLaunchPromptArgs, 'host' | 'canPasteAfterReady'>> & {
+  args: Omit<AgentLaunchPromptArgs, 'host' | 'paste'> &
+    Partial<Pick<AgentLaunchPromptArgs, 'host' | 'paste'>> & {
       allowEmptyPromptLaunch?: boolean
     }
 ): PlannedLaunchForTest | null {
@@ -29,7 +29,7 @@ export function planLaunchForTest(
   }
   const planned = planLaunchPrompt({
     ...launchArgs,
-    // A local launch on the platform under test, by a caller that pastes, unless the test says.
+    // A local launch on the platform under test, with #24257's guarded paste, unless the test says.
     host:
       args.host ??
       describeLaunchHost({
@@ -38,7 +38,7 @@ export function planLaunchForTest(
         hostPlatform: args.platform,
         paired: false
       }),
-    canPasteAfterReady: args.canPasteAfterReady ?? true
+    paste: args.paste ?? 'when-host-proves-agent'
   })
   if (!planned) {
     return null

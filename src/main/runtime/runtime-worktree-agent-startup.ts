@@ -162,8 +162,8 @@ export function buildWorktreeStartupForAgent(
       isRemote: repoIsRemote(repo),
       launchPlatform: environment.getLaunchPlatform()
     }),
-    // A caller that cannot paste takes a follow-up and sends it once the agent is ready.
-    canPasteAfterReady: true
+    // The caller, or else the host's follow-up, pastes what the line leaves once the agent runs.
+    paste: 'when-host-proves-agent'
   })
   if (!planned) {
     throw new Error(`Could not build launch command for ${agent}.`)

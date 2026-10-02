@@ -69,6 +69,16 @@ export function launchPromptNeedsPasteRefusal(
         'paste the prompt once it opens.'
 }
 
+/**
+ * The paste a caller has for a prompt left until the agent is ready:
+ * - `never`: none, so the line carries the prompt, as main did;
+ * - `when-host-proves-agent`: #24257's guarded paste, refused where the host cannot prove the agent
+ *   is in front;
+ * - `once-agent-runs`: the desktop paste main uses for AI buttons and notes sends on every host,
+ *   written once the agent's process owns the terminal.
+ */
+export type LaunchPromptPaste = 'never' | 'when-host-proves-agent' | 'once-agent-runs'
+
 export type CarriedPlanArgs = {
   agent: TuiAgent
   prompt: string
@@ -78,9 +88,8 @@ export type CarriedPlanArgs = {
   launchFile?: LaunchFile
   /** The host the launch runs on (`describeLaunchHost`). */
   host: LaunchHost
-  /** Whether the caller pastes a prompt left for after the agent is ready. One that cannot still
-   *  starts the agent with the prompt on its line, as main did. */
-  canPasteAfterReady: boolean
+  /** The caller's paste for a prompt the line does not carry. */
+  paste: LaunchPromptPaste
 }
 
 export function agentReadsLaunchFile(agent: TuiAgent): boolean {
@@ -106,11 +115,11 @@ function windowsLineCarriesExactly(prompt: string, line: string, shell: AgentSta
 /**
  * The one carry rule. The prompt rides the agent's line: a host that stages (POSIX, SSH, WSL)
  * stages it when it is long or multi-line, and a Windows host types it when its shell carries the
- * text exactly. It rides a launch file when it is past the argv ceiling, when a Windows line would
- * damage it, or past a paired host's typed budget. A launch file goes only to an agent measured
- * reading one, on a host that writes it. Otherwise the prompt is pasted once the agent is ready,
- * unless the host cannot prove the agent is in front to paste into or the caller has no paste:
- * then the line carries it, as main typed it.
+ * text exactly. When the line cannot (past the argv ceiling, damaged by a Windows shell, past a
+ * paired host's typed budget), it rides a launch file, which goes only to an agent measured reading
+ * one, on a host that writes it; on Windows, a caller whose paste main used gets that paste first.
+ * Failing a file it is pasted once the agent is ready, unless the caller's paste cannot reach the
+ * agent on this host: then the line carries it, as main typed it.
  */
 export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchCommand: string }>(
   args: A,
@@ -135,12 +144,20 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
   if (mode === 'stdin-after-start') {
     return pasteAfterReady()
   }
+  const pasteReachesAgent =
+    args.paste === 'once-agent-runs' ||
+    (args.paste === 'when-host-proves-agent' && args.host.provesAgentInFront)
   const lineOrPaste = (): LaunchPromptPlan<P> | null => {
-    const pasteIsSafe = args.host.provesAgentInFront && args.canPasteAfterReady
-    const plan = pasteIsSafe ? null : buildLine(args)
+    const plan = pasteReachesAgent ? null : buildLine(args)
     return plan ? { carry: 'on-line', plan } : pasteAfterReady()
   }
   const viaLaunchFile = (): LaunchPromptPlan<P> | null => {
+    // Why paste first on Windows: main pastes this caller's prompts, so the agent gets the user's
+    // text; there a pointer would replace nearly every generated (multi-line) prompt. Temporary,
+    // until the agent's own argv carries multi-line text past cmd without a shim re-parsing it.
+    if (args.paste === 'once-agent-runs' && args.platform === 'win32') {
+      return pasteAfterReady()
+    }
     // Why: an agent not measured reading the file would stop on an approval or refuse the path.
     if (args.host.paired || !agentReadsLaunchFile(args.agent)) {
       return lineOrPaste()

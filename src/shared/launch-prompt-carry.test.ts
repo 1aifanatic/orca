@@ -14,7 +14,7 @@ function plan(
   extra: Partial<Omit<AgentLaunchPromptArgs, 'agent' | 'prompt'>> = {}
 ) {
   const platform = extra.platform ?? 'darwin'
-  // A local launch on that platform, by a caller that pastes, unless the test says otherwise.
+  // A local launch on that platform, with #24257's guarded paste, unless the test says otherwise.
   const host = describeLaunchHost({
     launchPlatform: platform,
     isRemote: false,
@@ -27,7 +27,7 @@ function plan(
     cmdOverrides: {},
     platform,
     host,
-    canPasteAfterReady: true,
+    paste: 'when-host-proves-agent',
     ...extra
   })
 }
@@ -84,7 +84,7 @@ describe('where a launch prompt rides', () => {
   // (agentSession.create, a phone quick command) must not refuse it now.
   it('keeps a file-sized prompt on the line for a caller that cannot paste', () => {
     const prompt = 'g'.repeat(MAX_INLINE_LAUNCH_PROMPT_CHARS + 1)
-    const planned = plan('gemini', prompt, { canPasteAfterReady: false })
+    const planned = plan('gemini', prompt, { paste: 'never' })
     expect(planned?.carry).toBe('on-line')
     expect(planned?.carry === 'on-line' && planned.plan.launchCommand).toContain('gggg')
   })
@@ -140,6 +140,40 @@ describe('a host that types the line raw', () => {
     expect(plan('gemini', prompt, { platform: 'win32', shell: 'cmd' })?.carry).toBe('on-line')
   })
 
+  // Why: main pastes an AI button's or notes send's prompt once the agent runs, so the agent's
+  // history shows the user's text; a pointer replaces only a line main would type damaged.
+  it.each<TuiAgent>(['claude', 'codex'])(
+    'pastes what a Windows line cannot carry for a caller whose paste main used, for %s',
+    (agent) => {
+      const paste = 'once-agent-runs' as const
+      const multiLine = 'fix the build\nthen run the tests'
+      const pasted = plan(agent, multiLine, { platform: 'win32', shell: 'cmd', paste })
+      expect(pasted).toMatchObject({ carry: 'paste-after-ready', text: multiLine })
+      const long = 'y'.repeat(20_000)
+      expect(plan(agent, long, { platform: 'win32', shell: 'cmd', paste })?.carry).toBe(
+        'paste-after-ready'
+      )
+      expect(plan(agent, 'fix it', { platform: 'win32', shell: 'cmd', paste })?.carry).toBe(
+        'on-line'
+      )
+      const typed = plan(agent, multiLine, { platform: 'win32', shell: 'cmd' })
+      expect(typed?.carry).toBe('launch-file')
+    }
+  )
+
+  it('pastes a Windows-damaged prompt for any agent when the caller’s paste is main’s', () => {
+    const extra = { platform: 'win32' as const, shell: 'powershell' as const }
+    expect(plan('gemini', 'say "hi"', { ...extra, paste: 'once-agent-runs' })?.carry).toBe(
+      'paste-after-ready'
+    )
+    expect(plan('gemini', 'say "hi"', extra)?.carry).toBe('on-line')
+  })
+
+  it('still points Claude at a file past the argv ceiling on a POSIX host, whatever the paste', () => {
+    const planned = plan('claude', 'y'.repeat(20_000), { paste: 'once-agent-runs' })
+    expect(planned?.carry).toBe('launch-file')
+  })
+
   // Why: a host that cannot prove the agent holds its terminal refuses a paste (#24257), so the
   // line carries what the paste would have, as main typed it; Claude and Codex still get the file.
   it('keeps a prompt on the line of a host that cannot paste, unless a file can carry it', () => {
@@ -153,6 +187,9 @@ describe('a host that types the line raw', () => {
     expect(plan('gemini', 'y'.repeat(20_000), extra)?.carry).toBe('on-line')
     expect(plan('claude', 'y'.repeat(20_000), extra)?.carry).toBe('launch-file')
     expect(plan('aider', prompt, extra)?.carry).toBe('paste-after-ready')
+    // An AI button's paste is main's, which ran in WSL too.
+    const button = { ...extra, paste: 'once-agent-runs' as const }
+    expect(plan('gemini', 'y'.repeat(20_000), button)?.carry).toBe('paste-after-ready')
   })
 
   it('pastes on a paired host what its line cannot carry typed, even for Claude', () => {

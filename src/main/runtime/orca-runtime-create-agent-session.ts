@@ -189,7 +189,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
             isRemote: Boolean(workspace.connectionId)
           }),
           // Why: this create returns before the agent is ready, so nothing pastes after it.
-          canPasteAfterReady: false
+          paste: 'never'
         })
         if (!planned) {
           throw new Error('agent_session_identity_required')

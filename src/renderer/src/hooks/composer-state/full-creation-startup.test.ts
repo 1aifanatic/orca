@@ -17,7 +17,7 @@ describe('the full composer’s renderer-spawned startup', () => {
         platform: 'linux',
         isRemote: true,
         host: { paired: false, provesAgentInFront: true },
-        canPasteAfterReady: true
+        paste: 'when-host-proves-agent'
       }),
       prompt
     )

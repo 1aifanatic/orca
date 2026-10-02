@@ -83,7 +83,7 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
       ...planInputs,
       prompt: args.draftContent,
       host: args.host,
-      canPasteAfterReady: true
+      paste: 'once-agent-runs'
     })
     if (!planned) {
       return { startupPlan: null, promptOnLaunchCommand: false, startupPlanFailed: true }

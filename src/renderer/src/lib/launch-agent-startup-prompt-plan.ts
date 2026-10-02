@@ -72,7 +72,13 @@ export function planLaunchAgentStartupPrompt(args: {
   if (prompt.length > 0 && args.host.paired && promptDelivery === 'submit-after-ready') {
     return pasteAfterReady(cleanPlan(), prompt, true)
   }
-  const planned = planLaunchPrompt({ ...base, prompt, host: args.host, canPasteAfterReady: true })
+  const planned = planLaunchPrompt({
+    ...base,
+    prompt,
+    host: args.host,
+    // Why: main pastes a submit-after-ready prompt once the agent runs and types the rest.
+    paste: promptDelivery === 'submit-after-ready' ? 'once-agent-runs' : 'when-host-proves-agent'
+  })
   if (!planned) {
     return { startupPlan: null, pasteDraftAfterLaunch: null, submitPastedPrompt: false }
   }

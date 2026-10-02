@@ -210,7 +210,7 @@ export function useFullSubmitPreparation(input: FullSubmitPreparationInput) {
             launchPlatform: selectedRepoAgentLaunchPlatform,
             isRemote: selectedRepoIsRemote
           }),
-          canPasteAfterReady: true
+          paste: 'when-host-proves-agent'
         }),
         submitStartupPrompt
       )

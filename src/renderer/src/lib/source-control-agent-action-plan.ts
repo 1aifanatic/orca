@@ -160,7 +160,8 @@ export function planSourceControlAgentActionLaunch(args: {
         launchPlatform: platform,
         isRemote
       }),
-      canPasteAfterReady: true
+      paste:
+        args.promptDelivery === 'submit-after-ready' ? 'once-agent-runs' : 'when-host-proves-agent'
     })
     switch (planned?.carry) {
       case undefined:
