@@ -3,6 +3,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../../../shared/electron-remote-runtime-client-capabilities'
 import { HOST_AGENT_PRESENCE } from '../../runtime-mobile-agent-presence-projection'
 import { projectSessionTabPresenceForClient } from './session-tab-presence-projection'
 
@@ -73,6 +74,21 @@ describe('connection scoped presence projection', () => {
       snapshot(false).tabs
     )
   })
+  it('serves a client that only knows the in-turn v1 shape no presence at all', () => {
+    expect(AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY).toBe('agent-process-presence.v2')
+    const tabs = projectSessionTabPresenceForClient(snapshot(true), [
+      'agent-process-presence.v1'
+    ]).tabs
+    expect(tabs).toEqual(snapshot(false).tabs)
+    expect(JSON.stringify(tabs)).not.toContain('agentPresence')
+  })
+
+  it('asks a v1 host for nothing, since its in-turn shape is one this client does not read', () => {
+    // A v1 host projects the owner into `agentStatus` only for clients that list v1.
+    expect(ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES).toContain('agent-process-presence.v2')
+    expect(ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES).not.toContain('agent-process-presence.v1')
+  })
+
   it('leaves the published turn untouched', () => {
     const capable = [AGENT_PROCESS_PRESENCE_RUNTIME_CAPABILITY]
     expect(projectSessionTabPresenceForClient(snapshot(true, published), capable).tabs[0]).toEqual({
