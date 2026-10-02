@@ -134,6 +134,36 @@ function useLocalListing(): void {
   ])
 }
 
+function useSshProvider() {
+  useRepo(makeRepo({ path: '/remote/repo', executionHostId: 'ssh:target-a' }))
+  const provider = {
+    exec: vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === 'remote') {
+        return { stdout: 'origin\n', stderr: '' }
+      }
+      if (args[0] === 'show-ref') {
+        throw Object.assign(new Error('missing exact ref'), { code: 1 })
+      }
+      return { stdout: '', stderr: '' }
+    }),
+    fetchRemoteTrackingRef: vi.fn().mockResolvedValue(undefined),
+    addWorktree: vi.fn().mockResolvedValue(undefined),
+    listWorktrees: vi.fn().mockResolvedValue([
+      {
+        path: '/remote/repo-wt',
+        head: 'abc',
+        branch: 'refs/heads/wt',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ])
+  }
+  getSshGitProviderMock.mockImplementation((connectionId: string) =>
+    connectionId === 'target-a' ? provider : undefined
+  )
+  return provider
+}
+
 function trackedEvent(name: string): Record<string, unknown> | undefined {
   const call = trackMock.mock.calls.find(([eventName]) => eventName === name)
   return call?.[1]
@@ -224,32 +254,7 @@ describe('worktrees:create event timing fields', () => {
   )
 
   it('records an SSH create without probing the remote for hooks', async () => {
-    useRepo(makeRepo({ path: '/remote/repo', executionHostId: 'ssh:target-a' }))
-    const provider = {
-      exec: vi.fn().mockImplementation(async (args: string[]) => {
-        if (args[0] === 'remote') {
-          return { stdout: 'origin\n', stderr: '' }
-        }
-        if (args[0] === 'show-ref') {
-          throw Object.assign(new Error('missing exact ref'), { code: 1 })
-        }
-        return { stdout: '', stderr: '' }
-      }),
-      fetchRemoteTrackingRef: vi.fn().mockResolvedValue(undefined),
-      addWorktree: vi.fn().mockResolvedValue(undefined),
-      listWorktrees: vi.fn().mockResolvedValue([
-        {
-          path: '/remote/repo-wt',
-          head: 'abc',
-          branch: 'refs/heads/wt',
-          isBare: false,
-          isMainWorktree: false
-        }
-      ])
-    }
-    getSshGitProviderMock.mockImplementation((connectionId: string) =>
-      connectionId === 'target-a' ? provider : undefined
-    )
+    useSshProvider()
 
     await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'wt' })
     await vi.waitFor(() => expect(trackedEvent('workspace_created')).toBeDefined())
@@ -259,6 +264,27 @@ describe('worktrees:create event timing fields', () => {
     expect(props).toMatchObject({ execution_host: 'ssh', worktree_count_bucket: '1' })
     expect(props).not.toHaveProperty('post_checkout_hook')
     expect(props).not.toHaveProperty('prepared_checkout')
+  })
+
+  it('attributes an old-relay SSH add error to the add through its cause', async () => {
+    const provider = useSshProvider()
+    provider.addWorktree.mockRejectedValue(new Error('Path outside authorized workspace: /x'))
+
+    const caught: unknown = await handlers['worktrees:create'](null, {
+      repoId: 'repo-1',
+      name: 'wt'
+    }).then(
+      () => undefined,
+      (error: unknown) => error
+    )
+
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught instanceof Error && caught.message).toMatch(/^Older relay reported/)
+    expect(caught instanceof Error && caught.cause).toBeInstanceOf(Error)
+    expect(trackedEvent('workspace_create_failed')).toMatchObject({
+      failed_phase: 'git_worktree_add',
+      execution_host: 'ssh'
+    })
   })
 
   it('names the phase a failed create died in', async () => {
