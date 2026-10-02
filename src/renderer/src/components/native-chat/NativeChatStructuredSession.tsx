@@ -31,7 +31,6 @@ import { structuredAgentSessionReadFailureNotice } from './structured-agent-sess
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import { agentSessionReadOnlyText } from './agent-session-write-notice-text'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 
@@ -161,9 +160,9 @@ export function NativeChatStructuredSession(
     rootRef,
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
-  const readOnlyText = agentSessionReadOnlyText(controller.readOnly)
-  // A read-only chat refuses every answer, so the composer says why in place of a prompt card.
-  const prompt = readOnlyText ? null : (controller.prompts[0] ?? null)
+  const prompt = controller.prompts[0] ?? null
+  // A read-only chat shows its pending prompt unanswerable, above the composer that says why.
+  const composerShown = prompt === null || controller.readOnly !== undefined
   const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
   const approval = approvalBody
     ? {
@@ -194,7 +193,7 @@ export function NativeChatStructuredSession(
     composerRef,
     isVisible: props.isVisible,
     isFocusedGroup: props.isFocusedGroup,
-    composerReady: prompt === null
+    composerReady: composerShown
   })
   const questionBody = prompt?.body.kind === 'question' ? prompt.body : null
   const questions = questionBody ? agentSessionPromptQuestions(questionBody) : []
@@ -352,7 +351,8 @@ export function NativeChatStructuredSession(
           approval={approval}
           onChoose={(optionId) => void controller.respond(prompt, { kind: 'option', optionId })}
           onCancel={cancelPrompt}
-          shouldFocus={props.isVisible && props.isFocusedGroup}
+          disabled={controller.readOnly !== undefined}
+          shouldFocus={!controller.readOnly && props.isVisible && props.isFocusedGroup}
           onLinkClick={onLinkClick}
           allowFileUriLinks={onLinkClick !== undefined}
         />
@@ -387,24 +387,24 @@ export function NativeChatStructuredSession(
             }
           }}
           onCancel={cancelPrompt}
+          disabled={controller.readOnly !== undefined}
         />
       ) : null}
-      {prompt ? null : (
+      {composerShown ? (
         <NativeChatComposer
           ref={composerRef}
           terminalTabId={props.tabId}
           paneKey={paneKey}
           targetPtyId={null}
           agent={props.agent}
-          canSend={!readOnlyText}
-          lockReason={readOnlyText}
+          lockReason={controller.readOnly}
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
           steerQueued={controller.queuedMessages.steerNewest}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />
-      )}
+      ) : null}
       {paneCommands.menu}
       <LinkActionPopover request={linkActionRequest} onClose={closeLinkActions} />
     </div>

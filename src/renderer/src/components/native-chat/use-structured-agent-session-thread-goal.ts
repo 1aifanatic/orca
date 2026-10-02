@@ -13,6 +13,7 @@ import type { StructuredAgentSessionMutate } from './use-structured-agent-sessio
 
 export type StructuredAgentSessionThreadGoal = {
   goal: AgentJournalThreadGoal | null
+  /** A change is in flight, or the host takes none. */
   pending: boolean
   /** Resolves false when the change was refused or not sent; the error surfaces separately. */
   change: (change: AgentSessionThreadGoalChange) => Promise<boolean>
@@ -22,9 +23,10 @@ export type StructuredAgentSessionThreadGoal = {
 export function useStructuredAgentSessionThreadGoal(args: {
   journalItems: readonly AgentJournalRenderItem[]
   support: AgentSessionOptionsResult['threadGoal']
+  writable: boolean
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionThreadGoal | null {
-  const { journalItems, mutate, support } = args
+  const { journalItems, mutate, support, writable } = args
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   // The loaded window reaches the live head, so a goal row in it is newer than the
@@ -52,5 +54,5 @@ export function useStructuredAgentSessionThreadGoal(args: {
     },
     [mutate]
   )
-  return support ? { goal, pending, change } : null
+  return support ? { goal, pending: pending || !writable, change } : null
 }

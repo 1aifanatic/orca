@@ -5,7 +5,6 @@ import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
-import type { AgentSessionReadOnlyReason } from '../../../../shared/agent-session-read-only'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
@@ -81,7 +80,7 @@ export function createStructuredSessionMocks() {
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
     readRefusal: absent<AgentSessionRefusalReference>(),
-    readOnly: absent<AgentSessionReadOnlyReason>(),
+    readOnly: absent<string>(),
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
@@ -197,6 +196,7 @@ export function createStructuredSessionMocks() {
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
+              writable: mocks.readOnly === undefined,
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,

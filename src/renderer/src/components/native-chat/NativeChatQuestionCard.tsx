@@ -8,6 +8,8 @@ export type NativeChatQuestionCardProps = {
   prompt: AskPrompt
   /** Whether the snapshotted answer is still being delivered to the agent. */
   isSubmitting?: boolean
+  /** Shown but not answerable: the host refuses every answer. */
+  disabled?: boolean
   /** Deliver the chosen answer (per-question option indices + free text). */
   onAnswer: (selections: AskAnswerSelection[]) => void
   allowOther?: boolean | readonly boolean[]
@@ -33,11 +35,13 @@ const TYPED_ANSWER = -1
 export function NativeChatQuestionCard({
   prompt,
   isSubmitting = false,
+  disabled = false,
   onAnswer,
   allowOther = true,
   onCancel,
   answerInputRef
 }: NativeChatQuestionCardProps): React.JSX.Element {
+  const locked = isSubmitting || disabled
   const [index, setIndex] = useState(0)
   // Keep option identity by index: labels are display text and are not guaranteed
   // unique, while Claude's selector commits the numbered row (STA-1860).
@@ -165,7 +169,7 @@ export function NativeChatQuestionCard({
               <button
                 key={i}
                 type="button"
-                disabled={isSubmitting}
+                disabled={locked}
                 onClick={() => setIndex(i)}
                 className={cn(
                   'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium disabled:pointer-events-none',
@@ -198,9 +202,10 @@ export function NativeChatQuestionCard({
             </p>
             <button
               type="button"
+              disabled={disabled}
               onClick={onCancel}
               aria-label={translate('components.native-chat.question.cancel', 'Cancel')}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
             >
               <X className="size-4" />
             </button>
@@ -216,7 +221,7 @@ export function NativeChatQuestionCard({
                 label={opt.label}
                 description={opt.description}
                 selected={(selections[index] ?? []).includes(i)}
-                disabled={isSubmitting}
+                disabled={locked}
                 onSelect={() => pickOption(i)}
               />
             ))}
@@ -244,7 +249,7 @@ export function NativeChatQuestionCard({
                       still be acted on. */}
                   <input
                     ref={answerInputRef}
-                    disabled={isSubmitting}
+                    disabled={locked}
                     value={otherText[index]}
                     onChange={(e) => setOther(index, e.target.value)}
                     // Click, not focus: tabbing through the field toward Submit must not
@@ -277,7 +282,7 @@ export function NativeChatQuestionCard({
               )}
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={locked}
                 onClick={() => confirm()}
                 className={cn(
                   'shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50',

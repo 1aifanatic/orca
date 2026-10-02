@@ -40,6 +40,8 @@ export type NativeChatSessionOptionPickersProps = {
   surface: SessionOptionsSurface | null
   snapshot: SessionOptionDescriptor[]
   isWorking: boolean
+  /** The host refuses every change: the pickers stay shown, closed. */
+  disabled?: boolean
   pickerRequest?: NativeChatOptionPickerRequest | null
 }
 
@@ -236,6 +238,7 @@ function NativeChatSessionOptionPickersInner({
   surface,
   snapshot,
   isWorking,
+  disabled = false,
   pickerRequest
 }: NativeChatSessionOptionPickersProps): React.JSX.Element | null {
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -244,9 +247,10 @@ function NativeChatSessionOptionPickersInner({
   if (!surface || !model) {
     return null
   }
-  const requestedModelSequence = pickerRequest?.id === model.id ? pickerRequest.sequence : null
-  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === pickerRequest?.id)
-    ? (pickerRequest?.sequence ?? null)
+  const request = disabled ? null : pickerRequest
+  const requestedModelSequence = request?.id === model.id ? request.sequence : null
+  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === request?.id)
+    ? (request?.sequence ?? null)
     : null
 
   const setOption = (descriptor: SessionOptionDescriptor, value: SessionOptionValue): void => {
@@ -273,7 +277,7 @@ function NativeChatSessionOptionPickersInner({
         <PickerTrigger
           label={nativeChatModelPillLabel(model)}
           tooltipLabel={modelTooltip}
-          disabled={isWorking || pendingId !== null}
+          disabled={disabled || isWorking || pendingId !== null}
           disabledReason={modelReason}
           dispatched={sessionOptionDispatchUnconfirmed(model)}
         />
@@ -297,7 +301,7 @@ function NativeChatSessionOptionPickersInner({
           <PickerTrigger
             label={nativeChatOptionsPillLabel(options)}
             tooltipLabel={optionsTooltip}
-            disabled={isWorking || pendingId !== null}
+            disabled={disabled || isWorking || pendingId !== null}
             disabledReason={optionsReason}
             dispatched={options.some(sessionOptionDispatchUnconfirmed)}
           />

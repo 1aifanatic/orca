@@ -45,7 +45,7 @@ export function NativeChatQueuedMessageList({
             {pause ? (
               <NativeChatQueuePauseRow
                 pause={pause}
-                resuming={controller.resuming}
+                disabled={controller.resuming || !controller.writable}
                 onResume={() => refocusAfter(controller.resume())}
               />
             ) : null}
@@ -61,6 +61,7 @@ export function NativeChatQueuedMessageList({
                   key={card.messageId}
                   card={card}
                   showsSteerShortcut={card === newest}
+                  disabled={!controller.writable}
                   onSteer={() => refocusAfter(controller.steer(card.messageId))}
                   onDelete={() => refocusAfter(controller.remove(card.messageId))}
                   onEdit={() => refocusAfter(controller.edit(card.messageId))}
@@ -100,11 +101,11 @@ function queuePauseText(pause: { reason: string }): string {
 
 function NativeChatQueuePauseRow({
   pause,
-  resuming,
+  disabled,
   onResume
 }: {
   pause: { reason: string }
-  resuming: boolean
+  disabled: boolean
   onResume: () => void
 }): React.JSX.Element {
   const text = queuePauseText(pause)
@@ -114,7 +115,7 @@ function NativeChatQueuePauseRow({
       <p className="min-w-0 flex-1 truncate" title={text}>
         {text}
       </p>
-      <Button type="button" variant="ghost" size="xs" disabled={resuming} onClick={onResume}>
+      <Button type="button" variant="ghost" size="xs" disabled={disabled} onClick={onResume}>
         <Play className="size-3" />
         {translate('components.native-chat.queuedMessages.resume', 'Resume')}
       </Button>

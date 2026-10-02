@@ -15,6 +15,8 @@ export type NativeChatApprovalCardProps = {
   /** Cancel the active provider turn while this card owns the composer region. */
   onCancel?: () => void
   shouldFocus?: boolean
+  /** Shown but not answerable: the host refuses every answer. */
+  disabled?: boolean
   /** A plan body renders as markdown; these make its file paths clickable. */
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
@@ -30,6 +32,7 @@ export function NativeChatApprovalCard({
   onChoose,
   onCancel,
   shouldFocus = false,
+  disabled = false,
   onLinkClick,
   allowFileUriLinks = false
 }: NativeChatApprovalCardProps): React.JSX.Element {
@@ -58,7 +61,7 @@ export function NativeChatApprovalCard({
           aria-label={approval.title}
           tabIndex={-1}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && onCancel) {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && onCancel && !disabled) {
               event.preventDefault()
               event.stopPropagation()
               onCancel()
@@ -76,9 +79,10 @@ export function NativeChatApprovalCard({
             {onCancel ? (
               <button
                 type="button"
+                disabled={disabled}
                 onClick={onCancel}
                 aria-label={translate('components.native-chat.approval.cancel', 'Cancel')}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
               >
                 <X className="size-4" />
               </button>
@@ -156,9 +160,10 @@ export function NativeChatApprovalCard({
               <button
                 key={`${opt.label}-${i}`}
                 type="button"
+                disabled={disabled}
                 onClick={() => onChoose(opt.send)}
                 className={cn(
-                  'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
                   i === 0
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'border border-border bg-background text-foreground hover:bg-accent'

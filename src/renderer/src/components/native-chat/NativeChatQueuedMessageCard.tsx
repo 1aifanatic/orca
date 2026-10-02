@@ -106,6 +106,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
+  disabled = false,
   onSteer,
   onDelete,
   onEdit,
@@ -114,6 +115,8 @@ export function NativeChatQueuedMessageCard({
   card: QueuedMessageCard
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
+  /** The host refuses every write: Send now, Delete and Edit cannot land. */
+  disabled?: boolean
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
@@ -152,7 +155,7 @@ export function NativeChatQueuedMessageCard({
       </div>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
+          <Button type="button" variant="ghost" size="xs" disabled={disabled} onClick={onSteer}>
             {sendNow.steers ? <CornerDownRight className="size-3" /> : <Send className="size-3" />}
             {sendNow.label}
           </Button>
@@ -173,6 +176,7 @@ export function NativeChatQueuedMessageCard({
             variant="ghost"
             size="icon-xs"
             aria-label={translate('components.native-chat.queuedMessages.delete', 'Delete')}
+            disabled={disabled}
             onClick={onDelete}
           >
             <Trash2 className="size-3.5" />
@@ -197,7 +201,7 @@ export function NativeChatQueuedMessageCard({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onEdit}>
+          <DropdownMenuItem disabled={disabled} onSelect={onEdit}>
             <Pencil />
             {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
           </DropdownMenuItem>

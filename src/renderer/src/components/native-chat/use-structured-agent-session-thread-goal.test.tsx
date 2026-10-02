@@ -58,12 +58,14 @@ function harness(options: {
   journalItems?: readonly AgentJournalRenderItem[]
   support?: { current: AgentJournalThreadGoal | null }
   mutate?: StructuredAgentSessionMutate
+  writable?: boolean
 }) {
   const mutate = options.mutate ?? mutateWith(async () => null).mutate
   return renderHook(() =>
     useStructuredAgentSessionThreadGoal({
       journalItems: options.journalItems ?? [],
       support: options.support,
+      writable: options.writable ?? true,
       mutate
     })
   )
@@ -72,6 +74,13 @@ function harness(options: {
 describe('useStructuredAgentSessionThreadGoal', () => {
   it('is absent until the host reports it can change this session goal', () => {
     expect(harness({ journalItems: [goalRow(1, GOAL)] }).result.current).toBeNull()
+  })
+
+  it("holds the goal's actions while the host refuses every write", () => {
+    expect(harness({ support: { current: GOAL } }).result.current?.pending).toBe(false)
+    expect(harness({ support: { current: GOAL }, writable: false }).result.current?.pending).toBe(
+      true
+    )
   })
 
   it('reads the goal off the loaded window, and off the host answer only when the window has none', () => {

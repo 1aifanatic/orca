@@ -35,6 +35,7 @@ function renderController() {
       queuePause: { reason: 'stopped' },
       submissions: [],
       hasPendingPrompt: false,
+      writable: true,
       composerScopeKey: undefined,
       mutate
     })

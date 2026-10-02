@@ -35,6 +35,7 @@ function createHarness(
   overrides: {
     queuedMessages?: AgentSessionQueuedMessage[]
     enabled?: boolean
+    writable?: boolean
     composerScopeKey?: string | undefined
     mutateResult?: (call: MutateCall) => unknown
   } = {}
@@ -51,6 +52,7 @@ function createHarness(
       queuePause: null,
       submissions: [],
       hasPendingPrompt: false,
+      writable: overrides.writable ?? true,
       composerScopeKey: 'composerScopeKey' in overrides ? overrides.composerScopeKey : SCOPE,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the result shape of the one mutate it responds to; generic erasure cannot express that.
       mutate: mutate as StructuredAgentSessionMutate
@@ -92,6 +94,9 @@ describe('queued message actions', () => {
     expect(empty.result.current.steerNewest()).toBe(false)
     const disabled = createHarness({ enabled: false })
     expect(disabled.result.current.steerNewest()).toBe(false)
+    const readOnly = createHarness({ writable: false })
+    expect(readOnly.result.current.steerNewest()).toBe(false)
+    expect(readOnly.result.current.writable).toBe(false)
   })
 
   it('Delete withdraws through queuedMessageDelete without touching the composer', async () => {

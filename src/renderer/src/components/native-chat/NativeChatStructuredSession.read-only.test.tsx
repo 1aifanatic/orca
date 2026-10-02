@@ -58,22 +58,24 @@ function renderSession() {
   )
 }
 
-it('locks the composer with the reason as its placeholder, in place of a card it would refuse', () => {
-  mocks.readOnly = 'written-by-newer-orca'
+it('locks the composer with the reason as its placeholder, under the pending prompt it cannot answer', () => {
+  mocks.readOnly = REASON
   mocks.promptItems = [PENDING_APPROVAL]
   renderSession()
   expect(screen.getByTestId('structured-composer')).toBeTruthy()
-  expect(mocks.composerProps).toMatchObject({ canSend: false, lockReason: REASON })
-  expect(document.querySelector('[data-native-chat-approval-card-mock]')).toBeNull()
+  expect(mocks.composerProps).toMatchObject({ lockReason: REASON })
+  expect(document.querySelector('[data-native-chat-approval-card-mock]')).not.toBeNull()
+  expect(mocks.approvalCardProps).toMatchObject({ disabled: true, shouldFocus: false })
   expect(screen.queryByText(REASON)).toBeNull()
 })
 
-it('leaves the composer open on a writable chat, or for a reason this client cannot word', () => {
+it('leaves a writable chat as it was: the card takes the composer slot, answerable', () => {
+  mocks.promptItems = [PENDING_APPROVAL]
   renderSession()
-  expect(mocks.composerProps).toMatchObject({ canSend: true, lockReason: undefined })
+  expect(screen.queryByTestId('structured-composer')).toBeNull()
+  expect(mocks.approvalCardProps).toMatchObject({ disabled: false })
   cleanup()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: stands in for an arm a newer host could publish, which this build's type cannot name.
-  mocks.readOnly = 'a-later-reason' as 'written-by-newer-orca'
+  mocks.promptItems = []
   renderSession()
-  expect(mocks.composerProps).toMatchObject({ canSend: true, lockReason: undefined })
+  expect(mocks.composerProps).toMatchObject({ lockReason: undefined })
 })

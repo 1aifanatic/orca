@@ -32,6 +32,8 @@ export type StructuredAgentSessionQueuedMessagesController = {
   resume: () => Promise<void>
   /** A Resume is in flight. */
   resuming: boolean
+  /** False while the host refuses every write: no card action or Resume can land. */
+  writable: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
   steer: (messageId: string) => Promise<void>
   remove: (messageId: string) => Promise<void>
@@ -54,10 +56,12 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
+  writable: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
+  const { writable } = args
   const pause = args.queuePause
 
   const cards = useMemo(
@@ -167,7 +171,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   }, [mutate])
 
   const steerNewest = useCallback((): boolean => {
-    if (!enabled) {
+    if (!enabled || !writable) {
       return false
     }
     const newest = newestSteerableQueuedMessageCard(cardsRef.current)
@@ -176,7 +180,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     }
     void steer(newest.messageId)
     return true
-  }, [enabled, steer])
+  }, [enabled, steer, writable])
 
-  return { cards, pause, resume, resuming, steer, remove, edit, steerNewest }
+  return { cards, pause, resume, resuming, writable, steer, remove, edit, steerNewest }
 }

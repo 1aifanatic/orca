@@ -341,6 +341,25 @@ describe('NativeChatSessionOptionPickers', () => {
     ).toBe('true')
   })
 
+  it('keeps both pickers shown but shut while the host refuses every change', () => {
+    render(
+      <NativeChatSessionOptionPickers
+        surface={surface}
+        snapshot={[model(), effort]}
+        isWorking={false}
+        disabled
+        pickerRequest={{ id: 'model', sequence: 1 }}
+      />
+    )
+    for (const name of ['Model Opus 4.8', 'Effort High']) {
+      const trigger = screen.getByRole('button', { name })
+      expect(trigger.parentElement?.getAttribute('data-disabled')).toBe('true')
+      expect(trigger.closest('[data-testid="dropdown-root"]')?.getAttribute('data-open')).not.toBe(
+        'true'
+      )
+    }
+  })
+
   it('does not duplicate titles for unknown values or misname generic controls', () => {
     const { rerender } = render(
       <NativeChatSessionOptionPickers
