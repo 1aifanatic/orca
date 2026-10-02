@@ -32,7 +32,6 @@ export class RelayRuntimeServices {
   readonly fsHandler: FsHandler
   readonly gitHandler: GitHandler
   readonly skillInstallHandler: SkillInstallHandler
-  readonly agentExecHandler: AgentExecHandler
   private readonly responseStreams: GitResponseStreamRegistry
   private readonly aiVaultService: ReturnType<typeof createRelayAiVaultService> | null
   private readonly sessionSearch: { dispose(): void } | null
@@ -80,7 +79,7 @@ export class RelayRuntimeServices {
     this.skillInstallHandler = new SkillInstallHandler(dispatcher)
     const externalAutomationsHandler = new ExternalAutomationsHandler(dispatcher)
     const portScanHandler = new PortScanHandler(dispatcher)
-    this.agentExecHandler = new AgentExecHandler(dispatcher)
+    const agentExecHandler = new AgentExecHandler(dispatcher)
     const workspaceSessionHandler = new WorkspaceSessionHandler(dispatcher)
     const relayPlatform = parseUnameToRelayPlatform(process.platform, process.arch)
     const hostPlatform = relayPlatform ? getRemoteHostPlatform(relayPlatform) : undefined
@@ -106,7 +105,7 @@ export class RelayRuntimeServices {
       this.skillInstallHandler,
       externalAutomationsHandler,
       portScanHandler,
-      this.agentExecHandler,
+      agentExecHandler,
       workspaceSessionHandler,
       new AiVaultHandler(dispatcher, {
         hostPlatform,
@@ -126,16 +125,10 @@ export class RelayRuntimeServices {
   // pumps and file descriptors behind it are only proven gone by these registry drains.
   async disposeOwnedProcesses(): Promise<void> {
     const failures: unknown[] = []
-    const agents = this.agentExecHandler.dispose().catch((error: unknown) => {
-      failures.push(error)
-    })
     const responses = this.responseStreams.disposeAllAndWait().catch((error: unknown) => {
       failures.push(error)
     })
     const fileStreams = this.fsHandler.disposeFileStreams().catch((error: unknown) => {
-      failures.push(error)
-    })
-    const watchers = this.fsHandler.disposeWatchers().catch((error: unknown) => {
       failures.push(error)
     })
     await this.skillInstallHandler.dispose().catch((error) => {
@@ -148,12 +141,10 @@ export class RelayRuntimeServices {
         `[relay] AI Vault sidecar shutdown failed: ${error instanceof Error ? error.message : String(error)}`
       )
     })
-    await agents
     await responses
     await fileStreams
-    await watchers
-    // Why: an unclosed fd, watcher child or agent child defers shutdown so the next attempt retries
-    // it; skill/AI Vault cleanup stays log-and-continue until a later T2 slice.
+    // Why: an unclosed fd defers shutdown so the next attempt retries it; skill/AI Vault
+    // cleanup stays log-and-continue until the T2 lifecycle port.
     if (failures.length > 0) {
       throw new AggregateError(failures, 'relay_owned_process_shutdown_incomplete')
     }

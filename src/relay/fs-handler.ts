@@ -275,8 +275,4 @@ export class FsHandler {
   disposeFileStreams(): Promise<void> {
     return this.streamRegistry.disposeAll()
   }
-
-  disposeWatchers(): Promise<void> {
-    return this.watchRegistry.disposeAndWait()
-  }
 }
