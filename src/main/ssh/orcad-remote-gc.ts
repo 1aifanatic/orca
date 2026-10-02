@@ -24,10 +24,12 @@ import {
   orcadLivenessProbeCommand,
   parseOrcadLiveness
 } from './orcad-remote-launch'
-import type { RemoteHostPlatform } from './ssh-remote-platform'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
 import { readOrcadGcTransactionPins } from './orcad-gc-transaction-pins'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
+import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import { RELAY_REMOTE_DIR } from './relay-protocol'
+import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { ORCAD_WINDOWS_LIVENESS_MANY_MARKER } from './orcad-windows-host-script'
 
 export type OrcadGcOptions = {
   conn: SshConnection
@@ -53,8 +55,6 @@ export type OrcadGcOptions = {
 }
 
 export async function gcOldOrcadVersions(options: OrcadGcOptions): Promise<void> {
-  // Windows liveness answers now, but GC there (one probe per pass, not per dir) is not built yet.
-  assertPosixOrcadHost(options.host)
   const transaction = await readOrcadGcTransactionPins(options)
   if (transaction.state === 'keep-all') {
     console.warn('[orcad-gc] An activation transaction is unreadable or unjournaled; skipping GC.')
@@ -71,6 +71,11 @@ export async function gcOldOrcadVersions(options: OrcadGcOptions): Promise<void>
         ...orcadGcPinnedDirNames(options.record, options.liveDaemonVersion),
         ...transaction.dirNames
       ],
+      // Windows screens every candidate in one node.exe; the per-dir probe below rechecks only
+      // the few that screened dead, under the GC claim.
+      ...(isWindowsRemoteHost(options.host)
+        ? { resolveExtraPinnedDirNames: (candidates) => windowsLiveCandidates(options, candidates) }
+        : {}),
       isDirLive: async (dir) => {
         try {
           const probe = await execCommand(
@@ -100,4 +105,41 @@ export async function gcOldOrcadVersions(options: OrcadGcOptions): Promise<void>
       signal: options.signal
     })
   }
+}
+
+/** Candidates that are not proven dead, as pins; null (keep everything) when the host cannot say. */
+async function windowsLiveCandidates(
+  options: OrcadGcOptions,
+  candidates: readonly string[]
+): Promise<readonly string[] | null> {
+  const dirs = candidates.map((name) =>
+    joinRemotePath(options.host, options.remoteHome, RELAY_REMOTE_DIR, name)
+  )
+  let output: string
+  try {
+    output = await execCommand(
+      options.conn,
+      orcadWindowsHostOpCommand(
+        options.host,
+        orcadRemoteBaseDir(options.host, options.remoteHome),
+        'liveness-many',
+        dirs
+      ),
+      { wrapCommand: false, signal: options.signal }
+    )
+  } catch (error) {
+    if (isUnconfirmedSshCommandTermination(error)) {
+      throw error
+    }
+    return null
+  }
+  const line = output
+    .split(/\r?\n/u)
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith(`${ORCAD_WINDOWS_LIVENESS_MANY_MARKER} `))
+  const states = line?.slice(ORCAD_WINDOWS_LIVENESS_MANY_MARKER.length + 1).split(',') ?? []
+  if (states.length !== candidates.length) {
+    return null
+  }
+  return candidates.filter((_name, index) => states[index] !== 'DEAD')
 }

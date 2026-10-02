@@ -5,7 +5,7 @@
  * activation does. It refuses while the terminal census says terminals are live or cannot be
  * counted, and it never signals: the instance-bound request reaches only the orcad it names.
  * Only proven exit deactivates the record; anything less withdraws the request or keeps the
- * fence. POSIX hosts only, like the rest of the orcad deploy core.
+ * fence. Windows runs the same steps: the request is a staged file and exit proof is orcad's own.
  */
 import { randomUUID } from 'node:crypto'
 import type { OrcadActivationRecord } from './orcad-activation-record'
@@ -26,7 +26,6 @@ import {
 } from './orcad-decommission-transaction'
 import { readRemoteOrcadManagedStopTarget } from './orcad-managed-remote-stop'
 import { settleOrcadDecommissionStop } from './orcad-decommission-stop'
-import { assertPosixOrcadHost } from './orcad-remote-host-support'
 import type { OrcadSlotOptions } from './orcad-recovery-slot'
 import type { OrcadDecommissionResult } from '../../shared/orcad-decommission'
 import type { OrcadTerminalCensus } from '../../shared/orcad-terminal-census'
@@ -68,7 +67,6 @@ function censusRefusal(census: OrcadTerminalCensus): Refusal | null {
 export async function decommissionRemoteOrcad(
   options: OrcadDecommissionOptions
 ): Promise<OrcadDecommissionResult> {
-  assertPosixOrcadHost(options.host)
   const now = options.now ?? ((): Date => new Date())
   return withOrcadActivationLock(options, async (lock) => {
     if (await readOrcadActivationTransaction(options)) {

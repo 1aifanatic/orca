@@ -95,6 +95,29 @@ describe('Windows liveness script', () => {
     expect(await liveness()).toBe('DEAD')
   })
 
+  it('answers a whole GC pass of dirs from one process, in order', async () => {
+    const live = join(dir, 'live')
+    const dead = join(dir, 'dead')
+    const unknown = join(dir, 'unknown')
+    for (const [slot, pid] of [
+      [live, process.pid],
+      [dead, DEAD_PID]
+    ] as const) {
+      mkdirSync(slot)
+      writeFileSync(join(slot, ORCAD_WINDOWS_PROCESS_TREE_FILENAME), '')
+      writeFileSync(
+        join(slot, `${ORCAD_WINDOWS_PROCESS_TREE_FILENAME}.json`),
+        JSON.stringify({ [process.pid]: 1000 })
+      )
+      writeFileSync(
+        join(slot, ORCAD_WINDOWS_PROCESS_FILENAME),
+        JSON.stringify({ pid, creationTimeMs: 1000 })
+      )
+    }
+    const { stdout } = await runOp('liveness-many', [live, dead, unknown])
+    expect(stdout.trim()).toBe('__ORCAD_LIVENESS__ LIVE,DEAD,UNKNOWN')
+  })
+
   it('is UNKNOWN when nothing proves identity: no record, no time, no addon', async () => {
     expect(await liveness()).toBe('UNKNOWN')
     recordProcess(process.pid, null)
