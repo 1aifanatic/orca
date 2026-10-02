@@ -12,7 +12,10 @@ const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted
 )
 const statusFeed = vi.hoisted(() => ({
   subscribe: vi.fn<
-    (target: unknown, onEvent: (event: AgentSessionStatusEvent) => void) => Promise<{
+    (
+      target: unknown,
+      onEvent: (event: AgentSessionStatusEvent) => void
+    ) => Promise<{
       unsubscribe: () => void
     }>
   >(async () => ({ unsubscribe: () => {} }))
