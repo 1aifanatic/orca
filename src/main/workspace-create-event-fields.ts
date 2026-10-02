@@ -118,6 +118,10 @@ function contextFields(
   }
 }
 
+function worktreeCountFields(count: number | undefined): WorkspaceCreateTimingFields {
+  return count === undefined ? {} : { worktree_count_bucket: bucketWorktreeCount(count) }
+}
+
 /** Event fields for a finished create, built only from what the create already measured. */
 export function workspaceCreateTimingFields(
   timing: WorktreeCreateTiming,
@@ -130,9 +134,7 @@ export function workspaceCreateTimingFields(
     ...phaseDurationFields(timing.phases),
     ...preparedCheckoutFields(timing.preparedCheckout),
     ...contextFields(timing, context),
-    ...(timing.worktreeCount !== undefined
-      ? { worktree_count_bucket: bucketWorktreeCount(timing.worktreeCount) }
-      : {}),
+    ...worktreeCountFields(repoFacts?.worktreeCount ?? timing.worktreeCount),
     ...(repoFacts?.indexEntryCount !== undefined
       ? { repo_file_count_bucket: bucketRepoFileCount(repoFacts.indexEntryCount) }
       : {}),

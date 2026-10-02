@@ -10,6 +10,8 @@ export type CreateEventRepoFacts = {
   postCheckoutHook: PostCheckoutHookPresence
   /** Entries in the index header, i.e. tracked files; absent when the count is missing or unreliable. */
   indexEntryCount?: number
+  /** The main checkout plus every registered linked worktree, prepared checkouts included. */
+  worktreeCount?: number
 }
 
 const PROBE_TIMEOUT_MS = 2_000
@@ -57,11 +59,28 @@ async function readFacts(
     readFile(path.join(gitDir, 'config.worktree'), 'utf8').catch(() => '')
   ])
   const config = mainConfig === null ? null : `${mainConfig}\n${worktreeConfig}`
-  const [postCheckoutHook, indexEntryCount] = await Promise.all([
+  const [postCheckoutHook, indexEntryCount, worktreeCount] = await Promise.all([
     readPostCheckoutHook(gitDir, config, platform),
-    readIndexEntryCount(gitDir, config)
+    readIndexEntryCount(gitDir, config),
+    readWorktreeCount(gitDir)
   ])
-  return { postCheckoutHook, ...(indexEntryCount !== undefined ? { indexEntryCount } : {}) }
+  return {
+    postCheckoutHook,
+    ...(indexEntryCount !== undefined ? { indexEntryCount } : {}),
+    ...(worktreeCount !== undefined ? { worktreeCount } : {})
+  }
+}
+
+/** One listing of `.git/worktrees`, Git's registry of linked worktrees, since the create itself no
+ *  longer lists them. Admin directory names survive `worktree move`, so prepared checkouts cannot be
+ *  told apart here; the caller subtracts the ones it holds. */
+async function readWorktreeCount(gitDir: string): Promise<number | undefined> {
+  try {
+    const entries = await readdir(path.join(gitDir, 'worktrees'), { withFileTypes: true })
+    return entries.filter((entry) => entry.isDirectory()).length + 1
+  } catch (error) {
+    return getErrorCode(error) === 'ENOENT' ? 1 : undefined
+  }
 }
 
 /** `core.sparseCheckout` or `index.sparse` set to anything Git reads as true, bare key included. */

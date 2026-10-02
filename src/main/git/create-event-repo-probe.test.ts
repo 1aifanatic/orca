@@ -59,6 +59,14 @@ describe('probeCreateEventRepoFacts', () => {
     expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'unknown' })
   })
 
+  it('counts the main checkout plus every registered linked worktree', async () => {
+    for (const name of ['feature-a', 'feature-b', '123-prepared']) {
+      await mkdir(path.join(repo, '.git', 'worktrees', name), { recursive: true })
+    }
+    await writeFile(path.join(repo, '.git', 'worktrees', 'stray-file'), '')
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toMatchObject({ worktreeCount: 4 })
+  })
+
   it('reports neither fact for a missing repo', async () => {
     expect(await probeCreateEventRepoFacts(path.join(repo, 'missing'), 'linux')).toEqual({
       postCheckoutHook: 'unknown'
@@ -79,13 +87,17 @@ describe('probeCreateEventRepoFacts', () => {
       await writeIndex('DIRC', version, 123_456)
       expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
         postCheckoutHook: 'absent',
-        indexEntryCount: 123_456
+        indexEntryCount: 123_456,
+        worktreeCount: 1
       })
     }
   )
 
   it('omits the count when the repo has no index yet', async () => {
-    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'absent' })
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
+      postCheckoutHook: 'absent',
+      worktreeCount: 1
+    })
   })
 
   it('omits the count for a file that is not an index', async () => {
@@ -139,9 +151,12 @@ describe('probeCreateEventRepoFacts', () => {
     expect(await hookPresence(repo, 'linux')).toBe('custom_hooks_path')
   })
 
-  it('reports neither fact when the config cannot be read', async () => {
+  it('reports neither config-based fact when the config cannot be read', async () => {
     await rm(path.join(repo, '.git', 'config'))
     await writeIndex('DIRC', 2, 10)
-    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({ postCheckoutHook: 'unknown' })
+    expect(await probeCreateEventRepoFacts(repo, 'linux')).toEqual({
+      postCheckoutHook: 'unknown',
+      worktreeCount: 1
+    })
   })
 })

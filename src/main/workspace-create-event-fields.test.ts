@@ -99,6 +99,18 @@ describe('workspaceCreateTimingFields', () => {
     expect(fields).not.toHaveProperty('repo_file_count_bucket')
   })
 
+  it('takes the worktree count from the repo read when the create did not list worktrees', () => {
+    const fields = workspaceCreateTimingFields(
+      { totalDurationMs: 1, phases: [] },
+      {
+        entryPoint: 'app',
+        concurrency: quiet,
+        repoFacts: { postCheckoutHook: 'absent', worktreeCount: 7 }
+      }
+    )
+    expect(fields.worktree_count_bucket).toBe('6-20')
+  })
+
   it('sums a repeated phase and drops names outside the closed vocabulary', () => {
     const fields = workspaceCreateTimingFields(
       {

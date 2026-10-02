@@ -12,9 +12,12 @@ import type {
 } from '../shared/worktree/create-types'
 import type { WorktreeCreatePhase } from '../shared/worktree/create-timing-vocabulary'
 import type { AddWorktreeOptions, AddWorktreeResult } from './git/worktree'
+import { WorktreePreparationLockOwnershipError } from './git/worktree-preparation-lock'
+import { preparationPathKey } from './worktree-create-preparation-claim'
 import {
   _resetPreparationPoolForTests,
   hasPendingPreparations,
+  listPreparations,
   releasePreparationClaim,
   startPreparation,
   type DeferredPreparation,
@@ -50,6 +53,14 @@ export {
 /** A prepared checkout is a create that is either in flight or imminent. */
 export function hasPendingWorktreeCreatePreparations(): boolean {
   return hasPendingPreparations()
+}
+
+/** Prepared checkouts this process has registered in `repoPath`; Git lists them as worktrees. */
+export function countRegisteredPreparations(repoPath: string): number {
+  const repoPathKey = preparationPathKey(repoPath)
+  return listPreparations().filter(
+    (entry) => entry.repoPathKey === repoPathKey && entry.checkoutStarted
+  ).length
 }
 
 /** Carries the consumed slot's pending re-arm to the create's outermost `finally`, which fires it
@@ -95,17 +106,19 @@ function timePhase<T>(
 export function prepareWorktreeCreateForRepo(
   store: Store,
   repo: Repo,
-  baseBranch: string
+  baseBranch: string,
+  beforeMaterialization?: Promise<void>
 ): Promise<void> {
   return worktreePreparationGit.run(() =>
-    prepareWorktreeCreateInBackground(store, repo, baseBranch)
+    prepareWorktreeCreateInBackground(store, repo, baseBranch, beforeMaterialization)
   )
 }
 
 async function prepareWorktreeCreateInBackground(
   store: Store,
   repo: Repo,
-  baseBranch: string
+  baseBranch: string,
+  beforeMaterialization?: Promise<void>
 ): Promise<void> {
   if (repo.connectionId || isFolderRepo(repo)) {
     return
@@ -125,7 +138,8 @@ async function prepareWorktreeCreateInBackground(
     workspaceRoot,
     baseBranch,
     canonicalBase,
-    options
+    options,
+    beforeMaterialization
   })
 }
 
@@ -145,7 +159,7 @@ async function claimPreparedWorktree(
     return reserved
   }
   const { entry, reservation } = reserved
-  args.timing?.recordAdoptedPreparation(entry.work)
+  args.timing?.recordAdoptedPreparation(entry.activity.work)
   const claimedAt = performance.now()
   try {
     await timePhase(args, 'prepared_checkout_wait', () => entry.ready)
@@ -230,13 +244,6 @@ export async function consumePreparedWorktreeCreate(
   return attempt
 }
 
-function preparationOrigin(entry: PreparationEntry): PreparedCheckoutOrigin {
-  if (entry.kind === 'explicit') {
-    return 'prefetch'
-  }
-  return entry.prefetchRequested ? 'rearm_then_prefetch' : 'rearm'
-}
-
 function preparedCheckoutReset(retargeted: boolean, headReset: boolean): PreparedCheckoutReset {
   if (!headReset) {
     return 'none'
@@ -271,29 +278,30 @@ async function attemptPreparedWorktreeCreate(
           args.branch,
           args.baseBranch,
           args.refreshLocalBaseRef,
-          options
+          options,
+          entry.lockReason
         )
       }
     )
     // Consuming the only prepared checkout leaves the next create cold. Re-arm for a user who is
     // creating in a burst; the TTL and the preparation limit still bound an unused replacement.
     const rearm = deferRearmPreparation(entry, reservation, args.baseBranch, claim.canonicalBase)
-    // A create that waited for the build reports no idle time.
-    const readyAt = entry.readyAt ?? claim.claimedAt
     return {
       status: 'hit',
       retargeted: claim.retargeted,
       reset: preparedCheckoutReset(claim.retargeted, preparedHeadReset),
-      origin: preparationOrigin(entry),
-      buildMs: Math.max(0, readyAt - entry.buildStartedAt),
-      idleMs: Math.max(0, claim.claimedAt - readyAt),
+      origin: entry.activity.origin(),
+      ...entry.activity.timesAt(claim.claimedAt),
       result,
       rearm
     }
   } catch (error) {
-    await timePhase(args, 'prepared_checkout_discard', () =>
-      discardPreparedWorktree(args.repoPath, entry.preparedPath, options)
-    ).catch(() => {})
+    // Another owner holds the preparation's lock, so it is not ours to remove.
+    if (!(error instanceof WorktreePreparationLockOwnershipError)) {
+      await timePhase(args, 'prepared_checkout_discard', () =>
+        discardPreparedWorktree(args.repoPath, entry.preparedPath, options, entry.lockReason)
+      ).catch(() => {})
+    }
     console.warn(
       '[worktree-create] prepared checkout could not be finalized; using normal add',
       error
