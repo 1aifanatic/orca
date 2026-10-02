@@ -74,7 +74,9 @@ function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): Structured
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
     ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {}),
-    ...(verdict.promptHeldBySource ? { promptHeldBySource: true } : {})
+    ...(verdict.promptHeldBySource !== undefined
+      ? { promptHeldBySource: verdict.promptHeldBySource }
+      : {})
   }
 }
 
@@ -140,6 +142,8 @@ export function planAgentSessionLaunch(
     ...(request.promptDelivery ? { promptDelivery: request.promptDelivery } : {}),
     ...(request.resumeFrom ? { resumeFrom: request.resumeFrom } : {}),
     ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {}),
-    ...(request.promptHeldBySource ? { promptHeldBySource: true } : {})
+    ...(request.promptHeldBySource !== undefined
+      ? { promptHeldBySource: request.promptHeldBySource }
+      : {})
   })
 }

@@ -187,9 +187,14 @@ describe("who holds a launch's prompt", () => {
   it.each([
     ['a composer, which keeps nothing once the chat has it', {}, undefined],
     ['a caller told of its delivery', { onPromptDelivered: () => {} }, true],
-    ['a caller that waits on its delivery', { promptHeldBySource: true }, true]
-  ] as const)('marks it held only by %s', (_case, caller, heldBySource) => {
-    const sessionId = `held-${String(heldBySource)}-${Object.keys(caller).join('')}`
+    ['a caller that waits on its delivery', { promptHeldBySource: true }, true],
+    [
+      'a caller told of its delivery only to say so',
+      { onPromptDelivered: () => {}, promptHeldBySource: false },
+      undefined
+    ]
+  ] as const)('marks it held only by %s', (named, caller, heldBySource) => {
+    const sessionId = `held-${named.replace(/\W+/g, '-')}`
     mocks.createIntent.mockReturnValueOnce(launchIntent(`wt-${sessionId}`, sessionId))
 
     startStructuredAgentLaunch(`wt-${sessionId}`, 'codex', {

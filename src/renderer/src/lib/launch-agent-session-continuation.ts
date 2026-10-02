@@ -91,6 +91,8 @@ export async function launchAgentSessionContinuation({
     promptDelivery: agent === 'claude' ? 'draft' : 'submit-after-ready',
     launchSource,
     ...(initialCwd ? { initialCwd } : {}),
+    // Its dialog keeps no copy once launched, so the chat's own Retry is how it is sent again.
+    promptHeldBySource: false,
     onPromptDeliveryUnconfirmed: () => {
       deliveryUnconfirmed = true
     },

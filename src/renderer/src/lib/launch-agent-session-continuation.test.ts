@@ -75,7 +75,9 @@ describe('launchAgentSessionContinuation', () => {
         worktreeId: 'wt-1',
         groupId: 'group-1',
         initialCwd: '/repo/worktree/packages/app',
-        promptDelivery: 'draft'
+        promptDelivery: 'draft',
+        // Its dialog keeps no copy: a chat's own Retry, not this launch, sends it again.
+        promptHeldBySource: false
       })
     )
   })

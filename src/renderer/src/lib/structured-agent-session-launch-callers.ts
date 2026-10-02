@@ -9,7 +9,8 @@ export type StructuredAgentLaunchOptions = {
   promptDelivery?: 'auto-submit' | 'submit-after-ready' | 'draft'
   onPromptDelivered?: () => void
   /** The caller keeps the prompt, or a side effect, until `promptDeliveryResult` says it went, so
-   *  it is where a failed prompt is sent again. `onPromptDelivered` implies it. */
+   *  it is where a failed prompt is sent again. Defaults to whether it passes `onPromptDelivered`;
+   *  `false` is a caller told of delivery only to say so, which keeps nothing to send again. */
   promptHeldBySource?: boolean
   /** Adopt an existing provider conversation instead of starting a fresh one. Part of the launch's
    *  identity, not a preference — see `launchIdentity`. */
@@ -23,8 +24,7 @@ export function stageStructuredLaunchPrompt(
   text: string,
   options: StructuredAgentLaunchOptions
 ): StructuredAgentSessionOutboxEntry | null {
-  const heldBySource =
-    options.onPromptDelivered !== undefined || options.promptHeldBySource === true
+  const heldBySource = options.promptHeldBySource ?? options.onPromptDelivered !== undefined
   return text ? enqueueStructuredAgentSessionLaunchPrompt(sessionId, text, heldBySource) : null
 }
 
