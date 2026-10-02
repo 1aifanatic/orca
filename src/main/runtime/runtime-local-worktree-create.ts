@@ -20,6 +20,7 @@ import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-work
 import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 import type { PreparationRearmHolder } from '../worktree-create-preparation'
+import { withWorktreeCreateInFlight } from '../worktree-create-concurrency'
 
 type RuntimeLocalWorktreeCreateArgs<T> = {
   request: RuntimeManagedWorktreeCreateArgs
@@ -48,7 +49,9 @@ type RuntimeLocalWorktreeCreateArgs<T> = {
 }
 
 export function createRuntimeLocalManagedWorktree<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
-  return worktreeCreateGit.run(() => performRuntimeLocalWorktreeCreate(args))
+  return withWorktreeCreateInFlight(() =>
+    worktreeCreateGit.run(() => performRuntimeLocalWorktreeCreate(args))
+  )
 }
 
 async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {

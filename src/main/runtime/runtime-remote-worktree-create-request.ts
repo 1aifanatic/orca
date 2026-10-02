@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import type { Repo } from '../../shared/repo-types'
 import { createRemoteWorktree } from '../ipc/worktree-remote'
+import { beginWorktreeCreate } from '../worktree-create-concurrency'
 import type { Store } from '../persistence'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
@@ -23,6 +24,7 @@ export async function requestRuntimeRemoteWorktree(
     isDestroyed: () => false,
     webContents: { send: () => undefined }
   } as unknown as BrowserWindow
+  const inFlight = beginWorktreeCreate()
   const result = await createRemoteWorktree(
     {
       repoId: repo.id,
@@ -67,7 +69,7 @@ export async function requestRuntimeRemoteWorktree(
     repo,
     store as unknown as Store,
     headlessWindow
-  )
+  ).finally(() => inFlight.end())
   if (args.comment !== undefined) {
     store.setWorktreeMeta(result.worktree.id, { comment: args.comment })
     result.worktree.comment = args.comment

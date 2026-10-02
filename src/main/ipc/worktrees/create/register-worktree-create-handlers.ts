@@ -3,14 +3,15 @@ import { getLocalWorktreeCatalogVersion } from '../../../local-worktree-scan-gen
 import type {
   CreateWorktreeArgs,
   CreateWorktreeResult,
-  AdoptProvisionedRootArgs
+  AdoptProvisionedRootArgs,
+  WorktreeCreateTiming
 } from '../../../../shared/worktree/create-types'
 import {
   addWorktreeCreatePhaseAttributes,
   withWorktreeSpan
 } from '../../../observability/instrumentation'
 import { workspaceSourceSchema } from '../../../../shared/telemetry-events'
-import type { WorkspaceSource } from '../../../../shared/telemetry-events'
+import type { EventProps, WorkspaceSource } from '../../../../shared/telemetry-events'
 import {
   resolveAutomationWorkspaceProvenance,
   releaseAutomationWorkspaceProvenanceRequest,
@@ -32,6 +33,35 @@ import { createFolderWorkspace } from './folder-workspace-creation'
 import { findExactRepoOwner, isCapturedRepoCurrent } from '../listing/worktree-host-ownership'
 import { requireWorktreeCreateRoute } from '../../../worktree-create-execution-host-route'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
+import { createWorktreeCreateTimingRecorder } from '../../../worktree-create-timing'
+import { beginWorktreeCreate } from '../../../worktree-create-concurrency'
+import { probePostCheckoutHookPresence } from '../../../git/post-checkout-hook-presence'
+import {
+  workspaceCreateFailureFields,
+  workspaceCreateTimingFields
+} from './workspace-create-event-fields'
+
+/** Runs after the create has returned, so the hook probe never adds to create latency. */
+async function trackWorkspaceCreated(
+  props: EventProps<'workspace_created'>,
+  repoPath: string,
+  timing: WorktreeCreateTiming | undefined,
+  concurrentCreates: number
+): Promise<void> {
+  if (!timing) {
+    track('workspace_created', props)
+    return
+  }
+  // SSH would need a remote round trip, so only local and WSL repos are probed.
+  const postCheckoutHook =
+    timing.executionHost === 'local' || timing.executionHost === 'wsl'
+      ? await probePostCheckoutHookPresence(repoPath)
+      : undefined
+  track('workspace_created', {
+    ...props,
+    ...workspaceCreateTimingFields(timing, { concurrentCreates, postCheckoutHook })
+  })
+}
 
 export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): void {
   const { mainWindow, store, runtime, options } = context
@@ -62,6 +92,9 @@ export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): voi
         }
 
         let result: CreateWorktreeResult
+        // The handler owns the recorder so a failed create can still say where it died.
+        const timing = createWorktreeCreateTimingRecorder()
+        const inFlight = isFolderRepo(repo) ? null : beginWorktreeCreate()
         try {
           // Why: wrap only the helpers; the pre-validation throws above are IPC-shape bugs, not the git/filesystem failures the funnel tracks.
           if (isFolderRepo(repo)) {
@@ -74,32 +107,48 @@ export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): voi
             const createRoute = requireWorktreeCreateRoute(repo)
             result =
               createRoute.kind === 'ssh'
-                ? await createRemoteWorktree(createArgs, createRoute.repo, store, mainWindow)
-                : await createLocalWorktree(createArgs, repo, store, mainWindow, runtime)
+                ? await createRemoteWorktree(
+                    createArgs,
+                    createRoute.repo,
+                    store,
+                    mainWindow,
+                    timing
+                  )
+                : await createLocalWorktree(createArgs, repo, store, mainWindow, runtime, timing)
           }
         } catch (error) {
+          const concurrentCreates = inFlight?.end()
           releaseAutomationWorkspaceProvenanceRequest(args.automationProvenanceRequest)
           track('workspace_create_failed', {
             source,
             error_class: classifyWorkspaceCreateError(error),
-            ...getCohortAtEmit()
+            ...getCohortAtEmit(),
+            ...(concurrentCreates !== undefined
+              ? workspaceCreateFailureFields(timing, { concurrentCreates })
+              : {})
           })
           throw error
         }
+        const concurrentCreates = inFlight?.end() ?? 0
         finishAutomationWorkspaceProvenanceRequest(args.automationProvenanceRequest)
         if (result.timing) {
           addWorktreeCreatePhaseAttributes(span, result.timing)
         }
 
         // Why: reaching here means create succeeded (helpers throw); skip a separate workspace_initialized (telemetry-plan.md§Deferred); never send the branch name.
-        track('workspace_created', {
-          source,
-          from_existing_branch:
-            !isFolderRepo(repo) &&
-            typeof args.baseBranch === 'string' &&
-            args.baseBranch.length > 0,
-          ...getCohortAtEmit()
-        })
+        void trackWorkspaceCreated(
+          {
+            source,
+            from_existing_branch:
+              !isFolderRepo(repo) &&
+              typeof args.baseBranch === 'string' &&
+              args.baseBranch.length > 0,
+            ...getCohortAtEmit()
+          },
+          repo.path,
+          result.timing,
+          concurrentCreates
+        )
 
         if (isFolderRepo(repo)) {
           notifyWorktreesChanged(mainWindow, repo.id)

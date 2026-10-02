@@ -284,10 +284,15 @@ export function addWorktreeCreatePhaseAttributes(
   }
   // What the phases do not cover is the number that matters when create feels slow for no visible
   // reason, so name it rather than leaving it to subtraction.
-  span.setAttribute(
-    'worktree.create.unattributed_ms',
-    Math.max(0, Math.round(timing.totalDurationMs - measuredWallClockMs(timing.phases)))
-  )
+  span.setAttribute('worktree.create.unattributed_ms', worktreeCreateUnattributedMs(timing))
+}
+
+/** Wall-clock time of a create that no timed phase covers; overlapping phases count once. */
+export function worktreeCreateUnattributedMs(timing: {
+  totalDurationMs: number
+  phases: readonly WorktreePhaseInterval[]
+}): number {
+  return Math.max(0, Math.round(timing.totalDurationMs - measuredWallClockMs(timing.phases)))
 }
 
 /** Closed set so a typo can't silently mint an orphan span name. */

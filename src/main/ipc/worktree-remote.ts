@@ -148,7 +148,10 @@ import {
 } from '../../shared/setup-runner-command'
 import { createSequencedSetupAgentCommands } from '../../shared/setup-agent-sequencing'
 import { shouldWaitForSetupBeforeAgentStartup } from '../../shared/setup-agent-startup-policy'
-import { createWorktreeCreateTimingRecorder } from '../worktree-create-timing'
+import {
+  createWorktreeCreateTimingRecorder,
+  type WorktreeCreateTimingRecorder
+} from '../worktree-create-timing'
 import {
   getLocalProjectGitExecOptions,
   getLocalProjectWorktreeGitOptions,
@@ -1705,9 +1708,10 @@ export async function createRemoteWorktree(
   args: CreateWorktreeArgsWithSystemProvenance,
   repo: Repo,
   store: Store,
-  mainWindow: BrowserWindow
+  mainWindow: BrowserWindow,
+  timing: WorktreeCreateTimingRecorder = createWorktreeCreateTimingRecorder()
 ): Promise<CreateWorktreeResult> {
-  const timing = createWorktreeCreateTimingRecorder()
+  timing.recordExecutionHost('ssh')
   const provider = requireSshGitProvider(repo.connectionId!)
   const fsProvider = getSshFilesystemProvider(repo.connectionId!)
 
@@ -2018,6 +2022,7 @@ export async function createRemoteWorktree(
   const gitWorktrees = await timing.time('list_created_worktree', async () =>
     provider.listWorktrees(repo.path)
   )
+  timing.recordWorktreeCount(gitWorktrees.length)
   // Match the exact requested path first, then the exact branch ref. Suffix matching can
   // select an older `prefix/<branchName>` worktree when the newly created row is present.
   const created = findCreatedWorktree(gitWorktrees, remotePath, branchName)
@@ -2178,14 +2183,15 @@ export function createLocalWorktree(
   repo: Repo,
   store: Store,
   mainWindow: BrowserWindow,
-  runtime?: OrcaRuntimeService
+  runtime?: OrcaRuntimeService,
+  timing: WorktreeCreateTimingRecorder = createWorktreeCreateTimingRecorder()
 ): Promise<CreateWorktreeResult> {
   // Why a holder fired in `finally`: consuming a prepared checkout leaves the pool one short, so a
   // create that fails after that point — include copy, push target, terminal startup — must still
   // arm the replacement. Fires exactly once, after startup on the success path.
   const rearm: PreparationRearmHolder = { fire: () => {} }
   return worktreeCreateGit
-    .run(() => performLocalWorktreeCreate(args, repo, store, mainWindow, rearm, runtime))
+    .run(() => performLocalWorktreeCreate(args, repo, store, mainWindow, rearm, timing, runtime))
     .finally(() => {
       rearm.fire()
     })
@@ -2197,9 +2203,9 @@ async function performLocalWorktreeCreate(
   store: Store,
   mainWindow: BrowserWindow,
   rearm: PreparationRearmHolder,
+  timing: WorktreeCreateTimingRecorder,
   runtime?: OrcaRuntimeService
 ): Promise<CreateWorktreeResult> {
-  const timing = createWorktreeCreateTimingRecorder()
   const settings = store.getSettings()
   const worktreePathSettings = getWorktreePathSettings(
     repo,
@@ -2208,6 +2214,7 @@ async function performLocalWorktreeCreate(
   )
   const localGitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const localWorktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
+  timing.recordExecutionHost(localWorktreeGitOptions.wslDistro ? 'wsl' : 'local')
   const hasLocalWorktreeGitOptions = Object.keys(localWorktreeGitOptions).length > 0
   const localWorktreeGitOptionArgs: [] | [{ wslDistro?: string }] = hasLocalWorktreeGitOptions
     ? [localWorktreeGitOptions]
@@ -2738,6 +2745,9 @@ async function performLocalWorktreeCreate(
   } = await timing.time('list_created_worktree', async () =>
     resolveCreatedWorktree(repo.path, worktreePath, branchName, localWorktreeGitOptions)
   )
+  if (listingComplete) {
+    timing.recordWorktreeCount(gitWorktrees.length)
+  }
 
   const worktreeId = `${repo.id}::${created.path}`
   const now = Date.now()
