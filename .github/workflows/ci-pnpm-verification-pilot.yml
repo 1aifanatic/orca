@@ -100,22 +100,23 @@ jobs:
           node-version: '24.21.0'
           cache-pnpm-store: 'false'
           cache-pnpm-verification: 'true'
-      # A fresh pilot ref owns this immutable record; never seed a branch-local root store.
-      - uses: actions/cache/save@v5
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
       - name: Record the common verification and package identities
         id: identity
         shell: bash
         env:
           ORCA_CI_PNPM_STORE_PILOT_RECEIPT: ${{ runner.temp }}/pnpm-root-store-seed.json
-          PILOT_VERIFICATION_KEY: ${{ steps.deps.outputs.verification-cache-key }}
+          PILOT_VERIFICATION_POLICY_KEY: ${{ steps.deps.outputs.verification-cache-key }}
+          PILOT_VERIFICATION_KEY: ${{ steps.deps.outputs.verification-cache-key }}-pilot-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           PILOT_VERIFICATION_PATH: ${{ steps.deps.outputs.verification-cache-path }}
         run: |
           git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
           PILOT_SOURCE_SHA="$(git rev-parse HEAD)" PILOT_PNPM_VERSION="$(pnpm --version)" \
             node config/scripts/ci-pnpm-root-store-pilot.mjs seed
+      # Snapshot this run's verified bytes; policy keys may already own older immutable records.
+      - uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.deps.outputs.verification-cache-path }}
+          key: ${{ steps.identity.outputs.verification-key }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -160,6 +161,7 @@ jobs:
           node-version: '24.21.0'
           cache-pnpm-store: ${{ matrix.store }}
           cache-pnpm-verification: 'true'
+          pilot-verification-cache-key: ${{ needs.mac-store-seed.outputs.verification-key }}
       - name: Build and smoke this runner's node-pty prebuild slot under the pinned Node
         if: inputs.headless-proof
         shell: bash
@@ -182,7 +184,7 @@ jobs:
         run: |
           node out/orcad/orcad.js --orcad-smoke-load-check
           node out/orcad/orcad.js --orcad-profile-state-preflight 00000000-0000-4000-8000-000000000018 | tee "$RUNNER_TEMP/preflight.json"
-          node -e "const r=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(r.runtime!=='node'||!/^24\./.test(r.runtimeVersion))process.exit(1)" "$RUNNER_TEMP/preflight.json"
+          node -e "const r=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(r.runtime!=='node'||r.runtimeVersion!=='24.21.0')process.exit(1)" "$RUNNER_TEMP/preflight.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

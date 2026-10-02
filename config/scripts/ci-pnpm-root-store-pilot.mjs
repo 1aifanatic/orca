@@ -82,6 +82,8 @@ function identity(env) {
   assert.equal(process.version, 'v24.21.0', 'The pilot pins its install Node version')
   assert.equal(env.PILOT_PNPM_VERSION || env.ORCA_CI_PNPM_STORE_PILOT_PNPM_VERSION, '12.0.0')
   assert.match(env.GITHUB_SHA ?? '', /^[a-f0-9]{40}$/)
+  assert.match(env.GITHUB_RUN_ID ?? '', /^[0-9]+$/)
+  assert.match(env.GITHUB_RUN_ATTEMPT ?? '', /^[1-9][0-9]*$/)
   assert.equal(env.PILOT_SOURCE_SHA || env.ORCA_CI_PNPM_STORE_PILOT_SOURCE_SHA, env.GITHUB_SHA)
   assert(env.GITHUB_WORKFLOW_SHA, 'Workflow source SHA is unavailable')
   assert.equal(env.GITHUB_WORKFLOW_SHA, env.GITHUB_SHA, 'Workflow and checkout must share a source')
@@ -129,6 +131,11 @@ export function validateCacheEvidence(report, env) {
     'Both arms require an exact verification hit'
   )
   assert.equal(env.PILOT_VERIFICATION_KEY, env.ORCA_CI_PNPM_STORE_PILOT_EXPECTED_VERIFICATION_KEY)
+  assert.equal(
+    env.PILOT_VERIFICATION_MATCHED_KEY,
+    env.PILOT_VERIFICATION_KEY,
+    'Both arms must restore the exact seed snapshot'
+  )
   assert(
     env.ORCA_CI_PNPM_STORE_PILOT_EXPECTED_VERIFICATION_SHA,
     'Seed verification digest is missing'
@@ -163,10 +170,16 @@ function seed(env, path) {
     manifests: sourceFiles(manifests),
     sources: sourceFiles(pilotSources),
     verificationKey: env.PILOT_VERIFICATION_KEY,
+    verificationPolicyKey: env.PILOT_VERIFICATION_POLICY_KEY,
     verificationSha: fileSha(env.PILOT_VERIFICATION_PATH),
     inventory: installedInventory()
   }
   assert(report.verificationKey, 'Seed verification key is missing')
+  assert(report.verificationPolicyKey, 'Seed policy key is missing')
+  assert.equal(
+    report.verificationKey,
+    `${report.verificationPolicyKey}-pilot-${report.identity.runId}-${report.identity.runAttempt}-${report.identity.sourceSha}`
+  )
   writeReport(path, report)
   for (const [name, value] of Object.entries({
     'verification-key': report.verificationKey,
@@ -245,6 +258,7 @@ function main() {
       )
     }
     report.verificationKey = env.PILOT_VERIFICATION_KEY
+    report.verificationMatchedKey = env.PILOT_VERIFICATION_MATCHED_KEY
     report.verificationSha = fileSha(env.PILOT_VERIFICATION_PATH)
     assert.equal(report.verificationSha, env.ORCA_CI_PNPM_STORE_PILOT_EXPECTED_VERIFICATION_SHA)
     report.storeCacheHit = env.PILOT_STORE_CACHE_HIT || ''

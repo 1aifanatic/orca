@@ -10,6 +10,10 @@ inputs:
     description: Restore pnpm's policy-checked lockfile verification record.
     required: false
     default: 'true'
+  pilot-verification-cache-key:
+    description: Temporary Mac store pilot's immutable seed snapshot; empty retains the production key.
+    required: false
+    default: ''
   native-runtime:
     description: Native runtime to prepare after the script-free install (none, node, or electron).
     required: false
@@ -139,9 +143,17 @@ runs:
       shell: bash
       env:
         POLICY_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc') }}
+        PILOT_VERIFICATION_KEY: ${{ inputs.pilot-verification-cache-key }}
       run: |
         printf 'path=%s/lockfile-verified.jsonl\n' "$(pnpm cache path)" >> "$GITHUB_OUTPUT"
-        printf 'key=pnpm-verification-v1-%s-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$(pnpm --version)" "$POLICY_HASH" >> "$GITHUB_OUTPUT"
+        verification_key="$(printf 'pnpm-verification-v1-%s-%s-%s-%s' "$RUNNER_OS" "$RUNNER_ARCH" "$(pnpm --version)" "$POLICY_HASH")"
+        if [ -n "$PILOT_VERIFICATION_KEY" ]; then
+          test -n "${ORCA_CI_PNPM_STORE_PILOT_RECEIPT:-}"
+          test "$PILOT_VERIFICATION_KEY" = "${ORCA_CI_PNPM_STORE_PILOT_EXPECTED_VERIFICATION_KEY:-}"
+          test "$PILOT_VERIFICATION_KEY" = "${verification_key}-pilot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          verification_key="$PILOT_VERIFICATION_KEY"
+        fi
+        printf 'key=%s\n' "$verification_key" >> "$GITHUB_OUTPUT"
 
     - name: Restore pnpm verification record
       id: verification-cache-restore
@@ -188,6 +200,7 @@ runs:
         PILOT_STORE_CACHE_HIT: ${{ steps.pnpm-store-restore.outputs.cache-hit }}
         PILOT_STORE_MATCHED_KEY: ${{ steps.pnpm-store-restore.outputs.cache-matched-key }}
         PILOT_VERIFICATION_CACHE_HIT: ${{ steps.verification-cache-restore.outputs.cache-hit }}
+        PILOT_VERIFICATION_MATCHED_KEY: ${{ steps.verification-cache-restore.outputs.cache-matched-key }}
         PILOT_VERIFICATION_KEY: ${{ steps.verification-cache.outputs.key }}
         PILOT_VERIFICATION_PATH: ${{ steps.verification-cache.outputs.path }}
       run: |
@@ -205,7 +218,7 @@ runs:
 
     # pnpm checks the cached record's policy and validity; never bypass verification.
     - name: Save pnpm verification record on main
-      if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.verification-cache.outputs.key != '' && steps.verification-cache-restore.outputs.cache-hit != 'true'
+      if: inputs.pilot-verification-cache-key == '' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.verification-cache.outputs.key != '' && steps.verification-cache-restore.outputs.cache-hit != 'true'
       continue-on-error: true
       uses: actions/cache/save@v5
       with:
