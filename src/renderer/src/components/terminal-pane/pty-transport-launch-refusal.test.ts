@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
 import { describeLaunchFileUnavailable } from '../../../../shared/launch-prompt-file'
+import type { PtyPaneStartup } from './pty-connection-types'
 
 const mocks = vi.hoisted(() => {
   const ptyIdsByTabId: Record<string, string[]> = {}
@@ -92,6 +93,34 @@ describe('a pane spawn the host refused for what carries its prompt', () => {
     // The close reads the store after a lazy import; let it settle before asserting it did not run.
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(mocks.closeTerminalTab).not.toHaveBeenCalled()
+  })
+
+  it('sends the caller’s wish for a line the host cannot stage with the spawn', async () => {
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    vi.mocked(window.api.pty.spawn).mockRejectedValueOnce(new Error('spawn ENOENT'))
+
+    await createIpcPtyTransport({
+      command: "claude 'a long prompt'",
+      launchPrompt: 'a long prompt',
+      unstageableLine: 'refuse'
+    }).connect({ url: '', callbacks: { onError: vi.fn() } })
+
+    expect(window.api.pty.spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ unstageableLine: 'refuse' })
+    )
+  })
+
+  it('carries that wish from the pane’s queued startup to the transport', async () => {
+    const { paneStartupCommandOptions } =
+      await import('./pty-connection/pane-startup-command-options')
+    const paneStartup: PtyPaneStartup = { command: 'claude x', unstageableLine: 'refuse' }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the helper reads only these two members.
+    const session = {
+      shouldDeliverStartupViaTerminalPaste: false,
+      paneStartup
+    } as unknown as Parameters<typeof paneStartupCommandOptions>[0]
+
+    expect(paneStartupCommandOptions(session)).toMatchObject({ unstageableLine: 'refuse' })
   })
 
   it('stays quiet for any other spawn failure', async () => {

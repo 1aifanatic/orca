@@ -3,7 +3,7 @@ import type {
   SleepingAgentLaunchConfig
 } from '../../shared/agent-session-resume'
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
-import type { LaunchFile } from '../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../shared/launch-prompt-file'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { ProjectExecutionRuntimeResolution } from '../../shared/project-execution-runtime'
 import type { PtyListedSession, PtySessionListScope } from '../../shared/pty-listed-session'
@@ -36,6 +36,7 @@ export type PtyApi = {
     launchAgent?: TuiAgent
     startupCommandDelivery?: StartupCommandDelivery
     launchFile?: LaunchFile
+    unstageableLine?: UnstageableLine
     connectionId?: string | null
     worktreeId?: string
     sessionId?: string

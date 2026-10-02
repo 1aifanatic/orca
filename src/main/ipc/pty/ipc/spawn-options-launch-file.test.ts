@@ -72,3 +72,16 @@ describe('renderer pty spawn: launch file', () => {
     expect(launchPromptShownForPane('tab-a:leaf-a', 'a later prompt')).toBe('a later prompt')
   })
 })
+
+describe('renderer pty spawn: a line the host cannot stage', () => {
+  const command = "claude 'a long prompt'"
+
+  it('keeps the caller’s wish with its own command, and drops it for another line or value', async () => {
+    const refuse = { cols: 80, rows: 24, command, unstageableLine: 'refuse' }
+    expect((await spawnOptionsFor(refuse, command)).unstageableLine).toBe('refuse')
+    expect((await spawnOptionsFor(refuse, 'codex resume abc')).unstageableLine).toBeUndefined()
+    expect(
+      (await spawnOptionsFor({ ...refuse, unstageableLine: 'paste' }, command)).unstageableLine
+    ).toBeUndefined()
+  })
+})

@@ -105,7 +105,12 @@ function mockSubprocess(): SubprocessHandle {
 }
 
 /** The spawn as main runs it: its probe, then the daemon's session create, noting a refusal. */
-async function spawnAgentLine(distro: string, agent: TuiAgent, command: string) {
+async function spawnAgentLine(
+  distro: string,
+  agent: TuiAgent,
+  command: string,
+  unstageableLine?: 'refuse'
+) {
   const wslDistro = distro
   const probe = resolveSpawnWslLaunchDirectory(wslDistro, { command, launchAgent: agent })
   const wslLaunchDirectory: WslLaunchDirectory | undefined = probe ? await probe : undefined
@@ -120,6 +125,7 @@ async function spawnAgentLine(distro: string, agent: TuiAgent, command: string) 
       command,
       launchAgent: agent,
       ...(wslLaunchDirectory ? { wslLaunchDirectory } : {}),
+      ...(unstageableLine ? { unstageableLine } : {}),
       shellReadySupported: false,
       streamClient: { onData: vi.fn(), onExit: vi.fn() }
     })
@@ -169,6 +175,19 @@ describe('agent.launch into a WSL workspace whose launch folder is unusable', ()
     expect(command).toContain(prompt)
     expect(refused).toBeNull()
     expect(typed).toEqual([expect.stringContaining(command)])
+  })
+
+  // Why: main pasted an AI button's or a note's prompt, so that caller asks to be refused rather
+  // than have a line typed raw that can leave bash waiting.
+  it('refuses a caller that asked to refuse, and still types a short line', async () => {
+    runWslProcess.mockResolvedValue(probeAnswers(null))
+    const distro = 'qa-before-refuse'
+    await planAgentLaunch(distro, 'claude', P25K)
+    const long = await spawnAgentLine(distro, 'claude', `claude '${P25K}'`, 'refuse')
+    expect(String(long.refused)).toMatch(/launch_file_unavailable/)
+    expect(long.typed).toEqual([])
+    const short = await spawnAgentLine(distro, 'claude', `claude 'fix it'`, 'refuse')
+    expect(short.refused).toBeNull()
   })
 
   it('refuses only the launch whose write failed after the probe found the folder, then types as main does', async () => {

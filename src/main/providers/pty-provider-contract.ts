@@ -15,7 +15,7 @@ import type { PtyProcessInfo } from './pty-process-info'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
-import type { LaunchFile } from '../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../shared/launch-prompt-file'
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
 
 export type {
@@ -63,6 +63,8 @@ export type PtySpawnOptions = {
   /** Written by the host before it types `command`, which names it by placeholder. Fresh
    *  spawns whose host types the command only; over SSH that means provider delivery. */
   launchFile?: LaunchFile
+  /** For an agent line the host cannot stage; read by the terminal daemon only. */
+  unstageableLine?: UnstageableLine
   /** Set by main's providers for a WSL spawn that types a line; never by callers. */
   wslLaunchDirectory?: WslLaunchDirectory
   /** Minimal allowlisted launch ownership preserved by daemon reattach. */

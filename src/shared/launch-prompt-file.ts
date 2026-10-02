@@ -85,6 +85,19 @@ export function parseLaunchFile(value: unknown): LaunchFile | undefined {
   return { placeholder, content, ...(knownQuoting ? { quoting: knownQuoting } : {}) }
 }
 
+/**
+ * What a caller wants for an agent line too long or multi-line to type when the host cannot stage
+ * it (its staging folder is unusable): `type` it as is, main's delivery where main typed the line,
+ * or `refuse` it, for a caller whose prompt main pasted, so the user is handed the prompt instead of
+ * a raw line that can leave the shell waiting. Absent means `type`, which is also what a host that
+ * predates the field does.
+ */
+export type UnstageableLine = 'type' | 'refuse'
+
+export function parseUnstageableLine(value: unknown): UnstageableLine | undefined {
+  return value === 'type' || value === 'refuse' ? value : undefined
+}
+
 export const LAUNCH_FILE_UNAVAILABLE_CODE = 'launch_file_unavailable'
 
 /** The refusal a host sends when it could not write what carries the prompt (a launch file, or the

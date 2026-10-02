@@ -28,6 +28,7 @@ export async function spawnIpcPty(
     launchAgent,
     startupCommandDelivery,
     launchFile,
+    unstageableLine,
     connectionId,
     worktreeId,
     tabId,
@@ -74,6 +75,7 @@ export async function spawnIpcPty(
       : {}),
     // Only alongside the queued command that names it by placeholder.
     ...(launchFile && !connectOptions.command ? { launchFile } : {}),
+    ...(unstageableLine && !connectOptions.command ? { unstageableLine } : {}),
     ...(connectionId ? { connectionId } : {}),
     ...(admittedSessionId ? { sessionId: admittedSessionId } : {}),
     ...(connectOptions.initiallyHidden ? { initiallyHidden: true } : {}),

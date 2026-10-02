@@ -7,7 +7,7 @@ import type { AgentCompletionStatusSnapshot } from './agent-completion-coordinat
 import type { EventProps } from '../../../../shared/telemetry-events'
 import type { TerminalColorSchemeMode } from '../../../../shared/terminal-color-scheme-protocol'
 import type { StartupCommandDelivery } from '../../../../shared/codex-startup-delivery'
-import type { LaunchFile } from '../../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../../shared/launch-prompt-file'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type {
@@ -29,6 +29,8 @@ export type PtyPaneStartup = {
   launchFile?: LaunchFile
   /** The submitted prompt `command` carries; handed back to copy if the host refuses the spawn. */
   launchPrompt?: string
+  /** See `UnstageableLine`; sent with the spawn. */
+  unstageableLine?: UnstageableLine
   env?: Record<string, string>
   envToDelete?: string[]
   launchConfig?: SleepingAgentLaunchConfig

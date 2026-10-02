@@ -9,7 +9,7 @@ import type {
 } from '../../../../shared/agent-session-resume'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { StartupCommandDelivery } from '../../../../shared/codex-startup-delivery'
-import type { LaunchFile } from '../../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../../shared/launch-prompt-file'
 import type { SessionOptionValue } from '../../../../shared/native-chat-session-options'
 import type { AgentStartedTelemetry } from '../../lib/worktree-startup-payload'
 import type {
@@ -68,6 +68,7 @@ export type TerminalState = {
       startupCommandDelivery?: StartupCommandDelivery
       launchFile?: LaunchFile
       launchPrompt?: string
+      unstageableLine?: UnstageableLine
       env?: Record<string, string>
       envToDelete?: string[]
       launchConfig?: SleepingAgentLaunchConfig

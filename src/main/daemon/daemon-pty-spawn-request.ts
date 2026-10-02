@@ -124,6 +124,8 @@ export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
         command: launches ? opts.command : undefined,
         startupCommandDelivery: launches ? opts.startupCommandDelivery : undefined,
         ...(launches && opts.launchFile ? { launchFile: opts.launchFile } : {}),
+        // Optional: a daemon that predates it ignores it and types the line, as before.
+        ...(launches && opts.unstageableLine ? { unstageableLine: opts.unstageableLine } : {}),
         ...(!context.attachOnly && opts.wslLaunchDirectory
           ? { wslLaunchDirectory: opts.wslLaunchDirectory }
           : {}),

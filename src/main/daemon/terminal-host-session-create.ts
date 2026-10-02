@@ -12,6 +12,7 @@ import {
   writeSpawnLaunchFile
 } from '../../shared/launch-file-writing'
 import { getDaemonSessionResultMetadata } from './daemon-create-or-attach-result'
+import { unstagedAgentLineRefusal } from './unstaged-agent-line-refusal'
 import { enumerateDirectoryOnce } from './directory-enumeration-probe'
 import { normalizePtySize } from './daemon-pty-size'
 import { Session } from './session'
@@ -219,12 +220,14 @@ async function spawnAndPublishSession(
     })
     // Why refuse: typed in full, a long agent line can leave the shell at a quote prompt with the
     // prompt lost while the launch reports success; the refusal hands the user the prompt instead.
-    // A folder already unusable is not refused: the plan saw it too and chose main's typed line.
-    if (
-      staging.failure !== undefined &&
-      opts.launchAgent !== undefined &&
-      staging.folderUnusable !== true
-    ) {
+    const refusal = unstagedAgentLineRefusal({
+      command,
+      staging,
+      agentLaunch: opts.launchAgent !== undefined,
+      unstageableLine: opts.unstageableLine,
+      wslWithoutFolder: wslDistro !== undefined && wslDirectory === undefined
+    })
+    if (refusal !== null) {
       deps.sessions.set(opts.sessionId, session)
       await session.forceKillAndDisposeSubprocess()
       removeLaunchFile(launchFile)
@@ -233,7 +236,7 @@ async function spawnAndPublishSession(
         deps.sessions.delete(opts.sessionId)
         deps.onDeadSessionRemoved(opts.sessionId)
       }
-      throw new LaunchFileUnavailableError(staging.failure, 'staged-line')
+      throw new LaunchFileUnavailableError(refusal, 'staged-line')
     }
   }
 

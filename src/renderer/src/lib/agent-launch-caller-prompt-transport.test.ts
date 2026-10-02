@@ -274,6 +274,28 @@ describe('agent launch caller prompt transport', () => {
     expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
   })
 
+  // Why (stack QA 2a follow-up): main pasted these prompts, so a host that cannot stage the line
+  // refuses it with the prompt to copy instead of typing it raw; other callers keep main's line.
+  it.each<['submit-after-ready' | 'auto-submit', 'refuse' | undefined]>([
+    ['submit-after-ready', 'refuse'],
+    ['auto-submit', undefined]
+  ])(
+    'asks the host to refuse an unstageable line only for %s',
+    async (promptDelivery, expected) => {
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+      launchAgentInNewTab({
+        agent: 'codex',
+        worktreeId: 'wt-1',
+        prompt: `Session context:\n${'w'.repeat(20_000)}`,
+        promptDelivery,
+        launchPlatform: 'darwin'
+      })
+
+      expect(queuedStartupPayload(store)?.unstageableLine).toBe(expected)
+    }
+  )
+
   it('mirrors an argv-carried draft into the chat composer', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 

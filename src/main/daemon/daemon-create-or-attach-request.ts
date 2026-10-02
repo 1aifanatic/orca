@@ -1,6 +1,6 @@
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
 import type { TuiAgent } from '../../shared/tui-agent'
-import type { LaunchFile } from '../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../shared/launch-prompt-file'
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
 import type { PtyStartupIngressIntent } from '../../shared/pty-startup-ingress'
 import type {
@@ -23,6 +23,7 @@ export type CreateOrAttachRequest = {
     startupCommandDelivery?: StartupCommandDelivery
     /** v41+ (`LAUNCH_FILE_DAEMON_PROTOCOL_VERSION`): written by the daemon before it types `command`. */
     launchFile?: LaunchFile
+    unstageableLine?: UnstageableLine
     /** Where the daemon writes a WSL session's staged line and launch file; main resolves it. */
     wslLaunchDirectory?: WslLaunchDirectory
     launchAgent?: TuiAgent

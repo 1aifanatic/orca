@@ -27,7 +27,7 @@ import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell
 import { withCodexTerminalServerIsolationEnv } from '../../../../shared/codex-terminal-server-isolation'
 import { planCodexNoDaemonLaunch } from '../../../pty/codex-no-daemon-launch-command'
 import type { PtyIpcSpawnState } from './spawn-state'
-import { parseLaunchFile } from '../../../../shared/launch-prompt-file'
+import { parseLaunchFile, parseUnstageableLine } from '../../../../shared/launch-prompt-file'
 import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
 /** Carries deletions to provider-owned environments, including persistent older daemons. */
@@ -107,6 +107,13 @@ export async function buildPtyIpcSpawnOptions(
     ctx.launchCommand !== undefined && ctx.launchCommand === args.command
       ? parseLaunchFile(args.launchFile)
       : undefined
+  const unstageableLine =
+    ctx.launchCommand !== undefined && ctx.launchCommand === args.command
+      ? parseUnstageableLine(args.unstageableLine)
+      : undefined
+  if (unstageableLine) {
+    ctx.spawnOptions.unstageableLine = unstageableLine
+  }
   if (launchFile) {
     ctx.spawnOptions.launchFile = launchFile
     if (ctx.reservationPaneKey) {

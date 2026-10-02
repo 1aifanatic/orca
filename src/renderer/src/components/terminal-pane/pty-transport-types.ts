@@ -8,7 +8,7 @@ import type {
   AgentPromptDelivery
 } from '../../../../shared/agent-session-host-authority'
 import type { StartupCommandDelivery } from '../../../../shared/codex-startup-delivery'
-import type { LaunchFile } from '../../../../shared/launch-prompt-file'
+import type { LaunchFile, UnstageableLine } from '../../../../shared/launch-prompt-file'
 import type { ProjectExecutionRuntimeResolution } from '../../../../shared/project-execution-runtime'
 import type { EventProps } from '../../../../shared/telemetry-events'
 import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
@@ -272,6 +272,7 @@ export type IpcPtyTransportOptions = {
   launchFile?: LaunchFile
   /** See `PtyPaneStartup.launchPrompt`. */
   launchPrompt?: string
+  unstageableLine?: UnstageableLine
   connectionId?: string | null
   executionHostId?: ExecutionHostId | null
   worktreeId?: string
