@@ -10,19 +10,31 @@ import { scanSourceTree, stripComments } from '../../../shared/source-scan/sourc
  * Both shapes are how failures went missing before the logger was required.
  */
 
+// Paths are '/'-separated on every platform (scanSourceTree normalizes them).
 const SCOPE_PREFIXES = [
   'main/native-chat/agent-session-wire/',
   'main/native-chat/agent-session-journal/',
+  'main/native-chat/structured-agent-session-',
   'main/claude/claude-structured-',
   'main/codex/codex-structured-',
-  'main/runtime/structured-agent-session-',
-  'main/runtime/structured-session-',
-  'main/runtime/structured-claude-',
-  'main/runtime/structured-codex-',
+  'main/runtime/structured-',
   'main/runtime/orchestration/structured-',
-  'main/runtime/rpc/methods/structured-agent-session-',
-  'main/runtime/rpc/methods/orchestration-structured-'
+  // No trailing dash: the agentSession RPC file itself is `structured-agent-session.ts`.
+  'main/runtime/rpc/methods/structured-agent-session',
+  'main/runtime/rpc/methods/structured-session-',
+  'main/runtime/rpc/methods/orchestration-structured-',
+  'main/runtime/rpc/methods/orchestration/worker/structured-worker-'
 ]
+
+/** Structured chat code whose name does not say so. */
+const SCOPE_FILES = new Set([
+  // Opened and built only by structured Claude chats.
+  'main/claude/claude-stream-json-connection.ts',
+  'main/claude/claude-at-rest-commands.ts',
+  // Install the structured host before a structured worker's stop or release.
+  'main/runtime/rpc/methods/orchestration/worker/worker-stop.ts',
+  'main/runtime/rpc/methods/orchestration/worker/worker-release-completion.ts'
+])
 
 /** The logger's own sink. */
 const CONSOLE_ALLOWED = new Set([
@@ -84,7 +96,8 @@ export function findStructuredChatLoggerBypasses(
 
 function inScope(relativePath: string): boolean {
   return (
-    SCOPE_PREFIXES.some((prefix) => relativePath.startsWith(prefix)) &&
+    (SCOPE_FILES.has(relativePath) ||
+      SCOPE_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) &&
     !relativePath.includes('-test-support')
   )
 }
@@ -135,6 +148,8 @@ describe('structured chat logger ratchet', () => {
   it('scans a plausible number of files', () => {
     // A broken root or prefix list would make the guard silently vacuous.
     expect(files.length).toBeGreaterThan(300)
+    const scanned = new Set(files.map(({ relativePath }) => relativePath))
+    expect([...SCOPE_FILES].filter((path) => !scanned.has(path))).toEqual([])
   })
 
   it('has no structured chat failure that bypasses the logger', () => {

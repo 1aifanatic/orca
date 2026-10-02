@@ -77,6 +77,7 @@ export function createStructuredClaudeRuntimeAdapter(
   const { store } = deps
   return new ClaudeStructuredSessionAdapter({
     atRestCommands: new ClaudeAtRestCommandCatalog({
+      logger: deps.logger,
       resolveWorkspacePath: deps.resolveWorkspacePath
     }),
     resolveLaunch: createClaudeStructuredLaunchResolver({

@@ -192,6 +192,8 @@ export async function acquireClaudeSession({
           }
         },
         {
+          sessionId,
+          logger: deps.logger,
           onMessage,
           canUseTool,
           onUserDialog,

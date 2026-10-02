@@ -87,7 +87,7 @@ export function fakeClaude(
     const route = routes[subtype]
     return route ? route(params) : undefined
   }
-  const openConnection: typeof openClaudeStreamJsonConnection = async (launch, handlers = {}) => {
+  const openConnection: typeof openClaudeStreamJsonConnection = async (launch, handlers) => {
     let cycleInitEmitted = false
     // Keys mirror the real system/init frame, which carries `model` but no
     // effort of any kind: the current effort only comes back from get_settings.

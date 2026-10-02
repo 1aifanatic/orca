@@ -10,6 +10,7 @@ import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { StructuredAgentSessionStatusSink } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import {
   createStructuredAgentSessionLogger,
+  neverThrowingStructuredAgentSessionLogger,
   type StructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import type { ObservedAgentStatusPaneIdentity } from '../ipc/agent-status-ipc-boundary'
@@ -224,8 +225,9 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
     }
     this.getAgentStatusSnapshotFn = deps?.getAgentStatusSnapshot ?? null
     this.structuredAgentStatusSinkFn = deps?.structuredAgentStatusSink ?? null
-    this.structuredAgentSessionLogger =
+    this.structuredAgentSessionLogger = neverThrowingStructuredAgentSessionLogger(
       deps?.structuredAgentSessionLogger ?? createStructuredAgentSessionLogger()
+    )
     this.readObservedAgentStatusPaneIdentityFn =
       deps?.readObservedAgentStatusPaneIdentity ?? (() => ({ kind: 'unobserved' }))
     this.getAgentProviderSessionSnapshotFn =

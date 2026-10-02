@@ -129,3 +129,26 @@ export function structuredSessionIdleEdgeMailboxes(
   }
   return db ? structuredSessionOwnedMailboxes(sessionId, db) : []
 }
+
+/** A session's idle edge: retry what is parked on it and point the mail it owns again. Logged,
+ *  never thrown: the same status callback goes on to the first-turn workspace rename. */
+export function redriveStructuredSessionMail(
+  sessionId: string,
+  deps: {
+    notifyJournalActivity: (sessionId: string) => void
+    openDb: () => OrchestrationDb | null
+    deliver: (mailbox: string) => void
+    logger: StructuredAgentSessionLogger
+  }
+): void {
+  try {
+    deps.notifyJournalActivity(sessionId)
+    structuredSessionIdleEdgeMailboxes(sessionId, deps.openDb, deps.logger).forEach(deps.deliver)
+  } catch (error) {
+    deps.logger.warn('a structured session mail redrive failed', {
+      scope: 'mail-redrive',
+      sessionId,
+      error
+    })
+  }
+}

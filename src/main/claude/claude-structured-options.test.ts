@@ -463,10 +463,25 @@ describe('Claude structured option restore under the request deadline', () => {
       ['effort', 'high'],
       ['permissionMode', 'plan']
     ])
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logged = recordingStructuredAgentSessionLogger()
+    session.logger = logged.logger
 
     await expect(restoreClaudeStructuredSessionOptions(session, 10)).resolves.toBeUndefined()
 
+    expect(logged.entries.map(({ level, fields }) => ({ level, ...fields }))).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        scope: 'claude-option-restore',
+        sessionId: 'session-1',
+        key: 'model'
+      }),
+      expect.objectContaining({
+        level: 'warn',
+        scope: 'claude-option-restore',
+        sessionId: 'session-1',
+        key: 'effort'
+      })
+    ])
     expect(Object.fromEntries(session.options)).toEqual({ model: 'sonnet', effort: 'high' })
     expect([...session.restoreSkippedOptions]).toEqual(['permissionMode'])
     expect(claudeStructuredSessionOptionsFrom(session, null).current).toEqual({
