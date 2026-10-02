@@ -31,6 +31,7 @@ function bashRunsLaunchLineThatExits(): string[] {
 }
 
 type HostAnswers = {
+  agent?: 'claude' | 'grok'
   host: { remote: boolean; windows: boolean }
   cached: string | null
   scanned: string | null
@@ -44,6 +45,18 @@ const HOSTS: [string, HostAnswers, () => string[]][] = [
     {
       host: { remote: false, windows: true },
       cached: 'claude',
+      scanned: 'bash',
+      shellAlone: false
+    },
+    bashRunsLaunchLineThatExits
+  ],
+  // The QA stub: a `grok` override that exits at once, which takes the composer-marker wait.
+  [
+    'Windows Git Bash, grok',
+    {
+      agent: 'grok',
+      host: { remote: false, windows: true },
+      cached: 'node',
       scanned: 'bash',
       shellAlone: false
     },
@@ -79,10 +92,14 @@ function launchedPane(answers: HostAnswers) {
     confirmShellForeground: async () => answers.shellAlone
   }
   const readForeground = (ptyId: string) =>
-    readLaunchedAgentForeground(controller, answers.host, ptyId, 'claude')
+    readLaunchedAgentForeground(controller, answers.host, ptyId, answers.agent ?? 'claude')
   const writes: string[] = []
   const runtime = {
-    waitForFreshWorkerComposer: async (_handle: string, agent: 'claude', timeoutMs: number) => {
+    waitForFreshWorkerComposer: async (
+      _handle: string,
+      agent: 'claude' | 'grok',
+      timeoutMs: number
+    ) => {
       const ptyId = await waitForWorktreeStartupDraft(
         {
           getPtyId: () => PTY_ID,
@@ -151,7 +168,7 @@ describe('a launch prompt after the launched agent exits at startup', () => {
           typeof deliverTerminalAgentLaunchPrompt
         >[0]['runtime'],
         handle: 'term-1',
-        agent: 'claude',
+        agent: answers.agent ?? 'claude',
         freshLaunch: true,
         text: 'QA prompt that must never run as a shell command'
       })
