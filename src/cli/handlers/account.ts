@@ -275,7 +275,7 @@ async function assertAccountImportSupported({ client }: HandlerContext): Promise
   }
 }
 
-/** CLI handlers for `orca account add [--agent claude|codex]` and `orca account list`. */
+/** CLI handlers for managed account enrollment and listing. */
 export const ACCOUNT_HANDLERS: Record<string, CommandHandler> = {
   'account add': async (ctx) => {
     const agentFlag = ctx.flags.get('agent')
@@ -284,7 +284,7 @@ export const ACCOUNT_HANDLERS: Record<string, CommandHandler> = {
     if (agentFlag !== undefined && typeof agentFlag !== 'string') {
       throw new RuntimeClientError(
         'invalid_argument',
-        'Missing a value for --agent. Use `--agent claude` or `--agent codex`.'
+        'Missing a value for --agent. Use `--agent claude`, `--agent codex`, `--agent opencode`, or `--agent devin`.'
       )
     }
     const agent = agentFlag ?? 'claude'

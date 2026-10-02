@@ -35,6 +35,7 @@ describe('account command specs', () => {
 
     expect(help).toContain('Account provider: claude, codex, opencode, or devin (default claude)')
     expect(help).not.toContain('TUI agent')
+    expect(spec('account add').usage).toContain('[--integration <id>]')
   })
 
   it('aligns the --agent description with the global flag descriptions', () => {

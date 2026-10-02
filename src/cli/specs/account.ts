@@ -9,7 +9,8 @@ export const ACCOUNT_COMMAND_SPECS: CommandSpec[] = [
   {
     path: ['account', 'add'],
     summary: 'Add a managed agent account by signing in on this Orca host',
-    usage: 'orca account add [--agent claude|codex|opencode|devin] [--label <name>] [--json]',
+    usage:
+      'orca account add [--agent claude|codex|opencode|devin] [--label <name>] [--integration <id>] [--json]',
     allowedFlags: [...GLOBAL_FLAGS, 'agent', 'label', 'integration'],
     notes: [
       'Runs the agent login (`claude login` / `codex login`) in this terminal, then registers the account with the local Orca runtime.',
