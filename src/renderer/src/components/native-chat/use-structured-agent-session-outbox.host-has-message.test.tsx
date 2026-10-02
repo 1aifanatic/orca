@@ -32,8 +32,12 @@ const ENTRY = {
   lastAttemptAt: 5
 }
 
-function pending(clientMessageId: string): AgentJournalSubmission {
+function pending(
+  clientMessageId: string,
+  overrides: Partial<AgentJournalSubmission> = { handoverRecorded: true, handedOverAt: 12 }
+): AgentJournalSubmission {
   return {
+    ...overrides,
     clientMessageId,
     fence: 1,
     payloadFingerprint: 'fingerprint',
@@ -51,7 +55,7 @@ beforeEach(() => {
   mocks.call.mockImplementation(() => new Promise(() => {}))
 })
 
-it('releases the saved draft when the journal shows the host holds the message', async () => {
+it('releases the saved draft when the journal shows the host handed the message over', async () => {
   writeOutbox('session-1', [ENTRY])
   let hostHasIt = false
   void whenStructuredAgentSessionHostHasMessages('session-1', [ENTRY]).then(() => {
@@ -76,5 +80,33 @@ it('releases the saved draft when the journal shows the host holds the message',
   view.rerender({ submissions: [pending('message-1')] })
 
   await waitFor(() => expect(hostHasIt).toBe(true))
+  expect(view.result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['message-1'])
+})
+
+it('keeps the saved draft while the journal shows the message accepted but not handed over', async () => {
+  writeOutbox('session-1', [ENTRY])
+  let hostHasIt = false
+  void whenStructuredAgentSessionHostHasMessages('session-1', [ENTRY]).then(() => {
+    hostHasIt = true
+  })
+  type Props = { submissions: AgentJournalSubmission[] }
+  const noSubmissions: AgentJournalSubmission[] = []
+  const view = renderHook(
+    (props: Props) =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: props.submissions,
+        composerScopeKey: 'scope',
+        queueDelivery: { capability: 'supported', enabled: true }
+      }),
+    { initialProps: { submissions: noSubmissions } }
+  )
+
+  view.rerender({ submissions: [pending('message-1', { handoverRecorded: true })] })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  expect(hostHasIt).toBe(false)
   expect(view.result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['message-1'])
 })

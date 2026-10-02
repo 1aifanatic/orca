@@ -393,7 +393,7 @@ describe('the saved draft at send', () => {
   })
 
   // "Sent" is the host's ok reply: a message it holds for the provider must not come back.
-  it('saves the box once the host answers ok, while the message waits for the provider', async () => {
+  it('saves the box once the host holds the message for good, while it waits for the provider', async () => {
     const structured = outboxTransport()
     await sendTyped(structured, 'mid-turn message')
     const [pending] = getStructuredAgentSessionOutbox(structured.sessionId)
@@ -461,19 +461,19 @@ describe('the saved draft at send', () => {
     expect(savedText()).toBe('message B')
   })
 
-  // A graceful quit commits the outbox, which still has an undelivered message, so the hold ends
-  // there: a reply lost after the host took the message cannot bring it back on the next launch.
+  // Case 12: a send while the agent works, then a normal quit. The host may reject a message it has
+  // not handed over yet when Orca quits, so both copies stay: the outbox entry and the saved draft.
   it.each(['pagehide', 'beforeunload'])(
-    'saves the box when the window goes away (%s) before the host answered',
+    'keeps the saved message and its outbox entry when the window goes away (%s)',
     async (event) => {
       const structured = outboxTransport()
-      await sendTyped(structured, 'ship it')
-      expect(savedText()).toBe('ship it')
+      await sendTyped(structured, 'queued while working')
+      expect(savedText()).toBe('queued while working')
 
       act(() => window.dispatchEvent(new Event(event)))
       await act(async () => {})
 
-      expect(savedText()).toBeNull()
+      expect(savedText()).toBe('queued while working')
       expect(getStructuredAgentSessionOutbox(structured.sessionId)).toHaveLength(1)
     }
   )

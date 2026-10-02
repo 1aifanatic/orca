@@ -7,7 +7,7 @@ export type NativeChatDraftSendHolds = {
   clearForSend: (
     draftKey: string,
     clear: () => void,
-    options: { saveAtOnce: boolean; releaseAtQuit: boolean }
+    options: { saveAtOnce: boolean }
   ) => () => void
   /** Whether a send is clearing this chat's box right now, so the write waits for `save`. */
   isClearingForSend: (draftKey: string) => boolean
@@ -23,29 +23,7 @@ export function createNativeChatDraftSendHolds(
   const clearing = new Set<string>()
   // Per chat, the sends whose message the host does not have yet, by send order.
   const awaitingByChat = new Map<string, Set<number>>()
-  // Holds a graceful quit ends: the outbox, committed at a quit, still has an undelivered message.
-  const releasedAtQuit = new Set<() => void>()
   let sequence = 0
-  let quitListenersInstalled = false
-
-  const releaseAtQuit = (): void => {
-    for (const save of Array.from(releasedAtQuit)) {
-      save()
-    }
-  }
-
-  const installQuitListeners = (): void => {
-    if (
-      quitListenersInstalled ||
-      typeof window === 'undefined' ||
-      typeof window.addEventListener !== 'function'
-    ) {
-      return
-    }
-    quitListenersInstalled = true
-    window.addEventListener('beforeunload', releaseAtQuit)
-    window.addEventListener('pagehide', releaseAtQuit)
-  }
 
   return {
     clearForSend: (draftKey, clear, options) => {
@@ -63,7 +41,6 @@ export function createNativeChatDraftSendHolds(
         }
       }
       const save = (): void => {
-        releasedAtQuit.delete(save)
         if (!awaiting.delete(send)) {
           return
         }
@@ -77,10 +54,6 @@ export function createNativeChatDraftSendHolds(
         }
         persist(draftKey)
       }
-      if (options.releaseAtQuit) {
-        installQuitListeners()
-        releasedAtQuit.add(save)
-      }
       return save
     },
     isClearingForSend: (draftKey) => clearing.has(draftKey),
@@ -93,7 +66,6 @@ export function createNativeChatDraftSendHolds(
     sendsAwaitingForTests: (draftKey) => awaitingByChat.get(draftKey)?.size ?? 0,
     clearForTests: () => {
       awaitingByChat.clear()
-      releasedAtQuit.clear()
     }
   }
 }

@@ -146,21 +146,16 @@ function persistNow(draftKey: string): Promise<NativeChatDraftWriteResult> {
  * the message is back in the box; a message that stays undelivered never calls it. It saves the
  * draft as it is then, keeping whatever was typed since Enter, unless a later send on the chat is
  * still waiting for its host. A store that saves a send's clear at once (the web client's browser
- * storage) saves it now instead. With `releaseAtQuit`, a graceful quit ends the hold too (a
- * structured send, whose outbox keeps an undelivered message across a quit).
+ * storage) saves it now instead. A quit does not end a hold: the host may reject a message it has
+ * not handed over yet, so the draft keeps it for the next launch.
  */
-export function clearNativeChatDraftForSend(
-  draftKey: string,
-  clear: () => void,
-  options: { releaseAtQuit?: boolean } = {}
-): () => void {
+export function clearNativeChatDraftForSend(draftKey: string, clear: () => void): () => void {
   // The message typed just before Enter may still be waiting for its pause; it is what is saved.
   if (hasPendingNativeChatDraftPersist(draftKey)) {
     void persistNow(draftKey)
   }
   return sendHolds.clearForSend(draftKey, clear, {
-    saveAtOnce: nativeChatDraftStoreSavesSendClearAtOnce(),
-    releaseAtQuit: options.releaseAtQuit === true
+    saveAtOnce: nativeChatDraftStoreSavesSendClearAtOnce()
   })
 }
 

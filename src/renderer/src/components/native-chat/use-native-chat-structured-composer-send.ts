@@ -96,7 +96,7 @@ export function useNativeChatStructuredComposerSend({
             (entry) => entry.clientMessageId
           )
         )
-        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer, { releaseAtQuit: true })
+        saveDraft = clearNativeChatDraftForSend(draftKey, clearComposer)
       })
         .then(
           ({ accepted, error }) => {
@@ -105,8 +105,8 @@ export function useNativeChatStructuredComposerSend({
               putBack()
               return
             }
-            // Saved once the host answers ok or its journal shows the message, or the message is
-            // withdrawn back into the box; a refused or unconfirmed one keeps its saved copy.
+            // Saved once the host holds the message for good (handed to the agent, accepted, or a
+            // card) or it is withdrawn back into the box; until then the draft keeps a copy.
             if (cleared) {
               void whenStructuredAgentSessionHostHasMessages(
                 structuredTransport.sessionId,

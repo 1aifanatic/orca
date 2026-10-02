@@ -104,14 +104,35 @@ afterEach(() => {
 })
 
 describe("a sent message's saved draft", () => {
-  it.each(['pending', 'accepted'] as const)('is released by a %s reply', async (state) => {
+  it.each([
+    ['an accepted', 'accepted', {}],
+    ['a handed-over pending', 'pending', { handoverRecorded: true, handedOverAt: 5 }],
+    ["an older host's pending", 'pending', {}]
+  ] as const)('is released by %s reply', async (_label, state, overrides) => {
     const hostHasIt = await sendWithReply((entry) =>
       ok({
         clientMessageId: entry.clientMessageId,
-        submission: submission(entry.clientMessageId, state)
+        submission: submission(entry.clientMessageId, state, overrides)
       })
     )
 
+    expect(hostHasIt()).toBe(true)
+  })
+
+  // Accepted but not handed over yet: the host rejects it when Orca quits, and after a crash when
+  // the chat next opens, so the saved draft must keep it until the handover.
+  it('is kept for a pending reply the host has not handed over yet, until the handover', async () => {
+    const hostHasIt = await sendWithReply((entry) =>
+      ok({
+        clientMessageId: entry.clientMessageId,
+        submission: submission(entry.clientMessageId, 'pending', { handoverRecorded: true })
+      })
+    )
+    expect(hostHasIt()).toBe(false)
+
+    const [entry] = getStructuredAgentSessionOutbox(SESSION)
+    noteStructuredAgentSessionMessagesDelivered(SESSION, [entry.clientMessageId])
+    await Promise.resolve()
     expect(hostHasIt()).toBe(true)
   })
 

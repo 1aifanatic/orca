@@ -26,7 +26,8 @@ import {
 } from './structured-agent-session-outbox-storage'
 import {
   keepStructuredAgentSessionMessageDraft,
-  noteStructuredAgentSessionMessagesDelivered
+  noteStructuredAgentSessionMessagesDelivered,
+  structuredAgentSessionSubmissionHeldForGood
 } from './structured-agent-session-message-delivery'
 import {
   getStructuredAgentLaunchPromptDispatch,
@@ -194,8 +195,7 @@ function noteSendReply(
   if (
     'queued' in reply ||
     reply.submission.queuedMessageId === clientMessageId ||
-    reply.submission.dispatchState === 'pending' ||
-    reply.submission.dispatchState === 'accepted'
+    structuredAgentSessionSubmissionHeldForGood(reply.submission)
   ) {
     noteStructuredAgentSessionMessagesDelivered(sessionId, [clientMessageId])
   } else if (!entries.some((entry) => entry.clientMessageId === clientMessageId)) {

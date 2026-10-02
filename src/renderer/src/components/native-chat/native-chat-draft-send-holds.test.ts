@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNativeChatDraftSendHolds } from './native-chat-draft-send-holds'
 
-const HOLD = { saveAtOnce: false, releaseAtQuit: false }
+const HOLD = { saveAtOnce: false }
 
 describe('send holds', () => {
   it("skips an earlier send's save while a later one waits, never the other way round", () => {
@@ -17,15 +17,16 @@ describe('send holds', () => {
     expect(persist).toHaveBeenCalledOnce()
   })
 
-  it('ends a structured hold when the window goes away', () => {
+  // The host may reject a message it has not handed over yet when Orca quits.
+  it('keeps a hold when the window goes away', () => {
     const persist = vi.fn()
     const holds = createNativeChatDraftSendHolds(persist)
-    holds.clearForSend('structured', () => {}, { saveAtOnce: false, releaseAtQuit: true })
-    holds.clearForSend('terminal', () => {}, HOLD)
+    holds.clearForSend('structured', () => {}, HOLD)
 
     window.dispatchEvent(new Event('pagehide'))
+    window.dispatchEvent(new Event('beforeunload'))
 
-    expect(persist.mock.calls).toEqual([['structured']])
+    expect(persist).not.toHaveBeenCalled()
   })
 
   // Chat discards forget its sends; nothing else would, for one that never lands.

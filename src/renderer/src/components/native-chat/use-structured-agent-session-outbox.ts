@@ -1,4 +1,7 @@
-import { noteStructuredAgentSessionMessagesDelivered } from './structured-agent-session-message-delivery'
+import {
+  noteStructuredAgentSessionMessagesDelivered,
+  structuredAgentSessionSubmissionHeldForGood
+} from './structured-agent-session-message-delivery'
 import {
   useCallback,
   useEffect,
@@ -152,7 +155,12 @@ export function useStructuredAgentSessionOutbox(args: {
         .map((submission) => submission.clientMessageId),
       ...handedOffQueuedMessageIds(submissions)
     ])
-    noteStructuredAgentSessionMessagesDelivered(sessionId, hostOwns)
+    noteStructuredAgentSessionMessagesDelivered(sessionId, [
+      ...submissions
+        .filter(structuredAgentSessionSubmissionHeldForGood)
+        .map((submission) => submission.clientMessageId),
+      ...handedOffQueuedMessageIds(submissions)
+    ])
     const next = reconcileStructuredAgentSessionOutboxWithQueue(current, submissions)
     const admittedInFlight = journalAnswersInFlightSend(submissions, inFlightIdRef.current)
     if (
