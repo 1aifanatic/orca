@@ -6,10 +6,36 @@ import type { RuntimeTerminalProjection } from './orca-runtime-core'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { RuntimeVisibleTerminalState } from './runtime-terminal-state-records'
 
 export { PTY_ID }
 export const CAPTURED_LINES = captured.lines
 export const SNAPSHOT_SEQUENCE = 1000
+export const PROVIDER_OWNER_RACES = ['record', 'incarnation', 'generation', 'output'] as const
+
+export function changeProviderOwner(
+  runtime: ProviderIdleRuntime,
+  race: (typeof PROVIDER_OWNER_RACES)[number]
+) {
+  switch (race) {
+    case 'record':
+      runtime.replacePtyRecord()
+      break
+    case 'incarnation':
+      runtime.pty().incarnationId = 'replacement-incarnation'
+      break
+    case 'generation':
+      runtime.synchronizePtyOutputSequenceFromProvider(PTY_ID, { value: 0, generation: 'reset' })
+      break
+    case 'output':
+      runtime.synchronizePtyOutputSequenceFromProvider(
+        PTY_ID,
+        { value: SNAPSHOT_SEQUENCE + 1, generation: 'continued' },
+        runtime.getPtyOutputSequence(PTY_ID)
+      )
+      break
+  }
+}
 
 export function providerSnapshot(lines = CAPTURED_LINES, alternateScreen = false) {
   return {
@@ -26,6 +52,7 @@ export class ProviderIdleRuntime extends HydrationRuntime {
   beforeParse: (() => Promise<void> | void) | null = null
   afterParse: (() => void) | null = null
   beforeEvidence: (() => void) | null = null
+  beforeVisibleRead: (() => Promise<void> | void) | null = null
 
   pty() {
     const pty = this.ptysById.get(PTY_ID)
@@ -84,6 +111,13 @@ export class ProviderIdleRuntime extends HydrationRuntime {
     this.ptysById.set(PTY_ID, { ...this.pty() })
   }
 
+  rebindLeaf() {
+    this.leaves.set(this.getLeafKey('tab-1', 'pane:1'), {
+      ...this.leaf(),
+      ptyId: 'replacement-pty'
+    })
+  }
+
   providerViewport() {
     return this.readVisibleTerminalState(PTY_ID, true)
   }
@@ -105,6 +139,13 @@ export class ProviderIdleRuntime extends HydrationRuntime {
       acquisitions: this.providerBufferAcquisitionsByPtyId.size,
       scans: this.providerModeSnapshotScansByPtyId.size
     }
+  }
+
+  protected override async readHeadlessVisibleTerminalState(
+    ptyId: string
+  ): Promise<RuntimeVisibleTerminalState | null> {
+    await this.beforeVisibleRead?.()
+    return super.readHeadlessVisibleTerminalState(ptyId)
   }
 
   protected override async parseVisibleSnapshot(snapshot: {

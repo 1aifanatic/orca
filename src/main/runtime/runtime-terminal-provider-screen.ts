@@ -55,6 +55,25 @@ export class RuntimeTerminalProviderScreen {
     return this.owner !== null && live !== null && sameProviderScreenOwner(this.owner, live)
   }
 
+  captureVersion(): () => boolean {
+    const ptyId = this.ptyId
+    const readVersion = this.deps.getProviderScreenVersion
+    if (!ptyId || !readVersion) {
+      return () => this.isCurrent()
+    }
+    const version = readVersion(ptyId)
+    return () => {
+      const live = readVersion(ptyId)
+      return (
+        this.isCurrent() &&
+        version !== null &&
+        live !== null &&
+        sameProviderScreenOwner(version, live) &&
+        version.sequence === live.sequence
+      )
+    }
+  }
+
   read(): Promise<TuiIdleProviderScreen | null> | null {
     if (!this.ptyId || !this.deps.readProviderScreen || !this.isCurrent()) {
       return null

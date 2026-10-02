@@ -2,41 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PtyProviderBufferSnapshot } from '../providers/types'
 import {
   CAPTURED_LINES,
+  changeProviderOwner as changeOwner,
   createProviderIdlePane,
   observeIdleWait,
   providerSnapshot,
   PTY_ID,
   SNAPSHOT_SEQUENCE,
-  type ProviderIdleRuntime
+  PROVIDER_OWNER_RACES as RACES
 } from './provider-idle-screen-test-fixture'
 import { deferred } from './orca-runtime-test-fixtures.spec'
 import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
-
-const RACES = ['record', 'incarnation', 'generation', 'output'] as const
-
-function changeOwner(runtime: ProviderIdleRuntime, race: (typeof RACES)[number]) {
-  switch (race) {
-    case 'record':
-      runtime.replacePtyRecord()
-      break
-    case 'incarnation':
-      runtime.pty().incarnationId = 'replacement-incarnation'
-      break
-    case 'generation':
-      runtime.synchronizePtyOutputSequenceFromProvider(PTY_ID, { value: 0, generation: 'reset' })
-      break
-    case 'output':
-      runtime.synchronizePtyOutputSequenceFromProvider(
-        PTY_ID,
-        {
-          value: SNAPSHOT_SEQUENCE + 1,
-          generation: 'continued'
-        },
-        runtime.getPtyOutputSequence(PTY_ID)
-      )
-      break
-  }
-}
 
 describe('provider readiness ownership and sequence fences', () => {
   it.each(RACES)('vetoes %s replacement during acquisition', async (race) => {
