@@ -126,12 +126,18 @@ export function PRAssigneesPanel({
           }),
         onOptimistic: () => {
           setLocalAssignees(nextAssignees)
-          patchWorkItem(item.id, { assignees: nextAssignees }, item.repoId, { sourceContext })
+          patchWorkItem(item.id, { assignees: nextAssignees }, item.repoId, {
+            sourceContext,
+            ownerRepo: prRepo
+          })
           patchProjectRowIfNeeded(nextLogins)
         },
         onRevert: () => {
           setLocalAssignees(prevAssignees)
-          patchWorkItem(item.id, { assignees: prevAssignees }, item.repoId, { sourceContext })
+          patchWorkItem(item.id, { assignees: prevAssignees }, item.repoId, {
+            sourceContext,
+            ownerRepo: prRepo
+          })
           patchProjectRowIfNeeded(prevLogins)
         },
         onSuccess: () => {

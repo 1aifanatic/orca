@@ -12,6 +12,7 @@ import { runIssueUpdate } from '@/components/github/github-work-item-edit-mutati
 import type { GitHubWorkItem } from '../../../../../shared/github/work-item-types'
 import type { GitHubOwnerRepo } from '../../../../../shared/github/pull-request-types'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
+import type { GitHubPatchWorkItemOptions } from '@/store/github/cache-model'
 import { translate } from '@/i18n/i18n'
 import type { GitHubItemDialogProjectOrigin } from '../load-item-details/github-item-dialog-types'
 
@@ -61,7 +62,7 @@ export function runGHEditStateChange({
     id: string,
     patch: { state: GitHubWorkItem['state'] },
     repoId: string | undefined,
-    options: { sourceContext?: TaskSourceContext | null }
+    options: GitHubPatchWorkItemOptions
   ) => void
 }): void {
   // Why: a close reason still has to reach GitHub even when the item already reads as closed locally.
@@ -91,22 +92,32 @@ export function runGHEditStateChange({
         repoId: itemRepoId,
         itemId,
         state: newState,
-        sourceContext
+        sourceContext,
+        ownerRepo: projectOrigin ?? issueRepo
       })
       onStateChange(newState)
-      patchWorkItem(itemId, { state: newState }, itemRepoId, { sourceContext })
+      patchWorkItem(itemId, { state: newState }, itemRepoId, {
+        sourceContext,
+        ownerRepo: projectOrigin ?? issueRepo
+      })
       patchProjectRowIfNeeded({ state: newState })
     },
     onRevert: () => {
       if (authority?.revert()) {
         onStateChange(prevState)
-        patchWorkItem(itemId, { state: prevState }, itemRepoId, { sourceContext })
+        patchWorkItem(itemId, { state: prevState }, itemRepoId, {
+          sourceContext,
+          ownerRepo: projectOrigin ?? issueRepo
+        })
         patchProjectRowIfNeeded({ state: prevState })
       }
     },
     onSuccess: () => {
       useAppStore.getState().recordFeatureInteraction('github-tasks')
-      patchWorkItem(itemId, { state: newState }, itemRepoId, { sourceContext })
+      patchWorkItem(itemId, { state: newState }, itemRepoId, {
+        sourceContext,
+        ownerRepo: projectOrigin ?? issueRepo
+      })
       patchProjectRowIfNeeded({ state: newState })
       onMutated()
     },
@@ -164,7 +175,7 @@ export function runGHEditLabelToggle({
     id: string,
     patch: { labels: string[] },
     repoId: string | undefined,
-    options: { sourceContext?: TaskSourceContext | null }
+    options: GitHubPatchWorkItemOptions
   ) => void
 }): void {
   const isAdding = !localLabels.includes(label)
@@ -184,12 +195,18 @@ export function runGHEditLabelToggle({
       }),
     onOptimistic: () => {
       onLabelsChange(newLabels)
-      patchWorkItem(itemId, { labels: newLabels }, itemRepoId, { sourceContext })
+      patchWorkItem(itemId, { labels: newLabels }, itemRepoId, {
+        sourceContext,
+        ownerRepo: projectOrigin ?? issueRepo
+      })
       patchProjectRowIfNeeded({ labels: newLabels })
     },
     onRevert: () => {
       onLabelsChange(prevLabels)
-      patchWorkItem(itemId, { labels: prevLabels }, itemRepoId, { sourceContext })
+      patchWorkItem(itemId, { labels: prevLabels }, itemRepoId, {
+        sourceContext,
+        ownerRepo: projectOrigin ?? issueRepo
+      })
       patchProjectRowIfNeeded({ labels: prevLabels })
     },
     onSuccess: () => {

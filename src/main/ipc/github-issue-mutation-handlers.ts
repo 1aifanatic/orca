@@ -95,23 +95,46 @@ export function registerGitHubIssueMutationHandlers(store: Store): void {
     }
   )
 
-  ipcMain.handle('gh:listLabels', (_event, args: GitHubRepoScopedArgs) => {
-    const repo = assertRegisteredGitHubRepo(args, store)
-    return listLabels(
-      repo.path,
-      repo.issueSourcePreference,
-      getGitHubRepoConnectionId(repo),
-      ...getGitHubLocalGitOptionArgs(store, repo)
-    )
-  })
+  ipcMain.handle(
+    'gh:listLabels',
+    (_event, args: GitHubRepoScopedArgs & { ownerRepo?: GitHubOwnerRepo }) => {
+      const repo = assertRegisteredGitHubRepo(args, store)
+      const localGitOptions = getGitHubLocalGitOptionArgs(store, repo)
+      const connectionId = getGitHubRepoConnectionId(repo)
+      if (args.ownerRepo) {
+        return listLabels(
+          repo.path,
+          repo.issueSourcePreference,
+          connectionId,
+          localGitOptions[0],
+          args.ownerRepo
+        )
+      }
+      return listLabels(repo.path, repo.issueSourcePreference, connectionId, ...localGitOptions)
+    }
+  )
 
-  ipcMain.handle('gh:listAssignableUsers', (_event, args: GitHubRepoScopedArgs) => {
-    const repo = assertRegisteredGitHubRepo(args, store)
-    return listAssignableUsers(
-      repo.path,
-      repo.issueSourcePreference,
-      getGitHubRepoConnectionId(repo),
-      ...getGitHubLocalGitOptionArgs(store, repo)
-    )
-  })
+  ipcMain.handle(
+    'gh:listAssignableUsers',
+    (_event, args: GitHubRepoScopedArgs & { ownerRepo?: GitHubOwnerRepo }) => {
+      const repo = assertRegisteredGitHubRepo(args, store)
+      const localGitOptions = getGitHubLocalGitOptionArgs(store, repo)
+      const connectionId = getGitHubRepoConnectionId(repo)
+      if (args.ownerRepo) {
+        return listAssignableUsers(
+          repo.path,
+          repo.issueSourcePreference,
+          connectionId,
+          localGitOptions[0],
+          args.ownerRepo
+        )
+      }
+      return listAssignableUsers(
+        repo.path,
+        repo.issueSourcePreference,
+        connectionId,
+        ...localGitOptions
+      )
+    }
+  )
 }

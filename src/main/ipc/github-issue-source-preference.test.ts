@@ -164,6 +164,8 @@ describe('registerGitHubHandlers', () => {
       updates: { body: 'Origin edit' },
       ownerRepo
     })
+    await handlers['gh:listLabels'](null, { repoPath: '/workspace/repo', ownerRepo })
+    await handlers['gh:listAssignableUsers'](null, { repoPath: '/workspace/repo', ownerRepo })
 
     expect(getWorkItemDetailsMock).toHaveBeenCalledWith(
       '/workspace/repo',
@@ -181,6 +183,20 @@ describe('registerGitHubHandlers', () => {
       null,
       undefined,
       'upstream',
+      ownerRepo
+    )
+    expect(mocks.client.listLabels).toHaveBeenCalledWith(
+      '/workspace/repo',
+      'upstream',
+      null,
+      undefined,
+      ownerRepo
+    )
+    expect(mocks.client.listAssignableUsers).toHaveBeenCalledWith(
+      '/workspace/repo',
+      'upstream',
+      null,
+      undefined,
       ownerRepo
     )
   })

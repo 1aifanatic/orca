@@ -102,13 +102,17 @@ export function GHEditSection({
   )
 
   const issueRepo = useMemo(() => parseOwnerRepoFromItemUrl(item.url), [item.url])
+  const metadataOptions = useMemo(
+    () => ({ ...sourceSettings, ownerRepo: issueRepo }),
+    [sourceSettings, issueRepo]
+  )
   // Project metadata comes from the row repository.
   const slugOwner = projectOrigin?.owner ?? null
   const slugRepo = projectOrigin?.repo ?? null
   const repoLabelsByPath = useRepoLabels(
     projectOrigin ? null : repoPath,
     projectOrigin ? null : repoId,
-    sourceSettings
+    metadataOptions
   )
   const repoLabelsBySlug = useRepoLabelsBySlug(
     slugOwner,
@@ -121,7 +125,7 @@ export function GHEditSection({
   const repoAssigneesByPath = useRepoAssignees(
     projectOrigin ? null : repoPath,
     projectOrigin ? null : repoId,
-    sourceSettings
+    metadataOptions
   )
   const repoAssigneesBySlug = useRepoAssigneesBySlug(
     slugOwner,
