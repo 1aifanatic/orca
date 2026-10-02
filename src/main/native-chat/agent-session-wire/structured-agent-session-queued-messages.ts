@@ -272,14 +272,15 @@ export class StructuredAgentSessionQueuedMessageDrain {
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
 
   /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
-   *  quit leaves the cards exactly as a crash does. */
+   *  quit leaves the cards exactly as a crash does. Read in the step, which a step already
+   *  scheduled also passes through. */
   dispose(): void {
     this.disposed = true
   }
 
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
-    if (this.disposed || !journal || journal.isReadOnly) {
+    if (!journal || journal.isReadOnly) {
       return
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
