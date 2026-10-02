@@ -5,7 +5,13 @@
 
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { collectSavedStructuredAgentSessionIds } from './saved-structured-agent-session-restoration'
+import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
+import type {
+  StartupStepOutcome,
+  StructuredAgentSessionStartupGate
+} from './structured-agent-session-startup-gate'
 
 /** Named from the host so a rename fails to compile. */
 export type StructuredAgentSessionStartupHost = Pick<
@@ -65,4 +71,50 @@ export function listedStructuredAgentSessionIds(
       ...collectSavedStructuredAgentSessionIds(savedSession)
     ])
   ]
+}
+
+/**
+ * The whole startup step, timed on the gate: the host build, then the step above. Chat commands
+ * held for startup go ahead however this ends: when the settle does, or as it returns or throws.
+ * Answers the listed chats the background restore still opens, or null when there is no host.
+ */
+export async function runStructuredAgentSessionStartup(input: {
+  gate: StructuredAgentSessionStartupGate
+  hasChatsOnDisk: () => boolean
+  buildHost: () => Promise<void>
+  savedSession: () => WorkspaceSessionState | null
+  /** The runtime's own startup chat work, which the background copy of old chat files waits for. */
+  isRuntimeChatWorkActive?: () => boolean
+}): Promise<string[] | null> {
+  const { gate } = input
+  gate.stepStarted()
+  let ended: StartupStepOutcome | null = 'no chats on disk'
+  try {
+    if (!input.hasChatsOnDisk()) {
+      return null
+    }
+    ended = 'no host'
+    // A refused host is no host: startup goes on, and only structured requests are refused.
+    await ensureStructuredAgentSessionHostUnlessRefused(input.buildHost)
+    const host = getStructuredAgentSessionHost()
+    if (!host) {
+      return null
+    }
+    return await runStructuredAgentSessionStartupStep(
+      host,
+      input.savedSession(),
+      (settled) => {
+        ended = null
+        gate.openWhen(settled)
+      },
+      input.isRuntimeChatWorkActive
+    )
+  } catch (error) {
+    ended &&= 'step failed'
+    throw error
+  } finally {
+    if (ended) {
+      gate.stepEnded(ended)
+    }
+  }
 }

@@ -129,6 +129,45 @@ describe('the stored status and the plan agree (T4)', () => {
     ).toBe(true)
   })
 
+  it("ends a turn a person's Stop found as theirs, with no row saying the provider stopped", async () => {
+    const providerStoppedRows = (plan: ReturnType<typeof planOpenSettlement>) =>
+      (plan.goneGeneration?.mutations ?? []).filter(
+        (mutation) =>
+          mutation.kind === 'item' &&
+          mutation.identity.provider === 'orca' &&
+          mutation.identity.clientMessageId.includes(':death-')
+      )
+    const settle = async (evidenceName: string) => {
+      const sessionId = `chat-${(chats += 1)}`
+      const journal = await open(sessionId)
+      await JOURNAL_SESSION_STATE_CORPUS["running turn a person's Stop found"](journal)
+      const deathEvidence = CORPUS_DEATH_EVIDENCE[evidenceName] ?? null
+      const record: OpenSettlementRecordFacts = { sessionId, fence: CORPUS_FENCE, deathEvidence }
+      const plan = planOpenSettlement(journal, record, { settlesRosters: true })
+      await appendOpenSettlement(journal, plan, CORPUS_FENCE, (error) => {
+        throw error
+      })
+      return { sessionId, journal, plan }
+    }
+
+    // The process was found dead after the Stop: the Stop decides how the turn ends.
+    const after = await settle('names the writer, after a Stop')
+    expect(providerStoppedRows(after.plan)).toEqual([])
+    expect(after.plan.goneGeneration?.mutations).toContainEqual(
+      expect.objectContaining({
+        body: expect.objectContaining({ kind: 'turn', state: 'interrupted' })
+      })
+    )
+    expect(selected(after.sessionId)).toBe(false)
+    expect(storedStatus(after.sessionId).summary).toEqual(
+      after.journal.statusState(undefined).summary
+    )
+
+    // Found dead before the Stop event's time: the death explains the end, and says so.
+    const before = await settle('names the writer')
+    expect(providerStoppedRows(before.plan)).toHaveLength(1)
+  })
+
   it('agrees on a chat that opened corrupt, and again once it writes past the repair', async () => {
     const first = await open('corrupt')
     await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](first)

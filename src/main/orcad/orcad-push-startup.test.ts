@@ -87,7 +87,7 @@ vi.mock('../runtime/orca-runtime', () => ({
     rehydrateClientHostedBrowserPages() {}
     async refreshRestoredOrchestrationAuthority() {}
     async reconcileLegacyWorkerTerminals() {}
-    async prepareStructuredAgentSessionStartupRestoration() {}
+    prepareStructuredAgentSessionStartupRestorationAfter() {}
     holdStructuredAgentSessionCommandsForStartup() {}
     async stopLegacyWorkerTerminalRecovery() {}
     setMobilePushRegistrar(

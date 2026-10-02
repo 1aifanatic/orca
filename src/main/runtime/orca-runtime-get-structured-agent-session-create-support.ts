@@ -10,7 +10,7 @@ import {
   resolveStructuredAgentSessionAdoptionForCreate
 } from './structured-agent-session-create-adoption'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { runStructuredAgentSessionStartupStep } from './structured-agent-session-startup-step'
+import { runStructuredAgentSessionStartup } from './structured-agent-session-startup-step'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -20,19 +20,19 @@ import {
 } from './structured-agent-account-home'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
-import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import { StructuredAgentSessionStartupChatWork } from './structured-agent-session-startup-chat-work'
-import type { StartupStepOutcome } from './structured-agent-session-startup-gate'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   // Listed chats startup could not answer from stored state; null until it has run.
   protected structuredAgentSessionBackgroundRestoreIds: string[] | null = null
   protected structuredAgentSessionStartupChatWork = new StructuredAgentSessionStartupChatWork()
   protected structuredAgentSessionStartupStepPromise: Promise<void> | null = null
+  private readonly structuredAgentSessionStartupLogger = createStructuredAgentSessionLogger()
 
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
@@ -293,7 +293,23 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   startStructuredAgentSessionStartupAfter(shellPathReady: Promise<unknown>): void {
     void shellPathReady
       .then(() => this.startStructuredAgentSessionStartup())
-      .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
+      .catch(this.reportStructuredAgentSessionStartupFailure)
+  }
+
+  /** `prepare` once `after` resolves, its failure reported rather than thrown: desktop runs it once
+   *  the first window's services are up or timed out, orcad at once. */
+  prepareStructuredAgentSessionStartupRestorationAfter(after: Promise<unknown>): void {
+    void after
+      .then(() => this.prepareStructuredAgentSessionStartupRestoration())
+      .catch(this.reportStructuredAgentSessionStartupFailure)
+  }
+
+  /** A failed host build or seed at launch: in the diagnostics trace, not only the console. */
+  private reportStructuredAgentSessionStartupFailure = (error: unknown): void => {
+    this.structuredAgentSessionStartupLogger.warn('the chat startup step failed', {
+      scope: 'startup-step-failed',
+      error
+    })
   }
 
   /** The host's startup step, once: the host build, then the lease check, seed and settle. */
@@ -307,39 +323,15 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   protected async startStructuredAgentSessionStartupOnce(): Promise<void> {
-    const gate = this.structuredAgentSessionStartupGate
-    gate.stepStarted()
-    // Chat commands held for startup go ahead however this ends: when the settle does, or now.
-    let ended: StartupStepOutcome | null = 'no chats on disk'
-    try {
-      if (!this.hasPersistedStructuredAgentSessionStore()) {
-        return
-      }
-      ended = 'no host'
-      // A refused host is no host: startup goes on, and only structured requests are refused.
-      await ensureStructuredAgentSessionHostUnlessRefused(() =>
-        this.ensureStructuredAgentSessionHost()
-      )
-      const host = getStructuredAgentSessionHost()
-      if (host) {
-        this.structuredAgentSessionBackgroundRestoreIds =
-          await runStructuredAgentSessionStartupStep(
-            host,
-            this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
-            (settled) => {
-              ended = null
-              gate.openWhen(settled)
-            },
-            this.structuredAgentSessionStartupChatWork.isActive
-          )
-      }
-    } catch (error) {
-      ended &&= 'step failed'
-      throw error
-    } finally {
-      if (ended) {
-        gate.stepEnded(ended)
-      }
+    const background = await runStructuredAgentSessionStartup({
+      gate: this.structuredAgentSessionStartupGate,
+      hasChatsOnDisk: () => this.hasPersistedStructuredAgentSessionStore(),
+      buildHost: () => this.ensureStructuredAgentSessionHost(),
+      savedSession: () => this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID) ?? null,
+      isRuntimeChatWorkActive: this.structuredAgentSessionStartupChatWork.isActive
+    })
+    if (background) {
+      this.structuredAgentSessionBackgroundRestoreIds = background
     }
   }
 

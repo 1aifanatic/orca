@@ -659,14 +659,15 @@ describe('StructuredAgentSessionStatusFeed', () => {
       expect(feed.statusState(SESSION)).toBe(projected)
     }
     expect(events).toHaveLength(101)
-    expect(snapshot).toHaveBeenCalledTimes(1)
+    // The row never renders the journal: the projection and the accepted send come without it.
+    expect(snapshot).not.toHaveBeenCalled()
     expect(events.at(-1)).toMatchObject({
       type: 'status',
       session: { status: 'working', backgroundTasks: [{ state: 'working' }] }
     })
     await journal.appendTombstone(TURN_IDENTITY, { fence: 1 })
     feed.publish(SESSION)
-    expect(snapshot).toHaveBeenCalledTimes(2)
+    expect(snapshot).not.toHaveBeenCalled()
     expect(feed.statusState(SESSION)).not.toBe(projected)
     expect(events.at(-1)).toMatchObject({ type: 'status', session: { status: 'idle' } })
   })

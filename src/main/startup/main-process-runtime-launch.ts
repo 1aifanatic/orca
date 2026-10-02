@@ -345,9 +345,9 @@ export async function initializeMainProcessRuntimeLaunch(
   }
   // The tab restore's terminal records refresh lists the daemon's terminals. The first-window
   // services resolve when the daemon and hook server are up, or at their 12 s timeout regardless.
-  void state.firstWindowStartupServicesReady
-    .then(() => runtime.prepareStructuredAgentSessionStartupRestoration())
-    .catch((error: unknown) => console.warn('[structured-agent-session] startup failed', error))
+  runtime.prepareStructuredAgentSessionStartupRestorationAfter(
+    state.firstWindowStartupServicesReady
+  )
   app.on('activate', options.handleMacAppActivation)
   if (serveOptions) {
     await launchServeMode(runtime, runtimeRpc, serveOptions)
