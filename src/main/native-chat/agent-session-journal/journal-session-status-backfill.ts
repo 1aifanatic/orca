@@ -135,7 +135,8 @@ export function writeJournalSessionStatuses(
   if (folded.length === 0) {
     return []
   }
-  return database.transaction((db) =>
+  // Unsynced: a lost row is re-derived from the journal, and any later synced commit covers it.
+  return database.unsyncedTransaction((db) =>
     folded.filter(({ sessionId, epoch, tip, status }) => {
       if (
         hasJournalSessionStatus(db, sessionId) ||
