@@ -49,3 +49,17 @@ it('degrades timeouts and missing executables to unknown', async () => {
     (await probeOpenCodeCliVersion({ executablePath: '/missing/opencode', env: {} })).version
   ).toBeNull()
 })
+
+it('shares a bounded execution-host callback without probing the native machine', async () => {
+  const execute = vi
+    .fn()
+    .mockResolvedValue({ code: 0, timedOut: false, stdout: 'opencode v2.0.16' })
+  const options = { executablePath: 'opencode', env: {}, hostIdentity: 'wsl:private', execute }
+  const results = await Promise.all([
+    probeOpenCodeCliVersion(options),
+    probeOpenCodeCliVersion(options)
+  ])
+  expect(results[0].promptMode).toBe('prefill')
+  expect(execute).toHaveBeenCalledTimes(1)
+  expect(runProcess).not.toHaveBeenCalled()
+})
