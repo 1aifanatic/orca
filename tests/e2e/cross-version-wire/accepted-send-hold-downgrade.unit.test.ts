@@ -70,22 +70,37 @@ async function releasedClient(checkout: ReleaseCheckout): Promise<ReleasedClient
       '/src/shared/structured-agent-session-send-disposition.ts'
     )
   ])
+  const listed = protocol.ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
+  if (!Array.isArray(listed)) {
+    throw new Error('The baseline release lists no Electron remote client capabilities')
+  }
+  const members = {
+    createEntry: outbox.createStructuredAgentSessionOutboxEntry,
+    sendRequest: outbox.structuredAgentSessionSendRequest,
+    dispose: disposition.disposeStructuredAgentSessionSendResult,
+    reconcile: outbox.reconcileStructuredAgentSessionOutbox,
+    admit: outbox.admitStructuredAgentSessionOutboxEntry
+  }
+  for (const [name, member] of Object.entries(members)) {
+    if (typeof member !== 'function') {
+      throw new Error(`The baseline release's client has no ${name}`)
+    }
+  }
   return {
     // What a released desktop advertises to a remote host, minus the capability this host keys
     // the hold on, so the pairing stays exercised once a release ships it. No release advertises
     // structured chats to a remote host yet (the host refuses them as clientCapabilityMissing),
     // so it is added: the desktop this hold is for is one that does, without final-state reads.
     capabilities: [
-      ...(protocol.ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES as string[]).filter(
-        (capability) => capability !== AGENT_SESSION_SEND_FINAL_STATE_RUNTIME_CAPABILITY
+      ...listed.filter(
+        (capability): capability is string =>
+          typeof capability === 'string' &&
+          capability !== AGENT_SESSION_SEND_FINAL_STATE_RUNTIME_CAPABILITY
       ),
       STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
     ],
-    createEntry: outbox.createStructuredAgentSessionOutboxEntry as ReleasedClient['createEntry'],
-    sendRequest: outbox.structuredAgentSessionSendRequest as ReleasedClient['sendRequest'],
-    dispose: disposition.disposeStructuredAgentSessionSendResult as ReleasedClient['dispose'],
-    reconcile: outbox.reconcileStructuredAgentSessionOutbox as ReleasedClient['reconcile'],
-    admit: outbox.admitStructuredAgentSessionOutboxEntry as ReleasedClient['admit']
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each member was just checked to be a function, and these are the shapes the release's own source declares for them.
+    ...(members as unknown as Omit<ReleasedClient, 'capabilities'>)
   }
 }
 
@@ -204,12 +219,30 @@ describe("a released desktop's first message to a chat at rest", () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('is answered unknown at the cap while its start runs, and only ever resent under its own id', async () => {
-    expect(released.capabilities).toContain(AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY)
+  async function createdChat(): Promise<number> {
     const created = await call('agentSession.create', createIntentParams(), [
       STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
     ])
-    const { fence } = created.result as { fence: number }
+    const result = created.result
+    if (!result || typeof result !== 'object' || !('fence' in result)) {
+      throw new Error(`create answered no fence: ${JSON.stringify(created)}`)
+    }
+    return Number(result.fence)
+  }
+
+  function firstMessage(hex: string): OutboxEntry {
+    return released.createEntry({
+      clientMessageId: `${NOW}-${hex.repeat(32)}`,
+      sessionId: SESSION,
+      text: 'review my notes',
+      attachments: [],
+      queuedAt: NOW
+    })
+  }
+
+  it('is answered unknown at the cap while its start runs, and only ever resent under its own id', async () => {
+    expect(released.capabilities).toContain(AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY)
+    const fence = await createdChat()
     const entry = released.createEntry({
       clientMessageId: `${NOW}-${'a'.repeat(32)}`,
       sessionId: SESSION,
@@ -274,23 +307,6 @@ describe("a released desktop's first message to a chat at rest", () => {
     )
     expect(released.reconcile(waiting, await journalRows())).toEqual([])
   })
-
-  async function createdChat(): Promise<number> {
-    const created = await call('agentSession.create', createIntentParams(), [
-      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
-    ])
-    return (created.result as { fence: number }).fence
-  }
-
-  function firstMessage(hex: string): OutboxEntry {
-    return released.createEntry({
-      clientMessageId: `${NOW}-${hex.repeat(32)}`,
-      sessionId: SESSION,
-      text: 'review my notes',
-      attachments: [],
-      queuedAt: NOW
-    })
-  }
 
   it('is answered once its start hands it over, within the cap', async () => {
     const fence = await createdChat()
