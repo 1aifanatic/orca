@@ -6,10 +6,19 @@ import type { AppState } from '@/store/types'
 import { getConnectionIdForFile } from './connection-context'
 
 const USER_FILE_ACCESS: LocalFileAccess = { kind: 'user-file' }
+const CHAT_IMAGE_ACCESS: LocalFileAccess = { kind: 'chat-image' }
 
 /** For a path the user named by a gesture (click, drop, typed path); never for document content. */
 export function userNamedFileAccess(): LocalFileAccess {
   return USER_FILE_ACCESS
+}
+
+/**
+ * For an image a chat transcript or composer shows. Main reads any local image file in place, by
+ * its real type, and refuses network shares, so it is safe for content no one clicked.
+ */
+export function chatImageAccess(): LocalFileAccess {
+  return CHAT_IMAGE_ACCESS
 }
 
 /** For an image or PDF a document's content references; main limits it to the document's roots. */

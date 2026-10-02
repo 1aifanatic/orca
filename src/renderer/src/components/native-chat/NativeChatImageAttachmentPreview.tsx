@@ -6,7 +6,7 @@ import { basename } from '@/lib/path'
 import { useLocalImageSrc } from '@/components/editor/useLocalImageSrc'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import { userNamedFileAccess } from '@/lib/local-file-access'
+import { chatImageAccess } from '@/lib/local-file-access'
 
 type Props = {
   attachment: NativeChatComposerImageAttachment
@@ -48,7 +48,8 @@ export function NativeChatImageAttachmentPreview({
     attachment.path,
     attachment.connectionId,
     undefined,
-    userNamedFileAccess()
+    // Why chat-image: a draft handed off from the host queue may carry paths a paired client chose.
+    chatImageAccess()
   )
   // The clipboard thumbnail is already in this process, so it renders with no
   // round-trip; the on-disk file only wins for the full-size dialog.

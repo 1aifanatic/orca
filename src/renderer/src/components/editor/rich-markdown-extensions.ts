@@ -164,9 +164,9 @@ export function createRichMarkdownExtensions({
                     img.src = resolved
                     return
                   }
-                  // Why: local image paths must stay behind IPC/runtime
-                  // authorization; a failed load should render missing, not
-                  // hand the raw path back to Chromium.
+                  // Why: local image paths must go through main's file
+                  // checks; a failed load should render missing, not hand
+                  // the raw path back to Chromium.
                   img.removeAttribute('src')
                 }
               )

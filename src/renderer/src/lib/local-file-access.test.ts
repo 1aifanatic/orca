@@ -148,20 +148,37 @@ describe('editorTabFileAccess', () => {
   })
 })
 
-// Why a ratchet: a content-driven reader adopting user-file would bring back the round-1 leak, so
-// every new importer must be a deliberate, reviewed addition to this list.
+// Why a ratchet: a content-driven reader that adopted user-file would bring back the round-1 leak.
+// These scans only see the two ways a renderer file can produce user-file today, by name and by
+// pattern: building the shape directly, and opening a tab the tab rule reads as user-named. They
+// cannot see a decision laundered through props or a helper, so they are a tripwire for review, not
+// a proof; a branded user-named path type is the follow-up that would make it one.
 const USER_NAMED_ACCESS_IMPORTERS = [
   'components/browser-pane/describe-page/browser-artifact-upload.ts',
-  'components/browser-pane/navigate/navigate-browser-page-url.ts',
-  'components/native-chat/NativeChatImageAttachmentPreview.tsx',
-  'components/native-chat/NativeChatTranscriptChrome.tsx',
   'components/native-chat/use-native-chat-external-attachments.ts',
   'components/sidebar/useSidebarProjectDrop.ts',
-  'components/tab-bar/tab-create-entry-absolute-file.ts',
   'hooks/composer-state/attachment-drop-state.ts',
-  'hooks/useGlobalFileDrop.ts',
   'lib/local-file-access.ts',
   'lib/user-opened-local-path.ts'
+]
+
+// Files whose openFile call can store relativePath === filePath (read and saved as user-named by
+// the tab rule) or open a floating-workspace tab. The scan matches by value, so a few listed files
+// only look like it (their relativePath is genuinely relative); review each new entry by hand.
+const USER_NAMED_TAB_OPENERS = [
+  'components/browser-pane/navigate/navigate-browser-page-url.ts',
+  'components/editor/markdown-preview-link-actions.ts',
+  'components/floating-terminal/use-floating-terminal-create-actions.ts',
+  'components/right-sidebar/ai-vault-session-log-open.ts',
+  'components/right-sidebar/source-control/notes/use-note-opening.ts',
+  'components/right-sidebar/useFileExplorerHandlers.ts',
+  'components/settings/KeybindingsFileActions.tsx',
+  'components/tab-bar/tab-create-entry-absolute-file.ts',
+  'components/terminal-pane/terminal-file-open-routing.ts',
+  'hooks/useGlobalFileDrop.ts',
+  'lib/floating-workspace-tab-creation.ts',
+  'lib/open-markdown-in-floating-workspace.ts',
+  'store/slices/editor/actions/markdown-link-action.ts'
 ]
 
 function collectSourceFiles(dir: string): string[] {
@@ -170,20 +187,53 @@ function collectSourceFiles(dir: string): string[] {
     if (statSync(full).isDirectory()) {
       return collectSourceFiles(full)
     }
-    return /\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) ? [full] : []
+    return /\.tsx?$/.test(entry) &&
+      !/\.test\.tsx?$/.test(entry) &&
+      !/test-(harness|fixture)/.test(entry)
+      ? [full]
+      : []
   })
 }
 
-describe('user-named file access ratchet', () => {
-  it('is constructed only by gesture sites and the editor-tab rule', () => {
-    const rendererRoot = resolve(__dirname, '..')
-    const importers = collectSourceFiles(rendererRoot)
-      .filter((file) =>
-        /\buserNamedFileAccess\b|kind: 'user-file'/.test(readFileSync(file, 'utf8'))
-      )
-      .map((file) => relative(rendererRoot, file).split('\\').join('/'))
-      .sort()
+function opensUserNamedTabs(source: string): boolean {
+  if (!/\bopenFile\(/.test(source)) {
+    return false
+  }
+  if (source.includes('FLOATING_TERMINAL_WORKTREE_ID')) {
+    return true
+  }
+  const filePathValues = [...source.matchAll(/\bfilePath:\s*([\w.]+)/g)]
+    .map((match) => match[1])
+    .filter((value) => value !== 'string')
+  if (/\bfilePath,/.test(source)) {
+    filePathValues.push('filePath')
+  }
+  const relativePathValues = [
+    ...source.matchAll(/\brelativePath(?::|\s*=)\s*([\s\S]*?)(?:,\s*\n|\n\s*[})])/g)
+  ].map((match) => match[1])
+  return relativePathValues.some((value) =>
+    filePathValues.some((filePath) =>
+      new RegExp(`(^|[^\\w.])${filePath.replace(/\./g, '\\.')}($|[^\\w.])`).test(value)
+    )
+  )
+}
 
-    expect(importers).toEqual(USER_NAMED_ACCESS_IMPORTERS)
+function rendererFilesMatching(test: (source: string) => boolean): string[] {
+  const rendererRoot = resolve(__dirname, '..')
+  return collectSourceFiles(rendererRoot)
+    .filter((file) => test(readFileSync(file, 'utf8')))
+    .map((file) => relative(rendererRoot, file).split('\\').join('/'))
+    .sort()
+}
+
+describe('user-named file access ratchet', () => {
+  it('lists every file that builds the user-file shape', () => {
+    expect(
+      rendererFilesMatching((source) => /\buserNamedFileAccess\b|kind: 'user-file'/.test(source))
+    ).toEqual(USER_NAMED_ACCESS_IMPORTERS)
+  })
+
+  it('lists every file that can open a tab read as user-named', () => {
+    expect(rendererFilesMatching(opensUserNamedTabs)).toEqual(USER_NAMED_TAB_OPENERS)
   })
 })

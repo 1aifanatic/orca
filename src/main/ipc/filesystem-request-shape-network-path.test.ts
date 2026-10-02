@@ -95,3 +95,70 @@ describe('document images on a network share', () => {
     expect(fsCalls.filter((call) => call.includes('attacker'))).toEqual([])
   })
 })
+
+const CHAT_IMAGE = { kind: 'chat-image' } as const
+
+describe('chat transcript images on Windows', () => {
+  beforeEach(() => {
+    fsCalls.length = 0
+  })
+
+  it.each([...networkTargets, '\\\\.\\C:\\x.png', '//?/C:/x.png'])(
+    'refuses %s without touching it',
+    async (target) => {
+      await expect(resolveLocalFileRequestPath(target, CHAT_IMAGE, store)).rejects.toThrow(
+        'Access denied'
+      )
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it.each([
+    'C:\\Users\\me\\Pictures\\shot.png',
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\shot.png',
+    '\\\\wsl$\\Ubuntu\\tmp\\agent.webp'
+  ])('reads the local image %s in place', async (target) => {
+    await expect(resolveLocalFileRequestPath(target, CHAT_IMAGE, store)).resolves.toBe(target)
+  })
+})
+
+describe('Windows reserved device names in automatic image loads', () => {
+  beforeEach(() => {
+    fsCalls.length = 0
+  })
+
+  const deviceTargets = [
+    'C:\\Users\\me\\notes\\NUL.png',
+    'C:\\Users\\me\\notes\\com1.jpg',
+    'C:\\Users\\me\\notes\\Lpt9 .gif',
+    'C:\\Users\\me\\notes\\aux..png',
+    'C:\\Users\\me\\notes\\CON.tar.png'
+  ]
+
+  it.each(deviceTargets)('refuses %s as a chat image without touching it', async (target) => {
+    await expect(resolveLocalFileRequestPath(target, CHAT_IMAGE, store)).rejects.toThrow(
+      'Access denied'
+    )
+    expect(fsCalls).toEqual([])
+  })
+
+  it.each(deviceTargets)(
+    'refuses %s from a document beside it without touching it',
+    async (target) => {
+      await expect(
+        resolveLocalFileRequestPath(
+          target,
+          { kind: 'document-resource', documentPath: 'C:\\Users\\me\\notes\\todo.md' },
+          store
+        )
+      ).rejects.toThrow('Access denied')
+      expect(fsCalls).toEqual([])
+    }
+  )
+
+  it('still reads an ordinary image whose name only starts like a device', async () => {
+    await expect(
+      resolveLocalFileRequestPath('C:\\Users\\me\\notes\\console.png', CHAT_IMAGE, store)
+    ).resolves.toBe('C:\\Users\\me\\notes\\console.png')
+  })
+})

@@ -7,3 +7,5 @@ export type LocalFileAccess =
   | { kind: 'user-file' }
   /** A resource a document's content references (images): limited to that document's roots or folder. */
   | { kind: 'document-resource'; documentPath: string }
+  /** An image a chat transcript or composer shows: any local image file, never a network share. */
+  | { kind: 'chat-image' }

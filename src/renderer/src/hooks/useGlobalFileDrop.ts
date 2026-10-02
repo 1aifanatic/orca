@@ -8,7 +8,6 @@ import { joinPath } from '@/lib/path'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import {
   importExternalPathsToRuntime,
-  statRuntimePath,
   type RuntimeFileOperationArgs
 } from '@/runtime/runtime-file-client'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
@@ -20,7 +19,7 @@ import {
 } from '../../../shared/native-file-drop'
 import { captureWorktreeSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
 import { describeDropTempCopyFailure } from '@/lib/drop-temp-copy-failure-copy'
-import { userNamedFileAccess } from '@/lib/local-file-access'
+import { statUserOpenedPath } from '@/lib/user-opened-local-path'
 
 export function getEditorFileDropSettingsForWorktree(
   store: WorktreeRuntimeOwnerState,
@@ -160,13 +159,19 @@ export function useGlobalFileDrop(): void {
       for (const filePath of data.paths) {
         void (async () => {
           try {
-            const stat = await statRuntimePath(fileContext, filePath, userNamedFileAccess())
+            const stat = await statUserOpenedPath(fileContext, filePath)
             if (stat.isDirectory) {
               return
             }
 
             let relativePath = filePath
-            if (worktreePath && isPathInsideWorktree(filePath, worktreePath)) {
+            // Why: a project link out of the project keeps its absolute path, so it reads as
+            // user-named instead of being refused as a project file.
+            if (
+              worktreePath &&
+              !stat.escapesWorktree &&
+              isPathInsideWorktree(filePath, worktreePath)
+            ) {
               const maybeRelative = toWorktreeRelativePath(filePath, worktreePath)
               if (maybeRelative !== null && maybeRelative.length > 0) {
                 relativePath = maybeRelative

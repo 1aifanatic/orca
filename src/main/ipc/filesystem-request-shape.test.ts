@@ -289,4 +289,77 @@ describe('document-resource requests', () => {
       ).toBe('denied')
     }
   )
+
+  it.skipIf(process.platform === 'win32')(
+    'refuse an image-named link to a text file, in a project or beside the document',
+    async () => {
+      await writeFile(join(project, '.env'), 'PROJECT_KEY=secret\n')
+      await symlink(join(project, '.env'), join(project, 'logo-link.png'))
+      await writeFile(join(outside, 'doc-folder', 'notes.env'), 'API_KEY=secret\n')
+      await symlink(join(outside, 'doc-folder', 'notes.env'), join(outside, 'doc-folder', 'a.png'))
+      const store = makeStore({ repoPaths: [project] })
+
+      const inProject = documentResource(join(project, 'docs', 'README.md'))
+      const besideDoc = documentResource(join(outside, 'doc-folder', 'note.md'))
+      expect(
+        await settles(resolveLocalFileRequestPath(join(project, 'logo-link.png'), inProject, store))
+      ).toBe('denied')
+      expect(
+        await settles(
+          resolveLocalFileRequestPath(join(outside, 'doc-folder', 'a.png'), besideDoc, store)
+        )
+      ).toBe('denied')
+    }
+  )
+})
+
+describe('chat-image requests', () => {
+  const CHAT_IMAGE = { kind: 'chat-image' } as const
+
+  it('read any local image file in place, whatever turn named it', async () => {
+    const shot = join(outside, 'shot.png')
+    await writeFile(shot, 'png')
+
+    const filePath = await resolveLocalFileRequestPath(shot, CHAT_IMAGE, makeStore({}))
+
+    await expect(readLocalFileContent(filePath)).resolves.toMatchObject({
+      isBinary: true,
+      mimeType: 'image/png'
+    })
+  })
+
+  it.each(['notes.txt', 'missing.png'])('refuse %s', async (name) => {
+    expect(
+      await settles(resolveLocalFileRequestPath(join(outside, name), CHAT_IMAGE, makeStore({})))
+    ).toBe('denied')
+  })
+
+  it('refuse a relative path, a device and a PDF', async () => {
+    const store = makeStore({})
+    await writeFile(join(outside, 'doc.pdf'), '%PDF')
+
+    expect(await settles(resolveLocalFileRequestPath('shot.png', CHAT_IMAGE, store))).toBe('denied')
+    expect(await settles(resolveLocalFileRequestPath('/dev/zero', CHAT_IMAGE, store))).toBe(
+      'denied'
+    )
+    expect(
+      await settles(resolveLocalFileRequestPath(join(outside, 'doc.pdf'), CHAT_IMAGE, store))
+    ).toBe('denied')
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'refuse an image-named link to a text file or a device',
+    async () => {
+      await symlink(join(outside, 'notes.txt'), join(outside, 'secret.png'))
+      await symlink('/dev/zero', join(outside, 'zero.png'))
+      const store = makeStore({})
+
+      expect(
+        await settles(resolveLocalFileRequestPath(join(outside, 'secret.png'), CHAT_IMAGE, store))
+      ).toBe('denied')
+      expect(
+        await settles(resolveLocalFileRequestPath(join(outside, 'zero.png'), CHAT_IMAGE, store))
+      ).toBe('denied')
+    }
+  )
 })

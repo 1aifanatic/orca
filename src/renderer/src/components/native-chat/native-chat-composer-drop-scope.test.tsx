@@ -289,9 +289,9 @@ describe('native chat composer drop scoping', () => {
     expect(readNativeChatAttachmentCache('chat-b')).toEqual([])
   })
 
-  it('previews dropped files as user-named and leaves the other pane untouched', async () => {
+  it('previews dropped files as chat images and leaves the other pane untouched', async () => {
     intake.readFile.mockImplementation(async ({ access }: { access?: { kind: string } }) => {
-      if (access?.kind !== 'user-file') {
+      if (access?.kind !== 'chat-image') {
         throw new Error('Access denied: path resolves outside allowed directories')
       }
       return { content: 'AA==', isBinary: true, mimeType: 'image/png' }

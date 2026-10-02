@@ -15,8 +15,7 @@ import {
 } from '@/components/editor/useLocalImageSrc'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
-import type { LocalFileAccess } from '../../../../shared/local-file-access'
-import { userNamedFileAccess } from '@/lib/local-file-access'
+import { chatImageAccess } from '@/lib/local-file-access'
 
 type VisibilityListener = (isVisible: boolean) => void
 
@@ -72,14 +71,16 @@ function transcriptImageIdentity(
   }`
 }
 
+// Why one shape for every role: a turn's role says who sent it, not who chose the path, and these
+// load on scroll with no click, so main only serves local image files by their real type.
+const TRANSCRIPT_IMAGE_ACCESS = chatImageAccess()
+
 function TranscriptImagePreview({
   block,
-  runtimeContext,
-  access
+  runtimeContext
 }: {
   block: Extract<NativeChatBlock, { type: 'image-ref' }>
   runtimeContext: RuntimeFileOperationArgs | null | undefined
-  access: LocalFileAccess | undefined
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [near, setNear] = useState(false)
@@ -95,7 +96,7 @@ function TranscriptImagePreview({
     filePath,
     runtimeContext?.connectionId,
     runtimeContext,
-    access
+    TRANSCRIPT_IMAGE_ACCESS
   )
   const displaySrc = external && leaseActive ? source : localSrc
   const label =
@@ -129,10 +130,11 @@ function TranscriptImagePreview({
       return
     }
     if (!leaseActive) {
-      releaseLocalImageSrc(source, filePath, context.connectionId, context, access)
+      releaseLocalImageSrc(source, filePath, context.connectionId, context, TRANSCRIPT_IMAGE_ACCESS)
     }
-    return () => releaseLocalImageSrc(source, filePath, context.connectionId, context, access)
-  }, [access, external, filePath, leaseActive, runtimeContext, source])
+    return () =>
+      releaseLocalImageSrc(source, filePath, context.connectionId, context, TRANSCRIPT_IMAGE_ACCESS)
+  }, [external, filePath, leaseActive, runtimeContext, source])
 
   const showPreview =
     leaseActive &&
@@ -188,15 +190,12 @@ function TranscriptImagePreview({
 export function NativeChatImageAttachments({
   blocks,
   runtimeContext,
-  enablePreview = runtimeContext !== undefined,
-  attachedByUser = false
+  enablePreview = runtimeContext !== undefined
 }: {
   blocks: NativeChatBlock[]
   runtimeContext?: RuntimeFileOperationArgs | null
   /** Keep legacy terminal chips unchanged until that lane opts into previews. */
   enablePreview?: boolean
-  /** The user pasted or attached these, so they show wherever they live; agent images stay in the project. */
-  attachedByUser?: boolean
 }): React.JSX.Element | null {
   const images = blocks.filter((block) => block.type === 'image-ref')
   if (images.length === 0) {
@@ -244,7 +243,6 @@ export function NativeChatImageAttachments({
             key={`${imageKeyBase}-${identity}-${occurrence}`}
             block={image}
             runtimeContext={runtimeContext}
-            access={attachedByUser ? userNamedFileAccess() : undefined}
           />
         )
       })}

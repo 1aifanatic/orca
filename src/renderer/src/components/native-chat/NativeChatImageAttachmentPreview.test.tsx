@@ -51,7 +51,7 @@ describe('NativeChatImageAttachmentPreview', () => {
     renderPreview({ id: 'a1', path: '', previewUrl: 'blob:clipboard-1', pending: true })
 
     expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined, undefined, {
-      kind: 'user-file'
+      kind: 'chat-image'
     })
   })
 })

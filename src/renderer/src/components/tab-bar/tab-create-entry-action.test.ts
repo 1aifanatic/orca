@@ -14,6 +14,7 @@ describe('openTabEntryWithOperations', () => {
       openWorkspaceBrowserTab: vi.fn().mockResolvedValue(undefined),
       openFile: vi.fn(),
       statRuntimePath: vi.fn().mockResolvedValue({ size: 1, isDirectory: false, mtime: 1 }),
+      statUserOpenedPath: vi.fn().mockResolvedValue({ isDirectory: false, escapesWorktree: false }),
       assertAbsolutePathAllowed: vi.fn(),
       ...overrides
     }
@@ -263,10 +264,9 @@ describe('openTabEntryWithOperations', () => {
       operations
     })
 
-    expect(operations.statRuntimePath).toHaveBeenCalledWith(
+    expect(operations.statUserOpenedPath).toHaveBeenCalledWith(
       baseArgs.runtimeContext,
-      '/tmp/notes.md',
-      { kind: 'user-file' }
+      '/tmp/notes.md'
     )
     expect(operations.openFile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -297,6 +297,27 @@ describe('openTabEntryWithOperations', () => {
     )
   })
 
+  it('opens a typed project link that leads out of the project by its absolute path', async () => {
+    const operations = makeOperations({
+      statUserOpenedPath: vi.fn().mockResolvedValue({ isDirectory: false, escapesWorktree: true })
+    })
+
+    await openTabEntryWithOperations({
+      ...baseArgs,
+      classification: { kind: 'absolute-file', filePath: '/repo/docs-link/secret.md' },
+      query: '/repo/docs-link/secret.md',
+      operations
+    })
+
+    expect(operations.openFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/repo/docs-link/secret.md',
+        relativePath: '/repo/docs-link/secret.md'
+      }),
+      { preview: false, targetGroupId: 'group-1' }
+    )
+  })
+
   it('rejects absolute paths when remote workspaces disallow them', async () => {
     const operations = makeOperations()
 
@@ -310,7 +331,7 @@ describe('openTabEntryWithOperations', () => {
       })
     ).rejects.toThrow(TAB_ENTRY_ABSOLUTE_PATH_REMOTE_BLOCKED_MESSAGE)
 
-    expect(operations.statRuntimePath).not.toHaveBeenCalled()
+    expect(operations.statUserOpenedPath).not.toHaveBeenCalled()
     expect(operations.createRuntimePath).not.toHaveBeenCalled()
     expect(operations.openFile).not.toHaveBeenCalled()
   })
@@ -327,7 +348,7 @@ describe('openTabEntryWithOperations', () => {
       })
     ).rejects.toThrow('Enter an absolute path for this computer.')
 
-    expect(operations.statRuntimePath).not.toHaveBeenCalled()
+    expect(operations.statUserOpenedPath).not.toHaveBeenCalled()
     expect(operations.openFile).not.toHaveBeenCalled()
   })
 
@@ -343,23 +364,22 @@ describe('openTabEntryWithOperations', () => {
       operations
     })
 
-    expect(operations.statRuntimePath).toHaveBeenCalledWith(
+    expect(operations.statUserOpenedPath).toHaveBeenCalledWith(
       baseArgs.runtimeContext,
-      'C:/tmp/notes.md',
-      { kind: 'user-file' }
+      'C:/tmp/notes.md'
     )
   })
 
   it('stops after the file check when ownership becomes remote or ambiguous', async () => {
     let releaseStat: (() => void) | undefined
-    const statResult = new Promise<{ size: number; isDirectory: boolean; mtime: number }>(
+    const statResult = new Promise<{ isDirectory: boolean; escapesWorktree: boolean }>(
       (resolve) => {
-        releaseStat = () => resolve({ size: 1, isDirectory: false, mtime: 1 })
+        releaseStat = () => resolve({ isDirectory: false, escapesWorktree: false })
       }
     )
     let allowed = true
     const operations = makeOperations({
-      statRuntimePath: vi.fn(() => statResult),
+      statUserOpenedPath: vi.fn(() => statResult),
       assertAbsolutePathAllowed: vi.fn(() => {
         if (!allowed) {
           throw new Error(TAB_ENTRY_ABSOLUTE_PATH_REMOTE_BLOCKED_MESSAGE)
@@ -373,7 +393,7 @@ describe('openTabEntryWithOperations', () => {
       query: '/tmp/notes.md',
       operations
     })
-    await vi.waitFor(() => expect(operations.statRuntimePath).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(operations.statUserOpenedPath).toHaveBeenCalledTimes(1))
     const rejection = expect(opening).rejects.toThrow(
       TAB_ENTRY_ABSOLUTE_PATH_REMOTE_BLOCKED_MESSAGE
     )

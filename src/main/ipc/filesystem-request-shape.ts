@@ -10,12 +10,17 @@ import {
 import { isDescendantOrEqual } from './filesystem-path-containment'
 import { PREVIEWABLE_BINARY_MIME_TYPES } from './filesystem/filesystem-file-content-inspection'
 import { getDefaultFloatingWorkspacePath } from './floating-workspace-directory'
+import {
+  isNetworkOrDeviceNamespacePath,
+  isWindowsReservedDeviceName
+} from './automatic-load-path-text'
 import { NOT_A_REGULAR_FILE_MESSAGE } from './filesystem/local-regular-file-read'
 
 export const USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE =
   'Access denied: a file opened by name needs an absolute path.'
 export const DOCUMENT_RESOURCE_TYPE_MESSAGE =
   'Access denied: a document can only load images and PDFs it references.'
+export const CHAT_IMAGE_TYPE_MESSAGE = 'Access denied: a chat can only show local image files.'
 
 /** Desktop IPC's root check: the project roots plus the app-owned floating-workspace folder. */
 export function resolveDesktopAuthorizedPath(
@@ -56,10 +61,18 @@ async function isInsideDesktopRoots(documentPath: string, store: Store): Promise
   }
 }
 
+function isPreviewableBinary(filePath: string): boolean {
+  return Boolean(PREVIEWABLE_BINARY_MIME_TYPES[extname(filePath).toLowerCase()])
+}
+
+function isChatImage(filePath: string): boolean {
+  return isPreviewableBinary(filePath) && extname(filePath).toLowerCase() !== '.pdf'
+}
+
 /**
  * An image or PDF a document references: limited to every project root when the document is in
- * one, else to the document's own folder. Out-of-scope targets are refused by path text before any
- * disk or network access, so a referenced network share is never contacted.
+ * one, else to the document's own folder. A target outside that scope is refused by its path text
+ * before any filesystem call; a symlink inside the scope is still resolved by the scope check.
  */
 export async function resolveDocumentResourcePath(
   targetPath: string,
@@ -70,24 +83,62 @@ export async function resolveDocumentResourcePath(
     typeof targetPath !== 'string' ||
     !isAbsolute(targetPath) ||
     typeof documentPath !== 'string' ||
-    !isAbsolute(documentPath)
+    !isAbsolute(documentPath) ||
+    isWindowsReservedDeviceName(targetPath)
   ) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   const resolvedTarget = resolve(targetPath)
-  if (!PREVIEWABLE_BINARY_MIME_TYPES[extname(resolvedTarget).toLowerCase()]) {
+  if (!isPreviewableBinary(resolvedTarget)) {
     throw new Error(DOCUMENT_RESOURCE_TYPE_MESSAGE)
   }
+  let realTarget: string
   if (await isInsideDesktopRoots(documentPath, store)) {
-    return resolveDesktopAuthorizedPath(resolvedTarget, store)
+    realTarget = await resolveDesktopAuthorizedPath(resolvedTarget, store)
+  } else {
+    const documentFolder = dirname(resolve(documentPath))
+    if (!isDescendantOrEqual(resolvedTarget, documentFolder)) {
+      throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+    }
+    realTarget = resolve(await realpath(resolvedTarget))
+    if (!isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))) {
+      throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+    }
   }
-  const documentFolder = dirname(resolve(documentPath))
-  if (!isDescendantOrEqual(resolvedTarget, documentFolder)) {
+  // Why the real target too: `logo.png -> .env` would otherwise return text.
+  if (!isPreviewableBinary(realTarget)) {
+    throw new Error(DOCUMENT_RESOURCE_TYPE_MESSAGE)
+  }
+  return realTarget
+}
+
+/**
+ * An image shown in a chat transcript, whoever's turn named it: any absolute local image file,
+ * typed by its real target. Network shares and device paths are refused by path text before any
+ * filesystem call, since transcripts load as they scroll into view.
+ */
+export async function resolveChatImagePath(targetPath: string): Promise<string> {
+  if (
+    typeof targetPath !== 'string' ||
+    !isAbsolute(targetPath) ||
+    isWindowsReservedDeviceName(targetPath)
+  ) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
+  const resolvedTarget = resolve(targetPath)
+  if (isNetworkOrDeviceNamespacePath(resolvedTarget)) {
+    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  if (!isChatImage(resolvedTarget)) {
+    throw new Error(CHAT_IMAGE_TYPE_MESSAGE)
+  }
+  // Why the real target too: `shot.png -> ~/.ssh/id_rsa` must not be read as an image.
   const realTarget = resolve(await realpath(resolvedTarget))
-  if (!isDescendantOrEqual(realTarget, resolve(await realpath(documentFolder)))) {
+  if (isNetworkOrDeviceNamespacePath(realTarget) || isWindowsReservedDeviceName(realTarget)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
+  }
+  if (!isChatImage(realTarget)) {
+    throw new Error(CHAT_IMAGE_TYPE_MESSAGE)
   }
   return realTarget
 }
@@ -99,6 +150,9 @@ function parseLocalFileAccess(access: unknown): LocalFileAccess | undefined {
   }
   if (access.kind === 'user-file') {
     return { kind: 'user-file' }
+  }
+  if (access.kind === 'chat-image') {
+    return { kind: 'chat-image' }
   }
   if (
     access.kind === 'document-resource' &&
@@ -122,6 +176,9 @@ export async function resolveLocalFileRequestPath(
   }
   if (shape?.kind === 'document-resource') {
     return resolveDocumentResourcePath(targetPath, shape.documentPath, store)
+  }
+  if (shape?.kind === 'chat-image') {
+    return resolveChatImagePath(targetPath)
   }
   return resolveDesktopAuthorizedPath(targetPath, store)
 }
