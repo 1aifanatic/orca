@@ -64,7 +64,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import {
   getStructuredAgentSessionTabs,
   StructuredAgentSessionStatusBridge,
-  useStructuredAgentSessionHostExecution
+  useStructuredAgentSessionHostExecutionPhase
 } from './StructuredAgentSessionStatusBridge'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
 
@@ -698,10 +698,10 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(mocks.setAgentStatus).not.toHaveBeenCalled()
   })
 
-  it('re-renders a startup reader only when its phase or child changes', async () => {
-    const executions: ReturnType<typeof useStructuredAgentSessionHostExecution>[] = []
+  it('re-renders a startup reader only when its phase changes', async () => {
+    const phases: ReturnType<typeof useStructuredAgentSessionHostExecutionPhase>[] = []
     function PhaseProbe(): null {
-      executions.push(useStructuredAgentSessionHostExecution('session-1', { kind: 'local' }))
+      phases.push(useStructuredAgentSessionHostExecutionPhase('session-1', { kind: 'local' }))
       return null
     }
     render(<PhaseProbe />)
@@ -716,7 +716,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
         })
       })
     )
-    const rendersWhileStarting = executions.length
+    const rendersWhileStarting = phases.length
     act(() =>
       feed().emit({
         type: 'status',
@@ -728,7 +728,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
         })
       })
     )
-    expect(executions).toHaveLength(rendersWhileStarting)
+    expect(phases).toHaveLength(rendersWhileStarting)
     act(() =>
       feed().emit({
         type: 'status',
@@ -738,7 +738,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
         })
       })
     )
-    expect(executions).toHaveLength(rendersWhileStarting)
+    expect(phases).toHaveLength(rendersWhileStarting)
 
     act(() =>
       feed().emit({
@@ -749,7 +749,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
         })
       })
     )
-    expect(executions.at(-1)?.phase).toBe('ready')
+    expect(phases.at(-1)).toBe('ready')
     act(() =>
       feed().emit({
         type: 'status',
@@ -759,41 +759,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
         })
       })
     )
-    expect(executions.at(-1)).toEqual({
-      phase: 'starting',
-      childKey: 'child-2'
-    })
-    expect(executions.some(({ phase }) => phase === 'starting')).toBe(true)
-  })
-
-  it('uses the fence for a child whose acquisition has no generation', async () => {
-    const executions: ReturnType<typeof useStructuredAgentSessionHostExecution>[] = []
-    function PhaseProbe(): null {
-      executions.push(useStructuredAgentSessionHostExecution('session-1', { kind: 'local' }))
-      return null
-    }
-    render(<PhaseProbe />)
-    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: null, fence: 1 }
-        })
-      })
-    )
-    expect(executions.at(-1)?.childKey).toBe(1)
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: null, fence: 2 }
-        })
-      })
-    )
-    expect(executions.at(-1)?.childKey).toBe(2)
+    expect(phases.at(-1)).toBe('starting')
   })
 })
 
