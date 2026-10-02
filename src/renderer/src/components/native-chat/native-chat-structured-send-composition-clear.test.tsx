@@ -478,6 +478,55 @@ describe('the saved draft at send', () => {
     }
   )
 
+  // The whole clear a real send does: text, image chips and the editor. No write of the emptied
+  // box may reach the store before the host has the message.
+  it('writes nothing without the message until the host has it, with images attached', async () => {
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        ...window.api,
+        fs: {
+          authorizeExternalPath: vi.fn(async () => {}),
+          pathsExist: vi.fn(async () => [{ exists: true }])
+        }
+      }
+    })
+    const drafts = installLocalStorageNativeChatDrafts({ like: 'desktop' })
+    const saves: { text: string; chips: number }[] = []
+    installNativeChatDrafts({
+      ...drafts,
+      write: (scopeKey, draft) => {
+        saves.push({ text: draft?.text ?? '', chips: draft?.attachments.length ?? 0 })
+        return drafts.write(scopeKey, draft)
+      }
+    })
+    const structured = outboxTransport()
+    const chat = nativeChatDraftKey({ sessionId: structured.sessionId, paneKey: '' })
+    act(
+      () =>
+        void appendNativeChatDraftNow(chat, {
+          text: 'look at this',
+          attachments: [{ id: 'shot', path: '/shot.png', location: 'local' }]
+        })
+    )
+    renderComposer(structured)
+    await act(async () => {})
+    const input = textarea()
+    saves.length = 0
+
+    await act(async () => pressEnter(input))
+    await act(async () => {})
+
+    expect(structured.send).toHaveBeenCalledOnce()
+    expect(promptValue(input)).toBe('')
+    expect(saves.filter((save) => save.text === '' || save.chips === 0)).toEqual([])
+    expect(savedText()).toBe('look at this')
+
+    hostTakes(structured)
+    await act(async () => {})
+    expect(saves.at(-1)).toEqual({ text: '', chips: 0 })
+  })
+
   it('keeps what was typed after Enter when the host takes the message', async () => {
     const structured = outboxTransport()
     const input = await sendTyped(structured, 'ship it')

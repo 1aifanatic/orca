@@ -7,8 +7,12 @@ import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-sen
 import { sendNativeChatMessage } from './native-chat-runtime-send'
 import { sendNativeChatMessageWithImageAttachments } from './native-chat-runtime-image-send'
 import {
+  addNativeChatDraftAttachments,
+  clearNativeChatDraftAttachments,
   clearNativeChatDraftCacheForTests,
-  writeNativeChatDraftCache
+  forgetNativeChatTuiInputSeeds,
+  writeNativeChatDraftCache,
+  writeNativeChatDraftTuiInputSeed
 } from './native-chat-draft-cache'
 import { installNativeChatDrafts } from './native-chat-draft-store.test-support'
 
@@ -28,7 +32,8 @@ vi.mock('./native-chat-runtime-image-send', () => ({
   sendNativeChatMessageWithImageAttachments: vi.fn(() => handle)
 }))
 vi.mock('../../store', () => ({
-  useAppStore: { getState: () => ({ clearNativeChatLaunchDraft: vi.fn() }) }
+  // As the store does: dropping the launch draft forgets its input-line seeds.
+  useAppStore: { getState: () => ({ clearNativeChatLaunchDraft: forgetNativeChatTuiInputSeeds }) }
 }))
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
 
@@ -38,7 +43,8 @@ function send(
   agent: AgentType,
   classification: NativeChatSendClassification,
   draft: string,
-  imagePaths: string[] = []
+  imagePaths: string[] = [],
+  clearImageAttachments: () => void = vi.fn()
 ) {
   const callbacks = { rejected: vi.fn(), unconfirmed: vi.fn() }
   const { result } = renderHook(() =>
@@ -62,7 +68,7 @@ function send(
       setDraft: (value: string) => writeNativeChatDraftCache(DRAFT_KEY, value, 'now'),
       setCaret: vi.fn(),
       clearSkillOrigin: vi.fn(),
-      clearImageAttachments: vi.fn(),
+      clearImageAttachments,
       setNotice: vi.fn()
     })
   )
@@ -190,5 +196,39 @@ describe('the saved draft at send', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(saved).toEqual(['hello'])
+  })
+
+  // The whole clear a real send does: text, image chips, editor and the launch seed.
+  it('writes nothing without the message until the terminal write ran, with images and a seed', async () => {
+    const writes: { text: string; chips: number; seed: boolean }[] = []
+    installNativeChatDrafts({
+      load: async () => [],
+      loadSync: () => [],
+      write: async (_scopeKey, draft) => {
+        writes.push({
+          text: draft?.text ?? '',
+          chips: draft?.attachments.length ?? 0,
+          seed: draft?.tuiInputSeed !== undefined
+        })
+        return 'persisted'
+      }
+    })
+    writeNativeChatDraftTuiInputSeed(DRAFT_KEY, { agent: 'claude', text: 'Fix #12', createdAt: 1 })
+    addNativeChatDraftAttachments(DRAFT_KEY, [
+      { id: 'shot', path: '/tmp/shot.png', location: 'local' }
+    ])
+    writeNativeChatDraftCache(DRAFT_KEY, 'look', 'now')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    writes.length = 0
+    const finish = writeRuns()
+
+    send('claude', 'chat', 'look', ['/tmp/shot.png'], () =>
+      clearNativeChatDraftAttachments(DRAFT_KEY)
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(writes).toEqual([])
+    finish()
+    await vi.waitFor(() => expect(writes.at(-1)).toEqual({ text: '', chips: 0, seed: false }))
   })
 })
