@@ -195,6 +195,8 @@ describe('RpcClientStreamRegistry', () => {
   it.each([
     ['browser.screencast', 'browser.screencast.unsubscribe', { page: 'page-1' }],
     ['runtime.clientEvents.subscribe', 'runtime.clientEvents.unsubscribe', null],
+    ['notifications.subscribe', 'notifications.unsubscribe', null],
+    ['accounts.subscribe', 'accounts.unsubscribe', null],
     ['session.tabs.subscribe', 'session.tabs.unsubscribe', { worktree: 'wt-1' }]
   ])(
     'releases canceled %s callbacks while preserving late host cleanup',
@@ -266,6 +268,8 @@ describe('RpcClientStreamRegistry', () => {
   describe.each([
     ['browser.screencast', 'browser.screencast.unsubscribe', { page: 'page-1' }],
     ['runtime.clientEvents.subscribe', 'runtime.clientEvents.unsubscribe', null],
+    ['notifications.subscribe', 'notifications.unsubscribe', null],
+    ['accounts.subscribe', 'accounts.unsubscribe', null],
     ['session.tabs.subscribe', 'session.tabs.unsubscribe', { worktree: 'wt-1' }]
   ])('canceled %s delivery', (method, cleanup, params) => {
     it('ignores late scrollback and terminal registration while waiting for host cleanup', () => {
@@ -438,6 +442,8 @@ describe('RpcClientStreamRegistry', () => {
 
   describe.each([
     ['runtime.clientEvents.subscribe', 'runtime.clientEvents.unsubscribe', null],
+    ['notifications.subscribe', 'notifications.unsubscribe', null],
+    ['accounts.subscribe', 'accounts.unsubscribe', null],
     ['browser.screencast', 'browser.screencast.unsubscribe', { page: 'page-1' }]
   ])('%s ready id across a replay', (method, unsubscribeMethod, params) => {
     function unsubscribes(sent: SentRequest[]): unknown[] {
