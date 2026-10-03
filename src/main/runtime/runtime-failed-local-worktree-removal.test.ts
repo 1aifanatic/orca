@@ -444,6 +444,32 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(removeHostTree).not.toHaveBeenCalled()
   })
 
+  it('at startup, checks the folder is still the recorded checkout inside the delete slot when Git cannot remove it', async () => {
+    await setImmutable(false)
+    await rm(join(worktreePath, '.git'))
+    vi.mocked(restoreMissingWorktreeGitFile).mockResolvedValueOnce(false)
+    let releaseSlots = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      releaseSlots = resolve
+    })
+    const holders = [
+      runUnderWorktreeDeleteLimit(() => held),
+      runUnderWorktreeDeleteLimit(() => held)
+    ]
+    const finished = finishAtStartup([])
+    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
+    // While it waits, the user replaces the checkout with an ordinary folder.
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
+    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
+    releaseSlots()
+    await Promise.all(holders)
+
+    expect(String(await finished)).toMatch(/is not the one Orca started deleting/)
+    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+  })
+
   it('at startup, still deletes the recorded checkout when its missing .git cannot be restored', async () => {
     await setImmutable(false)
     // Git deleted `.git` first and the link cannot be written back, so Git cannot remove it.
