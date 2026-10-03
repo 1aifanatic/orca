@@ -16973,6 +16973,8 @@
           "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts",
           "assertions": [
             "repaints a pushed image exactly and keeps the history the TUI covers",
+            "replaces history exactly when the host screen has another grid",
+            "clears a raw byte replay in place on the alt screen",
             "paints a requested image exactly over a live alt screen"
           ]
         },

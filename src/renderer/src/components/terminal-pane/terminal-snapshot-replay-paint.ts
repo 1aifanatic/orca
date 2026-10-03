@@ -5,12 +5,6 @@ import {
   buildSnapshotReplayPrologue
 } from '../../../../shared/terminal-mode-reset-profiles'
 
-// Once only: CAN must precede the first ESC of the replay, but the split branch
-// builds two prologues and later writes follow well-formed payloads.
-function abortGapBeforeFirstWrite(writes: string[]): string[] {
-  return [`${ABORT_TRUNCATED_CONTROL_STRING}${writes[0]}`, ...writes.slice(1)]
-}
-
 /**
  * Shared guards and write choreography for painting a main-model snapshot into
  * a (possibly fresh) xterm. One source for the reattach/hidden-restore paint
@@ -67,7 +61,7 @@ export function shouldSkipAltFrameForWidthMismatch(
   return snapshotCols > targetCols
 }
 
-/** Grounds a pane on the normal buffer for an image that starts there and enters alt itself. */
+/** First write of a replay that starts on the normal buffer; CAN aborts a control string the gap truncated. */
 export function buildNormalBufferSnapshotPreamble(args: {
   paneOnAlternateScreen: boolean
   keepScrollback?: boolean
@@ -101,10 +95,6 @@ export function buildMainModelSnapshotReplayWrites(
   options: { skipAltFrame?: boolean; paneOnAlternateScreen: boolean }
 ): string[] {
   const { paneOnAlternateScreen } = options
-  const normalPrologue = buildSnapshotReplayPrologue({
-    targetAlternateScreen: false,
-    paneOnAlternateScreen
-  })
   // The alt payload always follows a hop through the normal buffer in the split
   // branch, so its own switch is judged from there, not from where we started.
   const altPrologue = (fromAlternateScreen: boolean): string =>
@@ -117,8 +107,9 @@ export function buildMainModelSnapshotReplayWrites(
   // the restored history would paint into the alt buffer, looking right while
   // scrollback stays empty (STA-4042). An image carrying its normal buffer
   // enters alt itself, so it needs the same start.
+  const normalPreamble = buildNormalBufferSnapshotPreamble({ paneOnAlternateScreen })
   if (!snapshot.alternateScreen || snapshot.carriesNormalBuffer) {
-    return [buildNormalBufferSnapshotPreamble({ paneOnAlternateScreen }), snapshot.data]
+    return [normalPreamble, snapshot.data]
   }
   // Older snapshot producers do not expose the mode/frame boundary. Keep their
   // composed data rather than dropping terminal modes together with the frame.
@@ -130,14 +121,9 @@ export function buildMainModelSnapshotReplayWrites(
     // Why a prologue per payload: main serializes the buffers separately and
     // each is diffed against the baseline. scrollbackAnsi used to replay before
     // any reset at all, so the history inherited the stale state (STA-4042).
-    return abortGapBeforeFirstWrite([
-      normalPrologue,
-      snapshot.scrollbackAnsi,
-      altPrologue(false),
-      ...altFrame
-    ])
+    return [normalPreamble, snapshot.scrollbackAnsi, altPrologue(false), ...altFrame]
   }
   // Why the prologue clears: `?1049h` does not clear the alt buffer, so the
   // pre-hide frame would bleed through the snapshot's blank cells.
-  return abortGapBeforeFirstWrite([altPrologue(paneOnAlternateScreen), ...altFrame])
+  return [`${ABORT_TRUNCATED_CONTROL_STRING}${altPrologue(paneOnAlternateScreen)}`, ...altFrame]
 }

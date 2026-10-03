@@ -122,6 +122,7 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
       // Why ahead of the source-grid resize: the clear is grid-independent, so
       // dropping the scrollback first spares a reflow of history the very next
       // sequence discards (see use-terminal-container-fit-sync.ts on its cost).
+      const sourceGrid = resolvePositiveTerminalDimensions(snapshotCols, snapshotRows)
       if (clearBeforeReplay) {
         if (carriesNormalBuffer) {
           // Why the buffer is read after queued output parses: a TUI's own ?1049h
@@ -131,17 +132,22 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
             continue
           }
         }
-        // Both clears release the 2026 latch a severed frame can leave open, which
-        // \x1b[2J alone does not. An image starts on the normal buffer and enters alt
-        // itself, so cleared in place on a TUI's alt screen its normal screen paints
-        // into the TUI. Pushed images carry only their screen, so the history a TUI
-        // covers is kept. Raw byte replays keep the in-place clear.
+        // Why images get the snapshot preamble: they start on the normal buffer and
+        // enter alt themselves, so a clear in place on alt paints their normal screen
+        // into the TUI. Raw byte replays keep the in-place clear.
         const paneOnAlternateScreen = session.isPaneOnAlternateScreen()
+        const atSourceGrid =
+          !sourceGrid ||
+          (session.pane.terminal.cols === sourceGrid.cols &&
+            session.pane.terminal.rows === sourceGrid.rows)
         await session.writeReplayDataAsync(
           carriesNormalBuffer
             ? buildNormalBufferSnapshotPreamble({
                 paneOnAlternateScreen,
-                keepScrollback: paneOnAlternateScreen
+                // Why: a pushed image carries only its screen; under a live TUI the
+                // normal buffer is frozen, so the pane's history continues that screen
+                // exactly only when both share a grid.
+                keepScrollback: paneOnAlternateScreen && atSourceGrid
               })
             : `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`
         )
@@ -153,7 +159,6 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
       // to the grid the host serialized it at. Parsing it at the pane's own grid
       // clips or re-wraps the image, and an idle TUI never repaints to correct
       // it — the pane stays blank until the next byte arrives.
-      const sourceGrid = resolvePositiveTerminalDimensions(snapshotCols, snapshotRows)
       if (
         sourceGrid &&
         (session.pane.terminal.cols !== sourceGrid.cols ||

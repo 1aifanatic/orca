@@ -108,7 +108,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           // mid-session; clear the screen before applying it. An empty snapshot is
           // still applied so stale dropped output does not linger on a terminal
           // the model says is blank. No \x1b[3J: the image carries only its screen,
-          // so history stays (a pane's replay drain picks the buffer first).
+          // and the pane's replay drain owns the history policy.
           // RELEASE_SYNCHRONIZED_OUTPUT: \x1b[2J does not clear mode 2026, so a pane
           // holding an open latch would not paint this recovery snapshot at all.
           stream.callbacks.onSnapshot(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[H${data ?? ''}`, {
