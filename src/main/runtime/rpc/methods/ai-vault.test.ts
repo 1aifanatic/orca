@@ -306,11 +306,11 @@ describe('aiVault.listSessions handler + shared cache', () => {
     )
     await dispatcher.dispatch(makeRequest('aiVault.listSessions', {}))
     await dispatcher.dispatch(makeRequest('aiVault.listSessions', {}))
-    expect(scanAiVaultSessionsInWorker).toHaveBeenCalledTimes(2)
-    expect(scanAiVaultSessionsInWorker.mock.calls[0]?.[0]).toMatchObject({
+    expect(scanAiVaultSessionsInService).toHaveBeenCalledTimes(2)
+    expect(scanAiVaultSessionsInService.mock.calls[0]?.[0]).toMatchObject({
       includeAntigravityIdeSessions: true
     })
-    expect(scanAiVaultSessionsInWorker.mock.calls[1]?.[0]?.includeAntigravityIdeSessions).not.toBe(
+    expect(scanAiVaultSessionsInService.mock.calls[1]?.[0]?.includeAntigravityIdeSessions).not.toBe(
       true
     )
   })
