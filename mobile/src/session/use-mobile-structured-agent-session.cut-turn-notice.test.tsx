@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
+import type { RpcResponse } from '../transport/types'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -80,15 +81,22 @@ describe('useMobileStructuredAgentSession transcript', () => {
   it('shows a cut turn no row explains with the one notice desktop shows, in that turn', async () => {
     let listener: ((value: unknown) => void) | null = null
     const client: Pick<RpcClient, 'sendRequest' | 'subscribe'> = {
-      sendRequest: vi.fn(async () => ({ ok: true, result: {}, _meta: { runtimeId: 'runtime-1' } })),
+      sendRequest: vi.fn(async (): Promise<RpcResponse> => ({
+        id: 'response-1',
+        ok: true,
+        result: {},
+        _meta: { runtimeId: 'runtime-1' }
+      })),
       subscribe: vi.fn((_method: string, _params: unknown, onData: (value: unknown) => void) => {
         listener = onData
         return () => {}
       })
     }
-    let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
+    const rendered: { hook: ReturnType<typeof useMobileStructuredAgentSession> | null } = {
+      hook: null
+    }
     function Harness(): null {
-      hook = useMobileStructuredAgentSession({
+      rendered.hook = useMobileStructuredAgentSession({
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook calls only sendRequest and subscribe, both provided.
         client: client as RpcClient,
         sessionId: 'session-1',
@@ -108,7 +116,7 @@ describe('useMobileStructuredAgentSession transcript', () => {
     act(() => listener?.(snapshot(ITEMS)))
 
     await vi.waitFor(() =>
-      expect(hook?.session.messages.at(-1)).toMatchObject({
+      expect(rendered.hook?.session.messages.at(-1)).toMatchObject({
         role: 'system',
         blocks: [
           {
@@ -119,6 +127,6 @@ describe('useMobileStructuredAgentSession transcript', () => {
       })
     )
     // The turn bars place rows by the same items, so the notice joins the cut turn.
-    expect(hook?.turnJournal.items.at(-1)).toMatchObject({ turnScope: SCOPE })
+    expect(rendered.hook?.turnJournal.items.at(-1)).toMatchObject({ turnScope: SCOPE })
   })
 })
