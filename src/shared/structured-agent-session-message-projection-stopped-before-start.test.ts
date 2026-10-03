@@ -273,6 +273,69 @@ describe('a send a Stop took back before the agent started it', () => {
     ])
   })
 
+  // Two sends queued during /compact: the first was handed over (its row moved to the handover),
+  // the second never was, and one Stop took both back.
+  it('keeps two sends it took back in the order they were sent', () => {
+    const compactTurn = 'compact-turn'
+    const items = [
+      sent('compact', '/compact'),
+      entry(compactTurn, {
+        kind: 'turn',
+        turnId: compactTurn,
+        state: 'completed',
+        userItemId: agentJournalSubmissionKey('compact')
+      }),
+      sent('queued-second', 'queued second'),
+      said('compacted', 'Context compacted', compactTurn),
+      sent('queued-first', 'queued first')
+    ]
+
+    expect(
+      rows(items, [
+        submission('compact', { submittedAt: 1 }),
+        stopped('queued-first', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+        stopped('queued-second', { submittedAt: 3, handoverRecorded: true })
+      ])
+    ).toEqual([
+      user('compact'),
+      { id: 'compacted', role: 'assistant' },
+      user('queued-first'),
+      user('queued-second'),
+      stopRow('queued-second')
+    ])
+  })
+
+  // The first taken back by one Stop, a later send by another: each stays where it was sent.
+  it('keeps a send a later Stop took back below one an earlier Stop took', () => {
+    const compactTurn = 'compact-turn'
+    const items = [
+      sent('compact', '/compact'),
+      entry(compactTurn, {
+        kind: 'turn',
+        turnId: compactTurn,
+        state: 'completed',
+        userItemId: agentJournalSubmissionKey('compact')
+      }),
+      sent('queued', 'queued during compact'),
+      said('compacted', 'Context compacted', compactTurn),
+      sent('later', 'sent after the first Stop')
+    ]
+
+    expect(
+      rows(items, [
+        submission('compact', { submittedAt: 1 }),
+        stopped('queued', { submittedAt: 2, handoverRecorded: true }),
+        stopped('later', { submittedAt: 9, handoverRecorded: true, handedOverAt: 10 })
+      ])
+    ).toEqual([
+      user('compact'),
+      { id: 'compacted', role: 'assistant' },
+      user('queued'),
+      user('later'),
+      stopRow('later')
+    ])
+  })
+
   it('leaves a queued card to hold its own text', () => {
     const items = [sent('card-send', 'from a card')]
 

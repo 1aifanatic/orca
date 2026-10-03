@@ -1,10 +1,16 @@
 // A send a Stop took back before the agent started it: where it is drawn, and the one row after it.
 
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   agentJournalItemPosition,
-  compareAgentJournalItems
+  compareAgentJournalItems,
+  compareAgentJournalPositions
 } from './agent-session-journal-position'
-import type { AgentJournalPosition, AgentJournalRenderItem } from './agent-session-journal-types'
+import type {
+  AgentJournalPosition,
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from './agent-session-journal-types'
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
 
 /** The row after a send a Stop took back before the agent started it; a client words it by this. */
@@ -51,6 +57,45 @@ export function stoppedSendPosition(
   const position = agentJournalItemPosition(last)
   // Just after that turn's last row, ahead of whatever the journal wrote next.
   return last === item ? position : { sequence: position.sequence, index: position.index + 0.5 }
+}
+
+/**
+ * Sends a Stop took back (`stopped`, by id) keep the order they were sent in: a later one is drawn
+ * no earlier than just after an earlier one. Sent order is `submittedAt`, the host's accept time,
+ * ties kept in list order as the client reducer keeps them; a client never sees a handed-over
+ * send's acceptance position (STA-9337). Returns whether it moved any.
+ */
+export function keepStoppedSendsInSendOrder(
+  messages: NativeChatMessage[],
+  submissions: readonly AgentJournalSubmission[],
+  stopped: ReadonlySet<string>
+): boolean {
+  const indexById = new Map(messages.map((message, index) => [message.id, index]))
+  const sent = submissions
+    .map((submission, order) => ({
+      index: indexById.get(agentJournalSubmissionKey(submission.clientMessageId)),
+      submittedAt: submission.submittedAt,
+      order
+    }))
+    .filter((entry) => entry.index !== undefined && stopped.has(messages[entry.index]!.id))
+    .sort((left, right) => left.submittedAt - right.submittedAt || left.order - right.order)
+  let floor: AgentJournalPosition | undefined
+  let moved = false
+  for (const { index } of sent) {
+    const message = messages[index!]!
+    const position = message.journalPosition
+    if (!position) {
+      continue
+    }
+    if (floor && compareAgentJournalPositions(position, floor) <= 0) {
+      floor = { sequence: floor.sequence, index: floor.index + 1 / 1024 }
+      messages[index!] = { ...message, journalPosition: floor }
+      moved = true
+    } else {
+      floor = position
+    }
+  }
+  return moved
 }
 
 /** One row after each run of sends a Stop took back (`stopped`, by id), placed with the last. */

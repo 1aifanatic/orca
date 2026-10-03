@@ -7,6 +7,7 @@ import {
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import {
+  keepStoppedSendsInSendOrder,
   stoppedSendPosition,
   withStopRowsAfterStoppedSends
 } from './native-chat-stopped-before-start'
@@ -91,6 +92,7 @@ export function projectStructuredAgentSessionMessages(
       delivered.push(message)
     }
   }
+  moved = keepStoppedSendsInSendOrder(delivered, submissions, shownStopped) || moved
   return [
     // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...withStopRowsAfterStoppedSends(
