@@ -39,11 +39,9 @@ export function registerMacUpdaterEvents({
     if (!shouldDeferMacQuitForInstall()) {
       return
     }
+    // Why: an Update & Restart is checking blockers or cleaning up; a second quit must not tear down underneath it.
     if (macInstallPreflightInProgress) {
       event.preventDefault()
-      return
-    }
-    if (macQuitWithoutInstallAllowed) {
       return
     }
     if (consumeMacInstallGuardBypass()) {
@@ -51,16 +49,6 @@ export function registerMacUpdaterEvents({
       return
     }
     if (isMacQuitAndInstallInFlight()) {
-      return
-    }
-    // Squirrel also installs on ordinary quit; use the same checks as Update & Restart.
-    if (
-      process.platform === 'darwin' &&
-      isMacInstallerReady() &&
-      hasInstallableDownloadedVersion()
-    ) {
-      event.preventDefault()
-      void performQuitAndInstall()
       return
     }
     if (
@@ -82,13 +70,10 @@ export function registerMacUpdaterEvents({
 /** Whether Squirrel.Mac has finished downloading the update from the localhost proxy. */
 let squirrelReady = false
 let macInstallPreflightInProgress = false
-// Why: ordinary quit runs twice while main awaits its will-quit teardown.
-let macQuitWithoutInstallAllowed = false
 
 export function setMacInstallPreflightInProgress(value: boolean): void {
   macInstallPreflightInProgress = value
   if (value) {
-    macQuitWithoutInstallAllowed = false
     bypassMacInstallGuardOnce = false
   }
 }
@@ -113,7 +98,6 @@ function clearPendingInstallTimeout(): void {
 
 export function resetMacInstallState(): void {
   macInstallPreflightInProgress = false
-  macQuitWithoutInstallAllowed = false
   installRequestedAfterSquirrelReady = false
   quitAndInstallInFlight = false
   bypassMacInstallGuardOnce = false
@@ -130,10 +114,6 @@ export function markMacQuitAndInstallInFlight(): void {
   quitAndInstallInFlight = true
   bypassMacInstallGuardOnce = false
   clearPendingInstallTimeout()
-}
-
-export function allowMacQuitWithoutInstall(): void {
-  macQuitWithoutInstallAllowed = true
 }
 
 export function consumeMacInstallGuardBypass(): boolean {

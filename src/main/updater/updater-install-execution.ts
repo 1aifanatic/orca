@@ -5,8 +5,7 @@ import { runWithLaunchPath } from '../startup/hydrate-shell-path'
 import {
   markMacQuitAndInstallInFlight,
   isMacInstallerReady,
-  setMacInstallPreflightInProgress,
-  allowMacQuitWithoutInstall
+  setMacInstallPreflightInProgress
 } from '../updater-mac-install'
 import { getMacUpdateRunningInstances } from '../macos-update-running-instances'
 import { armUpdateInstallExitWatchdog } from '../update-install-exit-watchdog'
@@ -72,7 +71,6 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
           blockers = await getMacUpdateRunningInstances()
         } catch {
           this.resetQuitForUpdateState()
-          allowMacQuitWithoutInstall()
           this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
           this.sendInstallFailureStatus({
             state: 'error',
@@ -86,7 +84,6 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
         }
         if (blockers.length > 0) {
           this.resetQuitForUpdateState()
-          allowMacQuitWithoutInstall()
           this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
           this.sendInstallFailureStatus({
             state: 'error',
@@ -203,9 +200,6 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
       const quitAndInstallNativeInvokedBeforeReset = this.quitAndInstallNativeInvoked
       failServeUpdateHandoff('Could not invoke the native updater.')
       this.resetQuitForUpdateState()
-      if (process.platform === 'darwin') {
-        allowMacQuitWithoutInstall()
-      }
       recordUpdaterLifecycle(
         'quit_and_install_failed',
         { errorType: error instanceof Error ? error.name : typeof error },
@@ -235,9 +229,6 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
     }
     failServeUpdateHandoff('The native updater rejected the install request.')
     this.resetQuitForUpdateState()
-    if (process.platform === 'darwin') {
-      allowMacQuitWithoutInstall()
-    }
     recordUpdaterLifecycle(
       'quit_and_install_failed_via_event',
       { errorType: error instanceof Error ? error.name : typeof error },
