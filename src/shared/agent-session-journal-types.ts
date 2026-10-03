@@ -414,8 +414,9 @@ export type AgentJournalSubmission = {
   /** Where the journal wrote this submission's row: its sequence, recomputed on every fold and
    *  never stored. Absent from hosts that predate it. */
   submittedSequence?: number
-  /** Where the journal wrote the dispatch row that resolved it, in the same order; absent while it
-   *  is pending, and from hosts that predate it. */
+  /** Where the journal wrote the row that resolved it, in the same order: its dispatch row, or the
+   *  provider's echo (an item or lifecycle-batch row) when that accepted it. Absent while it is
+   *  pending, and from hosts that predate it. */
   resolvedSequence?: number
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live
    *  `unknown` is a send still outstanding; a recovered one outlived its writer. */
@@ -426,8 +427,8 @@ export type AgentJournalSubmission = {
   /** When the host handed it to the provider (its `dispatch{pending}` row). */
   handedOverAt?: number
   /** Host-only: the submission row's sequence, which tells which host process accepted it. Set
-   *  only on a send accepted for later handover. The snapshot still carries it, undeclared to
-   *  clients; no released client reads it, and clients read `submittedSequence` instead. */
+   *  only on a send accepted for later handover. The snapshot still carries it, but the submission
+   *  schema omits it; no released client reads it, and clients read `submittedSequence` instead. */
   acceptedSequence?: number
   /** The queued draft this submission hands off; absent for a direct send. Read this, never
    *  a draft id compared with `clientMessageId`. */
