@@ -194,10 +194,7 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-  },
-  /** Sent while a person's Stop ends the work: queued to run when the stop lands, whatever the
-   *  session reads, short of a hold that refuses any send. */
-  afterStop = false
+  }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
   | { ok: false; refusal: AgentSessionWireRefusal }
@@ -218,16 +215,13 @@ export async function maybeQueueStructuredAgentSessionSend(
     return null
   }
   // A newer Orca's journal takes no new draft: the immediate path refuses the send.
-  const hold = {
-    journal: ctx.journal,
-    record: context.deps.store.getRecord(ctx.sessionId),
-    fence: ctx.fence
-  }
   if (
     ctx.journal.isReadOnly ||
-    (afterStop
-      ? structuredQueueHold(hold) === 'blocked'
-      : !shouldQueueStructuredAgentSessionSend(hold))
+    !shouldQueueStructuredAgentSessionSend({
+      journal: ctx.journal,
+      record: context.deps.store.getRecord(ctx.sessionId),
+      fence: ctx.fence
+    })
   ) {
     return null
   }

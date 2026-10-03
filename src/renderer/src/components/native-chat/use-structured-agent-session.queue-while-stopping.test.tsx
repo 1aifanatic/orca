@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 
-// A message sent while the chat reads Stopping, through the chat's own send and its real outbox.
-// Where the host queues sends, the request asks it to, whatever the queueing setting, and the
-// transcript draws no bubble of it. Where it does not, the send goes out plain, for the host to hold
-// until the stop lands, and is marked as sent while stopping, so it draws after the Stopping line.
+// A message sent while the chat reads Stopping, through the chat's own send and its real outbox:
+// where the host does not queue sends, it goes out plain, for the host to hold until the stop lands,
+// and is marked as sent while stopping, so it draws after the Stopping line.
 
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -29,10 +28,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
   })
 }))
 
-import {
-  AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
-  AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
-} from '../../../../shared/protocol-version'
+import { AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { clearNativeChatDraftCacheForTests } from './native-chat-draft-cache'
 import { useStructuredAgentSession } from './use-structured-agent-session'
@@ -55,10 +51,8 @@ beforeEach(() => {
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
   items = [RUNNING_TURN]
-  setLocalRuntimeCapabilitiesForTests([
-    AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
-    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
-  ])
+  // A host that does not queue sends, as every shipped host does not yet.
+  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   // The host has not answered yet: the send is still on its way, as while a Stop holds the lane.
   mocks.call.mockImplementation(() => new Promise(() => {}))
 })
@@ -83,18 +77,7 @@ function renderStopping() {
   )
 }
 
-it('asks the host to queue a send made while the host reads Stopping, and draws no bubble', async () => {
-  const { result } = renderStopping()
-
-  expect(result.current.send('run this after the stop')).toBe(true)
-
-  await waitFor(() => expect(sends()).toHaveLength(1))
-  expect(sends()[0]?.delivery).toBe('queue-if-active')
-  expect(JSON.stringify(result.current.messages)).not.toContain('run this after the stop')
-})
-
 it('sends plain where the host does not queue sends, marked as sent while stopping', async () => {
-  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   const { result } = renderStopping()
 
   expect(result.current.send('run this after the stop')).toBe(true)
@@ -110,7 +93,6 @@ it('sends plain where the host does not queue sends, marked as sent while stoppi
 
 // Sent before the Stop, the host steers it into the turn: it is not one held behind the Stop.
 it('does not mark a send made before the chat read Stopping', async () => {
-  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   const { result, rerender } = renderHook(
     ({ hostStopping }: { hostStopping: boolean }) =>
       useStructuredAgentSession({

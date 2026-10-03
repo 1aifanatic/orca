@@ -121,8 +121,6 @@ export function useStructuredAgentSession(args: {
     [transportState.queuedMessages]
   )
   const stopPress = useStructuredAgentSessionStopPress(sessionId)
-  // While a Stop ends the turn there is nothing to steer into: a send is queued to run after it,
-  // whatever the setting.
   const stopping =
     agentStopDisplayStatus({
       working: transportState.isWorking,
@@ -130,8 +128,8 @@ export function useStructuredAgentSession(args: {
       stopPressed: stopPress.pressed
     }) === 'stopping'
   const queueDelivery = useMemo(
-    () => ({ capability: queueCapability, enabled: queueFollowUps || stopping }),
-    [queueCapability, queueFollowUps, stopping]
+    () => ({ capability: queueCapability, enabled: queueFollowUps }),
+    [queueCapability, queueFollowUps]
   )
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
