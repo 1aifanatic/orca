@@ -2,9 +2,14 @@
 // it, for tests. From app-server `turn_processor.rs`: `turn/start` picks the turn before it
 // answers, a send while a turn is open is steered into it under the same id with no
 // second `turn/started`, `turn/steer` refuses with -32600 unless its `expectedTurnId` is
-// the running turn, and `turn_interrupt_inner` refuses with -32600 until the
-// turn has started. The answer can be held, so a test can deliver it after the
-// turn's own frames, as the wire allows. `legacyStartAnswers` is a Codex before 0.148,
+// the running turn. This fake refuses `turn/interrupt` with -32600 until the turn has
+// started; with no turn active, `turn_interrupt_inner` refuses only an idle thread or a turn
+// that already ended.
+// An interrupt Codex takes is answered before its turn ends: on `TurnAborted`,
+// `bespoke_event_handling.rs` answers pending interrupts, then sends `turn/completed`
+// (interrupted) on the same channel; here that end comes on a later read. The `turn/start`
+// answer can be held, so a test can deliver it after the turn's own frames, as the wire
+// allows. `legacyStartAnswers` is a Codex before 0.148,
 // whose `turn/start` answers a steered send with its submission id, a turn that never opens,
 // and whose `turn/steer` finds no turn to steer until the picked one has started.
 
@@ -97,8 +102,13 @@ export function codexTurnLifecycleFake(
             `expected active turn id ${String(turnId)} but found ${active}`
           )
         }
-        // Codex answers the interrupt once the turn has aborted.
-        finish(active, 'interrupted')
+        const aborted = active
+        // Answered, then the turn's end on the next read; a turn that ends meanwhile is not ended twice.
+        setTimeout(() => {
+          if (active === aborted) {
+            finish(aborted, 'interrupted')
+          }
+        }, 0)
         return {}
       }
     },

@@ -1,7 +1,7 @@
 // A Codex send the turn it went into never took: the Stop that interrupts that turn
 // withdraws it, and nothing reads as working after. A send made while that turn runs, a
 // queued card's Send-now included, goes in as `turn/steer` naming it. A Stop or a send made
-// before Codex opens that turn waits for it to open, since Codex refuses an interrupt until then.
+// before Codex opens that turn waits for it to open: Orca interrupts only a turn that has opened.
 // Driven through the shipped host, journal and Codex adapter; only the Codex child is fake,
 // keeping Codex 0.157's turn bookkeeping.
 
@@ -463,7 +463,7 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
     await stopping
 
     expect(interrupts).toBe(1)
-    expect(turns.turnId).toBeNull()
+    await vi.waitFor(() => expect(turns.turnId).toBeNull())
     await vi.waitFor(async () =>
       expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
     )
@@ -542,12 +542,12 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     await stopping
 
     expect(interrupts).toBe(1)
-    const after = await settled()
     expect(turnRow((await host.journalSnapshot(SESSION)).items)).toMatchObject({
       state: 'interrupted',
       outcome: 'cancellation'
     })
-    expect(after.owesWork).toBe(false)
+    // Codex's end, after its answer, settles the send.
+    await vi.waitFor(async () => expect((await settled()).owesWork).toBe(false))
   })
 
   it('ends the child when the turn has not opened by the end of its wait', async () => {
