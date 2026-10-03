@@ -7,12 +7,10 @@ import { runWorktreeChangeInvalidators } from './ipc/worktree-change-invalidator
 import { parseWslPath } from './wsl'
 import { readWorktreeRemovalRecords, type WorktreeRemovalRecord } from './worktree-removal-records'
 import type { CheckoutDirectoryIdentity } from './worktree-checkout-identity'
+import { differentCheckoutAtPathError, isCheckoutRegistered } from './worktree-removal-leftover'
+import { checkoutLeftByFailedRemoval } from './worktree-removal-listing'
 import {
-  differentCheckoutAtPathError,
-  isCheckoutRegistered,
-  isUnregisteredRemovalLeftover
-} from './worktree-removal-leftover'
-import {
+  endUnfinishedWorktreeRemoval,
   failedWorktreeRemovals,
   finishedWorktreeRemovals,
   pendingWorktreeRemovals,
@@ -251,6 +249,7 @@ async function settleBackgroundWorktreeRemoval(
   await waitForRecordWrite(record, recorded)
   let settle: (settlement: RemovalSettlement) => void
   let failure: WorktreeRemovalRecord['failure']
+  let unregistered = false
   try {
     if (stopSignal.aborted) {
       return
@@ -267,12 +266,14 @@ async function settleBackgroundWorktreeRemoval(
     settle = (settlement) => settlement.reject(error)
     // Why: Git drops the registration even when it fails to delete the checkout, and Orca lists
     // workspaces from Git, so without the record the leftover would vanish with no way to retry.
-    if (await isCheckoutLeftUnregistered(record)) {
+    const left = await checkoutLeftByFailedRemoval(record)
+    if (left === 'leftover') {
       failure = {
         message: error instanceof Error ? error.message : String(error),
         failedAt: Date.now()
       }
     }
+    unregistered = left === 'unregistered'
   } finally {
     // A resumed job that ended before taking its own gate still holds the fence loading gave it.
     releaseStartupRemovalFence(record.worktreeId)
@@ -287,6 +288,9 @@ async function settleBackgroundWorktreeRemoval(
       failedWorktreeRemovals.set(record.worktreeId, { ...record, failure })
       // Git's catalog changed under a failed delete; cached scans still list the checkout.
       runWorktreeChangeInvalidators(record.repoId)
+    } else if (unregistered) {
+      // Before the reply, so a Delete sent after it finds no workspace left at the path.
+      endUnfinishedWorktreeRemoval(record)
     }
   }
   // Why this run's own settlement: desktop IPC and runtime RPC coalesce separately, so a concurrent
@@ -299,19 +303,6 @@ async function settleBackgroundWorktreeRemoval(
   publishSafely(job.publish)
   if (cleared) {
     await persistWorktreeRemovalRecords()
-  }
-}
-
-async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promise<boolean> {
-  if (!(await worktreeCheckoutExists(record.worktreePath))) {
-    return false
-  }
-  try {
-    return !(await isCheckoutRegistered(record)) && (await isUnregisteredRemovalLeftover(record))
-  } catch (error) {
-    // Unknowable: the row stays however Git lists it, as before this record existed.
-    console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
-    return false
   }
 }
 

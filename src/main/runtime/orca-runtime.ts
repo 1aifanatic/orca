@@ -3,6 +3,7 @@ import { OrcaRuntimeWithResolveWaiter } from './orca-runtime-resolve-waiter'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { registerWorktreeChangeInvalidator } from '../ipc/worktree-change-invalidators'
 import { registerDetectedWorktreeScanInvalidation } from '../ipc/worktrees/listing/register-detected-worktree-scan-invalidation'
+import { setUnfinishedWorktreeRemovalHost } from '../worktree-removal-table'
 
 class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
   constructor(...args: ConstructorParameters<typeof OrcaRuntimeWithResolveWaiter>) {
@@ -12,6 +13,16 @@ class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
     // module registers the generation bump at load; a headless host never loads it.
     registerDetectedWorktreeScanInvalidation()
     registerWorktreeChangeInvalidator((repoId) => this.invalidateWorktreeCatalog(repoId))
+    // Why: a listing can end a failed delete with no job to run this host's bookkeeping; it runs a
+    // finished delete's, leaving the folder and branch.
+    setUnfinishedWorktreeRemovalHost((record) => {
+      const host = this.store && this.localRemovalJobHost(this.store)
+      if (host) {
+        host.purge(record)
+        host.onRemoved(record)
+        host.publish(record.repoId)
+      }
+    })
   }
 }
 type OrcaRuntimeServiceExport = RuntimeCommandSurfaceHost<OrcaRuntimeService>

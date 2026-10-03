@@ -27,6 +27,7 @@ import {
 } from './worktree-removal-listing'
 import { readWorktreeRemovalRecords, writeWorktreeRemovalRecords } from './worktree-removal-records'
 import { readCheckoutDirectoryIdentity } from './worktree-checkout-identity'
+import { setUnfinishedWorktreeRemovalHost } from './worktree-removal-table'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
@@ -57,6 +58,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  setUnfinishedWorktreeRemovalHost(null)
   _resetPendingWorktreeRemovalsForTests()
   vi.restoreAllMocks()
   await rm(directory, { recursive: true, force: true })
@@ -131,6 +133,8 @@ describe('a delete that fails after Git dropped the registration', () => {
   })
 
   it('clears the record as before when Git still registers the checkout', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
     vi.mocked(listWorktreesStrict).mockResolvedValue([
       mainWorktree,
       { ...leftoverRow(), removalError: undefined }
@@ -138,6 +142,8 @@ describe('a delete that fails after Git dropped the registration', () => {
     await failRemoval()
 
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    // The workspace is still Git's, row and all.
+    expect(endWorkspace).not.toHaveBeenCalled()
   })
 
   it('clears the record as before when the checkout is gone', async () => {
@@ -191,7 +197,29 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
   })
 
+  it('ends the workspace when a retry finds a folder the user put at the path', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    await failRemoval()
+    await rm(checkout, { recursive: true })
+    await mkdir(checkout)
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', () => ({
+      run: async () => {
+        throw new Error('not the folder Orca started deleting')
+      },
+      publish: () => {}
+    }))
+
+    await expect(retried).rejects.toThrow('not the folder')
+    // Already by the reply, so a Delete sent after it finds nothing to delete at the path.
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+  })
+
   it('keeps the row with the new error when the retry fails the same way', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
     await failRemoval()
     const retried = retryFailedWorktreeRemoval(worktreeId, undefined, () => ({
       run: async () => {
@@ -206,6 +234,7 @@ describe('a delete that fails after Git dropped the registration', () => {
       mainWorktree,
       { ...leftoverRow(), removalError: 'still not permitted' }
     ])
+    expect(endWorkspace).not.toHaveBeenCalled()
   })
 
   it('does not run the recorded removal once Git registers a checkout at the path again', async () => {
@@ -296,6 +325,8 @@ describe('a delete that fails after Git dropped the registration', () => {
   })
 
   it('ends, leaving the files, once the user puts an ordinary folder at the path', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
     await failRemoval()
     // No `.git`, like the leftover: only the directory's identity tells them apart.
     await rm(checkout, { recursive: true })
@@ -303,6 +334,8 @@ describe('a delete that fails after Git dropped the registration', () => {
     await writeFile(join(checkout, 'notes.txt'), 'mine\n')
 
     expect(await listRows()).toEqual([mainWorktree])
+    // With its workspace, whose creation metadata would let a later Delete take the folder.
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
     expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
     await vi.waitFor(async () =>
       expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
