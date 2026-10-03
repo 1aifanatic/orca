@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import {
+  AGENT_SESSION_RESTART_CONTINUATION_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
 } from '../../../shared/agent-session-restart-continuation'
@@ -69,6 +70,22 @@ it('says so in the chat when the agent cannot start for the continuation', async
   })
   // The refusal note is now the one explanation: the cut is not said a second time beside it.
   expect(await readerNotes(host)).toEqual(await statusNotes(host))
+})
+
+// A continuation that carries on, chosen in the prompt or automatically at launch, does not stand in
+// for the cut: its note is written after its own message, so the cut keeps its notice throughout.
+it("keeps the quit's notice through a continuation that carries the chat on", async () => {
+  const { host } = await interruptedRestart()
+  await host.restartResume.list()
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
+
+  const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect(result.continued).toMatchObject([{ outcome: 'continued' }])
+  expect(await readerNotes(host)).toEqual([
+    QUIT_CUT_NOTICE,
+    { text: AGENT_SESSION_RESTART_CONTINUATION_NOTE, tone: undefined }
+  ])
 })
 
 // A send that throws after Orca may have taken it cannot be proven undelivered: filed unconfirmed,

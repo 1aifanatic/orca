@@ -11,6 +11,13 @@ import type {
 import { withNativeChatCutTurnNotices } from './native-chat-cut-turn-notice'
 import { hostStatesTurnScopes, nativeChatTurnMembership } from './native-chat-turn-membership'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+import {
+  AGENT_SESSION_RESTART_CONTINUATION_NOTE,
+  AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
+  AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE,
+  AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE
+} from './agent-session-restart-continuation'
+import { structuredAgentSessionStartFailureRowIdentity } from './structured-agent-session-start-failure-row-key'
 
 const THREAD: AgentJournalTurnScope = { kind: 'thread' }
 const NOTICE =
@@ -90,6 +97,9 @@ const exitWords = (): AgentJournalItemBody => ({
 })
 const exitRow = (clientMessageId: string, scope: AgentJournalTurnScope | null) =>
   hostRow(clientMessageId, exitWords(), scope)
+/** A note the restart continuation leaves about its outcome, about the conversation. */
+const restartNote = (text: string) =>
+  hostRow(`restart-continuation:s:${text.length}`, { kind: 'status', text, tone: 'error' }, THREAD)
 
 function notices(items: readonly AgentJournalRenderItem[]) {
   return withNativeChatCutTurnNotices(items, { agentName: 'Codex' }).flatMap((entry, index) =>
@@ -219,22 +229,54 @@ describe('withNativeChatCutTurnNotices', () => {
     ])
   })
 
-  it("takes the restart continuation's outcome note as the one explanation of the cut it follows", () => {
+  // A quit, then a resume that did not carry the chat on: the note says the cut was not continued,
+  // which is what the notice would say, so it stands alone.
+  it.each([
+    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
+    AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE,
+    AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
+  ])('takes the restart note "%s" as the one explanation of the cut it follows', (text) => {
+    const items = [user('u1'), turn('t1', 'u1', CUT), reply('a1', inTurn('t1')), restartNote(text)]
+    expect(withNativeChatCutTurnNotices(items)).toBe(items)
+  })
+
+  // The note of a continuation that went on lands after its own message and turn. The cut keeps its
+  // notice before and after it, so nothing flashes away under an automatic resume.
+  it('keeps the notice once a continuation carries the chat on', () => {
+    const cut = [user('u1'), turn('t1', 'u1', CUT), reply('a1', inTurn('t1'))]
+    const continuing = [...cut, user('u2'), turn('t2', 'u2', { state: 'running' })]
+    const continued = [...continuing, restartNote(AGENT_SESSION_RESTART_CONTINUATION_NOTE)]
+
+    for (const items of [cut, continuing, continued]) {
+      expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
+    }
+  })
+
+  // A row about the conversation speaks for the cut it follows, never across a turn that finished.
+  it('lets a later exit row about the conversation explain no cut a finished turn came after', () => {
     const items = [
       user('u1'),
       turn('t1', 'u1', CUT),
       reply('a1', inTurn('t1')),
-      hostRow(
-        'restart-continuation:s:5000',
-        {
-          kind: 'status',
-          text: "Orca couldn't continue this chat after the restart. Send a message to continue it.",
-          tone: 'error'
-        },
+      user('u2'),
+      turn('t2', 'u2', { state: 'completed', outcome: 'success' }),
+      exitRow('provider-exit:s:5:gen', THREAD)
+    ]
+    expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
+  })
+
+  it("does not take a failed start's row as the explanation of an earlier cut", () => {
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      reply('a1', inTurn('t1')),
+      item(
+        agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('gen-2')),
+        exitWords(),
         THREAD
       )
     ]
-    expect(withNativeChatCutTurnNotices(items)).toBe(items)
+    expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
   })
 
   it('places the notice in its turn, for desktop and phone alike', () => {
