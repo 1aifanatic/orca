@@ -121,6 +121,10 @@ describe('installed-version native prompt intent plugin', () => {
     const f = fixture()
     const dispose = await setup(f.ctx)
     await vi.advanceTimersByTimeAsync(500)
+    await vi.waitFor(() => {
+      expect(response.bodyUsed).toBe(true)
+      expect(claim.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
     expect(f.memory.settled).toBe(false)
     f.memory.expiresAt = Date.now()
     await vi.advanceTimersByTimeAsync(100)
