@@ -243,7 +243,11 @@ export function createIntentParams(): Record<string, unknown> {
 
 /** Built by the outbox clients send from, so an older host is handed exactly what a current
  *  client puts on the wire, fingerprint included. */
-export function sendParams(text: string, fence: number): Record<string, unknown> {
+export function sendParams(
+  text: string,
+  fence: number,
+  sentDelivery?: 'queue-if-active'
+): Record<string, unknown> {
   const entry = createStructuredAgentSessionOutboxEntry({
     clientMessageId: operationId(),
     sessionId: SESSION,
@@ -251,7 +255,7 @@ export function sendParams(text: string, fence: number): Record<string, unknown>
     attachments: [],
     queuedAt: NOW
   })
-  return structuredAgentSessionSendRequest(entry, fence)
+  return structuredAgentSessionSendRequest({ ...entry, sentDelivery }, fence)
 }
 
 /** Schema-valid params per method; values only need to survive validation. */

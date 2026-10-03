@@ -48,7 +48,12 @@ async function send(build: AgentSessionWireBuild, params: unknown): Promise<RpcR
 }
 
 describe('a current client sending a message', () => {
-  it('is accepted, under the fingerprint each build re-derives', async () => {
+  it.each([
+    ['a plain message', undefined],
+    // `delivery` joins the operation fingerprint, so a builder that drops it is refused by a host
+    // that digests it.
+    ['a message held as a draft while a turn runs', 'queue-if-active' as const]
+  ])('is accepted for %s, under the fingerprint each build re-derives', async (_case, delivery) => {
     // Anti-vacuous: the release must have the method, or there is no older host to send to.
     expect(baseline.methodNames).toContain('agentSession.send')
     for (const build of [current, baseline]) {
@@ -56,13 +61,16 @@ describe('a current client sending a message', () => {
       const hostCalls = structuredHostStub(SESSION, WORKSPACE)
       await build.installStructuredHost(installableHost(hostCalls))
       try {
-        const replies = await send(build, sendParams('hi', 1))
+        const replies = await send(build, sendParams('hi', 1, delivery))
         expect(replies, `${build.label}: ${JSON.stringify(replies)}`).toMatchObject([{ ok: true }])
         expect(hostCalls.send, `${build.label}: the send reached the host`).toHaveBeenCalledTimes(1)
         const sent: SentMessage = hostCalls.send.mock.calls[0]?.[1]
-        expect(sent.envelope.payloadFingerprint, `${build.label}: send fingerprint`).toBe(
-          await build.hostSendFingerprint(sent)
-        )
+        expect(sent.delivery, `${build.label}: delivery reached the host`).toBe(delivery)
+        // Past the fingerprint check, admission stops at the journal this harness never opens.
+        expect(await build.admitSend(sent), `${build.label}: send admission`).toMatchObject({
+          ok: false,
+          refusal: { details: { reason: 'sessionNotAttached' } }
+        })
       } finally {
         await build.installStructuredHost(null)
       }
