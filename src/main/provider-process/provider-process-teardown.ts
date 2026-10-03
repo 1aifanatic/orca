@@ -24,6 +24,7 @@ function terminateDedicatedPosixGroup(rootPid: number, deps: ProviderProcessTear
   try {
     signalGroup(rootPid, 'SIGKILL')
   } catch (error) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Node process.kill errors expose an optional errno code; only that field is read.
     return (error as NodeJS.ErrnoException).code === 'ESRCH'
   }
   // Outside the try: that catch is the ESRCH contract, not a breadcrumb handler.
@@ -111,7 +112,7 @@ export function terminateProviderProcessTree(
   child: TeardownChild,
   deps: ProviderProcessTeardownDeps = {}
 ): Promise<boolean> {
-  const key = child as object
+  const key = child
   const active = activeTeardowns.get(key)
   if (active) {
     return active

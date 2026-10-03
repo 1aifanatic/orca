@@ -12,7 +12,7 @@ const UNREACHABLE_PGID = 2_147_483_647
 function child() {
   return {
     pid: 1234,
-    kill: vi.fn(() => true) as ChildProcess['kill']
+    kill: vi.fn<ChildProcess['kill']>(() => true)
   }
 }
 
@@ -99,7 +99,7 @@ describe('terminateProviderProcessTree', () => {
    * lives in the production default, not in an injectable seam.
    */
   it('does not claim a snapshot group that was already gone', async () => {
-    const target = { pid: UNREACHABLE_PGID, kill: vi.fn(() => true) as ChildProcess['kill'] }
+    const target = { pid: UNREACHABLE_PGID, kill: vi.fn<ChildProcess['kill']>(() => true) }
 
     await expect(
       terminateProviderProcessTree(target, {
@@ -141,10 +141,10 @@ describe('terminateProviderProcessTree', () => {
   })
 
   it('tears down 40 dedicated groups without process-table scans or cross-group fanout', async () => {
-    const killMocks = Array.from({ length: 40 }, () => vi.fn(() => true))
+    const killMocks = Array.from({ length: 40 }, () => vi.fn<ChildProcess['kill']>(() => true))
     const targets = killMocks.map((kill, index) => ({
       pid: 10_000 + index,
-      kill: kill as ChildProcess['kill']
+      kill
     }))
     const captureDescendants = vi.fn()
     const signalProcessGroup = vi.fn()
