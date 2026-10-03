@@ -83,7 +83,7 @@ describe('useMobilePrAiTriage', () => {
       await triage?.launch('fix-checks', () => 'fix the failing checks')
     })
     expect(triage?.noticeFor('fix-checks')).toMatchObject({
-      error: "The agent started, but the prompt wasn't sent."
+      error: "The prompt wasn't sent to the agent."
     })
     expect(triage?.noticeFor('fix-checks').undeliveredPrompt).toContain('fix the failing checks')
     expect(triage?.noticeFor('fix-checks').success).toBeNull()

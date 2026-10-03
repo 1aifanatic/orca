@@ -15,14 +15,15 @@ import { resolveMobileSourceControlLaunchAgent } from './mobile-source-control-l
 
 export type MobilePromptedAgentLaunch =
   | { kind: 'sent'; warning?: string }
-  /** The agent started but `prompt`, the text as sent, did not reach it; the caller offers it. */
+  /** The launch went through but `prompt`, the text as sent, did not reach the agent; the caller
+   *  offers it. */
   | { kind: 'prompt-not-sent'; prompt: string; warning?: string }
   /** Nothing started; `message` says why. */
   | { kind: 'not-started'; message: string }
   /** The agent may be running; do not launch again until the user has looked. */
   | { kind: 'unconfirmed'; message: string }
 
-export const AGENT_PROMPT_NOT_SENT_MESSAGE = "The agent started, but the prompt wasn't sent."
+export const AGENT_PROMPT_NOT_SENT_MESSAGE = "The prompt wasn't sent to the agent."
 
 export async function launchAgentWithPrompt(args: {
   client: RpcClient

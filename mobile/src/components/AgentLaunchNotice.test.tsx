@@ -63,10 +63,8 @@ describe('AgentLaunchNotice', () => {
   })
 
   it('keeps a real failure in the error style beside a warning', () => {
-    expect(
-      lines({ error: "The agent started, but the prompt wasn't sent.", warning: 'w' })
-    ).toEqual([
-      { text: "The agent started, but the prompt wasn't sent.", isError: true },
+    expect(lines({ error: "The prompt wasn't sent to the agent.", warning: 'w' })).toEqual([
+      { text: "The prompt wasn't sent to the agent.", isError: true },
       { text: 'w', isError: false }
     ])
   })
@@ -85,7 +83,9 @@ describe('AgentLaunchNotice', () => {
   })
 
   it('never confirms beside an error', () => {
-    expect(lines({ success: 'Sent to an agent', error: 'e' })).toEqual([{ text: 'e', isError: true }])
+    expect(lines({ success: 'Sent to an agent', error: 'e' })).toEqual([
+      { text: 'e', isError: true }
+    ])
   })
 
   it('renders nothing with nothing to say', () => {
