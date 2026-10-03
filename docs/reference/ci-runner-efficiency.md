@@ -1851,3 +1851,25 @@ header placement, then its empty cache-miss output), and are excluded. This prov
 automatic selection and cold publication, not a new timing result. Local
 verification passed eight suites / 184 tests, the changed-code quality gate and
 compiled-composite actionlint.
+
+## October 3 unit-selection evidence: include failed references
+
+The caller's `needs.test.result == 'success'` condition prevented the advisory
+collector from reading failed unit runs, despite the reviewer's existing support
+for failed tests. A six-run screen from the October 3 occupancy sample found only
+one review artifact; it was a full fallback, so it did not validate selection.
+Missing artifacts cannot establish that selection catches red tests.
+
+The caller now permits both success and failure while excluding cancellation and
+skipped tests. The collector remains advisory and absent from `verify` dependencies.
+Incomplete, interrupted or inconsistent shard records still cannot become complete
+reference evidence. Existing omitted-failure tests preserve that negative control.
+
+The five artifacts from failed [run 37098089274, attempt 1](https://github.com/stablyai/orca/actions/runs/37098089274/attempts/1)
+were reviewed locally using the unchanged script. It recognized a complete failed
+reference covering 10,606 files and 9,270,307 worker-ms. Its candidate was the full
+fallback, so `selectionEvaluated` remained false and no selection promotion is
+justified by this control. Focused workflow/reviewer checks passed 24 tests,
+including actual caller-expression outcomes for success, failure, skipped and
+cancelled states. This repair supplies needed evidence for a later optimization;
+it claims no runner-time savings and does not enable selected tests.
