@@ -15,6 +15,7 @@
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import { AgentSessionFailureFactSchema } from './agent-session-failure-fact-schema'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -201,14 +202,6 @@ const ThreadGoalState = z.union([
   z.object({ state: z.string() }).refine((value) => !['set', 'cleared'].includes(value.state))
 ])
 
-/** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
- *  malformed; the fact reader is where an unplaceable one is dropped. */
-const FailureFact = z.object({
-  kind: z.string().min(1),
-  detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
-  refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
-})
-
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
   MessageBody,
   z.object({
@@ -262,7 +255,7 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
       .optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: ThreadGoalState.optional(),
-    failure: FailureFact.optional()
+    failure: AgentSessionFailureFactSchema.optional()
   }),
   z.object({
     kind: z.literal('turn'),
@@ -325,10 +318,12 @@ export const AgentJournalSubmissionSchema = z.object({
   reason: z.string().nullable(),
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
+  submittedSequence: z.number().int().optional(),
+  resolvedSequence: z.number().int().optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional(),
+  rejection: AgentSessionFailureFactSchema.optional(),
   // Listed, or the parse strips it: this schema drops unknown keys.
   queuedMessageId: z.string().min(1).optional()
 })

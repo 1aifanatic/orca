@@ -25,6 +25,7 @@ export function applyJournalSubmission(
     reason: null,
     submittedAt: row.ts,
     resolvedAt: null,
+    submittedSequence: row.seq,
     ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
     // A malformed stored link is dropped, never the row.
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
@@ -90,6 +91,7 @@ export function acceptSubmissionFromProviderItem(
   submission.providerItemId = providerItemId
   submission.reason = null
   submission.resolvedAt = row.ts
+  submission.resolvedSequence = row.seq
   delete submission.recovered
   state.receipts.set(submission.clientMessageId, {
     clientMessageId: submission.clientMessageId,
