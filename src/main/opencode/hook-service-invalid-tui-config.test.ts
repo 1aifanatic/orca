@@ -77,7 +77,9 @@ it('installs into a source overlay without replacing the invalid user config', (
   writeFileSync(join(source, 'tui.jsonc'), text)
   const overlay = new OpenCodeHookService().buildPtyEnv('pane-one', source).OPENCODE_CONFIG_DIR
   expect(overlay).not.toBe(source)
-  if (!overlay) throw new Error('No overlay')
+  if (!overlay) {
+    throw new Error('No overlay')
+  }
   expect(readFileSync(join(overlay, 'plugins', 'orca-opencode-status.js'), 'utf8')).toBe(
     getOpenCodePluginSource()
   )
