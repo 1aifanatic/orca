@@ -5,6 +5,7 @@
 // ask it.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
 import { latestStructuredAgentSessionPrompt } from '../../../shared/structured-agent-session-latest-request'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -46,4 +47,20 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
         ),
       leaseState
     })
+}
+
+/** Chats the latest reveal found saved by a newer Orca: listing skips them and never spends their
+ *  offers. Each reveal re-derives its chat's entry; nothing is stored. */
+export function createNewerOrcaChats(databaseIsNewer: () => boolean) {
+  const chats = new Set<string>()
+  return {
+    has: (sessionId: string): boolean => databaseIsNewer() || chats.has(sessionId),
+    note: (sessionId: string, revealed: { openRefusal?: AgentSessionWireRefusal } | null): void => {
+      if (revealed?.openRefusal?.details?.reason === 'journalWrittenByNewerOrca') {
+        chats.add(sessionId)
+      } else {
+        chats.delete(sessionId)
+      }
+    }
+  }
 }

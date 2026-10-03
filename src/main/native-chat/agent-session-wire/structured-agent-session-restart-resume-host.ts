@@ -14,7 +14,10 @@ import type {
   AgentSessionResumeTrigger
 } from '../../../shared/agent-session-resume-marker'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import { createStructuredAgentSessionRestartCandidateReader } from './structured-agent-session-restart-candidates'
+import {
+  createNewerOrcaChats,
+  createStructuredAgentSessionRestartCandidateReader
+} from './structured-agent-session-restart-candidates'
 import {
   continuationFailureOutcome,
   createStructuredAgentSessionRestartFailureLedger
@@ -104,11 +107,8 @@ export function createStructuredAgentSessionRestartResume(
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
-  // Chats the latest reveal found saved by a newer Orca: skipped, never spent. Each reveal
-  // re-derives its chat's entry; nothing is stored.
-  const newerOrcaChats = new Set<string>()
-  const savedByNewerOrca = (sessionId: string) =>
-    deps.journalDatabase.readOnly || newerOrcaChats.has(sessionId)
+  const newerOrca = createNewerOrcaChats(() => deps.journalDatabase.readOnly)
+  const savedByNewerOrca = newerOrca.has
   const reader = (skipNewerOrca: (sessionId: string) => boolean) =>
     createStructuredAgentSessionRestartCandidateReader({
       sessions,
@@ -139,12 +139,7 @@ export function createStructuredAgentSessionRestartResume(
       readFailedMarkers: async () => (await failures.read()).map((failure) => failure.marker),
       hasSession: (sessionId) => sessions.has(sessionId),
       reveal: async (sessionId) => {
-        const revealed = await surfaces.revealSession(sessionId).catch(() => null)
-        if (revealed?.openRefusal?.details?.reason === 'journalWrittenByNewerOrca') {
-          newerOrcaChats.add(sessionId)
-        } else {
-          newerOrcaChats.delete(sessionId)
-        }
+        newerOrca.note(sessionId, await surfaces.revealSession(sessionId).catch(() => null))
       },
       logger: deps.logger,
       now: surfaces.now,

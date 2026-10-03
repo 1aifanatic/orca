@@ -487,11 +487,11 @@ describe('the resumable set', () => {
   })
 
   // Being a newer Orca's chat does not keep a forked chat's offer alive: the fork still ends it.
-  it("still withdraws a forked chat a newer Orca saved", () => {
+  it('still withdraws a forked chat a newer Orca saved', () => {
     const forked = marker({ providerHandleRoot: 'codex:"other-thread"' })
-    expect(
-      resumableSet({ markers: [forked], savedByNewerOrca: [SESSION] }).superseded
-    ).toEqual([forked])
+    expect(resumableSet({ markers: [forked], savedByNewerOrca: [SESSION] }).superseded).toEqual([
+      forked
+    ])
   })
 
   // An offer has no expiry, however old it is.
