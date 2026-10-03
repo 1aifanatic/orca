@@ -3,7 +3,7 @@
 // does a Stop of a start that never landed; a card it held, which Resume releases, and anything
 // sent after it end as their own. Turn rows name the send that opened them, as Codex writes them.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -303,10 +303,26 @@ describe('a press that writes no Stop event of its own', () => {
     expect(journal().stopMarks.latest()).toBe(earlier)
     await expectNews()
   })
+
+  // The event is in the fold by its write's return, so one that failed leaves the earlier Stop latest.
+  it('reopens no earlier Stop: a press whose event row failed binds no turn', async () => {
+    const sent = await laterTurnAfterAnEarlierStop()
+    const earlier = journal().stopMarks.latest()
+    vi.spyOn(journal(), 'appendStopEvent').mockRejectedValueOnce(new Error('disk full'))
+    rig.cancelTurn.mockImplementationOnce(async () => {
+      await turnOpenedBy(sent, 'interrupted')
+      return { cancelled: false }
+    })
+
+    expect(await rig.stop()).toMatchObject({ ok: true })
+
+    expect(journal().stopMarks.latest()).toBe(earlier)
+    await expectNews()
+  })
 })
 
 describe("a Stop's settle that ends the turn its interrupt took", () => {
-  it("ends a turn still running once the stream drains, as the Stop's, once", async () => {
+  it("ends a turn still running at the Stop's settle, as the Stop's, once", async () => {
     rig = await createQueuedMessageTestRig()
     const stopped = await rig.workingSend()
     await rig.settleAccepted(stopped, 'stopped')

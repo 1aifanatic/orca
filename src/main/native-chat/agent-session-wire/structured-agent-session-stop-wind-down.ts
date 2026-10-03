@@ -9,7 +9,7 @@ import {
   type AgentJournalItemIdentity,
   type AgentJournalTurnScope
 } from '../../../shared/agent-session-journal-types'
-import { isMainAgentWorkingOnceFlushed } from './structured-agent-session-turns-cancel'
+import { isMainAgentWorking } from './structured-agent-session-turns-cancel'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import type { JournalStopFailedOn } from '../agent-session-journal/queued-message-pause'
 import { structuredAgentSessionFailedStopMark } from './structured-agent-session-stopping'
@@ -35,10 +35,7 @@ export type StructuredAgentSessionStopWindDown = {
  * reaches the agent retries the wind-down it leaves owed, and so does the idle sweep's next tick.
  */
 export async function endStoppedStructuredAgentSession(
-  ctx: Pick<
-    AgentSessionTurnContext,
-    'sessionId' | 'adapter' | 'journal' | 'fence' | 'flushStreamedEvents'
-  >,
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'adapter' | 'journal' | 'fence'>,
   windDown: StructuredAgentSessionStopWindDown,
   stopChild: () => Promise<void>,
   onError: (error: unknown) => void
@@ -61,10 +58,10 @@ export async function endStoppedStructuredAgentSession(
 /** While the work it stopped runs on, the Stop's own note, if it wrote one, says what a lost
  *  interrupt's says. Work that ended took the Stop, whatever became of the child. */
 async function reviseStopNoteUnconfirmed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>,
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence'>,
   identity: AgentJournalItemIdentity
 ): Promise<void> {
-  if (!(await isMainAgentWorkingOnceFlushed(ctx))) {
+  if (!isMainAgentWorking(ctx)) {
     return
   }
   const itemId = agentJournalItemKey(identity)

@@ -62,7 +62,6 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     StructuredAgentSessionClientDelivery,
     'publishRestored' | 'readChildWork' | 'readStopping' | 'publishStatus'
   >
-  flushStreamedEvents: (sessionId: string) => Promise<void>
 }): StructuredAgentSessionConversationDelivery {
   const { deps, sessions } = input
   const loop = new StructuredAgentSessionDeliveryLoop({
@@ -88,7 +87,6 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     record: (sessionId) => deps.store.getRecord(sessionId),
     readChildWork: input.clientDelivery.readChildWork,
     stopping: input.clientDelivery.readStopping,
-    flushStreamedEvents: input.flushStreamedEvents,
     now: () => deps.now?.() ?? Date.now()
   })
   const adoptOpened = async (
