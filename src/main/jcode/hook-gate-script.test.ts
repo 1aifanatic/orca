@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer } from 'node:http'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import { runProcess } from '../../shared/child-process/run-process'
 
 const { homedirMock } = vi.hoisted(() => ({ homedirMock: vi.fn<() => string>() }))
@@ -27,7 +28,7 @@ function installManagedScript(): { scriptPath: string; cleanup: () => void } {
     scriptPath,
     cleanup: () => {
       vi.unstubAllEnvs()
-      rmSync(homeDir, { recursive: true, force: true })
+      removeTreeSync(homeDir)
     }
   }
 }
