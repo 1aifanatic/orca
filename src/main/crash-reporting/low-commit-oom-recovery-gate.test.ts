@@ -259,7 +259,7 @@ describe('when commit exhaustion surfaces as a renderer crash', () => {
         current = death
         const verdict = gate.assess(death.details, death.at)
         gate.recordRecoveredDeath(death.details, death.at)
-        return verdict
+        return verdict && gate.confirmsHold(death.details, death.at) ? verdict : null
       })
     })
   }
@@ -278,6 +278,11 @@ describe('when commit exhaustion surfaces as a renderer crash', () => {
       sincePreviousOomMs: 2_886,
       commitReading: 'pre-gone'
     })
+  })
+
+  it('reloads a repeat CHECK whose dump never named an allocation failure', () => {
+    const second = { ...R29[0], at: OVERFLOW_AT, ageMs: 1_000 }
+    expect(replay([R29[0], second])[1]).toBeNull()
   })
 
   it('reloads when the CHECK is not an allocation failure', () => {

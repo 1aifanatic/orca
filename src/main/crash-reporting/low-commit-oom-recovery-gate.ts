@@ -43,6 +43,8 @@ export type LowCommitOomVerdict = {
 export type LowCommitOomRecoveryGate = {
   /** Read at gone time; returns a verdict only when auto-reload would run straight back into the OOM. */
   assess: (details: Electron.RenderProcessGoneDetails, now: number) => LowCommitOomVerdict | null
+  /** Call at recovery time before honoring a verdict: a CHECK's dump is parsed only after gone time. */
+  confirmsHold: (details: Electron.RenderProcessGoneDetails, goneAt: number) => boolean
   /** Call only once the death is actually recovered, so a skipped teardown OOM cannot start the repeat window. */
   recordRecoveredDeath: (details: Electron.RenderProcessGoneDetails, goneAt: number) => void
 }
@@ -121,7 +123,7 @@ export function createLowCommitOomRecoveryGate(
       if (shape !== 'oom') {
         lowCommitCrash = { details, at: now }
       }
-      if (sincePreviousOomMs === null || !counts(shape, now)) {
+      if (sincePreviousOomMs === null) {
         return null
       }
       return {
@@ -129,6 +131,10 @@ export function createLowCommitOomRecoveryGate(
         sincePreviousOomMs,
         commitReading: useGoneTime ? 'gone-time' : 'pre-gone'
       }
+    },
+    confirmsHold: (details, goneAt) => {
+      const shape = oomShape(details)
+      return shape !== null && counts(shape, goneAt)
     },
     recordRecoveredDeath: (details, goneAt) => {
       const shape = oomShape(details)
