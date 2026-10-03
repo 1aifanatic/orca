@@ -14,7 +14,7 @@
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { Page } from '@stablyai/playwright-test'
+import type { ElectronApplication } from '@stablyai/playwright-test'
 import { expect, test } from './helpers/orca-app'
 import {
   ensureTerminalVisible,
@@ -24,10 +24,11 @@ import {
 } from './helpers/store'
 import { execInTerminal, waitForActivePanePtyId, waitForTerminalOutput } from './helpers/terminal'
 import { connectSshTestTarget } from './helpers/ssh-test-target-connection'
-import { readPersistedProfileState } from './helpers/persisted-profile-state'
+import { createRestartSession } from './helpers/orca-restart'
+import { convertThenRetire, managedServer, targetLeases } from './helpers/orcad-convert-flow'
+import { seedRelayEraProfile } from './helpers/orcad-upgrade-profile'
 import { ORCAD_CONVERT_HOST_ENV, startOrcadConvertHost } from './helpers/orcad-convert-host'
-import { findOrcadMigrationSourceCutoverForTarget } from '../../src/main/ssh/orcad-migration-cutover-journal'
-import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../src/shared/execution-host'
+import { toSshExecutionHostId } from '../../src/shared/execution-host'
 
 const HOST = process.env[ORCAD_CONVERT_HOST_ENV]
 const TEMPLATE_SOURCE = process.env.ORCA_E2E_ORCAD_CONVERT_TEMPLATE
@@ -35,7 +36,6 @@ const TEMPLATE_SOURCE = process.env.ORCA_E2E_ORCAD_CONVERT_TEMPLATE
 const SCRATCH = path.join(os.tmpdir(), `orca-orcad-convert-${process.pid}`)
 const TEMPLATE_DIR = path.join(SCRATCH, 'orcad-template')
 const FLAGS_FILE = path.join(SCRATCH, 'rollout-flags.json')
-const CONVERT_TIMEOUT_MS = 8 * 60_000
 
 test.use({
   orcaAppExtraEnv: {
@@ -43,96 +43,6 @@ test.use({
     ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
   }
 })
-
-const RECONNECT_STEP_TIMEOUT_MS = 6 * 60_000
-
-/** Returns what the connect itself resolved to; a step that hangs fails naming itself. */
-async function reconnect(page: Page, targetId: string): Promise<string> {
-  for (const step of ['disconnect', 'connect'] as const) {
-    const run = page.evaluate(
-      async ({ id, step }) => {
-        try {
-          if (step === 'disconnect') {
-            await window.api.ssh.disconnect({ targetId: id })
-            return ''
-          }
-          const state = await window.api.ssh.connect({ targetId: id })
-          return JSON.stringify(state?.managedServer ?? null)
-        } catch (error) {
-          return `${step} threw: ${String(error)}`
-        }
-      },
-      { id: targetId, step }
-    )
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const result = await Promise.race([
-      run,
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), RECONNECT_STEP_TIMEOUT_MS)
-      })
-    ]).finally(() => clearTimeout(timer))
-    if (result === null) {
-      const main = await page.evaluate(
-        async (id) => JSON.stringify(await window.api.ssh.getState({ targetId: id })),
-        targetId
-      )
-      throw new Error(`ssh ${step} hung; main state ${main}`)
-    }
-    if (step === 'connect') {
-      return result
-    }
-  }
-  return ''
-}
-
-function managedServer(page: Page, targetId: string): Promise<unknown> {
-  return page.evaluate(
-    (id) => window.__store?.getState().sshConnectionStates.get(id)?.managedServer ?? null,
-    targetId
-  )
-}
-
-function isManaged(server: unknown): boolean {
-  return (
-    typeof server === 'object' && server !== null && 'kind' in server && server.kind === 'managed'
-  )
-}
-
-/** The relay-era catalog rows this profile still holds for the host. */
-function sourceRows(
-  userData: string,
-  targetId: string
-): { repos: number; folderWorkspaces: number } {
-  const state = readPersistedProfileState(userData)
-  const count = (rows: unknown): number =>
-    (Array.isArray(rows) ? rows : []).filter((row) => row?.connectionId === targetId).length
-  return { repos: count(state.repos), folderWorkspaces: count(state.folderWorkspaces) }
-}
-
-function targetLeases(userData: string, targetId: string): { state?: unknown }[] {
-  const leases = readPersistedProfileState(userData).sshRemotePtyLeases
-  return (Array.isArray(leases) ? leases : []).filter((lease) => lease?.targetId === targetId)
-}
-
-async function serverCall(
-  page: Page,
-  selector: string,
-  method: string,
-  params?: unknown
-): Promise<string> {
-  // Why a long budget: a fresh server's first session inventory restores every migrated tab.
-  const response = await page.evaluate((args) => window.api.runtimeEnvironments.call(args), {
-    selector,
-    method,
-    params,
-    timeoutMs: 120_000
-  })
-  const text = JSON.stringify(response)
-  expect(response, `${method} on the managed server: ${text.slice(0, 2_000)}`).toMatchObject({
-    ok: true
-  })
-  return text
-}
 
 test('a relay host converts to managed orcad on connect, keeps its source, then retires it', async ({
   orcaPage: page,
@@ -142,6 +52,8 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
     !HOST || !TEMPLATE_SOURCE,
     `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
   )
+  // Why Docker only: a relay era without the template needs host Node, which the Windows lane hides.
+  test.skip(HOST !== 'docker', 'The runtime relay era runs on the Docker host only')
   test.setTimeout(20 * 60_000)
   rmSync(SCRATCH, { recursive: true, force: true })
   mkdirSync(SCRATCH, { recursive: true })
@@ -259,74 +171,62 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
         )
       })
     ).toBe(JSON.stringify({ sessions: [], leases: [] }))
-    const connected = await reconnect(page, remote.targetId)
-    // Polls the whole state so a timeout reports why the host stayed on the relay.
-    await expect
-      .poll(
-        async () => {
-          const server = await managedServer(page, remote.targetId)
-          if (isManaged(server)) {
-            return 'managed'
-          }
-          const leases = targetLeases(userData, remote.targetId)
-          const journal = findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)
-          const mainState = await page.evaluate(
-            async (id) => (await window.api.ssh.getState({ targetId: id }))?.managedServer ?? null,
-            remote.targetId
-          )
-          return JSON.stringify({
-            server,
-            mainState,
-            connected,
-            leases,
-            journal: journal && { phase: journal.phase, updatedAt: journal.updatedAt }
-          })
-        },
-        { timeout: CONVERT_TIMEOUT_MS }
-      )
-      .toBe('managed')
-    const environments = await page.evaluate(() => window.api.runtimeEnvironments.list())
-    const environment = environments.find(
-      (entry) => entry.orcadDeployment?.sshTargetId === remote.targetId
+    await convertThenRetire(
+      page,
+      userData,
+      {
+        targetId: remote.targetId,
+        worktreeId: remote.worktreeId,
+        repoPath: host.remoteRepoPath,
+        folderPath
+      },
+      FLAGS_FILE
     )
-    expect(environment, 'a managed server registered for the host').toBeTruthy()
-    expect(await serverCall(page, environment!.id, 'repo.list')).toContain(host.remoteRepoPath)
-    expect(await serverCall(page, environment!.id, 'folderWorkspace.list')).toContain(folderPath)
-    // Not asserted yet: the server lists no migrated editor tab (see the PR); logged for the fix.
-    console.log(
-      `[orcad-convert] server tabs ${await serverCall(page, environment!.id, 'session.tabs.list', {
-        worktree: `id:${remote.worktreeId}`
-      })} runtime partition ${await page.evaluate(
-        async (hostId) => JSON.stringify(await window.api.session.get(hostId)),
-        toRuntimeExecutionHostId(environment!.id)
-      )}`
-    )
-
-    // 3. Source retained for a downgrade, then retired once the rollout flag is on.
-    expect(findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)).toMatchObject({
-      phase: 'destination-committed',
-      sourceRetainedAt: expect.any(String)
-    })
-    expect(sourceRows(userData, remote.targetId)).toEqual({ repos: 1, folderWorkspaces: 1 })
-    writeFileSync(FLAGS_FILE, JSON.stringify({ 'orcad-source-retirement': { state: 'on' } }))
-    await reconnect(page, remote.targetId)
-    // Retirement drops the source rows, then compacts the journal away once the server matches it.
-    await expect
-      .poll(
-        () => {
-          const phase = findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase
-          return JSON.stringify({
-            // `source-retired` is retirement before compaction; either way the move is finished.
-            ...(phase && phase !== 'source-retired' ? { journal: phase } : {}),
-            ...sourceRows(userData, remote.targetId)
-          })
-        },
-        { timeout: 120_000 }
-      )
-      .toBe(JSON.stringify({ repos: 0, folderWorkspaces: 0 }))
-    expect(await managedServer(page, remote.targetId)).toMatchObject({ kind: 'managed' })
-    expect(await serverCall(page, environment!.id, 'repo.list')).toContain(host.remoteRepoPath)
   } finally {
+    host.cleanup()
+    if (existsSync(SCRATCH)) {
+      rmSync(SCRATCH, { recursive: true, force: true })
+    }
+  }
+})
+
+test('a relay-era profile converts its SSH host on the first connect after upgrading', async (// oxlint-disable-next-line no-empty-pattern -- Playwright's second fixture arg is testInfo; the first must be an object destructure to opt out of the default fixture set.
+{}, testInfo) => {
+  test.skip(
+    !HOST || !TEMPLATE_SOURCE,
+    `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
+  )
+  test.setTimeout(20 * 60_000)
+  rmSync(SCRATCH, { recursive: true, force: true })
+  mkdirSync(SCRATCH, { recursive: true })
+  writeFileSync(FLAGS_FILE, '{}')
+  const host = startOrcadConvertHost(HOST!, testInfo)
+  const session = createRestartSession(testInfo, {
+    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_SOURCE!,
+    ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
+  })
+  let app: ElectronApplication | null = null
+  try {
+    // The first launch only establishes the profile the relay-era rows are written into.
+    const first = await session.launch()
+    app = first.app
+    await waitForSessionReady(first.page)
+    await session.close(app)
+    app = null
+    const seeded = seedRelayEraProfile(session.userDataDir, host.input, {
+      repoPath: host.remoteRepoPath,
+      folderPath: host.remoteFolderPath
+    })
+    // No relay ever ran here, so the terminal gate must prove `exited` from an empty lease set.
+    const upgraded = await session.launch()
+    app = upgraded.app
+    await waitForSessionReady(upgraded.page)
+    await convertThenRetire(upgraded.page, session.userDataDir, seeded, FLAGS_FILE)
+  } finally {
+    if (app) {
+      await session.close(app)
+    }
+    await session.dispose()
     host.cleanup()
     if (existsSync(SCRATCH)) {
       rmSync(SCRATCH, { recursive: true, force: true })

@@ -38,6 +38,8 @@ on:
       - 'src/main/ipc/ssh-host-server-*'
       - 'tests/e2e/ssh-orcad-auto-convert.spec.ts'
       - 'tests/e2e/helpers/orcad-convert-host.ts'
+      - 'tests/e2e/helpers/orcad-convert-flow.ts'
+      - 'tests/e2e/helpers/orcad-upgrade-profile.ts'
       - 'config/ci/windows-ssh-provider/**'
       - '.github/workflows/ssh-windows-hosts.yml'
       - '.github/actions/prepare-orcad-prebuilds/**'
