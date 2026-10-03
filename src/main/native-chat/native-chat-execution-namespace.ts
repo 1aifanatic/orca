@@ -12,23 +12,31 @@ export function configureNativeChatExecutionNamespace(
   readProviderSessions = read
 }
 
-export function antigravitySessionWslDistro(sessionId: string): string | undefined {
+function antigravityConnectionNamespace(connectionId: string | null | undefined): string {
+  if (isWslHookRelayConnectionId(connectionId)) {
+    const distro = connectionId?.slice(WSL_HOOK_RELAY_CONNECTION_PREFIX.length).trim()
+    if (distro) {
+      return distro
+    }
+  } else if (!connectionId) {
+    return ''
+  }
+  throw new Error('Antigravity transcript execution namespace is unavailable')
+}
+
+export function antigravitySessionWslDistro(
+  sessionId: string,
+  expectedConnectionId?: string | null
+): string | undefined {
   const namespaces = new Set<string>()
+  if (expectedConnectionId !== undefined) {
+    namespaces.add(antigravityConnectionNamespace(expectedConnectionId))
+  }
   for (const row of readProviderSessions()) {
     if (row.agentType !== 'antigravity' || row.providerSession?.id !== sessionId) {
       continue
     }
-    if (isWslHookRelayConnectionId(row.connectionId)) {
-      const distro = row.connectionId?.slice(WSL_HOOK_RELAY_CONNECTION_PREFIX.length).trim()
-      if (!distro) {
-        throw new Error('Antigravity transcript execution namespace is unavailable')
-      }
-      namespaces.add(distro)
-    } else if (!row.connectionId) {
-      namespaces.add('')
-    } else {
-      throw new Error('Antigravity transcript execution namespace is unavailable')
-    }
+    namespaces.add(antigravityConnectionNamespace(row.connectionId))
   }
   if (namespaces.size > 1) {
     throw new Error('Antigravity transcript execution namespace is ambiguous')

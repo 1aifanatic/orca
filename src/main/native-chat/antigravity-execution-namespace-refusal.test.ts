@@ -137,35 +137,78 @@ it.each(['historical', 'native'])('preserves %s transcripts', async (kind) => {
   expect(transcriptFs.wslGatedOpen).toHaveBeenCalled()
 })
 
-it.each(['ssh-unverifiable', 'runtime-ssh-paired-host'])(
-  'the ungated provenance path cannot cite the native collision for a %s tab',
-  async (connectionId) => {
-    rows = [owner(connectionId)]
-    const tab: RuntimeMobileSessionTerminalClientTab = {
-      type: 'terminal',
-      id: 'tab',
-      title: 'Antigravity',
-      parentTabId: 'tab',
-      leafId: 'leaf',
-      launchAgent: 'antigravity',
-      isActive: true,
-      status: 'ready',
-      terminal: 'term',
-      agentStatus: {
-        paneKey: 'tab:leaf',
-        agentType: 'antigravity',
-        state: 'working',
-        prompt: '',
-        updatedAt: 1,
-        stateStartedAt: 1,
-        stateHistory: [],
-        connectionId,
-        providerSession: { key: 'conversation_id', id: ID }
-      }
+function clientTab(connectionId: string | null | undefined): RuntimeMobileSessionTerminalClientTab {
+  return {
+    type: 'terminal',
+    id: 'tab',
+    title: 'Antigravity',
+    parentTabId: 'tab',
+    leafId: 'leaf',
+    launchAgent: 'antigravity',
+    isActive: true,
+    status: 'ready',
+    terminal: 'term',
+    agentStatus: {
+      paneKey: 'tab:leaf',
+      agentType: 'antigravity',
+      state: 'working',
+      prompt: '',
+      updatedAt: 1,
+      stateStartedAt: 1,
+      stateHistory: [],
+      connectionId,
+      providerSession: { key: 'conversation_id', id: ID }
     }
+  }
+}
+
+it.each([
+  ['ssh-unverifiable', true],
+  ['runtime-ssh-paired-host', true],
+  ['ssh-unverifiable', false],
+  ['runtime-ssh-paired-host', false],
+  ['unknown-host', false],
+  ['wsl:Ubuntu', false],
+  ['wsl:', false]
+] as const)(
+  'the ungated provenance path refuses the native collision for %s (canonical owner present: %s)',
+  async (connectionId, ownerPresent) => {
+    rows = ownerPresent ? [owner(connectionId)] : []
     expect(
       await nativeChatTranscriptIncludesPath({
-        tabs: [tab],
+        tabs: [clientTab(connectionId)],
+        context: { tabId: 'tab', sessionId: ID },
+        pathText: citedPath,
+        absolutePath: citedPath
+      })
+    ).toBe(false)
+    expect(transcriptFs.wslGatedOpen).not.toHaveBeenCalled()
+  }
+)
+
+it.each([null, undefined])(
+  'preserves native and historical provenance (%s connection)',
+  async (connectionId) => {
+    expect(
+      await nativeChatTranscriptIncludesPath({
+        tabs: [clientTab(connectionId)],
+        context: { tabId: 'tab', sessionId: ID },
+        pathText: citedPath,
+        absolutePath: citedPath
+      })
+    ).toBe(true)
+    expect(transcriptFs.wslGatedOpen).toHaveBeenCalled()
+  }
+)
+
+it.each([null, 'wsl:Debian'])(
+  'refuses a WSL tab constraint that disagrees with its %s canonical owner',
+  async (connectionId) => {
+    rows = [owner(connectionId)]
+    expect(() => antigravitySessionWslDistro(ID, 'wsl:Ubuntu')).toThrow('ambiguous')
+    expect(
+      await nativeChatTranscriptIncludesPath({
+        tabs: [clientTab('wsl:Ubuntu')],
         context: { tabId: 'tab', sessionId: ID },
         pathText: citedPath,
         absolutePath: citedPath
