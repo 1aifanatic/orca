@@ -12,6 +12,7 @@ import {
 } from './acp-errors'
 import { AcpIncomingRequests } from './acp-incoming-requests'
 import { AcpWriteQueue } from './acp-write-queue'
+import { detachAcpStreamErrorHandler } from './acp-stdio-error-boundary'
 
 const idSchema = z.union([z.string(), z.number(), z.null()])
 const envelopeSchema = z.looseObject({
@@ -149,10 +150,10 @@ export class AcpJsonRpcPeer {
     this.input.removeListener('data', this.onData)
     this.input.removeListener('end', this.onEnd)
     this.input.removeListener('close', this.onEnd)
-    this.input.removeListener('error', this.onError)
+    detachAcpStreamErrorHandler(this.input, this.onError)
     this.output.removeListener('close', this.onEnd)
     this.output.removeListener('finish', this.onEnd)
-    this.output.removeListener('error', this.onError)
+    detachAcpStreamErrorHandler(this.output, this.onError)
     this.framer.reset()
     this.writer.close(error)
     for (const pending of this.pending.values()) {

@@ -250,4 +250,19 @@ describe('ACP JSON-RPC peer', () => {
     await rejected
     expect(peer.closed).toBe(true)
   })
+
+  it('handles asynchronous write callback errors without an unhandled stream error', async () => {
+    const input = new PassThrough()
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        setImmediate(() => callback(new Error('Broken pipe from write')))
+      }
+    })
+    const peer = new AcpJsonRpcPeer(input, output)
+    peers.push(peer)
+    await expect(peer.request('wait', {})).rejects.toThrow('Broken pipe from write')
+    await tick()
+    expect(peer.closed).toBe(true)
+    input.destroy()
+  })
 })
