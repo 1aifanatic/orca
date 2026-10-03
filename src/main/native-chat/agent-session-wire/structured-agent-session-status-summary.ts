@@ -15,7 +15,7 @@ export function structuredAgentSessionStatusSummary(input: {
   sessionId: string
   params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }
   record: AgentSessionRecord | null
-  child?: Pick<StructuredAgentSessionProviderChild, 'phase' | 'generation' | 'fence'> | null
+  child?: Pick<StructuredAgentSessionProviderChild, 'phase'> | null
   projected: StructuredAgentSessionStatusProjection
   childWork: StructuredStatusChildWork
   /** The journal's newest activity; 0 when it can date none. */
@@ -34,8 +34,7 @@ export function structuredAgentSessionStatusSummary(input: {
     ...(child
       ? {
           hostExecutionOwned: true as const,
-          hostExecutionPhase: child.phase,
-          hostExecutionChild: { generation: child.generation, fence: child.fence }
+          hostExecutionPhase: child.phase
         }
       : {}),
     ...input.projected,

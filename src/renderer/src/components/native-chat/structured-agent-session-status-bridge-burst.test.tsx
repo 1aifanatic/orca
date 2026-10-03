@@ -115,7 +115,8 @@ vi.mock('@/runtime/sync-runtime-graph/agent-status-projection', async (importOri
 
 // Every chat runs on the local host.
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: () => null
+  getRuntimeEnvironmentIdForWorktree: () => null,
+  getExecutionHostIdForWorktree: () => 'local'
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({

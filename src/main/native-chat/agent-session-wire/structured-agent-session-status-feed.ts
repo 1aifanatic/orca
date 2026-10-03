@@ -171,7 +171,6 @@ export class StructuredAgentSessionStatusFeed {
     const {
       hostExecutionOwned: _hostExecutionOwned,
       hostExecutionPhase: _hostExecutionPhase,
-      hostExecutionChild: _hostExecutionChild,
       ...retained
     } = previous
     this.published.set(sessionId, retained)
