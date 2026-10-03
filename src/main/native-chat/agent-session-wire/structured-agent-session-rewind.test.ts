@@ -110,7 +110,9 @@ afterEach(async () => {
 
 /** An interrupted rewind recovers when the agent next starts: here, after the host puts it to rest. */
 async function restartAgent() {
-  await host.collaboratorsForTests().lifetime.stopAgent(HOST_TEST_SESSION, { cause: 'evict', resting: true })
+  await host
+    .collaboratorsForTests()
+    .lifetime.stopAgent(HOST_TEST_SESSION, { cause: 'evict', resting: true })
   return startAgentForTests(host, HOST_TEST_SESSION)
 }
 
