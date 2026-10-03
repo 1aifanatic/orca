@@ -104,6 +104,7 @@ export function structuredAgentTurnAnchors(
       continue
     }
     // Times, not journal order: a client sees when a send was taken back, never that row's place.
+    // Temporary: STA-9337 moves this to journal order.
     const stoppedOpener =
       stoppedSinceLastTurn !== null &&
       turn.startedAt !== undefined &&
