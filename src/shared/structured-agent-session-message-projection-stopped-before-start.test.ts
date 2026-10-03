@@ -6,7 +6,8 @@ import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type {
   AgentJournalItemBody,
   AgentJournalRenderItem,
-  AgentJournalSubmission
+  AgentJournalSubmission,
+  AgentJournalTurnScope
 } from './agent-session-journal-types'
 import {
   NATIVE_CHAT_STOPPED_BEFORE_START_PRESENTATION,
@@ -17,20 +18,25 @@ import {
   DISPATCH_REJECTED_WRITE_FAILED
 } from './structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+import { projectNativeChatTranscriptMessages } from './native-chat-transcript-projection'
 
 let sequence = 0
 
-function entry(itemId: string, body: AgentJournalItemBody): AgentJournalRenderItem {
+function entry(
+  itemId: string,
+  body: AgentJournalItemBody,
+  turnScope: AgentJournalTurnScope = { kind: 'thread' }
+): AgentJournalRenderItem {
   sequence += 1
-  return {
-    itemId,
-    revision: 0,
-    sequence,
-    observedAt: sequence,
-    body,
-    turnScope: { kind: 'thread' }
-  }
+  return { itemId, revision: 0, sequence, observedAt: sequence, body, turnScope }
 }
+
+const said = (itemId: string, text: string, turnItemId: string) =>
+  entry(
+    itemId,
+    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] },
+    { kind: 'turn', turnItemId }
+  )
 
 const sent = (id: string, text: string) =>
   entry(agentJournalSubmissionKey(id), {
@@ -59,19 +65,17 @@ function submission(
 const stopped = (id: string, overrides: Partial<AgentJournalSubmission> = {}) =>
   submission(id, { dispatchState: 'rejected', reason: DISPATCH_REJECTED_CANCELLED, ...overrides })
 
-/** Each row as id, role and whether it reads as stopped before it started. */
+/** Each row as id and role, in the order the transcript draws them. */
 function rows(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]) {
-  return projectStructuredAgentSessionMessages(items, [], submissions).map((message) => ({
-    id: message.id,
-    role: message.role,
-    ...(message.stoppedBeforeStart ? { stoppedBeforeStart: true } : {})
-  }))
+  return projectNativeChatTranscriptMessages(
+    projectStructuredAgentSessionMessages(items, [], submissions)
+  ).map((message) => ({ id: message.id, role: message.role }))
 }
 
+const user = (id: string) => ({ id: agentJournalSubmissionKey(id), role: 'user' })
 const stopRow = (id: string) => ({
   id: `stopped-before-start:${agentJournalSubmissionKey(id)}`,
-  role: 'system',
-  stoppedBeforeStart: true
+  role: 'system'
 })
 
 describe('a send a Stop took back before the agent started it', () => {
@@ -79,8 +83,8 @@ describe('a send a Stop took back before the agent started it', () => {
     const items = [sent('warm-up', 'warm up'), sent('never-ran', 'look around')]
 
     expect(rows(items, [submission('warm-up'), stopped('never-ran')])).toEqual([
-      { id: agentJournalSubmissionKey('warm-up'), role: 'user' },
-      { id: agentJournalSubmissionKey('never-ran'), role: 'user', stoppedBeforeStart: true },
+      user('warm-up'),
+      user('never-ran'),
       stopRow('never-ran')
     ])
     const [, , row] = projectStructuredAgentSessionMessages(items, [], [stopped('never-ran')])
@@ -110,8 +114,8 @@ describe('a send a Stop took back before the agent started it', () => {
     const items = [sent('first', 'one'), sent('second', 'two')]
 
     expect(rows(items, [stopped('first'), stopped('second')])).toEqual([
-      { id: agentJournalSubmissionKey('first'), role: 'user', stoppedBeforeStart: true },
-      { id: agentJournalSubmissionKey('second'), role: 'user', stoppedBeforeStart: true },
+      user('first'),
+      user('second'),
       stopRow('second')
     ])
   })
@@ -128,8 +132,99 @@ describe('a send a Stop took back before the agent started it', () => {
       })
     ]
 
-    expect(rows(items, [stopped('opened')])).toEqual([
-      { id: agentJournalSubmissionKey('opened'), role: 'user' }
+    expect(rows(items, [stopped('opened')])).toEqual([user('opened')])
+  })
+
+  // Codex reports the turn open before it echoes the send, so the record names the provider's key.
+  it('stays in the turn that opened for it before the provider echoed it', () => {
+    const items = [
+      sent('opened', 'look around'),
+      entry('turn-1', {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'interrupted',
+        outcome: 'cancellation',
+        userItemId: 'codex:thread-1:turn-1:0',
+        startedAt: 5
+      })
+    ]
+
+    expect(rows(items, [stopped('opened', { resolvedAt: 10 })])).toEqual([user('opened')])
+  })
+
+  // A steer joins the running turn, whose interrupted end already says the Stop took it.
+  it('stays in the turn it was steered into, with no row of its own', () => {
+    const items = [
+      sent('first', 'look around'),
+      entry('t1', {
+        kind: 'turn',
+        turnId: 't1',
+        state: 'interrupted',
+        outcome: 'cancellation',
+        userItemId: agentJournalSubmissionKey('first')
+      }),
+      entry(
+        agentJournalSubmissionKey('steer'),
+        { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'and check the tests' }] },
+        { kind: 'turn', turnItemId: 't1' }
+      )
+    ]
+
+    expect(rows(items, [submission('first'), stopped('steer')])).toEqual([
+      user('first'),
+      user('steer')
+    ])
+  })
+
+  it('keeps its row when a turn starts only after the Stop took it back', () => {
+    const items = [
+      sent('never-ran', 'look around'),
+      entry('wake', {
+        kind: 'turn',
+        turnId: 'wake',
+        state: 'completed',
+        userItemId: 'claude:wake',
+        startedAt: 20
+      }),
+      said('wake-note', 'Checking the build.', 'wake')
+    ]
+
+    expect(rows(items, [stopped('never-ran', { resolvedAt: 10 })])).toEqual([
+      user('never-ran'),
+      stopRow('never-ran'),
+      { id: 'wake-note', role: 'assistant' }
+    ])
+  })
+
+  it('is drawn after the turn it waited behind when it was never handed over', () => {
+    const items = [
+      sent('first', 'first prompt'),
+      entry('t1', {
+        kind: 'turn',
+        turnId: 't1',
+        state: 'interrupted',
+        outcome: 'cancellation',
+        userItemId: agentJournalSubmissionKey('first')
+      }),
+      said('before', 'working on it', 't1'),
+      sent('queued', 'queued while t1 ran'),
+      said('after', 'more t1 output', 't1'),
+      entry(
+        'note',
+        { kind: 'status', text: 'Cancellation requested.' },
+        { kind: 'turn', turnItemId: 't1' }
+      )
+    ]
+
+    expect(
+      rows(items, [submission('first'), stopped('queued', { handoverRecorded: true })])
+    ).toEqual([
+      user('first'),
+      { id: 'before', role: 'assistant' },
+      { id: 'after', role: 'assistant' },
+      { id: 'note', role: 'system' },
+      user('queued'),
+      stopRow('queued')
     ])
   })
 

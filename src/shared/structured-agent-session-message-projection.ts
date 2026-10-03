@@ -4,9 +4,10 @@ import { agentJournalItemPosition } from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import {
-  NATIVE_CHAT_STOPPED_BEFORE_START_PRESENTATION,
-  NATIVE_CHAT_STOPPED_BEFORE_START_TEXT
+  stoppedBeforeHandOverPosition,
+  withStopRowsAfterStoppedSends
 } from './native-chat-stopped-before-start'
+import { compareNativeChatTranscriptMessages } from './native-chat-transcript-projection'
 import { structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatMessage } from './native-chat-types'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
@@ -14,34 +15,6 @@ import type { StructuredAgentSessionOutboxEntry } from './structured-agent-sessi
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
-
-/** One row after each run of sends a Stop took back, placed with the last of them. */
-function withStopRowsAfterStoppedSends(
-  messages: readonly NativeChatMessage[]
-): NativeChatMessage[] {
-  return messages.flatMap((message, index) =>
-    message.stoppedBeforeStart && messages[index + 1]?.stoppedBeforeStart !== true
-      ? [
-          message,
-          {
-            id: `stopped-before-start:${message.id}`,
-            role: 'system' as const,
-            source: 'transcript' as const,
-            timestamp: message.timestamp,
-            blocks: [
-              {
-                type: 'text' as const,
-                text: NATIVE_CHAT_STOPPED_BEFORE_START_TEXT,
-                presentation: NATIVE_CHAT_STOPPED_BEFORE_START_PRESENTATION
-              }
-            ],
-            stoppedBeforeStart: true as const,
-            ...(message.journalPosition ? { journalPosition: message.journalPosition } : {})
-          }
-        ]
-      : [message]
-  )
-}
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
@@ -52,12 +25,12 @@ export function projectStructuredAgentSessionMessages(
   const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
   // A send a Stop took back before the agent started it stays where it was sent, as the
   // conversation's own history. A queued card's hand-off is left out: the card holds its text.
-  const stoppedBeforeStart = new Set(
+  const stoppedBeforeStart = new Map(
     submissions
       .filter(
         (submission) => dispatchWasWithdrawn(submission) && submission.queuedMessageId === undefined
       )
-      .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
+      .map((submission) => [agentJournalSubmissionKey(submission.clientMessageId), submission])
   )
   // Other refused sends are ledger evidence, not conversation history; local drafts remain in the outbox.
   const rejected = new Set(
@@ -66,8 +39,8 @@ export function projectStructuredAgentSessionMessages(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
       .filter((itemId) => !stoppedBeforeStart.has(itemId))
   )
-  // A turn opened for it ends saying it was stopped, so such a send stays in that turn.
   const anchored = new Set(structuredAgentTurnAnchors(items, submissions).values())
+  const itemsById = new Map(items.map((item) => [item.itemId, item]))
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
   for (const item of items) {
@@ -87,18 +60,42 @@ export function projectStructuredAgentSessionMessages(
   )
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
+  const shownStopped = new Set<string>()
+  let moved = false
   for (const message of projectItems(visibleItems)) {
     if (queued.has(message.id)) {
       held.push({ ...message, queued: true })
-    } else if (stoppedBeforeStart.has(message.id) && !anchored.has(message.id)) {
+    } else if (
+      stoppedBeforeStart.has(message.id) &&
+      (anchored.has(message.id) || itemsById.get(message.id)?.turnScope?.kind === 'turn')
+    ) {
+      // A turn opened for it, or it joined one (a steer): that turn's interrupted end is its stop.
       delivered.push({ ...message, stoppedBeforeStart: true })
+    } else if (stoppedBeforeStart.has(message.id)) {
+      const submission = stoppedBeforeStart.get(message.id)
+      const item = itemsById.get(message.id)
+      // Never handed over, so it waited behind the turn it was accepted in.
+      const waited =
+        submission?.handoverRecorded === true && submission.handedOverAt === undefined && item
+      moved ||= Boolean(waited)
+      shownStopped.add(message.id)
+      delivered.push({
+        ...message,
+        stoppedBeforeStart: true,
+        ...(waited ? { journalPosition: stoppedBeforeHandOverPosition(items, item) } : {})
+      })
     } else {
       delivered.push(message)
     }
   }
   return [
     // After the held sends leave: they are drawn after the conversation, never inside a run.
-    ...withStopRowsAfterStoppedSends(collapseProviderRetryRuns(delivered)),
+    ...withStopRowsAfterStoppedSends(
+      moved
+        ? Array.from(collapseProviderRetryRuns(delivered)).sort(compareNativeChatTranscriptMessages)
+        : collapseProviderRetryRuns(delivered),
+      shownStopped
+    ),
     ...held,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))

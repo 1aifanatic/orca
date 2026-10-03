@@ -93,8 +93,8 @@ function submission(
   }
 }
 
-const stopped = (id: string) =>
-  submission(id, { dispatchState: 'rejected', reason: DISPATCH_REJECTED_CANCELLED })
+const stopped = (id: string, overrides: Partial<AgentJournalSubmission> = {}) =>
+  submission(id, { dispatchState: 'rejected', reason: DISPATCH_REJECTED_CANCELLED, ...overrides })
 
 function journalList(
   items: AgentJournalRenderItem[],
@@ -196,5 +196,71 @@ describe('a send a Stop took back before the agent started it', () => {
     expect(screen.getByText('look around')).toBeInTheDocument()
     expect(screen.getByText('Interrupted after 2s')).toBeInTheDocument()
     expect(screen.queryByText(STOP_ROW)).toBeNull()
+  })
+
+  // Codex reports the turn open before it echoes the send, so the record names the provider's key.
+  it("leaves it to that turn before the provider echoed it, with only that turn's stop rows", () => {
+    renderJournal(
+      [
+        ...warmUp(),
+        sent('opened', 'look around'),
+        item('t2', {
+          kind: 'turn',
+          turnId: 't2',
+          state: 'interrupted',
+          outcome: 'cancellation',
+          userItemId: 'codex:thread-1:t2:0',
+          startedAt: 10_000,
+          completedAt: 12_000
+        }),
+        item(
+          'stop:t2',
+          { kind: 'status', text: 'Cancellation requested.' },
+          { kind: 'turn', turnItemId: 't2' }
+        )
+      ],
+      [submission('warm-up'), stopped('opened', { resolvedAt: 12_000 })]
+    )
+
+    const message = screen.getByText('look around')
+    expect(follows(screen.getByText('Interrupted after 2s'), message)).toBe(true)
+    expect(screen.queryByText(STOP_ROW)).toBeNull()
+  })
+
+  it("draws its row as the Stop's own status rows are drawn", () => {
+    renderJournal(
+      [
+        ...warmUp(),
+        item('stop:t1', { kind: 'status', text: 'Cancellation requested.' }),
+        sent('never-ran', 'look around')
+      ],
+      [submission('warm-up'), stopped('never-ran')]
+    )
+
+    const rowOf = (text: string) => screen.getByText(text).closest('.group')
+    expect(rowOf(STOP_ROW)?.className).toBe(rowOf('Cancellation requested.')?.className)
+    expect(rowOf(STOP_ROW)?.className).toBeTruthy()
+  })
+
+  it('keeps its row on screen under a settled turn on a host that states no turn scopes', () => {
+    const unscoped = (entry: AgentJournalRenderItem): AgentJournalRenderItem => {
+      const { turnScope: _none, ...rest } = entry
+      return rest
+    }
+    renderJournal(
+      [
+        ...warmUp(),
+        sent('steered', 'and check the tests'),
+        item('t1-more', {
+          kind: 'message',
+          role: 'assistant',
+          blocks: [{ type: 'text', text: 'More warming up.' }]
+        })
+      ].map(unscoped),
+      [submission('warm-up'), stopped('steered')]
+    )
+
+    expect(screen.getByText('and check the tests')).toBeInTheDocument()
+    expect(screen.getByText(STOP_ROW)).toBeInTheDocument()
   })
 })

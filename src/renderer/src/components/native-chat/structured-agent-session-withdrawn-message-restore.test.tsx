@@ -303,32 +303,67 @@ describe('a message a Stop took out of the outbox before the host held it', () =
       'an image',
       () => appendNativeChatAttachmentCache(PANE, [{ id: 'typed', path: '/tmp/typed.png' }])
     ]
-  ])('leaves a composer holding %s as it is', async (_holding, fill) => {
+  ])(
+    'leaves a composer holding %s as it is, and keeps the message as not sent',
+    async (_holding, fill) => {
+      mocks.call.mockImplementation(() => new Promise<never>(() => {}))
+      const { result } = renderOutbox()
+      act(() => expect(result.current.send('first')).toBe(true))
+      await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+      act(() =>
+        expect(
+          result.current.send('second', [{ path: '/tmp/shot.png', previewUri: '/tmp/shot.png' }])
+        ).toBe(true)
+      )
+      const before = {
+        draft: readNativeChatDraftCache(PANE),
+        images: readNativeChatAttachmentCache(PANE)
+      }
+      fill()
+      const filled = {
+        draft: readNativeChatDraftCache(PANE),
+        images: readNativeChatAttachmentCache(PANE)
+      }
+      expect(filled).not.toEqual(before)
+
+      act(() => result.current.withdrawUnsent())
+
+      expect({
+        draft: readNativeChatDraftCache(PANE),
+        images: readNativeChatAttachmentCache(PANE)
+      }).toEqual(filled)
+      // Its only copy, so it stays as not sent, text and image, on its Retry.
+      expect(
+        readOutbox(SESSION, { recoverDispatching: false }).map((entry) => ({
+          state: entry.state,
+          blocks: entry.body.blocks
+        }))
+      ).toEqual([
+        { state: 'dispatching', blocks: [{ type: 'text', text: 'first' }] },
+        {
+          state: 'rejected',
+          blocks: [
+            { type: 'text', text: 'second' },
+            { type: 'image-ref', path: '/tmp/shot.png' }
+          ]
+        }
+      ])
+    }
+  )
+
+  it('keeps the message as not sent where no composer shows the chat', async () => {
     mocks.call.mockImplementation(() => new Promise<never>(() => {}))
-    const { result } = renderOutbox()
+    const { result } = renderOutbox(null)
     act(() => expect(result.current.send('first')).toBe(true))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
     act(() => expect(result.current.send('second')).toBe(true))
-    const before = {
-      draft: readNativeChatDraftCache(PANE),
-      images: readNativeChatAttachmentCache(PANE)
-    }
-    fill()
-    const filled = {
-      draft: readNativeChatDraftCache(PANE),
-      images: readNativeChatAttachmentCache(PANE)
-    }
-    expect(filled).not.toEqual(before)
 
     act(() => result.current.withdrawUnsent())
 
-    expect(result.current.outbox.map((entry) => entry.body.blocks)).toEqual([
-      [{ type: 'text', text: 'first' }]
+    expect(result.current.outbox.map((entry) => [entry.state, entry.body.blocks])).toEqual([
+      ['dispatching', [{ type: 'text', text: 'first' }]],
+      ['rejected', [{ type: 'text', text: 'second' }]]
     ])
-    expect({
-      draft: readNativeChatDraftCache(PANE),
-      images: readNativeChatAttachmentCache(PANE)
-    }).toEqual(filled)
   })
 
   it('leaves a message waiting on Retry where it is, and gives back only what it withdrew', async () => {

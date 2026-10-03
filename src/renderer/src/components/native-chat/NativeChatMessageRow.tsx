@@ -14,6 +14,7 @@ import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-c
 import { NativeChatToolRun } from './NativeChatToolRun'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import { NativeChatNoticeRow } from './NativeChatNoticeRow'
+import { nativeChatBlocksInOwnWords } from './native-chat-stopped-before-start-row'
 import { NativeChatCopyButton } from './NativeChatCopyButton'
 import { NativeChatMessageTimestamp } from './NativeChatMessageTimestamp'
 import {
@@ -82,14 +83,15 @@ export const MessageRow = memo(function MessageRow({
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element | null {
   const rowRef = useRef<HTMLDivElement | null>(null)
+  const blocks = nativeChatBlocksInOwnWords(message.blocks)
   // One pass per block set, shared with the list that decides whether this row
   // occupies a slot — so "draws nothing" means the same thing to both.
   const { backgroundTasks, hasImages, markdown, prose, subagentGroups, tools } =
-    deriveNativeChatRowContent(message.blocks)
+    deriveNativeChatRowContent(blocks)
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
   const isSystem = message.role === 'system'
-  const providerFrame = message.blocks.find((block) => block.type === 'text' && block.providerFrame)
+  const providerFrame = blocks.find((block) => block.type === 'text' && block.providerFrame)
 
   const scrollToTop = useCallback(() => {
     if (rowRef.current) {
@@ -117,7 +119,7 @@ export const MessageRow = memo(function MessageRow({
   }
 
   const notice = isSystem
-    ? message.blocks.find(
+    ? blocks.find(
         (block) =>
           block.type === 'text' && (block.presentation !== undefined || block.tone !== undefined)
       )

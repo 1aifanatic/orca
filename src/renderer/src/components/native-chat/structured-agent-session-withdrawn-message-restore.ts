@@ -8,20 +8,20 @@ import {
 
 /**
  * Gives the sender back what its own Stop took out of the outbox before the host held it, into
- * an empty composer only: the host never had it, so the transcript cannot show it. A composer
- * holding text or images keeps what is there. What the host withdrew stays in the transcript.
+ * an empty composer only: the host never had it, so the transcript cannot show it. Returns whether
+ * they went in; a composer holding text or images keeps what is there, and the caller keeps the
+ * entries. What the host withdrew stays in the transcript.
  */
 function restoreUnsentMessages(
   composerScopeKey: string | undefined,
   withdrawn: readonly StructuredAgentSessionOutboxEntry[]
-): void {
+): boolean {
   if (
     !composerScopeKey ||
-    withdrawn.length === 0 ||
     readNativeChatDraftCache(composerScopeKey) !== '' ||
     readNativeChatAttachmentCache(composerScopeKey).length > 0
   ) {
-    return
+    return false
   }
   for (const entry of withdrawn) {
     const blocks = entry.body.blocks
@@ -38,14 +38,16 @@ function restoreUnsentMessages(
       )
     )
   }
+  return true
 }
 
 export function useStructuredAgentSessionWithdrawnRestore(
-  /** Absent where no composer shows this session; the entries are then only dropped. */
+  /** Absent where no composer shows this session; the caller then keeps the entries. */
   composerScopeKey: string | undefined
 ): {
-  /** Entries a Stop took out of the outbox here, before the host held them. */
-  byStop: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
+  /** Entries a Stop took out of the outbox here, before the host held them; false when the
+   *  composer could not take them. */
+  byStop: (entries: readonly StructuredAgentSessionOutboxEntry[]) => boolean
 } {
   return useMemo(
     () => ({ byStop: (entries) => restoreUnsentMessages(composerScopeKey, entries) }),

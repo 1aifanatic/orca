@@ -26,6 +26,7 @@ import {
 } from './native-chat-turn-grouping'
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
+import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
@@ -44,7 +45,8 @@ export type NativeChatTurnJournal = {
  * entry, directly or through a submission's adopted provider item; a record that names no entry
  * falls back to the nearest user entry before it, which only older hosts write. A key nothing
  * resolves yet is the send still in flight ahead of the record — Codex reports a turn open before
- * it echoes the send — and with none, the turn anchors on its own record.
+ * it echoes the send — or one a Stop took back before that echo; with none, the turn anchors on
+ * its own record.
  */
 export function structuredAgentTurnAnchors(
   items: readonly AgentJournalRenderItem[],
@@ -68,14 +70,32 @@ export function structuredAgentTurnAnchors(
       .filter((submission) => submission.dispatchState === 'pending' && !submission.providerItemId)
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
+  // A send a Stop took back after its turn opened but before the provider echoed it: the record
+  // still names the provider's key, and the send is no longer in flight. It opened the turn that
+  // started before the Stop took it back.
+  const stoppedBeforeEcho = new Map(
+    submissions.flatMap((submission) =>
+      !submission.providerItemId &&
+      submission.queuedMessageId === undefined &&
+      submission.resolvedAt !== null &&
+      dispatchWasWithdrawn(submission)
+        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission.resolvedAt] as const]
+        : []
+    )
+  )
   const anchors = new Map<string, string>()
   let precedingUserItemId: string | null = null
   let inFlightSinceLastTurn: string | null = null
+  let stoppedSinceLastTurn: { itemId: string; resolvedAt: number } | null = null
   for (const item of items) {
     if (userItemIds.has(item.itemId)) {
       precedingUserItemId = item.itemId
       if (inFlightSinceLastTurn === null && inFlight.has(item.itemId)) {
         inFlightSinceLastTurn = item.itemId
+      }
+      const resolvedAt = stoppedBeforeEcho.get(item.itemId)
+      if (stoppedSinceLastTurn === null && resolvedAt !== undefined) {
+        stoppedSinceLastTurn = { itemId: item.itemId, resolvedAt }
       }
       continue
     }
@@ -83,11 +103,25 @@ export function structuredAgentTurnAnchors(
     if (!turn || !isRootAgentJournalItem(item)) {
       continue
     }
+    const stoppedOpener =
+      stoppedSinceLastTurn !== null &&
+      turn.startedAt !== undefined &&
+      turn.startedAt <= stoppedSinceLastTurn.resolvedAt
+        ? stoppedSinceLastTurn.itemId
+        : null
     anchors.set(
       item.itemId,
-      anchorOf(item.itemId, turn, userItemIds, aliases, precedingUserItemId, inFlightSinceLastTurn)
+      anchorOf(
+        item.itemId,
+        turn,
+        userItemIds,
+        aliases,
+        precedingUserItemId,
+        inFlightSinceLastTurn ?? stoppedOpener
+      )
     )
     inFlightSinceLastTurn = null
+    stoppedSinceLastTurn = null
   }
   return anchors
 }
