@@ -1,4 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { randomUUID } from 'node:crypto'
+import * as fileSystem from 'node:fs'
 import {
   existsSync,
   mkdirSync,
@@ -15,6 +17,10 @@ import { join } from 'node:path'
 import SyncDatabase from '../sqlite/sync-database'
 import * as secureFile from '../../shared/secure-file'
 import { ManagedDataAccountService } from './service'
+
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof fileSystem>())
+}))
 
 let root: string
 let source: string
@@ -91,16 +97,18 @@ describe('managed data accounts', () => {
     }
   )
 
-  it('retains selected account metadata after locked cleanup and permits retry', async () => {
+  it('retains selected account metadata when the atomic rename is locked and permits retry', async () => {
     let locked = true
-    service = new ManagedDataAccountService(join(root, 'managed'), (directory) => {
-      if (locked) {
-        throw new Error('file locked')
-      }
-      rmSync(directory, { recursive: true, force: true })
-    })
     const before = await service.add('devin', source, 'Work')
     const environment = service.launchEnvironment('devin')
+    const directory = join(root, 'managed', 'devin', before.accounts[0].id)
+    const rename = fileSystem.renameSync
+    vi.spyOn(fileSystem, 'renameSync').mockImplementation((from, to) => {
+      if (locked && from === directory) {
+        throw new Error('file locked')
+      }
+      return rename(from, to)
+    })
     const metadataPath = join(root, 'managed', 'devin', 'accounts.json')
     const metadata = readFileSync(metadataPath)
     const changed = vi.fn()
@@ -117,6 +125,141 @@ describe('managed data accounts', () => {
     await service.remove('devin', before.accounts[0].id)
     expect(service.list('devin')).toEqual({ accounts: [], activeAccountId: null })
     expect(changed).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves both transaction errors and a private recovery backup when metadata rollback fails', async () => {
+    const before = await service.add('devin', source, 'Work')
+    const id = before.accounts[0].id
+    const directory = join(root, 'managed', 'devin', id)
+    const credentialsPath = join(directory, 'data', 'devin', 'credentials.toml')
+    const credentials = readFileSync(credentialsPath)
+    const metadataPath = join(root, 'managed', 'devin', 'accounts.json')
+    const metadata = readFileSync(metadataPath)
+    const originalError = Object.assign(new Error('injected quarantine rename failure'), {
+      code: 'EPERM'
+    })
+    const rollbackError = Object.assign(new Error('injected metadata rollback failure'), {
+      code: 'EACCES'
+    })
+    const rename = fileSystem.renameSync
+    const failingRename = vi.spyOn(fileSystem, 'renameSync').mockImplementation((from, to) => {
+      if (from === directory) {
+        throw originalError
+      }
+      if (typeof from === 'string' && from.endsWith('.rollback')) {
+        throw rollbackError
+      }
+      return rename(from, to)
+    })
+    const changed = vi.fn()
+    service.onChanged(changed)
+    let failure: unknown
+    try {
+      await service.remove('devin', id)
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(AggregateError)
+    if (!(failure instanceof AggregateError)) {
+      throw new Error('Expected both removal and rollback failures.')
+    }
+    expect(failure.errors).toEqual([originalError, rollbackError])
+    expect(failure.cause).toBe(originalError)
+    expect(readFileSync(`${metadataPath}.${id}.rollback`)).toEqual(metadata)
+    expect(readFileSync(credentialsPath)).toEqual(credentials)
+    expect(service.list('devin')).toEqual({ accounts: [], activeAccountId: null })
+    expect(service.launchEnvironment('devin')).toEqual({})
+    expect(changed).not.toHaveBeenCalled()
+
+    failingRename.mockRestore()
+    await expect(service.remove('devin', id)).resolves.toEqual({
+      accounts: [],
+      activeAccountId: null
+    })
+    expect(existsSync(directory)).toBe(false)
+    expect(existsSync(`${metadataPath}.${id}.rollback`)).toBe(false)
+    expect(changed).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits logical removal without reselecting a partially deleted profile and retries cleanup', async () => {
+    let locked = true
+    let cleanupDirectory: string | undefined
+    service = new ManagedDataAccountService(join(root, 'managed'), (directory) => {
+      cleanupDirectory = directory
+      if (locked) {
+        rmSync(join(directory, 'data'), { recursive: true, force: true })
+        throw Object.assign(new Error('state file locked after credential deletion'), {
+          code: 'EPERM'
+        })
+      }
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const before = await service.add('devin', source, 'Work')
+    const id = before.accounts[0].id
+    const environment = service.launchEnvironment('devin')
+    mkdirSync(environment.XDG_STATE_HOME, { recursive: true })
+    writeFileSync(join(environment.XDG_STATE_HOME, 'locked-file'), 'remaining private state')
+    const changed = vi.fn()
+    service.onChanged(changed)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(service.remove('devin', id)).resolves.toEqual({
+      accounts: [],
+      activeAccountId: null
+    })
+    expect(service.list('devin')).toEqual({ accounts: [], activeAccountId: null })
+    expect(service.launchEnvironment('devin')).toEqual({})
+    expect(service.transcriptEnvironments('devin')).toEqual([])
+    expect(cleanupDirectory).toBeDefined()
+    expect(cleanupDirectory).not.toBe(join(root, 'managed', 'devin', id))
+    expect(existsSync(join(environment.XDG_DATA_HOME, 'devin', 'credentials.toml'))).toBe(false)
+    expect(changed).toHaveBeenCalledTimes(1)
+
+    locked = false
+    await expect(service.remove('devin', id)).resolves.toEqual({
+      accounts: [],
+      activeAccountId: null
+    })
+    expect(cleanupDirectory && existsSync(cleanupDirectory)).toBe(false)
+    expect(changed).toHaveBeenCalledTimes(1)
+    expect(readFileSync(join(source, 'devin', 'credentials.toml'), 'utf8')).toContain(
+      'test-only-key'
+    )
+  })
+
+  it('retries quarantined cleanup on restart without reviving a removed account', async () => {
+    service = new ManagedDataAccountService(join(root, 'managed'), () => {
+      throw new Error('injected cleanup lock')
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const before = await service.add('devin', source, 'Work')
+    const id = before.accounts[0].id
+    await service.remove('devin', id)
+    const pendingDirectory = join(root, 'managed', 'devin', '.pending-delete', id)
+    expect(existsSync(pendingDirectory)).toBe(true)
+
+    const restarted = new ManagedDataAccountService(join(root, 'managed'))
+    expect(restarted.list('devin')).toEqual({ accounts: [], activeAccountId: null })
+    expect(restarted.launchEnvironment('devin')).toEqual({})
+    await vi.waitFor(() => expect(existsSync(pendingDirectory)).toBe(false))
+    expect(restarted.list('devin')).toEqual({ accounts: [], activeAccountId: null })
+  })
+
+  it('retries every eligible quarantine while preserving registered and unrecognized directories', async () => {
+    const before = await service.add('devin', source, 'Work')
+    const pendingRoot = join(root, 'managed', 'devin', '.pending-delete')
+    const pendingIds = Array.from({ length: 65 }, () => randomUUID())
+    for (const id of [...pendingIds, before.accounts[0].id, 'unrecognized']) {
+      mkdirSync(join(pendingRoot, id), { recursive: true })
+    }
+    const restarted = new ManagedDataAccountService(join(root, 'managed'))
+    await vi.waitFor(() =>
+      expect(readdirSync(pendingRoot).sort()).toEqual(
+        [before.accounts[0].id, 'unrecognized'].sort()
+      )
+    )
+    expect(restarted.list('devin')).toEqual(before)
+    expect(restarted.launchEnvironment('devin')).toEqual(service.launchEnvironment('devin'))
   })
 
   it('registers private Devin credentials, exposes summaries, and removes only its profile', async () => {
@@ -166,6 +309,129 @@ describe('managed data accounts', () => {
       writer.close()
     }
   })
+
+  it.each(['session_v2', 'session_message'])(
+    'rejects %s rows committed after source validation before the real SQLite backup',
+    async (table) => {
+      openCodeSource('session_v2')
+      const writer = new SyncDatabase(join(source, 'opencode', 'opencode.db'))
+      writer.pragma('journal_mode = WAL')
+      writer.exec('CREATE TABLE session_message (data TEXT)')
+      const backup = SyncDatabase.prototype.backup
+      const backupSpy = vi.spyOn(SyncDatabase.prototype, 'backup').mockImplementation(function (
+        this: SyncDatabase,
+        destination,
+        options
+      ) {
+        writer.prepare(`INSERT INTO ${table} VALUES (?)`).run('injected conversation after audit')
+        return backup.call(this, destination, options)
+      })
+      try {
+        await expect(service.add('opencode', source, 'Work')).rejects.toThrow(
+          'conversation databases'
+        )
+        expect(backupSpy).toHaveBeenCalledTimes(1)
+        expect(service.list('opencode')).toEqual({ accounts: [], activeAccountId: null })
+        expect(readdirSync(join(root, 'managed', 'opencode'))).toEqual([])
+        expect(writer.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count).toBe(1)
+      } finally {
+        writer.close()
+      }
+    }
+  )
+
+  it('rejects conversation committed by a second WAL writer during asynchronous backup', async () => {
+    openCodeSource('session_v2')
+    const writer = new SyncDatabase(join(source, 'opencode', 'opencode.db'))
+    writer.pragma('journal_mode = WAL')
+    writer.exec('CREATE TABLE padding (data BLOB); INSERT INTO padding VALUES (zeroblob(65536))')
+    let mutated = false
+    const backup = SyncDatabase.prototype.backup
+    vi.spyOn(SyncDatabase.prototype, 'backup').mockImplementation(function (
+      this: SyncDatabase,
+      destination,
+      options
+    ) {
+      return backup.call(this, destination, {
+        ...options,
+        rate: 1,
+        progress: ({ remainingPages }) => {
+          if (!mutated && remainingPages > 0) {
+            writer.prepare('INSERT INTO session_v2 VALUES (?)').run('injected concurrent session')
+            mutated = true
+          }
+        }
+      })
+    })
+    try {
+      await expect(service.add('opencode', source, 'Work')).rejects.toThrow(
+        'conversation databases'
+      )
+      expect(mutated).toBe(true)
+      expect(service.list('opencode')).toEqual({ accounts: [], activeAccountId: null })
+      expect(readdirSync(join(root, 'managed', 'opencode'))).toEqual([])
+    } finally {
+      writer.close()
+    }
+  })
+
+  it('publishes integrations from the completed credential snapshot', async () => {
+    openCodeSource('session_v2')
+    const writer = new SyncDatabase(join(source, 'opencode', 'opencode.db'))
+    writer.pragma('journal_mode = WAL')
+    const backup = SyncDatabase.prototype.backup
+    vi.spyOn(SyncDatabase.prototype, 'backup').mockImplementation(function (
+      this: SyncDatabase,
+      destination,
+      options
+    ) {
+      writer
+        .prepare('INSERT INTO credential VALUES (?, ?)')
+        .run('google', JSON.stringify({ type: 'key', key: 'injected-new-test-credential' }))
+      return backup.call(this, destination, options)
+    })
+    try {
+      const state = await service.add('opencode', source, 'Work')
+      expect(state.accounts[0].integrations).toEqual(['opencode-go', 'google'])
+    } finally {
+      writer.close()
+    }
+  })
+
+  it.each(['empty', 'invalid'])(
+    'rejects %s credentials committed after source validation and preserves the selected account',
+    async (change) => {
+      openCodeSource('session_v2')
+      const before = await service.add('opencode', source, 'Existing')
+      const writer = new SyncDatabase(join(source, 'opencode', 'opencode.db'))
+      writer.pragma('journal_mode = WAL')
+      const backup = SyncDatabase.prototype.backup
+      vi.spyOn(SyncDatabase.prototype, 'backup').mockImplementation(function (
+        this: SyncDatabase,
+        destination,
+        options
+      ) {
+        writer.exec('DELETE FROM credential')
+        if (change === 'invalid') {
+          writer
+            .prepare('INSERT INTO credential VALUES (?, ?)')
+            .run('google', '{"type":"key","key":""}')
+        }
+        return backup.call(this, destination, options)
+      })
+      try {
+        await expect(service.add('opencode', source, 'Rejected')).rejects.toThrow(
+          change === 'empty' ? 'supported credential' : 'credential format'
+        )
+        expect(service.list('opencode')).toEqual(before)
+        expect(readdirSync(join(root, 'managed', 'opencode')).sort()).toEqual(
+          [before.accounts[0].id, 'accounts.json'].sort()
+        )
+      } finally {
+        writer.close()
+      }
+    }
+  )
 
   it('rejects importing personal conversation databases and rolls back the directory', async () => {
     openCodeSource()

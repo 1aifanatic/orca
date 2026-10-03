@@ -1,13 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync
-} from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -17,6 +9,7 @@ import type {
   ManagedDataAccountsState
 } from '../../shared/managed-account-types'
 import { captureDataAccountCredentials } from './credential-capture'
+import { ManagedDataAccountProfileRemoval } from './profile-removal'
 import {
   captureManagedDataAccountOriginalEnvironment,
   restoreManagedDataAccountEnvironment
@@ -45,12 +38,30 @@ export class ManagedDataAccountService {
   private pending: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<() => void>()
   private readonly inlineAuthBaselines = new Map<string, InlineAuthBaseline>()
+  private readonly profileRemoval: ManagedDataAccountProfileRemoval
 
   constructor(
     private readonly root: string,
-    private readonly removeDirectory: (directory: string) => void = (directory) =>
-      rmSync(directory, { recursive: true, force: true })
-  ) {}
+    removeDirectory?: (directory: string) => void | Promise<void>
+  ) {
+    this.profileRemoval = new ManagedDataAccountProfileRemoval(
+      root,
+      (path) => this.assertOwned(path),
+      removeDirectory
+    )
+    if (existsSync(root)) {
+      for (const provider of ['opencode', 'devin'] as const) {
+        void this.mutate(async () => {
+          const registered = new Set(this.list(provider).accounts.map((account) => account.id))
+          await this.profileRemoval.retry(provider, registered)
+        }).catch(() => {
+          console.warn(
+            '[managed-data-accounts] Could not read accounts for private directory cleanup.'
+          )
+        })
+      }
+    }
+  }
 
   list(provider: ManagedDataAccountProvider): ManagedDataAccountsState {
     const path = join(this.root, provider, 'accounts.json')
@@ -109,41 +120,15 @@ export class ManagedDataAccountService {
     provider: ManagedDataAccountProvider,
     accountId: string
   ): Promise<ManagedDataAccountsState> {
-    return this.mutate(async () => {
-      const state = this.list(provider)
-      if (!state.accounts.some((account) => account.id === accountId)) {
-        throw new Error('Managed account not found.')
-      }
-      const directory = join(this.root, provider, accountId)
-      if (existsSync(directory)) {
-        this.assertOwned(directory)
-      }
-      const metadataPath = join(this.root, provider, 'accounts.json')
-      const rollbackPath = `${metadataPath}.${randomUUID()}.rollback`
-      if (!writeSecureFile(rollbackPath, readFileSync(metadataPath, 'utf8'), { durable: true })) {
-        rmSync(rollbackPath, { force: true })
-        throw new Error('Could not restrict account metadata backup permissions.')
-      }
-      let next: ManagedDataAccountsState
-      try {
-        // Keep the original metadata until persistence and cleanup both succeed.
-        next = this.writeState(provider, {
-          accounts: state.accounts.filter((account) => account.id !== accountId),
-          activeAccountId: state.activeAccountId === accountId ? null : state.activeAccountId
-        })
-        this.removeDirectory(directory)
-      } catch (error) {
-        renameSync(rollbackPath, metadataPath)
-        throw error
-      }
-      try {
-        rmSync(rollbackPath, { force: true })
-      } catch {
-        console.warn('[managed-data-accounts] Could not remove account metadata backup.')
-      }
-      this.notifyChanged()
-      return next
-    })
+    return this.mutate(() =>
+      this.profileRemoval.remove(
+        provider,
+        accountId,
+        this.list(provider),
+        (next) => this.writeState(provider, next),
+        () => this.notifyChanged()
+      )
+    )
   }
 
   launchEnvironment(provider: ManagedDataAccountProvider): Record<string, string> {
