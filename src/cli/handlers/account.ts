@@ -330,8 +330,8 @@ export const ACCOUNT_HANDLERS: Record<string, CommandHandler> = {
     rejectAccountRemoteSelectionFlags(ctx, 'orca account select')
     await mutateDataAccount(ctx, 'select')
   },
-  'account remove': async (ctx) => {
-    rejectAccountRemoteSelectionFlags(ctx, 'orca account remove')
+  'account rm': async (ctx) => {
+    rejectAccountRemoteSelectionFlags(ctx, 'orca account rm')
     await mutateDataAccount(ctx, 'remove')
   }
 }

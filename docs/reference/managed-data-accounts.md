@@ -9,7 +9,7 @@ orca account add --agent devin --label Work
 orca account list --agent opencode --json
 orca account select --agent opencode --account <id>
 orca account select --agent opencode --account system
-orca account remove --agent opencode --account <id>
+orca account rm --agent opencode --account <id>
 ```
 
 OpenCode enrollment requires OpenCode 2 and runs its official `auth login --standalone` command. Devin runs `auth login --force-manual-token-flow`; obtain the enrollment token through Devin's supported login flow. These commands neither reuse a guessed token nor sign out the system account. Settings → AI Provider Accounts provides the enrollment command, refresh, selection, and removal for the selected Orca host.

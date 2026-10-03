@@ -40,9 +40,10 @@ export const ACCOUNT_COMMAND_SPECS: CommandSpec[] = [
     allowedFlags: [...GLOBAL_FLAGS, 'agent', 'account']
   },
   {
-    path: ['account', 'remove'],
+    path: ['account', 'rm'],
+    aliases: [['account', 'remove']],
     summary: 'Remove a managed OpenCode or Devin profile and its private data',
-    usage: 'orca account remove --agent opencode|devin --account <id> [--json]',
+    usage: 'orca account rm --agent opencode|devin --account <id> [--json]',
     allowedFlags: [...GLOBAL_FLAGS, 'agent', 'account'],
     notes: [
       'Deletes credentials and conversation data in the managed profile. Stop its running agents first. System credentials are never removed.'
