@@ -55,10 +55,7 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
-import type {
-  JournalStatusProjection,
-  JournalStatusProjectionState
-} from './journal-status-projection'
+import type { JournalStatusProjectionState } from './journal-status-projection'
 import {
   journalQueueResumeRowBuilder,
   journalStopEventRowBuilder
@@ -99,7 +96,8 @@ export class AgentSessionJournal {
    *  fails the open that calls it. */
   readonly backfillSessionStatus: () => void
   readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
-  private readonly statusProjection: JournalStatusProjection
+  /** The status projection at this tip, projected once per commit for every reader. */
+  readonly statusState: (fence: number | undefined) => JournalStatusProjectionState
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
   readonly stopMarks: JournalStopMarks
@@ -155,7 +153,7 @@ export class AgentSessionJournal {
     this.restore = collaborators.restore
     this.backfillSessionStatus = collaborators.backfillSessionStatus
     this.readSince = collaborators.readSince
-    this.statusProjection = collaborators.statusProjection
+    this.statusState = (fence) => collaborators.statusProjection.at(fence)
   }
 
   private get state(): JournalReducerState {
@@ -233,10 +231,6 @@ export class AgentSessionJournal {
 
   snapshot = (): AgentJournalSnapshot => renderJournalState(this.state)
 
-  /** The status projection at this tip, projected once per commit for every reader. */
-  statusState = (fence: number | undefined): JournalStatusProjectionState =>
-    this.statusProjection.at(fence)
-
   /** Visits reduced items without allocating and sorting a full snapshot. */
   visitItems = (
     visit: (itemId: string, sequence: number, body: AgentJournalItemBody) => void
@@ -304,9 +298,7 @@ export class AgentSessionJournal {
 
   /** Reads the fold with every write issued before this call committed, and none issued after: at
    *  once unless writes still wait behind an owed import or a running write. */
-  readInOrder<T>(read: () => T): Promise<T> {
-    return this.queue.readInOrder(read)
-  }
+  readInOrder = <T>(read: () => T): Promise<T> => this.queue.readInOrder(read)
 
   /** Upsert by stable identity. The revision is assigned here so a caller
    *  cannot accidentally publish a revision the reducer will drop. */
