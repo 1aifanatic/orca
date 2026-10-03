@@ -26,6 +26,18 @@ function pushRow(state: Record<string, unknown>, field: string, row: unknown): v
   state[field] = [...(Array.isArray(rows) ? rows : []), row]
 }
 
+function nextGeneration(state: Record<string, unknown>): number {
+  const targets = Array.isArray(state.sshTargets) ? state.sshTargets : []
+  const counter =
+    typeof state.sshTargetGenerationCounter === 'number' ? state.sshTargetGenerationCounter : 0
+  return (
+    Math.max(
+      counter,
+      ...targets.map((target) => (typeof target?.generation === 'number' ? target.generation : 0))
+    ) + 1
+  )
+}
+
 export function seedRelayEraProfile(
   userDataDir: string,
   input: SshTargetCreateInput,
@@ -120,7 +132,20 @@ export function seedRelayEraProfile(
     activeGroupIdByWorktree: { [worktreeId]: groupId }
   }
   mutateStoppedProfileState(userDataDir, (state) => {
-    pushRow(state, 'sshTargets', normalizeSshTarget({ id: targetId, ...input }))
+    // As SshConnectionStore.addTarget registers it: config alias, manual source, fresh generation.
+    const generation = nextGeneration(state)
+    state.sshTargetGenerationCounter = generation
+    pushRow(
+      state,
+      'sshTargets',
+      normalizeSshTarget({
+        ...input,
+        id: targetId,
+        configHost: input.host,
+        source: 'manual',
+        generation
+      })
+    )
     pushRow(state, 'repos', repo)
     pushRow(state, 'projectGroups', group)
     pushRow(state, 'folderWorkspaces', folder)
