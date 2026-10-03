@@ -40,8 +40,8 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
     },
     readScreen: async (ptyId) => {
       const screen = await this.readVisibleTerminalState(ptyId)
-      const lines = this.readScreenRuledLines(ptyId)
-      return screen && lines ? { ...screen, lines } : null
+      const ruledScreen = this.readRuledScreen(ptyId)
+      return screen && ruledScreen ? { ...screen, lines: ruledScreen.lines } : null
     },
     quietRemainingMs: (ptyId) => {
       const lastOutputAt = this.ptysById.get(ptyId)?.lastOutputAt
