@@ -27,11 +27,17 @@ export type NativeChatComposerDraftChange = {
   /** Present, even as undefined, to replace the document. */
   document?: JSONContent
   images?: readonly NativeChatComposerDraftImage[]
+  /** Text shown but never saved while the draft still holds exactly it. */
+  unsavedText?: string
 }
 
-const EMPTY_DRAFT: NativeChatComposerDraft = { text: '', images: [] }
+// Why unsavedText: an adopted launch seed is also parked in the agent's input line, and only this
+// run's seed knows to replace it, so a reload must not bring the copy back.
+type DraftRecord = StoredNativeChatComposerDraft & { readonly unsavedText?: string }
 
-const records = new Map<string, StoredNativeChatComposerDraft>()
+const EMPTY_DRAFT: DraftRecord = { text: '', images: [], savedAt: 0 }
+
+const records = new Map<string, DraftRecord>()
 // Scopes whose record storage does not hold yet; a refused write stays here for the next flush.
 const dirtyScopes = new Set<string>()
 let lastSavedAt = 0
@@ -63,18 +69,22 @@ function nextSavedAt(): number {
   return lastSavedAt
 }
 
-function writeRecord(
-  storage: Storage,
-  scopeKey: string,
-  record: StoredNativeChatComposerDraft
-): void {
-  if (writeStoredNativeChatComposerDraft(storage, scopeKey, record)) {
+function writeRecord(storage: Storage, scopeKey: string, record: DraftRecord): void {
+  const { unsavedText, ...saved } = record
+  if (saved.text === unsavedText && saved.images.length === 0) {
+    removeStoredNativeChatComposerDraft(storage, nativeChatComposerDraftStorageKey(scopeKey))
+    dirtyScopes.delete(scopeKey)
+    return
+  }
+  const stored =
+    saved.text === unsavedText ? { text: '', images: saved.images, savedAt: saved.savedAt } : saved
+  if (writeStoredNativeChatComposerDraft(storage, scopeKey, stored)) {
     dirtyScopes.delete(scopeKey)
   }
 }
 
 // A draft leaving memory before its write landed is written on the way out.
-function writeEvictedRecord(scopeKey: string, record: StoredNativeChatComposerDraft): void {
+function writeEvictedRecord(scopeKey: string, record: DraftRecord): void {
   const storage = dirtyScopes.has(scopeKey) ? nativeChatComposerDraftStorage() : null
   if (storage) {
     writeRecord(storage, scopeKey, record)
@@ -129,7 +139,7 @@ function installFlushOnHide(): void {
 }
 
 /** The scope's record, read from storage the first time this run asks for it. */
-function loadRecord(scopeKey: string): StoredNativeChatComposerDraft | undefined {
+function loadRecord(scopeKey: string): DraftRecord | undefined {
   const held = records.get(scopeKey)
   if (held) {
     return held
@@ -170,9 +180,11 @@ export function updateNativeChatComposerDraft(
   const text = change.text ?? current.text
   const document = 'document' in change ? change.document : current.document
   const images = change.images ?? current.images
+  const unsavedText = change.unsavedText ?? current.unsavedText
   if (
     text === current.text &&
     document === current.document &&
+    unsavedText === current.unsavedText &&
     sameImages(images, current.images)
   ) {
     if (persist === 'immediate' && dirtyScopes.has(scopeKey)) {
@@ -189,11 +201,12 @@ export function updateNativeChatComposerDraft(
     }
     return
   }
-  const record: StoredNativeChatComposerDraft = {
+  const record: DraftRecord = {
     text,
     ...(document ? { document } : {}),
     images: [...images],
-    savedAt: nextSavedAt()
+    savedAt: nextSavedAt(),
+    ...(unsavedText === undefined ? {} : { unsavedText })
   }
   setBoundedScopeCacheEntry(records, scopeKey, record, writeEvictedRecord)
   dirtyScopes.add(scopeKey)

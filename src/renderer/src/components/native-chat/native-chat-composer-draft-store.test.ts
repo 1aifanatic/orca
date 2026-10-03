@@ -5,6 +5,7 @@ import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-sco
 import type * as DraftStore from './native-chat-composer-draft-store'
 import type * as DraftCache from './native-chat-draft-cache'
 import type * as ComposerAttachments from './use-native-chat-composer-attachments'
+import { MAX_PROMPT_BYTES } from '../../../../shared/rpc-contract/structured-agent-session-params'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 
 const DRAFT_KEY_PREFIX = 'orca:nativeChatComposerDraft:v1:'
@@ -184,7 +185,7 @@ describe('native-chat composer draft store', () => {
 
   it('keeps the images after a long paste is trimmed back, and after a failed write', async () => {
     modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', IMAGES)
-    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'x'.repeat(250_000))
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'x'.repeat(1_000_000))
     modules.store.flushNativeChatComposerDrafts()
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'short again')
     modules.store.flushNativeChatComposerDrafts()
@@ -206,6 +207,57 @@ describe('native-chat composer draft store', () => {
     expect(reloadedAgain.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual(IMAGES)
   })
 
+  it('keeps a given-back message of the largest size a send allows, with what was typed before', async () => {
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'my earlier typing')
+    modules.store.flushNativeChatComposerDrafts()
+    const returned = 'a line with "quotes"\n'.repeat(Math.floor((MAX_PROMPT_BYTES - 100) / 24))
+    expect(JSON.stringify([{ type: 'text', text: returned }]).length).toBeLessThanOrEqual(
+      MAX_PROMPT_BYTES
+    )
+
+    modules.drafts.appendNativeChatDraftCache('tab-1:pane', returned)
+    const reloaded = await reload()
+    expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe(
+      `my earlier typing\n\n${returned}`
+    )
+  })
+
+  it('shows an unsaved text without storing it, and stores it once the user changes it', async () => {
+    modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', IMAGES)
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'https://example.com/issue/1', {
+      unsaved: true
+    })
+    modules.drafts.writeNativeChatDraftDocument('tab-1:pane', 'https://example.com/issue/1', {
+      type: 'doc'
+    })
+    modules.store.flushNativeChatComposerDrafts()
+
+    expect(modules.drafts.readNativeChatDraftCache('tab-1:pane')).toBe(
+      'https://example.com/issue/1'
+    )
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: '', images: IMAGES })
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'https://example.com/issue/1 please')
+    modules.store.flushNativeChatComposerDrafts()
+    const reloaded = await reload()
+    expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe(
+      'https://example.com/issue/1 please'
+    )
+  })
+
+  it('keeps the images of a draft pushed out of storage when its text is edited again', async () => {
+    modules.drafts.writeNativeChatDraftCache('old:pane', 'caption')
+    modules.attachments.appendNativeChatAttachmentCache('old:pane', IMAGES)
+    for (let index = 0; index < 6; index += 1) {
+      modules.drafts.writeNativeChatDraftCache(`tab-${index}:pane`, 'd'.repeat(190_000))
+      modules.store.flushNativeChatComposerDrafts()
+    }
+    expect(storedDraft('old:pane')).toBeNull()
+
+    modules.drafts.writeNativeChatDraftCache('old:pane', 'caption edited')
+    modules.store.flushNativeChatComposerDrafts()
+    expect(storedDraft('old:pane')).toMatchObject({ text: 'caption edited', images: IMAGES })
+  })
+
   it('keeps a refused draft in memory and writes it on the next flush', async () => {
     storage.refuseWrites = true
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'still here')
@@ -223,7 +275,7 @@ describe('native-chat composer draft store', () => {
     const document = {
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'y'.repeat(150_000) }] }],
-      attrs: { padding: 'z'.repeat(100_000) }
+      attrs: { padding: 'z'.repeat(1_000_000) }
     }
     modules.drafts.writeNativeChatDraftDocument('tab-1:pane', 'with a big document', document)
     modules.store.flushNativeChatComposerDrafts()
@@ -241,7 +293,7 @@ describe('native-chat composer draft store', () => {
   it('keeps a draft too large to store in memory only, and never brings back its older copy', async () => {
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'older')
     modules.store.flushNativeChatComposerDrafts()
-    const huge = 'x'.repeat(250_000)
+    const huge = 'x'.repeat(1_000_000)
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', huge)
     modules.store.flushNativeChatComposerDrafts()
 

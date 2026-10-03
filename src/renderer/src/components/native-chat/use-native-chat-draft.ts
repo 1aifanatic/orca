@@ -17,7 +17,7 @@ export function useNativeChatDraft(
   isComposing: () => boolean
 ): {
   draft: string
-  setDraft: (next: string | ((previous: string) => string)) => void
+  setDraft: (next: string | ((previous: string) => string), options?: { unsaved?: boolean }) => void
   /** Shows text appended during an IME composition, which owns the field until it settles. */
   flushDraftAppends: () => void
 } {
@@ -60,7 +60,7 @@ export function useNativeChatDraft(
   // Persist every mutation through the cache. Accepts the same value/updater
   // forms as a useState setter so call sites are drop-in.
   const setDraft = useCallback(
-    (next: string | ((previous: string) => string)) => {
+    (next: string | ((previous: string) => string), options?: { unsaved?: boolean }) => {
       const resolved = typeof next === 'function' ? next(shownRef.current) : next
       shownRef.current = resolved
       setDraftState(resolved)
@@ -69,7 +69,8 @@ export function useNativeChatDraft(
         scopeKey,
         pending?.scopeKey === scopeKey
           ? appendNativeChatDraftText(resolved, pending.text)
-          : resolved
+          : resolved,
+        options
       )
     },
     [scopeKey]

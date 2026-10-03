@@ -15,14 +15,19 @@ export function readNativeChatDraftCache(scopeKey: string): string {
   return readNativeChatComposerDraft(scopeKey).text
 }
 
-export function writeNativeChatDraftCache(scopeKey: string, draft: string): void {
+/** `unsaved` shows text this run without saving it while the draft is still exactly that text. */
+export function writeNativeChatDraftCache(
+  scopeKey: string,
+  draft: string,
+  options?: { unsaved?: boolean }
+): void {
   if (readNativeChatComposerDraft(scopeKey).text === draft) {
     return
   }
   // Cleared at once, so a sent or emptied draft never resurfaces.
   updateNativeChatComposerDraft(
     scopeKey,
-    { text: draft, document: undefined },
+    { text: draft, document: undefined, ...(options?.unsaved ? { unsavedText: draft } : {}) },
     draft === '' ? 'immediate' : 'deferred'
   )
 }

@@ -8,7 +8,10 @@ const STORAGE_KEY_PREFIX = 'orca:nativeChatComposerDraft:v1:'
 // Why: drafts share the origin's localStorage quota (Chromium: 10 MiB of UTF-16, ~5M chars) with
 // the outbox, which must always be able to save a send, so all drafts together keep to a fifth.
 const MAX_STORED_TOTAL_CHARS = 1_000_000
-const MAX_STORED_DRAFT_CHARS = 200_000
+// Why the whole budget: text given back from the outbox (up to MAX_PROMPT_BYTES of JSON per
+// message) must stay saved, so one draft may push older ones out rather than go unsaved. The
+// margin is for its key.
+const MAX_STORED_DRAFT_CHARS = MAX_STORED_TOTAL_CHARS - 1_000
 
 export type NativeChatComposerDraftImage = {
   id: string

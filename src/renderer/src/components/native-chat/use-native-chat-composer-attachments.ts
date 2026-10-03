@@ -1,5 +1,5 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { translate } from '@/i18n/i18n'
 import {
   nativeChatComposerTargetIsRemote,
@@ -55,8 +55,17 @@ export function useNativeChatComposerAttachments({
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
     () => readNativeChatAttachmentCache(attachmentScopeKey)
   )
+  // Reused for another pane: show that pane's chips, so a later change never saves these over them.
+  const [shownScopeKey, setShownScopeKey] = useState(attachmentScopeKey)
+  if (shownScopeKey !== attachmentScopeKey) {
+    setShownScopeKey(attachmentScopeKey)
+    setImageAttachments(readNativeChatAttachmentCache(attachmentScopeKey))
+  }
   // The chips shown, so each change is computed and saved where it happens, not in a state updater.
   const imageAttachmentsRef = useRef(imageAttachments)
+  useLayoutEffect(() => {
+    imageAttachmentsRef.current = imageAttachments
+  }, [imageAttachments])
   const imageAttachmentCounter = useRef(0)
 
   useEffect(
