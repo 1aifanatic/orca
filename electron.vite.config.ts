@@ -1,3 +1,4 @@
+import { markdownParserAliases } from './config/build-plugins/markdown-parser-exports'
 import { isBuiltin } from 'node:module'
 import { resolve } from 'node:path'
 import { defineConfig, type UserConfig } from 'electron-vite'
@@ -233,16 +234,10 @@ export const electronViteConfig: UserConfig = {
           'daemon-entry': resolve('src/main/daemon/daemon-entry.ts'),
           'plugin-host-entry': resolve('src/main/plugins/plugin-host-entry.ts'),
           'computer-sidecar': resolve('src/main/computer/sidecar-entry.ts'),
-          'cursor-desktop-profile-worker-entry': resolve(
-            'src/main/rate-limits/cursor-desktop-profile-worker-entry.ts'
-          ),
           'stt-worker': resolve('src/main/speech/stt-worker.ts'),
           'warp-theme-parser-worker': resolve('src/main/warp-themes/warp-theme-parser-worker.ts'),
-          'session-scanner-opencode-sqlite-worker-entry': resolve(
-            'src/main/ai-vault/session-scanner-opencode-sqlite-worker-entry.ts'
-          ),
-          'session-scanner-worker-entry': resolve(
-            'src/main/ai-vault/session-scanner-worker-entry.ts'
+          'foreign-sqlite-reader-entry': resolve(
+            'src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry.ts'
           ),
           'session-scanner-service-entry': resolve(
             'src/main/ai-vault/session-scanner-service-entry.ts'
@@ -316,6 +311,7 @@ export const electronViteConfig: UserConfig = {
   renderer: {
     resolve: {
       alias: {
+        ...markdownParserAliases,
         '@renderer': resolve('src/renderer/src'),
         '@': resolve('src/renderer/src')
       }
