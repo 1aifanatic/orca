@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetPowerShellProfileEnvCache,
   readPowerShellProfileEnvValues
@@ -20,22 +20,21 @@ vi.mock('../windows-native-registry', () => ({
   })
 }))
 
-const roots: string[] = []
+let root: string
+
+// Why: $PSHOME profiles hang off these, so the developer's real ones must not leak in.
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'orca-ps-profile-'))
+  vi.stubEnv('SystemRoot', join(root, 'Windows'))
+  vi.stubEnv('ProgramFiles', join(root, 'pf'))
+})
 
 afterEach(() => {
   __resetPowerShellProfileEnvCache()
   vi.unstubAllEnvs()
   registryDocumentsDir.value = undefined
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true })
-  }
+  rmSync(root, { recursive: true, force: true })
 })
-
-function createRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'orca-ps-profile-'))
-  roots.push(root)
-  return root
-}
 
 function writeProfile(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -44,13 +43,9 @@ function writeProfile(path: string, content: string): void {
 
 describe('readPowerShellProfileEnvValues', () => {
   it('keeps the last assignment each edition makes, $PSHOME loading first', () => {
-    const root = createRoot()
     const userProfile = join(root, 'me')
-    const env = { SystemRoot: join(root, 'Windows'), ProgramFiles: join(root, 'pf') }
-    vi.stubEnv('SystemRoot', env.SystemRoot)
-    vi.stubEnv('ProgramFiles', env.ProgramFiles)
     writeProfile(
-      join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'profile.ps1'),
+      join(root, 'Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'profile.ps1'),
       "$env:CODEX_HOME = 'C:\\all-users'\n"
     )
     writeProfile(
@@ -69,7 +64,6 @@ describe('readPowerShellProfileEnvValues', () => {
   })
 
   it('reads UTF-16LE profiles written by Windows PowerShell 5.1', () => {
-    const root = createRoot()
     const profilePath = join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1')
     writeProfile(profilePath, '')
     writeFileSync(
@@ -84,7 +78,6 @@ describe('readPowerShellProfileEnvValues', () => {
   })
 
   it('reads the registry-named Documents folder, e.g. one OneDrive redirected', () => {
-    const root = createRoot()
     const documentsDir = join(root, 'OneDrive', 'Dokumente')
     registryDocumentsDir.value = documentsDir
     // PowerShell loads only the redirected folder, so a stale default is ignored.
@@ -101,7 +94,6 @@ describe('readPowerShellProfileEnvValues', () => {
   })
 
   it('keeps literal and unevaluable values, and ignores other names and comments', () => {
-    const root = createRoot()
     writeProfile(
       join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1'),
       [
@@ -122,7 +114,6 @@ describe('readPowerShellProfileEnvValues', () => {
   })
 
   it('lets a later profile reset or clear what an earlier one set', () => {
-    const root = createRoot()
     writeProfile(
       join(root, 'Documents', 'WindowsPowerShell', 'profile.ps1'),
       "$env:CODEX_HOME = 'C:\\custom'\n"
@@ -150,9 +141,6 @@ describe('readPowerShellProfileEnvValues', () => {
     ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet', 'User')", 'C:\\dotnet'],
     ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\a,b', 'Process');", 'C:\\a,b']
   ])('reads %s', (line, expected) => {
-    const root = createRoot()
-    vi.stubEnv('SystemRoot', join(root, 'Windows'))
-    vi.stubEnv('ProgramFiles', join(root, 'pf'))
     writeProfile(join(root, 'Documents', 'PowerShell', 'profile.ps1'), `${line}\n`)
 
     const [value] = readPowerShellProfileEnvValues('CODEX_HOME', root)
@@ -160,7 +148,6 @@ describe('readPowerShellProfileEnvValues', () => {
   })
 
   it('reads a .NET clear as clearing an earlier value', () => {
-    const root = createRoot()
     writeProfile(
       join(root, 'Documents', 'PowerShell', 'profile.ps1'),
       [
