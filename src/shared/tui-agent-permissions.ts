@@ -99,27 +99,23 @@ export const AGENT_PERMISSION_ARG_SPECS: Partial<Record<TuiAgent, AgentPermissio
   },
   gemini: GEMINI_PERMISSION_ARGS,
   'qwen-code': GEMINI_PERMISSION_ARGS,
+  // `--respect-workspace-trust` in Devin's flag only skips the folder-trust prompt (#21925).
   devin: {
-    options: [
-      { names: ['--permission-mode'], takesValue: true },
-      { names: ['--respect-workspace-trust'], takesValue: true }
-    ],
-    // An older build shipped the shorter second spelling; it meant the same thing.
-    bypass: [
-      { '--permission-mode': 'bypass', '--respect-workspace-trust': 'false' },
-      { '--permission-mode': 'bypass' }
-    ]
+    options: [{ names: ['--permission-mode'], takesValue: true }],
+    bypass: [{ '--permission-mode': 'bypass' }]
   }
 }
 
-/** The persisted permission settings; part of GlobalSettings. */
+/** A stored mode: one of this build's, or one a newer build wrote, which is kept and reads as 'ask'. */
+export type StoredAgentPermissionMode = string
+
+/** The persisted permission settings; part of GlobalSettings. Read them through the resolvers. */
 export type AgentPermissionSettingsFields = {
   /** Mode every agent launches with unless it has its own override. Absent only on profiles saved
-   *  before the mode was typed, which is what the load-time migration keys on; a value this build
-   *  doesn't know is kept and read as 'ask'. */
-  agentPermissionMode?: AgentPermissionMode
+   *  before the mode was typed, which is what the load-time migration keys on. */
+  agentPermissionMode?: StoredAgentPermissionMode
   /** Agents whose permission mode differs from `agentPermissionMode`. */
-  agentPermissionModeOverrides?: Partial<Record<TuiAgent, AgentPermissionMode>>
+  agentPermissionModeOverrides?: Partial<Record<TuiAgent, StoredAgentPermissionMode>>
 }
 
 export function isAgentPermissionMode(value: unknown): value is AgentPermissionMode {
@@ -130,15 +126,16 @@ export function agentHasPermissionMode(agent: TuiAgent): boolean {
   return agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
 }
 
+/** Keeps every known agent's stored mode, including one a newer build wrote. */
 export function normalizeAgentPermissionModeOverrides(
   value: unknown
-): Partial<Record<TuiAgent, AgentPermissionMode>> {
-  const normalized: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
+): Partial<Record<TuiAgent, StoredAgentPermissionMode>> {
+  const normalized: Partial<Record<TuiAgent, StoredAgentPermissionMode>> = {}
   if (!value || typeof value !== 'object') {
     return normalized
   }
   for (const [agent, mode] of Object.entries(value)) {
-    if (isTuiAgent(agent) && isAgentPermissionMode(mode)) {
+    if (isTuiAgent(agent) && typeof mode === 'string') {
       normalized[agent] = mode
     }
   }
@@ -166,10 +163,11 @@ export function resolveDefaultAgentPermissionMode(
   settings: AgentPermissionSettingsFields | null | undefined
 ): AgentPermissionMode {
   const mode = settings?.agentPermissionMode
-  if (mode === undefined) {
-    return DEFAULT_AGENT_PERMISSION_MODE
-  }
-  // A mode a newer build stored asks here, and stays stored for that build.
+  return mode === undefined ? DEFAULT_AGENT_PERMISSION_MODE : readStoredMode(mode)
+}
+
+// A mode a newer build stored asks here, and stays stored for that build.
+function readStoredMode(mode: StoredAgentPermissionMode): AgentPermissionMode {
   return isAgentPermissionMode(mode) ? mode : 'ask'
 }
 
@@ -179,7 +177,9 @@ export function resolveAgentPermissionMode(
   settings: AgentPermissionSettingsFields | null | undefined
 ): AgentPermissionMode {
   const override = settings?.agentPermissionModeOverrides?.[agent]
-  return isAgentPermissionMode(override) ? override : resolveDefaultAgentPermissionMode(settings)
+  return override === undefined
+    ? resolveDefaultAgentPermissionMode(settings)
+    : readStoredMode(override)
 }
 
 /** The Settings switch: one mode for every agent, replacing any per-agent choice. */

@@ -16,7 +16,6 @@ import {
   type StartupCommandTokens
 } from './tui-agent-startup-shell'
 import type { AgentLaunchProfileSettings } from './tui-agent-launch-defaults'
-import type { CommandTokenSpan } from './commit-message-prompt'
 import type { TuiAgent } from './tui-agent'
 import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 
@@ -39,26 +38,9 @@ export function optionTokens(value: string, shell: AgentStartupShell): StartupCo
       }
 }
 
-/** A quoted word is a value the user wrote literally, never an option. */
-export function isQuotedToken(text: string, span: CommandTokenSpan): boolean {
-  return text[span.start] === '"' || text[span.start] === "'"
-}
-
 function tokenizeFlag(flag: string | undefined): string[] {
   const tokenized = flag ? tokenizeStartupCommand(flag, 'posix') : null
   return tokenized?.ok ? tokenized.tokens : []
-}
-
-const bypassFlagCache = new Map<TuiAgent, string[]>()
-
-/** The agent's bypass flag as tokens; empty for an agent with none. */
-export function bypassFlagTokens(agent: TuiAgent): string[] {
-  let tokens = bypassFlagCache.get(agent)
-  if (!tokens) {
-    tokens = tokenizeFlag(YOLO_TUI_AGENT_ARGS[agent])
-    bypassFlagCache.set(agent, tokens)
-  }
-  return tokens
 }
 
 /** The permission options an agent's bypass flag sets, for agents with no wider table entry. */
@@ -82,7 +64,9 @@ const argSpecCache = new Map<TuiAgent, AgentPermissionArgSpec>()
 function agentPermissionArgSpec(agent: TuiAgent): AgentPermissionArgSpec {
   let spec = argSpecCache.get(agent)
   if (!spec) {
-    spec = AGENT_PERMISSION_ARG_SPECS[agent] ?? specFromBypassFlag(bypassFlagTokens(agent))
+    spec =
+      AGENT_PERMISSION_ARG_SPECS[agent] ??
+      specFromBypassFlag(tokenizeFlag(YOLO_TUI_AGENT_ARGS[agent]))
     argSpecCache.set(agent, spec)
   }
   return spec
@@ -110,23 +94,20 @@ function readOptionToken(
 
 type TypedPermissionSetting = { option: string; value: string | true; text: string }
 
+// Reads the words the CLI receives: the launch strips quotes and re-quotes each word, so `"-a"` is `-a`.
 function readTypedSettings(
   spec: AgentPermissionArgSpec,
-  text: string,
-  tokens: { tokens: string[]; spans: CommandTokenSpan[] }
+  tokens: readonly string[]
 ): TypedPermissionSetting[] {
   const settings: TypedPermissionSetting[] = []
-  for (let index = 0; index < tokens.tokens.length; index += 1) {
-    if (isQuotedToken(text, tokens.spans[index])) {
-      continue
-    }
-    const token = tokens.tokens[index]
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
     for (const option of spec.options) {
       const read = readOptionToken(option, token)
       if (!read) {
         continue
       }
-      const next = read.value === undefined ? tokens.tokens[index + 1] : undefined
+      const next = read.value === undefined ? tokens[index + 1] : undefined
       settings.push({
         option: option.names[0],
         value: read.value ?? next ?? '',
@@ -187,7 +168,7 @@ function classifyArgs(
     if (!tokens.ok) {
       continue
     }
-    const settings = readTypedSettings(spec, args, tokens)
+    const settings = readTypedSettings(spec, tokens.tokens)
     kinds.set(grammar, readKind(spec, settings))
     options.push(
       ...settings.map((setting) => setting.text).filter((text) => !options.includes(text))
@@ -241,6 +222,60 @@ export function classifyTypedAgentPermissions(
       kinds.length === 0 ? 'none' : kinds.every((kind) => kind === 'bypass') ? 'bypass' : 'other',
     options: [...args.options, ...env.options]
   }
+}
+
+/** Whether these arguments set this option at all, under any launch grammar. */
+export function argumentsSetOption(args: string, option: string): boolean {
+  const spec: AgentPermissionOption = { names: [option], takesValue: true }
+  return LAUNCH_GRAMMARS.some((grammar) => {
+    const tokens = optionTokens(args, grammar)
+    return tokens.ok && tokens.tokens.some((token) => readOptionToken(spec, token) !== null)
+  })
+}
+
+export type BypassFlagGroup = {
+  option: string
+  tokens: string[]
+  /** The group's text as written in the flag, quoting kept. */
+  text: string
+  /** False for a companion option that rides along with the bypass, like Devin's trust prompt switch. */
+  permission: boolean
+}
+
+const flagGroupCache = new Map<TuiAgent, BypassFlagGroup[]>()
+
+/** The agent's bypass flag split into its options, each with its value. */
+export function bypassFlagGroups(agent: TuiAgent): BypassFlagGroup[] {
+  let groups = flagGroupCache.get(agent)
+  if (groups) {
+    return groups
+  }
+  groups = []
+  const flag = YOLO_TUI_AGENT_ARGS[agent] ?? ''
+  const tokenized = tokenizeStartupCommand(flag, 'posix')
+  const { options } = agentPermissionArgSpec(agent)
+  for (let index = 0; tokenized.ok && index < tokenized.tokens.length; index += 1) {
+    const option = tokenized.tokens[index]
+    const value = tokenized.tokens[index + 1]
+    const end = value !== undefined && !value.startsWith('-') ? index + 1 : index
+    groups.push({
+      option,
+      tokens: tokenized.tokens.slice(index, end + 1),
+      text: flag.slice(tokenized.spans[index].start, tokenized.spans[end].end),
+      permission: options.some((spec) => spec.names.includes(option))
+    })
+    index = end
+  }
+  flagGroupCache.set(agent, groups)
+  return groups
+}
+
+/** The bypass flag to put before these extra arguments, without a companion option they set themselves. */
+export function bypassFlagBeside(agent: TuiAgent, extra: string): string {
+  return bypassFlagGroups(agent)
+    .filter((group) => group.permission || !argumentsSetOption(extra, group.option))
+    .map((group) => group.text)
+    .join(' ')
 }
 
 export type AgentPermissionPosture = {

@@ -79,8 +79,7 @@ describe('resolveTuiAgentLaunchArgs', () => {
     ['gemini', '--approval-mode auto_edit'],
     ['qwen-code', '-y'],
     ['codex', '-anever'],
-    ['codex', '-sread-only'],
-    ['devin', '--respect-workspace-trust true']
+    ['codex', '-sread-only']
   ] as const)('adds no flag beside %s permission text %j', (agent, args) => {
     expect(resolveTuiAgentLaunchArgs(agent, { agentDefaultArgs: { [agent]: args } })).toBe(args)
   })
@@ -92,6 +91,24 @@ describe('resolveTuiAgentLaunchArgs', () => {
         agentDefaultArgs: { claude: '--allow-dangerously-skip-permissions' }
       })
     ).toBe(`${CLAUDE_BYPASS} --allow-dangerously-skip-permissions`)
+  })
+
+  // Devin's trust switch rides along with its bypass flag (#21925); the user's own value wins.
+  it("keeps the user's Devin --respect-workspace-trust instead of adding a second one", () => {
+    expect(
+      resolveTuiAgentLaunchArgs('devin', {
+        agentDefaultArgs: { devin: '--respect-workspace-trust true' }
+      })
+    ).toBe('--permission-mode bypass --respect-workspace-trust true')
+    expect(
+      resolveTuiAgentLaunchArgs('devin', {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { devin: '--respect-workspace-trust true' }
+      })
+    ).toBe('--respect-workspace-trust true')
+    expect(resolveTuiAgentLaunchArgs('devin', {})).toBe(
+      '--permission-mode bypass --respect-workspace-trust false'
+    )
   })
 
   // `--search` is a long option, not `-s` with a value attached.
@@ -206,15 +223,39 @@ describe('liftTuiAgentBypassArgs', () => {
     })
   })
 
-  // The flag as a quoted option value is prompt text; lifting it would drop the value and add Yolo.
+  // Lossless: a quoted span is never cut out, so the prompt keeps its value.
   it('leaves a quoted flag value in place', () => {
     expect(liftTuiAgentBypassArgs('claude', `--append-system-prompt "${CLAUDE_BYPASS}"`)).toEqual({
-      bypass: false,
+      bypass: true,
       extraArgs: `--append-system-prompt "${CLAUDE_BYPASS}"`
     })
     expect(
       liftTuiAgentBypassArgs('claude', `--append-system-prompt "${CLAUDE_BYPASS}" ${CLAUDE_BYPASS}`)
-    ).toEqual({ bypass: true, extraArgs: `--append-system-prompt "${CLAUDE_BYPASS}"` })
+    ).toEqual({
+      bypass: true,
+      extraArgs: `--append-system-prompt "${CLAUDE_BYPASS}" ${CLAUDE_BYPASS}`
+    })
+    expect(liftTuiAgentBypassArgs('claude', `"${CLAUDE_BYPASS}"`)).toEqual({
+      bypass: true,
+      extraArgs: `"${CLAUDE_BYPASS}"`
+    })
+  })
+
+  it("lifts Devin's flag around the user's own trust value, and only when it is whole", () => {
+    expect(
+      liftTuiAgentBypassArgs('devin', '--permission-mode bypass --respect-workspace-trust true')
+    ).toEqual({ bypass: true, extraArgs: '--respect-workspace-trust true' })
+    expect(
+      liftTuiAgentBypassArgs(
+        'devin',
+        '--model x --respect-workspace-trust false --permission-mode bypass'
+      )
+    ).toEqual({ bypass: true, extraArgs: '--model x' })
+    // Never launched with the trust switch, so lifting would add it.
+    expect(liftTuiAgentBypassArgs('devin', '--permission-mode bypass')).toEqual({
+      bypass: true,
+      extraArgs: '--permission-mode bypass'
+    })
   })
 
   // Lossless: an alias stays in the text, but the agent reads as Yolo, which is how it launches.
@@ -258,7 +299,9 @@ describe('classifyTypedAgentPermissions', () => {
     ['claude', '--permission-mode acceptEdits', 'other'],
     ['openclaude', '--permission-mode bypassPermissions --model x', 'bypass'],
     ['devin', '--permission-mode bypass --model swe-1.5', 'bypass'],
-    ['devin', '--respect-workspace-trust false', 'other'],
+    ['devin', '--permission-mode bypass --respect-workspace-trust true', 'bypass'],
+    // Only the folder-trust prompt, not a permission.
+    ['devin', '--respect-workspace-trust false', 'none'],
     ['grok', '--permission-mode=bypassPermissions', 'bypass'],
     ['grok', '--permission-mode plan', 'other'],
     ['cline', '--auto-approve=true', 'bypass'],
@@ -282,8 +325,13 @@ describe('classifyTypedAgentPermissions', () => {
     ['continue', '--allow Read', 'other'],
     // Only allows a later switch into bypass, so the mode still decides.
     ['claude', '--allow-dangerously-skip-permissions --model opus', 'none'],
-    // A quoted word is a value (here the prompt), never an option.
-    ['claude', `--append-system-prompt "${CLAUDE_BYPASS}"`, 'none'],
+    // The launch strips quotes before the CLI sees them, so a quoted option is still one.
+    ['codex', '"-a" on-request', 'other'],
+    ['codex', '"--ask-for-approval=on-request"', 'other'],
+    ['codex', `"${CODEX_BYPASS}"`, 'bypass'],
+    ['claude', '"--permission-mode=bypassPermissions"', 'bypass'],
+    // Known limit: the CLI reads this as the prompt's value, but it is read as the flag.
+    ['claude', `--append-system-prompt "${CLAUDE_BYPASS}"`, 'bypass'],
     ['claude', `-- ${CLAUDE_BYPASS}`, 'none'],
     ['claude', '--model opus', 'none']
   ] as const)('reads %s %j as %s, and launch and Settings agree', (agent, args, kind) => {

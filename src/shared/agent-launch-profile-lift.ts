@@ -36,10 +36,6 @@ export function liftComposedAgentLaunchProfile(
   composed: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>> | null | undefined
 ): AgentLaunchProfile {
   const composedArgs = normalizeTuiAgentArgsRecord(composed?.agentDefaultArgs)
-  // An older build shipped this shorter Devin bypass; it meant the same thing.
-  if (composedArgs.devin === '--permission-mode bypass') {
-    composedArgs.devin = YOLO_TUI_AGENT_ARGS.devin
-  }
   const composedEnv = normalizeTuiAgentEnvRecord(composed?.agentDefaultEnv)
   const agentDefaultArgs = { ...composedArgs }
   const agentDefaultEnv = { ...composedEnv }
@@ -148,26 +144,41 @@ export function applyComposedAgentLaunchUpdate(
 ): Partial<
   Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'>
 > {
-  const writtenArgs = normalizeTuiAgentArgsRecord(update.agentDefaultArgs)
-  const writtenEnv = normalizeTuiAgentEnvRecord(update.agentDefaultEnv)
+  const publishedArgs = composeTuiAgentLaunchArgsRecord(current)
+  const publishedEnv = composeTuiAgentLaunchEnvRecord(current)
+  // An entry equal to what settings.get publishes is unchanged: older clients write back the
+  // whole record, and a flag composed from a mode can't always be told apart from typed text.
+  const writtenArgs = pickChanged(
+    normalizeTuiAgentArgsRecord(update.agentDefaultArgs),
+    publishedArgs,
+    (a, b) => a === b
+  )
+  const writtenEnv = pickChanged(
+    normalizeTuiAgentEnvRecord(update.agentDefaultEnv),
+    publishedEnv,
+    (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort())
+  )
   const lifted = liftComposedAgentLaunchProfile({
-    agentDefaultArgs: { ...composeTuiAgentLaunchArgsRecord(current), ...writtenArgs },
-    agentDefaultEnv: { ...composeTuiAgentLaunchEnvRecord(current), ...writtenEnv }
+    agentDefaultArgs: { ...publishedArgs, ...writtenArgs },
+    agentDefaultEnv: { ...publishedEnv, ...writtenEnv }
   })
   const defaultMode = resolveDefaultAgentPermissionMode(current)
-  const agentPermissionModeOverrides: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
+  const agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
+    current.agentPermissionModeOverrides
+  )
   for (const agent of PERMISSION_AGENT_IDS) {
-    const named = agent in writtenArgs || agent in writtenEnv
     // Arguments or env that set permissions decide the launch, so they say nothing about the mode.
     const typed = classifyTypedAgentPermissions(agent, {
       args: lifted.agentDefaultArgs[agent],
       env: lifted.agentDefaultEnv[agent]
     })
-    const mode =
-      named && typed.kind === 'none'
-        ? resolveAgentPermissionMode(agent, lifted)
-        : resolveAgentPermissionMode(agent, current)
-    if (mode !== defaultMode) {
+    if (!(agent in writtenArgs || agent in writtenEnv) || typed.kind !== 'none') {
+      continue
+    }
+    const mode = resolveAgentPermissionMode(agent, lifted)
+    if (mode === defaultMode) {
+      delete agentPermissionModeOverrides[agent]
+    } else {
       agentPermissionModeOverrides[agent] = mode
     }
   }
@@ -190,6 +201,25 @@ export function applyComposedAgentLaunchUpdate(
       : {}),
     agentPermissionModeOverrides
   }
+}
+
+function pickChanged<T>(
+  written: Partial<Record<TuiAgent, T>>,
+  published: Partial<Record<TuiAgent, T>>,
+  same: (a: T, b: T) => boolean
+): Partial<Record<TuiAgent, T>> {
+  const changed: Partial<Record<TuiAgent, T>> = {}
+  for (const [agent, value] of Object.entries(written)) {
+    const before = isTuiAgent(agent) ? published[agent] : undefined
+    if (
+      isTuiAgent(agent) &&
+      value !== undefined &&
+      (before === undefined || !same(value, before))
+    ) {
+      changed[agent] = value
+    }
+  }
+  return changed
 }
 
 /** The lifted entries for the agents a write named. */

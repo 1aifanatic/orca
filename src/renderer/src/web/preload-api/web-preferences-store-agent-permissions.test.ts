@@ -66,7 +66,7 @@ describe('web stored settings agent permissions', () => {
     expect(getStoredSettings()).toEqual(settings)
   })
 
-  // An older build shipped a shorter Devin bypass; the web blob must read it as Yolo too.
+  // An older build shipped a shorter Devin bypass; the web blob reads it as Yolo and launches it as is.
   it('reads the older Devin bypass as Yolo', async () => {
     window.localStorage.setItem(
       SETTINGS_STORAGE_KEY,
@@ -77,7 +77,7 @@ describe('web stored settings agent permissions', () => {
     const settings = getStoredSettings()
 
     expect(settings.agentPermissionModeOverrides?.devin).toBeUndefined()
-    expect(settings.agentDefaultArgs?.devin).toBe('')
+    expect(settings.agentDefaultArgs?.devin).toBe('--permission-mode bypass')
   })
 
   // After a downgrade the older client writes the flag back; the stored mode must not latch over it.

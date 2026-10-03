@@ -156,7 +156,8 @@ export function AgentsPane({
     const posture = permissionPostures.get(id)
     return posture
       ? {
-          override: permissionOverrides[id],
+          // A stored choice this build doesn't know reads as Manual, like everywhere else.
+          override: permissionOverrides[id] === undefined ? undefined : posture.mode,
           defaultMode: defaultPermissionMode,
           posture,
           onChange: (choice) => {

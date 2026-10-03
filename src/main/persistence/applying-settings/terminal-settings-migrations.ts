@@ -9,7 +9,6 @@ import {
   normalizeTuiAgentEnvRecord
 } from '../../../shared/tui-agent-launch-defaults'
 import {
-  isAgentPermissionMode,
   PERMISSION_AGENT_IDS,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
@@ -136,6 +135,10 @@ function migrateAgentYoloDefaults(
 ): Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentYoloDefaultsMigrated'> {
   const existingArgs = normalizeTuiAgentArgsRecord(settings?.agentDefaultArgs)
   const existingEnv = normalizeTuiAgentEnvRecord(settings?.agentDefaultEnv)
+  // An older build's Devin default; main moved it to the current flag when it loaded (#21925).
+  if (existingArgs.devin === '--permission-mode bypass') {
+    existingArgs.devin = YOLO_TUI_AGENT_ARGS.devin
+  }
   // Agents missing from an older build's profile stay manual; command-override users owned theirs.
   const commandOverrides = settings?.agentCmdOverrides ?? {}
   const keepManual = (agent: TuiAgent): boolean =>
@@ -184,9 +187,7 @@ export function migrateAgentLaunchProfile(settings: GlobalSettings | undefined):
       profile: {
         ...profile,
         agentYoloDefaultsMigrated: true,
-        ...(isAgentPermissionMode(settings.agentPermissionMode)
-          ? { agentPermissionMode: settings.agentPermissionMode }
-          : {})
+        agentPermissionMode: settings.agentPermissionMode
       },
       migrated: changed
     }

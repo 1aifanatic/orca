@@ -210,21 +210,23 @@ describe('migrateAgentLaunchProfile', () => {
     }
   })
 
-  // On main the quoted flag was the prompt's value, so Claude launched without bypass.
-  it('keeps a quoted flag value as text', () => {
-    const claude = `--append-system-prompt "${CLAUDE_BYPASS}"`
-    const { profile } = migrateAgentLaunchProfile(
-      legacy({
-        agentYoloDefaultsMigrated: true,
-        agentDefaultArgs: { ...allYoloArgs(), claude },
-        agentDefaultEnv: YOLO_ENV
-      })
-    )
+  // Lossless: a quoted flag stays in the text, launches once, and reads as Yolo, as main launched it.
+  it.each([`--append-system-prompt "${CLAUDE_BYPASS}"`, `"${CLAUDE_BYPASS}"`])(
+    'keeps quoted flag text %j inline',
+    (claude) => {
+      const { profile } = migrateAgentLaunchProfile(
+        legacy({
+          agentYoloDefaultsMigrated: true,
+          agentDefaultArgs: { ...allYoloArgs(), claude },
+          agentDefaultEnv: YOLO_ENV
+        })
+      )
 
-    expect(profile.agentDefaultArgs?.claude).toBe(claude)
-    expect(profile.agentPermissionModeOverrides).toEqual({ claude: 'ask' })
-    expect(resolveTuiAgentLaunchArgs('claude', profile)).toBe(claude)
-  })
+      expect(profile.agentDefaultArgs?.claude).toBe(claude)
+      expect(profile.agentPermissionModeOverrides).toEqual({})
+      expect(resolveTuiAgentLaunchArgs('claude', profile)).toBe(claude)
+    }
+  )
 
   // After a downgrade, the older build's Yolo switch writes the flag back into every agent's text.
   it('lifts a flag an older build wrote back into a typed profile, on every load', () => {
@@ -265,13 +267,13 @@ describe('migrateAgentLaunchProfile', () => {
     expect(profile.agentDefaultArgs).toMatchObject({ codex: '', claude: '--permission-mode plan' })
   })
 
-  // A newer build's mode stays for it; this build reads it as Manual and never re-migrates.
-  it('keeps a stored mode it does not know', () => {
+  // A newer build's modes stay for it; this build reads them as Manual and never re-migrates.
+  it('keeps stored modes it does not know', () => {
     const stored: GlobalSettings = JSON.parse(
       JSON.stringify({
         agentYoloDefaultsMigrated: true,
         agentPermissionMode: 'accept-edits',
-        agentPermissionModeOverrides: { codex: 'bypass' },
+        agentPermissionModeOverrides: { codex: 'bypass', gemini: 'plan' },
         agentDefaultArgs: { claude: '--model opus' }
       })
     )
@@ -279,12 +281,14 @@ describe('migrateAgentLaunchProfile', () => {
     const { profile, migrated } = migrateAgentLaunchProfile(stored)
 
     expect(migrated).toBe(false)
-    expect(Object.hasOwn(profile, 'agentPermissionMode')).toBe(false)
-    expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })
+    expect(profile.agentPermissionMode).toBe('accept-edits')
+    expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass', gemini: 'plan' })
     expect(profile.agentDefaultArgs).toEqual({ claude: '--model opus' })
     const loaded = { ...stored, ...profile }
     expect(loaded.agentPermissionMode).toBe('accept-edits')
     expect(resolveAgentPermissionMode('claude', loaded)).toBe('ask')
     expect(resolveTuiAgentLaunchArgs('claude', loaded)).toBe('--model opus')
+    expect(resolveAgentPermissionMode('gemini', loaded)).toBe('ask')
+    expect(resolveTuiAgentLaunchArgs('gemini', loaded)).toBe('')
   })
 })

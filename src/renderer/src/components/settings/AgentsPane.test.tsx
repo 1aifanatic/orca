@@ -508,6 +508,20 @@ describe('AgentsPane', () => {
     expect(markup).not.toMatch(/rounded-full[^>]*>Manual</)
   })
 
+  // A choice a newer build stored reads as Manual, and is listed as one.
+  it('shows a stored per-agent mode it does not know as Manual', () => {
+    detectedAgentsMock.detectedIds = ['claude']
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { claude: 'accept-edits' }
+    })
+    const claudeControl = markup.slice(markup.indexOf('aria-label="Claude permissions"'))
+
+    expect(markup).toContain('Set separately: Claude (Manual).')
+    expect(claudeControl).toMatch(/role="radio" aria-checked="true"[^>]*>Manual</)
+  })
+
   it('counts a permission option typed into Arguments as the agent posture', () => {
     detectedAgentsMock.detectedIds = ['claude', 'codex']
     const markup = renderPane({

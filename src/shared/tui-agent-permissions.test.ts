@@ -30,10 +30,16 @@ describe('tui agent permissions', () => {
     })
   })
 
-  it('drops unknown agents and modes from stored overrides', () => {
+  // A mode a newer build wrote stays stored for it.
+  it('drops unknown agents but keeps every stored mode', () => {
     expect(
-      normalizeAgentPermissionModeOverrides({ claude: 'ask', nope: 'bypass', codex: 'yolo' })
-    ).toEqual({ claude: 'ask' })
+      normalizeAgentPermissionModeOverrides({
+        claude: 'ask',
+        nope: 'bypass',
+        codex: 'yolo',
+        gemini: 1
+      })
+    ).toEqual({ claude: 'ask', codex: 'yolo' })
     expect(normalizeAgentPermissionModeOverrides('bad')).toEqual({})
   })
 
@@ -56,5 +62,11 @@ describe('tui agent permissions', () => {
         agentPermissionModeOverrides: { codex: 'bypass' }
       })
     ).toBe('bypass')
+    expect(
+      resolveAgentPermissionMode('codex', {
+        agentPermissionMode: 'bypass',
+        agentPermissionModeOverrides: { codex: 'accept-edits' }
+      })
+    ).toBe('ask')
   })
 })

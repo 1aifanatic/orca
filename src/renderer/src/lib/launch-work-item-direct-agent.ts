@@ -10,7 +10,7 @@ import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session-re
 import type { LaunchSource } from '../../../shared/telemetry-events'
 import type { StartupCommandDelivery } from '../../../shared/codex-startup-delivery'
 import type { TuiAgent } from '../../../shared/tui-agent'
-import type { AgentPermissionMode } from '../../../shared/tui-agent-permissions'
+import type { AgentPermissionSettingsFields } from '../../../shared/tui-agent-permissions'
 import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
@@ -29,8 +29,8 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
         agentCmdOverrides?: Partial<Record<TuiAgent, string>>
         agentDefaultArgs?: Partial<Record<TuiAgent, string>>
         agentDefaultEnv?: Partial<Record<TuiAgent, Record<string, string>>>
-        agentPermissionMode?: AgentPermissionMode
-        agentPermissionModeOverrides?: Partial<Record<TuiAgent, AgentPermissionMode>>
+        agentPermissionMode?: AgentPermissionSettingsFields['agentPermissionMode']
+        agentPermissionModeOverrides?: AgentPermissionSettingsFields['agentPermissionModeOverrides']
         experimentalNativeChat?: boolean
         openAgentTabsInChatByDefault?: boolean
         nativeChatSessionOptions?: PersistedNativeChatSessionOptions

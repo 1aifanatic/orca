@@ -1,14 +1,19 @@
 import type { CommandTokenSpan } from './commit-message-prompt'
 import {
-  bypassFlagTokens,
+  argumentsSetOption,
+  bypassFlagGroups,
   classifyTypedAgentPermissions,
-  isQuotedToken,
   optionTokens
 } from './tui-agent-permission-args'
 import { YOLO_TUI_AGENT_ENV } from './tui-agent-permissions'
 import type { TuiAgent } from './tui-agent'
 
 // Moves a permission bypass saved inline in an agent's Arguments or env out into its typed mode.
+
+// A quoted span is never cut out, so a quoted value that equals the flag stays the user's text.
+function isQuotedToken(text: string, span: CommandTokenSpan): boolean {
+  return text[span.start] === '"' || text[span.start] === "'"
+}
 
 /** Where this unquoted token sequence starts in `tokens`, or -1. */
 function findTokenSequence(
@@ -48,18 +53,25 @@ function findBypassFlag(
   return cmd?.ok && at !== -1 ? { tokens: cmd, at } : null
 }
 
+/**
+ * Cuts each option of the bypass flag out of the text. A companion option set to another value
+ * stays as the user's; if any other part is missing the flag never launched whole, so nothing is cut.
+ */
 function stripBypassFlag(agent: TuiAgent, args: string): string {
-  const flag = bypassFlagTokens(agent)
   let text = args
-  while (flag.length > 0 && text) {
-    const found = findBypassFlag(text, flag)
-    if (!found) {
-      break
+  for (const group of bypassFlagGroups(agent)) {
+    let hit = findBypassFlag(text, group.tokens)
+    const found = hit !== null
+    while (hit) {
+      const { tokens, at } = hit
+      const before = text.slice(0, tokens.spans[at].start).trimEnd()
+      const after = text.slice(tokens.spans[at + group.tokens.length - 1].end).trimStart()
+      text = before && after ? `${before} ${after}` : before || after
+      hit = findBypassFlag(text, group.tokens)
     }
-    const { tokens, at } = found
-    const before = text.slice(0, tokens.spans[at].start).trimEnd()
-    const after = text.slice(tokens.spans[at + flag.length - 1].end).trimStart()
-    text = before && after ? `${before} ${after}` : before || after
+    if (!found && (group.permission || !argumentsSetOption(text, group.option))) {
+      return args
+    }
   }
   return text
 }
