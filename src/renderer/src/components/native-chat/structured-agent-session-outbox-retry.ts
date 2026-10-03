@@ -2,8 +2,8 @@
 // id when the recorded one can only ever replay a settled rejection.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { rotateStructuredAgentSessionOutboxEntryId } from '../../../../shared/structured-agent-session-outbox-rotation'
 import {
-  rotateStructuredAgentSessionOutboxEntryId,
   structuredAgentSessionEntryIdExpired,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'

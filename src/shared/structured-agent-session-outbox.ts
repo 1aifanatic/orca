@@ -14,6 +14,10 @@ import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
+import {
+  parseStructuredAgentSessionOutboxRotation,
+  rotateStructuredAgentSessionOutboxEntryId
+} from './structured-agent-session-outbox-rotation'
 
 /** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does, as a new id, or, on a host that
@@ -45,8 +49,8 @@ export type StructuredAgentSessionOutboxEntry = {
    *  is sent again or delivered, instead of outliving it as a separate error. On a `queued` entry
    *  it is also the hold (structured-agent-session-outbox-admission). */
   lastFailure?: StructuredAgentSessionAttemptFailure
-  /** The ids this message went out under before a new one replaced them, oldest first: the
-   *  journal's rows under them are this message's, so the chat never draws them beside it. */
+  /** The ids this message went out under before a new one replaced them, oldest first
+   *  (structured-agent-session-outbox-rotation). */
   rotatedFrom?: string[]
 }
 
@@ -178,18 +182,6 @@ export function structuredAgentSessionEntryIdExpired(
   )
 }
 
-/** The message under a new id, remembering the one it replaces. */
-export function rotateStructuredAgentSessionOutboxEntryId(
-  entry: StructuredAgentSessionOutboxEntry,
-  clientMessageId: string
-): StructuredAgentSessionOutboxEntry {
-  return {
-    ...entry,
-    clientMessageId,
-    rotatedFrom: [...(entry.rotatedFrom ?? []), entry.clientMessageId]
-  }
-}
-
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
   refusal: AgentSessionWriteRefusal,
@@ -311,9 +303,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
-    ...(Array.isArray(entry.rotatedFrom) && entry.rotatedFrom.every((id) => typeof id === 'string')
-      ? { rotatedFrom: entry.rotatedFrom }
-      : {}),
+    ...parseStructuredAgentSessionOutboxRotation(entry),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }
