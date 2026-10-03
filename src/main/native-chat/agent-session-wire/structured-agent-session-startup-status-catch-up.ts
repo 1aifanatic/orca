@@ -32,7 +32,7 @@ export async function catchUpMissingStatuses(
     const missing = readJournalSessionStatuses(database.db, listedIds).flatMap(
       ({ sessionId, status }) => (status ? [] : [sessionId])
     )
-    // Every listed chat has its row: no fold, no yield, no transaction.
+    // Only rowless chats are folded; when every listed chat has its row there is no transaction.
     if (missing.length > 0) {
       await foldAndWrite(deps, missing)
     }
@@ -110,7 +110,7 @@ async function foldOne(
   }
 }
 
-/** One transaction; a chat that moved or got a row since its fold is skipped and left rowless. */
+/** One transaction; a chat that moved or got a row since its fold is skipped and left to its open. */
 function writeBatch(
   deps: StructuredAgentSessionStartupStateDeps,
   batch: FoldedJournalSessionStatus[]

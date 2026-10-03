@@ -70,8 +70,9 @@ export async function revealStructuredAgentSession(
   }
 }
 
-/** The host's startup restore: reconcile, then catch up, seed and settle from the state stored beside
- *  each journal, then open in the background what that state cannot answer. Its lease bookkeeping is a
+/** The host's startup restore: reconcile, catch up, open listed chats still in per-chat files, then
+ *  seed and settle from the state stored beside each journal, then open in the background what that
+ *  state cannot answer. Its lease bookkeeping is a
  *  reader's, which never fails a read or startup; startup shares it. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,

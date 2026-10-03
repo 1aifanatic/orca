@@ -140,9 +140,10 @@ Two rules the ingest must keep:
   opened from that file before the tab listing answers, which publishes its
   status, and gets its row with its first write. A corrupt chat gets no row
   until its open rebuilds it.
-  At host startup the host republishes a settled chat's row into the store
-  without opening the chat, and settles a chat a gone process left with work
-  first. A structured row in `last-status.json` would
+  At host startup, before the tab listing answers, the host republishes the
+  row of each settled chat that is still listed and not already open, without
+  opening it; after that it settles every chat a gone process left with work.
+  A structured row in `last-status.json` would
   hydrate as `restoredUnconfirmed` and fight that republish, so the serializer
   still skips rows carrying `structuredHost`, and hydrate still drops any found
   on disk. Applying one therefore also skips

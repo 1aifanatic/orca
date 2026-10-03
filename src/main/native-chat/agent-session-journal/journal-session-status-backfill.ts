@@ -19,30 +19,27 @@ import {
   type JournalSessionStatus
 } from './journal-session-state'
 
-/** Row JSON per part, in UTF-16 units: a page of large rows is split, so each main-thread task
- *  handles about the same bytes (a quarter of a full page of the seed's 2.3 KB rows). */
-const IMPORT_BATCH_CHARS = 256 * 1024
+/** Row JSON per fold part, in UTF-16 units: a page of large rows is split, so each main-thread task
+ *  handles about the same bytes. */
+const FOLD_PART_CHARS = 256 * 1024
 
-/** Each batch split so no part holds more than `maxChars` of row JSON; a larger row is a part alone.
- *  Only a batch's last part keeps its `last`. */
-function* charBoundedBatches<Row extends { rowJson: string }>(
-  batches: Iterable<{ rows: Row[]; last: boolean }>,
-  maxChars = IMPORT_BATCH_CHARS
+/** The rows split so no part holds more than `maxChars` of row JSON; a larger row is a part alone. */
+function* charBoundedParts<Row extends { rowJson: string }>(
+  rows: readonly Row[],
+  maxChars: number
 ): Generator<{ rows: Row[]; last: boolean }> {
-  for (const batch of batches) {
-    let part: Row[] = []
-    let chars = 0
-    for (const row of batch.rows) {
-      if (part.length > 0 && chars + row.rowJson.length > maxChars) {
-        yield { rows: part, last: false }
-        part = []
-        chars = 0
-      }
-      part.push(row)
-      chars += row.rowJson.length
+  let part: Row[] = []
+  let chars = 0
+  for (const row of rows) {
+    if (part.length > 0 && chars + row.rowJson.length > maxChars) {
+      yield { rows: part, last: false }
+      part = []
+      chars = 0
     }
-    yield { rows: part, last: batch.last }
+    part.push(row)
+    chars += row.rowJson.length
   }
+  yield { rows: part, last: true }
 }
 
 /** A chat's status folded from its rows, and where the fold read them. */
@@ -65,7 +62,7 @@ type FoldOptions = {
 
 /** The epoch a fold of the chat would read, or null when it has nothing to fold: the database is a
  *  newer build's, the chat has no epoch here (it is still in a per-chat file), or it has a row. */
-export function foldableJournalSessionEpoch(
+function foldableJournalSessionEpoch(
   database: JournalHostDatabase,
   sessionId: string
 ): string | null {
@@ -85,7 +82,7 @@ export async function foldJournalSessionStatus(
   sessionId: string,
   {
     batchRows = IMPORT_BATCH_ROWS,
-    batchChars = IMPORT_BATCH_CHARS,
+    batchChars = FOLD_PART_CHARS,
     yieldTask = () => yieldToEventLoop(),
     signal
   }: FoldOptions = {}
@@ -107,7 +104,7 @@ export async function foldJournalSessionStatus(
     const rows = readJournalRowsAfter(database.db, sessionId, epoch, afterSeq, batchRows)
     const last = rows.at(-1)
     let folding = true
-    for (const part of charBoundedBatches([{ rows, last: true }], batchChars)) {
+    for (const part of charBoundedParts(rows, batchChars)) {
       folding = part.rows.every(fold.add)
       // A part per task: a long chat's whole replay in one task holds up every other chat.
       if (!folding || part.last) {
@@ -137,26 +134,25 @@ export async function foldJournalSessionStatus(
 }
 
 /** Every folded chat's row in ONE transaction, each only while it still has no row and its rows are
- *  where its fold read them. Answers the chats written; a chat skipped is left to its open. */
+ *  where its fold read them; a chat skipped is left to its open. */
 export function writeJournalSessionStatuses(
   database: JournalHostDatabase,
   folded: readonly FoldedJournalSessionStatus[]
-): FoldedJournalSessionStatus[] {
+): void {
   if (folded.length === 0) {
-    return []
+    return
   }
   // Unsynced: a lost row is re-derived from the journal, and any later synced commit covers it.
-  return database.unsyncedTransaction((db) =>
-    folded.filter(({ sessionId, epoch, tip, status }) => {
+  database.unsyncedTransaction((db) => {
+    for (const { sessionId, epoch, tip, status } of folded) {
       if (
         hasJournalSessionStatus(db, sessionId) ||
         readJournalSessionEpoch(db, sessionId) !== epoch ||
         readJournalTip(db, sessionId, epoch) !== tip
       ) {
-        return false
+        continue
       }
       writeJournalSessionStatus(db, sessionId, status)
-      return true
-    })
-  )
+    }
+  })
 }

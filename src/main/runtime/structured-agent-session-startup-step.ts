@@ -30,8 +30,9 @@ type StructuredAgentSessionListingHost = Partial<
 
 /**
  * Answers the listed chats stored status could not answer, which the post-listing restore opens.
- * The lease check runs first: the death evidence it writes is what the settle's verdicts read. It
- * reports its own failures and never throws.
+ * The lease check runs first: it marks crashed leases `recovering`, and the recoveries the catch-up
+ * starts record the death evidence the settle's verdicts read. It reports its own failures and
+ * never throws.
  */
 export async function runStructuredAgentSessionStartupStep(
   host: StructuredAgentSessionStartupHost,

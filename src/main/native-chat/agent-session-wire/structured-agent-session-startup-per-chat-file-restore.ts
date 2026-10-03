@@ -8,7 +8,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
 import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-session-startup-state'
 
-// On the listing's path, as main's restore before its listing is: 4 at a time.
+// The listing waits for the whole pass, so a few at once: one slow file or recovery holds one lane.
 const PRE_LISTING_RESTORE_CONCURRENCY = 4
 
 /** Never rejects. `recoverLease` resolves each chat's own lease only, so the listing waits on no

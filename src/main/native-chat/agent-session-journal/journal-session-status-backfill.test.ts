@@ -61,13 +61,18 @@ const database = () => openTestJournalHostDatabase(root)
 const dropRow = (sessionId: string) =>
   database().db.prepare('DELETE FROM journal_session_state WHERE session_id = ?').run(sessionId)
 
-/** The chat's fold, and its row written as a batch of one; null when either declines. */
+/** The chat's fold, and its row written as a batch of one; null when the fold declines or the
+ *  write leaves the chat rowless. */
 async function foldAndWrite(
   sessionId: string,
   options?: Parameters<typeof foldJournalSessionStatus>[2]
 ): Promise<FoldedJournalSessionStatus | null> {
   const folded = await foldJournalSessionStatus(database(), sessionId, options)
-  return folded && writeJournalSessionStatuses(database(), [folded]).length > 0 ? folded : null
+  if (!folded) {
+    return null
+  }
+  writeJournalSessionStatuses(database(), [folded])
+  return readTestJournalSessionStatus(root, sessionId) ? folded : null
 }
 
 beforeEach(async () => {
@@ -240,10 +245,9 @@ describe('a row from the rows alone', () => {
     }
     const transaction = vi.spyOn(database(), 'transaction')
 
-    const written = writeJournalSessionStatuses(database(), folded)
+    writeJournalSessionStatuses(database(), folded)
 
     expect(transaction).toHaveBeenCalledOnce()
-    expect(written.map(({ sessionId }) => sessionId)).toEqual([...JOURNAL_SESSION_STATE_CASES])
     for (const name of JOURNAL_SESSION_STATE_CASES) {
       expect(readTestJournalSessionStatus(root, name)).toEqual(byOpen.get(name))
     }
@@ -276,7 +280,8 @@ describe('a row from the rows alone', () => {
     // NORMAL (1) for the batch's commit, FULL (2) for every other commit on the connection.
     expect(level()).toBe(2)
 
-    expect(writeJournalSessionStatuses(database(), [folded[0]!])).toHaveLength(1)
+    writeJournalSessionStatuses(database(), [folded[0]!])
+    expect(readTestJournalSessionStatus(root, 'first')).toEqual(folded[0]!.status)
     expect(atCommit).toEqual([1])
     expect(level()).toBe(2)
 
@@ -357,9 +362,8 @@ describe('a row from the rows alone', () => {
     const rowedBefore = readTestJournalSessionStatus(root, 'rowed')
     publishTestJournalEpoch(database().db, 'replaced', 'epoch-replaced-later')
 
-    const written = writeJournalSessionStatuses(database(), folded)
+    writeJournalSessionStatuses(database(), folded)
 
-    expect(written.map(({ sessionId }) => sessionId)).toEqual(['steady'])
     expect(readTestJournalSessionStatus(root, 'steady')).toEqual(folded[0]!.status)
     expect(readTestJournalSessionStatus(root, 'appended')).toBeNull()
     expect(readTestJournalSessionStatus(root, 'rowed')).toEqual(rowedBefore)
