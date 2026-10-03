@@ -15,6 +15,7 @@ import type { OpenCodeWslRuntime } from './session-scanner-opencode-wsl-runtime'
 export type AiVaultScanOptions = {
   claudeProjectsDir?: string
   codebuddyProjectsDir?: string
+  qoderProjectsDir?: string
   codexSessionsDir?: string
   additionalCodexSessionsDirs?: readonly string[]
   // Why: tests inject a sandbox "real ~/.codex" so real-home attribution
@@ -149,6 +150,7 @@ export type SessionAccumulator = {
   // True once an older message fell out of the newest-N preview window, so the
   // earliest preview turn is no longer the session's opening ask.
   previewMessagesTruncated: boolean
+  antigravityOpeningPrompt?: AiVaultSession['antigravityOpeningPrompt'] | null
   firstUserPrompt: string | null
   lastUserPrompt: string | null
   // Recoverable signal for a zero-turn transcript (see AiVaultSession).

@@ -7,9 +7,11 @@ import {
 } from './ai-vault-resume-command'
 import { canResumeAiVaultSessionOnTarget } from './ai-vault-resume-target'
 import { getAiVaultResumeWorkspaceWslDistro } from './ai-vault-resume-shell'
+import { buildAgentLaunchRouteInput } from './agent-launch-route-input'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 
 vi.mock('@/lib/new-workspace', () => ({ CLIENT_PLATFORM: 'win32' }))
+vi.mock('@/lib/renderer-app-platform', () => ({ getRendererAppPlatform: () => 'win32' }))
 
 type State = Parameters<typeof buildAiVaultResumeStartupForWorktree>[0]['state']
 const windowsFile = 'C:/Users/example/.gemini/antigravity-ide/brain/copied-id/transcript_full.jsonl'
@@ -132,6 +134,8 @@ describe('Antigravity transcript reference ownership', () => {
 
   it('applies the same confinement to folder workspaces', () => {
     const state = stateFor('local')
+    state.activeRepoId = null
+    state.activeWorktreeId = 'folder:folder-1'
     state.folderWorkspaces = [
       makeFolderWorkspace({ folderPath: '//wsl.localhost/Debian/home/example/project' })
     ]
@@ -152,5 +156,89 @@ describe('Antigravity transcript reference ownership', () => {
         targetState: state
       }).status
     ).toBe('unsupported')
+  })
+
+  it('uses the folder launch project runtime for a native folder path', () => {
+    const state = stateFor('local', 'Debian')
+    state.activeWorktreeId = 'folder:folder-1'
+    state.folderWorkspaces = [makeFolderWorkspace({ folderPath: 'C:/project/folder' })]
+    expect(
+      buildAgentLaunchRouteInput(state, {
+        agent: 'antigravity',
+        workspace: { kind: 'folder', repoId: 'repo' }
+      }).projectRuntime
+    ).toMatchObject({ status: 'resolved', runtime: { kind: 'wsl', distro: 'Debian' } })
+    expect(getAiVaultResumeWorkspaceWslDistro(state, state.activeWorktreeId)).toBe('Debian')
+    for (const [file, status] of [
+      [windowsFile, 'unsupported'],
+      [debianFile, 'ready']
+    ] as const) {
+      expect(
+        resolveAiVaultSessionLaunchTarget({
+          sessionFilePath: file,
+          sessionExecutionHostId: 'local',
+          activeWorktreeId: state.activeWorktreeId,
+          targetState: state
+        }).status
+      ).toBe(status)
+    }
+  })
+
+  it('lets an explicit folder project runtime override the UNC path distro', () => {
+    const state = stateFor('local', 'Ubuntu')
+    state.activeWorktreeId = 'folder:folder-1'
+    state.folderWorkspaces = [
+      makeFolderWorkspace({
+        folderPath: '//wsl.localhost/Debian/home/example/project'
+      })
+    ]
+    expect(getAiVaultResumeWorkspaceWslDistro(state, state.activeWorktreeId)).toBe('Ubuntu')
+    expect(
+      resolveAiVaultSessionLaunchTarget({
+        sessionFilePath: debianFile,
+        sessionExecutionHostId: 'local',
+        activeWorktreeId: state.activeWorktreeId,
+        targetState: state
+      }).status
+    ).toBe('unsupported')
+  })
+
+  it('does not substitute a local project runtime into an SSH folder launch', () => {
+    const state = stateFor('ssh:owner', 'Debian')
+    state.activeWorktreeId = 'folder:folder-1'
+    state.folderWorkspaces = [
+      makeFolderWorkspace({
+        folderPath: '/remote/non-git-folder',
+        executionHostId: 'ssh:owner'
+      })
+    ]
+    expect(getAiVaultResumeWorkspaceWslDistro(state, state.activeWorktreeId)).toBeNull()
+    expect(
+      resolveAiVaultSessionLaunchTarget({
+        sessionFilePath: linuxFile,
+        sessionExecutionHostId: 'ssh:owner',
+        activeWorktreeId: state.activeWorktreeId,
+        targetState: state
+      }).status
+    ).toBe('ready')
+  })
+
+  it('keeps references refused for SSH aliases claiming local WSL ownership', () => {
+    for (const target of [
+      'ssh:localhost',
+      'ssh:127.0.0.1',
+      'ssh:Debian',
+      'ssh:local-wsl'
+    ] as const) {
+      expect(
+        canResumeAiVaultSessionOnTarget({
+          sessionFilePath: debianFile,
+          sessionExecutionHostId: 'local',
+          targetStatus: 'ssh',
+          targetExecutionHostId: target,
+          targetWslDistro: 'Debian'
+        })
+      ).toBe(false)
+    }
   })
 })

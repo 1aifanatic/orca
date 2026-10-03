@@ -10,7 +10,8 @@ import { readNodeFileWithinLimit } from '../../shared/node-bounded-file-reader'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import { throwIfAiVaultScanCancelled } from './ai-vault-scan-cancellation'
 import { WslTranscriptFsError } from '../native-chat/wsl-transcript-fs-gate'
-import { normalizeTitleText, parseJsonObject, timestampMs } from './session-scanner-values'
+import { parseJsonObject, timestampMs } from './session-scanner-values'
+import { antigravityHistoryPromptHash } from './antigravity-history-prompt'
 
 const HISTORY_MATCH_WINDOW_MS = 2_000
 
@@ -134,10 +135,7 @@ function indexAntigravityHistory(content: string | null): AntigravityHistoryInde
   }
   for (const line of content?.split(/\r?\n/).slice(0, 10_000) ?? []) {
     const record = parseJsonObject(line)
-    const display =
-      typeof record?.display === 'string' && record.display.length <= 4096
-        ? record.display.replace(/\s+/g, ' ').trim()
-        : null
+    const promptHash = antigravityHistoryPromptHash(record?.display)
     const workspace = typeof record?.workspace === 'string' ? record.workspace.trim() : ''
     const entryTimestampMs = timestampMs(record?.timestamp)
     const id = typeof record?.conversationId === 'string' ? record.conversationId : null
@@ -150,14 +148,13 @@ function indexAntigravityHistory(content: string | null): AntigravityHistoryInde
       } else if (index.byId.get(id) !== workspace) {
         index.byId.set(id, null)
       }
+    }
+    if (!promptHash) {
       continue
     }
-    if (!display) {
-      continue
-    }
-    const entries = index.byPrompt.get(display) ?? []
+    const entries = index.byPrompt.get(promptHash) ?? []
     entries.push({ timestampMs: entryTimestampMs, workspace })
-    index.byPrompt.set(display, entries)
+    index.byPrompt.set(promptHash, entries)
   }
   return index
 }
@@ -169,26 +166,15 @@ function findAntigravityWorkspace(
   if (index.byId.has(session.sessionId)) {
     return index.byId.get(session.sessionId) ?? null
   }
-  // Why: truncated titles are not prompt identities; long worker prompts often
-  // share the same 96-character prefix across unrelated workspaces.
-  if (session.previewMessagesTruncated || session.title.endsWith('...')) {
+  const opening = session.antigravityOpeningPrompt
+  const promptTimestampMs = timestampMs(opening?.timestamp)
+  // Titles, createdAt and rolling previews cannot identify the original prompt.
+  if (!opening || !Number.isFinite(promptTimestampMs)) {
     return null
   }
-  const firstTitledUserTimestamp = session.previewMessages.find(
-    (message) => message.role === 'user' && normalizeTitleText(message.text) === session.title
-  )?.timestamp
-  const promptTimestampMs = timestampMs(firstTitledUserTimestamp ?? session.createdAt)
-  if (!Number.isFinite(promptTimestampMs)) {
-    return null
-  }
-  const prompt = session.previewMessages
-    .find((message) => message.role === 'user')
-    ?.text.replace(/\s+/g, ' ')
-    .trim()
-  const matches = (index.byPrompt.get(prompt ?? session.title) ?? []).filter(
+  const matches = (index.byPrompt.get(opening.hash) ?? []).filter(
     (entry) => Math.abs(entry.timestampMs - promptTimestampMs) <= HISTORY_MATCH_WINDOW_MS
   )
-  // Why: history rows have no conversation id. A unique prompt/time match is
-  // evidence for cwd; ambiguity must stay unknown instead of crossing projects.
+  // Exact prompt/time fallback is valid only when a single history row matches.
   return matches.length === 1 ? (matches[0]?.workspace ?? null) : null
 }

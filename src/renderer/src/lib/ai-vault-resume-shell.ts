@@ -1,5 +1,8 @@
 import type { AppState } from '@/store/types'
-import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
+import {
+  getLocalProjectExecutionRuntimeContext,
+  getLocalRepoProjectExecutionRuntimeContext
+} from '@/lib/local-preflight-context'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { resolveLocalWindowsTerminalShellOverrideForTab } from '../../../shared/local-windows-terminal-runtime'
 import { resolveWindowsShellStartupFamily } from '../../../shared/windows-terminal-shell'
@@ -82,21 +85,27 @@ export function getAiVaultResumeWorkspaceWslDistro(
 ): string | null {
   const workspacePath = getAiVaultResumeWorkspacePath(state, workspaceId)
   const workspaceKey = workspaceId ? parseWorkspaceKey(workspaceId) : null
-  if (workspaceKey?.type === 'folder') {
-    return workspacePath ? (parseWslUncPath(workspacePath)?.distro ?? null) : null
+  const runtimeState = {
+    activeRepoId: state.activeRepoId ?? null,
+    activeWorktreeId: state.activeWorktreeId ?? null,
+    projects: state.projects ?? [],
+    settings: state.settings ?? null,
+    repos: state.repos,
+    worktreesByRepo: state.worktreesByRepo
   }
-  const runtime = getLocalProjectExecutionRuntimeContext(
-    {
-      activeRepoId: state.activeRepoId ?? null,
-      activeWorktreeId: state.activeWorktreeId ?? null,
-      projects: state.projects ?? [],
-      settings: state.settings ?? null,
-      repos: state.repos,
-      worktreesByRepo: state.worktreesByRepo
-    },
-    workspaceKey?.type === 'worktree' ? workspaceKey.worktreeId : workspaceId,
-    CLIENT_PLATFORM
-  )
+  // Folder launch routes resolve the project through the repo, including non-git folders.
+  const runtime =
+    workspaceKey?.type === 'folder'
+      ? getLocalRepoProjectExecutionRuntimeContext(
+          runtimeState,
+          runtimeState.activeRepoId,
+          CLIENT_PLATFORM
+        )
+      : getLocalProjectExecutionRuntimeContext(
+          runtimeState,
+          workspaceKey?.type === 'worktree' ? workspaceKey.worktreeId : workspaceId,
+          CLIENT_PLATFORM
+        )
   if (runtime?.status === 'repair-required') {
     return null
   }

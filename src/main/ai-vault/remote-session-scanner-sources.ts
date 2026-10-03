@@ -2,6 +2,7 @@ import {
   ANTIGRAVITY_HISTORY_ROOTS,
   type AntigravitySessionOrigin
 } from '../../shared/antigravity-session-origin'
+import { parseQoderSessionContent } from './session-scanner-qoder-parser'
 import { remoteSessionDocumentParsers } from './remote-session-document-parsers'
 import type { RemoteSessionContent } from './remote-session-content-lines'
 import type { AiVaultAgent, AiVaultSession } from '../../shared/ai-vault-types'
@@ -79,6 +80,16 @@ export function remoteSessionSources(
         hostPlatform,
         ['.codebuddy', 'projects'],
         parseCodebuddySessionContent
+      ),
+      partitionSubagentTranscripts: partitionSubagentTranscriptPaths
+    },
+    {
+      ...jsonlSource(
+        'qoder',
+        remoteHome,
+        hostPlatform,
+        ['.qoder', 'projects'],
+        parseQoderSessionContent
       ),
       partitionSubagentTranscripts: partitionSubagentTranscriptPaths
     },

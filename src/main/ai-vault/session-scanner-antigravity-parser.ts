@@ -10,9 +10,11 @@ import {
   accumulatorFoldResumeState,
   addPreviewMessage,
   createAccumulator,
+  timestampIso,
   updateTimeline
 } from './session-scanner-accumulator'
 import { antigravityConversationIdFromTranscriptPath } from './session-scanner-antigravity-paths'
+import { antigravityHistoryPromptHash } from './antigravity-history-prompt'
 import type {
   FileWithMtime,
   ResumableSessionParseState,
@@ -108,6 +110,12 @@ function consumeAntigravityRecordLine(accumulator: SessionAccumulator, line: str
       return
     }
     accumulator.messageCount++
+    if (accumulator.antigravityOpeningPrompt === undefined) {
+      const hash = antigravityHistoryPromptHash(request)
+      accumulator.antigravityOpeningPrompt = hash
+        ? { hash, timestamp: timestampIso(record.created_at) }
+        : null
+    }
     accumulator.title ??= normalizeTitleText(request)
     addPreviewMessage(accumulator, { role: 'user', text: request, timestamp: record.created_at })
     return

@@ -56,6 +56,7 @@ export function canResumeAiVaultSessionOnTarget(args: {
     const targetHost =
       targetExecutionHostId ?? (args.targetStatus === 'local' ? LOCAL_EXECUTION_HOST_ID : null)
     if (sourceHost !== targetHost) {
+      // #6270's SSH/UNC labels do not prove this host owns the referenced file.
       return false
     }
     const sourceWsl = args.sessionFilePath ? parseWslUncPath(args.sessionFilePath) : null
