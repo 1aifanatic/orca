@@ -267,7 +267,8 @@ async function settleBackgroundWorktreeRemoval(
     // Why: Git drops the registration even when it fails to delete the checkout, and Orca lists
     // workspaces from Git, so without the record the leftover would vanish with no way to retry.
     const left = await checkoutLeftByFailedRemoval(record)
-    if (left === 'leftover') {
+    // Unknown is kept as failed too, so a listing decides again what the path holds.
+    if (left === 'leftover' || left === 'unknown') {
       failure = {
         message: error instanceof Error ? error.message : String(error),
         failedAt: Date.now()

@@ -217,6 +217,33 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
   })
 
+  it('keeps a refused retry for the next listing while Git cannot say what is at the path', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    await failRemoval()
+    await rm(checkout, { recursive: true })
+    await mkdir(checkout)
+    vi.mocked(listWorktreesStrict)
+      .mockResolvedValueOnce([mainWorktree])
+      .mockRejectedValueOnce(new Error('git worktree list timed out'))
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', () => ({
+      run: async () => {
+        throw new Error('not the folder Orca started deleting')
+      },
+      publish: () => {}
+    }))
+
+    await expect(retried).rejects.toThrow('not the folder')
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(endWorkspace).not.toHaveBeenCalled()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toMatchObject([
+      { worktreeId, failure: { message: 'not the folder Orca started deleting' } }
+    ])
+
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+  })
+
   it('keeps the row with the new error when the retry fails the same way', async () => {
     const endWorkspace = vi.fn()
     setUnfinishedWorktreeRemovalHost(endWorkspace)

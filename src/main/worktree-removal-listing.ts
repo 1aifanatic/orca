@@ -80,11 +80,11 @@ export async function withUnregisteredRemovalCheckouts(
 /**
  * What a failed delete left at its path: `leftover`, the accepted checkout Git no longer
  * registers; `unregistered`, nothing Git registers and no leftover (a different folder, or none);
- * `registered`, a checkout Git still registers, or no answer.
+ * `registered`, a checkout Git still registers; `unknown`, no answer.
  */
 export async function checkoutLeftByFailedRemoval(
   record: WorktreeRemovalRecord
-): Promise<'leftover' | 'unregistered' | 'registered'> {
+): Promise<'leftover' | 'unregistered' | 'registered' | 'unknown'> {
   try {
     if (await isCheckoutRegistered(record)) {
       return 'registered'
@@ -94,9 +94,8 @@ export async function checkoutLeftByFailedRemoval(
       ? 'leftover'
       : 'unregistered'
   } catch (error) {
-    // Unknowable: the row stays however Git lists it, as before this record existed.
     console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
-    return 'registered'
+    return 'unknown'
   }
 }
 

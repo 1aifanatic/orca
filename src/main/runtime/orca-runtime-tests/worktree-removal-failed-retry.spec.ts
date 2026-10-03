@@ -338,6 +338,28 @@ describe('runtime Delete after the user replaced a failed delete’s leftover', 
     expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
   })
 
+  it('leaves the folder on a Delete after a restart’s refused delete could not ask Git what is left', async () => {
+    // The delete was still running when Orca quit; the user replaced the folder before the restart.
+    const [{ failure: _failure, ...interrupted }] = await readWorktreeRemovalRecords(directory)
+    _resetPendingWorktreeRemovalsForTests()
+    await writeWorktreeRemovalRecords(directory, () => [interrupted])
+    await loadWorktreeRemovalRecords(directory)
+    vi.mocked(listWorktreesStrict)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('git worktree list timed out'))
+    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
+
+    runtime.finishInterruptedWorktreeRemovals()
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(await readWorktreeRemovalRecords(directory)).toMatchObject([
+      { worktreeId: leftoverId, failure: { message: expect.stringMatching(/is not the one Orca/) } }
+    ])
+    await deleteById(runtime)
+
+    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
+    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
+  })
+
   it('keeps the workspace when Git registers a checkout at the path again after the scan', async () => {
     vi.mocked(listWorktreesStrict).mockResolvedValue([
       {
