@@ -71,6 +71,11 @@ describe('a current client sending a message', () => {
           ok: false,
           refusal: { details: { reason: 'sessionNotAttached' } }
         })
+        // Negative control: proves the fingerprint check ran before admission reached the journal.
+        const wrong = { ...sent.envelope, payloadFingerprint: '0'.repeat(64) }
+        expect(await build.admitSend({ ...sent, envelope: wrong }), build.label).toMatchObject({
+          refusal: { details: { reason: 'fingerprintMismatch' } }
+        })
       } finally {
         await build.installStructuredHost(null)
       }
