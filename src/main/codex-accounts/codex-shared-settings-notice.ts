@@ -9,17 +9,23 @@ import {
 import type { CodexSharedSettingsNotice } from '../../shared/persisted-ui-state-types'
 
 /**
- * What the one-time Windows notice must say once system-default Codex leaves
- * Orca's managed home for ~/.codex, or null when that home was never used.
- * Throws when a read cannot answer, so the caller decides on a later pass.
+ * What the Windows notice must say now that system-default Codex runs on
+ * ~/.codex, or null when Orca's managed home was never really used.
+ * Throws when a read cannot answer.
  */
 export function resolveCodexSharedSettingsNotice(
   runtimeHomePath: string,
   systemHomePath: string
 ): CodexSharedSettingsNotice | null {
-  const runtimeConfig = readConfigToml(runtimeHomePath)
-  if (runtimeConfig === null && !hasSessions(runtimeHomePath)) {
-    return null
+  const mcpServerNames = readRuntimeOnlyMcpServerNames(runtimeHomePath, systemHomePath)
+  // Why not config.toml: Orca's hook install writes it on every startup, used or not.
+  return mcpServerNames.length > 0 || hasSessions(runtimeHomePath) ? { mcpServerNames } : null
+}
+
+function readRuntimeOnlyMcpServerNames(runtimeHomePath: string, systemHomePath: string): string[] {
+  const runtimeNames = readMcpServerTomlOwnership(readConfigToml(runtimeHomePath) ?? '').names
+  if (runtimeNames.size === 0) {
+    return []
   }
   const baseline = observeCodexSettingsBaseline(runtimeHomePath)
   if (baseline.kind === 'indeterminate') {
@@ -30,11 +36,7 @@ export function resolveCodexSharedSettingsNotice(
       ? { names: baseline.baseline.mcpServers, ownsRoot: baseline.baseline.mcpServerRoot }
       : { names: new Set<string>(), ownsRoot: false }
   const system = readMcpServerTomlOwnership(readConfigToml(systemHomePath) ?? '')
-  return {
-    mcpServerNames: [...readMcpServerTomlOwnership(runtimeConfig ?? '').names].filter((name) =>
-      isRuntimeOnlyMcpServer(name, system, lastMirrored)
-    )
-  }
+  return [...runtimeNames].filter((name) => isRuntimeOnlyMcpServer(name, system, lastMirrored))
 }
 
 function readConfigToml(homePath: string): string | null {

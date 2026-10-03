@@ -23,15 +23,9 @@ function writeRuntimeConfig(config: string): void {
   writeFileSync(join(runtimeHomePath, 'config.toml'), config)
 }
 
-function writeBaseline(mcpServers?: string[]): void {
-  writeFileSync(
-    getCodexSettingsBaselinePath(runtimeHomePath),
-    JSON.stringify({ version: mcpServers ? 3 : 2, settings: {}, mcpServers })
-  )
-}
-
 describe('resolveCodexSharedSettingsNotice', () => {
-  it('is null for a managed home Codex never ran in', () => {
+  it('is null for a config.toml Orca wrote at startup, with no sessions or own servers', () => {
+    writeRuntimeConfig('[features]\nhooks = true\n')
     mkdirSync(join(runtimeHomePath, 'sessions'))
 
     expect(resolveCodexSharedSettingsNotice(runtimeHomePath, systemHomePath)).toBeNull()
@@ -45,37 +39,28 @@ describe('resolveCodexSharedSettingsNotice', () => {
     })
   })
 
-  it('names only the servers that exist nowhere but the managed home', () => {
+  it('leaves out a server ~/.codex has', () => {
     writeRuntimeConfig(
-      [
-        '[mcp_servers.shared]',
-        'command = "a"',
-        '[mcp_servers.removed]',
-        'command = "b"',
-        '[mcp_servers.orca_only]',
-        'command = "c"',
-        '[mcp_servers.orca_only.env]',
-        'TOKEN = "secret"'
-      ].join('\n')
+      '[mcp_servers.shared]\ncommand = "a"\n[mcp_servers.orca_only]\ncommand = "b"\n'
     )
     writeFileSync(join(systemHomePath, 'config.toml'), '[mcp_servers.shared]\ncommand = "a"\n')
-    writeBaseline(['shared', 'removed'])
 
     expect(resolveCodexSharedSettingsNotice(runtimeHomePath, systemHomePath)).toEqual({
       mcpServerNames: ['orca_only']
     })
   })
 
-  it.each([
-    ['~/.codex owns the whole MCP table inline', () => writeBaseline([]), 'mcp_servers = {}\n'],
-    ['the baseline predates MCP ownership', () => writeBaseline(), '']
-  ])('names no servers when %s', (_case, arrange, systemConfig) => {
-    writeRuntimeConfig('[mcp_servers.orca_only]\ncommand = "c"\n')
-    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
-    arrange()
+  it('leaves out a server the last mirror copied from ~/.codex', () => {
+    writeRuntimeConfig(
+      '[mcp_servers.removed]\ncommand = "a"\n[mcp_servers.orca_only]\ncommand = "b"\n'
+    )
+    writeFileSync(
+      getCodexSettingsBaselinePath(runtimeHomePath),
+      JSON.stringify({ version: 3, settings: {}, mcpServers: ['removed'] })
+    )
 
     expect(resolveCodexSharedSettingsNotice(runtimeHomePath, systemHomePath)).toEqual({
-      mcpServerNames: []
+      mcpServerNames: ['orca_only']
     })
   })
 })
