@@ -146,6 +146,12 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     promptInjectionMode: 'flag-prompt-interactive',
     preflightTrust: 'qoder'
   },
+  'qoder-cn': {
+    detectCmd: 'qoderclicn',
+    detectCmdAliases: ['qodercn'],
+    promptInjectionMode: 'flag-prompt-interactive',
+    preflightTrust: 'qoder-cn'
+  },
   gemini: {
     detectCmd: 'gemini',
     promptInjectionMode: 'flag-prompt-interactive'
@@ -290,21 +296,14 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     promptInjectionMode: 'stdin-after-start'
   },
   dsh: {
-    // Why: DeepSeek Harness publishes one binary (`dsh`) that boots a profile, and only the
-    // `dsh-tui` profile paints a composer. `dsh-tui` (alias `dst`) is the launcher that
-    // selects it, so detect that and require `dsh` too — the launcher delegates to it and
-    // fails without it.
     detectCmd: 'dsh-tui',
     detectCmdAliases: ['dst'],
     detectRequiredCommands: ['dsh'],
-    // Why: the launcher re-execs `dsh --profile dsh-tui`, so the pane's foreground process
-    // is `dsh`, never `dsh-tui`. Readiness and follow-up delivery key off this name.
+    // A first bare launch opens the session browser instead of the composer.
+    launchCmd: 'dsh-tui .',
     expectedProcess: 'dsh',
-    // Why: the terminal app parses only `--resume`/`--continue` and a workspace target; it
-    // has no prompt flag, so the first prompt is pasted into the composer after startup.
     promptInjectionMode: 'stdin-after-start',
-    // Why: DSH-TUI animates a whale intro continuously behind its composer, so the default
-    // quiet window never settles (the grok failure mode). See dsh-tui-ready-no-key.txt.
+    // The whale intro keeps repainting behind the ready composer.
     draftPasteReadySignal: 'dsh-composer-prompt'
   },
   zcode: {
@@ -324,7 +323,9 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     detectCmd: 'devin',
     // Why: `devin -- <prompt>` auto-submits immediately (docs.devin.ai/cli), so start the REPL with no argv prompt.
     promptInjectionMode: 'stdin-after-start'
-  }
+  },
+  // prettier-ignore
+  jcode: { detectCmd: 'jcode', launchCmd: 'jcode', expectedProcess: 'jcode', promptInjectionMode: 'stdin-after-start' }
 }
 
 export const TUI_AGENT_CONFIG: Record<TuiAgent, TuiAgentConfig> = Object.fromEntries(

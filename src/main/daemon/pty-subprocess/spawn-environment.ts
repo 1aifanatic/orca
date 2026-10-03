@@ -33,7 +33,8 @@ const PANE_IDENTITY_ENV_KEYS = [
   'ORCA_WORKTREE_ID',
   'ORCA_AGENT_LAUNCH_TOKEN',
   // Not identity but equally per-spawn: an inherited copy names another launch's CLI.
-  'ORCA_WSL_CLI_DIR'
+  'ORCA_WSL_CLI_DIR',
+  'JCODE_RUNTIME_DIR'
 ] as const
 const WINDOWS_PATH_ENV_KEY_RE = /^path$/i
 
@@ -228,4 +229,13 @@ export function finalizeDaemonPtyEnvironment(
   stripLegacyTerminalShimEnv(env, process.platform)
   dropIncoherentCondaActivationEnv(env, process.platform)
   stripPiProcessOwnerEnv(env)
+  // A live daemon pins this runtime across app updates; callers cannot name the host executable.
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === 'ORCA_AGENT_HOOK_NODE') {
+      delete env[key]
+    }
+  }
+  if (process.platform === 'win32') {
+    env.ORCA_AGENT_HOOK_NODE = process.execPath
+  }
 }
