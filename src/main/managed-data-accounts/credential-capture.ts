@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { parse } from 'smol-toml'
 import SyncDatabase from '../sqlite/sync-database'
+import { tableExists } from '../opencode-usage/schema-helpers'
 import { writeSecureFile } from '../../shared/secure-file'
 import type { ManagedDataAccountProvider } from '../../shared/managed-account-types'
 
@@ -58,14 +59,30 @@ export async function captureDataAccountCredentials(
   })
   try {
     database.pragma('query_only = ON')
-    const sessionTables = ['session', 'session_v2'].filter((name) =>
-      database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
-    )
+    const sessionTables = ['session', 'session_v2'].filter((name) => tableExists(database, name))
     if (sessionTables.length === 0) {
       throw new Error('Unsupported OpenCode credential database.')
     }
-    // Both released session schemas must be empty before copying credentials.
-    for (const table of sessionTables) {
+    // Deleted sessions can leave orphan content or durable events behind.
+    const conversationTables = [
+      ...sessionTables,
+      'message',
+      'part',
+      'todo',
+      'session_message',
+      'session_pending',
+      'session_inbox',
+      'session_input',
+      'session_context_epoch',
+      'instruction_blob',
+      'instruction_entry',
+      'instruction_state',
+      'event'
+    ]
+    for (const table of conversationTables) {
+      if (!tableExists(database, table)) {
+        continue
+      }
       if (database.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) {
         throw new Error(
           'Use an isolated OpenCode login directory; importing conversation databases is not supported.'

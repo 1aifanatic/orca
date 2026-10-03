@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync
+} from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -110,11 +118,31 @@ export class ManagedDataAccountService {
       if (existsSync(directory)) {
         this.assertOwned(directory)
       }
-      this.removeDirectory(directory)
-      return this.persist(provider, {
-        accounts: state.accounts.filter((account) => account.id !== accountId),
-        activeAccountId: state.activeAccountId === accountId ? null : state.activeAccountId
-      })
+      const metadataPath = join(this.root, provider, 'accounts.json')
+      const rollbackPath = `${metadataPath}.${randomUUID()}.rollback`
+      if (!writeSecureFile(rollbackPath, readFileSync(metadataPath, 'utf8'), { durable: true })) {
+        rmSync(rollbackPath, { force: true })
+        throw new Error('Could not restrict account metadata backup permissions.')
+      }
+      let next: ManagedDataAccountsState
+      try {
+        // Keep the original metadata until persistence and cleanup both succeed.
+        next = this.writeState(provider, {
+          accounts: state.accounts.filter((account) => account.id !== accountId),
+          activeAccountId: state.activeAccountId === accountId ? null : state.activeAccountId
+        })
+        this.removeDirectory(directory)
+      } catch (error) {
+        renameSync(rollbackPath, metadataPath)
+        throw error
+      }
+      try {
+        rmSync(rollbackPath, { force: true })
+      } catch {
+        console.warn('[managed-data-accounts] Could not remove account metadata backup.')
+      }
+      this.notifyChanged()
+      return next
     })
   }
 
@@ -218,18 +246,30 @@ export class ManagedDataAccountService {
     provider: ManagedDataAccountProvider,
     state: ManagedDataAccountsState
   ): ManagedDataAccountsState {
+    const checked = this.writeState(provider, state)
+    this.notifyChanged()
+    return checked
+  }
+
+  private writeState(
+    provider: ManagedDataAccountProvider,
+    state: ManagedDataAccountsState
+  ): ManagedDataAccountsState {
     const checked = stateSchema.parse(state)
     const path = join(this.root, provider, 'accounts.json')
     if (existsSync(path)) {
       this.assertOwned(path)
     }
-    if (!writeSecureFile(path, JSON.stringify(checked))) {
+    if (!writeSecureFile(path, JSON.stringify(checked), { durable: true })) {
       throw new Error('Could not restrict account metadata permissions.')
     }
+    return checked
+  }
+
+  private notifyChanged(): void {
     for (const listener of this.listeners) {
       listener()
     }
-    return checked
   }
 
   private assertOwned(path: string): void {
