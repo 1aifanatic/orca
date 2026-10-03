@@ -126,28 +126,6 @@ async function doConnect(
     return getPublicSshState(targetId)!
   }
 
-  const pending = decideHostServer(target)
-  // Why the check: test doubles answer synchronously so the relay path's ordering stays pinned.
-  const server = pending instanceof Promise ? await pending : pending
-  if (server?.route === 'managed') {
-    return publishManagedServerConnect(targetId, server.environmentId)
-  }
-  if (server) {
-    setSshHostServerStatus(targetId, {
-      kind: 'relay',
-      reason: server.reason,
-      ...(server.detail ? { detail: server.detail } : {}),
-      ...(server.terminals !== undefined ? { terminals: server.terminals } : {})
-    })
-  }
-  // Re-read: a conversion attempt may have fenced the host since the lookup above.
-  const relayTarget = getSshTargetRegistryStore()!.getTarget(targetId) ?? target
-  if (!allowsDirectSshRelay(relayTarget)) {
-    throw new Error(
-      'This SSH host serves a managed Orca server; it is reached through that server.'
-    )
-  }
-
   const authority = rotateSshProviderAuthority(targetId)
   clearRelayStateOverride(targetId)
   const pendingTransportDisconnect = replacePendingTransport
@@ -187,6 +165,33 @@ async function doConnect(
     if (!isCurrentConnectAttempt(targetId, authority)) {
       throw createCancelledConnectAttemptError()
     }
+  }
+
+  // Why after the teardown above: deploy and conversion refuse while a direct session or transport
+  // exists, and the authority rotated synchronously so concurrent connects still join this one.
+  const server = await decideHostServer(target)
+  // A shutdown that began during the decision is the actionable reason, ahead of the rotation.
+  assertSshConnectsNotFenced()
+  if (!isCurrentConnectAttempt(targetId, authority)) {
+    throw createCancelledConnectAttemptError()
+  }
+  if (server?.route === 'managed') {
+    return publishManagedServerConnect(targetId, server.environmentId)
+  }
+  if (server) {
+    setSshHostServerStatus(targetId, {
+      kind: 'relay',
+      reason: server.reason,
+      ...(server.detail ? { detail: server.detail } : {}),
+      ...(server.terminals !== undefined ? { terminals: server.terminals } : {})
+    })
+  }
+  // Re-read: a conversion attempt may have fenced the host since the lookup above.
+  const relayTarget = getSshTargetRegistryStore()!.getTarget(targetId) ?? target
+  if (!allowsDirectSshRelay(relayTarget)) {
+    throw new Error(
+      'This SSH host serves a managed Orca server; it is reached through that server.'
+    )
   }
 
   // Why here and not only at entry: this is the publication point, and it is the last statement

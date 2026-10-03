@@ -143,9 +143,9 @@ export function createSshIpcMocks(): SshIpcMocks {
       installSshPtySourceAckPublisher: vi.fn().mockReturnValue(() => {}),
       installSshPtySourceCancellationPublisher: vi.fn().mockReturnValue(() => {})
     },
-    // Why synchronous null: the connect-flow tests pin the relay path's exact ordering.
+    // Null keeps today's relay path; the real decision is covered by its own tests.
     hostServerConnect: {
-      decideHostServer: () => null,
+      decideHostServer: vi.fn(async () => null),
       publishManagedServerConnect: vi.fn()
     },
     sshConnectionStore: {
