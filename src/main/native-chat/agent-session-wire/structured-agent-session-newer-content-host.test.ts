@@ -92,20 +92,22 @@ async function relaunch(): Promise<StructuredAgentSessionHost> {
   return host
 }
 
+// A subject kind this build does not know.
+const NEWER_APPROVAL: AgentJournalItemBody = JSON.parse(
+  JSON.stringify({
+    kind: 'approval',
+    title: 'Review proposed change',
+    detail: null,
+    subject: { kind: 'diff', path: 'a.ts', text: 'not a plan' },
+    options: [{ id: 'allow', label: 'Approve' }],
+    resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
+  })
+)
+
 it("settles a newer Orca's pending approval as it was, and the chat takes its next message", async () => {
   await attach()
-  // A subject kind this build does not know, still pending when its provider went away.
-  const newerApproval: AgentJournalItemBody = JSON.parse(
-    JSON.stringify({
-      kind: 'approval',
-      title: 'Review proposed change',
-      detail: null,
-      subject: { kind: 'diff', path: 'a.ts', text: 'not a plan' },
-      options: [{ id: 'allow', label: 'Approve' }],
-      resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
-    })
-  )
-  emit(7, newerApproval)
+  // Still pending when its provider went away.
+  emit(7, NEWER_APPROVAL)
   const host = await relaunch()
 
   expect(await send(host, 'after the newer approval')).toMatchObject({ ok: true })
@@ -114,6 +116,61 @@ it("settles a newer Orca's pending approval as it was, and the chat takes its ne
   const approval = (await historyBodies(host)).find((body) => body.kind === 'approval')
   expect(approval).toMatchObject({
     subject: { kind: 'diff', path: 'a.ts', text: 'not a plan' },
+    resolution: { state: 'cancelled' }
+  })
+  await host.flushAllStreamedEvents()
+})
+
+// A newer host's background agent can hold such an approval while no turn runs. A queued send would
+// wait behind it forever; the plain send the client makes instead starts a turn, whose card cancel
+// then settles it.
+it("takes a send past a newer Orca's live approval, and the next turn's card cancel settles it", async () => {
+  // A provider whose card Cancel goes through the Stop: a card no live turn raised is declined.
+  const dismissPrompt = vi.fn(async ({ commit }: { commit: () => Promise<void> }) => commit())
+  Object.assign(hostTestState().host.deps.adapter, {
+    routePromptCancel: () => ({ kind: 'stop' }),
+    dismissPrompt
+  })
+  await attach()
+  emit(7, NEWER_APPROVAL)
+  const { host } = hostTestState()
+  await host.flushStreamedEvents(SESSION)
+
+  const body = hostTestMessage('queued behind it')
+  const queuedFields = { body, delivery: 'queue-if-active' as const }
+  expect(
+    await host.send(CALLER, {
+      envelope: envelope('agentSession.send', queuedFields),
+      ...queuedFields,
+      userSend: true
+    })
+  ).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
+  expect(hostTestState().dispatch).not.toHaveBeenCalled()
+
+  const sent = await send(host, 'carry on')
+  expect(sent).toMatchObject({ ok: true, value: { submission: expect.any(Object) } })
+  await vi.waitFor(() => expect(hostTestState().dispatch).toHaveBeenCalledOnce())
+  providerEvents().appendItem(
+    { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 8 },
+    { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: NOW },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
+  await host.flushStreamedEvents(SESSION)
+
+  const card = (await host.journalSnapshot(SESSION)).items.find(
+    (item) => item.body.kind === 'approval'
+  )!
+  const fields = {
+    turnId: 'turn-2',
+    prompt: { itemId: card.itemId, expectedRevision: card.revision }
+  }
+  expect(
+    await host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
+  ).toMatchObject({ ok: true })
+  expect(dismissPrompt).toHaveBeenCalledWith(expect.objectContaining({ answer: true }))
+  expect(hostTestState().cancelTurn).not.toHaveBeenCalled()
+  expect((await historyBodies(host)).find((entry) => entry.kind === 'approval')).toMatchObject({
+    subject: { kind: 'diff' },
     resolution: { state: 'cancelled' }
   })
   await host.flushAllStreamedEvents()

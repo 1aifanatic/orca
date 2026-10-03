@@ -88,3 +88,38 @@ it('sends nothing for the card when no turn is running', () => {
   mocks.approvalCardProps?.onCancel?.()
   expect(mocks.cancel).not.toHaveBeenCalled()
 })
+
+function renderSession() {
+  render(
+    <NativeChatStructuredSession
+      isVisible
+      isFocusedGroup
+      tabId="newer-approval-tab"
+      sessionId="newer-approval-session"
+      target={{ kind: 'local' }}
+      agent="claude"
+    />
+  )
+}
+
+// Nothing here answers it, so a send is the way on: it starts a turn, whose card cancel works.
+it('keeps the composer open and writable beside a card this build cannot answer', () => {
+  mocks.promptItems = [NEWER_APPROVAL]
+  renderSession()
+  expect(mocks.composerProps).not.toBeNull()
+  expect(mocks.composerProps?.lockReason).toBeUndefined()
+  expect(mocks.approvalCardProps).toMatchObject({ disabled: false, shouldFocus: false })
+})
+
+it('gives a card this build can answer the composer slot', () => {
+  const plan: AgentJournalRenderItem = JSON.parse(
+    JSON.stringify(NEWER_APPROVAL).replace(
+      '{"kind":"diff","path":"a.ts"}',
+      '{"kind":"plan","text":"do it"}'
+    )
+  )
+  mocks.promptItems = [plan]
+  renderSession()
+  expect(mocks.composerProps).toBeNull()
+  expect(mocks.approvalCardProps).toMatchObject({ shouldFocus: true })
+})

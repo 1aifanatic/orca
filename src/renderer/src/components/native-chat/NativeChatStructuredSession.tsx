@@ -29,6 +29,7 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
+import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -134,8 +135,11 @@ export function NativeChatStructuredSession(
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
   const prompt = controller.prompts[0] ?? null
-  // A read-only chat shows its pending prompt unanswerable, above the composer that says why.
-  const composerShown = prompt === null || readOnly
+  // Prompts this build cannot answer leave the composer open: a send starts a turn, whose card
+  // cancel then works. A read-only chat shows its prompt unanswerable, above the composer that
+  // says why.
+  const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
+  const composerShown = prompt === null || readOnly || promptsUnanswerable
   const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
   const approval = approvalBody
     ? {
@@ -325,7 +329,7 @@ export function NativeChatStructuredSession(
           onChoose={(optionId) => void controller.respond(prompt, { kind: 'option', optionId })}
           onCancel={cancelPrompt}
           disabled={readOnly}
-          shouldFocus={!readOnly && props.isVisible && props.isFocusedGroup}
+          shouldFocus={!readOnly && !promptsUnanswerable && props.isVisible && props.isFocusedGroup}
           onLinkClick={onLinkClick}
           allowFileUriLinks={onLinkClick !== undefined}
         />

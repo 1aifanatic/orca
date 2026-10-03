@@ -5,6 +5,7 @@
 
 import type {
   AgentJournalApprovalSubject,
+  AgentJournalItemBody,
   AgentJournalPlanApprovalSubject
 } from './agent-session-journal-types'
 
@@ -20,4 +21,25 @@ export function isPlanApprovalSubject(
 
 export function isNewerApprovalSubject(subject: { kind: string } | undefined): boolean {
   return subject !== undefined && !DRAWN_APPROVAL_SUBJECT_KINDS.has(subject.kind)
+}
+
+/** Every pending prompt is an approval this build cannot answer. Nothing here can settle them, so
+ *  the composer stays open and a send starts a turn now instead of queueing behind them; with a
+ *  turn running, the card's cancel works. */
+export function pendingPromptsAllUnanswerableHere(
+  items: readonly { body: AgentJournalItemBody }[]
+): boolean {
+  let found = false
+  for (const { body } of items) {
+    if (
+      (body.kind === 'approval' || body.kind === 'question') &&
+      body.resolution.state === 'pending'
+    ) {
+      if (body.kind === 'question' || !isNewerApprovalSubject(body.subject)) {
+        return false
+      }
+      found = true
+    }
+  }
+  return found
 }
