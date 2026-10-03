@@ -581,10 +581,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     // The host recorded it and never sends it again: it goes, and the tail goes out unasked.
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    const tail = mocks.call.mock.calls[1]?.[2] as
-      | { body?: { blocks?: { text?: string }[] } }
-      | undefined
-    expect(tail?.body?.blocks?.[0]?.text).toBe('second')
+    expect(mocks.call.mock.calls[1]?.[2]?.body?.blocks?.[0]?.text).toBe('second')
   })
 
   it('rotates a history-rejected head in doubt so the queued tail can advance', async () => {
