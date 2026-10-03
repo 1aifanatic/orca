@@ -422,7 +422,9 @@ describe('registerWorktreeHandlers', () => {
       )
       await _settlePendingWorktreeRemovalsForTests()
       // A second window, or this one before its row refreshes, still shows the workspace.
-      await handlers['worktrees:remove'](null, { worktreeId, force: true }).catch(() => {})
+      await expect(handlers['worktrees:remove'](null, { worktreeId, force: true })).rejects.toThrow(
+        `Refusing to delete unregistered worktree path: ${leftoverPath}`
+      )
 
       expect(existsSync(join(leftoverPath, 'notes.txt'))).toBe(true)
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
