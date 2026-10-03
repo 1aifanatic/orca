@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { useCallback } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { Virtualizer } from '@tanstack/react-virtual'
 import { describe, expect, it, vi } from 'vitest'
@@ -9,7 +10,7 @@ import {
   type VirtualizedScrollAnchor
 } from './useVirtualizedScrollAnchor'
 
-function setup(useMarks = true, savedAnchor = true) {
+function setup(useMarks = true, savedAnchor = true, ready = true) {
   const root = document.createElement('div')
   document.body.append(root)
   Object.defineProperties(root, {
@@ -45,7 +46,13 @@ function setup(useMarks = true, savedAnchor = true) {
     hasDirectScrollInput: () => directInput.current,
     restoreSignal: 'initial'
   }
-  const hook = renderHook(() => useVirtualizedScrollAnchor(options))
+  const hook = renderHook(
+    ({ ready }) => {
+      const shouldSkipRestore = useCallback(() => !ready, [ready])
+      useVirtualizedScrollAnchor({ ...options, shouldSkipRestore })
+    },
+    { initialProps: { ready } }
+  )
   return { root, anchorRef, directInput, marks, virtualizer, ...hook }
 }
 
@@ -59,6 +66,25 @@ function loadedNeighbor(root: HTMLDivElement) {
 }
 
 describe('semantic anchor restoration while content is still loading', () => {
+  it('retries against loaded geometry when viewport readiness changes without a size tick', () => {
+    const { root, anchorRef, rerender, unmount } = setup(true, true, false)
+    expect(root.scrollTop).toBe(200)
+    act(() => root.dispatchEvent(new Event('scroll')))
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 100, 300))
+    const row = document.createElement('div')
+    row.dataset.loadedRow = 'true'
+    row.dataset.key = 'row-2'
+    vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, 217 - root.scrollTop, 100, 100)
+    )
+    root.append(row)
+    rerender({ ready: true })
+    expect(root.scrollTop).toBe(234)
+    expect(anchorRef.current).toMatchObject({ key: 'row-2', offset: 17 })
+    unmount()
+    root.remove()
+  })
+
   it('hands mount pixel restoration to the source-row restore without losing its offset', () => {
     const { root, anchorRef, unmount } = setup()
     expect(root.scrollTop).toBe(217)
@@ -120,7 +146,7 @@ describe('semantic anchor restoration while content is still loading', () => {
     root.scrollTop = 500
     act(() => root.dispatchEvent(new Event('scroll')))
     virtualizer.isScrolling = true
-    rerender()
+    rerender({ ready: true })
     expect(root.scrollTop).toBe(500)
     unmount()
     root.remove()
@@ -139,7 +165,7 @@ describe('semantic anchor restoration while content is still loading', () => {
     )
     root.append(row)
     virtualizer.isScrolling = true
-    rerender()
+    rerender({ ready: true })
     expect(root.scrollTop).toBe(234)
     expect(anchorRef.current).toMatchObject({ key: 'row-2', offset: 17 })
     unmount()

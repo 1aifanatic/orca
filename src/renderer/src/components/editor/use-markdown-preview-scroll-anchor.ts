@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
 import {
   useVirtualizedScrollAnchor,
@@ -22,7 +22,8 @@ export function useMarkdownPreviewScrollAnchor({
   virtualizer,
   scrollCacheKey,
   revision,
-  scrollMarks
+  scrollMarks,
+  viewportReady
 }: {
   blocks: MarkdownPreviewBlock[]
   rootRef: RefObject<HTMLDivElement | null>
@@ -30,6 +31,7 @@ export function useMarkdownPreviewScrollAnchor({
   scrollCacheKey: string
   revision: number
   scrollMarks: ProgrammaticScrollMarks
+  viewportReady: boolean
 }): void {
   const [initialPosition] = useState(() => ({
     anchor: anchors.get(scrollCacheKey) ?? null,
@@ -37,6 +39,7 @@ export function useMarkdownPreviewScrollAnchor({
   }))
   const anchorRef = useRef(initialPosition.anchor)
   const offsetRef = useRef(initialPosition.offset)
+  const shouldSkipRestore = useCallback(() => !viewportReady, [viewportReady])
   useVirtualizedScrollAnchor({
     anchorRef,
     scrollOffsetRef: offsetRef,
@@ -48,6 +51,7 @@ export function useMarkdownPreviewScrollAnchor({
     virtualizer,
     totalSize: virtualizer.getTotalSize(),
     programmaticScrollMarks: scrollMarks,
+    shouldSkipRestore,
     restoreSignal: `${scrollCacheKey}:${revision}`
   })
   useLayoutEffect(

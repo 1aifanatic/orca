@@ -124,7 +124,11 @@ export function useMarkdownPreviewNavigation({
               Number(node.dataset.sourceEndLine) >= anchor.line
           )) ?? block
     const top = Math.min(
-      getMarkdownPreviewAnchorScrollTop(container, target),
+      getMarkdownPreviewAnchorScrollTop(
+        container,
+        target,
+        anchor.kind === 'source' ? 'center' : 'start'
+      ),
       Math.max(0, container.scrollHeight - container.clientHeight)
     )
     if (Math.abs(container.scrollTop - top) > 1) {

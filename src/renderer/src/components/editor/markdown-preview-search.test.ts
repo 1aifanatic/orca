@@ -151,6 +151,14 @@ describe('findTextMatchRanges', () => {
     expect(findTextMatchRanges('ABCİDEF', 'i\u0307d')).toEqual([{ start: 3, end: 5 }])
   })
 
+  it('folds uppercase Greek queries the same way as the indexed text', () => {
+    expect(findTextMatchRanges('ΟΣ οσ ος', 'ΟΣ')).toEqual([
+      { start: 0, end: 2 },
+      { start: 3, end: 5 }
+    ])
+    expect(findTextMatchRanges('ΟΣ οσ', 'ΟΣ', { matchCase: true })).toEqual([{ start: 0, end: 2 }])
+  })
+
   it('maps locale-lowercase search matches back to original text offsets', () => {
     const ranges = findTextMatchRanges('İstanbul', 'stan')
 

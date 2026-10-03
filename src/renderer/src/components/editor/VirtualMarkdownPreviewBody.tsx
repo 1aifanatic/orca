@@ -135,14 +135,6 @@ export function VirtualMarkdownPreviewBody({
     )
     measuredMinimumHeight.current = minimumRowHeight
   }, [minimumRowHeight, rendered, virtualizer])
-  useMarkdownPreviewScrollAnchor({
-    blocks: document.blocks,
-    rootRef,
-    virtualizer,
-    scrollCacheKey,
-    revision,
-    scrollMarks
-  })
   const rows = virtualizer.getVirtualItems()
   const indicesKey = markdownPreviewRequestIndices(
     rows.map((row) => row.index),
@@ -164,12 +156,22 @@ export function VirtualMarkdownPreviewBody({
       client.cancel('blocks')
     }
   }, [client, indicesKey])
+  const viewportReady = rendered?.client === client && rendered.indicesKey === indicesKey
+  useMarkdownPreviewScrollAnchor({
+    blocks: document.blocks,
+    rootRef,
+    virtualizer,
+    scrollCacheKey,
+    revision,
+    scrollMarks,
+    viewportReady
+  })
   const revealSearchMatch = useMarkdownPreviewSearchReveal({
     client,
     query,
     activeMatch,
     blocks: rendered?.client === client ? rendered.blocks : null,
-    viewportReady: rendered?.client === client && rendered.indicesKey === indicesKey,
+    viewportReady,
     rootRef,
     bodyRef,
     virtualizer,
@@ -184,7 +186,7 @@ export function VirtualMarkdownPreviewBody({
     navigationRef,
     revealSearchMatch,
     renderedBlocks: rendered?.client === client ? rendered.blocks : null,
-    viewportReady: rendered?.client === client && rendered.indicesKey === indicesKey,
+    viewportReady,
     anchor,
     setAnchor,
     scrollMarks

@@ -60,7 +60,7 @@ function findCaseInsensitiveMatchRanges(
   query: string
 ): { start: number; end: number }[] {
   const normalizedText = buildLocaleLowercaseIndex(text)
-  const normalizedQuery = query.toLocaleLowerCase()
+  const normalizedQuery = buildLocaleLowercaseIndex(query).text
   const matches: { start: number; end: number }[] = []
   let searchStart = 0
 
