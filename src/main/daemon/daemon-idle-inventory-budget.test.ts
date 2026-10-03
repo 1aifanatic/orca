@@ -236,9 +236,6 @@ it('keeps live sessions and exact inventories while visitors repeatedly disconne
     return result
   }
   const controlReads: string[][] = []
-  alive.mockImplementation(function (this: Session) {
-    return readAlive(this)
-  })
   const failure = new Error('later-session-alive-failure')
   alive.mockImplementation(function (this: Session) {
     if (this.sessionId === 'session-1') {
