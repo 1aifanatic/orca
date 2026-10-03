@@ -112,6 +112,15 @@ export function AgentCatalogRow({
 }: AgentCatalogRowProps): React.JSX.Element {
   const envSummary = stringifyAgentDefaultEnvDraft(envOverride)
   const defaultEnvSummary = stringifyAgentDefaultEnvDraft(defaultEnv)
+  const permissionControl = permission ? (
+    <AgentPermissionOverrideControl
+      agentLabel={label}
+      override={permission.override}
+      defaultMode={permission.defaultMode}
+      posture={permission.posture}
+      onChange={permission.onChange}
+    />
+  ) : null
   const [cmdOpen, setCmdOpen] = useState(
     Boolean(cmdOverride) ||
       argsOverride !== defaultArgs ||
@@ -217,6 +226,11 @@ export function AgentCatalogRow({
         </div>
       </div>
 
+      {/* An undetected agent's own choice still applies where it runs (an SSH host), so it stays clearable. */}
+      {!isDetected && permission?.override !== undefined && (
+        <div className="mt-3 pl-10">{permissionControl}</div>
+      )}
+
       {isDetected && cmdOpen && (
         <div className="mt-3 pl-10">
           <AgentCommandOverrideInput
@@ -233,17 +247,7 @@ export function AgentCatalogRow({
               onSaveArgs={onSaveArgs}
             />
           </div>
-          {permission && (
-            <div className="mt-2">
-              <AgentPermissionOverrideControl
-                agentLabel={label}
-                override={permission.override}
-                defaultMode={permission.defaultMode}
-                posture={permission.posture}
-                onChange={permission.onChange}
-              />
-            </div>
-          )}
+          {permissionControl && <div className="mt-2">{permissionControl}</div>}
           {(envEditable || defaultEnvSummary || envSummary) && (
             <div className="mt-2">
               <AgentDefaultEnvInput

@@ -20,7 +20,7 @@ export function claudeStructuredPermissionModeForSettings(
     | null
     | undefined
 ): PermissionMode {
-  return resolveAgentPermissionPosture('claude', settings, process.platform).effectiveBypass
+  return resolveAgentPermissionPosture('claude', settings).effectiveBypass
     ? 'bypassPermissions'
     : 'default'
 }

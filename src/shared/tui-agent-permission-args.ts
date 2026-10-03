@@ -1,4 +1,3 @@
-import type { GlobalSettings } from './global-settings-types'
 import {
   AGENT_PERMISSION_ARG_SPECS,
   agentHasPermissionMode,
@@ -10,14 +9,12 @@ import {
   type AgentPermissionOption
 } from './tui-agent-permissions'
 import {
-  resolveStartupShell,
   tokenizeStartupCommand,
   type AgentStartupShell,
   type StartupCommandTokens
 } from './tui-agent-startup-shell'
 import type { AgentLaunchProfileSettings } from './tui-agent-launch-defaults'
 import type { TuiAgent } from './tui-agent'
-import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 
 // Reads permission settings typed into an agent's free-text Arguments and env.
 
@@ -155,11 +152,7 @@ export type TypedAgentPermissions = {
   options: string[]
 }
 
-function classifyArgs(
-  agent: TuiAgent,
-  args: string,
-  shell: AgentStartupShell | undefined
-): TypedAgentPermissions {
+function classifyArgs(agent: TuiAgent, args: string): TypedAgentPermissions {
   const spec = agentPermissionArgSpec(agent)
   const options: string[] = []
   const kinds = new Map<AgentStartupShell, TypedAgentPermissionKind>()
@@ -177,12 +170,10 @@ function classifyArgs(
   if (options.length === 0) {
     return { kind: 'none', options }
   }
-  // Read as the launch shell parses it; without one, every grammar that sees a setting must agree.
-  const verdicts = shell
-    ? [kinds.get(shell) ?? 'none']
-    : [...kinds.values()].filter((kind) => kind !== 'none')
+  // Bypass only when every grammar reads bypass: the text may launch under any of them, so
+  // neither Settings nor a launch that replaces it may claim more than all of them grant.
   return {
-    kind: verdicts.length > 0 && verdicts.every((kind) => kind === 'bypass') ? 'bypass' : 'other',
+    kind: [...kinds.values()].every((kind) => kind === 'bypass') ? 'bypass' : 'other',
     options
   }
 }
@@ -211,10 +202,9 @@ function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedAgentPe
  */
 export function classifyTypedAgentPermissions(
   agent: TuiAgent,
-  typed: { args?: string | null; env?: Record<string, string> | null },
-  shell?: AgentStartupShell
+  typed: { args?: string | null; env?: Record<string, string> | null }
 ): TypedAgentPermissions {
-  const args = classifyArgs(agent, typed.args ?? '', shell)
+  const args = classifyArgs(agent, typed.args ?? '')
   const env = classifyEnv(agent, typed.env ?? {})
   const kinds = [args.kind, env.kind].filter((kind) => kind !== 'none')
   return {
@@ -287,61 +277,25 @@ export type AgentPermissionPosture = {
   typedPermissionOptions: string[]
 }
 
-/** What an agent's permission settings add up to; Settings and structured sessions both read it. */
+/**
+ * What an agent's permission settings add up to. Settings, structured sessions and launches that
+ * replace the Arguments all read it, so none of them can disagree on the agent's effective mode.
+ */
 export function resolveAgentPermissionPosture(
   agent: TuiAgent,
-  settings:
-    | (AgentLaunchProfileSettings & Partial<Pick<GlobalSettings, 'terminalWindowsShell'>>)
-    | null
-    | undefined,
-  platform: NodeJS.Platform
+  settings: AgentLaunchProfileSettings | null | undefined
 ): AgentPermissionPosture {
   const mode = resolveAgentPermissionMode(agent, settings)
-  // Why the local launch shell: it decides which words the agent receives from the typed text.
-  const shell = resolveStartupShell(
-    platform,
-    resolveLocalWindowsAgentStartupShell({
-      platform,
-      isRemote: false,
-      terminalWindowsShell: settings?.terminalWindowsShell
-    })
-  )
-  const typed = classifyConfiguredPermissions(agent, settings, shell)
+  const typed = classifyTypedAgentPermissions(agent, {
+    args: settings?.agentDefaultArgs?.[agent],
+    env: settings?.agentDefaultEnv?.[agent]
+  })
   return {
     mode,
-    effectiveBypass: launchesInBypass(agent, mode, typed.kind),
+    effectiveBypass:
+      typed.kind === 'none'
+        ? mode === 'bypass' && agentHasPermissionMode(agent)
+        : typed.kind === 'bypass',
     typedPermissionOptions: typed.options
   }
-}
-
-function classifyConfiguredPermissions(
-  agent: TuiAgent,
-  settings: AgentLaunchProfileSettings | null | undefined,
-  shell?: AgentStartupShell
-): TypedAgentPermissions {
-  return classifyTypedAgentPermissions(
-    agent,
-    { args: settings?.agentDefaultArgs?.[agent], env: settings?.agentDefaultEnv?.[agent] },
-    shell
-  )
-}
-
-function launchesInBypass(
-  agent: TuiAgent,
-  mode: AgentPermissionMode,
-  typed: TypedAgentPermissionKind
-): boolean {
-  return typed === 'none' ? mode === 'bypass' && agentHasPermissionMode(agent) : typed === 'bypass'
-}
-
-/**
- * Whether the agent's configured Arguments, env and mode add up to bypass: what its Settings card
- * shows. A launch that replaces the Arguments still follows this, so it never escalates past it.
- */
-export function agentLaunchesInBypass(
-  agent: TuiAgent,
-  settings: AgentLaunchProfileSettings | null | undefined
-): boolean {
-  const typed = classifyConfiguredPermissions(agent, settings).kind
-  return launchesInBypass(agent, resolveAgentPermissionMode(agent, settings), typed)
 }

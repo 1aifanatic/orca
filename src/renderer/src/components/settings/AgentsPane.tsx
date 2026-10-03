@@ -30,7 +30,6 @@ import {
   YOLO_TUI_AGENT_ENV,
   type AgentPermissionMode
 } from '../../../../shared/tui-agent-permissions'
-import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import { AgentPermissionsSetting, type AgentPermissionException } from './AgentPermissionControls'
 import { getSettingOwnershipSummary } from './setting-ownership'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
@@ -103,37 +102,39 @@ export function AgentsPane({
   const agentDefaultEnv = settings.agentDefaultEnv ?? {}
   const permissionOverrides = settings.agentPermissionModeOverrides ?? {}
   const defaultPermissionMode = resolveDefaultAgentPermissionMode(settings)
-  const { agentDefaultEnv: launchEnv, agentPermissionMode, terminalWindowsShell } = settings
+  const { agentDefaultEnv: launchEnv, agentPermissionMode } = settings
   const permissionPostures = useMemo(() => {
-    const platform = getRendererAppPlatform()
     const profile = {
       agentDefaultArgs: settings.agentDefaultArgs,
       agentDefaultEnv: launchEnv,
       agentPermissionMode,
-      agentPermissionModeOverrides: settings.agentPermissionModeOverrides,
-      terminalWindowsShell
+      agentPermissionModeOverrides: settings.agentPermissionModeOverrides
     }
     return new Map(
       getAgentCatalog()
         .filter((agent) => agentHasPermissionMode(agent.id))
-        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, profile, platform)])
+        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, profile)])
     )
   }, [
     settings.agentDefaultArgs,
     launchEnv,
     agentPermissionMode,
-    settings.agentPermissionModeOverrides,
-    terminalWindowsShell
+    settings.agentPermissionModeOverrides
   ])
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))
-  // Installed agents only, so the summary does not list agents the user never sees launch.
-  const permissionExceptions: AgentPermissionException[] = detectedAgents.flatMap((agent) => {
+  // Agents the switch won't move: every agent with its own choice, detected or not (it may run on an
+  // SSH host), and installed agents whose Arguments or env launch them differently.
+  const permissionExceptions: AgentPermissionException[] = catalog.flatMap((agent) => {
     const posture = permissionPostures.get(agent.id)
-    return !posture || posture.effectiveBypass === (defaultPermissionMode === 'bypass')
-      ? []
-      : [{ label: agent.label, effectiveBypass: posture.effectiveBypass }]
+    const listed =
+      permissionOverrides[agent.id] !== undefined ||
+      (detectedIds?.has(agent.id) === true &&
+        posture?.effectiveBypass !== (defaultPermissionMode === 'bypass'))
+    return posture && listed
+      ? [{ label: agent.label, effectiveBypass: posture.effectiveBypass }]
+      : []
   })
   const enabledDetectedAgents = detectedAgents.filter((agent) =>
     isTuiAgentEnabled(agent.id, disabledAgents)

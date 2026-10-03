@@ -533,7 +533,8 @@ describe('AgentsPane', () => {
     expect(markup).toContain('Set separately: Codex (Manual).')
   })
 
-  it('leaves agents that are not installed out of the summary', () => {
+  // Its own choice still applies where it runs (an SSH host), and nothing else can clear it.
+  it('lists and offers to clear an own choice on an agent that is not installed here', () => {
     detectedAgentsMock.detectedIds = ['claude']
     const markup = renderPane({
       ...getDefaultSettings('/tmp'),
@@ -541,7 +542,31 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { codex: 'ask' }
     })
 
+    expect(markup).toContain('Set separately: Codex (Manual).')
+    expect(markup).toContain('aria-label="Codex permissions"')
+  })
+
+  it('leaves an uninstalled agent without its own choice out of the summary', () => {
+    detectedAgentsMock.detectedIds = ['claude']
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      agentPermissionMode: 'bypass',
+      agentDefaultArgs: { codex: '-a on-request' }
+    })
+
     expect(markup).not.toContain('Set separately')
+    expect(markup).not.toContain('aria-label="Codex permissions"')
+  })
+
+  // The switch won't move an agent with its own choice, even one that matches the default now.
+  it('lists an own choice that equals the current default', () => {
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      agentPermissionMode: 'ask',
+      agentPermissionModeOverrides: { claude: 'ask' }
+    })
+
+    expect(markup).toContain('Set separately: Claude (Manual).')
   })
 
   it('lists no exceptions when every agent follows the switch', () => {

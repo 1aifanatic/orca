@@ -43,7 +43,7 @@ export function codexStructuredPermissionPolicyForSettings(
     | null
     | undefined
 ): CodexStructuredPermissionPolicy {
-  return resolveAgentPermissionPosture('codex', settings, process.platform).effectiveBypass
+  return resolveAgentPermissionPosture('codex', settings).effectiveBypass
     ? BYPASS_POLICY
     : MANUAL_POLICY
 }

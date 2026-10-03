@@ -370,7 +370,7 @@ describe('classifyTypedAgentPermissions', () => {
       const launch = resolveTuiAgentLaunchArgs(agent, settings)
       const flagAdded = launch !== args
       expect(flagAdded).toBe(kind === 'none' && mode === 'bypass')
-      expect(resolveAgentPermissionPosture(agent, settings, 'darwin').effectiveBypass).toBe(
+      expect(resolveAgentPermissionPosture(agent, settings).effectiveBypass).toBe(
         kind === 'none' ? mode === 'bypass' : kind === 'bypass'
       )
     }
@@ -400,80 +400,72 @@ describe('classifyTypedAgentPermissions', () => {
 
 describe('resolveAgentPermissionPosture', () => {
   it('reports the mode and no argument options for a plain profile', () => {
-    expect(resolveAgentPermissionPosture('claude', {}, 'darwin')).toEqual({
+    expect(resolveAgentPermissionPosture('claude', {})).toEqual({
       mode: 'bypass',
       effectiveBypass: true,
       typedPermissionOptions: []
     })
-    expect(
-      resolveAgentPermissionPosture('claude', { agentPermissionMode: 'ask' }, 'darwin')
-    ).toMatchObject({ mode: 'ask', effectiveBypass: false })
+    expect(resolveAgentPermissionPosture('claude', { agentPermissionMode: 'ask' })).toMatchObject({
+      mode: 'ask',
+      effectiveBypass: false
+    })
   })
 
   // Settings warns instead of letting the switch silently lose to free text.
   it('reports a bypass flag typed into Arguments under Manual', () => {
     expect(
-      resolveAgentPermissionPosture(
-        'claude',
-        {
-          agentPermissionMode: 'ask',
-          agentDefaultArgs: { claude: `--model Opus ${CLAUDE_BYPASS}` }
-        },
-        'darwin'
-      )
+      resolveAgentPermissionPosture('claude', {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { claude: `--model Opus ${CLAUDE_BYPASS}` }
+      })
     ).toEqual({ mode: 'ask', effectiveBypass: true, typedPermissionOptions: [CLAUDE_BYPASS] })
   })
 
   it('lists other permission options without treating them as bypass', () => {
     expect(
-      resolveAgentPermissionPosture(
-        'claude',
-        { agentPermissionMode: 'ask', agentDefaultArgs: { claude: '--permission-mode=auto' } },
-        'darwin'
-      )
+      resolveAgentPermissionPosture('claude', {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { claude: '--permission-mode=auto' }
+      })
     ).toEqual({
       mode: 'ask',
       effectiveBypass: false,
       typedPermissionOptions: ['--permission-mode=auto']
     })
     expect(
-      resolveAgentPermissionPosture(
-        'codex',
-        { agentPermissionMode: 'ask', agentDefaultArgs: { codex: '-a never -s workspace-write' } },
-        'darwin'
-      ).typedPermissionOptions
+      resolveAgentPermissionPosture('codex', {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { codex: '-a never -s workspace-write' }
+      }).typedPermissionOptions
     ).toEqual(['-a never', '-s workspace-write'])
   })
 
   // A typed env key overrides the mode's env at launch (see resolveTuiAgentLaunchEnv).
   it('reads a typed Goose mode env as the posture', () => {
     expect(
-      resolveAgentPermissionPosture(
-        'goose',
-        { agentPermissionMode: 'bypass', agentDefaultEnv: { goose: { GOOSE_MODE: 'approve' } } },
-        'darwin'
-      )
+      resolveAgentPermissionPosture('goose', {
+        agentPermissionMode: 'bypass',
+        agentDefaultEnv: { goose: { GOOSE_MODE: 'approve' } }
+      })
     ).toEqual({
       mode: 'bypass',
       effectiveBypass: false,
       typedPermissionOptions: ['GOOSE_MODE=approve']
     })
     expect(
-      resolveAgentPermissionPosture(
-        'goose',
-        { agentPermissionMode: 'ask', agentDefaultEnv: { goose: { GOOSE_MODE: 'auto' } } },
-        'darwin'
-      ).effectiveBypass
+      resolveAgentPermissionPosture('goose', {
+        agentPermissionMode: 'ask',
+        agentDefaultEnv: { goose: { GOOSE_MODE: 'auto' } }
+      }).effectiveBypass
     ).toBe(true)
   })
 
   it('reports typed permission options overriding Yolo', () => {
     expect(
-      resolveAgentPermissionPosture(
-        'codex',
-        { agentPermissionMode: 'bypass', agentDefaultArgs: { codex: '-a on-request' } },
-        'darwin'
-      )
+      resolveAgentPermissionPosture('codex', {
+        agentPermissionMode: 'bypass',
+        agentDefaultArgs: { codex: '-a on-request' }
+      })
     ).toEqual({ mode: 'bypass', effectiveBypass: false, typedPermissionOptions: ['-a on-request'] })
   })
 
@@ -485,37 +477,69 @@ describe('resolveAgentPermissionPosture', () => {
     ['codex', `"${CODEX_BYPASS}`]
   ] as const)('does not authorize %s text %j', (agent, args) => {
     expect(
-      resolveAgentPermissionPosture(
-        agent,
-        { agentPermissionMode: 'ask', agentDefaultArgs: { [agent]: args } },
-        'linux'
-      ).effectiveBypass
+      resolveAgentPermissionPosture(agent, {
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { [agent]: args }
+      }).effectiveBypass
     ).toBe(false)
   })
 
-  it('reads typed arguments with the configured local Windows shell', () => {
-    expect(
-      resolveAgentPermissionPosture(
-        'claude',
-        {
-          agentPermissionMode: 'ask',
-          agentDefaultArgs: { claude: `\`${CLAUDE_BYPASS}` },
-          terminalWindowsShell: 'powershell.exe'
-        },
-        'win32'
-      ).effectiveBypass
-    ).toBe(true)
-    expect(
-      resolveAgentPermissionPosture(
-        'codex',
-        {
-          agentPermissionMode: 'ask',
-          agentDefaultArgs: { codex: `^${CODEX_BYPASS}` },
-          terminalWindowsShell: 'cmd.exe'
-        },
-        'win32'
-      ).effectiveBypass
-    ).toBe(true)
+  // One settings string can launch under POSIX, PowerShell or cmd, so text reads as bypass only
+  // when every grammar reads it so; another shell's escape before a flag is not a bypass anywhere.
+  it.each([
+    ['claude', `--model opus ^${CLAUDE_BYPASS}`, 'bypass'],
+    ['gemini', '^-y', 'ask'],
+    ['claude', `\`${CLAUDE_BYPASS}`, 'ask'],
+    ['codex', `^${CODEX_BYPASS}`, 'ask']
+  ] as const)(
+    'reads %s %j under %s as not bypass, on the card and in a launch',
+    (agent, args, mode) => {
+      const settings = { agentPermissionMode: mode, agentDefaultArgs: { [agent]: args } }
+      expect(resolveAgentPermissionPosture(agent, settings).effectiveBypass).toBe(false)
+      expect(resolveTuiAgentLaunchArgs(agent, settings, '--model sonnet')).toBe('--model sonnet')
+    }
+  )
+})
+
+// D1: a launch that brings its own arguments follows the card, so they must never disagree.
+describe('card and caller-args launch agree', () => {
+  const CALLER = '--model per-launch'
+  const agents = PERMISSION_AGENT_IDS.filter(
+    (agent): agent is TuiAgent => YOLO_TUI_AGENT_ARGS[agent] !== undefined
+  )
+  const aliases: Partial<Record<TuiAgent, string[]>> = {
+    claude: ['--permission-mode bypassPermissions', '--permission-mode acceptEdits'],
+    codex: ['--yolo', '-a never -s danger-full-access', '-a on-request'],
+    gemini: ['-y', '--approval-mode yolo'],
+    'qwen-code': ['-y', '--yolo']
+  }
+  const inputs = (agent: TuiAgent): string[] =>
+    [YOLO_TUI_AGENT_ARGS[agent] ?? '', ...(aliases[agent] ?? [])].flatMap((text) => [
+      text,
+      `^${text}`,
+      `\`${text}`,
+      `\\${text}`,
+      `--model opus ^${text}`,
+      `"${text}"`
+    ])
+  const rows = agents.flatMap((agent) =>
+    inputs(agent).flatMap((args) =>
+      (['bypass', 'ask'] as const).flatMap((mode) =>
+        ([undefined, 'powershell.exe', 'cmd.exe'] as const).map(
+          (terminalWindowsShell) => [agent, args, mode, terminalWindowsShell] as const
+        )
+      )
+    )
+  )
+
+  it.each(rows)('%s %j under %s (Windows shell %s)', (agent, args, mode, terminalWindowsShell) => {
+    const settings = {
+      agentPermissionMode: mode,
+      agentDefaultArgs: { [agent]: args },
+      terminalWindowsShell
+    }
+    const launch = resolveTuiAgentLaunchArgs(agent, settings, CALLER)
+    expect(launch !== CALLER).toBe(resolveAgentPermissionPosture(agent, settings).effectiveBypass)
   })
 })
 
