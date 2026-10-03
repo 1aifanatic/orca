@@ -20,30 +20,27 @@ vi.mock('node:os', async (importOriginal) => {
 })
 
 import { registerCodexConfigSyncHandlers } from './codex-config-sync'
-import type {
-  CodexConfigSyncStatus,
-  CodexSharedSettingsNotice
-} from '../../shared/codex-config-sync-types'
 import { getCodexSettingsBaselinePath } from '../codex/config-settings-baseline'
 
 let root: string
 
-function invokeHandler(mirroredHome: string | null): CodexConfigSyncStatus {
+function invokeRegisteredHandler(channel: string): unknown {
+  return handleMock.mock.calls.find(([name]) => name === channel)?.[1]()
+}
+
+function invokeHandler(mirroredHome: string | null): unknown {
   return invokeHandlerWithStatus({ kind: 'ready', homePath: mirroredHome })
 }
 
 function invokeHandlerWithStatus(
   mirrored: { kind: 'ready'; homePath: string | null } | { kind: 'unavailable' }
-): CodexConfigSyncStatus {
+): unknown {
   handleMock.mockClear()
   registerCodexConfigSyncHandlers({
     getMirroredHostHomePathForStatus: () => mirrored,
-    isHostSystemDefaultRealHome: () => mirrored.kind === 'ready' && mirrored.homePath === null
+    isHostSystemDefaultRealHome: () => false
   })
-  const handler = handleMock.mock.calls.find(
-    ([channel]) => channel === 'codexConfigSync:status'
-  )?.[1] as () => CodexConfigSyncStatus
-  return handler()
+  return invokeRegisteredHandler('codexConfigSync:status')
 }
 
 beforeEach(() => {
@@ -130,20 +127,14 @@ describe('codexConfigSync:sharedSettingsNotice handler', () => {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
   const managedHome = (): string => join(root, 'userData', 'codex-runtime-home', 'home')
 
-  function invokeNoticeHandler(
-    platform: NodeJS.Platform,
-    realHome: boolean
-  ): CodexSharedSettingsNotice | null {
+  function invokeNoticeHandler(platform: NodeJS.Platform, realHome: boolean): unknown {
     Object.defineProperty(process, 'platform', { configurable: true, value: platform })
     handleMock.mockClear()
     registerCodexConfigSyncHandlers({
       getMirroredHostHomePathForStatus: () => ({ kind: 'ready', homePath: null }),
       isHostSystemDefaultRealHome: () => realHome
     })
-    const handler = handleMock.mock.calls.find(
-      ([channel]) => channel === 'codexConfigSync:sharedSettingsNotice'
-    )?.[1] as () => CodexSharedSettingsNotice | null
-    return handler()
+    return invokeRegisteredHandler('codexConfigSync:sharedSettingsNotice')
   }
 
   beforeEach(() => {
