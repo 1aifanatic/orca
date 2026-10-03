@@ -281,6 +281,7 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     // The child had not proven its start, so it took nothing it was handed, this message included:
     // it is ended, and each takes the start's failure.
+    markProviderChildStartFailed(session, awaitedChild)
     await this.deps.endFailedStart(sessionId)
     return this.fail(
       sessionId,

@@ -1,5 +1,5 @@
-// Ending a child whose start failed is not a Stop: the failure is said once, on its messages. It
-// writes no Stop event, so it never ends a person's Stop pause and lets a held card go.
+// Ending a child whose start failed is not a Stop, whoever ends it: the failure is said once, on its
+// messages. It writes no Stop event, so it never ends a person's Stop pause and lets a held card go.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -97,24 +97,50 @@ describe('ending a child whose start failed', () => {
     expect(await rig.handoff(held)).toBeUndefined()
   })
 
-  it("keeps a person's Stop pause when the next message ends a failed child", async () => {
-    rig = await createQueuedMessageTestRig({
-      starting: true,
-      restartable: true,
-      idleSweep: MANUAL_IDLE_SWEEP
-    })
+  async function failedChildBehindAPersonsStop(): Promise<string> {
     const held = await personStopHoldingACard()
     rig.awaitStarted.mockResolvedValueOnce(agentSessionFailureFact('providerStartFailed'))
     const first = rig.send('first after stop')
     await eventually(async () =>
       expect(await rig.submission(first.id)).toMatchObject({ dispatchState: 'rejected' })
     )
+    expect(rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child).toMatchObject({
+      phase: 'starting',
+      startFailed: true
+    })
+    return held
+  }
+
+  it("keeps a person's Stop pause when the next message ends a failed child", async () => {
+    rig = await createQueuedMessageTestRig({
+      starting: true,
+      restartable: true,
+      idleSweep: MANUAL_IDLE_SWEEP
+    })
+    const held = await failedChildBehindAPersonsStop()
 
     const second = rig.send('second after stop')
 
     await eventually(async () =>
       expect((await rig.submission(second.id))?.handedOverAt).toBeDefined()
     )
+    expect(await stopReasons()).toEqual(['user-stop'])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.handoff(held)).toBeUndefined()
+  })
+
+  it("keeps a person's Stop pause when the idle sweep ends a failed child", async () => {
+    rig = await createQueuedMessageTestRig({
+      starting: true,
+      restartable: true,
+      idleSweep: MANUAL_IDLE_SWEEP
+    })
+    const held = await failedChildBehindAPersonsStop()
+    const closes = rig.closeSession.mock.calls.length
+
+    await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
+
+    expect(rig.closeSession.mock.calls.length).toBeGreaterThan(closes)
     expect(await stopReasons()).toEqual(['user-stop'])
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.handoff(held)).toBeUndefined()

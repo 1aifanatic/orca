@@ -20,8 +20,6 @@ export type StructuredAgentSessionStopEnding = (
       /** The idle sweep judged the agent resting (`owesWork`): a send it retires unanswered is
        *  no work its event records. */
       resting?: true
-      /** Ending a child whose start failed: it took nothing, and the messages say the failure. */
-      startFailed?: true
     }
 ) & {
   /** The retry of a stop already owed, set only by that retry: its event, if any, is written. */
@@ -34,8 +32,9 @@ const STOP_EVENT_DRAIN_TIMEOUT_MS = 1_000
 /**
  * Whether this stop ends work its event must record: a running turn or an unanswered send, a start's
  * own included, read once the sink drained what the provider already said. A start that carries
- * no send ends nothing. A person's Stop wrote its own event, and quit, the idle sweep's rest, the
- * end of a failed start and a retry of a stop already owed write none.
+ * no send ends nothing, nor does one whose start failed: it took nothing, and its messages say the
+ * failure. A person's Stop wrote its own event, and quit, the idle sweep's rest and a retry of a
+ * stop already owed write none.
  */
 export async function stopEndsWork(
   context: StructuredAgentSessionLifetimeContext,
@@ -48,9 +47,9 @@ export async function stopEndsWork(
     'recorded' in ending ||
     ending.quit ||
     ending.resting ||
-    ending.startFailed ||
     ending.retry ||
-    !child
+    !child ||
+    child.startFailed
   ) {
     return false
   }
