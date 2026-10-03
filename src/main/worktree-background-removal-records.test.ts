@@ -269,14 +269,15 @@ describe('durable worktree removal records', () => {
       force: true,
       requestedAt: 5
     }
-    const checkoutIdentity = { dev: '16777232', ino: '18446744073709551615', birthtimeNs: '1' }
+    const checkoutIdentity = { ino: '18446744073709551615', birthtimeNs: '1' }
     await writeFile(
       worktreeRemovalRecordsFile(directory),
       JSON.stringify({
         version: 1,
         removals: [
-          { ...record, checkoutIdentity },
-          { ...record, worktreeId: 'repo-1::/work/b', checkoutIdentity: { dev: 1, ino: 2 } }
+          // A device number an earlier build of this change wrote is ignored.
+          { ...record, checkoutIdentity: { dev: '16777232', ...checkoutIdentity } },
+          { ...record, worktreeId: 'repo-1::/work/b', checkoutIdentity: { ino: 2 } }
         ]
       })
     )

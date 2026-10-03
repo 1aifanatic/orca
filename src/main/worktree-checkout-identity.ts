@@ -7,9 +7,13 @@ import { getErrorCode } from './git/worktree-operation-options'
  * the user's, however much it looks like the leftover. Decimal strings keep 64-bit ids exact.
  */
 export type CheckoutDirectoryIdentity = {
-  dev: string
+  // Why no device number: it changes when an external volume is attached again.
   ino: string
-  /** Never `0`: without a creation time the directory is unidentifiable and nothing is recorded. */
+  /**
+   * Positive: a filesystem without creation times reports `0` (negative on Windows), and nothing is
+   * recorded. Linux without statx reports the change time instead, which a partial delete moves, so
+   * the leftover there reads as a different folder and is left in place.
+   */
   birthtimeNs: string
 }
 
@@ -22,11 +26,7 @@ async function statDirectory(path: string): Promise<CheckoutDirectoryIdentity | 
     if (!stats.isDirectory()) {
       return null
     }
-    return {
-      dev: stats.dev.toString(),
-      ino: stats.ino.toString(),
-      birthtimeNs: stats.birthtimeNs.toString()
-    }
+    return { ino: stats.ino.toString(), birthtimeNs: stats.birthtimeNs.toString() }
   } catch (error) {
     const code = getErrorCode(error)
     // Unreadable proves nothing, so it never matches.
@@ -34,15 +34,20 @@ async function statDirectory(path: string): Promise<CheckoutDirectoryIdentity | 
   }
 }
 
+// A positive decimal; a parsed record's value may be anything.
+function hasCreationTime(identity: CheckoutDirectoryIdentity): boolean {
+  return /^[1-9]\d*$/.test(identity.birthtimeNs)
+}
+
 /**
  * Identity of the checkout directory at `path`; undefined when there is no directory there or the
- * filesystem keeps no creation time, since device and inode alone can name a newer directory.
+ * filesystem keeps no creation time, since the inode alone can name a newer directory.
  */
 export async function readCheckoutDirectoryIdentity(
   path: string
 ): Promise<CheckoutDirectoryIdentity | undefined> {
   const current = await statDirectory(path)
-  return current && current !== 'absent' && current.birthtimeNs !== '0' ? current : undefined
+  return current && current !== 'absent' && hasCreationTime(current) ? current : undefined
 }
 
 /** Whether `path` still holds the directory a removal accepted. */
@@ -57,11 +62,11 @@ export async function matchCheckoutDirectory(
   if (!accepted) {
     return 'unrecorded'
   }
-  if (!current || current.dev !== accepted.dev || current.ino !== accepted.ino) {
+  if (!current || current.ino !== accepted.ino) {
     return 'different'
   }
   // Why creation time too: Linux filesystems reuse a freed inode number for the next directory.
-  return accepted.birthtimeNs !== '0' && current.birthtimeNs === accepted.birthtimeNs
+  return hasCreationTime(accepted) && current.birthtimeNs === accepted.birthtimeNs
     ? 'same'
     : 'different'
 }

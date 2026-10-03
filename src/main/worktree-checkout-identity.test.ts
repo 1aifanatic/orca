@@ -1,12 +1,18 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import type * as FsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   matchCheckoutDirectory,
   readCheckoutDirectoryIdentity,
   type CheckoutDirectoryIdentity
 } from './worktree-checkout-identity'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>()
+  return { ...actual, lstat: vi.fn(actual.lstat) }
+})
 
 let directory = ''
 let checkout = ''
@@ -24,7 +30,7 @@ afterEach(async () => {
 async function acceptedIdentity(): Promise<CheckoutDirectoryIdentity> {
   const identity = await readCheckoutDirectoryIdentity(checkout)
   expect(identity).toBeDefined()
-  return identity ?? { dev: '', ino: '', birthtimeNs: '' }
+  return identity ?? { ino: '', birthtimeNs: '' }
 }
 
 describe('matching the checkout directory a removal accepted', () => {
@@ -81,10 +87,24 @@ describe('matching the checkout directory a removal accepted', () => {
   it('never matches an identity recorded without a creation time', async () => {
     const identity = await acceptedIdentity()
 
-    // Device and inode alone can name a different directory where inode numbers are reused.
-    expect(await matchCheckoutDirectory(checkout, { ...identity, birthtimeNs: '0' })).toBe(
-      'different'
-    )
+    // The inode alone can name a different directory where inode numbers are reused. Windows reports
+    // a missing creation time as a negative number.
+    for (const birthtimeNs of ['0', '-11644473600000000000', '']) {
+      expect(await matchCheckoutDirectory(checkout, { ...identity, birthtimeNs })).toBe('different')
+    }
+  })
+
+  it('records nothing for a directory the filesystem reports no creation time for', async () => {
+    for (const birthtimeNs of [0n, -11644473600000000000n]) {
+      const stats = await lstat(checkout, { bigint: true })
+      vi.mocked(lstat).mockResolvedValueOnce(Object.assign(stats, { birthtimeNs }))
+
+      expect(await readCheckoutDirectoryIdentity(checkout)).toBeUndefined()
+    }
+  })
+
+  it('records no device number, which changes when an external volume is attached again', async () => {
+    expect(Object.keys(await acceptedIdentity()).sort()).toEqual(['birthtimeNs', 'ino'])
   })
 
   it('does not match the same device and inode with a different creation time', async () => {

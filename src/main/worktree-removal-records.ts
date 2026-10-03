@@ -56,11 +56,8 @@ function parseFailure(value: unknown): WorktreeRemovalFailure | null | undefined
 
 // Why unprovable rather than invalid: dropping the record would also drop a resume Git can finish.
 function parseCheckoutIdentity(value: unknown): CheckoutDirectoryIdentity | undefined {
-  return isRecord(value) &&
-    typeof value.dev === 'string' &&
-    typeof value.ino === 'string' &&
-    typeof value.birthtimeNs === 'string'
-    ? { dev: value.dev, ino: value.ino, birthtimeNs: value.birthtimeNs }
+  return isRecord(value) && typeof value.ino === 'string' && typeof value.birthtimeNs === 'string'
+    ? { ino: value.ino, birthtimeNs: value.birthtimeNs }
     : undefined
 }
 
