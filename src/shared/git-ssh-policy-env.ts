@@ -104,7 +104,7 @@ function quoteBareWindowsPathWords(command: string): string {
       const uncPrefixOffset =
         windowsPath[1] === '\\\\' ? windowsPath.index + windowsPath[0].length - 2 : -1
       return quotePosixShell(
-        word.replace(/\\([ \t'"\\])/g, (match, escaped: string, offset: number) =>
+        word.replace(/\\([ \t'"\\;&|<>()`])/g, (match, escaped: string, offset: number) =>
           offset === uncPrefixOffset && word[offset + 2] !== '\\' ? match : escaped
         )
       )

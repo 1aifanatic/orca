@@ -83,6 +83,14 @@ describe('Git network SSH policy', () => {
 describe.skipIf(process.platform === 'win32')('SSH policy with a real POSIX shell', () => {
   it.each([
     [String.raw` -i C:\keys\work`, ['-i', String.raw`C:\keys\work`]],
+    [String.raw` -i C:\keys\work\&key`, ['-i', String.raw`C:\keys\work&key`]],
+    [String.raw` -i C:\keys\work\;key`, ['-i', String.raw`C:\keys\work;key`]],
+    [String.raw` -i C:\keys\work\|key`, ['-i', String.raw`C:\keys\work|key`]],
+    [String.raw` -i C:\keys\work\<key`, ['-i', String.raw`C:\keys\work<key`]],
+    [String.raw` -i C:\keys\work\>key`, ['-i', String.raw`C:\keys\work>key`]],
+    [String.raw` -i C:\keys\work\(key`, ['-i', String.raw`C:\keys\work(key`]],
+    [String.raw` -i C:\keys\work\)key`, ['-i', String.raw`C:\keys\work)key`]],
+    [' -i C:\\keys\\work\\`key', ['-i', 'C:\\keys\\work`key']],
     [String.raw` -iC:\keys\work`, [String.raw`-iC:\keys\work`]],
     [String.raw` -i \\server\share\work`, ['-i', String.raw`\\server\share\work`]],
     [String.raw` -i \\\\server\share\work`, ['-i', String.raw`\\server\share\work`]],
