@@ -28,6 +28,7 @@ import {
   type WslCanonicalPathSettlement
 } from './codex-wsl-hook-install-plan'
 import type { CodexTrustEntry } from './config-toml-trust'
+import { withdrawWslGuestCodexHooksForOptOut } from './codex-wsl-guest-hook-opt-out'
 
 /** Lane-scoped so the hooks-on install never joins the hooks-off refresh. */
 function launchPrepKey(lane: 'install' | 'refresh', runtimeHomePath: string): string {
@@ -261,10 +262,17 @@ export class CodexHookService {
     )
   }
 
-  remove(): Promise<AgentHookInstallStatus> {
-    return runExclusivelyForRuntimeAndSystemTrustConfig(getOrcaManagedCodexHomePath(), () =>
-      this.removeExclusively()
+  async remove(): Promise<AgentHookInstallStatus> {
+    const status = await runExclusivelyForRuntimeAndSystemTrustConfig(
+      getOrcaManagedCodexHomePath(),
+      () => this.removeExclusively()
     )
+    try {
+      await withdrawWslGuestCodexHooksForOptOut()
+    } catch (error) {
+      console.warn('[codex-hook-service] failed to remove WSL Codex hooks:', error)
+    }
+    return status
   }
 
   private removeExclusively(): Promise<AgentHookInstallStatus> {

@@ -24,6 +24,8 @@ import {
   setRealHomeCodexHooksEnabledReader
 } from '../codex/codex-real-home-hook-install'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
+import { setRunningWslGuestLister } from '../codex/codex-wsl-guest-hook-opt-out'
+import { getWslHomeAsync, listRunningWslDistrosAsync } from '../wsl'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { browserManager } from '../browser/browser-manager'
 import { mainProcessState as state } from './main-process-state'
@@ -47,6 +49,14 @@ export function initializeMainProcessAccountServices(): void {
   state.codexRuntimeHome.setRealHomeLaneGate(() => isRealHomeCodexHookLaneUsable())
   setRealHomeCodexHooksEnabledReader(() =>
     isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
+  )
+  setRunningWslGuestLister(async () =>
+    Promise.all(
+      (await listRunningWslDistrosAsync()).map(async (distro) => ({
+        distro,
+        guestHome: await getWslHomeAsync(distro)
+      }))
+    )
   )
   state.codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () =>
