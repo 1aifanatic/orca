@@ -193,11 +193,13 @@ describe('resolveTerminalTabActivityStatus', () => {
       const ended = entry(FIRST_LEAF_ID, 'done', {
         mainAgent: { state: 'done', outcome, stateStartedAt: NOW }
       })
+      // One status map throughout: an acknowledgement alone must re-read the tab.
+      const agentStatusByPaneKey = { [ended.paneKey]: ended }
       const statusWith = (acknowledgedAt: number) =>
         resolveTerminalTabActivityStatus({
           acknowledgedAgentsByPaneKey: { [ended.paneKey]: acknowledgedAt },
           tab: TAB,
-          agentStatusByPaneKey: { [ended.paneKey]: ended },
+          agentStatusByPaneKey,
           ptyIdsByTabId: LIVE_PTY
         })
       expect(statusWith(NOW - 1)).toBe(unseen)

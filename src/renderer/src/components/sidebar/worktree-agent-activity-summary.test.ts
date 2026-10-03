@@ -277,6 +277,38 @@ describe('selectWorktreeAgentActivitySummary', () => {
     })
   })
 
+  it('re-reads the card when only an acknowledgement changes', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(2_000)
+    const paneKey = makePaneKey('tab-1', LEAF_ID)
+    const base = {
+      tabsByWorktree: { 'repo::/wt-1': [makeTab('tab-1', 'repo::/wt-1')] },
+      agentStatusEpoch: 4,
+      agentStatusByPaneKey: {
+        [paneKey]: makeAgentStatusEntry({
+          paneKey,
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 }
+        })
+      },
+      migrationUnsupportedByPtyId: {},
+      runtimeAgentOrchestrationByPaneKey: {},
+      retainedAgentsByPaneKey: {}
+    }
+
+    expect(
+      selectWorktreeAgentActivitySummary(
+        { ...base, acknowledgedAgentsByPaneKey: {} },
+        'repo::/wt-1'
+      )
+    ).toMatchObject({ hasFailed: true })
+    expect(
+      selectWorktreeAgentActivitySummary(
+        { ...base, acknowledgedAgentsByPaneKey: { [paneKey]: 1_000 } },
+        'repo::/wt-1'
+      )
+    ).toMatchObject({ hasFailed: false, hasLiveDone: true })
+  })
+
   it('reads a departed crash-cut agent as done once seen, and failed before', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000)
     const retained = (ackAt: number) =>
