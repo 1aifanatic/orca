@@ -3,13 +3,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { createRuntime, syncSinglePty, TEST_WORKTREE_ID } from './orca-runtime-test-fixtures.spec'
 import { electronMocks } from './orca-runtime-test-mocks.spec'
 import { createMobileCreateTestNotifier } from './orca-runtime-test-scenario-builders.spec'
+import { RpcDispatcher } from './rpc/dispatcher'
+import { TERMINAL_QUERY_METHODS } from './rpc/methods/terminal/terminal-query-methods'
 
 async function createPaneTitleRuntime() {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: runtime title routing only checks that the mocked desktop window is not destroyed.
   electronMocks.BrowserWindow.fromId.mockReturnValue({ isDestroyed: () => false } as never)
   const runtime = createRuntime()
   syncSinglePty(runtime)
-  const setPaneTitle = vi.fn()
+  const setPaneTitle = vi.fn(() => true)
   const renameTerminal = vi.fn()
   const notifier = { ...createMobileCreateTestNotifier(vi.fn()), setPaneTitle, renameTerminal }
   runtime.setNotifier(notifier)
@@ -72,5 +74,32 @@ describe('pane-scoped terminal title', () => {
     await expect(runtime.setPaneTitle(handle, 'REVIEWER')).rejects.toThrow(
       'require a running Orca desktop'
     )
+  })
+
+  it('does not report success when the desktop stops accepting notifications', async () => {
+    const { runtime, handle, setPaneTitle, renameTerminal } = await createPaneTitleRuntime()
+    setPaneTitle.mockReturnValue(false)
+    await expect(runtime.setPaneTitle(handle, 'REVIEWER')).rejects.toThrow('runtime_unavailable')
+    expect(setPaneTitle).toHaveBeenCalledExactlyOnceWith('tab-1', 'pane:1', 'REVIEWER')
+    expect(renameTerminal).not.toHaveBeenCalled()
+  })
+
+  it('returns an RPC failure receipt when title notification delivery fails', async () => {
+    const { runtime, handle, setPaneTitle } = await createPaneTitleRuntime()
+    setPaneTitle.mockReturnValue(false)
+    const dispatcher = new RpcDispatcher({ runtime, methods: TERMINAL_QUERY_METHODS })
+    await expect(
+      dispatcher.dispatch({
+        id: 'pane-title-request',
+        authToken: 'test',
+        method: 'terminal.setPaneTitle',
+        params: { terminal: handle, title: 'REVIEWER' }
+      })
+    ).resolves.toMatchObject({
+      id: 'pane-title-request',
+      ok: false,
+      error: { code: 'runtime_unavailable' }
+    })
+    expect(setPaneTitle).toHaveBeenCalledTimes(1)
   })
 })
