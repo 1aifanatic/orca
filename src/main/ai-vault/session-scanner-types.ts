@@ -17,6 +17,7 @@ export type AiVaultScanOptions = {
   /** This host's Claude profile `projects` dirs, resolved where the account owner lives. */
   claudeProfileProjectsDirs?: readonly string[]
   codebuddyProjectsDir?: string
+  qoderProjectsDir?: string
   codexSessionsDir?: string
   additionalCodexSessionsDirs?: readonly string[]
   // Why: tests inject a sandbox "real ~/.codex" so real-home attribution
