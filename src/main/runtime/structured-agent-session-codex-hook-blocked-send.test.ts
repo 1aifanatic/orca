@@ -264,6 +264,8 @@ describe('a Codex send a hook of the person blocked', () => {
       kind: 'hookBlocked',
       detail: { text: 'No secrets in prompts.', audience: 'person' }
     })
+    // The sentence the host writes beside the fact, which an older client shows as it is.
+    expect(row?.reason).toBe('A hook blocked this message: No secrets in prompts.')
     expect(sentenceFor(await snapshot(), followUp)).toBe(
       'A hook blocked this message: No secrets in prompts.'
     )
