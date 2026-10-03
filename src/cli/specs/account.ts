@@ -42,6 +42,7 @@ export const ACCOUNT_COMMAND_SPECS: CommandSpec[] = [
   {
     path: ['account', 'rm'],
     aliases: [['account', 'remove']],
+    destructive: true,
     summary: 'Remove a managed OpenCode or Devin profile and its private data',
     usage: 'orca account rm --agent opencode|devin --account <id> [--json]',
     allowedFlags: [...GLOBAL_FLAGS, 'agent', 'account'],

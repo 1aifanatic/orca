@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
@@ -13,6 +13,7 @@ export class ManagedDataAccountProfileRemoval {
   constructor(
     private readonly root: string,
     private readonly assertOwned: (path: string) => void,
+    private readonly parseState: (contents: string) => ManagedDataAccountsState,
     private readonly removeDirectory: (directory: string) => void | Promise<void> = removeHostTree
   ) {}
 
@@ -31,11 +32,13 @@ export class ManagedDataAccountProfileRemoval {
     const metadataPath = join(this.root, provider, 'accounts.json')
     const rollbackPath = `${metadataPath}.${accountId}.rollback`
     if (!state.accounts.some((account) => account.id === accountId)) {
-      if (existsSync(rollbackPath) && existsSync(directory)) {
-        this.assertOwned(rollbackPath)
+      if (existsSync(directory)) {
+        if (!this.hasRemovalBackup(rollbackPath, accountId)) {
+          throw new Error('Managed account not found.')
+        }
         this.quarantine(directory, pendingDirectory)
         changed()
-      } else if (!existsSync(pendingDirectory)) {
+      } else if (!existsSync(pendingDirectory) && !this.hasRemovalBackup(rollbackPath, accountId)) {
         throw new Error('Managed account not found.')
       }
       this.discardBackup(rollbackPath)
@@ -79,6 +82,7 @@ export class ManagedDataAccountProfileRemoval {
     if (!existsSync(directory)) {
       return
     }
+    this.assertOwned(dirname(directory))
     this.assertOwned(directory)
     if (existsSync(pendingDirectory)) {
       throw new Error('Account already has a pending removal directory.')
@@ -87,6 +91,49 @@ export class ManagedDataAccountProfileRemoval {
     mkdirSync(pendingRoot, { recursive: true, mode: 0o700 })
     this.assertOwned(pendingRoot)
     renameSync(directory, pendingDirectory)
+  }
+
+  private hasRemovalBackup(rollbackPath: string, accountId: string): boolean {
+    if (!existsSync(rollbackPath)) {
+      return false
+    }
+    this.assertOwned(dirname(rollbackPath))
+    this.assertOwned(rollbackPath)
+    if (!lstatSync(rollbackPath).isFile()) {
+      return false
+    }
+    try {
+      const backup = this.parseState(readFileSync(rollbackPath, 'utf8'))
+      return backup.accounts.some((account) => account.id === accountId)
+    } catch {
+      return false
+    }
+  }
+
+  private async retryBackups(providerRoot: string, registered: Set<string>): Promise<void> {
+    const entries = await readdir(providerRoot, { withFileTypes: true })
+    for (const entry of entries) {
+      const accountId = /^accounts\.json\.(.+)\.rollback$/.exec(entry.name)?.[1]
+      if (
+        !entry.isFile() ||
+        !accountId ||
+        !z.uuid().safeParse(accountId).success ||
+        registered.has(accountId)
+      ) {
+        continue
+      }
+      const rollbackPath = join(providerRoot, entry.name)
+      try {
+        if (!this.hasRemovalBackup(rollbackPath, accountId)) {
+          continue
+        }
+        const pendingDirectory = join(providerRoot, '.pending-delete', accountId)
+        this.quarantine(join(providerRoot, accountId), pendingDirectory)
+        this.discardBackup(rollbackPath)
+      } catch {
+        console.warn('[managed-data-accounts] Could not recover interrupted account removal.')
+      }
+    }
   }
 
   private discardBackup(rollbackPath: string): void {
@@ -113,11 +160,17 @@ export class ManagedDataAccountProfileRemoval {
   }
 
   async retry(provider: ManagedDataAccountProvider, registered: Set<string>): Promise<void> {
-    const pendingRoot = join(this.root, provider, '.pending-delete')
-    if (!existsSync(pendingRoot)) {
+    const providerRoot = join(this.root, provider)
+    if (!existsSync(providerRoot)) {
       return
     }
     try {
+      this.assertOwned(providerRoot)
+      await this.retryBackups(providerRoot, registered)
+      const pendingRoot = join(providerRoot, '.pending-delete')
+      if (!existsSync(pendingRoot)) {
+        return
+      }
       this.assertOwned(pendingRoot)
       const entries = await readdir(pendingRoot, { withFileTypes: true })
       for (const entry of entries) {
@@ -129,7 +182,9 @@ export class ManagedDataAccountProfileRemoval {
           continue
         }
         await this.cleanup(join(pendingRoot, entry.name))
-        this.discardBackup(join(this.root, provider, `accounts.json.${entry.name}.rollback`))
+        if (!existsSync(join(providerRoot, entry.name))) {
+          this.discardBackup(join(providerRoot, `accounts.json.${entry.name}.rollback`))
+        }
       }
     } catch {
       console.warn('[managed-data-accounts] Could not retry private account directory cleanup.')

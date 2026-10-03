@@ -47,6 +47,7 @@ export class ManagedDataAccountService {
     this.profileRemoval = new ManagedDataAccountProfileRemoval(
       root,
       (path) => this.assertOwned(path),
+      (contents) => stateSchema.parse(JSON.parse(contents)),
       removeDirectory
     )
     if (existsSync(root)) {

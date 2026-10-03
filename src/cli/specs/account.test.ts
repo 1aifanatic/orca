@@ -11,6 +11,7 @@ import {
 } from '../args'
 import { HANDLER_COMMAND_KEYS } from '../dispatch'
 import { formatCommandHelp } from '../help'
+import { suggestCommands, unknownCommandData } from '../command-suggestion'
 
 function spec(path: string): (typeof ACCOUNT_COMMAND_SPECS)[number] {
   const found = ACCOUNT_COMMAND_SPECS.find((entry) => entry.path.join(' ') === path)
@@ -96,6 +97,32 @@ describe('account command specs', () => {
     expect(findCommandSpec(ACCOUNT_COMMAND_SPECS, ['account', 'remove'])).toBe(canonical)
     expect(formatCommandHelp(canonical)).toContain('orca account rm --agent opencode|devin')
     expect(HANDLER_COMMAND_KEYS.has('account remove')).toBe(false)
+  })
+
+  it.each(['move', 'go'])(
+    'suggestion safety keeps benign account %s mistakes out of profile deletion',
+    (verb) => {
+      const path = ['account', verb]
+      expect(suggestCommands(ACCOUNT_COMMAND_SPECS, path)).not.toContain('account rm')
+      expect(suggestCommands(ACCOUNT_COMMAND_SPECS, path)).not.toContain('account remove')
+      const data = unknownCommandData(ACCOUNT_COMMAND_SPECS, path)
+      expect(data.nextSteps.join(' ')).not.toContain('orca account rm')
+      expect(data.nextSteps.join(' ')).not.toContain('orca account remove')
+    }
+  )
+
+  it('suggestion safety still recovers intended profile removal near-misses', () => {
+    const data = unknownCommandData(ACCOUNT_COMMAND_SPECS, ['account', 'remov'])
+    expect(data.suggestions).toContain('account rm')
+    expect(data.suggestions).toContain('account remove')
+    expect(data.nextSteps.join(' ')).toContain('orca account rm')
+  })
+
+  it('suggestion safety preserves non-destructive account list recovery', () => {
+    const suggestions = suggestCommands(ACCOUNT_COMMAND_SPECS, ['account', 'lst'])
+    expect(suggestions).toContain('account list')
+    expect(suggestions).not.toContain('account rm')
+    expect(suggestions).not.toContain('account remove')
   })
 
   it('rejects an unregistered account deletion verb', () => {
