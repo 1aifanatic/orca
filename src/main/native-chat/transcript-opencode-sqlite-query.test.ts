@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_SESSION_HOST_STATUS_COPY } from '../../shared/agent-session-host-status-rows'
 import Database from '../sqlite/sync-database'
 import {
   readOpenCodeTranscriptPage,
@@ -87,6 +88,79 @@ function messageRowid(db: Database.Database, id: string): number {
 }
 
 describe('readOpenCodeTranscriptPage', () => {
+  it.each(['message', 'part'] as const)(
+    'omits an oversized %s without losing identity or pagination',
+    (table) => {
+      const { db, path } = createTempDb()
+      applySchema(db)
+      for (let index = 1; index <= 3; index++) {
+        insertMessage(db, { id: `msg-${index}`, time: index })
+        insertPart(db, {
+          id: `prt-${index}`,
+          messageId: `msg-${index}`,
+          time: index,
+          data: { type: 'text', text: `message ${index}` }
+        })
+      }
+      db.prepare(`UPDATE ${table} SET data = ? WHERE id = ?`).run(
+        JSON.stringify({
+          role: 'user',
+          type: 'file',
+          mime: 'image/png',
+          url: 'x'.repeat(2 * 1024 * 1024)
+        }),
+        table === 'message' ? 'msg-2' : 'prt-2'
+      )
+      const args = { dbPath: path, sessionId: 'ses-1', limit: 2 }
+      const page = readOpenCodeTranscriptPage(args)
+      expect(page?.items.map((item) => item.message.id)).toEqual(['msg-2', 'msg-3'])
+      expect(page?.items[0]?.message.blocks).toEqual([
+        { type: 'text', text: AGENT_SESSION_HOST_STATUS_COPY['history-item-too-large'] }
+      ])
+      expect(page?.items[0]?.rowid).toBe(messageRowid(db, 'msg-2'))
+      expect(readOpenCodeTranscriptPage(args)?.items[0]?.fingerprint).toBe(
+        page?.items[0]?.fingerprint
+      )
+      db.prepare(`UPDATE ${table} SET time_updated = 10 WHERE id = ?`).run(
+        table === 'message' ? 'msg-2' : 'prt-2'
+      )
+      expect(readOpenCodeTranscriptPage(args)?.items[0]?.fingerprint).not.toBe(
+        page?.items[0]?.fingerprint
+      )
+      expect(
+        readOpenCodeTranscriptPage({
+          ...args,
+          beforeMessageRowId: page?.beforeMessageRowId ?? undefined
+        })?.items.map((item) => item.message.id)
+      ).toEqual(['msg-1'])
+    }
+  )
+
+  it('preserves ordinary text beside an oversized UTF-8 attachment part', () => {
+    const { db, path } = createTempDb()
+    applySchema(db)
+    insertMessage(db, { id: 'msg', time: 1 })
+    insertPart(db, {
+      id: 'text',
+      messageId: 'msg',
+      time: 1,
+      data: { type: 'text', text: 'see this' }
+    })
+    insertPart(db, {
+      id: 'large',
+      messageId: 'msg',
+      time: 1,
+      data: { type: 'file', mime: 'image/png', url: '😀'.repeat(600_000) }
+    })
+    expect(
+      readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'ses-1', limit: 1 })?.items[0]?.message
+        .blocks
+    ).toEqual([
+      { type: 'text', text: 'see this' },
+      { type: 'text', text: AGENT_SESSION_HOST_STATUS_COPY['history-item-too-large'] }
+    ])
+  })
+
   it('returns null when the session row does not exist', () => {
     const { db, path } = createTempDb()
     applySchema(db)

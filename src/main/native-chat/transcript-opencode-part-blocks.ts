@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { NativeChatBlock, NativeChatImageRefBlock } from '../../shared/native-chat-types'
+import { AGENT_SESSION_HOST_STATUS_COPY } from '../../shared/agent-session-host-status-rows'
 import { asRecord, extractString, parseJsonObject } from '../ai-vault/session-scanner-values'
 // query module so each stays under the repo's file-size cap. Electron-free:
 // runs on the OpenCode SQLite worker thread (#8864).
@@ -7,12 +8,18 @@ import { asRecord, extractString, parseJsonObject } from '../ai-vault/session-sc
 export type OpenCodePartRow = {
   message_id: string
   time_updated: number
-  data: string
+  data: string | null
 }
+
+export const OPENCODE_TRANSCRIPT_MAX_ROW_BYTES = 2 * 1024 * 1024
 
 export function opencodeMessageBlocks(partRows: OpenCodePartRow[]): NativeChatBlock[] {
   const blocks: NativeChatBlock[] = []
   for (const partRow of partRows) {
+    if (partRow.data === null) {
+      blocks.push({ type: 'text', text: AGENT_SESSION_HOST_STATUS_COPY['history-item-too-large'] })
+      continue
+    }
     const part = parseJsonObject(partRow.data)
     if (!part) {
       continue

@@ -41,14 +41,21 @@ export async function discoverOpenCodeTranscriptDatabase(
       }
       boundedSignal.throwIfAborted()
       probed.add(dbPath)
-      if (
-        !sessionId ||
-        (await waitForPromiseWithSignal(
-          readOpenCodeTranscriptSignalViaWorker({ dbPath, sessionId }, boundedSignal),
-          boundedSignal
-        ))
-      ) {
+      if (!sessionId) {
         return dbPath
+      }
+      try {
+        if (
+          await waitForPromiseWithSignal(
+            readOpenCodeTranscriptSignalViaWorker({ dbPath, sessionId }, boundedSignal),
+            boundedSignal
+          )
+        ) {
+          return dbPath
+        }
+      } catch (error) {
+        boundedSignal.throwIfAborted()
+        refusals.push(error instanceof Error ? error : new Error(String(error)))
       }
     }
     return null

@@ -175,13 +175,40 @@ export function subscribeOpenCodeNativeChatTranscript(
         scheduleTick()
         return
       }
-      const changed = page.items.some(
+      let changed = page.items.some(
         (item) =>
           item.rowid <= lastEmittedRowId && fingerprints.get(item.rowid) !== item.fingerprint
       )
       const shrinking =
         signal.messageCount < lastCounts.messages || signal.partCount < lastCounts.parts
       const present = new Set(page.items.map((item) => item.rowid))
+      if (
+        !changed &&
+        !shrinking &&
+        page.hasMore &&
+        fingerprints.size === OPENCODE_TRANSCRIPT_MAX_WINDOW &&
+        page.items.length === OPENCODE_TRANSCRIPT_MAX_WINDOW
+      ) {
+        const oldest = page.items[0]!.rowid
+        const displaced = [...fingerprints.keys()].filter((rowid) => rowid < oldest)
+        if (displaced.length > 0) {
+          // Verify the displaced fringe: cap eviction and a real deletion look identical in the tail.
+          const older = await readPage({
+            dbPath,
+            sessionId: args.sessionId,
+            limit: displaced.length,
+            beforeMessageRowId: oldest
+          })
+          if (closed || !older) {
+            scheduleTick()
+            return
+          }
+          for (const item of older.items) {
+            present.add(item.rowid)
+            changed ||= fingerprints.get(item.rowid) !== item.fingerprint
+          }
+        }
+      }
       // A balanced delete and append can move a removed row before the new tail.
       const removed = [...fingerprints.keys()].some((rowid) => !present.has(rowid))
       if (changed || shrinking || removed) {

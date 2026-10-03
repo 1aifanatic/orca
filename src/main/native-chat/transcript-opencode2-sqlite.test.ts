@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { AGENT_SESSION_HOST_STATUS_COPY } from '../../shared/agent-session-host-status-rows'
 import Database from '../sqlite/sync-database'
 import {
   readOpenCodeTranscriptPage,
@@ -109,19 +110,67 @@ describe('OpenCode 2 native transcript', () => {
     ])
   })
 
-  it('refuses oversized JSON and excessive sparse scans instead of returning a partial transcript', () => {
+  it.each(['x', '😀'])(
+    'omits oversized %s content with a stable cursor and time fingerprint',
+    (character) => {
+      const { db, path, insert } = fixture()
+      insert('before', 'user', { text: 'before' })
+      insert('large', 'user', {
+        text: '',
+        files: [{ mime: 'image/png', data: character.repeat(2 * 1024 * 1024) }]
+      })
+      insert('after', 'assistant', { text: 'after' })
+      const args = { dbPath: path, sessionId: 'session', limit: 2 }
+      const page = readOpenCodeTranscriptPage(args)
+      expect(page?.items.map((item) => item.message.id)).toEqual([
+        'opencode:large',
+        'opencode:after'
+      ])
+      expect(page?.items[0]).toMatchObject({
+        rowid: 2,
+        message: {
+          role: 'user',
+          timestamp: 1,
+          blocks: [{ type: 'text', text: AGENT_SESSION_HOST_STATUS_COPY['history-item-too-large'] }]
+        }
+      })
+      expect(readOpenCodeTranscriptPage(args)?.items[0]?.fingerprint).toBe(
+        page?.items[0]?.fingerprint
+      )
+      db.prepare("UPDATE session_message SET time_updated = 2 WHERE id = 'large'").run()
+      expect(readOpenCodeTranscriptPage(args)?.items[0]?.fingerprint).not.toBe(
+        page?.items[0]?.fingerprint
+      )
+      expect(
+        readOpenCodeTranscriptPage({
+          ...args,
+          beforeMessageRowId: page?.beforeMessageRowId ?? undefined
+        })?.items.map((item) => item.message.id)
+      ).toEqual(['opencode:before'])
+    }
+  )
+
+  it('refuses excessive sparse scans instead of returning a partial transcript', () => {
     const { db, path, insert } = fixture()
-    insert('large', 'user', { text: 'x'.repeat(2 * 1024 * 1024) })
-    expect(() =>
-      readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'session', limit: 1 })
-    ).toThrow('byte limit')
-    db.exec('DELETE FROM session_message; BEGIN')
+    db.exec('BEGIN')
     for (let index = 0; index < 10001; index++) {
       insert(String(index), 'idle', {})
     }
     db.exec('COMMIT')
     expect(() =>
       readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'session', limit: 1 })
+    ).toThrow('read limit')
+  })
+
+  it('keeps the aggregate page byte budget when individual rows fit', () => {
+    const { db, path, insert } = fixture()
+    db.exec('BEGIN')
+    for (let index = 0; index < 18; index++) {
+      insert(String(index), 'user', { text: 'x'.repeat(1024 * 1024) })
+    }
+    db.exec('COMMIT')
+    expect(() =>
+      readOpenCodeTranscriptPage({ dbPath: path, sessionId: 'session', limit: 18 })
     ).toThrow('read limit')
   })
 

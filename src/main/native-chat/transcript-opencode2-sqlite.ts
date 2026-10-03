@@ -3,14 +3,16 @@ import type SyncDatabase from '../sqlite/sync-database'
 import { openCodeTranscriptPageLimit } from '../../shared/opencode-transcript-page-limit'
 import { columnExists, tableExists } from '../opencode-usage/schema-helpers'
 import { asRecord, parseJsonObject } from '../ai-vault/session-scanner-values'
-import { opencodeMessageBlocks } from './transcript-opencode-part-blocks'
+import {
+  opencodeMessageBlocks,
+  OPENCODE_TRANSCRIPT_MAX_ROW_BYTES
+} from './transcript-opencode-part-blocks'
 import type {
   OpenCodeTranscriptPage,
   OpenCodeTranscriptSignal,
   OpenCodeTranscriptItem
 } from './transcript-opencode-sqlite-query'
 
-const MAX_MESSAGE_BYTES = 2 * 1024 * 1024
 const MAX_PAGE_BYTES = 16 * 1024 * 1024
 const MAX_SCAN_ROWS = 10_000
 
@@ -55,19 +57,35 @@ export function readOpenCode2TranscriptSignal(
 
 function messageItem(value: unknown): OpenCodeTranscriptItem | null {
   const row = asRecord(value)
-  if (typeof row?.data !== 'string') {
-    throw new Error('OpenCode transcript message exceeds its byte limit')
-  }
   if (
-    typeof row.id !== 'string' ||
+    typeof row?.id !== 'string' ||
     typeof row.cursor !== 'number' ||
     typeof row.time_created !== 'number' ||
     typeof row.time_updated !== 'number'
   ) {
     throw new Error('OpenCode transcript message is invalid')
   }
-  if (Buffer.byteLength(row.data) > MAX_MESSAGE_BYTES) {
-    throw new Error('OpenCode transcript message exceeds its byte limit')
+  if (
+    row.data === null ||
+    (typeof row.data === 'string' &&
+      Buffer.byteLength(row.data) > OPENCODE_TRANSCRIPT_MAX_ROW_BYTES)
+  ) {
+    return {
+      rowid: row.cursor,
+      fingerprint: `${row.time_updated}:omitted`,
+      message: {
+        id: `opencode:${row.id}`,
+        role: row.type === 'user' ? 'user' : row.type === 'assistant' ? 'assistant' : 'system',
+        blocks: opencodeMessageBlocks([
+          { message_id: row.id, time_updated: row.time_updated, data: null }
+        ]),
+        timestamp: row.time_created,
+        source: 'transcript'
+      }
+    }
+  }
+  if (typeof row.data !== 'string') {
+    throw new Error('OpenCode transcript message is invalid')
   }
   const messageId = row.id
   const updatedAt = row.time_updated
@@ -165,12 +183,13 @@ export function readOpenCode2TranscriptPage(
   }
   const limit = openCodeTranscriptPageLimit(args.limit)
   const statement = db.prepare(`SELECT seq AS cursor, id, type, time_created, time_updated,
-    CASE WHEN length(data) <= ${MAX_MESSAGE_BYTES} THEN data ELSE NULL END AS data
+    CASE WHEN length(CAST(data AS BLOB)) <= ${OPENCODE_TRANSCRIPT_MAX_ROW_BYTES} THEN data ELSE NULL END AS data
     FROM session_message WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?`)
   const items: OpenCodeTranscriptItem[] = []
   let cursor = args.beforeMessageRowId ?? Number.MAX_SAFE_INTEGER
   let scannedRows = 0
   let bytes = 0
+  let pageBytes = 0
   let hasMore = false
   while (items.length < limit) {
     const rows = statement.all(args.sessionId, cursor, Math.min(limit + 1, 8))
@@ -183,13 +202,20 @@ export function readOpenCode2TranscriptPage(
       if (typeof row?.cursor !== 'number') {
         throw new Error('OpenCode transcript cursor is invalid')
       }
-      bytes += typeof row.data === 'string' ? Buffer.byteLength(row.data) : MAX_MESSAGE_BYTES + 1
+      bytes += Object.values(row).reduce<number>(
+        (size, value) => size + (typeof value === 'string' ? Buffer.byteLength(value) : 0),
+        0
+      )
       if (++scannedRows > MAX_SCAN_ROWS || bytes > MAX_PAGE_BYTES) {
         throw new Error('OpenCode transcript page exceeds its read limit')
       }
       const item = messageItem(value)
       cursor = row.cursor
       if (item) {
+        pageBytes += Buffer.byteLength(JSON.stringify(item))
+        if (pageBytes > MAX_PAGE_BYTES) {
+          throw new Error('OpenCode transcript page exceeds its read limit')
+        }
         items.push(item)
       }
       if (items.length >= limit) {

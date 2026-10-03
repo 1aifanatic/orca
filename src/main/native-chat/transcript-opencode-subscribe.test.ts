@@ -20,7 +20,12 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function watchFixture(version: 'v1' | 'v2', hiddenFirst = false, messageCount = 300) {
+function watchFixture(
+  version: 'v1' | 'v2',
+  hiddenFirst = false,
+  messageCount = 300,
+  initialLimit = 300
+) {
   vi.useFakeTimers()
   const root = mkdtempSync(join(tmpdir(), 'orca-opencode-watch-'))
   const path = join(root, 'opencode.db')
@@ -84,6 +89,9 @@ function watchFixture(version: 'v1' | 'v2', hiddenFirst = false, messageCount = 
   const onReplace = vi.fn((messages: NativeChatMessage[]) => {
     displayed = messages
   })
+  const onAppend = vi.fn((messages: NativeChatMessage[]) => {
+    displayed.push(...messages)
+  })
   const readPage = vi.fn(async (args: Parameters<typeof readOpenCodeTranscriptPage>[0]) =>
     readOpenCodeTranscriptPage(args)
   )
@@ -91,14 +99,12 @@ function watchFixture(version: 'v1' | 'v2', hiddenFirst = false, messageCount = 
     {
       agent: 'opencode',
       sessionId: 'session',
-      initialLimit: 300,
+      initialLimit,
       resolvePollIntervalMs: 5,
       onInitialSnapshot: (messages) => {
         displayed = messages
       },
-      onAppend: (messages) => {
-        displayed.push(...messages)
-      },
+      onAppend,
       onReplace
     },
     undefined,
@@ -109,7 +115,7 @@ function watchFixture(version: 'v1' | 'v2', hiddenFirst = false, messageCount = 
     }
   )
   fixtures.push({ db, root, stop: subscription.unsubscribe })
-  return { db, insert, update, remove, displayed: () => displayed, onReplace, readPage }
+  return { db, insert, update, remove, displayed: () => displayed, onReplace, onAppend, readPage }
 }
 
 describe.each(['v1', 'v2'] as const)('OpenCode %s watch reconciliation', (version) => {
@@ -222,4 +228,61 @@ describe.each(['v1', 'v2'] as const)('OpenCode %s watch reconciliation', (versio
     expect(f.displayed()).toHaveLength(301)
     expect(f.displayed().at(-1)?.blocks).toEqual([{ type: 'text', text: 'after discarded burst' }])
   })
+
+  it('keeps appending after the remembered window reaches 2400 rows', async () => {
+    const f = watchFixture(version)
+    await vi.advanceTimersByTimeAsync(0)
+    for (let start = 301; start <= 2400; start += 300) {
+      for (let index = start; index < start + 300; index++) {
+        f.insert(index)
+      }
+      await vi.advanceTimersByTimeAsync(10)
+    }
+    f.onReplace.mockClear()
+    f.onAppend.mockClear()
+    for (let index = 2401; index <= 2403; index++) {
+      f.insert(index)
+      await vi.advanceTimersByTimeAsync(10)
+    }
+    expect(f.onReplace).not.toHaveBeenCalled()
+    expect(f.onAppend.mock.calls.map(([messages]) => messages.length)).toEqual([1, 1, 1])
+    expect(f.displayed()).toHaveLength(2403)
+    expect(f.readPage.mock.calls.every(([args]) => args.limit <= 2400)).toBe(true)
+  })
+
+  it('keeps appending after a bridged burst fills the cap', async () => {
+    const f = watchFixture(version)
+    await vi.advanceTimersByTimeAsync(0)
+    for (let index = 301; index <= 2600; index++) {
+      f.insert(index)
+    }
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.onReplace).toHaveBeenCalledOnce()
+    expect(f.displayed()).toHaveLength(2400)
+    f.onReplace.mockClear()
+    f.insert(2601)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.onReplace).not.toHaveBeenCalled()
+    expect(f.onAppend).toHaveBeenCalledOnce()
+    expect(f.displayed().at(-1)?.blocks).toEqual([{ type: 'text', text: 'message 2601' }])
+  })
+
+  it.each(['delete', 'hide', 'edit'] as const)(
+    'detects a first-tail-row %s outside the capped page during an append',
+    async (operation) => {
+      const f = watchFixture(version, false, 2500, 2400)
+      await vi.advanceTimersByTimeAsync(0)
+      if (operation === 'delete') {
+        f.remove(101)
+      } else {
+        f.update(101, operation === 'hide' ? '' : 'edited first tail row')
+      }
+      f.insert(2501)
+      f.insert(2502)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(f.onReplace).toHaveBeenCalledOnce()
+      expect(f.onAppend).not.toHaveBeenCalled()
+      expect(f.readPage.mock.calls.every(([args]) => args.limit <= 2400)).toBe(true)
+    }
+  )
 })

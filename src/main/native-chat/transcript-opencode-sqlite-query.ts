@@ -10,7 +10,10 @@ import type SyncDatabase from '../sqlite/sync-database'
 
 type BindValue = SyncDatabase.BindValue
 type SqliteStatement = SyncDatabase.Statement
-import { opencodeMessageBlocks } from './transcript-opencode-part-blocks'
+import {
+  opencodeMessageBlocks,
+  OPENCODE_TRANSCRIPT_MAX_ROW_BYTES
+} from './transcript-opencode-part-blocks'
 // Cursors are opaque provider order: SQLite rowid in v1, session sequence in v2.
 
 export type OpenCodeTranscriptItem = {
@@ -122,7 +125,7 @@ export function readOpenCodeTranscriptPage(args: {
     // so the statement cannot vary with `beforeMessageRowId`'s presence.
     // MAX_SAFE_INTEGER is the "from the newest row" sentinel.
     const select = db.prepare(
-      `SELECT rowid AS message_rowid, id, time_created, time_updated, CASE WHEN length(data) <= 2097152 THEN data ELSE NULL END AS data
+      `SELECT rowid AS message_rowid, id, time_created, time_updated, CASE WHEN length(CAST(data AS BLOB)) <= ${OPENCODE_TRANSCRIPT_MAX_ROW_BYTES} THEN data ELSE NULL END AS data
          FROM message
          WHERE session_id = ? AND rowid < ?
          ORDER BY rowid DESC
@@ -153,9 +156,6 @@ export function readOpenCodeTranscriptPage(args: {
       hasMore = rows.length > limit
       const selected = hasMore ? rows.slice(0, limit) : rows
       cursor = selected.at(-1)!.message_rowid
-      if (selected.some((row) => typeof row.data !== 'string')) {
-        throw new Error('OpenCode transcript message exceeds its byte limit')
-      }
       const mapped = mapMessageRows(db, args.sessionId, selected, rawBudget)
       pageBytes += Buffer.byteLength(JSON.stringify(mapped))
       if (pageBytes > 16 * 1024 * 1024) {
@@ -184,13 +184,13 @@ type MessageRow = {
   id: string
   time_created: number
   time_updated: number
-  data: string
+  data: string | null
 }
 
 type PartRow = {
   message_id: string
   time_updated: number
-  data: string
+  data: string | null
 }
 
 function mapMessageRows(
@@ -209,7 +209,7 @@ function mapMessageRows(
     const placeholders = batch.map(() => '?').join(', ')
     const partRows = rowsWithinBudget<PartRow>(
       db.prepare(
-        `SELECT message_id, time_updated, CASE WHEN length(data) <= 2097152 THEN data ELSE NULL END AS data FROM part
+        `SELECT message_id, time_updated, CASE WHEN length(CAST(data AS BLOB)) <= ${OPENCODE_TRANSCRIPT_MAX_ROW_BYTES} THEN data ELSE NULL END AS data FROM part
          WHERE session_id = ? AND message_id IN (${placeholders})
          ORDER BY rowid LIMIT 10001`
       ),
@@ -217,7 +217,7 @@ function mapMessageRows(
       sessionId,
       ...batch
     )
-    if (partRows.length > 10000 || partRows.some((row) => typeof row.data !== 'string')) {
+    if (partRows.length > 10000) {
       throw new Error('OpenCode transcript parts exceed their read limit')
     }
     for (const partRow of partRows) {
@@ -232,11 +232,15 @@ function mapMessageRows(
   const items: OpenCodeTranscriptItem[] = []
   for (const row of rows) {
     const partList = partsByMessage.get(row.id) ?? []
-    const blocks = opencodeMessageBlocks(partList)
+    const blocks = opencodeMessageBlocks(
+      row.data === null
+        ? [{ message_id: row.id, time_updated: row.time_updated, data: null }]
+        : partList
+    )
     if (blocks.length === 0) {
       continue
     }
-    const record = parseJsonObject(row.data)
+    const record = row.data === null ? null : parseJsonObject(row.data)
     const role = extractString(record?.role)
     items.push({
       rowid: row.message_rowid,

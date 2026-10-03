@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
@@ -9,6 +9,7 @@ import { writeOpenCodeSqliteDatabase } from './session-scanner-opencode-sqlite-f
 import { OpenCodeSqliteWorkerClient } from './session-scanner-opencode-sqlite-worker-client'
 import { resolveOpenCodeSqliteWorkerEntryPath } from './session-scanner-opencode-sqlite-worker-spawn'
 import type { AiVaultScanIssue } from '../../shared/ai-vault-types'
+import { AGENT_SESSION_HOST_STATUS_COPY } from '../../shared/agent-session-host-status-rows'
 
 const directory = mkdtempSync(join(tmpdir(), 'orca-opencode-native-worker-'))
 const entry = resolveOpenCodeSqliteWorkerEntryPath(directory)
@@ -52,6 +53,42 @@ afterAll(() => {
 })
 
 describe('OpenCode reads through the production shared worker', () => {
+  it.each(['v1-message', 'v1-part', 'v2-message'] as const)(
+    'degrades %s oversize content through the actual worker and retains the next page',
+    async (kind) => {
+      const dbPath = join(directory, `${kind}.db`)
+      const v2 = kind === 'v2-message'
+      copyFileSync(v2 ? v2Path : v1Path, dbPath)
+      const db = new SyncDatabase(dbPath)
+      const table = v2 ? 'session_message' : kind === 'v1-part' ? 'part' : 'message'
+      db.prepare(`UPDATE ${table} SET data = ?, time_updated = 2 WHERE rowid = 2`).run(
+        JSON.stringify({ text: '😀'.repeat(600_000) })
+      )
+      db.close()
+      const client = new OpenCodeSqliteWorkerClient({ workerFactory: () => new Worker(entry) })
+      try {
+        const args = { dbPath, sessionId: 'session', kind: 'native-page' as const, limit: 2 }
+        const page = await client.readNativeChat(args)
+        if (!page || !('items' in page)) {
+          throw new Error('Expected the bounded native page')
+        }
+        expect(page.items.map((item) => item.rowid)).toEqual([2, 3])
+        expect(page.items[0]?.message.blocks).toEqual([
+          { type: 'text', text: AGENT_SESSION_HOST_STATUS_COPY['history-item-too-large'] }
+        ])
+        const repeat = await client.readNativeChat(args)
+        expect(repeat).toEqual(page)
+        const older = await client.readNativeChat({
+          ...args,
+          beforeMessageRowId: page.beforeMessageRowId ?? undefined
+        })
+        expect(older).toMatchObject({ items: [{ rowid: 1 }], hasMore: false })
+      } finally {
+        client.dispose()
+      }
+    }
+  )
+
   it.each([v1Path, v2Path])(
     'reads native signals and paginated history from %s',
     async (dbPath) => {
