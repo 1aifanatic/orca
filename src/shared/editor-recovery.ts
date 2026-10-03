@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { normalizeExecutionHostId } from './execution-host'
 
+export const EDITOR_RECOVERY_BATCH_RECORD_LIMIT = 64
+// Large cross-thread text messages leave substantial resident allocator memory behind.
+export const EDITOR_RECOVERY_BATCH_TEXT_BYTES = 4 * 1024 * 1024
+
 export const editorRecoveryMetadataSchema = z.object({
   hostId: z.string().refine((value) => normalizeExecutionHostId(value) !== null),
   worktreeId: z.string(),

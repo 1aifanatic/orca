@@ -1,5 +1,9 @@
 import type { AppState } from '@/store/types'
 import type { EditorRecoveryApi, EditorRecoveryChange } from '../../../shared/editor-recovery'
+import {
+  EDITOR_RECOVERY_BATCH_RECORD_LIMIT,
+  EDITOR_RECOVERY_BATCH_TEXT_BYTES
+} from '../../../shared/editor-recovery'
 import { shouldPersistWorkspaceSession } from './workspace-session'
 import {
   registerEditorRecoveryFlush,
@@ -57,6 +61,7 @@ export function createEditorRecoverySubscriber({
     }
     const operation = (async () => {
       while (pending.size > 0) {
+        let batchTextBytes = 0
         const batch: {
           buffer: EditorRecoveryBuffer
           version: number
@@ -81,9 +86,17 @@ export function createEditorRecoverySubscriber({
                     content: buffer.content,
                     state: buffer.state
                   }
+          const textBytes = change.kind === 'put' ? change.content.length * 2 : 0
+          if (batch.length > 0 && batchTextBytes + textBytes > EDITOR_RECOVERY_BATCH_TEXT_BYTES) {
+            break
+          }
           batch.push({ buffer, version: buffer.version, change })
+          batchTextBytes += textBytes
           pending.delete(id)
-          if (batch.length === 64) {
+          if (
+            batch.length === EDITOR_RECOVERY_BATCH_RECORD_LIMIT ||
+            batchTextBytes >= EDITOR_RECOVERY_BATCH_TEXT_BYTES
+          ) {
             break
           }
         }

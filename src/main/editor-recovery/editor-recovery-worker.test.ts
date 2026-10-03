@@ -232,4 +232,46 @@ describe('recovery writer process boundaries', () => {
       await expect(writer.apply([put('still unsaved')])).rejects.toThrow()
     }
   })
+
+  it('migrates large legacy drafts in separate messages with exact text and stable identities', async () => {
+    const f = fixture()
+    const log = join(f.root, 'import-batches.jsonl')
+    const entry = join(f.root, 'observed-worker.cjs')
+    writeFileSync(
+      entry,
+      `const { parentPort } = require('node:worker_threads');
+       const { appendFileSync } = require('node:fs');
+       parentPort.on('message', ({ command }) => {
+         if (command.kind === 'import') appendFileSync(${JSON.stringify(log)},
+           JSON.stringify(command.drafts.map(draft => draft.content.length)) + '\\n');
+       });
+       require(${JSON.stringify(workerPath)});`
+    )
+    const drafts = [
+      'a'.repeat(2 * 1024 * 1024),
+      'b'.repeat(2 * 1024 * 1024),
+      '\uD83D\uDE00'.repeat(1_500_000)
+    ].map((content, index) => ({ metadata: metadata(`/repo/large-${index}.txt`), content }))
+    const writer = client(f.path, entry)
+    await writer.importLegacy(drafts)
+    const imported = await writer.list()
+    expect(imported).toHaveLength(3)
+    expect(
+      readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+    ).toEqual(drafts.map((draft) => [draft.content.length]))
+    await writer.close()
+    const reopened = client(f.path)
+    await reopened.importLegacy(drafts)
+    expect((await reopened.list()).map((draft) => draft.id).sort()).toEqual(
+      imported.map((draft) => draft.id).sort()
+    )
+    for (const draft of drafts) {
+      const recovered = imported.find((item) => item.filePath === draft.metadata.filePath)
+      expect(recovered).toBeDefined()
+      expect((await reopened.read(recovered?.id ?? 'missing'))?.content).toBe(draft.content)
+    }
+  })
 })

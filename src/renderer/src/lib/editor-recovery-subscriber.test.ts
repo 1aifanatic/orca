@@ -200,6 +200,41 @@ describe('buffer checkpoints independent of layout persistence', () => {
     expect(f.changes().at(-1)).toMatchObject({ kind: 'put', content: 'final', expectedRevision: 1 })
   })
 
+  it('splits large drafts without truncating them or losing edits behind an acknowledgement', async () => {
+    const large = 'a'.repeat(2 * 1024 * 1024)
+    const oversized = '\uD83D\uDE00'.repeat((3 * 1024 * 1024) / 2)
+    const f = fixture(
+      ['first', 'second', 'oversized'].map((id) => file({ id, filePath: `/same/${id}.txt` })),
+      { first: large, second: large, oversized }
+    )
+    const blocked = deferred<EditorRecoveryAck[]>()
+    f.apply.mockImplementationOnce(() => blocked.promise)
+    const first = f.subscriber.flush()
+    expect(f.changes()).toHaveLength(1)
+    const firstChange = f.changes()[0]
+    if (!firstChange) {
+      throw new Error('First large checkpoint missing')
+    }
+    useAppStore.getState().setEditorDraft('first', `${large}new first`)
+    useAppStore.getState().setEditorDraft('second', `${large}new second`)
+    const latest = f.subscriber.flush()
+    expect(f.apply).toHaveBeenCalledTimes(1)
+    blocked.resolve([{ id: firstChange.id, revision: 1 }])
+    await Promise.all([first, latest])
+    expect(f.apply.mock.calls.map(([changes]) => changes.length)).toEqual([1, 1, 1, 1])
+    expect(f.changes()).toEqual([
+      expect.objectContaining({ content: large, expectedRevision: 0 }),
+      expect.objectContaining({ content: `${large}new second`, expectedRevision: 0 }),
+      expect.objectContaining({ content: oversized, expectedRevision: 0 }),
+      expect.objectContaining({
+        id: firstChange.id,
+        content: `${large}new first`,
+        expectedRevision: 1
+      })
+    ])
+    expect(f.onError).not.toHaveBeenCalled()
+  })
+
   it('keeps text entered while retirement is pending under a fresh checkpoint', async () => {
     const f = fixture()
     await f.subscriber.flush()

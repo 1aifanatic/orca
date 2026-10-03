@@ -33,7 +33,10 @@ buffers cannot be discarded from this dialog.
 The subscriber schedules work from draft-map identity changes without scanning all
 tabs on every keystroke. Checkpoints inspect buffers, reuse captured metadata,
 write only changed records, coalesce edits behind an in-flight write, and batch at
-most 64 records per transaction. The journal holds the latest text per buffer.
+most 64 records and 4 MiB of estimated UTF-16 draft text per transaction. A draft
+larger than that text budget travels alone without truncation. Legacy imports use
+the same limits. This avoids large cross-thread messages retaining excess resident
+memory. The journal holds the latest text per buffer.
 Active copies retire after a matching successful save; closed copies remain
 available for explicit recovery or discard.
 
@@ -77,9 +80,25 @@ versions, continuous typing, and edits during saves. Hidden-renderer integration
 tests exercise the recovery dialog, complete exports, combined-view editing,
 browser storage, and a hard-killed app followed by an external disk change.
 
-A local macOS arm64 / Node 24 benchmark used 2,000 open tabs, one 2 MiB draft, and
-10,000 draft updates grouped behind 20 forced checkpoints. It ran the production
-subscriber and persistent worker rather than a mocked writer. Scheduling took a
-median 0.36 microseconds per update; checkpoint round trips took a median 3.42 ms
-and a 95th percentile of 4.98 ms. The final committed text matched exactly. These
-numbers measure that local environment, not a latency guarantee across platforms.
+A local macOS arm64 / Node 24.20.0 comparison used 2,000 open-file records and
+10,000 synthetic draft updates grouped behind 20 forced checkpoints. Five fresh
+processes per version ran the production session subscriber, adding the production
+recovery subscriber and SQLite worker in the feature version. With one 2 MiB draft,
+store updates plus persistence scheduling took 2.05 microseconds median without
+recovery and 2.36 with it. Independent committed checkpoints took 2.97 ms median
+and 3.68 ms p95; the baseline has no independent journal to compare.
+
+For ten 2 MiB drafts, settled process RSS after updates was 170.4 MiB without
+recovery and 224.1 MiB with it. The initial implementation's 64-record-only batches
+measured 656.4 MiB: a clone-only control reproduced the high RSS without database
+writes, while splitting the messages removed most of that cost. The text budget
+reduces large-message allocation and retention; it is not a cap on total RAM.
+Committing all ten drafts took 25.03 ms median and 31.98 ms p95, compared with
+24.86 / 28.75 ms before splitting. Every final journal body matched exactly.
+
+RSS includes the worker thread and retained allocator pages; parent-thread JS heap
+alone misses that cost. Parent GC preceded settled samples; worker GC was normal.
+These isolated persistence measurements exclude the renderer and editor painting,
+and do not establish keyboard latency or cross-platform memory guarantees. A single
+oversized draft, restore responses, and compatibility-session snapshots can still
+carry larger payloads.

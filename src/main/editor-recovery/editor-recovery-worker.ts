@@ -8,6 +8,8 @@ import {
   type EditorRecoveryCommand
 } from './editor-recovery-protocol'
 import {
+  EDITOR_RECOVERY_BATCH_RECORD_LIMIT,
+  EDITOR_RECOVERY_BATCH_TEXT_BYTES,
   editorRecoveryAckSchema,
   editorRecoveryDraftSchema,
   editorRecoveryEntrySchema,
@@ -102,7 +104,23 @@ export class EditorRecoveryWorker {
     return acknowledgements
   }
   async importLegacy(drafts: { metadata: EditorRecoveryMetadata; content: string }[]) {
-    await this.dispatch({ kind: 'import', drafts })
+    let batch: typeof drafts = []
+    let textBytes = 0
+    for (const draft of drafts) {
+      const draftBytes = draft.content.length * 2
+      if (
+        batch.length > 0 &&
+        (batch.length === EDITOR_RECOVERY_BATCH_RECORD_LIMIT ||
+          textBytes + draftBytes > EDITOR_RECOVERY_BATCH_TEXT_BYTES)
+      ) {
+        await this.dispatch({ kind: 'import', drafts: batch })
+        batch = []
+        textBytes = 0
+      }
+      batch.push(draft)
+      textBytes += draftBytes
+    }
+    await this.dispatch({ kind: 'import', drafts: batch })
   }
   async restore(resources: EditorRecoveryMetadata[], checkpointIds: string[]) {
     return z
