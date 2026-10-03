@@ -5686,6 +5686,7 @@
           "74522ee457": "rename failed",
           "02e19349f4": "Auto-rename failed: view error",
           "691ccfd622": "Deleting…",
+          "deleteFailed": "Delete failed",
           "35ccfe2475": "Project {{value0}}",
           "1d66d84f0b": "string",
           "57eaa61b55": "Hide child workspaces",
@@ -18516,6 +18517,10 @@
     }
   },
   "sourceControl": {
+    "discard": {
+      "restoreStagedVersionDescription": "This will restore the last staged version and discard the deletion. This cannot be undone.",
+      "unstagedChangesDescription": "This will revert the unstaged changes to this file. This cannot be undone."
+    },
     "unlinkedPr": {
       "status": "PR #{{number}} unlinked"
     }
