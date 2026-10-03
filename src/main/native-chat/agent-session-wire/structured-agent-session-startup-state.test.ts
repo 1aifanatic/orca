@@ -487,7 +487,7 @@ async function crashWithLiveOwner(
   rig: RestTestRig,
   ids: readonly string[]
 ): Promise<ReturnType<typeof vi.fn>> {
-  const leases = []
+  const leases: AgentSessionRecord['lease'][] = []
   for (const [index, sessionId] of ids.entries()) {
     const listed = index === 0 && ids.length > 1
     await restTestChat(rig, sessionId, { message: `asked ${sessionId}`, listed })
