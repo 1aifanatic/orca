@@ -85,7 +85,7 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
   onDismiss,
   onActivate,
   now,
-  isUnvisited = false,
+  isUnvisited,
   stateDotSize = 'md',
   hideIdentityIcon = false,
   hideExpand = false,
@@ -171,7 +171,9 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
       : [formatAgentTypeLabel(agent.agentType), model].filter(Boolean).join(' · ')
   // Why: a stop or a failure is a terminal outcome, so surface it in the leading state dot; a
   // failure does so even while subagents still run.
-  const dotState: AgentDotState = agentRowDisplayDotState(agent)
+  // A crash-cut turn reads failed only until the user visits it, like the row's bold; a caller
+  // that does not say reads unvisited.
+  const dotState: AgentDotState = agentRowDisplayDotState(agent, { seen: isUnvisited === false })
   const dotTooltipLabel = stateDotTooltipLabel(agent, dotState, now)
   // Why: the elapsed gap is the whole content of an `unverifiable` row, so it rides the
   // row's own timestamp slot rather than hiding in a hover tooltip.

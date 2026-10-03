@@ -114,7 +114,7 @@ describe('agentMainAgentVerdict', () => {
     expect(agentVerdictDisplayMark({ state: 'done', interrupted: true })).toBe('interrupted')
   })
 
-  it('reads a crash-cut turn as failed and an unproven end as unconfirmed, neither a stop', () => {
+  it('reads an unseen crash-cut turn as failed and an unproven end as unconfirmed, neither a stop', () => {
     for (const [outcome, mark] of [
       ['interruption', 'failed'],
       ['unconfirmed', 'unconfirmed']
@@ -124,6 +124,24 @@ describe('agentMainAgentVerdict', () => {
       expect(agentTurnEndedUncleanly(row)).toBe(true)
       // Nobody asked for it, so attention ranks it as news, like a completion or a failure.
       expect(agentTurnEndedOnPurpose(row)).toBe(false)
+    }
+  })
+
+  // Attention only while unseen: once read, a crash-cut turn reads like a finished one, and its
+  // notice row in the chat is what still says it stopped.
+  it('drops the failed mark from a crash-cut turn the user has seen, and from nothing else', () => {
+    for (const [outcome, unseen, seen] of [
+      ['interruption', 'failed', null],
+      ['failure', 'failed', 'failed'],
+      ['cancellation', 'interrupted', 'interrupted'],
+      ['superseded', 'interrupted', 'interrupted'],
+      ['unconfirmed', 'unconfirmed', 'unconfirmed'],
+      ['success', null, null]
+    ] as const) {
+      const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
+      expect(agentVerdictDisplayMark(row), outcome).toBe(unseen)
+      expect(agentVerdictDisplayMark(row, { seen: false }), outcome).toBe(unseen)
+      expect(agentVerdictDisplayMark(row, { seen: true }), outcome).toBe(seen)
     }
   })
 

@@ -326,6 +326,38 @@ describe('DashboardAgentRow', () => {
     expect(markup).not.toContain('lucide-circle-check')
   })
 
+  // Attention only while unseen: a visited crash-cut row reads like a finished one.
+  it('renders a visited crash-cut row as done, and a visited failure still as failed', () => {
+    const visited = (outcome: 'interruption' | 'failure') =>
+      renderToStaticMarkup(
+        <TooltipProvider>
+          <DashboardAgentRow
+            agent={makeAgent(
+              { state: 'done', startedAt: 1_000 },
+              {
+                state: 'done',
+                prompt: 'Give me a quick update',
+                updatedAt: 2_000,
+                stateStartedAt: 2_000,
+                stateHistory: [],
+                mainAgent: { state: 'done', outcome, stateStartedAt: 2_000 }
+              }
+            )}
+            onDismiss={vi.fn()}
+            onActivate={vi.fn()}
+            now={NOW}
+            isUnvisited={false}
+            hideIdentityIcon
+            hideExpand
+          />
+        </TooltipProvider>
+      )
+
+    expect(visited('interruption')).toContain('aria-label="Done"')
+    expect(visited('interruption')).not.toContain('aria-label="Failed"')
+    expect(visited('failure')).toContain('aria-label="Failed"')
+  })
+
   it.each([
     ['recorded', { mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 2_000 } }],
     ["an old host's flag", { interrupted: true }]

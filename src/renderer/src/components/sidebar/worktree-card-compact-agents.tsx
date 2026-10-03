@@ -9,7 +9,8 @@ import {
   buildSummaryAgentGroups,
   selectSummaryGroupIconAgents,
   summarizeAgentIdentities,
-  summarizeAgents
+  summarizeAgents,
+  type AgentUnvisitedByPaneKey
 } from './worktree-card-agent-summary'
 import { translate } from '@/i18n/i18n'
 
@@ -25,6 +26,7 @@ function stopActivationKeyPropagation(e: React.KeyboardEvent): void {
 
 type CompactAgentSummaryButtonProps = {
   agents: DashboardAgentRowData[]
+  unvisitedByPaneKey?: AgentUnvisitedByPaneKey
   subjectLabel: string
   expanded: boolean
   onToggle: () => void
@@ -77,17 +79,18 @@ export function CompactAgentExpansion({
 
 export function CompactAgentSummaryButton({
   agents,
+  unvisitedByPaneKey,
   subjectLabel,
   expanded,
   onToggle
 }: CompactAgentSummaryButtonProps): React.JSX.Element {
-  const summary = summarizeAgents(agents, subjectLabel)
-  const groups = buildSummaryAgentGroups(agents)
+  const summary = summarizeAgents(agents, subjectLabel, unvisitedByPaneKey)
+  const groups = buildSummaryAgentGroups(agents, unvisitedByPaneKey)
   const visibleGroups = groups.slice(0, 3)
   const hiddenGroupAgentCount = groups
     .slice(visibleGroups.length)
     .reduce((count, group) => count + group.agents.length, 0)
-  const agentIdentitySummary = summarizeAgentIdentities(agents)
+  const agentIdentitySummary = summarizeAgentIdentities(agents, unvisitedByPaneKey)
   const stopPointerPropagation = useCallback((e: React.SyntheticEvent) => {
     e.stopPropagation()
   }, [])

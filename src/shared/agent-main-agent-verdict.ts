@@ -46,20 +46,29 @@ export function agentMainAgentVerdict(row: AgentMainAgentVerdictSource): AgentTu
   return row.state === 'done' && row.interrupted === true ? 'cancellation' : null
 }
 
+/** What a display knows of the user having seen the agent's current turn. */
+export type AgentVerdictViewing = {
+  /** The user acknowledged this turn (the rule that un-bolds a sidebar row). Absent reads unseen. */
+  seen?: boolean
+}
+
 /**
  * What the verdict marks on the agent's own display. A fault, whether the turn failed or something
  * other than the user cut it short, reads failed and outranks every combined state: it is news the
- * user must see even while subagents still run. A user's Stop, or a turn a newer request replaced,
- * reads interrupted, and an unproven end unconfirmed, only on a row that is itself done, so live
- * child work still reads working.
+ * user must see even while subagents still run. A turn a crash or restart cut off is news only
+ * until seen; after that it reads like a finished turn, since the chat's notice row says why. A
+ * user's Stop, or a turn a newer request replaced, reads interrupted, and an unproven end
+ * unconfirmed, only on a row that is itself done, so live child work still reads working.
  */
 export function agentVerdictDisplayMark(
-  row: AgentMainAgentVerdictSource
+  row: AgentMainAgentVerdictSource,
+  viewing: AgentVerdictViewing = {}
 ): 'failed' | 'interrupted' | 'unconfirmed' | null {
   switch (agentMainAgentVerdict(row)) {
     case 'failure':
-    case 'interruption':
       return 'failed'
+    case 'interruption':
+      return viewing.seen ? null : 'failed'
     case 'cancellation':
     case 'superseded':
       return row.state === 'done' ? 'interrupted' : null

@@ -59,6 +59,8 @@ export type AgentActivityInput = Pick<
 > & {
   tabsByWorktree: AgentActivityTabsByWorktree
   runtimeAgentOrchestrationByPaneKey?: AppState['runtimeAgentOrchestrationByPaneKey']
+  /** Absent reads every turn unseen. */
+  acknowledgedAgentsByPaneKey?: AppState['acknowledgedAgentsByPaneKey']
 }
 
 type AgentActivityCache = {
@@ -67,6 +69,7 @@ type AgentActivityCache = {
   migrationUnsupportedByPtyId: AppState['migrationUnsupportedByPtyId']
   retainedAgentsByPaneKey: AppState['retainedAgentsByPaneKey']
   runtimeAgentOrchestrationByPaneKey: AppState['runtimeAgentOrchestrationByPaneKey'] | undefined
+  acknowledgedAgentsByPaneKey: AppState['acknowledgedAgentsByPaneKey'] | undefined
   summaries: Map<string, WorktreeAgentActivitySummary>
 }
 
@@ -89,7 +92,8 @@ function getWorktreeAgentActivitySummaries(
     agentActivityCache.agentStatusEpoch === state.agentStatusEpoch &&
     agentActivityCache.migrationUnsupportedByPtyId === state.migrationUnsupportedByPtyId &&
     agentActivityCache.retainedAgentsByPaneKey === state.retainedAgentsByPaneKey &&
-    agentActivityCache.runtimeAgentOrchestrationByPaneKey === runtimeAgentOrchestrationByPaneKey
+    agentActivityCache.runtimeAgentOrchestrationByPaneKey === runtimeAgentOrchestrationByPaneKey &&
+    agentActivityCache.acknowledgedAgentsByPaneKey === state.acknowledgedAgentsByPaneKey
   ) {
     return agentActivityCache.summaries
   }
@@ -113,6 +117,10 @@ function getWorktreeAgentActivitySummaries(
     }
     return summary
   }
+
+  // Same rule as WorktreeCardAgents' unvisitedByPaneKey, so the dot and the row's bold agree.
+  const seen = (paneKey: string, stateStartedAt: number): boolean =>
+    (state.acknowledgedAgentsByPaneKey?.[paneKey] ?? 0) >= stateStartedAt
 
   const now = Date.now()
   for (const [paneKey, entry] of Object.entries(state.agentStatusByPaneKey)) {
@@ -144,7 +152,7 @@ function getWorktreeAgentActivitySummaries(
     if (entry.state === 'done') {
       addParentPaneId(summary, orchestration, worktreeId, tabIdToWorktreeId)
     }
-    applyAgentPaneActivityFlags(summary, entry)
+    applyAgentPaneActivityFlags(summary, entry, { seen: seen(paneKey, entry.stateStartedAt) })
   }
 
   for (const unsupported of Object.values(state.migrationUnsupportedByPtyId ?? {})) {
@@ -158,7 +166,8 @@ function getWorktreeAgentActivitySummaries(
   for (const retained of Object.values(state.retainedAgentsByPaneKey ?? {})) {
     const summary = summaryForWorktree(retained.worktreeId)
     // Why: a failed agent is retained so its failure stays visible, not so it reads done.
-    if (agentVerdictDisplayMark(retained.entry) === 'failed') {
+    const retainedSeen = seen(retained.entry.paneKey, retained.entry.stateStartedAt)
+    if (agentVerdictDisplayMark(retained.entry, { seen: retainedSeen }) === 'failed') {
       summary.hasRetainedFailed = true
     } else {
       summary.hasRetainedDone = true
@@ -192,6 +201,7 @@ function getWorktreeAgentActivitySummaries(
     migrationUnsupportedByPtyId: state.migrationUnsupportedByPtyId,
     retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
     runtimeAgentOrchestrationByPaneKey,
+    acknowledgedAgentsByPaneKey: state.acknowledgedAgentsByPaneKey,
     summaries
   }
   return summaries

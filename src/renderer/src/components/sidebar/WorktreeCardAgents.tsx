@@ -378,6 +378,7 @@ const WorktreeCardAgentsBody = React.memo(function WorktreeCardAgentsBody({
           >
             <CompactAgentSummaryButton
               agents={summaryAgents}
+              unvisitedByPaneKey={unvisitedByPaneKey}
               subjectLabel={subjectLabel}
               expanded={compactRootListExpanded}
               onToggle={() => {

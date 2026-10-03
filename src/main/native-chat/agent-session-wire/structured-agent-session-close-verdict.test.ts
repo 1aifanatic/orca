@@ -153,9 +153,10 @@ describe('a turn cut short by closing its provider', () => {
     const { turn, settled } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
+    // News for the sidebar, but the turn itself reads like a finished one.
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'failedAfter' })
+    ).toMatchObject({ key: 'workedFor' })
   })
 
   it("records the user's close on a turn no adapter settled, through the host's fallback", async () => {
@@ -250,7 +251,7 @@ describe('a turn cut short by closing its provider', () => {
     const { settled } = await settledTurn()
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'failedAfter' })
+    ).toMatchObject({ key: 'workedFor' })
   })
 
   it("keeps the user's cancellation when a close aborts after the provider settled, then retries", async () => {

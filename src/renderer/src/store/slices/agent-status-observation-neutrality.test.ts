@@ -118,7 +118,9 @@ describe('agent status observation is behavior-neutral', () => {
       expect(stampedRows.map((row) => ({ ...row, entry: withoutObservation(row.entry) }))).toEqual(
         unstampedRows.map((row) => ({ ...row, entry: withoutObservation(row.entry) }))
       )
-      expect(stampedRows.map(getAgentDotState)).toEqual(unstampedRows.map(getAgentDotState))
+      expect(stampedRows.map((row) => getAgentDotState(row))).toEqual(
+        unstampedRows.map((row) => getAgentDotState(row))
+      )
 
       expect(resolveAttention([{ kind: 'hook', entry: stamped, hasLivePty: false }], at)).toEqual(
         resolveAttention([{ kind: 'hook', entry: unstamped, hasLivePty: false }], at)

@@ -15,21 +15,24 @@ import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timesta
 import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
+import type { AgentVerdictViewing } from '../../../../shared/agent-main-agent-verdict'
 
 function getCompactAgentPrimary(
   agent: DashboardAgentRowData,
-  conversationName: string | null
+  conversationName: string | null,
+  viewing: AgentVerdictViewing
 ): string {
   const prompt = conversationName ?? getAgentRowPrimaryText(agent.entry)
-  return prompt || agentStateLabel(getAgentDotState(agent))
+  return prompt || agentStateLabel(getAgentDotState(agent, viewing))
 }
 
 export function getCompactAgentSecondary(
   agent: DashboardAgentRowData,
   now: number,
-  lastAssistantMessageOverride?: string
+  lastAssistantMessageOverride?: string,
+  viewing?: AgentVerdictViewing
 ): string {
-  const verdictLine = agentVerdictStatusLine(agent.entry)
+  const verdictLine = agentVerdictStatusLine(agent.entry, viewing)
   if (verdictLine) {
     return verdictLine
   }
@@ -98,7 +101,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   isFocusedPane = false,
   hideIdentityIcon = false,
   cacheTimerActive = true,
-  isUnvisited = false
+  isUnvisited
 }: CompactAgentRowProps) {
   const hasChildDisclosure =
     typeof childAgentCount === 'number' &&
@@ -108,9 +111,12 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   // agentType, which is not an iconable agent and would render the unknown
   // "?" glyph. Nesting under the parent already conveys identity.
   const hideIcon = hideIdentityIcon || agent.rowSource === 'subagent'
-  const dotState = getAgentDotState(agent)
+  // A crash-cut turn reads failed only until the user visits it, like the row's bold; a caller
+  // that does not say reads unvisited.
+  const viewing = { seen: isUnvisited === false }
+  const dotState = getAgentDotState(agent, viewing)
   const conversationName = useAgentRowConversationName(agent)
-  const primary = getCompactAgentPrimary(agent, conversationName)
+  const primary = getCompactAgentPrimary(agent, conversationName, viewing)
   const isLineageChild = agent.lineage?.depth === 1
   // Keep a live row's last assistant line stable while status/tool payloads
   // briefly omit the hook-only field between updates. Committed in an effect so a
@@ -131,7 +137,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   const held = heldMessageRef.current
   const stableMessage =
     turnHoldable && !currentMessage && held?.turn === turn ? held.message : undefined
-  const secondary = getCompactAgentSecondary(agent, now, stableMessage)
+  const secondary = getCompactAgentSecondary(agent, now, stableMessage, viewing)
   // Why: sidebar truncation must preserve the passive-vs-active distinction.
   const leadingText = dotState === 'monitoring' ? secondary : primary
   const trailingText =

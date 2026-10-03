@@ -232,6 +232,78 @@ describe('selectWorktreeAgentActivitySummary', () => {
     expect(summary).toMatchObject(flags)
   })
 
+  // The card's dot reads red only until the user has seen the chat, by the same acknowledgement
+  // that un-bolds its agent row; then the crash-cut turn reads done, like a finished one.
+  it.each([
+    ['unseen', 999, { hasFailed: true, hasLiveDone: false }],
+    ['seen', 1_000, { hasFailed: false, hasLiveDone: true }]
+  ] as const)('reads a %s crash-cut turn by its acknowledgement', (_label, ackAt, flags) => {
+    vi.spyOn(Date, 'now').mockReturnValue(2_000)
+    const paneKey = makePaneKey('tab-1', LEAF_ID)
+    const failedKey = makePaneKey('tab-2', LEAF_ID)
+    const state: AgentActivityInput = {
+      tabsByWorktree: {
+        'repo::/wt-1': [makeTab('tab-1', 'repo::/wt-1')],
+        'repo::/wt-2': [makeTab('tab-2', 'repo::/wt-2')]
+      },
+      agentStatusEpoch: 2,
+      agentStatusByPaneKey: {
+        [paneKey]: makeAgentStatusEntry({
+          paneKey,
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 }
+        }),
+        [failedKey]: makeAgentStatusEntry({
+          paneKey: failedKey,
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: 1_000 }
+        })
+      },
+      migrationUnsupportedByPtyId: {},
+      runtimeAgentOrchestrationByPaneKey: {},
+      retainedAgentsByPaneKey: {},
+      acknowledgedAgentsByPaneKey: { [paneKey]: ackAt, [failedKey]: ackAt }
+    }
+
+    expect(selectWorktreeAgentActivitySummary(state, 'repo::/wt-1')).toMatchObject(flags)
+    // A failure stays news after it is seen.
+    expect(selectWorktreeAgentActivitySummary(state, 'repo::/wt-2')).toMatchObject({
+      hasFailed: true
+    })
+  })
+
+  it('reads a departed crash-cut agent as done once seen, and failed before', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(2_000)
+    const retained = (ackAt: number) =>
+      selectWorktreeAgentActivitySummary(
+        {
+          tabsByWorktree: { 'repo::/wt-1': [] },
+          agentStatusEpoch: 3,
+          agentStatusByPaneKey: {},
+          migrationUnsupportedByPtyId: {},
+          runtimeAgentOrchestrationByPaneKey: {},
+          retainedAgentsByPaneKey: {
+            'tab-9:0': {
+              entry: makeAgentStatusEntry({
+                paneKey: 'tab-9:0',
+                state: 'done',
+                mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 }
+              }),
+              worktreeId: 'repo::/wt-1',
+              tab: makeTab('tab-9', 'repo::/wt-1'),
+              agentType: 'claude',
+              startedAt: 1_000
+            }
+          },
+          acknowledgedAgentsByPaneKey: { 'tab-9:0': ackAt }
+        },
+        'repo::/wt-1'
+      )
+
+    expect(retained(0)).toMatchObject({ hasRetainedFailed: true, hasRetainedDone: false })
+    expect(retained(1_500)).toMatchObject({ hasRetainedFailed: false, hasRetainedDone: true })
+  })
+
   it('separates a failed outcome from clean completion and from a cancellation', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000)
     const paneKey = makePaneKey('tab-1', LEAF_ID)
