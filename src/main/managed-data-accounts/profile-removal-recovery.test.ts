@@ -34,8 +34,10 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-function interruptedRemoval(provider: ManagedDataAccountProvider = 'devin') {
-  const id = randomUUID()
+function interruptedRemoval(
+  provider: ManagedDataAccountProvider = 'devin',
+  id: string = randomUUID()
+) {
   const providerRoot = join(storage, provider)
   const directory = join(providerRoot, id)
   const credentialsPath = join(directory, 'data', 'test-credentials')
@@ -191,6 +193,73 @@ describe('interrupted managed account removal recovery', () => {
       'unregistered-is-not-removal-evidence'
     )
     expect(restarted.list('devin')).toEqual(fixture.before)
+  })
+
+  it.each(['lowercase', 'uppercase'] as const)(
+    'preserves original credentials registered with a %s UUID spelling',
+    async (spelling) => {
+      const lowerId = randomUUID()
+      const registeredId = spelling === 'lowercase' ? lowerId : lowerId.toUpperCase()
+      const markerId = spelling === 'lowercase' ? lowerId.toUpperCase() : lowerId
+      const fixture = interruptedRemoval('devin', markerId)
+      const registered = {
+        accounts: [{ ...fixture.before.accounts[0], id: registeredId }],
+        activeAccountId: registeredId
+      }
+      expect(writeSecureFile(fixture.metadataPath, JSON.stringify(registered))).toBe(true)
+      const marker = readFileSync(fixture.rollbackPath)
+      const restarted = new ManagedDataAccountService(storage)
+      await finishStartup(restarted)
+      expect(readFileSync(fixture.credentialsPath, 'utf8')).toBe('private-test-only-credential')
+      expect(readFileSync(fixture.rollbackPath)).toEqual(marker)
+      await expect(restarted.remove('devin', markerId)).rejects.toThrow(
+        'Managed account not found.'
+      )
+      expect(readFileSync(fixture.credentialsPath, 'utf8')).toBe('private-test-only-credential')
+      expect(restarted.list('devin').accounts).toEqual(registered.accounts)
+    }
+  )
+
+  it.each(['lowercase', 'uppercase'] as const)(
+    'preserves a quarantine registered with a %s UUID spelling',
+    async (spelling) => {
+      const lowerId = randomUUID()
+      const registeredId = spelling === 'lowercase' ? lowerId : lowerId.toUpperCase()
+      const markerId = spelling === 'lowercase' ? lowerId.toUpperCase() : lowerId
+      const fixture = interruptedRemoval('devin', markerId)
+      const registered = {
+        accounts: [{ ...fixture.before.accounts[0], id: registeredId }],
+        activeAccountId: registeredId
+      }
+      expect(writeSecureFile(fixture.metadataPath, JSON.stringify(registered))).toBe(true)
+      const pendingDirectory = join(fixture.providerRoot, '.pending-delete', markerId)
+      const pendingCredentials = join(pendingDirectory, 'data', 'test-credentials')
+      mkdirSync(join(fixture.providerRoot, '.pending-delete'), { recursive: true })
+      fileSystem.renameSync(fixture.directory, pendingDirectory)
+      const marker = readFileSync(fixture.rollbackPath)
+      const restarted = new ManagedDataAccountService(storage)
+      await finishStartup(restarted)
+      expect(readFileSync(pendingCredentials, 'utf8')).toBe('private-test-only-credential')
+      expect(readFileSync(fixture.rollbackPath)).toEqual(marker)
+      await expect(restarted.remove('devin', markerId)).rejects.toThrow(
+        'Managed account not found.'
+      )
+      expect(readFileSync(pendingCredentials, 'utf8')).toBe('private-test-only-credential')
+      expect(restarted.list('devin').accounts).toEqual(registered.accounts)
+    }
+  )
+
+  it('recovers an unregistered profile when its marker contains another UUID spelling', async () => {
+    const fixture = interruptedRemoval('devin', randomUUID().toUpperCase())
+    const before = {
+      accounts: [{ ...fixture.before.accounts[0], id: fixture.id.toLowerCase() }],
+      activeAccountId: fixture.id.toLowerCase()
+    }
+    expect(writeSecureFile(fixture.rollbackPath, JSON.stringify(before))).toBe(true)
+    const restarted = new ManagedDataAccountService(storage)
+    await finishStartup(restarted)
+    expect(existsSync(fixture.directory)).toBe(false)
+    expect(existsSync(fixture.rollbackPath)).toBe(false)
   })
 
   it.each(['invalid JSON', 'invalid state', 'different id', 'directory', 'missing marker'])(

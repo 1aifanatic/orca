@@ -32,6 +32,9 @@ export class ManagedDataAccountProfileRemoval {
     const metadataPath = join(this.root, provider, 'accounts.json')
     const rollbackPath = `${metadataPath}.${accountId}.rollback`
     if (!state.accounts.some((account) => account.id === accountId)) {
+      if (state.accounts.some((account) => account.id.toLowerCase() === accountId.toLowerCase())) {
+        throw new Error('Managed account not found.')
+      }
       if (existsSync(directory)) {
         if (!this.hasRemovalBackup(rollbackPath, accountId)) {
           throw new Error('Managed account not found.')
@@ -104,7 +107,7 @@ export class ManagedDataAccountProfileRemoval {
     }
     try {
       const backup = this.parseState(readFileSync(rollbackPath, 'utf8'))
-      return backup.accounts.some((account) => account.id === accountId)
+      return backup.accounts.some((account) => account.id.toLowerCase() === accountId.toLowerCase())
     } catch {
       return false
     }
@@ -118,7 +121,7 @@ export class ManagedDataAccountProfileRemoval {
         !entry.isFile() ||
         !accountId ||
         !z.uuid().safeParse(accountId).success ||
-        registered.has(accountId)
+        registered.has(accountId.toLowerCase())
       ) {
         continue
       }
@@ -166,7 +169,9 @@ export class ManagedDataAccountProfileRemoval {
     }
     try {
       this.assertOwned(providerRoot)
-      await this.retryBackups(providerRoot, registered)
+      // UUID case variants may name the same directory.
+      const registeredIds = new Set([...registered].map((id) => id.toLowerCase()))
+      await this.retryBackups(providerRoot, registeredIds)
       const pendingRoot = join(providerRoot, '.pending-delete')
       if (!existsSync(pendingRoot)) {
         return
@@ -177,7 +182,7 @@ export class ManagedDataAccountProfileRemoval {
         if (
           !entry.isDirectory() ||
           !z.uuid().safeParse(entry.name).success ||
-          registered.has(entry.name)
+          registeredIds.has(entry.name.toLowerCase())
         ) {
           continue
         }
