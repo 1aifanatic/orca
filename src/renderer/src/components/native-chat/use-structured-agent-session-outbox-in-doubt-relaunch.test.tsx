@@ -30,10 +30,12 @@ const LOCAL_TARGET = { kind: 'local' } as const
 
 type SendRequest = { envelope?: { clientOperationId?: string } }
 
+function requestId(params: SendRequest | undefined): string {
+  return String(params?.envelope?.clientOperationId)
+}
+
 function sentIds(): string[] {
-  return mocks.call.mock.calls.map((call) =>
-    String((call[2] as SendRequest | undefined)?.envelope?.clientOperationId)
-  )
+  return mocks.call.mock.calls.map((call) => requestId(call[2]))
 }
 
 function saved(
@@ -98,7 +100,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     localStorage.clear()
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY])
     mocks.call.mockImplementation((_target, _method, params: SendRequest) =>
-      Promise.resolve(accepted(String(params.envelope?.clientOperationId)))
+      Promise.resolve(accepted(requestId(params)))
     )
   })
 
