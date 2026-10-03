@@ -6,6 +6,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as JournalSessionStateModule from '../agent-session-journal/journal-session-state'
+import { JOURNAL_SESSION_STATUS_RULES } from '../agent-session-journal/journal-session-state'
 import type * as StatusBackfillModule from '../agent-session-journal/journal-session-status-backfill'
 import type * as JournalRecoveryModule from './agent-session-journal-recovery'
 import type * as PerSessionImportModule from '../agent-session-journal/journal-per-session-import'
@@ -558,4 +559,69 @@ describe('listed chats with no stored status after the upgrade', () => {
     expect(answeredAt.commits).toBeLessThan(work.commits)
     expect(ids.every((sessionId) => readTestJournalSessionStatus(rig.root, sessionId))).toBe(true)
   }, 120_000)
+})
+
+describe('a stored status derived by other rules', () => {
+  /** The chat's row as a build with other derivation rules left it. */
+  function deriveByOtherRules(rig: RestTestRig, sessionId: string, lifecycle = 'idle'): void {
+    openTestJournalHostDatabase(rig.root)
+      .db.prepare(
+        `UPDATE journal_session_state SET rules_version = ?, lifecycle = ?,
+          summary_json = '{"status":"idle","latestPrompt":"by other rules"}' WHERE session_id = ?`
+      )
+      .run(JOURNAL_SESSION_STATUS_RULES - 1, lifecycle, sessionId)
+  }
+
+  const rulesOf = (rig: RestTestRig, sessionId: string) =>
+    openTestJournalHostDatabase(rig.root)
+      .db.prepare('SELECT rules_version FROM journal_session_state WHERE session_id = ?')
+      .get(sessionId)?.rules_version
+
+  it('is derived again for a listed chat exactly as a missing row is, and its old row is never shown', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-kept', { message: 'asked session-kept' })
+    await restTestChat(rig, 'session-other-rules', { message: 'asked session-other-rules' })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    deriveByOtherRules(rig, 'session-other-rules')
+    await rig.boot()
+
+    const background = await startup(rig)
+
+    // The rowless path: one fold, one batched write, no open.
+    expect(work.folded).toEqual(['session-other-rules'])
+    expect(work.commits).toBe(1)
+    expect(restTestOpens(rig, 'session-other-rules')).toBe(0)
+    expect(background).toEqual([])
+    expect(rulesOf(rig, 'session-other-rules')).toBe(JOURNAL_SESSION_STATUS_RULES)
+    expect(latestRestTestStatus(rig, 'session-other-rules')).toMatchObject({
+      status: 'idle',
+      latestPrompt: 'asked session-other-rules'
+    })
+  })
+
+  it('is left alone for a chat with no tab until it opens, and never selects it to settle', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-closed', { message: 'asked session-closed', listed: false })
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    // By other rules it would be owed: this build does not trust that.
+    deriveByOtherRules(rig, 'session-closed', 'running')
+    await rig.boot()
+
+    await startup(rig)
+
+    expect(work.folded).toEqual([])
+    expect(restTestOpens(rig, 'session-closed')).toBe(0)
+    expect(rulesOf(rig, 'session-closed')).toBe(JOURNAL_SESSION_STATUS_RULES - 1)
+    expect(latestRestTestStatus(rig, 'session-closed')).toBeUndefined()
+
+    // Its open writes the row by these rules.
+    await rig.host.history({ sessionId: 'session-closed', direction: 'tail' })
+    expect(rulesOf(rig, 'session-closed')).toBe(JOURNAL_SESSION_STATUS_RULES)
+    expect(readTestJournalSessionStatus(rig.root, 'session-closed')).toMatchObject({
+      lifecycle: 'idle',
+      summary: { latestPrompt: 'asked session-closed' }
+    })
+  })
 })

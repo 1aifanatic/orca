@@ -8,8 +8,9 @@
 // and seeds every other chat's status from them.
 //
 // The table arrives with schema version 5, so a build older than that opens the database read-only
-// and never writes a journal row without its status. Rows carry no rules version: a change to what
-// the derivation or the selection reads needs a migration that recreates the table.
+// and never writes a journal row without its status. Each row carries the rules it was derived by:
+// a row derived by other rules reads as missing, so it is derived again exactly as a chat with no
+// row is (a listed chat before the listing answers, any other when it opens).
 
 import type Database from '../../sqlite/sync-database'
 import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'
@@ -20,6 +21,11 @@ import {
 import { journalSettlementFacts } from './journal-open-settlement-plan'
 import { replayJournal } from './journal-open'
 import { renderJournalState, type JournalReducerState } from './journal-reducer'
+
+/** What the stored status is derived by: the derivation below and the shared projection it reads.
+ *  Bump it with any change to what either produces for the same journal; the corpus digest test
+ *  fails until it is bumped. */
+export const JOURNAL_SESSION_STATUS_RULES = 1
 
 /** Work a gone process can have left: running work, a waiting prompt, unanswered or queued sends,
  *  or live child work. Startup settles exactly these chats. */
@@ -38,7 +44,8 @@ CREATE TABLE journal_session_state (
   queued_sends      INTEGER NOT NULL,
   live_child_work   INTEGER NOT NULL,
   summary_json      TEXT    NOT NULL,
-  last_activity_at  INTEGER NOT NULL
+  last_activity_at  INTEGER NOT NULL,
+  rules_version     INTEGER NOT NULL
 );
 CREATE INDEX journal_session_state_unsettled ON journal_session_state (session_id)
   WHERE ${UNSETTLED};
@@ -103,13 +110,13 @@ export function isUnsettledJournalSessionStatus(status: JournalSessionStatus): b
 }
 
 const UPSERT_STATUS = `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id,
-  handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
   lifecycle = excluded.lifecycle, active_turn_id = excluded.active_turn_id,
   handed_over_sends = excluded.handed_over_sends, queued_sends = excluded.queued_sends,
   live_child_work = excluded.live_child_work, summary_json = excluded.summary_json,
-  last_activity_at = excluded.last_activity_at`
+  last_activity_at = excluded.last_activity_at, rules_version = excluded.rules_version`
 const STATUS_COLUMNS = `st.lifecycle AS lifecycle, st.active_turn_id AS active_turn_id,
   st.handed_over_sends AS handed_over_sends, st.queued_sends AS queued_sends,
   st.live_child_work AS live_child_work, st.summary_json AS summary_json,
@@ -129,7 +136,8 @@ export function writeJournalSessionStatus(
     status.queuedSends,
     status.liveChildWork ? 1 : 0,
     JSON.stringify(status.summary),
-    status.lastActivityAt
+    status.lastActivityAt,
+    JOURNAL_SESSION_STATUS_RULES
   )
 }
 
@@ -150,15 +158,18 @@ export function deleteJournalSessionStatus(db: Database.Database, sessionId: str
   db.prepare('DELETE FROM journal_session_state WHERE session_id = ?').run(sessionId)
 }
 
-/** Whether the chat has a status row: an open writes one for a chat an older build last wrote. */
+/** Whether the chat has a status row by these rules: an open writes one for a chat an older build
+ *  last wrote, or wrote by other rules. */
 export function hasJournalSessionStatus(db: Database.Database, sessionId: string): boolean {
   return (
-    db.prepare('SELECT 1 FROM journal_session_state WHERE session_id = ?').get(sessionId) !==
-    undefined
+    db
+      .prepare('SELECT 1 FROM journal_session_state WHERE session_id = ? AND rules_version = ?')
+      .get(sessionId, JOURNAL_SESSION_STATUS_RULES) !== undefined
   )
 }
 
-/** A chat's stored status for the startup seed: null when the chat has a journal but no row. */
+/** A chat's stored status for the startup seed: null when the chat has a journal but no row by
+ *  these rules. */
 export type StoredJournalSessionStatus = {
   sessionId: string
   status: JournalSessionStatus | null
@@ -178,10 +189,11 @@ export function readJournalSessionStatuses(
     const rows = db
       .prepare(
         `SELECT s.session_id AS session_id, ${STATUS_COLUMNS}
-FROM journal_sessions s LEFT JOIN journal_session_state st ON st.session_id = s.session_id
+FROM journal_sessions s LEFT JOIN journal_session_state st
+  ON st.session_id = s.session_id AND st.rules_version = ?
 WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
       )
-      .all(...chunk)
+      .all(JOURNAL_SESSION_STATUS_RULES, ...chunk)
     for (const row of rows) {
       if (typeof row.session_id === 'string') {
         results.push({ sessionId: row.session_id, status: parseStatusRow(row) })
@@ -191,11 +203,14 @@ WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
   return results
 }
 
-/** Every chat whose stored status says a gone process left it work, through the partial index. */
+/** Every chat whose stored status by these rules says a gone process left it work, through the
+ *  partial index. */
 export function readUnsettledJournalSessionIds(db: Database.Database): string[] {
   return db
-    .prepare(`SELECT session_id FROM journal_session_state WHERE ${UNSETTLED}`)
-    .all()
+    .prepare(
+      `SELECT session_id FROM journal_session_state WHERE rules_version = ? AND (${UNSETTLED})`
+    )
+    .all(JOURNAL_SESSION_STATUS_RULES)
     .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))
 }
 

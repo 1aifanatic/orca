@@ -28,7 +28,7 @@ import {
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { deriveJournalSessionStatus } from './journal-session-state'
+import { deriveJournalSessionStatus, JOURNAL_SESSION_STATUS_RULES } from './journal-session-state'
 import { readJournalSessionEpoch, type JournalStoredRow } from './journal-row-table'
 import { createStructuredAgentSessionLogger } from '../agent-session-wire/structured-agent-session-logger'
 
@@ -219,9 +219,9 @@ describe('importing a per-chat journal', () => {
     const { db } = openTestJournalHostDatabase(root)
     db.prepare(
       `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
-        queued_sends, live_child_work, summary_json, last_activity_at)
-      VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1)`
-    ).run(IDENTITY.sessionId)
+        queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
+      VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1, ?)`
+    ).run(IDENTITY.sessionId, JOURNAL_SESSION_STATUS_RULES)
 
     await importPerSessionJournal({
       database: openTestJournalHostDatabase(root),

@@ -225,8 +225,8 @@ describe('a failed append leaves the fold equal to a replay of the disk', () => 
       vi.spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction').mockImplementation((db) => {
         db.prepare(
           `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
-           queued_sends, live_child_work, summary_json, last_activity_at)
-         VALUES ('savepoint-write', 'running', NULL, 0, 0, 0, '{}', 0)`
+           queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
+         VALUES ('savepoint-write', 'running', NULL, 0, 0, 0, '{}', 0, 1)`
         ).run()
         throw new Error('bookkeeping failed')
       })
