@@ -21,6 +21,7 @@ import { hasExplicitUserPrompt } from './agent-hook-listener/provider-event-rout
 import { hasExplicitAmpPrompt } from './agent-hook-listener/providers/amp-events'
 import {
   resolveOpenCodeSharedServerEnvelope,
+  suppressOpenCodeSharedServerPost,
   trackOpenCodePaneLaunchToken
 } from './agent-hook-listener/opencode-session-registry'
 import { readString } from './agent-hook-listener/tool-input-preview'
@@ -66,6 +67,12 @@ export function normalizeHookPayload(
     source === 'codex' && readString(hookPayloadRecord, 'agent_id')
       ? null
       : extractAgentProviderSession(source, hookPayloadRecord)
+  if (source === 'opencode' && record.opencodeTui === 1 && !providerSession) {
+    return null
+  }
+  if (suppressOpenCodeSharedServerPost(state, source, record, providerSession?.id)) {
+    return null
+  }
   // Why (#21359): an OpenCode 1 `serve` process stamps every post with its own
   // frozen pane. When the binder has mapped this session to its real pane,
   // the stamp is replaced before anything downstream (status lookup, dispatch,

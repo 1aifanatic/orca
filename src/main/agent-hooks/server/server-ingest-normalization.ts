@@ -1,7 +1,10 @@
 import { buildSpoolHookBody, type SpoolRecord } from '../../../shared/agent-hook-spool'
 import { normalizeHookPayload } from '../../../shared/agent-hook-listener'
 import { isAgentHookSource, type AgentHookSource } from '../../../shared/agent-hook-relay'
-import { isOpenCodeSharedServerPost } from '../../../shared/agent-hook-listener/opencode-session-registry'
+import {
+  bindOpenCodeTuiSession,
+  isOpenCodeSharedServerPost
+} from '../../../shared/agent-hook-listener/opencode-session-registry'
 import type { NormalizedLocalHook } from './server-types'
 import { AgentHookServerTmuxStatus } from './server-tmux-status'
 
@@ -34,7 +37,11 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
         // Why: a birth just arrived; bind it now instead of waiting out the poll interval.
         this.kickOpenCodeBinder()
       }
-      return { event }
+      return {
+        event,
+        onAccepted: () =>
+          bindOpenCodeTuiSession(this.state, source, body, event?.providerSession?.id)
+      }
     }
     const rawPaneKey = (body as Record<string, unknown>).paneKey
     const paneKey = typeof rawPaneKey === 'string' ? rawPaneKey.trim() : ''
