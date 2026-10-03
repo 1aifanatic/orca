@@ -201,10 +201,12 @@ export function settleStructuredAgentLaunchPrompt(args: {
     }
     return chatHoldsLaunchPrompt(entry) ? held() : { delivered, failureNotified: false }
   })
-  // A create that failed but kept the chat's outbox for its relaunch still owns the prompt.
+  // A create that failed hands the source back its comments, so a relaunch of the prompt the chat
+  // kept must not carry their writes too.
   return settled.catch((error: unknown) => {
-    if (chatHoldsLaunchPrompt(args.stagedEntry)) {
-      return held()
+    const entry = args.stagedEntry
+    if (entry?.reviewReply) {
+      mutateEntry(entry, ({ reviewReply: _handedBack, ...kept }) => kept)
     }
     throw error
   })

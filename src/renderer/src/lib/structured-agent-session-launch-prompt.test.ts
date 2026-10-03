@@ -3,7 +3,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   enqueueStructuredAgentSessionLaunchPrompt,
-  mutateStructuredAgentSessionLaunchPrompt
+  mutateStructuredAgentSessionLaunchPrompt,
+  readOutbox
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
@@ -117,14 +118,32 @@ describe('a launch prompt the host did not record', () => {
       failureNotified: false,
       heldByChat: true
     })
-    // A failed create that kept the outbox for its relaunch still holds it.
-    await expect(settle(Promise.reject(new Error('create failed')))).resolves.toMatchObject({
-      heldByChat: true
-    })
-
     mutateStructuredAgentSessionLaunchPrompt('session-1', stagedEntry!.clientMessageId, () => null)
-    await expect(settle(Promise.reject(new Error('create failed')))).rejects.toThrow(
-      'create failed'
+    await expect(settle(Promise.resolve({ sessionId: 'session-1', fence: 1 }))).resolves.toEqual({
+      delivered: false,
+      failureNotified: false
+    })
+  })
+
+  it('keeps no review reply on a prompt whose create failed, as the source takes its comments back', async () => {
+    const reviewReply = { provider: 'gitlab' as const, repoId: 'repo-1', iid: 8, resolve: ['d-1'] }
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt(
+      'session-1',
+      'review this',
+      reviewReply
     )
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.reject(new Error('create failed')),
+        target: { kind: 'local' },
+        options: { prompt: 'review this' },
+        stagedEntry
+      })
+    ).rejects.toThrow('create failed')
+
+    const [kept] = readOutbox('session-1')
+    expect(kept).toMatchObject({ clientMessageId: stagedEntry!.clientMessageId })
+    expect(kept).not.toHaveProperty('reviewReply')
   })
 })
