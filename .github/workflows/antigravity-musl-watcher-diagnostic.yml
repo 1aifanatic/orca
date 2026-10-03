@@ -934,9 +934,74 @@ jobs:
             return summary.nativeVerified ? 0 : 1
           }
 
+          export async function bootstrap(source, evidence, expected, options = {}) {
+            const summary = {
+              source: expected, status: 'failed', ok: false, nativeVerified: false,
+              diagnosticRan: false, stages: {}, errors: [], outputOverflow: false
+            }
+            const save = () => {
+              const file = join(evidence, 'bootstrap.result.json')
+              json(file + '.pending', summary)
+              renameSync(file + '.pending', file)
+            }
+            save()
+            try {
+              const common = { evidence, source, tools: join(evidence, 'tools', 'bin'), printResult: false, streamWait: options.streamWait ?? 1_000 }
+              summary.stages.apk = await command({
+                ...common, name: 'bootstrap-apk', program: options.apkProgram ?? 'apk',
+                args: options.apkArgs ?? ['add', '--no-cache', 'bash', 'git', 'libstdc++', 'python3', 'make', 'g++'],
+                deadline: options.apkDeadline ?? 180_000
+              })
+              save()
+              if (summary.stages.apk.ok) {
+                summary.diagnosticRan = true
+                save()
+                summary.stages.diagnostic = await command({
+                  ...common, name: 'bootstrap-diagnostic', program: options.diagnosticProgram ?? process.execPath,
+                  args: options.diagnosticArgs ?? [join(evidence, 'diagnostic.mjs'), source, evidence, expected.sha, expected.tree, expected.lock, expected.packageManager],
+                  deadline: options.diagnosticDeadline ?? 1_050_000
+                })
+                save()
+                const inner = JSON.parse(readFileSync(join(evidence, 'final-status.json'), 'utf8'))
+                summary.innerObservedStatus = inner.status
+                summary.innerObservedNativeVerified = inner.nativeVerified
+                summary.ok = summary.stages.diagnostic.ok && inner.status === 'passed' &&
+                  inner.nativeVerified === true && diagnosticSuccess(inner)
+                summary.nativeVerified = summary.ok
+                summary.status = summary.ok ? 'passed' : 'failed'
+              }
+            } catch (error) {
+              recordError(summary, error.message)
+            } finally {
+              save()
+              const file = join(evidence, 'final-status.json')
+              const inner = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { source: expected, status: 'failed', nativeVerified: false }
+              inner.bootstrap = summary
+              if (!summary.ok) {
+                inner.status = 'failed'
+                inner.nativeVerified = false
+              }
+              json(file, inner)
+            }
+            return summary
+          }
+
           if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
             const mode = process.argv[2]
-            if (mode === '--host-docker' || mode === '--host-container') {
+            if (mode === '--bounded-preflight') {
+              const [source, evidence, ...pins] = process.argv.slice(3)
+              const result = await command({
+                source, evidence, tools: '/usr/local/bin', name: 'preflight',
+                program: process.execPath,
+                args: [resolve(process.argv[1]), '--preflight', source, evidence, ...pins],
+                deadline: 150_000, printResult: false
+              })
+              process.exitCode = result.ok ? 0 : 1
+            } else if (mode === '--bootstrap') {
+              const [source, evidence, sha, tree, lock, packageManager] = process.argv.slice(3)
+              const result = await bootstrap(source, evidence, { sha, tree, lock, packageManager })
+              process.exitCode = result.ok ? 0 : 1
+            } else if (mode === '--host-docker' || mode === '--host-container') {
               const [source, evidence, program, ...args] = process.argv.slice(3)
               const container = mode === '--host-container'
               const name = container ? 'container-run' : 'host-docker-' + randomUUID()
@@ -978,20 +1043,9 @@ jobs:
           cat > "$DIAGNOSTIC_DIR/bootstrap.sh" <<'BOOTSTRAP'
           #!/bin/sh
           set -eu
-          printf '%s\n' 'apk add --no-cache bash git libstdc++ python3 make g++' > /evidence/apk.command.txt
-          set +e
-          apk add --no-cache bash git libstdc++ python3 make g++ > /evidence/apk.stdout.log 2> /evidence/apk.stderr.log
-          apk_code=$?
-          set -e
-          printf '{"code":%s}\n' "$apk_code" > /evidence/apk.result.json
-          if [ "$apk_code" -ne 0 ]; then exit "$apk_code"; fi
-          printf '%s\n' node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" "$4" > /evidence/diagnostic.argv.txt
-          set +e
-          node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" "$4" > /evidence/diagnostic.stdout.log 2> /evidence/diagnostic.stderr.log
-          diagnostic_code=$?
-          set -e
-          printf '{"code":%s}\n' "$diagnostic_code" > /evidence/diagnostic.result.json
-          exit "$diagnostic_code"
+          diagnostic_source="${5:-/source}"
+          diagnostic_evidence="${6:-/evidence}"
+          exec node "$diagnostic_evidence/diagnostic.mjs" --bootstrap "$diagnostic_source" "$diagnostic_evidence" "$1" "$2" "$3" "$4"
           BOOTSTRAP
           for dir in home config cache data state runtime temp userData; do
             mkdir -p "$DIAGNOSTIC_DIR/bootstrap-private/$dir"
@@ -1005,14 +1059,14 @@ jobs:
             XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" \
             ORCA_USER_DATA="$APPDATA/orca" ORCA_BACKGROUND_LAUNCH=1 ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" \
             CI=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$HOME/.gitconfig" \
-            "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --preflight "$GITHUB_WORKSPACE/source" "$DIAGNOSTIC_DIR" \
+            "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --bounded-preflight "$GITHUB_WORKSPACE/source" "$DIAGNOSTIC_DIR" \
             '${{ matrix.sha }}' '${{ matrix.tree }}' '${{ matrix.lock }}' '${{ matrix.package_manager }}')
           printf '%s\n' "${preflight_argv[@]}" > "$DIAGNOSTIC_DIR/preflight.argv.txt"
           set +e
-          "${preflight_argv[@]}" > "$DIAGNOSTIC_DIR/preflight.stdout.log" 2> "$DIAGNOSTIC_DIR/preflight.stderr.log"
+          "${preflight_argv[@]}"
           preflight_code=$?
           set -e
-          printf '{"code":%s}\n' "$preflight_code" > "$DIAGNOSTIC_DIR/preflight.result.json"
+          printf '{"code":%s}\n' "$preflight_code" > "$DIAGNOSTIC_DIR/preflight.wrapper-result.json"
           if [ "$preflight_code" -ne 0 ]; then exit "$preflight_code"; fi
 
       - name: Build frozen source and observe the shipped native child
