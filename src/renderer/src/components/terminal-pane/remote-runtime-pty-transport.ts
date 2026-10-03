@@ -2019,7 +2019,8 @@ export function createRemoteRuntimePtyTransport(
               // host dimensions. Absent/zero degrades to the pane's own grid.
               ...(meta?.cols !== undefined && meta.rows !== undefined
                 ? { snapshotCols: meta.cols, snapshotRows: meta.rows }
-                : {})
+                : {}),
+              serializedImage: true
             })
           }
         },

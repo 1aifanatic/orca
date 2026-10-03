@@ -65,6 +65,9 @@ export type PtyReplayDataMeta = {
    *  it; the drain replays there and fits back to the pane afterwards. */
   snapshotCols?: number
   snapshotRows?: number
+  /** A serialized terminal image, which starts on the normal buffer and enters
+   *  alt itself; absent for raw byte replays such as an SSH relay's ring buffer. */
+  serializedImage?: boolean
 }
 
 export type LocalPtySessionMetadata = {

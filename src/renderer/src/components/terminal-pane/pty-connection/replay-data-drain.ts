@@ -1,4 +1,8 @@
-import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../../../shared/terminal-mode-reset-profiles'
+import {
+  ABORT_TRUNCATED_CONTROL_STRING,
+  buildSnapshotReplayPrologue,
+  RELEASE_SYNCHRONIZED_OUTPUT
+} from '../../../../../shared/terminal-mode-reset-profiles'
 import { waitForTerminalOutputParsed } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { safeFit, safeFitAndThen } from '@/lib/pane-manager/pane-tree-ops'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
@@ -101,7 +105,8 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         alternateScreen,
         terminalOwner,
         snapshotCols,
-        snapshotRows
+        snapshotRows,
+        serializedImage
       } = payload
       session.pendingReplayData = null
       const isCurrentPayload = (): boolean =>
@@ -123,7 +128,18 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         // frame mid-flight, so this xterm may hold an open 2026 latch — and \x1b[2J does
         // not clear it, so the pane would stay frozen on its last painted frame and the
         // whole replay would go unseen until xterm's 1s timeout.
-        await session.writeReplayDataAsync(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
+        // Why images get the snapshot prologue: an image starts on the normal buffer
+        // and enters alt itself. Replayed onto a live TUI's alt screen, its history
+        // paints into that screen and its own ?1049h is a no-op. Raw byte replays keep
+        // the in-place clear.
+        await session.writeReplayDataAsync(
+          serializedImage
+            ? `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue({
+                targetAlternateScreen: false,
+                paneOnAlternateScreen: session.isPaneOnAlternateScreen()
+              })}`
+            : `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`
+        )
         if (!isCurrentPayload()) {
           continue
         }

@@ -59,7 +59,9 @@ describe('createRemoteRuntimePtyTransport', () => {
       'before\x1b]9999;{"state":"working","prompt":"old","agentType":"codex"}\x07after\x1b]0;Remote title\x07\x07'
     )
 
-    expect(onReplayData).toHaveBeenCalledWith('beforeafter\x1b]0;Remote title\x07\x07')
+    expect(onReplayData).toHaveBeenCalledWith('beforeafter\x1b]0;Remote title\x07\x07', {
+      serializedImage: true
+    })
     await vi.waitFor(() =>
       expect(onTitleChange).toHaveBeenCalledWith('Remote title', 'Remote title')
     )
@@ -89,7 +91,7 @@ describe('createRemoteRuntimePtyTransport', () => {
       'before\x1b]9999;{"state":"working","prompt":"old","agentType":"codex"}\x07after'
     )
 
-    expect(onReplayData).toHaveBeenCalledWith('beforeafter')
+    expect(onReplayData).toHaveBeenCalledWith('beforeafter', { serializedImage: true })
     expect(onAgentStatus).not.toHaveBeenCalled()
     expect(onBell).not.toHaveBeenCalled()
     expect(onConnect).toHaveBeenCalled()
@@ -157,7 +159,7 @@ describe('createRemoteRuntimePtyTransport', () => {
     await vi.waitFor(() => expect(subscriptionSendBinary).toHaveBeenCalled())
     const { streamId } = latestSubscribePayload()
     emitSnapshot(streamId, 'initial')
-    expect(onReplayData).toHaveBeenCalledWith('initial')
+    expect(onReplayData).toHaveBeenCalledWith('initial', { serializedImage: true })
     expect(onConnect).toHaveBeenCalled()
 
     const snapshotPromise = transport.serializeBuffer?.({ scrollbackRows: 5000 })
@@ -254,7 +256,7 @@ describe('createRemoteRuntimePtyTransport', () => {
     expect(latestFrameForOpcode(TerminalStreamOpcode.SnapshotRequest)).toBeUndefined()
 
     emitSnapshot(streamId, 'initial replay')
-    expect(onReplayData).toHaveBeenCalledWith('initial replay')
+    expect(onReplayData).toHaveBeenCalledWith('initial replay', { serializedImage: true })
     expect(onConnect).toHaveBeenCalled()
 
     await vi.waitFor(() =>
