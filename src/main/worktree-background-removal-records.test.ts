@@ -15,12 +15,27 @@ import {
   projectPendingWorktreeRemovals,
   snapshotPendingWorktreeRemovals
 } from './worktree-removal-listing'
+import type * as GitWorktree from './git/worktree'
 import type * as WorktreeRemovalRecords from './worktree-removal-records'
 import {
   readWorktreeRemovalRecords,
   worktreeRemovalRecordsFile,
   writeWorktreeRemovalRecords
 } from './worktree-removal-records'
+
+// Git still registers the checkout: a delete that fails leaves it Git's, row and all.
+vi.mock('./git/worktree', async (importOriginal) => ({
+  ...(await importOriginal<typeof GitWorktree>()),
+  listWorktreesStrict: vi.fn(async () => [
+    {
+      path: '/work/feature',
+      head: 'abc',
+      branch: 'refs/heads/feature',
+      isBare: false,
+      isMainWorktree: false
+    }
+  ])
+}))
 
 vi.mock('./worktree-removal-records', async (importOriginal) => {
   const actual = await importOriginal<typeof WorktreeRemovalRecords>()
