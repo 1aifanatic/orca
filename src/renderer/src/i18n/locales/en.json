@@ -122,7 +122,13 @@
     "markdownPreview": {
       "tooLarge": "File is larger than the {{limit}} preview limit. Open the file to view its source.",
       "tooLargeInDiff": "File is larger than the {{limit}} preview limit. Switch to source mode to view the diff.",
-      "renderAnyway": "Render anyway"
+      "blockTooLarge": "This block is too large to render. Open source view to read it.",
+      "largeNotice": "Large preview. Use source view to copy the complete document. PDF export is unavailable.",
+      "processingFailed": "This document cannot be rendered within the preview limits. Open source view to read the complete file.",
+      "preparing": "Preparing preview…",
+      "searching": "Searching…",
+      "searchFailed": "Search could not finish. Try again.",
+      "refreshFailed": "Preview update failed. Showing the previous version; open source view for current content."
     },
     "fileLoad": {
       "hostUnresolved": "The host couldn't find this file's workspace. It may have been removed, or the host may not know about it yet. Retry, or close this tab from the tab strip."
@@ -4096,7 +4102,7 @@
             "detailed": "Detailed",
             "compact": "Compact",
             "detailedTooltip": "Full usage with bars, labels, and percentages",
-            "compactTooltip": "Condensed usage: only the tightest window",
+            "compactTooltip": "Condensed usage: one summary per provider",
             "footerDetailAria": "Usage footer detail"
           },
           "RemoteServerUpdateStatusSegment": {
@@ -5681,6 +5687,7 @@
           "74522ee457": "rename failed",
           "02e19349f4": "Auto-rename failed: view error",
           "691ccfd622": "Deleting…",
+          "deleteFailed": "Delete failed",
           "35ccfe2475": "Project {{value0}}",
           "1d66d84f0b": "string",
           "57eaa61b55": "Hide child workspaces",
@@ -6611,8 +6618,8 @@
           "96f3649526": "Use Gemini CLI credentials (experimental)",
           "d676c41fc6": "Extracts OAuth credentials from your local Gemini CLI installation to authenticate with Google. This uses credentials issued to the Gemini CLI app, not Orca. May break if Google updates the CLI. Use at your own risk.",
           "0c7f915b01": "Use Gemini CLI credentials",
-          "973741a871": "Configure Gemini provider settings.",
-          "0c64dc2a64": "Gemini",
+          "973741a871": "Keep existing Gemini CLI sessions available. Gemini credentials do not sign you into Antigravity.",
+          "0c64dc2a64": "Gemini CLI (legacy)",
           "db209ee572": "Remove",
           "8a0f870153": "Re-authenticate",
           "3d245ef7d9": "Codex reported this sign-in is out of date",
@@ -18511,6 +18518,10 @@
     }
   },
   "sourceControl": {
+    "discard": {
+      "restoreStagedVersionDescription": "This will restore the last staged version and discard the deletion. This cannot be undone.",
+      "unstagedChangesDescription": "This will revert the unstaged changes to this file. This cannot be undone."
+    },
     "unlinkedPr": {
       "status": "PR #{{number}} unlinked"
     }
@@ -18659,7 +18670,12 @@
     "codexSharedServerBanner": {
       "title": "This Codex is sharing a server with your other Codex tabs",
       "body": "Sessions may end unexpectedly, and agent status may be wrong.",
+      "openedBeforeUpdateBody": "This terminal was opened before Orca started giving each Codex its own server.",
+      "oldTerminalDialogTitle": "Why this Codex shares a server",
+      "oldTerminalDialogRisk": "Codex sessions that share a server can end together, and agent status can be wrong.",
+      "oldTerminalDialogCause": "Older terminals still share a Codex server. Open a new terminal to run Codex on a separate server.",
       "fix": "Fix",
+      "openNewTerminal": "Open new terminal",
       "dontShowAgain": "Don't show again",
       "dismiss": "Dismiss",
       "dialogTitle": "Give each Codex tab its own server",
@@ -18744,5 +18760,36 @@
     "addTypedPath": "Add",
     "noDirectories": "No folders added yet.",
     "removePath": "Remove {{name}}"
+  },
+  "accounts": {
+    "antigravity": {
+      "scope": "Manage the native agy account on {{host}}.",
+      "signIn": "Start agy on this host and complete its browser sign-in, then save the current account. To add a different account, use /logout in agy and sign in again.",
+      "docs": "Sign-in instructions",
+      "retry": "Retry",
+      "identityUnknown": "Signed-in identity unavailable",
+      "signedOut": "No native agy account is signed in.",
+      "changed": "The native account changed. Select a saved account again before launching agy.",
+      "save": "Save current account",
+      "refresh": "Refresh accounts",
+      "usage": "Refresh usage",
+      "working": "Updating account",
+      "usageReading": "Session: {{session}} · Weekly: {{weekly}}",
+      "saved": "Saved Google account",
+      "nativeActive": "Native account",
+      "selected": "Selected",
+      "select": "Select",
+      "remove": "Remove",
+      "sessions": "Selection applies to new agy sessions on this host. Existing sessions may keep their previous account.",
+      "searchTitle": "Antigravity Accounts",
+      "searchDescription": "Save and select native agy Google accounts on the execution host.",
+      "title": "Antigravity",
+      "keyword": {
+        "antigravity": "antigravity",
+        "agy": "agy",
+        "google": "google",
+        "accounts": "accounts"
+      }
+    }
   }
 }
