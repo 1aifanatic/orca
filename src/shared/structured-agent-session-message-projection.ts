@@ -8,6 +8,7 @@ import type { StructuredAgentSessionOutboxEntry } from './structured-agent-sessi
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import { isStructuredAgentSessionCommandEntry } from './structured-agent-session-command-entry'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
 
 export function projectStructuredAgentSessionMessages(
@@ -19,16 +20,17 @@ export function projectStructuredAgentSessionMessages(
   const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
   // A send the host recorded and then did not deliver stays in the conversation from the host's
   // record, shown as not sent, for every viewer: dropping the sender's outbox entry can never make
-  // it vanish. Only a Stop's withdrawal leaves it, since its text went back to its sender.
+  // it vanish. It leaves only where something else owns it: the user withdrew it with Stop, its
+  // queued draft's card keeps the text, or it is a command whose reply or result row says it failed.
   const notSent = new Set<string>()
-  const withdrawn = new Set<string>()
+  const ownedElsewhere = new Set<string>()
   for (const submission of submissions) {
     if (submission.dispatchState !== 'rejected') {
       continue
     }
     const key = agentJournalSubmissionKey(submission.clientMessageId)
-    if (dispatchWasWithdrawn(submission)) {
-      withdrawn.add(key)
+    if (dispatchWasWithdrawn(submission) || submission.queuedMessageId !== undefined) {
+      ownedElsewhere.add(key)
     } else {
       notSent.add(key)
     }
@@ -36,7 +38,10 @@ export function projectStructuredAgentSessionMessages(
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
   for (const item of items) {
-    if (withdrawn.has(item.itemId)) {
+    if (
+      ownedElsewhere.has(item.itemId) ||
+      (notSent.has(item.itemId) && isStructuredAgentSessionCommandEntry(item.body))
+    ) {
       refused.set(item.itemId, item)
     } else {
       visibleItems.push(item)
