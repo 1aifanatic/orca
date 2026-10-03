@@ -4019,7 +4019,7 @@
             "detailed": "Détaillé",
             "compact": "Compact",
             "detailedTooltip": "Utilisation complète avec barres, libellés et pourcentages",
-            "compactTooltip": "Utilisation condensée : uniquement la fenêtre la plus contrainte",
+            "compactTooltip": "Utilisation condensée : un résumé par fournisseur",
             "footerDetailAria": "Détail du pied de page d'utilisation"
           },
           "RemoteServerUpdateStatusSegment": {
@@ -18471,7 +18471,13 @@
     "markdownPreview": {
       "tooLarge": "Le fichier dépasse la limite d'aperçu de {{limit}}. Ouvrez le fichier pour afficher sa source.",
       "tooLargeInDiff": "Le fichier dépasse la limite d'aperçu de {{limit}}. Passez en mode source pour afficher les différences.",
-      "renderAnyway": "Afficher quand même"
+      "blockTooLarge": "Ce bloc est trop volumineux pour être affiché. Ouvrez la vue source pour le lire.",
+      "largeNotice": "Aperçu volumineux. Utilisez la vue source pour copier le document complet. L’exportation PDF est indisponible.",
+      "processingFailed": "Ce document dépasse les limites de l’aperçu. Ouvrez la vue source pour lire le fichier complet.",
+      "preparing": "Préparation de l’aperçu…",
+      "searching": "Recherche…",
+      "searchFailed": "La recherche n’a pas pu aboutir. Réessayez.",
+      "refreshFailed": "La mise à jour de l’aperçu a échoué. La version précédente est affichée ; ouvrez la source pour voir le contenu actuel."
     }
   },
   "checksPanel": {
@@ -18511,7 +18517,12 @@
     "genericDetail": "Il s'agit souvent d'un problème de pilote graphique ou d'installation. Rechargez pour réessayer, ou quittez et relancez Orca.",
     "title": "Orca ne parvient toujours pas à charger",
     "stalledMessage": "La fenêtre de l'application a cessé de répondre lors du rechargement après un crash.",
-    "crashLoopMessage": "La fenêtre de l'application s'est écrasée à plusieurs reprises et a cessé de se recharger automatiquement."
+    "crashLoopMessage": "La fenêtre de l'application s'est écrasée à plusieurs reprises et a cessé de se recharger automatiquement.",
+    "tryAgain": "Réessayer",
+    "launchFailedMessage": "Orca n'a pas pu démarrer le processus qui affiche sa fenêtre.",
+    "launchFailedDetail": "Orca a réessayé {{recoveryCount}} fois sans succès.",
+    "processLimitDetail": "Le système a refusé de créer un nouveau processus, car votre compte utilisateur a atteint sa limite de processus. Cela vient souvent de terminaux, de serveurs de développement ou d'agents emballés. Fermez-en quelques-uns, puis cliquez sur Réessayer.",
+    "launchFailedGenericDetail": "Le système a refusé de le démarrer. Libérez de la mémoire ou fermez d'autres applications, puis cliquez sur Réessayer. Si le problème persiste, réinstallez Orca."
   },
   "sessionSearch": {
     "panel": {

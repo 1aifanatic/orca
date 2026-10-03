@@ -3909,7 +3909,7 @@
             "compact": "コンパクト",
             "footerDetailAria": "使用量フッターの詳細",
             "detailedTooltip": "バー・ラベル・パーセントを含む完全な使用状況",
-            "compactTooltip": "凝縮された使用状況: 最も狭いウィンドウのみ"
+            "compactTooltip": "簡潔な使用状況：プロバイダーごとに1つの概要"
           },
           "RemoteServerUpdateStatusSegment": {
             "updating": "{{value0}}/{{value1}}を更新中",
@@ -18423,7 +18423,13 @@
     "markdownPreview": {
       "tooLarge": "ファイルがプレビュー上限の {{limit}} を超えています。ソースを表示するにはファイルを開いてください。",
       "tooLargeInDiff": "ファイルがプレビュー上限の {{limit}} を超えています。差分を表示するにはソースモードに切り替えてください。",
-      "renderAnyway": "それでも表示"
+      "blockTooLarge": "このブロックは大きすぎるため表示できません。ソース表示で確認してください。",
+      "largeNotice": "大きなプレビューです。文書全体をコピーするにはソース表示を使用してください。PDF エクスポートは利用できません。",
+      "processingFailed": "この文書はプレビューの制限を超えています。ファイル全体を読むにはソース表示を開いてください。",
+      "preparing": "プレビューを準備中…",
+      "searching": "検索中…",
+      "searchFailed": "検索を完了できませんでした。もう一度お試しください。",
+      "refreshFailed": "プレビューの更新に失敗しました。以前のバージョンを表示しています。現在の内容はソース表示で確認してください。"
     }
   },
   "featureTips": {
@@ -18511,7 +18517,12 @@
     "genericDetail": "これは多くの場合、グラフィックスドライバーまたはインストールの問題です。リロードして再試行するか、Orca を終了して再起動してください。",
     "title": "Orca がロードに失敗し続ける",
     "stalledMessage": "クラッシュ後のリロード中にアプリウィンドウが応答を停止しました。",
-    "crashLoopMessage": "アプリウィンドウが繰り返しクラッシュし、自動的にリロードされなくなりました。"
+    "crashLoopMessage": "アプリウィンドウが繰り返しクラッシュし、自動的にリロードされなくなりました。",
+    "tryAgain": "再試行",
+    "launchFailedMessage": "Orca はウィンドウを描画するプロセスを起動できませんでした。",
+    "launchFailedDetail": "Orca は {{recoveryCount}} 回再試行しましたが、成功しませんでした。",
+    "processLimitDetail": "ユーザーアカウントのプロセス数が上限に達したため、システムが新しいプロセスの作成を拒否しました。暴走したターミナル、開発サーバー、Agent が原因であることがよくあります。いくつか終了してから「再試行」をクリックしてください。",
+    "launchFailedGenericDetail": "システムが起動を拒否しました。メモリを空けるか他のアプリを終了してから「再試行」をクリックしてください。繰り返し発生する場合は Orca を再インストールしてください。"
   },
   "sessionSearch": {
     "panel": {
