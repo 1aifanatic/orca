@@ -1,5 +1,5 @@
 import { readAgentProcessIdentity } from './agent-process-presence'
-import { normalizeAgentStatusPayload } from './agent-status-types'
+import { normalizeAgentStatusPayload, type AgentMainAgentStatus } from './agent-status-types'
 import type { AgentHookSource } from './agent-hook-relay'
 import { extractAgentProviderSession } from './agent-session-resume'
 import {
@@ -37,7 +37,10 @@ export function normalizeHookPayload(
   source: AgentHookSource,
   body: unknown,
   expectedEnv: string,
-  options: { deferCompactOwnershipToClient?: boolean } = {}
+  options: {
+    deferCompactOwnershipToClient?: boolean
+    previousOpenCodeMainAgent?: AgentMainAgentStatus
+  } = {}
 ): AgentHookEventPayload | null {
   const envelope = parseHookEnvelope(state, source, body, expectedEnv)
   if (!envelope) {
@@ -57,7 +60,11 @@ export function normalizeHookPayload(
   const eventName =
     readFirstString(record, ['hook_event_name', 'hookEventName', 'hook_type', 'hookType']) ??
     hookPayloadRecord.hook_event_name ??
-    hookPayloadRecord.hookEventName
+    hookPayloadRecord.hookEventName ??
+    // Why jcode only: its payload names the lifecycle point `event`, and it is posted
+    // verbatim through the shared transport rather than re-stated as a form field.
+    // Scoped so another provider's unrelated `event` key cannot become an event name.
+    (source === 'jcode' ? hookPayloadRecord.event : undefined)
   // Codex child hooks expose the child's session_id on the parent's pane.
   const providerSession =
     source === 'codex' && readString(hookPayloadRecord, 'agent_id')
@@ -189,10 +196,11 @@ export function normalizeHookPayload(
     paneKey,
     hookPayload: hookPayloadRecord,
     envelope: record,
-    extractedPrompt
+    extractedPrompt,
+    previousOpenCodeMainAgent: options.previousOpenCodeMainAgent
   })
   const providerSessionOnly =
-    (source === 'pi' || source === 'prime-agent') &&
+    (source === 'pi' || source === 'prime-agent' || source === 'jcode') &&
     eventName === 'session_start' &&
     providerSession !== null
   // A transcript session_start carries resume identity while idle; receivers discard the placeholder row.
