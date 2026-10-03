@@ -188,6 +188,11 @@ describe('SSH Windows-host workflow', () => {
 
   it('provisions one private account for every cell, convert cell included', () => {
     expect(runStep.run).toContain(`$cells+='${WINDOWS_CONVERT_CELL_ID}'`)
+    // Only the convert cell reaches a managed server, through an SSH local forward.
+    expect(runStep.run).toContain(
+      `$forwarding=if($cells[-1] -eq '${WINDOWS_CONVERT_CELL_ID}'){1}else{0}`
+    )
+    expect(runStep.run).toContain('-ForwardingAccounts $forwarding')
     const provisioner = readFileSync(
       join(projectDir, 'config/ci/windows-ssh-provider/preview-ssh/prove-preview-openssh.ps1'),
       'utf8'
