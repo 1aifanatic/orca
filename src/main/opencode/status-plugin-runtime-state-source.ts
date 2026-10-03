@@ -21,7 +21,7 @@ export function getStatusPluginRuntimeStateSource(): string[] {
     'let busyRecoveryUsed = false;',
     'let busyRecoveryEndpointKey = "";',
     'let stateArrivalRevision = 0;',
-    '// Why: only OpenCode 2 calls setup(); its posts tell the host to keep its OpenCode 1 binder off them.',
+    '// Recognized OpenCode 2 contexts bypass the legacy binder.',
     'let reportingOpenCodeMajor = 0;',
     'let reportingOpenCodeTui = false;',
     '// Why: OpenCode can create directory-scoped factories and concurrent root',
