@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
 import { addManagedOrcadEnvironment } from '../../shared/runtime-environment-managed-orcad-store'
 import { listEnvironments } from '../../shared/runtime-environment-store'
@@ -11,6 +11,7 @@ import { closeTestStores, createSqliteTestStore } from '../persistence-test-harn
 import { Store } from '../persistence/loading-store/store'
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
+import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
 import { SshConnectionStore } from './ssh-connection-store'
 
 const mocks = vi.hoisted(() => {
@@ -61,7 +62,7 @@ beforeEach(() => {
   mocks.ensureTunnel.mockResolvedValue(undefined)
   // Registers the server the fence named, as the real deploy would after pairing.
   mocks.deploy.mockImplementation(async (path: string, args: { name: string }) => {
-    const owner = getManagedOrcadOwnerEnvironmentId(store.getSshTarget(TARGET.id)?.owner)
+    const owner = getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))
     if (!owner) {
       throw new Error('deploy without a fence')
     }
@@ -93,6 +94,7 @@ afterEach(async () => {
 })
 
 const releaseDirectSession = vi.fn(async () => {})
+let retireSource = true
 const convert = (listRelayPtyIds: (() => Promise<string[] | null>) | null = async () => []) =>
   convertSshTargetToManagedOrcad(userDataPath, {
     sshTargetId: TARGET.id,
@@ -100,7 +102,8 @@ const convert = (listRelayPtyIds: (() => Promise<string[] | null>) | null = asyn
     listRelayPtyIds,
     destinationFor: () => destination,
     releaseDirectSession,
-    now: () => new Date('2026-10-02T00:00:00.000Z')
+    now: () => new Date('2026-10-02T00:00:00.000Z'),
+    retireSource: () => retireSource
   })
 
 describe('converting an SSH host into a managed server', () => {
@@ -118,13 +121,32 @@ describe('converting an SSH host into a managed server', () => {
     expect(store.getRepos()).toEqual([])
     // The journal compacts once the server matches it; the fenced target stays for the tunnel.
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
-    expect(getManagedOrcadOwnerEnvironmentId(store.getSshTarget(TARGET.id)?.owner)).toBe(
-      environment?.id
-    )
+    expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(environment?.id)
     await expect(convert()).resolves.toMatchObject({
       outcome: 'refused',
       code: 'orcad_migration_already_managed'
     })
+  })
+
+  it('keeps the source rows when retirement is off, marking the commit retained', async () => {
+    retireSource = false
+    try {
+      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+      expect(destination.commits).toBe(1)
+      // An older build reads these rows and reaches the host over its relay.
+      expect(store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
+      const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
+      expect(journal).toMatchObject({
+        phase: 'destination-committed',
+        sourceRetainedAt: '2026-10-02T00:00:00.000Z'
+      })
+      expect(store.getSshTarget(TARGET.id)?.owner).toBeUndefined()
+      expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(
+        journal?.destinationEnvironmentId
+      )
+    } finally {
+      retireSource = true
+    }
   })
 
   it('refuses before touching the host while terminals run or cannot be counted', async () => {
@@ -134,7 +156,7 @@ describe('converting an SSH host into a managed server', () => {
       verdict: 'unverifiable'
     })
     expect(releaseDirectSession).not.toHaveBeenCalled()
-    expect(store.getSshTarget(TARGET.id)?.owner).toBeUndefined()
+    expect(store.getSshTarget(TARGET.id)?.orcadFence).toBeUndefined()
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
   })
 
@@ -178,5 +200,71 @@ describe('converting an SSH host into a managed server', () => {
     expect(destination.commits).toBe(1)
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
     expect(store.getRepos()).toEqual([])
+  })
+})
+
+/** What v1.4.218 and current main do with a stored target: keep every field, hide only `owner`. */
+function shippedBuildView(targets: SshTarget[]): SshTarget[] {
+  return JSON.parse(JSON.stringify(targets)).filter(
+    (target: SshTarget) => target.owner?.type !== 'on-demand-runtime'
+  )
+}
+
+describe('a converted host across a downgrade and back', () => {
+  async function convertRetained(): Promise<void> {
+    retireSource = false
+    try {
+      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+    } finally {
+      retireSource = true
+    }
+  }
+
+  it('stays visible, with its projects, to an older build', async () => {
+    await convertRetained()
+    const visible = shippedBuildView(store.getSshTargets())
+    expect(visible.map((target) => target.id)).toEqual([TARGET.id])
+    expect(store.getRepos().filter((repo) => repo.connectionId === TARGET.id)).toHaveLength(1)
+    // This build hides the retained rows and serves the host from its managed server instead.
+    expect(visibleRepos(store)).toEqual([])
+  })
+
+  it('goes back to managed after a downgrade that changed nothing', async () => {
+    await convertRetained()
+    reconcileManagedOrcadSshTargets(userDataPath, store)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
+    expect(visibleRepos(store)).toEqual([])
+  })
+
+  it('keeps a host an older build changed on the relay, never merging a second manifest', async () => {
+    await convertRetained()
+    store.addRepo({
+      id: 'repo-2',
+      path: '/srv/tool',
+      displayName: 'Tool',
+      badgeColor: '#737373',
+      addedAt: 2,
+      kind: 'git',
+      connectionId: TARGET.id
+    })
+    reconcileManagedOrcadSshTargets(userDataPath, store, () => new Date('2026-10-05T00:00:00Z'))
+    expect(store.getSshTarget(TARGET.id)?.orcadFence).toMatchObject({
+      sourceChangedAt: '2026-10-05T00:00:00.000Z'
+    })
+    expect(
+      visibleRepos(store)
+        .map((repo) => repo.id)
+        .sort()
+    ).toEqual(['repo-1', 'repo-2'])
+    expect(destination.commits).toBe(1)
+  })
+
+  it('restores a fence the profile lost from the registered managed server', async () => {
+    await convertRetained()
+    store.updateSshTarget(TARGET.id, { orcadFence: undefined })
+    reconcileManagedOrcadSshTargets(userDataPath, store)
+    expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(
+      listEnvironments(userDataPath)[0]?.id
+    )
   })
 })

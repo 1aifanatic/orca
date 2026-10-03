@@ -1,26 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createManagedOrcadSshOwner,
-  getManagedOrcadOwnerEnvironmentId,
+  getLegacyManagedOrcadOwnerEnvironmentId,
+  getManagedOrcadFenceEnvironmentId,
   isEphemeralRuntimeSshOwner
 } from './managed-orcad-ssh-owner'
 
-describe('managed orcad SSH ownership', () => {
-  it('writes a marker that older clients keep hidden as an internal target', () => {
-    const owner = createManagedOrcadSshOwner('environment-1')
+describe('managed orcad SSH fence', () => {
+  it('reads the fence from orcadFence, never from owner', () => {
+    expect(getManagedOrcadFenceEnvironmentId({ orcadFence: { environmentId: 'env-1' } })).toBe(
+      'env-1'
+    )
+    expect(getManagedOrcadFenceEnvironmentId({})).toBeNull()
+    expect(getManagedOrcadFenceEnvironmentId(undefined)).toBeNull()
+  })
 
-    expect(owner).toEqual({
-      type: 'on-demand-runtime',
-      runtimeId: 'managed-orcad:environment-1'
-    })
-    expect(getManagedOrcadOwnerEnvironmentId(owner)).toBe('environment-1')
-    expect(isEphemeralRuntimeSshOwner(owner)).toBe(false)
+  it('recognises the legacy owner fence only so loading can migrate it', () => {
+    const legacy = { type: 'on-demand-runtime' as const, runtimeId: 'managed-orcad:env-1' }
+    expect(getLegacyManagedOrcadOwnerEnvironmentId(legacy)).toBe('env-1')
+    expect(isEphemeralRuntimeSshOwner(legacy)).toBe(false)
   })
 
   it('keeps ordinary on-demand runtime targets ephemeral', () => {
     const owner = { type: 'on-demand-runtime' as const, runtimeId: 'runtime-1' }
-
-    expect(getManagedOrcadOwnerEnvironmentId(owner)).toBeNull()
+    expect(getLegacyManagedOrcadOwnerEnvironmentId(owner)).toBeNull()
     expect(isEphemeralRuntimeSshOwner(owner)).toBe(true)
   })
 })

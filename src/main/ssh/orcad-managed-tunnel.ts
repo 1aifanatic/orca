@@ -4,7 +4,7 @@ import {
 } from '../../shared/runtime-environments'
 import { resolveEnvironment } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { SshConnection } from './ssh-connection'
 import type { SshConnectionManager } from './ssh-connection-manager'
 import { SshPortForwardManager } from './ssh-port-forward'
@@ -163,7 +163,7 @@ export class OrcadManagedTunnelManager {
         'The SSH registration for this managed Orca server was removed or re-created.'
       )
     }
-    if (getManagedOrcadOwnerEnvironmentId(target.owner) !== environment.id) {
+    if (getManagedOrcadFenceEnvironmentId(target) !== environment.id) {
       throw new Error('The SSH target is no longer owned by this managed Orca server.')
     }
 
@@ -177,7 +177,7 @@ export class OrcadManagedTunnelManager {
         this.managerGeneration === managerGeneration &&
         (this.ownershipGenerations.get(environment.id) ?? 0) === ownershipGeneration &&
         currentTarget?.generation === target.generation &&
-        getManagedOrcadOwnerEnvironmentId(currentTarget?.owner) === environment.id &&
+        getManagedOrcadFenceEnvironmentId(currentTarget) === environment.id &&
         currentEnvironment?.id === environment.id &&
         currentEnvironment.runtimeId === environment.runtimeId &&
         (currentEnvironment.pairingRevision ?? currentEnvironment.createdAt) ===

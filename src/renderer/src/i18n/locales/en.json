@@ -1238,6 +1238,11 @@
             }
           }
         }
+      },
+      "ipcEvents": {
+        "sshManagedServer": {
+          "refused": "This SSH host could not move to a managed Orca server: {{blocker}}"
+        }
       }
     },
     "components": {
@@ -12363,6 +12368,18 @@
         "managedServersExperimentalSetting": {
           "description": "Shows Managed servers under Remote Orca Servers, and Move to managed server on SSH hosts. macOS and Linux hosts only.",
           "toggleLabel": "Toggle Managed servers"
+        },
+        "sshHostServer": {
+          "sourceChanged": "Changed on an older Orca: runs the relay until it is moved to its managed server again.",
+          "managed": "Runs a managed Orca server",
+          "unavailable": "Runs the relay: a managed Orca server can’t run on this host ({{reason}}).",
+          "deploying": "Setting up a managed Orca server…",
+          "converting": "Moving this host’s projects to its managed Orca server…",
+          "connecting": "Connecting to the managed Orca server…",
+          "terminalsLive": "Runs the relay until its {{count}} open terminals are closed, then moves to a managed server.",
+          "terminalsUnverifiable": "Runs the relay: Orca couldn’t confirm its terminals are closed. It moves on a later connect.",
+          "refused": "Not moved to a managed server: {{blocker}}",
+          "retry": "Runs the relay this session; it moves to a managed server on a later connect."
         }
       },
       "right": {

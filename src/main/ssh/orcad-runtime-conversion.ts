@@ -34,6 +34,10 @@ import {
 } from './orcad-migration-terminal-gate'
 import { createManagedOrcadEnvironment } from './orcad-runtime-deployment'
 import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
+import {
+  isOrcadSourceRetirementEnabled,
+  retainOrcadMigrationSource
+} from './orcad-migration-source-retention'
 import { hasRegisteredDirectSshAuthority } from './ssh-target-registry'
 
 export type OrcadManagedConversionArgs = {
@@ -47,6 +51,8 @@ export type OrcadManagedConversionArgs = {
   releaseDirectSession: (sshTargetId: string) => Promise<void>
   now?: () => Date
   signal?: AbortSignal
+  /** Whether to retire the source after commit; defaults to the `orcad-source-retirement` flag. */
+  retireSource?: () => boolean
 }
 
 export async function convertSshTargetToManagedOrcad(
@@ -95,18 +101,25 @@ export async function convertSshTargetToManagedOrcad(
   if (committed.phase !== 'destination-committed' && committed.phase !== 'source-retired') {
     throw new Error(`orcad_migration_commit_not_proven:${committed.phase}`)
   }
-  await runTargetLifecycle(fenced.sshTargetId, () =>
-    retireOrcadMigrationSource(
-      {
-        userDataPath,
-        store: targetStore.getOrcadMigrationSource(),
-        environment: marked,
-        now: args.now,
-        signal: args.signal
-      },
-      committed.migrationId
+  if (
+    committed.phase === 'destination-committed' &&
+    !(args.retireSource ?? isOrcadSourceRetirementEnabled)()
+  ) {
+    retainOrcadMigrationSource(userDataPath, committed.migrationId, args.now)
+  } else {
+    await runTargetLifecycle(fenced.sshTargetId, () =>
+      retireOrcadMigrationSource(
+        {
+          userDataPath,
+          store: targetStore.getOrcadMigrationSource(),
+          environment: marked,
+          now: args.now,
+          signal: args.signal
+        },
+        committed.migrationId
+      )
     )
-  )
+  }
   return {
     outcome: 'converted',
     environment: redactRuntimeEnvironment(marked),

@@ -11,7 +11,7 @@ import {
 } from '../ssh/ssh-config-host-picker'
 import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
-import { isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
+import { isManagedOrcadSshTarget, isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
 import { getCurrentMainWindow } from './ssh-ipc-context'
 import { removeRegisteredSshTarget } from './ssh-session-teardown'
 
@@ -35,13 +35,31 @@ function takeRepoReadoptions(): SshRepoReadoption[] {
   return repoReadoptions
 }
 
-// Why: generations, provisioning and the runtime ladder cache are main-owned; a renderer must not forge them.
+// Why: generations, provisioning, the server fence and the runtime ladder cache are main-owned;
+// a renderer must not forge them.
 function omitRendererSshTargetGeneration<
-  T extends { generation?: unknown; orcadProvisioning?: unknown; remoteRuntimeResolution?: unknown }
->(value: T): Omit<T, 'generation' | 'orcadProvisioning' | 'remoteRuntimeResolution'> {
+  T extends {
+    generation?: unknown
+    orcadProvisioning?: unknown
+    orcadFence?: unknown
+    managedServerUnavailable?: unknown
+    remoteRuntimeResolution?: unknown
+  }
+>(
+  value: T
+): Omit<
+  T,
+  | 'generation'
+  | 'orcadProvisioning'
+  | 'orcadFence'
+  | 'managedServerUnavailable'
+  | 'remoteRuntimeResolution'
+> {
   const {
     generation: _generation,
     orcadProvisioning: _orcadProvisioning,
+    orcadFence: _orcadFence,
+    managedServerUnavailable: _managedServerUnavailable,
     remoteRuntimeResolution: _remoteRuntimeResolution,
     ...rest
   } = value
@@ -50,7 +68,7 @@ function omitRendererSshTargetGeneration<
 
 function assertNotRuntimeOwned(targetId: string, action: string): void {
   const target = getSshTargetRegistryStore()!.getTarget(targetId)
-  if (target && isRuntimeOwnedSshTarget(target)) {
+  if (target && (isRuntimeOwnedSshTarget(target) || isManagedOrcadSshTarget(target))) {
     throw new Error(`Managed runtime SSH targets cannot be ${action} from SSH settings.`)
   }
 }

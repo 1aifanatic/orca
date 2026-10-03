@@ -4,7 +4,6 @@ import {
   type KnownRuntimeEnvironment
 } from '../../shared/runtime-environments'
 import { PAIRING_OFFER_VERSION } from '../../shared/pairing'
-import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { SshConnection } from './ssh-connection'
 import type { SshConnectionManager } from './ssh-connection-manager'
@@ -51,7 +50,7 @@ function setup(overrides: Partial<SshTarget> = {}) {
     port: 22,
     username: 'deploy',
     generation: 7,
-    owner: createManagedOrcadSshOwner('environment-1'),
+    orcadFence: { environmentId: 'environment-1' },
     ...overrides
   }
   let transportGeneration = 3
@@ -261,7 +260,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
     })
 
     it('fails closed when another environment owns the target', async () => {
-      const state = setup({ owner: createManagedOrcadSshOwner('environment-2') })
+      const state = setup({ orcadFence: { environmentId: 'environment-2' } })
 
       await expect(state.manager.ensure(environment())).rejects.toThrow('no longer owned')
       expect(state.connect).not.toHaveBeenCalled()
@@ -301,7 +300,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
     it('rechecks SSH ownership after connection resolves', async () => {
       const state = setup()
       state.connect.mockImplementationOnce(async () => {
-        state.target.owner = createManagedOrcadSshOwner('environment-2')
+        state.target.orcadFence = { environmentId: 'environment-2' }
         return state.connection
       })
 

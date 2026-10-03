@@ -23,6 +23,7 @@ import {
   verifyFileSha256,
   type PinnedRuntimeMaterializeOptions
 } from './pinned-runtime-materializer'
+import { OrcadArtifactsUnavailableError, OrcadHostUnsupportedError } from './orcad-host-unavailable'
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u)
 const TemplateTargetSchema = z
@@ -143,7 +144,7 @@ function artifactSources(
   const targetDir = join(templateDir, ORCAD_TEMPLATE_TARGETS_DIR, target)
   const targetManifest = manifest.targets[target]
   if (!targetManifest) {
-    throw new Error(`Packaged orcad template does not support ${target}`)
+    throw new OrcadHostUnsupportedError(`Packaged orcad template does not support ${target}`)
   }
   const targetFiles = new Set(orcadTemplateTargetFilenames(target))
   const required = orcadArtifactFilenames(target).map((filename) => ({
@@ -219,7 +220,7 @@ async function verifyTemplate(
 ): Promise<void> {
   const targetManifest = manifest.targets[target]
   if (!targetManifest) {
-    throw new Error(`Packaged orcad template does not support ${target}`)
+    throw new OrcadHostUnsupportedError(`Packaged orcad template does not support ${target}`)
   }
   for (const filename of orcadTemplateCommonFilenames()) {
     const expected = manifest.commonSha256[filename]
@@ -272,10 +273,15 @@ export function getOrcadTemplateCandidates(): string[] {
   return [...new Set(candidates)]
 }
 
+/** Whether this build carries an orcad template at all; dev builds usually don't. */
+export function hasOrcadTemplate(): boolean {
+  return getOrcadTemplateCandidates().some((candidate) => existsSync(candidate))
+}
+
 function resolveOrcadTemplateDir(): string {
   const found = getOrcadTemplateCandidates().find((candidate) => existsSync(candidate))
   if (!found) {
-    throw new Error('The packaged orcad deployment template is missing')
+    throw new OrcadArtifactsUnavailableError('The packaged orcad deployment template is missing')
   }
   return found
 }

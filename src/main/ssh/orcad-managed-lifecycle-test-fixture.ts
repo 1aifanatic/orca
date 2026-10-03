@@ -1,7 +1,6 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
 import { addManagedOrcadEnvironment } from '../../shared/runtime-environment-managed-orcad-store'
 import type { SshTarget } from '../../shared/ssh-types'
@@ -24,7 +23,7 @@ export function createManagedLifecycleHarness() {
     port: 22,
     username: 'dev',
     generation: 4,
-    owner: createManagedOrcadSshOwner('environment-1')
+    orcadFence: { environmentId: 'environment-1' }
   }
   const environment = addManagedOrcadEnvironment(userDataPath, {
     id: 'environment-1',

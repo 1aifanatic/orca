@@ -36,12 +36,21 @@ const CutoverRecordSchema = z
     manifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
     // Terminals proven exited before the fence; any other live lease later means work started.
     provenPtyIds: z.array(z.string().min(1).max(256)).max(10_000),
+    // Committed, with the source rows kept so a downgraded build still sees the host's projects.
+    sourceRetainedAt: z.string().datetime().optional(),
     manifest: z.unknown()
   })
   .strict()
 
 export type OrcadMigrationSourceCutover = Omit<z.infer<typeof CutoverRecordSchema>, 'manifest'> & {
   manifest: OrcadMigrationManifest
+}
+
+/** Committed and retained: finished for this build, waiting only for source retirement. */
+export function isRetainedOrcadMigrationSourceCutover(
+  cutover: Pick<OrcadMigrationSourceCutover, 'phase' | 'sourceRetainedAt'>
+): boolean {
+  return cutover.phase === 'destination-committed' && cutover.sourceRetainedAt !== undefined
 }
 
 /** Throws on anything that is not exactly a cutover whose manifest matches its binding. */

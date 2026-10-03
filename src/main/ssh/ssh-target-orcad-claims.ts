@@ -1,14 +1,11 @@
 /**
- * Exclusive managed-orcad ownership of an SSH target. A claimed target is hidden from direct SSH
- * surfaces and serves only its environment's tunnel. Only empty targets are claimable, including no
+ * Exclusive managed-orcad ownership of an SSH target, recorded as its `orcadFence`. A claimed
+ * target serves only its environment's tunnel; direct relay connects are refused. Only empty targets are claimable, including no
  * saved sessions, automations, worktree metadata or terminal leases: moving a direct SSH host's
  * state into a managed server is the catalog migration, which this does not do.
  */
 import type { Store } from '../persistence'
-import {
-  createManagedOrcadSshOwner,
-  getManagedOrcadOwnerEnvironmentId
-} from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type {
   OrcadMigrationBlocker,
   OrcadMigrationPreflight
@@ -57,7 +54,7 @@ export class SshTargetOrcadClaims {
         blockers: [{ code: 'orcad_migration_target_not_found', category: 'registration' }]
       }
     }
-    const ownedBy = getManagedOrcadOwnerEnvironmentId(target.owner)
+    const ownedBy = getManagedOrcadFenceEnvironmentId(target)
     if (owner && ownedBy === owner.environmentId) {
       return owner.recorded
         ? { targetId, targetLabel: target.label, claimable: true, blockers: [] }
@@ -92,12 +89,12 @@ export class SshTargetOrcadClaims {
       throw new Error(orcadTargetBlockerMessage(targetId, blocker))
     }
     const target = this.requireTarget(targetId)
-    const owned = getManagedOrcadOwnerEnvironmentId(target.owner) === environmentId
+    const owned = getManagedOrcadFenceEnvironmentId(target) === environmentId
     if (owned && target.generation) {
       return target
     }
     const claimed = this.store.updateSshTarget(targetId, {
-      owner: createManagedOrcadSshOwner(environmentId),
+      orcadFence: { environmentId },
       generation: target.generation ?? this.store.allocateSshTargetGeneration(),
       ...(deployName && !target.orcadProvisioning
         ? { orcadProvisioning: { requestId: environmentId, name: deployName } }
@@ -131,18 +128,17 @@ export class SshTargetOrcadClaims {
     if (target.generation !== generation) {
       throw new Error('orcad_migration_target_generation_changed')
     }
-    if (target.owner && getManagedOrcadOwnerEnvironmentId(target.owner) !== environmentId) {
+    const holder = targetHolder(target)
+    if (holder && !(holder.kind === 'managed-server' && holder.environmentId === environmentId)) {
       throw new Error(
         orcadTargetBlockerMessage(targetId, {
           code: 'orcad_migration_target_owned',
           category: 'exclusive-ownership',
-          owner: { ...target.owner }
+          holder
         })
       )
     }
-    const fenced = this.store.updateSshTarget(targetId, {
-      owner: createManagedOrcadSshOwner(environmentId)
-    })
+    const fenced = this.store.updateSshTarget(targetId, { orcadFence: { environmentId } })
     if (!fenced) {
       throw new Error(`SSH target "${targetId}" disappeared while it was being fenced.`)
     }
@@ -151,10 +147,13 @@ export class SshTargetOrcadClaims {
 
   release(targetId: string, environmentId: string): SshTarget | null {
     const target = this.store.getSshTarget(targetId)
-    if (!target || getManagedOrcadOwnerEnvironmentId(target.owner) !== environmentId) {
+    if (!target || getManagedOrcadFenceEnvironmentId(target) !== environmentId) {
       return null
     }
-    return this.store.updateSshTarget(targetId, { owner: undefined, orcadProvisioning: undefined })
+    return this.store.updateSshTarget(targetId, {
+      orcadFence: undefined,
+      orcadProvisioning: undefined
+    })
   }
 
   /** Ownership must be on disk before a remote host acts on it. */
@@ -184,12 +183,9 @@ export function collectTargetCatalogBlockers(
   target: SshTarget
 ): OrcadMigrationBlocker[] {
   const blockers: OrcadMigrationBlocker[] = []
-  if (target.owner) {
-    blockers.push({
-      code: 'orcad_migration_target_owned',
-      category: 'exclusive-ownership',
-      owner: { ...target.owner }
-    })
+  const holder = targetHolder(target)
+  if (holder) {
+    blockers.push({ code: 'orcad_migration_target_owned', category: 'exclusive-ownership', holder })
   }
   const repositories = store
     .getRepos()
@@ -221,6 +217,17 @@ export function collectTargetCatalogBlockers(
     })
   }
   return blockers
+}
+
+/** Who holds the target exclusively: an ephemeral runtime or a managed Orca server. */
+function targetHolder(
+  target: SshTarget
+): Extract<OrcadMigrationBlocker, { code: 'orcad_migration_target_owned' }>['holder'] | null {
+  if (target.owner) {
+    return { kind: 'runtime', runtimeId: target.owner.runtimeId }
+  }
+  const environmentId = getManagedOrcadFenceEnvironmentId(target)
+  return environmentId ? { kind: 'managed-server', environmentId } : null
 }
 
 export function orcadTargetBlockerMessage(

@@ -1,13 +1,13 @@
 /**
  * Fencing a relay-hosted SSH target for a dormant migration into a managed orcad.
  *
- * Two durable records describe a fence: the journal sidecar and the target's managed owner.
- * Write order is journal, then owner, then the profile flush, all before any remote call, so a
+ * Two durable records describe a fence: the journal sidecar and the target's `orcadFence`.
+ * Write order is journal, then fence, then the profile flush, all before any remote call, so a
  * crash leaves either nothing, a journal without a fence (stale, never authority), or both.
- * An owner without a journal is never released here: only the destination can say what happened.
+ * A fence without a journal is never released here: only the destination can say what happened.
  */
 import { randomUUID } from 'node:crypto'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { OrcadMigrationBlocker } from '../../shared/orcad-migration-preflight'
 import {
   ORCAD_MIGRATION_SOURCE_CUTOVER_VERSION,
@@ -47,7 +47,7 @@ export function resolveOrcadMigrationFence(
   target: SshTarget
 ): OrcadMigrationFenceState {
   const cutover = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
-  const ownerEnvironmentId = getManagedOrcadOwnerEnvironmentId(target.owner)
+  const ownerEnvironmentId = getManagedOrcadFenceEnvironmentId(target)
   if (cutover) {
     return ownerEnvironmentId === cutover.destinationEnvironmentId &&
       target.generation === cutover.sshTargetGeneration
@@ -170,6 +170,28 @@ export async function releaseUnstagedFence(
   args.claims.release(cutover.sshTargetId, cutover.destinationEnvironmentId)
   await args.claims.flush(args.signal)
   removeOrcadMigrationSourceCutover(args.userDataPath, cutover.migrationId)
+}
+
+/**
+ * Releases a migration fence whose destination server was never registered: no deploy finished,
+ * so nothing could have been staged there. A registered destination must answer an abort instead.
+ */
+export async function releaseUndeployedMigrationFence(args: {
+  userDataPath: string
+  claims: SshTargetOrcadClaims
+  targetId: string
+  isDestinationRegistered: (environmentId: string) => boolean
+  signal?: AbortSignal
+}): Promise<'released' | 'none'> {
+  const cutover = findOrcadMigrationSourceCutoverForTarget(args.userDataPath, args.targetId)
+  if (!cutover) {
+    return 'none'
+  }
+  if (args.isDestinationRegistered(cutover.destinationEnvironmentId)) {
+    throw new Error('orcad_migration_destination_registered')
+  }
+  await releaseUnstagedFence(args, cutover)
+  return 'released'
 }
 
 function fenceStateReason(state: OrcadMigrationFenceState): string {

@@ -11,7 +11,7 @@ import {
   terminateSshSessionsWithReconnect
 } from './ssh-session-termination'
 import { SshTargetCard } from './SshTargetCard'
-import { SshTargetManagedServerAction } from './SshTargetManagedServerAction'
+import { SshTargetServerStatus } from './SshTargetServerStatus'
 import { SshTargetsEmptyState } from './SshTargetsEmptyState'
 import { SshTargetDestructiveActions } from './SshTargetDestructiveActions'
 import { SshTargetForm, EMPTY_FORM, type EditingTarget } from './SshTargetForm'
@@ -399,7 +399,7 @@ export function SshPane({ addTargetIntentSignal }: SshPaneProps): React.JSX.Elem
                         requestRemoveTarget({ id, label: target.label }, requestRemove)
                       }
                     />
-                    <SshTargetManagedServerAction target={target} onMoved={loadTargets} />
+                    <SshTargetServerStatus target={target} />
                   </div>
                 ))}
               </div>

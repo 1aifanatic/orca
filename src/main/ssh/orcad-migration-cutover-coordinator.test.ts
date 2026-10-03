@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTarget } from '../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
@@ -66,7 +66,7 @@ async function setup() {
   const destination = fakeDestination()
   const context: OrcadMigrationCutoverContext = { userDataPath, store, claims, destination }
   const journal = () => listOrcadMigrationSourceCutovers(userDataPath)[0]
-  const owner = () => getManagedOrcadOwnerEnvironmentId(store.getSshTarget(TARGET.id)?.owner)
+  const owner = () => getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))
   return { context, destination, store, migrationId: fenced.cutover.migrationId, journal, owner }
 }
 

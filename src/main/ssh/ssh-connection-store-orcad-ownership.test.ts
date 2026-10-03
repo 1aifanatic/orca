@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
-import { isRuntimeOwnedSshTarget, SshConnectionStore } from './ssh-connection-store'
+import {
+  isManagedOrcadSshTarget,
+  isRuntimeOwnedSshTarget,
+  SshConnectionStore
+} from './ssh-connection-store'
 import { createMockStore } from './ssh-connection-store-test-fixture'
 import { emptyDependentStateStore } from './ssh-target-orcad-dependents-fixture'
 
@@ -28,8 +31,8 @@ describe('managed orcad ownership of SSH targets', () => {
     sshConfigHostsToTargetsMock.mockReset()
   })
 
-  it('hides claimed and provisioning targets from direct SSH lists', () => {
-    const visible = sshStore.addTarget(base)
+  it('lists managed and provisioning hosts with their status, and hides only runtime-owned ones', () => {
+    sshStore.addTarget(base)
     sshStore.addTarget({
       ...base,
       label: 'provisioning',
@@ -37,9 +40,19 @@ describe('managed orcad ownership of SSH targets', () => {
     })
     const claimed = sshStore.addTarget({ ...base, label: 'claimed' })
     sshStore.getOrcadRuntimeClaims().claim(claimed.id, 'environment-1', { ownerRecorded: false })
+    mockStore.addSshTarget({
+      ...base,
+      id: 'runtime-ssh-vm',
+      label: 'vm',
+      owner: { type: 'on-demand-runtime', runtimeId: 'vm-1' }
+    })
 
-    expect(sshStore.listTargets()).toEqual([visible])
-    expect(sshStore.getOrcadRuntimeClaims().listTargets()).toHaveLength(3)
+    expect(sshStore.listTargets().map((target) => target.label)).toEqual([
+      'cluster',
+      'provisioning',
+      'claimed'
+    ])
+    expect(sshStore.getTarget(claimed.id)?.owner).toBeUndefined()
   })
 
   it('keeps ~/.ssh/config sync from rewriting a claimed config-sourced host', () => {
@@ -48,7 +61,7 @@ describe('managed orcad ownership of SSH targets', () => {
       id: 'ssh-config-host',
       configHost: 'cluster',
       source: 'ssh-config',
-      owner: createManagedOrcadSshOwner('environment-1')
+      orcadFence: { environmentId: 'environment-1' }
     })
     loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
     sshConfigHostsToTargetsMock.mockReturnValue([
@@ -59,14 +72,16 @@ describe('managed orcad ownership of SSH targets', () => {
     expect(mockStore.updateSshTarget).not.toHaveBeenCalled()
   })
 
-  it('treats ownership or a provisioning intent as runtime-owned', () => {
+  it('tells a managed host apart from a runtime-owned one', () => {
     const target = { ...base, id: 'ssh-1' }
-    expect(isRuntimeOwnedSshTarget(target)).toBe(false)
+    const provisioning = { ...target, orcadProvisioning: { requestId: 'r', name: 'n' } }
+    const fenced = { ...target, orcadFence: { environmentId: 'e' } }
+    expect(isManagedOrcadSshTarget(target)).toBe(false)
+    expect(isManagedOrcadSshTarget(provisioning)).toBe(true)
+    expect(isManagedOrcadSshTarget(fenced)).toBe(true)
+    expect(isRuntimeOwnedSshTarget(fenced)).toBe(false)
     expect(
-      isRuntimeOwnedSshTarget({ ...target, orcadProvisioning: { requestId: 'r', name: 'n' } })
+      isRuntimeOwnedSshTarget({ ...target, owner: { type: 'on-demand-runtime', runtimeId: 'vm' } })
     ).toBe(true)
-    expect(isRuntimeOwnedSshTarget({ ...target, owner: createManagedOrcadSshOwner('e') })).toBe(
-      true
-    )
   })
 })

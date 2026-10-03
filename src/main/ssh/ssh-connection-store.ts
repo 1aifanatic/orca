@@ -173,6 +173,7 @@ export class SshConnectionStore {
       if (
         existing.source === 'manual' ||
         isRuntimeOwnedSshTarget(existing) ||
+        isManagedOrcadSshTarget(existing) ||
         (existing.source === undefined && !isLegacyConfigImportTarget(existing))
       ) {
         manualAliases.add(alias)
@@ -264,8 +265,25 @@ export function getRuntimeOwnedSshTargetId(runtimeId: string): string {
   return `${RUNTIME_OWNED_SSH_TARGET_ID_PREFIX}${runtimeId}`
 }
 
+/** Ephemeral runtime targets, hidden from SSH-host surfaces. */
 export function isRuntimeOwnedSshTarget(target: SshTarget): boolean {
-  return target.owner !== undefined || target.orcadProvisioning !== undefined
+  return target.owner !== undefined
+}
+
+/** A host serving (or being set up for) a managed Orca server: visible, but never a direct relay. */
+export function isManagedOrcadSshTarget(target: SshTarget): boolean {
+  return target.orcadFence !== undefined || target.orcadProvisioning !== undefined
+}
+
+/**
+ * Whether a direct relay may serve this host. A managed host may not, unless an older build
+ * changed its retained projects: then it stays on the relay until it is moved again.
+ */
+export function allowsDirectSshRelay(target: SshTarget): boolean {
+  if (target.orcadProvisioning) {
+    return false
+  }
+  return !target.orcadFence || target.orcadFence.sourceChangedAt !== undefined
 }
 
 function isLegacyConfigImportTarget(target: SshTarget): boolean {

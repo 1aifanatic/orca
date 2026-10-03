@@ -1,5 +1,8 @@
 /** Which dormant migrations into managed servers have not finished, for status and resume. */
-import type { OrcadMigrationSourceCutover } from '../../shared/orcad-migration-source-cutover'
+import {
+  isRetainedOrcadMigrationSourceCutover,
+  type OrcadMigrationSourceCutover
+} from '../../shared/orcad-migration-source-cutover'
 import type { KnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
 
@@ -16,16 +19,22 @@ export type OrcadManagedPendingMigration = {
 export function listPendingManagedOrcadMigrations(
   userDataPath: string
 ): OrcadManagedPendingMigration[] {
-  return listOrcadMigrationSourceCutovers(userDataPath)
-    .filter((cutover) => cutover.phase !== 'source-retired')
-    .map((cutover) => ({
-      migrationId: cutover.migrationId,
-      environmentId: cutover.destinationEnvironmentId,
-      name: cutover.destinationName,
-      sshTargetId: cutover.sshTargetId,
-      phase: cutover.phase,
-      startedAt: cutover.startedAt
-    }))
+  return (
+    listOrcadMigrationSourceCutovers(userDataPath)
+      // Why retained too: committed is finished; keeping source rows is downgrade insurance, not work.
+      .filter(
+        (cutover) =>
+          cutover.phase !== 'source-retired' && !isRetainedOrcadMigrationSourceCutover(cutover)
+      )
+      .map((cutover) => ({
+        migrationId: cutover.migrationId,
+        environmentId: cutover.destinationEnvironmentId,
+        name: cutover.destinationName,
+        sshTargetId: cutover.sshTargetId,
+        phase: cutover.phase,
+        startedAt: cutover.startedAt
+      }))
+  )
 }
 
 export function findIncompleteManagedOrcadMigration(

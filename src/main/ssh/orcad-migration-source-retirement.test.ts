@@ -122,7 +122,7 @@ describe('retiring a migrated source', () => {
 
   it('refuses when the fence that authorized the migration is gone', async () => {
     const h = await setup()
-    h.store.updateSshTarget(TARGET.id, { owner: undefined })
+    h.store.updateSshTarget(TARGET.id, { orcadFence: undefined })
     await expect(h.retire()).rejects.toThrow('orcad_migration_source_fence_lost')
     expect(h.store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
   })

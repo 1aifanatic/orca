@@ -267,7 +267,7 @@ export function RuntimeEnvironmentsPane({
         />
       ) : null}
 
-      {visibleWorkflow === 'connect' && settings.experimentalManagedServers === true ? (
+      {visibleWorkflow === 'connect' ? (
         <ManagedServersSection
           environments={environments}
           onChanged={() => void loadEnvironments()}

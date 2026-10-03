@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SshRemotePtyLease, SshTarget } from '../../shared/ssh-types'
-import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
 import {
@@ -151,7 +150,7 @@ describe('migration export preflight', () => {
 
   it('refuses a target another runtime owns, and passes the owner only with its journal', () => {
     const owned = preflightStore((store) =>
-      store.addSshTarget({ ...TARGET, owner: createManagedOrcadSshOwner('env-1') })
+      store.addSshTarget({ ...TARGET, orcadFence: { environmentId: 'env-1' } })
     )
     expect(preflightOrcadMigrationExport(owned, TARGET.id).claimable).toBe(false)
     expect(
