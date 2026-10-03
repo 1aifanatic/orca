@@ -8,7 +8,10 @@ import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { AgentSessionStatusEvent } from '../../../../shared/agent-session-wire'
 import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
+import { AGENT_STATUS_STALE_AFTER_MS } from '../../../../shared/agent-status-freshness'
+import { structuredAgentSessionAgentStatus } from '../../../../shared/structured-agent-session-agent-status'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import type { Tab } from '../../../../shared/tab-types'
 import type { StructuredAgentSessionLaunchIntent } from '@/lib/launch-structured-agent-session'
 import type { AppState } from '@/store/types'
@@ -93,6 +96,8 @@ import { countActivityUnread } from '../activity/useActivityUnreadCount'
 const WORKTREE_ID = 'wt-1'
 const SESSION_ID = 'session-1'
 const TAB_CREATED_AT = 1_000
+const FAILED_AT = 10 * 60 * 60_000
+const PANE_KEY = structuredAgentSessionPaneKey(`structured-agent-session-${SESSION_ID}`, SESSION_ID)
 
 const structuredTab = {
   id: `structured-agent-session-${SESSION_ID}`,
@@ -163,6 +168,31 @@ async function connect(): Promise<(event: AgentSessionStatusEvent) => void> {
   return (event) => act(() => emit(event))
 }
 
+/** A restart keeps the saved launch and the acknowledgements, but no rows and no launch in memory. */
+async function restart(): Promise<void> {
+  const { acknowledgedAgentsByPaneKey } = store().getState()
+  cleanup()
+  store().setState({ agentStatusByPaneKey: {}, acknowledgedAgentsByPaneKey })
+  resetStructuredAgentLaunchRegistryForTests()
+  resetStructuredAgentLaunchPersistenceForTests()
+  resetStructuredAgentSessionStatusFeedsForTests()
+  resetTerminalTabActivityFlagsCacheForTest()
+  mocks.subscribeStatus.mockClear()
+  await connect()
+}
+
+function setClock(now: number): void {
+  vi.spyOn(Date, 'now').mockReturnValue(now)
+}
+
+function acknowledge(at: number): void {
+  store().setState({ acknowledgedAgentsByPaneKey: { [PANE_KEY]: at } })
+}
+
+function unread(): number {
+  return countActivityUnread(store().getState())
+}
+
 async function failStart(): Promise<void> {
   mocks.createIntent.mockReturnValueOnce(intent)
   mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('refused'))
@@ -193,6 +223,7 @@ describe('a chat whose start failed', () => {
   afterEach(() => {
     cleanup()
     resetStructuredAgentSessionStatusFeedsForTests()
+    vi.restoreAllMocks()
   })
 
   it('marks its tab and its workspace row failed', async () => {
@@ -253,42 +284,122 @@ describe('a chat whose start failed', () => {
     await flush()
 
     expect(rows()).toEqual([])
-    expect(store().getState().retainedAgentsByPaneKey).toEqual({})
   })
 
   it('stays read across a restart once seen, and a later failure is news again', async () => {
+    setClock(FAILED_AT)
     await connect()
     await failStart()
-    const [failed] = rows()
-    expect(failed?.stateStartedAt).toBeGreaterThan(TAB_CREATED_AT)
-    expect(countActivityUnread(store().getState())).toBe(1)
-    const acknowledged = { [failed?.paneKey ?? '']: Date.now() }
-    store().setState({ acknowledgedAgentsByPaneKey: acknowledged })
-    expect(countActivityUnread(store().getState())).toBe(0)
-
-    // A restart keeps the persisted launch and the acknowledgement, but no row and no failure time.
-    cleanup()
-    store().setState({ agentStatusByPaneKey: {}, acknowledgedAgentsByPaneKey: acknowledged })
-    resetStructuredAgentLaunchRegistryForTests()
-    resetStructuredAgentLaunchPersistenceForTests()
-    resetStructuredAgentSessionStatusFeedsForTests()
-    mocks.subscribeStatus.mockClear()
-    await connect()
     expect(rows()).toEqual([
-      expect.objectContaining({ state: 'done', stateStartedAt: TAB_CREATED_AT })
+      expect.objectContaining({ updatedAt: FAILED_AT, stateStartedAt: FAILED_AT })
     ])
-    expect(countActivityUnread(store().getState())).toBe(0)
-    // The tab is older than the stale window, but the failure was read from the launch just now.
+    expect(unread()).toBe(1)
+    setClock(FAILED_AT + 60_000)
+    acknowledge(FAILED_AT + 60_000)
+    expect(unread()).toBe(0)
+
+    await restart()
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'done', updatedAt: FAILED_AT, stateStartedAt: FAILED_AT })
+    ])
+    expect(unread()).toBe(0)
     expect(tabStatus()).toBe('failed')
 
+    setClock(FAILED_AT + 120_000)
     mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('refused'))
     act(() => {
       retryStructuredAgentSessionLaunch(WORKTREE_ID, SESSION_ID)
     })
     await flush()
     expect(rows()).toEqual([
-      expect.objectContaining({ mainAgent: expect.objectContaining({ outcome: 'failure' }) })
+      expect.objectContaining({
+        stateStartedAt: FAILED_AT + 120_000,
+        mainAgent: expect.objectContaining({ outcome: 'failure' })
+      })
     ])
-    expect(countActivityUnread(store().getState())).toBe(1)
+    expect(unread()).toBe(1)
+  })
+
+  it('is unread after a restart when it failed after the chat was last viewed', async () => {
+    setClock(FAILED_AT - 60_000)
+    await connect()
+    // Viewed while it was starting; it failed after the user looked away.
+    acknowledge(FAILED_AT - 60_000)
+    setClock(FAILED_AT)
+    await failStart()
+    expect(unread()).toBe(1)
+
+    setClock(FAILED_AT + 60_000)
+    await restart()
+    expect(rows()).toEqual([expect.objectContaining({ stateStartedAt: FAILED_AT })])
+    expect(unread()).toBe(1)
+  })
+
+  it('ages like a host-reported failure: a restart does not bring back an old mark', async () => {
+    setClock(FAILED_AT)
+    await connect()
+    await failStart()
+    expect(tabStatus()).toBe('failed')
+
+    setClock(FAILED_AT + AGENT_STATUS_STALE_AFTER_MS + 1)
+    await restart()
+    expect(rows()).toEqual([expect.objectContaining({ updatedAt: FAILED_AT })])
+    expect(tabStatus()).not.toBe('failed')
+    expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasFailed).toBe(
+      false
+    )
+  })
+
+  it('dates a retry that fails again by the new failure', async () => {
+    setClock(FAILED_AT)
+    await connect()
+    await failStart()
+    acknowledge(FAILED_AT + 1)
+    expect(unread()).toBe(0)
+
+    setClock(FAILED_AT + 60_000)
+    mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('refused'))
+    act(() => {
+      retryStructuredAgentSessionLaunch(WORKTREE_ID, SESSION_ID)
+    })
+    await flush()
+    expect(rows()).toEqual([
+      expect.objectContaining({ updatedAt: FAILED_AT + 60_000, stateStartedAt: FAILED_AT + 60_000 })
+    ])
+    expect(unread()).toBe(1)
+  })
+
+  it('re-dates a failed row the pane key already held by its own failure', async () => {
+    setClock(FAILED_AT - 60_000)
+    await connect()
+    const { state, mainAgent } = structuredAgentSessionAgentStatus({
+      status: 'idle',
+      turnOutcome: 'failure'
+    })
+    act(() =>
+      store()
+        .getState()
+        .setAgentStatus(
+          PANE_KEY,
+          {
+            state,
+            mainAgent: { ...mainAgent, stateStartedAt: FAILED_AT - 60_000 },
+            interrupted: false,
+            prompt: '',
+            agentType: 'claude',
+            sessionBoundary: false
+          },
+          structuredTab.label,
+          undefined,
+          { tabId: structuredTab.id, worktreeId: WORKTREE_ID }
+        )
+    )
+    expect(rows()).toEqual([expect.objectContaining({ updatedAt: FAILED_AT - 60_000 })])
+
+    setClock(FAILED_AT)
+    await failStart()
+    expect(rows()).toEqual([
+      expect.objectContaining({ updatedAt: FAILED_AT, stateStartedAt: FAILED_AT })
+    ])
   })
 })
