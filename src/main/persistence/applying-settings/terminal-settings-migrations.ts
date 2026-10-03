@@ -60,6 +60,8 @@ type RetiredGlobalSettings = {
   terminalScrollbackBytes?: unknown
   enableGitHubAttribution?: unknown
   showAgentsSidebar?: unknown
+  // Managed servers are the default SSH path now; an older build reads a missing key as off.
+  experimentalManagedServers?: unknown
 }
 
 export function stripRetiredGlobalSettings(
@@ -69,11 +71,13 @@ export function stripRetiredGlobalSettings(
     terminalScrollbackBytes: _legacyScrollbackBytes,
     enableGitHubAttribution: _legacyGitHubAttribution,
     showAgentsSidebar: _legacyShowAgentsSidebar,
+    experimentalManagedServers: _retiredManagedServersExperiment,
     ...rest
   } = (settings ?? {}) as Partial<GlobalSettings> & RetiredGlobalSettings
   void _legacyScrollbackBytes
   void _legacyGitHubAttribution
   void _legacyShowAgentsSidebar
+  void _retiredManagedServersExperiment
   return rest
 }
 

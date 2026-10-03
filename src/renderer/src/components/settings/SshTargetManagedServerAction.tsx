@@ -12,16 +12,15 @@ type SshTargetManagedServerActionProps = {
   onMoved: () => unknown
 }
 
-/** "Move to managed server" under an SSH host, behind the Managed servers experiment. */
+/** "Move to managed server" under an SSH host. */
 export function SshTargetManagedServerAction({
   target,
   onMoved
 }: SshTargetManagedServerActionProps): React.JSX.Element | null {
-  const enabled = useAppStore((s) => s.settings?.experimentalManagedServers === true)
   const state = useAppStore((s) => s.sshConnectionStates.get(target.id))
   const api = window.api.runtimeEnvironments.managedOrcad
   const [open, setOpen] = useState(false)
-  if (!enabled || !api || !canMoveHostToManagedServer(state)) {
+  if (!api || !canMoveHostToManagedServer(state)) {
     return null
   }
   return (

@@ -1749,6 +1749,17 @@
             }
           }
         },
+        "managedServers": {
+          "search": {
+            "description": "Deploy and run an Orca server on your own SSH hosts, and move an SSH host’s projects onto one.",
+            "keywordMigrate": "migrate",
+            "keywordServer": "server"
+          }
+        },
+        "managedServersExperimentalSetting": {
+          "description": "Shows Managed servers under Remote Orca Servers, and Move to managed server on SSH hosts. macOS and Linux hosts only.",
+          "toggleLabel": "Toggle Managed servers"
+        },
         "mobile": {
           "settings": {
             "search": {
