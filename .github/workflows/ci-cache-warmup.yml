@@ -1,4 +1,4 @@
-name: Store producer installation comparison
+name: Electron archive cleanup path control
 on:
   workflow_dispatch:
 permissions:
@@ -6,93 +6,36 @@ permissions:
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
 jobs:
-  compare:
-    name: ${{ matrix.os }} full installer repeat ${{ matrix.sample }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        include:
-          - os: windows-2022
-            native: node
-            first: cached
-            sample: 1
-          - os: windows-11-arm
-            native: node
-            first: lookup
-            sample: 1
-          - os: windows-2022
-            native: node
-            first: lookup
-            sample: 2
-          - os: windows-11-arm
-            native: node
-            first: cached
-            sample: 2
-    defaults:
-      run:
-        shell: bash
+  writer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/ci-store-producer-outer
+  reader:
+    needs: writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: bad
+        uses: actions/cache/restore@v5
         with:
-          native-runtime: ${{ matrix.native }}
-          cache-pnpm-store: 'false'
-      - name: Prepare subprocess wrapper outside measurements
+          path: ${{ runner.temp }}/bad-marker
+          key: ci-electron-path-bad-${{ github.run_id }}-${{ github.run_attempt }}
+      - id: good
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/good-marker
+          key: ci-electron-path-good-${{ github.run_id }}-${{ github.run_attempt }}
+      - shell: bash
+        env:
+          BAD_HIT: ${{ steps.bad.outputs.cache-hit }}
+          GOOD_HIT: ${{ steps.good.outputs.cache-hit }}
         run: |
-          node --input-type=module <<'NODE'
-          import {build} from 'esbuild';
-          import {join} from 'node:path';
-          await build({stdin:{contents:'export {runProcessSync} from "./src/shared/child-process/run-process.ts"',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:join(process.env.RUNNER_TEMP,'producer-trial-process.mjs'),logLevel:'silent'});
-          NODE
-      - name: Reset first treatment
-        env:
-          TREATMENT: ${{ matrix.first }}
-        run: node config/scripts/ci-store-producer-trial.mjs reset
-      - id: first-start
-        name: Start first measurement
-        run: node config/scripts/ci-store-producer-trial.mjs start
-      - id: first-install
-        uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: ${{ matrix.native }}
-          cache-pnpm-store-lookup-only: ${{ matrix.first == 'lookup' }}
-      - name: Verify first result
-        env:
-          TREATMENT: ${{ matrix.first }}
-          STARTED: ${{ steps.first-start.outputs.started }}
-          CACHE_HIT: ${{ steps.first-install.outputs.pnpm-store-cache-hit }}
-          NATIVE: ${{ matrix.native }}
-          NATIVE_HIT: ${{ steps.first-install.outputs.native-cache-hit }}
-        run: node config/scripts/ci-store-producer-trial.mjs finish
-      - name: Reset second treatment
-        env:
-          TREATMENT: ${{ matrix.first == 'cached' && 'lookup' || 'cached' }}
-        run: node config/scripts/ci-store-producer-trial.mjs reset
-      - id: second-start
-        name: Start second measurement
-        run: node config/scripts/ci-store-producer-trial.mjs start
-      - id: second-install
-        uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: ${{ matrix.native }}
-          cache-pnpm-store-lookup-only: ${{ matrix.first == 'cached' }}
-      - name: Verify second result
-        env:
-          TREATMENT: ${{ matrix.first == 'cached' && 'lookup' || 'cached' }}
-          STARTED: ${{ steps.second-start.outputs.started }}
-          CACHE_HIT: ${{ steps.second-install.outputs.pnpm-store-cache-hit }}
-          NATIVE: ${{ matrix.native }}
-          NATIVE_HIT: ${{ steps.second-install.outputs.native-cache-hit }}
-        run: node config/scripts/ci-store-producer-trial.mjs finish
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: producer-install-${{ matrix.os }}-${{ matrix.sample }}
-          path: ${{ runner.temp }}/producer-install-comparison/
-          if-no-files-found: error
-          retention-days: 7
+          test "$BAD_HIT" != true
+          test ! -e "$RUNNER_TEMP/bad-marker/marker"
+          test "$GOOD_HIT" = true
+          test "$(cat "$RUNNER_TEMP/good-marker/marker")" = 'archive cleanup payload'

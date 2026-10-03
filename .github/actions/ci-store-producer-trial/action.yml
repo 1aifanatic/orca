@@ -1,23 +1,32 @@
-name: Nested producer control
-description: Tiny cold writer validating the production environment path pattern.
+name: Archive path cleanup control
+description: Compare internal outputs with the exported Electron cache path.
 runs:
   using: composite
   steps:
     - id: scope
       shell: bash
       run: |
-        printf 'ORCA_PNPM_STORE_CACHE_PATH=%s\n' "$RUNNER_TEMP/nested-producer-marker" >> "$GITHUB_ENV"
-        printf 'key=ci-store-producer-nested-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
-    - id: lookup
+        printf 'bad-path=%s\n' "$RUNNER_TEMP/bad-marker" >> "$GITHUB_OUTPUT"
+        printf 'bad-key=ci-electron-path-bad-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+        printf 'good-key=ci-electron-path-good-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+        printf 'ELECTRON_CACHE=%s\n' "$RUNNER_TEMP/good-marker" >> "$GITHUB_ENV"
+    - id: bad
       uses: actions/cache@v5
       with:
-        path: ${{ env.ORCA_PNPM_STORE_CACHE_PATH }}
-        key: ${{ steps.scope.outputs.key }}
-        lookup-only: true
+        path: ${{ steps.scope.outputs.bad-path }}
+        key: ${{ steps.scope.outputs.bad-key }}
+    - id: good
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.ELECTRON_CACHE }}
+        key: ${{ steps.scope.outputs.good-key }}
     - shell: bash
       env:
-        CACHE_HIT: ${{ steps.lookup.outputs.cache-hit }}
+        BAD_HIT: ${{ steps.bad.outputs.cache-hit }}
+        GOOD_HIT: ${{ steps.good.outputs.cache-hit }}
       run: |
-        test "$CACHE_HIT" != 'true'
-        mkdir -p "$ORCA_PNPM_STORE_CACHE_PATH"
-        printf 'nested producer payload\n' > "$ORCA_PNPM_STORE_CACHE_PATH/marker"
+        test "$BAD_HIT" != true
+        test "$GOOD_HIT" != true
+        mkdir -p "$RUNNER_TEMP/bad-marker" "$ELECTRON_CACHE"
+        printf 'archive cleanup payload\n' > "$RUNNER_TEMP/bad-marker/marker"
+        printf 'archive cleanup payload\n' > "$ELECTRON_CACHE/marker"
