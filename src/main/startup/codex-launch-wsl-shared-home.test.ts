@@ -87,7 +87,7 @@ describe('WSL Codex launch prep and the shared guest ~/.codex', () => {
       GUEST_HOME,
       WSL_TARGET,
       true,
-      'profile'
+      'shared'
     )
   })
 

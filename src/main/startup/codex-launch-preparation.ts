@@ -62,7 +62,6 @@ export async function prepareCodexRuntimeHomeForLaunch(
   const hooksEnabled = isAgentStatusHooksEnabledForAgent(state.store?.getSettings(), 'codex')
   // Why: with hooks off, only this profile's own WSL account homes are stripped; the guest's ~/.codex is shared.
   const homeOwner =
-    !hooksEnabled &&
     hookTarget?.runtime === 'wsl' &&
     runtimeHomePath &&
     !runtimeHome.isProfileOwnedWslCodexHome(runtimeHomePath)
