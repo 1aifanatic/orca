@@ -85,7 +85,6 @@ export function createStructuredAgentSessionHostRestore(
     seedStatus: StructuredAgentSessionStartupStateDeps['seedStatus']
   }
 ): {
-  reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
 } & StructuredAgentSessionStartupState {
   const { reconcileLeases, resolveRecovery, seedStatus, ...rest } = wiring
@@ -113,31 +112,24 @@ export function createStructuredAgentSessionHostRestore(
     openDeps: deps,
     canSettle,
     seedStatus,
+    reconcile,
     resolveRecovery: readRestore.resolveRecovery,
-    restoreListed: (records, resolveListedRecovery, concurrency) =>
-      restoreStructuredAgentSessionsOnRestart({
-        ...readRestore,
-        records,
-        resolveRecovery: resolveListedRecovery,
-        concurrency
-      }),
+    restoreListed: (records, leases, concurrency) =>
+      restoreStructuredAgentSessionsOnRestart({ ...readRestore, ...leases, records, concurrency }),
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
     isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
-  // Startup's resolver: a lease startup recovered, or gave up on, is not recovered again.
+  // Startup's lease bookkeeping: no lease is checked again, or recovered twice.
   const restorer = new StructuredAgentSessionReadableRestorer({
     ...readRestore,
-    resolveRecovery: startup.recoverLease,
+    ...startup.leases,
     supportsRecord
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
-    reconcileRestartLeases: async () => {
-      await reconcile('startup')
-    },
     // The listed chats the tab list left to it: corrupt, unreadable, or a per-chat file whose open
     // failed before the listing.
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),

@@ -1,7 +1,8 @@
 // What host startup does with each chat's stored status, before any client lists a tab.
 //
-// Recovery: every lease a crash left `recovering` starts resolving first (a surviving provider
-// process is stopped and its death recorded), so each settle verdict below reads that evidence.
+// Leases: one phase checks them, then starts recovering every lease a crash left `recovering` (a
+// surviving provider process is stopped and its death recorded), so each settle verdict below reads
+// that evidence; every startup restore answers its lease bookkeeping from that phase.
 // Catch-up: a listed chat with history here and no stored status yet (the first launch after the
 // upgrade) gets its row from its rows alone, so what follows reads stored status for it too. A listed
 // chat whose history is still in a per-chat file is then opened from it, before the listing (see
@@ -32,9 +33,9 @@ import {
 } from './structured-agent-session-conversation-open'
 import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
 import {
-  createStructuredAgentSessionStartupLeaseRecovery,
-  type StructuredAgentSessionStartupLeaseRecovery
-} from './structured-agent-session-startup-lease-recovery'
+  createStructuredAgentSessionStartupLeasePhase,
+  type StructuredAgentSessionStartupLeasePhase
+} from './structured-agent-session-startup-lease-phase'
 import { restoreListedFromPerChatFiles } from './structured-agent-session-startup-per-chat-file-restore'
 import { catchUpMissingStatuses } from './structured-agent-session-startup-status-catch-up'
 
@@ -48,14 +49,16 @@ export type StructuredAgentSessionStartupStateDeps = {
     record: AgentSessionRecord,
     stored: { projected: StructuredAgentSessionStatusProjection; lastActivityAt: number }
   ) => void
+  /** The restart lease check; false when it failed (reported by it). Never rejects. */
+  reconcile: (sessionId: string) => Promise<boolean>
   /** Resolves a `recovering` lease; never throws (a failure is reported and left to the next
    *  attach or send). */
   resolveRecovery: (sessionId: string) => Promise<boolean>
-  /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish), resolving
-   *  recovery through `resolveRecovery`, at its own concurrency unless given one. */
+  /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish), with its
+   *  lease bookkeeping answered by `leases`, at its own concurrency unless given one. */
   restoreListed: (
     records: AgentSessionRecord[],
-    resolveRecovery: (sessionId: string) => Promise<boolean>,
+    leases: StructuredAgentSessionStartupLeases,
     concurrency?: number
   ) => Promise<void>
   /** Tests shorten it; production takes the default. */
@@ -67,9 +70,17 @@ export type StructuredAgentSessionStartupStateDeps = {
   isDisposed: () => boolean
 }
 
+/** A startup restore's lease bookkeeping, answered from the startup lease phase. */
+export type StructuredAgentSessionStartupLeases = {
+  reconcile: (sessionId: string) => Promise<boolean>
+  resolveRecovery: (sessionId: string) => Promise<boolean>
+}
+
 export type StructuredAgentSessionStartupState = {
-  /** Starts every lease recovery, then writes the stored status of every listed chat with history
-   *  here and none yet, before the listing answers. Never rejects. */
+  /** The startup lease phase's check, which then starts every recovery. Never rejects. */
+  reconcileRestartLeases: () => Promise<void>
+  /** Writes the stored status of every listed chat with history here and none yet, before the
+   *  listing answers. Never rejects. */
   catchUpMissingStatuses: (listedIds: readonly string[]) => Promise<void>
   /** Opens listed chats still in per-chat files, before the listing answers. Never rejects. */
   restoreListedFromPerChatFiles: (listedIds: readonly string[]) => Promise<void>
@@ -77,33 +88,41 @@ export type StructuredAgentSessionStartupState = {
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat a gone process left with work, once per host. Never rejects. */
   settleOwedSessions: (listedIds: readonly string[]) => Promise<void>
-  /** Every restart restore's lease resolver, so no `recovering` lease is recovered twice. */
-  recoverLease: (sessionId: string) => Promise<boolean>
+  /** Every startup restore's lease bookkeeping, so none checks leases or recovers one twice. */
+  leases: StructuredAgentSessionStartupLeases
 }
 
 export function createStructuredAgentSessionStartupState(
   deps: StructuredAgentSessionStartupStateDeps
 ): StructuredAgentSessionStartupState {
-  const leases = createStructuredAgentSessionStartupLeaseRecovery({
+  const phase = createStructuredAgentSessionStartupLeasePhase({
     ...deps,
+    store: deps.openDeps.store,
+    logger: deps.openDeps.logger,
     budgetMs: deps.recoveryBudgetMs
   })
+  const leases: StructuredAgentSessionStartupLeases = {
+    reconcile: () => phase.reconciled(),
+    resolveRecovery: phase.resolve
+  }
   let settling: Promise<void> | null = null
   return {
-    catchUpMissingStatuses: async (listedIds) => {
+    reconcileRestartLeases: async () => {
+      await phase.reconciled()
+      // Started now, awaited by the settle; the listing waits only on its own chats' recoveries.
       if (!deps.openDeps.journalDatabase.readOnly) {
-        void leases.recoverAll()
+        void phase.recovered()
       }
-      await catchUpMissingStatuses(deps, listedIds)
     },
+    catchUpMissingStatuses: (listedIds) => catchUpMissingStatuses(deps, listedIds),
     restoreListedFromPerChatFiles: (listedIds) =>
-      restoreListedFromPerChatFiles(deps, listedIds, leases.resolve),
+      restoreListedFromPerChatFiles(deps, listedIds, leases),
     seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
     settleOwedSessions: (listedIds) => {
-      settling ??= settleOwedSessions(deps, listedIds, leases)
+      settling ??= settleOwedSessions(deps, listedIds, phase, leases)
       return settling
     },
-    recoverLease: leases.resolve
+    leases
   }
 }
 
@@ -168,14 +187,15 @@ function seedStoredStatuses(
 async function settleOwedSessions(
   deps: StructuredAgentSessionStartupStateDeps,
   listedIds: readonly string[],
-  leases: StructuredAgentSessionStartupLeaseRecovery
+  phase: StructuredAgentSessionStartupLeasePhase,
+  leases: StructuredAgentSessionStartupLeases
 ): Promise<void> {
   try {
     const database = deps.openDeps.journalDatabase
     if (database.readOnly) {
       return
     }
-    await leases.recoverAll()
+    await phase.recovered()
     const listedOrder = new Map(listedIds.map((sessionId, index) => [sessionId, index]))
     const listed: AgentSessionRecord[] = []
     const others: AgentSessionRecord[] = []
@@ -195,7 +215,7 @@ async function settleOwedSessions(
       (left, right) =>
         (listedOrder.get(left.sessionId) ?? 0) - (listedOrder.get(right.sessionId) ?? 0)
     )
-    await deps.restoreListed(listed, leases.resolve)
+    await deps.restoreListed(listed, leases)
     // A listed chat the worker left closed (its tab closed meanwhile) is settled like any other.
     others.push(...listed.filter((record) => !deps.hasSession(record.sessionId)))
     for (const record of others) {
@@ -204,13 +224,8 @@ async function settleOwedSessions(
       if (deps.isDisposed()) {
         return
       }
-      // A reconcile since the records were read (the listed restore's, or a command's) may have
-      // moved this lease to `recovering`: recover it, and settle from the record it left.
-      await leases.resolve(record.sessionId)
       await deps
-        .serialize(record.sessionId, () =>
-          settleClosed(deps, deps.openDeps.store.getRecord(record.sessionId) ?? record)
-        )
+        .serialize(record.sessionId, () => settleClosed(deps, record))
         .catch((error: unknown) => {
           deps.openDeps.logger.warn('settling a chat at startup failed', {
             scope: 'startup-settle-chat',

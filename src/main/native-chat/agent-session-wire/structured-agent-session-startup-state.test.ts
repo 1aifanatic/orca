@@ -413,18 +413,21 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     expect(stopOwnerProcess).not.toHaveBeenCalled()
   })
 
-  it('is stopped for an unlisted chat whose lease the reconcile moves only after the catch-up began', async () => {
+  it('is stopped for an unlisted chat whose lease a command checks after the lease check failed', async () => {
     const rig = await newRig()
-    await restTestChat(rig, 'session-listed', { message: 'done' })
-    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-closed'])
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-listed', 'session-closed'])
     const listed = listedIds(rig)
-    vi.spyOn(rig.store, 'reconcileOnRestart').mockRejectedValueOnce(new Error('disk I/O error'))
+    const failed = new Error('disk I/O error')
+    vi.spyOn(rig.store, 'reconcileOnRestart')
+      .mockRejectedValueOnce(failed)
+      .mockRejectedValueOnce(failed)
 
     await rig.host.reconcileRestartLeases()
     expect(rig.store.getRecord('session-closed')!.lease.unreconciled).toBe(true)
-    // A command let through mid-catch-up completes the reconcile, moving the lease to `recovering`.
+    // An attach let through mid-catch-up checks the leases first, moving them to `recovering`;
+    // what it answers after that does not matter here.
     const catchingUp = rig.host.catchUpMissingStatuses(listed)
-    await rig.host.reconcileRestartLeases()
+    await restTestChat(rig, 'session-listed').catch(() => undefined)
     expect(rig.store.getRecord('session-closed')!.lease.handoffStage).toBe('recovering')
     await catchingUp
     await rig.host.restoreListedFromPerChatFiles(listed)
@@ -436,7 +439,7 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
   })
 
-  it("is stopped for an unlisted chat whose lease the settle's own listed restore reconciles", async () => {
+  it("is stopped for an unlisted chat when the lease check's first try fails", async () => {
     const rig = await newRig()
     const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-open', 'session-closed'])
     const listed = listedIds(rig)
@@ -445,18 +448,40 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
       .spyOn(rig.store, 'reconcileOnRestart')
       .mockRejectedValueOnce(new Error('disk I/O error'))
 
-    // Nothing else reconciles before the settle: its listed restore is the first retry.
     await startup(rig, listed)
 
+    // The lease check's second try settles every lease; no restore checks them again.
     expect(reconcile).toHaveBeenCalledTimes(2)
     expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
     expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
   })
+
+  it('leaves every lease to the next attach or send when the lease check fails twice', async () => {
+    const rig = await newRig()
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-open', 'session-closed'])
+    const listed = listedIds(rig)
+    const failed = new Error('disk I/O error')
+    const reconcile = vi
+      .spyOn(rig.store, 'reconcileOnRestart')
+      .mockRejectedValueOnce(failed)
+      .mockRejectedValueOnce(failed)
+
+    await startup(rig, listed)
+
+    // No startup restore checks the leases again: each chat settles unverified, nothing stopped.
+    expect(reconcile).toHaveBeenCalledTimes(2)
+    expect(stopOwnerProcess).not.toHaveBeenCalled()
+    expect(rig.store.getRecord('session-closed')!.lease.unreconciled).toBe(true)
+    expect(readTestJournalSessionStatus(rig.root, 'session-closed')).toMatchObject({
+      lifecycle: 'idle',
+      summary: { turnOutcome: 'unconfirmed' }
+    })
+  })
 })
 
 /**
- * Chats whose turn was running when Orca died, with their provider processes still up: one live
- * process the rig's chats share, which a stop ends. The first is listed, the rest have no tab.
+ * Chats whose turn was running when Orca died. The first is listed, the rest have no tab; the last
+ * one's provider process is still up until a stop ends it.
  */
 async function crashWithLiveOwner(
   rig: RestTestRig,
@@ -485,8 +510,10 @@ async function crashWithLiveOwner(
   const stopOwnerProcess = vi.fn(() => {
     alive = false
   })
-  rig.probeOwner.mockImplementation(async () =>
-    alive ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] } : { outcome: 'pid-absent' }
+  rig.probeOwner.mockImplementation(async (record) =>
+    alive && record.sessionId === ids.at(-1)
+      ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+      : { outcome: 'pid-absent' }
   )
   await rig.boot({ stopOwnerProcess })
   return stopOwnerProcess
@@ -712,6 +739,7 @@ describe('a recovery that never answers', () => {
       openDeps: openDeps as unknown as StructuredAgentSessionStartupStateDeps['openDeps'],
       canSettle: (record): record is AgentSessionRecord => record !== null,
       seedStatus: vi.fn(),
+      reconcile: async () => true,
       resolveRecovery,
       restoreListed,
       serialize: (_sessionId, task) => task(),
@@ -724,7 +752,10 @@ describe('a recovery that never answers', () => {
     await state.settleOwedSessions([])
 
     expect(resolveRecovery).toHaveBeenCalledWith('session-stuck')
-    expect(restoreListed).toHaveBeenCalledWith([], expect.any(Function))
+    expect(restoreListed).toHaveBeenCalledWith([], {
+      reconcile: expect.any(Function),
+      resolveRecovery: expect.any(Function)
+    })
     expect(stuck.lease.handoffStage).toBe('recovering')
     expect(logger.warn).toHaveBeenCalledWith('a chat recovery outlasted startup; left unverified', {
       scope: 'startup-recovery-timeout',

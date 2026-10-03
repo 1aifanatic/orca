@@ -124,6 +124,7 @@ function deps(
     canSettle: (candidate: AgentSessionRecord | null): candidate is AgentSessionRecord =>
       candidate !== null,
     seedStatus: vi.fn(),
+    reconcile: async () => true,
     resolveRecovery: recovering.resolveRecovery,
     restoreListed: async () => undefined,
     serialize: <T>(_sessionId: string, task: () => Promise<T>) => task(),
@@ -207,7 +208,7 @@ describe('the startup status catch-up', () => {
     }
   )
 
-  it('starts every lease recovery, listed or not, before its first fold', async () => {
+  it('runs after the lease check started every lease recovery, listed or not', async () => {
     const ids = ['session-0', 'session-1']
     await chats(ids, { rowless: true })
     const crashed = ['session-0', 'session-tabless'].map((sessionId) => {
@@ -226,6 +227,7 @@ describe('the startup status catch-up', () => {
     )
     trace.events = []
 
+    await state.reconcileRestartLeases()
     await state.catchUpMissingStatuses(ids)
 
     const firstFold = trace.events.findIndex((event) => event.startsWith('fold:'))

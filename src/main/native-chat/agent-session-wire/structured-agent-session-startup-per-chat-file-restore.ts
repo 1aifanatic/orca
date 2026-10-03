@@ -6,17 +6,20 @@
 import { readJournalSessionStatuses } from '../agent-session-journal/journal-session-state'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { hasHistoryOutsideJournalDatabase } from './structured-agent-session-read-restore'
-import type { StructuredAgentSessionStartupStateDeps } from './structured-agent-session-startup-state'
+import type {
+  StructuredAgentSessionStartupLeases,
+  StructuredAgentSessionStartupStateDeps
+} from './structured-agent-session-startup-state'
 
 // The listing waits for the whole pass, so a few at once: one slow file or recovery holds one lane.
 const PRE_LISTING_RESTORE_CONCURRENCY = 4
 
-/** Never rejects. `recoverLease` resolves each chat's own lease only, so the listing waits on no
- *  other chat's recovery. */
+/** Never rejects. `leases` resolves each chat's own lease only, so the listing waits on no other
+ *  chat's recovery. */
 export async function restoreListedFromPerChatFiles(
   deps: StructuredAgentSessionStartupStateDeps,
   listedIds: readonly string[],
-  recoverLease: (sessionId: string) => Promise<boolean>
+  leases: StructuredAgentSessionStartupLeases
 ): Promise<void> {
   const database = deps.openDeps.journalDatabase
   // A newer build's database: the restore after the listing reads every listed chat as before.
@@ -37,7 +40,7 @@ export async function restoreListedFromPerChatFiles(
         : []
     })
     if (records.length > 0) {
-      await deps.restoreListed(records, recoverLease, PRE_LISTING_RESTORE_CONCURRENCY)
+      await deps.restoreListed(records, leases, PRE_LISTING_RESTORE_CONCURRENCY)
     }
   } catch (error) {
     deps.openDeps.logger.warn('restoring chats still in per-chat files at startup failed', {

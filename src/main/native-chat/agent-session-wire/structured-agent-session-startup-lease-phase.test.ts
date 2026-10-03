@@ -1,5 +1,5 @@
-// Startup's lease recovery is per lease: the tab listing waits only on the recoveries of the chats
-// opened before it, and no lease is recovered twice, whichever restore asks for it.
+// Startup's one lease phase: the tab listing waits only on the recoveries of the chats opened before
+// it, and no lease is checked again or recovered twice, whichever restore asks for it.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { closeTestJournalHostDatabases } from '../agent-session-journal/journal-host-database-test-support'
