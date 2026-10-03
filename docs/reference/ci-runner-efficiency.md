@@ -46,6 +46,40 @@ used 42 aggregate runner-minutes across 11 test jobs. The
 estimates 34.9 headless runner-hours, including 23.4 in cancelled runs. These are
 baseline observations; post-merge savings have not yet been measured.
 
+## October 2 headless detector compiler cache
+
+The deferred detector already avoids dependency setup for known build inputs.
+For changes that need import analysis, the collector marks package imports external;
+only esbuild and its platform binary are needed. A small compiler archive can replace
+root dependency setup for this analysis, while qualification jobs still install normally.
+
+The existing Linux x64 warmer packs these two packages after its frozen,
+script-free, policy-checked install. Only main publishes. Readers use an exact key
+covering Node/platform/architecture, manifests, install policy, patches and the cache
+implementation. The producer and reader use the same archive path. File hashes,
+identity and a compiler smoke are checked before availability is reported; missing,
+invalid or failed restores use the original full installer. Graph analysis retains
+its existing conservative full-qualification verdict on errors.
+
+A [three-pair hosted comparison](https://github.com/stablyai/orca/actions/runs/37071724200)
+passed on Ubuntu x64 with Node 24.21.0 and esbuild 0.28.2. Every pair produced the
+same 6,018 source inputs. Sample 2 ran the compiler-only treatment first; samples 1
+and 3 ran the existing installer first. Each used a fresh dependency tree, and the
+compiler treatment required a real cache hit and validated its bytes and smoke.
+
+| Sample | Full installer + graph | Compiler restore + graph | Paired saving |
+| ------ | ---------------------- | ------------------------ | ------------- |
+| 1      | 11.730s                | 2.805s                   | 8.925s        |
+| 2      | 14.702s                | 4.706s                   | 9.996s        |
+| 3      | 14.666s                | 3.750s                   | 10.916s       |
+
+The median paired saving is 9.996 seconds. Inter-step overhead, archive transfer,
+validation and the real graph are included. Checkout, initial Node setup, dependency
+resets, seed work, post-job cache saves, tests and queues are excluded. These are
+warm detector measurements, not whole-workflow or billing savings. The trial uses
+the same package layout and validation as the production helper; production also
+resolves its policy fingerprint. Cold or changed identities still install fully.
+
 ## SSH Windows slot reuse
 
 The SSH Windows host workflow uses the same server-slot preparation action as
@@ -75,6 +109,74 @@ probe. Repaired source or incomplete evidence requires a fresh build. SSH PRs
 request reuse only following an exact prepared native-cache hit; manual SSH and
 all release builders retain fresh compilation. Subsequent staging checks still
 run. Hosted validation and the reuse interval remain to be measured.
+
+## Windows root download stores: registry installs finish sooner
+
+Three paired samples on each Windows architecture compared the existing exact
+main download-store restore with a fresh registry install. Each treatment used a
+fresh dependency tree, store and pnpm metadata, with registry-first ordering in
+sample 2. Both restored the same policy-checked verification record before timing.
+All six pairs used Node 24.21.0 and pnpm 12.8.1; manifest digests and installed
+lockfile digests matched, and both retained frozen, script-free installation.
+
+| Runner        | Cached totals (seconds)     | Registry totals (seconds)   | Paired median saving |
+| ------------- | --------------------------- | --------------------------- | -------------------- |
+| Windows x64   | 26.820 / 28.885 / 27.751    | 13.644 / 14.126 / 12.908    | 14.759 seconds       |
+| Windows ARM64 | 216.540 / 288.492 / 189.342 | 119.856 / 238.562 / 115.611 | 73.731 seconds       |
+
+The x64 samples are the three successful Windows 2022 jobs in
+[run 37064549378](https://github.com/stablyai/orca/actions/runs/37064549378).
+Its ARM cleanup guard rejected pnpm's setup-owned store path before measurement;
+those incomplete ARM jobs are excluded. The corrected
+[ARM-only run](https://github.com/stablyai/orca/actions/runs/37065220916) passed all
+three samples. Earlier rejected measurements also stopped before installation
+because an optional config file was absent; none count toward these timings.
+
+Intervals include actual store lookup/restore, inter-step overhead and root
+installation. Checkout, toolchain setup, tree/store reset, verification-record
+restoration and native preparation are excluded. ARM variation is substantial;
+these samples do not measure whole-workflow, queue or billing savings.
+
+Root-only Windows x64/ARM64 PR installs now skip the download-store restore.
+The existing x64 mixed-install exception remains. An explicit store opt-out also
+lets Windows headless persistence and SSH jobs avoid the archive on main or
+manual runs. Frozen installs, verification records, native caches and every
+qualification check remain. Other lockfile sets and platforms keep their
+existing policy. Default non-PR writers, including the warmer, still seed stores
+for direct setup-node consumers and workflows that run package scripts.
+
+## October 2 Linux root store comparison
+
+A [six-job hosted comparison](https://github.com/stablyai/orca/actions/runs/37073978443)
+measured the actual main root-store archive against direct registry installation,
+with three fresh-runner pairs on each Linux architecture. All six jobs passed.
+The middle sample on each architecture reversed treatment order. Between treatments,
+the driver removed the dependency tree, store and pnpm metadata, then restored the
+same policy-checked verification record before timing. Frozen, script-free installs
+preserved policy files and produced identical installed lockfile digests in each pair.
+
+| Architecture/sample | Store restore + install | Direct registry install | Paired saving |
+| ------------------- | ----------------------- | ----------------------- | ------------- |
+| x64 / 1             | 6.516s                  | 5.372s                  | 1.144s        |
+| x64 / 2             | 6.743s                  | 3.950s                  | 2.793s        |
+| x64 / 3             | 6.600s                  | 3.985s                  | 2.615s        |
+| ARM64 / 1           | 7.632s                  | 3.346s                  | 4.286s        |
+| ARM64 / 2           | 5.504s                  | 3.575s                  | 1.929s        |
+| ARM64 / 3           | 5.450s                  | 3.364s                  | 2.086s        |
+
+Median paired savings are 2.615 seconds on x64 and 2.086 seconds on ARM64; means
+are 2.184 and 2.767 seconds. Both used Node 24.21.0 and pnpm 12.8.1. Actual store
+lookup/transfer/restore, inter-step overhead and installation are timed. Checkout,
+initial toolchain/dependency setup, preparing the existing process wrapper,
+dependency resets, verification-record restores, native work, tests, post-job cache
+saves and queues are excluded. Package services have already been used by initial
+setup. These are warm-policy setup measurements, not workflow or billing savings.
+
+The shared installer consequently skips root-only Linux x64/ARM64 store restores
+on PRs. It still installs and checks every package through pnpm. Mixed mobile and
+custom lockfile sets, other architectures, Mac behavior, verification/native caches,
+main store writers and release installation policies keep their existing behavior.
+The measured Windows exceptions remain. No new periodic job or cache is added.
 
 ## October 1 Windows and dependency cache follow-up
 
@@ -679,8 +781,8 @@ coverage, and release behavior:
   Shard 4 spent 535 worker-seconds importing and 357 executing tests; a uniform
   per-file import estimate misses that cost. See [timing refresh](../../config/scripts/ci-shard-timings.md).
 - Seed Node 24 native modules, the pinned Git compatibility binary, and TypeScript
-  state on the default branch, hourly
-  and when dependency/toolchain inputs change. One ten-minute-bounded hosted job
+  state on the default branch when dependency/toolchain inputs change, with
+  scheduled recovery (originally hourly; now every six hours). One ten-minute-bounded hosted job
   reuses existing cache keys and skips typechecking an already-cached commit.
   New PRs can restore default-branch caches, while caches saved by another PR
   are inaccessible. The audit found 80 entries totaling 10.67 GiB, including
@@ -1216,7 +1318,7 @@ These are single cold/warm observations, not paired medians or a measured
 whole-workflow saving. They demonstrate usable exact-key reuse after publication;
 future savings depend on cache availability and unchanged native inputs. The
 trial seeds belong to this PR's merge ref. Other PRs require a main-branch seed
-after merging this new namespace; the existing main push and hourly warming
+after merging this new namespace; the existing main-push and scheduled warming
 jobs provide that seed.
 
 ## Separate mobile install verification: retain the current policy
@@ -1269,7 +1371,7 @@ This measures the three-file oracle cohort. Whole-shard timings include other
 test bodies, imports and transforms, so a whole-suite saving needs separate
 measurement.
 
-## Cache warming: let hourly ticks wait for active work
+## Cache warming: let scheduled ticks wait for active work
 
 The hourly warmer previously cancelled an active warmer, even when both used
 the same source. On October 2, the [merge-triggered run](https://github.com/stablyai/orca/actions/runs/36965832780)
@@ -1288,6 +1390,27 @@ This avoids the observed discarded installation. It does not remove the next
 scheduled run or its repeated successful lanes, and pending replacement still
 applies regardless of the cancellation expression. The bounded 20-run sample
 contains this collision; it does not establish a recurring or whole-CI saving.
+
+## Cache warming: six-hour recovery interval
+
+Scheduled warming now runs at 00:41, 06:41, 12:41 and 18:41 UTC instead of hourly.
+Main pushes that change cache inputs still seed immediately, and manual dispatch
+remains available. All five jobs, probes, keys and publication rules remain.
+This removes 20 scheduled workflows and 100 scheduled job starts per day (83%).
+
+Four consecutive October 2 scheduled runs used the same source. The
+[18:50 UTC run](https://github.com/stablyai/orca/actions/runs/37050194510) used 474
+aggregate runner-seconds across five jobs, including 242 seconds on Windows ARM.
+That job restored exact package, verification and native caches; package-store
+restore alone took about 70 seconds. Repeating that observed duration twenty
+fewer times would avoid about 158 runner-minutes daily, but this one-run estimate
+is not a billing forecast or measured post-rollout saving.
+
+The longer interval can delay background repair after eviction or runner-image
+changes. Existing consumers retain cold-cache installation/build fallback, and
+normal cache reads update last access. Storage was near the repository limit
+when audited, so retention and unchanged hit rates are not guaranteed. Observe
+misses before reducing the recovery frequency further.
 
 ## Daemon shutdown fixture: remove build tools after compilation
 

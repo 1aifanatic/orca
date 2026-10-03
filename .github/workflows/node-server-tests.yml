@@ -17,6 +17,7 @@ on:
       - '.pnpmfile.cjs'
       - '.github/actions/install-node-dependencies/**'
       - '.github/actions/restore-pnpm-verification/**'
+      - '.github/actions/prepare-headless-compiler/**'
       - '.github/actions/prepare-native-runtime/**'
       - '.github/actions/prepare-orcad-prebuilds/**'
       - '.github/workflows/node-server-tests.yml'
@@ -37,6 +38,7 @@ on:
       - '.pnpmfile.cjs'
       - '.github/actions/install-node-dependencies/**'
       - '.github/actions/restore-pnpm-verification/**'
+      - '.github/actions/prepare-headless-compiler/**'
       - '.github/actions/prepare-native-runtime/**'
       - '.github/actions/prepare-orcad-prebuilds/**'
       - '.github/workflows/node-server-tests.yml'
@@ -112,8 +114,12 @@ jobs:
             echo 'should_run=true' >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: ./.github/actions/install-node-dependencies
+      - uses: ./.github/actions/prepare-headless-compiler
+        id: compiler
         if: steps.scope.outputs.graph_required == 'true'
+        continue-on-error: true
+      - uses: ./.github/actions/install-node-dependencies
+        if: steps.scope.outputs.graph_required == 'true' && steps.compiler.outputs.available != 'true'
       - name: Check the headless import graph
         id: graph
         if: steps.scope.outputs.graph_required == 'true'
@@ -141,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.changes.outputs.runners || '["ubuntu-22.04","ubuntu-24.04-arm","macos-14","macos-15-intel","windows-2022","windows-11-arm"]') }}
+        os: ${{ fromJSON(needs.changes.outputs.runners || '["ubuntu-22.04","ubuntu-24.04-arm","macos-15","macos-15-intel","windows-2022","windows-11-arm"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -154,6 +160,7 @@ jobs:
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: ${{ runner.os == 'Windows' && 'node' || 'none' }}
+          cache-pnpm-store: ${{ runner.os != 'Windows' }}
       # Linux release slots come from the floor and Alpine lanes; this slot serves local tests.
       - uses: ./.github/actions/prepare-orcad-prebuilds
         id: orcad-prebuild

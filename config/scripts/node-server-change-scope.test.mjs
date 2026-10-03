@@ -86,6 +86,8 @@ it.each([
   'native/windows-registry/src/addon.cc',
   '.github/actions/install-node-dependencies/action.yml',
   '.github/actions/restore-pnpm-verification/action.yml',
+  '.github/actions/prepare-headless-compiler/action.yml',
+  'config/scripts/headless-detector-compiler-cache.mjs',
   '.github/actions/prepare-native-runtime/action.yml',
   '.github/actions/prepare-orcad-prebuilds/action.yml',
   '.github/workflows/node-server-tests.yml',
@@ -174,9 +176,19 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     inputs = await collectNodeServerInputs()
   }, 60_000)
 
+  it('tracks the shared close probe without pulling in its mocked renderer adapter', () => {
+    expect(inputs.has('src/shared/pty-running-work-probe.ts')).toBe(true)
+    expect(inputs.has('src/shared/pty-running-work-probe.test.ts')).toBe(true)
+    expect(inputs.has('src/renderer/src/components/terminal/pty-running-work-probe.ts')).toBe(false)
+    expect(inputs.has('src/renderer/src/runtime/runtime-terminal-inspection.ts')).toBe(false)
+    expect([...inputs].some((file) => file.startsWith('src/renderer/'))).toBe(false)
+  })
+
   it.each([
     'config/scripts/ci-shard-timings.json',
     'config/scripts/mobile-web-app-terminal-render.test.mjs',
+    'src/renderer/src/components/terminal/pty-running-work-probe.ts',
+    'src/renderer/src/runtime/runtime-terminal-inspection.ts',
     'src/main/ssh/ssh-relay-upload-stage-commands.test.ts',
     'src/main/menu/register-app-menu.ts'
   ])('skips unrelated work: %s', async (file) => {
@@ -186,6 +198,8 @@ describe('the actual Bun build and profile-test dependency graph', () => {
   it.each([
     ...Object.values(ORCAD_CHILD_ENTRY_POINTS),
     'src/shared/keybindings/definitions-core-1.ts',
+    'src/shared/pty-running-work-probe.ts',
+    'src/shared/pty-running-work-probe.test.ts',
     'src/main/runtime/orca-runtime.ts',
     'src/main/windows/windows-process-table.ts',
     'src/main/worker-thread-entry-path.ts',
