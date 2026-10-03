@@ -1,5 +1,6 @@
 import { codebuddyHookService } from '../codebuddy/hook-service'
-import { qoderHookService } from '../qoder/hook-service'
+import { qwenCodeHookService } from '../qwen-code/hook-service'
+import { qoderCnHookService, qoderHookService } from '../qoder/hook-service'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import type { HookInstallAgent } from '../../shared/telemetry-events'
 import { ampHookService } from '../amp/hook-service'
@@ -15,6 +16,7 @@ import { droidHookService } from '../droid/hook-service'
 import { geminiHookService } from '../gemini/hook-service'
 import { grokHookService } from '../grok/hook-service'
 import { hermesHookService } from '../hermes/hook-service'
+import { jcodeHookService } from '../jcode/hook-service'
 import { kimiHookService } from '../kimi/hook-service'
 import { museHookService } from '../muse/hook-service'
 import { openClaudeHookService } from '../openclaude/hook-service'
@@ -49,6 +51,8 @@ export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[]
   ['codex', () => codexHookService.installSessionFlags()],
   ['gemini', () => geminiHookService.install()],
   ['qoder', () => qoderHookService.install()],
+  ['qoder-cn', () => qoderCnHookService.install()],
+  ['qwen-code', () => qwenCodeHookService.install()],
   ['codebuddy', () => codebuddyHookService.install()],
   ['antigravity', () => antigravityHookService.install()],
   ['amp', () => ampHookService.install()],
@@ -62,7 +66,8 @@ export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[]
   ['kimi', () => kimiHookService.install()],
   ['muse', () => museHookService.install()],
   ['zcode', () => zcodeHookService.install()],
-  ['dsh', () => dshHookService.install()]
+  ['dsh', () => dshHookService.install()],
+  ['jcode', () => jcodeHookService.install()]
 ]
 
 // Why: runs on every change of the setting, on or off, even when the agent's CLI
@@ -88,6 +93,8 @@ export const MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS: readonly ManagedAgentHookScri
   ['codex', () => codexHookService.refreshManagedScripts()],
   ['gemini', () => geminiHookService.refreshManagedScripts()],
   ['qoder', () => qoderHookService.refreshManagedScripts()],
+  ['qoder-cn', () => qoderCnHookService.refreshManagedScripts()],
+  ['qwen-code', () => qwenCodeHookService.refreshManagedScripts()],
   ['codebuddy', () => codebuddyHookService.refreshManagedScripts()],
   ['antigravity', () => antigravityHookService.refreshManagedScripts()],
   ['cursor', () => cursorHookService.refreshManagedScripts()],
@@ -99,7 +106,8 @@ export const MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS: readonly ManagedAgentHookScri
   ['kimi', () => kimiHookService.refreshManagedScripts()],
   ['muse', () => museHookService.refreshManagedScripts()],
   ['zcode', () => zcodeHookService.refreshManagedScripts()],
-  ['dsh', () => dshHookService.refreshManagedScripts()]
+  ['dsh', () => dshHookService.refreshManagedScripts()],
+  ['jcode', () => jcodeHookService.refreshManagedScripts()]
 ]
 
 export const MANAGED_AGENT_HOOK_REMOVERS: readonly ManagedAgentHookRemover[] = [
@@ -108,6 +116,8 @@ export const MANAGED_AGENT_HOOK_REMOVERS: readonly ManagedAgentHookRemover[] = [
   ['codex', () => codexHookService.remove()],
   ['gemini', () => geminiHookService.remove()],
   ['qoder', () => qoderHookService.remove()],
+  ['qoder-cn', () => qoderCnHookService.remove()],
+  ['qwen-code', () => qwenCodeHookService.remove()],
   ['codebuddy', () => codebuddyHookService.remove()],
   ['antigravity', () => antigravityHookService.remove()],
   ['amp', () => ampHookService.remove()],
@@ -121,7 +131,8 @@ export const MANAGED_AGENT_HOOK_REMOVERS: readonly ManagedAgentHookRemover[] = [
   ['kimi', () => kimiHookService.remove()],
   ['muse', () => museHookService.remove()],
   ['zcode', () => zcodeHookService.remove()],
-  ['dsh', () => dshHookService.remove()]
+  ['dsh', () => dshHookService.remove()],
+  ['jcode', () => jcodeHookService.remove()]
 ]
 
 export const MANAGED_AGENT_HOOK_ASYNC_REMOVERS: readonly ManagedAgentHookAsyncRemover[] = [
@@ -134,6 +145,8 @@ export const MANAGED_AGENT_HOOK_STATUS_READERS: readonly ManagedAgentHookStatusR
   ['codex', () => codexHookService.getStatus()],
   ['gemini', () => geminiHookService.getStatus()],
   ['qoder', () => qoderHookService.getStatus()],
+  ['qoder-cn', () => qoderCnHookService.getStatus()],
+  ['qwen-code', () => qwenCodeHookService.getStatus()],
   ['codebuddy', () => codebuddyHookService.getStatus()],
   ['antigravity', () => antigravityHookService.getStatus()],
   ['amp', () => ampHookService.getStatus()],
@@ -147,5 +160,6 @@ export const MANAGED_AGENT_HOOK_STATUS_READERS: readonly ManagedAgentHookStatusR
   ['kimi', () => kimiHookService.getStatus()],
   ['muse', () => museHookService.getStatus()],
   ['zcode', () => zcodeHookService.getStatus()],
-  ['dsh', () => dshHookService.getStatus()]
+  ['dsh', () => dshHookService.getStatus()],
+  ['jcode', () => jcodeHookService.getStatus()]
 ]

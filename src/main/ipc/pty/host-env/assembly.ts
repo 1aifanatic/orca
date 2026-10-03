@@ -35,6 +35,7 @@ import {
   restoreOrStripOverlayEnv
 } from './pi-agent'
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from './spawn-env-keys'
+import { applyManagedDataAccountEnvironment } from '../../../managed-data-accounts/launch-environment'
 
 /**
  * Mutates `baseEnv` in place with all host-local PTY env vars and returns it.
@@ -70,6 +71,7 @@ export function buildPtyHostEnv(
     ? undefined
     : resolvedOpenCodeConfigDir
   const launchCommandHint = resolveSetupAgentSequenceLaunchCommand(baseEnv, opts.launchCommand)
+  applyManagedDataAccountEnvironment(baseEnv, { ...opts, launchCommand: launchCommandHint })
   const openCodeAgent = selectOpenCodeHookAgent(
     opts.launchAgent,
     launchCommandHint,
