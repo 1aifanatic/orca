@@ -26,6 +26,8 @@ export function antigravitySessionWslDistro(sessionId: string): string | undefin
       namespaces.add(distro)
     } else if (!row.connectionId) {
       namespaces.add('')
+    } else {
+      throw new Error('Antigravity transcript execution namespace is unavailable')
     }
   }
   if (namespaces.size > 1) {

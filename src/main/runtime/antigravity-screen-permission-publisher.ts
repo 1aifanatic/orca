@@ -43,12 +43,17 @@ export class AntigravityScreenPermissionPublisher {
   constructor(private readonly deps: Dependencies) {}
 
   forget(ptyId: string): void {
+    this.cancelQuietTimer(ptyId)
+    this.pending.delete(ptyId)
+  }
+
+  private cancelQuietTimer(ptyId: string): void {
     clearTimeout(this.quietTimers.get(ptyId))
     this.quietTimers.delete(ptyId)
   }
 
   schedule(ptyId: string): void {
-    this.forget(ptyId)
+    this.cancelQuietTimer(ptyId)
     const existing = this.pending.get(ptyId)
     if (existing) {
       existing.dirty = true
@@ -57,6 +62,9 @@ export class AntigravityScreenPermissionPublisher {
     const pending = { dirty: true }
     this.pending.set(ptyId, pending)
     void this.drain(ptyId, pending).finally(() => {
+      if (this.pending.get(ptyId) !== pending) {
+        return
+      }
       this.pending.delete(ptyId)
       if (pending.dirty) {
         this.schedule(ptyId)
@@ -65,7 +73,7 @@ export class AntigravityScreenPermissionPublisher {
   }
 
   private async drain(ptyId: string, pending: { dirty: boolean }): Promise<void> {
-    while (pending.dirty) {
+    while (pending.dirty && this.pending.get(ptyId) === pending) {
       pending.dirty = false
       const baseline = this.deps.baseline(ptyId)
       if (
@@ -77,7 +85,7 @@ export class AntigravityScreenPermissionPublisher {
       }
       try {
         const screen = await this.deps.readScreen(ptyId)
-        if (!screen || !this.deps.isCurrent(ptyId, screen)) {
+        if (this.pending.get(ptyId) !== pending || !screen || !this.deps.isCurrent(ptyId, screen)) {
           continue
         }
         if (isAntigravityCommandApprovalScreen(screen.lines)) {
@@ -102,13 +110,15 @@ export class AntigravityScreenPermissionPublisher {
         ) {
           const remaining = this.deps.quietRemainingMs?.(ptyId) ?? 0
           if (remaining > 0 && baseline.state === 'waiting') {
-            this.quietTimers.set(
-              ptyId,
-              setTimeout(() => {
-                this.quietTimers.delete(ptyId)
-                this.schedule(ptyId)
-              }, remaining)
-            )
+            this.cancelQuietTimer(ptyId)
+            const timer = setTimeout(() => {
+              if (this.quietTimers.get(ptyId) !== timer) {
+                return
+              }
+              this.quietTimers.delete(ptyId)
+              this.schedule(ptyId)
+            }, remaining)
+            this.quietTimers.set(ptyId, timer)
           } else if (remaining === 0) {
             this.deps.publish({ baseline, command: null, clearedState: 'done' })
           }

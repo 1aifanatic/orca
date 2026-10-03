@@ -3,7 +3,10 @@
 Antigravity uses the existing experimental Chat UI over its terminal and saved
 transcript. It is not a structured-session provider. The opt-in default-chat
 setting applies when a real provider session is associated. New unassociated
-Antigravity sessions start in Terminal; users can switch views after association.
+Antigravity sessions start in Terminal and apply that preference when the execution
+host supplies their CLI conversation ID. Resuming a known CLI conversation applies
+the preference at launch. An explicit view choice or an unconfirmed restored row
+is preserved; an IDE reference ID is not a CLI conversation ID.
 
 ## Transcript contract
 
@@ -12,7 +15,8 @@ The execution host reads
 A hook-reported transcript path takes precedence. Existing WSL exact-path and
 host-isolation rules apply; id-only WSL reads derive the distro from the owning
 hook server's canonical provider-session row and inspect only that guest.
-Ambiguous namespaces fail as read errors. A missing guest transcript must not
+Ambiguous or unavailable namespaces fail before reading a local file, including
+provenance checks for SSH- or paired-owned IDs on the client. A missing guest transcript must not
 fall back to a native host's same-named conversation. Direct SSH panes stay in the terminal:
 that connection has no native-chat transcript transport, and its absolute file
 path must never be opened on the client. Paired runtimes remain eligible because
@@ -54,9 +58,18 @@ The current trusted-grid checks and 1.2.14 agent-state rules remain in force.
 Only the captured working layout or an idle composer can clear this producer's
 card; the idle composer must remain quiet for three seconds. Pending timers
 recheck the live row and screen before publication and are cancelled on PTY exit.
+Output during a screen read replaces the pending quiet timer; callbacks and reads
+from a forgotten PTY incarnation cannot reschedule or publish for its replacement.
 No removed readiness module or reader-side status store was restored.
 
 ## Verification limits on the current port (2026-10-02)
+
+The native CLI observations below are the original author's evidence preserved
+from `09169edd23e2a56ee66f4d3d7b07403f0b04c478`, including its attached proof. The
+subsequent review repair replays those committed captures and checks the rebuilt
+hidden UI with private CLI/status/transcript fixtures. That fixture proof is not
+a new authenticated native run or a new verification of hook delivery or model
+generation.
 
 The focused suites cover decoder/full-read/tail parity, unknown records, durable
 journal imports, WSL path isolation and stalled reads, captured Windows approvals,

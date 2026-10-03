@@ -52,9 +52,7 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
       this.ptysById.get(ptyId)?.connected === true &&
       this.getPtyLivenessVerdict(ptyId)?.status !== 'unverifiable' &&
       screen.generation === this.getPtyLifecycleGeneration(ptyId) &&
-      screen.sequence >= this.getPtyOutputSequence(ptyId) &&
-      (!screen.headlessWriteChain ||
-        screen.headlessWriteChain === this.headlessTerminals.get(ptyId)?.writeChain),
+      screen.sequence >= this.getPtyOutputSequence(ptyId),
     publish: (event) => this.onTerminalScreenPermission?.(event) ?? false
   })
 

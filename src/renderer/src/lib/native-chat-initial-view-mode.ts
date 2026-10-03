@@ -75,5 +75,10 @@ export function initialAgentTabViewModeProps(
     nativeChatTranscriptIsLocalReadable: options.nativeChatTranscriptIsLocalReadable,
     providerSessionId: options.providerSessionId
   })
-  return viewMode ? { viewMode } : {}
+  // A draft the composer cannot mirror must keep its terminal surface after session association.
+  const keepAntigravityDraftInTerminal =
+    options.agent === 'antigravity' &&
+    options.promptDelivery === 'draft' &&
+    !canMirrorLaunchDraftToNativeChat(options.launchDraftText ?? '')
+  return viewMode ? { viewMode } : keepAntigravityDraftInTerminal ? { viewMode: 'terminal' } : {}
 }

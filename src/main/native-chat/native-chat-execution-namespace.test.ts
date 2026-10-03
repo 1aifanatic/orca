@@ -38,7 +38,7 @@ it.each([
 
 it('does not import direct SSH mirror identity into the local namespace', () => {
   configureNativeChatExecutionNamespace(() => [row('ssh-host'), row('wsl:Debian')])
-  expect(antigravitySessionWslDistro('conversation')).toBe('Debian')
+  expect(() => antigravitySessionWslDistro('conversation')).toThrow('unavailable')
 })
 
 it('refuses an unverified WSL relay distro', () => {
