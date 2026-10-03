@@ -99,6 +99,22 @@ describe('structured agent session message projection', () => {
     ])
   })
 
+  it("keeps the not-sent original when the sender's Retry sends it again as a new message", () => {
+    const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
+    const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
+    const resend = createStructuredAgentSessionOutboxEntry({
+      clientMessageId: 'rotated-id',
+      sessionId: 'session-1',
+      text: 'send 0',
+      attachments: [],
+      queuedAt: 2
+    })
+    expect(projectStructuredAgentSessionMessages([refusedItem], [resend], [rejected])).toEqual([
+      expect.objectContaining({ id: refusedItem.itemId, unsent: true }),
+      expect.objectContaining({ id: agentJournalSubmissionKey('rotated-id') })
+    ])
+  })
+
   it.each([5, 10])('renders %i rapid accepted desktop sends exactly once', (sendCount) => {
     const outbox = Array.from({ length: sendCount }, (_, index) =>
       createStructuredAgentSessionOutboxEntry({
