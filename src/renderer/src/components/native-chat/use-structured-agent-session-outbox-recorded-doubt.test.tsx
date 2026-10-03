@@ -29,6 +29,7 @@ const SESSION = 'session-1'
 const LOCAL_TARGET = { kind: 'local' } as const
 
 type SendRequest = { envelope?: { clientOperationId?: string } }
+type SentText = { body?: { blocks?: { text?: string }[] } }
 
 function requestId(params: SendRequest | undefined): string {
   return String(params?.envelope?.clientOperationId)
@@ -67,6 +68,17 @@ const IN_DOUBT: AgentJournalSubmission = {
   recovered: true
 }
 
+/** The host's answer to a send it recorded in doubt, first try or replay. */
+function inDoubt(clientMessageId: string) {
+  return {
+    ok: true,
+    replayed: clientMessageId === IN_DOUBT.clientMessageId,
+    fence: 1,
+    cursor: { epoch: 'epoch-1', sequence: 4 },
+    value: { clientMessageId, submission: { ...IN_DOUBT, clientMessageId } }
+  }
+}
+
 function accepted(clientMessageId: string) {
   return {
     ok: true,
@@ -103,13 +115,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     mocks.call.mockImplementation((_target, _method, params: SendRequest) =>
       Promise.resolve(
         requestId(params) === IN_DOUBT.clientMessageId
-          ? {
-              ok: true,
-              replayed: true,
-              fence: 1,
-              cursor: { epoch: 'epoch-1', sequence: 4 },
-              value: { clientMessageId: IN_DOUBT.clientMessageId, submission: IN_DOUBT }
-            }
+          ? inDoubt(requestId(params))
           : accepted(requestId(params))
       )
     )
@@ -235,5 +241,55 @@ describe('a queue saved behind a message the host holds in doubt', () => {
 
     rerender({ submissions: [IN_DOUBT] })
     await waitFor(() => expect(sentIds()).toEqual(['op-next']))
+  })
+
+  it('drops a send the host answers in doubt, and sends what follows it at once', async () => {
+    mocks.call.mockImplementation((_target, _method, params: SendRequest & SentText) =>
+      Promise.resolve(
+        params.body?.blocks?.[0]?.text === 'first'
+          ? inDoubt(requestId(params))
+          : accepted(requestId(params))
+      )
+    )
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: SESSION,
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: []
+      })
+    )
+
+    act(() => expect(result.current.send('first')).toBe(true))
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    act(() => expect(result.current.send('second')).toBe(true))
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(sentIds()).toHaveLength(2)
+    expect(result.current.error).toBeNull()
+  })
+
+  // A Retry an earlier build saved on this very submission waits for its answer: the host refuses
+  // to send it again, and the user is told to check the chat before sending it again.
+  it('drops a saved Retry of a recorded doubt once the host only replays it', async () => {
+    writeOutbox(SESSION, [
+      saved(IN_DOUBT.clientMessageId, {
+        lastAttemptAt: 2,
+        retryAfterUnknownSubmittedAt: IN_DOUBT.submittedAt
+      })
+    ])
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: SESSION,
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: [IN_DOUBT]
+      })
+    )
+
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(sentIds()).toEqual([IN_DOUBT.clientMessageId])
+    expect(result.current.error).toBe(
+      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
+    )
   })
 })

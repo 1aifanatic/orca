@@ -78,28 +78,6 @@ function acceptedResultFor(clientMessageId: string, fence: number) {
   }
 }
 
-function unknownResultFor(clientMessageId: string, submittedAt: number) {
-  return {
-    ok: true,
-    replayed: false,
-    fence: 1,
-    cursor: { epoch: 'epoch-1', sequence: submittedAt },
-    value: {
-      clientMessageId,
-      submission: {
-        clientMessageId,
-        fence: 1,
-        payloadFingerprint: 'fingerprint',
-        dispatchState: 'unknown' as const,
-        providerItemId: null,
-        reason: 'socket closed',
-        submittedAt,
-        resolvedAt: submittedAt
-      }
-    }
-  }
-}
-
 function pendingResultFor(clientMessageId: string, submittedAt: number) {
   return {
     ok: true,
@@ -456,78 +434,6 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(mocks.call).toHaveBeenCalledOnce()
   })
 
-  it('drops a head the host answers in doubt, and sends what follows it at once', async () => {
-    // The host recorded it and never sends it again, so nothing waits on it and nothing is said.
-    mocks.call.mockImplementation(async (_target, _method, params) => {
-      const request = params as {
-        envelope: { clientOperationId: string }
-        body: { blocks: { text?: string }[] }
-      }
-      return request.body.blocks[0]?.text === 'second'
-        ? pendingResultFor(request.envelope.clientOperationId, 20)
-        : unknownResultFor(request.envelope.clientOperationId, 10)
-    })
-    const sentTexts = () =>
-      mocks.call.mock.calls.map(
-        (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
-      )
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: LOCAL_TARGET,
-        fence: 1,
-        submissions: []
-      })
-    )
-
-    act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    act(() => expect(result.current.send('second')).toBe(true))
-    await waitFor(() => expect(sentTexts()).toEqual(['first', 'second']))
-    expect(result.current.error).toBeNull()
-  })
-
-  it('drops a Retry an earlier build saved on a recorded doubt once the host only replays it', async () => {
-    // A Retry asked of this very submission stays for its answer: the host refuses to send it again,
-    // and the user is told to check the chat before sending it again.
-    const recorded = unknownResultFor('op-retried', 10).value.submission
-    localStorage.setItem(
-      'orca:desktopStructuredAgentSessionOutbox:v1:session-1',
-      JSON.stringify([
-        {
-          clientMessageId: 'op-retried',
-          sessionId: 'session-1',
-          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'retried' }] },
-          previewUris: [],
-          state: 'queued',
-          queuedAt: 1,
-          lastAttemptAt: 2,
-          retryAfterUnknownSubmittedAt: recorded.submittedAt
-        }
-      ])
-    )
-    mocks.call.mockImplementation(async (_target, _method, params) =>
-      unknownResultFor(
-        (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId,
-        10
-      )
-    )
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: LOCAL_TARGET,
-        fence: 1,
-        submissions: [recorded]
-      })
-    )
-
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    expect(mocks.call).toHaveBeenCalledOnce()
-    expect(result.current.error).toBe(
-      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
-    )
-  })
-
   it('retains a send operation after a pending-admission refusal', async () => {
     mocks.call
       .mockResolvedValueOnce(refusedResult('agent_session_checkpoint_stale'))
@@ -675,10 +581,10 @@ describe('useStructuredAgentSessionOutbox', () => {
     // The host recorded it and never sends it again: it goes, and the tail goes out unasked.
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    expect(
-      (mocks.call.mock.calls[1]?.[2] as { body: { blocks: { text?: string }[] } }).body.blocks[0]
-        ?.text
-    ).toBe('second')
+    const tail = mocks.call.mock.calls[1]?.[2] as
+      | { body?: { blocks?: { text?: string }[] } }
+      | undefined
+    expect(tail?.body?.blocks?.[0]?.text).toBe('second')
   })
 
   it('rotates a history-rejected head in doubt so the queued tail can advance', async () => {
