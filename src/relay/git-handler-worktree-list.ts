@@ -60,10 +60,7 @@ export async function annotatePrunableWorktreesByExistence(
       nextIndex += 1
       const worktree = worktrees[index]
       const worktreePath = worktree?.path ?? ''
-      // Git only marks linked worktrees prunable, and never locked ones (a
-      // lock shields the registration even when the directory is missing). The
-      // Older Git locks are annotated from the host admin directory. A missing main
-      // worktree is surfaced by the repo-level failure paths.
+      // Locks protect missing linked worktrees; repository failures own the main row.
       if (
         !worktreePath ||
         worktree.isMainWorktree === true ||
@@ -76,7 +73,7 @@ export async function annotatePrunableWorktreesByExistence(
       try {
         await stat(worktreePath)
       } catch (err) {
-        if ((err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+        if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'ENOENT') {
           annotated[index] = { ...worktree, prunable: true }
         }
       }
