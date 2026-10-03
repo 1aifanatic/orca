@@ -60,6 +60,7 @@ const roots = [
   'SetSessionModeResponse',
   'SetSessionModelRequest',
   'SetSessionModelResponse',
+  'SessionModelState',
   'SetSessionConfigOptionRequest',
   'SetSessionConfigOptionResponse',
   'ReadTextFileRequest',
@@ -196,72 +197,17 @@ function expression(value) {
   return result
 }
 
-// Pack in dependency order so generated imports stay acyclic and each module stays small.
-const groups = []
-let group = []
-let length = 0
-for (const name of ordered) {
-  const body = `export const ${name}Schema = ${expression(definitions[name])}\nexport type ${name} = z.infer<typeof ${name}Schema>\n`
-  if (length + body.length > 4300 && group.length) {
-    groups.push(group)
-    group = []
-    length = 0
-  }
-  group.push({ name, body })
-  length += body.length
-}
-if (group.length) {
-  groups.push(group)
-}
-const filenames = new Map()
-for (const entries of groups) {
-  const filename = entries[0].name.replace(
-    /[A-Z]/g,
-    (c, offset) => `${offset ? '-' : ''}${c.toLowerCase()}`
-  )
-  for (const { name } of entries) {
-    filenames.set(name, `${filename}.gen.ts`)
-  }
-}
-
-const generated = new Map()
-for (const entries of groups) {
-  const file = filenames.get(entries[0].name)
-  const imports = new Map()
-  for (const { body } of entries) {
-    for (const dependency of [...body.matchAll(/\b(\w+)Schema\b/g)].map((match) => match[1])) {
-      const source = filenames.get(dependency)
-      if (source === file) {
-        continue
-      }
-      if (!imports.has(source)) {
-        imports.set(source, new Set())
-      }
-      imports.get(source).add(`${dependency}Schema`)
-    }
-  }
-  generated.set(
-    file,
-    `${header}import { z } from 'zod'\n${[...imports]
+const generated = new Map([
+  [
+    'acp-protocol.generated.ts',
+    `${header}/*\n${license.trim()}\n*/\nimport { z } from 'zod'\nexport const ACP_SCHEMA_RELEASE = '${release}'\nexport const ACP_LEGACY_MODEL_SCHEMA_RELEASE = '${legacyRelease}'\nexport const ACP_PROTOCOL_VERSION = 1\n${ordered
       .map(
-        ([source, names]) => `import { ${[...names].join(',')} } from './${source.slice(0, -3)}'\n`
+        (name) =>
+          `export const ${name}Schema = ${expression(definitions[name])}\nexport type ${name} = z.infer<typeof ${name}Schema>\n`
       )
-      .join('')}${entries.map((entry) => entry.body).join('\n')}`
-  )
-}
-generated.set(
-  'protocol.gen.ts',
-  `${
-    header +
-    [...new Set(filenames.values())]
-      .map((file) => `export * from './${file.slice(0, -3)}'`)
-      .join('\n')
-  }\n`
-)
-generated.set(
-  'license.gen.ts',
-  `${header}/*\n${license.trim()}\n*/\nexport const ACP_SCHEMA_RELEASE = '${release}'\nexport const ACP_LEGACY_MODEL_SCHEMA_RELEASE = '${legacyRelease}'\nexport const ACP_PROTOCOL_VERSION = 1\n`
-)
+      .join('\n')}`
+  ]
+])
 
 // Use the repository formatter without spawning a platform-dependent executable shim.
 const { format } = await import('oxfmt')
@@ -286,7 +232,7 @@ for (const [file, source] of generated) {
   }
 }
 for (const file of await readdir(output)) {
-  if (file.endsWith('.gen.ts') && !generated.has(file)) {
+  if ((file.endsWith('.gen.ts') || file.endsWith('.generated.ts')) && !generated.has(file)) {
     if (check || !(await readFile(resolve(output, file), 'utf8')).startsWith(header)) {
       throw new Error(`Unexpected generated file: ${file}`)
     }

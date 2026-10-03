@@ -5,17 +5,25 @@ import {
   LoadSessionResponseSchema,
   ResumeSessionResponseSchema,
   AuthenticateResponseSchema,
+  SessionModelStateSchema,
   type InitializeResponse,
-  type NewSessionRequest,
-  type NewSessionResponse,
-  type LoadSessionResponse,
-  type ResumeSessionResponse
-} from './generated/protocol.gen'
+  type NewSessionRequest
+} from './generated/acp-protocol.generated'
+
+const newSessionSchema = NewSessionResponseSchema.extend({
+  models: SessionModelStateSchema.optional()
+})
+const loadSessionSchema = LoadSessionResponseSchema.extend({
+  models: SessionModelStateSchema.optional()
+})
+const resumeSessionSchema = ResumeSessionResponseSchema.extend({
+  models: SessionModelStateSchema.optional()
+})
 
 export type AcpSessionStarted =
-  | { kind: 'new'; sessionId: string; response: NewSessionResponse }
-  | { kind: 'load'; sessionId: string; response: LoadSessionResponse }
-  | { kind: 'resume'; sessionId: string; response: ResumeSessionResponse }
+  | { kind: 'new'; sessionId: string; response: z.infer<typeof newSessionSchema> }
+  | { kind: 'load'; sessionId: string; response: z.infer<typeof loadSessionSchema> }
+  | { kind: 'resume'; sessionId: string; response: z.infer<typeof resumeSessionSchema> }
 export type AcpSessionStartOptions = NewSessionRequest & {
   sessionId?: string
   resumePreference?: 'load' | 'resume'
@@ -31,7 +39,7 @@ export async function setupAcpSession(
   const setup = async (): Promise<AcpSessionStarted> => {
     const { sessionId, resumePreference, authMethodId: _auth, ...params } = options
     if (sessionId === undefined) {
-      const response = await request('session/new', params, NewSessionResponseSchema)
+      const response = await request('session/new', params, newSessionSchema)
       return { kind: 'new', sessionId: response.sessionId, response }
     }
     const capabilities = initialized.agentCapabilities
@@ -41,18 +49,14 @@ export async function setupAcpSession(
       return {
         kind: 'load',
         sessionId,
-        response: await request('session/load', { ...params, sessionId }, LoadSessionResponseSchema)
+        response: await request('session/load', { ...params, sessionId }, loadSessionSchema)
       }
     }
     if (resume) {
       return {
         kind: 'resume',
         sessionId,
-        response: await request(
-          'session/resume',
-          { ...params, sessionId },
-          ResumeSessionResponseSchema
-        )
+        response: await request('session/resume', { ...params, sessionId }, resumeSessionSchema)
       }
     }
     throw new AcpRpcError(-32601, 'ACP agent cannot load or resume this session')
@@ -63,13 +67,19 @@ export async function setupAcpSession(
     if (!(error instanceof AcpAuthRequiredError)) {
       throw error
     }
-    const method = initialized.authMethods?.find((method) =>
-      options.authMethodId ? method.id === options.authMethodId : method.type !== 'terminal'
-    )
-    if (!method || method.type === 'terminal') {
-      throw error
+    const required = new AcpAuthRequiredError(error.message, error.data, initialized.authMethods)
+    const method = initialized.authMethods?.find((method) => method.id === options.authMethodId)
+    if (!method) {
+      throw required
     }
-    await request('authenticate', { methodId: method.id }, AuthenticateResponseSchema)
-    return setup()
+    try {
+      await request('authenticate', { methodId: method.id }, AuthenticateResponseSchema)
+      return await setup()
+    } catch (failure) {
+      if (failure instanceof AcpAuthRequiredError) {
+        throw new AcpAuthRequiredError(failure.message, failure.data, initialized.authMethods)
+      }
+      throw failure
+    }
   }
 }

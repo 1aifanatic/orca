@@ -4,7 +4,7 @@ import {
   RequestPermissionResponseSchema,
   type RequestPermissionRequest,
   type RequestPermissionResponse
-} from './generated/protocol.gen'
+} from './generated/acp-protocol.generated'
 
 export type AcpPermissionHandler = (
   request: RequestPermissionRequest,

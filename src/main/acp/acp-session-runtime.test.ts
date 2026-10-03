@@ -2,16 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AcpAuthRequiredError,
   AcpConnectionClosedError,
-  AcpRequestTimeoutError
+  AcpRequestTimeoutError,
+  AcpRpcError
 } from './acp-errors'
-import { AcpSessionRuntime, type AcpSessionRuntimeOptions } from './acp-session-runtime'
+import {
+  AcpSessionRuntime,
+  type AcpSessionRuntimeOptions,
+  type AcpSessionEvent
+} from './acp-session-runtime'
 import { AcpScriptedAgent, deferred, tick } from './acp-scripted-agent.test-support'
 import type {
   AgentCapabilities,
-  RequestPermissionResponse,
-  SessionNotification
-} from './generated/protocol.gen'
-import { SetSessionConfigOptionRequestSchema } from './generated/protocol.gen'
+  RequestPermissionResponse
+} from './generated/acp-protocol.generated'
+import { SetSessionConfigOptionRequestSchema } from './generated/acp-protocol.generated'
 
 const opened: { runtime: AcpSessionRuntime; agent: AcpScriptedAgent }[] = []
 const startOptions = { cwd: '/runtime/project', mcpServers: [] }
@@ -45,7 +49,7 @@ afterEach(() => {
 describe('ACP session runtime', () => {
   it('initializes once, starts a session, streams typed updates, and completes the turn', async () => {
     const { runtime, agent } = fixture()
-    const events: SessionNotification[] = []
+    const events: AcpSessionEvent[] = []
     const unsubscribe = runtime.subscribe((event) => events.push(event))
     const updates = [
       { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
@@ -72,7 +76,9 @@ describe('ACP session runtime', () => {
     await Promise.all([runtime.initialize(), runtime.initialize()])
     expect(await runtime.start(startOptions)).toMatchObject({ kind: 'new', sessionId: 'session-1' })
     expect(await runtime.prompt([...textPrompt])).toEqual({ stopReason: 'end_turn' })
-    expect(events.map((event) => event.update)).toEqual(updates)
+    expect(
+      events.map((event) => (event.kind === 'known' ? event.notification.update : event.raw.update))
+    ).toEqual(updates)
     expect(agent.frames.filter((frame) => frame.method === 'initialize')).toHaveLength(1)
     expect(agent.frames[0].params).toEqual({
       protocolVersion: 1,
@@ -127,7 +133,11 @@ describe('ACP session runtime', () => {
           return { outcome: { outcome: 'selected', optionId: 'allow' } }
         },
         onRequest: (method, params) =>
-          method === '_vendor/question' ? { answer: params } : undefined
+          method === '_vendor/question'
+            ? { answer: params }
+            : (() => {
+                throw new AcpRpcError(-32601, 'Unknown method')
+              })()
       }
     )
     agent.on('session/prompt', (frame) => {
@@ -233,30 +243,16 @@ describe('ACP session runtime', () => {
     expect(agent.frames[2].params).toEqual({ methodId: 'login' })
   })
 
-  it('chooses an advertised agent authentication method when login is required', async () => {
+  it('leaves advertised authentication methods for the caller to choose', async () => {
     const { runtime, agent } = fixture()
-    let authenticated = false
-    agent.on('initialize', (frame) =>
-      agent.reply(frame, {
-        protocolVersion: 1,
-        authMethods: [
-          { id: 'terminal', name: 'Interactive login', type: 'terminal' },
-          { id: 'agent', name: 'Agent login' }
-        ]
-      })
-    )
-    agent.on('session/new', (frame) =>
-      authenticated
-        ? agent.reply(frame, { sessionId: 'session-1' })
-        : agent.fail(frame, -32000, 'Login required')
-    )
-    agent.on('authenticate', (frame) => {
-      expect(frame.params).toEqual({ methodId: 'agent' })
-      authenticated = true
-      agent.reply(frame, {})
-    })
-    await runtime.start(startOptions)
-    expect(authenticated).toBe(true)
+    const authMethods = [
+      { id: 'terminal', name: 'Interactive login', type: 'terminal' },
+      { id: 'agent', name: 'Agent login' }
+    ]
+    agent.on('initialize', (frame) => agent.reply(frame, { protocolVersion: 1, authMethods }))
+    agent.on('session/new', (frame) => agent.fail(frame, -32000, 'Login required'))
+    await expect(runtime.start(startOptions)).rejects.toMatchObject({ authMethods })
+    expect(agent.frames.map((frame) => frame.method)).toEqual(['initialize', 'session/new'])
   })
 
   it('does not retry authentication indefinitely or start an interactive login', async () => {
@@ -281,7 +277,9 @@ describe('ACP session runtime', () => {
     retry.agent.on('session/new', (frame) =>
       retry.agent.fail(frame, -32000, 'Still requires login')
     )
-    await expect(retry.runtime.start(startOptions)).rejects.toBeInstanceOf(AcpAuthRequiredError)
+    await expect(
+      retry.runtime.start({ ...startOptions, authMethodId: 'agent' })
+    ).rejects.toBeInstanceOf(AcpAuthRequiredError)
     expect(retry.agent.frames.map((frame) => frame.method)).toEqual([
       'initialize',
       'session/new',
@@ -348,10 +346,10 @@ describe('ACP session runtime', () => {
     await rejected
   })
 
-  it('ignores invalid updates and isolates event listener failures', async () => {
+  it('preserves unrecognized updates and isolates event listener failures', async () => {
     const diagnostics: string[] = []
     const { runtime, agent } = fixture({}, { onDiagnostic: (message) => diagnostics.push(message) })
-    const updates: SessionNotification[] = []
+    const updates: AcpSessionEvent[] = []
     runtime.subscribe(() => {
       throw new Error('Consumer failed')
     })
@@ -368,9 +366,13 @@ describe('ACP session runtime', () => {
         content: { type: 'text', text: 'valid', _meta: { vendor: true } }
       }
     })
-    expect(updates).toHaveLength(1)
-    expect(updates[0].update).toMatchObject({ content: { _meta: { vendor: true } } })
-    expect(diagnostics).toContain('Ignored invalid ACP session update')
+    expect(updates).toHaveLength(2)
+    expect(updates[0]).toMatchObject({ kind: 'unrecognized' })
+    expect(updates[1]).toMatchObject({
+      kind: 'known',
+      notification: { update: { content: { _meta: { vendor: true } } } }
+    })
+    expect(diagnostics).toContain('Forwarded unrecognized ACP session update')
     expect(diagnostics.some((message) => message.includes('Consumer failed'))).toBe(true)
   })
 

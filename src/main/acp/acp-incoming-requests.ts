@@ -1,7 +1,7 @@
 import { AcpRpcError } from './acp-errors'
 import type { AcpJsonRpcMessage, AcpPeerHandlers } from './acp-json-rpc-peer'
 
-type OpenRequest = { controller: AbortController; abandon: () => void }
+type OpenRequest = { method: string; controller: AbortController; abandon: () => void }
 
 export class AcpIncomingRequests {
   private readonly open = new Map<string | number | null, OpenRequest>()
@@ -11,7 +11,7 @@ export class AcpIncomingRequests {
     private readonly send: (message: AcpJsonRpcMessage) => Promise<void>,
     private readonly onFailure: (error: Error) => void,
     private readonly capacity: number,
-    private readonly timeoutMs: number
+    private readonly diagnose: (message: string) => void
   ) {}
 
   close(error: Error): void {
@@ -22,50 +22,58 @@ export class AcpIncomingRequests {
     this.open.clear()
   }
 
+  cancel(exceptMethod?: string): void {
+    for (const [id, request] of this.open) {
+      if (request.method === exceptMethod) {
+        continue
+      }
+      const error = new AcpRpcError(-32800, 'Request cancelled')
+      this.open.delete(id)
+      request.controller.abort(error)
+      request.abandon()
+      void this.sendError(id, error)
+    }
+  }
+
   handle(id: string | number | null, method: string, params: unknown): void {
-    if (this.open.has(id) || this.open.size >= this.capacity) {
-      void this.sendError(
-        id,
-        new AcpRpcError(-32600, 'Duplicate request id or incoming request capacity exceeded')
-      )
+    if (this.open.has(id)) {
+      this.diagnose('Ignored duplicate ACP incoming request id')
+      return
+    }
+    if (this.open.size >= this.capacity) {
+      void this.sendError(id, new AcpRpcError(-32603, 'ACP incoming request capacity exceeded'))
       return
     }
     const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout> | undefined
     let abandon = (): void => {}
-    const deadline = new Promise<never>((_resolve, reject) => {
+    const abandoned = new Promise<never>((_resolve, reject) => {
       abandon = () => reject(controller.signal.reason)
-      timer = setTimeout(
-        () => reject(new AcpRpcError(-32001, `ACP client request timed out: ${method}`)),
-        this.timeoutMs
-      )
     })
-    this.open.set(id, { controller, abandon })
+    this.open.set(id, { method, controller, abandon })
     const retire = (): void => {
-      clearTimeout(timer)
       if (this.open.get(id)?.controller === controller) {
         this.open.delete(id)
       }
     }
     void Promise.race([
-      deadline,
+      abandoned,
       Promise.resolve().then(() => {
         if (controller.signal.aborted) {
           return undefined
         }
-        return this.handler?.(method, params, { id, signal: controller.signal })
+        if (!this.handler) {
+          throw new AcpRpcError(-32601, `Unknown ACP client method: ${method}`)
+        }
+        return this.handler(method, params, { id, signal: controller.signal })
       })
     ])
       .then(async (result) => {
         if (controller.signal.aborted) {
           return
         }
-        if (result === undefined) {
-          throw new AcpRpcError(-32601, `Unknown ACP client method: ${method}`)
-        }
         // The agent may reuse the id as soon as it reads the response.
         retire()
-        await this.send({ jsonrpc: '2.0', id, result })
+        await this.send({ jsonrpc: '2.0', id, result: result ?? null })
       })
       .catch(async (error) => {
         if (controller.signal.aborted) {

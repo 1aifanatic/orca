@@ -1,3 +1,5 @@
+import type { AuthMethod } from './generated/acp-protocol.generated'
+
 export class AcpRpcError extends Error {
   constructor(
     readonly code: number,
@@ -10,7 +12,11 @@ export class AcpRpcError extends Error {
 }
 
 export class AcpAuthRequiredError extends AcpRpcError {
-  constructor(message: string, data?: unknown) {
+  constructor(
+    message: string,
+    data?: unknown,
+    readonly authMethods: AuthMethod[] = []
+  ) {
     super(-32000, message, data)
     this.name = 'AcpAuthRequiredError'
   }

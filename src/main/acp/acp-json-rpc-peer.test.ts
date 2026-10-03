@@ -51,7 +51,7 @@ describe('ACP JSON-RPC peer', () => {
         if (method === '_crash') {
           throw new Error('Handler failed')
         }
-        return undefined
+        throw new AcpRpcError(-32601, 'Unknown method')
       }
     })
     expect(await agent.request('missing', '_missing', {})).toMatchObject({
@@ -102,13 +102,14 @@ describe('ACP JSON-RPC peer', () => {
     expect(diagnostics).toContain('Ignored invalid ACP JSON-RPC envelope')
   })
 
-  it('ignores malformed response envelopes without settling pending requests', async () => {
+  it('rejects malformed matching responses instead of leaving calls pending', async () => {
     const { peer, agent } = fixture()
-    const pending = peer.request('wait', {})
+    const rejected = expect(peer.request('wait', {})).rejects.toMatchObject({ code: -32603 })
     agent.stdout.write('{"jsonrpc":"2.0","id":1}\n')
-    agent.stdout.write('{"jsonrpc":"2.0","id":1,"result":"x","error":{"code":1,"message":"y"}}\n')
-    agent.stdout.write('{"jsonrpc":"2.0","id":1,"result":"ok"}\n')
-    expect(await pending).toBe('ok')
+    await rejected
+    const contradictory = expect(peer.request('wait', {})).rejects.toMatchObject({ code: -32603 })
+    agent.stdout.write('{"jsonrpc":"2.0","id":2,"result":"x","error":{"code":1,"message":"y"}}\n')
+    await contradictory
   })
 
   it('rejects all pending calls on exit and stops accepting requests', async () => {
@@ -138,30 +139,29 @@ describe('ACP JSON-RPC peer', () => {
     expect(agent.frames.map((frame) => frame.method)).toEqual(['wait', 'next'])
   })
 
-  it('expires unanswered incoming requests and aborts their hooks', async () => {
+  it('bounds incoming requests without expiring user decisions', async () => {
     vi.useFakeTimers()
-    const signals: AbortSignal[] = []
+    const signal = deferred<AbortSignal>()
+    const answer = deferred<unknown>()
     const { agent } = fixture(
       {
         onRequest: (_method, _params, context) => {
-          signals.push(context.signal)
-          return new Promise(() => {})
+          signal.resolve(context.signal)
+          return answer.promise
         }
       },
-      { maxIncomingRequests: 1, incomingRequestTimeoutMs: 20 }
+      { maxIncomingRequests: 1, requestTimeoutMs: 20 }
     )
     const first = agent.request('first', '_question', {})
-    await vi.advanceTimersByTimeAsync(0)
+    const context = await signal.promise
     expect(await agent.request('overflow', '_question', {})).toMatchObject({
-      error: { code: -32600 }
+      error: { code: -32603 }
     })
-    await vi.advanceTimersByTimeAsync(20)
-    expect(await first).toMatchObject({ error: { code: -32001 } })
-    expect(signals[0].aborted).toBe(true)
-    const next = agent.request('next', '_question', {})
-    await vi.advanceTimersByTimeAsync(20)
-    expect(await next).toMatchObject({ error: { code: -32001 } })
-    expect(signals).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(120_001)
+    expect(context.aborted).toBe(false)
+    answer.resolve({ answer: true })
+    expect(await first).toMatchObject({ result: { answer: true } })
+    expect(await agent.request('next', '_question', {})).toMatchObject({ result: { answer: true } })
   })
 
   it('aborts an in-flight incoming hook on close and never writes its late response', async () => {
