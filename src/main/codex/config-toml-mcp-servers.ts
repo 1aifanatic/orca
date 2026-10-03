@@ -6,13 +6,11 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 
-type McpServerTomlOwnership = {
+/** Canonical inline root assignments own the whole table, which TOML forbids extending. */
+export function readMcpServerTomlOwnership(config: string): {
   names: ReadonlySet<string>
   ownsRoot: boolean
-}
-
-/** Canonical inline root assignments own the whole table, which TOML forbids extending. */
-export function readMcpServerTomlOwnership(config: string): McpServerTomlOwnership {
+} {
   const names = new Set<string>()
   let ownsRoot = false
   let tablePath: string[] | null = []
@@ -41,18 +39,4 @@ export function readMcpServerTomlOwnership(config: string): McpServerTomlOwnersh
     state = updateTomlLineScanState(state, line)
   }
   return { names, ownsRoot }
-}
-
-/** One rule, so the mirror keeps exactly the servers the Windows switch notice reports as left behind. */
-export function isRuntimeOnlyMcpServer(
-  name: string,
-  system: McpServerTomlOwnership,
-  lastMirrored: McpServerTomlOwnership
-): boolean {
-  return (
-    !system.ownsRoot &&
-    !lastMirrored.ownsRoot &&
-    !system.names.has(name) &&
-    !lastMirrored.names.has(name)
-  )
 }

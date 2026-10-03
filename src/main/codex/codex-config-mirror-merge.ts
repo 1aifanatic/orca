@@ -1,4 +1,4 @@
-import { isRuntimeOnlyMcpServer, readMcpServerTomlOwnership } from './config-toml-mcp-servers'
+import { readMcpServerTomlOwnership } from './config-toml-mcp-servers'
 import {
   deduplicateProjectTomlSections,
   getHookTrustTomlSectionKeys,
@@ -44,7 +44,6 @@ export function mergeSystemCodexConfigIntoRuntime(
       .map((section) => getTomlSectionHeaderKey(section.header))
   )
   const systemMcpServers = readMcpServerTomlOwnership(systemConfig)
-  const lastMirroredMcpServers = { names: mirroredMcpServerNames, ownsRoot: mirroredMcpServerRoot }
   // Why: ordinary Codex settings should mirror ~/.codex exactly; runtime hook
   // trust and project trust are written under Orca's managed CODEX_HOME and
   // must survive the copy unless the user explicitly revoked project trust in
@@ -62,7 +61,10 @@ export function mergeSystemCodexConfigIntoRuntime(
         const mcpServerName = getMcpServerTomlSectionName(section.header)
         return (
           mcpServerName !== null &&
-          isRuntimeOnlyMcpServer(mcpServerName, systemMcpServers, lastMirroredMcpServers)
+          !systemMcpServers.ownsRoot &&
+          !mirroredMcpServerRoot &&
+          !systemMcpServers.names.has(mcpServerName) &&
+          !mirroredMcpServerNames.has(mcpServerName)
         )
       })
       .filter(
