@@ -125,19 +125,21 @@ describe('useStructuredAgentSessionTransport', () => {
     )
 
     const actions = [
-      ['agentSession.cancel', { turnId: 'turn-1' }],
+      ['agentSession.cancel', 'agentSession.cancel', { turnId: 'turn-1' }],
       [
         'agentSession.respondToApproval',
+        'agentSession.respondTo:approval',
         { itemId: 'approval-1', expectedRevision: 1, optionId: 'allow' }
       ],
       [
         'agentSession.respondToQuestion',
+        'agentSession.respondTo:question',
         { itemId: 'question-1', expectedRevision: 1, optionId: 'yes' }
       ]
     ] as const
-    for (const [method, fields] of actions) {
+    for (const [method, fingerprintMethod, fields] of actions) {
       await act(async () => {
-        expect(await result.current.transport.mutate(method, method, fields)).toEqual({
+        expect(await result.current.transport.mutate(method, fingerprintMethod, fields)).toEqual({
           applied: true
         })
       })
