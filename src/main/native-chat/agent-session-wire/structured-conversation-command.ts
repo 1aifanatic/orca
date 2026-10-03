@@ -11,7 +11,6 @@ import { admitAndRunAgentSessionMutation } from './structured-agent-session-muta
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
-import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   committedClearOfCaller,
   conversationCommandBlocked
@@ -87,7 +86,6 @@ async function answerFromCommittedClear(
  */
 export function runStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,
-  host: Pick<StructuredAgentSessionHost, 'flushStreamedEvents'>,
   caller: StructuredAgentSessionCaller,
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
@@ -115,7 +113,6 @@ export function runStructuredConversationCommand(
       prepareSession: sendPreparation(context, envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
@@ -134,7 +131,6 @@ export function runStructuredConversationCommand(
         // The commit is the only write, so a clear with no committed answer changed nothing.
         rerunWhenReplayMissing: () => true,
         run: async (ctx) => {
-          await host.flushStreamedEvents(sessionId)
           const record = store.getRecord(sessionId)!
           const blocked = conversationCommandBlocked(
             ctx,

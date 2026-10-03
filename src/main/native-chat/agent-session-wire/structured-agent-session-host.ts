@@ -131,8 +131,7 @@ export class StructuredAgentSessionHost {
           reset,
           structuredAgentSessionConversationFence(deps.store, sessionId)
         ),
-      clientDelivery: this.clientDelivery,
-      flushStreamedEvents: (sessionId) => this.flushStreamedEvents(sessionId)
+      clientDelivery: this.clientDelivery
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, {
       reconcileLeases: this.reconcileLeases,
@@ -216,21 +215,21 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
-  /** From the record store and the given tab ids; opens no conversation. */
-  listSessionTabs = (ids: readonly string[]) => sessionTabs.listPersistedSessionTabs(this.deps, ids)
-  getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
-  getSessionTabId = (sessionId: string): string | null => this.deps.store.getSessionTabId(sessionId)
-  showSessionTabs = (sessionIds: readonly string[]) => this.deps.store.showSessionTabs(sessionIds)
+  private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
+    this,
+    this.sessions,
+    (sessionId) => this.clientDelivery.forgetStatus(sessionId)
+  )
+  listSessionTabs = this.tabs.listSessionTabs
+  getPersistedVisibleSessionTabIndex = this.tabs.getPersistedVisibleSessionTabIndex
+  getSessionTabId = this.tabs.getSessionTabId
+  showSessionTabs = this.tabs.showSessionTabs
+  setSessionTabVisibility = this.tabs.setSessionTabVisibility
   /** The records file could not be read this launch, so chats it holds are not listed yet. */
   legacyRecordImportOwed = (): boolean => this.deps.journalDatabase.legacyRecordImportOwed === true
-
-  setSessionTabVisibility = (sessionId: string, visible: boolean, tabId?: string) =>
-    sessionTabs.setStructuredAgentSessionTabVisibility(this, sessionId, visible, tabId, () => {
-      // The tab edge of the row's lifetime; the handle close is the other.
-      if (!this.sessions.get(sessionId)?.child) {
-        this.clientDelivery.forgetStatus(sessionId)
-      }
-    })
+  /** This runtime holds a chat: a record, or the records file's chats still owed their copy. */
+  holdsSessions = (): boolean => this.deps.store.holdsRecords() || this.legacyRecordImportOwed()
+  onSessionsHeld = (listener: () => void): (() => void) => this.deps.store.onFirstRecord(listener)
 
   reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
 
@@ -255,6 +254,7 @@ export class StructuredAgentSessionHost {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
   }
 
+  /** Test barrier: every write has landed by its call's return, so no production path needs it. */
   flushStreamedEvents = (sessionId: string): Promise<void> =>
     this.runtimeState.flushEventSink(sessionId)
 
@@ -277,7 +277,6 @@ export class StructuredAgentSessionHost {
       deps: this.deps,
       sessions: this.sessions,
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
-      flushStreamedEvents: this.flushStreamedEvents,
       conversation: this.lifetime.conversation,
       readChildWork: this.clientDelivery.readChildWork,
       serialize: (sessionId, task) => this.serialize(sessionId, task),

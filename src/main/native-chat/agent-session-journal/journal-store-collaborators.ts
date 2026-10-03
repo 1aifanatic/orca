@@ -22,7 +22,7 @@ import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
 import type Database from '../../sqlite/sync-database'
 import { applyJournalRow } from './journal-reducer'
-import { readJournalRowsAfterCursor } from './journal-open'
+import { journalRowsAfterReader } from './journal-open'
 import { readJournalSince } from './journal-cursor'
 import type { JournalReadSince } from './journal-store-contracts'
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
@@ -33,6 +33,7 @@ import {
 } from './journal-session-state'
 import { JournalStatusProjection } from './journal-status-projection'
 import { beginJournalFoldUndo, type JournalFoldUndo } from './journal-fold-undo'
+import type { JournalWriteBody } from './journal-write-queue'
 
 export type JournalStoreHost = {
   /** Fires the journal's commit listener for a durable change that appended no
@@ -44,7 +45,7 @@ export type JournalStoreHost = {
   legacyDirectory: string
   now: () => number
   mintEpoch: () => string
-  serialize: <T>(run: () => Promise<T>) => Promise<T>
+  serialize: <T>(run: JournalWriteBody<T>) => Promise<T>
   /** Leave a chat still in its per-chat file uncopied until its first use. */
   deferPerSessionImport: boolean
   /** Work the chat's next write waits for. */
@@ -152,14 +153,12 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       readJournalSince(
         {
           state: host.state(),
-          rowsAfter: (afterSequence) =>
-            readJournalRowsAfterCursor(
-              host.database().db,
-              host.identity.sessionId,
-              host.state().epoch,
-              afterSequence,
-              limit
-            ),
+          rowsAfter: journalRowsAfterReader(
+            host.database().db,
+            host.identity.sessionId,
+            host.state().epoch,
+            limit
+          ),
           readOnly: host.readOnly()
         },
         cursor,

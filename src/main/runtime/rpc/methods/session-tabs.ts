@@ -16,7 +16,6 @@ import { SESSION_TAB_MARKDOWN_METHODS } from './session-tab-markdown-methods'
 import { SESSION_TAB_MUTATION_METHODS } from './session-tab-mutation-methods'
 import { createSessionTabsRetirementProofDelta } from './session-tabs-retirement-proof-delta'
 import { answerAfterStructuredTabRestore } from './structured-session-tab-restore'
-import { isStructuredNativeChatEnabled } from './structured-agent-session-policy'
 import { assertLegacyAiVaultResumeCommandAllowed } from '../../../ai-vault/structured-session-ownership'
 import { SessionTabsUnsubscribeAllParams } from '../../../../shared/rpc-contract/session-tabs-params'
 import { SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
@@ -30,8 +29,7 @@ export const SESSION_TAB_METHODS = [
         projectSessionTabsForClient(
           await runtime.listMobileSessionTabs(params.worktree, pairedDeviceId),
           clientKind,
-          clientCapabilities,
-          isStructuredNativeChatEnabled(runtime)
+          clientCapabilities
         )
       )
   }),
@@ -164,12 +162,7 @@ export const SESSION_TAB_METHODS = [
             emit({
               type: 'snapshot',
               ...withProofDelta(
-                projectSessionTabsForClient(
-                  initial,
-                  clientKind,
-                  clientCapabilities,
-                  isStructuredNativeChatEnabled(runtime)
-                )
+                projectSessionTabsForClient(initial, clientKind, clientCapabilities)
               )
             })
             if (released) {
@@ -180,12 +173,7 @@ export const SESSION_TAB_METHODS = [
                 emit({
                   type: 'updated',
                   ...withProofDelta(
-                    projectSessionTabsForClient(
-                      snapshot,
-                      clientKind,
-                      clientCapabilities,
-                      isStructuredNativeChatEnabled(runtime)
-                    )
+                    projectSessionTabsForClient(snapshot, clientKind, clientCapabilities)
                   )
                 })
               }
