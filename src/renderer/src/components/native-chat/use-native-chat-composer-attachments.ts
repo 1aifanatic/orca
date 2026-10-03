@@ -6,13 +6,11 @@ import {
   type NativeChatResolvedTarget
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import {
-  clearPersistedNativeChatDraftsForTests,
-  flushPersistedNativeChatDrafts,
-  persistNativeChatDraftPart,
-  readPersistedNativeChatDraft
-} from './native-chat-draft-storage'
+  clearNativeChatComposerDraftsForTests,
+  readNativeChatComposerDraft,
+  updateNativeChatComposerDraft
+} from './native-chat-composer-draft-store'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 
@@ -57,19 +55,16 @@ export function useNativeChatComposerAttachments({
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
     () => readNativeChatAttachmentCache(attachmentScopeKey)
   )
+  // The chips shown, so each change is computed and saved where it happens, not in a state updater.
+  const imageAttachmentsRef = useRef(imageAttachments)
   const imageAttachmentCounter = useRef(0)
-
-  // Read from the scope cache the updater below writes, never from this state, so a scope change
-  // can't save one pane's chips under another.
-  useEffect(() => {
-    persistNativeChatAttachmentCache(attachmentScopeKey)
-  }, [attachmentScopeKey, imageAttachments])
 
   useEffect(
     () =>
-      subscribeToNativeChatAttachmentAppend(attachmentScopeKey, (appended) =>
-        setImageAttachments((prev) => [...prev, ...appended])
-      ),
+      subscribeToNativeChatAttachmentAppend(attachmentScopeKey, (appended) => {
+        imageAttachmentsRef.current = [...imageAttachmentsRef.current, ...appended]
+        setImageAttachments(imageAttachmentsRef.current)
+      }),
     [attachmentScopeKey]
   )
 
@@ -79,11 +74,10 @@ export function useNativeChatComposerAttachments({
         previous: NativeChatComposerImageAttachment[]
       ) => NativeChatComposerImageAttachment[]
     ) => {
-      setImageAttachments((prev) => {
-        const next = updater(prev)
-        writeNativeChatAttachmentCache(attachmentScopeKey, next)
-        return next
-      })
+      const next = updater(imageAttachmentsRef.current)
+      imageAttachmentsRef.current = next
+      setImageAttachments(next)
+      writeNativeChatAttachmentCache(attachmentScopeKey, next)
     },
     [attachmentScopeKey]
   )
@@ -229,56 +223,28 @@ function removeAttachmentById(
   return attachments.filter((attachment) => attachment.id !== id)
 }
 
-const attachmentCache = new Map<string, NativeChatComposerImageAttachment[]>()
-
 export function readNativeChatAttachmentCache(
   scopeKey: string
 ): NativeChatComposerImageAttachment[] {
-  const cached = attachmentCache.get(scopeKey)
-  if (cached) {
-    return [...cached]
-  }
-  // Not held this run (a reload): read back the settled chips the draft saved.
-  const persisted = readPersistedNativeChatDraft(scopeKey)?.attachments ?? []
-  if (persisted.length > 0) {
-    setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...persisted])
-  }
-  return [...persisted]
+  return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
 }
 
 function writeNativeChatAttachmentCache(
   scopeKey: string,
-  cacheable: readonly NativeChatComposerImageAttachment[]
+  attachments: readonly NativeChatComposerImageAttachment[]
 ): void {
   // A pending chip's save resolves into THIS hook instance; restoring one into a
-  // remount would strand it pending forever, so only settled chips are cached.
-  const attachments = cacheable
-    .filter((attachment) => !attachment.pending)
-    // Preview URLs can retain the full clipboard Blob (or a large data URL) for
-    // the lifetime of the scope cache. Settled attachments reload from their
-    // authorized path after a remount, so never retain the transient preview.
-    .map(({ previewUrl: _previewUrl, ...attachment }) => attachment)
-  if (attachments.length === 0) {
-    attachmentCache.delete(scopeKey)
-    return
-  }
-  // LRU-bounded so pending attachments for permanently-removed panes can't accumulate.
-  setBoundedScopeCacheEntry(attachmentCache, scopeKey, [...attachments])
-}
-
-/** Saves the scope's cached chips with its draft, so a reload gives them back. */
-function persistNativeChatAttachmentCache(scopeKey: string): void {
-  const attachments = attachmentCache.get(scopeKey) ?? []
-  persistNativeChatDraftPart(
+  // remount would strand it pending forever, so only settled chips are kept.
+  // Preview URLs can retain the full clipboard Blob (or a large data URL), so
+  // never keep the transient preview: settled chips reload from their path.
+  updateNativeChatComposerDraft(
     scopeKey,
     {
-      attachments: attachments.map(({ id, path, connectionId }) => ({
-        id,
-        path,
-        ...(connectionId ? { connectionId } : {})
-      }))
+      images: attachments.flatMap(({ id, path, connectionId, pending }) =>
+        pending ? [] : [{ id, path, ...(connectionId ? { connectionId } : {}) }]
+      )
     },
-    attachments.length === 0 ? 'immediate' : 'deferred'
+    'immediate'
   )
 }
 
@@ -296,13 +262,11 @@ export function appendNativeChatAttachmentCache(
   if (appended.length === 0) {
     return
   }
+  // Saved now: the copy it came from goes right after this.
   writeNativeChatAttachmentCache(scopeKey, [
     ...readNativeChatAttachmentCache(scopeKey),
     ...appended
   ])
-  persistNativeChatAttachmentCache(scopeKey)
-  // Saved now: the copy it came from goes right after this.
-  flushPersistedNativeChatDrafts()
   appendListeners.get(scopeKey)?.forEach((listener) => listener(appended))
 }
 
@@ -322,6 +286,5 @@ function subscribeToNativeChatAttachmentAppend(
 }
 
 export function clearNativeChatAttachmentCacheForTests(): void {
-  attachmentCache.clear()
-  clearPersistedNativeChatDraftsForTests()
+  clearNativeChatComposerDraftsForTests()
 }

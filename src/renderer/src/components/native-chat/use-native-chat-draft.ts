@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   appendNativeChatDraftText,
   readNativeChatDraftCache,
@@ -22,6 +22,11 @@ export function useNativeChatDraft(
   flushDraftAppends: () => void
 } {
   const [draft, setDraftState] = useState(() => readNativeChatDraftCache(scopeKey))
+  // The text shown, so a change is computed and saved where it happens, not in a state updater.
+  const shownRef = useRef(draft)
+  useLayoutEffect(() => {
+    shownRef.current = draft
+  }, [draft])
   // Appended while composing: the editor's own writes would erase it, so the cache keeps it after them.
   const pendingAppendRef = useRef<{ scopeKey: string; text: string } | null>(null)
 
@@ -38,7 +43,8 @@ export function useNativeChatDraft(
     () =>
       subscribeToNativeChatDraftAppend(scopeKey, (text) => {
         if (!isComposing()) {
-          setDraftState(readNativeChatDraftCache(scopeKey))
+          shownRef.current = readNativeChatDraftCache(scopeKey)
+          setDraftState(shownRef.current)
           return
         }
         const pending = pendingAppendRef.current
@@ -55,17 +61,16 @@ export function useNativeChatDraft(
   // forms as a useState setter so call sites are drop-in.
   const setDraft = useCallback(
     (next: string | ((previous: string) => string)) => {
-      setDraftState((previous) => {
-        const resolved = typeof next === 'function' ? next(previous) : next
-        const pending = pendingAppendRef.current
-        writeNativeChatDraftCache(
-          scopeKey,
-          pending?.scopeKey === scopeKey
-            ? appendNativeChatDraftText(resolved, pending.text)
-            : resolved
-        )
-        return resolved
-      })
+      const resolved = typeof next === 'function' ? next(shownRef.current) : next
+      shownRef.current = resolved
+      setDraftState(resolved)
+      const pending = pendingAppendRef.current
+      writeNativeChatDraftCache(
+        scopeKey,
+        pending?.scopeKey === scopeKey
+          ? appendNativeChatDraftText(resolved, pending.text)
+          : resolved
+      )
     },
     [scopeKey]
   )

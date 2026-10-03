@@ -1,64 +1,30 @@
 import type { JSONContent } from '@tiptap/react'
-// Module-level cache for the composer's in-progress draft text, keyed by the
-// same stable pane scope as image attachments. The composer unmounts when the
-// pane toggles back to the hosted terminal, so without this the typed-but-unsent
-// draft would be lost on every TUI/GUI round-trip. Mirrors the attachment cache
-// so both halves of an unsent message survive toggles and reconnects; both are
-// saved through native-chat-draft-storage, so they survive a reload or quit too.
+// The composer's in-progress draft text and its editor document, keyed by the same stable pane
+// scope as image attachments. The composer unmounts when the pane toggles back to the hosted
+// terminal, so without this the typed-but-unsent draft would be lost on every TUI/GUI round-trip.
+// A view of native-chat-composer-draft-store, which owns the whole draft and keeps it across a
+// reload or quit.
 
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import {
-  clearPersistedNativeChatDraftsForTests,
-  flushPersistedNativeChatDrafts,
-  persistNativeChatDraftPart,
-  readPersistedNativeChatDraft
-} from './native-chat-draft-storage'
-
-type CachedDraft = { text: string; document?: JSONContent }
-
-const draftCache = new Map<string, CachedDraft>()
-
-/** The scope's draft, read back from storage when this run has not held it yet (a reload). */
-function cachedDraft(scopeKey: string): CachedDraft | undefined {
-  const cached = draftCache.get(scopeKey)
-  if (cached) {
-    return cached
-  }
-  const persisted = readPersistedNativeChatDraft(scopeKey)
-  if (!persisted?.text) {
-    return undefined
-  }
-  const restored = {
-    text: persisted.text,
-    ...(persisted.document ? { document: persisted.document } : {})
-  }
-  setBoundedScopeCacheEntry(draftCache, scopeKey, restored)
-  return restored
-}
-
-function setCachedDraft(scopeKey: string, draft: CachedDraft): void {
-  // LRU-bounded so unsent drafts for permanently-removed panes can't accumulate.
-  setBoundedScopeCacheEntry(draftCache, scopeKey, draft)
-  persistNativeChatDraftPart(scopeKey, { text: draft.text, document: draft.document }, 'deferred')
-}
+  clearNativeChatComposerDraftsForTests,
+  readNativeChatComposerDraft,
+  updateNativeChatComposerDraft
+} from './native-chat-composer-draft-store'
 
 export function readNativeChatDraftCache(scopeKey: string): string {
-  return cachedDraft(scopeKey)?.text ?? ''
+  return readNativeChatComposerDraft(scopeKey).text
 }
 
 export function writeNativeChatDraftCache(scopeKey: string, draft: string): void {
-  // An empty draft carries no state worth retaining; drop the entry so a stale
-  // scope key never resurrects cleared text.
-  if (draft === '') {
-    draftCache.delete(scopeKey)
-    persistNativeChatDraftPart(scopeKey, { text: '', document: undefined }, 'immediate')
+  if (readNativeChatComposerDraft(scopeKey).text === draft) {
     return
   }
-  const cached = cachedDraft(scopeKey)
-  setCachedDraft(scopeKey, {
-    text: draft,
-    ...(cached?.text === draft && cached.document ? { document: cached.document } : {})
-  })
+  // Cleared at once, so a sent or emptied draft never resurfaces.
+  updateNativeChatComposerDraft(
+    scopeKey,
+    { text: draft, document: undefined },
+    draft === '' ? 'immediate' : 'deferred'
+  )
 }
 
 export function appendNativeChatDraftText(draft: string, text: string): string {
@@ -73,12 +39,15 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): void
   if (text === '') {
     return
   }
-  writeNativeChatDraftCache(
-    scopeKey,
-    appendNativeChatDraftText(readNativeChatDraftCache(scopeKey), text)
-  )
   // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
-  flushPersistedNativeChatDrafts()
+  updateNativeChatComposerDraft(
+    scopeKey,
+    {
+      text: appendNativeChatDraftText(readNativeChatDraftCache(scopeKey), text),
+      document: undefined
+    },
+    'immediate'
+  )
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text))
 }
 
@@ -98,16 +67,15 @@ export function subscribeToNativeChatDraftAppend(
 }
 
 export function clearNativeChatDraftCacheForTests(): void {
-  draftCache.clear()
-  clearPersistedNativeChatDraftsForTests()
+  clearNativeChatComposerDraftsForTests()
 }
 
 export function readNativeChatDraftDocument(
   scopeKey: string,
   text: string
 ): JSONContent | undefined {
-  const cached = cachedDraft(scopeKey)
-  return cached?.text === text ? cached.document : undefined
+  const draft = readNativeChatComposerDraft(scopeKey)
+  return draft.text === text ? draft.document : undefined
 }
 
 export function writeNativeChatDraftDocument(
@@ -119,5 +87,5 @@ export function writeNativeChatDraftDocument(
     writeNativeChatDraftCache(scopeKey, '')
     return
   }
-  setCachedDraft(scopeKey, { text, document })
+  updateNativeChatComposerDraft(scopeKey, { text, document }, 'deferred')
 }
