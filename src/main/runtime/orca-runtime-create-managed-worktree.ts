@@ -13,7 +13,7 @@ import { prepareRuntimeLocalWorktreeSetup } from './runtime-local-worktree-setup
 import { invalidateAuthorizedRootsCacheForRepo } from '../ipc/filesystem-auth'
 import { startRuntimeLocalWorktreeTerminals } from './runtime-local-worktree-terminal-startup'
 import { trackRuntimeWorkspaceCreate } from '../workspace-create-telemetry'
-import { assertOpenCodeModelWorktreeCreateSupported } from '../opencode/opencode-model-startup-plan'
+import { assertOpenCodeModelLaunchPreferencesAbsent } from '../opencode/opencode-model-startup-plan'
 import { resolveWorktreeCreateAgentStartup } from './runtime-worktree-agent-startup'
 import type { RuntimeWorkspaceCreateEvents } from '../workspace-create-telemetry'
 
@@ -41,7 +41,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       throw new Error('runtime_unavailable')
     }
 
-    assertOpenCodeModelWorktreeCreateSupported(
+    assertOpenCodeModelLaunchPreferencesAbsent(
       args.startupAgent ?? args.createdWithAgent,
       args.startupLaunchPreferences
     )

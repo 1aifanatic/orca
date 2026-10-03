@@ -1,7 +1,6 @@
 import type { AgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
-import type { AgentLaunchPreferences } from '../../shared/agent-session-host-authority'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isVerifiedOpenCodeLegacyModelVersion } from './opencode-model-version-policy'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
@@ -113,9 +112,9 @@ export async function buildExecutionHostAgentStartupPlan(
   return plan
 }
 
-export function assertOpenCodeModelWorktreeCreateSupported(
+export function assertOpenCodeModelLaunchPreferencesAbsent(
   agent: TuiAgent | undefined,
-  preferences: AgentLaunchPreferences | undefined
+  preferences: Readonly<Record<string, unknown>> | undefined
 ): void {
   if (
     agent === 'opencode' &&
