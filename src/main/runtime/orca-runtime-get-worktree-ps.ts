@@ -192,7 +192,16 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           this.gitHubIssueComments.addRepoPRReviewCommentReply(...args),
         addRepoIssueComment: (...args) => this.gitHubIssueComments.addRepoIssueComment(...args),
         getRepoReviewReplyPosts: (...args) =>
-          this.gitHubReviewQueries.getRepoReviewReplyPosts(...args)
+          this.gitHubReviewQueries.getRepoReviewReplyPosts(...args),
+        // Only this machine's windows hear it; a paired client refetches on its own triggers.
+        reviewWritten: async (repoSelector, prNumber) => {
+          const repo = await this.resolveRepoSelector(repoSelector)
+          this.notifier?.githubPullRequestMutated?.({
+            repoPath: repo.path,
+            repoId: repo.id,
+            number: prNumber
+          })
+        }
       }
     })
   }

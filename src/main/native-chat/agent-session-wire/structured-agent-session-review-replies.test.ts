@@ -89,7 +89,8 @@ function reviewRuntime() {
     ),
     getRepoReviewReplyPosts: vi.fn<StructuredAgentSessionReviewRuntime['getRepoReviewReplyPosts']>(
       async () => onPR
-    )
+    ),
+    reviewWritten: vi.fn<StructuredAgentSessionReviewRuntime['reviewWritten']>(async () => {})
   }
 }
 
@@ -313,6 +314,8 @@ describe('a launch prompt with a review reply', () => {
     // A live accept needs no read of the PR, and all going through shows nothing in the chat.
     expect(review.getRepoReviewReplyPosts).not.toHaveBeenCalled()
     expect((await receipt(id)).line).toBeUndefined()
+    // The checks panel refetches the PR, as after its own writes.
+    expect(review.reviewWritten).toHaveBeenCalledExactlyOnceWith('id:repo-1', 42)
 
     // Later commits re-derive nothing.
     await launchPrompt({ provider: 'gitlab', repoId: 'repo-1', iid: 1, resolve: [] })
@@ -407,6 +410,20 @@ describe('a launch prompt with a review reply', () => {
       ['id:repo-2', 8, 'discussion-2', true]
     ])
     expect(writes()).toBe(2)
+    expect(review.reviewWritten).not.toHaveBeenCalled()
+  })
+
+  it('tells no PR view to refetch when nothing was written', async () => {
+    review.resolveRepoReviewThread.mockResolvedValue(false)
+    review.addRepoPRReviewCommentReply.mockResolvedValue({ ok: false, error: 'HTTP 401' })
+    review.addRepoIssueComment.mockResolvedValue({ ok: false, error: 'HTTP 401' })
+    const id = await launchPrompt()
+    await handedOver(id)
+    await accept(id)
+
+    await settledReceipt(id)
+    expect(writes()).toBe(3)
+    expect(review.reviewWritten).not.toHaveBeenCalled()
   })
 })
 

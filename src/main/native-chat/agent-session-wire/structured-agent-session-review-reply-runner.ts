@@ -18,7 +18,10 @@ export type StructuredAgentSessionReviewRuntime = Pick<
   | 'addRepoPRReviewCommentReply'
   | 'addRepoIssueComment'
 > &
-  Pick<RuntimeGitHubReviewQueryCommands, 'getRepoReviewReplyPosts'>
+  Pick<RuntimeGitHubReviewQueryCommands, 'getRepoReviewReplyPosts'> & {
+    /** Tells this machine's views of the PR to refetch, as the desktop's own writes do. */
+    reviewWritten: (repoSelector: string, prNumber: number) => Promise<void>
+  }
 
 /** How far before acceptance a post still counts as this message's: the host's clock and
  *  GitHub's can disagree by seconds. */
@@ -55,6 +58,12 @@ export async function runStructuredAgentSessionReviewReply(
         })
       : await gitHubWrites(runtime, repo, spec, options)
   const failures = await runBounded(writes, options.log)
+  // GitLab views already poll; a GitHub PR view refetches only when told.
+  if (spec.provider === 'github' && failures.length < writes.length) {
+    await runtime
+      .reviewWritten(repo, spec.prNumber)
+      .catch((error: unknown) => options.log('review reply: the PR view was not told', error))
+  }
   return failures[0] ?? null
 }
 
