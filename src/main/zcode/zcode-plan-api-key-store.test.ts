@@ -141,6 +141,7 @@ describe('zcode-plan-api-key-store', () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
     writeSecureFileMock.mockReturnValue(false)
     existsSyncMock.mockReturnValue(false)
+    readFileSyncMock.mockReturnValue(Buffer.from(envelope('plaintext', 'glm-secret')))
     const store = await loadStore()
 
     expect(() => store.saveZcodePlanApiKey('glm-secret')).toThrow(
@@ -155,7 +156,10 @@ describe('zcode-plan-api-key-store', () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
     const previous = Buffer.from(envelope('encrypted', 'old-key'))
     existsSyncMock.mockReturnValue(true)
-    readFileSyncMock.mockReturnValue(previous)
+    readFileSyncMock
+      .mockReturnValueOnce(previous)
+      .mockReturnValueOnce(Buffer.from(envelope('plaintext', 'new-key')))
+      .mockReturnValue(previous)
     writeSecureFileMock.mockReturnValueOnce(false).mockReturnValueOnce(true)
     const store = await loadStore()
 
