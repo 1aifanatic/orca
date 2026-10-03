@@ -58,10 +58,11 @@ export type StructuredAgentSessionRestartFailureLedger = {
       failureReason: (sessionId: string) => string
     }
   ) => Promise<void>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes. */
+  /** Named sessions forget their offer or failure; unnamed, every record this host
+   *  lists goes (a newer Orca's stay). */
   dismiss: (
     sessionIds: readonly string[] | undefined,
-    beforeClearAll: () => void
+    beforeClearAll: () => void | Promise<void>
   ) => Promise<number>
 }
 
@@ -232,8 +233,10 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
         if (sessionIds !== undefined) {
           return (await deps.capsule?.dismiss(sessionIds, deps.now())) ?? 0
         }
-        beforeClearAll()
-        return (await deps.capsule?.clearAll(deps.now())) ?? 0
+        await beforeClearAll()
+        // A newer Orca's offers and failures were never shown here, so "dismiss all" keeps them.
+        const keep = (marker: AgentSessionResumeMarker) => deps.savedByNewerOrca(marker.sessionId)
+        return (await deps.capsule?.clearAll(deps.now(), keep)) ?? 0
       })
   }
 }

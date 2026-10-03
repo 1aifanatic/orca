@@ -16,7 +16,7 @@ import type {
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   createNewerOrcaChats,
-  createStructuredAgentSessionRestartCandidateReader
+  createStructuredAgentSessionRestartCandidateReaders
 } from './structured-agent-session-restart-candidates'
 import {
   continuationFailureOutcome,
@@ -71,7 +71,8 @@ export type StructuredAgentSessionRestartResume = {
     sessions?: StructuredAgentSessionResumeCandidate[]
     failed?: StructuredAgentSessionResumeFailure[]
   }>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes. */
+  /** Named sessions forget their offer or failure; unnamed, every record this host
+   *  lists goes (a newer Orca's stay). */
   dismiss: (sessionIds?: readonly string[]) => Promise<number>
   /** The chat's agent proved a start: its offer ends unless the start is a resume's own. */
   onAgentStarted: (sessionId: string) => void
@@ -108,32 +109,26 @@ export function createStructuredAgentSessionRestartResume(
     enqueue: enqueueRecoveryOperation
   })
   const newerOrca = createNewerOrcaChats(() => deps.journalDatabase.readOnly)
-  const savedByNewerOrca = newerOrca.has
-  const reader = (skipNewerOrca: (sessionId: string) => boolean) =>
-    createStructuredAgentSessionRestartCandidateReader({
-      sessions,
-      getRecord: deps.store.getRecord,
-      adapter: deps.adapter,
-      movedOn: withdrawal.movedOn,
-      savedByNewerOrca: skipNewerOrca
-    })
-  const derive = reader(savedByNewerOrca)
-  // The check right before sending skips nothing for a newer Orca's chat: turning it away there
-  // would spend its offer. Its send is refused instead, and settling keeps the offer.
-  const deriveAtSend = reader(() => false)
+  const { derive, deriveAtSend } = createStructuredAgentSessionRestartCandidateReaders({
+    sessions,
+    getRecord: deps.store.getRecord,
+    adapter: deps.adapter,
+    movedOn: withdrawal.movedOn,
+    savedByNewerOrca: newerOrca.has
+  })
   const failures = createStructuredAgentSessionRestartFailureLedger({
     ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
     retryable: (marker) => derive([marker], 'may-be-held').candidates.length === 1,
-    savedByNewerOrca,
+    savedByNewerOrca: newerOrca.has,
     reveal: (markers) => revealMarkers(markers),
     logger: deps.logger,
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
 
-  const { readMarkers, readActionMarkers, revealMarkers, retireSuperseded } =
+  const { readMarkers, readActionMarkers, revealMarkers, revealEvery, retireSuperseded } =
     createStructuredAgentSessionRestartOfferRecords({
       ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
       readFailedMarkers: async () => (await failures.read()).map((failure) => failure.marker),
@@ -326,7 +321,12 @@ export function createStructuredAgentSessionRestartResume(
     listFailures: failures.list,
     // Do not let a teardown witness already captured in this host republish after explicit
     // dismissal. A later capture is a new interruption and may create a fresh offer normally.
-    dismiss: (sessionIds) => failures.dismiss(sessionIds, witnesses.clear),
+    // "Dismiss all" keeps what this host does not list, so it reveals every record's chat first.
+    dismiss: (sessionIds) =>
+      failures.dismiss(sessionIds, async () => {
+        witnesses.clear()
+        await revealEvery()
+      }),
     continueAfterRestart,
     onAgentStarted: withdrawal.onAgentStarted
   }

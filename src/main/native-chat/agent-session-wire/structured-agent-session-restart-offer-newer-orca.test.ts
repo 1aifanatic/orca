@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
@@ -15,6 +15,7 @@ import {
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionJournalError } from '../agent-session-journal/journal-write-guards'
 import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
+import { attachParams, CALLER, hostTestState } from './structured-agent-session-host-test-harness'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION
@@ -27,9 +28,9 @@ import {
 afterEach(() => vi.restoreAllMocks())
 
 /** Writes a row of a kind this build does not know into the chat's journal, as a newer Orca would. */
-function newerOrcaRow(root: string): void {
+function newerOrcaRow(root: string, sessionId: string = SESSION): void {
   const { db } = openTestJournalHostDatabase(root)
-  const last = liveTestJournalRows(db, SESSION).at(-1)
+  const last = liveTestJournalRows(db, sessionId).at(-1)
   const parsed: unknown = last ? JSON.parse(last.rowJson) : null
   if (!last || typeof parsed !== 'object' || parsed === null || !('epoch' in parsed)) {
     throw new Error('the chat has no journal row to follow')
@@ -38,7 +39,7 @@ function newerOrcaRow(root: string): void {
   const seq = last.seq + 1
   insertTestJournalRowJson(
     db,
-    SESSION,
+    sessionId,
     seq,
     JSON.stringify({
       v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
@@ -149,3 +150,49 @@ it('still offers a damaged chat, and files its failure when acting on it', async
     }
   ])
 })
+
+// "Dismiss all" ends what the person was shown. A newer Orca's offer was never shown here, so it
+// stays, byte for byte, for the Orca that can act on it.
+it.each([
+  ['after the dialog listed the offers', true],
+  ['on a host that has not listed them yet', false]
+])(
+  "dismisses every listed offer and leaves a newer Orca's hidden one as it was, %s",
+  async (_when, listFirst) => {
+    const NEWER = 'session-newer-orca'
+    // A second chat, made before the restart; a newer Orca then saves it with a row this build
+    // can't place.
+    const created = await hostTestState().host.attach(
+      CALLER,
+      attachParams({ envelope: { ...attachParams().envelope, sessionId: NEWER } })
+    )
+    expect(created.ok).toBe(true)
+    hostTestState().acquire.mockClear()
+    const { host, root, marker } = await interruptedRestart()
+    newerOrcaRow(root, NEWER)
+    const path = join(root, AGENT_SESSION_RECOVERY_CAPSULE_FILE)
+    const capsule = JSON.parse(await readFile(path, 'utf8'))
+    capsule.entries.push({ state: 'pending', marker: { ...marker, sessionId: NEWER } })
+    await writeFile(path, JSON.stringify(capsule))
+    const newerEntry = () =>
+      readFile(path, 'utf8').then((text) =>
+        JSON.stringify(
+          JSON.parse(text).entries.find(
+            (entry: { marker: { sessionId: string } }) => entry.marker.sessionId === NEWER
+          )
+        )
+      )
+    const before = await newerEntry()
+
+    if (listFirst) {
+      expect((await host.restartResume.list()).map((candidate) => candidate.sessionId)).toEqual([
+        SESSION
+      ])
+    }
+    await host.restartResume.dismiss()
+
+    const left = await new AgentSessionRecoveryCapsule(root).list(NOW)
+    expect(left.map((offer) => offer.sessionId)).toEqual([NEWER])
+    expect(await newerEntry()).toBe(before)
+  }
+)

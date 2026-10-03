@@ -49,6 +49,24 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
     })
 }
 
+/** The listing's reader, which skips a newer Orca's chats, and the one right before sending, which
+ *  skips nothing for them: turning one away there would spend its offer, so its send is refused
+ *  instead and settling keeps the offer. */
+export function createStructuredAgentSessionRestartCandidateReaders(
+  deps: Parameters<typeof createStructuredAgentSessionRestartCandidateReader>[0]
+): {
+  derive: StructuredAgentSessionRestartCandidateReader
+  deriveAtSend: StructuredAgentSessionRestartCandidateReader
+} {
+  return {
+    derive: createStructuredAgentSessionRestartCandidateReader(deps),
+    deriveAtSend: createStructuredAgentSessionRestartCandidateReader({
+      ...deps,
+      savedByNewerOrca: () => false
+    })
+  }
+}
+
 /** Chats the latest reveal found saved by a newer Orca: listing skips them and never spends their
  *  offers. Each reveal re-derives its chat's entry; nothing is stored. */
 export function createNewerOrcaChats(databaseIsNewer: () => boolean) {
