@@ -266,7 +266,11 @@ export function createLocalRepoRefMaintenanceTarget(
       }
       return 'failed'
     },
-    async packRefs(lock: PackedRefsLockReporter) {
+    async packRefs(
+      lock: PackedRefsLockReporter,
+      admissionSignal?: AbortSignal,
+      canStart?: () => boolean
+    ) {
       const resolved = await resolveCommonDir()
       const owner = resolved
         ? new PackRefsLockOwnership(gitCommonDirForMainProcess(resolved, args.wslDistro))
@@ -275,7 +279,7 @@ export function createLocalRepoRefMaintenanceTarget(
       if (!claim.ok) {
         throw new RefMaintenanceRepoLocked(claim.reason)
       }
-      // Report the rewrite window rather than accepting a signal. A pack that is
+      // Only admission is cancellable. A pack that is
       // killed mid-prune strands a `refs/**` lock about one time in five, and
       // Git never clears those; waiting out the window costs at most ~1.4s.
       const watch = owner?.watchLock((held) => lock.setHeld(held))
@@ -284,7 +288,9 @@ export function createLocalRepoRefMaintenanceTarget(
           cwd: args.repoPath,
           ...gitOptions,
           admissionTier: 'background',
-          timeout: PACK_REFS_TIMEOUT_MS
+          timeout: PACK_REFS_TIMEOUT_MS,
+          admissionSignal,
+          canStart
         })
       } finally {
         watch?.stop()

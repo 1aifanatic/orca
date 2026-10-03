@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolveGitCommonDirectory } from './git-common-directory'
-import { annotateWorktreeLocksFromAdmin, isBranchInDetachedWorktree } from './git-worktree-admin'
+import {
+  annotateWorktreeLocksFromAdmin,
+  isBranchReservedByWorktreeOperation
+} from './git-worktree-admin'
 import type { GitWorktreeInfo } from './worktree/types'
 import { isWorktreeCreatePreparation } from './worktree/create-preparation'
 
@@ -95,16 +98,70 @@ describe('owning-host worktree administrative reads', () => {
       await mkdir(path.dirname(file), { recursive: true })
       await writeFile(file, 'refs/heads/feature\n')
       const detachedMain = rows().map((row) => (row.isMainWorktree ? { ...row, branch: '' } : row))
-      await expect(isBranchInDetachedWorktree(repo, 'feature', detachedMain)).resolves.toBe(true)
-      await expect(isBranchInDetachedWorktree(repo, 'other', detachedMain)).resolves.toBe(false)
+      await expect(
+        isBranchReservedByWorktreeOperation(repo, 'feature', detachedMain)
+      ).resolves.toBe(true)
+      await expect(isBranchReservedByWorktreeOperation(repo, 'other', detachedMain)).resolves.toBe(
+        false
+      )
     }
   )
 
   it('fails closed when a detached registration cannot be associated with admin metadata', async () => {
     await rm(path.join(admin, 'gitdir'))
-    await expect(isBranchInDetachedWorktree(repo, 'feature', rows())).rejects.toThrow(
-      'Cannot verify detached worktree branch usage'
+    await expect(isBranchReservedByWorktreeOperation(repo, 'feature', rows())).rejects.toThrow(
+      'Cannot verify worktree branch usage'
     )
+  })
+
+  it.each([40, 64])(
+    'protects auxiliary rebase refs with %i-character OIDs on attached worktrees',
+    async (length) => {
+      await mkdir(path.join(admin, 'rebase-merge'))
+      const before = 'a'.repeat(length)
+      const after = '0'.repeat(length)
+      await writeFile(
+        path.join(admin, 'rebase-merge', 'update-refs'),
+        `refs/heads/other\r\n${before}\r\n${after}\r\nrefs/heads/feature\r\n${before}\r\n${after}\r\n`
+      )
+      const attached = rows().map((row) => ({ ...row, branch: 'refs/heads/main' }))
+      await expect(isBranchReservedByWorktreeOperation(repo, 'feature', attached)).resolves.toBe(
+        true
+      )
+      await expect(isBranchReservedByWorktreeOperation(repo, 'unreserved', attached)).resolves.toBe(
+        false
+      )
+    }
+  )
+
+  it('checks update-refs in the main worktree and compares only ref-name fields', async () => {
+    await mkdir(path.join(common, 'rebase-merge'))
+    await writeFile(
+      path.join(common, 'rebase-merge', 'update-refs'),
+      `refs/heads/feature\n${'a'.repeat(40)}\n${'0'.repeat(40)}\n`
+    )
+    await expect(isBranchReservedByWorktreeOperation(repo, 'feature', rows())).resolves.toBe(true)
+    await expect(isBranchReservedByWorktreeOperation(repo, 'a'.repeat(40), rows())).resolves.toBe(
+      false
+    )
+  })
+
+  it.each([
+    `refs/heads/feature\n${'a'.repeat(40)}\n`,
+    `refs/heads/feature\n${'a'.repeat(40)}\n${'g'.repeat(40)}\n`,
+    `refs/heads/feature\n${'a'.repeat(40)}\n${'0'.repeat(64)}\n`,
+    `refs/heads/feature\n${'a'.repeat(40)}\n${'0'.repeat(40)}\ninvalid\n`
+  ])('fails closed on malformed update-refs records: %s', async (contents) => {
+    await mkdir(path.join(admin, 'rebase-merge'))
+    await writeFile(path.join(admin, 'rebase-merge', 'update-refs'), contents)
+    await expect(isBranchReservedByWorktreeOperation(repo, 'feature', rows())).rejects.toThrow(
+      'Cannot verify rebase update-refs branch usage'
+    )
+  })
+
+  it('fails closed when update-refs cannot be read', async () => {
+    await mkdir(path.join(admin, 'rebase-merge', 'update-refs'), { recursive: true })
+    await expect(isBranchReservedByWorktreeOperation(repo, 'feature', rows())).rejects.toThrow()
   })
 
   it('propagates cancellation during administrative reads', async () => {
@@ -112,8 +169,8 @@ describe('owning-host worktree administrative reads', () => {
     await expect(annotateWorktreeLocksFromAdmin(repo, rows(), { signal })).rejects.toThrow(
       'cancelled'
     )
-    await expect(isBranchInDetachedWorktree(repo, 'feature', rows(), { signal })).rejects.toThrow(
-      'cancelled'
-    )
+    await expect(
+      isBranchReservedByWorktreeOperation(repo, 'feature', rows(), { signal })
+    ).rejects.toThrow('cancelled')
   })
 })

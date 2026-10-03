@@ -88,19 +88,48 @@ export async function annotateWorktreeLocksFromAdmin(
   })
 }
 
-/** Detached HEAD during rebase or bisect still reserves the original branch. */
-export async function isBranchInDetachedWorktree(
+function updateRefsReserveBranch(contents: string | null, branchName: string): boolean {
+  if (!contents) {
+    return false
+  }
+  const lines = contents.split(/\r?\n/)
+  if (lines.at(-1) === '') {
+    lines.pop()
+  }
+  if (lines.length % 3 !== 0) {
+    throw new Error('Cannot verify rebase update-refs branch usage.')
+  }
+  let reserved = false
+  for (let i = 0; i < lines.length; i += 3) {
+    const ref = lines[i]
+    const before = lines[i + 1] ?? ''
+    const after = lines[i + 2] ?? ''
+    if (
+      !ref ||
+      !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(before) ||
+      !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(after) ||
+      before.length !== after.length
+    ) {
+      throw new Error('Cannot verify rebase update-refs branch usage.')
+    }
+    reserved ||= ref === `refs/heads/${branchName}`
+  }
+  return reserved
+}
+
+/** Rebase and bisect reserve branches even when HEAD no longer points to them. */
+export async function isBranchReservedByWorktreeOperation(
   repoPath: string,
   branchName: string,
   worktrees: GitWorktreeInfo[],
   options: GitAdminReadOptions = {}
 ): Promise<boolean> {
-  const detached = worktrees.filter((worktree) => !worktree.branch && !worktree.isBare)
-  if (detached.length === 0) {
+  const nonBare = worktrees.filter((worktree) => !worktree.isBare)
+  if (nonBare.length === 0) {
     return false
   }
   const targets = new Set(
-    detached.map((worktree) => {
+    nonBare.map((worktree) => {
       const hostPath = resolveWorktreeHostPath(worktree.path, options)
       return hostPath ? hostPathKey(hostPath) : worktree.path
     })
@@ -108,19 +137,28 @@ export async function isBranchInDetachedWorktree(
   const directories = await readWorktreeAdminDirectories(repoPath, options)
   const relevant = directories.filter((entry) =>
     entry.isMain
-      ? detached.some((worktree) => worktree.isMainWorktree)
+      ? nonBare.some((worktree) => worktree.isMainWorktree)
       : entry.worktreePath && targets.has(hostPathKey(entry.worktreePath))
   )
-  if (relevant.length < detached.length) {
-    throw new Error('Cannot verify detached worktree branch usage.')
+  if (relevant.length < nonBare.length) {
+    throw new Error('Cannot verify worktree branch usage.')
   }
   const matches = await mapWithConcurrency(relevant, ADMIN_READ_CONCURRENCY, async (entry) => {
-    const markers = await Promise.all(
-      ['rebase-merge/head-name', 'rebase-apply/head-name', 'BISECT_START'].map((name) =>
-        readGitAdminFile(path.join(entry.gitDir, ...name.split('/')), options.signal)
+    const [rebaseMerge, rebaseApply, bisect, updateRefs] = await Promise.all(
+      [
+        'rebase-merge/head-name',
+        'rebase-apply/head-name',
+        'BISECT_START',
+        'rebase-merge/update-refs'
+      ].map((name) => readGitAdminFile(path.join(entry.gitDir, ...name.split('/')), options.signal))
+    )
+    const reserved = updateRefsReserveBranch(updateRefs, branchName)
+    return (
+      reserved ||
+      [rebaseMerge, rebaseApply, bisect].some(
+        (marker) => marker?.trim().replace(/^refs\/heads\//, '') === branchName
       )
     )
-    return markers.some((marker) => marker?.trim().replace(/^refs\/heads\//, '') === branchName)
   })
   options.signal?.throwIfAborted()
   return matches.some(Boolean)

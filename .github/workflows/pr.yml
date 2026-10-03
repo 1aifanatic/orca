@@ -433,7 +433,8 @@ jobs:
               ORCA_GIT_COMPAT_VERSION="2.25.5" \
               pnpm exec vitest run --config config/vitest.config.ts \
               src/shared/git-binary-compatibility.test.ts \
-              src/main/git/worktree-safety-real-git.test.ts
+              src/main/git/worktree-safety-real-git.test.ts \
+              src/main/git/worktree-rebase-update-refs-real-git.test.ts
           ) &
           pids+=("$!")
 
@@ -444,7 +445,8 @@ jobs:
               ORCA_GIT_COMPAT_IMAGE="$image" ORCA_GIT_COMPAT_VERSION="$version" \
                 pnpm exec vitest run --config config/vitest.config.ts \
                 src/shared/git-binary-compatibility.test.ts \
-                src/main/git/worktree-safety-real-git.test.ts
+                src/main/git/worktree-safety-real-git.test.ts \
+                src/main/git/worktree-rebase-update-refs-real-git.test.ts
             ) &
             pids+=("$!")
           done

@@ -39,11 +39,6 @@ type TrackedRepo = {
 
 const noopSpan: RefMaintenanceSpan = { setAttribute: () => {} }
 
-/** A deadline means something is stuck: back off instead of retrying straight away. */
-function hitDeadline(signal: AbortSignal): boolean {
-  return signal.reason instanceof RefMaintenanceInterrupted && signal.reason.deadline
-}
-
 export class RepoRefMaintenance {
   private readonly tracked = new Map<string, TrackedRepo>()
   private readonly phases: RepoMaintenanceSchedule
@@ -91,7 +86,17 @@ export class RepoRefMaintenance {
     }
     const tracked: TrackedRepo = { target, timer: null, deferrals: existing?.deferrals ?? 0 }
     this.tracked.delete(target.key)
-    this.evictOldestBeyondCap()
+    while (this.tracked.size >= MAX_TRACKED_REPOS) {
+      const oldest = this.tracked.keys().next()
+      if (oldest.done) {
+        break
+      }
+      const evicted = this.tracked.get(oldest.value)
+      if (evicted?.timer) {
+        clearTimeout(evicted.timer)
+      }
+      this.tracked.delete(oldest.value)
+    }
     this.tracked.set(target.key, tracked)
     this.schedule(target.key, tracked)
   }
@@ -186,20 +191,6 @@ export class RepoRefMaintenance {
     tracked.timer = timer
   }
 
-  private evictOldestBeyondCap(): void {
-    while (this.tracked.size >= MAX_TRACKED_REPOS) {
-      const oldest = this.tracked.keys().next()
-      if (oldest.done) {
-        return
-      }
-      const evicted = this.tracked.get(oldest.value)
-      if (evicted?.timer) {
-        clearTimeout(evicted.timer)
-      }
-      this.tracked.delete(oldest.value)
-    }
-  }
-
   /**
    * `counted` spends the give-up budget. Waiting behind another repository's
    * pack, or yielding to work Orca asked us to yield to, does not: both end on
@@ -287,12 +278,8 @@ export class RepoRefMaintenance {
       this.defer(key, tracked, true)
       return
     }
-    const indexOutcome = await this.phases.maintain(
-      tracked.target,
-      signal,
-      span,
-      () => !signal.aborted && this.suspensions === 0 && !this.isBusy(tracked)
-    )
+    const canWrite = () => !signal.aborted && this.suspensions === 0 && !this.isBusy(tracked)
+    const indexOutcome = await this.phases.maintain(tracked.target, signal, span, canWrite)
     if (indexOutcome === 'deferred') {
       span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
       this.defer(key, tracked, true)
@@ -343,9 +330,9 @@ export class RepoRefMaintenance {
     const startedAt = this.now()
     let partial = false
     try {
-      // No signal: the pack runs to completion. Callers that need the refs wait
+      // Only admission is cancellable. Callers that need the refs wait
       // out the rewrite window through `pause()` instead of killing it.
-      await tracked.target.packRefs(this.lockGate)
+      await tracked.target.packRefs(this.lockGate, signal, canWrite)
     } catch (error) {
       span.setAttribute('repo.maintenance_error', String(error))
       if (error instanceof RefMaintenanceRepoLocked) {
@@ -357,6 +344,15 @@ export class RepoRefMaintenance {
       this.lockGate.setHeld(false)
     }
     span.setAttribute('git.pack_refs_ms', this.now() - startedAt)
+    if (signal.aborted) {
+      this.yieldTo(key, tracked, span, signal)
+      return
+    }
+    if (!canWrite()) {
+      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
+      this.defer(key, tracked, true)
+      return
+    }
     // Judge by the backlog, not by the exit code. On a machine running several
     // Orca sessions a branch moving mid-pack is the normal case, and Git's
     // response -- leave that one ref loose, pack the rest -- is the correct one.
@@ -378,7 +374,7 @@ export class RepoRefMaintenance {
     span: RefMaintenanceSpan,
     signal: AbortSignal
   ): void {
-    if (hitDeadline(signal)) {
+    if (signal.reason instanceof RefMaintenanceInterrupted && signal.reason.deadline) {
       this.phases.settleRefs(key, span, 'timed_out', REF_MAINTENANCE_FAILURE_COOLDOWN_MS)
       return
     }
