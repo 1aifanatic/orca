@@ -288,12 +288,15 @@ export function registerDiagnosticsHandlers(): void {
       return
     }
     let replyPending = true
+    const pendingReference = new WeakRef(pending)
+    const pendingId = pending.bundle.bundleSubmissionId
     const markOpened = (): void => {
-      // Late completion must not credit a discarded or replacement preview.
-      if (pendingBundles.get(pending.bundle.bundleSubmissionId) === pending) {
-        pending.previewOpened = true
+      // A detached opener must not retain or credit a discarded preview.
+      const current = pendingReference.deref()
+      if (current && pendingBundles.get(pendingId) === current) {
+        current.previewOpened = true
         if (!replyPending) {
-          pending.previewOpenAwaitingRetry = true
+          current.previewOpenAwaitingRetry = true
         }
       }
     }

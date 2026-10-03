@@ -326,6 +326,40 @@ describe('diagnostics IPC handlers', () => {
     expect(openPathMock).toHaveBeenCalledTimes(2)
   })
 
+  it('releases a discarded preview while its detached opener is still running', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    spawnProcessMock.mockReturnValue(child)
+    let bundle: CollectedBundle | null = makeBundle({
+      bundleSubmissionId: 'gcpreviewabcdefghijklmnop'
+    })
+    const bundleId = bundle.bundleSubmissionId
+    const reference = new WeakRef(bundle)
+    collectDiagnosticBundleMock.mockReturnValue(bundle)
+    await handlers.get('diagnostics:collectBundle')!({}, 30)
+    const rejected = expect(
+      handlers.get('diagnostics:openBundlePreview')!({}, bundleId)
+    ).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(1_500)
+    await rejected
+    await handlers.get('diagnostics:discardBundlePreview')!({}, bundleId)
+    collectDiagnosticBundleMock.mockReset()
+    bundle = null
+    if (!global.gc) {
+      throw new Error('Run this retention test with --expose-gc')
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await vi.advanceTimersByTimeAsync(0)
+      global.gc()
+    }
+    expect(reference.deref()).toBeUndefined()
+    expect(child.listenerCount('exit')).toBe(1)
+    child.emit('exit', 0, null)
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(handlers.get('diagnostics:uploadBundle')!({}, bundleId)).rejects.toThrow(/expired/)
+  })
+
   it('does not credit a replacement bundle for an old launcher success', async () => {
     vi.useFakeTimers()
     Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
