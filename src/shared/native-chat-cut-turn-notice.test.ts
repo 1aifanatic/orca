@@ -141,6 +141,18 @@ describe('withNativeChatCutTurnNotices', () => {
     }
   })
 
+  // A host from before failure facts wrote the same rows with only their words.
+  it("counts an older host's exit row by its writer, with no exit fact", () => {
+    for (const id of ['provider-exit:s:3:gen', 'stale-session:s:death-3-2000']) {
+      const items = [
+        user('u1'),
+        turn('t1', 'u1', CUT),
+        hostRow(id, { kind: 'status', text: NOTICE, tone: 'error' }, inTurn('t1'))
+      ]
+      expect(withNativeChatCutTurnNotices(items), id).toBe(items)
+    }
+  })
+
   it('counts an exit row by its exit fact, whatever wrote it', () => {
     const items = [
       user('u1'),
