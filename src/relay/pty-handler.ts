@@ -5,6 +5,10 @@ import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-sign
 import { FreebuffStatusProjection } from './freebuff-status-projection'
 import { probeOpenCodeLaunchCapabilities } from '../main/opencode/opencode-launch-capabilities'
 import type { OpenCodeCliCapabilities } from '../shared/opencode-cli-version'
+import {
+  applyOpenCodePluginSelection,
+  restoreOpenCodeCapabilities
+} from './opencode-plugin-selection'
 import { resolveCommandPathForRelay } from './preflight-handler'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 import type { IPty } from 'node-pty'
@@ -458,6 +462,7 @@ type PtyProcessSummary = {
 }
 
 type SerializedPtyEntry = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   id: string
   pid: number
   cols: number
@@ -2015,12 +2020,12 @@ export class PtyHandler {
       resolveExecutable: (executable) => resolveCommandPathForRelay(executable, { env: spawnEnv }),
       ...(isRelayWslShell(shell) ? { wsl: { distro: terminalWindowsWslDistro ?? undefined } } : {})
     })
-    if (openCodeCapabilities && openCodeCapabilities.pluginApi !== 'unknown') {
-      spawnEnv.ORCA_OPENCODE_PLUGIN_API = openCodeCapabilities.pluginApi
-      if (isRelayWslShell(shell)) {
-        addWslEnvKeys(spawnEnv, ['ORCA_OPENCODE_PLUGIN_API'])
-      }
-    }
+    applyOpenCodePluginSelection(
+      spawnEnv,
+      envToDelete,
+      openCodeCapabilities,
+      isRelayWslShell(shell)
+    )
     await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
       wslShell: isRelayWslShell(shell)
     })
@@ -3090,6 +3095,9 @@ export class PtyHandler {
         worktreeId: managed.worktreeId,
         ...(managed.explicitTerm !== undefined ? { explicitTerm: managed.explicitTerm } : {}),
         envToDelete: managed.envToDelete,
+        ...(managed.openCodeCapabilities
+          ? { openCodeCapabilities: managed.openCodeCapabilities }
+          : {}),
         gitCredentialPromptGuarded: managed.gitCredentialPromptGuarded,
         ...(managed.historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
         // Why serialized: revive re-spawns the shell, and without these a WSL
@@ -3184,6 +3192,8 @@ export class PtyHandler {
       { id: entry.id, paneKey: entry.paneKey, shell },
       envToDelete
     )
+    const openCodeCapabilities = restoreOpenCodeCapabilities(entry.openCodeCapabilities)
+    applyOpenCodePluginSelection(spawnEnv, envToDelete, openCodeCapabilities, wslShell)
     if (
       historyIsolationEnabled &&
       entry.worktreeId &&
@@ -3259,6 +3269,7 @@ export class PtyHandler {
       ...(explicitTerm !== undefined ? { explicitTerm } : {}),
       envToDelete,
       gitCredentialPromptGuarded,
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {}),
       ...(historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
       shellPath: shell,
       // Why re-stored: a revived pane can be serialized again, and losing the

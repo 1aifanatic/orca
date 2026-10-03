@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import {
+  ORCA_SCRUB_SAFE_LAUNCH_ENV,
+  ORCA_SCRUB_SAFE_PANE_ENV
+} from '../../shared/agent-hook-scrub-safe-env'
 import { runProcess } from '../../shared/child-process/run-process'
 import {
   getOpenCodeCliCapabilities,
@@ -17,15 +21,27 @@ export type OpenCodeCliVersionProbe = {
 const probes = new Map<string, { expiresAt: number; result: Promise<OpenCodeCliCapabilities> }>()
 const CACHE_TTL_MS = 60_000
 const MAX_CACHED_PROBES = 128
+const PANE_IDENTITY_ENV_KEYS = new Set([
+  'ORCA_PANE_KEY',
+  'ORCA_TAB_ID',
+  'ORCA_WORKTREE_ID',
+  'ORCA_TERMINAL_HANDLE',
+  'ORCA_AGENT_LAUNCH_TOKEN',
+  ORCA_SCRUB_SAFE_PANE_ENV,
+  ORCA_SCRUB_SAFE_LAUNCH_ENV
+])
 
 export function probeOpenCodeCliVersion(
   options: OpenCodeCliVersionProbe
 ): Promise<OpenCodeCliCapabilities> {
   const identity = JSON.stringify([
+    options.execute ? 'host-callback' : 'native-process',
     options.hostIdentity ?? process.platform,
     options.executablePath,
     options.cwd,
-    Object.entries(options.env).sort(([left], [right]) => left.localeCompare(right))
+    Object.entries(options.env)
+      .filter(([key]) => !PANE_IDENTITY_ENV_KEYS.has(key))
+      .sort(([left], [right]) => left.localeCompare(right))
   ])
   const key = createHash('sha256').update(identity).digest('hex')
   const cached = probes.get(key)
