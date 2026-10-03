@@ -280,7 +280,11 @@ export function useVirtualizedScrollAnchor<
         const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
         const clampExplained =
           anchor.scrollTop > maxScrollTop + 1 && el.scrollTop >= maxScrollTop - 2
-        if (Math.abs(el.scrollTop - anchor.scrollTop) > 1 && !clampExplained) {
+        const marked = programmaticScrollMarksRef.current?.hasPendingScrollOffset(
+          el.scrollTop,
+          maxScrollTop
+        )
+        if (Math.abs(el.scrollTop - anchor.scrollTop) > 1 && !clampExplained && !marked) {
           // Why: the viewport moved after this anchor was recorded and no
           // browser clamp explains it — the user scrolled. Their position
           // wins; restoring would undo their input.

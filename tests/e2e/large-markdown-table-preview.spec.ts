@@ -146,46 +146,6 @@ for (const width of [1920, 1280]) {
     await expectSettledInViewport(lastCell)
     await orcaPage.screenshot({ path: path.join(proofDirectory, `end-${width}.png`) })
     await input.fill('')
-    orcaPage.on('console', (message) => {
-      if (message.text().startsWith('TABLE_REFRESH_DIAGNOSTIC')) {
-        console.log(message.text())
-      }
-    })
-    await preview.evaluate((root) => {
-      let remaining = 100
-      const record = (kind: string): void => {
-        if (remaining-- <= 0) {
-          return
-        }
-        const viewport = root.getBoundingClientRect()
-        const rows = [...root.querySelectorAll<HTMLElement>('[data-preview-block-index]')].map(
-          (row) => ({
-            key: row.dataset.previewBlockKey,
-            loaded: row.hasAttribute('data-preview-block-loaded'),
-            top: row.getBoundingClientRect().top - viewport.top,
-            height: row.getBoundingClientRect().height
-          })
-        )
-        console.log(
-          'TABLE_REFRESH_DIAGNOSTIC',
-          JSON.stringify({
-            kind,
-            top: root.scrollTop,
-            max: root.scrollHeight - root.clientHeight,
-            rows
-          })
-        )
-      }
-      record('before')
-      root.addEventListener('scroll', () => record('scroll'))
-      root.addEventListener('orca-record-virtualized-scroll-anchor', () => record('record'))
-      new MutationObserver(() => record('mutation')).observe(root, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['style', 'data-preview-block-loaded']
-      })
-    })
     await orcaPage.evaluate(
       (content) => {
         const state = window.__store!.getState()

@@ -53,7 +53,7 @@ function setup(useMarks = true, savedAnchor = true, ready = true) {
     },
     { initialProps: { ready } }
   )
-  return { root, anchorRef, directInput, marks, virtualizer, ...hook }
+  return { root, anchorRef, directInput, marks, virtualizer, options, ...hook }
 }
 
 function loadedNeighbor(root: HTMLDivElement) {
@@ -84,6 +84,36 @@ describe('semantic anchor restoration while content is still loading', () => {
     unmount()
     root.remove()
   })
+
+  it.each([true, false])(
+    'checks scroll origin before the queued event during a revision swap (marked=%s)',
+    (marked) => {
+      const { root, anchorRef, marks, options, rerender, unmount } = setup()
+      vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 100, 300))
+      const row = document.createElement('div')
+      row.dataset.loadedRow = 'true'
+      row.dataset.key = 'row-2'
+      let rowStart = 183
+      vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, rowStart - root.scrollTop, 100, 100)
+      )
+      root.append(row)
+      root.scrollTop = 200
+      act(() => root.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT)))
+      expect(anchorRef.current).toMatchObject({ key: 'row-2', offset: 17, scrollTop: 200 })
+      options.restoreSignal = 'updated'
+      rowStart = 217
+      if (marked) {
+        marks.mark(241)
+      }
+      root.scrollTop = 241
+      rerender({ ready: true })
+      expect(root.scrollTop).toBe(marked ? 234 : 241)
+      expect(anchorRef.current).toMatchObject({ key: 'row-2', offset: 17 })
+      unmount()
+      root.remove()
+    }
+  )
 
   it('hands mount pixel restoration to the source-row restore without losing its offset', () => {
     const { root, anchorRef, unmount } = setup()
