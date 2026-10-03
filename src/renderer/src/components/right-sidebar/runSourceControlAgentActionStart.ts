@@ -48,7 +48,8 @@ type RunSourceControlAgentActionStartArgs = {
    * Fires as soon as the agent tab/session is created, before deferred
    * submit-after-ready prompt delivery finishes. Reversible bookkeeping only —
    * irreversible side effects (posting host replies, resolving threads) belong in
-   * onLaunched, which only fires once the prompt actually reached the agent.
+   * onLaunched, which fires once the prompt is delivered: a terminal's paste landed, or a
+   * structured chat recorded its message (whose agent may still be starting).
    */
   onLaunchAccepted?: () => void
   /** Fires when a launch that already reported onLaunchAccepted failed to deliver its prompt. */
