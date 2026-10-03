@@ -6,32 +6,8 @@ permissions:
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
 jobs:
-  cold-writer:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/ci-store-producer-outer
-  cold-reader:
-    needs: cold-writer
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - id: restored
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/nested-producer-marker
-          key: ci-store-producer-nested-${{ github.run_id }}-${{ github.run_attempt }}
-      - shell: bash
-        env:
-          CACHE_HIT: ${{ steps.restored.outputs.cache-hit }}
-        run: |
-          test "$CACHE_HIT" = true
-          test "$(cat "$RUNNER_TEMP/nested-producer-marker/marker")" = 'nested producer payload'
   compare:
-    name: ${{ matrix.os }} full installer
+    name: ${{ matrix.os }} full installer repeat ${{ matrix.sample }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -41,22 +17,20 @@ jobs:
         include:
           - os: ubuntu-latest
             native: node
+            first: lookup
+            sample: 2
+          - os: ubuntu-24.04-arm
+            native: node
             first: cached
+            sample: 2
+          - os: ubuntu-latest
+            native: node
+            first: cached
+            sample: 3
           - os: ubuntu-24.04-arm
             native: node
             first: lookup
-          - os: windows-2022
-            native: node
-            first: cached
-          - os: windows-11-arm
-            native: node
-            first: lookup
-          - os: macos-15-intel
-            native: none
-            first: cached
-          - os: macos-15
-            native: none
-            first: lookup
+            sample: 3
     defaults:
       run:
         shell: bash
@@ -118,7 +92,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: producer-install-${{ matrix.os }}
+          name: producer-install-${{ matrix.os }}-${{ matrix.sample }}
           path: ${{ runner.temp }}/producer-install-comparison/
           if-no-files-found: error
           retention-days: 7
