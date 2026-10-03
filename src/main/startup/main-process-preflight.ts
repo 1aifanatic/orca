@@ -1,3 +1,5 @@
+import { antigravityHookService } from '../antigravity/hook-service'
+import { getRelocatedDaemonHost } from '../daemon/daemon-host-relocation'
 import { app, ipcMain, powerMonitor, session } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import os from 'node:os'
@@ -87,15 +89,17 @@ import { registerDocPreviewSchemePrivileges } from '../browser/doc-preview-proto
 import { startCrashpadCapture } from '../crash-reporting/crashpad-capture'
 import { CrashReportStore } from '../crash-reporting/crash-report-store'
 import { recordCrashBreadcrumb } from '../crash-reporting/crash-breadcrumb-store'
-import { recordDurableCrashBreadcrumb } from '../crash-reporting/durable-crash-breadcrumb'
-import { GpuCrashDiagnosticsRecorder } from '../crash-reporting/gpu-crash-diagnostics'
 import { getMainProcessLifecycleIdentity } from '../crash-reporting/main-process-lifecycle-identity'
 import {
   ensureVirtualDisplayForHeadlessServe,
   hasUsableLinuxDisplay,
   MISSING_LINUX_DISPLAY_MESSAGE
 } from './ensure-virtual-display'
-import { maybeApplyGpuFallbackForThisLaunch, registerGpuLifecycleHandlers } from './gpu-lifecycle'
+import {
+  createGpuCrashDiagnosticsRecorder,
+  maybeApplyGpuFallbackForThisLaunch,
+  registerGpuLifecycleHandlers
+} from './gpu-lifecycle'
 import { mainProcessState as state } from './main-process-state'
 import { initializeSyntheticTitleRuntime } from './synthetic-title-runtime'
 import { initializeBrowserProcessUserAgent } from '../browser/browser-process-user-agent'
@@ -210,6 +214,10 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
   // Why captured now: after the dev/E2E override above, and before app.setName('Orca') (whenReady)
   // changes how userData resolves on a case-sensitive filesystem. See persistence.ts:20-28.
   initDataPath()
+  antigravityHookService.setWindowsRuntimePathProvider(
+    () => getRelocatedDaemonHost()?.execPath ?? process.execPath
+  )
+
   // Why: Electron resolves the macOS safeStorage Keychain service name from the app name before
   // ready. Dev pins userData above, so applying its name here cannot shift the captured path.
   if (state.devInstanceIdentity && shouldApplyPreReadyAppName(state.devInstanceIdentity)) {
@@ -354,16 +362,7 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
   // first renderer spawns; a CHECK before this point is still exit-code-only.
   startCrashpadCapture()
   state.crashReports = CrashReportStore.fromUserData()
-  state.gpuCrashDiagnostics =
-    process.platform === 'win32'
-      ? new GpuCrashDiagnosticsRecorder({
-          provider: {
-            getGPUInfo: (infoType) => app.getGPUInfo(infoType),
-            getGPUFeatureStatus: () => app.getGPUFeatureStatus()
-          },
-          recordBreadcrumb: (data) => recordDurableCrashBreadcrumb('gpu_crash_hardware', data)
-        })
-      : null
+  state.gpuCrashDiagnostics = createGpuCrashDiagnosticsRecorder()
   recordCrashBreadcrumb('app_started', {
     packaged: app.isPackaged,
     platform: process.platform,

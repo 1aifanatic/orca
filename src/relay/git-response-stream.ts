@@ -212,6 +212,8 @@ export class GitResponseStreamRegistry {
             clientId
           }
         )
+        // Sent chunks are never retried; ACK waits must not retain their encoded copies.
+        chunks[seq] = ''
       }
       // Why: disposal may abort while the final chunk write is in flight.
       if (endReason === 'end' && !entry.aborted && !context.isStale()) {
