@@ -217,15 +217,14 @@ export function enforceStoredNativeChatComposerDraftBounds(storage: Storage): vo
   }
 }
 
-/** Removes every stored draft whose scope starts with `scopePrefix`. */
-export function removeStoredNativeChatComposerDraftsByScopePrefix(
+/** Removes every stored draft whose scope matches. */
+export function removeStoredNativeChatComposerDraftsWhere(
   storage: Storage,
-  scopePrefix: string
+  matches: (scopeKey: string) => boolean
 ): void {
   try {
-    const keyPrefix = nativeChatComposerDraftStorageKey(scopePrefix)
     for (const key of storedDraftIndex(storage).keys()) {
-      if (key.startsWith(keyPrefix)) {
+      if (matches(decodeURIComponent(key.slice(STORAGE_KEY_PREFIX.length)))) {
         removeStoredNativeChatComposerDraft(storage, key)
       }
     }

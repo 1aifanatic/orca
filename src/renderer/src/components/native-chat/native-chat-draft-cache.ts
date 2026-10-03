@@ -36,29 +36,27 @@ export function appendNativeChatDraftText(draft: string, text: string): string {
   return draft === '' ? text : `${draft.trimEnd()}\n\n${text}`
 }
 
-// Only a write from outside the composer notifies; its own writes already hold the text.
-const appendListeners = new Map<string, Set<(text: string) => void>>()
+// Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
+const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()
 
 /** Puts text back after whatever is typed, and tells a mounted composer to show it. */
 export function appendNativeChatDraftCache(scopeKey: string, text: string): void {
   if (text === '') {
     return
   }
+  const previous = readNativeChatDraftCache(scopeKey)
   // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
   updateNativeChatComposerDraft(
     scopeKey,
-    {
-      text: appendNativeChatDraftText(readNativeChatDraftCache(scopeKey), text),
-      document: undefined
-    },
+    { text: appendNativeChatDraftText(previous, text), document: undefined },
     'immediate'
   )
-  appendListeners.get(scopeKey)?.forEach((listener) => listener(text))
+  appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
 }
 
 export function subscribeToNativeChatDraftAppend(
   scopeKey: string,
-  listener: (text: string) => void
+  listener: (text: string, previous: string) => void
 ): () => void {
   const listeners = appendListeners.get(scopeKey) ?? new Set()
   appendListeners.set(scopeKey, listeners)

@@ -5,9 +5,15 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type * as DraftHook from './use-native-chat-draft'
 import type * as AttachmentsHook from './use-native-chat-composer-attachments'
+import type * as SendHook from './use-native-chat-structured-composer-send'
+import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({ isRemoteRuntimePtyId: () => false }))
+vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
+vi.mock('@/lib/worker-terminal-takeover-report', () => ({
+  reportStructuredSessionUserInput: vi.fn()
+}))
 const mocks = vi.hoisted(() => {
   const launchDrafts: Record<string, NativeChatLaunchDraft> = {}
   return { launchDrafts }
@@ -39,6 +45,43 @@ type ComposerApi = {
   draft: string
   setDraft: ReturnType<typeof DraftHook.useNativeChatDraft>['setDraft']
   attachments: ReturnType<typeof AttachmentsHook.useNativeChatComposerAttachments>
+  send: (text: string) => void
+}
+
+type Dispatched = { handled: boolean; accepted: boolean; error: string | null }
+
+/** A transport whose next send settles only when the test says so. */
+function heldTransport(): {
+  transport: NativeChatStructuredComposerTransport
+  settle: () => Promise<void>
+} {
+  let resolve: (value: Dispatched) => void = () => {}
+  const dispatched = new Promise<Dispatched>((settle) => {
+    resolve = settle
+  })
+  return {
+    transport: {
+      send: vi.fn(() => true),
+      dispatchCommand: vi.fn(() => dispatched),
+      optionsSurface: {
+        getSnapshot: () => [],
+        setOption: vi.fn(),
+        invokeAction: vi.fn(),
+        subscribe: () => () => {}
+      },
+      optionSnapshot: [],
+      onError: vi.fn(),
+      runtime: 'local',
+      sessionId: 'session-test',
+      runtimeEnvironmentId: null
+    },
+    settle: async () => {
+      await act(async () => {
+        resolve({ handled: false, accepted: false, error: null })
+        await dispatched
+      })
+    }
+  }
 }
 
 let root: Root | null = null
@@ -67,17 +110,20 @@ function storedDraft(scopeKey: string): unknown {
 async function loadHooks(): Promise<{
   draftHook: typeof DraftHook
   attachmentsHook: typeof AttachmentsHook
+  sendHook: typeof SendHook
 }> {
   vi.resetModules()
   return {
     draftHook: await import('./use-native-chat-draft'),
-    attachmentsHook: await import('./use-native-chat-composer-attachments')
+    attachmentsHook: await import('./use-native-chat-composer-attachments'),
+    sendHook: await import('./use-native-chat-structured-composer-send')
   }
 }
 
 function composer(
   hooks: Awaited<ReturnType<typeof loadHooks>>,
-  onRender: (api: ComposerApi) => void
+  onRender: (api: ComposerApi) => void,
+  transport?: NativeChatStructuredComposerTransport
 ): (props: { scopeKey: string }) => null {
   return function Composer({ scopeKey }) {
     const { draft, setDraft } = hooks.draftHook.useNativeChatDraft(scopeKey, () => false)
@@ -94,7 +140,18 @@ function composer(
       setDraft: () => {},
       setNotice: () => {}
     })
-    onRender({ draft, setDraft, attachments })
+    const send = hooks.sendHook.useNativeChatStructuredComposerSend({
+      agent: 'claude',
+      draftScopeKey: scopeKey,
+      imageAttachments: attachments.imageAttachments,
+      structuredTransport: transport,
+      clearImageAttachments: attachments.clearImageAttachments,
+      clearSkillOrigin: () => {},
+      setHistory: () => {},
+      setDraft,
+      setCaret
+    })
+    onRender({ draft, setDraft, attachments, send })
     return null
   }
 }
@@ -107,6 +164,8 @@ beforeEach(() => {
 afterEach(async () => {
   await unmount()
   vi.useRealTimers()
+  // Writes still deferred land now, not in the next test's storage.
+  window.dispatchEvent(new Event('pagehide'))
   localStorage.clear()
 })
 
@@ -149,6 +208,52 @@ describe('native-chat composer draft lifecycle', () => {
       )
     )
     expect(restored.api).toMatchObject({ draft: '', attachments: { imageAttachments: [] } })
+  })
+
+  it('clears a sent draft when its send settles after the composer was replaced', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const first: { api?: ComposerApi } = {}
+    const Composer = composer(hooks, (next) => (first.api = next), held.transport)
+    await mount(createElement(Composer, { scopeKey: 'tab-1:pane' }))
+    await act(async () => first.api?.setDraft('/goal ship it'))
+    await act(async () => first.api?.send('/goal ship it'))
+    await unmount()
+
+    await held.settle()
+
+    expect(storedDraft('tab-1:pane')).toBeNull()
+  })
+
+  it('keeps what was typed in a replacement composer when the old composer’s send settles', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const first: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (first.api = next), held.transport),
+        {
+          scopeKey: 'tab-1:pane'
+        }
+      )
+    )
+    await act(async () => first.api?.setDraft('sent text'))
+    await act(async () => first.api?.send('sent text'))
+    await unmount()
+    const second: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (second.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => second.api?.setDraft('new text'))
+
+    await held.settle()
+
+    expect(second.api?.draft).toBe('new text')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'new text' })
   })
 
   it('leaves nothing saved when a send clears a draft whose typing was still deferred', async () => {
@@ -231,6 +336,62 @@ describe('native-chat composer draft lifecycle', () => {
       )
     )
     expect(third.api?.attachments.imageAttachments).toEqual([])
+  })
+
+  it('adds a late image from a replaced composer to the current draft, not to its old one', async () => {
+    const hooks = await loadHooks()
+    const first: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (first.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => first.api?.attachments.attachResolvedPaths(['/repo/x.png']))
+    const stale = first.api
+    await unmount()
+    const second: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (second.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => second.api?.attachments.clearImageAttachments())
+    await unmount()
+
+    // An SSH upload started in the first composer finishes now.
+    stale?.attachments.attachResolvedPaths(['/repo/late.png'])
+
+    expect(storedDraft('tab-1:pane')).toMatchObject({ images: [{ path: '/repo/late.png' }] })
+  })
+
+  it('inserts a late file reference from a replaced composer into the current text', async () => {
+    const hooks = await loadHooks()
+    const first: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (first.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => first.api?.setDraft('already sent text'))
+    const stale = first.api
+    await unmount()
+    const second: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (second.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => second.api?.setDraft(''))
+    await unmount()
+
+    stale?.setDraft((previous) => `${previous}@late.txt `)
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: '@late.txt ' })
   })
 
   it('does not bring back an untouched launch link after a reload, when no seed is left to replace it', async () => {

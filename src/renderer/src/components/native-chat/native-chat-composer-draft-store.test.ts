@@ -417,4 +417,22 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane-b')).toBe('')
     expect(reloaded.drafts.readNativeChatDraftCache('tab-10:pane')).toBe('other tab')
   })
+
+  it('keeps the drafts of a tab whose id extends the closed one', async () => {
+    // A second chat for one session gets `<tab id>:history-1`, so a prefix match would reach it.
+    const closed = 'structured-agent-session-claude_1'
+    const kept = `${closed}:history-1`
+    modules.drafts.writeNativeChatDraftCache(`${closed}:0a1b2c3d-0000-4000-a000-000000000001`, 'a')
+    modules.drafts.writeNativeChatDraftCache(`${kept}:0a1b2c3d-0000-4000-a000-000000000002`, 'b')
+    modules.store.flushNativeChatComposerDrafts()
+
+    modules.store.deleteNativeChatComposerDraftsForTab(closed)
+    const reloaded = await reload()
+    expect(
+      reloaded.drafts.readNativeChatDraftCache(`${closed}:0a1b2c3d-0000-4000-a000-000000000001`)
+    ).toBe('')
+    expect(
+      reloaded.drafts.readNativeChatDraftCache(`${kept}:0a1b2c3d-0000-4000-a000-000000000002`)
+    ).toBe('b')
+  })
 })

@@ -14,7 +14,7 @@ import {
   nativeChatComposerDraftStorageKey,
   parseStoredNativeChatComposerDraft,
   removeStoredNativeChatComposerDraft,
-  removeStoredNativeChatComposerDraftsByScopePrefix,
+  removeStoredNativeChatComposerDraftsWhere,
   writeStoredNativeChatComposerDraft,
   type NativeChatComposerDraft,
   type NativeChatComposerDraftImage,
@@ -44,6 +44,27 @@ const dirtyScopes = new Set<string>()
 let lastSavedAt = 0
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushOnHideInstalled = false
+const scopeListeners = new Map<string, Set<() => void>>()
+
+function notifyScope(scopeKey: string): void {
+  scopeListeners.get(scopeKey)?.forEach((listener) => listener())
+}
+
+/** Composers render from the store; this tells one that its pane's draft changed. */
+export function subscribeToNativeChatComposerDraft(
+  scopeKey: string,
+  listener: () => void
+): () => void {
+  const listeners = scopeListeners.get(scopeKey) ?? new Set()
+  scopeListeners.set(scopeKey, listeners)
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0 && scopeListeners.get(scopeKey) === listeners) {
+      scopeListeners.delete(scopeKey)
+    }
+  }
+}
 
 function isEmptyDraft(draft: NativeChatComposerDraft): boolean {
   return draft.text === '' && draft.images.length === 0
@@ -210,6 +231,7 @@ export function updateNativeChatComposerDraft(
     if (storage) {
       removeStoredNativeChatComposerDraft(storage, nativeChatComposerDraftStorageKey(scopeKey))
     }
+    notifyScope(scopeKey)
     return
   }
   const record: DraftRecord = {
@@ -222,6 +244,7 @@ export function updateNativeChatComposerDraft(
   setBoundedScopeCacheEntry(records, scopeKey, record, writeEvictedRecord)
   dirtyScopes.add(scopeKey)
   installFlushOnHide()
+  notifyScope(scopeKey)
   if (persist === 'immediate') {
     flushNativeChatComposerDrafts()
     return
@@ -229,18 +252,44 @@ export function updateNativeChatComposerDraft(
   flushTimer ??= setTimeout(flushNativeChatComposerDrafts, PERSIST_DEBOUNCE_MS)
 }
 
+/**
+ * Clears a sent draft only while it is still what was sent, so a send settling late never wipes
+ * what was typed or attached since, even from a composer that was replaced meanwhile.
+ */
+export function clearNativeChatComposerDraftIfUnchanged(
+  scopeKey: string,
+  sent: NativeChatComposerDraft
+): boolean {
+  const current = readNativeChatComposerDraft(scopeKey)
+  if (current.text !== sent.text || !sameImages(current.images, sent.images)) {
+    return false
+  }
+  updateNativeChatComposerDraft(scopeKey, { text: '', images: [] }, 'immediate')
+  return true
+}
+
+/** A pane key is `<tabId>:<leaf>`; the leaf is a UUID, while a tab id may hold ':' itself. */
+function scopeTabId(scopeKey: string): string {
+  return scopeKey.slice(0, scopeKey.lastIndexOf(':'))
+}
+
 /** Drops the drafts of every pane in a tab the user closed; its pane keys never come back. */
 export function deleteNativeChatComposerDraftsForTab(tabId: string): void {
-  const scopePrefix = `${tabId}:`
+  const inTab = (scopeKey: string): boolean => scopeTabId(scopeKey) === tabId
   for (const scopeKey of records.keys()) {
-    if (scopeKey.startsWith(scopePrefix)) {
+    if (inTab(scopeKey)) {
       records.delete(scopeKey)
       dirtyScopes.delete(scopeKey)
     }
   }
   const storage = nativeChatComposerDraftStorage()
   if (storage) {
-    removeStoredNativeChatComposerDraftsByScopePrefix(storage, scopePrefix)
+    removeStoredNativeChatComposerDraftsWhere(storage, inTab)
+  }
+  for (const scopeKey of scopeListeners.keys()) {
+    if (inTab(scopeKey)) {
+      notifyScope(scopeKey)
+    }
   }
 }
 
