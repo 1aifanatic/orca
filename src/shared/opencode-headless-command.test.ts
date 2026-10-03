@@ -41,7 +41,9 @@ describe('wrapped OpenCode run command position', () => {
       'powershell'
     )
     expect(parsed.ok).toBe(true)
-    if (!parsed.ok) throw new Error(parsed.error)
+    if (!parsed.ok) {
+      throw new Error(parsed.error)
+    }
     expect(isOpenCodeRunCommand(parsed.tokens, 'powershell')).toBe(true)
     expect(isOpenCodeRunCommand(parsed.tokens, 'cmd')).toBe(false)
   })

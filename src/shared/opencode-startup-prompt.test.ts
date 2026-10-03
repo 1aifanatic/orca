@@ -139,9 +139,7 @@ describe('wrapped OpenCode run startup', () => {
     'preserves %s PowerShell call syntax and its run separator',
     (agent) => {
       for (const separator of ['', ' --']) {
-        const command =
-          '& "C:\\Program Files\\opencode\\opencode.exe" --log-level debug run --standalone' +
-          separator
+        const command = `& "C:\\Program Files\\opencode\\opencode.exe" --log-level debug run --standalone${separator}`
         const plan = buildAgentStartupPlan({
           agent,
           prompt: "--task's é",
@@ -150,7 +148,7 @@ describe('wrapped OpenCode run startup', () => {
           shell: 'powershell',
           agentEnv: { CUSTOM_CONFIG: 'kept' }
         })
-        expect(plan?.launchCommand).toBe(command + (separator ? ' ' : ' -- ') + "'--task''s é'")
+        expect(plan?.launchCommand).toBe(`${command}${separator ? ' ' : ' -- '}'--task''s é'`)
         expect(plan?.env).toEqual({ CUSTOM_CONFIG: 'kept' })
         expect(plan?.followupPrompt).toBeNull()
       }

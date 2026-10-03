@@ -14,7 +14,7 @@ describe('startup prompt control with status hooks disabled', () => {
         super()
         this._setOpenCodeBinderDepsForTests({
           dbPath: () => join(dir, 'no-user-db'),
-          listSessions: () => [],
+          listSessions: async () => [],
           listPanes: () => [],
           sweep: async () => []
         })

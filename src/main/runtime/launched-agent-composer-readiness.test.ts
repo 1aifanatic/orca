@@ -43,6 +43,7 @@ const EXPECTED_LANES: Record<TuiAgent, LaunchedAgentReadinessLane> = {
   copilot: 'tui-idle',
   muse: 'tui-idle',
   qoder: 'tui-idle',
+  'qoder-cn': 'tui-idle',
   codebuddy: 'tui-idle',
   autohand: 'tui-idle',
   ante: 'tui-idle',

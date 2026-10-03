@@ -86,20 +86,12 @@ export async function buildRuntimePtySpawnOptions(
       ? getLegacyOpenCodeEnvKeysToDelete(ctx.env, getAppEnvironment().getPath('userData'))
       : [],
     // Why: ungated, unlike the agent-hook keys — the local provider and the relay host also spread their own process.env into every spawn.
-    getInheritedAgentSessionStampEnvKeysToDelete(ctx.env)
-  )
-  if (ctx.skipCodexHomeEnv) {
-    ctx.spawnOptions.envToDelete = mergePtyEnvDeletions(
-      ctx.spawnOptions.envToDelete,
-      CODEX_HOME_ENV_KEYS
-    )
-  } else if (ctx.stripInheritedOrcaCodexHome) {
+    getInheritedAgentSessionStampEnvKeysToDelete(ctx.env),
+    ctx.skipCodexHomeEnv ? CODEX_HOME_ENV_KEYS : [],
     // Why: the daemon owns a persistent inherited environment that may
     // differ from main. ORCA_CODEX_HOME asks it to compare/delete the pair.
-    ctx.spawnOptions.envToDelete = mergePtyEnvDeletions(ctx.spawnOptions.envToDelete, [
-      'ORCA_CODEX_HOME'
-    ])
-  }
+    ctx.stripInheritedOrcaCodexHome ? ['ORCA_CODEX_HOME'] : []
+  )
   if (ctx.codexResumeHomeSelected) {
     ctx.spawnOptions.envToDelete = removeCodexHomeDeletionRequests(ctx.spawnOptions.envToDelete)
   }
