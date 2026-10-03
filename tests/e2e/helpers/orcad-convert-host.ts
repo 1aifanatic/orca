@@ -7,6 +7,7 @@ import type { TestInfo } from '@stablyai/playwright-test'
 import type { SshTargetCreateInput } from '../../../src/shared/ssh-types'
 import { parseWindowsHostCellDescriptor } from '../../../src/main/ssh/ssh-windows-host-cells'
 import {
+  blockDockerSshRelayTargetTcpForwarding,
   cleanupDockerSshRelayTarget,
   DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
   startDockerSshRelayTarget
@@ -21,6 +22,8 @@ export type OrcadConvertHost = {
   /** An existing remote directory the cell opens as a folder workspace. */
   remoteFolderPath: string
   cleanup: () => void
+  /** Docker only: makes sshd refuse TCP forwarding for connections opened after it. */
+  blockTcpForwarding?: () => void
 }
 
 /** `docker`, or the path of a Windows host-cell descriptor. */
@@ -40,7 +43,8 @@ export function startOrcadConvertHost(source: string, testInfo: TestInfo): Orcad
       },
       remoteRepoPath: DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
       remoteFolderPath: '/tmp',
-      cleanup: () => cleanupDockerSshRelayTarget(target)
+      cleanup: () => cleanupDockerSshRelayTarget(target),
+      blockTcpForwarding: () => blockDockerSshRelayTargetTcpForwarding(target)
     }
   }
   const descriptor = parseWindowsHostCellDescriptor(readFileSync(source, 'utf8'))

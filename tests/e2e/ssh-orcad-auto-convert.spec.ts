@@ -4,7 +4,7 @@
  * 1. Without an orcad template the connect keeps the relay, so the host gains relay-era state: a
  *    repository, a folder workspace, an editor tab, and a relay terminal that has exited.
  * 2. With the template in place and no relay terminal running, the next connect converts it, and
- *    the new server lists that repository and folder (the editor tab is logged, not yet asserted).
+ *    the new server lists that repository and folder and the editor tab.
  * 3. The source rows stay retained (downgrade safety) until `orcad-source-retirement` is on; the
  *    connect after that retires them while the server keeps serving the host.
  *
@@ -178,7 +178,8 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
         targetId: remote.targetId,
         worktreeId: remote.worktreeId,
         repoPath: host.remoteRepoPath,
-        folderPath
+        folderPath,
+        sessionFilePath
       },
       FLAGS_FILE
     )
@@ -234,6 +235,49 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
       await session.close(app)
     }
     await session.dispose()
+    host.cleanup()
+    if (existsSync(SCRATCH)) {
+      rmSync(SCRATCH, { recursive: true, force: true })
+    }
+  }
+})
+
+test('a host whose sshd refuses TCP forwarding stays on the relay, unfenced', async ({
+  orcaPage: page
+}, testInfo) => {
+  test.skip(
+    !HOST || !TEMPLATE_SOURCE,
+    `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
+  )
+  test.skip(HOST !== 'docker', 'Only the Docker host can change its sshd policy mid-test')
+  test.setTimeout(10 * 60_000)
+  rmSync(SCRATCH, { recursive: true, force: true })
+  mkdirSync(SCRATCH, { recursive: true })
+  writeFileSync(FLAGS_FILE, '{}')
+  // Template present from the start: without the probe, this empty host would deploy and strand.
+  cpSync(TEMPLATE_SOURCE!, TEMPLATE_DIR, { recursive: true })
+  const host = startOrcadConvertHost(HOST!, testInfo)
+  try {
+    host.blockTcpForwarding!()
+    await waitForSessionReady(page)
+    const remote = await connectSshTestTarget(page, host.input, {
+      remotePath: host.remoteRepoPath,
+      displayName: 'orcad forwarding refused E2E',
+      seedInitialTab: false
+    })
+
+    expect(await managedServer(page, remote.targetId)).toMatchObject({
+      kind: 'relay',
+      reason: 'orcad_unavailable',
+      detail: 'tcp_forwarding_refused'
+    })
+    const target = await page.evaluate(
+      async (id) => (await window.api.ssh.listTargets()).find((entry) => entry.id === id),
+      remote.targetId
+    )
+    expect(target).not.toHaveProperty('orcadFence')
+    expect(target?.managedServerUnavailable).toMatchObject({ reason: 'tcp_forwarding_refused' })
+  } finally {
     host.cleanup()
     if (existsSync(SCRATCH)) {
       rmSync(SCRATCH, { recursive: true, force: true })
