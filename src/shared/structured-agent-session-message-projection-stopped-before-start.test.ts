@@ -353,6 +353,92 @@ describe('a send a Stop took back before the agent started it', () => {
     ])
   })
 
+  // Two queued during /compact: the first was handed over and its turn opened and streamed, then
+  // the Stop took back the second, which was never handed over.
+  it("stays below the earlier send's whole exchange when that send opened the turn", () => {
+    const compactTurn = 'compact-turn'
+    const items = [
+      sent('compact', '/compact'),
+      entry(compactTurn, {
+        kind: 'turn',
+        turnId: compactTurn,
+        state: 'completed',
+        userItemId: agentJournalSubmissionKey('compact')
+      }),
+      sent('queued-second', 'queued second'),
+      said('compacted', 'Context compacted', compactTurn),
+      sent('queued-first', 'queued first'),
+      entry('turn-2', {
+        kind: 'turn',
+        turnId: 'turn-2',
+        state: 'interrupted',
+        outcome: 'cancellation',
+        userItemId: agentJournalSubmissionKey('queued-first')
+      }),
+      said('working', 'working on the first', 'turn-2'),
+      entry(
+        'stop:turn-2',
+        { kind: 'status', text: 'Cancellation requested.' },
+        { kind: 'turn', turnItemId: 'turn-2' }
+      )
+    ]
+
+    expect(
+      rows(items, [
+        submission('compact', { submittedAt: 1 }),
+        submission('queued-first', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+        stopped('queued-second', { submittedAt: 3, handoverRecorded: true })
+      ])
+    ).toEqual([
+      user('compact'),
+      { id: 'compacted', role: 'assistant' },
+      user('queued-first'),
+      { id: 'working', role: 'assistant' },
+      { id: 'stop:turn-2', role: 'system' },
+      user('queued-second'),
+      stopRow('queued-second')
+    ])
+  })
+
+  // As the finished-exchange case without the send left in doubt: the floor is the opener itself.
+  it('stays below a finished exchange whose opener was the last thing sent before it', () => {
+    const compactTurn = 'compact-turn'
+    const items = [
+      sent('compact', '/compact'),
+      entry(compactTurn, {
+        kind: 'turn',
+        turnId: compactTurn,
+        state: 'completed',
+        userItemId: agentJournalSubmissionKey('compact')
+      }),
+      sent('queued-b', 'queued B'),
+      said('compacted', 'Context compacted', compactTurn),
+      sent('queued-zero', 'queued zero'),
+      entry('turn-2', {
+        kind: 'turn',
+        turnId: 'turn-2',
+        state: 'completed',
+        userItemId: agentJournalSubmissionKey('queued-zero')
+      }),
+      said('answer', 'answer to zero', 'turn-2')
+    ]
+
+    expect(
+      rows(items, [
+        submission('compact', { submittedAt: 1 }),
+        submission('queued-zero', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+        stopped('queued-b', { submittedAt: 4, handoverRecorded: true })
+      ])
+    ).toEqual([
+      user('compact'),
+      { id: 'compacted', role: 'assistant' },
+      user('queued-zero'),
+      { id: 'answer', role: 'assistant' },
+      user('queued-b'),
+      stopRow('queued-b')
+    ])
+  })
+
   // The first taken back by one Stop, a later send by another: each stays where it was sent.
   it('keeps a send a later Stop took back below one an earlier Stop took', () => {
     const compactTurn = 'compact-turn'
