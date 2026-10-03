@@ -35,6 +35,7 @@ type TrackedRepo = {
   target: RepoRefMaintenanceTarget
   timer: ReturnType<typeof setTimeout> | null
   deferrals: number
+  superseded?: boolean
 }
 
 const noopSpan: RefMaintenanceSpan = { setAttribute: () => {} }
@@ -54,6 +55,7 @@ export class RepoRefMaintenance {
   // is still running -- an interrupt cancels the work and waits for it to stop.
   private inFlight: Promise<void> | null = null
   private inFlightAbort: AbortController | null = null
+  private inFlightTracked: TrackedRepo | null = null
   private readonly lockGate = new PackedRefsLockGate()
   // Why a count, not a flag: several ref-touching operations overlap routinely
   // (a create's fetch inside a create), and the last one out reopens the window.
@@ -79,6 +81,10 @@ export class RepoRefMaintenance {
   arm(target: RepoRefMaintenanceTarget): void {
     if (this.disposed) {
       return
+    }
+    // Invalidation survives eviction of the replacement quiet-period timer.
+    if (this.inFlightTracked?.target.key === target.key) {
+      this.inFlightTracked.superseded = true
     }
     const existing = this.tracked.get(target.key)
     if (existing?.timer) {
@@ -178,7 +184,7 @@ export class RepoRefMaintenance {
   }
 
   private isBusy(tracked: TrackedRepo): boolean {
-    return this.isAppBusy() || (tracked.target.isBusy?.() ?? false)
+    return tracked.superseded || this.isAppBusy() || (tracked.target.isBusy?.() ?? false)
   }
 
   private schedule(key: string, tracked: TrackedRepo, delayMs = this.quietPeriodMs): void {
@@ -200,7 +206,7 @@ export class RepoRefMaintenance {
   private defer(key: string, tracked: TrackedRepo, counted: boolean): void {
     // A fetch that landed while this attempt was probing already re-armed the
     // repo; that entry is fresher, so the deferral must not overwrite it.
-    if (this.disposed || this.tracked.has(key)) {
+    if (this.disposed || tracked.superseded || this.tracked.has(key)) {
       return
     }
     if (counted) {
@@ -242,6 +248,7 @@ export class RepoRefMaintenance {
       REF_MAINTENANCE_ATTEMPT_DEADLINE_MS
     )
     deadline.unref?.()
+    this.inFlightTracked = tracked
     const run = this.observe((span) => this.packIfNeeded(key, tracked, span, abort.signal))
     this.inFlight = run
     this.inFlightAbort = abort
@@ -252,6 +259,7 @@ export class RepoRefMaintenance {
       if (this.inFlight === run) {
         this.inFlight = null
         this.inFlightAbort = null
+        this.inFlightTracked = null
       }
     }
   }
@@ -263,8 +271,9 @@ export class RepoRefMaintenance {
     signal: AbortSignal
   ): Promise<void> {
     span.setAttribute('repo.maintenance_key', key)
+    const canWrite = () => !signal.aborted && this.suspensions === 0 && !this.isBusy(tracked)
     // Probes are cancellable; admitted index and ref writers finish before releasing the slot.
-    const optedOut = await this.phases.probeOptOut(tracked.target, signal, span)
+    const optedOut = await this.phases.probeOptOut(tracked.target, signal, span, canWrite)
     if (signal.aborted) {
       return this.yieldTo(key, tracked, span, signal)
     }
@@ -276,24 +285,11 @@ export class RepoRefMaintenance {
       return
     }
     if (this.suspensions > 0 || this.isBusy(tracked)) {
-      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
-      this.defer(key, tracked, true)
-      return
-    }
-    const canWrite = () => !signal.aborted && this.suspensions === 0 && !this.isBusy(tracked)
-    const indexOutcome = await this.phases.maintain(tracked.target, signal, span, canWrite)
-    if (indexOutcome === 'deferred') {
-      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
-      this.defer(key, tracked, true)
-      return
-    }
-    if (signal.aborted) {
       return this.yieldTo(key, tracked, span, signal)
     }
-    if (this.suspensions > 0 || this.isBusy(tracked)) {
-      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
-      this.defer(key, tracked, true)
-      return
+    const indexOutcome = await this.phases.maintain(tracked.target, signal, span, canWrite)
+    if (indexOutcome === 'deferred' || !canWrite()) {
+      return this.yieldTo(key, tracked, span, signal)
     }
     if (this.now() < this.phases.refDueAt(key)) {
       span.setAttribute('repo.maintenance_outcome', 'index_only' satisfies RefMaintenanceOutcome)
@@ -305,13 +301,16 @@ export class RepoRefMaintenance {
       return
     }
     const refsDirectory = await tracked.target.resolveRefsDirectory(signal)
+    if (!canWrite()) {
+      return this.yieldTo(key, tracked, span, signal)
+    }
     if (!refsDirectory) {
       this.phases.settleRefs(key, span, 'unresolved', REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
       return
     }
     const budget = this.looseRefThreshold + 1
     const before = await countLooseRefs(refsDirectory, budget, signal)
-    if (signal.aborted) {
+    if (!canWrite()) {
       return this.yieldTo(key, tracked, span, signal)
     }
     span.setAttribute('git.loose_ref_count', before.count)
@@ -319,12 +318,6 @@ export class RepoRefMaintenance {
     // A saturated walk stopped early, so `count` is a floor -- never read it as "clean".
     if (!before.saturated && before.count < this.looseRefThreshold) {
       this.phases.settleRefs(key, span, 'below_threshold', REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
-      return
-    }
-    // The quiet window can close while the probe walks; re-check before spending a git slot.
-    if (this.suspensions > 0 || this.isBusy(tracked)) {
-      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
-      this.defer(key, tracked, true)
       return
     }
     const startedAt = this.now()
@@ -335,6 +328,9 @@ export class RepoRefMaintenance {
       await tracked.target.packRefs(this.lockGate, signal, canWrite)
     } catch (error) {
       span.setAttribute('repo.maintenance_error', String(error))
+      if (!canWrite()) {
+        return this.yieldTo(key, tracked, span, signal)
+      }
       if (error instanceof RefMaintenanceRepoLocked) {
         this.phases.settleRefs(key, span, 'locked', REF_MAINTENANCE_LOCKED_COOLDOWN_MS)
         return
@@ -344,19 +340,17 @@ export class RepoRefMaintenance {
       this.lockGate.setHeld(false)
     }
     span.setAttribute('git.pack_refs_ms', this.now() - startedAt)
-    if (signal.aborted) {
-      return this.yieldTo(key, tracked, span, signal)
-    }
     if (!canWrite()) {
-      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
-      this.defer(key, tracked, true)
-      return
+      return this.yieldTo(key, tracked, span, signal)
     }
     // Judge by the backlog, not by the exit code. On a machine running several
     // Orca sessions a branch moving mid-pack is the normal case, and Git's
     // response -- leave that one ref loose, pack the rest -- is the correct one.
     // Measured in the field: 36,688 loose refs down to 3, reported as an error.
     const after = await countLooseRefs(refsDirectory, budget, signal)
+    if (!canWrite()) {
+      return this.yieldTo(key, tracked, span, signal)
+    }
     span.setAttribute('git.loose_ref_count_after', after.count)
     if (partial && (after.saturated || after.count >= this.looseRefThreshold)) {
       this.phases.settleRefs(key, span, 'failed', REF_MAINTENANCE_FAILURE_COOLDOWN_MS)
@@ -366,13 +360,18 @@ export class RepoRefMaintenance {
     this.phases.settleRefs(key, span, 'packed', REF_MAINTENANCE_PACKED_COOLDOWN_MS)
   }
 
-  /** Record an aborted attempt: retry soon if Orca yielded, back off if it stalled. */
+  /** Retry ineligible work; back off only for activity or deadlines. */
   private yieldTo(
     key: string,
     tracked: TrackedRepo,
     span: RefMaintenanceSpan,
     signal: AbortSignal
   ): void {
+    if (!signal.aborted || tracked.superseded) {
+      span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
+      this.defer(key, tracked, true)
+      return
+    }
     if (signal.reason instanceof RefMaintenanceInterrupted && signal.reason.deadline) {
       this.phases.settleRefs(key, span, 'timed_out', REF_MAINTENANCE_FAILURE_COOLDOWN_MS)
       return

@@ -56,7 +56,11 @@ describe('session search runtime RPC', () => {
         {
           query: 'needle',
           limit: 20,
-          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+          filters: {
+            agents: AI_VAULT_AGENTS.filter(
+              (agent) => !['codebuddy', 'zcode', 'qoder', 'jcode'].includes(agent)
+            )
+          }
         },
         undefined
       )
@@ -65,6 +69,27 @@ describe('session search runtime RPC', () => {
         { clientKind }
       )
       expect(status).toMatchObject({ ok: true, result: { enabled: true, generation: 7 } })
+    }
+  )
+  it.each([undefined, 'runtime', 'mobile'] as const)(
+    'retains the current catalog for an attested client kind %s',
+    async (clientKind) => {
+      const service = fakeSearchService()
+      setSessionSearchService(service)
+      expect(
+        await dispatcher().dispatch(
+          request({
+            query: 'needle',
+            supportedAgents: [...AI_VAULT_AGENTS],
+            filters: { agents: ['jcode'] }
+          }),
+          { clientKind }
+        )
+      ).toMatchObject({ ok: true })
+      expect(service.search).toHaveBeenCalledExactlyOnceWith(
+        { query: 'needle', limit: 20, filters: { agents: ['jcode'] } },
+        undefined
+      )
     }
   )
   it.each([undefined, 'runtime', 'mobile'] as const)(

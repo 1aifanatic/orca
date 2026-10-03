@@ -47,10 +47,11 @@ export class RepoMaintenanceSchedule {
   async probeOptOut(
     target: RepoRefMaintenanceTarget,
     signal: AbortSignal,
-    span: RefMaintenanceSpan
+    span: RefMaintenanceSpan,
+    canWrite: () => boolean
   ): Promise<boolean | { error: unknown }> {
     try {
-      if (!(await target.isOptedOut?.(signal)) || signal.aborted) {
+      if (!(await target.isOptedOut?.(signal)) || signal.aborted || !canWrite()) {
         return false
       }
       this.postponeIndex(target.key, REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
@@ -75,6 +76,9 @@ export class RepoMaintenanceSchedule {
     const outcome = await target.maintainPackIndex(signal, span, canWrite)
     if (signal.aborted || outcome === 'deferred') {
       return outcome
+    }
+    if (outcome !== 'written' && !canWrite()) {
+      return 'deferred'
     }
     const cooldown =
       outcome === 'failed'

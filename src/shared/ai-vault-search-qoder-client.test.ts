@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSessionSearchClient, unavailableSessionSearchStatus } from './ai-vault-search-client'
 import { AiVaultSearchRequestSchema as LegacyRequestSchema } from './__fixtures__/pre-qoder-search-request'
 import { searchHit, searchResults } from './ai-vault-search-test-fixture'
+import { AI_VAULT_AGENTS } from './ai-vault-types'
 
 describe('Qoder search negotiation', () => {
   it('keeps the frozen old parser closed to Qoder', () => {
@@ -87,6 +88,7 @@ describe('Qoder search negotiation', () => {
         query: 'q',
         limit: 20,
         filters: { agents: ['qoder'] },
+        supportedAgents: [...AI_VAULT_AGENTS],
         supportsQoderHistory: true
       })
       expect(result).toMatchObject({ kind: 'results', hits: [{ agent: 'qoder' }] })
@@ -103,6 +105,7 @@ describe('Qoder search negotiation', () => {
       query: 'q',
       limit: 20,
       filters: { agents: ['qoder'] },
+      supportedAgents: [...AI_VAULT_AGENTS],
       supportsQoderHistory: true
     })
   })
@@ -117,6 +120,66 @@ describe('Qoder search negotiation', () => {
         filters: { agents: ['qoder', 'codex'] }
       })
     ).rejects.toThrow('host disconnected')
+    expect(call).toHaveBeenCalledExactlyOnceWith('aiVault.searchStatus', {})
+  })
+
+  it.each(['runtime', 'relay'] as const)(
+    'does not send sole Jcode to a host that only attests Qoder over %s',
+    async (transport) => {
+      const call = vi.fn(async () => ({
+        ...unavailableSessionSearchStatus(),
+        supportsQoderHistory: true
+      }))
+      expect(
+        await createSessionSearchClient(call, transport).searchSessions({
+          query: 'q',
+          filters: { agents: ['jcode'] }
+        })
+      ).toEqual({ kind: 'unavailable', reason: 'unsupported-agent' })
+      expect(call).toHaveBeenCalledExactlyOnceWith('aiVault.searchStatus', {})
+    }
+  )
+
+  it.each(['runtime', 'relay'] as const)(
+    'retains current Jcode support even with no indexed sessions over %s',
+    async (transport) => {
+      const call = vi.fn(async (method: string) =>
+        method === 'aiVault.searchStatus'
+          ? {
+              ...unavailableSessionSearchStatus(),
+              supportedAgents: [...AI_VAULT_AGENTS, 'future-agent'],
+              sessionsByAgent: {}
+            }
+          : { ...searchResults(), hits: [{ ...searchHit(), agent: 'jcode' }] }
+      )
+      expect(
+        await createSessionSearchClient(call, transport).searchSessions({
+          query: 'q',
+          filters: { agents: ['jcode'] }
+        })
+      ).toMatchObject({ hits: [{ agent: 'jcode' }] })
+      expect(call).toHaveBeenLastCalledWith('aiVault.searchSessions', {
+        query: 'q',
+        limit: 20,
+        filters: { agents: ['jcode'] },
+        supportedAgents: [...AI_VAULT_AGENTS],
+        supportsQoderHistory: true
+      })
+    }
+  )
+
+  it('uses an explicit host catalog before its older Qoder capability', async () => {
+    const call = vi.fn(async () => ({
+      ...unavailableSessionSearchStatus(),
+      supportedAgents: [],
+      supportsQoderHistory: true
+    }))
+    expect(
+      await createSessionSearchClient(call, 'relay').searchSessions({
+        query: 'q',
+        filters: { agents: ['qoder', 'jcode'] }
+      })
+    ).toEqual({ kind: 'unavailable', reason: 'unsupported-agent' })
     expect(call).toHaveBeenCalledExactlyOnceWith('aiVault.searchStatus', {})
   })
 })
