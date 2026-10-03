@@ -63,6 +63,17 @@ export function createVirtualizedScrollAnchorListener<TScrollElement extends Ele
     const marks = getMarks()
     if (marks) {
       const isProgrammatic = marks.consume(event, el.scrollTop, el.scrollHeight - el.clientHeight)
+      console.log(
+        'TABLE_REFRESH_DIAGNOSTIC_ORIGIN',
+        JSON.stringify({
+          restoring,
+          pending: pendingRestoreRef.current,
+          marked: isProgrammatic,
+          top: el.scrollTop,
+          prior: scrollOffsetRef.current,
+          max: el.scrollHeight - el.clientHeight
+        })
+      )
       if (
         !isProgrammatic &&
         el.scrollTop === scrollOffsetRef.current &&

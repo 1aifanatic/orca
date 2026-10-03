@@ -54,6 +54,17 @@ export function useMarkdownPreviewScrollAnchor({
     shouldSkipRestore,
     restoreSignal: `${scrollCacheKey}:${revision}`
   })
+  useLayoutEffect(() => {
+    console.log(
+      'TABLE_REFRESH_DIAGNOSTIC_ANCHOR',
+      JSON.stringify({
+        revision,
+        viewportReady,
+        top: rootRef.current?.scrollTop,
+        anchor: anchorRef.current
+      })
+    )
+  })
   useLayoutEffect(
     () => () => {
       setWithLRU(anchors, scrollCacheKey, anchorRef.current)
