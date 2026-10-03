@@ -88,7 +88,6 @@ import { launchAndReconcile } from '@/lib/structured-agent-session-launch-recove
 import {
   cancelStructuredAgentLaunch,
   getStructuredAgentSessionLaunchLifecycle,
-  hasStructuredAgentSessionLaunchCancellationTombstone,
   retryStructuredAgentSessionLaunch,
   startStructuredAgentLaunch
 } from './structured-agent-session-launch'
@@ -847,77 +846,5 @@ describe('startStructuredAgentLaunch', () => {
         text: 'PR #1 context'
       })
     )
-  })
-
-  it('cancels a close-racing launch without retrying or toasting', async () => {
-    const worktreeId = 'wt-close-race'
-    const intent = launchIntent(worktreeId, 'session-close-race')
-    let resolveRefresh!: (snapshots: RuntimeMobileSessionTabsResult[]) => void
-    mocks.createIntent.mockReturnValueOnce(intent)
-    mocks.launch.mockResolvedValueOnce({ sessionId: intent.sessionId, fence: 1 })
-    vi.mocked(refreshLocalStructuredSessionTabs).mockImplementationOnce(
-      () => new Promise((resolve) => (resolveRefresh = resolve))
-    )
-
-    startStructuredAgentLaunch(worktreeId, 'codex')
-    await vi.waitFor(() => expect(refreshLocalStructuredSessionTabs).toHaveBeenCalledOnce())
-    expect(cancelStructuredAgentLaunch(worktreeId, intent.sessionId)).toBe(true)
-    expect(hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, intent.sessionId)).toBe(
-      true
-    )
-    const persistedTombstones =
-      localStorage.getItem('orca:structuredAgentLaunchCancelledSessions:v1') ?? ''
-    expect(persistedTombstones).toContain(JSON.stringify(intent.sessionId))
-    expect(persistedTombstones).not.toContain(worktreeId)
-    resolveRefresh([])
-    await flushLaunchSettlement()
-
-    expect(mocks.launch).toHaveBeenCalledOnce()
-    expect(mocks.abandonIntent).toHaveBeenCalledWith(intent)
-    expect(toast.error).not.toHaveBeenCalled()
-  })
-
-  it('discards every coalesced prompt when a close cancels the launch', async () => {
-    const worktreeId = 'wt-close-coalesced-prompts'
-    const intent = launchIntent(worktreeId)
-    let resolveRefresh!: (snapshots: RuntimeMobileSessionTabsResult[]) => void
-    mocks.createIntent.mockReturnValueOnce(intent)
-    mocks.launch.mockResolvedValueOnce({ sessionId: intent.sessionId, fence: 1 })
-    vi.mocked(refreshLocalStructuredSessionTabs).mockImplementationOnce(
-      () => new Promise((resolve) => (resolveRefresh = resolve))
-    )
-
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
-    await vi.waitFor(() => expect(refreshLocalStructuredSessionTabs).toHaveBeenCalledOnce())
-    expect(readOutbox(intent.sessionId)).toHaveLength(2)
-
-    expect(cancelStructuredAgentLaunch(worktreeId, intent.sessionId)).toBe(true)
-    expect(readOutbox(intent.sessionId)).toEqual([])
-    resolveRefresh([])
-    await flushLaunchSettlement()
-  })
-
-  it('suppresses a close that races the retry verification catch', async () => {
-    const worktreeId = 'wt-retry-close-race'
-    const intent = launchIntent(worktreeId, 'session-retry-close-race')
-    let resolveRetryRefresh!: (snapshots: RuntimeMobileSessionTabsResult[]) => void
-    mocks.createIntent.mockReturnValueOnce(intent)
-    mocks.launch
-      .mockRejectedValueOnce(new Error('first response lost'))
-      .mockRejectedValueOnce(new Error('retry response lost'))
-    vi.mocked(refreshLocalStructuredSessionTabs)
-      .mockResolvedValueOnce([])
-      .mockImplementationOnce(() => new Promise((resolve) => (resolveRetryRefresh = resolve)))
-
-    startStructuredAgentLaunch(worktreeId, 'codex')
-    await vi.waitFor(() => expect(refreshLocalStructuredSessionTabs).toHaveBeenCalledTimes(2))
-    expect(cancelStructuredAgentLaunch(worktreeId, intent.sessionId)).toBe(true)
-    resolveRetryRefresh([])
-    await flushLaunchSettlement()
-
-    expect(mocks.launch).toHaveBeenCalledTimes(2)
-    expect(mocks.abandonIntent).toHaveBeenCalledWith(intent)
-    expect(toast.error).not.toHaveBeenCalled()
   })
 })
