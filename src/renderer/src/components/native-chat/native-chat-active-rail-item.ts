@@ -27,7 +27,7 @@ export type NativeChatRailVirtualItem = {
 /** Only the fields the rail reads, so a test needs no slot builder. */
 export type NativeChatRailSlot = {
   turnKey: string | undefined
-  /** A user row in no turn lights its own tick. */
+  /** A user row in no turn lights its own tick, unless it is shown as not sent. */
   message?: { id: string; role: string; unsent?: true }
 }
 
