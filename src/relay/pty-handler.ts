@@ -4,6 +4,13 @@ import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchroni
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
 import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
+import { probeOpenCodeLaunchCapabilities } from '../main/opencode/opencode-launch-capabilities'
+import type { OpenCodeCliCapabilities } from '../shared/opencode-cli-version'
+import {
+  applyOpenCodePluginSelection,
+  restoreOpenCodeCapabilities
+} from './opencode-plugin-selection'
+import { resolveCommandPathForRelay } from './preflight-handler'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
@@ -217,6 +224,7 @@ function parseSourceRecoveryRequest(value: unknown): PtySourceRecoveryRequest | 
 }
 
 type ManagedPty = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   freebuffStatus?: FreebuffStatusProjection
   id: string
   incarnationId: string
@@ -277,6 +285,7 @@ type ManagedPty = {
 }
 
 type RelayAgentSessionCreateResult = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   id: string
   incarnationId: string
   replay?: string
@@ -448,6 +457,7 @@ type PtyProcessSummary = {
 }
 
 type SerializedPtyEntry = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   id: string
   pid: number
   cols: number
@@ -1940,6 +1950,9 @@ export class PtyHandler {
         id: managed.id,
         incarnationId: managed.incarnationId,
         agentSessionEnsure: result,
+        ...(result.disposition === 'created' && managed.openCodeCapabilities
+          ? { openCodeCapabilities: managed.openCodeCapabilities }
+          : {}),
         ...(sourceActivation ? { sourceActivation } : {}),
         ...(adoptedReplay ? { replay: adoptedReplay } : {}),
         ...(managed.shellReadyArmed !== undefined
@@ -1968,6 +1981,7 @@ export class PtyHandler {
     incarnationId: string
     sourceActivation?: PtySourceReceivingActivation
     shellReadyArmed?: boolean
+    openCodeCapabilities?: OpenCodeCliCapabilities
   }> {
     const pty = await this.loadPty()
     if (!pty) {
@@ -2013,6 +2027,22 @@ export class PtyHandler {
       env,
       { id, paneKey, shell, command, launchAgent },
       envToDelete
+    )
+    delete spawnEnv.ORCA_OPENCODE_PLUGIN_API
+    const openCodeCapabilities = await probeOpenCodeLaunchCapabilities({
+      command,
+      agent: launchAgent,
+      env: spawnEnv,
+      cwd,
+      hostIdentity: `relay:${process.platform}`,
+      resolveExecutable: (executable) => resolveCommandPathForRelay(executable, { env: spawnEnv }),
+      ...(isRelayWslShell(shell) ? { wsl: { distro: terminalWindowsWslDistro ?? undefined } } : {})
+    })
+    applyOpenCodePluginSelection(
+      spawnEnv,
+      envToDelete,
+      openCodeCapabilities,
+      isRelayWslShell(shell)
     )
     await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
       wslShell: isRelayWslShell(shell)
@@ -2115,6 +2145,7 @@ export class PtyHandler {
     const ownerClientInstanceId =
       context === undefined ? null : (this.consumerIdentityResolver?.(context.clientId) ?? null)
     const managed: ManagedPty = {
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {}),
       ...(launchAgent === 'freebuff'
         ? { freebuffStatus: new FreebuffStatusProjection(cols, rows) }
         : {}),
@@ -2194,7 +2225,8 @@ export class PtyHandler {
       id,
       incarnationId: managed.incarnationId,
       ...(sourceActivation ? { sourceActivation } : {}),
-      shellReadyArmed: rendererShellReadySupported
+      shellReadyArmed: rendererShellReadySupported,
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {})
     }
   }
 
@@ -3083,6 +3115,9 @@ export class PtyHandler {
         worktreeId: managed.worktreeId,
         ...(managed.explicitTerm !== undefined ? { explicitTerm: managed.explicitTerm } : {}),
         envToDelete: managed.envToDelete,
+        ...(managed.openCodeCapabilities
+          ? { openCodeCapabilities: managed.openCodeCapabilities }
+          : {}),
         gitCredentialPromptGuarded: managed.gitCredentialPromptGuarded,
         ...(managed.historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
         // Why serialized: revive re-spawns the shell, and without these a WSL
@@ -3177,6 +3212,8 @@ export class PtyHandler {
       { id: entry.id, paneKey: entry.paneKey, shell },
       envToDelete
     )
+    const openCodeCapabilities = restoreOpenCodeCapabilities(entry.openCodeCapabilities)
+    applyOpenCodePluginSelection(spawnEnv, envToDelete, openCodeCapabilities, wslShell)
     if (
       historyIsolationEnabled &&
       entry.worktreeId &&
@@ -3254,6 +3291,7 @@ export class PtyHandler {
       ...(explicitTerm !== undefined ? { explicitTerm } : {}),
       envToDelete,
       gitCredentialPromptGuarded,
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {}),
       ...(historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
       shellPath: shell,
       // Why re-stored: a revived pane can be serialized again, and losing the
