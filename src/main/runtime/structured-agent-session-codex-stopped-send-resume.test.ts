@@ -1,0 +1,250 @@
+// Where a send a Stop took back is drawn must survive a restart. Codex's resume rewrites every
+// finished turn's start time to its own whole seconds, so a turn opened for a later send can read
+// as starting before the Stop took the first one back. The order is decided by the journal alone.
+// Driven through the shipped host, journal and Codex adapter; only the Codex child is fake.
+
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  CodexAppServerConnection,
+  CodexAppServerConnectionHandlers,
+  openCodexAppServerConnection
+} from '../codex/codex-app-server-connection'
+import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
+import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
+import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import { NATIVE_CHAT_STOPPED_BEFORE_START_TEXT } from '../../shared/native-chat-stopped-before-start'
+import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
+import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
+import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
+import {
+  HOST_TEST_SESSION as SESSION,
+  HOST_TEST_THREAD as THREAD,
+  hostTestAttachParams,
+  hostTestMessage
+} from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
+import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
+import {
+  ensureStructuredAgentSessionHost,
+  stopStructuredAgentSessionRuntime
+} from './structured-agent-session-runtime'
+
+const CALLER = { callerKey: 'codex-stopped-send-resume-test' }
+const MODEL = {
+  model: 'gpt-test',
+  displayName: 'GPT Test',
+  hidden: false,
+  supportedReasoningEfforts: [],
+  defaultReasoningEffort: null,
+  isDefault: true
+}
+
+let root: string
+let host: StructuredAgentSessionHost
+let fence: number
+let handlers: CodexAppServerConnectionHandlers | undefined
+let answers: number
+let resumes: number
+/** What `thread/resume` reports as the thread's turns, as Codex does: times in whole seconds. */
+let resumeTurns: unknown[] | null
+let turns: ReturnType<typeof codexTurnLifecycleFake>
+let operations = 0
+
+/** The durable ledger stamps its own clock and refuses an id far from it. */
+const operationId = (): string => `${Date.now()}-${(++operations).toString(16).padStart(32, '0')}`
+
+function envelope(method: string, fields: Record<string, unknown>) {
+  return {
+    sessionId: SESSION,
+    clientOperationId: operationId(),
+    expectedRuntimeFence: fence,
+    payloadFingerprint: computeAgentSessionPayloadFingerprint({
+      method,
+      sessionId: SESSION,
+      fields
+    })
+  }
+}
+
+async function send(text: string): Promise<string> {
+  const body = hostTestMessage(text)
+  const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  if (!sent.ok) {
+    throw new Error(JSON.stringify(sent.refusal))
+  }
+  return sent.value.clientMessageId
+}
+
+function stop(): Promise<unknown> {
+  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+}
+
+function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessageId: string) {
+  const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
+  return submission?.dispatchState === 'rejected'
+    ? classifyDispatchRejection(submission).category
+    : submission?.dispatchState
+}
+
+async function submissions(): Promise<readonly AgentJournalSubmission[]> {
+  await host.flushStreamedEvents(SESSION)
+  return (await host.journalSnapshot(SESSION)).submissions
+}
+
+/** Each row's text, in the order every client draws the transcript. */
+async function drawn(): Promise<string[]> {
+  const snapshot = await host.journalSnapshot(SESSION)
+  return projectNativeChatTranscriptMessages(
+    projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions)
+  ).flatMap((message) =>
+    message.role === 'user' || message.role === 'system'
+      ? [message.blocks.map((block) => ('text' in block ? block.text : '')).join('')]
+      : []
+  )
+}
+
+const openConnection: typeof openCodexAppServerConnection = async (
+  _launch,
+  connectionHandlers = {}
+) => {
+  handlers = connectionHandlers
+  const connection: CodexAppServerConnection = {
+    pid: 4321,
+    closed: false,
+    request: async (method, params) => {
+      if (method === 'thread/resume') {
+        resumes += 1
+        return { thread: { id: THREAD, ...(resumeTurns ? { turns: resumeTurns } : {}) } }
+      }
+      if (method === 'thread/start') {
+        return { thread: { id: THREAD } }
+      }
+      if (method === 'model/list') {
+        return { data: [MODEL], nextCursor: null }
+      }
+      if (method === 'turn/start') {
+        answers += 1
+        return turns.routes['turn/start']()
+      }
+      if (method === 'turn/steer') {
+        return turns.routes['turn/steer'](params)
+      }
+      if (method === 'turn/interrupt') {
+        return turns.routes['turn/interrupt'](params)
+      }
+      return {}
+    },
+    notify: () => {},
+    respond: () => {},
+    respondWithError: () => {},
+    close: async () => true
+  }
+  return connection
+}
+
+async function startHost(): Promise<void> {
+  host = await ensureStructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
+    stateDirectory: root,
+    hostId: 'local',
+    claimKeyId: 'key-1',
+    resolveWorkspacePath: async () => root,
+    resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+    resolveCodexCommand: () => 'codex',
+    resolveEnvironment: async () => ({ PATH: process.env.PATH }),
+    openCodexConnection: openConnection,
+    readProcessStartTime: async () => 1_700_000_000_000
+  })
+}
+
+async function attach(expected: number | null): Promise<void> {
+  const params = hostTestAttachParams(expected, { providerHandle: undefined })
+  params.envelope.clientOperationId = operationId()
+  const attached = await host.attach(CALLER, params)
+  if (attached.ok) {
+    fence = attached.value.fence
+    return
+  }
+  const refusal = JSON.stringify(attached.refusal)
+  const current = /"currentFence":(\d+)/.exec(refusal)?.[1]
+  if (current === undefined) {
+    throw new Error(refusal)
+  }
+  await attach(Number(current))
+}
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-codex-stopped-send-resume-'))
+  answers = 0
+  resumes = 0
+  resumeTurns = null
+  turns = codexTurnLifecycleFake(
+    THREAD,
+    () => (method, params) => handlers?.onNotification?.(method, params)
+  )
+  await startHost()
+  await attach(null)
+})
+
+afterEach(async () => {
+  await stopStructuredAgentSessionRuntime()
+  await rm(root, { recursive: true, force: true })
+})
+
+describe('a send a Stop took back, then a send made while it read Stopping', () => {
+  it('keeps the stopped send above the later exchange after a restart resumes the thread', async () => {
+    const first = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    // Codex has answered but not opened the turn, so the Stop waits for it to open.
+    const stopping = stop()
+    expect(await settledWithin(stopping, 500)).toBe('held')
+    const second = await send('sent while stopping')
+    turns.start()
+    await settledWithin(stopping, 3_000)
+    await vi.waitFor(async () => expect(verdictOf(await submissions(), first)).toBe('withdrawn'))
+    await vi.waitFor(() => expect(answers).toBe(2))
+    turns.start()
+    turns.echo(second)
+    turns.end('completed')
+    await vi.waitFor(async () => expect(verdictOf(await submissions(), second)).toBe('accepted'))
+    const live = await drawn()
+    expect(live).toEqual([
+      'look around',
+      NATIVE_CHAT_STOPPED_BEFORE_START_TEXT,
+      'sent while stopping'
+    ])
+
+    // Restart: the resume reports each finished turn with its start in Codex's whole seconds.
+    resumeTurns = (await host.journalSnapshot(SESSION)).items.flatMap((item) => {
+      const turn = readAgentJournalTurn(item.body)
+      return turn?.startedAt !== undefined && turn.turnId.startsWith('turn-')
+        ? [
+            {
+              id: turn.turnId,
+              status: 'completed',
+              startedAt: Math.floor(turn.startedAt / 1000),
+              completedAt: Math.ceil((turn.completedAt ?? turn.startedAt) / 1000) + 1,
+              items: []
+            }
+          ]
+        : []
+    })
+    await stopStructuredAgentSessionRuntime()
+    await startHost()
+    await attach(fence)
+    await vi.waitFor(() => expect(resumes).toBeGreaterThan(0))
+    await vi.waitFor(async () => {
+      const restored = (await host.journalSnapshot(SESSION)).items
+        .map((item) => readAgentJournalTurn(item.body)?.startedAt)
+        .find((startedAt) => startedAt !== undefined)
+      expect((restored ?? 1) % 1000).toBe(0)
+    })
+
+    expect(await drawn()).toEqual(live)
+  })
+})

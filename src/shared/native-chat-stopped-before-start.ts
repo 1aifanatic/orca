@@ -1,12 +1,10 @@
 // A send a Stop took back before the agent started it: where it is drawn, and the one row after it.
 
-import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import {
   agentJournalItemPosition,
   compareAgentJournalItems
 } from './agent-session-journal-position'
 import type { AgentJournalPosition, AgentJournalRenderItem } from './agent-session-journal-types'
-import { readAgentJournalTurn } from './agent-session-turn-record'
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
 
 /** The row after a send a Stop took back before the agent started it; a client words it by this. */
@@ -23,35 +21,23 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 
 /**
  * Where a send a Stop took back is drawn: after the rest of every turn it waited on, where the Stop
- * took it back. That is the turn it was accepted behind (the newest one before it), and any turn
- * that opened after it and before the Stop took it back (`resolvedAt`). Otherwise where it was sent.
+ * took it back, else where it was sent. A turn it waited on was opened by something sent before it:
+ * the turn it was accepted behind, or one that opened for an earlier send while it waited. Read in
+ * journal order only (`anchors`, each root turn record's opener), never by clock: a resume rewrites
+ * a turn's start time to the provider's whole seconds.
  */
 export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
   item: AgentJournalRenderItem,
-  resolvedAt: number | null
+  anchors: ReadonlyMap<string, string>
 ): AgentJournalPosition {
-  let acceptedBehind: AgentJournalRenderItem | undefined
+  const byId = new Map(items.map((candidate) => [candidate.itemId, candidate]))
   const waitedOn = new Set<string>()
-  for (const candidate of items) {
-    const turn = isRootAgentJournalItem(candidate) ? readAgentJournalTurn(candidate.body) : null
-    if (!turn) {
-      continue
+  for (const [turnItemId, anchorId] of anchors) {
+    const opener = byId.get(anchorId)
+    if (anchorId !== item.itemId && opener && compareAgentJournalItems(opener, item) < 0) {
+      waitedOn.add(turnItemId)
     }
-    if (compareAgentJournalItems(candidate, item) < 0) {
-      if (!acceptedBehind || compareAgentJournalItems(candidate, acceptedBehind) > 0) {
-        acceptedBehind = candidate
-      }
-    } else if (
-      resolvedAt !== null &&
-      turn.startedAt !== undefined &&
-      turn.startedAt <= resolvedAt
-    ) {
-      waitedOn.add(candidate.itemId)
-    }
-  }
-  if (acceptedBehind) {
-    waitedOn.add(acceptedBehind.itemId)
   }
   let last = item
   for (const candidate of items) {

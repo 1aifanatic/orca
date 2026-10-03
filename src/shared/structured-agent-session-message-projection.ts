@@ -42,7 +42,8 @@ export function projectStructuredAgentSessionMessages(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
       .filter((itemId) => !stoppedBeforeStart.has(itemId))
   )
-  const anchored = new Set(structuredAgentTurnAnchors(items, submissions).values())
+  const anchors = structuredAgentTurnAnchors(items, submissions)
+  const anchored = new Set(anchors.values())
   const itemsById = new Map(items.map((item) => [item.itemId, item]))
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
@@ -76,9 +77,7 @@ export function projectStructuredAgentSessionMessages(
       delivered.push({ ...message, stoppedBeforeStart: true })
     } else if (stoppedBeforeStart.has(message.id)) {
       const item = itemsById.get(message.id)
-      const position = item
-        ? stoppedSendPosition(items, item, stoppedBeforeStart.get(message.id)?.resolvedAt ?? null)
-        : undefined
+      const position = item ? stoppedSendPosition(items, item, anchors) : undefined
       const placed =
         item && position && compareAgentJournalPositions(position, agentJournalItemPosition(item))
       moved ||= Boolean(placed)
