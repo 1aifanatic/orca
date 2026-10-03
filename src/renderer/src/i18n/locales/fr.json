@@ -12170,6 +12170,7 @@
           "usageTitle": "Utilisation mensuelle du forfait"
         },
         "NotificationHostToggles": {
+          "offCount": "{{count}} désactivées",
           "machines": "Machines",
           "machinesDescription": "Affichez les notifications de chaque machine connectée. Le réglage d’un serveur associé couvre aussi le travail effectué par son intermédiaire."
         }

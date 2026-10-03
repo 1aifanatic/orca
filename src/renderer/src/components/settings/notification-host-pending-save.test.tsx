@@ -46,6 +46,9 @@ it('applies each machine change to the pending settings while saves are unresolv
         />
       )
     )
+    const expandButton = container.querySelector<HTMLButtonElement>('[aria-expanded="false"]')
+    expect(expandButton).not.toBeNull()
+    await act(async () => expandButton?.click())
     for (const label of ['Remote A', 'Remote B']) {
       const button = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)
       expect(button).not.toBeNull()

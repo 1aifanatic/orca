@@ -10512,6 +10512,7 @@
           "usageTitle": "Uso mensual del plan"
         },
         "NotificationHostToggles": {
+          "offCount": "{{count}} desactivadas",
           "machines": "Máquinas",
           "machinesDescription": "Muestra notificaciones de cada máquina conectada. El interruptor de un servidor vinculado también controla el trabajo al que se accede a través de él."
         }
