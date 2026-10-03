@@ -1,0 +1,10 @@
+name: Nested automatic installer
+description: Exercise the actual default mode through a second composite layer.
+outputs:
+  hit:
+    value: ${{ steps.install.outputs.pnpm-store-cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: install
+      uses: ./.github/actions/install-node-dependencies
