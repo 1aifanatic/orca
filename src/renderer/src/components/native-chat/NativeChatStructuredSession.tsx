@@ -319,12 +319,9 @@ export function NativeChatStructuredSession(
         startupPhase={hostExecution.phase}
         startupChildKey={hostExecution.childKey}
         paneKey={paneKey}
-        // Said once: on the pane when the failure took it, else here beside the transcript. A
-        // failure that names nothing is the read retrying on its own; host reachability is the
-        // host status's to show, so the transcript and composer stay as they are.
-        error={
-          viewState.kind === 'error' || !readFailure?.named ? controller.error : readFailure.text
-        }
+        // Said once: on the pane when the failure took it, else here. A loaded chat never stores a
+        // failure that names nothing, so one beside messages is named, final, or before any load.
+        error={viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}

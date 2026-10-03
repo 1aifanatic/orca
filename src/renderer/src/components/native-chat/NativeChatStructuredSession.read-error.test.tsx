@@ -116,11 +116,11 @@ it('keeps the whole retrying line under a newer Orca\'s words, which name no one
   ).toBeTruthy()
 })
 
-// A dropped stream retries on its own; host reachability is the host status's to show, not the chat's.
-it('adds no line beside the transcript when a failure names nothing', () => {
+// Only a chat that never loaded stores a failure naming nothing (the read owner drops it after load).
+it('says once that the history did not load beside a bubble of a chat that never loaded', () => {
   mocks.status = 'error'
 
-  const { container } = render(
+  render(
     <NativeChatStructuredSession
       isVisible
       isFocusedGroup
@@ -133,9 +133,8 @@ it('adds no line beside the transcript when a failure names nothing', () => {
 
   expect(screen.getByTestId('message-list')).toBeTruthy()
   expect(screen.getByTestId('structured-composer')).toBeTruthy()
+  expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
   expect(screen.queryByText(/reconnect/i)).toBeNull()
-  expect(screen.queryByText(/history couldn't be loaded/)).toBeNull()
-  expect(container.querySelector('.text-destructive')).toBeNull()
 })
 
 it('words a failed reconnect beside a transcript it keeps', () => {
