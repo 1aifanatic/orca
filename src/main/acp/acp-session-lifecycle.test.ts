@@ -278,4 +278,48 @@ describe('ACP caller-owned waits', () => {
     await rejected
     expect(agent.stdout.readableEnded).toBe(false)
   })
+  it.each(['answer', 'cancel'] as const)(
+    'keeps a permission pending after prompt completion until caller %s',
+    async (action) => {
+      const decision = deferred<RequestPermissionResponse>()
+      const entered = deferred<AbortSignal>()
+      const { agent, runtime } = fixture({
+        onPermission: (_request, context) => {
+          entered.resolve(context.signal)
+          return decision.promise
+        }
+      })
+      agent.on('session/prompt', () => {})
+      await runtime.start(startOptions)
+      const pending = runtime.prompt([...prompt])
+      const response = agent.request('permission', 'session/request_permission', permission)
+      const signal = await entered.promise
+      const frame = agent.frames.find((candidate) => candidate.method === 'session/prompt')
+      if (frame) {
+        agent.reply(frame, { stopReason: 'end_turn' })
+      }
+      await pending
+      expect(signal.aborted).toBe(false)
+      if (action === 'answer') {
+        decision.resolve({ outcome: { outcome: 'selected', optionId: 'allow' } })
+        expect(await response).toMatchObject({
+          result: { outcome: { outcome: 'selected', optionId: 'allow' } }
+        })
+      } else {
+        await runtime.cancel()
+        expect(await response).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
+      }
+    }
+  )
+
+  it('confirms cancellation when the agent settles the prompt with an error', async () => {
+    const { agent, runtime } = fixture()
+    agent.on('session/prompt', (frame) => {
+      agent.on('session/cancel', () => agent.fail(frame, -32800, 'Request cancelled'))
+    })
+    await runtime.start(startOptions)
+    const rejected = expect(runtime.prompt([...prompt])).rejects.toMatchObject({ code: -32800 })
+    await expect(runtime.cancel()).resolves.toBeUndefined()
+    await rejected
+  })
 })

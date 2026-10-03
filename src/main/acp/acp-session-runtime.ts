@@ -10,8 +10,8 @@ import {
   type AcpSessionStartOptions
 } from './acp-session-setup'
 export type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
-import { ACP_PROTOCOL_VERSION } from './generated/acp-protocol.generated'
 import {
+  ACP_PROTOCOL_VERSION,
   InitializeResponseSchema,
   AuthenticateResponseSchema,
   PromptResponseSchema,
@@ -159,7 +159,6 @@ export class AcpSessionRuntime {
     }
     this.activePrompt = active
     active.response = active.response.finally(() => {
-      this.permissions.cancel(sessionId)
       if (this.activePrompt === active) {
         this.activePrompt = undefined
       }
@@ -172,13 +171,13 @@ export class AcpSessionRuntime {
       return Promise.reject(new Error('ACP session has not started'))
     }
     const sessionId = this.started.sessionId
+    this.permissions.cancel(sessionId)
+    this.peer.cancelIncomingRequests('session/request_permission')
     const active = this.activePrompt
     if (!active) {
       return Promise.resolve()
     }
     active.cancelling = true
-    this.permissions.cancel(sessionId)
-    this.peer.cancelIncomingRequests('session/request_permission')
     active.cancelPromise ??= this.cancelActive(sessionId, active)
     return active.cancelPromise
   }
@@ -188,7 +187,13 @@ export class AcpSessionRuntime {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([
-        this.peer.notify('session/cancel', { sessionId }).then(() => active.response),
+        this.peer.notify('session/cancel', { sessionId }).then(() =>
+          active.response.catch((error) => {
+            if (this.peer.closed) {
+              throw error
+            }
+          })
+        ),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             const error = new AcpRequestTimeoutError('session/cancel')
@@ -276,13 +281,21 @@ export class AcpSessionRuntime {
     return this.permissions.handle(parsed.data, context, this.options.onPermission)
   }
 
+  private diagnose(message: string): void {
+    try {
+      this.options.onDiagnostic?.(message)
+    } catch {
+      /* Diagnostics cannot prevent event delivery. */
+    }
+  }
+
   private handleNotification(method: string, params: unknown): void {
     if (method !== 'session/update') {
       return
     }
     const envelope = updateEnvelopeSchema.safeParse(params)
     if (!envelope.success) {
-      this.options.onDiagnostic?.('Ignored invalid ACP session update envelope')
+      this.diagnose('Ignored invalid ACP session update envelope')
       return
     }
     const parsed = SessionNotificationSchema.safeParse(params)
@@ -291,13 +304,13 @@ export class AcpSessionRuntime {
       : { kind: 'unrecognized', sessionId: envelope.data.sessionId, raw: envelope.data }
     if (!parsed.success && !this.reportedUpdateAnomaly) {
       this.reportedUpdateAnomaly = true
-      this.options.onDiagnostic?.('Forwarded unrecognized ACP session update')
+      this.diagnose('Forwarded unrecognized ACP session update')
     }
     for (const listener of this.listeners) {
       try {
         listener(event)
       } catch (error) {
-        this.options.onDiagnostic?.(`ACP event listener failed: ${String(error)}`)
+        this.diagnose(`ACP event listener failed: ${String(error)}`)
       }
     }
   }

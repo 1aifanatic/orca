@@ -77,4 +77,25 @@ describe('ACP session update compatibility', () => {
     expect(started.response.models?.availableModels[0].modelId).toBe('model-1')
     expect(started.response.vendor).toBe(true)
   })
+  it('delivers updates even if diagnostic and earlier event callbacks throw', async () => {
+    const agent = new AcpScriptedAgent()
+    const runtime = new AcpSessionRuntime(agent.stdout, agent.stdin, {
+      onDiagnostic: () => {
+        throw new Error('Diagnostic failed')
+      }
+    })
+    opened.push(agent, runtime)
+    runtime.subscribe(() => {
+      throw new Error('Listener failed')
+    })
+    const received = vi.fn()
+    runtime.subscribe(received)
+    const notification = { sessionId: 'session-1', update: { sessionUpdate: 'vendor' } }
+    agent.notify('session/update', notification)
+    expect(received).toHaveBeenCalledWith({
+      kind: 'unrecognized',
+      sessionId: 'session-1',
+      raw: notification
+    })
+  })
 })
