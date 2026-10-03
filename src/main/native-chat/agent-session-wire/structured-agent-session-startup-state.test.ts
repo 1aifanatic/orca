@@ -499,13 +499,13 @@ function expectInterruptedAndStopped(
   sessionId: string,
   stopOwnerProcess: ReturnType<typeof vi.fn>
 ): void {
-  expect(stopOwnerProcess).toHaveBeenCalled()
-  expect(rig.store.getRecord(sessionId)!.lease).toMatchObject({
-    deathEvidence: { kind: 'pid-absent' }
-  })
   expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({
     lifecycle: 'idle',
     summary: { turnOutcome: 'interruption' }
+  })
+  expect(stopOwnerProcess).toHaveBeenCalled()
+  expect(rig.store.getRecord(sessionId)!.lease).toMatchObject({
+    deathEvidence: { kind: 'pid-absent' }
   })
   expect(rig.host.hasSession(sessionId)).toBe(false)
 }
