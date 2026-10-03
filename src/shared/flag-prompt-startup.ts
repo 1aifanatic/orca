@@ -4,7 +4,7 @@ import type { SessionOptionValue } from './native-chat-session-options'
 import type { TuiAgent } from './tui-agent'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import { tokenizeStartupCommand, type AgentStartupShell } from './tui-agent-startup-shell'
-import { isOpenCodeRunCommand } from './opencode-headless-command'
+import { findOpenCodeRunCommand } from './opencode-headless-command'
 import { openCodeStartupPromptEnv } from './opencode-startup-prompt'
 
 export function appliedSessionOptionProps(values: Record<string, SessionOptionValue>) {
@@ -22,13 +22,13 @@ export function buildFlagPromptStartupPlan(args: {
   agentEnv: Record<string, string> | null | undefined
 }): AgentStartupPlan {
   const parsed = tokenizeStartupCommand(args.launchCommand, args.shell)
-  const isOpenCodeRun =
-    (args.agent === 'opencode' || args.agent === 'opencode2') &&
-    parsed.ok &&
-    isOpenCodeRunCommand(parsed.tokens)
+  const openCodeRun =
+    (args.agent === 'opencode' || args.agent === 'opencode2') && parsed.ok
+      ? findOpenCodeRunCommand(parsed.tokens, args.shell)
+      : null
   // OpenCode run takes a positional message; --prompt belongs to its TUI.
-  const promptSuffix = isOpenCodeRun
-    ? parsed.tokens.includes('--')
+  const promptSuffix = openCodeRun
+    ? openCodeRun.messageSeparatorIndex !== null
       ? ` ${args.quotedPrompt}`
       : ` -- ${args.quotedPrompt}`
     : ` --prompt ${args.quotedPrompt}`
