@@ -44,16 +44,45 @@ test.use({
   }
 })
 
-/** Returns what the connect itself resolved to, so a stalled state names which side lost it. */
+const RECONNECT_STEP_TIMEOUT_MS = 6 * 60_000
+
+/** Returns what the connect itself resolved to; a step that hangs fails naming itself. */
 async function reconnect(page: Page, targetId: string): Promise<string> {
-  return page.evaluate(async (id) => {
-    await window.api.ssh.disconnect({ targetId: id })
-    try {
-      return JSON.stringify((await window.api.ssh.connect({ targetId: id }))?.managedServer ?? null)
-    } catch (error) {
-      return `connect threw: ${String(error)}`
+  for (const step of ['disconnect', 'connect'] as const) {
+    const run = page.evaluate(
+      async ({ id, step }) => {
+        try {
+          if (step === 'disconnect') {
+            await window.api.ssh.disconnect({ targetId: id })
+            return ''
+          }
+          const state = await window.api.ssh.connect({ targetId: id })
+          return JSON.stringify(state?.managedServer ?? null)
+        } catch (error) {
+          return `${step} threw: ${String(error)}`
+        }
+      },
+      { id: targetId, step }
+    )
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const result = await Promise.race([
+      run,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), RECONNECT_STEP_TIMEOUT_MS)
+      })
+    ]).finally(() => clearTimeout(timer))
+    if (result === null) {
+      const main = await page.evaluate(
+        async (id) => JSON.stringify(await window.api.ssh.getState({ targetId: id })),
+        targetId
+      )
+      throw new Error(`ssh ${step} hung; main state ${main}`)
     }
-  }, targetId)
+    if (step === 'connect') {
+      return result
+    }
+  }
+  return ''
 }
 
 function managedServer(page: Page, targetId: string): Promise<unknown> {
