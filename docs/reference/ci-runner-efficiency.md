@@ -1838,3 +1838,16 @@ and restored both payloads. Current Electron archive callers are direct, so they
 need no cache-path change. Keeping the producer's exported path also makes its
 new lookup mode safe for callers that nest the shared installer. These tiny
 controls establish publication behavior, not installer time savings.
+
+The [actual automatic-mode cold publisher control](https://github.com/stablyai/orca/actions/runs/37097980789)
+passed both jobs on `7b8858bdc8f`. A twice-nested wrapper called the installer
+without overriding its default input. The writer selected lookup, missed its
+unique root-lockfile key, completed the frozen policy-checked install and saved
+that key during cleanup. A fresh reader restored the exact key and installed the
+same dependency successfully. The fixture retained the manifest toolchain and
+applicable workspace policies; its one dependency keeps the publication check
+small. Two earlier trials failed fixture assertions (the pnpm multi-document
+header placement, then its empty cache-miss output), and are excluded. This proves
+automatic selection and cold publication, not a new timing result. Local
+verification passed eight suites / 184 tests, the changed-code quality gate and
+compiled-composite actionlint.
