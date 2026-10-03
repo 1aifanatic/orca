@@ -18,7 +18,12 @@ import {
   DISPATCH_REJECTED_WRITE_FAILED
 } from './structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
-import { projectNativeChatTranscriptMessages } from './native-chat-transcript-projection'
+import {
+  projectNativeChatTranscript,
+  projectNativeChatTranscriptMessages
+} from './native-chat-transcript-projection'
+import { nativeChatRowsInDrawOrder } from './native-chat-turn-grouping'
+import { nativeChatTurnMembership } from './native-chat-turn-membership'
 
 let sequence = 0
 
@@ -225,6 +230,46 @@ describe('a send a Stop took back before the agent started it', () => {
       { id: 'note', role: 'system' },
       user('queued'),
       stopRow('queued')
+    ])
+  })
+
+  // A follow-up made before Codex opened the turn, then stopped: the turn opened for the first
+  // send, and the follow-up waited on it, so that turn's own rows come before the follow-up's.
+  it("is drawn after a turn that opened while it waited, with that turn's rows above it", () => {
+    const items = [
+      sent('first', 'look around'),
+      sent('follow-up', 'and check the tests'),
+      entry('turn-1', {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'interrupted',
+        outcome: 'cancellation',
+        userItemId: 'codex:thread-1:turn-1:0',
+        startedAt: 5
+      }),
+      entry(
+        'stop:turn-1',
+        { kind: 'status', text: 'Cancellation requested.' },
+        { kind: 'turn', turnItemId: 'turn-1' }
+      )
+    ]
+    const submissions = [
+      stopped('first', { resolvedAt: 10 }),
+      stopped('follow-up', { resolvedAt: 10 })
+    ]
+    const journal = { items, submissions }
+    const { conversation } = projectNativeChatTranscript(
+      projectStructuredAgentSessionMessages(items, [], submissions),
+      undefined,
+      journal
+    )
+    const { drawOrder } = nativeChatTurnMembership(conversation, journal)
+
+    expect(nativeChatRowsInDrawOrder(conversation, drawOrder).map((row) => row.id)).toEqual([
+      agentJournalSubmissionKey('first'),
+      'stop:turn-1',
+      agentJournalSubmissionKey('follow-up'),
+      `stopped-before-start:${agentJournalSubmissionKey('follow-up')}`
     ])
   })
 

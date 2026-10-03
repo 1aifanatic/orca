@@ -22,32 +22,43 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 }
 
 /**
- * Where a send a Stop took back before its hand-over is drawn: where the Stop took it back, after
- * the rest of the turn it waited behind, not where it was accepted inside that turn.
+ * Where a send a Stop took back is drawn: after the rest of every turn it waited on, where the Stop
+ * took it back. That is the turn it was accepted behind (the newest one before it), and any turn
+ * that opened after it and before the Stop took it back (`resolvedAt`). Otherwise where it was sent.
  */
-export function stoppedBeforeHandOverPosition(
+export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
-  item: AgentJournalRenderItem
+  item: AgentJournalRenderItem,
+  resolvedAt: number | null
 ): AgentJournalPosition {
-  let waitedBehind: AgentJournalRenderItem | undefined
+  let acceptedBehind: AgentJournalRenderItem | undefined
+  const waitedOn = new Set<string>()
   for (const candidate of items) {
-    if (
-      compareAgentJournalItems(candidate, item) < 0 &&
-      isRootAgentJournalItem(candidate) &&
-      readAgentJournalTurn(candidate.body) &&
-      (!waitedBehind || compareAgentJournalItems(candidate, waitedBehind) > 0)
-    ) {
-      waitedBehind = candidate
+    const turn = isRootAgentJournalItem(candidate) ? readAgentJournalTurn(candidate.body) : null
+    if (!turn) {
+      continue
     }
+    if (compareAgentJournalItems(candidate, item) < 0) {
+      if (!acceptedBehind || compareAgentJournalItems(candidate, acceptedBehind) > 0) {
+        acceptedBehind = candidate
+      }
+    } else if (
+      resolvedAt !== null &&
+      turn.startedAt !== undefined &&
+      turn.startedAt <= resolvedAt
+    ) {
+      waitedOn.add(candidate.itemId)
+    }
+  }
+  if (acceptedBehind) {
+    waitedOn.add(acceptedBehind.itemId)
   }
   let last = item
   for (const candidate of items) {
-    if (
-      waitedBehind &&
-      candidate.turnScope?.kind === 'turn' &&
-      candidate.turnScope.turnItemId === waitedBehind.itemId &&
-      compareAgentJournalItems(candidate, last) > 0
-    ) {
+    const ofTurn =
+      waitedOn.has(candidate.itemId) ||
+      (candidate.turnScope?.kind === 'turn' && waitedOn.has(candidate.turnScope.turnItemId))
+    if (ofTurn && compareAgentJournalItems(candidate, last) > 0) {
       last = candidate
     }
   }

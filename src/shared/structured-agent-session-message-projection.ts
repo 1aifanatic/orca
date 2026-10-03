@@ -1,10 +1,13 @@
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
-import { agentJournalItemPosition } from './agent-session-journal-position'
+import {
+  agentJournalItemPosition,
+  compareAgentJournalPositions
+} from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import {
-  stoppedBeforeHandOverPosition,
+  stoppedSendPosition,
   withStopRowsAfterStoppedSends
 } from './native-chat-stopped-before-start'
 import { compareNativeChatTranscriptMessages } from './native-chat-transcript-projection'
@@ -72,17 +75,18 @@ export function projectStructuredAgentSessionMessages(
       // A turn opened for it, or it joined one (a steer): that turn's interrupted end is its stop.
       delivered.push({ ...message, stoppedBeforeStart: true })
     } else if (stoppedBeforeStart.has(message.id)) {
-      const submission = stoppedBeforeStart.get(message.id)
       const item = itemsById.get(message.id)
-      // Never handed over, so it waited behind the turn it was accepted in.
-      const waited =
-        submission?.handoverRecorded === true && submission.handedOverAt === undefined && item
-      moved ||= Boolean(waited)
+      const position = item
+        ? stoppedSendPosition(items, item, stoppedBeforeStart.get(message.id)?.resolvedAt ?? null)
+        : undefined
+      const placed =
+        item && position && compareAgentJournalPositions(position, agentJournalItemPosition(item))
+      moved ||= Boolean(placed)
       shownStopped.add(message.id)
       delivered.push({
         ...message,
         stoppedBeforeStart: true,
-        ...(waited ? { journalPosition: stoppedBeforeHandOverPosition(items, item) } : {})
+        ...(placed ? { journalPosition: position } : {})
       })
     } else {
       delivered.push(message)
