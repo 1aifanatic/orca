@@ -14,7 +14,6 @@ import {
   agentSessionFailureSentence,
   type AgentSessionFailureWordsContext
 } from './agent-session-failure-words'
-import { agentSessionRefusalReasonWords } from './agent-session-refusal-reason-words'
 import {
   AGENT_SESSION_HISTORY_UNREAD_CAUSES,
   AGENT_SESSION_WRITE_NOTICE_COPY,
@@ -29,6 +28,13 @@ import {
   type AgentSessionWriteKind,
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
+import { agentSessionRefusalReasonWords } from './agent-session-refusal-reason-words'
+
+export {
+  agentSessionRefusalReasonWords,
+  type AgentSessionRefusalAction,
+  type AgentSessionRefusalReasonWords
+} from './agent-session-refusal-reason-words'
 
 const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> = {
   'read-history': 'notDoneReadHistory',

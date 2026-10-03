@@ -1,11 +1,11 @@
-// What each refusal reason a host names means for the person: the words that say what stopped the
-// write, the step past it where they have one, and what they can do. The refusal notice reads it.
+// The words and next step each refusal reason gets, for every code: a reason the host adds does not
+// compile until it has words here.
 
 import type { AgentSessionFailureKind } from './agent-session-failure'
 import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
+import type { AgentSessionWriteNoticeSentence } from './agent-session-write-notice-copy'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import type { AgentSessionWriteRefusal } from './agent-session-write-failure'
-import type { AgentSessionWriteNoticeSentence } from './agent-session-write-notice-copy'
 
 /** What the person can do about a refusal with this reason. */
 export type AgentSessionRefusalAction =
