@@ -30,6 +30,7 @@ import {
   queuedMessageBodyIsTextOnly
 } from './structured-agent-session-queued-messages'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import {
   openForProviderWrite,
   openWithAgent,
@@ -100,11 +101,18 @@ export function sendStructuredAgentSessionTurn(
         : null
       return (
         queued ??
-        // Anything else takes the lane, at the fence it stands at there, as every send does.
+        // Anything else takes the lane, on the conversation and fence it stands at there, as every
+        // send does: a close and reopen while it waited replaced the journal admission read.
         context.serialize(ctx.sessionId, async () => {
           const prepared = await preparation()
+          const journal = context.sessions.get(ctx.sessionId)?.journal
+          if (!prepared.ok || !journal) {
+            return prepared.ok
+              ? { ok: false as const, refusal: AGENT_SESSION_NOT_ATTACHED }
+              : prepared
+          }
           const fence = context.deps.store.getRecord(ctx.sessionId)?.lease.runtimeFence
-          return prepared.ok ? queueable({ ...ctx, fence: fence ?? ctx.fence }) : prepared
+          return queueable({ ...ctx, journal, fence: fence ?? ctx.fence })
         })
       )
     }

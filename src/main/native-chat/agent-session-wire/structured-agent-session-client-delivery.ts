@@ -85,8 +85,11 @@ export class StructuredAgentSessionClientDelivery {
   publishChildWork = (sessionId: string, evidence: AgentChildWorkEvidence[]): void =>
     this.statusFeed.publishChildWork(sessionId, evidence)
 
-  readStopping = (sessionId: string): boolean =>
-    this.statusFeed.journalProjection(sessionId)?.stopping === true
+  /** What the feed publishes as `stopping`: only a working session is still being stopped. */
+  readStopping = (sessionId: string): boolean => {
+    const projection = this.statusFeed.journalProjection(sessionId)
+    return projection?.stopping === true && projection.state.summary.status === 'working'
+  }
 
   readChildWork = (sessionId: string): AgentChildWorkView[] | undefined =>
     this.statusFeed.readChildWork(sessionId)
