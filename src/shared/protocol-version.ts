@@ -130,6 +130,7 @@ export const WORKTREE_ARCHIVE_FAILURE_BLOCKING_RUNTIME_CAPABILITY =
   'worktree.archive-failure-blocking.v1' as const
 export const CODEX_RESET_CREDIT_RUNTIME_CAPABILITY = 'accounts.codex-reset-credit.v1' as const
 export const ACCOUNT_IMPORT_RUNTIME_CAPABILITY = 'accounts.import-host-credentials.v1' as const
+export const ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY = 'accounts.antigravity-native.v1' as const
 // Why: older hosts cannot reconcile terminal.create's mutation after losing the reply, so clients may only retry unknown outcomes when advertised.
 export const TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
   'terminal.create-idempotency.v2' as const
@@ -338,12 +339,7 @@ export const ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY =
 export const AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY =
   'agentSession.create.tab-id.v1' as const
 
-// Why: older hosts answer orcad.terminalCensus with method-not-found, so a client asks only when
-// this is advertised and otherwise treats the census as unverifiable, never as zero.
-export const ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY = 'orcad.terminal-census.v1' as const
-
 export const RUNTIME_CAPABILITIES = [
-  ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY,
   ...AGENT_SESSION_STOP_RUNTIME_CAPABILITIES,
   AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY,
   ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY,
@@ -429,6 +425,7 @@ export const RUNTIME_CAPABILITIES = [
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
+  ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY,
   SKILL_INSTALL_CAPABILITY,
   SKILL_BUNDLE_INSTALL_CAPABILITY,

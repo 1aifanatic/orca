@@ -1,5 +1,4 @@
 import { STATUS_METHODS } from './status'
-import { ORCAD_TERMINAL_CENSUS_METHODS } from './orcad-terminal-census'
 import { AI_VAULT_METHODS } from './ai-vault'
 import { AUTOMATION_METHODS } from './automations'
 import { REPO_METHODS } from './repo'
@@ -18,6 +17,7 @@ import { NOTIFICATION_METHODS } from './notifications'
 import { STATS_METHODS } from './stats'
 import { DIAGNOSTICS_METHODS } from './diagnostics'
 import { ACCOUNT_METHODS } from './accounts'
+import { ANTIGRAVITY_ACCOUNT_METHODS } from './antigravity-accounts'
 import { PREFLIGHT_METHODS } from './preflight'
 import { COMPUTER_METHODS } from './computer'
 import { SESSION_TAB_METHODS } from './session-tabs'
@@ -55,7 +55,6 @@ import { AGENT_LAUNCH_METHODS } from './agent-launch'
 // auditing the security boundary or wiring new CLI commands.
 export const ALL_RPC_METHODS = [
   ...STATUS_METHODS,
-  ...ORCAD_TERMINAL_CENSUS_METHODS,
   ...AGENT_HOOK_METHODS,
   ...AI_VAULT_METHODS,
   ...ARTIFACT_METHODS,
@@ -79,6 +78,7 @@ export const ALL_RPC_METHODS = [
   ...STATS_METHODS,
   ...DIAGNOSTICS_METHODS,
   ...ACCOUNT_METHODS,
+  ...ANTIGRAVITY_ACCOUNT_METHODS,
   ...PREFLIGHT_METHODS,
   ...COMPUTER_METHODS,
   ...SESSION_TAB_METHODS,

@@ -23,7 +23,6 @@ import {
   PairingProvisionRelayParamsSchema
 } from '../mobile-relay-credential-contract'
 import { MobileWebBundleChunkParamsSchema } from '../mobile-web-bundle/bundle-rpc-contract'
-import { OrcadTerminalCensusParamsSchema } from '../orcad-terminal-census'
 import { pluginConsentRequestSchema } from '../plugins/plugin-consent-request'
 import {
   AccountsUnsubscribeParams,
@@ -43,6 +42,10 @@ import {
   AiVaultPrepareSessionResumeParams,
   AiVaultSessionTitlesParams
 } from './ai-vault-params'
+import {
+  AntigravityAccountMutationParams,
+  AntigravityAccountTargetParams
+} from './antigravity-accounts-params'
 import { ArtifactsDeleteParams, ListOptions, SourceRequest, WriteRequest } from './artifacts-params'
 import {
   AutomationCreate,
@@ -559,6 +562,10 @@ import {
 export const RPC_PARAMS_BY_METHOD = {
   'accounts.addClaudeFromConfigDir': AddClaudeFromConfigDirParams,
   'accounts.addCodexFromHome': AddCodexFromHomeParams,
+  'accounts.antigravityAddCurrent': AntigravityAccountTargetParams,
+  'accounts.antigravityList': AntigravityAccountTargetParams,
+  'accounts.antigravityRemove': AntigravityAccountMutationParams,
+  'accounts.antigravitySelect': AntigravityAccountMutationParams,
   'accounts.consumeCodexResetCredit': ConsumeCodexResetCreditParams,
   'accounts.list': ListAccountsParams,
   'accounts.removeClaude': RemoveAccountParams,
@@ -988,7 +995,6 @@ export const RPC_PARAMS_BY_METHOD = {
   'notifications.testPush': null,
   'notifications.unregisterPush': null,
   'notifications.unsubscribe': NotificationUnsubscribeParams,
-  'orcad.terminalCensus': OrcadTerminalCensusParamsSchema,
   'orchestration.ask': AskParams,
   'orchestration.callerShow': null,
   'orchestration.check': CheckParams,

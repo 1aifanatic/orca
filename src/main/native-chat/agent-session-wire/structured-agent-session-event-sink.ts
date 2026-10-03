@@ -30,12 +30,18 @@ export type StructuredAgentSessionSinkBarrier = { ok: true } | { ok: false; erro
 /** Linkage a producer stamps on the rows it writes. Absent on every append the
  *  session's own agent makes, which is what makes absence mean root. */
 export type StructuredAgentSessionAppendOptions = AgentJournalProducerLinkage & {
-  /** Pending checkpoints with this key replace one another before they run. */
-  coalescingKey?: string
   /** Marks a critical lifecycle operation for lifecycle barriers and diagnostics. */
   lifecycle?: boolean
   /** Host clock to stamp on the row instead of its append time. */
   observedAt?: number
+}
+
+export type StructuredAgentSessionPublishOptions = Pick<
+  StructuredAgentSessionAppendOptions,
+  'lifecycle'
+> & {
+  /** A publication still waiting with this key is replaced by this one. */
+  coalescingKey?: string
 }
 
 /** An item write states which turn its row belongs to; the write that creates the row decides. */
@@ -69,11 +75,7 @@ export type StructuredAgentSessionRevisionResolver = (
   journal: StructuredAgentSessionRevisionJournal
 ) => { identity: AgentJournalItemIdentity; body: AgentJournalItemBody } | null
 
-/** A revision's body is derived from the row it revises, so coalescing one away would lose it. */
-export type StructuredAgentSessionRevisionOptions = Omit<
-  StructuredAgentSessionItemAppendOptions,
-  'coalescingKey'
->
+export type StructuredAgentSessionRevisionOptions = StructuredAgentSessionItemAppendOptions
 
 /** Compatibility alias for lifecycle callers that already use this resolver. */
 export type StructuredAgentSessionLifecycleIdentityResolver = StructuredAgentSessionIdentityResolver
@@ -92,7 +94,7 @@ export type StructuredAgentSessionEventSink = {
     identity: AgentJournalItemIdentity,
     options?: StructuredAgentSessionAppendOptions
   ): StructuredAgentSessionSinkAdmission
-  publish(options?: StructuredAgentSessionAppendOptions): void
+  publish(options?: StructuredAgentSessionPublishOptions): void
   /** Resolves `ok` once every write admitted so far has landed in the journal; not `ok` when one
    *  failed or a close dropped it unwritten. */
   written?(): Promise<StructuredAgentSessionSinkBarrier>
@@ -153,7 +155,7 @@ export type StructuredAgentSessionEventSink = {
     mutations: readonly JournalLifecycleMutationInput[],
     options?: StructuredAgentSessionAppendOptions
   ): StructuredAgentSessionSinkAdmission
-  tryPublish?(options?: StructuredAgentSessionAppendOptions): StructuredAgentSessionSinkAdmission
+  tryPublish?(options?: StructuredAgentSessionPublishOptions): StructuredAgentSessionSinkAdmission
   /** Couples durable-queue pressure to the exact provider stream producing it. */
   bindReadingControl?(control: StructuredAgentSessionReadingControl): () => void
 }
@@ -236,8 +238,6 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
     queue.submit(
       {
         bytes: Buffer.byteLength(JSON.stringify({ settlementId, mutations }), 'utf8') + 512,
-        coalescingKey: `lifecycle:${settlementId}`,
-        keepsFirst: true,
         run: (bound) =>
           bound.journal.appendLifecycleBatch({
             settlementId,
@@ -249,7 +249,19 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       { ...options, lifecycle: true }
     )
 
-  const tryAppendItem: NonNullable<StructuredAgentSessionEventSink['tryAppendItem']> = (
+  const publish = (
+    options: StructuredAgentSessionPublishOptions = {}
+  ): StructuredAgentSessionSinkAdmission =>
+    queue.submit(
+      {
+        bytes: 1,
+        publicationKey: options.coalescingKey ?? 'publish',
+        run: (bound) => bound.publish()
+      },
+      options
+    )
+
+  const appendItem: NonNullable<StructuredAgentSessionEventSink['tryAppendItem']> = (
     identity,
     body,
     options
@@ -257,7 +269,6 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
     queue.submit(
       {
         bytes: estimateStructuredAgentSessionItemBytes(identity, body),
-        coalescingKey: options.coalescingKey,
         run: (bound) =>
           bound.journal.appendItem(
             identity,
@@ -268,24 +279,12 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       options
     )
 
-  const publish = (
-    options: StructuredAgentSessionAppendOptions = {}
-  ): StructuredAgentSessionSinkAdmission =>
-    queue.submit(
-      {
-        bytes: 1,
-        coalescingKey: options.coalescingKey ?? 'publish',
-        run: (bound) => bound.publish()
-      },
-      options
-    )
-
   return {
     sink: {
       appendItem: (identity, body, options) => {
-        tryAppendItem(identity, body, options)
+        appendItem(identity, body, options)
       },
-      tryAppendItem,
+      tryAppendItem: appendItem,
       ...resolvedAppend,
       journalEpoch: queue.journalEpoch,
       journalLinkage: queue.journalLinkage,
@@ -329,7 +328,7 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       setActivity: (activity) => {
         queue.submit({
           bytes: Buffer.byteLength(JSON.stringify(activity), 'utf8') + 64,
-          coalescingKey: 'turn-activity',
+          publicationKey: 'turn-activity',
           run: (bound) => bound.publish(activity)
         })
       },
