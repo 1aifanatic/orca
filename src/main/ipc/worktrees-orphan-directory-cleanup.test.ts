@@ -406,9 +406,9 @@ describe('registerWorktreeHandlers', () => {
       return { stdout: '', stderr: '' }
     })
     // Stands in for the runtime, which registers the bookkeeping that ends such a workspace.
-    setUnfinishedWorktreeRemovalHost((record) =>
+    setUnfinishedWorktreeRemovalHost((record) => {
       store.removeWorktreeMeta(record.worktreeId, 'local')
-    )
+    })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     // The user deletes the leftover by hand and makes a folder of their own at the path.
     await rm(leftoverPath, { recursive: true })
