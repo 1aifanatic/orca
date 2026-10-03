@@ -44,6 +44,8 @@ export type MobileStructuredQueuedMessageControls = {
 
 export function useMobileStructuredQueuedMessageControls(args: {
   queueCapable: boolean
+  /** The chat's agent, named in a returned card's words. */
+  agentName?: string
   sessionKey: string
   queuedMessages: MobileQueuedMessageFeed
   queuePause: MobileQueuePause
@@ -58,6 +60,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
   onActionResolved?: () => void
 }): MobileStructuredQueuedMessageControls {
   const {
+    agentName,
     appendComposerText,
     mutate,
     onActionResolved,
@@ -74,10 +77,11 @@ export function useMobileStructuredQueuedMessageControls(args: {
       queueCapable
         ? mobileQueuedMessageCards(queuedMessages, submissions, {
             pendingPrompt,
-            queuePaused: queuePause !== null
+            queuePaused: queuePause !== null,
+            ...(agentName ? { agentName } : {})
           })
         : [],
-    [pendingPrompt, queueCapable, queuePause, queuedMessages, submissions]
+    [agentName, pendingPrompt, queueCapable, queuePause, queuedMessages, submissions]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {

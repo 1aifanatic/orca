@@ -22,7 +22,9 @@ const ELLIPSIS = '\u2026'
 const WARNING: ReadonlySet<unknown> = new Set(['warning'])
 const BLOCK_REASON: ReadonlySet<unknown> = new Set(['feedback', 'stop'])
 
-export type CodexPromptBlock = { reason?: string }
+/** What a turn's blocking hooks said, kept apart until the turn ends: the first message to the
+ *  person (`warning`) and the first reason for the block (`feedback` or `stop`). */
+export type CodexPromptBlock = { warning?: string; stop?: string }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -75,25 +77,29 @@ export function readCodexPromptBlock(
   ) {
     return null
   }
-  // As Codex shows it: the hook's message to the person (`warning`), then why it blocked
-  // (`feedback` for a `blocked` run, `stop` for a `stopped` one).
+  // The hook's message to the person (`warning`), and why it blocked (`feedback` for a `blocked`
+  // run, `stop` for a `stopped` one).
   const entries = (Array.isArray(run.entries) ? run.entries : []).map((entry) => record(entry))
   const firstText = (kinds: ReadonlySet<unknown>) =>
     entries
       .filter((entry) => kinds.has(entry?.kind))
       .map(entryText)
       .find((text) => text !== undefined)
-  const parts = [firstText(WARNING), firstText(BLOCK_REASON)].filter(
-    (part): part is string => part !== undefined
-  )
-  const reason = plainCodexHookReason(
+  const warning = firstText(WARNING)
+  const stop = firstText(BLOCK_REASON)
+  return { threadId, turnId, ...(warning ? { warning } : {}), ...(stop ? { stop } : {}) }
+}
+
+/** A turn's block as one reason, as Codex shows it: the message to the person, then why. */
+export function codexPromptBlockReason(block: CodexPromptBlock): string | undefined {
+  const parts = [block.warning, block.stop].filter((part): part is string => part !== undefined)
+  return plainCodexHookReason(
     parts
       .map((part, index) =>
         index < parts.length - 1 && !ENDS_A_SENTENCE.test(part) ? `${part}.` : part
       )
       .join(' ')
   )
-  return { threadId, turnId, ...(reason ? { reason } : {}) }
 }
 
 /** Notes the primary thread's turn whose prompt a Codex hook blocked, until that turn ends. */
@@ -104,10 +110,7 @@ export function noteCodexPromptBlock(
 ): void {
   const block = readCodexPromptBlock(method, params)
   if (block && block.threadId === session.threadId) {
-    session.dispatchEchoes.blockPrompt(
-      block.threadId,
-      block.turnId,
-      block.reason ? { reason: block.reason } : {}
-    )
+    const { threadId, turnId, ...said } = block
+    session.dispatchEchoes.blockPrompt(threadId, turnId, said)
   }
 }

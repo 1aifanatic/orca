@@ -13,9 +13,12 @@ import type { StructuredAgentSessionQueuedMessagesController } from './use-struc
  */
 export function NativeChatQueuedMessageList({
   controller,
+  agentName,
   focusComposer
 }: {
   controller: StructuredAgentSessionQueuedMessagesController
+  /** The chat's agent, named in a returned card's words. */
+  agentName?: string
   /** Where focus goes once Steer, Edit or Delete takes the focused card away. */
   focusComposer?: () => void
 }): React.JSX.Element {
@@ -60,6 +63,7 @@ export function NativeChatQueuedMessageList({
                 <NativeChatQueuedMessageCard
                   key={card.messageId}
                   card={card}
+                  {...(agentName ? { agentName } : {})}
                   showsSteerShortcut={card === newest}
                   onSteer={() => refocusAfter(controller.steer(card.messageId))}
                   onDelete={() => refocusAfter(controller.remove(card.messageId))}

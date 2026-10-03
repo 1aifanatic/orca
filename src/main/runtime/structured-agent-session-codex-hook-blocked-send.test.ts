@@ -340,7 +340,22 @@ describe('a Codex send a Codex hook blocked', () => {
     )
   })
 
-  // Codex blocks for the first reason any of a turn's hooks gave, in their configured order.
+  // A hook's message to the person is never Codex's block reason: an earlier hook that only spoke
+  // to the person does not hide a later one's reason.
+  it("keeps a later hook's reason behind an earlier hook's message", async () => {
+    await runningTurn()
+    const followUp = await steered('and paste the API key')
+    hookBlocked('turn-1', 'stopped', [{ kind: 'warning', text: 'Heads up' }])
+    hookBlocked('turn-1', 'blocked', [{ kind: 'feedback', text: 'No secrets in prompts' }])
+    turns.end('completed')
+
+    await blockedAndTheChatMovesOn(followUp)
+    expect(sentenceFor(await snapshot(), followUp)).toBe(
+      'A Codex hook blocked this message: Heads up. No secrets in prompts.'
+    )
+  })
+
+  // Codex stops for the first block reason a turn's hooks gave, in their configured order.
   it('keeps the first reason a turn gave, and never trades it for none', async () => {
     await runningTurn()
     const followUp = await steered('and paste the API key!')

@@ -21,6 +21,7 @@ import {
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
 import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
+import { codexPromptBlockReason } from './codex-structured-prompt-block'
 import type { CodexSession } from './codex-structured-session-state'
 import {
   readCodexThreadId,
@@ -70,7 +71,8 @@ export function readCodexTurnEnd(method: string, params: unknown): CodexTurnEnd 
 /** How an ended turn settles a send it never echoed; null leaves the send to its echo. */
 export function codexTurnEndRejection(end: CodexTurnEnd): AgentJournalDispatchRejection | null {
   if (end.status === 'completed' && end.blocked) {
-    const detail = end.blocked.reason ? providerDiagnostic(end.blocked.reason, 'person') : undefined
+    const reason = codexPromptBlockReason(end.blocked)
+    const detail = reason ? providerDiagnostic(reason, 'person') : undefined
     return codexDispatchRejection(agentSessionFailureFact('hookBlocked', detail ? { detail } : {}))
   }
   if (end.status === 'interrupted') {

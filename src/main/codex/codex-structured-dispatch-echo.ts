@@ -47,7 +47,7 @@ export type CodexDispatchEchoes = {
   /** Codex did not open this answered turn within a wait, so no later wait is spent on it. */
   leftUnopened: (threadId: string, turnId: string) => void
   /** Codex reported a Codex hook blocked a prompt in this turn, kept only until the turn ends: the
-   *  first reason any of its hooks gave. */
+   *  first message to the person and the first block reason any of its hooks gave. */
   blockPrompt: (threadId: string, turnId: string, block: CodexPromptBlock) => void
   /** The block reported in this turn, which its end takes; null when none was. */
   takePromptBlock: (threadId: string, turnId: string) => CodexPromptBlock | null
@@ -129,10 +129,13 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
     },
     blockPrompt: (threadId, turnId, block) => {
       const turn = turnKey(threadId, turnId)
-      // Codex reports hooks in their configured order and blocks for the first reason given.
+      // Codex reports hooks in their configured order and stops for the first block reason; a
+      // hook's message to the person is never that reason, so each keeps its first separately.
       const earlier = blockedTurns.get(turn)
+      const warning = earlier?.warning ?? block.warning
+      const stop = earlier?.stop ?? block.stop
       blockedTurns.delete(turn)
-      blockedTurns.set(turn, earlier?.reason ? earlier : block)
+      blockedTurns.set(turn, { ...(warning ? { warning } : {}), ...(stop ? { stop } : {}) })
       for (const oldest of blockedTurns.keys()) {
         if (blockedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
           break

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-names'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
@@ -183,6 +184,9 @@ export function useMobileStructuredAgentSession(args: {
   )
   const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
+    ...(agent === 'codex' || agent === 'claude'
+      ? { agentName: TUI_AGENT_DISPLAY_NAMES[agent] }
+      : {}),
     sessionKey,
     queuedMessages,
     queuePause,

@@ -274,6 +274,7 @@ export function NativeChatStructuredSession(
       {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
       <NativeChatQueuedMessageList
         controller={controller.queuedMessages}
+        agentName={agentLabel}
         focusComposer={() => {
           composerRef.current?.focus()
         }}
