@@ -1,7 +1,8 @@
 import { EventEmitter, errorMonitor } from 'node:events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
+import { scanTranscriptForSecrets } from './pty-transcript-secret-scan.mjs'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   createStressObserver,
@@ -260,4 +261,58 @@ describe('Windows PTY stress observer', () => {
       exitCallbackObserved: true
     })
   })
+
+  it.each([
+    ['username', 'plain'],
+    ['username', 'csi'],
+    ['username', 'osc'],
+    ['hostname', 'plain'],
+    ['hostname', 'csi'],
+    ['hostname', 'osc']
+  ])('scrubs the entire %s email in %s framing', (identity, framing) => {
+    const name = identity === 'username' ? userInfo().username : hostname()
+    const esc = String.fromCharCode(27)
+    const csi = `${esc}[31m`
+    const email = `${name}@privatecorp.test`
+    const raw =
+      framing === 'csi'
+        ? `${name}${csi}@privatecorp.test`
+        : framing === 'osc'
+          ? `${esc}]0;${email}${esc}\\`
+          : email
+    const sanitized = sanitizeStressText(raw)
+    expect(sanitized).not.toContain(name)
+    expect(sanitized).not.toContain('privatecorp.test')
+    expect(sanitized.length).toBe(raw.length)
+    const visible = sanitized
+      .replaceAll(csi, '')
+      .replaceAll(`${esc}]0;`, '')
+      .replaceAll(`${esc}\\`, '')
+    expect(scanTranscriptForSecrets(visible)).toEqual([])
+    if (framing === 'csi') {
+      expect(sanitized.slice(name.length, name.length + csi.length)).toBe(csi)
+    } else if (framing === 'osc') {
+      expect(sanitized.slice(0, 4)).toBe(`${esc}]0;`)
+      expect(sanitized.slice(-2)).toBe(`${esc}\\`)
+    }
+  })
+
+  it.each(['vendor', 'bearer'])(
+    'keeps %s priority when a credential contains the local username',
+    (kind) => {
+      const name = userInfo().username
+      const esc = String.fromCharCode(27)
+      const csi = `${esc}[31m`
+      const prefix = kind === 'vendor' ? 'sk-' : 'Bearer '
+      const raw = `${prefix}${name}${csi}01234567890123456789`
+      const sanitized = sanitizeStressText(raw)
+      expect(sanitized).not.toContain(name)
+      expect(sanitized).not.toContain('01234567890123456789')
+      expect(sanitized.length).toBe(raw.length)
+      expect(
+        sanitized.slice(prefix.length + name.length, prefix.length + name.length + csi.length)
+      ).toBe(csi)
+      expect(scanTranscriptForSecrets(sanitized.replaceAll(csi, ''))).toEqual([])
+    }
+  )
 })

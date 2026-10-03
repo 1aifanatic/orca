@@ -25,7 +25,9 @@ export function sanitizeStressText(text) {
     controls.push({ sequence, index: scanIndex })
     return ''
   })
-  const sanitized = redactTranscript(scanText).text
+  const firstPass = redactTranscript(scanText).text
+  // A local identity can mask a wider email finding in the first pass.
+  const sanitized = redactTranscript(firstPass).text
   let result = ''
   let cursor = 0
   for (const { sequence, index } of controls) {
