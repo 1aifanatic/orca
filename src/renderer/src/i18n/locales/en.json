@@ -18758,34 +18758,19 @@
     "removePath": "Remove {{name}}"
   },
   "accounts": {
-    "antigravity": {
-      "scope": "Manage the native agy account on {{host}}.",
-      "signIn": "Start agy on this host and complete its browser sign-in, then save the current account. To add a different account, use /logout in agy and sign in again.",
-      "docs": "Sign-in instructions",
-      "retry": "Retry",
-      "identityUnknown": "Signed-in identity unavailable",
-      "signedOut": "No native agy account is signed in.",
-      "changed": "The native account changed. Select a saved account again before launching agy.",
-      "save": "Save current account",
+    "managedData": {
+      "description": "Add accounts by running this command in a terminal on the Orca host. Selection applies to new explicit agent launches on that host; direct SSH relay and Windows-hosted WSL launches use their own credentials.",
+      "copied": "Copied",
+      "add": "Copy add account command",
       "refresh": "Refresh accounts",
-      "usage": "Refresh usage",
-      "working": "Updating account",
-      "usageReading": "Session: {{session}} · Weekly: {{weekly}}",
-      "saved": "Saved Google account",
-      "nativeActive": "Native account",
-      "selected": "Selected",
+      "upgrade": "If accounts do not appear, update or restart the Orca host.",
+      "system": "System default",
+      "active": "Active",
       "select": "Select",
       "remove": "Remove",
-      "sessions": "Selection applies to new agy sessions on this host. Existing sessions may keep their previous account.",
-      "searchTitle": "Antigravity Accounts",
-      "searchDescription": "Save and select native agy Google accounts on the execution host.",
-      "title": "Antigravity",
-      "keyword": {
-        "antigravity": "antigravity",
-        "agy": "agy",
-        "google": "google",
-        "accounts": "accounts"
-      }
+      "removeTitle": "Remove managed account?",
+      "removeDescription": "Stop agents using this profile first. Removal deletes its saved credentials and conversation data. Your system login stays unchanged.",
+      "cancel": "Cancel"
     }
   }
 }

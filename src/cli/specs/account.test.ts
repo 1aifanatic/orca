@@ -33,8 +33,9 @@ describe('account command specs', () => {
   it('describes --agent as the account provider, not a terminal agent', () => {
     const help = formatCommandHelp(spec('account add'))
 
-    expect(help).toContain('Account provider: claude or codex (default claude)')
+    expect(help).toContain('Account provider: claude, codex, opencode, or devin (default claude)')
     expect(help).not.toContain('TUI agent')
+    expect(spec('account add').usage).toContain('[--integration <id>]')
   })
 
   it('aligns the --agent description with the global flag descriptions', () => {
@@ -49,5 +50,11 @@ describe('account command specs', () => {
     const help = formatCommandHelp(spec('account add'))
 
     expect(descriptionColumn(help, 'agent')).toBe(descriptionColumn(help, 'json'))
+  })
+
+  it('describes the supported providers for profile selection and removal', () => {
+    for (const command of ['account list', 'account select', 'account remove']) {
+      expect(formatCommandHelp(spec(command))).toContain('Account provider: opencode or devin')
+    }
   })
 })
