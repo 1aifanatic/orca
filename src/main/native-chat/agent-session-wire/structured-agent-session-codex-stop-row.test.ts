@@ -481,7 +481,7 @@ describe('a message after a Codex Stop whose exit was unproven', () => {
         )
       ).toMatchObject({
         dispatchState: 'rejected',
-        reason: "Orca couldn't stop Codex's previous process. Send your message to try again."
+        reason: "Couldn't stop Codex from before. Send your message again to try once more."
       })
     )
     expect(codex.connections).toHaveLength(1)

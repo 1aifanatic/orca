@@ -431,7 +431,7 @@ it('rejects a message whose start meets a close still unverifiable, and starts n
   await eventually(async () => expect((await submission(next))?.dispatchState).toBe('rejected'))
   const rejected = (await submission(next))!
   expect(rejected.reason).toBe(
-    "Orca couldn't stop Claude's previous process. Send your message to try again."
+    "Couldn't stop Claude from before. Send your message again to try once more."
   )
   expect(rejected.rejection).toMatchObject({
     kind: 'restartFailed',
