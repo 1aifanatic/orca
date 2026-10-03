@@ -32,6 +32,7 @@ import {
   waitForPendingWorktreeRemoval
 } from '../worktree-background-removal'
 import { runSerializedWorktreeRemovalAcceptance } from '../worktree-removal-acceptance-queue'
+import { readCheckoutDirectoryIdentity } from '../worktree-checkout-identity'
 
 /** Runs after the previous same-repo removal was accepted; see runSerializedWorktreeRemovalAcceptance. */
 export function removeRuntimeRegisteredLocalWorktree(
@@ -168,12 +169,15 @@ async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
   }
   // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
   // request that asked for it times out; other views read the host's `removing` marker meanwhile.
+  // Why: a later retry or resume may only delete this directory, never one made at the path since.
+  const checkoutIdentity = await readCheckoutDirectoryIdentity(refreshed.path)
   void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: args.target.id,
       repoId: repo.id,
       repoPath: repo.path,
       worktree: refreshed,
+      checkoutIdentity,
       deleteBranch: args.deleteBranch,
       force: args.force
     },

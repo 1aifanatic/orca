@@ -9,28 +9,60 @@ import {
   canSafelyRemoveOrphanedWorktreeDirectory
 } from './worktree-removal-safety'
 import type { GitWorktreeExecOptions } from './git/worktree-operation-options'
+import { matchCheckoutDirectory } from './worktree-checkout-identity'
+import type { WorktreeRemovalRecord } from './worktree-removal-records'
+
+type RemovalLeftoverRecord = Pick<
+  WorktreeRemovalRecord,
+  'repoPath' | 'worktreePath' | 'checkoutIdentity'
+>
 
 /**
  * Whether a checkout path Git no longer registers still holds the removed checkout's own leftover:
- * no `.git` (Git deleted it first), or a `.git` file naming the admin entry Git removed. Any other
- * `.git` is a different checkout created at the path since.
+ * the very directory the removal accepted (or nothing at all), with no `.git` (Git deleted it first)
+ * or a `.git` file naming the admin entry Git removed. Anything else was put at the path since.
  */
 export async function isUnregisteredRemovalLeftover(
-  repoPath: string,
-  worktreePath: string
+  record: RemovalLeftoverRecord
 ): Promise<boolean> {
-  try {
-    await lstat(join(worktreePath, '.git'))
-  } catch (error) {
-    return getErrorCode(error) === 'ENOENT'
+  return (await unregisteredRemovalLeftoverVerdict(record)) === 'leftover'
+}
+
+async function unregisteredRemovalLeftoverVerdict(
+  record: RemovalLeftoverRecord
+): Promise<'leftover' | 'different-folder' | 'different-checkout'> {
+  const match = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
+  if (match === 'absent') {
+    return 'leftover'
   }
-  return canSafelyRemoveOrphanedWorktreeDirectory(worktreePath, repoPath, CLIENT_REMOVAL_HOME)
+  if (match !== 'same') {
+    return 'different-folder'
+  }
+  try {
+    await lstat(join(record.worktreePath, '.git'))
+  } catch (error) {
+    return getErrorCode(error) === 'ENOENT' ? 'leftover' : 'different-checkout'
+  }
+  return (await canSafelyRemoveOrphanedWorktreeDirectory(
+    record.worktreePath,
+    record.repoPath,
+    CLIENT_REMOVAL_HOME
+  ))
+    ? 'leftover'
+    : 'different-checkout'
 }
 
 /** The refusal when the path no longer holds the removed checkout's own leftover. */
 export function differentCheckoutAtPathError(worktreePath: string): Error {
   return new Error(
     `A different checkout is now at ${worktreePath}; Orca left it in place. Delete it again to remove it.`
+  )
+}
+
+/** The refusal when the folder at the path is not the one Orca started deleting. */
+export function differentFolderAtPathError(worktreePath: string): Error {
+  return new Error(
+    `The folder at ${worktreePath} is not the one Orca started deleting, so Orca left it in place.`
   )
 }
 
@@ -49,16 +81,20 @@ export async function isCheckoutRegistered(record: {
  * registers at or inside it. Run right before the delete: the path can change while it waits.
  */
 export async function assertUnregisteredRemovalLeftover(
-  repoPath: string,
-  worktreePath: string,
+  record: RemovalLeftoverRecord,
   options: GitWorktreeExecOptions = {}
 ): Promise<void> {
+  const { repoPath, worktreePath } = record
   const worktrees = await listWorktreesStrict(repoPath, options)
   if (worktrees.some((worktree) => areWorktreePathsEqual(worktree.path, worktreePath))) {
     throw differentCheckoutAtPathError(worktreePath)
   }
   assertWorktreeDoesNotContainRegisteredWorktree(worktreePath, worktrees)
-  if (!(await isUnregisteredRemovalLeftover(repoPath, worktreePath))) {
+  const verdict = await unregisteredRemovalLeftoverVerdict(record)
+  if (verdict === 'different-folder') {
+    throw differentFolderAtPathError(worktreePath)
+  }
+  if (verdict === 'different-checkout') {
     throw differentCheckoutAtPathError(worktreePath)
   }
 }

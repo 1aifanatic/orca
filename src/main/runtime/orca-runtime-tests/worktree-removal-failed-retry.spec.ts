@@ -26,6 +26,7 @@ import {
   readWorktreeRemovalRecords,
   writeWorktreeRemovalRecords
 } from '../../worktree-removal-records'
+import { readCheckoutDirectoryIdentity } from '../../worktree-checkout-identity'
 
 const FAILURE = "error: failed to delete 'node_modules/a/LICENSE': Operation not permitted"
 
@@ -40,6 +41,7 @@ describe('runtime Delete on a failed delete’s leftover', () => {
     leftover = join(directory, 'feature')
     leftoverId = `${TEST_REPO_ID}::${leftover}`
     await mkdir(join(leftover, 'node_modules'), { recursive: true })
+    const checkoutIdentity = await readCheckoutDirectoryIdentity(leftover)
     await writeWorktreeRemovalRecords(directory, () => [
       {
         worktreeId: leftoverId,
@@ -51,6 +53,7 @@ describe('runtime Delete on a failed delete’s leftover', () => {
         deleteBranch: true,
         force: true,
         requestedAt: 1,
+        checkoutIdentity,
         failure: { message: FAILURE, failedAt: 2 }
       }
     ])

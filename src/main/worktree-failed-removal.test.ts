@@ -2,6 +2,7 @@
 // the error until Delete retries it, the checkout disappears, or its repo leaves Orca. Git is mocked
 // here so this runs on every platform; the real-Git version is in
 // runtime/runtime-failed-local-worktree-removal.test.ts.
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +25,8 @@ import {
   snapshotPendingWorktreeRemovals,
   withUnregisteredRemovalCheckouts
 } from './worktree-removal-listing'
-import { readWorktreeRemovalRecords } from './worktree-removal-records'
+import { readWorktreeRemovalRecords, writeWorktreeRemovalRecords } from './worktree-removal-records'
+import { readCheckoutDirectoryIdentity } from './worktree-checkout-identity'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
@@ -60,13 +62,15 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-function startFailingRemoval(): Promise<unknown> {
+async function startFailingRemoval(): Promise<unknown> {
   return startBackgroundWorktreeRemoval({
     removal: {
       worktreeId,
       repoId: 'repo-1',
       repoPath: '/work/repo',
       worktree: { path: checkout, branch: 'refs/heads/feature', head: 'abc' },
+      // As acceptance does: the directory the later retry may delete.
+      checkoutIdentity: await readCheckoutDirectoryIdentity(checkout),
       deleteBranch: true,
       force: true
     },
@@ -289,5 +293,46 @@ describe('a delete that fails after Git dropped the registration', () => {
     await vi.waitFor(async () =>
       expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
     )
+  })
+
+  it('ends, leaving the files, once the user puts an ordinary folder at the path', async () => {
+    await failRemoval()
+    // No `.git`, like the leftover: only the directory's identity tells them apart.
+    await rm(checkout, { recursive: true })
+    await mkdir(checkout)
+    await writeFile(join(checkout, 'notes.txt'), 'mine\n')
+
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
+    expect(existsSync(join(checkout, 'notes.txt'))).toBe(true)
+  })
+
+  it('ends, leaving the files, for a failed delete an older build recorded without an identity', async () => {
+    await writeWorktreeRemovalRecords(join(directory, 'profile'), () => [
+      {
+        worktreeId,
+        repoId: 'repo-1',
+        repoPath: '/work/repo',
+        worktreePath: checkout,
+        branch: 'feature',
+        head: 'abc',
+        deleteBranch: true,
+        force: true,
+        requestedAt: 1,
+        failure: { message: GIT_ERROR, failedAt: 2 }
+      }
+    ])
+    await loadWorktreeRemovalRecords(join(directory, 'profile'))
+
+    // Nothing proves the folder is still the one that delete accepted.
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
+    expect(await readdir(checkout)).toEqual(['node_modules'])
   })
 })

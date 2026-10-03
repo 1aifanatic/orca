@@ -2,7 +2,7 @@
 // come from Git and disk, whatever point the earlier run reached.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -34,6 +34,10 @@ import {
   writeWorktreeRemovalRecords,
   type WorktreeRemovalRecord
 } from '../worktree-removal-records'
+import {
+  readCheckoutDirectoryIdentity,
+  type CheckoutDirectoryIdentity
+} from '../worktree-checkout-identity'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
 vi.mock('../project-runtime-git-options', () => ({
@@ -57,6 +61,7 @@ let scratchDir = ''
 let recordsDir = ''
 let repoPath = ''
 let worktreePath = ''
+let acceptedIdentity: CheckoutDirectoryIdentity | undefined
 let repo: Repo
 
 async function git(args: string[], cwd = repoPath): Promise<string> {
@@ -86,6 +91,8 @@ beforeEach(async () => {
   await git(['add', '-A'])
   await git(['commit', '-qm', 'seed'])
   await git(['worktree', 'add', '-q', worktreePath, '-b', 'feature'])
+  // The directory as the interrupted removal accepted it, before any test's partial delete.
+  acceptedIdentity = await readCheckoutDirectoryIdentity(worktreePath)
   repo = { id: 'repo-1', path: repoPath, displayName: 'repo', badgeColor: '', addedAt: 0 }
 })
 
@@ -113,7 +120,8 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
     head: options.head ?? (await git(['rev-parse', 'feature'])).trim(),
     deleteBranch: true,
     force: false,
-    requestedAt: 1
+    requestedAt: 1,
+    checkoutIdentity: acceptedIdentity
   }
   await writeWorktreeRemovalRecords(recordsDir, () => [record])
   await loadWorktreeRemovalRecords(recordsDir)
@@ -204,6 +212,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
       // Git before 2.48 has no relative-path worktrees.
       ctx.skip()
     }
+    acceptedIdentity = await readCheckoutDirectoryIdentity(worktreePath)
     await unlink(join(worktreePath, '.git'))
     await unlink(join(worktreePath, 'seed.txt'))
 
@@ -259,6 +268,78 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
+  })
+
+  it('leaves an ordinary folder put at the path after Git unregistered the checkout', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await git(['worktree', 'remove', '--force', worktreePath])
+    // No `.git`, like the leftover Git leaves: only the directory's identity tells them apart.
+    await mkdir(worktreePath)
+    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: expect.stringMatching(/is not the one Orca started deleting/)
+    })
+    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(purged).toEqual([])
+  })
+
+  it('leaves an ordinary folder put at a still-registered checkout’s path', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(restoreMissingWorktreeGitFile).mockClear()
+    // Git's admin entry still names the path, so restoring `.git` would hand the folder to Git.
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
+    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
+    expect(await isRegistered(worktreePath)).toBe(true)
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: expect.stringMatching(/is not the one Orca started deleting/)
+    })
+    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
+    expect(existsSync(join(worktreePath, '.git'))).toBe(false)
+    expect(restoreMissingWorktreeGitFile).not.toHaveBeenCalled()
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(purged).toEqual([])
+  })
+
+  it('leaves an unregistered folder an older build recorded without an identity', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    acceptedIdentity = undefined
+    // What Git leaves when it drops the registration first: no `.git`, files still there.
+    await unlink(join(worktreePath, '.git'))
+    await git(['worktree', 'prune'])
+    expect(await isRegistered(worktreePath)).toBe(false)
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: expect.stringMatching(/is not the one Orca started deleting/)
+    })
+    expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(purged).toEqual([])
+  })
+
+  it('still lets Git finish a registered checkout an older build recorded without an identity', async () => {
+    acceptedIdentity = undefined
+    await unlink(join(worktreePath, 'seed.txt'))
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({ status: 'removed' })
+    expect(existsSync(worktreePath)).toBe(false)
+    expect(await isRegistered(worktreePath)).toBe(false)
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
 
   it('leaves the same branch checked out again at a new head', async () => {

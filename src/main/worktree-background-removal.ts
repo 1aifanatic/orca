@@ -141,17 +141,18 @@ export function startBackgroundWorktreeRemoval(
   args: {
     removal: Pick<
       WorktreeRemovalRecord,
-      'worktreeId' | 'repoId' | 'repoPath' | 'deleteBranch' | 'force'
+      'worktreeId' | 'repoId' | 'repoPath' | 'deleteBranch' | 'force' | 'checkoutIdentity'
     > & { worktree: Pick<GitWorktreeInfo, 'path' | 'branch' | 'head'> }
   } & BackgroundWorktreeRemovalJob
 ): Promise<RemoveWorktreeResult> {
-  const { worktree, ...accepted } = args.removal
+  const { worktree, checkoutIdentity, ...accepted } = args.removal
   const record: WorktreeRemovalRecord = {
     ...accepted,
     worktreePath: worktree.path,
     branch: normalizeLocalBranchRef(worktree.branch),
     head: worktree.head,
-    requestedAt: Date.now()
+    requestedAt: Date.now(),
+    ...(checkoutIdentity ? { checkoutIdentity } : {})
   }
   const settlement = addPendingRemoval(record)
   runBackgroundWorktreeRemoval(record, args, persistWorktreeRemovalRecords())
@@ -301,10 +302,7 @@ async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promis
     return false
   }
   try {
-    return (
-      !(await isCheckoutRegistered(record)) &&
-      (await isUnregisteredRemovalLeftover(record.repoPath, record.worktreePath))
-    )
+    return !(await isCheckoutRegistered(record)) && (await isUnregisteredRemovalLeftover(record))
   } catch (error) {
     // Unknowable: the row stays however Git lists it, as before this record existed.
     console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)

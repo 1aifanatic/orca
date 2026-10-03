@@ -256,4 +256,35 @@ describe('durable worktree removal records', () => {
     await writeFile(worktreeRemovalRecordsFile(directory), '{not json')
     expect(await readWorktreeRemovalRecords(directory)).toEqual([])
   })
+
+  it('keeps the accepted checkout identity, reading a malformed one as unrecorded', async () => {
+    const record = {
+      worktreeId: 'repo-1::/work/a',
+      repoId: 'repo-1',
+      repoPath: '/work/repo',
+      worktreePath: '/work/a',
+      branch: 'a',
+      head: 'abc',
+      deleteBranch: false,
+      force: true,
+      requestedAt: 5
+    }
+    const checkoutIdentity = { dev: '16777232', ino: '18446744073709551615', birthtimeNs: '1' }
+    await writeFile(
+      worktreeRemovalRecordsFile(directory),
+      JSON.stringify({
+        version: 1,
+        removals: [
+          { ...record, checkoutIdentity },
+          { ...record, worktreeId: 'repo-1::/work/b', checkoutIdentity: { dev: 1, ino: 2 } }
+        ]
+      })
+    )
+
+    // The malformed one stays, so Git's own checks can still finish it.
+    expect(await readWorktreeRemovalRecords(directory)).toEqual([
+      { ...record, checkoutIdentity },
+      { ...record, worktreeId: 'repo-1::/work/b' }
+    ])
+  })
 })

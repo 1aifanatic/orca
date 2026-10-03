@@ -21,8 +21,10 @@ import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import {
   assertUnregisteredRemovalLeftover,
   differentCheckoutAtPathError,
+  differentFolderAtPathError,
   isUnregisteredRemovalLeftover
 } from '../worktree-removal-leftover'
+import { matchCheckoutDirectory } from '../worktree-checkout-identity'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { WorktreeRemovalRecord } from '../worktree-removal-records'
 import {
@@ -128,6 +130,8 @@ async function finishInterruptedLocalWorktreeRemoval(
     deleteBranch: record.deleteBranch,
     target: { id: record.worktreeId }
   }
+  // Why the repo's current path: the record's may predate a repo move.
+  const leftoverRecord = { ...record, repoPath: repo.path }
   const worktrees = await listWorktreesStrict(repo.path, localOptions)
   const registered = worktrees.some((worktree) =>
     areWorktreePathsEqual(worktree.path, record.worktreePath)
@@ -146,13 +150,21 @@ async function finishInterruptedLocalWorktreeRemoval(
     )
   }
   const gitLink = await readCheckoutGitLink(record.worktreePath)
-  // Why: the finish forces, so a checkout created at this path since the quit must not be taken.
+  const directory = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
+  // Why: the finish forces and nobody asked for it this run, so it may only take the directory the
+  // removal accepted. A record without an identity (an older build's) is left to Git's own checks.
+  if (
+    directory === 'different' ||
+    (directory === 'unrecorded' && !(deletable && gitLink === 'present'))
+  ) {
+    throw differentFolderAtPathError(record.worktreePath)
+  }
   // At an unregistered path, only a `.git` naming the admin entry Git removed is this checkout's
   // own leftover (Git drops the registration even when its delete fails partway).
   if (
     deletable
       ? !isRecordedCheckout(deletable, record)
-      : !(await isUnregisteredRemovalLeftover(repo.path, record.worktreePath))
+      : !(await isUnregisteredRemovalLeftover(leftoverRecord))
   ) {
     throw differentCheckoutAtPathError(record.worktreePath)
   }
@@ -184,10 +196,18 @@ async function finishInterruptedLocalWorktreeRemoval(
       repo.path,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null,
-      // Why only unregistered: a registered checkout here was just proven to be the recorded one.
+      // Why recheck in the slot: the wait can outlast large deletes, and the path may change meanwhile.
       deletable
-        ? async () => {}
-        : () => assertUnregisteredRemovalLeftover(repo.path, record.worktreePath, localOptions),
+        ? async () => {
+            const current = await matchCheckoutDirectory(
+              record.worktreePath,
+              record.checkoutIdentity
+            )
+            if (current !== 'same' && current !== 'absent') {
+              throw differentFolderAtPathError(record.worktreePath)
+            }
+          }
+        : () => assertUnregisteredRemovalLeftover(leftoverRecord, localOptions),
       localOptions
     )
     removed = true

@@ -39,7 +39,7 @@ export async function withUnregisteredRemovalCheckouts(
     const failed = failedWorktreeRemovals.get(record.worktreeId) === record
     if (
       (await worktreeCheckoutExists(record.worktreePath)) &&
-      (!failed || (await isUnregisteredRemovalLeftover(record.repoPath, record.worktreePath)))
+      (!failed || (await isUnregisteredRemovalLeftover(record)))
     ) {
       leftovers.push({
         path: record.worktreePath,
