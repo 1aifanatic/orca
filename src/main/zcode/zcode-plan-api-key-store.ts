@@ -96,7 +96,9 @@ function rollbackPlaintextEnvelope(
     }
     if (previousEnvelope) {
       try {
-        writeSecureFile(keyPath, previousEnvelope.toString('utf8'))
+        writeSecureFile(keyPath, previousEnvelope.toString('utf8'), {
+          shouldPublish: () => readFileSync(keyPath).equals(attempted)
+        })
       } catch {
         // A failed restore may already have published the previous envelope.
       }

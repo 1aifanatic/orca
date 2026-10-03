@@ -169,7 +169,9 @@ describe('zcode-plan-api-key-store', () => {
     // First write publishes the unrestricted replacement; the second restores
     // the previous envelope so the user's old key survives the failed replace.
     expect(writeSecureFileMock).toHaveBeenCalledTimes(2)
-    expect(writeSecureFileMock).toHaveBeenLastCalledWith(storePath, previous.toString('utf8'))
+    expect(writeSecureFileMock).toHaveBeenLastCalledWith(storePath, previous.toString('utf8'), {
+      shouldPublish: expect.any(Function)
+    })
     expect(rmSyncMock).not.toHaveBeenCalledWith(storePath, expect.anything())
     warn.mockRestore()
   })
