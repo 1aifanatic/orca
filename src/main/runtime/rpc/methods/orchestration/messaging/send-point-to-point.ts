@@ -89,8 +89,8 @@ export function sendPointToPointMessage(args: {
       parseRemoteWorkerPayload(params.payload).dispatchId === dispatch.id &&
       messageRunId === dispatch.run_id &&
       to === `run:${dispatch.run_id}` &&
-      dispatch.status !== 'pending' &&
-      dispatch.status !== 'dispatched' &&
+      (db.getWorkerDispatch(dispatch.id)?.state === 'stopping' ||
+        (dispatch.status !== 'pending' && dispatch.status !== 'dispatched')) &&
       db.isDispatchProcessCurrent({
         dispatchId: dispatch.id,
         paneKey: senderPaneKey ?? null,
