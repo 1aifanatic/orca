@@ -71,31 +71,31 @@ export function structuredAgentTurnAnchors(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   // A send a Stop took back after its turn opened but before the provider echoed it: the record
-  // still names the provider's key, and the send is no longer in flight. It opened the turn that
-  // started before the Stop took it back.
+  // still names the provider's key, and the send is no longer in flight. It opened the turn whose
+  // record the journal wrote before the row that took it back.
   const stoppedBeforeEcho = new Map(
     submissions.flatMap((submission) =>
       !submission.providerItemId &&
       submission.queuedMessageId === undefined &&
       submission.resolvedAt !== null &&
       dispatchWasWithdrawn(submission)
-        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission.resolvedAt] as const]
+        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission] as const]
         : []
     )
   )
   const anchors = new Map<string, string>()
   let precedingUserItemId: string | null = null
   let inFlightSinceLastTurn: string | null = null
-  let stoppedSinceLastTurn: { itemId: string; resolvedAt: number } | null = null
+  let stoppedSinceLastTurn: { itemId: string; submission: AgentJournalSubmission } | null = null
   for (const item of items) {
     if (userItemIds.has(item.itemId)) {
       precedingUserItemId = item.itemId
       if (inFlightSinceLastTurn === null && inFlight.has(item.itemId)) {
         inFlightSinceLastTurn = item.itemId
       }
-      const resolvedAt = stoppedBeforeEcho.get(item.itemId)
-      if (stoppedSinceLastTurn === null && resolvedAt !== undefined) {
-        stoppedSinceLastTurn = { itemId: item.itemId, resolvedAt }
+      const stopped = stoppedBeforeEcho.get(item.itemId)
+      if (stoppedSinceLastTurn === null && stopped !== undefined) {
+        stoppedSinceLastTurn = { itemId: item.itemId, submission: stopped }
       }
       continue
     }
@@ -103,12 +103,9 @@ export function structuredAgentTurnAnchors(
     if (!turn || !isRootAgentJournalItem(item)) {
       continue
     }
-    // Times, not journal order: a client sees when a send was taken back, never that row's place.
-    // Temporary: STA-9337 moves this to journal order.
     const stoppedOpener =
       stoppedSinceLastTurn !== null &&
-      turn.startedAt !== undefined &&
-      turn.startedAt <= stoppedSinceLastTurn.resolvedAt
+      openedBeforeTakenBack(item, turn, stoppedSinceLastTurn.submission)
         ? stoppedSinceLastTurn.itemId
         : null
     anchors.set(
@@ -126,6 +123,25 @@ export function structuredAgentTurnAnchors(
     stoppedSinceLastTurn = null
   }
   return anchors
+}
+
+/** Whether a turn record came before the row that took a send back: by journal order where the
+ *  host publishes that row's place. Temporary: a host that predates `resolvedSequence` is read by
+ *  times, which a resume rewrites to whole seconds; dropped once every supported remote host
+ *  publishes it. */
+function openedBeforeTakenBack(
+  record: AgentJournalRenderItem,
+  turn: AgentJournalTurnLifecycle,
+  submission: Pick<AgentJournalSubmission, 'resolvedSequence' | 'resolvedAt'>
+): boolean {
+  if (submission.resolvedSequence !== undefined) {
+    return record.sequence < submission.resolvedSequence
+  }
+  return (
+    turn.startedAt !== undefined &&
+    submission.resolvedAt !== null &&
+    turn.startedAt <= submission.resolvedAt
+  )
 }
 
 function anchorOf(

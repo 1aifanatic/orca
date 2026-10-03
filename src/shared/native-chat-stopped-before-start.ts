@@ -3,7 +3,6 @@
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   agentJournalItemPosition,
-  compareAgentJournalItems,
   compareAgentJournalPositions
 } from './agent-session-journal-position'
 import type {
@@ -26,24 +25,31 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 }
 
 /**
- * Where a send a Stop took back is drawn: after the rest of every turn it waited on, where the Stop
- * took it back, else at its own row. It is drawn no earlier than `sentBefore`, the latest loaded row
- * of anything sent before it (a handed-over send's row is its handover, which can follow a send
- * still queued). A turn it waited on is one whose opener (`anchors`) the journal places at or
- * before that point. Journal order only for turns, never a clock: a resume rewrites a turn's start time.
+ * Where a send a Stop took back is drawn: at the journal row that took it back (`resolvedSequence`),
+ * past the end of every turn whose opener (`anchors`) the journal wrote before that row. A host
+ * that predates the published position gives its own row instead, and only turns opened before
+ * that row count. Journal order only, never a clock.
  */
 export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
   item: AgentJournalRenderItem,
   anchors: ReadonlyMap<string, string>,
-  sentBefore?: AgentJournalRenderItem
+  resolvedSequence: number | undefined
 ): AgentJournalPosition {
-  const from = sentBefore && compareAgentJournalItems(sentBefore, item) > 0 ? sentBefore : item
+  const own = agentJournalItemPosition(item)
+  // No item sits on the row that took the send back, so nothing compares equal to it.
+  const takenBack =
+    resolvedSequence !== undefined ? { sequence: resolvedSequence, index: 0 } : undefined
+  const from = takenBack && compareAgentJournalPositions(takenBack, own) > 0 ? takenBack : own
   const byId = new Map(items.map((candidate) => [candidate.itemId, candidate]))
   const waitedOn = new Set<string>()
   for (const [turnItemId, anchorId] of anchors) {
     const opener = byId.get(anchorId)
-    if (anchorId !== item.itemId && opener && compareAgentJournalItems(opener, from) <= 0) {
+    if (
+      anchorId !== item.itemId &&
+      opener &&
+      compareAgentJournalPositions(agentJournalItemPosition(opener), from) < 0
+    ) {
       waitedOn.add(turnItemId)
     }
   }
@@ -52,47 +58,19 @@ export function stoppedSendPosition(
     const ofTurn =
       waitedOn.has(candidate.itemId) ||
       (candidate.turnScope?.kind === 'turn' && waitedOn.has(candidate.turnScope.turnItemId))
-    if (ofTurn && compareAgentJournalItems(candidate, last) > 0) {
-      last = candidate
+    const position = agentJournalItemPosition(candidate)
+    if (ofTurn && compareAgentJournalPositions(position, last) > 0) {
+      last = { sequence: position.sequence, index: position.index + 0.5 }
     }
   }
-  const position = agentJournalItemPosition(last)
-  // Just after that row, ahead of whatever the journal wrote next.
-  return last === item ? position : { sequence: position.sequence, index: position.index + 0.5 }
-}
-
-/** For each submission, the latest loaded row of the ones sent before it, in `submittedAt` order
- *  with ties kept in list order as the client reducer keeps them (see `keepStoppedSendsInSendOrder`). */
-export function latestRowsSentBefore(
-  submissions: readonly AgentJournalSubmission[],
-  itemsById: ReadonlyMap<string, AgentJournalRenderItem>
-): ReadonlyMap<string, AgentJournalRenderItem> {
-  const inSendOrder = submissions
-    .map((submission, order) => ({ submission, order }))
-    .sort(
-      (left, right) =>
-        left.submission.submittedAt - right.submission.submittedAt || left.order - right.order
-    )
-  const before = new Map<string, AgentJournalRenderItem>()
-  let latest: AgentJournalRenderItem | undefined
-  for (const { submission } of inSendOrder) {
-    const key = agentJournalSubmissionKey(submission.clientMessageId)
-    if (latest) {
-      before.set(key, latest)
-    }
-    const row = itemsById.get(key)
-    if (row && (!latest || compareAgentJournalItems(row, latest) > 0)) {
-      latest = row
-    }
-  }
-  return before
+  return last
 }
 
 /**
  * Sends a Stop took back (`stopped`, by id) keep the order they were sent in: a later one is drawn
- * no earlier than just after an earlier one. Sent order is `submittedAt`, the host's accept time,
- * ties kept in list order as the client reducer keeps them; a client never sees a handed-over
- * send's acceptance position (STA-9337). Returns whether it moved any.
+ * no earlier than just after an earlier one. Sent order is the published `submittedSequence`; a
+ * host that predates it gives `submittedAt`, its accept time, with ties kept in list order as the
+ * client reducer keeps them. Returns whether it moved any.
  */
 export function keepStoppedSendsInSendOrder(
   messages: NativeChatMessage[],
@@ -100,14 +78,20 @@ export function keepStoppedSendsInSendOrder(
   stopped: ReadonlySet<string>
 ): boolean {
   const indexById = new Map(messages.map((message, index) => [message.id, index]))
-  const sent = submissions
+  const taken = submissions
     .map((submission, order) => ({
       index: indexById.get(agentJournalSubmissionKey(submission.clientMessageId)),
-      submittedAt: submission.submittedAt,
+      submission,
       order
     }))
     .filter((entry) => entry.index !== undefined && stopped.has(messages[entry.index]!.id))
-    .sort((left, right) => left.submittedAt - right.submittedAt || left.order - right.order)
+  const byJournal = taken.every((entry) => entry.submission.submittedSequence !== undefined)
+  const sent = taken.sort(
+    (left, right) =>
+      (byJournal
+        ? left.submission.submittedSequence! - right.submission.submittedSequence!
+        : left.submission.submittedAt - right.submission.submittedAt) || left.order - right.order
+  )
   let floor: AgentJournalPosition | undefined
   let moved = false
   for (const { index } of sent) {
