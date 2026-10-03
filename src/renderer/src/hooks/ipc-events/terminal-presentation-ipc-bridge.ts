@@ -55,7 +55,7 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
           })
           const shouldActivate = terminalPresentation === 'focused'
           const shouldSurfaceOwner = terminalPresentation !== 'background' && surfaceOwner !== false
-          if (shouldActivate) {
+          if (shouldActivate && splitRatio === undefined) {
             activateTerminalInitiatedWorktree(store, worktreeId)
           }
           const worktreeTabs = store.tabsByWorktree[worktreeId] ?? []
@@ -81,6 +81,22 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
             throw new Error(`Terminal tab ${tabId} not found`)
           }
           const reusedTab = existingTab ?? splitTargetTab
+          const ratioSplitLayout =
+            splitRatio !== undefined && reusedTab && leafId && ptyId && splitFromLeafId
+              ? addSplitLeafToLayout(
+                  store.terminalLayoutsByTabId?.[reusedTab.id],
+                  splitFromLeafId,
+                  leafId,
+                  ptyId,
+                  splitDirection ?? 'horizontal',
+                  title,
+                  shouldActivate,
+                  splitRatio
+                )
+              : undefined
+          if (shouldActivate && splitRatio !== undefined) {
+            activateTerminalInitiatedWorktree(store, worktreeId)
+          }
           const tab =
             reusedTab ??
             (ptyId
@@ -159,16 +175,17 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
               const sourcePtyId = existingLayout?.ptyIdsByLeafId?.[splitFromLeafId]
               store.setTabLayout(
                 tab.id,
-                addSplitLeafToLayout(
-                  existingLayout,
-                  splitFromLeafId,
-                  leafId,
-                  ptyId,
-                  splitDirection ?? 'horizontal',
-                  title,
-                  shouldActivate,
-                  splitRatio
-                )
+                ratioSplitLayout ??
+                  addSplitLeafToLayout(
+                    existingLayout,
+                    splitFromLeafId,
+                    leafId,
+                    ptyId,
+                    splitDirection ?? 'horizontal',
+                    title,
+                    shouldActivate,
+                    splitRatio
+                  )
               )
               window.dispatchEvent(
                 new CustomEvent<SplitTerminalPaneDetail>(SPLIT_TERMINAL_PANE_EVENT, {
