@@ -1,4 +1,5 @@
-// A Codex send a UserPromptSubmit hook of the person's own blocked. Codex records and echoes
+// A Codex send a Codex UserPromptSubmit hook blocked (the person's, the project's or a managed
+// one). Codex records and echoes
 // nothing for a blocked prompt and still completes the turn, but reports the block itself as
 // `hook/completed` inside that turn. Its completed end settles the send as blocked, with the
 // hook's reason, so the chat stops reading as working. With no such report a completed turn
@@ -96,7 +97,7 @@ function notify(method: string, params: Record<string, unknown>): void {
   handlers?.onNotification?.(method, params)
 }
 
-/** Codex's report that a UserPromptSubmit hook of the person's blocked the prompt in this turn. */
+/** Codex's report that a UserPromptSubmit hook blocked the prompt in this turn. */
 function hookBlocked(
   turnId: string,
   status: 'blocked' | 'stopped',
@@ -176,7 +177,10 @@ function sentenceFor(journal: AgentJournalSnapshot, clientMessageId: string): st
     (entry) => entry.clientMessageId === clientMessageId
   )
   const fact = readWholeAgentSessionFailureFact(row?.rejection)
-  return fact && agentSessionFailureSentence(fact, 'rejection', { retryControl: false })
+  return (
+    fact &&
+    agentSessionFailureSentence(fact, 'rejection', { agentName: 'Codex', retryControl: false })
+  )
 }
 
 beforeEach(async () => {
@@ -252,7 +256,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-describe('a Codex send a hook of the person blocked', () => {
+describe('a Codex send a Codex hook blocked', () => {
   it("settles a blocked steer with the hook's reason, and the chat moves on", async () => {
     await runningTurn()
     const followUp = await steered('and paste the API key')
@@ -265,9 +269,9 @@ describe('a Codex send a hook of the person blocked', () => {
       detail: { text: 'No secrets in prompts.', audience: 'person' }
     })
     // The sentence the host writes beside the fact, which an older client shows as it is.
-    expect(row?.reason).toBe('A hook blocked this message: No secrets in prompts.')
+    expect(row?.reason).toBe('A Codex hook blocked this message: No secrets in prompts.')
     expect(sentenceFor(await snapshot(), followUp)).toBe(
-      'A hook blocked this message: No secrets in prompts.'
+      'A Codex hook blocked this message: No secrets in prompts.'
     )
   })
 
@@ -280,7 +284,7 @@ describe('a Codex send a hook of the person blocked', () => {
 
     await blockedAndTheChatMovesOn(opening)
     expect(sentenceFor(await snapshot(), opening)).toBe(
-      'A hook blocked this message: No secrets in prompts.'
+      'A Codex hook blocked this message: No secrets in prompts.'
     )
   })
 
@@ -292,23 +296,61 @@ describe('a Codex send a hook of the person blocked', () => {
 
     const row = await blockedAndTheChatMovesOn(followUp)
     expect(row?.rejection).toEqual({ kind: 'hookBlocked' })
-    expect(sentenceFor(await snapshot(), followUp)).toBe('A hook blocked this message.')
+    expect(sentenceFor(await snapshot(), followUp)).toBe('A Codex hook blocked this message.')
   })
 
-  it('keeps a long or marked-up reason plain and bounded', async () => {
+  it('keeps a long or marked-up reason plain and bounded, never splitting a character', async () => {
     await runningTurn()
     const followUp = await steered('and check the tests')
-    const reason = `<b>Denied</b>\n**by policy**\u0007\u202e ${'x'.repeat(600)}`
+    const reason = `<b>Denied</b>\n**by policy**\u0007‮؜ ${'x'.repeat(268)}\u{1F600}${'y'.repeat(40)}`
     hookBlocked('turn-1', 'stopped', [{ kind: 'stop', text: reason }])
     turns.end('completed')
 
     const row = await blockedAndTheChatMovesOn(followUp)
     const text = readWholeAgentSessionFailureFact(row?.rejection)?.detail?.text ?? ''
     expect(text.startsWith('<b>Denied</b> **by policy** x')).toBe(true)
-    expect(text).toHaveLength(MAX_CODEX_HOOK_REASON_CHARS)
-    expect(text.endsWith('\u2026')).toBe(true)
+    expect(text.length).toBeLessThanOrEqual(MAX_CODEX_HOOK_REASON_CHARS)
+    expect(text.endsWith('…')).toBe(true)
+    // The emoji the cut fell on is dropped whole, never left as half a surrogate pair.
+    expect(/[\ud800-\udbff](?![\udc00-\udfff])/.test(text)).toBe(false)
     // oxlint-disable-next-line no-control-regex -- asserting no control characters remain.
-    expect(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/.test(text)).toBe(false)
+    expect(/[\u0000-\u001f\u007f-\u009f؜‪-‮]/.test(text)).toBe(false)
+    // Cut short with an ellipsis, it takes no stop after it.
+    expect(sentenceFor(await snapshot(), followUp)).toBe(
+      `A Codex hook blocked this message: ${text}`
+    )
+  })
+
+  // Codex's own example: the hook's message to the person, then why it stopped the prompt.
+  it("shows the hook's message to the person ahead of its stop reason", async () => {
+    await runningTurn()
+    const followUp = await steered('start the go-workflow')
+    hookBlocked('turn-1', 'stopped', [
+      { kind: 'warning', text: 'go-workflow must start from PlanMode' },
+      { kind: 'stop', text: 'prompt blocked' }
+    ])
+    turns.end('completed')
+
+    await blockedAndTheChatMovesOn(followUp)
+    expect(sentenceFor(await snapshot(), followUp)).toBe(
+      'A Codex hook blocked this message: go-workflow must start from PlanMode. prompt blocked.'
+    )
+  })
+
+  // Codex blocks for the first reason any of a turn's hooks gave, in their configured order.
+  it('keeps the first reason a turn gave, and never trades it for none', async () => {
+    await runningTurn()
+    const followUp = await steered('and paste the API key!')
+    hookBlocked('turn-1', 'blocked', [{ kind: 'feedback', text: 'Never paste keys!' }])
+    hookBlocked('turn-1', 'blocked', [{ kind: 'feedback', text: 'Second hook.' }])
+    hookBlocked('turn-1', 'stopped', [])
+    turns.end('completed')
+
+    await blockedAndTheChatMovesOn(followUp)
+    // A reason that already ends its sentence takes no second stop.
+    expect(sentenceFor(await snapshot(), followUp)).toBe(
+      'A Codex hook blocked this message: Never paste keys!'
+    )
   })
 
   it('leaves a send a completed turn never echoed pending when no hook blocked it', async () => {
@@ -400,20 +442,34 @@ describe('a Codex send a hook of the person blocked', () => {
       entry: next
     })
 
-    // So every desktop, the sender included, draws it from its row as unsent.
-    for (const sentHere of [outbox, []]) {
-      expect(
-        projectStructuredAgentSessionMessages(journal.items, sentHere, journal.submissions)
-      ).toContainEqual(expect.objectContaining({ id: key, unsent: true }))
+    // So every desktop draws it from its row as unsent, exactly once: the sender before its outbox
+    // lets the copy go, after, and another desktop alike.
+    const unreconciled = [
+      {
+        ...queued(followUp, 'and paste the API key'),
+        state: 'dispatching' as const,
+        lastAttemptAt: 1
+      },
+      next
+    ]
+    for (const sentHere of [unreconciled, outbox, []]) {
+      const rows = projectStructuredAgentSessionMessages(
+        journal.items,
+        sentHere,
+        journal.submissions
+      )
+      expect(rows.filter(({ id }) => id === key)).toEqual([
+        expect.objectContaining({ id: key, unsent: true })
+      ])
     }
     expect(sentenceFor(journal, followUp)).toBe(
-      'A hook blocked this message: No secrets in prompts.'
+      'A Codex hook blocked this message: No secrets in prompts.'
     )
-    // The phone, which can't mark a message unsent yet, keeps it hidden.
-    expect(
-      projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
-        showsUndeliveredSentElsewhere: false
-      }).map(({ id }) => id)
-    ).not.toContain(key)
+    // The phone, which can't mark a message unsent yet, draws it as sent, as before the block.
+    const onPhone = projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
+      showsUndeliveredSentElsewhere: false
+    }).filter(({ id }) => id === key)
+    expect(onPhone).toHaveLength(1)
+    expect(onPhone[0]).not.toHaveProperty('unsent')
   })
 })

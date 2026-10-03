@@ -255,8 +255,8 @@ export function dispatchWasWithdrawn(
   )
 }
 
-/** A hook of the person's own blocked it: the same words are blocked again, so no client keeps a
- *  copy to retry, and its journal row is what shows it, on every device alike. */
+/** An agent's hook blocked it: the same words are blocked again, so no client keeps a copy to
+ *  retry, and its journal row is what shows it, on every device alike. */
 export function dispatchWasBlockedByHook(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>
 ): boolean {

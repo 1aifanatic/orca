@@ -46,6 +46,8 @@ export const AGENT_SESSION_FAILURE_COPY = {
   providerRejectedQuoted: 'The provider did not accept this message: {{detail}}.',
   hookBlocked: 'A hook blocked this message.',
   hookBlockedQuoted: 'A hook blocked this message: {{detail}}.',
+  agentHookBlocked: 'A {{agent}} hook blocked this message.',
+  agentHookBlockedQuoted: 'A {{agent}} hook blocked this message: {{detail}}.',
   attachmentEmpty: 'An image on this message is empty, so the message was not sent.',
   attachmentTooLarge: 'An image on this message is too large, so the message was not sent.',
   attachmentLargerThan:

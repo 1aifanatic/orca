@@ -9,8 +9,8 @@ export const MAX_CODEX_PENDING_DISPATCH_ECHOES = 256
  *  turns kept that Codex left unopened through a wait. */
 export const MAX_CODEX_RECORDED_TURN_ENDS = 64
 
-/** How a primary-thread turn ended, as Codex reported it. `blocked`: a hook of the person's
- *  blocked a prompt in that turn, which Codex then never recorded. */
+/** How a primary-thread turn ended, as Codex reported it. `blocked`: a Codex hook blocked a prompt
+ *  in that turn, which Codex then never recorded. */
 export type CodexTurnEnd =
   | { status: 'completed'; blocked?: CodexPromptBlock }
   | { status: 'interrupted' }
@@ -46,7 +46,8 @@ export type CodexDispatchEchoes = {
   answeredUnopenedTurn: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
   /** Codex did not open this answered turn within a wait, so no later wait is spent on it. */
   leftUnopened: (threadId: string, turnId: string) => void
-  /** Codex reported a hook blocked a prompt in this turn; kept only until the turn ends. */
+  /** Codex reported a Codex hook blocked a prompt in this turn, kept only until the turn ends: the
+   *  first reason any of its hooks gave. */
   blockPrompt: (threadId: string, turnId: string, block: CodexPromptBlock) => void
   /** The block reported in this turn, which its end takes; null when none was. */
   takePromptBlock: (threadId: string, turnId: string) => CodexPromptBlock | null
@@ -128,8 +129,10 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
     },
     blockPrompt: (threadId, turnId, block) => {
       const turn = turnKey(threadId, turnId)
+      // Codex reports hooks in their configured order and blocks for the first reason given.
+      const earlier = blockedTurns.get(turn)
       blockedTurns.delete(turn)
-      blockedTurns.set(turn, block)
+      blockedTurns.set(turn, earlier?.reason ? earlier : block)
       for (const oldest of blockedTurns.keys()) {
         if (blockedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
           break

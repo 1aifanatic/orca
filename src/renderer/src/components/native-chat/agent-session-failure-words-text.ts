@@ -138,6 +138,18 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.hookBlockedQuoted,
         values
       ),
+    agentHookBlocked: (values) =>
+      translate(
+        'components.native-chat.failureWords.agentHookBlocked',
+        COPY.agentHookBlocked,
+        values
+      ),
+    agentHookBlockedQuoted: (values) =>
+      translate(
+        'components.native-chat.failureWords.agentHookBlockedQuoted',
+        COPY.agentHookBlockedQuoted,
+        values
+      ),
     attachmentEmpty: () =>
       translate('components.native-chat.failureWords.attachmentEmpty', COPY.attachmentEmpty),
     attachmentTooLarge: () =>

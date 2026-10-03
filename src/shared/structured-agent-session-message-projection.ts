@@ -13,6 +13,7 @@ import {
   undeliveredSentElsewhere
 } from './structured-agent-session-failed-start-elsewhere'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
+import { dispatchWasBlockedByHook } from './structured-agent-session-dispatch-rejection'
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
@@ -27,7 +28,8 @@ export function projectStructuredAgentSessionMessages(
     projectItems?: typeof projectStructuredItemsToNativeChat
     /** Whether the host can queue one again: an older host's are left hidden, as before. */
     showsFailedStartsSentElsewhere?: boolean
-    /** Whether the surface marks a message as unsent; one that can't leaves these hidden. */
+    /** Whether the surface marks a message as unsent; one that can't leaves these hidden, but
+     *  one a hook blocked it draws as sent. */
     showsUndeliveredSentElsewhere?: boolean
     /** This client's whole outbox, cards' sends included, where `outbox` is only what the
      *  transcript draws: no row of a message it holds is drawn as sent elsewhere. */
@@ -43,11 +45,21 @@ export function projectStructuredAgentSessionMessages(
   )
   // Sent from elsewhere and refused for good by a failed start, or rejected after it was handed
   // over: shown as unsent, as this client's own would be, where the journal put it.
+  const undelivered = undeliveredSentElsewhere(submissions, sentHere)
   const unsentElsewhere = new Set(
     [
       ...(showsFailedStartsSentElsewhere ? failedStartsSentElsewhere(submissions, sentHere) : []),
-      ...(showsUndeliveredSentElsewhere ? undeliveredSentElsewhere(submissions, sentHere) : [])
+      ...(showsUndeliveredSentElsewhere ? undelivered : [])
     ].map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
+  )
+  // A surface that can't mark one unsent still draws a message a hook blocked, as sent, as it
+  // drew it before the block was known; it never vanishes.
+  const shownAsSent = new Set(
+    showsUndeliveredSentElsewhere
+      ? []
+      : undelivered
+          .filter(dispatchWasBlockedByHook)
+          .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
@@ -55,7 +67,11 @@ export function projectStructuredAgentSessionMessages(
     if (rejected.has(item.itemId)) {
       refused.set(item.itemId, item)
     }
-    if (!rejected.has(item.itemId) || unsentElsewhere.has(item.itemId)) {
+    if (
+      !rejected.has(item.itemId) ||
+      unsentElsewhere.has(item.itemId) ||
+      shownAsSent.has(item.itemId)
+    ) {
       visibleItems.push(item)
     }
   }

@@ -10,6 +10,7 @@ import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import {
   classifyDispatchRejection,
+  dispatchWasBlockedByHook,
   dispatchWasWithdrawn,
   failedBeforeHandover
 } from './structured-agent-session-dispatch-rejection'
@@ -52,7 +53,9 @@ function unsentElsewhere(
   )
   return submissions.filter(
     (submission) =>
-      !sentHere.has(submission.clientMessageId) &&
+      // No client keeps a copy of one a hook blocked, so its row draws it even while a copy is
+      // still on its way out of the outbox.
+      (!sentHere.has(submission.clientMessageId) || dispatchWasBlockedByHook(submission)) &&
       // A queued card's message: the card shows it, and its own Retry is the card's.
       submission.queuedMessageId === undefined &&
       unsent(submission) &&

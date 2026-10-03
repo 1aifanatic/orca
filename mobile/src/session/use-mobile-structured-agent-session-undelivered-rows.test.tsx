@@ -39,7 +39,18 @@ const UNDELIVERED: AgentJournalSubmission = {
   ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), { surface: 'rejection' })
 }
 
-function snapshot(): AgentSessionSubscribeEvent {
+/** A Codex hook blocked it: a rejection of its own kind, with the host's sentence beside it. */
+const HOOK_BLOCKED: AgentJournalSubmission = {
+  ...UNDELIVERED,
+  ...agentSessionFailureWords(
+    agentSessionFailureFact('hookBlocked', {
+      detail: { text: 'No secrets in prompts.', audience: 'person' }
+    }),
+    { surface: 'rejection', agentName: 'Codex' }
+  )
+}
+
+function snapshot(submission: AgentJournalSubmission = UNDELIVERED): AgentSessionSubscribeEvent {
   return {
     type: 'snapshot',
     sessionId: 'session-1',
@@ -51,7 +62,7 @@ function snapshot(): AgentSessionSubscribeEvent {
       direction: 'tail',
       items: [MESSAGE],
       removedItemIds: [],
-      submissions: [UNDELIVERED],
+      submissions: [submission],
       window: {
         oldest: { epoch: 'epoch-1', sequence: 1 },
         newest: { epoch: 'epoch-1', sequence: 1 },
@@ -75,8 +86,8 @@ afterEach(() => {
   listener = null
 })
 
-// The phone does not mark a message as unsent yet; drawn, it would look delivered.
-it('keeps a message the agent never got hidden, as before', async () => {
+/** The messages the phone's chat draws once the host's page holds this submission. */
+async function phoneMessages(submission: AgentJournalSubmission) {
   const client: RpcClient = {
     sendRequest: async () => ({
       id: 'request-1',
@@ -114,7 +125,18 @@ it('keeps a message the agent never got hidden, as before', async () => {
     renderer = create(createElement(Harness))
   })
   await vi.waitFor(() => expect(listener).toEqual(expect.any(Function)))
-  act(() => listener?.(snapshot()))
+  act(() => listener?.(snapshot(submission)))
+  return hook?.session.messages
+}
 
-  expect(hook?.session.messages).toEqual([])
+// The phone does not mark a message as unsent yet; drawn, it would look delivered.
+it('keeps a message the agent never got hidden, as before', async () => {
+  expect(await phoneMessages(UNDELIVERED)).toEqual([])
+})
+
+// Before the block was known it was drawn as sent; it stays so rather than vanish.
+it('draws a message a Codex hook blocked as sent, as before', async () => {
+  const messages = await phoneMessages(HOOK_BLOCKED)
+  expect(messages?.map(({ id }) => id)).toEqual([agentJournalSubmissionKey('op-undelivered')])
+  expect(messages?.[0]).not.toHaveProperty('unsent')
 })
