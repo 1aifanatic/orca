@@ -292,6 +292,64 @@ describe('diagnostics IPC handlers', () => {
     }
   )
 
+  it('recovers a late successful Linux open without launching another copy', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    spawnProcessMock.mockReturnValue(child)
+    const bundle = makeBundle({ bundleSubmissionId: 'latebundleabcdefghijklmnop' })
+    collectDiagnosticBundleMock.mockReturnValue(bundle)
+    await handlers.get('diagnostics:collectBundle')!({}, 30)
+    const open = handlers.get('diagnostics:openBundlePreview')!
+    const rejected = expect(open({}, bundle.bundleSubmissionId)).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(1_500)
+    await rejected
+    await expect(
+      handlers.get('diagnostics:uploadBundle')!({}, bundle.bundleSubmissionId)
+    ).rejects.toThrow(/open.*review file/)
+    child.emit('exit', 0, null)
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(open({}, bundle.bundleSubmissionId)).resolves.toBeUndefined()
+    expect(spawnProcessMock).toHaveBeenCalledOnce()
+    await handlers.get('diagnostics:uploadBundle')!({}, bundle.bundleSubmissionId)
+    expect(showMessageBoxMock).toHaveBeenCalledOnce()
+    expect(uploadDiagnosticBundleMock).toHaveBeenCalledOnce()
+  })
+
+  it('continues to reopen a preview after an acknowledged successful launch', async () => {
+    const bundle = makeBundle({ bundleSubmissionId: 'reopenbundleabcdefghijklmnop' })
+    collectDiagnosticBundleMock.mockReturnValue(bundle)
+    await handlers.get('diagnostics:collectBundle')!({}, 30)
+    const open = handlers.get('diagnostics:openBundlePreview')!
+    await open({}, bundle.bundleSubmissionId)
+    await open({}, bundle.bundleSubmissionId)
+    expect(openPathMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not credit a replacement bundle for an old launcher success', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    spawnProcessMock.mockReturnValue(child)
+    const bundle = makeBundle({ bundleSubmissionId: 'replacebundleabcdefghijklmnop' })
+    collectDiagnosticBundleMock.mockReturnValue(bundle)
+    const collect = handlers.get('diagnostics:collectBundle')!
+    await collect({}, 30)
+    const rejected = expect(
+      handlers.get('diagnostics:openBundlePreview')!({}, bundle.bundleSubmissionId)
+    ).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(1_500)
+    await rejected
+    await collect({}, 30)
+    child.emit('exit', 0, null)
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(
+      handlers.get('diagnostics:uploadBundle')!({}, bundle.bundleSubmissionId)
+    ).rejects.toThrow(/open.*review file/)
+    expect(showMessageBoxMock).not.toHaveBeenCalled()
+    expect(uploadDiagnosticBundleMock).not.toHaveBeenCalled()
+  })
+
   it('requires opening the retained review file before sending', async () => {
     const bundle = makeBundle({ bundleSubmissionId: 'bundleabcdefghijklmnop' })
     collectDiagnosticBundleMock.mockReturnValue(bundle)

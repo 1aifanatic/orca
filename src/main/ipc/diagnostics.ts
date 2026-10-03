@@ -49,6 +49,7 @@ type PendingBundle = {
   readonly previewFilePath: string
   ttlTimer: ReturnType<typeof setTimeout>
   previewOpened: boolean
+  previewOpenAwaitingRetry?: boolean
 }
 
 const pendingBundles = new Map<string, PendingBundle>()
@@ -124,7 +125,7 @@ function getPendingBundleForUpload(bundleSubmissionId: unknown): {
   return { bundle: pending.bundle, payload: pending.bundle.payload }
 }
 
-function getPendingPreviewFilePath(bundleSubmissionId: unknown): string {
+function getPendingPreviewBundle(bundleSubmissionId: unknown): PendingBundle {
   if (
     typeof bundleSubmissionId !== 'string' ||
     !/^[A-Za-z0-9_-]{16,64}$/.test(bundleSubmissionId)
@@ -136,7 +137,7 @@ function getPendingPreviewFilePath(bundleSubmissionId: unknown): string {
   if (!pending) {
     throw new Error('review file has expired; create a new one before opening')
   }
-  return pending.previewFilePath
+  return pending
 }
 
 function discardPendingBundle(bundleSubmissionId: unknown): void {
@@ -281,14 +282,25 @@ export function registerDiagnosticsHandlers(): void {
   )
 
   ipcMain.handle('diagnostics:openBundlePreview', async (_event, bundleSubmissionId: unknown) => {
-    const previewFilePath = getPendingPreviewFilePath(bundleSubmissionId)
-    const errorMessage = await openPathWithSystemDefault(previewFilePath)
+    const pending = getPendingPreviewBundle(bundleSubmissionId)
+    if (pending.previewOpenAwaitingRetry) {
+      pending.previewOpenAwaitingRetry = false
+      return
+    }
+    let replyPending = true
+    const markOpened = (): void => {
+      // Late completion must not credit a discarded or replacement preview.
+      if (pendingBundles.get(pending.bundle.bundleSubmissionId) === pending) {
+        pending.previewOpened = true
+        if (!replyPending) {
+          pending.previewOpenAwaitingRetry = true
+        }
+      }
+    }
+    const errorMessage = await openPathWithSystemDefault(pending.previewFilePath, markOpened)
+    replyPending = false
     if (errorMessage) {
       throw new Error('could not open review file')
-    }
-    const pending = pendingBundles.get(bundleSubmissionId as string)
-    if (pending) {
-      pending.previewOpened = true
     }
   })
 

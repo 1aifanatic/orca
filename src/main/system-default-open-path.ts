@@ -7,9 +7,20 @@ import { withTimeout } from '../shared/promise-timeout-fallback'
 export const LINUX_OPEN_PATH_SETTLE_BOUND_MS = 1_500
 
 /** Linux opens must reply without treating an unknown launcher outcome as success. */
-export function openPathWithSystemDefault(targetPath: string): Promise<string> {
+export function openPathWithSystemDefault(
+  targetPath: string,
+  onOpened?: () => void
+): Promise<string> {
   if (process.platform !== 'linux') {
-    return shell.openPath(targetPath)
+    const opened = shell.openPath(targetPath)
+    return onOpened
+      ? opened.then((value) => {
+          if (value === '') {
+            onOpened()
+          }
+          return value
+        })
+      : opened
   }
   const opened = new Promise<string>((resolve, reject) => {
     const child = spawnProcess({
@@ -28,7 +39,12 @@ export function openPathWithSystemDefault(targetPath: string): Promise<string> {
     child.unref()
   })
   const settled = opened.then(
-    (value) => ({ value }),
+    (value) => {
+      if (value === '') {
+        onOpened?.()
+      }
+      return { value }
+    },
     (error: unknown) => ({ error })
   )
   return withTimeout<Awaited<typeof settled> | null>(
