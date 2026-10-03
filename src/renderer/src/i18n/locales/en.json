@@ -2187,7 +2187,8 @@
         "c679af7ad9": "Refresh My Todos",
         "dfd72673e7": "Failed to save project selection.",
         "b797bdd7c3": "Clear search",
-        "99c2755218": "Jira JQL, e.g. project = ABC AND statusCategory != Done",
+        "jiraTextMatchesNotice": "Showing text matches. Jira couldn't run this search as JQL.",
+        "99c2755218": "Search issues or enter JQL, e.g. project = ABC",
         "2ff9fd71fd": "Refresh Jira issues",
         "0b65d3fb2c": "Search Linear projects...",
         "eec0c5c079": "Search Linear issues...",
@@ -2306,7 +2307,7 @@
         "6edf402e11": "overview",
         "9ae151b26b": "linear",
         "94d900518d": "No issues match the selected preset.",
-        "f51e254d35": "Try a different JQL query.",
+        "f51e254d35": "Try different search terms or JQL.",
         "4645a7814f": "jira",
         "e224d76876": "MR",
         "bbec4717ee": "mr",
@@ -18861,6 +18862,20 @@
         "google": "google",
         "accounts": "accounts"
       }
+    },
+    "managedData": {
+      "description": "Add accounts by running this command in a terminal on the Orca host. Selection applies to new explicit agent launches on that host; direct SSH relay and Windows-hosted WSL launches use their own credentials.",
+      "copied": "Copied",
+      "add": "Copy add account command",
+      "refresh": "Refresh accounts",
+      "upgrade": "If accounts do not appear, update or restart the Orca host.",
+      "system": "System default",
+      "active": "Active",
+      "select": "Select",
+      "remove": "Remove",
+      "removeTitle": "Remove managed account?",
+      "removeDescription": "Stop agents using this profile first. Removal deletes its saved credentials and conversation data. Your system login stays unchanged.",
+      "cancel": "Cancel"
     }
   }
 }
