@@ -1,0 +1,141 @@
+import { createHash } from 'node:crypto'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { createRequire } from 'node:module'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
+import { pathToFileURL } from 'node:url'
+
+const root = resolve(import.meta.dirname, '../..')
+if (
+  process.env.GITHUB_ACTIONS !== 'true' ||
+  !['darwin', 'linux', 'win32'].includes(process.platform) ||
+  root !== process.env.GITHUB_WORKSPACE
+) {
+  throw new Error('Disposable hosted checkout required')
+}
+const { runProcessSync } = await import(
+  pathToFileURL(join(process.env.RUNNER_TEMP, 'producer-trial-process.mjs')).href
+)
+const output = join(process.env.RUNNER_TEMP, 'terminal-preparation-comparison')
+mkdirSync(output, { recursive: true })
+const pnpm = resolvePnpmCliInvocation()
+const command = (args) => {
+  const result = runProcessSync({
+    program: pnpm.command,
+    args: [...pnpm.prefixArgs, ...args],
+    cwd: root,
+    timeoutMs: 300_000
+  })
+  if (result.code !== 0) {
+    throw new Error(`pnpm failed: ${result.stderr}\n${result.stdout}`)
+  }
+  return result.stdout.trim()
+}
+const phase = process.argv[2]
+const treatment = process.env.TREATMENT
+const digest = (files) =>
+  files.map((file) => {
+    const path = join(root, file)
+    return [
+      file,
+      existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : 'absent'
+    ]
+  })
+const policies = [
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  '.npmrc',
+  '.pnpmfile.cjs'
+]
+if (phase === 'reset') {
+  const store = command(['store', 'path', '--silent'])
+  const cache = command(['cache', 'path'])
+  for (const [path, suffix] of [
+    [store, /\/(?:store|\.pnpm-store)\/v\d+$/],
+    [cache, /\/(?:pnpm|\.?pnpm-cache|pnpm\/cache)$/]
+  ]) {
+    const scoped = relative(homedir(), path)
+    const insideHome =
+      !isAbsolute(scoped) && scoped !== '' && scoped !== '..' && !scoped.startsWith(`..${sep}`)
+    const knownWindowsStore =
+      process.platform === 'win32' &&
+      path === store &&
+      /\/(?:\.pnpm-store|pnpm\/store)\/v\d+$/.test(path.replaceAll('\\', '/'))
+    if (
+      !isAbsolute(path) ||
+      (!insideHome && !knownWindowsStore) ||
+      !suffix.test(path.replaceAll('\\', '/'))
+    ) {
+      throw new Error(`Refuse unexpected reset path: ${path}`)
+    }
+    rmSync(path, { recursive: true, force: true })
+  }
+  if (process.platform !== 'linux') {
+    throw new Error('Linux-only preparation trial')
+  }
+  rmSync(join(homedir(), '.cache', 'electron'), { recursive: true, force: true })
+  rmSync(join(root, 'node_modules'), { recursive: true, force: true })
+  rmSync(join(root, 'native/windows-registry/build'), { recursive: true, force: true })
+  writeFileSync(join(output, 'before.json'), JSON.stringify(digest(policies)))
+  appendFileSync(process.env.GITHUB_OUTPUT, `store=${store}\narch=${process.arch}\n`)
+} else if (phase === 'start') {
+  appendFileSync(process.env.GITHUB_OUTPUT, `started=${Date.now()}\n`)
+} else if (phase === 'finish') {
+  const started = Number(process.env.STARTED)
+  if (!Number.isFinite(started) || started <= 0 || !['legacy', 'shared'].includes(treatment)) {
+    throw new Error('Invalid measurement')
+  }
+  if (process.env.CACHE_HIT !== 'true') {
+    throw new Error('Actual main store cache hit required')
+  }
+  const finished = Date.now()
+  const nativeCheck = runProcessSync({
+    program: createRequire(join(root, 'package.json'))('electron'),
+    args: ['config/scripts/ensure-native-runtime.mjs', '--check-only'],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    cwd: root,
+    timeoutMs: 60_000
+  })
+  if (nativeCheck.code !== 0) {
+    throw new Error(nativeCheck.stderr || nativeCheck.stdout)
+  }
+  const before = JSON.parse(readFileSync(join(output, 'before.json'), 'utf8'))
+  if (JSON.stringify(before) !== JSON.stringify(digest(policies))) {
+    throw new Error('Frozen install changed policy files')
+  }
+  const installed = digest(['node_modules/.pnpm/lock.yaml'])
+  if (installed[0][1] === 'absent') {
+    throw new Error('Installed lockfile is missing')
+  }
+  const path = join(output, `${treatment}.json`)
+  const row = {
+    platform: process.platform,
+    nativeHit: process.env.NATIVE_HIT,
+    cacheHit: process.env.CACHE_HIT,
+    treatment,
+    node: process.version,
+    arch: process.arch,
+    pnpm: command(['--version']),
+    policy: before,
+    installed,
+    totalMs: finished - started
+  }
+  const other = join(output, `${treatment === 'legacy' ? 'shared' : 'legacy'}.json`)
+  if (existsSync(other)) {
+    const prior = JSON.parse(readFileSync(other, 'utf8'))
+    if (
+      JSON.stringify(prior.policy) !== JSON.stringify(row.policy) ||
+      JSON.stringify(prior.installed) !== JSON.stringify(row.installed) ||
+      prior.pnpm !== row.pnpm ||
+      prior.node !== row.node
+    ) {
+      throw new Error('Paired installed lockfiles or policies differ')
+    }
+  }
+  writeFileSync(path, JSON.stringify(row))
+  console.log(JSON.stringify({ ...row, policy: 'validated', installed: 'validated' }))
+} else {
+  throw new Error('Expected reset, start or finish')
+}

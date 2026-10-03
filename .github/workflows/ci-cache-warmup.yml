@@ -1,163 +1,178 @@
-name: Warm shared CI caches
-
-on:
-  # Cache-input pushes seed immediately; this schedule repairs eviction and image changes.
-  schedule:
-    - cron: '41 */6 * * *'
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/install-node-dependencies/**'
-      - '.github/actions/restore-pnpm-verification/**'
-      - '.github/actions/prepare-native-runtime/**'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-headless-compiler/**'
-      - 'config/scripts/headless-detector-compiler-cache*'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.npmrc'
-      - '.pnpmfile.cjs'
-      - 'config/tsconfig*.json'
-      - 'config/scripts/ensure-native-runtime.mjs'
-      - 'config/scripts/rebuild-native-deps.mjs'
-      - 'config/scripts/node-pty-job-ownership.cjs'
-      - 'config/scripts/windows-pe-machine.cjs'
-      - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
-      - 'config/scripts/windows-process-tree-creation-time.cjs'
-      - 'config/scripts/install-electron-package-binary.mjs'
-      - 'config/scripts/electron-platform-path.mjs'
-      - 'config/scripts/zip-extractor-command.mjs'
-      - 'src/shared/zip-extractor-command.ts'
-      - 'config/scripts/shared-electron-dist-cache.mjs'
-      - 'config/scripts/space-sharing-copy.mjs'
-      - 'config/patches/**'
-      - 'native/windows-registry/**'
-  pull_request:
-    paths:
-      - '.github/workflows/ci-cache-warmup.yml'
-      - '.github/actions/prepare-git-compatibility/**'
-      - '.github/actions/prepare-headless-compiler/**'
-      - 'config/scripts/headless-detector-compiler-cache*'
-      - '.github/actions/prepare-linux-package-fixture/**'
-      - 'config/docker/headless-serve-shutdown/**'
-      - 'config/docker/cli-launch-contract/**'
-      - 'config/docker/daemon-shutdown-descendants/**'
-      - 'config/scripts/ci-cache-warmup-workflow.test.mjs'
-
+name: Terminal preparation comparison
+'on':
+  workflow_dispatch: {}
 permissions:
   contents: read
-
-concurrency:
-  group: ci-cache-warmup-${{ github.event.pull_request.number || github.ref }}
-  # Scheduled retries must let an active warmer finish publishing its caches.
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
-
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
 jobs:
-  warm:
+  legacy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/install-node-dependencies
+      with:
+        cache-pnpm-store: 'false'
+        cache-pnpm-verification: 'false'
+    - name: Compile the process wrapper before deleting dependencies
+      shell: bash
+      run: 'node --input-type=module <<''NODE''
 
-      # Default-branch caches can be restored by every PR; PR caches cannot.
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-          cache-pnpm-store-lookup-only: 'true'
+        import {build} from ''esbuild'';
 
-      - uses: ./.github/actions/prepare-headless-compiler
-        with:
-          seed: 'true'
+        import {join} from ''node:path'';
 
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
+        await build({entryPoints:[''src/shared/child-process/run-process.ts''],outfile:join(process.env.RUNNER_TEMP,''producer-trial-process.mjs''),bundle:true,platform:''node'',format:''esm''});
 
-      - uses: ./.github/actions/prepare-git-compatibility
+        NODE'
+    - name: Reset inputs 1
+      id: reset1
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs reset
+    - name: Start legacy
+      id: start1
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs start
+    - uses: pnpm/setup@v2
+      with:
+        install: false
+    - id: install1
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: package.json
+        cache: pnpm
+        package-manager-cache: false
+    - name: Use the original external gyp and raw lifecycle install
+      shell: bash
+      run: 'npm install -g node-gyp@11.5.0
 
-      - name: Cache TypeScript incremental state
-        id: typecheck-cache
-        uses: actions/cache@v5
-        with:
-          path: config/*.tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.sha }}
-          restore-keys: |
-            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+        npm_config_node_gyp="$(npm root -g)/node-gyp/bin/node-gyp.js"
 
-      - name: Refresh TypeScript state for this commit
-        if: steps.typecheck-cache.outputs.cache-hit != 'true'
-        run: pnpm run typecheck
+        export npm_config_node_gyp
 
-  warm-linux-arm:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          node-version: '24'
-          cache-electron-package: 'true'
-          cache-pnpm-store-lookup-only: 'true'
-      - name: Populate shared Electron archive
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2022, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
-          cache-pnpm-store-lookup-only: 'true'
-      - name: Verify native cache is usable
-        run: node config/scripts/ensure-native-runtime.mjs --check-only
-
-  warm-linux-package-fixtures:
+        pnpm install --frozen-lockfile'
+    - name: Finish and validate legacy
+      shell: bash
+      env:
+        STARTED: ${{ steps.start1.outputs.started }}
+        TREATMENT: legacy
+        CACHE_HIT: ${{ steps.install1.outputs.cache-hit }}
+        NATIVE_HIT: not-applicable
+      run: node config/scripts/ci-terminal-preparation-trial.mjs finish
+    - name: Reset inputs 2
+      id: reset2
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs reset
+    - name: Start shared
+      id: start2
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs start
+    - id: install2
+      uses: ./.github/actions/install-node-dependencies
+      with:
+        native-runtime: electron
+        cache-electron-package: 'true'
+    - name: Finish and validate shared
+      shell: bash
+      env:
+        STARTED: ${{ steps.start2.outputs.started }}
+        TREATMENT: shared
+        CACHE_HIT: ${{ steps.install2.outputs.pnpm-store-cache-hit }}
+        NATIVE_HIT: ${{ steps.install2.outputs.native-cache-hit }}
+      run: node config/scripts/ci-terminal-preparation-trial.mjs finish
+    - name: Compile the same Electron application
+      shell: bash
+      run: pnpm exec electron-vite build --mode e2e
+    - uses: actions/upload-artifact@v7
+      with:
+        name: terminal-preparation-legacy
+        path: ${{ runner.temp }}/terminal-preparation-comparison
+        retention-days: 7
+  shared:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: daemon-shutdown-descendants
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: headless-serve-shutdown
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - uses: ./.github/actions/prepare-linux-package-fixture
-        with:
-          fixture: cli-launch-contract
-          save-cache: ${{ github.event_name != 'pull_request' }}
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/install-node-dependencies
+      with:
+        cache-pnpm-store: 'false'
+        cache-pnpm-verification: 'false'
+    - name: Compile the process wrapper before deleting dependencies
+      shell: bash
+      run: 'node --input-type=module <<''NODE''
+
+        import {build} from ''esbuild'';
+
+        import {join} from ''node:path'';
+
+        await build({entryPoints:[''src/shared/child-process/run-process.ts''],outfile:join(process.env.RUNNER_TEMP,''producer-trial-process.mjs''),bundle:true,platform:''node'',format:''esm''});
+
+        NODE'
+    - name: Reset inputs 1
+      id: reset1
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs reset
+    - name: Start shared
+      id: start1
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs start
+    - id: install1
+      uses: ./.github/actions/install-node-dependencies
+      with:
+        native-runtime: electron
+        cache-electron-package: 'true'
+    - name: Finish and validate shared
+      shell: bash
+      env:
+        STARTED: ${{ steps.start1.outputs.started }}
+        TREATMENT: shared
+        CACHE_HIT: ${{ steps.install1.outputs.pnpm-store-cache-hit }}
+        NATIVE_HIT: ${{ steps.install1.outputs.native-cache-hit }}
+      run: node config/scripts/ci-terminal-preparation-trial.mjs finish
+    - name: Reset inputs 2
+      id: reset2
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs reset
+    - name: Start legacy
+      id: start2
+      shell: bash
+      run: node config/scripts/ci-terminal-preparation-trial.mjs start
+    - uses: pnpm/setup@v2
+      with:
+        install: false
+    - id: install2
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: package.json
+        cache: pnpm
+        package-manager-cache: false
+    - name: Use the original external gyp and raw lifecycle install
+      shell: bash
+      run: 'npm install -g node-gyp@11.5.0
+
+        npm_config_node_gyp="$(npm root -g)/node-gyp/bin/node-gyp.js"
+
+        export npm_config_node_gyp
+
+        pnpm install --frozen-lockfile'
+    - name: Finish and validate legacy
+      shell: bash
+      env:
+        STARTED: ${{ steps.start2.outputs.started }}
+        TREATMENT: legacy
+        CACHE_HIT: ${{ steps.install2.outputs.cache-hit }}
+        NATIVE_HIT: not-applicable
+      run: node config/scripts/ci-terminal-preparation-trial.mjs finish
+    - name: Compile the same Electron application
+      shell: bash
+      run: pnpm exec electron-vite build --mode e2e
+    - uses: actions/upload-artifact@v7
+      with:
+        name: terminal-preparation-shared
+        path: ${{ runner.temp }}/terminal-preparation-comparison
+        retention-days: 7
