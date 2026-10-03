@@ -328,30 +328,33 @@ export function ChecksPanelActiveContent({
             : null
         }
         onSaveAgentDefault={saveLaunchActionDefault}
-        // Why: claims the ack payload when the tab exists; the host writes still wait for delivery.
+        // Why: a structured chat's launch prompt carries the review writes for its host to make.
         reviewReply={buildLaunchReviewReply}
+        // Why: claims the ack payload when the tab exists; the writes still wait for delivery.
         onLaunchAccepted={handleLaunchAccepted}
         onLaunchAborted={handleLaunchAborted}
         onLaunched={(launch) => {
-          // Why: prompt delivery succeeded — the only point at which host replies/resolves may run.
+          // Why: the prompt was delivered (a paste landed, or a chat recorded its message): the panel
+          // writes now, unless the chat's message carries the writes for its host.
           consumeClaimedCommentResolutionAfterDeliveryRef.current(launch)
           if (agentComposerState?.actionId === 'resolveConflicts') {
             toast.success(
               translate(
                 'auto.components.right.sidebar.ChecksPanel.a0181a8d76',
-                'Started an AI agent for the conflicts.'
+                'Sent to an AI agent for the conflicts.'
               )
             )
             return
           }
           if (agentComposerState?.actionId === 'resolveComments') {
-            // Why: resolve/reply toast is emitted by resolveSelectedThreadsAfterLaunch.
+            // Why: a terminal's writes report from resolveSelectedThreadsAfterLaunch; a chat's from
+            // its own failure line.
             return
           }
           toast.success(
             translate(
               'auto.components.right.sidebar.ChecksPanel.2ef90c9819',
-              'Started an AI agent for the broken checks.'
+              'Sent to an AI agent for the broken checks.'
             )
           )
         }}
