@@ -59,6 +59,19 @@ it('keeps the composed fish and PowerShell startup text dormant with the gate of
   }
 })
 
+it('gives a plain fish tab the claude function through the vendor snippet only with the gate on', async () => {
+  gate.enabled = false
+  vi.resetModules()
+  const off = await import('../fish-xdg-data-dirs-handoff')
+  expect(off.getFishVendorConfSnippet()).not.toContain('claude')
+  gate.enabled = true
+  vi.resetModules()
+  const on = await import('../fish-xdg-data-dirs-handoff')
+  const { getFishClaudeShellFunction } = await import('../../shared/claude-shell-function')
+  expect(getFishClaudeShellFunction()).toContain('function claude')
+  expect(on.getFishVendorConfSnippet()).toContain(getFishClaudeShellFunction())
+})
+
 it('starts the PowerShell claude function on its own line after the codex fragment', async () => {
   const on = await composed(true)
   expect(on.powershell).toContain(

@@ -2,7 +2,7 @@
   "name": "orca-cloud",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "pnpm@10.24.0",
+  "packageManager": "pnpm@10.34.6",
   "engines": {
     "node": ">=24 <27",
     "pnpm": ">=10"
@@ -12,6 +12,7 @@
     "dev": "pnpm --filter @orca-cloud/relay dev",
     "incident:relay": "pnpm --filter @orca-cloud/relay-ops incident:monitor",
     "incident:relay-preflight": "pnpm --filter @orca-cloud/relay-ops incident:preflight",
+    "incident:relay-pre-drain-sample": "pnpm --filter @orca-cloud/relay-ops incident:pre-drain-sample",
     "infra:apply": "node dev/scripts/infra.mjs apply",
     "infra:init": "node dev/scripts/infra.mjs init",
     "infra:plan": "node dev/scripts/infra.mjs plan",
@@ -25,7 +26,7 @@
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@types/node": "^24.19.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
