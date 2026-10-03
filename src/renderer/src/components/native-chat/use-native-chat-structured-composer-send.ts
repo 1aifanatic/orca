@@ -79,14 +79,16 @@ export function useNativeChatStructuredComposerSend({
           )
           setHistory((previous) => pushHistory(previous, text))
           // Why: a host command settles after a round trip, and a replaced composer's send after
-          // the user may have typed in the new one; either clears only a draft still as sent.
+          // the user may have typed in the new one; either clears only a draft still as sent, and
+          // leaves an image pasted meanwhile, which was never part of it.
           if (hostCommand || !mounted.current) {
-            if (!clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)) {
-              return
+            if (clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)) {
+              setCaret(0)
+              clearSkillOrigin()
             }
-          } else {
-            setDraft('')
+            return
           }
+          setDraft('')
           setCaret(0)
           clearSkillOrigin()
           clearImageAttachments()

@@ -46,6 +46,11 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushOnHideInstalled = false
 const scopeListeners = new Map<string, Set<() => void>>()
 
+// Why: a shown draft can hold what storage never does (pasted images, unsaved launch text).
+function isShown(scopeKey: string): boolean {
+  return scopeListeners.has(scopeKey)
+}
+
 function notifyScope(scopeKey: string): void {
   scopeListeners.get(scopeKey)?.forEach((listener) => listener())
 }
@@ -187,7 +192,7 @@ function loadRecord(scopeKey: string): DraftRecord | undefined {
     if (!stored) {
       return undefined
     }
-    setBoundedScopeCacheEntry(records, scopeKey, stored, writeEvictedRecord)
+    setBoundedScopeCacheEntry(records, scopeKey, stored, writeEvictedRecord, isShown)
     return stored
   } catch {
     return undefined
@@ -241,7 +246,7 @@ export function updateNativeChatComposerDraft(
     savedAt: nextSavedAt(),
     ...(unsavedText === undefined ? {} : { unsavedText })
   }
-  setBoundedScopeCacheEntry(records, scopeKey, record, writeEvictedRecord)
+  setBoundedScopeCacheEntry(records, scopeKey, record, writeEvictedRecord, isShown)
   dirtyScopes.add(scopeKey)
   installFlushOnHide()
   notifyScope(scopeKey)

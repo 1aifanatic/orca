@@ -1,5 +1,13 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject
+} from 'react'
 import { translate } from '@/i18n/i18n'
 import {
   nativeChatComposerTargetIsRemote,
@@ -79,6 +87,22 @@ export function useNativeChatComposerAttachments({
     ],
     [local, settled]
   )
+  // A preview whose image left the draft (sent, or removed elsewhere) is released.
+  useEffect(() => {
+    const current = localRef.current
+    const gone = [...current.previews.keys()].filter(
+      (id) => !settled.some((image) => image.id === id)
+    )
+    if (gone.length === 0) {
+      return
+    }
+    const previews = new Map(current.previews)
+    for (const id of gone) {
+      releasePreviewUrl(previews.get(id))
+      previews.delete(id)
+    }
+    updateLocal({ ...current, previews })
+  }, [settled, updateLocal])
   const imageAttachmentCounter = useRef(0)
 
   const nextAttachmentId = useCallback((): string => {

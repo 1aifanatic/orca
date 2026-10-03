@@ -11,16 +11,22 @@ export function setBoundedScopeCacheEntry<T>(
   cache: Map<string, T>,
   scopeKey: string,
   value: T,
-  onEvict?: (evictedKey: string, evicted: T) => void
+  onEvict?: (evictedKey: string, evicted: T) => void,
+  /** Entries still in use are skipped; the cache may then briefly exceed its bound. */
+  inUse?: (key: string) => boolean
 ): void {
   cache.delete(scopeKey)
   cache.set(scopeKey, value)
-  while (cache.size > NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX) {
-    const oldest = cache.entries().next().value
-    if (oldest === undefined) {
+  let excess = cache.size - NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX
+  for (const [key, evicted] of cache) {
+    if (excess <= 0) {
       break
     }
-    cache.delete(oldest[0])
-    onEvict?.(oldest[0], oldest[1])
+    if (inUse?.(key)) {
+      continue
+    }
+    cache.delete(key)
+    onEvict?.(key, evicted)
+    excess -= 1
   }
 }

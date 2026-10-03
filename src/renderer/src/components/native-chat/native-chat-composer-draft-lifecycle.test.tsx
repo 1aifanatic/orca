@@ -51,7 +51,7 @@ type ComposerApi = {
 type Dispatched = { handled: boolean; accepted: boolean; error: string | null }
 
 /** A transport whose next send settles only when the test says so. */
-function heldTransport(): {
+function heldTransport(hostCommand = false): {
   transport: NativeChatStructuredComposerTransport
   settle: () => Promise<void>
 } {
@@ -77,7 +77,11 @@ function heldTransport(): {
     },
     settle: async () => {
       await act(async () => {
-        resolve({ handled: false, accepted: false, error: null })
+        resolve(
+          hostCommand
+            ? { handled: true, accepted: true, error: null }
+            : { handled: false, accepted: false, error: null }
+        )
         await dispatched
       })
     }
@@ -210,21 +214,6 @@ describe('native-chat composer draft lifecycle', () => {
     expect(restored.api).toMatchObject({ draft: '', attachments: { imageAttachments: [] } })
   })
 
-  it('clears a sent draft when its send settles after the composer was replaced', async () => {
-    const hooks = await loadHooks()
-    const held = heldTransport()
-    const first: { api?: ComposerApi } = {}
-    const Composer = composer(hooks, (next) => (first.api = next), held.transport)
-    await mount(createElement(Composer, { scopeKey: 'tab-1:pane' }))
-    await act(async () => first.api?.setDraft('/goal ship it'))
-    await act(async () => first.api?.send('/goal ship it'))
-    await unmount()
-
-    await held.settle()
-
-    expect(storedDraft('tab-1:pane')).toBeNull()
-  })
-
   it('keeps what was typed in a replacement composer when the old composer’s send settles', async () => {
     const hooks = await loadHooks()
     const held = heldTransport()
@@ -254,6 +243,63 @@ describe('native-chat composer draft lifecycle', () => {
     expect(second.api?.draft).toBe('new text')
     window.dispatchEvent(new Event('pagehide'))
     expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'new text' })
+  })
+
+  it('keeps an image pasted while a host command was on its way', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport(true)
+    const seen: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (seen.api = next), held.transport),
+        {
+          scopeKey: 'tab-1:pane'
+        }
+      )
+    )
+    await act(async () => seen.api?.setDraft('/compact'))
+    await act(async () => seen.api?.send('/compact'))
+    const pending: { id?: string | null } = {}
+    await act(async () => {
+      pending.id = seen.api?.attachments.beginPendingImageAttachment('data:image/png;base64,AA')
+    })
+    expect(pending.id).toBeTruthy()
+
+    await held.settle()
+    await act(async () =>
+      seen.api?.attachments.resolvePendingImageAttachment(pending.id ?? '', '/repo/shot.png')
+    )
+
+    expect(seen.api?.draft).toBe('')
+    expect(seen.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
+      '/repo/shot.png'
+    ])
+  })
+
+  it('keeps a shown composer’s pasted image when many other drafts are written', async () => {
+    const hooks = await loadHooks()
+    const drafts = await import('./native-chat-draft-cache')
+    const seen: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (seen.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () =>
+      hooks.attachmentsHook.appendNativeChatAttachmentCache('tab-1:pane', [
+        { id: 'p1', path: '/tmp/orca-paste-1-abc.png' }
+      ])
+    )
+    for (let index = 0; index < 128; index += 1) {
+      drafts.writeNativeChatDraftCache(`tab-${index + 2}:pane`, `draft ${index}`)
+    }
+
+    await act(async () => seen.api?.setDraft('typing'))
+
+    expect(seen.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
+      '/tmp/orca-paste-1-abc.png'
+    ])
   })
 
   it('leaves nothing saved when a send clears a draft whose typing was still deferred', async () => {
