@@ -191,6 +191,17 @@ function formatOpenChangedResult(result: FileOpenChangedResult): string {
   return lines.join('\n')
 }
 
+// Why: older hosts decline binaries with opened:false; a single-file command must not exit 0 on that.
+function requireOpened(result: RuntimeFileOpenResult, target: string): void {
+  if (!result.opened) {
+    throw new RuntimeClientError(
+      'file_not_opened',
+      `Did not open ${target}: the Orca app declined this ${result.kind} file.`,
+      { nextSteps: ['Update the Orca app, which opens every file type the File Explorer does.'] }
+    )
+  }
+}
+
 function formatFileOpen(result: RuntimeFileOpenResult): string {
   return `Opened ${result.relativePath}.`
 }
@@ -209,14 +220,7 @@ export const FILE_HANDLERS: Record<string, CommandHandler> = {
       relativePath,
       navigation: getFileOpenNavigation(ctx.flags)
     })
-    // Why: older hosts decline binaries with opened:false; a single-file open must not exit 0 on that.
-    if (!result.result.opened) {
-      throw new RuntimeClientError(
-        'file_not_opened',
-        `Did not open ${relativePath}: the Orca app declined this ${result.result.kind} file.`,
-        { nextSteps: ['Update the Orca app, which opens every file type the File Explorer does.'] }
-      )
-    }
+    requireOpened(result.result, relativePath)
     printResult(result, ctx.json, formatFileOpen)
   },
   'file diff': async (ctx) => {
@@ -230,6 +234,7 @@ export const FILE_HANDLERS: Record<string, CommandHandler> = {
       staged,
       navigation: getFileOpenNavigation(ctx.flags)
     })
+    requireOpened(result.result, `diff for ${result.result.relativePath}`)
     printResult(result, ctx.json, formatFileDiff)
   },
   'file open-changed': async (ctx) => {
