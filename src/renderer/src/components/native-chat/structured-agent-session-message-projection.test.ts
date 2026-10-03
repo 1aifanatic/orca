@@ -31,28 +31,72 @@ function item(index: number): AgentJournalRenderItem {
 }
 
 describe('structured agent session message projection', () => {
-  it('does not render a rejected host submission as a sent user message', () => {
+  it('shows a recorded send the host did not deliver as not sent, never as sent', () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
     const acceptedItem = item(1)
     expect(
       projectStructuredAgentSessionMessages([refusedItem, acceptedItem], [], [rejected])
-    ).toMatchObject([{ id: acceptedItem.itemId, role: 'user' }])
+    ).toMatchObject([
+      { id: refusedItem.itemId, role: 'user', unsent: true },
+      { id: acceptedItem.itemId, role: 'user' }
+    ])
   })
 
-  it('keeps a refused local draft available through its outbox', () => {
+  it('keeps a recorded send in the chat after its outbox entry is gone and the host settles it undelivered', () => {
+    // Orca restarted mid-send: the entry left this client, then the next agent start proved the
+    // provider never took the message.
+    const notDelivered = {
+      ...submission(0),
+      dispatchState: 'rejected' as const,
+      providerItemId: null,
+      reason: 'not_delivered'
+    }
+    const recordedItem = {
+      ...item(0),
+      itemId: agentJournalSubmissionKey(notDelivered.clientMessageId)
+    }
+    const messages = projectStructuredAgentSessionMessages([recordedItem], [], [notDelivered])
+    expect(messages).toMatchObject([
+      {
+        id: recordedItem.itemId,
+        unsent: true,
+        blocks: [{ type: 'text', text: 'send 0' }],
+        journalPosition: { sequence: 0 }
+      }
+    ])
+  })
+
+  it('leaves out a send a Stop withdrew: its text went back to its sender', () => {
+    const withdrawn = {
+      ...submission(0),
+      dispatchState: 'rejected' as const,
+      providerItemId: null,
+      reason: 'provider_cancelled_before_start'
+    }
+    const withdrawnItem = {
+      ...item(0),
+      itemId: agentJournalSubmissionKey(withdrawn.clientMessageId)
+    }
+    expect(projectStructuredAgentSessionMessages([withdrawnItem], [], [withdrawn])).toEqual([])
+  })
+
+  it("shows the sender's recorded rejection once, from the journal, while its outbox entry holds the Retry", () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
-    const draft = createStructuredAgentSessionOutboxEntry({
-      clientMessageId: rejected.clientMessageId,
-      sessionId: 'session-1',
-      text: 'An unsent draft',
-      attachments: [],
-      queuedAt: 1
-    })
-    expect(projectStructuredAgentSessionMessages([refusedItem], [draft], [rejected])).toMatchObject(
-      [{ id: refusedItem.itemId, blocks: [{ text: 'An unsent draft' }] }]
-    )
+    const draft = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: rejected.clientMessageId,
+        sessionId: 'session-1',
+        text: 'send 0',
+        attachments: [],
+        queuedAt: 1
+      }),
+      state: 'rejected' as const
+    }
+    expect(projectStructuredAgentSessionMessages([refusedItem], [draft], [rejected])).toEqual([
+      expect.objectContaining({ id: refusedItem.itemId, unsent: true })
+    ])
   })
 
   it.each([5, 10])('renders %i rapid accepted desktop sends exactly once', (sendCount) => {

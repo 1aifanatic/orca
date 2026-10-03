@@ -107,6 +107,16 @@ describe('MobileNativeChatMessage', () => {
     expect(texts.some((text) => text.includes('/tmp/host.png'))).toBe(true)
   })
 
+  it('says under a message the host recorded but never delivered that it was not sent', () => {
+    const tree = render({ ...userMessage([{ type: 'text', text: 'hello' }]), unsent: true })
+    expect(textIn(tree.root)).toEqual(['hello', 'Message not sent'])
+  })
+
+  it('says nothing more under a delivered message', () => {
+    const tree = render(userMessage([{ type: 'text', text: 'hello' }]))
+    expect(textIn(tree.root)).toEqual(['hello'])
+  })
+
   it('makes user message text selectable', () => {
     const tree = render(userMessage([{ type: 'text', text: 'Prompt I typed' }]))
     const text = tree.root

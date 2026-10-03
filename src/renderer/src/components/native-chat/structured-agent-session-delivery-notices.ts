@@ -10,7 +10,8 @@
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
 // is a failed start's, the fact its loaded row states, says only that it was not sent: the row
-// already says why.
+// already says why. One no outbox entry here carries (another client's send, or one whose entry is
+// gone) is worded from the journal alone, with no Retry: this client holds nothing to send.
 
 import {
   readAgentSessionFailureFact,
@@ -26,8 +27,10 @@ import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionEntryIdExpired,
+  structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryHeldForRetry
@@ -129,6 +132,24 @@ function deliveryNoticeText(
   )
 }
 
+/** What a recorded rejection's own row says when no outbox entry here carries it. */
+function recordedRejectionNoticeText(
+  submission: AgentJournalSubmission,
+  context: AgentSessionFailureWordsContext,
+  startFailures: readonly AgentSessionFailureFact[]
+): string {
+  if (agentSessionFailureStatedByStartRow(submission.rejection, startFailures)) {
+    return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
+  }
+  return agentSessionWriteNoticeText(
+    structuredAgentSessionAttemptFailureParts(
+      structuredAgentSessionRejectedFailure(submission),
+      context,
+      readWholeAgentSessionFailureFact(submission.rejection)
+    )
+  )
+}
+
 /** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
  *  agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
@@ -170,6 +191,18 @@ export function structuredAgentSessionDeliveryNotices(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
       )
+    }
+  }
+  for (const submission of rejected.values()) {
+    const id = agentJournalSubmissionKey(submission.clientMessageId)
+    if (!notices.has(id) && !dispatchWasWithdrawn(submission)) {
+      notices.set(id, {
+        text: recordedRejectionNoticeText(
+          submission,
+          { agentName, retryControl: false },
+          startFailures
+        )
+      })
     }
   }
   return notices

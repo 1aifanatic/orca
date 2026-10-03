@@ -158,6 +158,10 @@ function MobileNativeChatMessageImpl({
             />
           ) : null}
         </View>
+        {/* The host recorded it and never delivered it; the desktop row words the same fact. */}
+        {isUser && message.unsent === true ? (
+          <NativeText style={styles.unsentLabel}>Message not sent</NativeText>
+        ) : null}
       </View>
       {turnStatusAbove ? null : statusRow}
     </>

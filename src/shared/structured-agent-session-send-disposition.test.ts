@@ -411,6 +411,33 @@ describe('ambiguous operation refusals', () => {
     expect(disposition.entries).toMatchObject([{ clientMessageId: 'fresh-id', state: 'rejected' }])
   })
 
+  it("parks an older host's restart answer that carries the reason but not the recovered marker", () => {
+    const result = rejectedWith(null)
+    if (!result.ok || !('submission' in result.value)) {
+      throw new Error('expected a send result')
+    }
+    result.value.submission = {
+      ...result.value.submission,
+      dispatchState: 'unknown',
+      reason: 'host_restarted_before_acknowledgement'
+    }
+
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
+      result,
+      createOperationId: () => 'unused'
+    })
+
+    expect(disposition.entries).toMatchObject([
+      {
+        clientMessageId: entry.clientMessageId,
+        state: 'unconfirmed',
+        retryAfterUnknownSubmittedAt: -1
+      }
+    ])
+  })
+
   it('parks a recovered missing submission without polling forever', () => {
     const result = rejectedWith(null)
     if (!result.ok || !('submission' in result.value)) {
