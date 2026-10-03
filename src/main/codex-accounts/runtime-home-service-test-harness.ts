@@ -14,7 +14,6 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 
 export const testState: {
@@ -81,12 +80,8 @@ export function expectResourceLinkedOrCopied(targetPath: string, sourcePath: str
   expect(normalizeLinkTarget(readlinkSync(targetPath))).toBe(normalizeLinkTarget(sourcePath))
 }
 
-export function createStore(settings: GlobalSettings, ui: Partial<PersistedUIState> = {}) {
+export function createStore(settings: GlobalSettings) {
   return {
-    getUI: vi.fn(() => ui),
-    updateUI: vi.fn((updates: Partial<PersistedUIState>) => {
-      Object.assign(ui, updates)
-    }),
     getSettings: vi.fn(() => settings),
     updateSettings: vi.fn((updates: Partial<GlobalSettings>) => {
       settings = {

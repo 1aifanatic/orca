@@ -7,7 +7,7 @@ import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { CODEX_TERMINAL_SERVER_ISOLATION_SETTINGS_TARGET_ID } from '@/lib/settings-navigation-types'
 import { isCodexTerminalServerIsolationEnabled } from '../../../../shared/codex-terminal-server-isolation'
 
-export type CodexNoticeState = Pick<
+type CodexNoticeState = Pick<
   AppState,
   | 'persistedUIReady'
   | 'codexTerminalServerIsolationNoticeSeen'
@@ -18,7 +18,7 @@ export type CodexNoticeState = Pick<
 >
 
 // Why three sources: Orca-launched tabs, hook-reported agents (SSH too), and a typed `codex` seen locally.
-export function hasCodexTerminal(state: CodexNoticeState): boolean {
+function hasCodexTerminal(state: CodexNoticeState): boolean {
   return (
     Object.values(state.tabsByWorktree).some((tabs) =>
       tabs.some((tab) => tab.launchAgent === 'codex')
@@ -39,10 +39,7 @@ export function shouldShowCodexTerminalServerIsolationNotice(state: CodexNoticeS
   )
 }
 
-export function didCodexNoticeInputsChange(
-  state: CodexNoticeState,
-  previous: CodexNoticeState
-): boolean {
+function didNoticeInputsChange(state: CodexNoticeState, previous: CodexNoticeState): boolean {
   return (
     state.persistedUIReady !== previous.persistedUIReady ||
     state.settings !== previous.settings ||
@@ -53,10 +50,6 @@ export function didCodexNoticeInputsChange(
 }
 
 const NOTICE_TOAST_ID = 'codex-terminal-server-isolation-notice'
-
-export function isCodexTerminalServerIsolationNoticeShowing(): boolean {
-  return toast.getToasts().some((shown) => shown.id === NOTICE_TOAST_ID)
-}
 
 /** For a pane whose Codex shares the server anyway: its banner says so, and this toast would contradict it. */
 export function retireCodexTerminalServerIsolationNotice(): void {
@@ -114,7 +107,7 @@ export function useCodexTerminalServerIsolationNotice(): void {
     // Why a filtered subscription: a selector would rescan every tab on each store write.
     const unsubscribe = useAppStore.subscribe((state, previous) => {
       if (
-        didCodexNoticeInputsChange(state, previous) &&
+        didNoticeInputsChange(state, previous) &&
         shouldShowCodexTerminalServerIsolationNotice(state)
       ) {
         unsubscribe()

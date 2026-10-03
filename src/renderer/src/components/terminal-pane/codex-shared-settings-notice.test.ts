@@ -3,27 +3,16 @@
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CodexSharedSettingsNotice } from '../../../../shared/codex-config-sync-types'
 import { useCodexSharedSettingsNotice } from './codex-shared-settings-notice'
-import { useCodexTerminalServerIsolationNotice } from './codex-terminal-server-isolation-notice'
 
-// Why a real zustand store double: the hooks rely on subscribe/setState semantics.
-const { toastInfoMock, visibleToastIds, harness } = vi.hoisted(() => {
-  const visible: string[] = []
-  return {
-    visibleToastIds: visible,
-    toastInfoMock: vi.fn((_title: string, options: { id: string; description?: string }) => {
-      visible.push(options.id)
-    }),
-    harness: { setState: (_patch: Record<string, unknown>, _replace?: true): void => {} }
-  }
-})
-
-vi.mock('sonner', () => ({
-  toast: {
-    info: toastInfoMock,
-    getToasts: () => visibleToastIds.map((id) => ({ id }))
-  }
+// Why a real zustand store double: the hook relies on subscribe/setState semantics.
+const { toastInfoMock, harness } = vi.hoisted(() => ({
+  toastInfoMock: vi.fn(),
+  harness: { setState: (_patch: Record<string, unknown>, _replace?: true): void => {} }
 }))
+
+vi.mock('sonner', () => ({ toast: { info: toastInfoMock } }))
 
 vi.mock('@/store', async () => {
   const { useStore } = await import('zustand')
@@ -31,7 +20,7 @@ vi.mock('@/store', async () => {
   const backing = createStore<Record<string, unknown>>()(() => ({}))
   harness.setState = (patch, replace) =>
     replace ? backing.setState(patch, true) : backing.setState(patch)
-  // Why reactive: the notice hook re-runs when main's decision lands via a UI sync.
+  // Why reactive: the hook re-runs when the seen flag changes.
   const useAppStore = <T>(selector: (state: Record<string, unknown>) => T): T =>
     useStore(backing, selector)
   return { useAppStore: Object.assign(useAppStore, backing) }
@@ -40,24 +29,25 @@ vi.mock('@/store', async () => {
 const store = {
   setState: (patch: Record<string, unknown>, replace?: true) => harness.setState(patch, replace)
 }
-const SHARED_SETTINGS_TOAST_ID = 'codex-shared-settings-notice'
-const ISOLATION_TOAST_ID = 'codex-terminal-server-isolation-notice'
+const sharedSettingsNoticeMock = vi.fn<() => Promise<CodexSharedSettingsNotice | null>>()
 const codexTab = { 'wt-1': [{ id: 'tab-1', launchAgent: 'codex' }] }
 const mountedRoots: Root[] = []
+let seen = false
 
 function resetStore(overrides: Record<string, unknown> = {}): void {
+  seen = false
   store.setState(
     {
       persistedUIReady: true,
-      codexTerminalServerIsolationNoticeSeen: true,
-      settings: { codexTerminalServerIsolation: true },
-      codexSharedSettingsNotice: { mcpServerNames: [] },
+      settings: {},
+      codexSharedSettingsNoticeSeen: false,
       tabsByWorktree: {},
       agentStatusByPaneKey: {},
       paneForegroundAgentByPaneKey: {},
-      markCodexTerminalServerIsolationNoticeSeen: () =>
-        store.setState({ codexTerminalServerIsolationNoticeSeen: true }),
-      clearCodexSharedSettingsNotice: () => store.setState({ codexSharedSettingsNotice: null }),
+      markCodexSharedSettingsNoticeSeen: () => {
+        seen = true
+        store.setState({ codexSharedSettingsNoticeSeen: true })
+      },
       ...overrides
     },
     true
@@ -65,7 +55,6 @@ function resetStore(overrides: Record<string, unknown> = {}): void {
 }
 
 function HookProbe(): null {
-  useCodexTerminalServerIsolationNotice()
   useCodexSharedSettingsNotice()
   return null
 }
@@ -80,14 +69,11 @@ async function mountProbe(): Promise<void> {
   })
 }
 
-function shownToastIds(): string[] {
-  return toastInfoMock.mock.calls.map(([, options]) => options.id)
-}
-
 describe('useCodexSharedSettingsNotice', () => {
   beforeEach(() => {
-    toastInfoMock.mockClear()
-    visibleToastIds.splice(0)
+    toastInfoMock.mockReset()
+    sharedSettingsNoticeMock.mockReset().mockResolvedValue({ mcpServerNames: [] })
+    vi.stubGlobal('api', { codexConfigSync: { sharedSettingsNotice: sharedSettingsNoticeMock } })
     resetStore()
   })
 
@@ -99,25 +85,27 @@ describe('useCodexSharedSettingsNotice', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows once a Codex terminal exists, and clears the persisted notice', async () => {
+  it('shows once a Codex terminal exists, and marks it seen', async () => {
     await mountProbe()
-    expect(toastInfoMock).not.toHaveBeenCalled()
+    expect(sharedSettingsNoticeMock).not.toHaveBeenCalled()
 
-    act(() => store.setState({ tabsByWorktree: codexTab }))
-    act(() => store.setState({ agentStatusByPaneKey: { 'tab-1:leaf': { agentType: 'codex' } } }))
+    await act(async () => store.setState({ tabsByWorktree: codexTab }))
+    await act(async () =>
+      store.setState({ agentStatusByPaneKey: { 'tab-1:leaf': { agentType: 'codex' } } })
+    )
 
-    expect(shownToastIds()).toEqual([SHARED_SETTINGS_TOAST_ID])
+    expect(sharedSettingsNoticeMock).toHaveBeenCalledTimes(1)
+    expect(toastInfoMock).toHaveBeenCalledTimes(1)
     const [title, options] = toastInfoMock.mock.calls[0] ?? []
     expect(title).toBe('Codex in Orca now shares your Codex settings')
     expect(options).toMatchObject({ duration: 15_000 })
     expect(options?.description).not.toContain('MCP')
+    expect(seen).toBe(true)
   })
 
   it('names the MCP servers that need to be added again', async () => {
-    resetStore({
-      codexSharedSettingsNotice: { mcpServerNames: ['github', 'linear'] },
-      tabsByWorktree: codexTab
-    })
+    sharedSettingsNoticeMock.mockResolvedValue({ mcpServerNames: ['github', 'linear'] })
+    resetStore({ tabsByWorktree: codexTab })
 
     await mountProbe()
 
@@ -126,43 +114,30 @@ describe('useCodexSharedSettingsNotice', () => {
     )
   })
 
-  it('shows when main records the notice after a Codex terminal is already open', async () => {
-    resetStore({ codexSharedSettingsNotice: null, tabsByWorktree: codexTab })
+  it('asks main once and stays unseen when nothing is due', async () => {
+    sharedSettingsNoticeMock.mockResolvedValue(null)
+    resetStore({ tabsByWorktree: codexTab })
     await mountProbe()
+
+    await act(async () =>
+      store.setState({ agentStatusByPaneKey: { 'tab-1:leaf': { agentType: 'codex' } } })
+    )
+
+    expect(sharedSettingsNoticeMock).toHaveBeenCalledTimes(1)
     expect(toastInfoMock).not.toHaveBeenCalled()
-
-    await act(async () => store.setState({ codexSharedSettingsNotice: { mcpServerNames: [] } }))
-
-    expect(shownToastIds()).toEqual([SHARED_SETTINGS_TOAST_ID])
+    expect(seen).toBe(false)
   })
 
-  it('waits for the server-isolation notice instead of stacking on it', async () => {
-    resetStore({ codexTerminalServerIsolationNoticeSeen: false })
+  it('stays quiet once seen', async () => {
+    resetStore({ codexSharedSettingsNoticeSeen: true, tabsByWorktree: codexTab })
     await mountProbe()
-
-    act(() => store.setState({ tabsByWorktree: codexTab }))
-    act(() => store.setState({ agentStatusByPaneKey: { 'tab-1:leaf': { agentType: 'codex' } } }))
-    expect(shownToastIds()).toEqual([ISOLATION_TOAST_ID])
-
-    visibleToastIds.splice(0)
-    act(() => store.setState({ agentStatusByPaneKey: { 'tab-1:leaf': { agentType: 'codex' } } }))
-
-    expect(shownToastIds()).toEqual([ISOLATION_TOAST_ID, SHARED_SETTINGS_TOAST_ID])
-  })
-
-  it.each([
-    ['nothing is due', { codexSharedSettingsNotice: null }],
-    ['persisted UI has not hydrated', { persistedUIReady: false }]
-  ])('stays quiet when %s', async (_name, overrides) => {
-    resetStore({ ...overrides, tabsByWorktree: codexTab })
-    await mountProbe()
-    expect(toastInfoMock).not.toHaveBeenCalled()
+    expect(sharedSettingsNoticeMock).not.toHaveBeenCalled()
   })
 
   it('stays quiet in a paired web client window', async () => {
     vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
     resetStore({ tabsByWorktree: codexTab })
     await mountProbe()
-    expect(toastInfoMock).not.toHaveBeenCalled()
+    expect(sharedSettingsNoticeMock).not.toHaveBeenCalled()
   })
 })

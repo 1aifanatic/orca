@@ -6,7 +6,7 @@ import {
   isRuntimeOnlyMcpServer,
   readMcpServerTomlOwnership
 } from '../codex/config-toml-mcp-servers'
-import type { CodexSharedSettingsNotice } from '../../shared/persisted-ui-state-types'
+import type { CodexSharedSettingsNotice } from '../../shared/codex-config-sync-types'
 
 /**
  * What the Windows notice must say now that system-default Codex runs on

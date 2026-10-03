@@ -115,7 +115,8 @@ function createWebPreloadApi(): Partial<PreloadApi> {
     macosTccPrompts: createMacosTccPromptsApi(),
     codexConfigSync: {
       status: () =>
-        Promise.resolve({ state: 'synced', reason: null, systemConfigPath: '' } as const)
+        Promise.resolve({ state: 'synced', reason: null, systemConfigPath: '' } as const),
+      sharedSettingsNotice: () => Promise.resolve(null)
     },
     developerPermissions: createDeveloperPermissionsApi(),
     computerUsePermissions: createComputerUsePermissionsApi(),

@@ -1,16 +1,21 @@
 import { ipcMain } from 'electron'
 import { join } from 'node:path'
-import { getSystemCodexHomePath } from '../codex/codex-home-paths'
+import { getSystemCodexHomePath, resolveOrcaManagedCodexHomePath } from '../codex/codex-home-paths'
 import { getCodexConfigSyncStatus } from '../codex/config-sync-stall'
-import type { CodexConfigSyncStatus } from '../../shared/codex-config-sync-types'
+import { resolveCodexSharedSettingsNotice } from '../codex-accounts/codex-shared-settings-notice'
+import type {
+  CodexConfigSyncStatus,
+  CodexSharedSettingsNotice
+} from '../../shared/codex-config-sync-types'
 import type { CodexMirroredHomeStatus } from '../codex-accounts/runtime-home-service'
 
-/** The read-only slice of the runtime home service this channel needs. */
+/** The read-only slice of the runtime home service these channels need. */
 type CodexMirroredHomeResolver = {
   getMirroredHostHomePathForStatus: () => CodexMirroredHomeStatus
+  isHostSystemDefaultRealHome: () => boolean
 }
 
-/** Registers the read-only IPC channel the settings pane reads once per mount for Codex config sync health. */
+/** Registers the read-only IPC channels for Codex config sync health and the Windows shared-settings notice. */
 export function registerCodexConfigSyncHandlers(runtimeHome: CodexMirroredHomeResolver): void {
   ipcMain.removeHandler('codexConfigSync:status')
   ipcMain.handle('codexConfigSync:status', (): CodexConfigSyncStatus => {
@@ -37,5 +42,21 @@ export function registerCodexConfigSyncHandlers(runtimeHome: CodexMirroredHomeRe
       }
     }
     return getCodexConfigSyncStatus({ runtimeHomePath, systemHomePath })
+  })
+
+  ipcMain.removeHandler('codexConfigSync:sharedSettingsNotice')
+  ipcMain.handle('codexConfigSync:sharedSettingsNotice', (): CodexSharedSettingsNotice | null => {
+    if (process.platform !== 'win32' || !runtimeHome.isHostSystemDefaultRealHome()) {
+      return null
+    }
+    try {
+      return resolveCodexSharedSettingsNotice(
+        resolveOrcaManagedCodexHomePath(),
+        getSystemCodexHomePath()
+      )
+    } catch {
+      // Why quiet: the renderer asks once per session, so a locked file just waits for the next one.
+      return null
+    }
   })
 }

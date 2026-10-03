@@ -2,43 +2,20 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
-import type { AppState } from '@/store/types'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
-import type { CodexSharedSettingsNotice } from '../../../../shared/persisted-ui-state-types'
-import {
-  didCodexNoticeInputsChange,
-  hasCodexTerminal,
-  isCodexTerminalServerIsolationNoticeShowing,
-  shouldShowCodexTerminalServerIsolationNotice,
-  type CodexNoticeState
-} from './codex-terminal-server-isolation-notice'
-
-type CodexSharedSettingsNoticeState = CodexNoticeState & Pick<AppState, 'codexSharedSettingsNotice'>
-
-export function getDueCodexSharedSettingsNotice(
-  state: CodexSharedSettingsNoticeState
-): CodexSharedSettingsNotice | null {
-  const notice = state.codexSharedSettingsNotice
-  return notice &&
-    state.persistedUIReady &&
-    hasCodexTerminal(state) &&
-    // Why: one Codex notice at a time; the server-isolation one goes first.
-    !shouldShowCodexTerminalServerIsolationNotice(state) &&
-    !isCodexTerminalServerIsolationNoticeShowing()
-    ? notice
-    : null
-}
+import type { CodexSharedSettingsNotice } from '../../../../shared/codex-config-sync-types'
+import { whenCodexTerminalAppears } from './codex-terminal-presence'
 
 function showCodexSharedSettingsNotice({ mcpServerNames }: CodexSharedSettingsNotice): void {
-  // Why clear before showing: shown means seen, so a quit or reload never repeats it.
-  useAppStore.getState().clearCodexSharedSettingsNotice()
+  // Why mark before showing: seen means shown, so a quit or reload never repeats it.
+  useAppStore.getState().markCodexSharedSettingsNoticeSeen()
   toast.info(
     translate(
       'terminal.codexSharedSettingsNotice.title',
       'Codex in Orca now shares your Codex settings'
     ),
     {
-      // Why a stable id: a late sync that re-hydrates the notice can't stack a second toast.
+      // Why a stable id: a late sync that resets the flag can't stack a second toast.
       id: 'codex-shared-settings-notice',
       description:
         mcpServerNames.length === 0
@@ -57,29 +34,23 @@ function showCodexSharedSettingsNotice({ mcpServerNames }: CodexSharedSettingsNo
 }
 
 export function useCodexSharedSettingsNotice(): void {
-  const notice = useAppStore((s) => s.codexSharedSettingsNotice)
+  const seen = useAppStore((s) => s.codexSharedSettingsNoticeSeen)
 
   useEffect(() => {
-    // Why: main decides this for its own local Windows host, not a paired client's.
-    if (!notice || isPairedWebClientWindow()) {
+    // Why: main answers for its own Windows host, not a paired client's.
+    if (seen || isPairedWebClientWindow()) {
       return
     }
-    const showIfDue = (state: CodexSharedSettingsNoticeState): boolean => {
-      const due = getDueCodexSharedSettingsNotice(state)
-      if (due) {
-        showCodexSharedSettingsNotice(due)
-      }
-      return due !== null
-    }
-    if (showIfDue(useAppStore.getState())) {
-      return
-    }
-    // Why: also re-checks once a showing isolation notice is gone, on the next Codex activity.
-    const unsubscribe = useAppStore.subscribe((state, previous) => {
-      if (didCodexNoticeInputsChange(state, previous) && showIfDue(state)) {
-        unsubscribe()
-      }
+    // Why no retry: only `seen` re-arms this, so a null answer waits for the next session.
+    return whenCodexTerminalAppears(() => {
+      void window.api.codexConfigSync
+        .sharedSettingsNotice()
+        .then((notice) => {
+          if (notice) {
+            showCodexSharedSettingsNotice(notice)
+          }
+        })
+        .catch(console.error)
     })
-    return unsubscribe
-  }, [notice])
+  }, [seen])
 }

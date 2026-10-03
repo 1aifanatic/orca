@@ -26,11 +26,6 @@ import type {
 import type { WorkspaceStatusDefinition } from './worktree/types'
 import type { PersistedAutomationHostFilter } from './automation-host-filter'
 
-/** Names only: the MCP tables themselves may hold secrets and never leave main. */
-export type CodexSharedSettingsNotice = {
-  mcpServerNames: string[]
-}
-
 export type PersistedUIState = {
   lastActiveRepoId: string | null
   lastActiveWorktreeId: string | null
@@ -177,8 +172,8 @@ export type PersistedUIState = {
   usageEmptyStateDismissed?: boolean
   /** One-shot toast announcing per-terminal Codex servers; set when shown, so absent means not yet seen. */
   codexTerminalServerIsolationNoticeSeen?: boolean
-  /** Windows one-shot toast for Codex moving onto ~/.codex. Absent = not decided yet; main sets it once, the renderer clears it to null when shown. */
-  codexSharedSettingsNotice?: CodexSharedSettingsNotice | null
+  /** Windows one-shot toast for Codex moving onto ~/.codex; set when shown, so absent means not yet seen. */
+  codexSharedSettingsNoticeSeen?: boolean
   /** URL for new browser tabs; null = blank tab. */
   browserDefaultUrl?: string | null
   browserDefaultSearchEngine?: 'google' | 'duckduckgo' | 'bing' | 'kagi' | null

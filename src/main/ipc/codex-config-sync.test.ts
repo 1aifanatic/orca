@@ -20,7 +20,10 @@ vi.mock('node:os', async (importOriginal) => {
 })
 
 import { registerCodexConfigSyncHandlers } from './codex-config-sync'
-import type { CodexConfigSyncStatus } from '../../shared/codex-config-sync-types'
+import type {
+  CodexConfigSyncStatus,
+  CodexSharedSettingsNotice
+} from '../../shared/codex-config-sync-types'
 import { getCodexSettingsBaselinePath } from '../codex/config-settings-baseline'
 
 let root: string
@@ -34,9 +37,12 @@ function invokeHandlerWithStatus(
 ): CodexConfigSyncStatus {
   handleMock.mockClear()
   registerCodexConfigSyncHandlers({
-    getMirroredHostHomePathForStatus: () => mirrored
+    getMirroredHostHomePathForStatus: () => mirrored,
+    isHostSystemDefaultRealHome: () => mirrored.kind === 'ready' && mirrored.homePath === null
   })
-  const handler = handleMock.mock.calls.at(-1)?.[1] as () => CodexConfigSyncStatus
+  const handler = handleMock.mock.calls.find(
+    ([channel]) => channel === 'codexConfigSync:status'
+  )?.[1] as () => CodexConfigSyncStatus
   return handler()
 }
 
@@ -117,5 +123,55 @@ it('reports a managed-home-unavailable stall instead of synced when the home is 
     state: 'stalled',
     reason: 'managed-home-unavailable',
     systemConfigPath: join(root, '.codex', 'config.toml')
+  })
+})
+
+describe('codexConfigSync:sharedSettingsNotice handler', () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+  const managedHome = (): string => join(root, 'userData', 'codex-runtime-home', 'home')
+
+  function invokeNoticeHandler(
+    platform: NodeJS.Platform,
+    realHome: boolean
+  ): CodexSharedSettingsNotice | null {
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+    handleMock.mockClear()
+    registerCodexConfigSyncHandlers({
+      getMirroredHostHomePathForStatus: () => ({ kind: 'ready', homePath: null }),
+      isHostSystemDefaultRealHome: () => realHome
+    })
+    const handler = handleMock.mock.calls.find(
+      ([channel]) => channel === 'codexConfigSync:sharedSettingsNotice'
+    )?.[1] as () => CodexSharedSettingsNotice | null
+    return handler()
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('ORCA_USER_DATA_PATH', join(root, 'userData'))
+    mkdirSync(join(managedHome(), 'sessions', '2026'), { recursive: true })
+  })
+
+  afterEach(() => {
+    if (originalPlatform) {
+      Object.defineProperty(process, 'platform', originalPlatform)
+    }
+    vi.unstubAllEnvs()
+  })
+
+  it('reports a used managed home once Windows Codex runs on ~/.codex', () => {
+    expect(invokeNoticeHandler('win32', true)).toEqual({ mcpServerNames: [] })
+  })
+
+  it.each([
+    ['off Windows', 'darwin', true],
+    ['while the system default still runs in the managed home', 'win32', false]
+  ] as const)('is null %s', (_case, platform, realHome) => {
+    expect(invokeNoticeHandler(platform, realHome)).toBeNull()
+  })
+
+  it('is null when the managed home cannot be read', () => {
+    mkdirSync(join(managedHome(), 'config.toml'))
+
+    expect(invokeNoticeHandler('win32', true)).toBeNull()
   })
 })

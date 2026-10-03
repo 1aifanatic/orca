@@ -244,7 +244,7 @@ export function createUiHydrationActions(set: UISliceSet, _get: UISliceGet): Par
           usageEmptyStateDismissed: ui.usageEmptyStateDismissed === true,
           codexTerminalServerIsolationNoticeSeen:
             ui.codexTerminalServerIsolationNoticeSeen === true,
-          codexSharedSettingsNotice: ui.codexSharedSettingsNotice ?? null,
+          codexSharedSettingsNoticeSeen: ui.codexSharedSettingsNoticeSeen === true,
           ...hydrateAgentReadState(ui),
           workspaceCleanupDismissals: sanitizeWorkspaceCleanupDismissals(
             ui.workspaceCleanup?.dismissals

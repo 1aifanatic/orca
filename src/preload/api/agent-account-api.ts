@@ -3,7 +3,10 @@ import type {
   ClaudeRateLimitAccountsState,
   CodexRateLimitAccountsState
 } from '../../shared/managed-account-types'
-import type { CodexConfigSyncStatus } from '../../shared/codex-config-sync-types'
+import type {
+  CodexConfigSyncStatus,
+  CodexSharedSettingsNotice
+} from '../../shared/codex-config-sync-types'
 import type { CursorAccountStatus, GrokAccountStatus } from '../../shared/rate-limit-types'
 
 export type CodexAccountsApi = {
@@ -98,4 +101,5 @@ export type MinimaxCredentialsApi = {
 
 export type CodexConfigSyncApi = {
   status: () => Promise<CodexConfigSyncStatus>
+  sharedSettingsNotice: () => Promise<CodexSharedSettingsNotice | null>
 }
