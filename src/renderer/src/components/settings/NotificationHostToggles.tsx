@@ -1,6 +1,5 @@
 import { ChevronDown, Server } from 'lucide-react'
 import type { NotificationSourceId } from '../../../../shared/notification-source'
-import { Button } from '../ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
 import { Separator } from '../ui/separator'
 import { NotificationSettingToggle } from './NotificationSettingToggle'
@@ -29,39 +28,33 @@ export function NotificationHostToggles({
     <>
       <Separator />
       <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            className="group -ml-4 h-auto w-full justify-between whitespace-normal text-left"
-          >
-            <span className="min-w-0 space-y-0.5">
-              <span className="flex items-center gap-2">
-                <Server className="size-4" />
-                {translate('auto.components.settings.NotificationHostToggles.machines', 'Machines')}
-              </span>
-              <span className="block text-xs font-normal text-muted-foreground">
+        <CollapsibleTrigger variant="row">
+          <span className="min-w-0 space-y-0.5">
+            <span className="flex items-center gap-2">
+              <Server className="size-4" />
+              {translate('auto.components.settings.NotificationHostToggles.machines', 'Machines')}
+            </span>
+            <span className="block text-xs font-normal text-muted-foreground">
+              {translate(
+                'auto.components.settings.NotificationHostToggles.machinesDescription',
+                'Show notifications from each connected machine. A paired server’s switch also covers work reached through it.'
+              )}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {mutedCount > 0 && (
+              <span className="text-xs text-muted-foreground">
                 {translate(
-                  'auto.components.settings.NotificationHostToggles.machinesDescription',
-                  'Show notifications from each connected machine. A paired server’s switch also covers work reached through it.'
+                  'auto.components.settings.NotificationHostToggles.offCount',
+                  '{{count}} off',
+                  {
+                    count: mutedCount
+                  }
                 )}
               </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-2">
-              {mutedCount > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {translate(
-                    'auto.components.settings.NotificationHostToggles.offCount',
-                    '{{count}} off',
-                    {
-                      count: mutedCount
-                    }
-                  )}
-                </span>
-              )}
-              <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
-            </span>
-          </Button>
+            )}
+            <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+          </span>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="ml-4">
