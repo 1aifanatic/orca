@@ -170,6 +170,12 @@ async function settled(): Promise<{
   }
 }
 
+async function statusRows(): Promise<string[]> {
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' ? [item.body.text] : []
+  )
+}
+
 function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessageId: string) {
   const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
   return submission?.dispatchState === 'rejected'
@@ -503,18 +509,12 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
 })
 
 describe('a Stop in that window that the turn never opens for', () => {
-  async function statusRows(): Promise<string[]> {
-    return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
-      item.body.kind === 'status' ? [item.body.text] : []
-    )
-  }
-
-  async function waitingStop(): Promise<{ stopping: Promise<void> }> {
-    await send('look around')
+  async function waitingStop(): Promise<{ stopping: Promise<void>; sent: string }> {
+    const sent = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     const stopping = stop()
     expect(await settledWithin(stopping, 200)).toBe('held')
-    return { stopping }
+    return { stopping, sent }
   }
 
   it('says Codex had no turn running when that turn ends first', async () => {
@@ -529,7 +529,7 @@ describe('a Stop in that window that the turn never opens for', () => {
   })
 
   it('lets a chat closed behind it close within its bound and one eviction', async () => {
-    const { stopping } = await waitingStop()
+    const { stopping, sent } = await waitingStop()
 
     const closing = host.close(SESSION, 'evict')
 
@@ -539,8 +539,9 @@ describe('a Stop in that window that the turn never opens for', () => {
     expect(await settledWithin(stopping, 0)).not.toBe('held')
     expect(childCloses).toBe(1)
     expect(interrupts).toBe(1)
-    // Its wait ran out with the turn still able to open, so the Stop ended the child.
-    expect(await statusRows()).toContain('Cancellation requested.')
+    // Its wait ran out with the turn still able to open, so the Stop ended the child and took the
+    // send back.
+    expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
   })
 
   it('lets the app quit behind it within the eviction budget, and still close the child', async () => {
@@ -629,6 +630,27 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     await nextSendStartsANewChild()
   })
 
+  // Nothing it stopped stays in the transcript, so a Stop row would read as stopping the turn before.
+  it('leaves no Stop row under the turn before once it takes the send back', async () => {
+    const warmUp = await send('warm up')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(warmUp)
+    turns.end('completed')
+    const release = turns.holdNextAnswer()
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    const stopping = stop()
+    release()
+    expect(await settledWithin(stopping, CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+
+    expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    expect(await statusRows()).toEqual([])
+    expect(turnRow((await host.journalSnapshot(SESSION)).items)).toMatchObject({
+      state: 'completed'
+    })
+  })
+
   it('withdraws it too when the child end fails and a later retry lands it', async () => {
     failingCloses = 1
     const sent = await stoppedBeforeItsTurnOpened()
@@ -651,6 +673,7 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(childCloses).toBe(1)
     expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
   // Handed over once the stopped turn read ended, it started its own turn, however late that
