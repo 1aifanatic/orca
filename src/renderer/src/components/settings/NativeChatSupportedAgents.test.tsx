@@ -16,6 +16,7 @@ const EXPECTED_SUPPORTED_AGENTS = [
   'claude',
   'openclaude',
   'codex',
+  'cursor',
   'grok',
   'omp'
 ] as const satisfies readonly TuiAgent[]
@@ -48,6 +49,10 @@ describe('NativeChatSupportedAgents', () => {
 
   it('renders exactly one chip for each supported agent', () => {
     expect(getRenderedChips().map((chip) => chip.agent)).toEqual(EXPECTED_SUPPORTED_AGENTS)
+  })
+
+  it('renders exactly one chip for Cursor ACP', () => {
+    expect(getRenderedChips().filter((chip) => chip.agent === 'cursor')).toHaveLength(1)
   })
 
   it('gives each icon an accessible catalog agent name', () => {
