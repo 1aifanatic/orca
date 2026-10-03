@@ -35,7 +35,7 @@ export function writeOpenCodeTuiPlugin(
   const tuiSource =
     source.includes('const ORCA_STATUS_AGENT = "opencode";') &&
     source.includes('async function setupLegacyOpenCodeTui(')
-      ? `${source.replace(/^export default /m, 'const orcaServerPlugin = ')}\nexport default { id: ${JSON.stringify(pluginFileName.replace(/\.js$/, ''))}, tui: setupLegacyOpenCodeTui, setup: setupOpenCode2Status };\n`
+      ? `${source.replace(/^export default /m, 'const orcaServerPlugin = ')}\nexport default { id: ${JSON.stringify(pluginFileName.replace(/\.js$/, ''))}, setup: setupOpenCode2Status, ...orcaServerPlugin, tui: setupLegacyOpenCodeTui };\n`
       : source
   const isCurrent =
     ownership === 'canonical' ? isInstalledOpenCodePluginCurrent : isOverlayOpenCodePluginCurrent

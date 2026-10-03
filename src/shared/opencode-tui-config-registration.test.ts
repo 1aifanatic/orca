@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { runInNewContext } from 'node:vm'
 import { parse } from 'jsonc-parser'
 import { registerOpenCodeTuiPlugin } from './opencode-tui-config-registration'
 import { writeOpenCodeTuiPlugin } from './opencode-tui-plugin-install'
@@ -41,6 +42,42 @@ it('installs the 1.x object TUI entry and explicitly registers its file URL', ()
   expect(parse(readFileSync(join(configDir, 'tui.json'), 'utf8'))).toEqual({
     plugin: [pathToFileURL(entry).href]
   })
+})
+
+it('retains every existing default export entry when adding the legacy TUI entry', () => {
+  const configDir = root()
+  const plugins = join(configDir, 'plugins')
+  const source = `${pluginSource.replace(/^export default .*$/m, '')}
+function mainServer() { return 'main server'; }
+function mainSetup() { return 'main setup'; }
+export default { id: 'main-owned-id', server: mainServer, setup: mainSetup, unowned: { keep: true } };
+`
+  writeOpenCodeTuiPlugin(plugins, 'orca-opencode-status.js', source)
+  const entry = join(plugins, 'orca-opencode-status-tui', 'tui.js')
+  const module: { exports: unknown } = { exports: null }
+  runInNewContext(readFileSync(entry, 'utf8').replace(/^export default /m, 'module.exports = '), {
+    module
+  })
+  expect(module.exports).toMatchObject({
+    id: 'main-owned-id',
+    server: expect.any(Function),
+    setup: expect.any(Function),
+    tui: expect.any(Function),
+    unowned: { keep: true }
+  })
+  const exported = module.exports
+  if (
+    !exported ||
+    typeof exported !== 'object' ||
+    !('server' in exported) ||
+    typeof exported.server !== 'function' ||
+    !('setup' in exported) ||
+    typeof exported.setup !== 'function'
+  ) {
+    throw new Error('Missing main-owned plugin entries')
+  }
+  expect(exported.server()).toBe('main server')
+  expect(exported.setup()).toBe('main setup')
 })
 
 it('preserves existing settings, comments, plugin options and package specifiers', () => {

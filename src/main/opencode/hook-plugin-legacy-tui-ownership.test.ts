@@ -110,13 +110,15 @@ describe('OpenCode 1 TUI API pane reporting', () => {
     }
   }
 
-  it('registers a separate object TUI entry while retaining the callable server entry', async () => {
+  it('registers a separate object TUI entry while retaining the current server entry', async () => {
     process.env.ORCA_PANE_KEY = PANE_A
     const path = join(dir, 'server.mjs')
     writeFileSync(path, getOpenCodePluginSource())
-    const plugin = await import(pathToFileURL(path).href)
-    expect(typeof plugin.default).toBe('function')
-    expect(typeof plugin.OrcaOpenCodeStatusPlugin).toBe('function')
+    const plugin: unknown = await import(pathToFileURL(path).href)
+    expect(plugin).toMatchObject({
+      default: { server: expect.any(Function), setup: expect.any(Function) },
+      OrcaOpenCodeStatusPlugin: expect.any(Function)
+    })
     const tui = await start()
     expect(tui.listenerCount()).toBeGreaterThan(0)
   })
