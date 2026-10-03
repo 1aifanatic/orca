@@ -127,8 +127,8 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
     context.wakeDelivery?.(sessionId)
     return
   }
-  const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
   try {
+    // The exited child's own writes land first: its dead generation is settled from all of them.
     try {
       const barrier = await context.flushLifecycle(sessionId)
       if (!barrier.ok) {
@@ -137,6 +137,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
     } catch (error) {
       logExitFailure(context, sessionId, 'exit-lifecycle-barrier', error)
     }
+    const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
     // Folded before the fallback's end is built, so the end reads it (`turnEndAfterStop`).
     await close?.recorded
     const generation = child.generation ?? 'unknown'

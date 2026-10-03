@@ -6,6 +6,7 @@ import {
   type StructuredAgentSessionEvictionContext
 } from './structured-agent-session-eviction'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
+import { withJournalQueueMembers } from './structured-agent-session-journal-double-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
@@ -92,7 +93,12 @@ describe('eviction against the real sink cache', () => {
 
     const published: string[] = []
     const reattached = state.eventSinkFor(sessionId)
-    reattached.bind({ journal: {} as never, fence: 2, publish: () => published.push('published') })
+    reattached.bind({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these rows are publications only, which reach nothing on the journal but its in-order read.
+      journal: withJournalQueueMembers({ appendItem: async () => ({}) }) as never,
+      fence: 2,
+      publish: () => published.push('published')
+    })
     reattached.sink.publish()
     await reattached.drained()
 

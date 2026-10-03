@@ -66,7 +66,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   now: () => number
 }
 
@@ -243,7 +242,6 @@ export class StructuredAgentSessionDeliveryLoop {
         failureTextContext: this.deps.failureTextContext(sessionId),
         record: () => this.deps.record(sessionId),
         childWork: () => this.deps.readChildWork(sessionId),
-        flushStreamedEvents: () => this.deps.flushStreamedEvents(sessionId),
         now: this.deps.now
       },
       next

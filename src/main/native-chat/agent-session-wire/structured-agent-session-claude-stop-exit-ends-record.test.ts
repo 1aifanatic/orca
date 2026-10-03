@@ -454,6 +454,26 @@ it('refuses an option change while the close stays unverifiable, never writing t
   expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
 })
 
+it('keeps an option change at rest when the Stop proved the exit and only its drain failed', async () => {
+  const connection = claude.connections[0]!
+  await openTurn(connection)
+  // The Stop reads the journal without a drain, so the exit's wind-down is the only drain to fail.
+  vi.spyOn(host['runtimeState'].eventSinkFor(SESSION), 'lifecycleBarrier').mockResolvedValueOnce({
+    ok: false,
+    error: new Error('drain barrier lost')
+  })
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  frame(connection, INTERRUPTED_RESULT)
+  await laneDrained()
+  await eventually(() => expect(child()).toBeNull())
+  expect(scopes().filter((scope) => scope === 'exit-lifecycle-barrier')).toHaveLength(1)
+
+  await expect(setModel('claude-opus-5')).resolves.toMatchObject({ ok: true })
+  expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'claude-opus-5' })
+  expect(connection.closeCount).toBe(1)
+  expect(claude.connections).toHaveLength(1)
+})
+
 it('reports a descendant left behind by a proven root exit, and blocks nothing', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
