@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { useAppStore } from '@/store'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
+import { getActiveRuntimeTarget, type RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
+import { structuredAgentSessionTargetForHost } from '@/runtime/structured-agent-session-owner'
 import { getStructuredAgentSessionTurnCompletionFeed } from '@/runtime/structured-agent-session-turn-completion-feed'
 import { dispatchStructuredTurnCompletionAttention } from './structured-attention-dispatch'
 import { getStructuredAgentSessionTabs, type StructuredTab } from './structured-agent-session-tabs'
@@ -15,14 +16,33 @@ import { getStructuredAgentSessionTabs, type StructuredTab } from './structured-
  * the tab IS the attention surface. A completion for a session with no open tab has no surface to
  * mark and no liveness evidence in this process, and the surface adapter would reject it anyway.
  */
-function StructuredAgentSessionAttention({ tab }: { tab: StructuredTab }): null {
+function StructuredAgentSessionAttention({
+  tab
+}: {
+  tab: StructuredTab
+}): React.JSX.Element | null {
+  // The host stamped on the tab, never its workspace id, which two hosts can share. Only a tab from
+  // before that stamp existed resolves from its workspace.
   const environmentId = useAppStore((state) =>
-    getRuntimeEnvironmentIdForWorktree(state, tab.worktreeId)
+    tab.executionHostId ? null : getRuntimeEnvironmentIdForWorktree(state, tab.worktreeId)
   )
   const target = useMemo(
-    () => getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId }),
-    [environmentId]
+    () =>
+      tab.executionHostId
+        ? structuredAgentSessionTargetForHost(tab.executionHostId)
+        : getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId }),
+    [tab.executionHostId, environmentId]
   )
+  return target ? <StructuredAgentSessionOwnedAttention tab={tab} target={target} /> : null
+}
+
+function StructuredAgentSessionOwnedAttention({
+  tab,
+  target
+}: {
+  tab: StructuredTab
+  target: RuntimeClientTarget
+}): null {
   const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
   useEffect(() => feed.activate(), [feed])
   useEffect(
