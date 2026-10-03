@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import { isMacInstallRequested } from '../updater-mac-install'
 import type { UpdateCheckOptions } from '../../shared/update-status-types'
 import type { ReleaseChannel } from '../../shared/release-channel'
 import { UpdaterScheduling } from './updater-scheduling'
@@ -7,7 +8,11 @@ import { UpdaterScheduling } from './updater-scheduling'
 /** Handles checks initiated from the desktop menu and modifier-key variants. */
 export abstract class UpdaterMenuChecks extends UpdaterScheduling {
   protected checkForUpdatesFromMenu(options?: UpdateCheckOptions): void {
-    if (this.pendingQuitAndInstallTimer || this.quitAndInstallInProgress) {
+    if (
+      this.pendingQuitAndInstallTimer ||
+      this.quitAndInstallInProgress ||
+      isMacInstallRequested()
+    ) {
       return
     }
     if (!app.isPackaged || is.dev) {
@@ -63,7 +68,11 @@ export abstract class UpdaterMenuChecks extends UpdaterScheduling {
     const attemptId = this.beginUpdateCheckAttempt()
     const autoUpdater = this.getAutoUpdater()
     const launch = (): Promise<unknown> | undefined => {
-      if (this.pendingQuitAndInstallTimer || this.quitAndInstallInProgress) {
+      if (
+        this.pendingQuitAndInstallTimer ||
+        this.quitAndInstallInProgress ||
+        isMacInstallRequested()
+      ) {
         return undefined
       }
       if (!this.isActiveUpdateCheckAttempt(attemptId)) {

@@ -1,6 +1,7 @@
 import {
   beginMacUpdateDownload,
   deferMacQuitUntilInstallerReady,
+  isMacInstallRequested,
   setMacInstallPreflightInProgress
 } from '../updater-mac-install'
 import { recordUpdaterLifecycle } from '../updater-lifecycle-diagnostics'
@@ -16,7 +17,8 @@ export abstract class UpdaterDownloadInstall extends UpdaterRemoteStatus {
       this.localBuildSelectionInProgress ||
       this.pinnedBuildSelectionInProgress ||
       this.pendingQuitAndInstallTimer ||
-      this.quitAndInstallInProgress
+      this.quitAndInstallInProgress ||
+      isMacInstallRequested()
     ) {
       return
     }
@@ -24,6 +26,9 @@ export abstract class UpdaterDownloadInstall extends UpdaterRemoteStatus {
     if (this.deferHeadlessServeInstall('install', this.getPendingInstallVersion())) {
       return
     }
+    // A queued check must not repoint the feed while native staging or installation is pending.
+    this.finishActiveUpdateCheckAttempt()
+    this.clearBackgroundCheckLaunchPending()
     if (
       deferMacQuitUntilInstallerReady(
         this.currentStatus,
@@ -35,9 +40,6 @@ export abstract class UpdaterDownloadInstall extends UpdaterRemoteStatus {
       return
     }
 
-    // A queued check must not repoint the feed or clear the staged target during installation.
-    this.finishActiveUpdateCheckAttempt()
-    this.clearBackgroundCheckLaunchPending()
     if (process.platform === 'darwin') {
       setMacInstallPreflightInProgress(true)
     }
@@ -53,6 +55,7 @@ export abstract class UpdaterDownloadInstall extends UpdaterRemoteStatus {
       this.pinnedBuildSelectionInProgress ||
       this.pendingQuitAndInstallTimer ||
       this.quitAndInstallInProgress ||
+      isMacInstallRequested() ||
       this.downloadInFlight
     ) {
       return

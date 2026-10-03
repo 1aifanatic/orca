@@ -163,12 +163,14 @@ describe('updater mac install handoff', () => {
   })
 
   it.runIf(process.platform === 'darwin')(
-    'waits for Squirrel.Mac before honoring a manual quit that should install the update',
+    'resumes an ordinary quit when Squirrel becomes ready without checking blockers or relaunching',
     async () => {
+      vi.useFakeTimers()
       const sendMock = vi.fn()
       const mainWindow = { webContents: { send: sendMock } }
 
       autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      getMacUpdateRunningInstancesMock.mockResolvedValue([9654])
       const { setupAutoUpdater, downloadUpdate } = await loadUpdaterModule()
 
       setupAutoUpdater(mainWindow as never)
@@ -179,7 +181,7 @@ describe('updater mac install handoff', () => {
       autoUpdaterMock.emit('update-available', { version: '1.0.61' })
       // Why: the update-available handler is now async (it awaits fetchChangelog).
       // Flush microtasks so setAvailableVersion runs before update-downloaded fires.
-      await new Promise((r) => setTimeout(r, 0))
+      await vi.advanceTimersByTimeAsync(0)
       downloadUpdate()
       autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
 
@@ -196,14 +198,73 @@ describe('updater mac install handoff', () => {
 
       nativeDownloadedHandler?.()
 
-      await vi.waitFor(() => {
-        expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledWith(false, true)
-      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(appMock.quit).toHaveBeenCalledOnce()
+      expect(getMacUpdateRunningInstancesMock).not.toHaveBeenCalled()
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      const resumedPreventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault: resumedPreventDefault })
+      appMock.emit('before-quit', { preventDefault: resumedPreventDefault })
+      expect(resumedPreventDefault).not.toHaveBeenCalled()
       expect(sendMock).toHaveBeenCalledWith('updater:status', {
         state: 'downloading',
         percent: 100,
         version: '1.0.61'
       })
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'checks blockers for an explicit install requested before Squirrel becomes ready',
+    async () => {
+      vi.useFakeTimers()
+      const send = vi.fn()
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      getMacUpdateRunningInstancesMock.mockResolvedValue([9654])
+      const {
+        setupAutoUpdater,
+        downloadUpdate,
+        quitAndInstall,
+        isQuittingForUpdate,
+        checkForUpdates,
+        checkForUpdatesFromMenu,
+        getUpdateStatus
+      } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater reads only webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send } } as never)
+      await vi.waitFor(() => expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledOnce())
+      autoUpdaterMock.emit('checking-for-update')
+      autoUpdaterMock.emit('update-available', { version: '1.0.61' })
+      await vi.advanceTimersByTimeAsync(0)
+      downloadUpdate()
+      autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
+      quitAndInstall()
+      checkForUpdatesFromMenu()
+      checkForUpdatesFromMenu({ localBuild: true })
+      checkForUpdatesFromMenu({ channel: 'stable', targetTag: 'v1.0.70' })
+      checkForUpdates()
+      downloadUpdate()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledOnce()
+      expect(autoUpdaterMock.downloadUpdate).toHaveBeenCalledOnce()
+      expect(getUpdateStatus()).toEqual(
+        expect.objectContaining({ state: 'downloading', percent: 100, version: '1.0.61' })
+      )
+      const nativeReady = nativeUpdaterMock.on.mock.calls.find(
+        ([event]) => event === 'update-downloaded'
+      )?.[1]
+      nativeReady?.()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(getMacUpdateRunningInstancesMock).toHaveBeenCalledOnce()
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      expect(appMock.quit).not.toHaveBeenCalled()
+      expect(isQuittingForUpdate()).toBe(false)
+      expect(send).toHaveBeenCalledWith('updater:quitAndInstallAborted')
+      expect(send).toHaveBeenCalledWith(
+        'updater:status',
+        expect.objectContaining({ state: 'error', version: '1.0.61', retryAction: 'install' })
+      )
     }
   )
 
@@ -234,6 +295,7 @@ describe('updater mac install handoff', () => {
       downloadUpdate()
       autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
 
+      quitAndInstall()
       const preventDefault = vi.fn()
       appMock.emit('before-quit', { preventDefault })
       expect(preventDefault).toHaveBeenCalledTimes(1)
@@ -247,6 +309,7 @@ describe('updater mac install handoff', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(onBeforeQuit).toHaveBeenCalledTimes(1)
+      expect(getMacUpdateRunningInstancesMock).toHaveBeenCalledOnce()
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
 
       quitAndInstall()
@@ -332,6 +395,8 @@ describe('updater mac install handoff', () => {
       const secondPreventDefault = vi.fn()
       appMock.emit('before-quit', { preventDefault: secondPreventDefault })
       expect(secondPreventDefault).not.toHaveBeenCalled()
+      appMock.emit('before-quit', { preventDefault: secondPreventDefault })
+      expect(secondPreventDefault).not.toHaveBeenCalled()
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
     }
   )
@@ -400,6 +465,12 @@ describe('updater mac install handoff', () => {
           state: 'error',
           message: expect.stringContaining('Could not check'),
           retryAction: 'install'
+        })
+      )
+      expect(send).toHaveBeenCalledWith(
+        'updater:status',
+        expect.objectContaining({
+          message: expect.stringMatching(/close the other Orca instances.*quit Orca/i)
         })
       )
     }

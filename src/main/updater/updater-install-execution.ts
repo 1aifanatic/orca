@@ -77,7 +77,7 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
             version: pendingVersion,
             retryAction: 'install',
             message:
-              'Could not check for other running Orca instances. Orca remains open. Try the update again.'
+              'Could not check for other running Orca instances. Orca remains open. Try again. If the check keeps failing, close the other Orca instances and background orca serve servers, then quit Orca to let the update install on exit. Reopen Orca afterwards.'
           })
           recordUpdaterLifecycle('macos_running_instances_check_failed')
           return

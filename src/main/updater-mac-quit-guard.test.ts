@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { appMock, nativeUpdaterMock } = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
@@ -12,7 +12,10 @@ vi.mock('electron', () => ({ app: appMock, autoUpdater: nativeUpdaterMock }))
 vi.mock('./updater-lifecycle-diagnostics', () => ({ recordUpdaterLifecycle: vi.fn() }))
 
 import {
+  beginMacUpdateDownload,
+  deferMacQuitUntilInstallerReady,
   handleMacInstallerReady,
+  isMacInstallRequested,
   markMacQuitAndInstallInFlight,
   registerMacUpdaterEvents,
   resetMacInstallState,
@@ -29,9 +32,16 @@ function quitEvent(): { defaultPrevented: boolean; preventDefault: () => void } 
   return event
 }
 
-function registerGuard(hasUpdate: boolean, performQuitAndInstall = vi.fn()): void {
+function registerGuard(
+  hasUpdate: boolean,
+  performQuitAndInstall = vi.fn(),
+  status: 'downloaded' | 'downloading' = 'downloaded'
+): void {
   registerMacUpdaterEvents({
-    getCurrentStatus: () => ({ state: 'downloaded', version: '2.0.0' }),
+    getCurrentStatus: () =>
+      status === 'downloaded'
+        ? { state: 'downloaded', version: '2.0.0' }
+        : { state: 'downloading', percent: 100, version: '2.0.0' },
     hasInstallableDownloadedVersion: () => hasUpdate,
     getPendingInstallVersion: () => '2.0.0',
     getKnownReleaseUrl: () => undefined,
@@ -45,8 +55,120 @@ describe.runIf(process.platform === 'darwin')('macOS quit guard ordering', () =>
   beforeEach(() => {
     appMock.removeAllListeners()
     nativeUpdaterMock.removeAllListeners()
-    resetMacInstallState()
+    beginMacUpdateDownload()
     appMock.quit.mockReset()
+  })
+
+  afterEach(() => {
+    resetMacInstallState()
+    vi.useRealTimers()
+  })
+
+  it('resumes an ordinary quit after native readiness without starting a relaunching install', () => {
+    const install = vi.fn()
+    registerGuard(true, install, 'downloading')
+    const firstQuit = quitEvent()
+    appMock.emit('before-quit', firstQuit)
+    expect(firstQuit.defaultPrevented).toBe(true)
+
+    nativeUpdaterMock.emit('update-downloaded')
+
+    expect(appMock.quit).toHaveBeenCalledOnce()
+    expect(install).not.toHaveBeenCalled()
+    for (let pass = 0; pass < 2; pass++) {
+      const resumedQuit = quitEvent()
+      appMock.emit('before-quit', resumedQuit)
+      expect(resumedQuit.defaultPrevented).toBe(false)
+    }
+  })
+
+  it('keeps an explicit deferred install when an ordinary quit arrives afterward', async () => {
+    const install = vi.fn()
+    registerGuard(true, install, 'downloading')
+    expect(
+      deferMacQuitUntilInstallerReady(
+        { state: 'downloading', percent: 100, version: '2.0.0' },
+        true,
+        () => '2.0.0',
+        vi.fn()
+      )
+    ).toBe(true)
+    const ordinaryQuit = quitEvent()
+    appMock.emit('before-quit', ordinaryQuit)
+    expect(ordinaryQuit.defaultPrevented).toBe(true)
+    nativeUpdaterMock.emit('update-downloaded')
+    const quitBeforeInstallCallback = quitEvent()
+    appMock.emit('before-quit', quitBeforeInstallCallback)
+    expect(quitBeforeInstallCallback.defaultPrevented).toBe(true)
+    await Promise.resolve()
+
+    expect(install).toHaveBeenCalledOnce()
+    expect(appMock.quit).not.toHaveBeenCalled()
+  })
+
+  it('releases the requested install when readiness has no installable version', () => {
+    const install = vi.fn()
+    registerGuard(true, install, 'downloading')
+    deferMacQuitUntilInstallerReady(
+      { state: 'downloading', percent: 100, version: '2.0.0' },
+      true,
+      () => '2.0.0',
+      vi.fn()
+    )
+    expect(isMacInstallRequested()).toBe(true)
+    handleMacInstallerReady(false, install, vi.fn())
+    expect(isMacInstallRequested()).toBe(false)
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it('releases the readiness handoff guard when the install callback rejects', async () => {
+    registerGuard(true, vi.fn(), 'downloading')
+    deferMacQuitUntilInstallerReady(
+      { state: 'downloading', percent: 100, version: '2.0.0' },
+      true,
+      () => '2.0.0',
+      vi.fn()
+    )
+    handleMacInstallerReady(
+      true,
+      () => {
+        throw new Error('handoff rejected')
+      },
+      vi.fn()
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(isMacInstallRequested()).toBe(false)
+    const ordinaryQuit = quitEvent()
+    appMock.emit('before-quit', ordinaryQuit)
+    expect(ordinaryQuit.defaultPrevented).toBe(false)
+  })
+
+  it('allows both timeout shutdown passes and revokes that allowance for a new deferred install', async () => {
+    vi.useFakeTimers()
+    const install = vi.fn()
+    registerGuard(true, install, 'downloading')
+    appMock.emit('before-quit', quitEvent())
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(appMock.quit).toHaveBeenCalledOnce()
+    for (let pass = 0; pass < 2; pass++) {
+      const timeoutQuit = quitEvent()
+      appMock.emit('before-quit', timeoutQuit)
+      expect(timeoutQuit.defaultPrevented).toBe(false)
+    }
+
+    deferMacQuitUntilInstallerReady(
+      { state: 'downloading', percent: 100, version: '2.0.0' },
+      true,
+      () => '2.0.0',
+      vi.fn()
+    )
+    const retryQuit = quitEvent()
+    appMock.emit('before-quit', retryQuit)
+    expect(retryQuit.defaultPrevented).toBe(true)
+    nativeUpdaterMock.emit('update-downloaded')
+    await Promise.resolve()
+    expect(install).toHaveBeenCalledOnce()
   })
 
   it('vetoes a quit during install preflight before previously registered startup services shut down', () => {
