@@ -359,7 +359,12 @@ describe('a row from the rows alone', () => {
       )
     dropRow('appended')
     journalsById.get('rowed')!.backfillSessionStatus()
+    // Unlike what its fold would write, so a rewrite shows.
+    database()
+      .db.prepare('UPDATE journal_session_state SET last_activity_at = 1 WHERE session_id = ?')
+      .run('rowed')
     const rowedBefore = readTestJournalSessionStatus(root, 'rowed')
+    expect(rowedBefore).not.toEqual(folded[2]!.status)
     publishTestJournalEpoch(database().db, 'replaced', 'epoch-replaced-later')
 
     writeJournalSessionStatuses(database(), folded)
