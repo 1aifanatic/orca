@@ -139,7 +139,10 @@ export async function runSourceControlAgentActionStart({
     if (result?.promptDeliveryResult) {
       try {
         const deliveryResult = await result.promptDeliveryResult
-        launched = deliveryResult.delivered
+        // A chat that holds its review reply sends it again itself; offering Start again here
+        // would launch a second chat, and post the replies twice.
+        launched =
+          deliveryResult.delivered || (reviewReplyCarried && deliveryResult.heldByChat === true)
         launchFailureNotified = deliveryResult.failureNotified
       } catch (error) {
         console.error('promptDeliveryResult rejected', error)

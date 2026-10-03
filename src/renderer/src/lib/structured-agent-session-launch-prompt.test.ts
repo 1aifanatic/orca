@@ -91,3 +91,40 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     )
   })
 })
+
+describe('a launch prompt the host did not record', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('is held by its chat when the chat keeps it to send again, and not when nothing is kept', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: { code: 'agent_session_checkpoint_stale', message: 'stale' }
+    })
+    const settle = (launchResult: Promise<{ sessionId: string; fence: number }>) =>
+      settleStructuredAgentLaunchPrompt({
+        launchResult,
+        target: { kind: 'local' },
+        options: { prompt: 'review this' },
+        stagedEntry
+      })
+
+    await expect(settle(Promise.resolve({ sessionId: 'session-1', fence: 1 }))).resolves.toEqual({
+      delivered: false,
+      failureNotified: false,
+      heldByChat: true
+    })
+    // A failed create that kept the outbox for its relaunch still holds it.
+    await expect(settle(Promise.reject(new Error('create failed')))).resolves.toMatchObject({
+      heldByChat: true
+    })
+
+    mutateStructuredAgentSessionLaunchPrompt('session-1', stagedEntry!.clientMessageId, () => null)
+    await expect(settle(Promise.reject(new Error('create failed')))).rejects.toThrow(
+      'create failed'
+    )
+  })
+})

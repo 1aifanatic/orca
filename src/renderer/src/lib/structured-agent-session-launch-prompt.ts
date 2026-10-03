@@ -11,6 +11,7 @@ import {
 import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
 import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
 import {
+  getStructuredAgentSessionOutbox,
   mutateStructuredAgentSessionLaunchPrompt,
   type StructuredAgentSessionLaunchPromptMutation
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
@@ -21,6 +22,20 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
   failureNotified: boolean
+  /** Not delivered, but its chat still holds it and sends it again or offers its Retry: the chat
+   *  owns it from here, so the caller does not offer it again. */
+  heldByChat?: true
+}
+
+/** Whether the chat still holds this launch prompt, under its first id or one a refusal rotated. */
+function chatHoldsLaunchPrompt(entry: StructuredAgentSessionOutboxEntry | null): boolean {
+  const body = entry && JSON.stringify(entry.body)
+  return Boolean(
+    entry &&
+    getStructuredAgentSessionOutbox(entry.sessionId).some(
+      (held) => held.source === 'launch' && JSON.stringify(held.body) === body
+    )
+  )
 }
 
 export type StructuredLaunchPromptOptions = {
@@ -163,7 +178,12 @@ export function settleStructuredAgentLaunchPrompt(args: {
   if (args.options.promptDelivery === 'draft' || !args.options.prompt?.trim()) {
     return undefined
   }
-  return args.launchResult.then(async (receipt) => {
+  const held = (): StructuredPromptDeliveryResult => ({
+    delivered: false,
+    failureNotified: false,
+    heldByChat: true
+  })
+  const settled = args.launchResult.then(async (receipt) => {
     if (!args.stagedEntry) {
       return { delivered: false, failureNotified: true }
     }
@@ -177,7 +197,15 @@ export function settleStructuredAgentLaunchPrompt(args: {
     const delivered = await dispatch.promise
     if (delivered) {
       args.options.onPromptDelivered?.()
+      return { delivered, failureNotified: false }
     }
-    return { delivered, failureNotified: false }
+    return chatHoldsLaunchPrompt(entry) ? held() : { delivered, failureNotified: false }
+  })
+  // A create that failed but kept the chat's outbox for its relaunch still owns the prompt.
+  return settled.catch((error: unknown) => {
+    if (chatHoldsLaunchPrompt(args.stagedEntry)) {
+      return held()
+    }
+    throw error
   })
 }

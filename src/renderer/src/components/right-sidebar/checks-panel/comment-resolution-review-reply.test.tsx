@@ -122,11 +122,12 @@ function resolveCommentsWithAi(hook: ReturnType<typeof acknowledgement>['hook'])
       onLaunchAborted: hook.result.current.handleLaunchAborted,
       onLaunched: (launch) =>
         hook.result.current.consumeClaimedCommentResolutionAfterDeliveryRef.current(launch),
-      onClose: vi.fn()
+      onClose
     })
   )
 }
 
+const onClose = vi.fn()
 const DELIVERED = Promise.resolve({ delivered: true, failureNotified: false })
 
 describe('Resolve comments with AI', () => {
@@ -166,6 +167,45 @@ describe('Resolve comments with AI', () => {
     expect(mocks.toastSuccess).not.toHaveBeenCalled()
     expect(model.setCommentsSelectionClearRequest).toHaveBeenCalledOnce()
     expect(model.pendingCommentResolutionRef.current).toBeNull()
+  })
+
+  it('hands the comments to a chat that still holds its unrecorded prompt, and offers no second Start', async () => {
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
+      promptDeliveryResult: Promise.resolve({
+        delivered: false,
+        failureNotified: false,
+        heldByChat: true
+      }),
+      structuredSettlement: Promise.resolve({ kind: 'launched' })
+    })
+
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+
+    expect(mocks.toastError).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(model.resolveReviewThread).not.toHaveBeenCalled()
+    expect(model.addPRConversationComment).not.toHaveBeenCalled()
+    expect(model.setCommentsSelectionClearRequest).toHaveBeenCalledOnce()
+    expect(model.pendingCommentResolutionRef.current).toBeNull()
+  })
+
+  it('hands the comments back when the chat holds nothing to send again', async () => {
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
+      promptDeliveryResult: Promise.resolve({ delivered: false, failureNotified: false }),
+      structuredSettlement: Promise.resolve({ kind: 'launched' })
+    })
+
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(false)
+
+    expect(mocks.toastError).toHaveBeenCalledOnce()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(model.pendingCommentResolutionRef.current).toMatchObject({
+      reviewContextKey: REVIEW_KEY
+    })
   })
 
   it('writes once from the panel when the chat runs on a host that cannot carry the reply', async () => {

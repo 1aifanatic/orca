@@ -27,6 +27,7 @@ import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 import { launchStructuredAgentFromNewTab } from '@/lib/launch-agent-in-new-tab-structured-route'
 import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-launch-settlement'
+import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
 import { workspaceKindForWorktreeId } from '@/lib/agent-launch-route-input'
 import {
   planAgentSessionLaunch,
@@ -83,7 +84,8 @@ export type LaunchAgentInNewTabResult = {
   surface: AgentLaunchSurface
   startupPlan: AgentStartupPlan
   pasteDraftAfterLaunch: boolean
-  promptDeliveryResult?: Promise<{ delivered: boolean; failureNotified: boolean }>
+  /** `heldByChat` comes only from a structured chat's launch prompt. */
+  promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
   /** Structured route only: what the launch did once it settled. The call stays synchronous. */
   structuredSettlement?: Promise<StructuredAgentLaunchSettlement>
 } | null
