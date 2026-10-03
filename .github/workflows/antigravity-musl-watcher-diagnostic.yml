@@ -21,14 +21,17 @@ jobs:
             sha: 09169edd23e2a56ee66f4d3d7b07403f0b04c478
             tree: 21cf98150157fb26d72770a205b8f1f14cfec7a7
             lock: 44548eca1b765559e1e00786a876644f7b2317f63dca557721772b812beaecd0
+            package_manager: pnpm@12.0.0+sha512.9e2e3dc3911995868dc94b8175c217c27e95408fa03b4a22749778f2b34f773b77cdd3b39ede8171b22fcd53be6a35342e9fac9948a68ef58df6488ce89a7e67
           - name: original-parent
             sha: 8ce5899dc0e82993027c2d2b352e0900c5db185b
             tree: 16047d40d0fcd9a9eb30bc0756285b0b5f657377
             lock: 44548eca1b765559e1e00786a876644f7b2317f63dca557721772b812beaecd0
+            package_manager: pnpm@12.0.0+sha512.9e2e3dc3911995868dc94b8175c217c27e95408fa03b4a22749778f2b34f773b77cdd3b39ede8171b22fcd53be6a35342e9fac9948a68ef58df6488ce89a7e67
           - name: hosted-merge
             sha: 8a896cb91d11e3908cf997b33713aecf2df0a603
             tree: d8d5f5b3d10b05a35fbd6901a57df4d7741640ba
             lock: 3b50e687509eac4606bdc60cd890e4485862a4c5fcfca44317ac8802f5a849c1
+            package_manager: pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       DIAGNOSTIC_IMAGE: node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
@@ -56,7 +59,7 @@ jobs:
           printf '%s\n' '{"status":"failed","nativeVerified":false,"reason":"diagnostic has not completed"}' > "$DIAGNOSTIC_DIR/final-status.json"
           printf '%s\n' '{"state":"unverifiable","reason":"container cleanup has not completed"}' > "$DIAGNOSTIC_DIR/cleanup.json"
           cat > "$DIAGNOSTIC_DIR/requested-identities.json" <<'IDENTITIES'
-          {"sha":"${{ matrix.sha }}","tree":"${{ matrix.tree }}","lock":"${{ matrix.lock }}","workflowSha":"${{ github.workflow_sha }}","platform":"linux/amd64","image":"${{ env.DIAGNOSTIC_IMAGE }}"}
+          {"sha":"${{ matrix.sha }}","tree":"${{ matrix.tree }}","lock":"${{ matrix.lock }}","packageManager":"${{ matrix.package_manager }}","workflowSha":"${{ github.workflow_sha }}","platform":"linux/amd64","image":"${{ env.DIAGNOSTIC_IMAGE }}"}
           IDENTITIES
 
       - name: Checkout the exact original source
@@ -79,6 +82,15 @@ jobs:
           import { join } from 'node:path'
           const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
           const json = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+
+          export function packageManagerIdentity(source, expected) {
+            const bytes = readFileSync(join(source, 'package.json'))
+            const packageManager = JSON.parse(bytes).packageManager
+            if (packageManager !== expected.packageManager) {
+              throw new Error('package manager differs from exact matrix source pin')
+            }
+            return { packageManager, packageJsonSha256: hash(bytes) }
+          }
 
           export function sourceIdentity(source, evidence, env, label, expected) {
             const git = (...args) =>
@@ -114,11 +126,13 @@ jobs:
             if (lockHash !== expected.lock) {
               throw new Error('lockfile hash differs from pinned matrix source')
             }
+            const manager = packageManagerIdentity(source, expected)
             const identity = {
               commit,
               tree,
               parents: git('show', '-s', '--format=%P', 'HEAD'),
               lockHash,
+              ...manager,
               files
             }
             json(join(evidence, `source-${label}.json`), identity)
@@ -196,7 +210,7 @@ jobs:
           ENVIRONMENT
           cat > "$DIAGNOSTIC_DIR/diagnostic.mjs" <<'DIAGNOSTIC'
           import { privateEnvironment, verifyChildEnvironment } from './private-process-environment.mjs'
-          import { sourceIdentity } from './source-attestation.mjs'
+          import { packageManagerIdentity, sourceIdentity } from './source-attestation.mjs'
           import { fork, spawn } from 'node:child_process'
           import { createHash, randomUUID } from 'node:crypto'
           import {
@@ -205,6 +219,7 @@ jobs:
             lstatSync,
             mkdirSync,
             readFileSync,
+            renameSync,
             rmSync,
             writeFileSync
           } from 'node:fs'
@@ -220,6 +235,103 @@ jobs:
           const json = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
           const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
+          export async function packageManagerArchive(evidence, pin) {
+            const [version, integrity] = pin.slice('pnpm@'.length).split('+sha512.')
+            const url = `https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz`
+            const file = join(evidence, 'package-manager.tgz')
+            let bytes
+            if (existsSync(file)) {
+              bytes = readFileSync(file)
+            } else {
+              const response = await fetch(url, { signal: AbortSignal.timeout(120_000) })
+              if (!response.ok) throw new Error(`package manager download returned ${response.status}`)
+              bytes = Buffer.from(await response.arrayBuffer())
+            }
+            const sha512 = createHash('sha512').update(bytes).digest('hex')
+            if (sha512 !== integrity) throw new Error('package manager archive differs from exact source pin')
+            writeFileSync(file, bytes)
+            json(join(evidence, 'package-manager-identity.json'), { pin, url, sha512, sha256: hash(bytes) })
+            return file
+          }
+
+          export function outputCollectors(root, overflow, { maxBytes = 1_048_576, tailBytes = 16_384, recordBytes = 16_384 } = {}) {
+            if (![maxBytes, tailBytes, recordBytes].every((value) => Number.isSafeInteger(value) && value > 0)) {
+              throw new Error('invalid diagnostic output byte limit')
+            }
+            const collector = (name, wholeRecords = false) => {
+              const file = join(root, name)
+              const tailFile = file + '.tail'
+              const meta = { maxBytes, tailBytes, totalBytes: 0, prefixBytes: 0, suffixBytes: 0, chunks: 0, droppedPrefixBytes: 0, oversizedRecords: 0, truncatedRecordBytes: 0, overflow: false, wholeRecords }
+              let tail = Buffer.alloc(0)
+              let tailRecords = []
+              writeFileSync(file, '')
+              writeFileSync(tailFile, '')
+              const update = () => json(file + '.metadata.json', meta)
+              update()
+              const write = (raw) => {
+                const bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw)
+                meta.totalBytes += bytes.length
+                meta.chunks++
+                const remaining = maxBytes - meta.prefixBytes
+                const keep = wholeRecords && bytes.length > remaining ? 0 : Math.min(bytes.length, remaining)
+                if (keep > 0) appendFileSync(file, bytes.subarray(0, keep))
+                meta.prefixBytes += keep
+                meta.droppedPrefixBytes += bytes.length - keep
+                if (wholeRecords) {
+                  tailRecords.push(bytes)
+                  while (tailRecords.reduce((total, item) => total + item.length, 0) > tailBytes) tailRecords.shift()
+                  tail = Buffer.concat(tailRecords)
+                } else {
+                  tail = Buffer.concat([tail, bytes.subarray(Math.max(0, bytes.length - tailBytes))]).subarray(-tailBytes)
+                }
+                meta.suffixBytes = tail.length
+                writeFileSync(tailFile, tail)
+                if (meta.droppedPrefixBytes > 0 && !meta.overflow) {
+                  meta.overflow = true
+                  overflow(name)
+                }
+                update()
+              }
+              const record = (value) => {
+                let line = JSON.stringify(value) + '\n'
+                const bytes = Buffer.byteLength(line)
+                if (bytes > Math.min(recordBytes, tailBytes)) {
+                  meta.oversizedRecords++
+                  const small = (value) => typeof value === 'string' ? value.slice(0, 256) :
+                    value === null || ['undefined', 'number', 'boolean'].includes(typeof value) ? value : '[non-scalar]'
+                  const result = value.result
+                  line = JSON.stringify({
+                    seq: value.seq, elapsedNs: value.elapsedNs, type: value.type, event: value.event, time: value.time,
+                    code: value.code, signal: value.signal, state: value.state, pid: value.pid,
+                    message: typeof value.message === 'object' && value.message !== null
+                      ? { op: small(value.message.op), id: small(value.message.id) } : small(value.message),
+                    result: result && { code: result.code, signal: result.signal, exited: result.exited, closed: result.closed, timedOut: result.timedOut, streamTimedOut: result.streamTimedOut, cleanup: result.cleanup, outputOverflow: result.outputOverflow, firstError: small(result.errors[0]), errorCount: result.errorCount ?? result.errors.length },
+                    originalBytes: bytes, recordSha256: hash(Buffer.from(line)), truncated: true
+                  }) + '\n'
+                  meta.truncatedRecordBytes += Math.max(0, bytes - Buffer.byteLength(line))
+                  if (!meta.overflow) { meta.overflow = true; overflow(name) }
+                }
+                write(line)
+              }
+              return { write, record, metadata: () => ({ ...meta }) }
+            }
+            const stdout = collector('stdout.log')
+            const stderr = collector('stderr.log')
+            const events = collector('events.jsonl', true)
+            return { stdout, stderr, events, metadata: () => ({ stdout: stdout.metadata(), stderr: stderr.metadata(), events: events.metadata() }) }
+          }
+
+          function recordError(result, value) {
+            const bytes = Buffer.from(String(value))
+            result.errorCount = (result.errorCount ?? 0) + 1
+            let message = bytes.subarray(0, 2_048).toString('utf8')
+            while (Buffer.byteLength(message) > 2_048) message = message.slice(0, -1)
+            if (result.errors.length < 16) result.errors.push(message)
+            else result.errorsOmitted = (result.errorsOmitted ?? 0) + 1
+            if (bytes.length > 2_048 || result.errorsOmitted) result.outputOverflow = true
+          }
+
+
           export function strictSuccess(result) {
             return (
               result.subscribed === true &&
@@ -229,6 +341,7 @@ jobs:
               result.closed === true &&
               result.disconnected === true &&
               result.timedOut === false &&
+              result.outputOverflow === false &&
               result.errors.length === 0 &&
               result.environmentVerified === true &&
               result.cleanup === 'exited' &&
@@ -249,6 +362,7 @@ jobs:
                 result.closed &&
                 result.disconnected &&
                 !result.timedOut &&
+                !result.outputOverflow &&
                 result.errors.length === 0 &&
                 result.environmentVerified &&
                 result.cleanup === 'exited'
@@ -264,6 +378,7 @@ jobs:
                 result.exited &&
                 result.closed &&
                 !result.timedOut &&
+                !result.outputOverflow &&
                 result.errors.length === 0 &&
                 result.environmentVerified &&
                 result.cleanup === 'exited'
@@ -294,7 +409,7 @@ jobs:
           }
 
           // Mirrors build-orcad's shipped-child subscribe/disconnect probe without changing its bytes.
-          export async function runCase({ evidence, entry, runtime, kind, deadline = 30_000 }) {
+          export async function runCase({ evidence, entry, runtime, kind, deadline = 30_000, outputLimits = {} }) {
             const root = join(evidence, 'cases', `${kind}-${randomUUID()}`)
             mkdirSync(root, { recursive: true })
             const env = privateEnvironment(root, join(evidence, 'tools', 'bin'))
@@ -307,16 +422,10 @@ jobs:
             }
             const started = process.hrtime.bigint()
             let seq = 0
-            const event = (type, data = {}) =>
-              appendFileSync(
-                join(root, 'events.jsonl'),
-                `${JSON.stringify({
-                  seq: ++seq,
-                  elapsedNs: String(process.hrtime.bigint() - started),
-                  type,
-                  ...data
-                })}\n`
-              )
+            const event = (type, data = {}) => {
+              outputs.events.record({ seq: ++seq, elapsedNs: String(process.hrtime.bigint() - started), type, ...data })
+              json(join(root, 'result.json'), result)
+            }
             const result = {
               kind,
               subscribed: false,
@@ -332,10 +441,15 @@ jobs:
               exited: false,
               closed: false,
               timedOut: false,
+              outputOverflow: false,
               errors: [],
               environmentVerified: false,
               cleanup: 'unverifiable'
             }
+            const outputs = outputCollectors(root, () => {
+              result.outputOverflow = true
+              json(join(root, 'result.json'), result)
+            }, outputLimits)
             json(join(root, 'launch.json'), {
               entry,
               runtime,
@@ -358,21 +472,21 @@ jobs:
               nonce: env.ORCA_DIAGNOSTIC_NONCE
             })
             event('fork', { pid: child.pid })
-            child.stdout?.on('data', (data) => appendFileSync(join(root, 'stdout.log'), data))
-            child.stderr?.on('data', (data) => appendFileSync(join(root, 'stderr.log'), data))
+            child.stdout?.on('data', (data) => outputs.stdout.write(data))
+            child.stderr?.on('data', (data) => outputs.stderr.write(data))
             let canaryTimer
             const send = (message) => {
               event('send', { message })
               child.send(message, (error) => {
                 if (error) {
-                  result.errors.push(error.message)
+                  recordError(result, error.message)
                   event('send-error', { message: error.message })
                 }
               })
             }
             const disconnect = () => {
               if (result.disconnected) {
-                result.errors.push('duplicate disconnect request')
+                recordError(result, 'duplicate disconnect request')
                 return
               }
               result.disconnected = true
@@ -380,7 +494,7 @@ jobs:
               if (child.connected) {
                 child.disconnect()
               } else {
-                result.errors.push('IPC closed before requested disconnect')
+                recordError(result, 'IPC closed before requested disconnect')
               }
             }
             await new Promise((settle) => {
@@ -420,7 +534,7 @@ jobs:
               }
               child.on('disconnect', () => event('IPC-disconnect'))
               child.on('error', (error) => {
-                result.errors.push(error.message)
+                recordError(result, error.message)
                 event('error', { message: error.message })
               })
               child.on('exit', (code, signal) => {
@@ -437,7 +551,7 @@ jobs:
               child.on('message', (message) => {
                 event('message', { message })
                 if (!message || message.id !== 1 || typeof message.op !== 'string') {
-                  result.errors.push('unexpected watcher protocol message')
+                  recordError(result, 'unexpected watcher protocol message')
                   return
                 }
                 if (message.op === 'subscribe-failed') {
@@ -448,7 +562,7 @@ jobs:
                 if (message.op === 'unsubscribed') {
                   result.unsubscribed = true
                   if (kind !== 'unsubscribe-disconnect') {
-                    result.errors.push('unexpected unsubscribe acknowledgement')
+                    recordError(result, 'unexpected unsubscribe acknowledgement')
                   }
                   disconnect()
                   return
@@ -458,18 +572,18 @@ jobs:
                     message.op
                   )
                 ) {
-                  result.errors.push(`watcher ${message.op}: ${message.message ?? ''}`)
+                  recordError(result, `watcher ${message.op}: ${message.message ?? ''}`)
                   disconnect()
                   return
                 }
                 if (message.op !== 'subscribed') {
                   if (!['subscribe-started', 'events'].includes(message.op)) {
-                    result.errors.push(`unknown operation ${message.op}`)
+                    recordError(result, `unknown operation ${message.op}`)
                   }
                   return
                 }
                 if (result.subscribed) {
-                  result.errors.push('duplicate subscribe acknowledgement')
+                  recordError(result, 'duplicate subscribe acknowledgement')
                   return
                 }
                 result.subscribed = true
@@ -479,7 +593,7 @@ jobs:
                   json(join(root, 'actual-child-environment.json'), binding)
                   event('environment-bound', { verified: binding.verified })
                 } catch (error) {
-                  result.errors.push(error.message)
+                  recordError(result, error.message)
                 }
                 if (kind === 'unsubscribe-disconnect') {
                   send({ op: 'unsubscribe', id: 1 })
@@ -511,7 +625,7 @@ jobs:
                     result.environmentVerified = binding.verified
                     json(join(root, 'actual-child-environment.json'), binding)
                   } catch (error) {
-                    result.errors.push(error.message)
+                    recordError(result, error.message)
                   }
                 }
                 send({
@@ -531,6 +645,7 @@ jobs:
               result.cleanup = existsSync(state) ? 'unverifiable' : 'exited'
             }
             event('cleanup', { state: result.cleanup })
+            result.outputs = outputs.metadata()
             result.strictSuccess = strictSuccess(result)
             result.expectedNegative = ['invalid-root', 'intentional-host-termination'].includes(kind)
             result.accepted = caseAccepted(kind, result)
@@ -538,7 +653,7 @@ jobs:
             return result
           }
 
-          async function command({ evidence, source, tools, name, program, args, deadline }) {
+          export async function command({ evidence, source, tools, name, program, args, deadline, streamWait = 1_000, outputLimits = {}, printResult = true }) {
             const root = join(evidence, 'commands', name)
             mkdirSync(root, { recursive: true })
             const env = privateEnvironment(root, tools)
@@ -547,13 +662,31 @@ jobs:
               code: null,
               signal: null,
               timedOut: false,
+              outputOverflow: false,
               errors: [],
               exited: false,
-              closed: false
+              closed: false,
+              streamTimedOut: false,
+              cleanup: 'unverifiable'
             }
-            json(join(root, 'result.json'), result)
+            const saveResult = () => {
+              const file = join(root, 'result.json')
+              json(file + '.pending', result)
+              renameSync(file + '.pending', file)
+            }
+            const outputs = outputCollectors(root, () => {
+              result.outputOverflow = true
+              result.ok = false
+              saveResult()
+            }, outputLimits)
+            const persist = (event, details = {}) => {
+              saveResult()
+              outputs.events.record({ event, time: Date.now(), ...details, result })
+            }
+            persist('pending')
+            let child
             await new Promise((settle) => {
-              const child = spawn(program, args, {
+              child = spawn(program, args, {
                 cwd: source,
                 env,
                 detached: process.platform !== 'win32',
@@ -561,37 +694,102 @@ jobs:
                 windowsHide: true
               })
               json(join(root, 'owned-pid.json'), { pid: child.pid, nonce: env.ORCA_DIAGNOSTIC_NONCE })
-              child.stdout?.on('data', (data) => appendFileSync(join(root, 'stdout.log'), data))
-              child.stderr?.on('data', (data) => appendFileSync(join(root, 'stderr.log'), data))
-              const timer = setTimeout(() => {
-                result.timedOut = true
+              child.stdout?.on('data', (data) => outputs.stdout.write(data))
+              child.stderr?.on('data', (data) => outputs.stderr.write(data))
+              let streamTimer
+              let finished = false
+              const signalOwnedGroup = () => {
+                if (!Number.isSafeInteger(child.pid)) return
                 try {
                   if (process.platform === 'win32') {
                     child.kill('SIGKILL')
                   } else {
                     process.kill(-child.pid, 'SIGKILL')
                   }
+                  persist('cleanup-signal', { pid: child.pid, signal: 'SIGKILL' })
                 } catch (error) {
-                  result.errors.push(error.message)
+                  if (error.code !== 'ESRCH') recordError(result, error.message)
+                  persist('cleanup-signal-error', { error: error.message })
                 }
+              }
+              const closeOwnedPipes = () => {
+                result.streamTimedOut = true
+                persist('stream-timeout')
+                signalOwnedGroup()
+                child.stdout?.destroy()
+                child.stderr?.destroy()
+              }
+              const finish = () => {
+                if (finished) return
+                finished = true
+                clearTimeout(timer)
+                clearTimeout(hardTimer)
+                clearTimeout(streamTimer)
+                persist('settled')
+                settle()
+              }
+              const timer = setTimeout(() => {
+                result.timedOut = true
+                persist('timeout')
+                signalOwnedGroup()
+                clearTimeout(streamTimer)
+                streamTimer = setTimeout(closeOwnedPipes, streamWait)
               }, deadline)
-              child.on('error', (error) => result.errors.push(error.message))
-              child.on('exit', (code, signal) => Object.assign(result, { code, signal, exited: true }))
+              const hardTimer = setTimeout(() => {
+                result.timedOut = true
+                persist('hard-timeout')
+                signalOwnedGroup()
+                closeOwnedPipes()
+                finish()
+              }, deadline + streamWait + 1_000)
+              child.on('spawn', () => persist('spawn', { pid: child.pid }))
+              child.on('error', (error) => {
+                recordError(result, error.message)
+                persist('error')
+              })
+              child.on('exit', (code, signal) => {
+                if (!result.exited) Object.assign(result, { code, signal, exited: true })
+                persist('exit')
+                if (!streamTimer) streamTimer = setTimeout(closeOwnedPipes, streamWait)
+              })
               child.on('close', () => {
                 result.closed = true
-                clearTimeout(timer)
-                settle()
+                persist('close')
+                finish()
               })
             })
+            let groupExited = result.exited
+            if (groupExited && process.platform !== 'win32') {
+              try {
+                process.kill(-child.pid, 0)
+                groupExited = false
+              } catch (error) {
+                groupExited = error.code === 'ESRCH'
+                if (!groupExited) recordError(result, error.message)
+              }
+            }
+            const state = resolve(env.HOME, '..')
+            if (groupExited && result.closed && !result.streamTimedOut &&
+              readFileSync(join(state, 'owner'), 'utf8') === env.ORCA_DIAGNOSTIC_NONCE) {
+              rmSync(state, { recursive: true })
+              result.cleanup = existsSync(state) ? 'unverifiable' : 'exited'
+            }
+            persist('cleanup', { groupExited })
+            result.outputs = outputs.metadata()
             result.ok =
               result.code === 0 &&
               result.signal === null &&
               result.exited &&
               result.closed &&
               !result.timedOut &&
-              result.errors.length === 0
-            json(join(root, 'result.json'), result)
-            console.log(JSON.stringify({ command: name, ...result }))
+                !result.outputOverflow &&
+              !result.streamTimedOut &&
+              result.errors.length === 0 &&
+              result.cleanup === 'exited'
+            persist('final')
+            result.outputs = outputs.metadata()
+            saveResult()
+            if (printResult) console.log(JSON.stringify({ command: name, ...result }))
             return result
           }
 
@@ -628,18 +826,14 @@ jobs:
                 throw new Error('source runtime pin changed')
               }
               json(join(evidence, 'runtime-source-pin.json'), { version: NODE_RUNTIME_PIN.version, asset })
-              const packageManager = JSON.parse(
-                readFileSync(join(source, 'package.json'), 'utf8')
-              ).packageManager
-              if (!packageManager.startsWith('pnpm@12.0.0+sha512.')) {
-                throw new Error('unexpected package manager pin')
-              }
+              const { packageManager } = packageManagerIdentity(source, expected)
+              const managerArchive = await packageManagerArchive(evidence, packageManager)
               const run = (name, program, args, deadline) =>
                 command({ evidence, source, tools, name, program, args, deadline })
               summary.stages.tool = await run(
                 'install-pnpm',
                 'npm',
-                ['install', '--global', '--prefix', join(evidence, 'tools'), packageManager.split('+')[0]],
+                ['install', '--global', '--prefix', join(evidence, 'tools'), managerArchive],
                 120_000
               )
               if (!summary.stages.tool.ok) {
@@ -741,8 +935,44 @@ jobs:
           }
 
           if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-            const [source, evidence, sha, tree, lock] = process.argv.slice(2)
-            process.exitCode = await main(source, evidence, { sha, tree, lock })
+            const mode = process.argv[2]
+            if (mode === '--host-docker' || mode === '--host-container') {
+              const [source, evidence, program, ...args] = process.argv.slice(3)
+              const container = mode === '--host-container'
+              const name = container ? 'container-run' : 'host-docker-' + randomUUID()
+              const root = join(evidence, 'commands', name)
+              const result = await command({
+                evidence, source, tools: '/usr/local/bin', name, program,
+                args: container ? args : ['--config', join(evidence, 'host-private', 'docker'), '--host', 'unix:///var/run/docker.sock', ...args],
+                deadline: container ? 1_280_000 : 120_000, printResult: false
+              })
+              json(join(evidence, container ? 'container.result.json' : name + '.result.json'), result)
+              if (!container) {
+                process.stdout.write(readFileSync(join(root, 'stdout.log')))
+                process.stderr.write(readFileSync(join(root, 'stderr.log')))
+              }
+              if (container && !result.ok) {
+                const file = join(evidence, 'final-status.json')
+                const summary = JSON.parse(readFileSync(file, 'utf8'))
+                summary.innerObservedStatus = summary.status
+                summary.innerObservedNativeVerified = summary.nativeVerified
+                summary.containerObserver = result
+                summary.status = 'failed'
+                summary.nativeVerified = false
+                json(file, summary)
+              }
+              process.exitCode = result.ok ? 0 : 1
+            } else {
+            const preflight = process.argv[2] === '--preflight'
+            const [source, evidence, sha, tree, lock, packageManager] = process.argv.slice(preflight ? 3 : 2)
+            const expected = { sha, tree, lock, packageManager }
+            if (preflight) {
+              sourceIdentity(source, evidence, privateEnvironment(join(evidence, 'preflight'), ''), 'preflight', expected)
+              await packageManagerArchive(evidence, packageManager)
+            } else {
+              process.exitCode = await main(source, evidence, expected)
+            }
+            }
           }
           DIAGNOSTIC
           cat > "$DIAGNOSTIC_DIR/bootstrap.sh" <<'BOOTSTRAP'
@@ -755,9 +985,9 @@ jobs:
           set -e
           printf '{"code":%s}\n' "$apk_code" > /evidence/apk.result.json
           if [ "$apk_code" -ne 0 ]; then exit "$apk_code"; fi
-          printf '%s\n' node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" > /evidence/diagnostic.argv.txt
+          printf '%s\n' node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" "$4" > /evidence/diagnostic.argv.txt
           set +e
-          node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" > /evidence/diagnostic.stdout.log 2> /evidence/diagnostic.stderr.log
+          node /evidence/diagnostic.mjs /source /evidence "$1" "$2" "$3" "$4" > /evidence/diagnostic.stdout.log 2> /evidence/diagnostic.stderr.log
           diagnostic_code=$?
           set -e
           printf '{"code":%s}\n' "$diagnostic_code" > /evidence/diagnostic.result.json
@@ -768,6 +998,22 @@ jobs:
           done
           sha256sum "$DIAGNOSTIC_DIR/diagnostic.mjs" "$DIAGNOSTIC_DIR/source-attestation.mjs" \
             "$DIAGNOSTIC_DIR/private-process-environment.mjs" "$DIAGNOSTIC_DIR/bootstrap.sh" > "$DIAGNOSTIC_DIR/observer.sha256"
+          diagnostic_host_node="$(command -v node)"
+          preflight_argv=(env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$HOME" USERPROFILE="$USERPROFILE" \
+            APPDATA="$APPDATA" LOCALAPPDATA="$LOCALAPPDATA" XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+            XDG_CACHE_HOME="$XDG_CACHE_HOME" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" \
+            ORCA_USER_DATA="$APPDATA/orca" ORCA_BACKGROUND_LAUNCH=1 ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" \
+            CI=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$HOME/.gitconfig" \
+            "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --preflight "$GITHUB_WORKSPACE/source" "$DIAGNOSTIC_DIR" \
+            '${{ matrix.sha }}' '${{ matrix.tree }}' '${{ matrix.lock }}' '${{ matrix.package_manager }}')
+          printf '%s\n' "${preflight_argv[@]}" > "$DIAGNOSTIC_DIR/preflight.argv.txt"
+          set +e
+          "${preflight_argv[@]}" > "$DIAGNOSTIC_DIR/preflight.stdout.log" 2> "$DIAGNOSTIC_DIR/preflight.stderr.log"
+          preflight_code=$?
+          set -e
+          printf '{"code":%s}\n' "$preflight_code" > "$DIAGNOSTIC_DIR/preflight.result.json"
+          if [ "$preflight_code" -ne 0 ]; then exit "$preflight_code"; fi
 
       - name: Build frozen source and observe the shipped native child
         shell: bash
@@ -775,19 +1021,23 @@ jobs:
           set -euo pipefail
           # Only the dedicated container receives this private environment; no runner credentials are forwarded.
           docker_cmd() {
+            local diagnostic_host_node diagnostic_docker_cli
+            diagnostic_host_node="$(command -v node)"
+            diagnostic_docker_cli="$(command -v docker)"
             env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$HOME" USERPROFILE="$USERPROFILE" \
               APPDATA="$APPDATA" LOCALAPPDATA="$LOCALAPPDATA" XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
-              XDG_CACHE_HOME="$XDG_CACHE_HOME" XDG_DATA_HOME="$XDG_DATA_HOME" \
-              XDG_STATE_HOME="$XDG_STATE_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" \
-              ORCA_BACKGROUND_LAUNCH=1 docker --config "$DIAGNOSTIC_DIR/host-private/docker" \
-              --host unix:///var/run/docker.sock "$@"
+              XDG_CACHE_HOME="$XDG_CACHE_HOME" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
+              XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" \
+              ORCA_USER_DATA="$APPDATA/orca" ORCA_BACKGROUND_LAUNCH=1 ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" \
+              "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --host-docker \
+              "$GITHUB_WORKSPACE" "$DIAGNOSTIC_DIR" "$diagnostic_docker_cli" "$@"
           }
           printf '%s\n' "docker pull --platform linux/amd64 $DIAGNOSTIC_IMAGE" > "$DIAGNOSTIC_DIR/image-pull.command.txt"
           set +e
           docker_cmd pull --platform linux/amd64 "$DIAGNOSTIC_IMAGE" > "$DIAGNOSTIC_DIR/image-pull.log" 2>&1
           pull_code=$?
           set -e
-          printf '{"code":%s}\n' "$pull_code" > "$DIAGNOSTIC_DIR/image-pull.result.json"
+          printf '{"code":%s}\n' "$pull_code" > "$DIAGNOSTIC_DIR/image-pull.wrapper-result.json"
           if [ "$pull_code" -ne 0 ]; then exit "$pull_code"; fi
           docker_cmd image inspect "$DIAGNOSTIC_IMAGE" \
             --format '{"id":"{{.Id}}","repoDigests":{{json .RepoDigests}},"architecture":"{{.Architecture}}","os":"{{.Os}}"}' \
@@ -809,13 +1059,20 @@ jobs:
             ORCA_USER_DATA=/evidence/bootstrap-private/userData ORCA_BACKGROUND_LAUNCH=1 \
             ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" CI=1 GIT_CONFIG_NOSYSTEM=1 \
             GIT_CONFIG_GLOBAL=/evidence/bootstrap-private/home/.gitconfig \
-            /bin/sh /evidence/bootstrap.sh '${{ matrix.sha }}' '${{ matrix.tree }}' '${{ matrix.lock }}')
+            /bin/sh /evidence/bootstrap.sh '${{ matrix.sha }}' '${{ matrix.tree }}' '${{ matrix.lock }}' '${{ matrix.package_manager }}')
           printf '%s\n' "${container_argv[@]}" > "$DIAGNOSTIC_DIR/container.argv.txt"
           set +e
-          "${container_argv[@]}" > "$DIAGNOSTIC_DIR/container.stdout.log" 2> "$DIAGNOSTIC_DIR/container.stderr.log"
+          diagnostic_host_node="$(command -v node)"
+          env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$HOME" USERPROFILE="$USERPROFILE" \
+            APPDATA="$APPDATA" LOCALAPPDATA="$LOCALAPPDATA" XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+            XDG_CACHE_HOME="$XDG_CACHE_HOME" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" \
+            ORCA_USER_DATA="$APPDATA/orca" ORCA_BACKGROUND_LAUNCH=1 ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" \
+            "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --host-container \
+            "$GITHUB_WORKSPACE" "$DIAGNOSTIC_DIR" "${container_argv[@]}"
           container_code=$?
           set -e
-          printf '{"code":%s}\n' "$container_code" > "$DIAGNOSTIC_DIR/container.result.json"
+          printf '{"code":%s}\n' "$container_code" > "$DIAGNOSTIC_DIR/container.wrapper-result.json"
           exit "$container_code"
 
       - name: Record final container status and remove only the owned container
@@ -824,8 +1081,16 @@ jobs:
         run: |
           set -euo pipefail
           docker_cmd() {
-            env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$HOME" ORCA_BACKGROUND_LAUNCH=1 \
-              docker --config "$DIAGNOSTIC_DIR/host-private/docker" --host unix:///var/run/docker.sock "$@"
+            local diagnostic_host_node diagnostic_docker_cli
+            diagnostic_host_node="$(command -v node)"
+            diagnostic_docker_cli="$(command -v docker)"
+            env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$HOME" USERPROFILE="$USERPROFILE" \
+              APPDATA="$APPDATA" LOCALAPPDATA="$LOCALAPPDATA" XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+              XDG_CACHE_HOME="$XDG_CACHE_HOME" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
+              XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" \
+              ORCA_USER_DATA="$APPDATA/orca" ORCA_BACKGROUND_LAUNCH=1 ORCA_DIAGNOSTIC_NONCE="$DIAGNOSTIC_NONCE" \
+              "$diagnostic_host_node" "$DIAGNOSTIC_DIR/diagnostic.mjs" --host-docker \
+              "$GITHUB_WORKSPACE" "$DIAGNOSTIC_DIR" "$diagnostic_docker_cli" "$@"
           }
           printf '%s\n' "list exact owned name $DIAGNOSTIC_NONCE" > "$DIAGNOSTIC_DIR/cleanup.command.txt"
           set +e
