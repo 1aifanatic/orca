@@ -338,7 +338,7 @@ describe('CodexRuntimeHomeService', () => {
   })
 
   it('surfaces per-account rollouts for session discovery on the mirror lane', async () => {
-    // A Windows host keeps the shared system-default mirror, but its managed
+    // A custom CODEX_HOME keeps the system default on Orca's mirror, but managed
     // accounts still launch from their own homes and accumulate rollouts there.
     const home1 = createManagedAuth(
       testState.userDataDir,
