@@ -3,11 +3,16 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentHookServer } from './server'
-import { lookupOpenCodeSessionPane } from '../../shared/agent-hook-listener/opencode-session-registry'
+import {
+  bindOpenCodeSession,
+  lookupOpenCodePaneLaunchToken,
+  lookupOpenCodeSessionPane
+} from '../../shared/agent-hook-listener/opencode-session-registry'
 import { makePaneKey } from '../../shared/stable-pane-id'
 
 const PANE_A = makePaneKey('tab-a', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 const PANE_B = makePaneKey('tab-b', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+const PANE_C = makePaneKey('tab-c', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
 
 class IsolatedHookServer extends AgentHookServer {
   isolateBinder(dbPath: string) {
@@ -84,6 +89,129 @@ describe('legacy TUI identity admitted by the canonical hook server', () => {
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ paneKey: PANE_B, state: 'working' })
     ])
+  })
+
+  describe.each(['retired', 'closed-tab', 'replaced-token'] as const)(
+    '%s physical viewer',
+    (fence) => {
+      it.each(['SessionIdle', 'PermissionRequest', 'MessagePart'] as const)(
+        'cannot overwrite its live creator with a late %s',
+        async (hookEventName) => {
+          await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+          await post(PANE_C, 'ses_c', 'SessionBusy', { launchToken: 'viewer-old' })
+          if (fence === 'closed-tab') {
+            server.dropStatusEntriesByTabPrefix('tab-c')
+          } else {
+            server.retirePaneAuthority(PANE_C)
+            if (fence === 'replaced-token') {
+              await post(PANE_C, 'ses_new', 'SessionStart', { launchToken: 'viewer-new' })
+            }
+          }
+          const state = server._getStateForTests()
+          const creator = state.lastStatusByPaneKey.get(PANE_B)
+          const owner = { ...binding('ses_b') }
+          const tokens = [...state.lastLaunchTokenByPaneKey]
+          await post(PANE_C, 'ses_b', hookEventName, {
+            launchToken: 'viewer-old',
+            payload: {
+              hook_event_name: hookEventName,
+              sessionID: 'ses_b',
+              role: 'assistant',
+              text: 'late viewer text',
+              permission: 'bash',
+              requestID: 'late-request'
+            }
+          })
+          expect(state.lastStatusByPaneKey.get(PANE_B)).toBe(creator)
+          expect(binding('ses_b')).toEqual(owner)
+          expect([...state.lastLaunchTokenByPaneKey]).toEqual(tokens)
+          expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('working')
+        }
+      )
+    }
+  )
+
+  it('does not let a rejected same-pane token replace the creator token used by a live viewer', async () => {
+    server.retirePaneAuthority(PANE_B)
+    await post(PANE_B, 'ses_b', 'SessionStart', { launchToken: 'creator-live' })
+    await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+    await post(PANE_B, 'ses_b', 'SessionIdle', { launchToken: 'creator-old' })
+    expect(lookupOpenCodePaneLaunchToken(server._getStateForTests(), PANE_B)).toBe('creator-live')
+    await post(PANE_C, 'ses_b', 'SessionIdle', { launchToken: 'viewer-live' })
+    expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('done')
+    expect(binding('ses_b')?.paneKey).toBe(PANE_B)
+  })
+
+  it('admits a replacement viewer with its own current token and keeps the creator', async () => {
+    await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+    await post(PANE_C, 'ses_c', 'SessionBusy', { launchToken: 'viewer-old' })
+    server.retirePaneAuthority(PANE_C)
+    await post(PANE_C, 'ses_new', 'SessionStart', { launchToken: 'viewer-new' })
+    await post(PANE_C, 'ses_b', 'SessionIdle', { launchToken: 'viewer-new' })
+    expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('done')
+    expect(binding('ses_b')?.paneKey).toBe(PANE_B)
+    await post(PANE_C, 'ses_new', 'SessionBusy', { launchToken: 'viewer-new' })
+    expect(server.getStatusSnapshotForPane(PANE_C)[0]?.state).toBe('working')
+  })
+
+  it('allows a fresh viewer user prompt to restart its physical pane and fence later hooks', async () => {
+    await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+    await post(PANE_C, 'ses_c', 'SessionBusy', { launchToken: 'viewer-old' })
+    server.retirePaneAuthority(PANE_C)
+    await post(PANE_C, 'ses_b', 'MessagePart', {
+      launchToken: 'viewer-new',
+      payload: {
+        hook_event_name: 'MessagePart',
+        sessionID: 'ses_b',
+        role: 'user',
+        text: 'continue from this live viewer'
+      }
+    })
+    const creator = server._getStateForTests().lastStatusByPaneKey.get(PANE_B)
+    expect(creator?.payload.prompt).toBe('continue from this live viewer')
+    await post(PANE_C, 'ses_b', 'SessionIdle', { launchToken: 'viewer-old' })
+    expect(server._getStateForTests().lastStatusByPaneKey.get(PANE_B)).toBe(creator)
+    await post(PANE_C, 'ses_b', 'SessionIdle', { launchToken: 'viewer-new' })
+    expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('done')
+    expect(binding('ses_b')?.paneKey).toBe(PANE_B)
+  })
+
+  it('applies the physical launch fence through an existing legacy pane alias', async () => {
+    await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+    await post(PANE_C, 'ses_c', 'SessionBusy', { launchToken: 'viewer-old' })
+    server.retirePaneAuthority(PANE_C)
+    await post(PANE_C, 'ses_new', 'SessionStart', { launchToken: 'viewer-new' })
+    server.registerPaneKeyAlias('tab-c:0', PANE_C, 'pty-c')
+    const creator = server._getStateForTests().lastStatusByPaneKey.get(PANE_B)
+    await post('tab-c:0', 'ses_b', 'SessionIdle', { launchToken: 'viewer-old' })
+    expect(server._getStateForTests().lastStatusByPaneKey.get(PANE_B)).toBe(creator)
+    await post('tab-c:0', 'ses_b', 'SessionIdle', { launchToken: 'viewer-new' })
+    expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('done')
+  })
+
+  it('preserves attribution from an old frozen server stamp even when its physical tab closed', async () => {
+    await post(PANE_B, 'ses_b', 'SessionBusy', { opencodeTui: undefined })
+    bindOpenCodeSession(server._getStateForTests(), 'ses_b', {
+      paneKey: PANE_B,
+      boundAt: 1,
+      basis: 'argv'
+    })
+    server.dropStatusEntriesByTabPrefix('tab-c')
+    await post(PANE_C, 'ses_b', 'SessionIdle', { opencodeTui: undefined })
+    expect(server.getStatusSnapshotForPane(PANE_B)[0]?.state).toBe('done')
+  })
+
+  it('retains the creator destination fence after admitting a live viewer', async () => {
+    await post(PANE_B, 'ses_b')
+    server.dropStatusEntriesByTabPrefix('tab-b')
+    bindOpenCodeSession(server._getStateForTests(), 'ses_b', {
+      paneKey: PANE_B,
+      boundAt: 1,
+      basis: 'argv'
+    })
+    await post(PANE_C, 'ses_b', 'SessionIdle')
+    expect(server.getStatusSnapshot()).toEqual([])
+    expect(binding('ses_b')?.basis).toBe('argv')
   })
 
   it('does not resurrect retired identity from a late old-generation hook', async () => {

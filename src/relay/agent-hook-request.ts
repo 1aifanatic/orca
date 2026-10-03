@@ -20,6 +20,7 @@ export async function handleRelayHookRequest(
     token: string
     env: string
     state: HookListenerState
+    isPaneSurfaceRetired: (paneKey: string) => boolean
     applyEvent: (
       event: AgentHookEventPayload,
       source: AgentHookSource,
@@ -63,7 +64,8 @@ export async function handleRelayHookRequest(
       return
     }
     const event = normalizeHookPayload(options.state, source, hookBody, options.env, {
-      deferCompactOwnershipToClient: true
+      deferCompactOwnershipToClient: true,
+      admitOpenCodeTui: ({ paneKey }) => !options.isPaneSurfaceRetired(paneKey)
     })
     if (event) {
       // TODO: once normalizeHookPayload returns validated env/version, drop bodyEnv/bodyVersion and source them from the listener result.

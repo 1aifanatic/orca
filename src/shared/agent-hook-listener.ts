@@ -20,6 +20,7 @@ import { normalizeProviderEvent } from './agent-hook-listener/provider-dispatch'
 import { hasExplicitUserPrompt } from './agent-hook-listener/provider-event-routing'
 import { hasExplicitAmpPrompt } from './agent-hook-listener/providers/amp-events'
 import {
+  isOpenCodeSharedServerPost,
   resolveOpenCodeSharedServerEnvelope,
   suppressOpenCodeSharedServerPost,
   trackOpenCodePaneLaunchToken
@@ -41,6 +42,12 @@ export function normalizeHookPayload(
   options: {
     deferCompactOwnershipToClient?: boolean
     previousOpenCodeMainAgent?: AgentMainAgentStatus
+    admitOpenCodeTui?: (
+      identity: Pick<
+        AgentHookEventPayload,
+        'paneKey' | 'launchToken' | 'hookEventName' | 'hasExplicitPrompt'
+      >
+    ) => boolean
   } = {}
 ): AgentHookEventPayload | null {
   const envelope = parseHookEnvelope(state, source, body, expectedEnv)
@@ -71,6 +78,26 @@ export function normalizeHookPayload(
     return null
   }
   if (suppressOpenCodeSharedServerPost(state, source, record, providerSession?.id)) {
+    return null
+  }
+  const extractedPrompt = extractPromptText(hookPayloadRecord)
+  // A TUI's physical launch must pass the host fence before borrowing its creator's identity.
+  if (
+    source === 'opencode' &&
+    record.opencodeTui === 1 &&
+    isOpenCodeSharedServerPost(source, record) &&
+    options.admitOpenCodeTui?.({
+      paneKey: stampedPaneKey,
+      launchToken: stampedLaunchToken,
+      hookEventName: typeof eventName === 'string' ? eventName : undefined,
+      hasExplicitPrompt: hasExplicitUserPrompt(
+        source,
+        eventName,
+        extractedPrompt,
+        extractedPrompt.text
+      )
+    }) === false
+  ) {
     return null
   }
   // Why (#21359): an OpenCode 1 `serve` process stamps every post with its own
@@ -189,7 +216,6 @@ export function normalizeHookPayload(
     }
   }
 
-  const extractedPrompt = extractPromptText(hookPayloadRecord)
   const promptText = extractedPrompt.text
   const dispatched = normalizeProviderEvent({
     state,

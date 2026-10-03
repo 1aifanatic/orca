@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizeHookPayload } from './agent-hook-listener'
 import { createHookListenerState } from './agent-hook-listener/listener-state'
 import {
@@ -6,6 +6,7 @@ import {
   bindOpenCodeTuiSession,
   lookupOpenCodeSessionPane,
   moveOpenCodeSessionBindings,
+  trackOpenCodePaneLaunchToken,
   unbindOpenCodeSessionsOfPane
 } from './agent-hook-listener/opencode-session-registry'
 import { makePaneKey } from './stable-pane-id'
@@ -67,6 +68,40 @@ describe('legacy structural TUI identity at the execution-host boundary', () => 
       basis: 'tui'
     })
   })
+
+  it('checks the physical identity before creator rewriting or listener cache mutation', () => {
+    const state = createHookListenerState()
+    bindOpenCodeSession(state, 'ses_b', { paneKey: PANE_A, boundAt: 1, basis: 'argv' })
+    trackOpenCodePaneLaunchToken(state, PANE_A, 'creator-live')
+    const tokens = [...state.lastLaunchTokenByPaneKey]
+    const owner = lookupOpenCodeSessionPane(state, 'ses_b')
+    const admitOpenCodeTui = vi.fn(() => false)
+    expect(normalizeHookPayload(state, 'opencode', body(), 'test', { admitOpenCodeTui })).toBeNull()
+    expect(admitOpenCodeTui).toHaveBeenCalledExactlyOnceWith({
+      paneKey: PANE_B,
+      launchToken: 'live-token',
+      hookEventName: 'SessionBusy',
+      hasExplicitPrompt: false
+    })
+    expect([...state.lastLaunchTokenByPaneKey]).toEqual(tokens)
+    expect(lookupOpenCodeSessionPane(state, 'ses_b')).toBe(owner)
+    expect(state.lastStatusByPaneKey.size).toBe(0)
+    expect(state.lastPromptByPaneKey.size).toBe(0)
+  })
+
+  it.each([{ opencodeTui: undefined }, { opencodeMajor: 2 }])(
+    'keeps frozen server and v2 posts outside physical legacy TUI admission: %j',
+    (extra) => {
+      const state = createHookListenerState()
+      bindOpenCodeSession(state, 'ses_b', { paneKey: PANE_A, boundAt: 1, basis: 'argv' })
+      const admitOpenCodeTui = vi.fn(() => false)
+      const event = normalizeHookPayload(state, 'opencode', body(PANE_B, extra), 'test', {
+        admitOpenCodeTui
+      })
+      expect(event?.paneKey).toBe('opencodeMajor' in extra ? PANE_B : PANE_A)
+      expect(admitOpenCodeTui).not.toHaveBeenCalled()
+    }
+  )
 
   it('keeps an existing server owner before structural evidence and abstains on capable unknown sessions', () => {
     const state = createHookListenerState()

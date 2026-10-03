@@ -262,6 +262,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
       token: this.token,
       env: this.env,
       state: this.state,
+      isPaneSurfaceRetired: this.isPaneSurfaceRetired,
       applyEvent: (event, source, env, version) => this.applyEvent(event, source, env, version),
       ingestTmuxHook: (source, body) => this.ingestCanonicalTmuxHook(source, body, this.env),
       retryScheduler: this.retryScheduler,
@@ -330,8 +331,9 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
   }
 
   private ingestSpoolRecord(record: SpoolRecord): void {
-    ingestRelayHookSpoolRecord(record, this.state, this.env, (event, source, env, version) => {
-      this.applyEvent(event, source, env, version, { isReplay: true })
+    ingestRelayHookSpoolRecord(record, this.state, this.env, {
+      apply: (...args) => this.applyEvent(...args, { isReplay: true }),
+      isPaneSurfaceRetired: this.isPaneSurfaceRetired
     })
   }
 }

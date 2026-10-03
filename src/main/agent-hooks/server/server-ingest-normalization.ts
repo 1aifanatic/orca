@@ -26,9 +26,25 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
     }
   }
 
-  protected normalizeLocalHookPayload(source: AgentHookSource, body: unknown): NormalizedLocalHook {
+  protected normalizeLocalHookPayload(
+    source: AgentHookSource,
+    body: unknown,
+    isReplay = false
+  ): NormalizedLocalHook {
     if (source !== 'claude' || typeof body !== 'object' || body === null) {
-      const event = normalizeHookPayload(this.state, source, body, this.env)
+      const event = normalizeHookPayload(this.state, source, body, this.env, {
+        admitOpenCodeTui: (identity) => {
+          const disposition = this.getAgentStatusDisposition(identity.paneKey, {
+            ...identity,
+            source,
+            isReplay
+          })
+          if (disposition === 'restart') {
+            this.observations.rebind(identity.paneKey)
+          }
+          return disposition !== 'suppress'
+        }
+      })
       if (
         event &&
         event.hookEventName === 'SessionStart' &&
@@ -70,7 +86,7 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
       return
     }
     const body = this.normalizeHookBodyPaneKeyAlias(buildSpoolHookBody(record))
-    const normalized = this.normalizeLocalHookPayload(record.source, body)
+    const normalized = this.normalizeLocalHookPayload(record.source, body, true)
     if (!normalized.event) {
       return
     }

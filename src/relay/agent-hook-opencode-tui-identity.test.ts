@@ -8,6 +8,7 @@ import { makePaneKey } from '../shared/stable-pane-id'
 
 const PANE_A = makePaneKey('tab-a', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 const PANE_B = makePaneKey('tab-b', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+const PANE_C = makePaneKey('tab-c', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
 
 describe('legacy TUI identity admitted by the execution-host relay', () => {
   let dir: string
@@ -79,6 +80,43 @@ describe('legacy TUI identity admitted by the execution-host relay', () => {
     expect(forward.mock.calls[0][0].paneKey).toBe(PANE_A)
     expect(server.replayCachedPayloadsForPanes()).toBe(1)
   })
+
+  it.each(['SessionIdle', 'PermissionRequest', 'MessagePart'] as const)(
+    'rejects a retired physical viewer before attributing its late %s to a live creator',
+    async (hookEventName) => {
+      await post(PANE_B, 'ses_b', 'SessionBusy', { launchToken: 'creator-live' })
+      await post(PANE_C, 'ses_c', 'SessionBusy', { launchToken: 'viewer-old' })
+      retired.add(PANE_C)
+      server.clearPaneState(PANE_C)
+      forward.mockClear()
+      await post(PANE_C, 'ses_b', hookEventName, {
+        launchToken: 'viewer-old',
+        payload: {
+          hook_event_name: hookEventName,
+          sessionID: 'ses_b',
+          role: 'assistant',
+          text: 'late viewer text',
+          permission: 'bash',
+          requestID: 'late-request'
+        }
+      })
+      expect(forward).not.toHaveBeenCalled()
+      expect(server.replayCachedPayloadsForPanes()).toBe(1)
+      expect(forward.mock.calls[0][0]).toMatchObject({
+        paneKey: PANE_B,
+        launchToken: 'creator-live',
+        payload: { state: 'working' }
+      })
+      retired.delete(PANE_C)
+      forward.mockClear()
+      await post(PANE_C, 'ses_b', 'SessionIdle', { launchToken: 'viewer-new' })
+      expect(forward.mock.calls[0][0]).toMatchObject({
+        paneKey: PANE_B,
+        launchToken: 'creator-live',
+        payload: { state: 'done' }
+      })
+    }
+  )
 
   it('learns no identity from a rejected retired surface and admits its replacement', async () => {
     retired.add(PANE_B)
