@@ -151,6 +151,7 @@ async function startOrcadRuntime(
     | undefined
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
+  let removeStatusHookSettingsListener = (): void => {}
   registerCleanup(async () => {
     try {
       await rpc?.stop()
@@ -167,6 +168,7 @@ async function startOrcadRuntime(
           // orcad restart goes back to killing every running terminal.
           await stopOrcadDaemon()
         } finally {
+          removeStatusHookSettingsListener()
           uninstallObservedStatusIdentity()
           uninstallHookStatusRepublish()
           agentHookServer.stop()
@@ -200,12 +202,11 @@ async function startOrcadRuntime(
     statusHooksEnabled: isAgentStatusHooksEnabled(profileStore.getSettings())
   })
 
-  const removeStatusHookSettingsListener = profileStore.onSettingsChanged((updates, settings) => {
+  removeStatusHookSettingsListener = profileStore.onSettingsChanged((updates, settings) => {
     if ('agentStatusHooksEnabled' in updates) {
       agentHookServer.setStatusHooksEnabled(isAgentStatusHooksEnabled(settings))
     }
   })
-  registerCleanup(async () => removeStatusHookSettingsListener())
 
   // Why before the runtime and the PTY handlers: `setLocalPtyProvider` installs the daemon
   // adapter as THE local provider, and the registry's contract is that it lands before
