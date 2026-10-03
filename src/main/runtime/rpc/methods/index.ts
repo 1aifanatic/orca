@@ -17,6 +17,7 @@ import { NOTIFICATION_METHODS } from './notifications'
 import { STATS_METHODS } from './stats'
 import { DIAGNOSTICS_METHODS } from './diagnostics'
 import { ACCOUNT_METHODS } from './accounts'
+import { ANTIGRAVITY_ACCOUNT_METHODS } from './antigravity-accounts'
 import { DEEPSEEK_ACCOUNT_METHODS } from './accounts-deepseek'
 import { PREFLIGHT_METHODS } from './preflight'
 import { COMPUTER_METHODS } from './computer'
@@ -78,6 +79,7 @@ export const ALL_RPC_METHODS = [
   ...STATS_METHODS,
   ...DIAGNOSTICS_METHODS,
   ...ACCOUNT_METHODS,
+  ...ANTIGRAVITY_ACCOUNT_METHODS,
   ...DEEPSEEK_ACCOUNT_METHODS,
   ...PREFLIGHT_METHODS,
   ...COMPUTER_METHODS,

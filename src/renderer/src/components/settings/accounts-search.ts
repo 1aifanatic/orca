@@ -1,3 +1,7 @@
+import { getAccountsZcodePlanSearchEntries } from './accounts-zcode-plan-search'
+export { getAccountsZcodePlanSearchEntries } from './accounts-zcode-plan-search'
+import { getAccountsDeepSeekSearchEntries } from './accounts-deepseek-search'
+export { getAccountsDeepSeekSearchEntries } from './accounts-deepseek-search'
 import type { SettingsSearchEntry } from './settings-search'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
@@ -217,6 +221,24 @@ export const getAccountsGrokSearchEntries = createLocalizedCatalog(() => [
   }
 ])
 
+export const getAccountsAntigravitySearchEntries = createLocalizedCatalog(() => [
+  {
+    title: translate('accounts.antigravity.searchTitle', 'Antigravity Accounts'),
+    description: translate(
+      'accounts.antigravity.searchDescription',
+      'Save and select native agy Google accounts on the execution host.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('accounts.antigravity.keyword.antigravity', 'antigravity'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.agy', 'agy'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.google', 'google'),
+      ...translateSearchKeyword('accounts.antigravity.keyword.accounts', 'accounts'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.a9f3d7b5c8', 'login'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.cursor.kw.usage', 'usage')
+    ]
+  }
+])
+
 export const getAccountsCursorSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.accounts.search.cursor.title', 'Cursor Usage'),
@@ -249,24 +271,6 @@ export const getAccountsCursorSearchEntries = createLocalizedCatalog(() => [
   }
 ])
 
-export const getAccountsDeepSeekSearchEntries = createLocalizedCatalog(() => [
-  {
-    title: translate('deepseek.accounts.searchTitle', 'DeepSeek balance'),
-    description: translate(
-      'deepseek.accounts.searchDescription',
-      'Save a protected API key and view prepaid currency balances.'
-    ),
-    keywords: [
-      ...translateSearchKeyword('deepseek.search.name', 'deepseek'),
-      ...translateSearchKeyword('deepseek.search.balance', 'balance'),
-      ...translateSearchKeyword('deepseek.search.apiKey', 'api key'),
-      ...translateSearchKeyword('deepseek.search.credits', 'credits'),
-      ...translateSearchKeyword('deepseek.search.currency', 'currency'),
-      ...translateSearchKeyword('deepseek.search.account', 'account')
-    ]
-  }
-])
-
 export const getAccountsPaneSearchEntries = createLocalizedCatalog((): SettingsSearchEntry[] => [
   ...getAccountsLocationSearchEntries(),
   ...getAccountsClaudeSearchEntries(),
@@ -275,6 +279,8 @@ export const getAccountsPaneSearchEntries = createLocalizedCatalog((): SettingsS
   ...getAccountsOpencodeSearchEntries(),
   ...getAccountsMiniMaxSearchEntries(),
   ...getAccountsGrokSearchEntries(),
+  ...getAccountsAntigravitySearchEntries(),
   ...getAccountsCursorSearchEntries(),
+  ...getAccountsZcodePlanSearchEntries(),
   ...getAccountsDeepSeekSearchEntries()
 ])
