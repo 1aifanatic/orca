@@ -73,11 +73,15 @@ describe('sendAgentTurn through the real host', () => {
         return rig.host.waitForSendSettlement(sessionId, clientMessageId, options)
       }
     }
-    const replay = sendTurn('queue', operationId, host)
+    let returned = false
+    const replay = sendTurn('queue', operationId, host).finally(() => {
+      returned = true
+    })
     await eventually(async () => expect(waitedOn).toHaveLength(1))
     await eventually(async () =>
       expect((await rig.submission(handoffId))?.handedOverAt).toBeDefined()
     )
+    expect(returned).toBe(false)
     await rig.settleAccepted(handoffId, 'mail')
     await expect(replay).resolves.toMatchObject({
       kind: 'sent',
