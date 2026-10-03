@@ -97,6 +97,9 @@ it('warms and probes both Windows images with the persistence job runtime', () =
   const install = job.steps.find(
     (step) => step.uses === './.github/actions/install-node-dependencies'
   )
-  expect(install.with).toEqual({ 'native-runtime': 'node' })
+  expect(install.with).toEqual({
+    'native-runtime': 'node',
+    'cache-pnpm-store-lookup-only': 'true'
+  })
   expect(job.steps.at(-1).run).toBe('node config/scripts/ensure-native-runtime.mjs --check-only')
 })

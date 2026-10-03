@@ -57,15 +57,18 @@ function executeInstallScript(fixture) {
 
 describe('install-node-dependencies action', () => {
   it.each(['/home/runner/pnpm store/v11', 'C:\\Users\\runner\\pnpm store\\v11'])(
-    'preserves setup-node store path %s and lowercase architecture',
+    'preserves setup-node store path %s for lookup and post-job publishing',
     (storePath) => {
       const fixture = createFixture()
       const output = join(fixture.root, 'github-output')
+      const environment = join(fixture.root, 'github-env')
       try {
         const result = run('bash', ['-e', '-o', 'pipefail', '-c', storeScript], {
           env: {
             ...process.env,
             GITHUB_OUTPUT: output,
+            GITHUB_ENV: environment,
+            STORE_LOOKUP_ONLY: 'true',
             LOCKFILE_HASH: 'lockfile-digest',
             PNPM_TEST_STORE_PATH: storePath,
             PATH: `${fixture.bin}${delimiter}${process.env.PATH}`
@@ -73,6 +76,7 @@ describe('install-node-dependencies action', () => {
         })
         expect(result.status, result.stderr || result.stdout).toBe(0)
         expect(readFileSync(output, 'utf8')).toBe(`path=${storePath}\narch=${process.arch}\n`)
+        expect(readFileSync(environment, 'utf8')).toBe(`ORCA_PNPM_STORE_CACHE_PATH=${storePath}\n`)
       } finally {
         rmSync(fixture.root, { recursive: true, force: true })
       }
