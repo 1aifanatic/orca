@@ -8,6 +8,7 @@ import { isQueuedAgentJournalSubmission } from './agent-session-queued-submissio
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import {
   keepStoppedSendsInSendOrder,
+  latestRowsSentBefore,
   stoppedSendPosition,
   withStopRowsAfterStoppedSends
 } from './native-chat-stopped-before-start'
@@ -66,6 +67,7 @@ export function projectStructuredAgentSessionMessages(
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
   const shownStopped = new Set<string>()
+  const sentBefore = latestRowsSentBefore(submissions, itemsById)
   let moved = false
   for (const message of projectItems(visibleItems)) {
     if (queued.has(message.id)) {
@@ -78,7 +80,9 @@ export function projectStructuredAgentSessionMessages(
       delivered.push({ ...message, stoppedBeforeStart: true })
     } else if (stoppedBeforeStart.has(message.id)) {
       const item = itemsById.get(message.id)
-      const position = item ? stoppedSendPosition(items, item, anchors) : undefined
+      const position = item
+        ? stoppedSendPosition(items, item, anchors, sentBefore.get(message.id))
+        : undefined
       const placed =
         item && position && compareAgentJournalPositions(position, agentJournalItemPosition(item))
       moved ||= Boolean(placed)

@@ -27,25 +27,27 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 
 /**
  * Where a send a Stop took back is drawn: after the rest of every turn it waited on, where the Stop
- * took it back, else at its own row. A turn it waited on is one whose opener (`anchors`) the journal
- * places before the send's row: the turn it was accepted behind, or one that opened for an earlier
- * row while it waited. A handed-over send's row is its handover, not when it was sent. Journal order
- * only, never a clock: a resume rewrites a turn's start time to the provider's whole seconds.
+ * took it back, else at its own row. It is drawn no earlier than `sentBefore`, the latest loaded row
+ * of anything sent before it (a handed-over send's row is its handover, which can follow a send
+ * still queued). A turn it waited on is one whose opener (`anchors`) the journal places before
+ * that point. Journal order only for turns, never a clock: a resume rewrites a turn's start time.
  */
 export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
   item: AgentJournalRenderItem,
-  anchors: ReadonlyMap<string, string>
+  anchors: ReadonlyMap<string, string>,
+  sentBefore?: AgentJournalRenderItem
 ): AgentJournalPosition {
+  const from = sentBefore && compareAgentJournalItems(sentBefore, item) > 0 ? sentBefore : item
   const byId = new Map(items.map((candidate) => [candidate.itemId, candidate]))
   const waitedOn = new Set<string>()
   for (const [turnItemId, anchorId] of anchors) {
     const opener = byId.get(anchorId)
-    if (anchorId !== item.itemId && opener && compareAgentJournalItems(opener, item) < 0) {
+    if (anchorId !== item.itemId && opener && compareAgentJournalItems(opener, from) < 0) {
       waitedOn.add(turnItemId)
     }
   }
-  let last = item
+  let last = from
   for (const candidate of items) {
     const ofTurn =
       waitedOn.has(candidate.itemId) ||
@@ -55,8 +57,35 @@ export function stoppedSendPosition(
     }
   }
   const position = agentJournalItemPosition(last)
-  // Just after that turn's last row, ahead of whatever the journal wrote next.
+  // Just after that row, ahead of whatever the journal wrote next.
   return last === item ? position : { sequence: position.sequence, index: position.index + 0.5 }
+}
+
+/** For each submission, the latest loaded row of the ones sent before it, in `submittedAt` order
+ *  with ties kept in list order as the client reducer keeps them (see `keepStoppedSendsInSendOrder`). */
+export function latestRowsSentBefore(
+  submissions: readonly AgentJournalSubmission[],
+  itemsById: ReadonlyMap<string, AgentJournalRenderItem>
+): ReadonlyMap<string, AgentJournalRenderItem> {
+  const inSendOrder = submissions
+    .map((submission, order) => ({ submission, order }))
+    .sort(
+      (left, right) =>
+        left.submission.submittedAt - right.submission.submittedAt || left.order - right.order
+    )
+  const before = new Map<string, AgentJournalRenderItem>()
+  let latest: AgentJournalRenderItem | undefined
+  for (const { submission } of inSendOrder) {
+    const key = agentJournalSubmissionKey(submission.clientMessageId)
+    if (latest) {
+      before.set(key, latest)
+    }
+    const row = itemsById.get(key)
+    if (row && (!latest || compareAgentJournalItems(row, latest) > 0)) {
+      latest = row
+    }
+  }
+  return before
 }
 
 /**
