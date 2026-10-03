@@ -14,7 +14,8 @@ const shipped = scanSourceTree(MAIN_ROOT).map((file) => ({
 }))
 
 /** `.name`, `?.name` or `['name']` off `receiver`: a call, an optional call, a bind, or the method
- *  passed on as a value. An assignment to the member is its definition, not a use. */
+ *  passed on as a value. An assignment to the member is its definition, not a use. Not caught: an
+ *  alias of the receiver (`const h = host`) or a destructured method (`const { send } = host`). */
 function memberUse(name: string, receiver = ''): RegExp {
   const from = receiver && String.raw`${receiver}\s*`
   return new RegExp(
@@ -24,11 +25,15 @@ function memberUse(name: string, receiver = ''): RegExp {
 }
 
 const TERMINAL_PROMPT = memberUse('sendTerminalAgentPrompt')
+// The raw terminal write: text, and Enter if asked, with no agent prompt handling.
+const TERMINAL_WRITE = memberUse('sendTerminal')
 const SEND_SETTLEMENT_WAIT = memberUse('waitForSendSettlement')
-// The session host's own send; the receiver is how this codebase names a structured host.
+// The session host's own send, off anything named as a host: `host`, `requireInstalledHost()`,
+// `(await runtime.ensureStructuredAgentSessionHost())`, `host!`, `(host as X)`.
+const HOST_RECEIVER = String.raw`[Hh]ost(?:\([^()]*\))?!?(?:\s+as\s+[\w.]+)?\)?!?`
 const STRUCTURED_SEND = new RegExp(
   [
-    memberUse('send', String.raw`(?:[Hh]ost|getStructuredAgentSessionHost\(\))`).source,
+    memberUse('send', HOST_RECEIVER).source,
     String.raw`(?<!\bfunction\s+)\bsendStructuredAgentSessionTurn\s*\(`
   ].join('|')
 )
@@ -62,17 +67,29 @@ describe('agent turn send boundary', () => {
       'await host.send(caller, params)',
       'await args.host?.send(caller, params)',
       'await getStructuredAgentSessionHost()?.send(caller, params)',
+      'await getStructuredAgentSessionHost()!.send(caller, params)',
+      'await requireInstalledHost().send(caller, params)',
+      'await (await runtime.ensureStructuredAgentSessionHost()).send(caller, params)',
+      'await host!.send(caller, params)',
+      'await (host as X).send(caller, params)',
       'await structuredHost.send?.(caller, params)',
       "await host['send'](caller, params)",
       'return sendStructuredAgentSessionTurn(context, caller, params)'
     ]) {
       expect(found(STRUCTURED_SEND, line), line).toBe(true)
     }
+    for (const line of [
+      'await runtime.sendTerminal(handle, { text, enter: true }, options)',
+      "await api?.['sendTerminal'](handle, { text }, options)"
+    ]) {
+      expect(found(TERMINAL_WRITE, line), line).toBe(true)
+    }
     for (const [pattern, line] of [
       [TERMINAL_PROMPT, 'async sendTerminalAgentPrompt(handle, prompt, options) {'],
       [TERMINAL_PROMPT, '// runtime.sendTerminalAgentPrompt(handle, prompt, options)'],
       [SEND_SETTLEMENT_WAIT, 'this.waitForSendSettlement = this.sendSettlement.wait'],
       [STRUCTURED_SEND, 'await host.sendTerminal(handle, action, options)'],
+      [TERMINAL_WRITE, 'await runtime.sendTerminalAgentPrompt(handle, prompt, options)'],
       [
         STRUCTURED_SEND,
         'export function sendStructuredAgentSessionTurn(context, caller, params) {'
@@ -106,8 +123,9 @@ describe('agent turn send boundary', () => {
       'A new direct sendTerminalAgentPrompt use. Send an agent message through sendAgentTurn.'
     ).toEqual(
       [
-        // `agent.launch`: the prompt an agent is started with, by a user or another agent. Not
-        // moved yet: it is the launch's own first turn, sent before anything can queue it.
+        // `agent.launch`: the prompt an agent is started with, by a user or another agent. With
+        // `reuseTerminal` it is typed into an agent already running. Temporary: it needs its own
+        // terminal purpose, and the sender in step B.
         'runtime/rpc/methods/agent-launch-terminal-prompt.ts',
         // `terminal.send --enter` (agentPrompt): a user's or an agent's prompt to a named terminal,
         // so it is an agent-to-agent send too. Not moved yet: it carries its own write guard,
@@ -127,7 +145,8 @@ describe('agent turn send boundary', () => {
         'runtime/orchestration/send-agent-turn.ts',
         // The composer's `agentSession.send` RPC: the user's own message.
         'runtime/rpc/methods/structured-agent-session-send-compatibility.ts',
-        // `agent.launch` into a structured chat: the launch's own first turn, as above.
+        // `agent.launch` into a structured chat: the first turn of the chat that launch just
+        // created, so nothing can be queued ahead of it. The sender comes in step B.
         'runtime/rpc/methods/agent-launch-structured-prompt.ts',
         // Orca's own restart continuation.
         'native-chat/agent-session-wire/structured-agent-session-restart-continuation.ts',
@@ -163,6 +182,43 @@ describe('agent turn send boundary', () => {
     )
   })
 
+  it('types raw terminal text only from the listed paths', () => {
+    expect(
+      filesMatching(TERMINAL_WRITE),
+      'A new direct sendTerminal use. Send an agent message through sendAgentTurn.'
+    ).toEqual(
+      [
+        // Intended: a plugin's own terminal input, not a message on an agent's behalf.
+        'plugins/plugin-host-service-bindings.ts',
+        // Intended: Claude's agent-teams tmux `send-keys`, keystrokes the Claude CLI itself
+        // issues; Orca relays them and is not the sender.
+        'runtime/claude-agent-teams-tmux-dispatcher.ts',
+        // Intended: the runtime lending its own write to that agent-teams relay.
+        'runtime/orca-runtime-resolve-terminal-split-source-authority.ts',
+        // Intended: a client's live keystroke stream, typed without Enter.
+        'runtime/rpc/methods/terminal/terminal-input-delivery.ts',
+        // Temporary: `terminal.send` into a terminal with no settled agent prompt, which may still
+        // be an agent's message to another agent; moves with the `terminal.send` prompt above.
+        'runtime/rpc/methods/terminal/terminal-send-method.ts'
+      ].sort()
+    )
+  })
+
+  it('launches with a prompt only from agent.launch', () => {
+    // The launch-prompt helpers send any text into a chat or terminal; a new caller is a new sender.
+    expect(
+      filesMatching(
+        /\b(?:commitStructuredAgentSessionLaunchPrompt|deliverTerminalAgentLaunchPrompt)\b/
+      )
+    ).toEqual(
+      [
+        'runtime/rpc/methods/agent-launch-structured-prompt.ts',
+        'runtime/rpc/methods/agent-launch-terminal-prompt.ts',
+        'runtime/rpc/methods/agent-launch-surfaces.ts'
+      ].sort()
+    )
+  })
+
   it('pins the agent senders that use another primitive and are not moved yet', () => {
     // The terminal mail pointer: it types the text, then a separately gated Enter with durable
     // attempt states, which the prompt write does not do.
@@ -173,9 +229,5 @@ describe('agent turn send boundary', () => {
         'runtime/orca-runtime-stop-requested-pty-ids.ts'
       ].sort()
     )
-    // Claude's agent-teams tmux `send-keys`: keystrokes the agent CLI types itself, not a message.
-    expect(filesMatching(/\btmuxSendKeysText\s*\(/)).toEqual([
-      'runtime/claude-agent-teams-tmux-dispatcher.ts'
-    ])
   })
 })
