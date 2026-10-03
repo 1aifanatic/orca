@@ -1,3 +1,4 @@
+import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -51,7 +52,12 @@ type RunSourceControlAgentActionStartArgs = {
   onLaunchAccepted?: () => void
   /** Fires when a launch that already reported onLaunchAccepted failed to deliver its prompt. */
   onLaunchAborted?: () => void
-  onLaunched?: () => void
+  /** `structuredChat`: the launch opened a structured chat, whose message carries any review
+   *  reply, so the caller writes nothing to the review itself. */
+  onLaunched?: (launch: { structuredChat: boolean }) => void
+  /** Planned at start: what a structured chat's host writes on the review once its agent takes
+   *  the prompt. A terminal agent has no message to carry it. */
+  reviewReply?: () => AgentSessionReviewReply | undefined
   onClose: () => void
 }
 
@@ -76,9 +82,11 @@ export async function runSourceControlAgentActionStart({
   onLaunchAccepted,
   onLaunchAborted,
   onLaunched,
+  reviewReply,
   onClose
 }: RunSourceControlAgentActionStartArgs): Promise<boolean> {
   let launched = false
+  let structuredChat = false
   let launchFailureNotified = false
   let launchAcceptedNotified = false
   // Why: `undefined` is what makes the launch fall back to the global Agents arguments;
@@ -101,6 +109,7 @@ export async function runSourceControlAgentActionStart({
       notifyLaunchAccepted()
     }
   } else if (worktreeId) {
+    const plannedReviewReply = reviewReply?.()
     const result = launchAgentInNewTab({
       agent: selectedAgent,
       worktreeId,
@@ -109,9 +118,11 @@ export async function runSourceControlAgentActionStart({
       agentArgs: launchAgentArgs,
       promptDelivery,
       launchPlatform,
-      launchSource
+      launchSource,
+      ...(plannedReviewReply ? { reviewReply: plannedReviewReply } : {})
     })
     launched = Boolean(result)
+    structuredChat = Boolean(result?.structuredSettlement)
     if (result?.surface.kind === 'local-terminal') {
       focusTerminalTabSurface(result.surface.tabId)
     }
@@ -171,7 +182,7 @@ export async function runSourceControlAgentActionStart({
       console.error('onSaveAgentDefault failed', error)
     }
   }
-  onLaunched?.()
+  onLaunched?.({ structuredChat })
   onClose()
   return true
 }

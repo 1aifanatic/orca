@@ -1,15 +1,30 @@
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
+import { enqueueStructuredAgentSessionLaunchPrompt } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
 import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
+import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 
 export type StructuredAgentLaunchOptions = {
   prompt?: string
   promptDelivery?: 'auto-submit' | 'submit-after-ready' | 'draft'
   onPromptDelivered?: () => void
+  /** What Orca does on the review once the agent takes the prompt; rides the prompt's message. */
+  reviewReply?: AgentSessionReviewReply
   /** Adopt an existing provider conversation instead of starting a fresh one. Part of the launch's
    *  identity, not a preference — see `launchIdentity`. */
   resumeFrom?: StructuredAgentSessionResumeSource
+}
+
+/** Queues a launch's prompt on its chat's outbox, carrying any review reply onto its message. */
+export function stageStructuredLaunchPrompt(
+  sessionId: string,
+  text: string,
+  options: StructuredAgentLaunchOptions
+): StructuredAgentSessionOutboxEntry | null {
+  return text
+    ? enqueueStructuredAgentSessionLaunchPrompt(sessionId, text, options.reviewReply)
+    : null
 }
 
 export type StructuredLaunchCaller = {

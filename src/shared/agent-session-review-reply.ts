@@ -54,6 +54,14 @@ export const AgentSessionReviewReplySchema = z
 
 export type AgentSessionReviewReply = z.infer<typeof AgentSessionReviewReplySchema>
 
+/** `{ reviewReply }` for a well-formed stored spec, else nothing: for spreading into a copy. */
+export function agentSessionReviewReplyField(value: unknown): {
+  reviewReply?: AgentSessionReviewReply
+} {
+  const reviewReply = readAgentSessionReviewReply(value)
+  return reviewReply ? { reviewReply } : {}
+}
+
 /** A stored spec as a reader meets it; undefined for anything malformed, which then runs nothing. */
 export function readAgentSessionReviewReply(value: unknown): AgentSessionReviewReply | undefined {
   const parsed = AgentSessionReviewReplySchema.safeParse(value)
