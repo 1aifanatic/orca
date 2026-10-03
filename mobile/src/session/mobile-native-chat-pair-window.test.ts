@@ -37,6 +37,32 @@ describe('mobile complete-pair stream windows', () => {
     }
   )
 
+  it.each(['appended', 'snapshot'])(
+    'keeps reasoning, answer and omission from one raw row at the %s cutoff',
+    (type) => {
+      const group = [...pair('opencode:oldest'), row('opencode:oldest:omission', 'system')].map(
+        (message) => ({ ...message, transcriptOffset: 7 })
+      )
+      const base = [...group, ...Array.from({ length: 38 }, (_, i) => row(`m${i}`))]
+      const merger = createNativeChatMerger()
+      replaceList(merger, base)
+      const result = applyMobileNativeChatStreamFrame({
+        merger,
+        frame: {
+          type,
+          messages: type === 'snapshot' ? [...base.slice(-1), row('latest')] : [row('latest')],
+          hasMore: true,
+          beforeOffset: 7
+        },
+        limit: 40,
+        replaceSnapshot: false
+      })
+      expect(result).toEqual({ kind: 'messages', messages: [...base, row('latest')] })
+      expect(merger.list.slice(0, 3)).toEqual(group)
+      expect(merger.list).toHaveLength(42)
+    }
+  )
+
   it('invalidates the cursor when the oldest complete pair leaves', () => {
     const merger = createNativeChatMerger()
     const base = [...pair('opencode:oldest'), ...Array.from({ length: 39 }, (_, i) => row(`m${i}`))]

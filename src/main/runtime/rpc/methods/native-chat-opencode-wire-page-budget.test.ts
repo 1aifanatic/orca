@@ -121,6 +121,8 @@ describe.each(['v1', 'v2'] as const)('%s byte-bounded semantic pages', (version)
       const dbPath = denseFixture(version)
       const page = readOpenCodeTranscriptPage({ dbPath, sessionId: 'session', limit: 2400 })!
       expect(page.items).toHaveLength(2401)
+      expect(page.items.every((item) => Number.isFinite(item.message.transcriptOffset))).toBe(true)
+      expect(page.items.every((item) => item.message.transcriptOffset === item.rowid)).toBe(true)
       const method = buildRegistry(NATIVE_CHAT_METHODS).get('nativeChat.subscribe')!
       if (!isStreamingMethod(method)) {
         throw new Error('Expected a subscription')
