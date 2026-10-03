@@ -304,6 +304,40 @@ describe('runtime Delete after the user replaced a failed delete’s leftover', 
     await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
   })
 
+  it('leaves the folder on a Delete after a listing could not ask Git about the failed delete', async () => {
+    vi.mocked(listWorktreesStrict).mockRejectedValueOnce(new Error('git worktree list timed out'))
+    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
+
+    await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
+    // Kept for the next listing to decide, rather than dropped with the workspace left behind.
+    expect(await readWorktreeRemovalRecords(directory)).toHaveLength(1)
+    await deleteById(runtime)
+
+    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
+    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
+  })
+
+  it('leaves the folder on a Delete made while a listing asks Git about the failed delete', async () => {
+    let answerGit!: () => void
+    let askedGit!: () => void
+    const listingAskedGit = new Promise<void>((resolve) => (askedGit = resolve))
+    vi.mocked(listWorktreesStrict).mockImplementationOnce(() => {
+      askedGit()
+      return new Promise((resolve) => (answerGit = () => resolve([])))
+    })
+    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
+
+    const listing = runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
+    await listingAskedGit
+    await deleteById(runtime)
+    const notesAfterDelete = existsSync(join(leftover, 'notes.txt'))
+    answerGit()
+    await listing
+
+    expect(notesAfterDelete).toBe(true)
+    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
+  })
+
   it('keeps the workspace when Git registers a checkout at the path again after the scan', async () => {
     vi.mocked(listWorktreesStrict).mockResolvedValue([
       {

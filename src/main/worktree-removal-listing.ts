@@ -36,7 +36,7 @@ export async function withUnregisteredRemovalCheckouts(
     return gitWorktrees
   }
   const leftovers: GitWorktreeInfo[] = []
-  const ended: WorktreeRemovalRecord[] = []
+  const notLeftovers: WorktreeRemovalRecord[] = []
   for (const record of unlisted) {
     const failed = failedWorktreeRemovals.get(record.worktreeId) === record
     if (
@@ -51,21 +51,28 @@ export async function withUnregisteredRemovalCheckouts(
         isMainWorktree: false,
         ...(record.failure ? { removalError: record.failure.message } : {})
       })
-    } else if (failedWorktreeRemovals.get(record.worktreeId) === record) {
-      // Read again, not `failed`: a Delete may have retried it while this listing read the disk.
-      failedWorktreeRemovals.delete(record.worktreeId)
-      ended.push(record)
+    } else if (failed) {
+      notLeftovers.push(record)
     }
   }
-  if (ended.length > 0) {
-    void persistWorktreeRemovalRecords()
-  }
-  for (const record of ended) {
+  let dropped = false
+  for (const record of notLeftovers) {
     // Why ask Git again: the rows may be a cached scan, and a checkout Git registers at the path
-    // since is a new workspace. Unknowable keeps it.
-    if (!(await isCheckoutRegistered(record).catch(() => true))) {
+    // since is a new workspace. Unknowable keeps the record for the next listing to decide.
+    const registered = await isCheckoutRegistered(record).catch(() => undefined)
+    // Read again: a Delete may have retried it meanwhile. No await from here to the end, or a
+    // Delete in between would find neither the record nor the end of its workspace.
+    if (registered === undefined || failedWorktreeRemovals.get(record.worktreeId) !== record) {
+      continue
+    }
+    failedWorktreeRemovals.delete(record.worktreeId)
+    dropped = true
+    if (!registered) {
       endUnfinishedWorktreeRemoval(record)
     }
+  }
+  if (dropped) {
+    void persistWorktreeRemovalRecords()
   }
   return leftovers.length === 0 ? gitWorktrees : [...gitWorktrees, ...leftovers]
 }

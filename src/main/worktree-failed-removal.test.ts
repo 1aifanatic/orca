@@ -343,6 +343,54 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(existsSync(join(checkout, 'notes.txt'))).toBe(true)
   })
 
+  it('keeps the failed delete for the next listing while Git cannot say whether it registers the path', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    await failRemoval()
+    await rm(checkout, { recursive: true })
+    await mkdir(checkout)
+    vi.mocked(listWorktreesStrict).mockRejectedValueOnce(new Error('git worktree list timed out'))
+
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(endWorkspace).not.toHaveBeenCalled()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
+
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
+  })
+
+  it('still lets a Delete retry it while a listing asks Git whether to end it', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    await failRemoval()
+    await rm(checkout, { recursive: true })
+    await mkdir(checkout)
+    let answerGit!: () => void
+    let askedGit!: () => void
+    const listingAskedGit = new Promise<void>((resolve) => (askedGit = resolve))
+    vi.mocked(listWorktreesStrict).mockImplementationOnce(() => {
+      askedGit()
+      return new Promise((resolve) => (answerGit = () => resolve([mainWorktree])))
+    })
+
+    const listing = listRows()
+    await listingAskedGit
+    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', () => ({
+      run: async () => {
+        throw new Error('not the folder Orca started deleting')
+      },
+      publish: () => {}
+    }))
+    await expect(retried).rejects.toThrow('not the folder')
+    answerGit()
+
+    expect(await listing).toEqual([mainWorktree])
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+  })
+
   it('ends, leaving the files, for a failed delete an older build recorded without an identity', async () => {
     await writeWorktreeRemovalRecords(join(directory, 'profile'), () => [
       {
