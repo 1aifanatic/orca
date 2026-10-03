@@ -78,6 +78,9 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
   adapter: StructuredAgentSessionAdapter
   /** The predicate a retry applies to the failure's marker. */
   retryable: (marker: AgentSessionResumeMarker) => boolean
+  /** Whether a newer Orca saved the chat: its failure is kept for that Orca but not shown here,
+   *  where no retry can land. */
+  savedByNewerOrca: (sessionId: string) => boolean
   /** Makes the failed chats readable here, so `retryable` reads each one's journal. */
   reveal: (markers: readonly AgentSessionResumeMarker[]) => Promise<void>
   logger: StructuredAgentSessionLogger
@@ -101,7 +104,11 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     failure: AgentSessionResumeFailureRecord
   ): StructuredAgentSessionResumeFailure[] => {
     const record = deps.getRecord(failure.marker.sessionId)
-    if (!record || !adapterSupportsRecord(deps.adapter, record)) {
+    if (
+      !record ||
+      !adapterSupportsRecord(deps.adapter, record) ||
+      deps.savedByNewerOrca(failure.marker.sessionId)
+    ) {
       return []
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)
@@ -153,15 +160,21 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     ])
     for (const outcome of outcomes) {
       const resumed = outcome.outcome === 'resumed'
-      // Ineligible means the offer no longer applies (record gone, conversation forked), superseded
-      // means the user's own message came first, and a newer Orca's chat is one nothing here can
-      // continue: nothing to retry, and the offer is spent without a failure.
+      // A newer Orca's refusal spends nothing: the rollback below reopens the offer for the Orca
+      // that can continue it, and nothing is filed for a chat no retry here could continue.
+      if (
+        !resumed &&
+        outcome.reason === 'agent_session_journal_unreadable' &&
+        outcome.details?.reason === 'journalWrittenByNewerOrca'
+      ) {
+        continue
+      }
+      // Ineligible means the offer no longer applies (record gone, conversation forked), and
+      // superseded means the user's own message came first: nothing to retry, and the offer is spent.
       const failure = resumed
         ? action.failureAfterResume(outcome.sessionId)
         : outcome.reason === STRUCTURED_AGENT_SESSION_RESUME_NOT_ELIGIBLE ||
-            outcome.reason === RESTART_CONTINUATION_SUPERSEDED ||
-            (outcome.reason === 'agent_session_journal_unreadable' &&
-              outcome.details?.reason === 'journalWrittenByNewerOrca')
+            outcome.reason === RESTART_CONTINUATION_SUPERSEDED
           ? null
           : 'refused'
       if (failure === null) {

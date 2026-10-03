@@ -104,23 +104,29 @@ export function createStructuredAgentSessionRestartResume(
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
-  // Chats the latest reveal found saved by a newer Orca. Each reveal re-derives its chat's entry,
-  // and the derive that reads one spends that chat's offer.
+  // Chats the latest reveal found saved by a newer Orca: skipped, never spent. Each reveal
+  // re-derives its chat's entry; nothing is stored.
   const newerOrcaChats = new Set<string>()
   const savedByNewerOrca = (sessionId: string) =>
     deps.journalDatabase.readOnly || newerOrcaChats.has(sessionId)
-  const derive = createStructuredAgentSessionRestartCandidateReader({
-    sessions,
-    getRecord: deps.store.getRecord,
-    adapter: deps.adapter,
-    movedOn: withdrawal.movedOn,
-    savedByNewerOrca
-  })
+  const reader = (skipNewerOrca: (sessionId: string) => boolean) =>
+    createStructuredAgentSessionRestartCandidateReader({
+      sessions,
+      getRecord: deps.store.getRecord,
+      adapter: deps.adapter,
+      movedOn: withdrawal.movedOn,
+      savedByNewerOrca: skipNewerOrca
+    })
+  const derive = reader(savedByNewerOrca)
+  // The check right before sending skips nothing for a newer Orca's chat: turning it away there
+  // would spend its offer. Its send is refused instead, and settling keeps the offer.
+  const deriveAtSend = reader(() => false)
   const failures = createStructuredAgentSessionRestartFailureLedger({
     ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
     retryable: (marker) => derive([marker], 'may-be-held').candidates.length === 1,
+    savedByNewerOrca,
     reveal: (markers) => revealMarkers(markers),
     logger: deps.logger,
     now: surfaces.now,
@@ -163,7 +169,7 @@ export function createStructuredAgentSessionRestartResume(
       deps.store.getRecord(sessionId)
         ? structuredAgentSessionConversationFence(deps.store, sessionId)
         : null,
-    stillResumable: (marker) => derive([marker], 'may-be-held').candidates.length === 1
+    stillResumable: (marker) => deriveAtSend([marker], 'may-be-held').candidates.length === 1
   }
 
   /** One explicit action: reserve the offers, then continue each through `continueOne`, a few at
@@ -207,7 +213,9 @@ export function createStructuredAgentSessionRestartResume(
           admission,
           consumeMarker: async (sessionId) => {
             const marker = markersBySession.get(sessionId)
-            return marker !== undefined && derive([marker], 'may-be-held').candidates.length === 1
+            return (
+              marker !== undefined && deriveAtSend([marker], 'may-be-held').candidates.length === 1
+            )
           },
           resume: async (sessionId) => {
             const marker = markersBySession.get(sessionId)

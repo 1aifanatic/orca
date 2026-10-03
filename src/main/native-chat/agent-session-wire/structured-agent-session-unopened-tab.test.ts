@@ -93,9 +93,16 @@ it.each([
     expect(host.listSessionTabs()).toEqual([
       { sessionId: SESSION, workspaceId, agent: expect.any(String) }
     ])
-    await expect(host.history({ sessionId: SESSION, direction: 'tail' })).rejects.toMatchObject({
-      refusal
-    })
+    // Every read is refused with why, and the host logs it once for the chat.
+    for (let read = 0; read < 3; read += 1) {
+      await expect(host.history({ sessionId: SESSION, direction: 'tail' })).rejects.toMatchObject({
+        refusal
+      })
+    }
+    const readFailureLogs = vi
+      .mocked(console.warn)
+      .mock.calls.filter(([line]) => String(line).includes('open-for-read'))
+    expect(readFailureLogs).toHaveLength(1)
     const body = hostTestMessage('sent to a chat that cannot load')
     await expect(
       host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })

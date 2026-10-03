@@ -117,10 +117,13 @@ export function structuredAgentSessionResumableSet(
       superseded.push(marker)
       continue
     }
-    // Nothing here can continue a chat a newer Orca saved, so its offer is spent without a word:
-    // once Orca is updated, the user opens the chat and carries on by hand.
-    if (input.movedOn(marker) || input.savedByNewerOrca(marker.sessionId)) {
+    if (input.movedOn(marker)) {
       superseded.push(marker)
+      continue
+    }
+    // Nothing here can continue a chat a newer Orca saved, so it is not offered. Its offer is kept,
+    // not spent: the offers file is shared by every Orca on the host, and the newer one can act on it.
+    if (input.savedByNewerOrca(marker.sessionId)) {
       continue
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)

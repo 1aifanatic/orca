@@ -169,6 +169,33 @@ describe('createJournalOpenReadRefusals', () => {
       'open-for-read'
     ])
   })
+
+  // A load refused on its rows arrives already classified, and is logged once per session too.
+  it("logs a load refused as a newer Orca's chat, or as damage, once per session until it opens", () => {
+    const log = recordingStructuredAgentSessionLogger()
+    const refusals = createJournalOpenReadRefusals(log.logger)
+    const newer = journalOpenRefusalError(
+      new AgentSessionJournalError('journal_read_only', 'a newer Orca wrote session-1')
+    )
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(refusals.refusal('session-1', newer)).toBe(newer)
+    }
+    expect(log.entries.map((entry) => entry.fields.sessionId)).toEqual(['session-1'])
+    refusals.refusal('session-2', newer)
+    refusals.forget('session-1')
+    refusals.refusal('session-1', newer)
+    expect(log.entries.map((entry) => entry.fields.sessionId)).toEqual([
+      'session-1',
+      'session-2',
+      'session-1'
+    ])
+    // A refusal that is not about loading the history is not this door's to log.
+    refusals.refusal(
+      'session-3',
+      agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
+    )
+    expect(log.entries).toHaveLength(3)
+  })
 })
 
 // Only an update gets past a journal a newer Orca wrote, so it has a reason of its own: a client

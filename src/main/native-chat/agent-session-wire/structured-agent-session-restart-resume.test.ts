@@ -475,14 +475,23 @@ describe('the resumable set', () => {
     expect(set.superseded).toEqual([forked])
   })
 
-  // Nothing here can continue a chat a newer Orca saved: its offer is spent without a word.
-  it("spends a newer Orca's chat's offer without offering it", () => {
+  // Nothing here can continue a chat a newer Orca saved: it is not offered, and its offer is kept
+  // for the Orca that can act on it.
+  it("neither offers nor spends a newer Orca's chat, and offers it once this build can open it", () => {
     const offer = marker()
     expect(resumableSet({ markers: [offer], savedByNewerOrca: [SESSION] })).toEqual({
       candidates: [],
-      superseded: [offer]
+      superseded: []
     })
     expect(resumableSet({ markers: [offer] }).candidates).toHaveLength(1)
+  })
+
+  // Being a newer Orca's chat does not keep a forked chat's offer alive: the fork still ends it.
+  it("still withdraws a forked chat a newer Orca saved", () => {
+    const forked = marker({ providerHandleRoot: 'codex:"other-thread"' })
+    expect(
+      resumableSet({ markers: [forked], savedByNewerOrca: [SESSION] }).superseded
+    ).toEqual([forked])
   })
 
   // An offer has no expiry, however old it is.
