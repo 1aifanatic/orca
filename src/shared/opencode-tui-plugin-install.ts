@@ -29,7 +29,21 @@ export function writeOpenCodeTuiPlugin(
   source: string,
   ownership: 'canonical' | 'overlay' = 'canonical'
 ): void {
-  const dir = join(pluginsDir, openCodeTuiPluginDirName(pluginFileName))
+  writeOpenCodeTuiPluginDirectory(
+    pluginsDir,
+    openCodeTuiPluginDirName(pluginFileName),
+    source,
+    ownership
+  )
+}
+
+export function writeOpenCodeTuiPluginDirectory(
+  pluginsDir: string,
+  directoryName: string,
+  source: string,
+  ownership: 'canonical' | 'overlay' = 'canonical'
+): void {
+  const dir = join(pluginsDir, directoryName)
   const entry = join(dir, 'tui.js')
   const isCurrent =
     ownership === 'canonical' ? isInstalledOpenCodePluginCurrent : isOverlayOpenCodePluginCurrent
