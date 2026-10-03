@@ -2,8 +2,9 @@
 // adapter, deferred sink, durable journal and status feed, published as production publishes it:
 // on the sink's own publish, on a journal commit (a microtask later), and after child work. At every
 // status publish the subagents read waiting must each have a pending card in that same journal, and
-// the parent row must match a second host fed the same evidence with no subagent ever waiting, as
-// the producer was before: the asking subagent's row changes, its parent's does not.
+// the parent row must match a second host fed the same evidence with no subagent ever waiting: a
+// subagent's wait never reaches its parent's row. Both hosts read the same journal, so what the
+// prompt rows' linkage changes on the parent (its dating) is pinned where it shows.
 
 import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -462,9 +463,6 @@ describe("a Claude subagent's permission request", () => {
       }
     })
     expect(run.viewOf(ASKER)?.operation).toMatchObject({ toolName: 'Bash' })
-    expect(
-      run.publishes.filter((entry) => isRecord(entry.row) && entry.row.state === 'waiting')
-    ).toEqual([])
     expect(run.violations()).toEqual([])
   })
 
@@ -602,7 +600,15 @@ describe("a Claude subagent's permission request", () => {
     await run.settle()
     const cards = pendingCards(run.journal.snapshot().items)
     expect(cards.map((card) => card.agentId ?? null).sort()).toEqual([ASKER, null].sort())
-    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
+    // Dated by the session's own ask, though its subagent asked first: main's rule, as for Codex.
+    const own = cards.find((card) => !card.agentId)?.observedAt
+    expect(own).toBeGreaterThan(
+      cards.find((card) => card.agentId === ASKER)?.observedAt ?? Infinity
+    )
+    expect(run.publishes.at(-1)).toMatchObject({
+      waiting: [ASKER],
+      row: { state: 'blocked', stateStartedAt: own, mainAgent: { stateStartedAt: own } }
+    })
     const subagents = cards.find((card) => card.agentId === ASKER)?.itemId
     await answer(
       run,
