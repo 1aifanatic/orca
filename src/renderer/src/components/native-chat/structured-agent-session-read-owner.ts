@@ -12,10 +12,6 @@ import {
   type StructuredAgentSessionAction,
   type StructuredAgentSessionState
 } from '../../../../shared/structured-agent-session-reducer'
-import {
-  isFinalAgentSessionReadRefusal,
-  isNamedAgentSessionReadRefusal
-} from '../../../../shared/structured-agent-session-read-refusal'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { NATIVE_CHAT_INITIAL_LIMIT, type NativeChatOlderPageResult } from './native-chat-pagination'
@@ -190,12 +186,9 @@ function createReadOwner(
     const transport = startStructuredAgentSessionReadTransport({
       applyEvent: (event) => apply({ type: 'event', event }),
       applyError: (message, refusal) => {
-        // Once loaded, a failure naming nothing is the transport's to retry; the chat stays as it is.
-        if (
-          snapshot.state.epoch !== null &&
-          !isNamedAgentSessionReadRefusal(refusal) &&
-          !isFinalAgentSessionReadRefusal(refusal)
-        ) {
+        // Once loaded, a failure the host sent no refusal for is lost contact: the transport retries
+        // it and the chat stays as it is. A refusal is the host's answer, so it is always shown.
+        if (snapshot.state.epoch !== null && refusal === undefined) {
           return
         }
         apply({ type: 'error', message, refusal })

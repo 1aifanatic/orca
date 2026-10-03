@@ -46,13 +46,6 @@ export function isUnattachedAgentSessionReadRefusal(error: unknown): boolean {
   )
 }
 
-/** The host named the situation, so the words say more than that the history did not load. */
-export function isNamedAgentSessionReadRefusal(
-  refusal: AgentSessionRefusalReference | undefined
-): boolean {
-  return refusal?.details?.reason !== undefined
-}
-
 /**
  * A read refusal no retry reads past: SQLite reported the chat's journal damaged. Decided from the
  * reason, never the message, which is the bare code for every journal refusal; a journal that

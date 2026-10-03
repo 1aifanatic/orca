@@ -7,10 +7,7 @@ import {
 } from '../../../../shared/agent-session-refusal-notice'
 import { agentSessionNoticeSaysThisChatUnread } from '../../../../shared/agent-session-write-notice-copy'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
-import {
-  isFinalAgentSessionReadRefusal,
-  isNamedAgentSessionReadRefusal
-} from '../../../../shared/structured-agent-session-read-refusal'
+import { isFinalAgentSessionReadRefusal } from '../../../../shared/structured-agent-session-read-refusal'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 export type StructuredAgentSessionReadFailureNotice = {
@@ -32,7 +29,7 @@ export function structuredAgentSessionReadFailureNotice(
     : agentSessionWriteNotDoneParts('read-history')
   return {
     text: agentSessionWriteNoticeText(parts),
-    named: isNamedAgentSessionReadRefusal(refusal),
+    named: refusal?.details?.reason !== undefined,
     final: isFinalAgentSessionReadRefusal(refusal),
     saysUnread: agentSessionNoticeSaysThisChatUnread(parts)
   }

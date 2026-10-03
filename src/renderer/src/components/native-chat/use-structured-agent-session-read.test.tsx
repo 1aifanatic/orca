@@ -410,7 +410,7 @@ describe('useStructuredAgentSessionRead older page failures', () => {
   })
 })
 
-// A loaded chat whose stream drops is the transport's to retry: only a reason the host named, or a
+// A loaded chat that loses contact is the transport's to retry: only a refusal the host sent, or a
 // chat that never loaded, is owed the failure. A loaded chat with no messages yet would otherwise
 // trade its empty state for the full-pane error on every blip.
 describe('useStructuredAgentSessionRead stream failures', () => {
@@ -440,24 +440,25 @@ describe('useStructuredAgentSessionRead stream failures', () => {
     return { result, onError: mocks.subscribe.mock.calls[0]?.[3] }
   }
 
-  it.each([
-    ['a dropped connection', { code: 'runtime_error', message: 'connection lost' }],
-    ['a refusal with no reason', journalRefusal()]
-  ])('leaves a loaded chat as it was on %s', async (_case, failure) => {
+  it('leaves a loaded chat as it was when the connection drops', async () => {
     const { result, onError } = await loadedChatWithNoMessages()
-    act(() => onError?.(failure))
+    act(() => onError?.({ code: 'runtime_error', message: 'connection lost' }))
     expect(result.current.state.status).toBe('ready')
     expect(result.current.state.error).toBeUndefined()
     expect(result.current.state.readRefusal).toBeUndefined()
   })
 
-  it('still reports a failure the host named on a loaded chat', async () => {
+  // An older host sends refusals without details; it still answered, so the chat is owed it.
+  it.each([
+    ['with its reason', { reason: 'journalUnavailable' }],
+    ['without a reason', undefined]
+  ])('still reports a refusal the host sent on a loaded chat, %s', async (_case, details) => {
     const { result, onError } = await loadedChatWithNoMessages()
-    act(() => onError?.(journalRefusal({ reason: 'journalUnavailable' })))
+    act(() => onError?.(journalRefusal(details)))
     expect(result.current.state.status).toBe('error')
     expect(result.current.state.readRefusal).toEqual({
       code: 'agent_session_journal_unreadable',
-      details: { reason: 'journalUnavailable' }
+      ...(details ? { details } : {})
     })
   })
 

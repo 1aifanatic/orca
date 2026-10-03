@@ -319,8 +319,8 @@ export function NativeChatStructuredSession(
         startupPhase={hostExecution.phase}
         startupChildKey={hostExecution.childKey}
         paneKey={paneKey}
-        // Said once: on the pane when the failure took it, else here. A loaded chat never stores a
-        // failure that names nothing, so one beside messages is named, final, or before any load.
+        // Said once: on the pane when the failure took it, else here. A loaded chat stores only a
+        // refusal the host sent, so one beside messages is the host's or from before any load.
         error={viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text}
         composerError={composerError}
         isVisible={props.isVisible}
