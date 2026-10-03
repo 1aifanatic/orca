@@ -15,8 +15,9 @@ const RECOVERY_CONCURRENCY = 4
 const RECOVERY_BUDGET_MS = 15_000
 
 export type StructuredAgentSessionStartupLeaseRecovery = {
-  /** Starts every `recovering` lease's recovery, listed or not; ends once each has ended or
-   *  outlasted its budget. Never rejects. */
+  /** Starts the recovery of every lease `recovering` at this call, listed or not, and ends once
+   *  each has ended or outlasted its budget; a lease a later reconcile moved there is included the
+   *  next call. Never rejects. */
   recoverAll: () => Promise<void>
   /** A restore's resolver. A `recovering` lease answers its one recovery, or true once that
    *  outlasts its budget: a second beside it could hang the same way, so its chat opens unverified.
@@ -31,7 +32,6 @@ export function createStructuredAgentSessionStartupLeaseRecovery(
 ): StructuredAgentSessionStartupLeaseRecovery {
   const budgetMs = deps.budgetMs ?? RECOVERY_BUDGET_MS
   const recoveries = new Map<string, Promise<boolean>>()
-  let all: Promise<void> | null = null
   const recovering = (sessionId: string) =>
     deps.openDeps.store.getRecord(sessionId)?.lease.handoffStage === 'recovering'
   const recoverOnce = (sessionId: string): Promise<boolean> => {
@@ -55,7 +55,7 @@ export function createStructuredAgentSessionStartupLeaseRecovery(
   }
   return {
     recoverAll: () =>
-      (all ??= forEachWithConcurrency(
+      forEachWithConcurrency(
         deps.openDeps.store
           .listRecords()
           .filter((record) => record.lease.handoffStage === 'recovering'),
@@ -63,7 +63,7 @@ export function createStructuredAgentSessionStartupLeaseRecovery(
         async ({ sessionId }) => {
           await recoverOnce(sessionId)
         }
-      )),
+      ),
     resolve: (sessionId) =>
       recoveries.has(sessionId) || recovering(sessionId)
         ? recoverOnce(sessionId)

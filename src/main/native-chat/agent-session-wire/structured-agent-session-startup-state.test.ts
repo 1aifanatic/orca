@@ -412,6 +412,62 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     await startup(rig, listedIds(rig))
     expect(stopOwnerProcess).not.toHaveBeenCalled()
   })
+
+  it('is stopped for an unlisted chat whose lease the reconcile moves only after the catch-up began', async () => {
+    const rig = await newRig()
+    await restTestChat(rig, 'session-listed', { message: 'done' })
+    await restTestChat(rig, 'session-closed', { message: 'asked', listed: false })
+    const { providerIdentity } = await rig.adapter.dispatch.mock.results.at(-1)!.value
+    await rig.host
+      .collaboratorsForTests()
+      .sessions.get('session-closed')!
+      .journal.appendItem(
+        { ...providerIdentity, ordinal: 0 },
+        { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+        {
+          fence: rig.store.getRecord('session-closed')!.lease.runtimeFence,
+          turnScope: { kind: 'thread' }
+        }
+      )
+    const lease = rig.store.getRecord('session-closed')!.lease
+    await rig.host.flushAllStreamedEvents()
+    await rig.crash()
+    await writeOlderBuildLease(rig.root, 'session-closed', { ...lease })
+    let alive = true
+    const stopOwnerProcess = vi.fn(() => {
+      alive = false
+    })
+    rig.probeOwner.mockImplementation(async (record) =>
+      alive && record.sessionId === 'session-closed'
+        ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+        : { outcome: 'pid-absent' }
+    )
+    await rig.boot({ stopOwnerProcess })
+    const listed = listedIds(rig)
+    vi.spyOn(rig.store, 'reconcileOnRestart').mockRejectedValueOnce(new Error('disk I/O error'))
+
+    await rig.host.reconcileRestartLeases()
+    expect(rig.store.getRecord('session-closed')!.lease.unreconciled).toBe(true)
+    // A command let through mid-catch-up completes the reconcile, moving the lease to `recovering`.
+    const catchingUp = rig.host.catchUpMissingStatuses(listed)
+    await rig.host.reconcileRestartLeases()
+    expect(rig.store.getRecord('session-closed')!.lease.handoffStage).toBe('recovering')
+    await catchingUp
+    await rig.host.restoreListedFromPerChatFiles(listed)
+    rig.host.seedStoredStatuses(listed)
+    await rig.host.settleOwedSessions(listed)
+
+    expect(stopOwnerProcess).toHaveBeenCalled()
+    expect(rig.store.getRecord('session-closed')!.lease).toMatchObject({
+      deathEvidence: { kind: 'pid-absent' }
+    })
+    // Settled from the death evidence: the interrupted turn, not an unconfirmed one.
+    expect(readTestJournalSessionStatus(rig.root, 'session-closed')).toMatchObject({
+      lifecycle: 'idle',
+      summary: { turnOutcome: 'interruption' }
+    })
+    expect(rig.host.hasSession('session-closed')).toBe(false)
+  })
 })
 
 describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', () => {
