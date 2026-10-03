@@ -69,6 +69,17 @@ function isManaged(server: unknown): boolean {
   )
 }
 
+/** The relay-era catalog rows this profile still holds for the host. */
+function sourceRows(
+  userData: string,
+  targetId: string
+): { repos: number; folderWorkspaces: number } {
+  const state = readPersistedProfileState(userData)
+  const count = (rows: unknown): number =>
+    (Array.isArray(rows) ? rows : []).filter((row) => row?.connectionId === targetId).length
+  return { repos: count(state.repos), folderWorkspaces: count(state.folderWorkspaces) }
+}
+
 function targetLeases(userData: string, targetId: string): { state?: unknown }[] {
   const leases = readPersistedProfileState(userData).sshRemotePtyLeases
   return (Array.isArray(leases) ? leases : []).filter((lease) => lease?.targetId === targetId)
@@ -298,16 +309,25 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
       phase: 'destination-committed',
       sourceRetainedAt: expect.any(String)
     })
+    expect(sourceRows(userData, remote.targetId)).toEqual({ repos: 1, folderWorkspaces: 1 })
     writeFileSync(FLAGS_FILE, JSON.stringify({ 'orcad-source-retirement': { state: 'on' } }))
     await reconnect(page, remote.targetId)
+    // Retirement drops the source rows, then compacts the journal away once the server matches it.
     await expect
       .poll(
-        () => findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase ?? null,
-        {
-          timeout: 120_000
-        }
+        () =>
+          JSON.stringify({
+            // `source-retired` is retirement before compaction; either way the move is finished.
+            journal: [undefined, 'source-retired'].includes(
+              findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase
+            )
+              ? undefined
+              : findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase,
+            ...sourceRows(userData, remote.targetId)
+          }),
+        { timeout: 120_000 }
       )
-      .toBe('source-retired')
+      .toBe(JSON.stringify({ repos: 0, folderWorkspaces: 0 }))
     expect(await managedServer(page, remote.targetId)).toMatchObject({ kind: 'managed' })
     expect(await serverCall(page, environment!.id, 'repo.list')).toContain(host.remoteRepoPath)
   } finally {
