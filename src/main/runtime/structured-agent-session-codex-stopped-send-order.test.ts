@@ -1,6 +1,6 @@
-// Where a send a Stop took back is drawn must survive a restart. Codex's resume rewrites every
-// finished turn's start time to its own whole seconds, so a turn opened for a later send can read
-// as starting before the Stop took the first one back. The order is decided by the journal alone.
+// Where a send a Stop took back is drawn: after the turn it waited on, never above that turn's own
+// rows, and never below a later exchange, a restart included. Codex's resume rewrites every
+// finished turn's start time to its own whole seconds, so the order is decided by the journal alone.
 // Driven through the shipped host, journal and Codex adapter; only the Codex child is fake.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -18,7 +18,9 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { NATIVE_CHAT_STOPPED_BEFORE_START_TEXT } from '../../shared/native-chat-stopped-before-start'
-import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
+import { projectNativeChatTranscript } from '../../shared/native-chat-transcript-projection'
+import { nativeChatRowsInDrawOrder } from '../../shared/native-chat-turn-grouping'
+import { nativeChatTurnMembership } from '../../shared/native-chat-turn-membership'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import {
@@ -53,6 +55,8 @@ let resumes: number
 /** What `thread/resume` reports as the thread's turns, as Codex does: times in whole seconds. */
 let resumeTurns: unknown[] | null
 let turns: ReturnType<typeof codexTurnLifecycleFake>
+/** Codex takes the interrupt and answers it; the test streams more and sends the end later. */
+let interruptEndHeld: boolean
 let operations = 0
 
 /** The durable ledger stamps its own clock and refuses an id far from it. */
@@ -96,16 +100,20 @@ async function submissions(): Promise<readonly AgentJournalSubmission[]> {
   return (await host.journalSnapshot(SESSION)).submissions
 }
 
-/** Each row's text, in the order every client draws the transcript. */
+/** Each row's text, in the order every client draws the transcript, turns grouped. */
 async function drawn(): Promise<string[]> {
-  const snapshot = await host.journalSnapshot(SESSION)
-  return projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions)
-  ).flatMap((message) =>
-    message.role === 'user' || message.role === 'system'
-      ? [message.blocks.map((block) => ('text' in block ? block.text : '')).join('')]
-      : []
+  await host.flushStreamedEvents(SESSION)
+  const { items, submissions } = await host.journalSnapshot(SESSION)
+  const journal = { items, submissions }
+  const { conversation } = projectNativeChatTranscript(
+    projectStructuredAgentSessionMessages(items, [], submissions),
+    undefined,
+    journal
   )
+  return nativeChatRowsInDrawOrder(
+    conversation,
+    nativeChatTurnMembership(conversation, journal).drawOrder
+  ).map((message) => message.blocks.map((block) => ('text' in block ? block.text : '')).join(''))
 }
 
 const openConnection: typeof openCodexAppServerConnection = async (
@@ -133,6 +141,10 @@ const openConnection: typeof openCodexAppServerConnection = async (
       }
       if (method === 'turn/steer') {
         return turns.routes['turn/steer'](params)
+      }
+      if (method === 'turn/interrupt' && interruptEndHeld) {
+        turns.takeInterrupt()
+        return {}
       }
       if (method === 'turn/interrupt') {
         return turns.routes['turn/interrupt'](params)
@@ -183,6 +195,7 @@ beforeEach(async () => {
   answers = 0
   resumes = 0
   resumeTurns = null
+  interruptEndHeld = false
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -194,6 +207,47 @@ beforeEach(async () => {
 afterEach(async () => {
   await stopStructuredAgentSessionRuntime()
   await rm(root, { recursive: true, force: true })
+})
+
+describe("a send made while Codex held the first send's answer, then a Stop", () => {
+  it("is drawn after the first send's interrupted turn, which streamed after the Stop", async () => {
+    const release = turns.holdNextAnswer()
+    const first = await send('first')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    // Both wait on the session behind the held answer: the second send, then the Stop.
+    const second = send('second')
+    const stopping = stop()
+    interruptEndHeld = true
+    release()
+    const secondId = await second
+    await vi.waitFor(async () => expect(verdictOf(await submissions(), secondId)).toBe('withdrawn'))
+    turns.start()
+    turns.echo(first)
+    // The turn opened after the second send was accepted, and streams after the Stop was pressed.
+    handlers?.onNotification?.('item/completed', {
+      threadId: THREAD,
+      turn: { id: 'turn-1' },
+      item: { type: 'agentMessage', id: 'streamed', text: 'streamed after the Stop' }
+    })
+    await settledWithin(stopping, 3_000)
+    turns.end('interrupted')
+    await vi.waitFor(async () =>
+      expect(
+        (await host.journalSnapshot(SESSION)).items
+          .map((item) => readAgentJournalTurn(item.body))
+          .find((turn) => turn?.turnId === 'turn-1')?.state
+      ).toBe('interrupted')
+    )
+
+    // The Stop's own note is the host's to place; the order here is the stopped send's.
+    const rows = (await drawn()).filter((text) => text !== 'Cancellation requested.')
+    expect(rows.slice(rows.indexOf('first'))).toEqual([
+      'first',
+      'streamed after the Stop',
+      'second',
+      NATIVE_CHAT_STOPPED_BEFORE_START_TEXT
+    ])
+  })
 })
 
 describe('a send a Stop took back, then a send made while it read Stopping', () => {
