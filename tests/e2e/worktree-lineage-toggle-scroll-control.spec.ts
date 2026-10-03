@@ -23,7 +23,7 @@ test('keyboard and chip preserve the scrolled parent, and unfolding opens the si
 }, testInfo) => {
   const forwardGeometry = (message: ConsoleMessage) => {
     const text = message.text()
-    if (text.startsWith('LINEAGE_EXISTING_GEOMETRY ')) {
+    if (text.startsWith('LINEAGE_EXISTING_GEOMETRY ') || text.startsWith('LINEAGE_PRE_TOGGLE ')) {
       console.log(text)
     }
   }
@@ -90,11 +90,12 @@ test('keyboard and chip preserve the scrolled parent, and unfolding opens the si
     await expect(parentRow).toBeVisible()
     await parentRow.evaluate((row) => row.scrollIntoView({ block: 'center' }))
     await expect.poll(() => sidebar.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-    const geometry = () =>
-      parentRow.evaluate((row) => {
+    const geometry = (arm = false) =>
+      parentRow.evaluate((row, arm) => {
         const sidebar = row.closest('[data-worktree-sidebar]')
+        const parentRect = row.getBoundingClientRect()
         const measurement = {
-          top: row.getBoundingClientRect().top,
+          top: parentRect.top,
           scrollTop: sidebar?.scrollTop ?? 0
         }
         console.log(
@@ -108,9 +109,95 @@ test('keyboard and chip preserve the scrolled parent, and unfolding opens the si
             scrollHeight: sidebar?.scrollHeight ?? null
           })
         )
+        if (arm && sidebar instanceof HTMLElement) {
+          const controller = new AbortController()
+          let samples = 0
+          const rowIdentity = (element: Element | null) => ({
+            key: element?.getAttribute('data-worktree-virtual-row-key') ?? null,
+            index: element?.getAttribute('data-index') ?? null,
+            start: element?.getAttribute('data-worktree-virtual-row-start') ?? null,
+            transform: element instanceof HTMLElement ? element.style.transform : null
+          })
+          const capture = (phase: string, event?: KeyboardEvent, initialRect?: DOMRect) => {
+            if (samples >= 8) {
+              controller.abort()
+              return
+            }
+            try {
+              const rect = row.isConnected ? (initialRect ?? row.getBoundingClientRect()) : null
+              const virtualRow = row.closest('[data-worktree-virtual-row]')
+              const canvas = virtualRow?.parentElement
+              console.log(
+                'LINEAGE_PRE_TOGGLE',
+                JSON.stringify({
+                  phase,
+                  sequence: ++samples,
+                  time: performance.now(),
+                  parentId: row.getAttribute('data-worktree-id'),
+                  connected: row.isConnected,
+                  top: rect?.top ?? null,
+                  parentHeight: rect?.height ?? null,
+                  scrollTop: sidebar.scrollTop,
+                  sidebarTop: sidebar.getBoundingClientRect().top,
+                  sidebarHeight: sidebar.clientHeight,
+                  scrollHeight: sidebar.scrollHeight,
+                  fonts: document.fonts.status,
+                  virtualRow: rowIdentity(virtualRow),
+                  virtualHeight: virtualRow instanceof HTMLElement ? virtualRow.offsetHeight : null,
+                  canvasHeight: canvas instanceof HTMLElement ? canvas.style.height : null,
+                  previous: rowIdentity(virtualRow?.previousElementSibling ?? null),
+                  next: rowIdentity(virtualRow?.nextElementSibling ?? null),
+                  key: event
+                    ? {
+                        code: event.code,
+                        key: event.key,
+                        ctrl: event.ctrlKey,
+                        meta: event.metaKey,
+                        alt: event.altKey,
+                        shift: event.shiftKey,
+                        repeat: event.repeat,
+                        defaultPrevented: event.defaultPrevented
+                      }
+                    : null
+                })
+              )
+            } catch (error) {
+              controller.abort()
+              console.log(
+                'LINEAGE_PRE_TOGGLE',
+                JSON.stringify({ phase, captureError: String(error) })
+              )
+            }
+          }
+          sidebar.addEventListener(
+            'orca-record-virtualized-scroll-anchor',
+            () => {
+              capture('anchor-request-before-record-and-group-toggle')
+            },
+            { capture: true, passive: true, signal: controller.signal }
+          )
+          window.addEventListener(
+            'keydown',
+            (event) => {
+              if (/^(Control|Meta|Alt|Shift)(Left|Right)$/.test(event.code)) {
+                capture('modifier-keydown-after-earlier-window-handlers', event)
+              } else if (event.code === 'KeyH') {
+                capture('H-keydown-after-earlier-window-handlers', event)
+                controller.abort()
+              }
+            },
+            { capture: true, passive: true, signal: controller.signal }
+          )
+          window.addEventListener('pagehide', () => controller.abort(), {
+            once: true,
+            passive: true,
+            signal: controller.signal
+          })
+          capture('baseline', undefined, parentRect)
+        }
         return measurement
-      })
-    const before = await geometry()
+      }, arm)
+    const before = await geometry(true)
     console.log('LINEAGE_EXISTING_BASELINE', JSON.stringify(before))
     await orcaPage.mouse.move(1150, 400)
     await orcaPage.keyboard.press('ControlOrMeta+Alt+KeyH')
