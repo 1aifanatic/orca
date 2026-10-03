@@ -160,7 +160,7 @@ export function bindDeferredColdRestoreAndSnapshot(session: ConnectPanePtySessio
       ...(meta.snapshotCols !== undefined && meta.snapshotRows !== undefined
         ? { snapshotCols: meta.snapshotCols, snapshotRows: meta.snapshotRows }
         : {}),
-      ...(meta.serializedImage ? { serializedImage: true } : {})
+      ...(meta.carriesNormalBuffer ? { carriesNormalBuffer: true } : {})
     }
     session.scheduleReplayDataDrain()
   }

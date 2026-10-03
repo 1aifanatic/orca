@@ -67,6 +67,17 @@ export function shouldSkipAltFrameForWidthMismatch(
   return snapshotCols > targetCols
 }
 
+/** Grounds a pane on the normal buffer for an image that starts there and enters alt itself. */
+export function buildNormalBufferSnapshotPreamble(args: {
+  paneOnAlternateScreen: boolean
+  keepScrollback?: boolean
+}): string {
+  return `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue({
+    targetAlternateScreen: false,
+    ...args
+  })}`
+}
+
 /**
  * Ordered replay writes for a main-model snapshot, including the alt-screen
  * choreography: main strips the `?1049h` marker when splitting scrollbackAnsi
@@ -85,6 +96,7 @@ export function buildMainModelSnapshotReplayWrites(
     frameRestoreAnsi?: string
     alternateScreen?: boolean
     scrollbackAnsi?: string
+    carriesNormalBuffer?: boolean
   },
   options: { skipAltFrame?: boolean; paneOnAlternateScreen: boolean }
 ): string[] {
@@ -100,12 +112,13 @@ export function buildMainModelSnapshotReplayWrites(
       targetAlternateScreen: true,
       paneOnAlternateScreen: fromAlternateScreen
     })
-  if (!snapshot.alternateScreen) {
-    // Why the switch can be needed here: the gap can eat the TUI's own exit
-    // sequence, leaving the renderer on alt while the model moved to normal —
-    // the restored history would paint into the alt buffer, looking right while
-    // scrollback stays empty (STA-4042).
-    return abortGapBeforeFirstWrite([normalPrologue, snapshot.data])
+  // Why the switch can be needed here: the gap can eat the TUI's own exit
+  // sequence, leaving the renderer on alt while the model moved to normal —
+  // the restored history would paint into the alt buffer, looking right while
+  // scrollback stays empty (STA-4042). An image carrying its normal buffer
+  // enters alt itself, so it needs the same start.
+  if (!snapshot.alternateScreen || snapshot.carriesNormalBuffer) {
+    return [buildNormalBufferSnapshotPreamble({ paneOnAlternateScreen }), snapshot.data]
   }
   // Older snapshot producers do not expose the mode/frame boundary. Keep their
   // composed data rather than dropping terminal modes together with the frame.

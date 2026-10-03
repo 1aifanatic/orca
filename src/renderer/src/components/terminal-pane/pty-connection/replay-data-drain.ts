@@ -1,13 +1,12 @@
-import {
-  ABORT_TRUNCATED_CONTROL_STRING,
-  buildSnapshotReplayPrologue,
-  RELEASE_SYNCHRONIZED_OUTPUT
-} from '../../../../../shared/terminal-mode-reset-profiles'
+import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../../../shared/terminal-mode-reset-profiles'
 import { waitForTerminalOutputParsed } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { safeFit, safeFitAndThen } from '@/lib/pane-manager/pane-tree-ops'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 
-import { resolvePositiveTerminalDimensions } from '../terminal-snapshot-replay-paint'
+import {
+  buildNormalBufferSnapshotPreamble,
+  resolvePositiveTerminalDimensions
+} from '../terminal-snapshot-replay-paint'
 
 import {
   CURSOR_SHOW_SEQUENCE,
@@ -106,7 +105,7 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         terminalOwner,
         snapshotCols,
         snapshotRows,
-        serializedImage
+        carriesNormalBuffer
       } = payload
       session.pendingReplayData = null
       const isCurrentPayload = (): boolean =>
@@ -124,20 +123,26 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
       // dropping the scrollback first spares a reflow of history the very next
       // sequence discards (see use-terminal-container-fit-sync.ts on its cost).
       if (clearBeforeReplay) {
-        // RELEASE_SYNCHRONIZED_OUTPUT: a reconnect is exactly the event that severs a
-        // frame mid-flight, so this xterm may hold an open 2026 latch — and \x1b[2J does
-        // not clear it, so the pane would stay frozen on its last painted frame and the
-        // whole replay would go unseen until xterm's 1s timeout.
-        // Why images get the snapshot prologue: an image starts on the normal buffer
-        // and enters alt itself. Replayed onto a live TUI's alt screen, its history
-        // paints into that screen and its own ?1049h is a no-op. Raw byte replays keep
-        // the in-place clear.
+        if (carriesNormalBuffer) {
+          // Why the buffer is read after queued output parses: a TUI's own ?1049h
+          // may still be queued, and a stale read would skip the switch below.
+          await waitForTerminalOutputParsed(session.pane.terminal)
+          if (!isCurrentPayload()) {
+            continue
+          }
+        }
+        // Both clears release the 2026 latch a severed frame can leave open, which
+        // \x1b[2J alone does not. An image starts on the normal buffer and enters alt
+        // itself, so cleared in place on a TUI's alt screen its normal screen paints
+        // into the TUI. Pushed images carry only their screen, so the history a TUI
+        // covers is kept. Raw byte replays keep the in-place clear.
+        const paneOnAlternateScreen = session.isPaneOnAlternateScreen()
         await session.writeReplayDataAsync(
-          serializedImage
-            ? `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue({
-                targetAlternateScreen: false,
-                paneOnAlternateScreen: session.isPaneOnAlternateScreen()
-              })}`
+          carriesNormalBuffer
+            ? buildNormalBufferSnapshotPreamble({
+                paneOnAlternateScreen,
+                keepScrollback: paneOnAlternateScreen
+              })
             : `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`
         )
         if (!isCurrentPayload()) {

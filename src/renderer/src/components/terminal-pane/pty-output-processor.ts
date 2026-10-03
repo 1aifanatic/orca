@@ -40,7 +40,7 @@ export type ProcessPtyOutputOptions = {
   terminalOwner?: 'shell'
   snapshotCols?: number
   snapshotRows?: number
-  serializedImage?: boolean
+  carriesNormalBuffer?: boolean
 }
 
 function removeSuppressedCursorNativeTitles(
@@ -230,7 +230,7 @@ export function createPtyOutputProcessor({
         ...(options.snapshotCols !== undefined && options.snapshotRows !== undefined
           ? { snapshotCols: options.snapshotCols, snapshotRows: options.snapshotRows }
           : {}),
-        ...(options.serializedImage ? { serializedImage: true } : {})
+        ...(options.carriesNormalBuffer ? { carriesNormalBuffer: true } : {})
       }
       if (Object.keys(replayMeta).length > 0) {
         callbacks.onReplayData(data, replayMeta)

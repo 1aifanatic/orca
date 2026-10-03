@@ -2,6 +2,7 @@ import type * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Terminal } from '@xterm/headless'
 import { flushAsyncTicks, writeHeadlessTerminal } from './pty-connection-test-async'
+import { buildMainModelSnapshotReplayWrites } from './terminal-snapshot-replay-paint'
 import {
   createMockTransport,
   createPane,
@@ -10,7 +11,6 @@ import {
 } from './pty-connection-test-pane-fixtures'
 import type { ConnectCallbacks, MockTransport } from './pty-connection-test-pane-fixtures'
 import type { PtyReplayDataMeta } from './pty-transport-types'
-import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../../shared/terminal-mode-reset-profiles'
 import { buildPaneConnectionDeps } from './pty-connection-test-deps'
 import { createInitialStoreState } from './pty-connection-test-store-fixtures'
 import type { StoreState } from './pty-connection-test-store-state'
@@ -74,22 +74,37 @@ vi.mock('./pty-transport', () => ({
 
 const COLS = 40
 const ROWS = 6
-// A setup script's history, then an agent TUI that entered the alt screen.
+// A setup script's output, then an agent TUI that entered the alt screen over it.
 const SETUP_HISTORY = Array.from({ length: 10 }, (_, i) => `SETUP-OUTPUT-${i}`).join('\r\n')
-const STALE_TUI_FRAME = '\x1b[?1049h\x1b[2J\x1b[HOLD-AGENT-FRAME'
-// Host image shape: normal-buffer history first, then the image enters alt itself and
-// paints with cursor jumps over cells it expects blank, as agent TUIs do.
-const HOST_IMAGE = `${SETUP_HISTORY}\r\n\x1b[?1049h\x1b[H\x1b[2;1HNo\x1b[1Cnotice\x1b[1Ctoday`
+const LIVE_PANE = `${SETUP_HISTORY}\r\n\x1b[?1049h\x1b[2J\x1b[HOLD-AGENT-FRAME`
+// Agent frames jump the cursor over cells they expect blank instead of writing spaces.
+const AGENT_FRAME = '\x1b[H\x1b[2;1HNo\x1b[1Cnotice\x1b[1Ctoday'
+// Remote image shapes: the normal buffer folded in, then the image enters alt itself.
+// Pushes carry only the screen; requested snapshots also carry history.
+const PUSHED_IMAGE = `SETUP-OUTPUT-9\r\n$ claude\x1b[0m\x1b[?1049h${AGENT_FRAME}`
+const REQUESTED_IMAGE = `${SETUP_HISTORY}\r\n$ claude\x1b[0m\x1b[?1049h${AGENT_FRAME}`
 
-function viewportLines(term: Terminal): string[] {
-  const buffer = term.buffer.active
+function bufferLines(term: Terminal, which: 'normal' | 'alternate'): string[] {
+  const buffer = which === 'normal' ? term.buffer.normal : term.buffer.alternate
   return Array.from(
-    { length: term.rows },
-    (_, row) => buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? ''
+    { length: buffer.length },
+    (_, row) => buffer.getLine(row)?.translateToString(true) ?? ''
   )
 }
 
-describe('connectPanePty replay onto a live alt screen', () => {
+function viewport(term: Terminal, which: 'normal' | 'alternate'): string[] {
+  return bufferLines(term, which).slice(-ROWS)
+}
+
+async function render(writes: string[]): Promise<Terminal> {
+  const term = new Terminal({ cols: COLS, rows: ROWS, scrollback: 100, allowProposedApi: true })
+  for (const write of writes) {
+    await writeHeadlessTerminal(term, write)
+  }
+  return term
+}
+
+describe('remote snapshot replay onto a live alt screen', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -103,7 +118,7 @@ describe('connectPanePty replay onto a live alt screen', () => {
     await restoreTerminalTestGlobals()
   })
 
-  async function replayOntoLiveAltScreen(meta: PtyReplayDataMeta): Promise<string[]> {
+  async function drainOntoLiveAltScreen(data: string, meta: PtyReplayDataMeta): Promise<string[]> {
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport('agent-pty')
     const replay: { current: ConnectCallbacks['onReplayData'] | null } = { current: null }
@@ -119,49 +134,67 @@ describe('connectPanePty replay onto a live alt screen', () => {
     const binding = connectPanePty(pane as never, createManager(1) as never, deps as never)
     await flushAsyncTicks(8)
     pane.terminal.buffer.active.type = 'alternate'
-    replay.current?.(HOST_IMAGE, meta)
+    replay.current?.(data, meta)
     for (let index = 0; index < 12; index += 1) {
       await flushAsyncTicks(4)
       parseCallbacks.shift()?.()
     }
     await flushAsyncTicks(8)
     binding.dispose()
-    expect(writes).toContain(HOST_IMAGE)
-    return writes
+    expect(writes).toContain(data)
+    return writes.filter((write) => write.length > 0)
   }
 
-  async function renderOverDirtyAltScreen(writes: string[]): Promise<Terminal> {
-    const client = new Terminal({ cols: COLS, rows: ROWS, scrollback: 100, allowProposedApi: true })
-    await writeHeadlessTerminal(client, `${SETUP_HISTORY}\r\n${STALE_TUI_FRAME}`)
-    for (const write of writes) {
-      await writeHeadlessTerminal(client, write)
-    }
-    return client
-  }
-
-  // Why: a revisited remote tab running an agent TUI gets a host recovery snapshot while
-  // xterm is still on the agent's alt screen. Clearing without leaving alt painted the
-  // image's history (old setup output) into the agent's screen, under its next paints.
-  it('repaints the alt screen exactly as a fresh terminal would', async () => {
-    const client = await renderOverDirtyAltScreen(
-      await replayOntoLiveAltScreen({ serializedImage: true })
-    )
-    const fresh = new Terminal({ cols: COLS, rows: ROWS, scrollback: 100, allowProposedApi: true })
+  // Why: a revisited remote tab running an agent TUI gets a pushed snapshot while xterm
+  // is on the agent's alt screen. Cleared in place, the image's normal screen (old setup
+  // output) painted into the agent's screen, under its next paints.
+  it('repaints a pushed image exactly and keeps the history the TUI covers', async () => {
+    const writes = await drainOntoLiveAltScreen(PUSHED_IMAGE, { carriesNormalBuffer: true })
+    const client = await render([LIVE_PANE, ...writes])
+    const fresh = await render([PUSHED_IMAGE])
     try {
-      await writeHeadlessTerminal(fresh, HOST_IMAGE)
       expect(client.buffer.active.type).toBe('alternate')
-      expect(viewportLines(client)).toEqual(viewportLines(fresh))
-      expect(viewportLines(client).join('\n')).not.toMatch(/SETUP-OUTPUT|OLD-AGENT-FRAME/)
+      expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
+      expect(viewport(client, 'normal')).toEqual(viewport(fresh, 'normal'))
+      expect(bufferLines(client, 'normal')).toContain('SETUP-OUTPUT-0')
     } finally {
       client.dispose()
       fresh.dispose()
     }
   })
 
-  // Why: an SSH relay replays a raw byte window, not an image; leaving alt first would
-  // strand a running TUI's bytes on the normal buffer.
+  // Why: an SSH relay replays a raw byte window, not an image; it continues the TUI on
+  // the alt screen and must leave the normal buffer alone.
   it('clears a raw byte replay in place on the alt screen', async () => {
-    const writes = await replayOntoLiveAltScreen({})
-    expect(writes[0]).toBe(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
+    const writes = await drainOntoLiveAltScreen(AGENT_FRAME, {})
+    const client = await render([LIVE_PANE, ...writes])
+    const expected = await render([LIVE_PANE, `\x1b[2J${AGENT_FRAME}`])
+    try {
+      expect(client.buffer.active.type).toBe('alternate')
+      expect(viewport(client, 'alternate')).toEqual(viewport(expected, 'alternate'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(expected, 'normal'))
+    } finally {
+      client.dispose()
+      expected.dispose()
+    }
+  })
+
+  // Why: hidden-output restore paints requested snapshots, which fold history in too.
+  it('paints a requested image exactly over a live alt screen', async () => {
+    const client = await render([
+      LIVE_PANE,
+      ...buildMainModelSnapshotReplayWrites(
+        { data: REQUESTED_IMAGE, alternateScreen: true, carriesNormalBuffer: true },
+        { paneOnAlternateScreen: true }
+      )
+    ])
+    const fresh = await render([REQUESTED_IMAGE])
+    try {
+      expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
+    } finally {
+      client.dispose()
+      fresh.dispose()
+    }
   })
 })

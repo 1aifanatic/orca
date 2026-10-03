@@ -76,6 +76,8 @@ export type RemoteRuntimeSnapshotImage = {
   kittyKeyboardFlags?: number
   alternateScreen?: boolean
   terminalOwner?: 'shell'
+  /** `data` starts on the normal buffer and enters alt itself. */
+  carriesNormalBuffer?: boolean
 }
 
 /** Transient causes the host itself reported: a request reached it and it declined to serialize now. */
