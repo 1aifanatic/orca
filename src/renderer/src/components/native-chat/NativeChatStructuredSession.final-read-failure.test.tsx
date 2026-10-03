@@ -53,7 +53,9 @@ const APPROVAL: AgentJournalRenderItem = JSON.parse(
 
 /** A chat with its transcript on screen, a pending approval, a goal, a queued card and a running
  *  background task, whose read then fails with `reason`. */
-function renderLoadedChatThenFailedRead(reason: string): void {
+function renderLoadedChatThenFailedRead(
+  reason: 'journalCorrupt' | 'journalUnavailable' | 'journalWrittenByNewerOrca'
+): void {
   mocks.status = 'error'
   mocks.readRefusal = { code: 'agent_session_journal_unreadable', details: { reason } }
   mocks.turnId = 'turn-1'
@@ -93,7 +95,7 @@ function renderLoadedChatThenFailedRead(reason: string): void {
 it.each([
   ['journalCorrupt', 'Unable to load this chat.'],
   ['journalWrittenByNewerOrca', 'This chat was saved by a newer Orca. Update Orca to open it.']
-])('a %s read after the transcript loaded leaves only its words', (reason, words) => {
+] as const)('a %s read after the transcript loaded leaves only its words', (reason, words) => {
   renderLoadedChatThenFailedRead(reason)
 
   expect(screen.getAllByText(words)).toHaveLength(1)
