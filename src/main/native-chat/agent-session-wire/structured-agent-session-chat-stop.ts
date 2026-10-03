@@ -60,8 +60,7 @@ export function mutateWithChatStop<TValue>(
   let eventAfterEnd: Promise<void> | undefined
   const named = turnId !== undefined ? { turnId } : {}
   // Its own step wrote the Stop's event first.
-  const stopChild = (options: { noTurnOpened?: true } = {}) =>
-    context.stopAgent(sessionId, { recorded: 'user-stop', ...options })
+  const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
   // The same for every client: once the Stop takes effect its event is written, and the queue's
   // pause follows from it. The cards stay published; no text rides the answer.
   const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>

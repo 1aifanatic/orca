@@ -10,10 +10,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  CodexAppServerConnection,
-  CodexAppServerConnectionHandlers,
-  openCodexAppServerConnection
+import {
+  CodexAppServerRequestError,
+  type CodexAppServerConnection,
+  type CodexAppServerConnectionHandlers,
+  type openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
@@ -81,6 +82,8 @@ let childCloses: number
 let connections: number
 /** Closes that fail before one goes through, as a kill that times out. */
 let failingCloses: number
+/** Codex fails every interrupt it is sent, as one it could not submit (-32603). */
+let interruptsFail: boolean
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -181,6 +184,7 @@ beforeEach(async () => {
   childCloses = 0
   connections = 0
   failingCloses = 0
+  interruptsFail = false
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -208,6 +212,15 @@ beforeEach(async () => {
         if (method === 'turn/steer') {
           steers += 1
           return turns.routes['turn/steer'](params)
+        }
+        if (method === 'turn/interrupt' && interruptsFail) {
+          interrupts += 1
+          throw new CodexAppServerRequestError(
+            'turn/interrupt',
+            -32603,
+            'codex app-server turn/interrupt failed: could not submit',
+            'could not submit'
+          )
         }
         if (method === 'turn/interrupt') {
           interrupts += 1
@@ -617,6 +630,19 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     expect(childCloses).toBe(1)
     expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
   })
+
+  // A turn that opened may hold the send: the child's end leaves it in doubt, as before.
+  it('leaves a send in doubt when its turn opened before the child end', async () => {
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    interruptsFail = true
+
+    await stop()
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
+  })
 })
 
 describe('a cold send with no Stop behind it', () => {
@@ -634,6 +660,17 @@ describe('a cold send with no Stop behind it', () => {
 
     expect(await settledWithin(host.close(SESSION, 'evict'), PROMPTLY_MS)).not.toBe('held')
     expect(childCloses).toBe(1)
+  })
+
+  // Only a person's Stop takes a send back: a host's close leaves it in doubt, as before.
+  it('leaves its send in doubt when the host closes the chat', async () => {
+    await answeredColdSend()
+    const sent = (await settled()).submissions[0]?.clientMessageId ?? ''
+
+    await host.close(SESSION, 'evict')
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
   })
 
   it('never delays quitting the app', async () => {

@@ -17,7 +17,6 @@ import { cancelledJournalPromptBody } from '../agent-session-journal/journal-pro
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   agentSessionFailureWords,
-  type AgentJournalDispatchRejection,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
@@ -38,23 +37,20 @@ import {
   exitedRootTurnScope,
   runningRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
+import {
+  withdrawCodexSendsNoTurnOpenedFor,
+  type UnopenedSendJournal
+} from './structured-agent-session-unopened-send-withdrawal'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
 export const MAX_UNEXPECTED_EXIT_REASON_CHARS = MAX_PROVIDER_DIAGNOSTIC_CHARS
 
-type DeadGenerationSubmission = Pick<
-  ReturnType<AgentSessionJournal['submissions']>[number],
-  'clientMessageId' | 'dispatchState' | 'recovered' | 'handoverRecorded' | 'handedOverAt'
->
-
-export type DeadGenerationJournal = {
+export type DeadGenerationJournal = UnopenedSendJournal & {
   appendLifecycleBatch: AgentSessionJournal['appendLifecycleBatch']
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
   rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
-  snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
-  submissions?: () => DeadGenerationSubmission[]
 }
 
 export type StructuredAgentSessionUnfinishedWork = {
@@ -117,8 +113,6 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   settlementId: string
   verdict: StructuredAgentSessionTurnVerdict
   pendingSubmissionReason: string
-  /** Settles the unacknowledged sends as this rejection instead of in doubt. */
-  withdrawPending?: AgentJournalDispatchRejection
   showUnexpectedExitOutcome?: boolean
   /** Why the provider stopped, as the adapter told it; the row's sentence is this fact's. */
   exitFailure?: SubmissionRejectionFact
@@ -141,9 +135,11 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
-    const rejection = startupFailure ?? input.withdrawPending
-    await (rejection
-      ? input.journal.rejectPendingSubmissions(input.fence, rejection)
+    if (!startupFailure) {
+      await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
+    }
+    await (startupFailure
+      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []

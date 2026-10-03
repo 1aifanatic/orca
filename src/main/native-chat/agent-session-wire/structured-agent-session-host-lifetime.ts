@@ -106,8 +106,7 @@ function owedProviderChildWindDown(
 function owedStop(
   session: StructuredAgentSessionHostSession,
   cause: StructuredAgentSessionStopCause,
-  retry: boolean,
-  noTurnOpened: boolean
+  retry: boolean
 ): StructuredAgentSessionOwedWindDown | undefined {
   const owed = owedProviderChildWindDown(session)
   if (!owed) {
@@ -119,8 +118,7 @@ function owedStop(
     generation: owed.generation,
     fence: owed.fence,
     cause,
-    requestedAt: continues ? asked.requestedAt : session.journal.cursor(),
-    ...(noTurnOpened ? { noTurnOpened: true as const } : {})
+    requestedAt: continues ? asked.requestedAt : session.journal.cursor()
   }
 }
 
@@ -149,8 +147,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const asked = 'recorded' in ending ? ending.recorded : ending.cause
   // A retry finishes the stop that ended the child, so the child's end keeps that stop's cause.
   const cause = session.child ? asked : (session.owesProviderChildWindDown?.cause ?? asked)
-  const noTurnOpened = 'recorded' in ending && ending.noTurnOpened === true
-  const owed = owedStop(session, cause, ending.retry === true, noTurnOpened)
+  const owed = owedStop(session, cause, ending.retry === true)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
   const eviction: StructuredAgentSessionEvictionContext = {
@@ -193,13 +190,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         fence,
         settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        ...(noTurnOpened
-          ? {
-              withdrawPending: agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
-                surface: 'rejection'
-              })
-            }
-          : {}),
         // Only a turn no adapter settled: one with no close, or whose settle threw. Whether it was
         // a person's Stop is its event's to say (`turnEndAfterStop`).
         verdict: { state: 'interrupted', completedAt: context.now() },
@@ -271,11 +261,7 @@ export async function finishOwedStructuredAgentSessionWindDownUnderSerialize(
       context,
       sessionId,
       owed.cause === 'user-stop'
-        ? {
-            recorded: 'user-stop',
-            retry: true,
-            ...(owed.noTurnOpened ? { noTurnOpened: true } : {})
-          }
+        ? { recorded: 'user-stop', retry: true }
         : { cause: owed.cause, retry: true }
     )
   } catch (error) {

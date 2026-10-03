@@ -14,12 +14,7 @@ import { sentSinceStop } from './structured-agent-session-queued-stop'
  *  own step (`recorded` names its reason); any other stop names the reason its event records, with
  *  the host's text for it. Quit writes none: its resume marker's trigger records why. */
 export type StructuredAgentSessionStopEnding = (
-  | {
-      recorded: 'user-stop'
-      /** The provider said no turn of this child opened: the sends it leaves unanswered never ran,
-       *  so the Stop withdraws them. */
-      noTurnOpened?: true
-    }
+  | { recorded: 'user-stop' }
   | {
       cause: Exclude<StructuredAgentSessionStopCause, 'user-stop'>
       reason?: string
