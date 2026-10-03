@@ -205,7 +205,7 @@ const FAILURE_SENTENCES = {
     joinSentences([
       say('providerMissing', agent(say, context)),
       context.retryControl
-        ? say('installFirst')
+        ? say('installThenRetry')
         : context.command
           ? say('installThenRunCommand', { command: context.command })
           : say('installThenSend')

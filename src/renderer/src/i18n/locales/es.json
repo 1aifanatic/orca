@@ -14954,7 +14954,7 @@
         "signInThenRunCommand": "Inicie sesión y vuelva a ejecutar /{{command}}.",
         "signInThenSend": "Inicie sesión y vuelva a enviar su mensaje.",
         "providerMissing": "{{agent}} no está instalado.",
-        "installFirst": "Instálelo primero.",
+        "installThenRetry": "Instálelo y vuelva a intentarlo.",
         "installThenRunCommand": "Instálelo y vuelva a ejecutar /{{command}}.",
         "installThenSend": "Instálelo y vuelva a enviar su mensaje.",
         "historyTooLarge": "El historial de esta conversación es demasiado grande para restaurarlo aquí.",
@@ -15192,9 +15192,6 @@
       "dismissDeliveryNotice": "Descartar",
       "messageNotSent": "Mensaje no enviado",
       "startRetrying": "Orca lo intentará de nuevo en breve.",
-      "launchPromptSendAgain": "Vuelve a enviarlo desde donde lo iniciaste.",
-      "launchPromptNotSent": "No enviado: {{reason}}",
-      "launchPromptNotTaken": "El agente no recibió el prompt, así que no se marcó nada como enviado. Vuelve a enviarlo desde aquí.",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "subagents": {
         "unnamed": "Subagente"

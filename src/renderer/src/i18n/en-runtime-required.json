@@ -2758,7 +2758,7 @@
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
         "hostRestarted": "Orca restarted before this message was sent.",
         "hostStopped": "{{agent}} never finished starting, so Orca stopped it.",
-        "installFirst": "Install it first.",
+        "installThenRetry": "Install it, then retry.",
         "installThenRunCommand": "Install it, then run /{{command}} again.",
         "installThenSend": "Install it, then send your message again.",
         "managedAccountEnvOverride": "This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.",

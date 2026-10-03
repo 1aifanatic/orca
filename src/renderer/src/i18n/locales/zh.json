@@ -17321,7 +17321,7 @@
         "signInThenRunCommand": "请登录，然后重新运行 /{{command}}。",
         "signInThenSend": "请登录，然后重新发送您的消息。",
         "providerMissing": "{{agent}} 未安装。",
-        "installFirst": "请先安装。",
+        "installThenRetry": "请安装，然后重试。",
         "installThenRunCommand": "请安装，然后重新运行 /{{command}}。",
         "installThenSend": "请安装，然后重新发送您的消息。",
         "historyTooLarge": "此对话的历史记录过大，无法在此恢复。",
@@ -17778,9 +17778,6 @@
       "dismissDeliveryNotice": "关闭",
       "messageNotSent": "消息未发送",
       "startRetrying": "Orca 将很快重试。",
-      "launchPromptSendAgain": "请从你发起它的地方重新发送。",
-      "launchPromptNotSent": "未发送：{{reason}}",
-      "launchPromptNotTaken": "智能体没有接收提示词，因此没有标记为已发送。请从这里重新发送。",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "queuedMessages": {
         "alreadySent": "此消息已发送。",

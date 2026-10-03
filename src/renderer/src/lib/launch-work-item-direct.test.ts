@@ -586,47 +586,6 @@ describe('launchWorkItemDirect', () => {
     expect(mocks.seedNativeChatLaunchDraft).not.toHaveBeenCalled()
   })
 
-  // A caller that then says "Started an AI agent" waits for the chat's agent to take the prompt;
-  // others count the launch once its chat tab exists.
-  it.each([
-    [true, false, false],
-    [true, true, true],
-    [false, false, true]
-  ])(
-    'answers a structured launch by its prompt delivery when asked to wait (wait: %s, delivered: %s)',
-    async (waitForPromptDelivery, delivered, answer) => {
-      mocks.ensureDetectedAgents.mockResolvedValue(['claude'])
-      vi.mocked(beginDirectWorkItemStructuredLaunch).mockImplementationOnce((launch) => {
-        launch.beforeOpen('session-1')
-        return {
-          completed: true,
-          structuredLaunch: true,
-          primaryTabId: 'chat-tab',
-          promptDeliveryResult: Promise.resolve({ delivered, failureNotified: false })
-        }
-      })
-      const { launchWorkItemDirect } = await import('./launch-work-item-direct')
-
-      await expect(
-        launchWorkItemDirect({
-          repoId: 'repo-1',
-          launchSource: 'task_page',
-          openModalFallback: vi.fn(),
-          agentOverride: 'claude',
-          promptDelivery: 'submit-after-ready',
-          waitForPromptDelivery,
-          item: {
-            type: 'pr',
-            number: 7,
-            title: 'Review this PR',
-            url: 'https://github.com/acme/repo/pull/7',
-            pasteContent: 'Fix the checks.'
-          }
-        })
-      ).resolves.toBe(answer)
-    }
-  )
-
   it('uses remote cursor-agent detection and paste launch for SSH repos', async () => {
     mocks.store.repos = [
       {

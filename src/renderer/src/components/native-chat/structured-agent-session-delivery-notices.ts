@@ -181,23 +181,6 @@ function deliveryNoticeText(
   )
 }
 
-/** A launch prompt the host rejected for good whose caller still holds it (notes, review comments,
- *  a fix action) is sent again from there, so a Retry here would deliver it while that caller never
- *  learns it went. A composer's prompt has no such caller and keeps its Retry. */
-function sentFromSource(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return entry.heldBySource === true && entry.state === 'rejected'
-}
-
-function sourcedMessageNotSentText(reason: string): string {
-  return joinSentences([
-    translate('components.native-chat.launchPromptNotSent', 'Not sent: {{reason}}', { reason }),
-    translate(
-      'components.native-chat.launchPromptSendAgain',
-      'Send it again from where you started it.'
-    )
-  ])
-}
-
 /** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
  *  agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
@@ -239,18 +222,14 @@ export function structuredAgentSessionDeliveryNotices(
       const retryControl = stalledFrom === -1 || index <= stalledFrom
       const text = deliveryNoticeText(
         entry,
-        sentFromSource(entry) ? { agentName, retryControl: true } : { agentName, retryControl },
+        { agentName, retryControl },
         rejected.get(entry.clientMessageId),
         startFailures,
         failedHere
       )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
-        sentFromSource(entry)
-          ? { text: sourcedMessageNotSentText(text) }
-          : retryControl
-            ? { text, ...retryControlFor(entry.clientMessageId) }
-            : { text }
+        retryControl ? { text, ...retryControlFor(entry.clientMessageId) } : { text }
       )
     }
   }

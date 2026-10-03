@@ -24,9 +24,6 @@ import { createStructuredAgentSessionOperationId } from '../../../../shared/stru
 import { randomUUID } from 'node:crypto'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
-import type { StructuredLaunchPromptDelivery } from '../../../agent-launch/agent-launch-surface-factories'
-import { agentSessionSendSubmission } from '../../../../shared/agent-session-wire'
-import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
 
 /**
  * The committed transcript row's id, or `null` when nothing was committed.
@@ -81,60 +78,5 @@ export async function commitStructuredAgentSessionLaunchPrompt(args: {
       error
     })
     return null
-  }
-}
-
-/**
- * How long a launch waits for the agent to take its first message. A chat's first message starts
- * its agent, so a caller told "delivered" would claim a start that may still fail; the phone's
- * prompted launch gives up after 90 s, and the create before this is quick.
- */
-export const STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS = 60_000
-
-/** Why a launch whose agent is still starting when the wait ends cannot say how it went. */
-export const STRUCTURED_LAUNCH_PROMPT_STILL_STARTING =
-  'The agent is still starting; its prompt will be sent automatically once it starts.'
-
-/**
- * The launch prompt sent as the chat's first message, followed to whether the agent took it.
- *
- * Temporary: an older phone reads any committed row as "Agent started" and marks its notes sent,
- * so the host answers only once the start has settled, within the budget. A start still being
- * retried at the budget refuses the launch as an unknown outcome: the phone keeps its notes and
- * says it couldn't confirm the start, and the message is still sent when the agent starts. The
- * follow-up is phones that watch the message's own settlement and finish then.
- */
-export async function deliverStructuredAgentSessionLaunchPrompt(
-  args: Parameters<typeof commitStructuredAgentSessionLaunchPrompt>[0] & { budgetMs?: number }
-): Promise<StructuredLaunchPromptDelivery> {
-  const messageId = await commitStructuredAgentSessionLaunchPrompt(args)
-  if (!messageId || !args.host) {
-    return { taken: false }
-  }
-  const settled = await args.host
-    .waitForSendSettlement(args.sessionId, messageId, {
-      budgetMs: args.budgetMs ?? STRUCTURED_LAUNCH_PROMPT_SETTLEMENT_BUDGET_MS,
-      until: 'final'
-    })
-    .catch(() => undefined)
-  const submission = agentSessionSendSubmission(settled?.value)
-  switch (submission?.dispatchState) {
-    case 'accepted':
-      return { taken: true, messageId }
-    case 'rejected':
-      return {
-        taken: false,
-        warning: submission.reason ?? "The agent couldn't start, so its prompt wasn't sent."
-      }
-    // Still waiting at the budget: a start being retried or still running, or a hand-over whose
-    // answer was lost and may yet turn accepted.
-    case 'pending':
-    case 'unknown':
-    case undefined:
-      throw agentSessionRefusalError(
-        'agent_session_operation_unknown',
-        { reason: 'outcomeUnknown' },
-        STRUCTURED_LAUNCH_PROMPT_STILL_STARTING
-      )
   }
 }

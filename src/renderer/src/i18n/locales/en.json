@@ -17522,7 +17522,7 @@
         "signInThenRunCommand": "Sign in, then run /{{command}} again.",
         "signInThenSend": "Sign in, then send your message again.",
         "providerMissing": "{{agent}} isn't installed.",
-        "installFirst": "Install it first.",
+        "installThenRetry": "Install it, then retry.",
         "installThenRunCommand": "Install it, then run /{{command}} again.",
         "installThenSend": "Install it, then send your message again.",
         "historyTooLarge": "This conversation's history is too large to restore here.",
@@ -17985,9 +17985,6 @@
       "dismissDeliveryNotice": "Dismiss",
       "messageNotSent": "Message not sent",
       "startRetrying": "Orca will try again shortly.",
-      "launchPromptSendAgain": "Send it again from where you started it.",
-      "launchPromptNotSent": "Not sent: {{reason}}",
-      "launchPromptNotTaken": "The agent didn't take the prompt, so nothing was marked sent. Send it again from here.",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",

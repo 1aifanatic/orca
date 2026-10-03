@@ -21,14 +21,12 @@ type SendSettlement = SettledSend | 'pending' | 'missing'
 /** What ends a wait: the provider's answer, the host handing the message over, or either that or
  *  the message waiting behind a running command, which hands nothing over until it ends. A failed
  *  start recorded on the message ends each: the host answers it now, while it waits for its next try.
- *  `verdict` alone waits through those tries, for the message's own answer, and `final` through a
- *  lost answer (`unknown`) too, which a late echo can still prove accepted. */
+ *  `verdict` alone waits through those tries, for the message's own answer. */
 export type SendSettlementPoint =
   | 'answered'
   | 'handed-over'
   | 'handed-over-or-behind-command'
   | 'verdict'
-  | 'final'
 
 export type SendSettlementWaitOptions = {
   signal?: AbortSignal
@@ -66,9 +64,8 @@ function settledSend(
     return 'missing'
   }
   const waiting =
-    until === 'verdict' || until === 'final'
-      ? submission.dispatchState === 'pending' ||
-        (until === 'final' && submission.dispatchState === 'unknown')
+    until === 'verdict'
+      ? submission.dispatchState === 'pending'
       : !isRetryingStructuredAgentSessionStart(submission) &&
         (until === 'answered'
           ? submission.dispatchState === 'pending'

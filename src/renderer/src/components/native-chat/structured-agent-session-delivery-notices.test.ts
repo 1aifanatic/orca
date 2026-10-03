@@ -563,69 +563,6 @@ describe('the notice on each message that did not go through', () => {
   })
 })
 
-// A launch prompt belongs to where it was sent from (notes, review comments, a fix action), which
-// still holds it as unsent once the host rejects it for good: that is where it goes again.
-describe('the notice on a launch prompt the host rejected for good', () => {
-  const notInstalled = {
-    kind: 'rejected' as const,
-    reason: "Claude isn't installed.",
-    rejection: { kind: 'providerMissing' as const }
-  }
-
-  it('says why and to send it again from its source, with no Retry here', () => {
-    const retry = vi.fn()
-    const notices = structuredAgentSessionDeliveryNotices(
-      [
-        entry('launch', {
-          source: 'launch',
-          heldBySource: true,
-          state: 'rejected',
-          lastFailure: notInstalled
-        }),
-        entry('composer', { source: 'launch', state: 'rejected', lastFailure: notInstalled }),
-        entry('typed', { state: 'rejected', lastFailure: notInstalled })
-      ],
-      'Claude',
-      retry,
-      [],
-      [],
-      NOT_FAILED_HERE
-    )
-
-    const launch = notices.get(agentJournalSubmissionKey('launch'))
-    expect(launch?.onRetry).toBeUndefined()
-    expect(launch?.text).toBe(
-      "Not sent: Claude isn't installed. Install it first. Send it again from where you started it."
-    )
-    // A composer's launch prompt has nowhere else to be sent from: it keeps the chat's Retry.
-    expect(notices.get(agentJournalSubmissionKey('composer'))?.onRetry).toBeTypeOf('function')
-    // A message typed in the chat keeps its own Retry, and the same step to take first.
-    const typed = notices.get(agentJournalSubmissionKey('typed'))
-    expect(typed?.onRetry).toBeTypeOf('function')
-    expect(typed?.text).toBe("Claude isn't installed. Install it first.")
-  })
-
-  it('keeps Retry on a launch prompt only held, not rejected', () => {
-    const notices = structuredAgentSessionDeliveryNotices(
-      [
-        entry('launch', {
-          source: 'launch',
-          heldBySource: true,
-          state: 'queued',
-          lastFailure: { kind: 'refused', code: 'agent_session_operation_capacity' }
-        })
-      ],
-      'Claude',
-      vi.fn(),
-      [],
-      [],
-      NOT_FAILED_HERE
-    )
-
-    expect(notices.get(agentJournalSubmissionKey('launch'))?.onRetry).toBeTypeOf('function')
-  })
-})
-
 describe('the notice on a message whose agent start failed', () => {
   function queued(
     id: string,

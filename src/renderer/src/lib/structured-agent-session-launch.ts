@@ -6,7 +6,10 @@ import {
   retryStructuredAgentSessionLaunchIntent,
   StructuredAgentSessionCreateRefusalError
 } from '@/lib/launch-structured-agent-session'
-import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import {
+  discardStructuredAgentSessionLaunchOutbox,
+  enqueueStructuredAgentSessionLaunchPrompt
+} from '@/components/native-chat/structured-agent-session-outbox-storage'
 import {
   launchAndReconcile,
   reconcileUnknownLaunch,
@@ -18,7 +21,6 @@ import {
   createStructuredLaunchCallerGroup,
   releaseStructuredLaunchCallerAfterUnknownOutcome,
   settleStructuredLaunchCallers,
-  stageStructuredLaunchPrompt,
   structuredLaunchCallersHavePendingWork,
   type StructuredAgentLaunchOptions,
   type StructuredLaunchCaller
@@ -205,7 +207,9 @@ function structuredAgentLaunchState(
     const joined = joinLaunchDelivery(options, existing.promptDelivery)
     // Why: failed launches keep their draft/outbox, so a retry must not stage the same prompt twice.
     const text = retrying ? '' : outboxPromptText(joined)
-    const stagedPrompt = stageStructuredLaunchPrompt(existing.intent.sessionId, text, joined)
+    const stagedPrompt = text
+      ? enqueueStructuredAgentSessionLaunchPrompt(existing.intent.sessionId, text)
+      : null
     if (!retrying) {
       launchDraft.seedStructuredAgentLaunchDraft(existing.intent.sessionId, agent, joined)
     }
@@ -229,7 +233,9 @@ function structuredAgentLaunchState(
     ? createStructuredAgentSessionLaunchIntent(worktreeId, agent, options.resumeFrom)
     : createStructuredAgentSessionLaunchIntent(worktreeId, agent)
   const text = outboxPromptText(options)
-  const stagedPrompt = stageStructuredLaunchPrompt(intent.sessionId, text, options)
+  const stagedPrompt = text
+    ? enqueueStructuredAgentSessionLaunchPrompt(intent.sessionId, text)
+    : null
   launchDraft.seedStructuredAgentLaunchDraft(intent.sessionId, agent, options)
   const callers = createStructuredLaunchCallerGroup()
   const state: StructuredLaunchState = {

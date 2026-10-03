@@ -24,8 +24,6 @@ import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-sessio
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
-  /** See `StructuredAgentLaunchOptions.promptHeldBySource`. */
-  promptHeldBySource?: boolean
 }
 
 /**
@@ -41,7 +39,6 @@ export type AgentSessionLaunchVerdict = {
   promptDelivery?: NativeChatLaunchPromptDelivery
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
-  promptHeldBySource?: boolean
 }
 
 export type AgentSessionStructuredFeasibilityRequest = AgentLaunchRouteArgs & {
@@ -73,10 +70,7 @@ function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): Structured
     ...(verdict.prompt !== undefined ? { prompt: verdict.prompt } : {}),
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
-    ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {}),
-    ...(verdict.promptHeldBySource !== undefined
-      ? { promptHeldBySource: verdict.promptHeldBySource }
-      : {})
+    ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {})
   }
 }
 
@@ -141,9 +135,6 @@ export function planAgentSessionLaunch(
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.promptDelivery ? { promptDelivery: request.promptDelivery } : {}),
     ...(request.resumeFrom ? { resumeFrom: request.resumeFrom } : {}),
-    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {}),
-    ...(request.promptHeldBySource !== undefined
-      ? { promptHeldBySource: request.promptHeldBySource }
-      : {})
+    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {})
   })
 }

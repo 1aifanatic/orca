@@ -32,7 +32,4 @@ export type LaunchWorkItemDirectArgs = {
   agentArgs?: string | null
   promptDelivery?: 'draft' | 'submit-after-ready'
   launchPlatform?: NodeJS.Platform
-  /** Answer only once a structured chat's agent took the prompt, for a caller that then says it
-   *  started; otherwise the launch counts once its chat tab exists. */
-  waitForPromptDelivery?: boolean
 }

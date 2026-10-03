@@ -17356,7 +17356,7 @@
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",
         "signInThenSend": "サインインしてから、メッセージをもう一度送信してください。",
         "providerMissing": "{{agent}} はインストールされていません。",
-        "installFirst": "先にインストールしてください。",
+        "installThenRetry": "インストールしてから、もう一度お試しください。",
         "installThenRunCommand": "インストールしてから、/{{command}} をもう一度実行してください。",
         "installThenSend": "インストールしてから、メッセージをもう一度送信してください。",
         "historyTooLarge": "この会話の履歴は大きすぎるため、ここでは復元できません。",
@@ -17813,9 +17813,6 @@
       "dismissDeliveryNotice": "閉じる",
       "messageNotSent": "メッセージは送信されませんでした",
       "startRetrying": "Orca がまもなく再試行します。",
-      "launchPromptSendAgain": "開始した場所からもう一度送信してください。",
-      "launchPromptNotSent": "未送信: {{reason}}",
-      "launchPromptNotTaken": "Agent がプロンプトを受け取らなかったため、送信済みにはなっていません。ここからもう一度送信してください。",
       "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "queuedMessages": {
         "alreadySent": "このメッセージはすでに送信されています。",

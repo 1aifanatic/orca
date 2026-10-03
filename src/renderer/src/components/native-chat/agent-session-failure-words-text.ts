@@ -62,8 +62,8 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.providerMissing,
         values
       ),
-    installFirst: () =>
-      translate('components.native-chat.failureWords.installFirst', COPY.installFirst),
+    installThenRetry: () =>
+      translate('components.native-chat.failureWords.installThenRetry', COPY.installThenRetry),
     installThenRunCommand: (values) =>
       translate(
         'components.native-chat.failureWords.installThenRunCommand',

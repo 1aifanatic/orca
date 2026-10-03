@@ -25,8 +25,7 @@ function restoreWithdrawnMessages(
     getStructuredAgentSessionOutbox(sessionId).map((entry) => entry.clientMessageId)
   )
   for (const entry of withdrawn) {
-    // A launch prompt its caller still holds goes back there, not to the composer.
-    if (!held.has(entry.clientMessageId) || entry.heldBySource === true) {
+    if (!held.has(entry.clientMessageId)) {
       continue
     }
     const blocks = entry.body.blocks

@@ -12,7 +12,6 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { withdrawnFromItsSource } from './structured-agent-session-outbox-source'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
@@ -35,10 +34,6 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
-  /** A launch prompt whose caller keeps it, or a side effect, until it is delivered (notes, a review
-   *  reply, a fix action): that caller is where it is sent again, so the chat offers no Retry and
-   *  a Stop gives it no composer copy. A composer's own prompt has none and keeps both. */
-  heldBySource?: true
   /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
    *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
@@ -192,10 +187,6 @@ export function requeueStructuredAgentSessionSendRefusal(
   const ownerExited =
     refusal.code === 'agent_session_ownership_unknown' &&
     agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
-  // Its source sends it again as a new message, so refused for good it stays here as not sent.
-  if (entry.heldBySource === true && refusalSettled) {
-    return { ...entry, state: 'rejected' }
-  }
   if (
     !(refusalSettled || ownerExited) ||
     retainOperationId ||
@@ -230,8 +221,7 @@ export function reconcileStructuredAgentSessionOutbox(
       submission?.dispatchState === 'rejected' &&
       classifyDispatchRejection(submission).category === 'withdrawn'
     ) {
-      const failure = structuredAgentSessionRejectedFailure(submission)
-      return entry.heldBySource === true ? [withdrawnFromItsSource(entry, failure)] : []
+      return []
     }
     if (submission?.dispatchState === 'pending') {
       if (entry.state === 'dispatching') {
@@ -307,7 +297,6 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
-    ...(entry.heldBySource === true ? { heldBySource: true as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

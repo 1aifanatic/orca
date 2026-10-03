@@ -52,10 +52,6 @@ export type LaunchAgentInNewTabArgs = {
   launchPlatform?: NodeJS.Platform
   /** Called after the prompt is actually delivered to the agent input path. */
   onPromptDelivered?: () => void
-  /** The caller keeps the prompt until `promptDeliveryResult` says it went, and sends it again
-   *  itself; a structured chat then offers it no Retry of its own. Defaults to whether the caller
-   *  passes `onPromptDelivered`; `false` is one told of delivery only to say so. */
-  promptHeldBySource?: boolean
   /**
    * Called before `onPromptDelivered` when the paste was written without ever observing the
    * agent's composer, so the launch cannot claim the prompt arrived. Fires only on the
@@ -119,7 +115,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     launchPlatform,
     onPromptDelivered,
     onPromptDeliveryUnconfirmed,
-    promptHeldBySource,
     agentSessionLaunchPlan,
     pendingActivationSpawn,
     beforeSurfaceOpen
@@ -214,8 +209,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       promptDelivery: viewModePromptDelivery,
       tuiCustomization: { cwd: initialCwd },
       initialSessionOptions: startupPlan.sessionOptions,
-      onPromptDelivered,
-      ...(promptHeldBySource !== undefined ? { promptHeldBySource } : {})
+      onPromptDelivered
     })
   if (plan?.route === 'structured-native-chat') {
     const structured = launchAgentInStructuredNewTab({

@@ -367,29 +367,4 @@ describe('startFixChecksAgent', () => {
 
     expect(mocks.focusTerminalTabSurface).not.toHaveBeenCalled()
   })
-
-  // A structured chat's first message starts its agent: "Started" is said only once it took the
-  // prompt, so a start that failed (or is still retrying) answers no here.
-  it.each([
-    [true, true],
-    [false, false]
-  ])(
-    'answers the attached workspace launch by its prompt delivery (delivered: %s)',
-    async (delivered, started) => {
-      mocks.launchAgentInNewTab.mockReturnValue({
-        surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
-        promptDeliveryResult: Promise.resolve({ delivered, failureNotified: false })
-      })
-      const { startFixChecksAgent } = await import('./fix-checks-agent-launch')
-
-      await expect(
-        startFixChecksAgent({
-          repoId: 'repo-1',
-          worktreeId: 'wt-1',
-          basePrompt: 'Fix checks',
-          launchSource: 'task_page'
-        })
-      ).resolves.toBe(started)
-    }
-  )
 })

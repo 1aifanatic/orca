@@ -8,13 +8,6 @@ import { createTestStore } from '@/store/slices/browser-slice-test-harness'
 import type { OpenAgentSendPopoverTargetModeArgs } from '@/store/slices/ui'
 import { BrowserPageAnnotationTray } from './browser-page-annotation-tray'
 import { useBrowserPageAnnotationSend } from './use-browser-page-annotation-send'
-import { enqueueStructuredAgentSessionLaunchPrompt } from '@/components/native-chat/structured-agent-session-outbox-storage'
-import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
-import {
-  FIRST_START_FAILS,
-  firstMessageStream,
-  play
-} from '@/lib/structured-agent-session-launch-prompt-test-support'
 
 const state = vi.hoisted((): { store?: ReturnType<typeof createTestStore> } => ({}))
 vi.mock('@/store', () => ({
@@ -28,11 +21,6 @@ vi.mock('@/store', () => ({
   }
 }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
-const client = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
-vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: client.call,
-  subscribeStructuredAgentSession: client.subscribe
-}))
 vi.mock('./BrowserAnnotationSendMenuContent', () => ({
   BrowserAnnotationSendMenuContent: ({ onPromptDelivered }: { onPromptDelivered?: () => void }) => (
     <button onClick={onPromptDelivered}>Complete delivery</button>
@@ -224,57 +212,5 @@ describe('website annotation delivery', () => {
     expect(notes()).toHaveLength(1)
     act(() => view.result.current.handleClearBrowserAnnotations())
     expect(notes()).toEqual([])
-  })
-})
-
-// Sent to a new chat, whose first message starts its agent: the tray clears only once the agent
-// takes the prompt, and a start that never does (or a chat closed mid-wait) leaves it as it was.
-describe('website annotations sent to a new chat', () => {
-  async function sendToNewChat() {
-    const view = mount()
-    act(() => view.result.current.handleAnnotationTraySendOpenChange(true))
-    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', mode!.prompt)
-    const host = firstMessageStream(client, stagedEntry!.clientMessageId)
-    const delivery = settleStructuredAgentLaunchPrompt({
-      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-      options: {
-        prompt: mode!.prompt,
-        promptDelivery: 'submit-after-ready',
-        onPromptDelivered: () => act(() => mode!.onPromptDelivered?.())
-      },
-      stagedEntry
-    })!
-    return { stream: await host, delivery }
-  }
-
-  beforeEach(() => {
-    localStorage.clear()
-    client.call.mockReset()
-    client.subscribe.mockReset()
-  })
-
-  it('clears the tray once, after a retried start takes the prompt', async () => {
-    const { stream, delivery } = await sendToNewChat()
-    const [retry, handedOver, accepted] = FIRST_START_FAILS.retriedThenTaken
-    stream.next(retry!)
-    stream.next(handedOver!)
-    await Promise.resolve()
-    expect(notes()).toHaveLength(1)
-
-    stream.next(accepted!)
-    await expect(delivery).resolves.toMatchObject({ delivered: true })
-    expect(notes()).toEqual([])
-    expect(notes('page-2')).toHaveLength(1)
-  })
-
-  it.each([
-    ['rejected after its tries', FIRST_START_FAILS.rejectedAfterTries],
-    ['withdrawn when its chat closes mid-wait', FIRST_START_FAILS.chatClosed]
-  ])('keeps the annotations when the first message is %s', async (_case, end) => {
-    const { stream, delivery } = await sendToNewChat()
-    play(stream, end)
-
-    await expect(delivery).resolves.toMatchObject({ delivered: false })
-    expect(notes()).toHaveLength(1)
   })
 })

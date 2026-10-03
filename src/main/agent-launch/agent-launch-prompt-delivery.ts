@@ -25,31 +25,25 @@ import type {
 import { agentPromptRidesLaunchCommand } from '../../shared/tui-agent-startup'
 import type { AgentLaunchModeReceipt } from './agent-launch-mode'
 import type { AgentLaunchExecution, CreatedSurface } from './agent-launch-executor'
-import type {
-  AgentLaunchStructuredSurface,
-  StructuredLaunchPromptDelivery
-} from './agent-launch-surface-factories'
+import type { AgentLaunchStructuredSurface } from './agent-launch-surface-factories'
 
 export const HANDED_TO_TERMINAL: AgentLaunchPromptDisposal = { outcome: 'handed-to-terminal' }
 const NOT_DELIVERED: AgentLaunchPromptDisposal = { outcome: 'not-delivered' }
 
-/** Each surface delivers its own way, so the disposal is decided where the surface is known. A
- *  structured prompt the agent did not take can carry the host's words for why, as a launch warning. */
+/** Each surface delivers its own way, so the disposal is decided where the surface is known. */
 export async function settleLaunchPromptDisposal(
   execution: AgentLaunchExecution,
   created: CreatedSurface
-): Promise<{ disposal: AgentLaunchPromptDisposal; warning?: string }> {
+): Promise<AgentLaunchPromptDisposal> {
   if (created.structured) {
-    const delivered = await deliverStructuredLaunchPrompt(execution, created.structured)
-    return delivered.taken
-      ? { disposal: { outcome: 'journaled', messageId: delivered.messageId } }
-      : { disposal: NOT_DELIVERED, ...(delivered.warning ? { warning: delivered.warning } : {}) }
+    const messageId = await deliverStructuredLaunchPrompt(execution, created.structured)
+    return messageId ? { outcome: 'journaled', messageId } : NOT_DELIVERED
   }
   // The startup command already carries an argv agent's prompt; there is nothing left to write.
   if (created.promptRodeLaunchCommand) {
-    return { disposal: HANDED_TO_TERMINAL }
+    return HANDED_TO_TERMINAL
   }
-  return { disposal: await deliverTerminalLaunchPrompt(execution, created.outcome.handle) }
+  return deliverTerminalLaunchPrompt(execution, created.outcome.handle)
 }
 
 /**
@@ -60,17 +54,17 @@ export async function settleLaunchPromptDisposal(
 async function deliverStructuredLaunchPrompt(
   execution: AgentLaunchExecution,
   structured: AgentLaunchStructuredSurface
-): Promise<StructuredLaunchPromptDelivery> {
+): Promise<string | null> {
   const { intent, surfaces } = execution
   if (!intent.prompt || intent.prompt.delivery !== 'submit') {
-    return { taken: false }
+    return null
   }
   return (
     (await surfaces.deliverStructuredPrompt?.({
       sessionId: structured.sessionId,
       fence: structured.fence,
       prompt: intent.prompt
-    })) ?? { taken: false }
+    })) ?? null
   )
 }
 

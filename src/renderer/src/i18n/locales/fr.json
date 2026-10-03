@@ -17420,7 +17420,7 @@
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
         "signInThenSend": "Connectez-vous, puis renvoyez votre message.",
         "providerMissing": "{{agent}} n'est pas installé.",
-        "installFirst": "Installez-le d'abord.",
+        "installThenRetry": "Installez-le, puis réessayez.",
         "installThenRunCommand": "Installez-le, puis relancez /{{command}}.",
         "installThenSend": "Installez-le, puis renvoyez votre message.",
         "historyTooLarge": "L'historique de cette conversation est trop volumineux pour être restauré ici.",
@@ -17877,9 +17877,6 @@
       "dismissDeliveryNotice": "Ignorer",
       "messageNotSent": "Message non envoyé",
       "startRetrying": "Orca réessaiera sous peu.",
-      "launchPromptSendAgain": "Renvoyez-le depuis l'endroit où vous l'avez lancé.",
-      "launchPromptNotSent": "Non envoyé : {{reason}}",
-      "launchPromptNotTaken": "L'agent n'a pas pris le prompt, donc rien n'a été marqué comme envoyé. Renvoyez-le d'ici.",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",

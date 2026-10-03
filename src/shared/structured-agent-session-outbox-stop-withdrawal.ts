@@ -1,6 +1,5 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
-import { withdrawnFromItsSource } from './structured-agent-session-outbox-source'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
 
@@ -63,16 +62,14 @@ export function withdrawUnsentStructuredAgentSessionOutboxEntries(
   inFlightClientMessageId: string | null
 ): StructuredAgentSessionOutboxEntry[] {
   const unsent = unsentStructuredAgentSessionOutboxEntry(submissions)
-  return entries.flatMap((entry) => {
-    if (
-      entry.clientMessageId === inFlightClientMessageId ||
-      !unsent(entry) ||
-      attemptedQueueSend(entry)
-    ) {
-      return [markedOutlivingStop(entry)]
-    }
-    return entry.heldBySource === true ? [withdrawnFromItsSource(entry)] : []
-  })
+  return entries
+    .filter(
+      (entry) =>
+        entry.clientMessageId === inFlightClientMessageId ||
+        !unsent(entry) ||
+        attemptedQueueSend(entry)
+    )
+    .map(markedOutlivingStop)
 }
 
 /** Whether a Stop has something here to withdraw: a message that would still go out on its own. */

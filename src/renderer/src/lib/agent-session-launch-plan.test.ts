@@ -90,26 +90,6 @@ describe('planAgentSessionLaunch', () => {
     )
   })
 
-  it.each([true, false])(
-    'hands the settle loop a caller saying it holds the prompt: %s',
-    async (held) => {
-      const plan = planAgentSessionLaunch(store, {
-        agent: 'claude',
-        workspace: { kind: 'folder', worktreeId: 'folder:ws-1' },
-        prompt: 'Review this',
-        promptHeldBySource: held
-      })
-
-      await plan.launch(hooks)
-      expect(mocks.beginStructuredAgentLaunchSettlement).toHaveBeenCalledWith(
-        'folder:ws-1',
-        'claude',
-        expect.objectContaining({ promptHeldBySource: held }),
-        hooks
-      )
-    }
-  )
-
   it('sends no delivery fields the request did not carry', async () => {
     const plan = planAgentSessionLaunch(store, {
       agent: 'codex',

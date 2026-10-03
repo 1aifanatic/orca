@@ -26,7 +26,7 @@ import type { StructuredAgentSessionHost } from '../../../native-chat/agent-sess
 import type { RpcContext } from '../core'
 import { structuredCallerFor } from './structured-agent-session-gate'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
-import { deliverStructuredAgentSessionLaunchPrompt } from './agent-launch-structured-prompt'
+import { commitStructuredAgentSessionLaunchPrompt } from './agent-launch-structured-prompt'
 import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
 import { AgentLaunchSessionAlreadyExistsError } from '../../../../shared/agent-launch-session-already-exists'
 import { createStructuredAgentSessionId } from '../../../../shared/structured-agent-session-create'
@@ -101,7 +101,7 @@ export function agentLaunchSurfaceFactory(
       }
     },
     deliverStructuredPrompt: async ({ sessionId, fence, prompt }) =>
-      deliverStructuredAgentSessionLaunchPrompt({
+      commitStructuredAgentSessionLaunchPrompt({
         host: getStructuredAgentSessionHost(),
         caller: operationCallerKey
           ? { callerKey: operationCallerKey }

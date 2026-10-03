@@ -109,9 +109,7 @@ export async function runSourceControlAgentActionStart({
       agentArgs: launchAgentArgs,
       promptDelivery,
       launchPlatform,
-      launchSource,
-      // Its caller's payload (review replies, a check fix) waits on the delivery below.
-      promptHeldBySource: true
+      launchSource
     })
     launched = Boolean(result)
     if (result?.surface.kind === 'local-terminal') {
