@@ -1,3 +1,4 @@
+import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AiVaultHandler } from '../../relay/ai-vault-handler'
 import type { RelayDispatcher } from '../../relay/dispatcher'
@@ -78,7 +79,12 @@ describe('every search entry point carries the scope identity through', () => {
     const service = fakeSearchService()
     setSessionSearchService(service)
     installSessionSearchScopeCatalogSource(() => CATALOG)
-    await relayHandler()({ query: 'needle', supportsQoderHistory: true, within: WITHIN })
+    await relayHandler()({
+      query: 'needle',
+      supportsQoderHistory: true,
+      supportedAgents: [...AI_VAULT_AGENTS],
+      within: WITHIN
+    })
     expect(service.search).toHaveBeenCalledWith(expect.anything(), {
       kind: 'resolved',
       paths: ['/work/app']
@@ -88,7 +94,12 @@ describe('every search entry point carries the scope identity through', () => {
   it('hands the relay’s own verdict down, that host carrying no repo catalog', async () => {
     const service = fakeSearchService()
     setSessionSearchService(service)
-    await relayHandler()({ query: 'needle', supportsQoderHistory: true, within: WITHIN })
+    await relayHandler()({
+      query: 'needle',
+      supportsQoderHistory: true,
+      supportedAgents: [...AI_VAULT_AGENTS],
+      within: WITHIN
+    })
     expect(service.search).toHaveBeenCalledWith(
       { query: 'needle', limit: 20 },
       {

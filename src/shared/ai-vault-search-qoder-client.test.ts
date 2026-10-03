@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSessionSearchClient, unavailableSessionSearchStatus } from './ai-vault-search-client'
 import { AiVaultSearchRequestSchema as LegacyRequestSchema } from './__fixtures__/pre-qoder-search-request'
+import { AI_VAULT_AGENTS } from './ai-vault-types'
 import { searchHit, searchResults } from './ai-vault-search-test-fixture'
 
 describe('Qoder search negotiation', () => {
@@ -87,7 +88,8 @@ describe('Qoder search negotiation', () => {
         query: 'q',
         limit: 20,
         filters: { agents: ['qoder'] },
-        supportsQoderHistory: true
+        supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS]
       })
       expect(result).toMatchObject({ kind: 'results', hits: [{ agent: 'qoder' }] })
     }
@@ -103,7 +105,8 @@ describe('Qoder search negotiation', () => {
       query: 'q',
       limit: 20,
       filters: { agents: ['qoder'] },
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportedAgents: [...AI_VAULT_AGENTS]
     })
   })
 

@@ -77,6 +77,8 @@ test.each(['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c'])(
       !requestSchema ||
       typeof requestSchema !== 'object' ||
       !('parse' in requestSchema) ||
+      !('safeParse' in requestSchema) ||
+      typeof requestSchema.safeParse !== 'function' ||
       typeof requestSchema.parse !== 'function'
     ) {
       throw new Error('Pinned host has no search request parser')
@@ -117,7 +119,12 @@ test.each(['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c'])(
       expect(call).toHaveBeenLastCalledWith(
         'aiVault.searchSessions',
         expect.objectContaining({
-          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+          filters: {
+            agents: AI_VAULT_AGENTS.filter(
+              (agent) =>
+                requestSchema.safeParse({ query: 'proof', filters: { agents: [agent] } }).success
+            )
+          }
         })
       )
     }

@@ -1,10 +1,10 @@
+import { LEGACY_SESSION_SEARCH_AGENTS } from '../../shared/ai-vault-search-agent-negotiation'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeSearchService } from '../../shared/ai-vault-search-test-fixture'
 import {
   unavailableSessionSearchStatus,
   createSessionSearchClient
 } from '../../shared/ai-vault-search-client'
-import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import {
   setSessionSearchService,
   searchSessionService,
@@ -59,7 +59,7 @@ describe('session search service registry', () => {
       {
         query: 'needle',
         limit: 20,
-        filters: { agents: AI_VAULT_AGENTS.filter((a) => a !== 'qoder') }
+        filters: { agents: [...LEGACY_SESSION_SEARCH_AGENTS] }
       },
       undefined
     )
@@ -95,6 +95,44 @@ describe('session search service registry', () => {
       expect(service.search).toHaveBeenLastCalledWith(
         { query: 'proof', limit: 20, filters: { agents: ['qoder'] } },
         undefined
+      )
+    }
+  )
+  it('keeps a sole unsupported host filter narrow and removes pagination', async () => {
+    const service = fakeSearchService()
+    const page = await service.search({ query: 'proof' })
+    if (page.kind !== 'results') {
+      throw new Error('Fixture has no result page')
+    }
+    service.search.mockResolvedValue({
+      ...page,
+      page: { cursor: 'unreadable-next', hasMore: true }
+    })
+    service.search.mockClear()
+    setSessionSearchService(service)
+    expect(
+      await searchSessionService({ query: 'proof', filters: { agents: ['jcode'] } }, 'relay')
+    ).toMatchObject({ hits: [], page: { cursor: null, hasMore: false } })
+    expect(service.search).toHaveBeenCalledExactlyOnceWith(
+      { query: 'proof', limit: 20, filters: { agents: ['jcode'] } },
+      { kind: 'resolved', paths: [''] }
+    )
+  })
+  it.each(['disabled', 'not-ready'] as const)(
+    'preserves %s precedence for empty negotiated host intersections',
+    async (reason) => {
+      const service = fakeSearchService()
+      service.search.mockResolvedValue({ kind: 'unavailable', reason })
+      setSessionSearchService(service)
+      expect(
+        await searchSessionService(
+          { query: 'proof', supportedAgents: [], filters: { agents: ['jcode'] } },
+          'runtime'
+        )
+      ).toEqual({ kind: 'unavailable', reason })
+      expect(service.search).toHaveBeenCalledExactlyOnceWith(
+        { query: 'proof', limit: 20, filters: { agents: ['jcode'] } },
+        { kind: 'resolved', paths: [''] }
       )
     }
   )

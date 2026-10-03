@@ -111,6 +111,20 @@ provider, it puts `unsupported` on the wire and makes that host refuse its own. 
 reply-schema fallback must never shape a param. Gate on the token instead, where the
 client decides what it is willing to do with an arm it does not know.
 
+## Session search agent negotiation
+
+`aiVault.searchStatus` optionally advertises `supportedAgents`; current search clients
+send their own `supportedAgents` with `aiVault.searchSessions`. These are string lists,
+so a future provider name does not make a peer reject the capability reply. The client
+narrows explicit agent filters to the host's list before calling its request parser.
+The host narrows retrieval to the client's list before publishing a page.
+
+A peer without this field uses the frozen pre-Qoder/Jcode search vocabulary. The
+existing `supportsQoderHistory` flag still adds Qoder for peers that understand it;
+Jcode and later agents require the list. This conservatively withholds an unsupported
+provider instead of rejecting the whole page or widening a sole-provider query.
+Local IPC advertises this build's full list, and every remote leg negotiates separately.
+
 ## Enforcement
 
 `tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts` runs the real

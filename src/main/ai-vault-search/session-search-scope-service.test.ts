@@ -1,3 +1,4 @@
+import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AiVaultSearchRequestSchema } from '../../shared/ai-vault-search-contract'
 import { fakeSearchService } from '../../shared/ai-vault-search-test-fixture'
@@ -29,6 +30,7 @@ describe('scope identity at the search choke point', () => {
       {
         query: 'needle',
         supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
         within: { kind: 'workspace', worktreeId: 'repo-1::/work/app' }
       },
       'ipc'
@@ -48,6 +50,7 @@ describe('scope identity at the search choke point', () => {
       {
         query: 'needle',
         supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
         within: { kind: 'project', projectKey: 'repo:repo-1' }
       },
       'ipc'
@@ -67,6 +70,7 @@ describe('scope identity at the search choke point', () => {
       {
         query: 'needle',
         supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
         within: { kind: 'project', projectKey: 'repo:elsewhere' }
       },
       'ipc'
@@ -89,6 +93,7 @@ describe('scope identity at the search choke point', () => {
       {
         query: 'needle',
         supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
         within: { kind: 'workspace', worktreeId: 'repo-1::/work/app' }
       },
       'ipc'
@@ -117,6 +122,7 @@ describe('scope identity at the search choke point', () => {
       {
         query: 'needle',
         supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
         within: { kind: 'project', projectKey: 'repo:repo-1' }
       },
       'ipc'
@@ -133,7 +139,10 @@ describe('scope identity at the search choke point', () => {
     const service = fakeSearchService()
     setSessionSearchService(service)
     installSessionSearchScopeCatalogSource(() => CATALOG)
-    await searchSessionService({ query: 'needle', supportsQoderHistory: true }, 'ipc')
+    await searchSessionService(
+      { query: 'needle', supportsQoderHistory: true, supportedAgents: [...AI_VAULT_AGENTS] },
+      'ipc'
+    )
     expect(service.search).toHaveBeenCalledWith({ query: 'needle', limit: 20 }, undefined)
   })
 
@@ -142,7 +151,12 @@ describe('scope identity at the search choke point', () => {
     setSessionSearchService(service)
     installSessionSearchScopeCatalogSource(() => CATALOG)
     await searchSessionService(
-      { query: 'needle', supportsQoderHistory: true, filters: { scopePaths: ['/other'] } },
+      {
+        query: 'needle',
+        supportsQoderHistory: true,
+        supportedAgents: [...AI_VAULT_AGENTS],
+        filters: { scopePaths: ['/other'] }
+      },
       'ipc'
     )
     expect(service.search).toHaveBeenCalledWith(

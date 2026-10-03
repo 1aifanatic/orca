@@ -15,6 +15,7 @@ import {
 } from '../../shared/ai-vault-search-transport'
 import type { SessionSearchService } from './session-search-service'
 import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
+import { sessionSearchAgentsForPeer } from '../../shared/ai-vault-search-agent-negotiation'
 
 let service: SessionSearchService | null = null
 
@@ -35,32 +36,38 @@ export async function searchSessionService(
   // The choke point every entry point funnels through, so every host kind
   // resolves alike; the verdict goes to the service, which answers off and
   // not-ready first.
-  const { within, supportsQoderHistory, ...request } = parsed
+  const { within, supportsQoderHistory, supportedAgents, ...request } = parsed
   // Older clients reject the whole page when a hit has an unknown agent tag.
   const requestedAgents = request.filters?.agents
+  const peerAgents = sessionSearchAgentsForPeer(supportedAgents, supportsQoderHistory)
   const compatibleAgents = (requestedAgents?.length ? requestedAgents : AI_VAULT_AGENTS).filter(
-    (agent) => supportsQoderHistory || agent !== 'qoder'
+    (agent) => peerAgents.includes(agent)
   )
-  const compatibleRequest = supportsQoderHistory
-    ? request
-    : {
-        ...request,
-        filters: {
-          ...request.filters,
-          agents: compatibleAgents.length
-            ? compatibleAgents
-            : AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder')
+  const compatibleRequest =
+    compatibleAgents.length === 0 ||
+    (!requestedAgents?.length && compatibleAgents.length === AI_VAULT_AGENTS.length)
+      ? request
+      : {
+          ...request,
+          filters: {
+            ...request.filters,
+            agents: compatibleAgents
+          }
         }
-      }
   const hostScope = within
     ? resolveSessionSearchScope(within, sessionSearchScopeCatalog())
     : undefined
+  // An unkeyable scope reuses no-match retrieval after consent and readiness.
+  const retrievalScope =
+    compatibleAgents.length === 0 && hostScope?.kind !== 'unknown'
+      ? ({ kind: 'resolved', paths: [''] } as const)
+      : hostScope
   const freshness =
     request.freshness === 'wait-until-current'
       ? await reconcileWithin(current, freshnessTimeoutMs)
       : false
   const result = AiVaultSearchResponseSchema.parse(
-    await current.search(compatibleRequest, hostScope)
+    await current.search(compatibleRequest, retrievalScope)
   )
   if (result.kind !== 'results') {
     return result
@@ -85,7 +92,8 @@ export async function sessionSearchServiceStatus(
   return redactStatusForTransport(
     AiVaultSearchStatusSchema.parse({
       ...(service ? await service.status() : unavailableSessionSearchStatus()),
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportedAgents: [...AI_VAULT_AGENTS]
     }),
     transport
   )

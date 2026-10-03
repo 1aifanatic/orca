@@ -1,5 +1,5 @@
+import { LEGACY_SESSION_SEARCH_AGENTS } from '../../../../shared/ai-vault-search-agent-negotiation'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { RpcDispatcher } from '../dispatcher'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { AI_VAULT_METHODS } from './ai-vault'
@@ -56,7 +56,7 @@ describe('session search runtime RPC', () => {
         {
           query: 'needle',
           limit: 20,
-          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+          filters: { agents: [...LEGACY_SESSION_SEARCH_AGENTS] }
         },
         undefined
       )
