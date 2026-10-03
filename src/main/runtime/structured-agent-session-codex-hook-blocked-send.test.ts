@@ -313,8 +313,11 @@ describe('a Codex send a Codex hook blocked', () => {
     expect(text.endsWith('…')).toBe(true)
     // The emoji the cut fell on is dropped whole, never left as half a surrogate pair.
     expect(/[\ud800-\udbff](?![\udc00-\udfff])/.test(text)).toBe(false)
-    // oxlint-disable-next-line no-control-regex -- asserting no control characters remain.
-    expect(/[\u0000-\u001f\u007f-\u009f؜‪-‮]/.test(text)).toBe(false)
+    const controlOrBidi = new RegExp(
+      // oxlint-disable-next-line no-control-regex -- asserting no control characters remain.
+      '[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u202a-\\u202e]'
+    )
+    expect(controlOrBidi.test(text)).toBe(false)
     // Cut short with an ellipsis, it takes no stop after it.
     expect(sentenceFor(await snapshot(), followUp)).toBe(
       `A Codex hook blocked this message: ${text}`
