@@ -13,15 +13,15 @@
 
 import { randomUUID } from 'node:crypto'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
-import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { OrchestrationError } from '../../orchestration/orchestration-error'
-import {
-  mintAgentSessionOperationId,
-  structuredPointerPayloadFingerprint
-} from '../../orchestration/structured-pointer-operation-id'
+import { mintAgentSessionOperationId } from '../../orchestration/structured-pointer-operation-id'
 import { structuredPointerCallerKey } from '../../orchestration/structured-mailbox-pointer-host'
 import { sendAgentTurn, type StructuredAgentTurnHost } from '../../orchestration/send-agent-turn'
 import { retireSettledStructuredWorkerTab } from '../../structured-agent-session-tab-retirement'
@@ -226,25 +226,32 @@ export async function sendStructuredWorkerPreamble(args: {
   if (fence === undefined) {
     throw new Error('The structured worker session has no durable record to dispatch into.')
   }
-  const outcome = await sendAgentTurn(
-    {
-      kind: 'structured-session',
-      host: args.host,
-      sessionId: args.sessionId,
-      callerKey: structuredPointerCallerKey(args.dispatchId)
-    },
-    {
+  const outcome = await sendAgentTurn({
+    kind: 'structured-session',
+    host: args.host,
+    sessionId: args.sessionId,
+    callerKey: structuredPointerCallerKey(args.dispatchId),
+    turn: {
       body,
       delivery: 'now',
       operationId: mintAgentSessionOperationId(Date.now()),
-      expectedRuntimeFence: fence,
-      payloadFingerprint: structuredPointerPayloadFingerprint(args.sessionId, body)
+      expectedRuntimeFence: fence
     }
-  )
-  if (outcome.kind === 'refused') {
-    throw new Error(`The dispatch preamble was refused: ${outcome.refusal.message}`)
+  })
+  switch (outcome.kind) {
+    case 'refused':
+      throw new Error(`The dispatch preamble was refused: ${outcome.refusal.message}`)
+    case 'queued':
+      // Never for a `now` send; a held draft proves nothing about the worker taking it.
+      return preambleDispatchState(undefined)
+    case 'sent':
+      return preambleDispatchState(outcome.submission)
   }
-  const submission = outcome.kind === 'sent' ? outcome.submission : undefined
+}
+
+function preambleDispatchState(
+  submission: AgentJournalSubmission | undefined
+): 'accepted' | 'pending' {
   if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'pending') {
     return submission.dispatchState
   }

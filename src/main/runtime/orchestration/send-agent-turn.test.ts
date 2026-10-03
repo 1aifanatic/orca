@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { dispatchPreambleSendOptions } from './preamble'
@@ -55,23 +56,33 @@ const turn: StructuredSessionTurn = {
   body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
   delivery: 'now',
   operationId: 'op-1',
-  expectedRuntimeFence: 7,
-  payloadFingerprint: 'fp'
+  expectedRuntimeFence: 7
 }
 
-const target = (host: StructuredAgentTurnHost) =>
-  ({ kind: 'structured-session', host, sessionId: 's1', callerKey: 'trusted-local:k' }) as const
+const structured = (host: StructuredAgentTurnHost, sent: StructuredSessionTurn = turn) =>
+  ({
+    kind: 'structured-session',
+    host,
+    sessionId: 's1',
+    callerKey: 'trusted-local:k',
+    turn: sent
+  }) as const
+
+/** What the host digests for a send, so an envelope that disagrees is refused before the ledger. */
+const hostFingerprint = (fields: Record<string, unknown>) =>
+  computeAgentSessionPayloadFingerprint({ method: 'agentSession.send', sessionId: 's1', fields })
 
 describe('sendAgentTurn to a structured session', () => {
   it('sends `now` as the composer path with no delivery, so a busy chat is steered as today', async () => {
     const fake = structuredHost(
       accepted({ clientMessageId: 'op-1', submission: submissionOf('accepted') })
     )
-    await expect(sendAgentTurn(target(fake.host), turn)).resolves.toEqual({
+    await expect(sendAgentTurn(structured(fake.host))).resolves.toEqual({
       kind: 'sent',
       clientMessageId: 'op-1',
       submission: submissionOf('accepted')
     })
+    // The body-only digest every orchestration send carried before it was derived here.
     expect(fake.send).toHaveBeenCalledWith(
       { callerKey: 'trusted-local:k' },
       {
@@ -79,7 +90,7 @@ describe('sendAgentTurn to a structured session', () => {
           sessionId: 's1',
           clientOperationId: 'op-1',
           expectedRuntimeFence: 7,
-          payloadFingerprint: 'fp'
+          payloadFingerprint: hostFingerprint({ body: turn.body })
         },
         body: turn.body
       }
@@ -92,7 +103,7 @@ describe('sendAgentTurn to a structured session', () => {
       accepted({ clientMessageId: 'op-1', submission: submissionOf('pending') }),
       submissionOf('accepted')
     )
-    await expect(sendAgentTurn(target(fake.host), turn)).resolves.toMatchObject({
+    await expect(sendAgentTurn(structured(fake.host))).resolves.toMatchObject({
       kind: 'sent',
       submission: { dispatchState: 'accepted' }
     })
@@ -107,7 +118,7 @@ describe('sendAgentTurn to a structured session', () => {
         accepted({ clientMessageId: 'op-1', submission: submissionOf('pending') }),
         settled
       )
-      await expect(sendAgentTurn(target(fake.host), turn)).resolves.toMatchObject({
+      await expect(sendAgentTurn(structured(fake.host))).resolves.toMatchObject({
         kind: 'sent',
         submission: { dispatchState: 'pending' }
       })
@@ -117,40 +128,69 @@ describe('sendAgentTurn to a structured session', () => {
   it('returns the host refusal for the caller to read', async () => {
     const refusal = { code: 'agent_session_conflict' as const, message: 'conflict' }
     const fake = structuredHost({ ok: false, refusal })
-    await expect(sendAgentTurn(target(fake.host), turn)).resolves.toEqual({
+    await expect(sendAgentTurn(structured(fake.host))).resolves.toEqual({
       kind: 'refused',
       refusal
     })
   })
 
-  it('asks the host queue to hold a `queue` send, and reports it queued', async () => {
+  it('asks the host queue to hold a `queue` send, fingerprinted as the host digests it', async () => {
     const fake = structuredHost(
       accepted({
         clientMessageId: 'op-1',
         queued: { messageId: 'op-1', position: 0, state: 'waiting' }
       })
     )
-    await expect(sendAgentTurn(target(fake.host), { ...turn, delivery: 'queue' })).resolves.toEqual(
-      { kind: 'queued', clientMessageId: 'op-1' }
-    )
+    await expect(
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+    ).resolves.toEqual({
+      kind: 'queued',
+      clientMessageId: 'op-1',
+      queued: { messageId: 'op-1', position: 0, state: 'waiting' }
+    })
     expect(fake.send).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ delivery: 'queue-if-active' })
+      { callerKey: 'trusted-local:k' },
+      {
+        envelope: {
+          sessionId: 's1',
+          clientOperationId: 'op-1',
+          expectedRuntimeFence: 7,
+          payloadFingerprint: hostFingerprint({ body: turn.body, delivery: 'queue-if-active' })
+        },
+        body: turn.body,
+        delivery: 'queue-if-active'
+      }
     )
     expect(fake.waitForSendSettlement).not.toHaveBeenCalled()
+  })
+
+  it('keeps the state of a replayed draft that already settled', async () => {
+    const fake = structuredHost(
+      accepted({
+        clientMessageId: 'op-1',
+        queued: { messageId: 'op-1', position: 0, state: 'returned' }
+      })
+    )
+    await expect(
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+    ).resolves.toMatchObject({ kind: 'queued', queued: { state: 'returned' } })
   })
 })
 
 describe('sendAgentTurn to a terminal', () => {
-  it('types the prompt through the runtime primitive and returns its receipt unchanged', async () => {
+  it('types a dispatch preamble with its own options and hands back the primitive promise itself', async () => {
     const receipt = { handle: 'term_1', accepted: true, bytesWritten: 5 }
-    const runtime = { sendTerminalAgentPrompt: vi.fn(async () => receipt) }
-    await expect(
-      sendAgentTurn(
-        { kind: 'terminal', runtime, handle: 'term_1' },
-        { body: 'hello', delivery: 'now', operationId: 'req-1' }
-      )
-    ).resolves.toBe(receipt)
+    const written = Promise.resolve(receipt)
+    const runtime = { sendTerminalAgentPrompt: vi.fn(() => written) }
+    const sent = sendAgentTurn({
+      kind: 'terminal',
+      runtime,
+      handle: 'term_1',
+      turn: { purpose: 'dispatch-preamble', body: 'hello', operationId: 'req-1' }
+    })
+    // The same promise, so a caller's await takes no extra tick.
+    expect(sent).toBe(written)
+    await expect(sent).resolves.toBe(receipt)
     expect(runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
       'term_1',
       'hello',
@@ -166,10 +206,12 @@ describe('sendAgentTurn to a terminal', () => {
       })
     }
     await expect(
-      sendAgentTurn(
-        { kind: 'terminal', runtime, handle: 'term_1' },
-        { body: 'hello', delivery: 'now', operationId: 'req-1' }
-      )
+      sendAgentTurn({
+        kind: 'terminal',
+        runtime,
+        handle: 'term_1',
+        turn: { purpose: 'dispatch-preamble', body: 'hello', operationId: 'req-1' }
+      })
     ).rejects.toBe(failure)
   })
 })

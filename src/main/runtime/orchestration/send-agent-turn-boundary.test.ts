@@ -3,15 +3,33 @@ import { describe, expect, it } from 'vitest'
 import { scanSourceTree, stripComments } from '../../../shared/source-scan/source-tree-scan'
 
 /**
- * Orca sends a message into an agent on another agent's behalf through `sendAgentTurn` only, so
- * there is one place where queue-or-now, and later the sender, are decided. Paths are relative to
- * `src/main`.
+ * Orca sends a message into an agent on another agent's behalf through `sendAgentTurn`, so there
+ * is one place where queue-or-now, and later the sender, are decided. These pins list who still
+ * reaches the send primitives directly, and why. Paths are relative to `src/main`.
  */
 const MAIN_ROOT = resolve(__dirname, '..', '..')
 const shipped = scanSourceTree(MAIN_ROOT).map((file) => ({
   ...file,
   code: stripComments(file.source)
 }))
+
+/** `.name`, `?.name` or `['name']` off `receiver`: a call, an optional call, a bind, or the method
+ *  passed on as a value. An assignment to the member is its definition, not a use. */
+function memberUse(name: string, receiver = ''): RegExp {
+  const from = receiver && String.raw`${receiver}\s*`
+  return new RegExp(
+    String.raw`${from}(?:\?\.|\.)\s*${name}\b(?!\s*=[^=>])` +
+      String.raw`|${from}(?:\?\.)?\[\s*['"\x60]${name}['"\x60]\s*\]`
+  )
+}
+
+const TERMINAL_PROMPT = memberUse('sendTerminalAgentPrompt')
+const SEND_SETTLEMENT_WAIT = memberUse('waitForSendSettlement')
+// The session host's own send; the receiver is how this codebase names a structured host.
+const STRUCTURED_SEND = new RegExp(
+  `${memberUse('send', String.raw`(?:[Hh]ost|getStructuredAgentSessionHost\(\))`).source}` +
+    String.raw`|(?<!\bfunction\s+)\bsendStructuredAgentSessionTurn\s*\(`
+)
 
 function filesMatching(pattern: RegExp): string[] {
   return shipped
@@ -21,7 +39,49 @@ function filesMatching(pattern: RegExp): string[] {
 }
 
 describe('agent turn send boundary', () => {
-  it('routes every agent-to-agent send through sendAgentTurn', () => {
+  it('finds a send primitive however it is reached', () => {
+    const found = (pattern: RegExp, line: string) => pattern.test(stripComments(line))
+    for (const line of [
+      'await runtime.sendTerminalAgentPrompt(handle, prompt, options)',
+      'await runtime.sendTerminalAgentPrompt?.(handle, prompt, options)',
+      'await runtime\n  .sendTerminalAgentPrompt(handle, prompt, options)',
+      'const send = runtime.sendTerminalAgentPrompt.bind(runtime)',
+      "await runtime['sendTerminalAgentPrompt'](handle, prompt, options)"
+    ]) {
+      expect(found(TERMINAL_PROMPT, line), line).toBe(true)
+    }
+    for (const line of [
+      'await host.waitForSendSettlement?.(sessionId, id, { budgetMs })',
+      "await host?.['waitForSendSettlement'](sessionId, id, { budgetMs })"
+    ]) {
+      expect(found(SEND_SETTLEMENT_WAIT, line), line).toBe(true)
+    }
+    for (const line of [
+      'await host.send(caller, params)',
+      'await args.host?.send(caller, params)',
+      'await getStructuredAgentSessionHost()?.send(caller, params)',
+      'await structuredHost.send?.(caller, params)',
+      "await host['send'](caller, params)",
+      'return sendStructuredAgentSessionTurn(context, caller, params)'
+    ]) {
+      expect(found(STRUCTURED_SEND, line), line).toBe(true)
+    }
+    for (const [pattern, line] of [
+      [TERMINAL_PROMPT, 'async sendTerminalAgentPrompt(handle, prompt, options) {'],
+      [TERMINAL_PROMPT, '// runtime.sendTerminalAgentPrompt(handle, prompt, options)'],
+      [SEND_SETTLEMENT_WAIT, 'this.waitForSendSettlement = this.sendSettlement.wait'],
+      [STRUCTURED_SEND, 'await host.sendTerminal(handle, action, options)'],
+      [
+        STRUCTURED_SEND,
+        'export function sendStructuredAgentSessionTurn(context, caller, params) {'
+      ],
+      [STRUCTURED_SEND, 'await sendAgentTurn({ kind, host, sessionId, callerKey, turn })']
+    ] as const) {
+      expect(found(pattern, line), line).toBe(false)
+    }
+  })
+
+  it('lists the agent senders already moved onto sendAgentTurn', () => {
     expect(filesMatching(/\bsendAgentTurn\s*\(/)).toEqual(
       [
         'runtime/orchestration/send-agent-turn.ts',
@@ -38,27 +98,58 @@ describe('agent turn send boundary', () => {
     )
   })
 
-  it('types an agent prompt into a terminal only from sendAgentTurn or a user-facing command', () => {
+  it('types an agent prompt into a terminal only from the listed paths', () => {
     expect(
-      filesMatching(/\.sendTerminalAgentPrompt\s*\(/),
-      'A new direct sendTerminalAgentPrompt call. Send an agent message through sendAgentTurn.'
+      filesMatching(TERMINAL_PROMPT),
+      'A new direct sendTerminalAgentPrompt use. Send an agent message through sendAgentTurn.'
     ).toEqual(
       [
-        // `agent.launch`: the prompt a user starts an agent with.
+        // `agent.launch`: the prompt an agent is started with, by a user or another agent. Not
+        // moved yet: it is the launch's own first turn, sent before anything can queue it.
         'runtime/rpc/methods/agent-launch-terminal-prompt.ts',
-        // `terminal.send`: an explicit write to a named terminal.
+        // `terminal.send --enter` (agentPrompt): a user's or an agent's prompt to a named terminal,
+        // so it is an agent-to-agent send too. Not moved yet: it carries its own write guard,
+        // submit wait and receipts, and no task lead line.
         'runtime/rpc/methods/terminal/terminal-send-method.ts',
         'runtime/orchestration/send-agent-turn.ts'
       ].sort()
     )
   })
 
+  it('sends into a structured session directly only from the listed paths', () => {
+    expect(
+      filesMatching(STRUCTURED_SEND),
+      'A new direct structured send. Send an agent message through sendAgentTurn.'
+    ).toEqual(
+      [
+        'runtime/orchestration/send-agent-turn.ts',
+        // The composer's `agentSession.send` RPC: the user's own message.
+        'runtime/rpc/methods/structured-agent-session-send-compatibility.ts',
+        // `agent.launch` into a structured chat: the launch's own first turn, as above.
+        'runtime/rpc/methods/agent-launch-structured-prompt.ts',
+        // Orca's own restart continuation.
+        'native-chat/agent-session-wire/structured-agent-session-restart-continuation.ts',
+        'native-chat/agent-session-wire/structured-agent-session-restart-resume-wiring.ts',
+        // The host's own `send`, which every path above reaches.
+        'native-chat/agent-session-wire/structured-conversation-command-controller.ts',
+        // The pointer lane's port, whose `send` is sendAgentTurn in structured-mailbox-pointer-host.
+        'runtime/orchestration/structured-mailbox-pointer-delivery.ts',
+        // A real-host test rig the shared scan does not count as a test file.
+        'native-chat/agent-session-wire/structured-agent-session-rest-test-rig.ts',
+        // An Electron WebContents IPC send, not a chat.
+        'browser/doc-preview-guest-policy.ts'
+      ].sort()
+    )
+  })
+
   it('waits for a structured send to settle only in sendAgentTurn or the host itself', () => {
     expect(
-      filesMatching(/\.waitForSendSettlement\s*\(/),
+      filesMatching(SEND_SETTLEMENT_WAIT),
       'A new send-then-wait block. Send an agent message through sendAgentTurn.'
     ).toEqual(
       [
+        // The host exposing its waiter.
+        'native-chat/agent-session-wire/structured-agent-session-host.ts',
         // A /compact command, not a message.
         'native-chat/agent-session-wire/structured-conversation-compaction.ts',
         // Orca's own restart continuation, which waits for hand-over and settlement separately.
@@ -68,5 +159,21 @@ describe('agent turn send boundary', () => {
         'runtime/rpc/methods/structured-agent-session-send-compatibility.ts'
       ].sort()
     )
+  })
+
+  it('pins the agent senders that use another primitive and are not moved yet', () => {
+    // The terminal mail pointer: it types the text, then a separately gated Enter with durable
+    // attempt states, which the prompt write does not do.
+    expect(filesMatching(/\bwriteOrchestrationPointer(?:Pty|WithSettlement)\b/)).toEqual(
+      [
+        'runtime/orchestration/mailbox-pointer-pty-write.ts',
+        'runtime/orca-runtime-write-orchestration-pointer-pty.ts',
+        'runtime/orca-runtime-stop-requested-pty-ids.ts'
+      ].sort()
+    )
+    // Claude's agent-teams tmux `send-keys`: keystrokes the agent CLI types itself, not a message.
+    expect(filesMatching(/\btmuxSendKeysText\s*\(/)).toEqual([
+      'runtime/claude-agent-teams-tmux-dispatcher.ts'
+    ])
   })
 })

@@ -80,14 +80,12 @@ export async function deliverWorkerDispatchPreamble(args: {
   }
   return {
     prompt: (
-      await sendAgentTurn(
-        { kind: 'terminal', runtime, handle: terminalHandle },
-        {
-          body: preamble,
-          delivery: 'now',
-          operationId: args.requestId
-        }
-      )
+      await sendAgentTurn({
+        kind: 'terminal',
+        runtime,
+        handle: terminalHandle,
+        turn: { purpose: 'dispatch-preamble', body: preamble, operationId: args.requestId }
+      })
     ).prompt
   }
 }

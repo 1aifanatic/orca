@@ -154,14 +154,16 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
       let prompt
       if (params.inject) {
         try {
-          prompt = await sendAgentTurn(
-            { kind: 'terminal', runtime, handle: to },
-            {
+          prompt = await sendAgentTurn({
+            kind: 'terminal',
+            runtime,
+            handle: to,
+            turn: {
+              purpose: 'dispatch-preamble',
               body: preamble,
-              delivery: 'now',
               operationId: orchestrationMutation?.requestId ?? ctx.id
             }
-          )
+          })
           injected = true
         } catch (err) {
           db.failDispatch(ctx.id, err instanceof Error ? err.message : String(err))

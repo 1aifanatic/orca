@@ -261,14 +261,16 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
           canDispatchSubWorkers: (params.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
           cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
         })
-        const prompt = await sendAgentTurn(
-          { kind: 'terminal', runtime, handle: terminalHandle },
-          {
+        const prompt = await sendAgentTurn({
+          kind: 'terminal',
+          runtime,
+          handle: terminalHandle,
+          turn: {
+            purpose: 'dispatch-preamble',
             body: preamble,
-            delivery: 'now',
             operationId: orchestrationMutation.requestId
           }
-        )
+        })
         effects.push({
           kind: 'dispatch_input',
           role: 'agent',

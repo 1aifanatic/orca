@@ -92,34 +92,38 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       if (!host) {
         return { kind: 'unattached' }
       }
-      const outcome = await sendAgentTurn(
-        {
-          kind: 'structured-session',
-          host,
-          sessionId: input.sessionId,
-          callerKey: input.dispatchId
-            ? structuredPointerCallerKey(input.dispatchId)
-            : structuredSessionPointerCallerKey(input.sessionId)
-        },
-        {
+      const outcome = await sendAgentTurn({
+        kind: 'structured-session',
+        host,
+        sessionId: input.sessionId,
+        callerKey: input.dispatchId
+          ? structuredPointerCallerKey(input.dispatchId)
+          : structuredSessionPointerCallerKey(input.sessionId),
+        turn: {
           body: input.body,
           delivery: 'now',
           operationId: input.operationId,
-          expectedRuntimeFence: input.expectedRuntimeFence,
-          payloadFingerprint: input.payloadFingerprint
+          expectedRuntimeFence: input.expectedRuntimeFence
         }
-      )
-      if (outcome.kind === 'refused') {
-        return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
-          ? { kind: 'unattached' }
-          : { kind: 'sent', state: 'rejected' }
-      }
-      // `pending` is not yet an acknowledgement; only `accepted` may consume mail. A send still
-      // pending after the wait parks for the next journal edge.
-      const state = outcome.kind === 'sent' ? outcome.submission?.dispatchState : undefined
-      return {
-        kind: 'sent',
-        state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
+      })
+      switch (outcome.kind) {
+        case 'refused':
+          return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
+            ? { kind: 'unattached' }
+            : { kind: 'sent', state: 'rejected' }
+        case 'queued':
+          // Never for a `now` send. A draft would hand off under a fresh id, which this lane's
+          // operation row cannot see, so reading it needs its own rule before this lane queues.
+          return { kind: 'sent', state: 'unknown' }
+        case 'sent': {
+          // `pending` is not yet an acknowledgement; only `accepted` may consume mail. A send still
+          // pending after the wait parks for the next journal edge.
+          const state = outcome.submission?.dispatchState
+          return {
+            kind: 'sent',
+            state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
+          }
+        }
       }
     }
   }

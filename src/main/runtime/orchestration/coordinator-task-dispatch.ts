@@ -138,14 +138,12 @@ export async function dispatchTaskToWorker(params: {
   }
 
   try {
-    await sendAgentTurn(
-      { kind: 'terminal', runtime, handle: targetHandle },
-      {
-        body: preamble + gateContext,
-        delivery: 'now',
-        operationId: dispatch.id
-      }
-    )
+    await sendAgentTurn({
+      kind: 'terminal',
+      runtime,
+      handle: targetHandle,
+      turn: { purpose: 'dispatch-preamble', body: preamble + gateContext, operationId: dispatch.id }
+    })
   } catch (err) {
     // Why (#16095): Enter is written before submission is verified, so a stall is only ever an
     // unobserved turn start — never proof the preamble is missing. Failing here would reset the
