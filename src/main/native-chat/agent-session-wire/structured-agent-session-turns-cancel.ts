@@ -52,6 +52,15 @@ function stillRunsStoppedTurn(
   return stoppedTurnId === null || ctx.journal.activeTurnId() === stoppedTurnId
 }
 
+/** The turn that opened after `newestBefore` was the newest, if one has. */
+function turnOpenedSince(
+  ctx: Pick<AgentSessionTurnContext, 'journal'>,
+  newestBefore: string | undefined
+): string | null {
+  const newest = ctx.journal.newestTurn()?.turnId
+  return newest !== undefined && newest !== newestBefore ? newest : null
+}
+
 /** The row for a Stop the provider declined, in its words when it gave any. */
 function stopRefusedNote(
   ctx: Pick<AgentSessionTurnContext, 'failureTextContext'>,
@@ -143,6 +152,8 @@ export async function performCancel(
   const liveTurnId = ctx.journal.activeTurnId()
   // Read with the live turn, before the cancel settles it: the note is keyed by this turn.
   const stoppedTurnId = structuredAgentSessionStoppedTurnId(ctx.journal, input.turnId)
+  // A turn newer than this one opened while the cancel waited for it.
+  const newestTurnBefore = ctx.journal.newestTurn()?.turnId
   const namesTurnNotLive = structuredAgentSessionStopNamesTurnNotLive(input.turnId, liveTurnId)
   const runningCommand =
     input.stopChild !== undefined &&
@@ -259,11 +270,21 @@ export async function performCancel(
   if (input.scope || note === null) {
     return { ok: true, value }
   }
+  // Found with no turn running, the Stop waited for the opening turn and the provider took it: the
+  // note is that turn's, as a normal Stop's is, not a conversation row after later messages.
+  const openedTurnId =
+    taken === true && stoppedTurnId === null ? turnOpenedSince(ctx, newestTurnBefore) : null
+  const noteScope =
+    (openedTurnId !== null
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, openedTurnId)
+      : null) ?? turnScope
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
   await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId),
+    structuredAgentSessionStopNoteIdentity(
+      stoppedTurnId ?? openedTurnId ?? input.clientOperationId
+    ),
     note,
-    { fence: ctx.fence, turnScope }
+    { fence: ctx.fence, turnScope: noteScope }
   )
   return { ok: true, value }
 }

@@ -22,6 +22,9 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import { structuredAgentSessionStopNoteIdentity } from '../native-chat/agent-session-wire/structured-agent-session-command-turn'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -467,6 +470,36 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
       expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
     )
     expect((await settled()).owesWork).toBe(false)
+  })
+})
+
+describe("a Stop pressed while Codex's turn/start is still unanswered", () => {
+  // The Stop waits behind that answer, then for the turn to open, and the interrupt takes it: its
+  // note belongs to that turn, as a normal Stop's does, never a loose row for the conversation.
+  it('keeps its note with the turn the interrupt took', async () => {
+    const release = turns.holdNextAnswer()
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const stopping = stop()
+    expect(await settledWithin(stopping, 200)).toBe('held')
+    release()
+    await vi.waitFor(() => expect(openWaits.turnIds).toContain('turn-1'))
+    turns.start()
+    await stopping
+
+    expect(interrupts).toBe(1)
+    const { items } = await host.journalSnapshot(SESSION)
+    const turn = items.find((item) => readAgentJournalTurn(item.body)?.turnId === 'turn-1')
+    expect(readAgentJournalTurn(turn?.body)?.state).toBe('interrupted')
+    const notes = items.filter(
+      (item) => item.body.kind === 'status' && item.body.text === 'Cancellation requested.'
+    )
+    expect(notes.map((note) => [note.itemId, note.turnScope])).toEqual([
+      [
+        agentJournalItemKey(structuredAgentSessionStopNoteIdentity('turn-1')),
+        { kind: 'turn', turnItemId: turn?.itemId }
+      ]
+    ])
   })
 })
 
