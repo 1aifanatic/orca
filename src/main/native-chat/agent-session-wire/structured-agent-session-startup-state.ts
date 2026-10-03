@@ -204,8 +204,13 @@ async function settleOwedSessions(
       if (deps.isDisposed()) {
         return
       }
+      // A reconcile since the records were read (the listed restore's, or a command's) may have
+      // moved this lease to `recovering`: recover it, and settle from the record it left.
+      await leases.resolve(record.sessionId)
       await deps
-        .serialize(record.sessionId, () => settleClosed(deps, record))
+        .serialize(record.sessionId, () =>
+          settleClosed(deps, deps.openDeps.store.getRecord(record.sessionId) ?? record)
+        )
         .catch((error: unknown) => {
           deps.openDeps.logger.warn('settling a chat at startup failed', {
             scope: 'startup-settle-chat',

@@ -416,33 +416,7 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
   it('is stopped for an unlisted chat whose lease the reconcile moves only after the catch-up began', async () => {
     const rig = await newRig()
     await restTestChat(rig, 'session-listed', { message: 'done' })
-    await restTestChat(rig, 'session-closed', { message: 'asked', listed: false })
-    const { providerIdentity } = await rig.adapter.dispatch.mock.results.at(-1)!.value
-    await rig.host
-      .collaboratorsForTests()
-      .sessions.get('session-closed')!
-      .journal.appendItem(
-        { ...providerIdentity, ordinal: 0 },
-        { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
-        {
-          fence: rig.store.getRecord('session-closed')!.lease.runtimeFence,
-          turnScope: { kind: 'thread' }
-        }
-      )
-    const lease = rig.store.getRecord('session-closed')!.lease
-    await rig.host.flushAllStreamedEvents()
-    await rig.crash()
-    await writeOlderBuildLease(rig.root, 'session-closed', { ...lease })
-    let alive = true
-    const stopOwnerProcess = vi.fn(() => {
-      alive = false
-    })
-    rig.probeOwner.mockImplementation(async (record) =>
-      alive && record.sessionId === 'session-closed'
-        ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
-        : { outcome: 'pid-absent' }
-    )
-    await rig.boot({ stopOwnerProcess })
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-closed'])
     const listed = listedIds(rig)
     vi.spyOn(rig.store, 'reconcileOnRestart').mockRejectedValueOnce(new Error('disk I/O error'))
 
@@ -455,20 +429,86 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     await catchingUp
     await rig.host.restoreListedFromPerChatFiles(listed)
     rig.host.seedStoredStatuses(listed)
+    // Owed: the crash cut its turn, so the settle opens it.
+    expect(readUnsettledJournalSessionIds(db(rig))).toContain('session-closed')
     await rig.host.settleOwedSessions(listed)
 
-    expect(stopOwnerProcess).toHaveBeenCalled()
-    expect(rig.store.getRecord('session-closed')!.lease).toMatchObject({
-      deathEvidence: { kind: 'pid-absent' }
-    })
-    // Settled from the death evidence: the interrupted turn, not an unconfirmed one.
-    expect(readTestJournalSessionStatus(rig.root, 'session-closed')).toMatchObject({
-      lifecycle: 'idle',
-      summary: { turnOutcome: 'interruption' }
-    })
-    expect(rig.host.hasSession('session-closed')).toBe(false)
+    expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
+  })
+
+  it("is stopped for an unlisted chat whose lease the settle's own listed restore reconciles", async () => {
+    const rig = await newRig()
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-open', 'session-closed'])
+    const listed = listedIds(rig)
+    expect(listed).toEqual(['session-open'])
+    const reconcile = vi
+      .spyOn(rig.store, 'reconcileOnRestart')
+      .mockRejectedValueOnce(new Error('disk I/O error'))
+
+    // Nothing else reconciles before the settle: its listed restore is the first retry.
+    await startup(rig, listed)
+
+    expect(reconcile).toHaveBeenCalledTimes(2)
+    expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
+    expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
   })
 })
+
+/**
+ * Chats whose turn was running when Orca died, with their provider processes still up: one live
+ * process the rig's chats share, which a stop ends. The first is listed, the rest have no tab.
+ */
+async function crashWithLiveOwner(
+  rig: RestTestRig,
+  ids: readonly string[]
+): Promise<ReturnType<typeof vi.fn>> {
+  const leases = []
+  for (const [index, sessionId] of ids.entries()) {
+    const listed = index === 0 && ids.length > 1
+    await restTestChat(rig, sessionId, { message: `asked ${sessionId}`, listed })
+    const { providerIdentity } = await rig.adapter.dispatch.mock.results.at(-1)!.value
+    await rig.host
+      .collaboratorsForTests()
+      .sessions.get(sessionId)!
+      .journal.appendItem(
+        { ...providerIdentity, ordinal: 0 },
+        { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
+        { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence, turnScope: { kind: 'thread' } }
+      )
+    leases.push(rig.store.getRecord(sessionId)!.lease)
+  }
+  await rig.crash()
+  for (const lease of leases) {
+    await writeOlderBuildLease(rig.root, lease.sessionId, { ...lease })
+  }
+  let alive = true
+  const stopOwnerProcess = vi.fn(() => {
+    alive = false
+  })
+  rig.probeOwner.mockImplementation(async () =>
+    alive ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] } : { outcome: 'pid-absent' }
+  )
+  await rig.boot({ stopOwnerProcess })
+  return stopOwnerProcess
+}
+
+/** Settled from the death evidence its recovery recorded: the turn reads as interrupted, not as
+ *  unconfirmed, and the chat is closed again. */
+function expectInterruptedAndStopped(
+  rig: RestTestRig,
+  sessionId: string,
+  stopOwnerProcess: ReturnType<typeof vi.fn>
+): void {
+  expect(stopOwnerProcess).toHaveBeenCalled()
+  expect(rig.store.getRecord(sessionId)!.lease).toMatchObject({
+    deathEvidence: { kind: 'pid-absent' }
+  })
+  expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({
+    lifecycle: 'idle',
+    summary: { turnOutcome: 'interruption' }
+  })
+  expect(rig.host.hasSession(sessionId)).toBe(false)
+}
 
 describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', () => {
   it('settles a listed chat the listed worker skips because its tab closed', async () => {
