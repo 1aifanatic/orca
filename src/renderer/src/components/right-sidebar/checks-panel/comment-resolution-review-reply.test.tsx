@@ -128,6 +128,11 @@ function resolveCommentsWithAi(hook: ReturnType<typeof acknowledgement>['hook'])
 
 const onClose = vi.fn()
 const DELIVERED = Promise.resolve({ delivered: true, failureNotified: false })
+const CARRIED = Promise.resolve({
+  delivered: true,
+  failureNotified: false,
+  reviewReplyCarried: true as const
+})
 
 describe('Resolve comments with AI', () => {
   beforeEach(() => {
@@ -142,7 +147,7 @@ describe('Resolve comments with AI', () => {
     const { model, hook } = acknowledgement()
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
-      promptDeliveryResult: DELIVERED,
+      promptDeliveryResult: CARRIED,
       structuredSettlement: Promise.resolve({ kind: 'launched' })
     })
 
@@ -175,7 +180,8 @@ describe('Resolve comments with AI', () => {
       promptDeliveryResult: Promise.resolve({
         delivered: false,
         failureNotified: false,
-        heldByChat: true
+        heldByChat: true,
+        reviewReplyCarried: true
       }),
       structuredSettlement: Promise.resolve({ kind: 'launched' })
     })
@@ -212,7 +218,7 @@ describe('Resolve comments with AI', () => {
     const { model, hook } = acknowledgement(withoutReplyTarget)
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
-      promptDeliveryResult: DELIVERED,
+      promptDeliveryResult: CARRIED,
       structuredSettlement: Promise.resolve({ kind: 'launched' })
     })
 
@@ -242,6 +248,24 @@ describe('Resolve comments with AI', () => {
 
     expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
       expect.not.objectContaining({ reviewReply: expect.anything() })
+    )
+    await vi.waitFor(() => expect(model.resolveReviewThread).toHaveBeenCalledOnce())
+    expect(model.addPRConversationComment).toHaveBeenCalledOnce()
+  })
+
+  it('writes once from the panel when a paired host declined the chat and its terminal took the paste', async () => {
+    const { model, hook } = acknowledgement()
+    // The structured route was taken, but the host opened a terminal, whose paste carried no reply.
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'host-published' },
+      promptDeliveryResult: DELIVERED,
+      structuredSettlement: Promise.resolve({ kind: 'terminal' })
+    })
+
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({ reviewReply: expect.anything() })
     )
     await vi.waitFor(() => expect(model.resolveReviewThread).toHaveBeenCalledOnce())
     expect(model.addPRConversationComment).toHaveBeenCalledOnce()

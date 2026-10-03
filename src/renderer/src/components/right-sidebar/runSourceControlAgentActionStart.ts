@@ -128,7 +128,6 @@ export async function runSourceControlAgentActionStart({
       ...(plannedReviewReply ? { reviewReply: plannedReviewReply } : {})
     })
     launched = Boolean(result)
-    reviewReplyCarried = Boolean(plannedReviewReply && result?.structuredSettlement)
     if (result?.surface.kind === 'local-terminal') {
       focusTerminalTabSurface(result.surface.tabId)
     }
@@ -140,6 +139,9 @@ export async function runSourceControlAgentActionStart({
     if (result?.promptDeliveryResult) {
       try {
         const deliveryResult = await result.promptDeliveryResult
+        // Read off what took the prompt: a paired host that declined the chat opens a terminal,
+        // which carries no review reply, so the panel writes after its paste.
+        reviewReplyCarried = deliveryResult.reviewReplyCarried === true
         // A chat that holds its review reply sends it again itself; offering Start again here
         // would launch a second chat, and post the replies twice.
         launched =

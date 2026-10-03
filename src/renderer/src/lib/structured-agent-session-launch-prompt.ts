@@ -25,6 +25,9 @@ export type StructuredPromptDeliveryResult = {
   /** Not delivered, but its chat still holds it and sends it again or offers its Retry: the chat
    *  owns it from here, so the caller does not offer it again. */
   heldByChat?: true
+  /** The chat's message carries the launch's review reply, which its host writes; set only by a
+   *  structured chat that took the prompt, never by a terminal it fell back to. */
+  reviewReplyCarried?: true
 }
 
 /** Whether the chat still holds this launch prompt, under its first id or one a refusal rotated. */
@@ -178,10 +181,12 @@ export function settleStructuredAgentLaunchPrompt(args: {
   if (args.options.promptDelivery === 'draft' || !args.options.prompt?.trim()) {
     return undefined
   }
+  const carried = args.stagedEntry?.reviewReply ? { reviewReplyCarried: true as const } : {}
   const held = (): StructuredPromptDeliveryResult => ({
     delivered: false,
     failureNotified: false,
-    heldByChat: true
+    heldByChat: true,
+    ...carried
   })
   const settled = args.launchResult.then(async (receipt) => {
     if (!args.stagedEntry) {
@@ -197,7 +202,7 @@ export function settleStructuredAgentLaunchPrompt(args: {
     const delivered = await dispatch.promise
     if (delivered) {
       args.options.onPromptDelivered?.()
-      return { delivered, failureNotified: false }
+      return { delivered, failureNotified: false, ...carried }
     }
     return chatHoldsLaunchPrompt(entry) ? held() : { delivered, failureNotified: false }
   })

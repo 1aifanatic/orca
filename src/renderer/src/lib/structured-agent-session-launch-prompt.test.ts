@@ -125,6 +125,54 @@ describe('a launch prompt the host did not record', () => {
     })
   })
 
+  it('says the message carries the review reply only when the chat took a prompt that had one', async () => {
+    const reviewReply = { provider: 'gitlab' as const, repoId: 'repo-1', iid: 8, resolve: ['d-1'] }
+    const withReply = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'fix', reviewReply)
+    const plain = enqueueStructuredAgentSessionLaunchPrompt('session-2', 'fix')
+    mocks.call.mockImplementation(
+      async (
+        _target: unknown,
+        _method: string,
+        request: { envelope: { clientOperationId: string } }
+      ) => ({
+        ok: true,
+        replayed: false,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 1 },
+        value: {
+          clientMessageId: request.envelope.clientOperationId,
+          submission: {
+            clientMessageId: request.envelope.clientOperationId,
+            fence: 1,
+            payloadFingerprint: 'fingerprint',
+            dispatchState: 'pending',
+            providerItemId: null,
+            reason: null,
+            submittedAt: 1,
+            resolvedAt: null
+          }
+        }
+      })
+    )
+    const settle = (stagedEntry: typeof plain, sessionId: string) =>
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId, fence: 1 }),
+        target: { kind: 'local' },
+        options: { prompt: 'fix' },
+        stagedEntry
+      })
+
+    await expect(settle(withReply, 'session-1')).resolves.toEqual({
+      delivered: true,
+      failureNotified: false,
+      reviewReplyCarried: true
+    })
+    await expect(settle(plain, 'session-2')).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+  })
+
   it('keeps no review reply on a prompt whose create failed, as the source takes its comments back', async () => {
     const reviewReply = { provider: 'gitlab' as const, repoId: 'repo-1', iid: 8, resolve: ['d-1'] }
     const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt(
