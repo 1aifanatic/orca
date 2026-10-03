@@ -279,7 +279,7 @@ export function getAiVaultAgentProviderSession(
   if (isAntigravityReferenceSession(session)) {
     return null
   }
-  if (session.agent === 'antigravity') {
+  if (session.agent === 'antigravity' || session.agent === 'cursor') {
     return { key: 'conversation_id', id: session.sessionId }
   }
   if (session.agent === 'pi' || session.agent === 'prime-agent') {
