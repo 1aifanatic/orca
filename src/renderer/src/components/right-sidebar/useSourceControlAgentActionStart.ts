@@ -51,7 +51,7 @@ type UseSourceControlAgentActionStartArgs = {
   ) => void | Promise<void>
   onLaunchAccepted?: () => void
   onLaunchAborted?: () => void
-  onLaunched?: (launch: { structuredChat: boolean }) => void
+  onLaunched?: (launch: { reviewReplyCarried: boolean }) => void
   reviewReply?: () => AgentSessionReviewReply | undefined
   onClose: () => void
 }

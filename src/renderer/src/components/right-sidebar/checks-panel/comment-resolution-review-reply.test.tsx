@@ -8,6 +8,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  hostRunsReviewReplies: vi.fn(async () => true),
   launchAgentInNewTab: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn()
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: mocks.launchAgentInNewTab }))
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
+vi.mock('@/lib/structured-agent-session-review-reply-support', () => ({
+  structuredChatHostRunsReviewReplies: mocks.hostRunsReviewReplies
+}))
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: mocks.toastSuccess } }))
 
 import type { PRComment } from '../../../../../shared/github/comment-types'
@@ -162,6 +166,24 @@ describe('Resolve comments with AI', () => {
     expect(mocks.toastSuccess).not.toHaveBeenCalled()
     expect(model.setCommentsSelectionClearRequest).toHaveBeenCalledOnce()
     expect(model.pendingCommentResolutionRef.current).toBeNull()
+  })
+
+  it('writes once from the panel when the chat runs on a host that cannot carry the reply', async () => {
+    mocks.hostRunsReviewReplies.mockResolvedValueOnce(false)
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'host-published' },
+      promptDeliveryResult: DELIVERED,
+      structuredSettlement: Promise.resolve({ kind: 'launched' })
+    })
+
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.not.objectContaining({ reviewReply: expect.anything() })
+    )
+    await vi.waitFor(() => expect(model.resolveReviewThread).toHaveBeenCalledOnce())
+    expect(model.addPRConversationComment).toHaveBeenCalledOnce()
   })
 
   it('writes once from the panel when a terminal agent took the paste', async () => {

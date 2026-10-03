@@ -313,7 +313,7 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
   /** Prompt reached the agent: only now may Orca write to the host. A structured chat's message
    *  carries the writes for its host instead, so here they are only handed off. */
   const consumeClaimedCommentResolutionAfterDelivery = useCallback(
-    (launch?: { structuredChat: boolean }): void => {
+    (launch?: { reviewReplyCarried: boolean }): void => {
       const resolution =
         claimedCommentResolutionRef.current ??
         takePendingPRCommentAiAck() ??
@@ -325,7 +325,7 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
         setCommentResolutionAckBusyNow(false)
         return
       }
-      if (launch?.structuredChat) {
+      if (launch?.reviewReplyCarried) {
         clearSentCommentSelection(resolution.reviewContextKey)
         setCommentResolutionAckBusyNow(false)
         return

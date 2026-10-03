@@ -1,6 +1,7 @@
 import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
+import { structuredChatHostRunsReviewReplies } from '@/lib/structured-agent-session-review-reply-support'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -52,9 +53,9 @@ type RunSourceControlAgentActionStartArgs = {
   onLaunchAccepted?: () => void
   /** Fires when a launch that already reported onLaunchAccepted failed to deliver its prompt. */
   onLaunchAborted?: () => void
-  /** `structuredChat`: the launch opened a structured chat, whose message carries any review
-   *  reply, so the caller writes nothing to the review itself. */
-  onLaunched?: (launch: { structuredChat: boolean }) => void
+  /** `reviewReplyCarried`: a structured chat's message carries the review reply, which its host
+   *  writes once the agent takes it, so the caller writes nothing to the review itself. */
+  onLaunched?: (launch: { reviewReplyCarried: boolean }) => void
   /** Planned at start: what a structured chat's host writes on the review once its agent takes
    *  the prompt. A terminal agent has no message to carry it. */
   reviewReply?: () => AgentSessionReviewReply | undefined
@@ -86,7 +87,7 @@ export async function runSourceControlAgentActionStart({
   onClose
 }: RunSourceControlAgentActionStartArgs): Promise<boolean> {
   let launched = false
-  let structuredChat = false
+  let reviewReplyCarried = false
   let launchFailureNotified = false
   let launchAcceptedNotified = false
   // Why: `undefined` is what makes the launch fall back to the global Agents arguments;
@@ -109,7 +110,11 @@ export async function runSourceControlAgentActionStart({
       notifyLaunchAccepted()
     }
   } else if (worktreeId) {
-    const plannedReviewReply = reviewReply?.()
+    // Only a chat whose host runs it carries one; otherwise the caller writes after delivery.
+    const plannedReviewReply =
+      reviewReply && (await structuredChatHostRunsReviewReplies(worktreeId))
+        ? reviewReply()
+        : undefined
     const result = launchAgentInNewTab({
       agent: selectedAgent,
       worktreeId,
@@ -122,7 +127,7 @@ export async function runSourceControlAgentActionStart({
       ...(plannedReviewReply ? { reviewReply: plannedReviewReply } : {})
     })
     launched = Boolean(result)
-    structuredChat = Boolean(result?.structuredSettlement)
+    reviewReplyCarried = Boolean(plannedReviewReply && result?.structuredSettlement)
     if (result?.surface.kind === 'local-terminal') {
       focusTerminalTabSurface(result.surface.tabId)
     }
@@ -182,7 +187,7 @@ export async function runSourceControlAgentActionStart({
       console.error('onSaveAgentDefault failed', error)
     }
   }
-  onLaunched?.({ structuredChat })
+  onLaunched?.({ reviewReplyCarried })
   onClose()
   return true
 }

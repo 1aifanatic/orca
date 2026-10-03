@@ -11,6 +11,10 @@ import type { AgentJournalSubmission } from '../../../shared/agent-session-journ
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 import type { PRComment } from '../../../shared/github/comment-types'
+import {
+  AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY,
+  RUNTIME_CAPABILITIES
+} from '../../../shared/protocol-version'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
@@ -560,5 +564,11 @@ describe('what a send may carry', () => {
     await expect(host.send(CALLER, sendParams('x', other, operation))).resolves.toMatchObject({
       ok: false
     })
+  })
+})
+
+describe('who learns a host runs review replies', () => {
+  it('is every client: the host says so, so a client attaches one only where it runs', () => {
+    expect(RUNTIME_CAPABILITIES).toContain(AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY)
   })
 })
