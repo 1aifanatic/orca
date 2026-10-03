@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { callRuntimeRpc } from '../../runtime/runtime-rpc-client'
 import { spawnIpcPty } from './ipc-pty-spawn-request'
 import type { IpcPtyTransportOptions } from './pty-transport-types'
@@ -59,9 +60,10 @@ describe('local OpenCode model launch authority', () => {
     vi.mocked(callRuntimeRpc).mockRejectedValueOnce(new Error('reply lost'))
     await spawnIpcPty(transport, connect)
     await spawnIpcPty(transport, connect)
+    const operationRequest = z.object({ clientOperationId: z.string() })
     const ids = vi
       .mocked(callRuntimeRpc)
-      .mock.calls.map((call) => Reflect.get(call[2] ?? {}, 'clientOperationId'))
+      .mock.calls.map((call) => operationRequest.parse(call[2]).clientOperationId)
     expect(ids).toHaveLength(3)
     expect(new Set(ids).size).toBe(1)
     expect(ids[0]).toMatch(/^\d{13}-[0-9a-f]{32}$/)
