@@ -145,8 +145,10 @@ async function sendStructuredSessionTurn(
   if (answered?.dispatchState !== 'pending') {
     return { kind: 'sent', clientMessageId, submission: answered }
   }
+  // The submission's own id: a replayed `queue` turn whose draft went out answers with the
+  // hand-off, which the queue sent under a fresh id.
   const settled = await send.host
-    .waitForSendSettlement(send.sessionId, clientMessageId, {
+    .waitForSendSettlement(send.sessionId, answered.clientMessageId, {
       budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
     })
     .catch(() => undefined)

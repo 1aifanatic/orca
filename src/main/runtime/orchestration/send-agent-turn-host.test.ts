@@ -12,7 +12,11 @@ import {
   hostTestMessage,
   hostTestOperationId
 } from '../../native-chat/agent-session-wire/structured-agent-session-host-test-data'
-import { sendAgentTurn, type AgentTurnDelivery } from './send-agent-turn'
+import {
+  sendAgentTurn,
+  type AgentTurnDelivery,
+  type StructuredAgentTurnHost
+} from './send-agent-turn'
 
 let rig: QueuedMessageTestRig
 
@@ -22,10 +26,14 @@ beforeEach(async () => {
 
 afterEach(() => rig.dispose())
 
-function sendTurn(delivery: AgentTurnDelivery, operationId = hostTestOperationId()) {
+function sendTurn(
+  delivery: AgentTurnDelivery,
+  operationId = hostTestOperationId(),
+  host: StructuredAgentTurnHost = rig.host
+) {
   return sendAgentTurn({
     kind: 'structured-session',
-    host: rig.host,
+    host,
     sessionId: SESSION,
     callerKey: 'trusted-local:orchestration:d1',
     turn: { body: hostTestMessage('mail'), delivery, operationId, expectedRuntimeFence: 1 }
@@ -48,6 +56,34 @@ describe('sendAgentTurn through the real host', () => {
     const first = await sendTurn('queue', operationId)
     await expect(sendTurn('queue', operationId)).resolves.toEqual(first)
     expect(await rig.drafts()).toHaveLength(1)
+  })
+
+  it('waits on the hand-off when a retried `queue` turn was already sent from the queue', async () => {
+    const working = await rig.workingSend()
+    const operationId = hostTestOperationId()
+    await sendTurn('queue', operationId)
+    await rig.settleAccepted(working, 'work')
+    await eventually(async () => expect(await rig.handoff(operationId)).toBeDefined())
+    const handoffId = await rig.handoffId(operationId)
+    const waitedOn: string[] = []
+    const host: StructuredAgentTurnHost = {
+      send: rig.host.send.bind(rig.host),
+      waitForSendSettlement: (sessionId, clientMessageId, options) => {
+        waitedOn.push(clientMessageId)
+        return rig.host.waitForSendSettlement(sessionId, clientMessageId, options)
+      }
+    }
+    const replay = sendTurn('queue', operationId, host)
+    await eventually(async () => expect(waitedOn).toHaveLength(1))
+    await eventually(async () =>
+      expect((await rig.submission(handoffId))?.handedOverAt).toBeDefined()
+    )
+    await rig.settleAccepted(handoffId, 'mail')
+    await expect(replay).resolves.toMatchObject({
+      kind: 'sent',
+      submission: { clientMessageId: handoffId, dispatchState: 'accepted' }
+    })
+    expect(waitedOn).toEqual([handoffId])
   })
 
   /** Settles a handed-over send as the provider taking it; the turn's wait ends on that. */
