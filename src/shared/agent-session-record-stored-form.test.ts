@@ -191,8 +191,26 @@ describe('what this build writes', () => {
       // Claude or Codex in the neutral form: no build writes it.
       { transport: 'claude-sdk', agent: 'claude', nativeId: 'sess-1' },
       { transport: 'codex-app-server', agent: 'codex', nativeId: 'thread-1' },
-      // Both forms at once.
+      // Both forms at once: reading either identity would erase the other.
       { provider: 'grok', transport: 'acp', agent: 'grok', nativeId: 'x' },
+      {
+        provider: 'codex',
+        threadId: 'thread-1',
+        transport: 'acp',
+        agent: 'grok',
+        nativeId: 'acp-thread',
+        providerData: 'resume-token'
+      },
+      { provider: 'codex', threadId: 'thread-1', nativeId: 'other-thread' },
+      {
+        provider: 'claude',
+        sessionId: 'sess-1',
+        leafUuid: null,
+        transport: 'acp',
+        agent: 'grok',
+        nativeId: 'other'
+      },
+      { provider: 'claude', sessionId: 'sess-1', leafUuid: null, providerData: 'leaf-2' },
       { provider: 'claude', sessionId: 'sess-1' },
       { provider: 'claude', sessionId: 'sess-1', leafUuid: '' },
       { provider: 'codex', threadId: ' padded ' },
@@ -202,6 +220,34 @@ describe('what this build writes', () => {
     ]) {
       expect(decodePersistedAgentSessionProviderHandle(value)).toBeNull()
     }
+  })
+
+  it('still reads a typed handle that carries an unrelated field', () => {
+    expect(
+      decodePersistedAgentSessionProviderHandle({ provider: 'codex', threadId: 't', note: 1 })
+    ).toEqual(codexProviderHandle('t'))
+    expect(
+      decodePersistedAgentSessionProviderHandle({
+        provider: 'claude',
+        sessionId: 'sess-1',
+        leafUuid: 'leaf-1',
+        note: 1
+      })
+    ).toEqual(claudeProviderHandle('sess-1', 'leaf-1'))
+  })
+
+  it.each([
+    ['Claude', STORED_CLAUDE_ROW],
+    ['Codex', STORED_CODEX_ROW]
+  ])('refuses a whole %s row whose handle also names a neutral identity', (_name, row) => {
+    const stored = JSON.parse(row)
+    Object.assign(stored.providerHandleChain[0].handle, {
+      transport: 'acp',
+      agent: 'grok',
+      nativeId: 'acp-thread',
+      providerData: 'resume-token'
+    })
+    expect(isPersistedAgentSessionRecord(stored)).toBe(false)
   })
 })
 

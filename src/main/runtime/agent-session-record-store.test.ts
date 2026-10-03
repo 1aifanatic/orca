@@ -743,6 +743,29 @@ describe('claim keys and unreadable rows', () => {
     expect((await open()).isSessionUnreadable('session-alpha')).toBe(true)
   })
 
+  it('sets aside a row whose handle is in both stored forms and never rewrites it', async () => {
+    const first = await open()
+    await establishOwner(first)
+    let ambiguous: PersistedAgentSessionRecord | undefined
+    await editPersistedTestAgentSessionStore(directory, (persisted) => {
+      ambiguous = persisted.records['session-alpha']
+      Object.assign(ambiguous.providerHandleChain[0].handle, {
+        transport: 'acp',
+        agent: 'grok',
+        nativeId: 'acp-thread',
+        providerData: 'resume-token'
+      })
+    })
+    const reopened = await open()
+    expect(reopened.isSessionUnreadable('session-alpha')).toBe(true)
+    // Another chat's write must carry the set-aside row through untouched.
+    await establishOwner(reopened, { sessionId: 'session-beta', claimKeyId: 'key-2' })
+    expect((await open()).isSessionUnreadable('session-alpha')).toBe(true)
+    expect((await readPersistedTestAgentSessionStore(directory)).records['session-alpha']).toEqual(
+      ambiguous
+    )
+  })
+
   it('refuses to write a store a newer Orca wrote, with the refusal clients print as "update"', async () => {
     await seedTestAgentSessionStoreFromNewerBuild(directory)
     const store = await open()

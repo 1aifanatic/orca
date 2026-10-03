@@ -176,10 +176,21 @@ export function encodePersistedAgentSessionProviderHandle(
   }
 }
 
+/** The neutral form's discriminator and identity fields; a typed stored handle carries none of them. */
+const NEUTRAL_HANDLE_FIELDS = ['transport', 'agent', 'nativeId', 'providerData'] as const
+
 export function decodePersistedAgentSessionProviderHandle(
   value: unknown
 ): AgentSessionProviderHandle | null {
   if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  // Why: a row in both forms names two identities; reading it as either would erase the other on
+  // the next write, so it stays unreadable.
+  if (
+    Object.hasOwn(value, 'provider') &&
+    NEUTRAL_HANDLE_FIELDS.some((field) => Object.hasOwn(value, field))
+  ) {
     return null
   }
   const provider = 'provider' in value ? value.provider : undefined
