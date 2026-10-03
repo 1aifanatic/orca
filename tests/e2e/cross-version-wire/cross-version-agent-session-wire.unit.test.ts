@@ -28,6 +28,7 @@ import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
+  AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
@@ -457,6 +458,38 @@ describe('cross-version structured agent sessions', () => {
           expect(replies, `${build.label}: ${method} must answer exactly once`).toHaveLength(1)
           expect(replies[0]?.ok, `${build.label}: ${JSON.stringify(replies[0])}`).toBe(advertised)
           expect(hostCalls.respondToPrompt).toHaveBeenCalledTimes(advertised ? 1 : 0)
+        } finally {
+          await build.installStructuredHost(null)
+        }
+      }
+    })
+
+    it('takes a review reply on a send exactly where the host advertises running it', async () => {
+      // The desktop attaches `reviewReply` only on this capability: an older host's strict send
+      // params refuse the field, and with it the whole launch prompt.
+      const method = 'agentSession.send'
+      const body = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fix these' }] }
+      const reviewReply = { provider: 'gitlab', repoId: 'repo-1', iid: 8, resolve: ['d-1'] }
+      const fields = { body, reviewReply }
+      const params = { envelope: envelope({ method, fields, fence: 1 }), ...fields }
+      expect(current.capabilities).toContain(AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY)
+      for (const build of [current, baseline]) {
+        if (!build.methodNames.includes(method)) {
+          continue
+        }
+        const advertised = build.capabilities.includes(
+          AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY
+        )
+        const hostCalls = structuredHostStub(SESSION, WORKSPACE)
+        await build.installStructuredHost(installableHost(hostCalls))
+        try {
+          const replies = await callBuild(build, method, params, {
+            clientKind: 'runtime',
+            clientCapabilities: current.capabilities
+          })
+          expect(replies, `${build.label}: ${method} must answer exactly once`).toHaveLength(1)
+          expect(replies[0]?.ok, `${build.label}: ${JSON.stringify(replies[0])}`).toBe(advertised)
+          expect(hostCalls.send).toHaveBeenCalledTimes(advertised ? 1 : 0)
         } finally {
           await build.installStructuredHost(null)
         }
