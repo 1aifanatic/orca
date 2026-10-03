@@ -35,6 +35,7 @@ export function DiffSectionItem({
   openSection,
   openSectionTitle,
   onOpenPreview,
+  onDraftChange,
   renderHeaderTrailingContent,
   onAddLineComment,
   addLineCommentLabel,
@@ -65,6 +66,10 @@ export function DiffSectionItem({
   )
   const language = detectLanguage(section.path)
   const isEditable = section.area === 'unstaged'
+  const liveSection = useRef(section)
+  const draftChange = useRef(onDraftChange)
+  liveSection.current = section
+  draftChange.current = onDraftChange
   const modelPathBase = useMemo(
     () =>
       `diff-section:${encodeURIComponent(worktreeId ?? 'review')}:${encodeURIComponent(section.key)}:${section.contentGeneration ?? 0}`,
@@ -243,6 +248,7 @@ export function DiffSectionItem({
     const cleanupModifiedFindShortcut = installMonacoEditorFindShortcut(modified)
     const modelContentSub = modified.onDidChangeModelContent(() => {
       const current = modified.getValue()
+      draftChange.current?.(liveSection.current, current)
       setSections((prev) => {
         let changed = false
         const next = prev.map((s, i) => {

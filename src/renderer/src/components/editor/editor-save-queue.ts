@@ -12,6 +12,7 @@ import {
   type EditorFileSavedDetail
 } from './editor-autosave'
 import { flushPendingEditorChange } from './editor-pending-flush'
+import { resolveEditorRecovery } from '@/lib/editor-recovery-checkpoints'
 import {
   clearSelfWrite,
   recordSelfWrite,
@@ -142,6 +143,9 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           new CustomEvent<EditorFileSavedDetail>(ORCA_EDITOR_FILE_SAVED_EVENT, {
             detail: { fileId: file.id, content: contentToSave }
           })
+        )
+        await resolveEditorRecovery(file.id, contentToSave).catch((error) =>
+          console.error('[editor-recovery] Could not retire saved draft:', error)
         )
       })
 

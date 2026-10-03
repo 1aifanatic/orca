@@ -36,7 +36,8 @@ export function useCombinedDiffSectionActions({
   sections,
   sectionsRef,
   setSectionHeights,
-  setSections
+  setSections,
+  retireSection
 }: {
   activeGroupId: string | undefined
   branchCompare: NonNullable<OpenFile['branchCompare']> | null
@@ -50,6 +51,7 @@ export function useCombinedDiffSectionActions({
   sectionsRef: React.RefObject<DiffSection[]>
   setSectionHeights: React.Dispatch<React.SetStateAction<Record<number, number>>>
   setSections: React.Dispatch<React.SetStateAction<DiffSection[]>>
+  retireSection: (key: string, savedContent: string) => Promise<void>
 }): CombinedDiffSectionActions {
   const openFile = useAppStore((s) => s.openFile)
   const openBranchDiff = useAppStore((s) => s.openBranchDiff)
@@ -184,6 +186,9 @@ export function useCombinedDiffSectionActions({
           absolutePath,
           content
         )
+        await retireSection(sectionKey, content).catch((error) =>
+          console.error('[editor-recovery] Could not retire saved section:', error)
+        )
         // Why: the section list can be rebuilt while the write is pending, so re-resolve
         // by key — the captured index may now point at a different file.
         const savedIndex = sectionsRef.current.findIndex((s) => s.key === sectionKey)
@@ -195,6 +200,15 @@ export function useCombinedDiffSectionActions({
           prev.map((s) => {
             if (s.key !== sectionKey) {
               return s
+            }
+            if (s.dirty && s.modifiedContent !== content) {
+              return {
+                ...s,
+                diffResult:
+                  s.diffResult?.kind === 'text'
+                    ? { ...s.diffResult, modifiedContent: content }
+                    : s.diffResult
+              }
             }
 
             if (s.diffResult?.kind !== 'text') {
@@ -234,6 +248,7 @@ export function useCombinedDiffSectionActions({
       file.worktreeId,
       sections,
       sectionsRef,
+      retireSection,
       setSectionHeights,
       setSections
     ]

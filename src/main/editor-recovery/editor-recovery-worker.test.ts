@@ -1,0 +1,235 @@
+import { build } from 'esbuild'
+import { once } from 'node:events'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { spawnProcess } from '../../shared/child-process/run-process'
+import { getDefaultWorkspaceSession } from '../../shared/constants'
+import type { EditorRecoveryChange, EditorRecoveryMetadata } from '../../shared/editor-recovery'
+import { EditorRecoveryWorker } from './editor-recovery-worker'
+import { EditorRecoveryService } from './editor-recovery-service'
+
+let bundleRoot: string
+let workerPath: string
+const roots: string[] = []
+const clients: EditorRecoveryWorker[] = []
+beforeAll(async () => {
+  bundleRoot = mkdtempSync(join(tmpdir(), 'orca-recovery-worker-bundle-'))
+  workerPath = join(bundleRoot, 'editor-recovery-worker-entry.js')
+  await build({
+    entryPoints: [resolve('src/main/editor-recovery/editor-recovery-worker-entry.ts')],
+    outfile: workerPath,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    logLevel: 'silent'
+  })
+})
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+afterAll(() => rmSync(bundleRoot, { recursive: true, force: true }))
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'orca-recovery-worker-'))
+  roots.push(root)
+  return { root, path: join(root, 'editor-recovery.sqlite') }
+}
+function client(path: string, entry = workerPath, timeout = 15_000) {
+  const result = new EditorRecoveryWorker(path, entry, timeout)
+  clients.push(result)
+  return result
+}
+function metadata(filePath = '/repo/note.txt'): EditorRecoveryMetadata {
+  return {
+    hostId: 'local',
+    worktreeId: 'wt',
+    filePath,
+    relativePath: 'note.txt',
+    language: 'plaintext',
+    bufferKind: 'edit'
+  }
+}
+function put(content: string, owner = metadata()): EditorRecoveryChange {
+  return {
+    kind: 'put',
+    id: 'buffer',
+    expectedRevision: 0,
+    state: 'active',
+    metadata: owner,
+    content
+  }
+}
+
+describe('recovery writer process boundaries', () => {
+  it('survives an abrupt process kill after acknowledgement, with no graceful shutdown checkpoint', async () => {
+    const f = fixture()
+    const text = 'most recent unsaved text 😀\r\n'.repeat(30_000)
+    const input = join(f.root, 'draft.json')
+    writeFileSync(input, JSON.stringify([put(text)]))
+    const script = `
+      const { Worker } = require('node:worker_threads');
+      const { readFileSync } = require('node:fs');
+      const worker = new Worker(process.argv[1], { workerData: { databasePath: process.argv[2] } });
+      worker.on('error', error => { console.error(error); process.exit(1); });
+      worker.on('message', response => {
+        if (!response.ok || response.result[0]?.revision !== 1) process.exit(2);
+        process.stdout.write('committed\\n');
+      });
+      worker.postMessage({ requestId: 1, command: { kind: 'apply', changes: JSON.parse(readFileSync(process.argv[3], 'utf8')) } });
+      setInterval(() => {}, 1000);
+    `
+    const child = spawnProcess({
+      program: process.execPath,
+      args: ['-e', script, workerPath, f.path, input],
+      env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1' }
+    })
+    let stderr = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-2_000)
+    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let stdout = ''
+        const timer = setTimeout(() => finish(new Error(`Checkpoint timed out: ${stderr}`)), 10_000)
+        const onData = (chunk: Buffer) => {
+          stdout += chunk.toString()
+          if (stdout.includes('committed\n')) {
+            finish()
+          }
+        }
+        const onExit = () => finish(new Error(`Writer exited before checkpoint: ${stderr}`))
+        const finish = (error?: Error) => {
+          clearTimeout(timer)
+          child.stdout.off('data', onData)
+          child.off('exit', onExit)
+          child.off('error', finish)
+          if (error) {
+            reject(error)
+          } else {
+            resolve()
+          }
+        }
+        child.stdout.on('data', onData)
+        child.once('exit', onExit)
+        child.once('error', finish)
+      })
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'close')
+        child.kill('SIGKILL')
+        await exited
+      }
+    }
+    const reopened = client(f.path)
+    expect(await reopened.read('buffer')).toMatchObject({ content: text, revision: 1 })
+  })
+
+  it('exports an exact copy, keeps the source draft, and refuses stale revisions and the original file', async () => {
+    const f = fixture()
+    const original = join(f.root, 'note.txt')
+    const recovered = join(f.root, 'note.recovered.txt')
+    writeFileSync(original, 'disk baseline')
+    const writer = client(f.path)
+    await writer.apply([put('unsaved\r\n😀', metadata(original))])
+    expect(await writer.export('buffer', 1, recovered)).toBe(recovered)
+    expect(readFileSync(recovered, 'utf8')).toBe('unsaved\r\n😀')
+    expect((await writer.read('buffer'))?.content).toBe('unsaved\r\n😀')
+    await expect(writer.export('buffer', 1, original)).rejects.toThrow('separate file')
+    await writer.apply([{ ...put('newer', metadata(original)), expectedRevision: 1 }])
+    await expect(writer.export('buffer', 1, recovered)).rejects.toThrow('draft changed')
+    expect(readFileSync(original, 'utf8')).toBe('disk baseline')
+    expect(readFileSync(recovered, 'utf8')).toBe('unsaved\r\n😀')
+  })
+
+  it('migrates per profile, keeps source sessions intact, and does not replay retired versioned snapshots', async () => {
+    const f = fixture()
+    const legacy = {
+      ...getDefaultWorkspaceSession(),
+      openFilesByWorktree: {
+        wt: [{ ...metadata(), worktreeId: 'wt', dirtyDraftContent: 'legacy draft' }]
+      }
+    }
+    const serialized = JSON.stringify(legacy)
+    const service = new EditorRecoveryService(
+      {
+        getProfileStorageDirectory: () => f.root,
+        getWorkspaceSessionHostIds: () => ['local'],
+        getWorkspaceSession: () => legacy
+      },
+      (path) => client(path)
+    )
+    const restored = await service.restoreSession(legacy)
+    const writer = await service.ready()
+    const imported = (await writer.list())[0]
+    if (!imported) {
+      throw new Error('Legacy draft was not migrated')
+    }
+    expect(restored.openFilesByWorktree?.wt?.[0]).toMatchObject({
+      dirtyDraftContent: 'legacy draft',
+      recoveryId: imported.id,
+      recoveryRevision: 1
+    })
+    expect(JSON.stringify(legacy)).toBe(serialized)
+    const otherProfile = client(join(f.root, 'other-profile', 'editor-recovery.sqlite'))
+    expect(await otherProfile.list()).toEqual([])
+    await writer.apply([{ kind: 'resolve', id: imported.id, expectedRevision: 1 }])
+    const clean = await service.restoreSession(restored)
+    expect(clean.openFilesByWorktree?.wt?.[0]?.dirtyDraftContent).toBeUndefined()
+    expect((await writer.status([imported.id]))[0]?.state).toBe('resolved')
+    await writer.apply([
+      { kind: 'resolve', id: 'saved-before-first-checkpoint', expectedRevision: 0 }
+    ])
+    const unacknowledged = {
+      ...legacy,
+      openFilesByWorktree: {
+        wt: [
+          {
+            ...metadata(),
+            dirtyDraftContent: 'already saved',
+            recoveryId: 'saved-before-first-checkpoint'
+          }
+        ]
+      }
+    }
+    expect(
+      (await service.restoreSession(unacknowledged)).openFilesByWorktree?.wt?.[0]?.dirtyDraftContent
+    ).toBeUndefined()
+    await service.close()
+    const restarted = new EditorRecoveryService(
+      {
+        getProfileStorageDirectory: () => f.root,
+        getWorkspaceSessionHostIds: () => ['local'],
+        getWorkspaceSession: () => restored
+      },
+      (path) => client(path)
+    )
+    expect(
+      (await restarted.restoreSession(restored)).openFilesByWorktree?.wt?.[0]?.dirtyDraftContent
+    ).toBeUndefined()
+    expect(await (await restarted.ready()).list()).toEqual([])
+  })
+
+  it('rejects every pending caller when the worker exits, times out or sends an invalid acknowledgement', async () => {
+    for (const [index, behavior] of [
+      'process.exit(1)',
+      'setInterval(() => {}, 1000)',
+      'parentPort.postMessage({ requestId: request.requestId + 10, ok: true, result: [] })'
+    ].entries()) {
+      const f = fixture()
+      const entry = join(f.root, `fault-${index}.cjs`)
+      writeFileSync(
+        entry,
+        `const { parentPort } = require('node:worker_threads'); parentPort.on('message', request => { ${behavior} });`
+      )
+      const writer = client(f.path, entry, 100)
+      const outcomes = await Promise.allSettled([writer.list(), writer.read('buffer')])
+      expect(outcomes.map((outcome) => outcome.status)).toEqual(['rejected', 'rejected'])
+      expect(writer.isRunning).toBe(false)
+      await expect(writer.apply([put('still unsaved')])).rejects.toThrow()
+    }
+  })
+})

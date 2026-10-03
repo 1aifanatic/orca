@@ -103,6 +103,7 @@ export type SessionWriteSubscriberDeps = {
   }
   persist: (payload: WorkspaceSessionWrite) => void
   debounceMs?: number
+  maxWaitMs?: number
 } & SessionWritePersistGate
 
 /**
@@ -116,9 +117,11 @@ export function createSessionWriteSubscriber({
   persist,
   shouldSchedulePersist,
   subscribeToPersistGateOpen,
-  debounceMs = 150
+  debounceMs = 150,
+  maxWaitMs = 1_000
 }: SessionWriteSubscriberDeps): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null
+  let firstPendingAt: number | null = null
   // Why: the subscriber fires on every store update (agent status, usage
   // refreshes, runtime title ticks, …). Without this gate each fire reset
   // the debounce, and when it finally expired buildWorkspaceSessionPayload
@@ -161,6 +164,7 @@ export function createSessionWriteSubscriber({
     }
     const changed = new Set(pendingChangedFields)
     pendingChangedFields.clear()
+    firstPendingAt = null
     const patch = buildWorkspaceSessionPatch(fresh, changed)
     if (Object.keys(patch).length === 0) {
       return
@@ -169,10 +173,14 @@ export function createSessionWriteSubscriber({
   }
 
   const armFlushTimer = (): void => {
+    firstPendingAt ??= Date.now()
     if (timer !== null) {
       clearTimeout(timer)
     }
-    timer = setTimeout(flushPendingWrite, debounceMs)
+    timer = setTimeout(
+      flushPendingWrite,
+      Math.max(0, Math.min(debounceMs, maxWaitMs - (Date.now() - firstPendingAt)))
+    )
   }
 
   /**
