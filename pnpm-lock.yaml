@@ -173,7 +173,7 @@ patchedDependencies:
   '@xterm/addon-serialize@0.15.0-beta.300': b35533fe252e7e45433150170348889f4e08a6c17f7017ac34ea694d831fec7f
   '@xterm/addon-webgl@0.20.0-beta.299': 94687e89a0115e6e6aa102837f986debdc029c091527ee5eb4a4e17ceaf9473e
   '@xterm/xterm@6.1.0-beta.303': dd0ccc59cd1ccf99f4d76e5aa2456da165fa0804dce19a833d7638bd07ffa393
-  i18next-cli@1.74.2: 7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207
+  i18next-cli@1.74.4: 7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207
   lint-staged@16.4.0: 7333b3837f80a7fbd045964db6d76ba4fc118e49134bdbabb00585b6b7b60673
   node-pty@1.1.0: 92c95cffab383d86b3b13a460c75a08074468ebf1f3911db8e874e083201f192
 
@@ -462,8 +462,8 @@ importers:
         specifier: ^9.1.7
         version: 9.1.7
       i18next-cli:
-        specifier: 1.74.2
-        version: 1.74.2(patch_hash=7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)
+        specifier: 1.74.4
+        version: 1.74.4(patch_hash=7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)
       katex:
         specifier: ^0.16.47
         version: 0.16.47
@@ -5531,8 +5531,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  i18next-cli@1.74.2:
-    resolution: {integrity: sha512-y32hOiVNLs85f+TKCl4XqERjD0dFy274IOEXe7/Zyp+WMaQC9VhF33JLO0hQZZKK4PUmYwbRDXaSObeE3PbsmA==}
+  i18next-cli@1.74.4:
+    resolution: {integrity: sha512-VsgKIo5bVfInXelzqHFRWIORODU/MBO4LrpOUNxAAMvKWUewejYzu09JC8jrC24ezaPh4hAX65pPknmnBWqeDw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -12755,7 +12755,7 @@ snapshots:
 
   husky@9.1.7: {}
 
-  i18next-cli@1.74.2(patch_hash=7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2):
+  i18next-cli@1.74.4(patch_hash=7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207)(@types/node@25.9.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2):
     dependencies:
       '@croct/json5-parser': 0.2.2
       '@swc/core': 1.16.2

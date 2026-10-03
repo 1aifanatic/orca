@@ -1,65 +1,33 @@
-name: pnpm verification cache pilot
-
+name: i18next extraction comparison
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
   measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          node-version: '24'
+      - name: Prepare patched 1.74.2 baseline
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          mkdir -p node_modules/.orca-i18next-before
+          curl -fsSL https://registry.npmjs.org/i18next-cli/-/i18next-cli-1.74.2.tgz -o "$RUNNER_TEMP/i18next-before.tgz"
+          tar -xzf "$RUNNER_TEMP/i18next-before.tgz" --strip-components=1 -C node_modules/.orca-i18next-before
+          patch -p1 -d node_modules/.orca-i18next-before < config/patches/i18next-cli@1.74.4.patch
+      - name: Verify localization contracts
+        run: pnpm test config/scripts/localization-extraction-call-syntax.test.mjs config/scripts/verify-localization-extraction.test.mjs config/scripts/localization-package-contract.test.mjs config/scripts/localization-extraction-change-scope.test.mjs
+      - name: Compare extraction on the static-analysis runner
+        run: node config/scripts/ci-i18next-extraction-benchmark.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: i18next-extraction-comparison
+          path: i18next-extraction-comparison.json
