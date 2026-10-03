@@ -229,6 +229,14 @@ export async function branchCompare(
     return { summary, entries: [] }
   }
 
+  // Git must confirm equal raw tips are the same commit before skipping the reads.
+  if (baseOid === headOid && mergeBase === headOid) {
+    summary.commitsAhead = 0
+    summary.commitsBehind = 0
+    summary.status = 'ready'
+    return { summary, entries: [] }
+  }
+
   try {
     const [entries, { stdout: countOut }] = await Promise.all([
       loadBranchChanges(mergeBase, headOid),
