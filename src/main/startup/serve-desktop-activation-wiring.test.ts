@@ -64,10 +64,8 @@ describe('serve desktop activation wiring', () => {
 
   it('publishes the named headless sentinel and only enables promotion after RPC is ready', () => {
     const serveIndex = runtimeSource.indexOf('async function launchServeMode(')
-    const sentinelIndex = runtimeSource.indexOf(
-      'runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID',
-      serveIndex
-    )
+    // The shared publisher sends the named HEADLESS_RUNTIME_WINDOW_ID sentinel.
+    const sentinelIndex = runtimeSource.indexOf('publishHeadlessRuntimeGraph(runtime)', serveIndex)
     const rpcIndex = runtimeSource.indexOf('await runtimeRpc.start()', serveIndex)
     const settleIndex = runtimeSource.indexOf('settleDesktopActivation()', rpcIndex)
 

@@ -50,7 +50,8 @@ export function probeTcpForwarding(
           settle('allowed')
           return
         }
-        const reason: unknown = Reflect.get(error, 'reason')
+        // ssh2 copies the channel-open failure code onto the error as `reason`.
+        const reason = 'reason' in error && typeof error.reason === 'number' ? error.reason : null
         settle(
           reason === ADMINISTRATIVELY_PROHIBITED
             ? 'refused'
