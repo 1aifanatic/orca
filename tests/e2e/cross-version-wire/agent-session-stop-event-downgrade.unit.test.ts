@@ -24,10 +24,10 @@ import { importReleaseCheckoutModule, materializeReleaseCheckout } from './relea
 // make it delete the journal from that row on, so both ride a tombstone it already reads.
 const BASELINE_REF = 'v1.4.218'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
-// A main build that shares this one's host database at the schema version before 5. Version 5 added
-// each chat's stored status, so this build's database opens read-only there. Once a build at
-// version 5 exists, pin it here and assert the writable round trip again.
-const OLDER_SCHEMA_BASELINE_REF = '3727100cc9dbcea6201f8a3e506676a3c4b53b18'
+// A release that shares this one's host database at a schema version before 5. Version 5 added each
+// chat's stored status, so this build's database opens read-only there. Once a release at version
+// 5 exists, pin it here and assert the writable round trip again.
+const OLDER_SCHEMA_BASELINE_REF = 'v1.4.219'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-downgrade',
