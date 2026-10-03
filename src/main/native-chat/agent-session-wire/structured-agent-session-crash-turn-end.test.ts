@@ -38,6 +38,7 @@ import {
 } from './structured-agent-session-adapter'
 import { resettleOpenStructuredAgentSessionConversation } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { withNativeChatCutTurnNotices } from '../../../shared/native-chat-cut-turn-notice'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
@@ -223,7 +224,10 @@ describe('a turn a crash cut short mid-tool', () => {
     await host.restoreReadableSessions()
 
     const { items } = await host.journalSnapshot(SESSION)
-    const statusRows = items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
+    // As a reader's transcript shows it: the stored row is the explanation, so none is derived.
+    const statusRows = withNativeChatCutTurnNotices(items, { agentName: 'Claude' }).flatMap(
+      (item) => (item.body.kind === 'status' ? [item.body] : [])
+    )
     expect(statusRows).toEqual([
       expect.objectContaining({
         text: 'Claude stopped while this response was in progress. You can continue in this conversation.',

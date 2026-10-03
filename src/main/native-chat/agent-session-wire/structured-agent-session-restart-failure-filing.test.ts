@@ -9,6 +9,7 @@ import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structur
 import {
   interruptedRestart,
   QUIT_CUT_NOTICE,
+  readerNotes,
   statusNotes
 } from './structured-agent-session-restart-interruption-test-harness'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
@@ -43,7 +44,9 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
   const capsule = new AgentSessionRecoveryCapsule(root)
   expect(await capsule.listFailed(NOW)).toEqual([])
   expect(await capsule.list(NOW)).toEqual([])
-  expect(await statusNotes(host)).toEqual(QUIT_CUT_NOTICE)
+  expect(await statusNotes(host)).toEqual([])
+  // No note took over, so the cut turn keeps its one notice.
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
 })
 
 // The continuation is accepted and its agent then fails to start: the message is rejected with the
@@ -52,6 +55,8 @@ it('says so in the chat when the agent cannot start for the continuation', async
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
   acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
+  // Before the action, the quit's cut reads with its one notice.
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
 
   await host.restartResume.continueAfterRestart([SESSION], 'modal')
 
@@ -62,6 +67,8 @@ it('says so in the chat when the agent cannot start for the continuation', async
     text: AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
     tone: 'error'
   })
+  // The refusal note is now the one explanation: the cut is not said a second time beside it.
+  expect(await readerNotes(host)).toEqual(await statusNotes(host))
 })
 
 // A send that throws after Orca may have taken it cannot be proven undelivered: filed unconfirmed,

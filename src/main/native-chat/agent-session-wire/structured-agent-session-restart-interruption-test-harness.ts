@@ -1,4 +1,8 @@
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalRenderItem
+} from '../../../shared/agent-session-journal-types'
+import { withNativeChatCutTurnNotices } from '../../../shared/native-chat-cut-turn-notice'
 // A chat interrupted mid-turn by a restart, rebuilt on a fresh host over the same store, for the
 // restart-resume ownership and failure tests.
 
@@ -160,18 +164,29 @@ export async function interruptedRestart(
   return { ...hostTestState(), host, store, log, closeSession, marker, clock }
 }
 
-/** The one row the quit wrote for the turn it cut; a continuation that fails nothing adds none. */
-export const QUIT_CUT_NOTICE = [
-  {
-    text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
-    tone: 'error'
-  }
-]
-
 export async function statusNotes(host: StructuredAgentSessionHost) {
-  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+  return notesOf((await host.journalSnapshot(SESSION)).items)
+}
+
+/** The notes a reader's transcript shows, the cut turn's derived notice included. */
+export async function readerNotes(host: StructuredAgentSessionHost) {
+  return notesOf(
+    withNativeChatCutTurnNotices((await host.journalSnapshot(SESSION)).items, {
+      agentName: 'Codex'
+    })
+  )
+}
+
+function notesOf(items: readonly AgentJournalRenderItem[]) {
+  return items.flatMap((item) =>
     item.body.kind === 'status' ? [{ text: item.body.text, tone: item.body.tone }] : []
   )
+}
+
+/** The one row the quit's cut turn reads with when nothing else explains it. */
+export const QUIT_CUT_NOTICE = {
+  text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
+  tone: 'error'
 }
 
 /** A continuation the host refuses because the user's own message was accepted first: another

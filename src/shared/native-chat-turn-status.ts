@@ -42,8 +42,8 @@ export function describeNativeChatTurnStatus({
   workedSeconds?: number | null
   elapsedSeconds: number
   /** How the settled turn ended: a user's Stop or a newer request's replacement reads interrupted,
-   *  and a failure reads failed. A turn a crash or restart cut off reads like a finished one: the
-   *  chat's own notice row is what says it stopped. */
+   *  and a failure reads failed. A turn cut short when the agent stopped without anyone asking (a
+   *  crash, a quit, an eviction) reads like a finished one: the chat's notice row says it stopped. */
   verdict?: AgentTurnOutcome
 }): {
   key: 'workingFor' | 'workedFor' | 'interruptedAfter' | 'failedAfter'

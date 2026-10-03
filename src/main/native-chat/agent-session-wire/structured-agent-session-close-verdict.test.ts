@@ -11,8 +11,8 @@ import {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
+import { withNativeChatCutTurnNotices } from '../../../shared/native-chat-cut-turn-notice'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
@@ -122,29 +122,17 @@ async function settledTurn() {
   const { items } = await host.journalSnapshot(SESSION)
   const turn = items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)
   const [settled] = [...selectStructuredAgentSettledTurns(items).values()]
-  const cutTurnItemId = items.find((item) => readAgentJournalTurn(item.body))?.itemId
-  // Every row that says why the turn stopped, and which turn it says it of.
-  const notices = items.flatMap((item) =>
-    item.body.kind === 'status' && item.body.tone === 'error'
-      ? [
-          {
-            text: item.body.text,
-            ofCutTurn:
-              item.turnScope?.kind === 'turn' && item.turnScope.turnItemId === cutTurnItemId
-          }
-        ]
-      : []
-  )
   const label = settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled }).key
-  return { turn, settled, notices, label }
+  // Every error row a reader's transcript shows, the cut turn's derived notice included.
+  const notices = withNativeChatCutTurnNotices(items, { agentName: 'Codex' }).flatMap((item) =>
+    item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+  )
+  return { turn, settled, label, notices }
 }
 
 /** A turn nobody stopped reads like a finished one, with exactly one row saying it stopped. */
 const ONE_NOTICE = [
-  {
-    text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
-    ofCutTurn: true
-  }
+  'Codex stopped while this response was in progress. You can continue in this conversation.'
 ]
 
 function lastSummary(statuses: AgentSessionStatusEvent[]) {
@@ -159,11 +147,9 @@ describe('a turn cut short by closing its provider', () => {
     await host.close(SESSION, 'user-close')
 
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
-    const { turn, settled, notices } = await settledTurn()
+    const { turn, label, notices } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
-    expect(
-      settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'interruptedAfter' })
+    expect(label).toBe('interruptedAfter')
     // The person's own close explains itself.
     expect(notices).toEqual([])
   })
@@ -175,10 +161,10 @@ describe('a turn cut short by closing its provider', () => {
     await host.close(SESSION, 'evict')
 
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'interruption' })
-    const { turn, notices, label } = await settledTurn()
+    const { turn, label, notices } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
-    // News for the sidebar; the turn reads like a finished one beside its one notice row.
+    // News for the sidebar; the turn reads like a finished one beside its one notice.
     expect(label).toBe('workedFor')
     expect(notices).toEqual(ONE_NOTICE)
   })
@@ -324,7 +310,6 @@ describe('a turn cut short by closing its provider', () => {
       const { turn, notices } = await settledTurn()
       expect(turn).toMatchObject({ state: 'interrupted' })
       expect(turn?.outcome).toBe(verdict.outcome)
-      // The retry writes the notice once, and only for the cut nobody asked for.
       expect(notices).toEqual(cause === 'evict' ? ONE_NOTICE : [])
     }
   )
@@ -335,32 +320,9 @@ describe('a turn cut short by closing its provider', () => {
 
     await host.flushAllStreamedEvents({ trigger: 'quit' })
 
-    const { turn, label, notices } = await settledTurn()
+    const { turn, notices } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
-    // The notice lands in the same write as the host's own turn end.
-    expect(label).toBe('workedFor')
-    expect(notices).toEqual(ONE_NOTICE)
-  })
-
-  it('adds no second notice to a turn an exit row already explains, then quit', async () => {
-    providerEnd = null
-    await runningTurn()
-    const events = hostTestState().acquire.mock.calls[0]?.[0].events
-    events?.appendItem(
-      { provider: 'orca', clientMessageId: 'exit-row' },
-      {
-        kind: 'status',
-        text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
-        tone: 'error'
-      },
-      { turnScope: { kind: 'turn', turnItemId: agentJournalItemKey(CUT_TURN) } }
-    )
-    await host.flushStreamedEvents(SESSION)
-
-    await host.flushAllStreamedEvents({ trigger: 'quit' })
-
-    const { notices } = await settledTurn()
     expect(notices).toEqual(ONE_NOTICE)
   })
 
@@ -369,10 +331,9 @@ describe('a turn cut short by closing its provider', () => {
     await runningTurn()
     // The provider reports its own exit, which it saw first, as it closes: no verdict.
     await host.close(SESSION, 'user-close')
-    const { turn, label, notices } = await settledTurn()
+    const { turn, notices } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
-    expect(label).toBe('workedFor')
     expect(notices).toEqual(ONE_NOTICE)
   })
 

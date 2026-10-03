@@ -124,13 +124,11 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
-  /** A host stop nobody asked for (quit, eviction): the one notice row for the turn it cut. */
-  stopCutNotice?: JournalLifecycleMutationInput | null
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
-    if (!showUnexpectedExitOutcome && !hasUnfinishedWork && !input.stopCutNotice) {
+    if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return { ok: true }
     }
     // A queued message is the delivery loop's to settle: it was never handed to this child. A
@@ -174,9 +172,6 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         },
         turnScope: exitedRootTurnScope(items, input.verdict)
       })
-    }
-    if (input.stopCutNotice) {
-      mutations.push(input.stopCutNotice)
     }
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)

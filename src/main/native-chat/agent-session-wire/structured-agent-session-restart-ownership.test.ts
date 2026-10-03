@@ -17,7 +17,6 @@ import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structur
 import {
   interruptedRestart,
   startAgent,
-  QUIT_CUT_NOTICE,
   statusNotes,
   supersededRefusal
 } from './structured-agent-session-restart-interruption-test-harness'
@@ -362,7 +361,7 @@ it("refuses a continuation quietly when the user's own message was accepted firs
     failed: []
   })
   await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
-  expect(await statusNotes(host)).toEqual(QUIT_CUT_NOTICE)
+  expect(await statusNotes(host)).toEqual([])
   expect(await new AgentSessionRecoveryCapsule(root).list(NOW)).toEqual([])
   expect(await new AgentSessionRecoveryCapsule(root).listFailed(NOW)).toEqual([])
 })
