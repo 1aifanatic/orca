@@ -302,7 +302,7 @@ describe('a Codex send a Codex hook blocked', () => {
   it('keeps a long or marked-up reason plain and bounded, never splitting a character', async () => {
     await runningTurn()
     const followUp = await steered('and check the tests')
-    const reason = `<b>Denied</b>\n**by policy**\u0007‮؜ ${'x'.repeat(268)}\u{1F600}${'y'.repeat(40)}`
+    const reason = `<b>Denied</b>\n**by policy**${String.fromCharCode(0x07, 0x202e, 0x061c)} ${'x'.repeat(270)}${String.fromCodePoint(0x1f600)}${'y'.repeat(40)}`
     hookBlocked('turn-1', 'stopped', [{ kind: 'stop', text: reason }])
     turns.end('completed')
 
