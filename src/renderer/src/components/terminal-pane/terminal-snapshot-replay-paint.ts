@@ -61,15 +61,11 @@ export function shouldSkipAltFrameForWidthMismatch(
   return snapshotCols > targetCols
 }
 
-/** First write of a replay that starts on the normal buffer; CAN aborts a control string the gap truncated. */
-export function buildNormalBufferSnapshotPreamble(args: {
-  paneOnAlternateScreen: boolean
-  keepScrollback?: boolean
-}): string {
-  return `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue({
-    targetAlternateScreen: false,
-    ...args
-  })}`
+/** First write of a snapshot replay; CAN aborts a control string the gap truncated. */
+export function buildSnapshotReplayPreamble(
+  args: Parameters<typeof buildSnapshotReplayPrologue>[0]
+): string {
+  return `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue(args)}`
 }
 
 /**
@@ -107,7 +103,10 @@ export function buildMainModelSnapshotReplayWrites(
   // the restored history would paint into the alt buffer, looking right while
   // scrollback stays empty (STA-4042). An image carrying its normal buffer
   // enters alt itself, so it needs the same start.
-  const normalPreamble = buildNormalBufferSnapshotPreamble({ paneOnAlternateScreen })
+  const normalPreamble = buildSnapshotReplayPreamble({
+    targetAlternateScreen: false,
+    paneOnAlternateScreen
+  })
   if (!snapshot.alternateScreen || snapshot.carriesNormalBuffer) {
     return [normalPreamble, snapshot.data]
   }
@@ -125,5 +124,8 @@ export function buildMainModelSnapshotReplayWrites(
   }
   // Why the prologue clears: `?1049h` does not clear the alt buffer, so the
   // pre-hide frame would bleed through the snapshot's blank cells.
-  return [`${ABORT_TRUNCATED_CONTROL_STRING}${altPrologue(paneOnAlternateScreen)}`, ...altFrame]
+  return [
+    buildSnapshotReplayPreamble({ targetAlternateScreen: true, paneOnAlternateScreen }),
+    ...altFrame
+  ]
 }
