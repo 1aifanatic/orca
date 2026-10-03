@@ -293,6 +293,20 @@ describe('withNativeChatCutTurnNotices', () => {
     expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
   })
 
+  // Read before the startup reconcile, the cut settled unverifiable; the user sent u2; the reconcile
+  // then proved the old owner dead and wrote its row about the conversation after u2. That row is
+  // about the cut, not the send, so it stays the one explanation.
+  it("takes an owner's proven death as the explanation of the cut though a message was sent since", () => {
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      reply('a1', inTurn('t1')),
+      user('u2'),
+      exitRow('stale-session:s:death-3-2000', THREAD)
+    ]
+    expect(withNativeChatCutTurnNotices(items)).toBe(items)
+  })
+
   it("does not take a failed start's row as the explanation of an earlier cut", () => {
     const items = [
       user('u1'),

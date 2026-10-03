@@ -22,9 +22,6 @@ import {
 import { isStructuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row-key'
 import { hostStatesTurnScopes } from './native-chat-turn-membership'
 
-/** Host rows that already say why a turn stopped: a provider exit, and a dead owner found on reopen. */
-const STOP_EXPLAINING_ROWS = [PROVIDER_EXIT_ROW_PREFIX, STALE_SESSION_ROW_PREFIX]
-
 const CUT_TURN_NOTICE_ROW = 'cut-turn-notice:'
 
 type CutTurnNoticeContext = Pick<AgentSessionFailureWordsContext, 'agentName'>
@@ -45,10 +42,13 @@ function isCutRootTurn(item: AgentJournalRenderItem): boolean {
 
 /** What a row says about a stop, matched by what it states or who wrote it, never its tone alone:
  *  an agent's own error row in the turn (a denied permission, a refusal) says nothing about the stop.
- *  `exit`: the agent stopped. `not-continued`: a resume after a restart did not carry the chat on,
+ *  `exit`: the agent stopped. `owner-death`: a reopen proved the old agent dead, which is about the
+ *  cut whatever was sent since. `not-continued`: a resume after a restart did not carry the chat on,
  *  which the restart note marks with a tone ('error' refused or not connected, 'warning' unconfirmed);
  *  a continuation that went on writes its note with none. A failed start's row is about a start. */
-function stopExplanation(item: AgentJournalRenderItem): 'exit' | 'not-continued' | null {
+function stopExplanation(
+  item: AgentJournalRenderItem
+): 'exit' | 'owner-death' | 'not-continued' | null {
   if (
     item.body.kind !== 'status' ||
     readAgentJournalTurn(item.body) ||
@@ -56,15 +56,15 @@ function stopExplanation(item: AgentJournalRenderItem): 'exit' | 'not-continued'
   ) {
     return null
   }
-  if (readAgentSessionFailureFact(item.body.failure)?.kind === 'providerExited') {
-    return 'exit'
-  }
   const identity = parseAgentJournalItemKey(item.itemId)
-  if (identity?.provider !== 'orca') {
-    return null
+  const clientMessageId = identity?.provider === 'orca' ? identity.clientMessageId : ''
+  if (clientMessageId.startsWith(STALE_SESSION_ROW_PREFIX)) {
+    return 'owner-death'
   }
-  const { clientMessageId } = identity
-  if (STOP_EXPLAINING_ROWS.some((prefix) => clientMessageId.startsWith(prefix))) {
+  if (
+    readAgentSessionFailureFact(item.body.failure)?.kind === 'providerExited' ||
+    clientMessageId.startsWith(PROVIDER_EXIT_ROW_PREFIX)
+  ) {
     return 'exit'
   }
   const { tone } = item.body
@@ -78,20 +78,21 @@ function stopExplanation(item: AgentJournalRenderItem): 'exit' | 'not-continued'
  * The cut turns some row already explains: one scoped to the turn, or one about the conversation
  * (or from a host that states no scope) that follows the cut turn closely enough to be about it.
  * An exit row is about the cut only with no message sent since, which a later start would be
- * answering; a restart note follows the continuation's own message, so only a turn between counts.
+ * answering. An owner's proven death, and a restart note that follows the continuation's own
+ * message, are about the cut until another turn begins.
  */
 function explainedCutTurns(items: readonly AgentJournalRenderItem[]): Set<string> {
   const explained = new Set<string>()
-  let cutBeforeExit: string | null = null
-  let cutBeforeRestartNote: string | null = null
+  let cutNoSendSince: string | null = null
+  let cutNoTurnSince: string | null = null
   for (const item of items) {
     const verdict = rootTurnVerdict(item)
     if (verdict !== 'none') {
-      cutBeforeExit = cutBeforeRestartNote = verdict === 'interruption' ? item.itemId : null
+      cutNoSendSince = cutNoTurnSince = verdict === 'interruption' ? item.itemId : null
       continue
     }
     if (item.body.kind === 'message' && item.body.role === 'user' && isRootAgentJournalItem(item)) {
-      cutBeforeExit = null
+      cutNoSendSince = null
       continue
     }
     const explanation = stopExplanation(item)
@@ -99,7 +100,7 @@ function explainedCutTurns(items: readonly AgentJournalRenderItem[]): Set<string
       continue
     }
     const scope = item.turnScope
-    const preceding = explanation === 'exit' ? cutBeforeExit : cutBeforeRestartNote
+    const preceding = explanation === 'exit' ? cutNoSendSince : cutNoTurnSince
     if (scope?.kind === 'turn') {
       explained.add(scope.turnItemId)
     } else if (preceding !== null) {
