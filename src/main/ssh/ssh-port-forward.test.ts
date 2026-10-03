@@ -53,10 +53,11 @@ function createSystemSshConn() {
   }
 }
 
-function createFakeSystemSshForward() {
+function createFakeSystemSshForward(localPort = 3000) {
   const process = Object.assign(new EventEmitter(), { stderr: new EventEmitter() })
   return {
     process,
+    localPort,
     waitForStartup: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     dispose: vi.fn()
@@ -175,6 +176,16 @@ describe('SshPortForwardManager', () => {
       remotePort: 8080
     })
     expect(manager.listForwards('conn-1')).toHaveLength(1)
+  })
+
+  it('reports the port a system SSH forward resolved when asked for port 0', async () => {
+    startSystemSshPortForwardProcessMock.mockReturnValue(createFakeSystemSshForward(49800))
+    const conn = createSystemSshConn()
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock implements the system-SSH surface the provider reads.
+    const entry = await manager.addForward('conn-1', conn as never, 0, '127.0.0.1', 6768)
+
+    expect(entry.localPort).toBe(49800)
   })
 
   it('passes resolved OpenSSH config to system SSH port forwards', async () => {
