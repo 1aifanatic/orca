@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
-import { chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readFile, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -49,6 +49,12 @@ type MaterializeOptions = PinnedRuntimeMaterializeOptions & {
 }
 
 const materializations = new Map<string, Promise<string>>()
+// Slots handed out this session: a deploy may still be reading one, so cache retention keeps them.
+const materializedVersions = new Set<string>()
+
+export function materializedOrcadArtifactVersions(): ReadonlySet<string> {
+  return materializedVersions
+}
 
 /** A verified slot directory for `target`; its runtime is referenced, not included (design D2). */
 export async function materializeOrcadArtifact(
@@ -88,7 +94,11 @@ export async function assembleOrcadArtifact(args: {
     (path) => isCompleteArtifact(path, fullVersion, sources, sourceHashes)
   )
   const targetDir = cached.path
+  materializedVersions.add(fullVersion)
   if (cached.verified) {
+    // Retention evicts by recency, so a reused slot counts as recently used.
+    const now = new Date()
+    await utimes(targetDir, now, now).catch(() => undefined)
     return targetDir
   }
   await mkdir(targetRoot, { recursive: true })
