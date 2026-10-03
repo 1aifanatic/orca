@@ -17471,7 +17471,8 @@
         "providerRateLimited": "{{agent}} est limité en débit et réessaie.",
         "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
         "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}.",
-        "previousExitUnverifiable": "Orca n'a pas pu confirmer que le processus précédent de {{agent}} s'est arrêté. Les messages attendent d'être envoyés jusqu'à ce qu'Orca confirme son arrêt."
+        "previousExitUnverifiable": "Orca n'a pas pu confirmer que le processus précédent de {{agent}} s'est arrêté. Les messages attendent d'être envoyés jusqu'à ce qu'Orca confirme son arrêt.",
+        "reviewReplyFailed": "Orca n'a pas pu marquer comme en cours de correction les commentaires de revue envoyés avec ce message. Résolvez-les ou répondez-y vous-même."
       },
       "writeNotice": {
         "notDoneReadHistory": "L'historique de ce chat n'a pas pu être chargé.",

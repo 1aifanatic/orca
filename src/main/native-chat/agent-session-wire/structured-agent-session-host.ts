@@ -67,7 +67,10 @@ export class StructuredAgentSessionHost {
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
     logger: sessionLogger.deferredStructuredAgentSessionLogger(() => this.deps.logger),
-    onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
+    onOpened: (sessionId) => {
+      this.queued.drain.schedule(sessionId)
+      this.clientDelivery.observeReviewReplies(sessionId)
+    },
     now: () => this.now()
   })
   private readonly queued = wireStructuredAgentSessionQueuedMessages(this.sessions, () =>
