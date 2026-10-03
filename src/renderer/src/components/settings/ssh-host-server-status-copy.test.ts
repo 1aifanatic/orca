@@ -48,4 +48,24 @@ describe('SSH host server status line', () => {
       )?.text
     ).toContain('native_preflight')
   })
+
+  it('says plainly when the host refuses the port forwarding a managed server needs', () => {
+    const live = sshHostServerStatusLine(plain, {
+      managedServer: {
+        kind: 'relay',
+        reason: 'orcad_unavailable',
+        detail: 'tcp_forwarding_refused'
+      }
+    })
+    const recorded = sshHostServerStatusLine(
+      { managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.5.0' } },
+      undefined
+    )
+    for (const line of [live, recorded]) {
+      expect(line).toMatchObject({
+        tone: 'warning',
+        text: expect.stringContaining('doesn’t allow port forwarding')
+      })
+    }
+  })
 })

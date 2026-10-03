@@ -86,6 +86,7 @@ function createFakeSocket(): FakeSocket {
 }
 
 function createFakeServer() {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fields are assigned on the next lines, before the server is returned.
   const server = new EventEmitter() as EventEmitter & {
     listen: ReturnType<typeof vi.fn>
     close: ReturnType<typeof vi.fn>

@@ -24,6 +24,8 @@ vi.mock('../../shared/app-environment', () => ({
 }))
 vi.mock('../ssh/ssh-target-registry', () => ({
   getSshTargetRegistryStore: () => mocks.registry.current,
+  // A system-SSH-shaped connection: no ssh2 client, so the forwarding probe is unverifiable.
+  getSshConnectionManager: () => ({ connect: async () => ({ getClient: () => null }) }),
   hasRegisteredDirectSshAuthority: () => false
 }))
 vi.mock('../ssh/orcad-runtime-deployment', () => ({ createManagedOrcadEnvironment: mocks.deploy }))

@@ -15,9 +15,13 @@ import { createManagedOrcadEnvironment } from '../ssh/orcad-runtime-deployment'
 import type { HostServerOnConnectDeps } from '../ssh/ssh-host-server-on-connect'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import {
+  getSshConnectionManager,
   getSshTargetRegistryStore,
   hasRegisteredDirectSshAuthority
 } from '../ssh/ssh-target-registry'
+import { probeTcpForwarding } from '../ssh/ssh-tcp-forwarding-probe'
+import { releaseUnreachableOrcadSetup } from '../ssh/orcad-unreachable-setup-release'
+import { ORCAD_MANAGED_REMOTE_PORT } from '../../shared/orcad-managed-runtime'
 import { getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState } from './ssh-renderer-broadcast'
 import { disconnectRegisteredSshTarget } from './ssh-session-teardown'
@@ -108,6 +112,15 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         isDestinationRegistered: isRegistered
       })
     },
+    probeTcpForwarding: async (target) =>
+      probeTcpForwarding(
+        await getSshConnectionManager()!.connect(target),
+        ORCAD_MANAGED_REMOTE_PORT
+      ),
+    isFencedBeforeStaging: (target) =>
+      findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)?.phase === 'source-fenced',
+    releaseUnreachableSetup: (target) =>
+      releaseUnreachableOrcadSetup({ userDataPath, claims, targetId: target.id }),
     progress: (target, phase) => {
       setSshHostServerStatus(target.id, { kind: 'setting-up', phase })
       broadcastSshState(getCurrentMainWindow, target.id, {

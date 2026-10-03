@@ -25,6 +25,9 @@ function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnCon
     deploy: vi.fn(async () => ({ outcome: 'created' as const, environment, activeVersion: '1' })),
     convert: vi.fn(async () => ({ outcome: 'converted' as const, environment, migrationId: 'm' })),
     progress: vi.fn(),
+    probeTcpForwarding: vi.fn(async () => 'allowed' as const),
+    isFencedBeforeStaging: () => false,
+    releaseUnreachableSetup: vi.fn(async () => undefined),
     ...overrides
   }
 }
@@ -186,5 +189,49 @@ describe('which server an SSH host runs on connect', () => {
     })
     expect(d.recordUnavailable).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('keeps a host whose sshd refuses forwarding on the relay, before any fence', async () => {
+    const d = deps({
+      isEmptyHost: () => true,
+      probeTcpForwarding: vi.fn(async () => 'refused' as const)
+    })
+    await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
+      route: 'relay',
+      reason: 'orcad_unavailable',
+      detail: 'tcp_forwarding_refused'
+    })
+    expect(d.recordUnavailable).toHaveBeenCalledWith(target, 'tcp_forwarding_refused')
+    expect(d.deploy).not.toHaveBeenCalled()
+    expect(d.convert).not.toHaveBeenCalled()
+  })
+
+  it('proceeds when the forwarding answer is unverifiable', async () => {
+    const d = deps({ probeTcpForwarding: vi.fn(async () => 'unverifiable' as const) })
+    await expect(resolveHostServerOnConnect(target, d)).resolves.toMatchObject({
+      route: 'managed'
+    })
+    expect(d.convert).toHaveBeenCalled()
+  })
+
+  it('releases a conversion stranded before staging when forwarding is refused', async () => {
+    const d = deps({
+      managedEnvironmentId: () => 'env-9',
+      isFencedBeforeStaging: () => true,
+      probeTcpForwarding: vi.fn(async () => 'refused' as const)
+    })
+    await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
+      route: 'relay',
+      reason: 'orcad_unavailable',
+      detail: 'tcp_forwarding_refused'
+    })
+    expect(d.releaseUnreachableSetup).toHaveBeenCalledWith(target)
+    expect(d.ensureTunnel).not.toHaveBeenCalled()
+  })
+
+  it('never probes an ordinary managed host on connect', async () => {
+    const d = deps({ managedEnvironmentId: () => 'env-9' })
+    await resolveHostServerOnConnect(target, d)
+    expect(d.probeTcpForwarding).not.toHaveBeenCalled()
   })
 })
