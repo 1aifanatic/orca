@@ -1,6 +1,7 @@
 import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
 import { WORKTREE_LISTING_SCOPE_NOTES } from './worktree-listing-scope-notes'
+import { WORKTREE_SET_COMMAND_SPEC } from './worktree-set'
 
 export const WORKTREE_COMMAND_SPECS: CommandSpec[] = [
   {
@@ -30,7 +31,7 @@ export const WORKTREE_COMMAND_SPECS: CommandSpec[] = [
     path: ['worktree', 'create'],
     summary: 'Create a new Orca-managed worktree',
     usage:
-      'orca worktree create --name <name> [--repo <selector>|--project <id> [--host <host-id>]|--project-host-setup <id>] [--agent <id>] [--prompt <text>] [--title <text>] [--setup run|skip|inherit] [--base-branch <ref>] [--issue <number>] [--linear-issue <identifier-or-url>] [--comment <text>] [--parent-worktree <selector>] [--no-parent] [--run-hooks] [--activate] [--json]',
+      'orca worktree create --name <name> [--repo <selector>|--project <id> [--host <host-id>]|--project-host-setup <id>] [--agent <id>] [--prompt <text>] [--title <text>] [--setup run|skip|inherit] [--base-branch <ref>] [--issue <number>] [--pr <number>] [--linear-issue <identifier-or-url>] [--gitlab-issue <number-or-url>] [--gitlab-mr <number-or-url>] [--comment <text>] [--parent-worktree <selector>] [--no-parent] [--run-hooks] [--activate] [--json]',
     allowedFlags: [
       ...GLOBAL_FLAGS,
       'repo',
@@ -43,7 +44,10 @@ export const WORKTREE_COMMAND_SPECS: CommandSpec[] = [
       'title',
       'base-branch',
       'issue',
+      'pr',
       'linear-issue',
+      'gitlab-issue',
+      'gitlab-mr',
       'comment',
       'setup',
       'parent-worktree',
@@ -63,11 +67,13 @@ export const WORKTREE_COMMAND_SPECS: CommandSpec[] = [
       'By default this creates the worktree and its first terminal without switching the active Orca view.',
       'Pass --agent to launch an agent in the first terminal; --prompt sends initial work to that agent.',
       '--title requires --agent and sets the launched terminal tab title, like terminal create --title. Omit it or pass an empty string to keep the automatic title.',
+
       'With --agent --json, read the new agent handle from result.agentTerminalHandle; older runtimes return only result.startupTerminal.handle, and may return neither for folder-based repos.',
-      'result.startupTerminal.title reports the title returned by terminal creation (null for automatic). Older runtimes omit this field and may ignore --title.',
+      'result.startupTerminal.title reports the title returned by terminal creation (null for automatic). Older runtimes omit this field and may ignore --title; result.warning reports an unconfirmed requested title after creation. Do not repeat worktree create to retry a title.',
       'Repo-defined setup hooks follow the repository setup policy; pass --setup run to force them.',
       'Pass --activate when the CLI caller intentionally wants to reveal the new worktree in the app.',
-      'Passing --run-hooks is kept as a legacy alias for --setup run and reveals the worktree.'
+      'Passing --run-hooks is kept as a legacy alias for --setup run and reveals the worktree.',
+      'Use --pr for GitHub pull requests; --gitlab-issue and --gitlab-mr write separate GitLab links. GitLab URLs must match the stored source project or remote; they cannot select a foreign project.'
     ],
     examples: [
       'orca worktree create --name agent-task --agent codex --prompt "hi" --json',
@@ -81,31 +87,7 @@ export const WORKTREE_COMMAND_SPECS: CommandSpec[] = [
       'orca worktree create --repo id:<repoId> --name independent-task --no-parent --json'
     ]
   },
-  {
-    path: ['worktree', 'set'],
-    summary: 'Update Orca metadata for a worktree',
-    usage:
-      'orca worktree set --worktree <selector> [--display-name <name>] [--issue <number|null>] [--linear-issue <identifier-or-url|null>] [--comment <text>] [--workspace-status <id>] [--parent-worktree <selector>|--no-parent] [--json]',
-    allowedFlags: [
-      ...GLOBAL_FLAGS,
-      'worktree',
-      'display-name',
-      'issue',
-      'linear-issue',
-      'comment',
-      'workspace-status',
-      'parent-worktree',
-      'no-parent'
-    ],
-    notes: [
-      'Workspace status ids match the board columns (defaults: todo, in-progress, in-review, completed); custom statuses use their configured id.',
-      'Pass --linear-issue null to clear the Linear issue link.'
-    ],
-    examples: [
-      'orca worktree set --worktree active --linear-issue STA-335 --json',
-      'orca worktree set --worktree active --linear-issue null --json'
-    ]
-  },
+  WORKTREE_SET_COMMAND_SPEC,
   {
     path: ['worktree', 'rm'],
     // Why: agents reach for git's `remove`/`delete` verbs; accept them as

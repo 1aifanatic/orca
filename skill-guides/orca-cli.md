@@ -73,6 +73,7 @@ Common commands:
 ORCA repo list --json
 ORCA repo show --repo id:<repoId> --json
 ORCA repo add --path /abs/repo --json
+ORCA repo set --repo id:<repoId> --external-worktree-visibility show --json
 ORCA repo set-base-ref --repo id:<repoId> --ref origin/main --json
 ORCA repo search-refs --repo id:<repoId> --query main --limit 10 --json
 ORCA worktree list --repo id:<repoId> --json
@@ -87,8 +88,16 @@ ORCA worktree create --name independent-task --no-parent --json
 ORCA worktree set --worktree id:<repoId>::<worktreePath> --display-name "My Task" --json
 ORCA worktree set --worktree active --comment "reproduced bug; testing fix" --json
 ORCA worktree set --worktree active --workspace-status in-review --json
+ORCA worktree set --worktree active --unread --json
+ORCA worktree create --repo id:<repoId> --name review-task --pr 123 --json
+ORCA worktree set --worktree active --gitlab-issue '#42' --gitlab-mr '!77' --json
+ORCA worktree set --worktree active --pr null --gitlab-mr null --json
 ORCA worktree rm --worktree id:<repoId>::<worktreePath> --force --json
 ```
+
+Use `repo set --external-worktree-visibility show` to show a repo's non-Orca worktrees.
+`hide` hides them; `inherit` clears the repo override and follows the global default.
+Per-worktree visibility rules still apply.
 
 Selectors:
 
@@ -118,7 +127,7 @@ ORCA worktree create --name task --run-hooks --json
 
 - `--agent <id>` launches that agent **in the first terminal** (Orca docs: _"`--agent` launches the selected agent in the first terminal"_); `--prompt <text>` sends initial work to it. Known ids include `claude`, `codex`, `omp`, `pi`, `grok`, and other installed TUI agents.
 - **Prefer agent-first create for agent workers.** `ORCA worktree create --agent <id> --prompt "..."` puts the agent in the first terminal with no extra fallback shell. Repo setup or default-terminal settings may still add tabs or splits. A bare create's fallback shell plus a later `terminal create --command <agent>` is the anti-pattern; use `--agent`. Configured default tabs are intentional; never close one without verifying it is an unused shell.
-- **Name the agent tab at launch.** Add `--title "Review tests"` with `--agent` to set the same persistent custom tab title as `terminal create --title`. Omit it or pass an empty string for the automatic title. `result.startupTerminal.title` reports the terminal creation title (`null` for automatic); older runtimes may ignore the flag and omit this field.
+- **Name the agent tab at launch.** Add `--title "Review tests"` with `--agent` to set the same persistent custom tab title as `terminal create --title`. Omit it or pass an empty string for the automatic title. `result.startupTerminal.title` reports the terminal creation title (`null` for automatic); older runtimes may ignore the flag and omit this field. The CLI reports an unconfirmed requested title in `result.warning` after creation; inspect the returned terminal and do not repeat `worktree create` to retry a title.
 - Address the agent through exactly one handle. Use `startupTerminal.handle` as the sole agent handle when create returns it; otherwise take the match from `ORCA terminal list --worktree id:<repoId>::<newWorktreePath> --json`. Handles are runtime-scoped: after an Orca restart or a `terminal_handle_stale` error, re-list and continue with the replacement only; never dual-send to old and replacement handles. `--agent` already owns the first terminal, so do not `terminal create` that agent again.
 - `--setup run|skip|inherit` controls repo setup hooks. Default is `inherit`, which follows the repo's setup policy.
 - `--run-hooks` is a legacy alias for `--setup run`; it also reveals/activates the new worktree.
@@ -137,7 +146,17 @@ ORCA worktree set --worktree active --comment "fix implemented; running integrat
 
 Update after a repro, fix, validation, handoff, or blocker. Keep it short and current. A failed comment update is not an error to surface unless the user asked for Orca state.
 
-Card status uses `--workspace-status <id>`; defaults are `todo`, `in-progress`, `in-review`, `completed`.
+Card status uses `--workspace-status <id>`; defaults are `todo`, `in-progress`, `in-review`, `completed`. `--unread` puts the workspace's unread dot in the sidebar to ask for a person's attention; `--read` clears it.
+
+Issue/review links: `--pr` writes the GitHub pull request number; `--gitlab-issue` and
+`--gitlab-mr` write separate GitLab numbers and accept `#42` / `!77` respectively.
+All numbers must be positive safe integers. The GitLab flags also accept HTTP(S) URLs
+whose host/project match the workspace's stored GitLab source context or the repo's
+stored remote. They never select a foreign project or fetch a review branch. Absent
+flags leave links unchanged; literal `null` clears only the named link on `set` and
+is refused on `create`. Folder-based repos can store numeric links, but missing
+source/remote identity prevents URL validation and may leave provider links unavailable.
+Old runtimes that predate these existing fields may ignore them; verify with `worktree show --json`.
 
 ## Terminals
 

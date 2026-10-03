@@ -2,6 +2,7 @@ import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
 import { WORKTREE_COMMAND_SPECS } from './worktree'
 import { SERVE_COMMAND_SPECS } from './serve'
+import { REPO_COMMAND_SPECS } from './repo'
 import { TERMINAL_SEND_COMMAND_SPEC } from './terminal-send'
 import { TERMINAL_CLOSE_COMMAND_SPEC } from './terminal-close'
 
@@ -36,36 +37,7 @@ export const CORE_COMMAND_SPECS: CommandSpec[] = [
     ],
     examples: ['orca claude-teams', 'orca claude-teams --resume <session-id>']
   },
-  {
-    path: ['repo', 'list'],
-    summary: 'List repos registered in Orca',
-    usage: 'orca repo list [--json]',
-    allowedFlags: [...GLOBAL_FLAGS]
-  },
-  {
-    path: ['repo', 'add'],
-    summary: 'Add a project to Orca by filesystem path',
-    usage: 'orca repo add --path <path> [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'path']
-  },
-  {
-    path: ['repo', 'show'],
-    summary: 'Show one registered repo',
-    usage: 'orca repo show --repo <selector> [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'repo']
-  },
-  {
-    path: ['repo', 'set-base-ref'],
-    summary: "Set the repo's default base ref for future worktrees",
-    usage: 'orca repo set-base-ref --repo <selector> --ref <ref> [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'ref']
-  },
-  {
-    path: ['repo', 'search-refs'],
-    summary: 'Search branch/tag refs within a repo',
-    usage: 'orca repo search-refs --repo <selector> --query <text> [--limit <n>] [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'repo', 'query', 'limit']
-  },
+  ...REPO_COMMAND_SPECS,
   ...WORKTREE_COMMAND_SPECS,
   {
     path: ['terminal', 'list'],
