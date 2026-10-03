@@ -84,6 +84,8 @@ let connections: number
 let failingCloses: number
 /** Codex fails every interrupt it is sent, as one it could not submit (-32603). */
 let interruptsFail: boolean
+/** Codex takes the interrupt and answers it; the test sends that turn's end later. */
+let interruptEndHeld: boolean
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -185,6 +187,7 @@ beforeEach(async () => {
   connections = 0
   failingCloses = 0
   interruptsFail = false
+  interruptEndHeld = false
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -221,6 +224,11 @@ beforeEach(async () => {
             'codex app-server turn/interrupt failed: could not submit',
             'could not submit'
           )
+        }
+        if (method === 'turn/interrupt' && interruptEndHeld) {
+          interrupts += 1
+          turns.takeInterrupt()
+          return {}
         }
         if (method === 'turn/interrupt') {
           interrupts += 1
@@ -643,6 +651,27 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(childCloses).toBe(1)
     expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
+  })
+
+  // Handed over once the stopped turn read ended, it started its own turn, however late that
+  // turn's own end then arrives; a second Stop finds its turn never opened.
+  it('withdraws a send made after a Stop that started its own turn, which never opened', async () => {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    interruptEndHeld = true
+    await stop()
+    interruptEndHeld = false
+    const next = await send('run this after the stop')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    // The stopped turn's own end arrives after the next send was handed over.
+    turns.end('interrupted')
+
+    expect(await settledWithin(stop(), CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, next)).toBe('withdrawn')
   })
 
   // Codex drains a steer into the running turn, so it may hold one it never echoed.
