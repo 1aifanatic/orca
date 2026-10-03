@@ -266,7 +266,13 @@ describe('CI dependency download caches', () => {
     expect(ssh.with['cache-pnpm-store']).toBe('false')
     expect(warmer.with['cache-pnpm-store']).toBeUndefined()
     expect(warmer.with['cache-pnpm-store-lookup-only']).toBe('true')
-    expect(persistence.with['cache-pnpm-store-lookup-only']).toBe("${{ runner.os == 'macOS' }}")
+    expect(persistence.with['cache-pnpm-store-lookup-only']).toBe('true')
+    for (const name of ['warm', 'warm-linux-arm']) {
+      const install = workflow('ci-cache-warmup').jobs[name].steps.find((step) =>
+        step.uses?.includes('install-node-dependencies')
+      )
+      expect(install.with['cache-pnpm-store-lookup-only']).toBe('true')
+    }
   })
 
   it('restores Windows packaging downloads from the release cache without a PR upload', () => {
