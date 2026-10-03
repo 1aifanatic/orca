@@ -21,7 +21,6 @@ import { setStructuredAgentSessionHost } from '../../../src/main/native-chat/age
 import { startAgentForTests } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-attach-test-support'
 import type { AgentSessionRecordStore } from '../../../src/main/runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../../src/main/runtime/agent-session-record-store-test-harness'
-import { RuntimeSubscriptionRegistry } from '../../../src/main/runtime/runtime-subscription-registry'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import {
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
@@ -36,6 +35,7 @@ import {
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
 import { resolveBaselineReleaseRef } from './release-checkout'
+import { callBuild, runtimeStub } from './agent-session-wire-calls'
 import {
   installableHost,
   structuredHostStub,
@@ -82,31 +82,6 @@ beforeAll(async () => {
   baseline = await loadAgentSessionWireBuild(baselineRef)
 }, SUITE_TIMEOUT_MS)
 
-function runtimeStub(overrides: Record<string, unknown> = {}): unknown {
-  const subscriptions = new RuntimeSubscriptionRegistry()
-  return {
-    getRuntimeId: () => 'runtime-1',
-    getClientSettings: () => ({ experimentalStructuredNativeChat: true }),
-    ensureStructuredAgentSessionHost: async () => undefined,
-    getStructuredAgentSessionCreateSupport: async () => ({ supported: true }),
-    structuredAgentSessionLaunchSeedOptions: () => undefined,
-    resolveStructuredAgentSessionCreateIntent: async () => {
-      const {
-        envelope: _envelope,
-        providerHandle: _providerHandle,
-        ...resolved
-      } = attachParams(null)
-      return resolved
-    },
-    publishStructuredAgentSessionTab: () => {},
-    registerSubscriptionCleanup: subscriptions.register.bind(subscriptions),
-    registerOwnedSubscriptionCleanup: subscriptions.registerOwned.bind(subscriptions),
-    cleanupSubscription: subscriptions.cleanup.bind(subscriptions),
-    cleanupSubscriptionsByPrefix: subscriptions.cleanupByPrefix.bind(subscriptions),
-    ...overrides
-  }
-}
-
 /**
  * What a client too old to know the structured surface advertises: the baseline's
  * own list, minus the capability. Derived rather than assumed to be the baseline's
@@ -123,26 +98,6 @@ function legacyClientCapabilities(): string[] {
 /** The structured methods the baseline release actually registers, read from it. */
 function baselineStructuredMethods(): string[] {
   return baseline.methodNames.filter((name) => name.startsWith('agentSession.'))
-}
-
-/** Every reply one call produced. Streaming methods answer more than once, and a
- *  refusal has to arrive as a reply rather than as silence. */
-async function callBuild(
-  build: AgentSessionWireBuild,
-  method: string,
-  params: unknown,
-  client: RpcClientIdentity,
-  runtime: unknown = runtimeStub()
-): Promise<RpcReply[]> {
-  const replies: RpcReply[] = []
-  await build
-    .createDispatcher(runtime)
-    .dispatchStreaming(
-      { id: `request-${method}`, authToken: 'cross-version-token', method, params },
-      (raw) => replies.push(JSON.parse(raw) as RpcReply),
-      client
-    )
-  return replies
 }
 
 /**
