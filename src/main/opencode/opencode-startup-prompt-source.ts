@@ -1,3 +1,4 @@
+import { cancelUnreadResponseBody } from '../lib/unread-response-body'
 import { parseAgentHookEndpointFile } from '../../shared/agent-hook-endpoint-file'
 import {
   OPENCODE_STARTUP_PROMPT_SHA256_ENV,
@@ -10,6 +11,7 @@ import {
 export function getOpenCodeStartupPromptSource(): string {
   return String.raw`
 const parseEndpoint = ${parseAgentHookEndpointFile.toString()};
+const cancelUnreadResponseBody = ${cancelUnreadResponseBody.toString()};
 async function claimStartupPrompt(nonce, digest, endpoint) {
   const { readFile, stat } = await import("node:fs/promises");
   if ((await stat(endpoint)).size > 4096) return false;
@@ -20,9 +22,13 @@ async function claimStartupPrompt(nonce, digest, endpoint) {
     method: "POST", headers: { "content-type": "application/json", "x-orca-agent-hook-token": coords.token },
     body: JSON.stringify({ nonce, digest }), signal: AbortSignal.timeout(1000)
   });
-  if (!response.ok) return false;
-  const result = await response.json();
-  return result.allowed === true ? true : result.pending === true ? "pending" : false;
+  try {
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.allowed === true ? true : result.pending === true ? "pending" : false;
+  } finally {
+    await cancelUnreadResponseBody(response);
+  }
 }
 async function submitStartupPrompt(ctx) {
   const noop = async () => {};

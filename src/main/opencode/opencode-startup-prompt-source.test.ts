@@ -12,6 +12,7 @@ import {
   OPENCODE_STARTUP_PROMPT_ENDPOINT_ENV
 } from '../../shared/opencode-startup-prompt'
 import { getOpenCodeStartupPromptSource } from './opencode-startup-prompt-source'
+import { cancelTrackingResponse } from '../lib/unread-response-body.test-fixtures'
 
 type PluginModule = { default: { setup: (ctx: unknown) => Promise<() => Promise<void>> } }
 const prompt = 'exact startup brief\nwith unicode é'
@@ -84,6 +85,47 @@ afterEach(() => {
 })
 
 describe('installed-version native prompt intent plugin', () => {
+  it.each(['non-ok', 'json-rejected'])('cancels unread %s claim bodies', async (reason) => {
+    const cancelled = vi.fn()
+    const response = cancelTrackingResponse(reason === 'non-ok' ? 503 : 200, cancelled)
+    if (reason === 'json-rejected') {
+      vi.spyOn(response, 'json').mockRejectedValue(new Error('decoder rejected'))
+    }
+    claim.mockResolvedValue(response)
+    const f = fixture()
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.waitFor(() => expect(f.memory.settled).toBe(true))
+    expect(cancelled).toHaveBeenCalledTimes(1)
+    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.memory.settled).toBe(true)
+    await dispose()
+  })
+
+  it('consumes an allowed claim body before dispatching the prompt', async () => {
+    const response = Response.json({ allowed: true })
+    claim.mockResolvedValue(response)
+    const f = fixture()
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledExactlyOnceWith('prompt.submit'))
+    expect(response.bodyUsed).toBe(true)
+    await dispose()
+  })
+
+  it('consumes malformed JSON and fails closed', async () => {
+    const response = new Response('{invalid', { status: 200 })
+    claim.mockResolvedValue(response)
+    const f = fixture()
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.waitFor(() => expect(f.memory.settled).toBe(true))
+    expect(response.bodyUsed).toBe(true)
+    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.memory.settled).toBe(true)
+    await dispose()
+  })
+
   it.each(['dialog', 'shell', 'autocomplete'])('does not populate a %s editor', async (kind) => {
     const f = fixture()
     if (kind === 'dialog') {

@@ -244,25 +244,6 @@ export class OrcaRuntimeWithRuntimeId {
 
   readonly terminalRunFacts = new TerminalRunFactsRegister()
 
-  readOpenCodeStartupPromptOwner(ptyId: string, incarnationId: string, launchToken: string) {
-    const pty = this.ptysById.get(ptyId)
-    if (!pty || pty.incarnationId !== incarnationId) {
-      return null
-    }
-    // The runtime launch route admits identity immediately after low-level spawn returns.
-    if (pty.launchToken === null && pty.launchAgent === null && pty.launchIncarnationId === null) {
-      return 'pending' as const
-    }
-    if (
-      pty.launchIncarnationId !== incarnationId ||
-      pty.launchToken !== launchToken ||
-      (pty.launchAgent !== 'opencode' && pty.launchAgent !== 'opencode2')
-    ) {
-      return null
-    }
-    return this.terminalRunFacts.read(ptyId, incarnationId)
-  }
-
   /** Both spawn-commit funnels report each committed process here, once. */
   noteTerminalSpawnCommit(commit: TerminalSpawnCommit, expectedSourceBinding?: unknown): void {
     this.terminalRunFacts.recordSpawnCommit(commit, expectedSourceBinding)
