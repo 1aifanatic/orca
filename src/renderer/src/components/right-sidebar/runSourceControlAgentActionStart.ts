@@ -1,10 +1,7 @@
 import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
-import {
-  structuredChatHostRunsReviewReplies,
-  structuredChatTargetForWorktree
-} from '@/lib/structured-agent-session-review-reply-support'
+import { structuredChatHostRunsReviewReplies } from '@/lib/structured-agent-session-review-reply-support'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
@@ -76,16 +73,18 @@ export type SourceControlAgentLaunched = {
 /** The chat a structured launch opened: this client's own from its surface, a paired host's from
  *  the settlement that learned it. */
 async function structuredChat(
-  result: NonNullable<ReturnType<typeof launchAgentInNewTab>>,
-  worktreeId: string
+  result: NonNullable<ReturnType<typeof launchAgentInNewTab>>
 ): Promise<SourceControlAgentLaunched['chat']> {
+  // The host the launch used, never one worked out again later from what the UI shows then.
+  const target = result.structuredChatTarget
+  if (!target) {
+    return undefined
+  }
   if (result.surface.kind === 'local-agent-session') {
-    return { sessionId: result.surface.sessionId, target: { kind: 'local' } }
+    return { sessionId: result.surface.sessionId, target }
   }
   const settled = await result.structuredSettlement?.catch(() => undefined)
-  return settled?.kind === 'structured'
-    ? { sessionId: settled.sessionId, target: structuredChatTargetForWorktree(worktreeId) }
-    : undefined
+  return settled?.kind === 'structured' ? { sessionId: settled.sessionId, target } : undefined
 }
 
 export async function runSourceControlAgentActionStart({
@@ -169,7 +168,7 @@ export async function runSourceControlAgentActionStart({
         // which carries no review reply, so the panel writes after its paste.
         reviewReplyCarried = deliveryResult.reviewReplyCarried === true
         if (reviewReplyCarried) {
-          reviewReplyChat = await structuredChat(result, worktreeId)
+          reviewReplyChat = await structuredChat(result)
         }
         // A chat that holds its review reply sends it again itself; offering Start again here
         // would launch a second chat, and post the replies twice.

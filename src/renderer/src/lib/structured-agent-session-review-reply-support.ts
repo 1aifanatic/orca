@@ -13,7 +13,7 @@ import {
 } from '@/runtime/runtime-rpc-client'
 
 /** The host a structured chat in this workspace runs on; this client's own when none is named. */
-export function structuredChatTargetForWorktree(worktreeId: string): RuntimeClientTarget {
+function structuredChatTargetForWorktree(worktreeId: string): RuntimeClientTarget {
   return (
     structuredAgentSessionTargetForHost(
       resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)

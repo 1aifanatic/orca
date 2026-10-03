@@ -20,8 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: mocks.launchAgentInNewTab }))
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
 vi.mock('@/lib/structured-agent-session-review-reply-support', () => ({
-  structuredChatHostRunsReviewReplies: mocks.hostRunsReviewReplies,
-  structuredChatTargetForWorktree: () => ({ kind: 'environment', environmentId: 'paired-1' })
+  structuredChatHostRunsReviewReplies: mocks.hostRunsReviewReplies
 }))
 vi.mock('@/components/native-chat/structured-agent-session-read-owner', () => ({
   getStructuredAgentSessionReadOwner: (sessionId: string, target: unknown) => ({
@@ -216,7 +215,8 @@ describe('Resolve comments with AI', () => {
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'host-published' },
       promptDeliveryResult: CARRIED,
-      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'paired-session' })
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'paired-session' }),
+      structuredChatTarget: { kind: 'environment', environmentId: 'paired-1' }
     })
     await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
     expect(model.fetchComments).not.toHaveBeenCalled()
@@ -242,7 +242,8 @@ describe('Resolve comments with AI', () => {
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
       promptDeliveryResult: CARRIED,
-      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' })
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' }),
+      structuredChatTarget: { kind: 'local' }
     })
     await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
     // The agent pushed: same PR, new head, and the panel's fetch was rebuilt for it.
@@ -270,7 +271,8 @@ describe('Resolve comments with AI', () => {
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
       promptDeliveryResult: CARRIED,
-      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' })
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' }),
+      structuredChatTarget: { kind: 'local' }
     })
     await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
 

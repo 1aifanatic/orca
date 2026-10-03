@@ -16,7 +16,10 @@ import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { NATIVE_CHAT_INITIAL_LIMIT, type NativeChatOlderPageResult } from './native-chat-pagination'
 import { startStructuredAgentSessionReadTransport } from './structured-agent-session-read-transport'
-import { noticeStructuredReviewReplyReceipt } from '@/lib/structured-agent-session-review-reply-settled'
+import {
+  dropStructuredReviewReplyWatchers,
+  noticeStructuredReviewReplyReceipt
+} from '@/lib/structured-agent-session-review-reply-settled'
 import {
   createStructuredAgentSessionOlderPageReader,
   OLDER_PAGE_ANCHOR_ATTEMPTS
@@ -196,7 +199,13 @@ function createReadOwner(
         apply({ type: 'event', event })
         noticeStructuredReviewReplyReceipt(sessionId, event)
       },
-      applyError: (message, refusal) => apply({ type: 'error', message, refusal }),
+      applyError: (message, refusal) => {
+        apply({ type: 'error', message, refusal })
+        // The host holds no such chat: nothing it would say about a review reply is coming.
+        if (refusal?.details?.reason === 'recordMissing') {
+          dropStructuredReviewReplyWatchers(sessionId)
+        }
+      },
       getCursor: () => snapshot.state.cursor,
       onHistoryReadInvalidated: invalidateOlderPages,
       hydrate: snapshot.state.epoch === null ? hydrate : undefined,

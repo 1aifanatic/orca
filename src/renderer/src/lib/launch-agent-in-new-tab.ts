@@ -1,3 +1,4 @@
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 import { useAppStore } from '@/store'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
@@ -86,6 +87,8 @@ export type LaunchAgentInNewTabResult = {
   pasteDraftAfterLaunch: boolean
   /** `heldByChat` comes only from a structured chat's launch prompt. */
   promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
+  /** Structured route only: the host the launch put the chat on, decided as it launched. */
+  structuredChatTarget?: RuntimeClientTarget
   /** Structured route only: what the launch did once it settled. The call stays synchronous. */
   structuredSettlement?: Promise<StructuredAgentLaunchSettlement>
 } | null
