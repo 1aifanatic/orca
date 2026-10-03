@@ -134,10 +134,11 @@ describe('native-chat composer draft store', () => {
 
   it('saves text and images given back to the composer at once, before their other copy goes', async () => {
     vi.useFakeTimers()
+    // No timer advanced: a crash right after either restore still keeps it.
     modules.drafts.appendNativeChatDraftCache('tab-1:pane', 'withdrawn by Stop')
+    expect(storedDraft('tab-1:pane')?.text).toBe('withdrawn by Stop')
     modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', IMAGES)
 
-    // No timer advanced: a crash right after the restore still keeps it.
     const reloaded = await reload()
     expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe('withdrawn by Stop')
     expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual(IMAGES)
