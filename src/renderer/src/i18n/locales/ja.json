@@ -503,7 +503,8 @@
           "muse_label": "Muse",
           "opencode2_label": "OpenCode 2",
           "codebuddy_label": "CodeBuddy",
-          "zcode_label": "ZCode"
+          "zcode_label": "ZCode",
+          "jcode_label": "Jcode"
         },
         "skill": {
           "cli": {
@@ -5099,7 +5100,12 @@
           "86f0ae1257": "ワークスペースの削除"
         },
         "DeleteWorktreeDirtyChangeHint": {
-          "8e2994ce28": "このワークスペースを削除すると、これらの変更がディスクから完全に削除されます。"
+          "8e2994ce28": "このワークスペースを削除すると、これらの変更がディスクから完全に削除されます。",
+          "showLoadedPaths": "読み込まれたパスを表示",
+          "loadedPathsNotice": "読み込まれたパスは不完全な場合や古い場合があります。",
+          "loadedChangedPaths": "読み込まれた変更済みパス",
+          "unresolvedConflict": "未解決の競合",
+          "moreLoadedPaths": "ほかに読み込まれたパスが{{value0}}件"
         },
         "DeleteWorktreeLineageNotice": {
           "ad407c2d55": "件以上",
@@ -7094,7 +7100,7 @@
             "shellEnvToggleLabel": "シェル環境の使用の切り替え",
             "structuredTitle": "更新された構造化ネイティブチャットを使用する",
             "structuredCopy": "新規の Codex および Claude の Agent を構造化チャットとして開きます。オフにすると、ターミナルを使用したチャットで開きます。既存のチャットはそのまま残ります。",
-            "structuredScope": "今のところローカルセッションのみ。 WSL およびリモート実行ホスト (SSH を含む) は引き続きターミナルチャットを使用し、Orca がプロセスの開始時間を読み取ることができない限り、Windows はターミナルチャットにフォールバックします。",
+            "structuredScope": "このマシンと、対応するバージョンを実行しているペアリング済みの Orca サーバーで動作します。古いサーバーはターミナルチャットのままです。WSL および SSH ホストは引き続きターミナルチャットを使用し、Orca がプロセスの開始時間を読み取ることができない限り、Windows はターミナルチャットにフォールバックします。",
             "structuredToggleLabel": "更新された構造化ネイティブチャットの切り替え",
             "resumeTitle": "再起動後に作業中のチャットを自動的に再開する",
             "resumeCopy": "Orca が終了するかアップデートをインストールすると、Orca が再度開かれたときに作業中だったチャットが自動的に再開されます。",
@@ -7916,6 +7922,8 @@
           "c7ef4415de": "表示名",
           "b0a0c14a1c": "サイドバーとタブのプロジェクト固有の表示詳細。",
           "removeProjectAllHosts": "このプロジェクトを、設定済みのすべてのホストの Orca から削除します。",
+          "removeProjectCheckout": "このチェックアウトを Orca から削除します。このプロジェクトの他のチェックアウトは残ります。",
+          "removeProjectKeepCheckouts": "このプロジェクトを Orca から削除します。独自の設定を持つチェックアウトは残ります。",
           "0909e5d650": "プロジェクトの削除",
           "ee5a290616": "フォルダーとして開きます。このワークスペースでは Git 機能を使用できません。",
           "323debba71": "タイプ：",
@@ -17827,7 +17835,11 @@
         "queuePausedCleared": "会話を消去したため、キューを一時停止しました",
         "queuePaused": "キューは一時停止中です",
         "resume": "再開"
-      }
+      },
+      "structuredSessionHostDeclined": "{{value0}} をターミナルで開きました",
+      "structuredSessionHostDeclinedDescription": "このサーバーはこのワークスペースで {{value0}} チャットを実行できません。",
+      "structuredSessionHostUnreachable": "{{value0}} に接続できませんでした",
+      "structuredSessionHostUnreachableDescription": "Orca は {{value0}} チャットを開きませんでした。サーバーへの接続を確認して、もう一度お試しください。"
     },
     "tab": {
       "bar": {

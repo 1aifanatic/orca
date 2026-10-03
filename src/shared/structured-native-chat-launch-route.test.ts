@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
   CURSOR_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from './protocol-version'
 import {
@@ -149,6 +150,56 @@ describe('Cursor native Chat launch', () => {
     expect(support({ agent: 'cursor', hostCapabilities, requiresTuiLaunchCommand: true })).toEqual({
       supported: false,
       blocker: 'tui-launch-command'
+    })
+  })
+})
+
+describe('Cursor and paired-host launch capability composition', () => {
+  const hostCapabilities = [
+    STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    CURSOR_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+  ]
+  const clientCapabilities = [
+    STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+  ]
+  const pairedCursor = {
+    agent: 'cursor',
+    executionHostId: 'runtime:host',
+    hostCapabilities,
+    clientCapabilities
+  } as const
+
+  it.each(['git-worktree', 'folder'] as const)(
+    'supports Cursor on a capable paired %s workspace',
+    (workspaceKind) => {
+      expect(support({ ...pairedCursor, workspaceKind })).toEqual({ supported: true })
+    }
+  )
+
+  it.each(hostCapabilities)('refuses a paired Cursor host without %s', (missingCapability) => {
+    expect(
+      support({
+        ...pairedCursor,
+        hostCapabilities: hostCapabilities.filter((value) => value !== missingCapability)
+      })
+    ).toEqual({ supported: false, blocker: 'runtime-capability' })
+  })
+
+  it.each(clientCapabilities)('refuses a paired Cursor client without %s', (missingCapability) => {
+    expect(
+      support({
+        ...pairedCursor,
+        clientCapabilities: clientCapabilities.filter((value) => value !== missingCapability)
+      })
+    ).toEqual({ supported: false, blocker: 'client-capability' })
+  })
+
+  it('keeps an unanswered paired Cursor host distinct from a capability refusal', () => {
+    expect(support({ ...pairedCursor, hostCapabilities: null })).toEqual({
+      supported: false,
+      blocker: 'runtime-capability-unknown'
     })
   })
 })
