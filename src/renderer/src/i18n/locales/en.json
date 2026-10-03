@@ -1,4 +1,7 @@
 {
+  "osDocumentOpen": {
+    "failed": "Failed to open the file."
+  },
   "sidebar": {
     "revealFiltered": {
       "title": "Reveal hidden workspace?",
@@ -645,7 +648,8 @@
           "mimo_code_label": "MiMo Code",
           "opencode2_label": "OpenCode 2",
           "codebuddy_label": "CodeBuddy",
-          "qoder_cn_label": "Qoder CLI China"
+          "qoder_cn_label": "Qoder CLI China",
+          "jcode_label": "Jcode"
         },
         "skill": {
           "cli": {
@@ -5319,7 +5323,12 @@
           "86f0ae1257": "Delete Workspaces"
         },
         "DeleteWorktreeDirtyChangeHint": {
-          "8e2994ce28": "Deleting this workspace permanently removes these changes from disk."
+          "8e2994ce28": "Deleting this workspace permanently removes these changes from disk.",
+          "showLoadedPaths": "Show loaded paths",
+          "loadedPathsNotice": "Loaded paths may be incomplete or out of date.",
+          "loadedChangedPaths": "Loaded changed paths",
+          "unresolvedConflict": "Unresolved conflict",
+          "moreLoadedPaths": "and {{value0}} more loaded paths"
         },
         "DeleteWorktreeLineageNotice": {
           "ad407c2d55": "more",
@@ -7286,7 +7295,7 @@
             "defaultViewNative": "Chat UI",
             "structuredTitle": "Use updated structured native chat",
             "structuredCopy": "Open new Codex and Claude agents as structured chats. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
-            "structuredScope": "Local sessions only for now. WSL and remote execution hosts (including SSH) continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
+            "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
             "structuredToggleLabel": "Toggle updated structured native chat",
             "resumeTitle": "Resume working chats automatically after a restart",
             "resumeCopy": "When Orca quits or installs an update, chats that were working are automatically resumed when Orca is reopened.",
@@ -8123,6 +8132,8 @@
           "c7ef4415de": "Display Name",
           "b0a0c14a1c": "Project-specific display details for the sidebar and tabs.",
           "removeProjectAllHosts": "Remove this project from Orca on all configured hosts.",
+          "removeProjectCheckout": "Remove this checkout from Orca. Other checkouts of this project stay.",
+          "removeProjectKeepCheckouts": "Remove this project from Orca. Checkouts that have their own settings stay.",
           "0909e5d650": "Remove Project",
           "ee5a290616": "Opened as folder. Git features are unavailable for this workspace.",
           "323debba71": "Type:",
@@ -18054,7 +18065,11 @@
         "queuePausedCleared": "Queue paused after you cleared the conversation",
         "queuePaused": "Queue paused",
         "resume": "Resume"
-      }
+      },
+      "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
+      "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
+      "structuredSessionHostUnreachable": "Could not reach {{value0}}",
+      "structuredSessionHostUnreachableDescription": "Orca did not open a {{value0}} chat. Check the connection to the server and try again."
     },
     "tab": {
       "bar": {
@@ -18698,6 +18713,11 @@
     }
   },
   "aiVault": {
+    "antigravityReferenceDescription": "Continues in a new Antigravity CLI conversation using this transcript as a reference.",
+    "antigravityIdeToCli": "IDE → CLI",
+    "antigravity2ToCli": "2.0 → CLI",
+    "continueInCli": "Continue in CLI",
+    "continueInCliNewTab": "Continue in CLI in New Tab",
     "subagents": {
       "loading": "Loading subagents…",
       "loadError": "Could not load all subagents.",

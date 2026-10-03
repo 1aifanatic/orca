@@ -1,3 +1,4 @@
+import { readOpenCodeNativeChatTranscriptTail } from './transcript-opencode'
 import type {
   AgentType,
   NativeChatMessage,
@@ -185,7 +186,9 @@ export async function readNativeChatTranscriptTailFile(
     lineOffset: number,
     messages: { message: NativeChatMessage; offset: number }[]
   ): void {
-    let line = Buffer.concat([...lineParts].toReversed()).toString('utf8')
+    // Positional reads own these bytes; only multi-part records need joining in reverse order.
+    const bytes = lineParts.length === 1 ? lineParts[0] : Buffer.concat(lineParts.toReversed())
+    let line = bytes.toString('utf8')
     if (line.endsWith('\r')) {
       line = line.slice(0, -1)
     }
@@ -234,6 +237,9 @@ export async function readNativeChatTranscriptTail(
     }
   | { error: string; notFound?: true }
 > {
+  if (resolveNativeChatTranscriptAgent(args.agent) === 'opencode') {
+    return readOpenCodeNativeChatTranscriptTail(args, {}, signal)
+  }
   const decode = nativeChatLineDecoderForAgent(args.agent)
   const decodeLifecycle = nativeChatTurnLifecycleDecoderForAgent(args.agent)
   if (!decode) {
