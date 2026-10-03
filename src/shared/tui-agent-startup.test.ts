@@ -14,6 +14,8 @@ import {
   unwrapPowerShellScript
 } from './tui-agent-startup-script.test-fixture'
 
+const DARWIN = { platform: 'darwin' } as const
+
 describe('draft prefill teardown ordering (#14975)', () => {
   // Why pinned: the teardown mutates the calling shell, so it must reference
   // $fish_pid, which aborts the line under `set -u`. That is survivable ONLY
@@ -51,9 +53,13 @@ describe('tui agent startup plans', () => {
     const plan = buildAgentStartupPlan({
       agent: 'claude',
       prompt: '',
-      agentArgs: resolveTuiAgentLaunchArgs('claude', {
-        agentDefaultArgs: { claude: '--dangerously-skip-permissions --model Opus' }
-      }),
+      agentArgs: resolveTuiAgentLaunchArgs(
+        'claude',
+        {
+          agentDefaultArgs: { claude: '--dangerously-skip-permissions --model Opus' }
+        },
+        DARWIN
+      ),
       cmdOverrides: {},
       platform: 'linux',
       allowEmptyPromptLaunch: true
@@ -387,7 +393,7 @@ describe('tui agent startup plans', () => {
         cmdOverrides: {},
         platform,
         shell,
-        agentArgs: resolveTuiAgentLaunchArgs('muse', defaults)
+        agentArgs: resolveTuiAgentLaunchArgs('muse', defaults, DARWIN)
       })
 
       expect(plan).toMatchObject({
@@ -415,9 +421,13 @@ describe('tui agent startup plans', () => {
       cmdOverrides: {},
       platform: shell === 'posix' ? 'linux' : 'win32',
       shell,
-      agentArgs: resolveTuiAgentLaunchArgs('claude', {
-        agentDefaultArgs: { claude: '--model "Opus 4" --add-dir "C:/a b"' }
-      }),
+      agentArgs: resolveTuiAgentLaunchArgs(
+        'claude',
+        {
+          agentDefaultArgs: { claude: '--model "Opus 4" --add-dir "C:/a b"' }
+        },
+        DARWIN
+      ),
       allowEmptyPromptLaunch: true
     })
 
@@ -619,7 +629,7 @@ describe('tui agent startup plans', () => {
       agent: 'opencode',
       prompt: 'fix it',
       cmdOverrides: {},
-      agentArgs: resolveTuiAgentLaunchArgs('opencode', { agentDefaultArgs }),
+      agentArgs: resolveTuiAgentLaunchArgs('opencode', { agentDefaultArgs }, DARWIN),
       platform: 'linux'
     })
 
@@ -765,7 +775,7 @@ describe('tui agent startup plans', () => {
       agent: 'devin',
       prompt: 'fix the tests',
       cmdOverrides: {},
-      agentArgs: resolveTuiAgentLaunchArgs('devin', null),
+      agentArgs: resolveTuiAgentLaunchArgs('devin', null, DARWIN),
       platform: 'linux'
     })
     expect(plan).toEqual({
@@ -799,7 +809,7 @@ describe('tui agent startup plans', () => {
   })
 
   it('appends Devin default permission-mode bypass before stdin prompt delivery', () => {
-    expect(resolveTuiAgentLaunchArgs('devin', null)).toBe(
+    expect(resolveTuiAgentLaunchArgs('devin', null, DARWIN)).toBe(
       '--permission-mode bypass --respect-workspace-trust false'
     )
   })

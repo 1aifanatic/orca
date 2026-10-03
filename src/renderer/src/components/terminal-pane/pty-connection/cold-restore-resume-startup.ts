@@ -87,7 +87,7 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       agentArgs:
         launchConfig !== undefined
           ? launchConfig.agentArgs
-          : resolveTuiAgentLaunchArgs(agent, state.settings),
+          : resolveTuiAgentLaunchArgs(agent, state.settings, resumeTarget),
       agentEnv:
         launchConfig !== undefined
           ? launchConfig.agentEnv

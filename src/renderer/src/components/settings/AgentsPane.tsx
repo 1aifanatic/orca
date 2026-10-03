@@ -24,6 +24,8 @@ import {
   normalizeDisabledTuiAgents
 } from '../../../../shared/tui-agent-selection'
 import { resolveAgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
+import { resolveLocalAgentLaunchTarget } from '../../../../shared/windows-terminal-shell'
+import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import {
   agentHasPermissionMode,
   resolveDefaultAgentPermissionMode,
@@ -102,7 +104,7 @@ export function AgentsPane({
   const agentDefaultEnv = settings.agentDefaultEnv ?? {}
   const permissionOverrides = settings.agentPermissionModeOverrides ?? {}
   const defaultPermissionMode = resolveDefaultAgentPermissionMode(settings)
-  const { agentDefaultEnv: launchEnv, agentPermissionMode } = settings
+  const { agentDefaultEnv: launchEnv, agentPermissionMode, terminalWindowsShell } = settings
   const permissionPostures = useMemo(() => {
     const profile = {
       agentDefaultArgs: settings.agentDefaultArgs,
@@ -110,16 +112,19 @@ export function AgentsPane({
       agentPermissionMode,
       agentPermissionModeOverrides: settings.agentPermissionModeOverrides
     }
+    // Why a local launch: the card reads Arguments as this machine's own launches read them.
+    const target = resolveLocalAgentLaunchTarget(getRendererAppPlatform(), terminalWindowsShell)
     return new Map(
       getAgentCatalog()
         .filter((agent) => agentHasPermissionMode(agent.id))
-        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, profile)])
+        .map((agent) => [agent.id, resolveAgentPermissionPosture(agent.id, profile, target)])
     )
   }, [
     settings.agentDefaultArgs,
     launchEnv,
     agentPermissionMode,
-    settings.agentPermissionModeOverrides
+    settings.agentPermissionModeOverrides,
+    terminalWindowsShell
   ])
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =

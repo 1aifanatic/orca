@@ -9,7 +9,9 @@ import {
   type AgentPermissionOption
 } from './tui-agent-permissions'
 import {
+  resolveAgentLaunchGrammar,
   tokenizeStartupCommand,
+  type AgentLaunchTarget,
   type AgentStartupShell,
   type StartupCommandTokens
 } from './tui-agent-startup-shell'
@@ -142,9 +144,8 @@ function readKind(
     : 'other'
 }
 
-// Why every grammar: one settings string reaches POSIX, PowerShell and cmd hosts, so text any of
-// them would read as a permission option counts — adding a second flag beside it can stop the CLI.
-const LAUNCH_GRAMMARS: readonly AgentStartupShell[] = ['posix', 'powershell', 'cmd']
+/** Every grammar Orca launches with; the lift, which runs before any launch, checks them all. */
+export const LAUNCH_GRAMMARS: readonly AgentStartupShell[] = ['posix', 'powershell', 'cmd']
 
 export type TypedAgentPermissions = {
   kind: TypedAgentPermissionKind
@@ -152,30 +153,19 @@ export type TypedAgentPermissions = {
   options: string[]
 }
 
-function classifyArgs(agent: TuiAgent, args: string): TypedAgentPermissions {
+function classifyArgs(
+  agent: TuiAgent,
+  args: string,
+  shell: AgentStartupShell
+): TypedAgentPermissions {
   const spec = agentPermissionArgSpec(agent)
-  const options: string[] = []
-  const kinds = new Map<AgentStartupShell, TypedAgentPermissionKind>()
-  for (const grammar of args.trim() && spec.options.length > 0 ? LAUNCH_GRAMMARS : []) {
-    const tokens = optionTokens(args, grammar)
-    if (!tokens.ok) {
-      continue
-    }
-    const settings = readTypedSettings(spec, tokens.tokens)
-    kinds.set(grammar, readKind(spec, settings))
-    options.push(
-      ...settings.map((setting) => setting.text).filter((text) => !options.includes(text))
-    )
+  // Text that shell can't parse can't launch, so it sets nothing.
+  const tokens = args.trim() && spec.options.length > 0 ? optionTokens(args, shell) : null
+  if (!tokens?.ok) {
+    return { kind: 'none', options: [] }
   }
-  if (options.length === 0) {
-    return { kind: 'none', options }
-  }
-  // Bypass only when every grammar reads bypass: the text may launch under any of them, so
-  // neither Settings nor a launch that replaces it may claim more than all of them grant.
-  return {
-    kind: [...kinds.values()].every((kind) => kind === 'bypass') ? 'bypass' : 'other',
-    options
-  }
+  const settings = readTypedSettings(spec, tokens.tokens)
+  return { kind: readKind(spec, settings), options: settings.map((setting) => setting.text) }
 }
 
 function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedAgentPermissions {
@@ -197,14 +187,15 @@ function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedAgentPe
 }
 
 /**
- * What permission settings typed into an agent's Arguments and env do: nothing (its mode decides),
- * bypass, or something else. Launch, Settings, structured sessions and the migration all read this.
+ * What permission settings typed into an agent's Arguments and env do, read with the shell that
+ * launches them: nothing (its mode decides), bypass, or something else.
  */
 export function classifyTypedAgentPermissions(
   agent: TuiAgent,
-  typed: { args?: string | null; env?: Record<string, string> | null }
+  typed: { args?: string | null; env?: Record<string, string> | null },
+  shell: AgentStartupShell
 ): TypedAgentPermissions {
-  const args = classifyArgs(agent, typed.args ?? '')
+  const args = classifyArgs(agent, typed.args ?? '', shell)
   const env = classifyEnv(agent, typed.env ?? {})
   const kinds = [args.kind, env.kind].filter((kind) => kind !== 'none')
   return {
@@ -214,10 +205,14 @@ export function classifyTypedAgentPermissions(
   }
 }
 
-/** Whether these arguments set this option at all, under any launch grammar. */
-export function argumentsSetOption(args: string, option: string): boolean {
+/** Whether these arguments set this option at all, under any of these grammars. */
+export function argumentsSetOption(
+  args: string,
+  option: string,
+  grammars: readonly AgentStartupShell[]
+): boolean {
   const spec: AgentPermissionOption = { names: [option], takesValue: true }
-  return LAUNCH_GRAMMARS.some((grammar) => {
+  return grammars.some((grammar) => {
     const tokens = optionTokens(args, grammar)
     return tokens.ok && tokens.tokens.some((token) => readOptionToken(spec, token) !== null)
   })
@@ -226,6 +221,8 @@ export function argumentsSetOption(args: string, option: string): boolean {
 export type BypassFlagGroup = {
   option: string
   tokens: string[]
+  /** Each token exactly as written in the flag. */
+  rawTokens: string[]
   /** The group's text as written in the flag, quoting kept. */
   text: string
   /** False for a companion option that rides along with the bypass, like Devin's trust prompt switch. */
@@ -251,6 +248,9 @@ export function bypassFlagGroups(agent: TuiAgent): BypassFlagGroup[] {
     groups.push({
       option,
       tokens: tokenized.tokens.slice(index, end + 1),
+      rawTokens: tokenized.spans
+        .slice(index, end + 1)
+        .map((span) => flag.slice(span.start, span.end)),
       text: flag.slice(tokenized.spans[index].start, tokenized.spans[end].end),
       permission: options.some((spec) => spec.names.includes(option))
     })
@@ -261,9 +261,9 @@ export function bypassFlagGroups(agent: TuiAgent): BypassFlagGroup[] {
 }
 
 /** The bypass flag to put before these extra arguments, without a companion option they set themselves. */
-export function bypassFlagBeside(agent: TuiAgent, extra: string): string {
+export function bypassFlagBeside(agent: TuiAgent, extra: string, shell: AgentStartupShell): string {
   return bypassFlagGroups(agent)
-    .filter((group) => group.permission || !argumentsSetOption(extra, group.option))
+    .filter((group) => group.permission || !argumentsSetOption(extra, group.option, [shell]))
     .map((group) => group.text)
     .join(' ')
 }
@@ -278,18 +278,21 @@ export type AgentPermissionPosture = {
 }
 
 /**
- * What an agent's permission settings add up to. Settings, structured sessions and launches that
- * replace the Arguments all read it, so none of them can disagree on the agent's effective mode.
+ * What an agent's permission settings add up to when launched at `target`. Settings and structured
+ * sessions read it for a local launch, and every launch composer for its own target, so a local
+ * launch and the Settings card can't disagree.
  */
 export function resolveAgentPermissionPosture(
   agent: TuiAgent,
-  settings: AgentLaunchProfileSettings | null | undefined
+  settings: AgentLaunchProfileSettings | null | undefined,
+  target: AgentLaunchTarget
 ): AgentPermissionPosture {
   const mode = resolveAgentPermissionMode(agent, settings)
-  const typed = classifyTypedAgentPermissions(agent, {
-    args: settings?.agentDefaultArgs?.[agent],
-    env: settings?.agentDefaultEnv?.[agent]
-  })
+  const typed = classifyTypedAgentPermissions(
+    agent,
+    { args: settings?.agentDefaultArgs?.[agent], env: settings?.agentDefaultEnv?.[agent] },
+    resolveAgentLaunchGrammar(target)
+  )
   return {
     mode,
     effectiveBypass:

@@ -4,6 +4,8 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { resolveTuiAgentLaunchArgs } from '../../../../shared/tui-agent-launch-defaults'
 
+const DARWIN = { platform: 'darwin' } as const
+
 const storeState = vi.hoisted(() => {
   const state: { settings: GlobalSettings | null } = { settings: null }
   return state
@@ -54,7 +56,9 @@ describe('buildSourceControlAgentDeliveryPlan permission preview', () => {
 
       expect(label.includes(flag)).toBe(flagged)
       expect(label).toContain('gpt-5.5')
-      expect(resolveTuiAgentLaunchArgs(agent, settings, CALLER_ARGS).includes(flag)).toBe(flagged)
+      expect(resolveTuiAgentLaunchArgs(agent, settings, DARWIN, CALLER_ARGS).includes(flag)).toBe(
+        flagged
+      )
     }
   )
 })

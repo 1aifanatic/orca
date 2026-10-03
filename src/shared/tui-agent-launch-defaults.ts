@@ -12,6 +12,7 @@ import {
   resolveAgentPermissionPosture
 } from './tui-agent-permission-args'
 import type { TuiAgent } from './tui-agent'
+import { resolveAgentLaunchGrammar, type AgentLaunchTarget } from './tui-agent-startup-shell'
 
 const UNSUPPORTED_TUI_AGENT_ARGS: Partial<Record<TuiAgent, readonly string[]>> = {
   opencode: ['--dangerously-skip-permissions'],
@@ -113,28 +114,31 @@ export function normalizeStoredAgentLaunchEnv(
 }
 
 /**
- * The one place a permission mode becomes a CLI flag: the mode's flag, then the extra text.
- * Extra text that sets permissions itself decides alone — a repeated or conflicting flag stops clap CLIs.
- * Per-launch text replaces the configured text but not the agent's effective mode (its card's): one
- * whose configured Arguments ask (Codex `-a on-request`) gets no flag, one in Yolo by alias does.
+ * The one place a permission mode becomes a CLI flag: the mode's flag, then the extra text, all
+ * read with the shell at `target` launches with. Extra text that sets permissions itself decides
+ * alone — a repeated or conflicting flag stops clap CLIs. Per-launch text replaces the configured
+ * text but not the agent's effective mode: one whose configured Arguments ask (Codex
+ * `-a on-request`) gets no flag, one in Yolo by alias does.
  */
 export function resolveTuiAgentLaunchArgs(
   agent: TuiAgent,
   settings: AgentLaunchProfileSettings | null | undefined,
+  target: AgentLaunchTarget,
   extraArgs?: string | null
 ): string {
   // `undefined` means the configured text; `null` means none for this launch.
   const extra = (
     extraArgs === undefined ? (settings?.agentDefaultArgs?.[agent] ?? '') : (extraArgs ?? '')
   ).trim()
+  const shell = resolveAgentLaunchGrammar(target)
   if (
     !YOLO_TUI_AGENT_ARGS[agent] ||
-    !resolveAgentPermissionPosture(agent, settings).effectiveBypass ||
-    classifyTypedAgentPermissions(agent, { args: extra }).kind !== 'none'
+    !resolveAgentPermissionPosture(agent, settings, target).effectiveBypass ||
+    classifyTypedAgentPermissions(agent, { args: extra }, shell).kind !== 'none'
   ) {
     return extra
   }
-  const bypassArg = bypassFlagBeside(agent, extra)
+  const bypassArg = bypassFlagBeside(agent, extra, shell)
   return extra ? `${bypassArg} ${extra}` : bypassArg
 }
 
@@ -152,12 +156,13 @@ export function resolveTuiAgentLaunchEnv(
 
 /** Every agent's launch-ready arguments (flag inline): the shape paired clients exchange. */
 export function composeTuiAgentLaunchArgsRecord(
-  settings: AgentLaunchProfileSettings | null | undefined
+  settings: AgentLaunchProfileSettings | null | undefined,
+  target: AgentLaunchTarget
 ): Partial<Record<TuiAgent, string>> {
   const record: Partial<Record<TuiAgent, string>> = {}
   for (const agent of Object.keys(TUI_AGENT_CONFIG)) {
     if (isTuiAgent(agent)) {
-      record[agent] = resolveTuiAgentLaunchArgs(agent, settings)
+      record[agent] = resolveTuiAgentLaunchArgs(agent, settings, target)
     }
   }
   return record

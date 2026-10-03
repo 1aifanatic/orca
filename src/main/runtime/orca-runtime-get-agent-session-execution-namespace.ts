@@ -132,7 +132,7 @@ export class OrcaRuntimeWithGetAgentSessionExecutionNamespace extends OrcaRuntim
       agentArgs:
         request.agentArgs !== undefined
           ? request.agentArgs
-          : resolveTuiAgentLaunchArgs(request.agent, settings),
+          : resolveTuiAgentLaunchArgs(request.agent, settings, { platform, shell }),
       agentEnv: resolveTuiAgentLaunchEnv(request.agent, settings),
       ompResumeFilePath: request.ompResumeFilePath,
       sessionOptions: this.toAgentSessionOptions(request.launchPreferences),

@@ -76,7 +76,7 @@ export function launchSleepingAgentSession(
     agentArgs:
       launchConfig !== undefined
         ? launchConfig.agentArgs
-        : resolveTuiAgentLaunchArgs(record.agent, state.settings),
+        : resolveTuiAgentLaunchArgs(record.agent, state.settings, resumeTarget),
     agentEnv:
       launchConfig !== undefined
         ? launchConfig.agentEnv

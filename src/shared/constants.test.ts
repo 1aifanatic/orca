@@ -10,6 +10,8 @@ import {
   getDefaultTerminalRightClickToPaste
 } from './terminal-platform-defaults'
 
+const DARWIN = { platform: 'darwin' } as const
+
 describe('getDefaultSettings', () => {
   it('uses platform-consistent separators for the default workspace directory', () => {
     expect(getDefaultSettings('/Users/alice').workspaceDir).toBe('/Users/alice/orca/workspaces')
@@ -138,7 +140,7 @@ describe('getDefaultSettings', () => {
     expect(settings.agentDefaultArgs).toMatchObject({ claude: '', codex: '', devin: '' })
     expect(settings.agentDefaultArgs).not.toHaveProperty('opencode')
     expect(settings.agentDefaultEnv).toEqual({ goose: {} })
-    expect(composeTuiAgentLaunchArgsRecord(settings)).toMatchObject({
+    expect(composeTuiAgentLaunchArgsRecord(settings, DARWIN)).toMatchObject({
       claude: '--dangerously-skip-permissions',
       codex: '--dangerously-bypass-approvals-and-sandbox',
       gemini: '--yolo',
@@ -147,8 +149,8 @@ describe('getDefaultSettings', () => {
       copilot: '--yolo',
       grok: '--permission-mode bypassPermissions'
     })
-    expect(composeTuiAgentLaunchArgsRecord(settings).opencode).toBe('')
-    expect(composeTuiAgentLaunchArgsRecord(settings).kilo).toBe('')
+    expect(composeTuiAgentLaunchArgsRecord(settings, DARWIN).opencode).toBe('')
+    expect(composeTuiAgentLaunchArgsRecord(settings, DARWIN).kilo).toBe('')
     expect(composeTuiAgentLaunchEnvRecord(settings)).toMatchObject({
       goose: { GOOSE_MODE: 'auto' }
     })

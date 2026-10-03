@@ -21,10 +21,7 @@ import { normalizeTerminalCustomThemes } from '../../../../shared/terminal-custo
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
 import { readStoredWebRuntimeEnvironment } from '../web-runtime-environment'
 import { mergeSettings, mergeWebUIState } from './web-preference-normalization'
-import {
-  liftAgentBypassFromTypedProfile,
-  liftComposedAgentLaunchProfile
-} from '../../../../shared/agent-launch-profile-lift'
+import { migrateStoredWebAgentLaunch } from './web-stored-agent-launch'
 import { callRuntimeResult } from './web-runtime-calls'
 import { requireActiveEnvironmentOrNull, webRuntimeState } from './web-runtime-session'
 import { SETTINGS_STORAGE_KEY, UI_STORAGE_KEY, readJson, writeJson } from './web-storage'
@@ -37,8 +34,7 @@ export function getStoredSettings(): GlobalSettings {
   const defaults = getDefaultSettings('~')
   const rawStoredSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY)
   const stored = readJson<Partial<GlobalSettings>>(SETTINGS_STORAGE_KEY, {})
-  const typedAgentLaunch =
-    stored.agentPermissionMode === undefined ? null : liftAgentBypassFromTypedProfile(stored)
+  const agentLaunch = migrateStoredWebAgentLaunch(stored)
   const migratedStored = {
     ...stored,
     ...normalizeAutoRenameBranchFromWorkDefaultOn(stored),
@@ -46,13 +42,7 @@ export function getStoredSettings(): GlobalSettings {
     ...normalizeOsc52ClipboardDefaultOn(stored),
     terminalCustomThemes: normalizeTerminalCustomThemes(stored.terminalCustomThemes),
     uiLanguage: normalizeUiLanguage(stored.uiLanguage),
-    // Why: blobs saved before the mode was typed carry the flag in each agent's args, and an older
-    // build can write it back into a typed blob.
-    ...(typedAgentLaunch
-      ? typedAgentLaunch.profile
-      : stored.agentDefaultArgs === undefined && stored.agentDefaultEnv === undefined
-        ? {}
-        : liftComposedAgentLaunchProfile(stored))
+    ...agentLaunch.profile
   }
   if (
     rawStoredSettings &&
@@ -69,8 +59,7 @@ export function getStoredSettings(): GlobalSettings {
         migratedStored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers ||
       stored.terminalCustomThemes !== migratedStored.terminalCustomThemes ||
       stored.uiLanguage !== migratedStored.uiLanguage ||
-      stored.agentPermissionMode !== migratedStored.agentPermissionMode ||
-      typedAgentLaunch?.changed === true)
+      agentLaunch.changed)
   ) {
     try {
       const parsed = JSON.parse(rawStoredSettings) as unknown

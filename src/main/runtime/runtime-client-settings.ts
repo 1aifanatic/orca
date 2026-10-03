@@ -29,6 +29,12 @@ import {
   composeTuiAgentLaunchEnvRecord
 } from '../../shared/tui-agent-launch-defaults'
 import { applyComposedAgentLaunchUpdate } from '../../shared/agent-launch-profile-lift'
+import { resolveLocalAgentLaunchTarget } from '../../shared/windows-terminal-shell'
+
+// Why the host's own shell: the launch-ready text it publishes is what a launch here would run.
+function hostLaunchTarget(settings: Partial<Pick<GlobalSettings, 'terminalWindowsShell'>>) {
+  return resolveLocalAgentLaunchTarget(process.platform, settings.terminalWindowsShell)
+}
 
 export type RuntimeClientSettings = Pick<
   GlobalSettings,
@@ -115,7 +121,7 @@ export class RuntimeClientSettingsController {
     let records = this.composedAgentLaunchCache.get(settings)
     if (!records) {
       records = {
-        agentDefaultArgs: composeTuiAgentLaunchArgsRecord(settings),
+        agentDefaultArgs: composeTuiAgentLaunchArgsRecord(settings, hostLaunchTarget(settings)),
         agentDefaultEnv: composeTuiAgentLaunchEnvRecord(settings)
       }
       this.composedAgentLaunchCache.set(settings, records)
@@ -185,10 +191,14 @@ export class RuntimeClientSettingsController {
         ? {
             ...rest,
             // Why: these arrive launch-ready (flag inline), the shape `get` publishes.
-            ...applyComposedAgentLaunchUpdate(beforeSettings, {
-              ...(agentDefaultArgs !== undefined ? { agentDefaultArgs } : {}),
-              ...(agentDefaultEnv !== undefined ? { agentDefaultEnv } : {})
-            })
+            ...applyComposedAgentLaunchUpdate(
+              beforeSettings,
+              {
+                ...(agentDefaultArgs !== undefined ? { agentDefaultArgs } : {}),
+                ...(agentDefaultEnv !== undefined ? { agentDefaultEnv } : {})
+              },
+              hostLaunchTarget(beforeSettings)
+            )
           }
         : updates,
       { notifyListeners: true }

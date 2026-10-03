@@ -127,7 +127,12 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     })
   const cmdOverrides = store.settings?.agentCmdOverrides ?? {}
   // Why: caller args (a Source Control action's own) replace the configured extra text, not the mode.
-  const effectiveAgentArgs = resolveTuiAgentLaunchArgs(agent, store.settings, agentArgs)
+  const effectiveAgentArgs = resolveTuiAgentLaunchArgs(
+    agent,
+    store.settings,
+    { platform: resolvedLaunchPlatform, shell: queuedShell },
+    agentArgs
+  )
   const agentEnv = resolveTuiAgentLaunchEnv(agent, store.settings)
   const trimmedPrompt = prompt?.trim() ?? ''
   const hasPrompt = trimmedPrompt.length > 0

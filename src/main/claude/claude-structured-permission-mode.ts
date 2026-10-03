@@ -2,6 +2,7 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { AgentLaunchProfileSettings } from '../../shared/tui-agent-launch-defaults'
 import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
+import { resolveLocalAgentLaunchTarget } from '../../shared/windows-terminal-shell'
 
 /**
  * The Agent Permissions setting as the SDK's own permission mode.
@@ -20,7 +21,11 @@ export function claudeStructuredPermissionModeForSettings(
     | null
     | undefined
 ): PermissionMode {
-  return resolveAgentPermissionPosture('claude', settings).effectiveBypass
+  return resolveAgentPermissionPosture(
+    'claude',
+    settings,
+    resolveLocalAgentLaunchTarget(process.platform, settings?.terminalWindowsShell)
+  ).effectiveBypass
     ? 'bypassPermissions'
     : 'default'
 }

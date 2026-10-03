@@ -32,6 +32,7 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import { settleComposerSubmit } from '@/lib/composer-submit-cancellation'
 import { isTuiAgentEnabled } from '../../../../shared/tui-agent-selection'
 import {
+  resolveFolderWorkspaceAgentLaunchTarget,
   resolveFolderWorkspaceLaunchDraft,
   submitFolderWorkspaceCreate
 } from '@/components/sidebar/folder-workspace-composer-submit'
@@ -121,7 +122,16 @@ export function useFolderSubmitOrchestration(input: FolderSubmitOrchestrationInp
           quickAgent: agent,
           autoRenameBranchFromWork: settings?.autoRenameBranchFromWork,
           agentCmdOverrides: settings?.agentCmdOverrides,
-          agentArgs: agent ? resolveTuiAgentLaunchArgs(agent, settings) : undefined,
+          agentArgs: agent
+            ? resolveTuiAgentLaunchArgs(
+                agent,
+                settings,
+                resolveFolderWorkspaceAgentLaunchTarget(
+                  selectedProjectGroup,
+                  settings?.terminalWindowsShell
+                )
+              )
+            : undefined,
           agentEnv: agent ? resolveTuiAgentLaunchEnv(agent, settings) : undefined,
           sessionOptions: agent
             ? resolveInitialNativeChatSessionOptions(

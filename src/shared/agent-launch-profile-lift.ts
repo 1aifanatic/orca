@@ -11,7 +11,12 @@ import {
   resolveComposedTuiAgentLaunchEnv
 } from './tui-agent-launch-defaults'
 import { classifyTypedAgentPermissions } from './tui-agent-permission-args'
-import { liftTuiAgentBypassArgs, liftTuiAgentBypassEnv } from './tui-agent-bypass-lift'
+import {
+  cutTuiAgentBypassFlag,
+  liftTuiAgentBypassArgs,
+  liftTuiAgentBypassEnv
+} from './tui-agent-bypass-lift'
+import { resolveAgentLaunchGrammar, type AgentLaunchTarget } from './tui-agent-startup-shell'
 import {
   normalizeAgentPermissionModeOverrides,
   PERMISSION_AGENT_IDS,
@@ -31,11 +36,16 @@ export type AgentLaunchProfile = Required<
 >
 
 /**
- * Turns a launch-ready profile (flag inline) into a mode plus extra text, losslessly.
- * The majority mode becomes the default; a tie asks, so agents added later don't silently bypass.
+ * Turns a launch-ready profile (flag inline) into a mode plus extra text, losslessly; text left
+ * whole is read as it launches at `target`. The majority mode becomes the default; a tie asks, so
+ * agents added later don't silently bypass.
  */
 export function liftComposedAgentLaunchProfile(
-  composed: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>> | null | undefined
+  composed:
+    | Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>>
+    | null
+    | undefined,
+  target: AgentLaunchTarget
 ): AgentLaunchProfile {
   const composedArgs = normalizeTuiAgentArgsRecord(composed?.agentDefaultArgs)
   const composedEnv = normalizeTuiAgentEnvRecord(composed?.agentDefaultEnv)
@@ -47,7 +57,8 @@ export function liftComposedAgentLaunchProfile(
     if (agent in YOLO_TUI_AGENT_ARGS) {
       const lifted = liftTuiAgentBypassArgs(
         agent,
-        resolveComposedTuiAgentLaunchArgs(agent, composedArgs)
+        resolveComposedTuiAgentLaunchArgs(agent, composedArgs),
+        target
       )
       agentDefaultArgs[agent] = lifted.extraArgs
       bypass ||= lifted.bypass
@@ -109,16 +120,15 @@ export function liftAgentBypassFromTypedProfile(
     Object.keys(agentDefaultArgs).length !== Object.keys(storedArgs).length ||
     Object.keys(agentDefaultEnv).length !== Object.keys(storedEnv).length
   for (const agent of PERMISSION_AGENT_IDS) {
-    const args = agentDefaultArgs[agent]
-    const liftedArgs = args ? liftTuiAgentBypassArgs(agent, args) : null
-    const liftedEnv = liftTuiAgentBypassEnv(agent, agentDefaultEnv[agent])
+    const args = agentDefaultArgs[agent] ?? ''
     // Only a flag that comes out whole; text that still sets permissions keeps deciding.
-    const argsLifted = liftedArgs !== null && liftedArgs.extraArgs !== args
-    if (!argsLifted && !liftedEnv.bypass) {
+    const cutArgs = cutTuiAgentBypassFlag(agent, args)
+    const liftedEnv = liftTuiAgentBypassEnv(agent, agentDefaultEnv[agent])
+    if (cutArgs === args && !liftedEnv.bypass) {
       continue
     }
-    if (argsLifted) {
-      agentDefaultArgs[agent] = liftedArgs.extraArgs
+    if (cutArgs !== args) {
+      agentDefaultArgs[agent] = cutArgs
     }
     if (liftedEnv.bypass) {
       agentDefaultEnv[agent] = liftedEnv.extraEnv
@@ -148,11 +158,12 @@ export function applyComposedAgentLaunchUpdate(
       | 'agentPermissionModeOverrides'
     >
   >,
-  update: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>>
+  update: Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv'>>,
+  target: AgentLaunchTarget
 ): Partial<
   Pick<GlobalSettings, 'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'>
 > {
-  const publishedArgs = composeTuiAgentLaunchArgsRecord(current)
+  const publishedArgs = composeTuiAgentLaunchArgsRecord(current, target)
   const publishedEnv = composeTuiAgentLaunchEnvRecord(current)
   // An entry equal to what settings.get publishes is unchanged: older clients write back the
   // whole record, and a flag composed from a mode can't always be told apart from typed text.
@@ -166,20 +177,24 @@ export function applyComposedAgentLaunchUpdate(
     publishedEnv,
     (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort())
   )
-  const lifted = liftComposedAgentLaunchProfile({
-    agentDefaultArgs: { ...publishedArgs, ...writtenArgs },
-    agentDefaultEnv: { ...publishedEnv, ...writtenEnv }
-  })
+  const lifted = liftComposedAgentLaunchProfile(
+    {
+      agentDefaultArgs: { ...publishedArgs, ...writtenArgs },
+      agentDefaultEnv: { ...publishedEnv, ...writtenEnv }
+    },
+    target
+  )
   const defaultMode = resolveDefaultAgentPermissionMode(current)
   const agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
     current.agentPermissionModeOverrides
   )
   for (const agent of PERMISSION_AGENT_IDS) {
     // Arguments or env that set permissions decide the launch, so they say nothing about the mode.
-    const typed = classifyTypedAgentPermissions(agent, {
-      args: lifted.agentDefaultArgs[agent],
-      env: lifted.agentDefaultEnv[agent]
-    })
+    const typed = classifyTypedAgentPermissions(
+      agent,
+      { args: lifted.agentDefaultArgs[agent], env: lifted.agentDefaultEnv[agent] },
+      resolveAgentLaunchGrammar(target)
+    )
     if (!(agent in writtenArgs || agent in writtenEnv) || typed.kind !== 'none') {
       continue
     }

@@ -1,4 +1,5 @@
 import { planSourceControlAgentActionLaunch } from '@/lib/source-control-agent-action-plan'
+import { resolveSourceControlAgentLaunchTarget } from '@/lib/source-control-agent-launch-target'
 import { useAppStore } from '@/store'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { SourceControlAgentActionDeliveryPlanState } from './SourceControlAgentActionDialogForm'
@@ -38,7 +39,16 @@ export function buildSourceControlAgentDeliveryPlan({
     commandInput,
     // Same composition as the launch, so the preview shows the permission flag it will carry.
     agentArgs: selectedAgent
-      ? resolveTuiAgentLaunchArgs(selectedAgent, settings, agentArgs)
+      ? resolveTuiAgentLaunchArgs(
+          selectedAgent,
+          settings,
+          resolveSourceControlAgentLaunchTarget({
+            platform: launchPlatform,
+            isRemote,
+            terminalWindowsShell: settings?.terminalWindowsShell
+          }),
+          agentArgs
+        )
       : agentArgs,
     sessionOptions: selectedAgent
       ? resolveInitialNativeChatSessionOptions(settings, {

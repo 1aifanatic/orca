@@ -6,6 +6,8 @@ import {
 } from './tui-agent-startup'
 import { resolveTuiAgentLaunchArgs } from '../../../shared/tui-agent-launch-defaults'
 
+const DARWIN = { platform: 'darwin' } as const
+
 const emptyLaunchConfig = (agentCommand: string) => ({
   agentCommand,
   agentArgs: '',
@@ -267,7 +269,7 @@ describe('buildAgentStartupPlan', () => {
         agent: 'devin',
         prompt: 'Trace the failing test',
         cmdOverrides: {},
-        agentArgs: resolveTuiAgentLaunchArgs('devin', null),
+        agentArgs: resolveTuiAgentLaunchArgs('devin', null, DARWIN),
         platform: 'linux'
       })
     ).toEqual({

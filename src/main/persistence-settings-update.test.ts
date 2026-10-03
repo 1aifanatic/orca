@@ -30,6 +30,8 @@ import {
   isLocalWorktreeScanGenerationCurrent
 } from './local-worktree-scan-generation'
 
+const DARWIN = { platform: 'darwin' } as const
+
 // Stub the ~/.ssh/config parser so the SSH-import test drives the real Store with deterministic hosts, not the operator's actual ~/.ssh/config.
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
   loadUserSshConfigMock: vi.fn(),
@@ -512,7 +514,7 @@ describe('Store', () => {
 
     expect(store.getSettings().agentPermissionMode).toBe('bypass')
     expect(store.getSettings().agentPermissionModeOverrides).toEqual({})
-    expect(composeTuiAgentLaunchArgsRecord(store.getSettings())).toMatchObject({
+    expect(composeTuiAgentLaunchArgsRecord(store.getSettings(), DARWIN)).toMatchObject({
       claude: '--dangerously-skip-permissions',
       codex: '--dangerously-bypass-approvals-and-sandbox',
       cursor: '--yolo'
@@ -538,7 +540,7 @@ describe('Store', () => {
     const store = await createStore()
 
     expect(store.getSettings().agentPermissionModeOverrides).toEqual({ codex: 'ask', goose: 'ask' })
-    const composed = composeTuiAgentLaunchArgsRecord(store.getSettings())
+    const composed = composeTuiAgentLaunchArgsRecord(store.getSettings(), DARWIN)
     expect(composed.codex).toBe('')
     expect(composeTuiAgentLaunchEnvRecord(store.getSettings()).goose).toEqual({})
     expect(composed.claude).toBe('--dangerously-skip-permissions')
@@ -588,7 +590,7 @@ describe('Store', () => {
 
     expect(store.getSettings().agentDefaultArgs?.opencode).toBe('--model opencode/gpt-5')
     expect(store.getSettings().agentDefaultArgs?.kilo).toBe('')
-    expect(composeTuiAgentLaunchArgsRecord(store.getSettings()).codex).toBe(
+    expect(composeTuiAgentLaunchArgsRecord(store.getSettings(), DARWIN).codex).toBe(
       '--dangerously-bypass-approvals-and-sandbox'
     )
     expect((readDataFile() as PersistedState).settings.agentDefaultArgs?.opencode).toBe(

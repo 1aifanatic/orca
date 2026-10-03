@@ -1,6 +1,7 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { AgentLaunchProfileSettings } from '../../shared/tui-agent-launch-defaults'
 import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
+import { resolveLocalAgentLaunchTarget } from '../../shared/windows-terminal-shell'
 
 export type CodexStructuredPermissionPolicy =
   | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }
@@ -43,7 +44,11 @@ export function codexStructuredPermissionPolicyForSettings(
     | null
     | undefined
 ): CodexStructuredPermissionPolicy {
-  return resolveAgentPermissionPosture('codex', settings).effectiveBypass
+  return resolveAgentPermissionPosture(
+    'codex',
+    settings,
+    resolveLocalAgentLaunchTarget(process.platform, settings?.terminalWindowsShell)
+  ).effectiveBypass
     ? BYPASS_POLICY
     : MANUAL_POLICY
 }

@@ -14,6 +14,8 @@ import {
 } from '../../../shared/tui-agent-permissions'
 import type { TuiAgent } from '../../../shared/tui-agent'
 
+const DARWIN = { platform: 'darwin' } as const
+
 const CLAUDE_BYPASS = '--dangerously-skip-permissions'
 const CODEX_BYPASS = '--dangerously-bypass-approvals-and-sandbox'
 const YOLO_ENV = { goose: { GOOSE_MODE: 'auto' } }
@@ -141,7 +143,7 @@ describe('migrateAgentLaunchProfile', () => {
         agentDefaultEnv: { goose: { GOOSE_MODE: 'auto', EXTRA: '1' } }
       })
     )
-    const composed = composeTuiAgentLaunchArgsRecord(profile)
+    const composed = composeTuiAgentLaunchArgsRecord(profile, DARWIN)
 
     for (const agent of PERMISSION_AGENT_IDS) {
       const original = resolveComposedTuiAgentLaunchArgs(agent, before).split(/\s+/).filter(Boolean)
@@ -221,7 +223,7 @@ describe('migrateAgentLaunchProfile', () => {
     expect(profile.agentPermissionModeOverrides).toEqual({})
     for (const [agent, args] of aliases) {
       expect(profile.agentDefaultArgs?.[agent]).toBe(args)
-      expect(resolveTuiAgentLaunchArgs(agent, profile)).toBe(args)
+      expect(resolveTuiAgentLaunchArgs(agent, profile, DARWIN)).toBe(args)
     }
   })
 
@@ -239,7 +241,7 @@ describe('migrateAgentLaunchProfile', () => {
 
       expect(profile.agentDefaultArgs?.claude).toBe(claude)
       expect(profile.agentPermissionModeOverrides).toEqual({})
-      expect(resolveTuiAgentLaunchArgs('claude', profile)).toBe(claude)
+      expect(resolveTuiAgentLaunchArgs('claude', profile, DARWIN)).toBe(claude)
     }
   )
 
@@ -302,8 +304,20 @@ describe('migrateAgentLaunchProfile', () => {
     const loaded = { ...stored, ...profile }
     expect(loaded.agentPermissionMode).toBe('accept-edits')
     expect(resolveAgentPermissionMode('claude', loaded)).toBe('ask')
-    expect(resolveTuiAgentLaunchArgs('claude', loaded)).toBe('--model opus')
+    expect(resolveTuiAgentLaunchArgs('claude', loaded, DARWIN)).toBe('--model opus')
     expect(resolveAgentPermissionMode('gemini', loaded)).toBe('ask')
-    expect(resolveTuiAgentLaunchArgs('gemini', loaded)).toBe('')
+    expect(resolveTuiAgentLaunchArgs('gemini', loaded, DARWIN)).toBe('')
   })
+
+  // An escaped flag means something different under each shell, so a load never cuts it.
+  it.each([`--model opus \`${CLAUDE_BYPASS}`, `--model opus \\${CLAUDE_BYPASS}`])(
+    'leaves the escaped flag %j in a typed profile on every load',
+    (claude) => {
+      const typed = legacy({ agentPermissionMode: 'ask', agentDefaultArgs: { claude } })
+      const { profile } = migrateAgentLaunchProfile(typed)
+
+      expect(profile.agentDefaultArgs?.claude).toBe(claude)
+      expect(profile.agentPermissionModeOverrides).toEqual({})
+    }
+  )
 })

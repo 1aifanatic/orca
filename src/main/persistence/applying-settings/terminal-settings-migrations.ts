@@ -14,6 +14,7 @@ import {
   YOLO_TUI_AGENT_ENV
 } from '../../../shared/tui-agent-permissions'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { resolveLocalAgentLaunchTarget } from '../../../shared/windows-terminal-shell'
 import {
   liftAgentBypassFromTypedProfile,
   liftComposedAgentLaunchProfile
@@ -194,7 +195,10 @@ export function migrateAgentLaunchProfile(settings: GlobalSettings | undefined):
   }
   return {
     profile: {
-      ...liftComposedAgentLaunchProfile(migrateAgentYoloDefaults(settings)),
+      ...liftComposedAgentLaunchProfile(
+        migrateAgentYoloDefaults(settings),
+        resolveLocalAgentLaunchTarget(process.platform, settings?.terminalWindowsShell)
+      ),
       agentYoloDefaultsMigrated: true
     },
     migrated: true
