@@ -14,7 +14,7 @@ export type UnopenedSendJournal = {
   agent?: AgentType
   queuedMessages?: Pick<AgentSessionJournal['queuedMessages'], 'userStopInForce'>
   snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
-  submissions?: () => Pick<
+  submissions?: () => (Pick<
     AgentJournalSubmission,
     | 'clientMessageId'
     | 'dispatchState'
@@ -22,15 +22,17 @@ export type UnopenedSendJournal = {
     | 'handoverRecorded'
     | 'handedOverAt'
     | 'acceptedSequence'
-  >[]
+  > &
+    Partial<Pick<AgentJournalSubmission, 'submittedAt'>>)[]
   resolveDispatch?: AgentSessionJournal['resolveDispatch']
 }
 
 /**
  * Withdraws the sends a Codex child left unanswered when a person's Stop, in force since they were
- * sent, ends it and no turn opened for them: no turn row runs, or was written, after the send.
- * Codex records a prompt only once its turn starts (core tasks/regular.rs:50,
- * session/turn.rs:886-902), so they never ran. Any other end leaves them in doubt.
+ * sent, ends it and no turn was open for them: none runs, was written after the send, or ended
+ * after it was handed over. Codex records a prompt only once its turn starts (core
+ * tasks/regular.rs:50, session/turn.rs:886-902), so they never ran. A send steered into an open
+ * turn may have been recorded there, so it, and any other end, stays in doubt.
  */
 export async function withdrawCodexSendsNoTurnOpenedFor(
   journal: UnopenedSendJournal,
@@ -42,10 +44,20 @@ export async function withdrawCodexSendsNoTurnOpenedFor(
   }
   const turns = journal.snapshot().items.flatMap((item) => {
     const turn = readAgentJournalTurn(item.body)
-    return turn ? [{ running: turn.state === 'running', sequence: item.sequence }] : []
+    return turn
+      ? [
+          {
+            running: turn.state === 'running',
+            sequence: item.sequence,
+            completedAt: turn.completedAt ?? 0
+          }
+        ]
+      : []
   })
-  const opened = (acceptedSequence: number): boolean =>
-    turns.some((turn) => turn.running || turn.sequence > acceptedSequence)
+  const opened = (acceptedSequence: number, sentAt: number): boolean =>
+    turns.some(
+      (turn) => turn.running || turn.sequence > acceptedSequence || turn.completedAt >= sentAt
+    )
   const unopened = journal
     .submissions()
     .filter(
@@ -55,7 +67,7 @@ export async function withdrawCodexSendsNoTurnOpenedFor(
           (entry.dispatchState === 'unknown' && entry.recovered !== true)) &&
         entry.acceptedSequence !== undefined &&
         entry.acceptedSequence < stop.sequence &&
-        !opened(entry.acceptedSequence)
+        !opened(entry.acceptedSequence, entry.handedOverAt ?? entry.submittedAt ?? 0)
     )
   const withdrawn = agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
     surface: 'rejection'
