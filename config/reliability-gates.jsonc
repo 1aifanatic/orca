@@ -698,7 +698,7 @@
           "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/native-chat/agent-session-journal src/main/native-chat/agent-session-wire/agent-session-history-page.test.ts src/main/native-chat/agent-session-wire/agent-session-history-forward-read-budget.test.ts src/main/native-chat/agent-session-wire/structured-agent-session-subscribers.test.ts",
           "result": "passed",
           "durationSeconds": 5.56,
-          "summary": "450 tests passed across 42 files, run as the vitest invocation the test script makes. Damage fails the load with every row kept; the retained-heap, latching and cursor-cleanup assertions passed."
+          "summary": "450 tests passed across 42 files, run as the vitest invocation the test script makes. Damage fails the load with every row kept; the retained-heap, newer-row-past-a-gap and cursor-cleanup assertions passed."
         }
       ],
       "runtimeBudget": {

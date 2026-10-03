@@ -10,7 +10,8 @@ import {
 } from './agent-session-journal-schemas'
 import { isJournalTag } from './agent-session-journal-open-union'
 
-/** `unreadable` is never damage: the caller keeps the row and stops writing, as for a newer `v`. */
+/** `unreadable` is never damage: the caller keeps the row and fails the load as a newer Orca's
+ *  chat, as for a newer `v`. */
 export type AgentJournalContentVerdict = 'readable' | 'unreadable' | 'malformed'
 
 export function readAgentJournalItemBody(body: unknown): AgentJournalContentVerdict {

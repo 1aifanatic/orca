@@ -290,8 +290,8 @@ describe('producer linkage on the persisted row', () => {
   it('writes and reads the bundle back without bumping the schema version', () => {
     const row = roundTrip(true)
     expect(row).toMatchObject(linkage)
-    // Deliberately NOT a version bump: an unknown `v` is unreadable and latches
-    // the host read-only, while an unknown KEY is simply ignored by an older host.
+    // Deliberately NOT a version bump: an unknown `v` is unreadable and costs an older
+    // host the chat, while an unknown KEY is simply ignored by an older host.
     expect(row?.v).toBe(AGENT_SESSION_JOURNAL_SCHEMA_VERSION)
   })
 
@@ -373,7 +373,7 @@ describe('producer linkage on the persisted row', () => {
     expect(mutations[0]).toMatchObject(linkage)
     expect(mutations[1] && 'agentId' in mutations[1]).toBe(false)
     // The same batch without the stamp writes the same version: an older host
-    // ignores the unknown keys rather than latching the journal read-only.
+    // ignores the unknown keys rather than losing the chat to an unknown `v`.
     expect(row.v).toBe(
       build({ kind: 'item', identity, body, turnScope: AGENT_JOURNAL_THREAD_SCOPE }).v
     )

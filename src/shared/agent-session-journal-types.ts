@@ -21,8 +21,8 @@ export { type AgentType }
 
 /** Bump only alongside a read-time upcaster in `journal-row-schema.ts`. */
 /** v3 introduced the `turn` item. A row without one is still written at v2 so
- *  an older host keeps reading it; the first v3 row latches that host read-only
- *  instead of truncating the epoch. */
+ *  an older host keeps reading it; the first v3 row stops that host writing the chat
+ *  (a released one keeps it read-only, this build fails its load) instead of truncating. */
 export const AGENT_SESSION_JOURNAL_SCHEMA_VERSION = 3
 export const AGENT_SESSION_JOURNAL_TURN_ITEM_SCHEMA_VERSION = 3
 const AGENT_SESSION_JOURNAL_PRE_TURN_SCHEMA_VERSION = 2

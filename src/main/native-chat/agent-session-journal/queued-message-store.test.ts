@@ -125,7 +125,7 @@ describe('draft rows', () => {
     try {
       const version = Number(db.pragma('user_version', { simple: true }))
       // An old build compares stored == supported and keeps writing; a bump
-      // would latch it read-only after downgrade.
+      // would cost it every chat after a downgrade.
       expect(version).toBe(JOURNAL_DB_SCHEMA_VERSION)
       const table = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")

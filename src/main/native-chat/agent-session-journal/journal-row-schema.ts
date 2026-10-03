@@ -2,8 +2,8 @@
 //
 // The journal is append-only, so migration is upcasting on read and never an
 // in-place rewrite. A row whose version this build does not understand is
-// UNREADABLE, not skippable: the caller must degrade to read-only rather than
-// render a partial timeline or compact past a row it cannot interpret.
+// UNREADABLE, not skippable: the caller fails the load as a newer Orca's chat rather
+// than render a partial timeline or compact past a row it cannot interpret.
 //
 // A row whose KIND this build does not know is UNREADABLE the same way, and kept
 // on disk, when it has the envelope every row keeps: a non-empty `epoch`, an
@@ -43,8 +43,8 @@ import { dropUnusableRowAnnotations } from './journal-row-unusable-annotations'
 /** Producer linkage rides the row BASE rather than the body: older builds read
  *  the two nested prompt shapes strictly, so an unknown key there made the whole
  *  row parse as malformed. It is also deliberately not a `v` bump — an
- *  unknown `v` makes a row unreadable and latches the host read-only, while an
- *  unknown KEY is ignored below, so an older host reads a stamped row and
+ *  unknown `v` makes a row unreadable (released older hosts keep the chat read-only;
+ *  this build fails its load), while an unknown KEY is ignored below, so an older host reads a stamped row and
  *  behaves exactly as it does today. */
 type JournalRowBase = AgentJournalProducerLinkage & {
   /** Schema version of THIS row. */
