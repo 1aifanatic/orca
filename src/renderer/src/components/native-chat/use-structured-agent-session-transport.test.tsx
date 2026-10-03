@@ -17,10 +17,12 @@ const mocks = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
   subscribeStructuredAgentSession: mocks.subscribe,
+  supportsStructuredAgentSessionQuietRepeatedStop: vi.fn().mockResolvedValue(false),
   supportsStructuredAgentSessionPromptCancel: vi.fn().mockResolvedValue(false)
 }))
 
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
+import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { resetStructuredAgentSessionReadOwnersForTests } from './structured-agent-session-read-owner'
 import {
   resetUndeliveredStructuredAgentSessionOutboxForTests,
@@ -67,7 +69,7 @@ function renderHiddenTransport(sessionId: string, enabled = true) {
   )
 }
 
-describe('useStructuredAgentSessionTransport undelivered retention', () => {
+describe('useStructuredAgentSessionTransport', () => {
   afterEach(cleanup)
 
   beforeEach(() => {
@@ -77,6 +79,87 @@ describe('useStructuredAgentSessionTransport undelivered retention', () => {
     localStorage.clear()
     mocks.call.mockResolvedValue({ ok: true, page: emptyPage() })
     mocks.subscribe.mockResolvedValue({ unsubscribe: vi.fn() })
+  })
+
+  it('reads, writes, and releases a paired chat through its owning runtime', async () => {
+    const target = { kind: 'environment', environmentId: 'server-1' } as const
+    const unsubscribe = vi.fn()
+    mocks.subscribe.mockResolvedValue({ unsubscribe })
+    mocks.call.mockImplementation(async (_target, method: string) => {
+      if (method === 'agentSession.history') {
+        return { ok: true, page: { ...emptyPage(), fence: 3 } }
+      }
+      return {
+        ok: true,
+        value: method === 'agentSession.send' ? { queued: {} } : { applied: true }
+      }
+    })
+    const { result, unmount } = renderHook(() => {
+      const transport = useStructuredAgentSessionTransport({
+        sessionId: 'session-a',
+        target,
+        isVisible: true,
+        enabled: true
+      })
+      const outbox = useStructuredAgentSessionOutbox({
+        sessionId: 'session-a',
+        target,
+        fence: transport.state.fence,
+        submissions: transport.state.submissions
+      })
+      return { transport, outbox }
+    })
+    await waitFor(() => expect(result.current.transport.state.fence).toBe(3))
+
+    act(() => {
+      result.current.outbox.send('hello')
+    })
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith(
+        target,
+        'agentSession.send',
+        expect.objectContaining({
+          envelope: expect.objectContaining({ sessionId: 'session-a', expectedRuntimeFence: 3 })
+        })
+      )
+    )
+
+    const actions = [
+      ['agentSession.cancel', { turnId: 'turn-1' }],
+      [
+        'agentSession.respondToApproval',
+        { itemId: 'approval-1', expectedRevision: 1, optionId: 'allow' }
+      ],
+      [
+        'agentSession.respondToQuestion',
+        { itemId: 'question-1', expectedRevision: 1, optionId: 'yes' }
+      ]
+    ] as const
+    for (const [method, fields] of actions) {
+      await act(async () => {
+        expect(await result.current.transport.mutate(method, method, fields)).toEqual({
+          applied: true
+        })
+      })
+      expect(mocks.call).toHaveBeenLastCalledWith(target, method, {
+        envelope: expect.objectContaining({ sessionId: 'session-a', expectedRuntimeFence: 3 }),
+        ...fields
+      })
+    }
+
+    unmount()
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith(target, 'agentSession.release', expect.anything())
+    )
+    expect(unsubscribe).toHaveBeenCalledOnce()
+    expect(mocks.subscribe).toHaveBeenCalledWith(
+      target,
+      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function)
+    )
+    expect(mocks.call.mock.calls.every(([owner]) => owner === target)).toBe(true)
   })
 
   it('keeps reading a hidden session that still owes a delivery', async () => {
