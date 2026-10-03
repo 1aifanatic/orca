@@ -8,12 +8,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  CodexAppServerRequestError,
-  type CodexAppServerConnection,
-  type CodexAppServerConnectionHandlers,
-  type openCodexAppServerConnection
+import type {
+  CodexAppServerConnection,
+  CodexAppServerConnectionHandlers,
+  openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
+import { readCodexTurnId } from '../codex/codex-structured-thread-facts'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalTurnItem } from '../../shared/agent-session-journal-types'
@@ -57,7 +57,8 @@ let turns: ReturnType<typeof codexTurnLifecycleFake>
 let statuses: AgentSessionStatusSummary[]
 let opened: Set<string>
 let steers: number
-let aborted: Set<string>
+/** The turn each turn/start answered into, in order. */
+let startedTurns: string[]
 /** When set, Codex answers the interrupt only once it resolves. */
 let interruptAnswer: Promise<void> | null
 let operations = 0
@@ -85,6 +86,34 @@ async function send(text: string): Promise<string> {
     throw new Error(JSON.stringify(sent.refusal))
   }
   return sent.value.clientMessageId
+}
+
+/** A send asking to be queued while the agent works, under `clientOperationId` when it retries. */
+async function sendQueued(text: string, clientOperationId?: string) {
+  const body = hostTestMessage(text)
+  const delivery = 'queue-if-active' as const
+  const fields = { body, delivery }
+  const sent = await host.send(CALLER, {
+    envelope: {
+      ...envelope('agentSession.send', fields),
+      ...(clientOperationId ? { clientOperationId } : {})
+    },
+    body,
+    delivery,
+    userSend: true
+  })
+  if (!sent.ok) {
+    throw new Error(JSON.stringify(sent.refusal))
+  }
+  return sent.value
+}
+
+async function queuedCards() {
+  const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+  if (!page.ok) {
+    throw new Error('history refused')
+  }
+  return page.page.queuedMessages ?? []
 }
 
 async function stop(turnId?: string): Promise<void> {
@@ -155,7 +184,7 @@ beforeEach(async () => {
   interrupts = 0
   opened = new Set()
   steers = 0
-  aborted = new Set()
+  startedTurns = []
   interruptAnswer = null
   turns = codexTurnLifecycleFake(THREAD, () => (method, params) => {
     if (method === 'turn/started') {
@@ -180,19 +209,12 @@ beforeEach(async () => {
         }
         if (method === 'turn/start') {
           answers += 1
-          return turns.routes['turn/start']()
+          const answer = await turns.routes['turn/start']()
+          startedTurns.push(readCodexTurnId(answer) ?? '')
+          return answer
         }
         if (method === 'turn/steer') {
           steers += 1
-          // A turn Codex answered an interrupt for has aborted: Codex refuses to steer it.
-          if (turns.turnId === null || aborted.has(turns.turnId)) {
-            throw new CodexAppServerRequestError(
-              'turn/steer',
-              -32600,
-              'codex app-server turn/steer failed: no active turn to steer',
-              'no active turn to steer'
-            )
-          }
           return turns.routes['turn/steer'](params)
         }
         if (method === 'turn/interrupt') {
@@ -203,7 +225,8 @@ beforeEach(async () => {
             turns.start()
           }
           await interruptAnswer
-          aborted.add(turns.turnId ?? '')
+          // Codex drops the turn as its active one before it answers; turn/completed comes later.
+          turns.takeInterrupt()
           return {}
         }
         return {}
@@ -305,6 +328,58 @@ describe('a send behind a Codex Stop answered before its turn ends', () => {
 
     await vi.waitFor(() => expect(answers).toBe(2))
     expect(steers).toBe(0)
+    // Its own turn, not folded into the aborted one, and the message is not lost.
+    expect(startedTurns).toEqual(['turn-1', 'turn-2'])
     turns.end('interrupted')
+    const clientMessageId = await sent
+    const submission = (await host.journalSnapshot(SESSION)).submissions.find(
+      (entry) => entry.clientMessageId === clientMessageId
+    )
+    expect(submission?.dispatchState).not.toBe('rejected')
+  })
+})
+
+// A message sent asking to be queued while a person's Stop ends the turn is a card at once, while
+// the Stop still waits on Codex, and runs as its own turn once the stopped turn has ended.
+describe('a queued send while a Codex Stop waits on its answer', () => {
+  it('is a card at once, held by no pause, and opens its own turn after the stop', async () => {
+    const first = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(first)
+    const answer = Promise.withResolvers<void>()
+    interruptAnswer = answer.promise
+    let stopped = false
+    const stopping = stop().then(() => {
+      stopped = true
+    })
+    await vi.waitFor(() => expect(statuses.at(-1)?.stopping).toBe(true))
+
+    const queued = await sendQueued('run this after the stop')
+
+    expect(stopped).toBe(false)
+    expect(queued).toMatchObject({ queued: { state: 'waiting' } })
+    const messageId = 'queued' in queued ? queued.queued.messageId : ''
+    expect(await queuedCards()).toEqual([expect.objectContaining({ messageId, state: 'waiting' })])
+    expect((await queuedCards())[0]).not.toHaveProperty('paused')
+    // A retry of the same operation answers the same card, on the lane or off it.
+    expect(await sendQueued('run this after the stop', messageId)).toEqual(queued)
+
+    answer.resolve()
+    await stopping
+    turns.end('interrupted')
+
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(startedTurns).toEqual(['turn-1', 'turn-2'])
+    expect(steers).toBe(0)
+    // Retried once handed off, on the lane, it answers with the card's hand-off, as any queued send.
+    expect(await sendQueued('run this after the stop', messageId)).toMatchObject({
+      submission: { queuedMessageId: messageId }
+    })
+    const handOff = (await host.journalSnapshot(SESSION)).submissions.find(
+      (entry) => entry.queuedMessageId === messageId
+    )
+    expect(handOff?.dispatchState).not.toBe('rejected')
+    expect(await queuedCards()).toEqual([])
   })
 })

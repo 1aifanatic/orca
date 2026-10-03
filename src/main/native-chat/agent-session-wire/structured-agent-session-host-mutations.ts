@@ -22,8 +22,14 @@ import type { AgentSessionPromptRequest } from './structured-agent-session-turns
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import {
   mutateStructuredAgentSession,
+  mutateStructuredAgentSessionOffLane,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-mutation-context'
+import {
+  maybeQueueStructuredAgentSessionSend,
+  queuedMessageBodyIsTextOnly
+} from './structured-agent-session-queued-messages'
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import {
   openForProviderWrite,
   openWithAgent,
@@ -64,23 +70,60 @@ export function sendStructuredAgentSessionTurn(
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  return mutateStructuredAgentSession(
-    context,
-    caller,
-    params.envelope,
-    {
-      ...plan,
-      run: (ctx) =>
-        runQueueableStructuredAgentSessionSend(
-          context,
-          ctx,
-          params,
-          async () =>
-            structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
-            (await plan.run(ctx))
-        )
-    },
-    sendPreparation(context, params.envelope)
+  const preparation = sendPreparation(context, params.envelope)
+  const queueable = (ctx: AgentSessionTurnContext) =>
+    runQueueableStructuredAgentSessionSend(
+      context,
+      ctx,
+      params,
+      async () =>
+        structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
+        (await plan.run(ctx))
+    )
+  if (!sendQueuesAfterStop(context, params)) {
+    return mutateStructuredAgentSession(
+      context,
+      caller,
+      params.envelope,
+      { ...plan, run: queueable },
+      preparation
+    )
+  }
+  // A message sent while a person's Stop ends the work is a card that runs once the stop lands. Its
+  // write has no order to keep with the Stop, which holds the lane until its provider answers.
+  return mutateStructuredAgentSessionOffLane(context, caller, params.envelope, {
+    ...plan,
+    run: async (ctx) => {
+      // Read again once admitted, in the same tick as the write: the Stop may have settled since.
+      const queued = sendQueuesAfterStop(context, params)
+        ? await maybeQueueStructuredAgentSessionSend(context, ctx, params, true)
+        : null
+      return (
+        queued ??
+        // Anything else takes the lane, at the fence it stands at there, as every send does.
+        context.serialize(ctx.sessionId, async () => {
+          const prepared = await preparation()
+          const fence = context.deps.store.getRecord(ctx.sessionId)?.lease.runtimeFence
+          return prepared.ok ? queueable({ ...ctx, fence: fence ?? ctx.fence }) : prepared
+        })
+      )
+    }
+  })
+}
+
+/** A text send asking to be queued, while the host reads that a person's Stop is ending the work. */
+function sendQueuesAfterStop(
+  context: StructuredAgentSessionMutationContext,
+  params: {
+    envelope: AgentSessionMutationEnvelope
+    body: AgentJournalMessageItem
+    delivery?: 'queue-if-active'
+  }
+): boolean {
+  return (
+    params.delivery === 'queue-if-active' &&
+    queuedMessageBodyIsTextOnly(params.body) &&
+    context.readStopping?.(params.envelope.sessionId) === true
   )
 }
 

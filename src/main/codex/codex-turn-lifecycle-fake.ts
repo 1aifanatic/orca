@@ -29,7 +29,10 @@ export type CodexTurnLifecycleFake = {
   /** The thread runs the picked turn, whose `turn/started` has yet to be read: an interrupt of it
    *  is taken, and that `turn/started` comes ahead of the answer. */
   run: () => void
-  /** Codex ends the picked or running turn on its own. */
+  /** Codex takes an interrupt of the running turn: it drops it as its active turn before it
+   *  answers, and that turn's `turn/completed` comes later (`end`). */
+  takeInterrupt: () => string
+  /** Codex ends the picked or running turn on its own, or the one whose interrupt it took. */
   end: (status: 'completed' | 'interrupted' | 'failed', errorMessage?: string) => void
   /** Codex fails the picked turn before starting it, which reports an `error` and no turn end. */
   failUnopened: (message: string) => void
@@ -59,14 +62,31 @@ export function codexTurnLifecycleFake(
   let lastTurn: string | null = null
   let held: Promise<void> | null = null
   let pickedRuns = false
+  // The turn whose interrupt Codex took and whose `turn/completed` is still to come.
+  let aborting: string | null = null
   const finish = (turnId: string, status: string, errorMessage?: string): void => {
-    picked = null
-    active = null
-    pickedRuns = false
+    // A taken interrupt's turn is no longer active: a turn picked since stays picked.
+    if (aborting === turnId) {
+      aborting = null
+    } else {
+      picked = null
+      active = null
+      pickedRuns = false
+    }
     notify()('turn/completed', {
       threadId,
       turn: { id: turnId, status, ...(errorMessage ? { error: { message: errorMessage } } : {}) }
     })
+  }
+
+  const takeInterrupt = (): string => {
+    if (!active) {
+      throw new Error('no running turn to interrupt')
+    }
+    aborting = active
+    active = null
+    picked = null
+    return aborting
   }
   const open = (): void => {
     if (!picked) {
@@ -117,10 +137,10 @@ export function codexTurnLifecycleFake(
             `expected active turn id ${String(turnId)} but found ${active}`
           )
         }
-        const aborted = active
+        const aborted = takeInterrupt()
         // Answered, then the turn's end on the next read; a turn that ends meanwhile is not ended twice.
         setTimeout(() => {
-          if (active === aborted) {
+          if (aborting === aborted) {
             finish(aborted, 'interrupted')
           }
         }, 0)
@@ -135,6 +155,7 @@ export function codexTurnLifecycleFake(
       return () => release()
     },
     start: () => open(),
+    takeInterrupt,
     run: () => {
       if (!picked || active) {
         throw new Error('no picked turn to run')
@@ -142,7 +163,8 @@ export function codexTurnLifecycleFake(
       pickedRuns = true
     },
     end: (status, errorMessage) => {
-      const turnId = active ?? picked
+      // A taken interrupt's turn/completed comes ahead of anything a later turn sends.
+      const turnId = aborting ?? active ?? picked
       if (!turnId) {
         throw new Error('no turn to end')
       }
