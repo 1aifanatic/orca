@@ -364,14 +364,13 @@ async function cancelAndNote(
   }
   // The turn the provider says the interrupt took, even one that opened while the cancel waited for
   // it: the note is that turn's, never a conversation row read before the wait.
-  const takenTurnId = taken === true ? stoppedTurn : undefined
   const noteScope =
-    (takenTurnId !== undefined
-      ? structuredAgentSessionNamedTurnScope(ctx.journal, takenTurnId)
+    (stoppedTurn !== undefined
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, stoppedTurn)
       : null) ?? turnScope
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
   await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(takenTurnId ?? stoppedTurnId ?? input.clientOperationId),
+    structuredAgentSessionStopNoteIdentity(stoppedTurn ?? stoppedTurnId ?? input.clientOperationId),
     note,
     { fence: ctx.fence, turnScope: noteScope }
   )
