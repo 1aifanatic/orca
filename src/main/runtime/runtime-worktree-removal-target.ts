@@ -4,7 +4,8 @@ import {
   type RuntimeWorktreeRemovalTarget
 } from './runtime-worktree-selection'
 import type { ResolvedWorktree } from './runtime-worktree-path-identity'
-import type { ExecutionHostId } from '../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
+import { failedWorktreeRemovals } from '../worktree-removal-table'
 
 export async function resolveRuntimeWorktreeRemovalTarget(args: {
   selector: string
@@ -16,6 +17,16 @@ export async function resolveRuntimeWorktreeRemovalTarget(args: {
   ) => Promise<ResolvedWorktree | null>
   requiredHostId?: ExecutionHostId
 }): Promise<RuntimeWorktreeRemovalTarget> {
+  const failedTarget = parseExactWorktreeIdSelector(args.selector)
+  // Why before resolving: that listing ends a failed delete whose folder was replaced, so Delete
+  // would answer not found instead of its retry saying the folder was left in place.
+  if (
+    failedTarget &&
+    (args.requiredHostId ?? LOCAL_EXECUTION_HOST_ID) === LOCAL_EXECUTION_HOST_ID &&
+    failedWorktreeRemovals.has(failedTarget.id)
+  ) {
+    return failedTarget
+  }
   try {
     const exactTarget = parseExactWorktreeIdSelector(args.selector)
     const worktree =
