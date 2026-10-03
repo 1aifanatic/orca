@@ -64,6 +64,14 @@ export function splitMarkdownPreviewTable(node: RootContent): RootContent[] {
   let group: Element[] = []
   let nodes = countMarkdownPreviewNodes({ children: [head] }, 512)
   let characters = getMarkdownPreviewTreeText(head).length
+  if (
+    nodes + countMarkdownPreviewNodes({ children: [rows[0]] }, 512) > 512 ||
+    characters + getMarkdownPreviewTreeText(rows[0]).length > 8192
+  ) {
+    groups.push([])
+    nodes = 0
+    characters = 0
+  }
   for (const [rowIndex, row] of rows.entries()) {
     const rowNodes = countMarkdownPreviewNodes({ children: [row] }, 512)
     const rowCharacters = getMarkdownPreviewTreeText(row).length
@@ -85,6 +93,13 @@ export function splitMarkdownPreviewTable(node: RootContent): RootContent[] {
     .map((cell) => getMarkdownPreviewTreeText(cell))
     .join(', ')
     .slice(0, 512)
+  const firstBodyGroup = groups.findIndex((rows) => rows.length > 0)
+  const headerEnd = head.position?.end
+  const firstRowStart = rows[0].position?.start
+  const headerGroupEnd =
+    headerEnd && firstRowStart && firstRowStart.line > headerEnd.line
+      ? { line: firstRowStart.line - 1, column: 1 }
+      : headerEnd
   let rowOffset = 0
   return groups.map((groupRows, index) => {
     const properties = { ...node.properties }
@@ -112,7 +127,7 @@ export function splitMarkdownPreviewTable(node: RootContent): RootContent[] {
     }))
     rowOffset += groupRows.length
     const start = index === 0 ? node.position?.start : groupRows[0].position?.start
-    const end = groupRows.at(-1)?.position?.end
+    const end = groupRows.at(-1)?.position?.end ?? headerGroupEnd
     return {
       ...node,
       properties,
@@ -120,12 +135,19 @@ export function splitMarkdownPreviewTable(node: RootContent): RootContent[] {
       children: [
         colgroup,
         ...(index === 0 ? [head] : []),
-        {
-          ...body,
-          properties: index === 0 ? body.properties : { ...body.properties, id: undefined },
-          position: undefined,
-          children: chunkRows
-        }
+        ...(chunkRows.length
+          ? [
+              {
+                ...body,
+                properties:
+                  index === firstBodyGroup
+                    ? body.properties
+                    : { ...body.properties, id: undefined },
+                position: undefined,
+                children: chunkRows
+              }
+            ]
+          : [])
       ]
     }
   })

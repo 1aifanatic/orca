@@ -89,6 +89,22 @@ describe('large preview table row groups', () => {
     expect((await engine.search('available'))?.matches).toHaveLength(2)
   })
 
+  it('preserves a small header when the first body row is excessive', async () => {
+    const engine = new MarkdownPreviewDocumentEngine()
+    const document = engine.load(
+      `| Item | Value |\n| --- | --- |\n| enormous | ${'x'.repeat(40_000)} |\n| after | available |`
+    )
+    expect(document.blocks[0]).toMatchObject({ sourceLine: 1, sourceEndLine: 2 })
+    expect(document.blocks[1]).toMatchObject({ sourceLine: 3, sourceEndLine: 3 })
+    const blocks = engine.blocks([0, 1, 2])
+    expect(blocks.map((block) => block.oversized)).toEqual([false, true, false])
+    expect(
+      elements(blocks[0].tree).filter((node) => node.type === 'element' && node.tagName === 'thead')
+    ).toHaveLength(1)
+    expect((await engine.search('Item'))?.matches).toEqual([{ block: 0, occurrence: 0 }])
+    expect((await engine.search('available'))?.matches).toEqual([{ block: 2, occurrence: 0 }])
+  })
+
   it('bounds repeated header context in continuation payloads', () => {
     const engine = new MarkdownPreviewDocumentEngine()
     engine.load(`| ${'h'.repeat(100_000)} | Value |\n| --- | --- |\n${'| x | y |\n'.repeat(1500)}`)

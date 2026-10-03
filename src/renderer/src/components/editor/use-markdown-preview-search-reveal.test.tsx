@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
 import { Virtualizer } from '@tanstack/react-virtual'
+import { createProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
 import { describe, expect, it, vi } from 'vitest'
 import { MarkdownPreviewDocumentClient } from './markdown-preview-document-client'
 import type { MarkdownPreviewDocumentMatch } from './markdown-preview-document-types'
@@ -31,6 +32,7 @@ function setup() {
     rootRef: { current: root },
     bodyRef: { current: root },
     virtualizer,
+    scrollMarks: createProgrammaticScrollMarks(),
     searchInstance: {}
   }
   const initialProps: { activeMatch: MarkdownPreviewDocumentMatch | undefined; query: string } = {
@@ -71,6 +73,17 @@ describe('virtual Find navigation ownership', () => {
       client.close()
     }
   )
+
+  it('lets explicit Next reveal a single match after its initial result was cancelled', () => {
+    const { root, scroll, rerender, result, unmount, client } = setup()
+    act(() => root.dispatchEvent(new Event('wheel')))
+    rerender({ activeMatch: { block: 0, occurrence: 0 }, query: 'needle' })
+    expect(scroll).not.toHaveBeenCalled()
+    act(() => result.current())
+    expect(scroll).toHaveBeenCalledExactlyOnceWith(0, { align: 'center' })
+    unmount()
+    client.close()
+  })
 
   it('keeps query editing independent of viewport scroll input and cleans up listeners', () => {
     const { root, input, scroll, rerender, unmount, client } = setup()
@@ -128,6 +141,7 @@ describe('exact Find positioning', () => {
         rootRef: { current: root },
         bodyRef: { current: root },
         virtualizer,
+        scrollMarks: createProgrammaticScrollMarks(),
         searchInstance: {}
       }
       const { rerender, unmount } = renderHook(

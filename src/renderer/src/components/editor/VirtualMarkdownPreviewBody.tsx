@@ -3,21 +3,17 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useImperativeHandle,
-  useMemo,
   useRef,
   useState,
   type RefObject
 } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Components } from 'react-markdown'
+import { createProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
 import { translate } from '@/i18n/i18n'
 import { scrollTopCache } from '@/lib/scroll-cache'
 import { renderMarkdownPreviewTree } from './markdown-preview-render-tree'
-import {
-  getMarkdownPreviewAnchorScrollTop,
-  decodeMarkdownPreviewAnchor
-} from './markdown-preview-anchor-navigation'
+import { scrollMarkdownPreviewVirtualizer } from './markdown-preview-anchor-navigation'
 import type { MarkdownPreviewSearchInstance } from './markdown-preview-search'
 import { useMarkdownPreviewSearchReveal } from './use-markdown-preview-search-reveal'
 import type {
@@ -41,16 +37,14 @@ import {
   markdownPreviewScrollAnchorKey,
   useMarkdownPreviewScrollAnchor
 } from './use-markdown-preview-scroll-anchor'
+import {
+  useMarkdownPreviewNavigation,
+  type PreviewReveal,
+  type VirtualMarkdownPreviewNavigation
+} from './use-markdown-preview-navigation'
+export type { VirtualMarkdownPreviewNavigation } from './use-markdown-preview-navigation'
 import type { MarkdownPreviewDocumentClient } from './markdown-preview-document-client'
 
-type PreviewReveal = { index: number } & (
-  | { kind: 'anchor'; id: string }
-  | { kind: 'source'; line: number }
-)
-export type VirtualMarkdownPreviewNavigation = {
-  anchor: (id: string) => boolean
-  sourceLine: (line: number) => boolean
-}
 const RenderedBlock = memo(function RenderedBlock({
   block,
   components
@@ -97,9 +91,9 @@ export function VirtualMarkdownPreviewBody({
     blocks: MarkdownPreviewRenderedBlock[]
     indicesKey: string
   } | null>(null)
+  const [scrollMarks] = useState(createProgrammaticScrollMarks)
   const [anchor, setAnchor] = useState<PreviewReveal | null>(null)
   const virtualBodyRef = useRef<HTMLDivElement>(null)
-  const completedAnchor = useRef<PreviewReveal | null>(null)
   const activeMatch = matches[activeMatchIndex]
   const annotationLine = Number(activeAnnotationBlockKey?.split(':')[1]?.split('-')[0])
   const pinnedAnnotationIndex = Number.isInteger(annotationLine)
@@ -122,6 +116,8 @@ export function VirtualMarkdownPreviewBody({
     estimateSize: (index) => Math.max(minimumRowHeight, document.blocks[index].estimate),
     getItemKey,
     initialOffset: () => scrollTopCache.get(scrollCacheKey) ?? 0,
+    scrollToFn: (offset, options, instance) =>
+      scrollMarkdownPreviewVirtualizer(offset, options, instance, scrollMarks),
     scrollMargin: layout.margin,
     overscan: MARKDOWN_PREVIEW_OVERSCAN,
     rangeExtractor: (range) => markdownPreviewViewportIndices(range, pinnedAnnotationIndex)
@@ -144,15 +140,9 @@ export function VirtualMarkdownPreviewBody({
     rootRef,
     virtualizer,
     scrollCacheKey,
-    revision
+    revision,
+    scrollMarks
   })
-  const anchorBlocks = useMemo(
-    () =>
-      new Map(
-        document.blocks.flatMap((block) => block.anchors.map((id) => [id, block.index] as const))
-      ),
-    [document]
-  )
   const rows = virtualizer.getVirtualItems()
   const indicesKey = markdownPreviewRequestIndices(
     rows.map((row) => row.index),
@@ -174,65 +164,7 @@ export function VirtualMarkdownPreviewBody({
       client.cancel('blocks')
     }
   }, [client, indicesKey])
-  useImperativeHandle(
-    navigationRef,
-    () => ({
-      anchor: (rawId) => {
-        const id = decodeMarkdownPreviewAnchor(rawId)
-        const index = anchorBlocks.get(id)
-        if (index === undefined) {
-          return false
-        }
-        virtualizer.scrollToIndex(index, { align: 'start' })
-        setAnchor({ kind: 'anchor', id, index })
-        return true
-      },
-      sourceLine: (line) => {
-        const index = document.blocks.findIndex(
-          (block) =>
-            block.sourceLine !== null &&
-            block.sourceLine <= line &&
-            (block.sourceEndLine ?? block.sourceLine) >= line
-        )
-        if (index === -1) {
-          return false
-        }
-        virtualizer.scrollToIndex(index, { align: 'center' })
-        setAnchor({ kind: 'source', line, index })
-        return true
-      }
-    }),
-    [anchorBlocks, document, virtualizer]
-  )
-  useEffect(() => {
-    const body = bodyRef.current
-    const container = rootRef.current
-    if (
-      !anchor ||
-      completedAnchor.current === anchor ||
-      !body ||
-      !container ||
-      rendered?.client !== client
-    ) {
-      return
-    }
-    const block = body.querySelector<HTMLElement>(`[data-preview-block-index="${anchor.index}"]`)
-    if (!block || !rendered.blocks.some((entry) => entry.index === anchor.index)) {
-      return
-    }
-    const target =
-      (anchor.kind === 'anchor'
-        ? [...block.querySelectorAll<HTMLElement>('[id]')].find((node) => node.id === anchor.id)
-        : [...block.querySelectorAll<HTMLElement>('[data-source-line][data-source-end-line]')].find(
-            (node) =>
-              Number(node.dataset.sourceLine) <= anchor.line &&
-              Number(node.dataset.sourceEndLine) >= anchor.line
-          )) ?? block
-    container.scrollTo({ top: getMarkdownPreviewAnchorScrollTop(container, target) })
-    target.focus({ preventScroll: true })
-    completedAnchor.current = anchor
-  }, [anchor, bodyRef, client, rendered, rootRef])
-  useMarkdownPreviewSearchReveal({
+  const revealSearchMatch = useMarkdownPreviewSearchReveal({
     client,
     query,
     activeMatch,
@@ -241,8 +173,23 @@ export function VirtualMarkdownPreviewBody({
     rootRef,
     bodyRef,
     virtualizer,
-    searchInstance
+    searchInstance,
+    scrollMarks
   })
+  useMarkdownPreviewNavigation({
+    document,
+    rootRef,
+    bodyRef,
+    virtualizer,
+    navigationRef,
+    revealSearchMatch,
+    renderedBlocks: rendered?.client === client ? rendered.blocks : null,
+    viewportReady: rendered?.client === client && rendered.indicesKey === indicesKey,
+    anchor,
+    setAnchor,
+    scrollMarks
+  })
+
   const available = new Map(
     rendered?.client === client ? rendered.blocks.map((block) => [block.index, block] as const) : []
   )

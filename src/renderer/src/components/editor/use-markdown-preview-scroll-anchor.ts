@@ -4,6 +4,7 @@ import {
   useVirtualizedScrollAnchor,
   type VirtualizedScrollAnchor
 } from '@/hooks/useVirtualizedScrollAnchor'
+import type { ProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
 import { scrollTopCache, setWithLRU } from '@/lib/scroll-cache'
 import type { MarkdownPreviewBlock } from './markdown-preview-document-types'
 
@@ -20,13 +21,15 @@ export function useMarkdownPreviewScrollAnchor({
   rootRef,
   virtualizer,
   scrollCacheKey,
-  revision
+  revision,
+  scrollMarks
 }: {
   blocks: MarkdownPreviewBlock[]
   rootRef: RefObject<HTMLDivElement | null>
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
   scrollCacheKey: string
   revision: number
+  scrollMarks: ProgrammaticScrollMarks
 }): void {
   const [initialPosition] = useState(() => ({
     anchor: anchors.get(scrollCacheKey) ?? null,
@@ -44,6 +47,7 @@ export function useMarkdownPreviewScrollAnchor({
     scrollElementRef: rootRef,
     virtualizer,
     totalSize: virtualizer.getTotalSize(),
+    programmaticScrollMarks: scrollMarks,
     restoreSignal: `${scrollCacheKey}:${revision}`
   })
   useLayoutEffect(

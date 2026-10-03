@@ -1,7 +1,12 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
-import { isEditableTarget } from '@/lib/editable-target'
-import { getMarkdownPreviewAnchorScrollTop } from './markdown-preview-anchor-navigation'
+import { listenMarkdownPreviewScrollInput } from './markdown-preview-scroll-input'
+import type { ProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
+import { VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT } from '@/hooks/useVirtualizedScrollAnchor'
+import {
+  scrollMarkdownPreviewTo,
+  getMarkdownPreviewAnchorScrollTop
+} from './markdown-preview-anchor-navigation'
 import type { MarkdownPreviewDocumentClient } from './markdown-preview-document-client'
 import type {
   MarkdownPreviewDocumentMatch,
@@ -30,7 +35,8 @@ export function useMarkdownPreviewSearchReveal({
   rootRef,
   bodyRef,
   virtualizer,
-  searchInstance
+  searchInstance,
+  scrollMarks
 }: {
   client: MarkdownPreviewDocumentClient
   query: string
@@ -41,8 +47,14 @@ export function useMarkdownPreviewSearchReveal({
   bodyRef: RefObject<HTMLDivElement | null>
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
   searchInstance: MarkdownPreviewSearchInstance
-}): void {
+  scrollMarks: ProgrammaticScrollMarks
+}): () => void {
   const reveal = useRef<SearchReveal | null>(null)
+  const [navigationRequest, setNavigationRequest] = useState(0)
+  const navigate = useCallback(() => {
+    reveal.current = null
+    setNavigationRequest((request) => request + 1)
+  }, [])
   useEffect(() => {
     const container = rootRef.current
     if (!container) {
@@ -51,29 +63,7 @@ export function useMarkdownPreviewSearchReveal({
     const cancel = (): void => {
       reveal.current = { client, query, match: activeMatch, settled: true }
     }
-    const pointer = (event: PointerEvent): void => {
-      if (!isEditableTarget(event.target)) {
-        cancel()
-      }
-    }
-    const keyboard = (event: KeyboardEvent): void => {
-      if (
-        !isEditableTarget(event.target) &&
-        ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)
-      ) {
-        cancel()
-      }
-    }
-    container.addEventListener('wheel', cancel, { passive: true })
-    container.addEventListener('touchmove', cancel, { passive: true })
-    container.addEventListener('pointerdown', pointer)
-    container.addEventListener('keydown', keyboard)
-    return () => {
-      container.removeEventListener('wheel', cancel)
-      container.removeEventListener('touchmove', cancel)
-      container.removeEventListener('pointerdown', pointer)
-      container.removeEventListener('keydown', keyboard)
-    }
+    return listenMarkdownPreviewScrollInput(container, cancel)
   }, [activeMatch, client, query, rootRef])
   useEffect(() => {
     const previous = reveal.current
@@ -83,9 +73,10 @@ export function useMarkdownPreviewSearchReveal({
       return
     }
     if (activeMatch) {
+      rootRef.current?.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
       virtualizer.scrollToIndex(activeMatch.block, { align: 'center' })
     }
-  }, [activeMatch, client, query, virtualizer])
+  }, [activeMatch, client, navigationRequest, query, rootRef, virtualizer])
   useEffect(() => {
     const body = bodyRef.current
     const container = rootRef.current
@@ -134,8 +125,13 @@ export function useMarkdownPreviewSearchReveal({
         !horizontalOffset
       ) {
         reveal.current = { client, query, match: activeMatch, settled: true }
+        container.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
       } else {
-        container.scrollTo({ top: getMarkdownPreviewAnchorScrollTop(container, range, 'center') })
+        scrollMarkdownPreviewTo(
+          container,
+          getMarkdownPreviewAnchorScrollTop(container, range, 'center'),
+          scrollMarks
+        )
         reveal.current = { client, query, match: activeMatch, settled: false }
       }
     }
@@ -148,8 +144,11 @@ export function useMarkdownPreviewSearchReveal({
     query,
     rootRef,
     searchInstance,
+    navigationRequest,
+    scrollMarks,
     viewportReady,
     virtualizer,
     virtualizer.isScrolling
   ])
+  return navigate
 }
