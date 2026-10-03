@@ -24,6 +24,7 @@ vi.mock('../../store', () => {
 })
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { queuedMessageCardSendNow } from './NativeChatQueuedMessageCard'
@@ -218,10 +219,10 @@ describe('NativeChatQueuedMessageList', () => {
             state: 'returned',
             hold: 'returned',
             returnedReason: 'A Codex hook blocked this message: No secrets.',
-            returnedRejection: {
-              kind: 'hookBlocked',
+            // As the wire carries it: a fact this build reads whole.
+            returnedRejection: agentSessionFailureFact('hookBlocked', {
               detail: { text: 'No secrets.', audience: 'person' }
-            }
+            })
           })
         ]),
         agentName
