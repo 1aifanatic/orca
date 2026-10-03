@@ -101,7 +101,8 @@ export function sendPointToPointMessage(args: {
       return recordReceiptForPostCommitNudge(
         recordMutationReceipt,
         withSendWarnings({ message: exposeMessage(msg) }),
-        () => undefined
+        () => undefined,
+        null
       )
     }
     if (isDispatchMutationMessageType(msg.type)) {
