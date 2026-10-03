@@ -9,10 +9,7 @@ import { setupCodexHookHomes } from './hook-service-test-harness'
 const { getPathMock, homedirMock, guest } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
   homedirMock: vi.fn<() => string>(),
-  guest: {
-    root: '',
-    pendingSettles: [] as InstallPlan.WslCanonicalPathSettled[]
-  }
+  guest: { root: '', pendingSettles: new Array<InstallPlan.WslCanonicalPathSettled>() }
 }))
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))

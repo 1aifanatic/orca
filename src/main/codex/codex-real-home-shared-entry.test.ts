@@ -110,7 +110,7 @@ describe('the shared real-home Codex entry', () => {
       'profile'
     )
 
-    expect(status.state).toBe('installed')
+    expect(status?.state).toBe('installed')
     expect(snapshotRealCodexHome()).toEqual(before)
   })
 
