@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -40,7 +41,7 @@ let host: StructuredAgentSessionHost
 // Runs before each spawn; throwing refuses that start.
 let beforeSpawn = vi.fn<() => Promise<void>>()
 let dispatch = vi.fn<StructuredAgentSessionAdapter['dispatch']>()
-let completions: unknown[] = []
+let completions: AgentSessionTurnCompletionEvent[] = []
 
 function startHost(): void {
   host = new StructuredAgentSessionHost({
@@ -166,11 +167,7 @@ async function submission(clientMessageId: string): Promise<AgentJournalSubmissi
 
 function failures(): number {
   return completions.filter(
-    (event) =>
-      typeof event === 'object' &&
-      event !== null &&
-      'completion' in event &&
-      (event as { completion: { outcome: string } }).completion.outcome === 'failure'
+    (event) => event.type === 'completion' && event.completion.outcome === 'failure'
   ).length
 }
 

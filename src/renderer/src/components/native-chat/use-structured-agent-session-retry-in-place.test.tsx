@@ -18,8 +18,8 @@ import { agentSessionFailureWords } from '../../../../shared/agent-session-failu
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 
-const capability = vi.hoisted(() => ({
-  state: 'supported' as 'supported' | 'unsupported' | 'unknown'
+const capability = vi.hoisted((): { state: 'supported' | 'unsupported' | 'unknown' } => ({
+  state: 'supported'
 }))
 vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
   useStructuredAgentSessionHostCapabilityState: () => capability.state
