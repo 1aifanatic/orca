@@ -69,8 +69,7 @@ export class ManagedDataAccountService {
     if (!existsSync(path)) {
       return { accounts: [], activeAccountId: null }
     }
-    this.assertOwned(path)
-    return stateSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
+    return this.readState(path)
   }
 
   add(
@@ -100,10 +99,17 @@ export class ManagedDataAccountService {
       } catch (error) {
         let registered = true
         try {
-          registered = this.list(provider).accounts.some(
+          registered = this.readState(join(this.root, provider, 'accounts.json')).accounts.some(
             (account) => account.id.toLowerCase() === id.toLowerCase()
           )
-        } catch {
+        } catch (metadataError) {
+          if (
+            metadataError instanceof Error &&
+            'code' in metadataError &&
+            metadataError.code === 'ENOENT'
+          ) {
+            registered = false
+          }
           // Unreadable metadata cannot prove that this profile is unregistered.
         }
         if (!registered) {
@@ -245,6 +251,11 @@ export class ManagedDataAccountService {
     const checked = this.writeState(provider, state)
     this.notifyChanged()
     return checked
+  }
+
+  private readState(path: string): ManagedDataAccountsState {
+    this.assertOwned(path)
+    return stateSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
   }
 
   private writeState(

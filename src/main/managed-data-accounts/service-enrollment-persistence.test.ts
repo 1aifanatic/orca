@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as filesystem from 'node:fs'
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +14,11 @@ import { join } from 'node:path'
 import SyncDatabase from '../sqlite/sync-database'
 import * as secureFile from '../../shared/secure-file'
 import { ManagedDataAccountService } from './service'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof filesystem>()
+  return { ...actual }
+})
 
 let root: string
 let source: string
@@ -100,6 +106,36 @@ describe.each(['opencode', 'devin'] as const)('committed %s enrollment', (provid
       readdirSync(join(root, 'managed', provider)).filter((name) => name !== 'accounts.json')
     ).toHaveLength(1)
     writeFileSync(metadata, published)
+    expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBeTruthy()
+  })
+
+  it('keeps credentials when metadata existence cannot be checked', async () => {
+    const metadata = join(root, 'managed', provider, 'accounts.json')
+    const write = secureFile.writeSecureFile
+    const exists = filesystem.existsSync
+    const stat = filesystem.lstatSync
+    let inaccessible = false
+    vi.spyOn(filesystem, 'existsSync').mockImplementation((path) =>
+      inaccessible && path === metadata ? false : exists(path)
+    )
+    vi.spyOn(filesystem, 'lstatSync').mockImplementation((...args) => {
+      if (inaccessible && args[0] === metadata) {
+        throw Object.assign(new Error('Metadata access denied'), { code: 'EACCES' })
+      }
+      return stat(...args)
+    })
+    vi.spyOn(secureFile, 'writeSecureFile').mockImplementation((...args) => {
+      const result = write(...args)
+      if (args[0] !== metadata) {
+        return result
+      }
+      inaccessible = true
+      return false
+    })
+    await expect(service.add(provider, source, 'Work')).rejects.toThrow('metadata permissions')
+    inaccessible = false
+    const state = service.list(provider)
+    expect(exists(join(root, 'managed', provider, state.accounts[0].id))).toBe(true)
     expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBeTruthy()
   })
 
