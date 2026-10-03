@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react'
 import { DashboardAgentChildDisclosure } from '@/components/dashboard/DashboardAgentChildDisclosure'
 import { AgentStateDot, agentStateLabel } from '@/components/AgentStateDot'
 import { AgentChildRowContent } from '@/components/AgentChildRowContent'
-import type { DashboardAgentRow as DashboardAgentRowData } from '@/components/dashboard/useDashboardData'
+import type { AcknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 import { AgentIcon } from '@/lib/agent-catalog'
 import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
 import { cn } from '@/lib/utils'
@@ -15,24 +15,21 @@ import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timesta
 import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
-import type { AgentVerdictViewing } from '../../../../shared/agent-main-agent-verdict'
 
 function getCompactAgentPrimary(
-  agent: DashboardAgentRowData,
-  conversationName: string | null,
-  viewing: AgentVerdictViewing
+  agent: AcknowledgedAgentRow,
+  conversationName: string | null
 ): string {
   const prompt = conversationName ?? getAgentRowPrimaryText(agent.entry)
-  return prompt || agentStateLabel(getAgentDotState(agent, viewing))
+  return prompt || agentStateLabel(getAgentDotState(agent))
 }
 
 export function getCompactAgentSecondary(
-  agent: DashboardAgentRowData,
+  agent: AcknowledgedAgentRow,
   now: number,
-  lastAssistantMessageOverride?: string,
-  viewing?: AgentVerdictViewing
+  lastAssistantMessageOverride?: string
 ): string {
-  const verdictLine = agentVerdictStatusLine(agent.entry, viewing)
+  const verdictLine = agentVerdictStatusLine(agent.entry)
   if (verdictLine) {
     return verdictLine
   }
@@ -61,7 +58,7 @@ export function getCompactAgentSecondary(
   return formatAgentTypeLabel(agent.agentType)
 }
 
-function getCompactAgentTime(agent: DashboardAgentRowData, now: number): string | null {
+function getCompactAgentTime(agent: AcknowledgedAgentRow, now: number): string | null {
   const doneAt = lastEnteredDoneAt(agent)
   if (doneAt !== null) {
     return formatShortTimeAgo(doneAt, now)
@@ -71,7 +68,7 @@ function getCompactAgentTime(agent: DashboardAgentRowData, now: number): string 
 }
 
 type CompactAgentRowProps = {
-  agent: DashboardAgentRowData
+  agent: AcknowledgedAgentRow
   now: number
   onActivate: (tabId: string, paneKey: string) => void
   // Why: send-popover target mode temporarily turns compact sidebar rows into
@@ -101,7 +98,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   isFocusedPane = false,
   hideIdentityIcon = false,
   cacheTimerActive = true,
-  isUnvisited
+  isUnvisited = false
 }: CompactAgentRowProps) {
   const hasChildDisclosure =
     typeof childAgentCount === 'number' &&
@@ -111,12 +108,9 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   // agentType, which is not an iconable agent and would render the unknown
   // "?" glyph. Nesting under the parent already conveys identity.
   const hideIcon = hideIdentityIcon || agent.rowSource === 'subagent'
-  // A crash-cut turn reads failed only until the user visits it, like the row's bold; a caller
-  // that does not say reads unvisited.
-  const viewing = { seen: isUnvisited === false }
-  const dotState = getAgentDotState(agent, viewing)
+  const dotState = getAgentDotState(agent)
   const conversationName = useAgentRowConversationName(agent)
-  const primary = getCompactAgentPrimary(agent, conversationName, viewing)
+  const primary = getCompactAgentPrimary(agent, conversationName)
   const isLineageChild = agent.lineage?.depth === 1
   // Keep a live row's last assistant line stable while status/tool payloads
   // briefly omit the hook-only field between updates. Committed in an effect so a
@@ -137,7 +131,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   const held = heldMessageRef.current
   const stableMessage =
     turnHoldable && !currentMessage && held?.turn === turn ? held.message : undefined
-  const secondary = getCompactAgentSecondary(agent, now, stableMessage, viewing)
+  const secondary = getCompactAgentSecondary(agent, now, stableMessage)
   // Why: sidebar truncation must preserve the passive-vs-active distinction.
   const leadingText = dotState === 'monitoring' ? secondary : primary
   const trailingText =

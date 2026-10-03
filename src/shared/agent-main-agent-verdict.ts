@@ -1,6 +1,10 @@
 import { isAgentTurnOutcome, type AgentTurnOutcome } from './agent-turn-outcome'
 import type { AgentStatusState } from './agent-status-types'
 import type { AgentMainAgentStatus } from './main-agent-status'
+import {
+  isAgentTurnAcknowledged,
+  type AgentTurnAcknowledgement
+} from './agent-turn-acknowledgement'
 
 export type AgentMainAgentVerdictSource = {
   state: AgentStatusState
@@ -46,29 +50,25 @@ export function agentMainAgentVerdict(row: AgentMainAgentVerdictSource): AgentTu
   return row.state === 'done' && row.interrupted === true ? 'cancellation' : null
 }
 
-/** What a display knows of the user having seen the agent's current turn. */
-export type AgentVerdictViewing = {
-  /** The user acknowledged this turn (the rule that un-bolds a sidebar row). Absent reads unseen. */
-  seen?: boolean
-}
+/** A verdict as a display reads it: with whether the user has seen it. */
+export type AgentVerdictDisplaySource = AgentMainAgentVerdictSource & AgentTurnAcknowledgement
 
 /**
- * What the verdict marks on the agent's own display. A fault, whether the turn failed or something
- * other than the user cut it short, reads failed and outranks every combined state: it is news the
- * user must see even while subagents still run. A turn a crash or restart cut off is news only
- * until seen; after that it reads like a finished turn, since the chat's notice row says why. A
- * user's Stop, or a turn a newer request replaced, reads interrupted, and an unproven end
+ * What the verdict marks on the agent's own display. A failure reads failed and outranks every
+ * combined state: it is news the user must see even while subagents still run. A turn cut short
+ * when the agent stopped without anyone asking reads failed the same way, but only until the user
+ * has seen it; then it reads like a finished turn, and the chat's notice row still says it stopped.
+ * A user's Stop, or a turn a newer request replaced, reads interrupted, and an unproven end
  * unconfirmed, only on a row that is itself done, so live child work still reads working.
  */
 export function agentVerdictDisplayMark(
-  row: AgentMainAgentVerdictSource,
-  viewing: AgentVerdictViewing = {}
+  row: AgentVerdictDisplaySource
 ): 'failed' | 'interrupted' | 'unconfirmed' | null {
   switch (agentMainAgentVerdict(row)) {
     case 'failure':
       return 'failed'
     case 'interruption':
-      return viewing.seen ? null : 'failed'
+      return isAgentTurnAcknowledged(row) ? null : 'failed'
     case 'cancellation':
     case 'superseded':
       return row.state === 'done' ? 'interrupted' : null

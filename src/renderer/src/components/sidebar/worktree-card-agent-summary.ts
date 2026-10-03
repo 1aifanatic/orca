@@ -1,12 +1,11 @@
 import type { AgentDotState } from '@/components/AgentStateDot'
-import type { DashboardAgentRow as DashboardAgentRowData } from '@/components/dashboard/useDashboardData'
+import type { AcknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 import { formatAgentTypeLabel } from '@/lib/agent-status'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
-import type { AgentVerdictViewing } from '../../../../shared/agent-main-agent-verdict'
 
 export type SummaryAgentGroup = {
   state: AgentDotState
-  agents: DashboardAgentRowData[]
+  agents: AcknowledgedAgentRow[]
 }
 
 const SUMMARY_STATE_ORDER: AgentDotState[] = [
@@ -25,22 +24,8 @@ const SUMMARY_STATE_ORDER: AgentDotState[] = [
   'idle'
 ]
 
-/** Which of a card's agents the user has not visited yet, as WorktreeCardAgents derives it. */
-export type AgentUnvisitedByPaneKey = Readonly<Record<string, boolean>>
-
-export function getAgentDotState(
-  agent: DashboardAgentRowData,
-  viewing?: AgentVerdictViewing
-): AgentDotState {
-  return agentRowDisplayDotState(agent, viewing)
-}
-
-/** An agent the map does not name reads unseen. */
-function viewingFrom(
-  agent: DashboardAgentRowData,
-  unvisitedByPaneKey: AgentUnvisitedByPaneKey | undefined
-): AgentVerdictViewing {
-  return { seen: unvisitedByPaneKey?.[agent.paneKey] === false }
+export function getAgentDotState(agent: AcknowledgedAgentRow): AgentDotState {
+  return agentRowDisplayDotState(agent)
 }
 
 export function formatSummaryStateLabel(state: AgentDotState): string {
@@ -70,13 +55,10 @@ export function formatSummaryStateLabel(state: AgentDotState): string {
   }
 }
 
-export function buildSummaryAgentGroups(
-  agents: DashboardAgentRowData[],
-  unvisitedByPaneKey?: AgentUnvisitedByPaneKey
-): SummaryAgentGroup[] {
-  const groups = new Map<AgentDotState, DashboardAgentRowData[]>()
+export function buildSummaryAgentGroups(agents: AcknowledgedAgentRow[]): SummaryAgentGroup[] {
+  const groups = new Map<AgentDotState, AcknowledgedAgentRow[]>()
   for (const agent of agents) {
-    const dotState = getAgentDotState(agent, viewingFrom(agent, unvisitedByPaneKey))
+    const dotState = getAgentDotState(agent)
     const group = groups.get(dotState)
     if (group) {
       group.push(agent)
@@ -90,14 +72,10 @@ export function buildSummaryAgentGroups(
   })
 }
 
-export function summarizeAgents(
-  agents: DashboardAgentRowData[],
-  subjectLabel: string,
-  unvisitedByPaneKey?: AgentUnvisitedByPaneKey
-): string {
+export function summarizeAgents(agents: AcknowledgedAgentRow[], subjectLabel: string): string {
   const counts = new Map<AgentDotState, number>()
   for (const agent of agents) {
-    const dotState = getAgentDotState(agent, viewingFrom(agent, unvisitedByPaneKey))
+    const dotState = getAgentDotState(agent)
     counts.set(dotState, (counts.get(dotState) ?? 0) + 1)
   }
   const parts = SUMMARY_STATE_ORDER.flatMap((state) => {
@@ -117,26 +95,21 @@ export function summarizeAgents(
   return `${subjectLabel}: ${parts.join(', ')}`
 }
 
-export function summarizeAgentIdentities(
-  agents: DashboardAgentRowData[],
-  unvisitedByPaneKey?: AgentUnvisitedByPaneKey
-): string {
+export function summarizeAgentIdentities(agents: AcknowledgedAgentRow[]): string {
   return agents
     .map((agent) => {
       const agentLabel = formatAgentTypeLabel(agent.agentType)
-      const stateLabel = formatSummaryStateLabel(
-        getAgentDotState(agent, viewingFrom(agent, unvisitedByPaneKey))
-      )
+      const stateLabel = formatSummaryStateLabel(getAgentDotState(agent))
       return `${agentLabel} ${stateLabel}`
     })
     .join('; ')
 }
 
 export function selectSummaryGroupIconAgents(
-  agents: DashboardAgentRowData[],
+  agents: AcknowledgedAgentRow[],
   maxCount: number
-): DashboardAgentRowData[] {
-  const groups = new Map<string, { agents: DashboardAgentRowData[]; firstIndex: number }>()
+): AcknowledgedAgentRow[] {
+  const groups = new Map<string, { agents: AcknowledgedAgentRow[]; firstIndex: number }>()
   agents.forEach((agent, index) => {
     const key = agent.agentType ?? 'unknown'
     const group = groups.get(key)
@@ -149,7 +122,7 @@ export function selectSummaryGroupIconAgents(
   const sortedGroups = [...groups.values()].sort(
     (a, b) => b.agents.length - a.agents.length || a.firstIndex - b.firstIndex
   )
-  const selected: DashboardAgentRowData[] = []
+  const selected: AcknowledgedAgentRow[] = []
   for (const group of sortedGroups) {
     if (selected.length >= maxCount) {
       break

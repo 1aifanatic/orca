@@ -10,6 +10,10 @@ import {
 import type { AgentStatusState } from './agent-status-types'
 import { AGENT_TURN_OUTCOMES, type AgentTurnOutcome } from './agent-turn-outcome'
 
+/** The mark before the user has seen the turn, which every case below but the last reads. */
+const unseenMark = (row: AgentMainAgentVerdictSource) =>
+  agentVerdictDisplayMark({ ...row, stateStartedAt: 1_000, acknowledgedAt: undefined })
+
 const STATES: AgentStatusState[] = ['working', 'blocked', 'waiting', 'done']
 const OUTCOMES: (AgentTurnOutcome | undefined)[] = [undefined, ...AGENT_TURN_OUTCOMES]
 
@@ -50,7 +54,7 @@ describe('agentMainAgentVerdict', () => {
       expect(agentTurnEndedOnPurpose(row), label).toBe(
         verdict === 'cancellation' || verdict === 'superseded'
       )
-      expect(agentVerdictDisplayMark(row), label).toBe(
+      expect(unseenMark(row), label).toBe(
         verdict === 'failure' || verdict === 'interruption'
           ? 'failed'
           : row.state !== 'done'
@@ -69,14 +73,14 @@ describe('agentMainAgentVerdict', () => {
     (outcome) => {
       const row = { state: 'working' as const, mainAgent: { state: 'done' as const, outcome } }
       expect(agentMainAgentVerdict(row)).toBe(outcome)
-      expect(agentVerdictDisplayMark(row)).toBe('failed')
+      expect(unseenMark(row)).toBe('failed')
     }
   )
 
   it('keeps a success or a stop with live subagent work reading working', () => {
     for (const outcome of ['success', 'cancellation'] as const) {
       const row = { state: 'working' as const, mainAgent: { state: 'done' as const, outcome } }
-      expect(agentVerdictDisplayMark(row)).toBeNull()
+      expect(unseenMark(row)).toBeNull()
     }
   })
 
@@ -108,28 +112,28 @@ describe('agentMainAgentVerdict', () => {
       ['unconfirmed', 'unconfirmed']
     ] as const) {
       const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
-      expect(agentVerdictDisplayMark(row), outcome).toBe(mark)
+      expect(unseenMark(row), outcome).toBe(mark)
     }
     // An old host's legacy flag is a user's Stop too.
-    expect(agentVerdictDisplayMark({ state: 'done', interrupted: true })).toBe('interrupted')
+    expect(unseenMark({ state: 'done', interrupted: true })).toBe('interrupted')
   })
 
-  it('reads an unseen crash-cut turn as failed and an unproven end as unconfirmed, neither a stop', () => {
+  it('reads a crash-cut turn as failed and an unproven end as unconfirmed, neither a stop', () => {
     for (const [outcome, mark] of [
       ['interruption', 'failed'],
       ['unconfirmed', 'unconfirmed']
     ] as const) {
       const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
-      expect(agentVerdictDisplayMark(row)).toBe(mark)
+      expect(unseenMark(row)).toBe(mark)
       expect(agentTurnEndedUncleanly(row)).toBe(true)
       // Nobody asked for it, so attention ranks it as news, like a completion or a failure.
       expect(agentTurnEndedOnPurpose(row)).toBe(false)
     }
   })
 
-  // Attention only while unseen: once read, a crash-cut turn reads like a finished one, and its
-  // notice row in the chat is what still says it stopped.
-  it('drops the failed mark from a crash-cut turn the user has seen, and from nothing else', () => {
+  // Attention only while unseen: once acknowledged, a turn cut short reads like a finished one, and
+  // the chat's notice row is what still says it stopped. Every other verdict keeps its mark.
+  it('drops the failed mark from a cut-short turn the user has seen, and from nothing else', () => {
     for (const [outcome, unseen, seen] of [
       ['interruption', 'failed', null],
       ['failure', 'failed', 'failed'],
@@ -139,9 +143,11 @@ describe('agentMainAgentVerdict', () => {
       ['success', null, null]
     ] as const) {
       const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
-      expect(agentVerdictDisplayMark(row), outcome).toBe(unseen)
-      expect(agentVerdictDisplayMark(row, { seen: false }), outcome).toBe(unseen)
-      expect(agentVerdictDisplayMark(row, { seen: true }), outcome).toBe(seen)
+      const markAfter = (acknowledgedAt: number | undefined) =>
+        agentVerdictDisplayMark({ ...row, stateStartedAt: 1_000, acknowledgedAt })
+      expect(markAfter(undefined), outcome).toBe(unseen)
+      expect(markAfter(999), outcome).toBe(unseen)
+      expect(markAfter(1_000), outcome).toBe(seen)
     }
   })
 
@@ -155,7 +161,7 @@ describe('agentMainAgentVerdict', () => {
       }
     }
     expect(agentMainAgentVerdict(row)).toBeNull()
-    expect(agentVerdictDisplayMark(row)).toBeNull()
+    expect(unseenMark(row)).toBeNull()
     expect(agentTurnEndedUncleanly(row)).toBe(false)
   })
 

@@ -77,6 +77,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
       agentStatusByPaneKey: {
         [firstPaneKey]: makeAgentStatusEntry({ paneKey: firstPaneKey, state: 'working' })
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {
@@ -116,6 +117,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
       agentStatusByPaneKey: {
         [paneKey]: entry
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId,
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey
@@ -154,6 +156,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
       agentStatusByPaneKey: {
         [paneKey]: makeAgentStatusEntry({ paneKey, state: 'working' })
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId,
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey
@@ -191,6 +194,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
             workingMode: 'monitoring'
           })
         },
+        acknowledgedAgentsByPaneKey: {},
         migrationUnsupportedByPtyId: {},
         runtimeAgentOrchestrationByPaneKey: {},
         retainedAgentsByPaneKey: {}
@@ -222,6 +226,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
             mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
           })
         },
+        acknowledgedAgentsByPaneKey: {},
         migrationUnsupportedByPtyId: {},
         runtimeAgentOrchestrationByPaneKey: {},
         retainedAgentsByPaneKey: {}
@@ -318,6 +323,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
             mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: 1_000 }
           })
         },
+        acknowledgedAgentsByPaneKey: {},
         migrationUnsupportedByPtyId: {},
         runtimeAgentOrchestrationByPaneKey: {},
         retainedAgentsByPaneKey: {}
@@ -343,6 +349,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
               mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
             })
           },
+          acknowledgedAgentsByPaneKey: {},
           migrationUnsupportedByPtyId: {},
           runtimeAgentOrchestrationByPaneKey: {},
           retainedAgentsByPaneKey: {}
@@ -389,6 +396,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
           tabsByWorktree: { [worktreeId]: [liveTab, retainedTab] },
           agentStatusEpoch: epoch++,
           agentStatusByPaneKey,
+          acknowledgedAgentsByPaneKey: {},
           migrationUnsupportedByPtyId: {},
           runtimeAgentOrchestrationByPaneKey: {},
           retainedAgentsByPaneKey
@@ -448,6 +456,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
             restoredUnconfirmed: true
           })
         },
+        acknowledgedAgentsByPaneKey: {},
         migrationUnsupportedByPtyId: {},
         runtimeAgentOrchestrationByPaneKey: {},
         retainedAgentsByPaneKey: {}
@@ -474,6 +483,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
     const changedPaneKey = makePaneKey('tab-11', LEAF_ID)
     const baseInputs = {
       tabsByWorktree,
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}
@@ -517,6 +527,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
     const secondPaneKey = makePaneKey('tab-2', LEAF_ID)
     const replacementPaneKey = makePaneKey('tab-3', LEAF_ID)
     const sharedInputs = {
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}
@@ -587,6 +598,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
           worktreeId: 'repo::/wt-1'
         })
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}
@@ -614,6 +626,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
           parentPaneKey
         })
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}
@@ -639,6 +652,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
           worktreeId: 'repo::/wt-1'
         })
       },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {
         [childPaneKey]: {
@@ -666,6 +680,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
       tabsByWorktree: { 'repo::/wt-1': [makeTab('tab-1', 'repo::/wt-1')] },
       agentStatusEpoch: 0,
       agentStatusByPaneKey: { [paneKey]: entry },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}
@@ -692,6 +707,7 @@ describe('selectWorktreeAgentActivitySummary', () => {
       tabsByWorktree: { 'repo::/wt-1': [tab] },
       agentStatusEpoch: 0,
       agentStatusByPaneKey: { [paneKey]: entry },
+      acknowledgedAgentsByPaneKey: {},
       migrationUnsupportedByPtyId: {},
       runtimeAgentOrchestrationByPaneKey: {},
       retainedAgentsByPaneKey: {}

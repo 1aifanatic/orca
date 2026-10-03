@@ -176,7 +176,7 @@ describe('a turn recovery settled after its host went away', () => {
       // Nobody stopped it: the flag older readers take as a user's stop stays down.
       expect(row?.interrupted ?? false).toBe(false)
       // The sidebar and tab read the published row, with no user action in between.
-      expect(row && agentVerdictDisplayMark(row)).toBe(mark)
+      expect(row && agentVerdictDisplayMark({ ...row, acknowledgedAt: undefined })).toBe(mark)
       expect(row && agentTurnEndedOnPurpose(row)).toBe(false)
       // The dot and the OS notification come only from a completion event, and none is sent.
       expect(session.completionEvents).toEqual([])
@@ -216,8 +216,11 @@ describe('a turn recovery settled after its host went away', () => {
       session.publish()
 
       const [row] = session.server.getStatusSnapshot()
-      expect(row && agentVerdictDisplayMark(row)).toBe('failed')
-      expect(row && agentVerdictDisplayMark(row, { seen: true })).toBeNull()
+      expect(row && agentVerdictDisplayMark({ ...row, acknowledgedAt: undefined })).toBe('failed')
+      // Once the user has seen it, the chat's notice row is what still says it stopped.
+      expect(
+        row && agentVerdictDisplayMark({ ...row, acknowledgedAt: row.stateStartedAt })
+      ).toBeNull()
       const [settled] = [
         ...selectStructuredAgentSettledTurns(session.journal.snapshot().items).values()
       ]
@@ -251,7 +254,9 @@ describe('a turn recovery settled after its host went away', () => {
       stateStartedAt: RECOVERED,
       mainAgent: { state: 'done', outcome: 'unconfirmed' }
     })
-    expect(row && agentVerdictDisplayMark(row)).toBe('unconfirmed')
+    expect(row && agentVerdictDisplayMark({ ...row, acknowledgedAt: undefined })).toBe(
+      'unconfirmed'
+    )
     expect(session.completionEvents).toEqual([])
   })
 
