@@ -55,17 +55,16 @@ if (phase === 'reset') {
     [store, /\/(?:store|\.pnpm-store)\/v\d+$/],
     [cache, /\/(?:pnpm|\.?pnpm-cache|pnpm\/cache)$/]
   ]) {
-    const home =
-      process.platform === 'win32' && path === store && process.env.PNPM_HOME
-        ? process.env.PNPM_HOME
-        : homedir()
-    const scoped = relative(home, path)
+    const scoped = relative(homedir(), path)
+    const insideHome =
+      !isAbsolute(scoped) && scoped !== '' && scoped !== '..' && !scoped.startsWith(`..${sep}`)
+    const knownWindowsStore =
+      process.platform === 'win32' &&
+      path === store &&
+      /\/(?:\.pnpm-store|pnpm\/store)\/v\d+$/.test(path.replaceAll('\\', '/'))
     if (
       !isAbsolute(path) ||
-      isAbsolute(scoped) ||
-      scoped === '' ||
-      scoped === '..' ||
-      scoped.startsWith(`..${sep}`) ||
+      (!insideHome && !knownWindowsStore) ||
       !suffix.test(path.replaceAll('\\', '/'))
     ) {
       throw new Error(`Refuse unexpected reset path: ${path}`)

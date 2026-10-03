@@ -15,22 +15,22 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: windows-2022
+            native: node
+            first: cached
+            sample: 1
+          - os: windows-11-arm
+            native: node
+            first: lookup
+            sample: 1
+          - os: windows-2022
             native: node
             first: lookup
             sample: 2
-          - os: ubuntu-24.04-arm
+          - os: windows-11-arm
             native: node
             first: cached
             sample: 2
-          - os: ubuntu-latest
-            native: node
-            first: cached
-            sample: 3
-          - os: ubuntu-24.04-arm
-            native: node
-            first: lookup
-            sample: 3
     defaults:
       run:
         shell: bash
