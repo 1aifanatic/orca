@@ -346,9 +346,12 @@ describe('fish never receives a color-scheme report it did not query (#9993)', (
     expect(fishRequirementViolation(FISH)).toBeNull()
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
+    const { registerAgentStatusStartupSnapshot } =
+      await import('@/hooks/ipc-events/agent-status-startup-snapshot')
+    registerAgentStatusStartupSnapshot().settle()
     transportFactoryQueue = []
     storeSubscribers = []
     mockStoreState = {
@@ -429,6 +432,7 @@ describe('fish never receives a color-scheme report it did not query (#9993)', (
           setPtyDeliveryInterest: vi.fn(),
           ackColdRestore: vi.fn(),
           onClearBufferRequest: vi.fn(() => vi.fn()),
+          onResetInputModesRequest: vi.fn(() => vi.fn()),
           onSerializeBufferRequest: vi.fn(() => vi.fn()),
           sendSerializedBuffer: vi.fn(),
           declarePendingPaneSerializer: vi.fn().mockResolvedValue(1),
