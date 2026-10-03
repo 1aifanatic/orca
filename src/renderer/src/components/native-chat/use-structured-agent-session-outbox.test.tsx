@@ -161,6 +161,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     await expect(
       settleStructuredAgentLaunchPrompt({
         launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        target: { kind: 'local' },
         options: { prompt: 'review this' },
         stagedEntry
       })
@@ -181,6 +182,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     mocks.call.mockReturnValueOnce(admission.promise)
     const delivery = settleStructuredAgentLaunchPrompt({
       launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      target: { kind: 'local' },
       options: { prompt: 'review this' },
       stagedEntry
     })
@@ -414,10 +416,10 @@ describe('useStructuredAgentSessionOutbox', () => {
       throw new Error('storage full')
     })
     act(() => expect(result.current.send('tail that cannot be saved')).toBe(false))
-    expect(result.current.error).toBe('Message could not be saved to the outbox')
+    expect(result.current.error).toBe("Couldn't save your message. Try again.")
 
     rerender({ submissions: [{ ...pendingResultFor(id, 10).value.submission }] })
-    expect(result.current.error).toBe('Message could not be saved to the outbox')
+    expect(result.current.error).toBe("Couldn't save your message. Try again.")
     setItem.mockRestore()
   })
 
@@ -457,7 +459,7 @@ describe('useStructuredAgentSessionOutbox', () => {
   it('sends past a head the host holds in doubt, and drops that head when a Retry only replays it', async () => {
     // The host never sends a message it recorded again, so the one behind it goes out at once. A
     // Retry on the head (one an earlier build saved) is refused as a redelivery: the entry leaves
-    // the outbox and the user is told Orca will not send it again.
+    // the outbox and the user is told to check the chat before sending it again.
     mocks.call.mockImplementation(async (_target, _method, params) => {
       const request = params as {
         envelope: { clientOperationId: string }
@@ -496,7 +498,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
     expect(sentTexts()).toEqual(['first', 'second', 'first'])
     expect(result.current.error).toBe(
-      'Message delivery is unconfirmed and Orca will not send it again'
+      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
     )
   })
 
