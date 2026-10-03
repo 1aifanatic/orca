@@ -54,7 +54,7 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.actual.outputs.hit }}
         run: |
-          test "$CACHE_HIT" = false
+          test -z "$CACHE_HIT" || test "$CACHE_HIT" = false
           node -e 'if (!require("is-number")(12)) process.exit(1)'
       - uses: actions/upload-artifact@v7
         with:
