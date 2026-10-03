@@ -62,13 +62,13 @@ function showCodexTerminalServerIsolationNotice(): void {
 }
 
 export function useCodexTerminalServerIsolationNotice(): void {
-  const seen = useAppStore((s) => s.codexTerminalServerIsolationNoticeSeen)
+  const due = useAppStore(isNoticeDue)
 
   useEffect(() => {
     // Why: a paired web client's terminals follow the host's setting, not this window's.
-    if (seen || isPairedWebClientWindow()) {
+    if (!due || isPairedWebClientWindow()) {
       return
     }
-    return whenCodexTerminalAppears(showCodexTerminalServerIsolationNotice, isNoticeDue)
-  }, [seen])
+    return whenCodexTerminalAppears(showCodexTerminalServerIsolationNotice)
+  }, [due])
 }

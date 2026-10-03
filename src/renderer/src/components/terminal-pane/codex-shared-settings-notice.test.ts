@@ -6,15 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCodexSharedSettingsNotice } from './codex-shared-settings-notice'
 
 // Why a real zustand store double: the hook relies on subscribe/setState semantics.
-const { toastInfoMock, harness, platform } = vi.hoisted(() => ({
+const { toastInfoMock, harness } = vi.hoisted(() => ({
   toastInfoMock: vi.fn(),
-  harness: { setState: (_patch: Record<string, unknown>, _replace?: true): void => {} },
-  platform: { isWindows: true }
+  harness: { setState: (_patch: Record<string, unknown>, _replace?: true): void => {} }
 }))
 
 vi.mock('sonner', () => ({ toast: { info: toastInfoMock } }))
-
-vi.mock('./pane-helpers', () => ({ isWindowsUserAgent: () => platform.isWindows }))
 
 vi.mock('@/store', async () => {
   const { useStore } = await import('zustand')
@@ -39,8 +36,6 @@ function resetStore(overrides: Record<string, unknown> = {}): void {
   seen = false
   store.setState(
     {
-      persistedUIReady: true,
-      settings: {},
       codexSharedSettingsNoticeSeen: false,
       tabsByWorktree: {},
       agentStatusByPaneKey: {},
@@ -73,7 +68,7 @@ async function mountProbe(): Promise<void> {
 describe('useCodexSharedSettingsNotice', () => {
   beforeEach(() => {
     toastInfoMock.mockReset()
-    platform.isWindows = true
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
     resetStore()
   })
 
@@ -104,7 +99,7 @@ describe('useCodexSharedSettingsNotice', () => {
   })
 
   it('stays quiet off Windows', async () => {
-    platform.isWindows = false
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' })
     resetStore({ tabsByWorktree: codexTab })
     await mountProbe()
     expect(toastInfoMock).not.toHaveBeenCalled()
@@ -118,21 +113,12 @@ describe('useCodexSharedSettingsNotice', () => {
     expect(toastInfoMock).not.toHaveBeenCalled()
   })
 
-  it('waits for hydration, since the flag defaults to seen until then', async () => {
-    resetStore({ persistedUIReady: false, codexSharedSettingsNoticeSeen: true })
-    await mountProbe()
-    await act(async () => store.setState({ tabsByWorktree: codexTab }))
-    expect(toastInfoMock).not.toHaveBeenCalled()
-
-    await act(async () =>
-      store.setState({ persistedUIReady: true, codexSharedSettingsNoticeSeen: false })
-    )
-    expect(toastInfoMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('stays quiet once seen', async () => {
+  it('shows when the seen flag clears with a Codex terminal already open', async () => {
     resetStore({ codexSharedSettingsNoticeSeen: true, tabsByWorktree: codexTab })
     await mountProbe()
     expect(toastInfoMock).not.toHaveBeenCalled()
+
+    await act(async () => store.setState({ codexSharedSettingsNoticeSeen: false }))
+    expect(toastInfoMock).toHaveBeenCalledTimes(1)
   })
 })

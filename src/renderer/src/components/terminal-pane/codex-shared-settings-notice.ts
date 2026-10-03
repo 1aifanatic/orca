@@ -2,8 +2,7 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
-import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
-import { isWindowsUserAgent } from './pane-helpers'
+import { isLocalWindowsDesktopClient } from '@/lib/desktop-window-chrome'
 import { whenCodexTerminalAppears } from './codex-terminal-presence'
 
 function showCodexSharedSettingsNotice(): void {
@@ -32,7 +31,7 @@ export function useCodexSharedSettingsNotice(): void {
 
   useEffect(() => {
     // Why skip paired web clients: the change is on the host, whose own window shows this.
-    if (seen || !isWindowsUserAgent() || isPairedWebClientWindow()) {
+    if (seen || !isLocalWindowsDesktopClient()) {
       return
     }
     return whenCodexTerminalAppears(showCodexSharedSettingsNotice)
