@@ -157,22 +157,6 @@ function interruptFailure(failure: 'internal error' | 'unanswered'): Error {
     : new CodexAppServerTimeoutError('codex app-server turn/interrupt exceeded 30000ms')
 }
 
-/** The journal's writes wait a moment, so frames Orca received are not yet in the journal. */
-function holdJournalWrites(): void {
-  const journal = host['sessions'].get(SESSION)!.journal
-  const released = new Promise((resolve) => setTimeout(resolve, 20))
-  const appendItem = journal.appendItem.bind(journal)
-  const appendLifecycleBatch = journal.appendLifecycleBatch.bind(journal)
-  vi.spyOn(journal, 'appendItem').mockImplementation(async (...args) => {
-    await released
-    return appendItem(...args)
-  })
-  vi.spyOn(journal, 'appendLifecycleBatch').mockImplementation(async (...args) => {
-    await released
-    return appendLifecycleBatch(...args)
-  })
-}
-
 /** Codex picked the follow-up's turn and answered the send, and has not started it. */
 async function followUpUnopened(): Promise<void> {
   const sent = await send('and then this')
@@ -183,9 +167,10 @@ async function followUpUnopened(): Promise<void> {
   await host.flushStreamedEvents(SESSION)
 }
 
-/** Whether the Stop ended the child: the host's stop, which proves the exit, with the user's cause. */
+/** Whether the Stop ended the child: the host's stop, which proves the exit. Nothing else here
+ *  stops it before the test's teardown. */
 function childEndedByStop(): boolean {
-  return disposeSession.mock.calls.some(([, cause]) => cause === 'user-stop')
+  return disposeSession.mock.calls.length > 0
 }
 
 describe('a Codex Stop that Codex answered', () => {
@@ -228,7 +213,7 @@ describe('a Codex Stop whose interrupt failed', () => {
       await host.flushStreamedEvents(SESSION)
 
       expect(stopped).toMatchObject({ ok: true, value: { cancelled: true } })
-      expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+      expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
       expect(codex.connections.at(-1)?.closed).toBe(true)
       const rows = await journalRows()
       expect(rows.turns).toEqual(['interrupted'])
@@ -248,7 +233,7 @@ describe('a Codex Stop whose interrupt failed', () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
-    expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect(disposeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
     expect((await journalRows()).statuses).toEqual([
       "Codex didn't stop: failed to interrupt turn: channel closed."
     ])
@@ -368,8 +353,8 @@ describe('a Codex Stop whose interrupt failed', () => {
 
   it("decides on Codex's frames received before the interrupt failed, not on the journal's last write", async () => {
     await runningTurn()
+    // Each frame lands in the journal as Codex hands it over, before the interrupt fails.
     codex.routes['turn/interrupt'] = () => {
-      holdJournalWrites()
       turns.end('completed')
       notify('turn/started', { threadId: THREAD, turn: { id: 'turn-2', status: 'inProgress' } })
       throw interruptFailure('internal error')

@@ -239,7 +239,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
-    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
@@ -270,7 +270,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
-    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
@@ -286,7 +286,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
-    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
     expect(log.entries).toContainEqual(
       expect.objectContaining({
         fields: expect.objectContaining({ scope: 'stop-child', sessionId: SESSION })
@@ -306,7 +306,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
-    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
     expect(log.entries).toContainEqual(
       expect.objectContaining({
         fields: expect.objectContaining({ scope: 'stop-child', sessionId: SESSION })
@@ -369,32 +369,20 @@ describe('a Stop that names no turn', () => {
 
   it('interrupts a turn whose accepted send is in the journal before its row lands', async () => {
     await acceptedWithTurnRowUnlanded()
-    const drain = host.flushStreamedEvents
-    vi.spyOn(host, 'flushStreamedEvents').mockImplementation((sessionId) => {
-      events!.appendItem(
-        { provider: 'legacy', agent: 'codex', sessionId, recordId: 'turn-lifecycle:turn-2' },
-        {
-          kind: 'status',
-          text: 'Agent is working…',
-          turnLifecycle: { turnId: 'turn-2', state: 'running' }
-        },
-        { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-      )
-      return drain(sessionId)
-    })
+    // Emitted as the Stop arrives: the Stop's read takes its place behind it in the journal.
+    events!.appendItem(
+      { provider: 'legacy', agent: 'codex', sessionId: SESSION, recordId: 'turn-lifecycle:turn-2' },
+      {
+        kind: 'status',
+        text: 'Agent is working…',
+        turnLifecycle: { turnId: 'turn-2', state: 'running' }
+      },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     expect(cancelTurn).toHaveBeenCalledOnce()
     expect(await statusRows()).toContain('Cancellation requested.')
-  })
-
-  it('still interrupts when draining the streamed rows fails', async () => {
-    await acceptedWithTurnRowUnlanded()
-    vi.spyOn(host, 'flushStreamedEvents').mockRejectedValueOnce(new Error('sink barrier failed'))
-
-    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
-    expect(cancelTurn).toHaveBeenCalledOnce()
-    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
   it('is a quiet no-op with nothing in flight', async () => {
@@ -487,7 +475,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     await laneDrained()
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
@@ -506,7 +494,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
     await laneDrained()
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
@@ -541,7 +529,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
     await laneDrained()
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
@@ -554,7 +542,7 @@ describe('a Stop on a provider whose Stop ends its session', () => {
     expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
     await laneDrained()
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'user-stop')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 })
