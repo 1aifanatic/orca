@@ -6,9 +6,10 @@
  * remain decoupled from the GitHandler class.
  */
 import * as path from 'node:path'
+import { isMissingGitBlobPath } from '../shared/git-blob-absence'
 import { bufferToBlob, parseBranchDiff } from './git-handler-utils'
 import { buildDiffResult } from './git-diff-result'
-import { isGitBufferOverflowError } from './git-buffer-overflow'
+import { isGitBufferOverflowError, isGitReadInterruptedError } from './git-buffer-overflow'
 import { readWorkingDiffFile } from './git-working-file-read'
 
 // ─── Executor types ──────────────────────────────────────────────────
@@ -43,6 +44,9 @@ export async function readBlobAtOid(
     const buf = await gitBuffer(['show', '--end-of-options', `${oid}:${gitPath}`], cwd)
     return bufferToBlob(buf, filePath)
   } catch (error) {
+    if (isGitReadInterruptedError(error)) {
+      throw error
+    }
     if (isGitBufferOverflowError(error)) {
       return { content: '', isBinary: true }
     }
@@ -61,12 +65,13 @@ export async function readBlobAtIndex(
     const buf = await gitBuffer(['show', '--end-of-options', `:${gitPath}`], cwd)
     return { ...bufferToBlob(buf, filePath), missing: false }
   } catch (error) {
+    if (isGitReadInterruptedError(error)) {
+      throw error
+    }
     if (isGitBufferOverflowError(error)) {
       return { content: '', isBinary: true, missing: false }
     }
-    // Why: a non-overflow failure means the path is absent from the index (a
-    // staged deletion), distinct from the size-capped case handled above.
-    return { content: '', isBinary: false, missing: true }
+    return { content: '', isBinary: false, missing: isMissingGitBlobPath(error, gitPath) }
   }
 }
 
@@ -76,7 +81,7 @@ export async function readUnstagedLeft(
   filePath: string
 ): Promise<{ content: string; isBinary: boolean }> {
   const index = await readBlobAtIndex(gitBuffer, cwd, filePath)
-  if (index.content || index.isBinary) {
+  if (!index.missing) {
     return index
   }
   return readBlobAtOid(gitBuffer, cwd, 'HEAD', filePath)
@@ -99,11 +104,12 @@ export async function computeDiff(
 
   try {
     if (staged) {
-      const left = await readBlobAtOid(git, worktreePath, 'HEAD', filePath)
+      const [left, right] = await Promise.all([
+        readBlobAtOid(git, worktreePath, 'HEAD', filePath),
+        readBlobAtIndex(git, worktreePath, filePath)
+      ])
       originalContent = left.content
       originalIsBinary = left.isBinary
-
-      const right = await readBlobAtIndex(git, worktreePath, filePath)
       modifiedContent = right.content
       modifiedIsBinary = right.isBinary
       modifiedDeleted = right.missing
@@ -119,7 +125,10 @@ export async function computeDiff(
       modifiedIsBinary = right.isBinary
       modifiedDeleted = right.missing
     }
-  } catch {
+  } catch (error) {
+    if (isGitReadInterruptedError(error)) {
+      throw error
+    }
     // Fallback to empty
   }
 
@@ -160,7 +169,10 @@ export async function branchCompare(
     try {
       const { stdout } = await git(['branch', '--show-current'], worktreePath)
       return stdout.trim() || 'HEAD'
-    } catch {
+    } catch (error) {
+      if (isGitReadInterruptedError(error)) {
+        throw error
+      }
       return 'HEAD'
     }
   }
@@ -209,7 +221,10 @@ export async function branchCompare(
     const { stdout } = await git(['merge-base', baseOid, headOid], worktreePath)
     mergeBase = stdout.trim()
     summary.mergeBase = mergeBase
-  } catch {
+  } catch (error) {
+    if (isGitReadInterruptedError(error)) {
+      throw error
+    }
     summary.status = 'no-merge-base'
     summary.errorMessage = `This branch and ${baseRef} do not share a merge base, so compare-to-base is unavailable.`
     return { summary, entries: [] }
@@ -253,7 +268,10 @@ export async function branchDiffEntries(
 
     const { stdout: mbOut } = await git(['merge-base', baseOid, headOid], worktreePath)
     mergeBase = mbOut.trim()
-  } catch {
+  } catch (error) {
+    if (isGitReadInterruptedError(error)) {
+      throw error
+    }
     return []
   }
 
@@ -294,7 +312,10 @@ export async function branchDiffEntries(
       const left = await readBlobAtOid(gitBuffer, worktreePath, mergeBase, oldP)
       const right = await readBlobAtOid(gitBuffer, worktreePath, headOid, fp)
       results.push(buildDiffResult(left.content, right.content, left.isBinary, right.isBinary, fp))
-    } catch {
+    } catch (error) {
+      if (isGitReadInterruptedError(error)) {
+        throw error
+      }
       results.push({
         kind: 'text',
         originalContent: '',
