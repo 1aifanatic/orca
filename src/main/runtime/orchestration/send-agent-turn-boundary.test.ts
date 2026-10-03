@@ -27,8 +27,10 @@ const TERMINAL_PROMPT = memberUse('sendTerminalAgentPrompt')
 const SEND_SETTLEMENT_WAIT = memberUse('waitForSendSettlement')
 // The session host's own send; the receiver is how this codebase names a structured host.
 const STRUCTURED_SEND = new RegExp(
-  `${memberUse('send', String.raw`(?:[Hh]ost|getStructuredAgentSessionHost\(\))`).source}` +
-    String.raw`|(?<!\bfunction\s+)\bsendStructuredAgentSessionTurn\s*\(`
+  [
+    memberUse('send', String.raw`(?:[Hh]ost|getStructuredAgentSessionHost\(\))`).source,
+    String.raw`(?<!\bfunction\s+)\bsendStructuredAgentSessionTurn\s*\(`
+  ].join('|')
 )
 
 function filesMatching(pattern: RegExp): string[] {

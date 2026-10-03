@@ -249,26 +249,25 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
           terminalOwnership: params.terminal ? 'external' : 'created'
         })
         failedStage = 'dispatch_input'
-        const preamble = buildDispatchPreamble({
-          taskId: params.taskId,
-          dispatchId: params.dispatchId,
-          taskSpec: params.taskSpec,
-          coordinatorHandle: 'Run home (relayed by Orca)',
-          workerHandle: terminalHandle,
-          devMode: params.devMode,
-          // Why the worker host's own setting: enforcement runs here, with this
-          // host's code, against this host's cap.
-          canDispatchSubWorkers: (params.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
-          cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
-        })
         const prompt = await sendAgentTurn({
           kind: 'terminal',
           runtime,
           handle: terminalHandle,
           turn: {
             purpose: 'dispatch-preamble',
-            body: preamble,
-            operationId: orchestrationMutation.requestId
+            operationId: orchestrationMutation.requestId,
+            body: buildDispatchPreamble({
+              taskId: params.taskId,
+              dispatchId: params.dispatchId,
+              taskSpec: params.taskSpec,
+              coordinatorHandle: 'Run home (relayed by Orca)',
+              workerHandle: terminalHandle,
+              devMode: params.devMode,
+              // Why the worker host's own setting: enforcement runs here, with this
+              // host's code, against this host's cap.
+              canDispatchSubWorkers: (params.depth ?? 1) < runtime.getNestedWorkerMaxDepth(),
+              cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
+            })
           }
         })
         effects.push({
