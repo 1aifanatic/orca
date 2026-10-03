@@ -15,7 +15,10 @@ import { createJournalReducerState, applyJournalRow } from './journal-reducer'
 import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
 import { createTrackedJournalOpener } from './journal-host-database-test-support'
-import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import {
+  agentSessionJournalProviderHandle,
+  claudeProviderHandle
+} from '../../../shared/agent-session-provider-handle-encoding'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-q',
@@ -133,7 +136,7 @@ describe('the persisted row', () => {
     ts: 1,
     clientMessageId: 'handoff-1',
     payloadFingerprint: 'fp',
-    providerHandle: IDENTITY.providerHandle,
+    providerHandle: agentSessionJournalProviderHandle(IDENTITY),
     body: BODY,
     queuedMessageId: 'draft-1'
   }

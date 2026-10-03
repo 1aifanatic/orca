@@ -23,7 +23,10 @@ import {
   buildJournalQueueResumeRow,
   buildJournalStopEventRow
 } from './journal-stop-and-resume-rows'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import {
+  agentSessionJournalProviderHandle,
+  codexProviderHandle
+} from '../../../shared/agent-session-provider-handle-encoding'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-s',
@@ -65,7 +68,7 @@ function epochWith(
     {
       kind: 'epoch',
       reason,
-      providerHandle: IDENTITY.providerHandle,
+      providerHandle: agentSessionJournalProviderHandle(IDENTITY),
       ...journalRowBase(EPOCH, 1, 1, 1)
     }
   ]

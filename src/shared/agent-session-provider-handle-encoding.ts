@@ -14,7 +14,10 @@ import type {
   AgentSessionProviderHandle,
   AgentSessionProviderHandleNamespace
 } from './agent-session-provider-handle'
-import type { AgentSessionJournalProviderHandle, AgentType } from './agent-session-journal-types'
+import type {
+  AgentSessionJournalIdentity,
+  AgentSessionJournalProviderHandle
+} from './agent-session-journal-types'
 
 export const CLAUDE_STRUCTURED_HANDLE_NAMESPACE = {
   transport: 'claude-sdk',
@@ -267,13 +270,18 @@ export function agentSessionWireProviderHandle(
 /** What a journal row records before the provider has proved any handle. */
 export const AGENT_SESSION_PENDING_PROVIDER_HANDLE_VALUE = 'pending'
 
-/** The handle a journal row records. Write-only: rows keep it for diagnosis, nothing reads it. */
+/** The handle a journal row records for this identity. Write-only: rows keep it for diagnosis,
+ *  nothing reads it. */
 export function agentSessionJournalProviderHandle(
-  handle: AgentSessionProviderHandle | null,
-  agent: AgentType
+  identity: Pick<AgentSessionJournalIdentity, 'agent' | 'providerHandle'>
 ): AgentSessionJournalProviderHandle {
+  const handle = identity.providerHandle
   if (!handle) {
-    return { kind: 'opaque', agent, value: AGENT_SESSION_PENDING_PROVIDER_HANDLE_VALUE }
+    return {
+      kind: 'opaque',
+      agent: identity.agent,
+      value: AGENT_SESSION_PENDING_PROVIDER_HANDLE_VALUE
+    }
   }
   return (
     agentSessionWireProviderHandle(handle) ?? {

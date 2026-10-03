@@ -59,10 +59,7 @@ export function replaceJournalEpoch(input: {
   const epochRow: JournalRow = {
     kind: 'epoch',
     reason: input.reason,
-    providerHandle: agentSessionJournalProviderHandle(
-      input.identity.providerHandle,
-      input.identity.agent
-    ),
+    providerHandle: agentSessionJournalProviderHandle(input.identity),
     ...journalRowBase(epoch, 1, input.fence, input.now())
   }
   const rows: JournalRow[] = [epochRow]

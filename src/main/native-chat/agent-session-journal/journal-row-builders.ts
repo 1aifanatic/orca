@@ -87,7 +87,7 @@ export function journalSubmissionRowBuilder(
     const queuedMessageId = consume?.messageId ?? input.queuedMessageId
     return buildJournalSubmissionRow({
       state: state(),
-      providerHandle: agentSessionJournalProviderHandle(identity.providerHandle, identity.agent),
+      providerHandle: agentSessionJournalProviderHandle(identity),
       ...input,
       ...(queuedMessageId !== undefined ? { queuedMessageId } : {}),
       seq,

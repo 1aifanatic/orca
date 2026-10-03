@@ -20,7 +20,10 @@ import {
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import {
+  agentSessionJournalProviderHandle,
+  codexProviderHandle
+} from '../../../shared/agent-session-provider-handle-encoding'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-newer-kind',
@@ -106,7 +109,7 @@ async function journalWithOneItem(): Promise<string> {
  *  fails to compile. */
 function rowOfEveryKind(): { [Kind in JournalRow['kind']]: Extract<JournalRow, { kind: Kind }> } {
   const base = { v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION, epoch: 'epoch-1', fence: 1, ts: 1 }
-  const providerHandle = IDENTITY.providerHandle
+  const providerHandle = agentSessionJournalProviderHandle(IDENTITY)
   return {
     epoch: { ...base, seq: 1, kind: 'epoch', reason: 'session_created', providerHandle },
     item: {

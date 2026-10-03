@@ -222,19 +222,27 @@ describe('the wire and journal forms', () => {
 
   it('records the journal rows exactly as before, and another transport as opaque', () => {
     expect(
-      agentSessionJournalProviderHandle(claudeProviderHandle('sess-1', 'leaf-1'), 'claude')
+      agentSessionJournalProviderHandle({
+        agent: 'claude',
+        providerHandle: claudeProviderHandle('sess-1', 'leaf-1')
+      })
     ).toEqual({ kind: 'claude', sessionId: 'sess-1', leafUuid: 'leaf-1' })
-    expect(agentSessionJournalProviderHandle(codexProviderHandle('t'), 'codex')).toEqual({
-      kind: 'codex',
-      threadId: 't'
-    })
-    expect(agentSessionJournalProviderHandle(null, 'codex')).toEqual({
+    expect(
+      agentSessionJournalProviderHandle({
+        agent: 'codex',
+        providerHandle: codexProviderHandle('t')
+      })
+    ).toEqual({ kind: 'codex', threadId: 't' })
+    expect(agentSessionJournalProviderHandle({ agent: 'codex', providerHandle: null })).toEqual({
       kind: 'opaque',
       agent: 'codex',
       value: 'pending'
     })
     expect(
-      agentSessionJournalProviderHandle({ transport: 'acp', agent: 'grok', nativeId: 's' }, 'grok')
+      agentSessionJournalProviderHandle({
+        agent: 'grok',
+        providerHandle: { transport: 'acp', agent: 'grok', nativeId: 's' }
+      })
     ).toEqual({ kind: 'opaque', agent: 'grok', value: 's' })
   })
 })

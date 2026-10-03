@@ -33,10 +33,7 @@ export function publishNewEpoch(input: {
   const row: JournalRow = {
     kind: 'epoch',
     reason: input.reason,
-    providerHandle: agentSessionJournalProviderHandle(
-      input.identity.providerHandle,
-      input.identity.agent
-    ),
+    providerHandle: agentSessionJournalProviderHandle(input.identity),
     // Carries no body: an older host must keep reading a turn-free session past row 1.
     v: journalRowSchemaVersion([]),
     epoch: input.epoch,
