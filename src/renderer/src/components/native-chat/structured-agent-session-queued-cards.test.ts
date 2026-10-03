@@ -218,6 +218,9 @@ describe('queued message cards', () => {
     expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, QUEUEING, []))).toEqual(['a', 'b'])
     // Once the host visibly holds it, it is a card whatever this queue last heard.
     expect(ids(outboxOutsideQueuedCards(unconfirmed, ['a'], true, QUEUEING, []))).toEqual(['b'])
+    // One in doubt the journal holds stops nothing: what follows it is on its way to a card.
+    const recorded = [submission('a', 'unknown')]
+    expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, QUEUEING, recorded))).toEqual(['a'])
   })
 
   it('hides a send only by what its request carries: a plain one is always a bubble', () => {
