@@ -9,21 +9,25 @@ export function ingestRelayHookSpoolRecord(
   record: SpoolRecord,
   state: HookListenerState,
   env: string,
-  apply: (
-    event: AgentHookEventPayload,
-    source: AgentHookSource,
-    env?: string,
-    version?: string
-  ) => void
+  host: {
+    apply: (
+      event: AgentHookEventPayload,
+      source: AgentHookSource,
+      env?: string,
+      version?: string
+    ) => void
+    isPaneSurfaceRetired: (paneKey: string) => boolean
+  }
 ): void {
   if (!isAgentHookSource(record.source)) {
     return
   }
   const body = buildSpoolHookBody(record)
   const event = normalizeHookPayload(state, record.source, body, env, {
+    admitOpenCodeTui: ({ paneKey }) => !host.isPaneSurfaceRetired(paneKey),
     deferCompactOwnershipToClient: true
   })
   if (event) {
-    apply(event, record.source, hookBodyEnv(body), hookBodyVersion(body))
+    host.apply(event, record.source, hookBodyEnv(body), hookBodyVersion(body))
   }
 }
