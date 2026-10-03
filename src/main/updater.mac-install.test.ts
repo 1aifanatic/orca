@@ -67,6 +67,9 @@ const {
       isPackaged: true,
       getVersion: vi.fn(() => '1.0.51'),
       on: appOn,
+      prependListener: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        appEventHandlers.set(event, [handler, ...(appEventHandlers.get(event) ?? [])])
+      }),
       emit: appEmit,
       quit: vi.fn()
     },
@@ -359,7 +362,8 @@ describe('updater mac install handoff', () => {
         'updater:status',
         expect.objectContaining({
           state: 'error',
-          message: expect.stringContaining('9654, 10718')
+          message: expect.stringContaining('9654, 10718'),
+          retryAction: 'install'
         })
       )
 
@@ -394,7 +398,8 @@ describe('updater mac install handoff', () => {
         'updater:status',
         expect.objectContaining({
           state: 'error',
-          message: expect.stringContaining('Could not check')
+          message: expect.stringContaining('Could not check'),
+          retryAction: 'install'
         })
       )
     }
@@ -427,6 +432,174 @@ describe('updater mac install handoff', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(onBeforeQuit).not.toHaveBeenCalled()
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'allows ordinary quitting after a refused install without requiring background servers to exit',
+    async () => {
+      vi.useFakeTimers()
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      const { setupAutoUpdater, downloadUpdate, quitAndInstall } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater only reads webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send: vi.fn() } } as never)
+      await prepareStagedMacUpdate(downloadUpdate)
+      getMacUpdateRunningInstancesMock.mockResolvedValue([9654])
+      quitAndInstall()
+      await vi.advanceTimersByTimeAsync(1000)
+      const preventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).not.toHaveBeenCalled()
+      // The main will-quit handler requests quit again after asynchronous teardown.
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'prevents duplicate quits until asynchronous update cleanup finishes',
+    async () => {
+      vi.useFakeTimers()
+      let finishCleanup = (): void => {}
+      const onBeforeQuit = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishCleanup = resolve
+          })
+      )
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      const { setupAutoUpdater, downloadUpdate } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater only reads webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send: vi.fn() } } as never, { onBeforeQuit })
+      await prepareStagedMacUpdate(downloadUpdate)
+      const preventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(onBeforeQuit).toHaveBeenCalledTimes(1)
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).toHaveBeenCalledTimes(2)
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      finishCleanup()
+      await vi.advanceTimersByTimeAsync(0)
+      const nativePreventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault: nativePreventDefault })
+      expect(nativePreventDefault).not.toHaveBeenCalled()
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'cannot use a previous refusal to bypass a pending retry check',
+    async () => {
+      vi.useFakeTimers()
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      const { setupAutoUpdater, downloadUpdate, quitAndInstall } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater only reads webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send: vi.fn() } } as never)
+      await prepareStagedMacUpdate(downloadUpdate)
+      getMacUpdateRunningInstancesMock.mockResolvedValue([9654])
+      quitAndInstall()
+      await vi.advanceTimersByTimeAsync(1000)
+      let finishProbe = (_pids: number[]): void => {}
+      getMacUpdateRunningInstancesMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishProbe = resolve
+          })
+      )
+      quitAndInstall()
+      const preventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).toHaveBeenCalledOnce()
+      await vi.advanceTimersByTimeAsync(1000)
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).toHaveBeenCalledTimes(2)
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      finishProbe([])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'permits ordinary shutdown after required update cleanup rejects',
+    async () => {
+      vi.useFakeTimers()
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      const onBeforeQuit = vi.fn().mockRejectedValue(new Error('required cleanup failed'))
+      const { setupAutoUpdater, downloadUpdate, quitAndInstall } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater only reads webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send: vi.fn() } } as never, {
+        onBeforeQuit,
+        onBeforeQuitFailure: 'abort'
+      })
+      await prepareStagedMacUpdate(downloadUpdate)
+      quitAndInstall()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      const preventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault })
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).not.toHaveBeenCalled()
+      expect(onBeforeQuit).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.runIf(process.platform === 'darwin')(
+    'keeps the install target and quit guard when checks or downloads are requested during a retry',
+    async () => {
+      vi.useFakeTimers()
+      autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined)
+      const {
+        setupAutoUpdater,
+        downloadUpdate,
+        quitAndInstall,
+        checkForUpdates,
+        checkForUpdatesFromMenu,
+        getUpdateStatus
+      } = await loadUpdaterModule()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The updater only reads webContents.send from this window fixture.
+      setupAutoUpdater({ webContents: { send: vi.fn() } } as never)
+      await prepareStagedMacUpdate(downloadUpdate)
+      getMacUpdateRunningInstancesMock.mockResolvedValue([9654])
+      quitAndInstall()
+      await vi.advanceTimersByTimeAsync(1000)
+      let finishProbe = (_pids: number[]): void => {}
+      getMacUpdateRunningInstancesMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishProbe = resolve
+          })
+      )
+      const failedStatus = getUpdateStatus()
+      const checks = autoUpdaterMock.checkForUpdates.mock.calls.length
+      const downloads = autoUpdaterMock.downloadUpdate.mock.calls.length
+      autoUpdaterMock.checkForUpdates.mockImplementation(() => {
+        autoUpdaterMock.emit('checking-for-update')
+        return Promise.resolve(undefined)
+      })
+      const requestCompetingActions = (): void => {
+        checkForUpdatesFromMenu()
+        checkForUpdatesFromMenu({ localBuild: true })
+        checkForUpdatesFromMenu({ channel: 'stable', targetTag: 'v1.0.70' })
+        checkForUpdates()
+        downloadUpdate()
+      }
+      quitAndInstall()
+      requestCompetingActions()
+      await vi.advanceTimersByTimeAsync(1000)
+      requestCompetingActions()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(checks)
+      expect(autoUpdaterMock.downloadUpdate).toHaveBeenCalledTimes(downloads)
+      expect(getUpdateStatus()).toEqual(failedStatus)
+      const preventDefault = vi.fn()
+      appMock.emit('before-quit', { preventDefault })
+      expect(preventDefault).toHaveBeenCalledOnce()
+      finishProbe([])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
     }
   )
 })

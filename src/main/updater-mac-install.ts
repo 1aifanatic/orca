@@ -34,16 +34,20 @@ export function registerMacUpdaterEvents({
     })
   }
 
-  app.on('before-quit', (event) => {
+  // Why: veto before startup listeners begin shutting down services.
+  app.prependListener('before-quit', (event) => {
     if (!shouldDeferMacQuitForInstall()) {
-      return
-    }
-    if (consumeMacInstallGuardBypass()) {
-      recordUpdaterLifecycle('macos_before_quit_guard_bypassed')
       return
     }
     if (macInstallPreflightInProgress) {
       event.preventDefault()
+      return
+    }
+    if (macQuitWithoutInstallAllowed) {
+      return
+    }
+    if (consumeMacInstallGuardBypass()) {
+      recordUpdaterLifecycle('macos_before_quit_guard_bypassed')
       return
     }
     if (isMacQuitAndInstallInFlight()) {
@@ -78,9 +82,15 @@ export function registerMacUpdaterEvents({
 /** Whether Squirrel.Mac has finished downloading the update from the localhost proxy. */
 let squirrelReady = false
 let macInstallPreflightInProgress = false
+// Why: ordinary quit runs twice while main awaits its will-quit teardown.
+let macQuitWithoutInstallAllowed = false
 
 export function setMacInstallPreflightInProgress(value: boolean): void {
   macInstallPreflightInProgress = value
+  if (value) {
+    macQuitWithoutInstallAllowed = false
+    bypassMacInstallGuardOnce = false
+  }
 }
 /** Remembers a user/app quit request that arrived before Squirrel.Mac had a
  * staged update ready to apply. Without this handoff, quitting during the
@@ -103,6 +113,7 @@ function clearPendingInstallTimeout(): void {
 
 export function resetMacInstallState(): void {
   macInstallPreflightInProgress = false
+  macQuitWithoutInstallAllowed = false
   installRequestedAfterSquirrelReady = false
   quitAndInstallInFlight = false
   bypassMacInstallGuardOnce = false
@@ -119,6 +130,10 @@ export function markMacQuitAndInstallInFlight(): void {
   quitAndInstallInFlight = true
   bypassMacInstallGuardOnce = false
   clearPendingInstallTimeout()
+}
+
+export function allowMacQuitWithoutInstall(): void {
+  macQuitWithoutInstallAllowed = true
 }
 
 export function consumeMacInstallGuardBypass(): boolean {

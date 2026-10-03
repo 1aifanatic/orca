@@ -5,7 +5,8 @@ import { runWithLaunchPath } from '../startup/hydrate-shell-path'
 import {
   markMacQuitAndInstallInFlight,
   isMacInstallerReady,
-  setMacInstallPreflightInProgress
+  setMacInstallPreflightInProgress,
+  allowMacQuitWithoutInstall
 } from '../updater-mac-install'
 import { getMacUpdateRunningInstances } from '../macos-update-running-instances'
 import { armUpdateInstallExitWatchdog } from '../update-install-exit-watchdog'
@@ -56,6 +57,8 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
       })
       return
     }
+    this.finishActiveUpdateCheckAttempt()
+    this.clearBackgroundCheckLaunchPending()
     this.quitAndInstallInProgress = true
 
     // Set BEFORE anything else so the `activate` handler doesn't reopen the old version while ShipIt replaces the .app bundle.
@@ -69,24 +72,26 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
           blockers = await getMacUpdateRunningInstances()
         } catch {
           this.resetQuitForUpdateState()
+          allowMacQuitWithoutInstall()
           this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
           this.sendInstallFailureStatus({
             state: 'error',
             version: pendingVersion,
+            retryAction: 'install',
             message:
               'Could not check for other running Orca instances. Orca remains open. Try the update again.'
           })
           recordUpdaterLifecycle('macos_running_instances_check_failed')
           return
-        } finally {
-          setMacInstallPreflightInProgress(false)
         }
         if (blockers.length > 0) {
           this.resetQuitForUpdateState()
+          allowMacQuitWithoutInstall()
           this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
           this.sendInstallFailureStatus({
             state: 'error',
             version: pendingVersion,
+            retryAction: 'install',
             message: `Close the other Orca instances (process IDs: ${blockers.slice(0, 10).join(', ')}) before installing this update. Background orca serve instances also need to stop. Orca remains open; retry the update after closing them.`
           })
           recordUpdaterLifecycle('macos_install_blocked_by_running_instances', {
@@ -142,6 +147,7 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
           return
         }
         // Why: mark before the call so a sync 'error' during quitAndInstall can recover; pre-native errors must not look like install failure.
+        setMacInstallPreflightInProgress(false)
         this.quitAndInstallNativeInvoked = true
         // Why: invoke before killAllPty/removing close listeners so a sync 'error' can recover while windows and PTYs are intact.
         const supervisorOwnsRelaunch = this.updateInstallMode === 'supervised-headless-serve'
@@ -197,6 +203,9 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
       const quitAndInstallNativeInvokedBeforeReset = this.quitAndInstallNativeInvoked
       failServeUpdateHandoff('Could not invoke the native updater.')
       this.resetQuitForUpdateState()
+      if (process.platform === 'darwin') {
+        allowMacQuitWithoutInstall()
+      }
       recordUpdaterLifecycle(
         'quit_and_install_failed',
         { errorType: error instanceof Error ? error.name : typeof error },
@@ -226,6 +235,9 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
     }
     failServeUpdateHandoff('The native updater rejected the install request.')
     this.resetQuitForUpdateState()
+    if (process.platform === 'darwin') {
+      allowMacQuitWithoutInstall()
+    }
     recordUpdaterLifecycle(
       'quit_and_install_failed_via_event',
       { errorType: error instanceof Error ? error.name : typeof error },

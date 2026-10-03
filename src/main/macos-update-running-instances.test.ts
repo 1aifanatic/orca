@@ -14,28 +14,45 @@ describe('macOS update running instances', () => {
     runProcessMock.mockReset()
   })
 
-  it('finds sibling main processes while excluding self, helpers, unrelated commands and other app copies', () => {
-    expect(
-      parseMacUpdateRunningInstances(
-        [
-          ` 100 ${executable}`,
-          ` 101 ${executable}`,
-          ` 102 ${executable}`,
-          ' 103 /Applications/Orca Test.app/Contents/Frameworks/Orca Helper.app/Contents/MacOS/Orca Helper',
-          ' 104 /tmp/Orca Test.app/Contents/MacOS/Orca Test',
-          ` 105 /bin/zsh -c ${executable}`,
-          ' 106 /usr/bin/login',
-          ''
-        ].join('\n'),
-        executable,
-        100
-      )
-    ).toEqual([101, 102])
+  it('excludes the current process from the native registry result', () => {
+    expect(parseMacUpdateRunningInstances('[100,101,102]\n', 100)).toEqual([101, 102])
+    expect(parseMacUpdateRunningInstances('[]\n', 100)).toEqual([])
   })
 
-  it('rejects malformed process output instead of assuming no blockers', () => {
-    expect(() => parseMacUpdateRunningInstances('not a process row', executable, 100)).toThrow()
+  it.each([
+    'not JSON',
+    '',
+    '{}',
+    'null',
+    '[0]',
+    '[-1]',
+    '[1.5]',
+    '["101"]',
+    '[null]',
+    '[9007199254740992]'
+  ])('rejects invalid registry output: %s', (listing) => {
+    expect(() => parseMacUpdateRunningInstances(listing, 100)).toThrow()
   })
+
+  it.runIf(process.platform === 'darwin')(
+    'passes the bundle path as an argument rather than executable script',
+    async () => {
+      const unusualExecutable = '/Applications/Orca "Test" $HOME.app/Contents/MacOS/Orca Test'
+      runProcessMock.mockResolvedValue({ code: 0, stdout: '[]', timedOut: false })
+      await expect(getMacUpdateRunningInstances(unusualExecutable)).resolves.toEqual([])
+      expect(runProcessMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: [
+            '-l',
+            'JavaScript',
+            '-e',
+            expect.not.stringContaining('$HOME'),
+            '/Applications/Orca "Test" $HOME.app'
+          ]
+        })
+      )
+    }
+  )
 
   it('skips development runtimes without probing the host', async () => {
     expect(await getMacUpdateRunningInstances('/usr/local/bin/node')).toEqual([])
@@ -53,18 +70,24 @@ describe('macOS update running instances', () => {
   })
 
   it.runIf(process.platform === 'darwin')(
-    'uses a bounded same-user process query and preserves paths with spaces',
+    'uses the bounded native application registry query and preserves paths with spaces',
     async () => {
       runProcessMock.mockResolvedValue({
         code: 0,
-        stdout: `100 ${executable}\n101 ${executable}\n`,
+        stdout: '[100,101]\n',
         timedOut: false
       })
       expect(await getMacUpdateRunningInstances(executable, 100)).toEqual([101])
       expect(runProcessMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          program: '/bin/ps',
-          args: ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,comm='],
+          program: '/usr/bin/osascript',
+          args: [
+            '-l',
+            'JavaScript',
+            '-e',
+            expect.stringContaining('runningApplicationsWithBundleIdentifier'),
+            '/Applications/Orca Test.app'
+          ],
           timeoutMs: 5000,
           killOnOutputLimit: true
         })
