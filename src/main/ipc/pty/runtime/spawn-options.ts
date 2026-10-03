@@ -35,6 +35,7 @@ import {
 import type { RuntimePtySpawnState } from './spawn-state'
 import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 import { prepareAntigravityAccountForLaunch } from '../../../antigravity/native-account-launch'
+import { prepareOpenCodePtyLaunch } from '../../../opencode/opencode-pty-launch'
 
 /** Headless spawns need the same host-side environment isolation as desktop spawns. */
 export async function buildRuntimePtySpawnOptions(
@@ -111,6 +112,21 @@ export async function buildRuntimePtySpawnOptions(
     env: ctx.env,
     envToDelete: ctx.spawnOptions.envToDelete
   })
+  const openCodeLaunch = await prepareOpenCodePtyLaunch({
+    command: ctx.launchCommand,
+    agent: isTuiAgent(args.launchAgent) ? args.launchAgent : undefined,
+    env: ctx.env,
+    envToDelete: (ctx.spawnOptions.envToDelete ??= []),
+    cwd: ctx.cwd,
+    connectionId: args.connectionId,
+    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    ...(ctx.codexSelectionTarget.runtime === 'wsl'
+      ? { wsl: { distro: ctx.expectedWslDistro ?? undefined } }
+      : {})
+  })
+  ctx.env = openCodeLaunch.env
+  ctx.launchCommand = openCodeLaunch.command
+  ctx.spawnOptions.env = ctx.env
   promoteAgentTeamsShimPath(ctx.env, ctx.requestedAgentTeamsPath)
   const noDaemonLaunch = planCodexNoDaemonLaunch({
     command: ctx.launchCommand,
