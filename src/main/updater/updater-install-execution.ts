@@ -2,7 +2,12 @@ import { BrowserWindow } from 'electron'
 import { killAllPty } from '../ipc/pty'
 import { withUpdaterSpan } from '../observability/instrumentation'
 import { runWithLaunchPath } from '../startup/hydrate-shell-path'
-import { markMacQuitAndInstallInFlight, isMacInstallerReady } from '../updater-mac-install'
+import {
+  markMacQuitAndInstallInFlight,
+  isMacInstallerReady,
+  setMacInstallPreflightInProgress
+} from '../updater-mac-install'
+import { getMacUpdateRunningInstances } from '../macos-update-running-instances'
 import { armUpdateInstallExitWatchdog } from '../update-install-exit-watchdog'
 import { getLinuxPackageType } from '../linux-update-package-type'
 import { LINUX_PACKAGE_MARKER_UNUSABLE_MESSAGE } from '../linux-package-downloaded-status'
@@ -53,12 +58,45 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
     }
     this.quitAndInstallInProgress = true
 
-    markMacQuitAndInstallInFlight()
-
     // Set BEFORE anything else so the `activate` handler doesn't reopen the old version while ShipIt replaces the .app bundle.
     this.quittingForUpdate = true
 
     try {
+      if (process.platform === 'darwin') {
+        setMacInstallPreflightInProgress(true)
+        let blockers: number[]
+        try {
+          blockers = await getMacUpdateRunningInstances()
+        } catch {
+          this.resetQuitForUpdateState()
+          this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
+          this.sendInstallFailureStatus({
+            state: 'error',
+            version: pendingVersion,
+            message:
+              'Could not check for other running Orca instances. Orca remains open. Try the update again.'
+          })
+          recordUpdaterLifecycle('macos_running_instances_check_failed')
+          return
+        } finally {
+          setMacInstallPreflightInProgress(false)
+        }
+        if (blockers.length > 0) {
+          this.resetQuitForUpdateState()
+          this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
+          this.sendInstallFailureStatus({
+            state: 'error',
+            version: pendingVersion,
+            message: `Close the other Orca instances (process IDs: ${blockers.slice(0, 10).join(', ')}) before installing this update. Background orca serve instances also need to stop. Orca remains open; retry the update after closing them.`
+          })
+          recordUpdaterLifecycle('macos_install_blocked_by_running_instances', {
+            pids: blockers.slice(0, 10).join(', '),
+            count: blockers.length
+          })
+          return
+        }
+      }
+      markMacQuitAndInstallInFlight()
       await withUpdaterSpan({ stage: 'install' }, async (span) => {
         span.setAttribute('updater.version', pendingVersion || 'unknown')
         span.setAttribute('updater.platform', process.platform)

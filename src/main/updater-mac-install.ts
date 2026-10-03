@@ -42,7 +42,21 @@ export function registerMacUpdaterEvents({
       recordUpdaterLifecycle('macos_before_quit_guard_bypassed')
       return
     }
+    if (macInstallPreflightInProgress) {
+      event.preventDefault()
+      return
+    }
     if (isMacQuitAndInstallInFlight()) {
+      return
+    }
+    // Squirrel also installs on ordinary quit; use the same checks as Update & Restart.
+    if (
+      process.platform === 'darwin' &&
+      isMacInstallerReady() &&
+      hasInstallableDownloadedVersion()
+    ) {
+      event.preventDefault()
+      void performQuitAndInstall()
       return
     }
     if (
@@ -63,6 +77,11 @@ export function registerMacUpdaterEvents({
 
 /** Whether Squirrel.Mac has finished downloading the update from the localhost proxy. */
 let squirrelReady = false
+let macInstallPreflightInProgress = false
+
+export function setMacInstallPreflightInProgress(value: boolean): void {
+  macInstallPreflightInProgress = value
+}
 /** Remembers a user/app quit request that arrived before Squirrel.Mac had a
  * staged update ready to apply. Without this handoff, quitting during the
  * localhost-proxy phase exits back into the old app and the update is lost. */
@@ -83,6 +102,7 @@ function clearPendingInstallTimeout(): void {
 }
 
 export function resetMacInstallState(): void {
+  macInstallPreflightInProgress = false
   installRequestedAfterSquirrelReady = false
   quitAndInstallInFlight = false
   bypassMacInstallGuardOnce = false
