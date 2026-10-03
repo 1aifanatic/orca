@@ -3,6 +3,7 @@ import {
   type AgentAttentionRemainder,
   type ReadableAgentAttentionUnread
 } from './agent-attention-contract'
+import { isAgentTurnAcknowledged } from '../../../shared/agent-turn-acknowledgement'
 
 /** Subject-keyed turn bookkeeping the acknowledgement policy reads; no surface shape here. */
 export type AgentAttentionTurnRecords = {
@@ -33,8 +34,7 @@ export function readAgentAttentionTurnStartedAt(
 /**
  * Subjects on the viewed surface whose current turn has not been acknowledged yet.
  *
- * Why compare stateStartedAt (not updatedAt): same-state pings must not re-trigger an ack,
- * matching the is-unvisited rule the workspace card uses.
+ * The is-unvisited rule every surface reads (`isAgentTurnAcknowledged`).
  */
 export function computeAgentAcknowledgementTargets(
   records: AgentAttentionTurnRecords,
@@ -44,13 +44,19 @@ export function computeAgentAcknowledgementTargets(
     return []
   }
   const targets: string[] = []
-  const acknowledgedAt = records.acknowledgedTurnStartedAt[subjectKey] ?? 0
+  const acknowledgedAt = records.acknowledgedTurnStartedAt[subjectKey]
   const liveTurn = records.liveTurns[subjectKey]
-  if (liveTurn && acknowledgedAt < liveTurn.stateStartedAt) {
+  if (
+    liveTurn &&
+    !isAgentTurnAcknowledged({ stateStartedAt: liveTurn.stateStartedAt, acknowledgedAt })
+  ) {
     targets.push(subjectKey)
   }
   const retainedTurn = records.retainedTurns[subjectKey]
-  if (retainedTurn && acknowledgedAt < retainedTurn.entry.stateStartedAt) {
+  if (
+    retainedTurn &&
+    !isAgentTurnAcknowledged({ stateStartedAt: retainedTurn.entry.stateStartedAt, acknowledgedAt })
+  ) {
     targets.push(subjectKey)
   }
   return targets

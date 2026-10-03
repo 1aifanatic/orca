@@ -1,6 +1,7 @@
 import type { AppState } from '../../types'
 import { buildAgentNotificationId } from '../../../../../shared/agent-notification-id'
 import { parsePaneKey } from '../../../../../shared/stable-pane-id'
+import { isAgentTurnAcknowledged } from '../../../../../shared/agent-turn-acknowledgement'
 
 export function resolvePaneKeyWorktreeIdFromTabs(state: AppState, paneKey: string): string | null {
   const parsed = parsePaneKey(paneKey)
@@ -28,7 +29,10 @@ export function collectAcknowledgedAgentNotificationId({
   stateStartedAt: number | null | undefined
   previousAckAt: number
 }): void {
-  if (typeof stateStartedAt !== 'number' || previousAckAt >= stateStartedAt) {
+  if (
+    typeof stateStartedAt !== 'number' ||
+    isAgentTurnAcknowledged({ stateStartedAt, acknowledgedAt: previousAckAt })
+  ) {
     return
   }
   const id = buildAgentNotificationId({ worktreeId, paneKey, stateStartedAt })
