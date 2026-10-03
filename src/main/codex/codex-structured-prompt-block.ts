@@ -19,6 +19,8 @@ const CONTROL_OR_BIDI = new RegExp(
 )
 const ENDS_A_SENTENCE = /[.!?\u2026\u3002\uff01\uff1f\uff0e]$/
 const ELLIPSIS = '\u2026'
+const WARNING: ReadonlySet<unknown> = new Set(['warning'])
+const BLOCK_REASON: ReadonlySet<unknown> = new Set(['feedback', 'stop'])
 
 export type CodexPromptBlock = { reason?: string }
 
@@ -76,12 +78,12 @@ export function readCodexPromptBlock(
   // As Codex shows it: the hook's message to the person (`warning`), then why it blocked
   // (`feedback` for a `blocked` run, `stop` for a `stopped` one).
   const entries = (Array.isArray(run.entries) ? run.entries : []).map((entry) => record(entry))
-  const firstText = (kinds: readonly string[]) =>
+  const firstText = (kinds: ReadonlySet<unknown>) =>
     entries
-      .filter((entry) => typeof entry?.kind === 'string' && kinds.includes(entry.kind))
+      .filter((entry) => kinds.has(entry?.kind))
       .map(entryText)
       .find((text) => text !== undefined)
-  const parts = [firstText(['warning']), firstText(['feedback', 'stop'])].filter(
+  const parts = [firstText(WARNING), firstText(BLOCK_REASON)].filter(
     (part): part is string => part !== undefined
   )
   const reason = plainCodexHookReason(
