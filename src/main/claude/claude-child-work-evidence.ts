@@ -110,9 +110,10 @@ export function claudeChildOperation(
   ]
 }
 
-/** The subagents whose card the journal holds pending for a request still open with no answer
- *  underway: a card is the one record of an open request, so a waiting child always sits beside a
- *  pending card and its parent reads that card, never the child's wait. */
+/** The subagents whose request is still open with no answer underway (the registry's fact) and
+ *  whose card has landed (the journal's): a waiting child always sits beside its pending card, and
+ *  its parent reads that card, never the child's wait. A request is claimed or forgotten in the
+ *  registry before its card closes, so however it ends its child is freed first. */
 function claudeWaitingChildIds(
   session: Pick<ClaudeSession, 'prompts' | 'translator'>
 ): Set<string> {

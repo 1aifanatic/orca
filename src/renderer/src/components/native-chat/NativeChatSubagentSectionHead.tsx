@@ -1,12 +1,9 @@
 import { Bot, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
+import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-summary'
 import type { NativeChatSubagentEntry } from '../../../../shared/native-chat-types'
 import { StatusDot } from './NativeChatSubagentRun'
-import {
-  nativeChatSubagentDisplayState,
-  useNativeChatWaitingSubagentSet
-} from './native-chat-waiting-subagents'
 
 /** Names the subagent whose rows follow, and opens or closes them, where no loaded
  *  roster row holds its entry: its roster is off the page, or another subagent spawned
@@ -22,8 +19,7 @@ export function NativeChatSubagentSectionHead({
   expanded: boolean
   onSetOpen: (agentId: string, open: boolean) => void
 }): React.JSX.Element {
-  const waiting = useNativeChatWaitingSubagentSet()
-  const state = entry === undefined ? null : nativeChatSubagentDisplayState(entry, waiting)
+  const state = entry === undefined ? null : normalizeSubagentState(entry.state)
   return (
     <button
       type="button"

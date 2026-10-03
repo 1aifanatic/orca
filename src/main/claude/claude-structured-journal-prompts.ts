@@ -247,11 +247,10 @@ export class ClaudeJournalPrompts {
     this.deletePrompt(promptKey)
   }
 
-  /** Subagents' cards the journal holds pending: written, and closed by nobody yet. The rows are the
-   *  one record of an open request, so a reader never sees a subagent wait beside no card. */
+  /** Subagents' cards whose rows have landed and that nobody has closed or taken over yet. */
   *openCards(): IterableIterator<ClaudeOpenPromptCard> {
     for (const [promptKey, entry] of this.items) {
-      if (entry.written && !entry.cancellationPending && entry.asker !== undefined) {
+      if (entry.written && entry.asker !== undefined) {
         yield { promptKey, asker: entry.asker }
       }
     }

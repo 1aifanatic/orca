@@ -2,6 +2,8 @@
 // a store of its own or ingested by a real hook server.
 
 import { expect } from 'vitest'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import { createAgentChildWorkAdmission } from '../../shared/agent-status-child-work-admission'
 import type { AgentChildWorkRecord } from '../../shared/agent-status-child-work'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
@@ -14,13 +16,6 @@ import { makeStructuredAgentStatusSubject } from '../../shared/agent-status-subj
 import { AgentHookServer } from '../agent-hooks/server'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type { CapturedFrame } from './claude-captured-frame-builders.test-fixture'
-import { agentJournalLinkageFields } from '../../shared/agent-session-journal-producer'
-import {
-  applyJournalRow,
-  createJournalReducerState,
-  renderJournalState
-} from '../native-chat/agent-session-journal/journal-reducer'
-import { buildJournalItemRow } from '../native-chat/agent-session-journal/journal-row-builders'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
 import {
   fakeClaude,
@@ -78,6 +73,8 @@ export function toolResult(
 }
 
 type Delivery = { kind: 'journal' | 'publish' | 'evidence'; detail: string }
+
+export type JournaledItem = Pick<AgentJournalRenderItem, 'itemId' | 'body' | 'sequence' | 'agentId'>
 
 /** The host clock the adapter stamps evidence with; a replay moves it to each frame's time. */
 export const T0 = 1_700_000_000_500
@@ -143,29 +140,21 @@ export async function producer(host?: AgentHookServer) {
       }
     }
   })
-  // A real reducer behind the sink, so a test can project the session's own status from its rows.
-  const rows = createJournalReducerState('session-1', 'epoch-1')
-  let seq = 0
+  /** What the adapter journaled, keyed by identity in first-write order, as the journal folds it. */
+  const journalItems = new Map<string, JournaledItem>()
   const journal: StructuredAgentSessionEventSink = {
     appendItem: (identity, body, options) => {
       deliveries.push({ kind: 'journal', detail: JSON.stringify(identity) })
+      const itemId = agentJournalItemKey(identity)
+      journalItems.set(itemId, {
+        itemId,
+        body,
+        sequence: journalItems.get(itemId)?.sequence ?? journalItems.size + 1,
+        ...(options?.agentId ? { agentId: options.agentId } : {})
+      })
       if (options?.agentId !== undefined) {
         stamps.push(options)
       }
-      const linkage = agentJournalLinkageFields(options)
-      applyJournalRow(
-        rows,
-        buildJournalItemRow({
-          state: rows,
-          identity,
-          body,
-          seq: ++seq,
-          fence: 7,
-          ts: seq,
-          linkage,
-          turnScope: options.turnScope
-        })
-      )
     },
     appendTombstone: () => {},
     // Production's journal publication is what republishes the parent's own row.
@@ -193,7 +182,6 @@ export async function producer(host?: AgentHookServer) {
     host ? host.getStructuredChildWork(parent) : store.getChildren(parent)
   const byDescription = (description: string) =>
     records().find((record) => record.description === description)
-  const journalItems = () => renderJournalState(rows).items
   return {
     adapter,
     claude,

@@ -3,7 +3,7 @@
 // on the sink's own publish, on a journal commit (a microtask later), and after child work. At every
 // status publish the subagents read waiting must each have a pending card in that same journal, and
 // the parent row must match a second host fed the same evidence with no subagent ever waiting, as
-// the producer was before.
+// the producer was before: the asking subagent's row changes, its parent's does not.
 
 import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -13,6 +13,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type {
+  AgentJournalProducerLinkage,
   AgentJournalRenderItem,
   AgentJournalResolution
 } from '../../shared/agent-session-journal-types'
@@ -28,6 +29,7 @@ import { createStructuredAgentSessionLogger } from '../native-chat/agent-session
 import { StructuredAgentSessionStatusFeed } from '../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import { indexedStatusFeedSession } from '../native-chat/agent-session-wire/structured-agent-session-status-feed-test-session'
 import { invokeCanUseTool } from './claude-can-use-tool-test-support'
+import { system, toolUse } from './claude-child-work-producer-harness.test-fixture'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
 import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 import {
@@ -63,10 +65,12 @@ function captured(name: string): Captured[] {
   )
 }
 
-/** The subagent that asks in the captures. */
-const ASKER = text(
-  captured('fg-allow').find((event) => event.frame.subtype === 'task_started')?.frame.task_id
-)
+/** The subagent that asks in a capture. */
+function askerOf(name: string): string {
+  return text(captured(name).find((event) => event.frame.subtype === 'task_started')?.frame.task_id)
+}
+
+const ASKER = askerOf('fg-allow')
 
 /** The same evidence from a producer that never reads a subagent waiting. */
 function withoutWaits(evidence: AgentChildWorkEvidence[]): AgentChildWorkEvidence[] {
@@ -127,7 +131,13 @@ async function pipeline() {
   const server = new AgentHookServer()
   const unwaited = new AgentHookServer()
   const publishes: Publish[] = []
+  let published: AgentStatusStructuredSessionSubject | undefined
+  /** The child's row as the host shows it, which every surface reads. */
+  const viewOf = (providerId: string) =>
+    published &&
+    server.getStructuredChildWorkViews(published).find((view) => view.providerId === providerId)
   const record = (subject: AgentStatusStructuredSessionSubject): void => {
+    published = subject
     const cards = pendingCards(journal.snapshot().items)
     publishes.push({
       waiting: server
@@ -173,7 +183,9 @@ async function pipeline() {
   })
   // As the host publishes: the sink's own publish, and every journal commit a microtask later.
   const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging(SESSION))
-  deferred.bind({ journal, fence: FENCE, publish: () => feed.publish(SESSION, journal) })
+  const publishStatus = () => feed.publish(SESSION, journal)
+  const target = { journal, fence: FENCE, publish: publishStatus }
+  deferred.bind(target)
   let queued = false
   journal.observeCommits(() => {
     if (!queued) {
@@ -241,12 +253,17 @@ async function pipeline() {
   }
   const connection = claude.connections[0]!
   const aborts = new Map<string, AbortController>()
-  /** Feeds a captured frame as the CLI or the SDK hands it over, then lets every write land. */
-  const step = async ({ from, frame }: Captured): Promise<void> => {
+  /** Feeds a captured frame as the CLI or the SDK hands it over, then lets every write land. The
+   *  SDK hands `canUseTool` no agent id when `withoutAgentId`, as when the CLI names none. */
+  const step = async (
+    { from, frame }: Captured,
+    options: { withoutAgentId?: boolean } = {}
+  ): Promise<void> => {
     const request = isRecord(frame.request) ? frame.request : null
     if (frame.type === 'control_request' && request?.subtype === 'can_use_tool') {
       const controller = new AbortController()
       aborts.set(text(frame.request_id), controller)
+      const agentId = options.withoutAgentId ? '' : text(request.agent_id)
       invokeCanUseTool(
         connection,
         text(request.tool_name),
@@ -255,24 +272,21 @@ async function pipeline() {
         {
           input: isRecord(request.input) ? request.input : {},
           signal: controller.signal,
-          ...(text(request.agent_id) ? { agentID: text(request.agent_id) } : {})
+          ...(agentId ? { agentID: agentId } : {})
         }
       )
-    } else if (frame.type === 'control_cancel_request') {
-      aborts.get(text(frame.request_id))?.abort()
     } else if (from === 'cli') {
       connection.handlers.onMessage?.({ ...frame, session_id: PROVIDER_SESSION_ID })
     }
     await settle()
   }
   /** Replays a capture up to and including its permission request. */
-  const ask = async (name: string): Promise<Captured[]> => {
+  const ask = async (name: string, options: { withoutAgentId?: boolean } = {}): Promise<void> => {
     const events = captured(name)
     const at = events.findIndex((event) => event.frame.type === 'control_request')
     for (const event of events.slice(0, at + 1)) {
-      await step(event)
+      await step(event, options)
     }
-    return events.slice(at + 1)
   }
   /** Publishes that broke the invariant or told the parent rows apart. */
   const violations = () =>
@@ -295,11 +309,14 @@ async function pipeline() {
     adapter,
     journal,
     deferred,
+    target,
+    publishStatus,
     connection,
     now,
     raise,
     publishes,
     violations,
+    viewOf,
     settle,
     step,
     ask,
@@ -327,38 +344,107 @@ function answer(
   })
 }
 
-function dismiss(run: Pipeline, decline: boolean) {
+/** The user closes the card without answering; the Stop that follows ends the request. */
+function dismiss(run: Pipeline) {
   return run.adapter.dismissPrompt({
     sessionId: SESSION,
     itemId: run.cardId(),
     fence: FENCE,
-    answer: decline,
+    answer: false,
     commit: run.hostRecords({ state: 'cancelled', selectedOptionId: null })
   })
 }
 
-/** Replays a whole capture, answering through the app's own path where Orca answered. */
-async function replay(name: string): Promise<Pipeline> {
+/** Replays a whole capture, answering through the app's own path where Orca answered, and returns
+ *  the asking subagent's row after each event, labelled. */
+async function replay(name: string): Promise<Pipeline & { timeline: string[] }> {
   const run = await pipeline()
+  const timeline: string[] = []
   for (const event of captured(name)) {
     const response = isRecord(event.frame.response) ? event.frame.response : null
+    const request = isRecord(event.frame.request) ? event.frame.request : null
+    let label = text(event.frame.subtype) || text(event.frame.type)
     if (event.from === 'orca' && event.frame.type === 'control_response' && response) {
       const behavior = isRecord(response.response) ? text(response.response.behavior) : ''
       await answer(run, behavior === 'deny' ? 'deny' : 'allow')
       await run.settle()
+      label = behavior
     } else {
       await run.step(event)
+      label = request?.subtype === 'can_use_tool' ? 'can_use_tool' : label
     }
+    const view = run.viewOf(askerOf(name))
+    timeline.push(`${label} -> ${view ? `${view.membership} ${view.state}` : 'none'}`)
   }
+  return { ...run, timeline }
+}
+
+/** Root spawns agent-a, which spawns agent-n; `asker` asks for agent-n's Bash call, which is read
+ *  after the request unless `toolCallFirst`. */
+async function nested(asker: string, toolCallFirst = false): Promise<Pipeline> {
+  const run = await pipeline()
+  const spawn = (id: string, taskId: string, parentRef: string | null) => [
+    toolUse(id, 'Agent', { description: taskId, prompt: 'go' }, parentRef),
+    system('task_started', {
+      task_id: taskId,
+      tool_use_id: id,
+      description: taskId,
+      task_type: 'local_agent'
+    })
+  ]
+  const bash = toolUse('toolu_bash_n', 'Bash', { command: 'touch n' }, 'toolu_n')
+  for (const frame of [
+    ...spawn('toolu_a', 'agent-a', null),
+    ...spawn('toolu_n', 'agent-n', 'toolu_a'),
+    ...(toolCallFirst ? [bash] : [])
+  ]) {
+    await run.step({ from: 'cli', frame })
+  }
+  run.raise('req-n', 'toolu_bash_n', asker)
+  await run.step({
+    from: 'cli',
+    frame: toolUse('toolu_read_n', 'Read', { file_path: 'n' }, 'toolu_n')
+  })
   return run
 }
 
-describe("the parent row while a Claude subagent's request is open", () => {
-  it.each(['fg-allow', 'fg-deny', 'fg-interrupt', 'bg-allow'])(
-    'never reads a subagent waiting beside no card, and reads as before, through %s',
-    async (name) => {
+function linkageOf(item: AgentJournalProducerLinkage | undefined) {
+  return {
+    agentId: item?.agentId,
+    parentAgentId: item?.parentAgentId,
+    providerParentRef: item?.providerParentRef,
+    producerKind: item?.producerKind,
+    attempt: item?.attempt
+  }
+}
+
+describe("a Claude subagent's permission request", () => {
+  it.each([
+    [
+      'fg-allow',
+      [
+        'session_state_changed -> live working',
+        'can_use_tool -> live waiting',
+        'allow -> live working'
+      ]
+    ],
+    // The parent's own turn ends while its background subagent is still asking.
+    [
+      'bg-allow',
+      [
+        'session_state_changed -> live working',
+        'can_use_tool -> live waiting',
+        'assistant -> live waiting',
+        'success -> live waiting',
+        'allow -> live working'
+      ]
+    ]
+  ])(
+    'waits from its request until answered, beside its card, the parent row as before (%s)',
+    async (name, around) => {
       const run = await replay(name)
-      expect(run.publishes.some((entry) => entry.waiting.length > 0)).toBe(true)
+      const at = run.timeline.indexOf('can_use_tool -> live waiting')
+      expect(run.timeline.slice(at - 1, at - 1 + around.length)).toEqual(around)
       expect(run.violations()).toEqual([])
     }
   )
@@ -375,28 +461,54 @@ describe("the parent row while a Claude subagent's request is open", () => {
         mainAgent: { state: 'blocked', stateStartedAt: card?.observedAt }
       }
     })
+    expect(run.viewOf(ASKER)?.operation).toMatchObject({ toolName: 'Bash' })
     expect(
       run.publishes.filter((entry) => isRecord(entry.row) && entry.row.state === 'waiting')
     ).toEqual([])
     expect(run.violations()).toEqual([])
   })
 
-  it.each([
-    ['declines the request', true],
-    ['leaves the request to the Stop that ends it', false]
-  ])('frees the subagent when the user dismisses the card and Orca %s', async (_, decline) => {
+  it('waits only once its card is written, though the write waits for the journal', async () => {
     const run = await pipeline()
-    await run.ask('fg-allow')
-    await dismiss(run, decline)
-    await run.settle()
-    // Claude's own withdrawal, after a Stop, closes nothing more.
-    for (const controller of run.aborts.values()) {
-      controller.abort()
+    const events = captured('fg-allow')
+    const at = events.findIndex((event) => event.frame.type === 'control_request')
+    for (const event of events.slice(0, at)) {
+      await run.step(event)
     }
-    await run.settle()
+    // No journal is bound: the card's row waits in the sink while the host publishes.
+    run.deferred.unbind()
+    run.raise('req-late', 'toolu_late', ASKER)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    run.publishStatus()
     expect(run.publishes.at(-1)?.waiting).toEqual([])
+    run.deferred.bind(run.target)
+    await run.settle()
+    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
     expect(run.violations()).toEqual([])
   })
+
+  it.each(['allowed', 'denied', 'dismissed and left to the Stop', 'withdrawn by Claude'] as const)(
+    'frees the subagent when its request is %s',
+    async (how) => {
+      const run = await pipeline()
+      await run.ask('fg-allow')
+      if (how === 'allowed' || how === 'denied') {
+        await answer(run, how === 'allowed' ? 'allow' : 'deny')
+      } else if (how === 'dismissed and left to the Stop') {
+        await dismiss(run)
+      }
+      await run.settle()
+      // Claude withdraws the request itself; after a dismissal that closes nothing more.
+      if (how !== 'allowed' && how !== 'denied') {
+        for (const controller of run.aborts.values()) {
+          controller.abort()
+        }
+        await run.settle()
+      }
+      expect(run.publishes.at(-1)?.waiting).toEqual([])
+      expect(run.violations()).toEqual([])
+    }
+  )
 
   it('waits again, beside its card, when the host fails to record the answer', async () => {
     const run = await pipeline()
@@ -407,7 +519,7 @@ describe("the parent row while a Claude subagent's request is open", () => {
       })
     ).rejects.toThrow('journal write failed')
     await run.settle()
-    expect(run.publishes.at(-1)?.waiting).toHaveLength(1)
+    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
     expect(run.violations()).toEqual([])
   })
 
@@ -420,7 +532,36 @@ describe("the parent row while a Claude subagent's request is open", () => {
     })
   })
 
-  it('waits each asking subagent beside its own card, and only those, as requests open and close', async () => {
+  it('names the subagent through the tool call it gates when the CLI does not', async () => {
+    const run = await pipeline()
+    await run.ask('fg-allow', { withoutAgentId: true })
+    expect(pendingCards(run.journal.snapshot().items)[0]?.agentId).toBe(ASKER)
+    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
+    expect(run.violations()).toEqual([])
+  })
+
+  it("gives a nested subagent's request the linkage its own rows carry", async () => {
+    const run = await nested('agent-n')
+    const items = run.journal.snapshot().items
+    const card = items.find((item) => item.body.kind === 'approval')
+    const sibling = items.find(
+      (item) => item.body.kind === 'tool-call' && item.agentId === 'agent-n'
+    )
+    expect(linkageOf(card)).toEqual(linkageOf(sibling))
+    expect(card).toMatchObject({ agentId: 'agent-n', parentAgentId: 'agent-a' })
+  })
+
+  it("files the request under the agent the CLI names when the gated call is another's", async () => {
+    const run = await nested('agent-a', true)
+    const items = run.journal.snapshot().items
+    const card = items.find((item) => item.body.kind === 'approval')
+    const askerRow = items.find(
+      (item) => item.body.kind === 'tool-call' && item.agentId === 'agent-a'
+    )
+    expect(linkageOf(card)).toEqual(linkageOf(askerRow))
+  })
+
+  it('waits each asking subagent beside its own card, and only those', async () => {
     const run = await pipeline()
     await run.ask('fg-allow')
     const started = captured('fg-allow').find((event) => event.frame.subtype === 'task_started')
@@ -474,37 +615,31 @@ describe("the parent row while a Claude subagent's request is open", () => {
     expect(run.violations()).toEqual([])
   })
 
-  it.each(['at once', 'after the provider writes flush'] as const)(
-    'stops the subagent waiting when the process dies mid-request and the host settles it %s',
-    async (when) => {
-      const run = await pipeline()
-      await run.ask('fg-allow')
-      expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
-      let settled: Promise<unknown> | undefined
-      hooks.onEvent = (event) => {
-        if (event.type !== 'ended') {
-          return
-        }
-        const settle = () =>
-          settleStructuredAgentSessionDeadGeneration({
-            journal: run.journal,
-            sessionId: SESSION,
-            fence: FENCE,
-            settlementId: 'provider-exit:test',
-            verdict: { state: 'interrupted', completedAt: run.now() },
-            pendingSubmissionReason: 'provider_exited_before_acknowledgement'
-          })
-        settled = when === 'at once' ? settle() : run.deferred.drained().then(settle)
+  it('stops the subagent waiting when the process dies mid-request', async () => {
+    const run = await pipeline()
+    await run.ask('fg-allow')
+    expect(run.publishes.at(-1)?.waiting).toEqual([ASKER])
+    let settled: Promise<unknown> | undefined
+    hooks.onEvent = (event) => {
+      if (event.type === 'ended') {
+        settled = settleStructuredAgentSessionDeadGeneration({
+          journal: run.journal,
+          sessionId: SESSION,
+          fence: FENCE,
+          settlementId: 'provider-exit:test',
+          verdict: { state: 'interrupted', completedAt: run.now() },
+          pendingSubmissionReason: 'provider_exited_before_acknowledgement'
+        })
       }
-      run.connection.handlers.onExit?.(new Error('claude crashed'))
-      for (let attempt = 0; attempt < 20 && !settled; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 5))
-      }
-      await settled
-      await run.settle()
-      expect(pendingCards(run.journal.snapshot().items)).toEqual([])
-      expect(run.publishes.at(-1)?.waiting).toEqual([])
-      expect(run.violations()).toEqual([])
     }
-  )
+    run.connection.handlers.onExit?.(new Error('claude crashed'))
+    for (let attempt = 0; attempt < 20 && !settled; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    await settled
+    await run.settle()
+    expect(pendingCards(run.journal.snapshot().items)).toEqual([])
+    expect(run.publishes.at(-1)?.waiting).toEqual([])
+    expect(run.violations()).toEqual([])
+  })
 })

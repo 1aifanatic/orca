@@ -9,16 +9,11 @@ import {
 } from '../../../../shared/native-chat-subagent-summary'
 import type {
   NativeChatSubagentEntry,
-  NativeChatSubagentGroupBlock
+  NativeChatSubagentGroupBlock,
+  NativeChatSubagentState
 } from '../../../../shared/native-chat-types'
 import { formatNativeChatDuration } from './NativeChatWorkingStatus'
 import { nativeChatSubagentEntryRuns } from './native-chat-subagent-sections'
-import { backgroundTaskStateWord } from './background-task-roster'
-import {
-  nativeChatSubagentDisplayState,
-  useNativeChatWaitingSubagentSet,
-  type NativeChatSubagentDisplayState
-} from './native-chat-waiting-subagents'
 
 /** Compact token counts: the row shows scale, not an exact ledger. */
 function formatSubagentTokens(tokens: number): string {
@@ -35,17 +30,12 @@ function formatSubagentTokens(tokens: number): string {
  *  how many of the children it covers. `completed` never takes one: every child
  *  finishing is the whole group finishing. */
 function subagentStateLabel(
-  state: NativeChatSubagentDisplayState,
+  state: NativeChatSubagentState,
   count: number,
   groupTotal: number
 ): string {
   if (state === 'completed') {
     return translate('components.native-chat.subagents.state.completed', 'completed')
-  }
-  if (state === 'waiting') {
-    // The strip's own word and count form, so both read the same wait the same way.
-    const word = backgroundTaskStateWord('waiting')
-    return groupTotal <= 1 ? word : `${count} ${word}`
   }
   if (groupTotal <= 1) {
     switch (state) {
@@ -95,9 +85,8 @@ function subagentStateLabel(
   }
 }
 
-const STATE_DOT_CLASS: Record<NativeChatSubagentDisplayState, string> = {
+const STATE_DOT_CLASS: Record<NativeChatSubagentState, string> = {
   working: 'bg-foreground/70',
-  waiting: 'bg-agent-question',
   idle: 'bg-muted-foreground/40',
   completed: 'bg-muted-foreground/60',
   failed: 'bg-destructive',
@@ -128,7 +117,7 @@ export function StatusDot({
   state,
   pulsing = false
 }: {
-  state: NativeChatSubagentDisplayState
+  state: NativeChatSubagentState
   pulsing?: boolean
 }): React.JSX.Element {
   return (
@@ -171,11 +160,10 @@ export function NativeChatSubagentEntries({
   onSetSectionOpen?: (agentId: string, open: boolean) => void
   className?: string
 }): React.JSX.Element {
-  const waiting = useNativeChatWaitingSubagentSet()
   return (
     <ul className={cn('space-y-0.5', className)}>
       {agents.map((agent) => {
-        const state = nativeChatSubagentDisplayState(agent, waiting)
+        const state = normalizeSubagentState(agent.state)
         const sectionOpen = sections?.get(agent.id)
         const entry = (
           <>
@@ -258,10 +246,6 @@ export function NativeChatSubagentRun({
   const setOpen = onSetOpen ?? setLocalOpen
   const agents = block.agents
   const summary = useMemo(() => summarizeSubagentGroup(agents), [agents])
-  const waitingSubagents = useNativeChatWaitingSubagentSet()
-  const waitingCount = agents.filter(
-    (agent) => nativeChatSubagentDisplayState(agent, waitingSubagents) === 'waiting'
-  ).length
   if (summary.total === 0) {
     return null
   }
@@ -278,32 +262,16 @@ export function NativeChatSubagentRun({
       : translate('components.native-chat.subagents.ranN', 'Ran {{value0}} subagents', {
           value0: summary.total
         })
-  // Children waiting on the user are still running, but the group says so: all of them, or beside
-  // the ones still working.
-  const running = summary.working - waitingCount
-  const verdictState: NativeChatSubagentDisplayState = working
-    ? running > 0
-      ? 'working'
-      : 'waiting'
+  const verdictState: NativeChatSubagentState = working
+    ? 'working'
     : (summary.settledState ?? 'idle')
   const verdict = working
-    ? subagentStateLabel(verdictState, running > 0 ? running : waitingCount, summary.total)
+    ? subagentStateLabel('working', summary.working, summary.total)
     : subagentStateLabel(verdictState, summary.settledCount, summary.total)
-  // A wait beside working siblings, and a child that already failed, must each be readable without
-  // waiting for the rest; neither hides the other.
-  const waitingAlert =
-    running > 0 && waitingCount > 0
-      ? subagentStateLabel('waiting', waitingCount, summary.total)
-      : null
-  const adverseState = working ? summary.adverseState : null
-  const alerts = [
-    waitingAlert,
-    adverseState === null
-      ? null
-      : subagentStateLabel(adverseState, summary.adverseCount, summary.total)
-  ].filter((alert): alert is string => alert !== null)
-  const dotState: NativeChatSubagentDisplayState =
-    adverseState ?? (waitingAlert === null ? verdictState : 'waiting')
+  // A child that already failed must not wait for its siblings to be readable.
+  const alertState = working ? summary.adverseState : null
+  const alert =
+    alertState === null ? null : subagentStateLabel(alertState, summary.adverseCount, summary.total)
   // A child settled with no terminal stamp — swept by the reopen, or given the
   // provider's verdict after that — stopped being observable at an unknown
   // moment. Measuring to `now` would report the time since the host died as how
@@ -327,11 +295,11 @@ export function NativeChatSubagentRun({
         aria-live="polite"
       >
         <SubagentGlyph />
-        <StatusDot state={dotState} pulsing={running > 0} />
+        <StatusDot state={alertState ?? verdictState} pulsing={working} />
         <span className={cn('min-w-0 truncate', working && 'text-foreground/85')}>{headline}</span>
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
           {verdict}
-          {alerts.map((alert) => ` +${alert}`).join('')}
+          {alert === null ? null : ` +${alert}`}
           {clockStartedAt !== null ? (
             // The row is a live region, and this clock reticks every second: left
             // exposed it announces a new duration every second and buries the

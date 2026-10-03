@@ -34,7 +34,9 @@ async function wiredSession() {
     isReadOnly: false,
     lastActivityAt: () => 1,
     snapshot: () => ({
-      items: run.journalItems(),
+      items: [...run.journalItems.values()]
+        .sort((a, b) => a.sequence - b.sequence)
+        .map((item) => ({ ...item, revision: 1 })),
       submissions: submissions.map((submission) => ({ ...submission }))
     })
   }
@@ -102,7 +104,7 @@ async function wiredSession() {
     feed.publish(parent.sessionId)
   }
   const rootTurns = () =>
-    run.journalItems().filter((item) => !item.agentId && item.body.kind === 'turn')
+    [...run.journalItems.values()].filter((item) => !item.agentId && item.body.kind === 'turn')
   return { run, feed, records, running, replay, send, accept, rootTurns }
 }
 

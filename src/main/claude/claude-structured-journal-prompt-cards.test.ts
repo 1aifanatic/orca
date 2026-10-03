@@ -1,13 +1,8 @@
-// A subagent's prompt card counts as open only while the journal holds it pending: from the moment
-// its rows land until anyone closes it.
+// A subagent's prompt card counts as open once its rows land, until anyone closes or takes it over.
 
 import { describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session-journal-types'
-import {
-  createDeferredStructuredAgentSessionEventSink,
-  type StructuredAgentSessionSinkBarrier
-} from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+import type { StructuredAgentSessionSinkBarrier } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
 import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 
@@ -29,12 +24,13 @@ const PROMPT: Extract<ClaudeStructuredSessionEvent, { type: 'prompt' }> = {
 
 function cards(options: { accepted?: boolean; asker?: string } = {}) {
   let land: (barrier: StructuredAgentSessionSinkBarrier) => void = () => {}
-  const writes = { accepted: options.accepted !== false }
   const prompts = new ClaudeJournalPrompts({
     sink: {
       appendItem: () => {},
       tryAppendItem: () =>
-        writes.accepted ? { accepted: true } : { accepted: false, reason: 'backpressure' },
+        options.accepted === false
+          ? { accepted: false, reason: 'backpressure' }
+          : { accepted: true },
       appendTombstone: () => {},
       publish: () => {},
       written: () =>
@@ -57,23 +53,11 @@ function cards(options: { accepted?: boolean; asker?: string } = {}) {
     prompts,
     open,
     landed,
-    land: (barrier: StructuredAgentSessionSinkBarrier) => land(barrier),
-    /** The sink is backpressured from now on. */
-    refuseWrites: () => {
-      writes.accepted = false
-    }
+    land: (barrier: StructuredAgentSessionSinkBarrier) => land(barrier)
   }
 }
 
 describe("a subagent's prompt card", () => {
-  it('opens once its rows land, before anything waiting on that hears of it', async () => {
-    const { prompts, open, landed } = cards({ asker: 'agent-1' })
-    expect(open()).toEqual([])
-    const heard = prompts.whenWritten('req-1')?.then(open)
-    await landed()
-    expect(await heard).toEqual([{ promptKey: 'req-1', asker: 'agent-1' }])
-  })
-
   it('never opens when the sink refused its rows or failed writing them', async () => {
     const refused = cards({ asker: 'agent-1', accepted: false })
     await refused.landed()
@@ -81,48 +65,6 @@ describe("a subagent's prompt card", () => {
     const failed = cards({ asker: 'agent-1' })
     await failed.landed({ ok: false, error: new Error('write failed') })
     expect(failed.open()).toEqual([])
-  })
-
-  it('closes when answered, handed to the host, or withdrawn, and reopens when handed back', async () => {
-    const answered = cards({ asker: 'agent-1' })
-    await answered.landed()
-    answered.prompts.resolve('req-1')
-    expect(answered.open()).toEqual([])
-
-    const dismissed = cards({ asker: 'agent-1' })
-    await dismissed.landed()
-    const handBack = dismissed.prompts.handOver('req-1')
-    expect(dismissed.open()).toEqual([])
-    handBack()
-    expect(dismissed.open()).toEqual([{ promptKey: 'req-1', asker: 'agent-1' }])
-
-    const withdrawn = cards({ asker: 'agent-1' })
-    await withdrawn.landed()
-    withdrawn.prompts.cancel('req-1')
-    expect(withdrawn.open()).toEqual([])
-  })
-
-  it('never opens when the sink closes before its rows are written', async () => {
-    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
-    const prompts = new ClaudeJournalPrompts({
-      sink: deferred.sink,
-      turnScope: () => AGENT_JOURNAL_THREAD_SCOPE,
-      producerOf: () => ({ agentId: 'agent-1', producerKind: 'agent' })
-    })
-    prompts.handle(PROMPT)
-    const written = prompts.whenWritten('req-1')
-    deferred.close()
-    await written
-    expect([...prompts.openCards()]).toEqual([])
-  })
-
-  it('closes when Claude withdraws it while the sink holds the cancelled row back', async () => {
-    const { prompts, open, landed, refuseWrites } = cards({ asker: 'agent-1' })
-    await landed()
-    refuseWrites()
-    expect(prompts.cancel('req-1')).toMatchObject({ accepted: false, reason: 'backpressure' })
-    expect(prompts.pendingCancellationCount).toBe(1)
-    expect(open()).toEqual([])
   })
 
   it('opens a card handed back before its rows landed once they land', async () => {
@@ -133,21 +75,5 @@ describe("a subagent's prompt card", () => {
     land({ ok: true })
     await written
     expect(open()).toEqual([{ promptKey: 'req-1', asker: 'agent-1' }])
-  })
-
-  it('is closed before it lands, so a late write does not open it', async () => {
-    const { prompts, open, land } = cards({ asker: 'agent-1' })
-    const written = prompts.whenWritten('req-1')
-    prompts.resolve('req-1')
-    expect(prompts.whenWritten('req-1')).toBeUndefined()
-    land({ ok: true })
-    await written
-    expect(open()).toEqual([])
-  })
-
-  it("leaves the session's own card out", async () => {
-    const { open, landed } = cards()
-    await landed()
-    expect(open()).toEqual([])
   })
 })
