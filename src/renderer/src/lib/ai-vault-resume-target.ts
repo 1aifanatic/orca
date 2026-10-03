@@ -59,6 +59,9 @@ export function canResumeAiVaultSessionOnTarget(args: {
       // #6270's SSH/UNC labels do not prove this host owns the referenced file.
       return false
     }
+    if (args.targetStatus === 'local' && args.targetWslDistro === undefined) {
+      return false
+    }
     const sourceWsl = args.sessionFilePath ? parseWslUncPath(args.sessionFilePath) : null
     if (sourceWsl) {
       return (

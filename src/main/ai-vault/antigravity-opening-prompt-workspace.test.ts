@@ -77,13 +77,13 @@ describe('Antigravity opening prompt workspace association', () => {
     }
   )
 
-  it('uses the full opening prompt when unrelated asks share a truncated title', async () => {
+  it('refuses fallback when unrelated asks share a truncated opening title', async () => {
     const prefix = 'A long instruction shared by several unrelated projects '.repeat(3)
     const prompt = `${prefix}original task`
     const session = await parse(prompt)
     expect(session.title.endsWith('...')).toBe(true)
     const rows = [historyRow(`${prefix}other task`, '/repo/other'), historyRow(prompt)]
-    expect((await resolver(rows).enrich(session, historyPath)).cwd).toBe('/repo/original')
+    expect((await resolver(rows).enrich(session, historyPath)).cwd).toBeNull()
   })
 
   it('normalizes opening whitespace consistently with history display', async () => {
@@ -92,6 +92,30 @@ describe('Antigravity opening prompt workspace association', () => {
       (await resolver([historyRow('Locate the original workspace')]).enrich(session, historyPath))
         .cwd
     ).toBe('/repo/original')
+  })
+
+  it('keeps the established title normalization of hidden opening context', async () => {
+    const session = await parse('Locate the workspace<system-reminder>Hidden</system-reminder>')
+    expect(session.title).toBe('Locate the workspace')
+    expect(
+      (await resolver([historyRow('Locate the workspace')]).enrich(session, historyPath)).cwd
+    ).toBe('/repo/original')
+  })
+
+  it('refuses identical duplicate rows and keeps the two-second timestamp window', async () => {
+    const prompt = 'Original request'
+    const session = await parse(prompt)
+    expect(
+      (await resolver([historyRow(prompt), historyRow(prompt)]).enrich(session, historyPath)).cwd
+    ).toBeNull()
+    for (const [offset, expected] of [
+      [2, '/repo/original'],
+      [2.001, null]
+    ] as const) {
+      const row = historyRow(prompt)
+      row.timestamp += offset
+      expect((await resolver([row]).enrich(session, historyPath)).cwd).toBe(expected)
+    }
   })
 
   it('leaves conflicting prompt/time matches unknown even when one row has an id', async () => {
@@ -114,6 +138,25 @@ describe('Antigravity opening prompt workspace association', () => {
       historyRow(prompt)
     ]
     expect((await resolver(rows).enrich(await parse(prompt), historyPath)).cwd).toBeNull()
+  })
+
+  it('keeps ambiguous project metadata authoritative over history and prompt fallback', async () => {
+    const prompt = 'Original request'
+    const read = createAntigravityWorkspaceResolver(async (path) => {
+      if (path === historyPath) {
+        return jsonLines([historyRow(prompt, '/repo/history', 'brain-id')])
+      }
+      if (path.endsWith('projects.json')) {
+        return JSON.stringify({ '/repo/one': 'project', '/repo/two': 'project' })
+      }
+      if (path.endsWith('conversation_metadata.json')) {
+        return JSON.stringify({
+          conversations: { 'brain-id': { summary: { ProjectID: 'project' } } }
+        })
+      }
+      return null
+    })
+    expect((await read.enrich(await parse(prompt), historyPath)).cwd).toBeNull()
   })
 
   it('never joins a later preview turn or a title-only history row', async () => {

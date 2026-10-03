@@ -19,8 +19,8 @@ function parse(content: string | null): JsonRecord | null {
     ? parseJsonObject(content)
     : null
 }
-function unique(map: Map<string, string | null>, id: string, path: string): void {
-  if (!id || !path || id.length > 512 || path.length > 4096) {
+function unique(map: Map<string, string | null>, id: string, path: string | null): void {
+  if (!id || id.length > 512 || (path !== null && (!path || path.length > 4096))) {
     return
   }
   if (map.has(id) && map.get(id) !== path) {
@@ -60,8 +60,8 @@ export function antigravityMetadataWorkspaces(contents: {
   for (const [id, value] of entries(parse(contents.metadata)?.conversations)) {
     const summary = record(record(value)?.summary)
     const projectId = summary?.ProjectID
-    const path = typeof projectId === 'string' ? projectPaths.get(projectId) : null
-    if (path) {
+    const path = typeof projectId === 'string' ? projectPaths.get(projectId) : undefined
+    if (path !== undefined) {
       unique(paths, id, path)
     }
   }

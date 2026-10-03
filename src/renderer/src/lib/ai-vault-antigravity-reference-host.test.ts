@@ -8,7 +8,9 @@ import {
 import { canResumeAiVaultSessionOnTarget } from './ai-vault-resume-target'
 import { getAiVaultResumeWorkspaceWslDistro } from './ai-vault-resume-shell'
 import { buildAgentLaunchRouteInput } from './agent-launch-route-input'
+import { getLocalProjectExecutionRuntimeContext } from './local-preflight-context'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import { createGlobalSettingsFixture } from '../../../shared/global-settings-test-fixture'
 
 vi.mock('@/lib/new-workspace', () => ({ CLIENT_PLATFORM: 'win32' }))
 vi.mock('@/lib/renderer-app-platform', () => ({ getRendererAppPlatform: () => 'win32' }))
@@ -39,6 +41,7 @@ function stateFor(host: ExecutionHostId, distro?: string): State {
         displayName: 'project',
         badgeColor: '',
         addedAt: 0,
+        projectGroupId: 'group-1',
         executionHostId: host
       }
     ],
@@ -135,6 +138,8 @@ describe('Antigravity transcript reference ownership', () => {
   it('applies the same confinement to folder workspaces', () => {
     const state = stateFor('local')
     state.activeRepoId = null
+    state.repos = []
+    state.projects = []
     state.activeWorktreeId = 'folder:folder-1'
     state.folderWorkspaces = [
       makeFolderWorkspace({ folderPath: '//wsl.localhost/Debian/home/example/project' })
@@ -240,5 +245,107 @@ describe('Antigravity transcript reference ownership', () => {
         })
       ).toBe(false)
     }
+  })
+
+  it('uses the target folder owner for both the pane and reference gate with another repo active', () => {
+    const state = stateFor('local', 'Ubuntu')
+    state.repos[0].path = 'C:/project'
+    state.repos[0].kind = 'folder'
+    state.activeRepoId = 'unrelated'
+    state.activeWorktreeId = 'unrelated::workspace'
+    state.repos = [
+      ...state.repos,
+      {
+        id: 'unrelated',
+        path: 'C:/elsewhere',
+        displayName: 'unrelated',
+        badgeColor: '',
+        addedAt: 0
+      }
+    ]
+    state.folderWorkspaces = [makeFolderWorkspace({ folderPath: 'C:/project/folder' })]
+    const target = 'folder:folder-1'
+    expect(getLocalProjectExecutionRuntimeContext(state, target, 'win32')).toMatchObject({
+      status: 'resolved',
+      runtime: { kind: 'wsl', distro: 'Ubuntu' }
+    })
+    expect(getAiVaultResumeWorkspaceWslDistro(state, target)).toBe('Ubuntu')
+    for (const [file, expected] of [
+      [windowsFile, 'unsupported'],
+      [debianFile.replace('Debian', 'Ubuntu'), 'ready']
+    ] as const) {
+      expect(
+        resolveAiVaultSessionLaunchTarget({
+          sessionFilePath: file,
+          sessionExecutionHostId: 'local',
+          activeWorktreeId: state.activeWorktreeId,
+          targetWorktreeId: target,
+          targetState: state
+        }).status
+      ).toBe(expected)
+    }
+  })
+
+  it('does not borrow an unrelated active project override for an orphan native folder', () => {
+    const state = stateFor('local', 'Debian')
+    state.folderWorkspaces = [
+      makeFolderWorkspace({ folderPath: 'C:/orphan', projectGroupId: 'orphan-group' })
+    ]
+    expect(getAiVaultResumeWorkspaceWslDistro(state, 'folder:folder-1')).toBeNull()
+  })
+
+  it('keeps explicit SSH folder authority ahead of a matching local project path', () => {
+    const state = stateFor('local', 'Debian')
+    state.repos[0].path = 'C:/project'
+    state.folderWorkspaces = [
+      makeFolderWorkspace({ folderPath: 'C:/project/folder', executionHostId: 'ssh:owner' })
+    ]
+    expect(
+      getLocalProjectExecutionRuntimeContext(state, 'folder:folder-1', 'win32')
+    ).toBeUndefined()
+    expect(getAiVaultResumeWorkspaceWslDistro(state, 'folder:folder-1')).toBeNull()
+  })
+
+  it('refuses local references while the project runtime requires repair', () => {
+    const state = stateFor('local')
+    state.projects[0].localWindowsRuntimePreference = { kind: 'inherit-global' }
+    state.settings = createGlobalSettingsFixture({
+      localWindowsRuntimeDefault: { kind: 'wsl', distro: null }
+    })
+    expect(getAiVaultResumeWorkspaceWslDistro(state, state.activeWorktreeId)).toBeUndefined()
+    expect(
+      resolveAiVaultSessionLaunchTarget({
+        sessionFilePath: windowsFile,
+        sessionExecutionHostId: 'local',
+        activeWorktreeId: state.activeWorktreeId,
+        targetState: state
+      }).status
+    ).toBe('unsupported')
+  })
+
+  it('refuses references when a folder has multiple possible owning projects', () => {
+    const state = stateFor('local', 'Ubuntu')
+    state.activeWorktreeId = 'folder:folder-1'
+    state.folderWorkspaces = [makeFolderWorkspace({ folderPath: 'C:/project/folder' })]
+    state.repos = [
+      ...state.repos,
+      {
+        id: 'second',
+        path: 'C:/second',
+        projectGroupId: 'group-1',
+        displayName: 'second',
+        badgeColor: '',
+        addedAt: 0
+      }
+    ]
+    expect(getAiVaultResumeWorkspaceWslDistro(state, state.activeWorktreeId)).toBeUndefined()
+    expect(
+      resolveAiVaultSessionLaunchTarget({
+        sessionFilePath: windowsFile,
+        sessionExecutionHostId: 'local',
+        activeWorktreeId: state.activeWorktreeId,
+        targetState: state
+      }).status
+    ).toBe('unsupported')
   })
 })
