@@ -3,7 +3,7 @@ import type {
   KnownRuntimeEnvironment,
   OrcadDeploymentLink
 } from '../../shared/runtime-environments'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { computeLocalOrcadBuildHash } from './orcad-local-build-hash'
 import { probeActiveOrcadReadiness } from './orcad-active-readiness'
@@ -57,7 +57,7 @@ export async function resolveLinkedOrcadContext(
   if (
     !target ||
     target.generation !== deployment.sshTargetGeneration ||
-    getManagedOrcadOwnerEnvironmentId(target.owner) !== environment.id
+    getManagedOrcadFenceEnvironmentId(target) !== environment.id
   ) {
     throw new Error('The managed Orca server SSH registration is no longer valid.')
   }

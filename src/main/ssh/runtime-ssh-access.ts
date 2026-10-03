@@ -15,7 +15,7 @@ import {
   prepareRuntimeEnvironmentSshAccessLink,
   prepareRuntimeEnvironmentSshAccessUnlink
 } from '../../shared/runtime-environment-ssh-access-store'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTarget } from '../../shared/ssh-types'
 import { runTargetLifecycle } from '../ipc/ssh-target-lifecycle-queue'
 import { requireManagedOrcadInfrastructure } from './orcad-managed-runtime-context'
@@ -73,7 +73,7 @@ function requireAccessOnlyTarget(claims: TargetClaims, targetId: string, environ
       (entry) =>
         !(
           entry.code === 'orcad_migration_target_owned' &&
-          getManagedOrcadOwnerEnvironmentId(target.owner) === environmentId
+          getManagedOrcadFenceEnvironmentId(target) === environmentId
         )
     )
   if (blockers.length) {
@@ -93,12 +93,12 @@ function requireFence(
   allowUnowned = false
 ): SshTarget {
   const target = requireTarget(claims, fence.sshTargetId)
-  const owner = getManagedOrcadOwnerEnvironmentId(target.owner)
+  const owner = getManagedOrcadFenceEnvironmentId(target)
   if (
     target.generation !== fence.sshTargetGeneration ||
     !fence.targetFingerprint ||
     fingerprintRuntimeSshTarget(target) !== fence.targetFingerprint ||
-    (owner !== environmentId && !(allowUnowned && !target.owner))
+    (owner !== environmentId && !(allowUnowned && !target.orcadFence))
   ) {
     throw new Error('The SSH target registration, connection configuration, or owner changed.')
   }
@@ -234,7 +234,7 @@ export function unlinkRuntimeSshAccess(
       await options.invalidateTransport(environmentId)
       await closeOrcadManagedTunnel(environmentId)
       const target = requireFence(claims, environmentId, access, true)
-      if (target.owner && !claims.release(target.id, environmentId)) {
+      if (target.orcadFence && !claims.release(target.id, environmentId)) {
         throw new Error('The SSH target owner changed before access could be released.')
       }
       await claims.flush()

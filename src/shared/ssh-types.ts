@@ -91,10 +91,22 @@ export type SshTarget = {
   generation?: number
   /** Main-owned provisioning intent; never fall back to a relay while it exists. */
   orcadProvisioning?: OrcadSshProvisioningIntent
+  /**
+   * Main-owned: this host serves a managed Orca server. Deliberately not `owner`: shipped builds
+   * hide owned targets, and a downgraded build must still see and reach the host over its relay.
+   */
+  orcadFence?: {
+    environmentId: string
+    /** An older build changed the retained source rows: the host stays on the relay until moved again. */
+    sourceChangedAt?: string
+  }
 }
 
 /** Renderer-authored target fields; registration generations are allocated and owned by main. */
-export type SshTargetCreateInput = Omit<SshTarget, 'id' | 'generation' | 'orcadProvisioning'>
+export type SshTargetCreateInput = Omit<
+  SshTarget,
+  'id' | 'generation' | 'orcadProvisioning' | 'orcadFence'
+>
 export type SshTargetUpdateInput = Partial<SshTargetCreateInput>
 
 /** Public target identity and observed host metadata safe to mirror to a paired client. */

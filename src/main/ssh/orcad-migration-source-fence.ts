@@ -1,13 +1,13 @@
 /**
  * Fencing a relay-hosted SSH target for a dormant migration into a managed orcad.
  *
- * Two durable records describe a fence: the journal sidecar and the target's managed owner.
- * Write order is journal, then owner, then the profile flush, all before any remote call, so a
+ * Two durable records describe a fence: the journal sidecar and the target's `orcadFence`.
+ * Write order is journal, then fence, then the profile flush, all before any remote call, so a
  * crash leaves either nothing, a journal without a fence (stale, never authority), or both.
- * An owner without a journal is never released here: only the destination can say what happened.
+ * A fence without a journal is never released here: only the destination can say what happened.
  */
 import { randomUUID } from 'node:crypto'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { OrcadMigrationBlocker } from '../../shared/orcad-migration-preflight'
 import {
   ORCAD_MIGRATION_SOURCE_CUTOVER_VERSION,
@@ -47,7 +47,7 @@ export function resolveOrcadMigrationFence(
   target: SshTarget
 ): OrcadMigrationFenceState {
   const cutover = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
-  const ownerEnvironmentId = getManagedOrcadOwnerEnvironmentId(target.owner)
+  const ownerEnvironmentId = getManagedOrcadFenceEnvironmentId(target)
   if (cutover) {
     return ownerEnvironmentId === cutover.destinationEnvironmentId &&
       target.generation === cutover.sshTargetGeneration

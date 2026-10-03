@@ -1,29 +1,29 @@
 import type { SshTarget } from './ssh-types'
 
-// Why on-demand-runtime: shipped builds already hide targets with that owner, so a downgrade keeps it fenced.
-const MANAGED_ORCAD_RUNTIME_ID_PREFIX = 'managed-orcad:'
+/** The runtime id phase-3 builds wrote into `owner` before the fence moved to `orcadFence`. */
+const LEGACY_MANAGED_ORCAD_RUNTIME_ID_PREFIX = 'managed-orcad:'
 
 type SshTargetOwner = NonNullable<SshTarget['owner']>
 
-export function createManagedOrcadSshOwner(environmentId: string): SshTargetOwner {
-  return {
-    type: 'on-demand-runtime',
-    runtimeId: `${MANAGED_ORCAD_RUNTIME_ID_PREFIX}${environmentId}`
-  }
+/** The managed Orca server this host serves, or null for a direct SSH host. */
+export function getManagedOrcadFenceEnvironmentId(
+  target: Pick<SshTarget, 'orcadFence'> | undefined
+): string | null {
+  return target?.orcadFence?.environmentId || null
 }
 
-export function getManagedOrcadOwnerEnvironmentId(
+/** Reads a legacy `owner` fence, only to migrate it to `orcadFence` on load. */
+export function getLegacyManagedOrcadOwnerEnvironmentId(
   owner: SshTargetOwner | undefined
 ): string | null {
-  if (!owner) {
+  if (!owner?.runtimeId.startsWith(LEGACY_MANAGED_ORCAD_RUNTIME_ID_PREFIX)) {
     return null
   }
-  const environmentId = owner.runtimeId.startsWith(MANAGED_ORCAD_RUNTIME_ID_PREFIX)
-    ? owner.runtimeId.slice(MANAGED_ORCAD_RUNTIME_ID_PREFIX.length)
-    : ''
-  return environmentId || null
+  return owner.runtimeId.slice(LEGACY_MANAGED_ORCAD_RUNTIME_ID_PREFIX.length) || null
 }
 
 export function isEphemeralRuntimeSshOwner(owner: SshTargetOwner | undefined): boolean {
-  return owner?.type === 'on-demand-runtime' && getManagedOrcadOwnerEnvironmentId(owner) === null
+  return (
+    owner?.type === 'on-demand-runtime' && getLegacyManagedOrcadOwnerEnvironmentId(owner) === null
+  )
 }

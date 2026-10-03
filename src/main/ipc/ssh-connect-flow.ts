@@ -9,6 +9,7 @@ import {
   isCurrentSshProviderAuthority,
   rotateSshProviderAuthority
 } from '../ssh/ssh-provider-authority'
+import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
@@ -101,6 +102,11 @@ async function doConnect(
   const target = getSshTargetRegistryStore()!.getTarget(targetId)
   if (!target) {
     throw new Error(`SSH target "${targetId}" not found`)
+  }
+  if (!allowsDirectSshRelay(target)) {
+    throw new Error(
+      'This SSH host serves a managed Orca server; it is reached through that server.'
+    )
   }
 
   const existingSession = activeSessions.get(targetId)

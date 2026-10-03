@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import { getRuntimeEnvironmentSidecarPath } from '../../shared/runtime-environment-sidecar'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import {
@@ -63,7 +63,7 @@ const stop = (isActive = false) =>
 
 function expectStillLinked(): void {
   expect(listEnvironments(harness.userDataPath)[0]?.orcadDeployment).toBeDefined()
-  expect(getManagedOrcadOwnerEnvironmentId(harness.current().owner)).toBe('environment-1')
+  expect(getManagedOrcadFenceEnvironmentId(harness.current())).toBe('environment-1')
   expect(mocks.retire).not.toHaveBeenCalled()
   expect(mocks.closeTunnel).not.toHaveBeenCalled()
 }
@@ -99,7 +99,7 @@ describe('stopManagedOrcadEnvironment', () => {
     expect(
       readFileSync(getRuntimeEnvironmentSidecarPath(harness.userDataPath), 'utf8')
     ).not.toContain('orcadDeployment')
-    expect(harness.current().owner).toBeUndefined()
+    expect(harness.current().orcadFence).toBeUndefined()
     expect(harness.flushes).toHaveLength(1)
     expect(mocks.retire).toHaveBeenCalledWith('environment-1')
     expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1')

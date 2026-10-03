@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createManagedOrcadSshOwner } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTarget } from '../../shared/ssh-types'
 
 const mocks = vi.hoisted(() => {
@@ -34,7 +33,7 @@ const target: SshTarget = { id: 'ssh-1', label: 'host', host: 'host', port: 22, 
 describe('SSH target CRUD against managed orcad targets', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.state.target = { ...target, owner: createManagedOrcadSshOwner('environment-1') }
+    mocks.state.target = { ...target, orcadFence: { environmentId: 'environment-1' } }
     registerSshTargetCrudHandlers()
   })
 

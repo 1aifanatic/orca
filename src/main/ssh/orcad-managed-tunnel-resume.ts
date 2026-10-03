@@ -1,5 +1,5 @@
 import { sendRemoteRuntimeRequest } from '../../shared/remote-runtime-client'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import {
   getPreferredPairingOffer,
   getRuntimeSshAccess,
@@ -229,7 +229,7 @@ export class OrcadManagedTunnelResumeRecovery {
       deployment.remotePort !== active.remotePort ||
       !target ||
       target.generation !== active.sshTargetGeneration ||
-      getManagedOrcadOwnerEnvironmentId(target.owner) !== environmentId
+      getManagedOrcadFenceEnvironmentId(target) !== environmentId
     ) {
       return null
     }

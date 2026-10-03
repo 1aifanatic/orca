@@ -7,7 +7,7 @@
  * manifest cannot carry. Read-only: building the manifest here exports nothing.
  */
 import type { Store } from '../persistence'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type {
   OrcadMigrationBlocker,
   OrcadMigrationPreflight
@@ -40,7 +40,7 @@ export function preflightOrcadMigrationExport(
       blockers: [{ code: 'orcad_migration_target_not_found', category: 'registration' }]
     }
   }
-  if (owner && getManagedOrcadOwnerEnvironmentId(target.owner) === owner.environmentId) {
+  if (owner && getManagedOrcadFenceEnvironmentId(target) === owner.environmentId) {
     return owner.recorded
       ? { targetId, targetLabel: target.label, claimable: true, blockers: [] }
       : {

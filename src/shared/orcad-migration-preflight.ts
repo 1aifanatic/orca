@@ -1,6 +1,6 @@
 import type { FolderWorkspace } from './folder-workspace-types'
 import type { Repo } from './repo-types'
-import type { SavedPortForward, SshRemotePtyLease, SshTarget } from './ssh-types'
+import type { SavedPortForward, SshRemotePtyLease } from './ssh-types'
 
 export type OrcadMigrationBlockerCategory =
   | 'registration'
@@ -49,7 +49,9 @@ export type OrcadMigrationBlocker =
   | {
       code: 'orcad_migration_target_owned'
       category: 'exclusive-ownership'
-      owner: NonNullable<SshTarget['owner']>
+      holder:
+        | { kind: 'runtime'; runtimeId: string }
+        | { kind: 'managed-server'; environmentId: string }
     }
   | {
       /** Owned by the asking environment, but no durable record of why. */

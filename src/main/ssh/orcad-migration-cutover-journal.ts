@@ -12,6 +12,7 @@ import { writeSecureJsonFileWithinLimit } from '../../shared/bounded-secure-json
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 import {
   MAX_ORCAD_MIGRATION_SOURCE_CUTOVERS,
+  isRetainedOrcadMigrationSourceCutover,
   parseOrcadMigrationSourceCutover,
   type OrcadMigrationSourceCutover
 } from '../../shared/orcad-migration-source-cutover'
@@ -82,9 +83,13 @@ export function writeOrcadMigrationSourceCutover(
 ): void {
   const parsed = parseOrcadMigrationSourceCutover(cutover)
   const existing = listOrcadMigrationSourceCutovers(userDataPath)
+  // Why in flight only: a retained cutover is finished and may wait two releases for retirement.
+  const inFlight = existing.filter(
+    (entry) => entry.phase !== 'source-retired' && !isRetainedOrcadMigrationSourceCutover(entry)
+  )
   if (
     !existing.some((entry) => entry.migrationId === parsed.migrationId) &&
-    existing.length >= MAX_ORCAD_MIGRATION_SOURCE_CUTOVERS
+    inFlight.length >= MAX_ORCAD_MIGRATION_SOURCE_CUTOVERS
   ) {
     throw new Error('orcad_migration_cutover_capacity_exceeded')
   }

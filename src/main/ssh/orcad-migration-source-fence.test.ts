@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { SshTarget } from '../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
@@ -81,12 +81,12 @@ describe('migration source fence', () => {
         return SshTargetOrcadClaims.prototype.fenceForMigration.apply(harness.claims, args)
       })
     const flush = vi.spyOn(harness.claims, 'flush').mockImplementation(async () => {
-      order.push(harness.target().owner ? 'flush-after-fence' : 'flush-before-fence')
+      order.push(harness.target().orcadFence ? 'flush-after-fence' : 'flush-before-fence')
     })
     const result = await harness.fence()
     expect(result).toMatchObject({ outcome: 'fenced', resumed: false })
     expect(order).toEqual(['journal', 'fence', 'flush-after-fence'])
-    expect(getManagedOrcadOwnerEnvironmentId(harness.target().owner)).toBe('env-1')
+    expect(getManagedOrcadFenceEnvironmentId(harness.target())).toBe('env-1')
     journalWrite.mockRestore()
     flush.mockRestore()
   })
@@ -137,13 +137,13 @@ describe('migration source fence', () => {
       verdict: 'unverifiable',
       code: 'orcad_migration_fenced_unverifiable'
     })
-    expect(getManagedOrcadOwnerEnvironmentId(harness.target().owner)).toBe('env-1')
+    expect(getManagedOrcadFenceEnvironmentId(harness.target())).toBe('env-1')
   })
 
   it('treats a journal whose fence an older build removed as stale, granting nothing', async () => {
     const harness = setup()
     await harness.fence()
-    harness.store.updateSshTarget(TARGET.id, { owner: undefined })
+    harness.store.updateSshTarget(TARGET.id, { orcadFence: undefined })
     expect(resolveOrcadMigrationFence(harness.userDataPath, harness.target()).state).toBe(
       'stale-journal'
     )
@@ -176,7 +176,7 @@ describe('migration source fence', () => {
       outcome: 'refused',
       verdict
     })
-    expect(harness.target().owner).toBeUndefined()
+    expect(harness.target().orcadFence).toBeUndefined()
     expect(listOrcadMigrationSourceCutovers(harness.userDataPath)).toEqual([])
   })
 
@@ -185,13 +185,13 @@ describe('migration source fence', () => {
     await expect(harness.fence({ hasDirectSshAuthority: () => true })).resolves.toMatchObject({
       code: 'orcad_migration_direct_ssh_connected'
     })
-    expect(harness.target().owner).toBeUndefined()
+    expect(harness.target().orcadFence).toBeUndefined()
   })
 
   it('releases its own fence when a terminal appeared before the fence took hold', async () => {
     const harness = setup()
     const flush = vi.spyOn(harness.claims, 'flush').mockImplementation(async () => {
-      if (harness.target().owner) {
+      if (harness.target().orcadFence) {
         harness.store.upsertSshRemotePtyLease({
           targetId: TARGET.id,
           ptyId: 'late-pty',
@@ -200,7 +200,7 @@ describe('migration source fence', () => {
       }
     })
     await expect(harness.fence()).resolves.toMatchObject({ outcome: 'refused', verdict: 'live' })
-    expect(harness.target().owner).toBeUndefined()
+    expect(harness.target().orcadFence).toBeUndefined()
     expect(listOrcadMigrationSourceCutovers(harness.userDataPath)).toEqual([])
     flush.mockRestore()
   })

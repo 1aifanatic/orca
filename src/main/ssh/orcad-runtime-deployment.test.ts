@@ -3,10 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
-import {
-  createManagedOrcadSshOwner,
-  getManagedOrcadOwnerEnvironmentId
-} from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
 import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
 import { listEnvironments } from '../../shared/runtime-environment-store'
@@ -170,7 +167,7 @@ describe('createManagedOrcadEnvironment', () => {
       remotePort: 6_768
     })
     expect(environment?.connectionDependency).toBe('ssh-tunnel')
-    expect(getManagedOrcadOwnerEnvironmentId(target.owner)).toBe(environment?.id)
+    expect(getManagedOrcadFenceEnvironmentId(target)).toBe(environment?.id)
     expect(target.orcadProvisioning).toEqual({ requestId: environment?.id, name: 'Managed' })
     expect(JSON.stringify(result)).not.toContain('device-token')
     expect(mocks.probe).toHaveBeenCalledWith(
@@ -194,7 +191,7 @@ describe('createManagedOrcadEnvironment', () => {
   it('refuses a host with direct SSH projects before claiming or connecting', async () => {
     setupStore({ repos: [{ connectionId: 'ssh-1' }] })
     await expect(deploy()).rejects.toThrow('repositories or folder workspaces')
-    expect(target.owner).toBeUndefined()
+    expect(target.orcadFence).toBeUndefined()
     expect(mocks.connect).not.toHaveBeenCalled()
   })
 
@@ -219,7 +216,7 @@ describe('createManagedOrcadEnvironment', () => {
       getOrcadRuntimeClaims: () => new SshTargetOrcadClaims(store)
     }
     await expect(deploy()).rejects.toThrow('terminal-lease ×1 (pty-1 (expired))')
-    expect(target.owner).toBeUndefined()
+    expect(target.orcadFence).toBeUndefined()
     expect(mocks.connect).not.toHaveBeenCalled()
   })
 
@@ -227,7 +224,7 @@ describe('createManagedOrcadEnvironment', () => {
     mocks.hasDirectAuthority.mockReturnValueOnce(true)
     await expect(deploy()).rejects.toThrow('Disconnect this SSH host')
     await deploy()
-    target = { ...target, id: 'ssh-2', owner: undefined }
+    target = { ...target, id: 'ssh-2', orcadFence: undefined }
     await expect(
       createManagedOrcadEnvironment(userDataPath, { name: 'Managed', sshTargetId: 'ssh-2' })
     ).rejects.toThrow('already exists')
@@ -260,14 +257,14 @@ describe('createManagedOrcadEnvironment', () => {
     })
     await expect(deploy()).resolves.toMatchObject({ outcome: 'deferred', forceable: false })
     expect(listEnvironments(userDataPath)).toEqual([])
-    expect(getManagedOrcadOwnerEnvironmentId(target.owner)).not.toBeNull()
+    expect(getManagedOrcadFenceEnvironmentId(target)).not.toBeNull()
     expect(mocks.startTunnel).not.toHaveBeenCalled()
   })
 
   it('resumes an interrupted deploy under the environment id its claim recorded', async () => {
     mocks.probe.mockRejectedValueOnce(new Error('readiness unverifiable'))
     await expect(deploy()).rejects.toThrow('readiness unverifiable')
-    const claimedId = getManagedOrcadOwnerEnvironmentId(target.owner)
+    const claimedId = getManagedOrcadFenceEnvironmentId(target)
     expect(claimedId).not.toBeNull()
     mocks.deploy.mockResolvedValueOnce({ outcome: 'already-active', fullVersion: VERSION })
     const result = await deploy()
@@ -315,7 +312,7 @@ describe('createManagedOrcadEnvironment', () => {
 
 describe('createManagedOrcadEnvironment for a migration', () => {
   it('deploys into its own journaled fence without leaving a provisioning intent', async () => {
-    target = { ...target, owner: createManagedOrcadSshOwner('env-m'), generation: 9 }
+    target = { ...target, orcadFence: { environmentId: 'env-m' }, generation: 9 }
     writeOrcadMigrationSourceCutover(
       userDataPath,
       orcadMigrationCutoverFixture('m-1', 'ssh-1', { generation: 9, environmentId: 'env-m' })
@@ -332,7 +329,7 @@ describe('createManagedOrcadEnvironment for a migration', () => {
   })
 
   it('refuses a migration deploy whose fence has no journal, before connecting', async () => {
-    target = { ...target, owner: createManagedOrcadSshOwner('env-m'), generation: 9 }
+    target = { ...target, orcadFence: { environmentId: 'env-m' }, generation: 9 }
     await expect(
       createManagedOrcadEnvironment(userDataPath, {
         name: 'Managed',

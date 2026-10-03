@@ -12,7 +12,7 @@ import {
   ORCAD_MANAGED_REMOTE_PORT,
   type OrcadManagedDeployResult
 } from '../../shared/orcad-managed-runtime'
-import { getManagedOrcadOwnerEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import { runTargetLifecycle } from '../ipc/ssh-target-lifecycle-queue'
 import { materializeOrcadArtifact } from './orcad-artifact-materializer'
 import {
@@ -49,8 +49,7 @@ export async function createManagedOrcadEnvironment(
   return runTargetLifecycle(args.sshTargetId, async () => {
     const { connectionManager, targetStore, claims } = requireManagedOrcadInfrastructure()
     const environmentId =
-      getManagedOrcadOwnerEnvironmentId(targetStore.getTarget(args.sshTargetId)?.owner) ??
-      randomUUID()
+      getManagedOrcadFenceEnvironmentId(targetStore.getTarget(args.sshTargetId)) ?? randomUUID()
     const environments = listEnvironments(userDataPath)
     const registered = environments.find((entry) => entry.id === environmentId)
     if (registered) {
