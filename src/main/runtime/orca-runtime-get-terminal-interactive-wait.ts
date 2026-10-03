@@ -17,8 +17,17 @@ import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { OrchestrationError } from './orchestration/orchestration-error'
 import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-terminal-shell'
 import { resolveStartupShell, type AgentStartupShell } from '../../shared/tui-agent-startup-shell'
-import { isTuiAgent } from '../../shared/tui-agent-config'
+import {
+  getTuiAgentLaunchCommand,
+  isTuiAgent,
+  TUI_AGENT_CONFIG
+} from '../../shared/tui-agent-config'
 import { resolveConfiguredWorkerAgent } from './orchestration/configured-worker-agent-selector'
+import { probeOpenCodeModelAvailability } from '../opencode/opencode-model-availability'
+import { probeOpenCodeLaunchCapabilities } from '../opencode/opencode-launch-capabilities'
+import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import { parseWslUncPath } from '../../shared/wsl-paths'
+import { resolveLocalProjectRuntimeForRepo } from '../project-runtime-git-options'
 
 export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAdoptTerminalOrphansFromInventory {
   async getTerminalInteractiveWait(
@@ -221,6 +230,61 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
       })
     )
     return this.resolveOrchestrationAgentLauncher(selector, platform, shell)
+  }
+
+  async probeOrchestrationOpenCodeModelLaunchSupport(target: {
+    worktree?: string
+    repo?: string
+    model?: string
+  }): Promise<boolean> {
+    if (!target.model || (!target.repo && !target.worktree)) {
+      return false
+    }
+    const repo = target.repo ? await this.resolveRepoSelector(target.repo) : null
+    const workspace = repo ? null : await this.resolveTerminalWorkspaceLaunchScope(target.worktree)
+    const executionRepo = repo ?? workspace?.repo
+    if (
+      repo?.connectionId ||
+      workspace?.connectionId ||
+      (executionRepo?.executionHostId && executionRepo.executionHostId !== 'local')
+    ) {
+      return false
+    }
+    const store = this.requireStore()
+    const settings = store.getSettings()
+    const path = repo?.path ?? workspace?.path
+    const unc = path ? parseWslUncPath(path) : null
+    const projectRuntime = executionRepo
+      ? resolveLocalProjectRuntimeForRepo(store, executionRepo)
+      : null
+    if (projectRuntime?.status === 'repair-required') {
+      return false
+    }
+    const wsl = unc
+      ? { distro: unc.distro }
+      : projectRuntime?.runtime.kind === 'wsl'
+        ? { distro: projectRuntime.runtime.distro }
+        : undefined
+    const platform = wsl ? 'linux' : process.platform
+    const command =
+      settings.agentCmdOverrides?.opencode ||
+      getTuiAgentLaunchCommand(TUI_AGENT_CONFIG.opencode, platform)
+    const env = {
+      ...process.env,
+      ...resolveTuiAgentLaunchEnv('opencode', settings.agentDefaultEnv)
+    }
+    const capabilities = await probeOpenCodeLaunchCapabilities({
+      command,
+      agent: 'opencode',
+      cwd: path,
+      wsl,
+      env,
+      hostIdentity: this.getRuntimeId()
+    })
+    return (
+      capabilities?.version === '1.18.30' &&
+      (await probeOpenCodeModelAvailability({ command, model: target.model, cwd: path, wsl, env }))
+    )
   }
 
   validateOrchestrationAgentLauncher(agent: TuiAgent): void {
