@@ -21,10 +21,10 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 
 /**
  * Where a send a Stop took back is drawn: after the rest of every turn it waited on, where the Stop
- * took it back, else where it was sent. A turn it waited on was opened by something sent before it:
- * the turn it was accepted behind, or one that opened for an earlier send while it waited. Read in
- * journal order only (`anchors`, each root turn record's opener), never by clock: a resume rewrites
- * a turn's start time to the provider's whole seconds.
+ * took it back, else at its own row. A turn it waited on is one whose opener (`anchors`) the journal
+ * places before the send's row: the turn it was accepted behind, or one that opened for an earlier
+ * row while it waited. A handed-over send's row is its handover, not when it was sent. Journal order
+ * only, never a clock: a resume rewrites a turn's start time to the provider's whole seconds.
  */
 export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
