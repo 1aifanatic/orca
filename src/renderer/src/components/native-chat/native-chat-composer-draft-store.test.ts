@@ -222,6 +222,22 @@ describe('native-chat composer draft store', () => {
     )
   })
 
+  it('keeps a plain given-back message of about 260k characters', async () => {
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'my earlier typing')
+    modules.store.flushNativeChatComposerDrafts()
+    const returned = 'y'.repeat(260_000)
+    expect(JSON.stringify([{ type: 'text', text: returned }]).length).toBeLessThanOrEqual(
+      MAX_PROMPT_BYTES
+    )
+
+    modules.drafts.appendNativeChatDraftCache('tab-1:pane', returned)
+    expect(storedDraft('tab-1:pane')?.text).toBe(`my earlier typing\n\n${returned}`)
+    const reloaded = await reload()
+    expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe(
+      `my earlier typing\n\n${returned}`
+    )
+  })
+
   it('shows an unsaved text without storing it, and stores it once the user changes it', async () => {
     modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', IMAGES)
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'https://example.com/issue/1', {
