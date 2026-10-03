@@ -10,18 +10,27 @@ const ESC = String.fromCharCode(27)
 const CONTROL_SEQUENCE = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|[@-_])`, 'g')
 
 export function sanitizeStressText(text) {
+  const source = String(text ?? '')
   const controls = []
-  // CSI parameters can otherwise become part of an immediately adjacent email match.
-  const shielded = String(text ?? '').replace(CONTROL_SEQUENCE, (sequence, index) => {
-    controls.push({ sequence, index })
-    return String.fromCharCode(0).repeat(sequence.length)
+  let sourceCursor = 0
+  let scanIndex = 0
+  const scanText = source.replace(CONTROL_SEQUENCE, (sequence, index) => {
+    scanIndex += index - sourceCursor
+    sourceCursor = index + sequence.length
+    // OSC framing keeps title payloads separate from the adjacent rendered text.
+    if (sequence === `${ESC}]` || sequence === `${ESC}\\`) {
+      scanIndex += sequence.length
+      return sequence
+    }
+    controls.push({ sequence, index: scanIndex })
+    return ''
   })
-  const sanitized = redactTranscript(shielded).text
+  const sanitized = redactTranscript(scanText).text
   let result = ''
   let cursor = 0
   for (const { sequence, index } of controls) {
     result += sanitized.slice(cursor, index) + sequence
-    cursor = index + sequence.length
+    cursor = index
   }
   return result + sanitized.slice(cursor)
 }
@@ -97,8 +106,10 @@ export function createStressObserver(report) {
 
   function watch(record, context) {
     if (records.length >= MAX_RECORDS) {
+      // Keep the warmup survivor alongside the newest terminals.
+      const oldestRecent = records[0].context.round === -1 && records[0].context.slot === -1 ? 1 : 0
+      records.splice(oldestRecent, 1)
       omittedRecords += 1
-      return
     }
     records.push({ record, context })
     const { proc } = record

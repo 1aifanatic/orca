@@ -121,7 +121,7 @@ describe('Windows PTY stress observer', () => {
     const raw = '\u001b[31mprivate@sensitive.test\r\nBearer secret01234567890123456789'
     const first = terminal()
     first.output = raw
-    observer.watch(first, { round: 0, slot: 0 })
+    observer.watch(first, { round: -1, slot: -1 })
     for (let index = 1; index < 40; index += 1) {
       observer.watch(terminal(), { round: index, slot: 1 })
     }
@@ -129,6 +129,8 @@ describe('Windows PTY stress observer', () => {
     const last = events.at(-1)
     expect(last.records).toHaveLength(32)
     expect(last.omittedRecords).toBe(8)
+    expect(last.records[0]).toMatchObject({ round: -1, slot: -1 })
+    expect(last.records.at(-1)).toMatchObject({ round: 39, slot: 1 })
     expect(last.records[0].output).not.toContain('private@sensitive.test')
     expect(last.records[0].output).not.toContain('secret01234567890123456789')
     expect(last.records[0].output.length).toBe(raw.length)
@@ -157,9 +159,105 @@ describe('Windows PTY stress observer', () => {
     const esc = String.fromCharCode(27)
     const raw = `${esc}]0;private@sensitive.test${esc}\\${esc}[31mprivate@sensitive.test`
     const sanitized = sanitizeStressText(raw)
-    expect(sanitized).not.toContain('private@sensitive.test')
+    expect(sanitized).not.toContain('private@')
+    expect(sanitized).not.toContain('sensitive.test')
     expect(sanitized).toContain(`${esc}]0;`)
     expect(sanitized).toContain(`${esc}\\${esc}[31m`)
     expect(sanitized.length).toBe(raw.length)
+  })
+
+  it.each([
+    ['email domain', 'private@', 'sensitive.test', ['[31m']],
+    ['email name', 'pri', 'vate@sensitive.test', ['[31m', '[1m']],
+    ['vendor key', 'sk-secret01', '234567890abcdefghijkl', ['[31m', '[1m']],
+    ['bearer token', 'Bearer secret01', '234567890abcdefghijkl', ['[31m', '[1m']]
+  ])(
+    'redacts %s interrupted by adjacent controls without moving their bytes',
+    (_kind, before, after, fragments) => {
+      const esc = String.fromCharCode(27)
+      const controls = fragments.map((fragment) => esc + fragment).join('')
+      const raw = `${before}${controls}${after}`
+      const sanitized = sanitizeStressText(raw)
+      expect(sanitized).not.toContain(before)
+      expect(sanitized).not.toContain(after)
+      expect(sanitized.slice(before.length, before.length + controls.length)).toBe(controls)
+      expect(sanitized.length).toBe(raw.length)
+    }
+  )
+
+  it('scrubs an interrupted OSC title independently from the adjacent rendered address', () => {
+    const esc = String.fromCharCode(27)
+    const title = `private@${esc}[31msensitive.test`
+    const raw = `${esc}]0;${title}${esc}\\private@sensitive.test`
+    const sanitized = sanitizeStressText(raw)
+    expect(sanitized).not.toContain('private@')
+    expect(sanitized).not.toContain('sensitive.test')
+    expect(sanitized.slice(0, 4)).toBe(`${esc}]0;`)
+    expect(sanitized.slice(12, 17)).toBe(`${esc}[31m`)
+    expect(sanitized.slice(4 + title.length, 6 + title.length)).toBe(`${esc}\\`)
+    expect(sanitized.length).toBe(raw.length)
+  })
+
+  it('keeps the warmup survivor and newest terminals beyond eleven rounds', () => {
+    const events = []
+    const observer = createStressObserver((phase, details) => events.push({ phase, ...details }))
+    const survivor = terminal()
+    observer.watch(survivor, { round: -1, slot: -1 })
+    let last
+    for (let round = 0; round < 11; round += 1) {
+      for (let slot = 0; slot < 3; slot += 1) {
+        last = terminal()
+        last.proc.pid = 1000 + round * 3 + slot
+        observer.watch(last, { round, slot })
+      }
+    }
+    const agent = last.proc._agent
+    expect(agent._$onProcessExit(4, 'extra')).toBe('original-result')
+    expect(agent.exitCode).toBe(4)
+    expect(events.at(-1)).toMatchObject({ phase: 'native-exit-callback', round: 10, slot: 2 })
+    last.exited = true
+    last.proc.emit('ptyExit', { exitCode: 4 })
+    expect(events.at(-1)).toMatchObject({ phase: 'pty-exit-callback', round: 10, slot: 2 })
+    observer.pending('readiness-timeout-state')
+    const snapshot = events.at(-1)
+    expect(snapshot.omittedRecords).toBe(2)
+    expect(snapshot.records).toHaveLength(32)
+    expect(snapshot.records[0]).toMatchObject({ round: -1, slot: -1 })
+    expect(snapshot.records[1]).toMatchObject({ round: 0, slot: 2 })
+    expect(snapshot.records.at(-1)).toMatchObject({
+      round: 10,
+      slot: 2,
+      nativeExitCode: 4,
+      exitCallbackObserved: true
+    })
+  })
+
+  it('retains late terminal state after exhausting the 256-milestone budget', () => {
+    const { observer, events, record: survivor } = observation()
+    const worker = survivor.proc._agent._conoutSocketWorker._worker
+    for (let index = 0; index < 300; index += 1) {
+      worker.emit('message', 1)
+    }
+    let last
+    for (let index = 0; index < 40; index += 1) {
+      last = terminal()
+      last.proc.pid = 2000 + index
+      observer.watch(last, { round: index, slot: 2 })
+    }
+    expect(last.proc._agent._$onProcessExit(7)).toBe('original-result')
+    last.exited = true
+    last.proc.emit('ptyExit', { exitCode: 7 })
+    expect(events).toHaveLength(256)
+    observer.pending('exit-drain-timeout-state')
+    const snapshot = events.at(-1)
+    expect(snapshot.observerEvents).toBe(256)
+    expect(snapshot.omittedEvents).toBeGreaterThan(0)
+    expect(snapshot.omittedRecords).toBe(9)
+    expect(snapshot.records).toHaveLength(32)
+    expect(snapshot.records.at(-1)).toMatchObject({
+      shellPid: 2039,
+      nativeExitCode: 7,
+      exitCallbackObserved: true
+    })
   })
 })
