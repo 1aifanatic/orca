@@ -104,11 +104,14 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
             rows: info?.rows
           })
         } else if (target === 'recovery') {
-          // Why no clear of its own: the pane's replay drain clears before every
-          // image and decides which buffer and history to keep. The latch release
-          // keeps an empty snapshot non-empty, so it still clears stale dropped
-          // output on a terminal the model says is blank.
-          stream.callbacks.onSnapshot(`${RELEASE_SYNCHRONIZED_OUTPUT}${data ?? ''}`, {
+          // Why: a server-pushed recovery snapshot replaces terminal state
+          // mid-session; clear the screen before applying it. An empty snapshot is
+          // still applied so stale dropped output does not linger on a terminal
+          // the model says is blank. No \x1b[3J: the image carries only its screen,
+          // so history stays (a pane's replay drain picks the buffer first).
+          // RELEASE_SYNCHRONIZED_OUTPUT: \x1b[2J does not clear mode 2026, so a pane
+          // holding an open latch would not paint this recovery snapshot at all.
+          stream.callbacks.onSnapshot(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[H${data ?? ''}`, {
             pendingEscapeTailAnsi: info?.pendingEscapeTailAnsi,
             seq: info?.seq,
             kittyKeyboardFlags: info?.kittyKeyboardFlags,
