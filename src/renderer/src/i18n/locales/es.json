@@ -10569,7 +10569,7 @@
               "pending": "Syncing…",
               "branch": "Sync Branch"
             },
-            "7e4b2a19c0": "No se pudo resolver el PR de GitHub para responder.",
+            "7e4b2a19c0": "No se encontró el PR de GitHub en el que responder. Responde tú mismo a esos comentarios.",
             "430f1a62d4": "No se pudo resolver el hilo seleccionado en el host."
           },
           "CreatePullRequestDialog": {

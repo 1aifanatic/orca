@@ -12226,7 +12226,7 @@
               "pending": "Synchronisation…",
               "branch": "Synchroniser la branche"
             },
-            "7e4b2a19c0": "Impossible d'identifier la PR GitHub sur laquelle répondre.",
+            "7e4b2a19c0": "Impossible de trouver la PR GitHub sur laquelle répondre. Répondez vous-même à ces commentaires.",
             "430f1a62d4": "Impossible de résoudre le fil sélectionné côté hôte.",
             "updateReactionFailed": "Échec de la mise à jour de la réaction.",
             "gitlabMoreActions": "Plus d'actions MR",

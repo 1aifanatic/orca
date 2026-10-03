@@ -12176,7 +12176,7 @@
               "pending": "Syncing…",
               "branch": "Sync Branch"
             },
-            "7e4b2a19c0": "无法确定要回复的 GitHub PR。",
+            "7e4b2a19c0": "找不到要回复的 GitHub PR。请自行回复这些评论。",
             "430f1a62d4": "无法在主机上解决选中的讨论串。",
             "updateReactionFailed": "无法更新反应。",
             "gitlabMoreActions": "更多 MR 动作",

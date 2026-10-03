@@ -49,7 +49,7 @@ type ChecksPanelAiAcknowledgementInput = Pick<
 const cannotReplyOnPR = (): string =>
   translate(
     'auto.components.right.sidebar.ChecksPanel.7e4b2a19c0',
-    'Could not resolve the GitHub PR to reply on.'
+    "Couldn't find the GitHub PR to reply on. Reply to those comments yourself."
   )
 
 export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgementInput) {

@@ -12124,7 +12124,7 @@
               "pending": "Syncing…",
               "branch": "Sync Branch"
             },
-            "7e4b2a19c0": "답글을 게시할 GitHub PR을 확인하지 못했습니다.",
+            "7e4b2a19c0": "답글을 게시할 GitHub PR을 찾지 못했습니다. 해당 댓글에 직접 답글을 남겨 주세요.",
             "430f1a62d4": "선택한 스레드를 호스트에서 해결하지 못했습니다.",
             "updateReactionFailed": "반응을 업데이트하지 못했습니다.",
             "gitlabMoreActions": "더 많은 MR 작업",

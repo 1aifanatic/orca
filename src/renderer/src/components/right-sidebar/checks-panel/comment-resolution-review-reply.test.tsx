@@ -339,7 +339,7 @@ describe('Resolve comments with AI', () => {
       })
     )
     expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(
-      'Could not resolve the GitHub PR to reply on.'
+      "Couldn't find the GitHub PR to reply on. Reply to those comments yourself."
     )
     expect(model.resolveReviewThread).not.toHaveBeenCalled()
   })
