@@ -11,7 +11,10 @@ import type { AgentJournalItemIdentity } from '../../../shared/agent-session-jou
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { runStructuredAgentSessionReviewReply } from './structured-agent-session-review-reply-runner'
+import {
+  runStructuredAgentSessionReviewReply,
+  type StructuredAgentSessionReviewRuntime
+} from './structured-agent-session-review-reply-runner'
 
 /** A message accepted longer ago than this is never re-derived: a crash's leftover must not post
  *  days later on some reopen. Measured from acceptance, so a late Retry still posts. */
@@ -128,13 +131,40 @@ export function createStructuredAgentSessionHostReviewReplies(host: {
 }): { observe: (sessionId: string) => void } {
   const log = (message: string, error: unknown): void =>
     host.deps().logger.warn(message, { scope: 'review-reply', error })
+  // Asked once per repo for the host's life; a failed lookup is asked again next time.
+  const logins = new Map<string, Promise<string>>()
+  const viewerLogin = (
+    runtime: StructuredAgentSessionReviewRuntime,
+    repo: string
+  ): Promise<string | null> => {
+    const asked =
+      logins.get(repo) ??
+      runtime.getRepoViewerLogin(repo).then((login) => {
+        if (login === null) {
+          throw new Error('no GitHub login for this repo')
+        }
+        return login
+      })
+    logins.set(repo, asked)
+    return asked.catch((error: unknown) => {
+      if (logins.get(repo) === asked) {
+        logins.delete(repo)
+        log('review reply: could not tell which GitHub account writes for this repo', error)
+      }
+      return null
+    })
+  }
   const replies = new StructuredAgentSessionReviewReplies({
     run: async (spec, options) => {
       const runtime = host.deps().reviewRuntime
       if (!runtime) {
         throw new Error('This host cannot write to the review.')
       }
-      return runStructuredAgentSessionReviewReply(runtime, spec, { ...options, log })
+      return runStructuredAgentSessionReviewReply(runtime, spec, {
+        ...options,
+        viewerLogin: (repo) => viewerLogin(runtime, repo),
+        log
+      })
     },
     // Queued behind the lane's work, never awaited from inside it: the run was started off a
     // publish, so a task in the lane never waits on this.

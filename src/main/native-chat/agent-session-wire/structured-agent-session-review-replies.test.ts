@@ -81,6 +81,9 @@ function reviewRuntime() {
     ),
     getRepoPRComments: vi.fn<StructuredAgentSessionReviewRuntime['getRepoPRComments']>(
       async () => onPRComments
+    ),
+    getRepoViewerLogin: vi.fn<StructuredAgentSessionReviewRuntime['getRepoViewerLogin']>(
+      async () => 'me'
     )
   }
 }
@@ -452,6 +455,57 @@ describe('a review reply cut off by a restart', () => {
     expect(review.addRepoPRReviewCommentReply).not.toHaveBeenCalled()
     expect(review.addRepoIssueComment).toHaveBeenCalledOnce()
     expect(review.resolveRepoReviewThread).toHaveBeenCalledOnce()
+  })
+
+  it('replies where only another account posted the same words since', async () => {
+    const id = await acceptedThenCrashed()
+    onPRComments = [
+      postedComment(FIXING, { author: 'teammate', threadId: 'thread-7', path: 'src/a.ts' })
+    ]
+
+    await host.journalSnapshot(SESSION)
+
+    await settledReceipt(id)
+    expect(review.getRepoViewerLogin).toHaveBeenCalledWith('id:repo-1')
+    expect(review.addRepoPRReviewCommentReply).toHaveBeenCalledOnce()
+  })
+
+  it("matches the words alone when this repo's account can't be told", async () => {
+    review.getRepoViewerLogin.mockRejectedValue(new Error('gh is not signed in'))
+    const id = await acceptedThenCrashed()
+    onPRComments = [
+      postedComment(FIXING, { author: 'teammate', threadId: 'thread-7', path: 'src/a.ts' })
+    ]
+
+    await host.journalSnapshot(SESSION)
+
+    await settledReceipt(id)
+    expect(review.addRepoPRReviewCommentReply).not.toHaveBeenCalled()
+    expect(review.addRepoIssueComment).toHaveBeenCalledOnce()
+  })
+
+  it('asks which account writes for a repo once for the host', async () => {
+    review.addRepoIssueComment.mockImplementation(() => new Promise(() => {}))
+    const first = await launchPrompt()
+    await handedOver(first)
+    await accept(first)
+    const second = await launchPrompt()
+    await handedOver(second)
+    await host.settleLateDispatch({
+      sessionId: SESSION,
+      clientMessageId: second,
+      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 1 }
+    })
+    await eventually(() => expect(review.addRepoIssueComment).toHaveBeenCalledTimes(2))
+    await host.flushAllStreamedEvents()
+    startHost()
+    review.addRepoIssueComment.mockResolvedValue({ ok: true, comment: postedComment('summary') })
+
+    await host.journalSnapshot(SESSION)
+
+    await settledReceipt(first)
+    await settledReceipt(second)
+    expect(review.getRepoViewerLogin).toHaveBeenCalledOnce()
   })
 
   it('posts nothing once the window since the agent took it has passed', async () => {

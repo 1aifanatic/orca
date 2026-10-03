@@ -1,6 +1,7 @@
 // The review writes a message's review reply asks for, through the runtime's repo-scoped GitHub and
 // GitLab methods: the ones the review RPCs call. Resolves are idempotent; a reply is not, so a run
-// that may repeat one already posted (`reread`) first reads the PR and skips what is there.
+// that may repeat one already posted (`reread`) first reads the PR and skips what this account
+// already posted there.
 
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 import type { PRComment } from '../../../shared/github/comment-types'
@@ -13,7 +14,10 @@ export type StructuredAgentSessionReviewRuntime = Pick<
   | 'addRepoPRReviewCommentReply'
   | 'addRepoIssueComment'
   | 'getRepoPRComments'
->
+> & {
+  /** The GitHub login the repo's writes run as; null when it cannot be told. */
+  getRepoViewerLogin: (repoSelector: string) => Promise<string | null>
+}
 
 /** The checks panel's ceiling: the shared GitHub client keeps four calls in flight. */
 const REVIEW_REPLY_CONCURRENCY = 4
@@ -29,6 +33,8 @@ export async function runStructuredAgentSessionReviewReply(
     acceptedAt: number
     /** A run that may follow an earlier one cut off before its receipt. */
     reread: boolean
+    /** Who the repo's writes post as, asked only for a reread; null matches the text alone. */
+    viewerLogin: (repoSelector: string) => Promise<string | null>
     log: (message: string, error?: unknown) => void
   }
 ): Promise<string | null> {
@@ -53,7 +59,12 @@ async function gitHubWrites(
   runtime: StructuredAgentSessionReviewRuntime,
   repo: string,
   spec: Extract<AgentSessionReviewReply, { provider: 'github' }>,
-  options: { acceptedAt: number; reread: boolean; log: (message: string, error?: unknown) => void }
+  options: {
+    acceptedAt: number
+    reread: boolean
+    viewerLogin: (repoSelector: string) => Promise<string | null>
+    log: (message: string, error?: unknown) => void
+  }
 ): Promise<ReviewWrite[]> {
   const posted = options.reread ? await postedSince(runtime, repo, spec, options) : []
   const alreadyPosted = (body: string, at: { threadId?: string; path?: string } | null) =>
@@ -105,13 +116,18 @@ async function gitHubWrites(
   ]
 }
 
-/** The PR's comments written since the agent took the message. A failed read answers none, which
- *  can post one reply twice: reported, never blocking the rest. */
+/** The PR's comments this account wrote since the agent took the message. A failed read answers
+ *  none, which can post one reply twice; an unknown account matches any author. Both are reported,
+ *  never blocking the rest. */
 async function postedSince(
   runtime: StructuredAgentSessionReviewRuntime,
   repo: string,
   spec: Extract<AgentSessionReviewReply, { provider: 'github' }>,
-  options: { acceptedAt: number; log: (message: string, error?: unknown) => void }
+  options: {
+    acceptedAt: number
+    viewerLogin: (repoSelector: string) => Promise<string | null>
+    log: (message: string, error?: unknown) => void
+  }
 ): Promise<PRComment[]> {
   if (spec.replies.length === 0 && !spec.conversationReply) {
     return []
@@ -120,9 +136,16 @@ async function postedSince(
     const comments = await runtime.getRepoPRComments(repo, spec.prNumber, spec.prRepo ?? null, {
       noCache: true
     })
+    const login = await options.viewerLogin(repo)
+    if (login === null) {
+      options.log('review reply: the account is unknown, so a reply is matched by its text', null)
+    }
     // GitHub stamps whole seconds.
     const since = Math.floor(options.acceptedAt / 1000) * 1000
-    return comments.filter((comment) => Date.parse(comment.createdAt) >= since)
+    return comments.filter(
+      (comment) =>
+        Date.parse(comment.createdAt) >= since && (login === null || comment.author === login)
+    )
   } catch (error) {
     options.log('review reply: could not read the PR before replying; a reply may repeat', error)
     return []

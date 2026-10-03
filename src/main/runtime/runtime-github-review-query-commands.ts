@@ -1,7 +1,13 @@
 import type { GitHubOwnerRepo, GitHubPRFile } from '../../shared/github/pull-request-types'
 import type { Repo } from '../../shared/repo-types'
 import type { LocalProjectGhExecOptions } from '../project-runtime-git-options'
-import { getIssue, getPRCheckDetails, getPRChecks, getPRComments } from '../github/client'
+import {
+  getAuthenticatedViewer,
+  getIssue,
+  getPRCheckDetails,
+  getPRChecks,
+  getPRComments
+} from '../github/client'
 import { getPRFileContents } from '../github/work-item-details'
 
 type LocalGitArgs = [] | [LocalProjectGhExecOptions]
@@ -13,6 +19,20 @@ type RuntimeGitHubReviewQueryCommandsDeps = {
 
 export class RuntimeGitHubReviewQueryCommands {
   constructor(private readonly deps: RuntimeGitHubReviewQueryCommandsDeps) {}
+
+  /** The login this repo's GitHub writes run as: its bound account, else the signed-in gh user.
+   *  Null where that user is not this machine's (SSH, WSL) or no one is signed in. */
+  async getRepoViewerLogin(repoSelector: string): Promise<string | null> {
+    const repo = await this.deps.resolveRepo(repoSelector)
+    const [options] = this.deps.getLocalGitArgs(repo)
+    if (options?.ghAccount) {
+      return options.ghAccount.user
+    }
+    if (repo.connectionId || options?.wslDistro) {
+      return null
+    }
+    return (await getAuthenticatedViewer())?.login ?? null
+  }
 
   async getRepoIssue(
     repoSelector: string,

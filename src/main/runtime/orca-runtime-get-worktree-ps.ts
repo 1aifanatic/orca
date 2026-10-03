@@ -191,7 +191,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         addRepoPRReviewCommentReply: (...args) =>
           this.gitHubIssueComments.addRepoPRReviewCommentReply(...args),
         addRepoIssueComment: (...args) => this.gitHubIssueComments.addRepoIssueComment(...args),
-        getRepoPRComments: (...args) => this.gitHubReviewQueries.getRepoPRComments(...args)
+        getRepoPRComments: (...args) => this.gitHubReviewQueries.getRepoPRComments(...args),
+        getRepoViewerLogin: (repo) => this.gitHubReviewQueries.getRepoViewerLogin(repo)
       }
     })
   }
