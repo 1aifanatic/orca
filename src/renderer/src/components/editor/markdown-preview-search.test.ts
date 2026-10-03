@@ -139,6 +139,18 @@ describe('findTextMatchRanges', () => {
     expect(findTextMatchRanges('ababa', 'aba')).toEqual([{ start: 0, end: 3 }])
   })
 
+  it('preserves code-point folding and offsets for Unicode around ASCII matches', () => {
+    expect(findTextMatchRanges('ΟΣ οσ ος', 'οσ')).toEqual([
+      { start: 0, end: 2 },
+      { start: 3, end: 5 }
+    ])
+    expect(findTextMatchRanges('😀Before İneedle 😀NEEDLE', 'needle')).toEqual([
+      { start: 10, end: 16 },
+      { start: 19, end: 25 }
+    ])
+    expect(findTextMatchRanges('ABCİDEF', 'i\u0307d')).toEqual([{ start: 3, end: 5 }])
+  })
+
   it('maps locale-lowercase search matches back to original text offsets', () => {
     const ranges = findTextMatchRanges('İstanbul', 'stan')
 

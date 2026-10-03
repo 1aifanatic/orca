@@ -8,9 +8,12 @@ import { scrollTopCache, setWithLRU } from '@/lib/scroll-cache'
 import type { MarkdownPreviewBlock } from './markdown-preview-document-types'
 
 const anchors = new Map<string, VirtualizedScrollAnchor>()
-const blockKey = (block: MarkdownPreviewBlock): string => String(block.index)
+export const markdownPreviewScrollAnchorKey = (block: MarkdownPreviewBlock): string =>
+  block.sourceLine !== null && block.sourceColumn !== undefined
+    ? `source:${block.sourceLine}:${block.sourceColumn}`
+    : `index:${block.index}`
 const elementKey = (element: HTMLDivElement): string | null =>
-  element.getAttribute('data-preview-block-index')
+  element.getAttribute('data-preview-block-key')
 
 export function useMarkdownPreviewScrollAnchor({
   blocks,
@@ -35,7 +38,7 @@ export function useMarkdownPreviewScrollAnchor({
     anchorRef,
     scrollOffsetRef: offsetRef,
     rows: blocks,
-    getRowKey: blockKey,
+    getRowKey: markdownPreviewScrollAnchorKey,
     getItemElementKey: elementKey,
     itemElementSelector: '[data-preview-block-index][data-preview-block-loaded]',
     scrollElementRef: rootRef,
