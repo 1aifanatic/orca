@@ -250,6 +250,7 @@ async function settleBackgroundWorktreeRemoval(
   let settle: (settlement: RemovalSettlement) => void
   let failure: WorktreeRemovalRecord['failure']
   let unregistered = false
+  let ended: Promise<void> | undefined
   try {
     if (stopSignal.aborted) {
       return
@@ -291,7 +292,7 @@ async function settleBackgroundWorktreeRemoval(
       runWorktreeChangeInvalidators(record.repoId)
     } else if (unregistered) {
       // Before the reply, so a Delete sent after it finds no workspace left at the path.
-      endUnfinishedWorktreeRemoval(record)
+      ended = endUnfinishedWorktreeRemoval(record)
     }
   }
   // Why this run's own settlement: desktop IPC and runtime RPC coalesce separately, so a concurrent
@@ -303,6 +304,7 @@ async function settleBackgroundWorktreeRemoval(
   // re-runs a finish that re-derives what is left from Git.
   publishSafely(job.publish)
   if (cleared) {
+    await ended
     await persistWorktreeRemovalRecords()
   }
 }

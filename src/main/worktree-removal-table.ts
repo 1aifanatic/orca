@@ -14,15 +14,18 @@ export const failedWorktreeRemovals = new Map<string, WorktreeRemovalRecord>()
 // Why weak: a listing that read Git before a delete finished holds the record until it replies.
 export const finishedWorktreeRemovals = new WeakSet<WorktreeRemovalRecord>()
 let recordsDirectory: string | null = null
-let endWorkspaceOnHost: ((record: WorktreeRemovalRecord) => void) | null = null
+let endWorkspaceOnHost: ((record: WorktreeRemovalRecord) => Promise<void> | void) | null = null
 
 export function setWorktreeRemovalRecordsDirectory(directory: string | null): void {
   recordsDirectory = directory
 }
 
-/** The host's bookkeeping for a finished delete, minus the disk: metadata, history, events. */
+/**
+ * The host's bookkeeping for a finished delete, minus the disk: metadata, history, events. Settles
+ * once that bookkeeping is on disk.
+ */
 export function setUnfinishedWorktreeRemovalHost(
-  endWorkspace: ((record: WorktreeRemovalRecord) => void) | null
+  endWorkspace: ((record: WorktreeRemovalRecord) => Promise<void> | void) | null
 ): void {
   endWorkspaceOnHost = endWorkspace
 }
@@ -31,15 +34,16 @@ export function setUnfinishedWorktreeRemovalHost(
  * Ends the workspace of a removal that stopped without deleting its checkout while Git does not
  * list the path: the folder there is not the one it accepted, or is gone. Leaves folder and branch.
  * Why: the workspace's creation metadata would otherwise let a later Delete of the same id remove
- * whatever folder is at the path now.
+ * whatever folder is at the path now. Ends in this tick; settles once that is on disk, after which
+ * the record may be dropped from disk.
  */
-export function endUnfinishedWorktreeRemoval(record: WorktreeRemovalRecord): void {
+export async function endUnfinishedWorktreeRemoval(record: WorktreeRemovalRecord): Promise<void> {
   // A newer removal of the workspace owns it now.
   if (pendingWorktreeRemovals.has(record.worktreeId)) {
     return
   }
   try {
-    endWorkspaceOnHost?.(record)
+    await endWorkspaceOnHost?.(record)
   } catch (error) {
     console.warn(`[worktrees] could not end the workspace at ${record.worktreePath}`, error)
   }

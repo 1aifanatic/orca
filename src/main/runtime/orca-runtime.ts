@@ -16,12 +16,16 @@ class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
     // Why: a listing can end a failed delete with no job to run this host's bookkeeping; it runs a
     // finished delete's, leaving the folder and branch.
     setUnfinishedWorktreeRemovalHost((record) => {
-      const host = this.store && this.localRemovalJobHost(this.store)
-      if (host) {
-        host.purge(record)
-        host.onRemoved(record)
-        host.publish(record.repoId)
+      const store = this.store
+      if (!store) {
+        return
       }
+      const host = this.localRemovalJobHost(store)
+      host.purge(record)
+      host.onRemoved(record)
+      host.publish(record.repoId)
+      // Why flush: the purge is saved on a delay, and the record must not leave the disk before it.
+      return store.flushPendingOrThrowAsync?.({ drainToStableGeneration: false })
     })
   }
 }

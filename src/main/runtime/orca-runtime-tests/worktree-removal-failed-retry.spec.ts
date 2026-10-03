@@ -374,6 +374,25 @@ describe('runtime Delete after the user replaced a failed delete’s leftover', 
     expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
   })
 
+  it('drops the failed delete from disk only once its workspace’s end is saved', async () => {
+    const { runtimeStore } = runtimeWithCreationMetadata()
+    let saved!: () => void
+    const flushPendingOrThrowAsync = vi.fn(
+      () => new Promise<void>((resolve) => (saved = () => resolve()))
+    )
+    const runtime = createWorktreeRemovalRuntime({ ...runtimeStore, flushPendingOrThrowAsync })
+
+    await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
+    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
+    expect(flushPendingOrThrowAsync).toHaveBeenCalledOnce()
+    // A crash now must still find the record, or the saved metadata would outlive it.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await readWorktreeRemovalRecords(directory)).toHaveLength(1)
+
+    saved()
+    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
+  })
+
   it('keeps the workspace when Git registers a checkout at the path again after the scan', async () => {
     vi.mocked(listWorktreesStrict).mockResolvedValue([
       {

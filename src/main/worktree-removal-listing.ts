@@ -59,6 +59,7 @@ export async function withUnregisteredRemovalCheckouts(
     }
   }
   let dropped = false
+  const endings: Promise<void>[] = []
   for (const record of notLeftovers) {
     // Why ask Git again: the rows may be a cached scan, and a checkout Git registers at the path
     // since is a new workspace. Unknowable keeps the record for the next listing to decide.
@@ -71,11 +72,12 @@ export async function withUnregisteredRemovalCheckouts(
     failedWorktreeRemovals.delete(record.worktreeId)
     dropped = true
     if (!registered) {
-      endUnfinishedWorktreeRemoval(record)
+      endings.push(endUnfinishedWorktreeRemoval(record))
     }
   }
   if (dropped) {
-    void persistWorktreeRemovalRecords()
+    // Why after the ends land: a crash before then keeps the record, and the next listing ends it.
+    void Promise.all(endings).then(() => persistWorktreeRemovalRecords())
   }
   return leftovers.length === 0 ? gitWorktrees : [...gitWorktrees, ...leftovers]
 }
