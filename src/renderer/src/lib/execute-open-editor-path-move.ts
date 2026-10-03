@@ -32,7 +32,7 @@ export async function executeOpenEditorPathMove(args: {
   toPath: string
   worktreeId: string
   worktreePath: string
-  /** The moved file is a user-named document: main keeps the move inside its own folder. */
+  /** The moved file is a user-named document: main allows any destination, and the move back. */
   documentScoped?: boolean
 }): Promise<void> {
   const { context, fromPath, toPath, worktreeId, worktreePath } = args

@@ -30,7 +30,7 @@ type RenameFileArgs = {
   operationOwner?: FileExplorerOperationOwner
   /** refresh the parent directory in the explorer tree, if caller tracks one */
   refreshDir?: (dirPath: string) => Promise<void>
-  /** The file is an open user-named document, so the rename stays in its own folder wherever it lives. */
+  /** The file is an open user-named document, so the rename (and its Undo) may go anywhere. */
   documentScoped?: boolean
 }
 

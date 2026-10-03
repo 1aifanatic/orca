@@ -46,6 +46,7 @@ vi.mock('../repo-worktrees', () => ({ listRepoWorktreeGraph: vi.fn(async () => [
 
 import {
   resolveLocalFileRequestPath,
+  resolveLocalRenamePaths,
   resolveLocalRequestPath
 } from './local-file-access-resolution'
 
@@ -181,9 +182,9 @@ describe('Windows reserved device names in automatic image loads', () => {
   it.each(deviceTargets)(
     'refuses %s as a new file beside an opened document without touching it',
     async (target) => {
-      await expect(resolveLocalRequestPath(target, besideTodo, store, 'rename-to')).rejects.toThrow(
-        'Access denied'
-      )
+      await expect(
+        resolveLocalRequestPath(target, besideTodo, store, 'import-into')
+      ).rejects.toThrow('Access denied')
       expect(fsCalls).toEqual([])
     }
   )
@@ -197,18 +198,6 @@ describe('Windows reserved device names in automatic image loads', () => {
       expect(fsCalls).toEqual([])
     }
   )
-
-  it('refuses a rename into a subfolder of an opened document folder without touching it', async () => {
-    await expect(
-      resolveLocalRequestPath(
-        'C:\\Users\\me\\notes\\archive\\todo.md',
-        besideTodo,
-        store,
-        'rename-to'
-      )
-    ).rejects.toThrow('Access denied')
-    expect(fsCalls).toEqual([])
-  })
 
   it('still reads an ordinary image whose name only starts like a device', async () => {
     await expect(
@@ -287,7 +276,6 @@ describe('the default check runs first for every declared kind', () => {
       { kind: 'document-resource', documentPath: 'C:\\repo\\README.md' }
     ],
     ['chat-image', 'read', CHAT_IMAGE],
-    ['document-folder', 'rename-to', besideTodo],
     ['document-folder', 'import-into', besideTodo]
   ] as const)(
     'never touches a share outside every project while resolving %s %s',
@@ -298,6 +286,13 @@ describe('the default check runs first for every declared kind', () => {
       expect(fsCalls.filter((call) => call.includes('attacker'))).toEqual([])
     }
   )
+
+  it('never touches a share while resolving a rename of an opened document', async () => {
+    for (const target of networkTargets) {
+      await resolveLocalRenamePaths(besideTodo.documentPath, target, besideTodo, store)
+    }
+    expect(fsCalls.filter((call) => call.includes('attacker'))).toEqual([])
+  })
 })
 
 const besideShareDocument = {

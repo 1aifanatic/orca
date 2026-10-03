@@ -9,7 +9,7 @@ export type LocalFileAccess =
   | { kind: 'document-resource'; documentPath: string }
   /** An image a chat transcript or composer shows: any local image file; a network share only inside a project. */
   | { kind: 'chat-image' }
-  /** A write beside a document the user opened: renaming it, or adding files, inside its own folder. */
+  /** A document the user opened: renaming it to any path, or adding files in its own folder. */
   | { kind: 'document-folder'; documentPath: string }
 
 /** Main's refusal of a request that resolves outside every root it may serve. */

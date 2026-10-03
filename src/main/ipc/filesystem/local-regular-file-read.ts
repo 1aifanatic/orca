@@ -50,7 +50,7 @@ export async function readLocalFileBounded(
     const chunk = Buffer.allocUnsafe(Math.min(nextChunkBytes, limit + 1 - total))
     const { bytesRead } = await handle.read(chunk, 0, chunk.length, total)
     if (bytesRead === 0) {
-      return Buffer.concat(chunks, total)
+      return chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, total)
     }
     chunks.push(chunk.subarray(0, bytesRead))
     total += bytesRead

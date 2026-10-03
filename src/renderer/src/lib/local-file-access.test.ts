@@ -165,7 +165,7 @@ describe('editorTabDocumentFolderAccess', () => {
     useAppStore.setState(initialState, true)
   })
 
-  it('scopes writes on a local user-named tab to that file and its own folder', () => {
+  it('declares the file itself for writes on a local user-named tab', () => {
     expect(
       editorTabDocumentFolderAccess(useAppStore.getState(), {
         filePath: '/Users/me/notes.md',

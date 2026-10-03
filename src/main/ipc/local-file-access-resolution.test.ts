@@ -8,6 +8,7 @@ import { resolveAuthorizedPath } from './filesystem-auth'
 import {
   resolveDesktopAuthorizedPath,
   resolveLocalFileRequestPath,
+  resolveLocalRenamePaths,
   resolveLocalRequestPath,
   resolveLocalWriteRequestPath,
   type LocalRequestOperation
@@ -51,6 +52,8 @@ function makeStore({ repoPaths = [], folderPath }: Registration): Store {
 const USER_FILE = { kind: 'user-file' } as const
 const documentResource = (documentPath: string) =>
   ({ kind: 'document-resource', documentPath }) as const
+const documentFolder = (documentPath: string) =>
+  ({ kind: 'document-folder', documentPath }) as const
 
 async function settles(promise: Promise<unknown>): Promise<'ok' | 'denied'> {
   return promise.then(
@@ -133,16 +136,6 @@ describe('a declared kind never refuses what the default project check allows', 
     ['document-resource read', documentResource(outsideDocument()), 'read'],
     ['chat-image read', { kind: 'chat-image' }, 'read'],
     [
-      'document-folder rename-from',
-      { kind: 'document-folder', documentPath: outsideDocument() },
-      'rename-from'
-    ],
-    [
-      'document-folder rename-to',
-      { kind: 'document-folder', documentPath: outsideDocument() },
-      'rename-to'
-    ],
-    [
       'document-folder import-into',
       { kind: 'document-folder', documentPath: outsideDocument() },
       'import-into'
@@ -193,6 +186,22 @@ describe('a declared kind never refuses what the default project check allows', 
       }
     }
   )
+
+  it('renames an in-project document exactly as the default does', async () => {
+    const store = makeStore({ repoPaths: [project] })
+    const source = join(project, 'src', 'notes.txt')
+    for (const target of [
+      join(project, 'src', 'new-name.txt'),
+      join(project, 'new-name.txt'),
+      join(userData.path, 'floating-workspace', 'scratch.md')
+    ]) {
+      const byDefault = await resolveLocalRenamePaths(source, target, undefined, store)
+      await expect(
+        resolveLocalRenamePaths(source, target, documentFolder(source), store),
+        target
+      ).resolves.toEqual(byDefault)
+    }
+  })
 })
 
 describe('requests with no declared access (roots only)', () => {

@@ -164,7 +164,7 @@ export default function EditorFileTab({
       newName,
       worktreeId: file.worktreeId,
       worktreePath,
-      // Why: a file opened outside every project renames in its own folder, wherever it lives.
+      // Why: a file opened outside every project may be renamed to any path, wherever it lives.
       documentScoped: editorTabDocumentFolderAccess(useAppStore.getState(), file) !== undefined
     })
   }

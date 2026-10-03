@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../persistence'
 import type * as RepoWorktrees from '../repo-worktrees'
+import {
+  registerSshFilesystemProvider,
+  unregisterSshFilesystemProvider
+} from '../providers/ssh-filesystem-dispatch'
 import { invalidateAuthorizedRootsCache } from './registered-worktree-roots-cache'
 
 type Handler = (event: unknown, args: unknown) => Promise<unknown>
@@ -91,18 +95,9 @@ describe('renaming a document the user opened outside every project', () => {
     expect(await readdir(docFolder)).toEqual(['renamed.md'])
   })
 
-  it('refuses a move out of its folder, another file, and a request with no access', async () => {
+  it('refuses another file, a relative new name, and a request with no access', async () => {
     await writeFile(join(docFolder, 'other.md'), 'other')
 
-    expect(
-      await settles(
-        call('fs:rename', {
-          oldPath: note,
-          newPath: join(base, 'note.md'),
-          access: documentFolder(note)
-        })
-      )
-    ).toBe('denied')
     expect(
       await settles(
         call('fs:rename', {
@@ -110,6 +105,11 @@ describe('renaming a document the user opened outside every project', () => {
           newPath: join(docFolder, 'moved.md'),
           access: documentFolder(note)
         })
+      )
+    ).toBe('denied')
+    expect(
+      await settles(
+        call('fs:rename', { oldPath: note, newPath: 'moved.md', access: documentFolder(note) })
       )
     ).toBe('denied')
     expect(
@@ -127,62 +127,45 @@ describe('renaming a document the user opened outside every project', () => {
     expect(await readdir(docFolder)).toEqual(['note.md'])
   })
 
-  it('refuses a rename into a subfolder, whose Undo could not come back', async () => {
-    await mkdir(join(docFolder, 'archive'))
+  // Why each destination is undone: the Undo declares the moved file, so it must come back from anywhere.
+  it('moves it into another outside folder, and Undo brings it back', async () => {
+    await mkdir(join(base, 'other'))
+    const moved = join(base, 'other', 'note.md')
 
-    expect(
-      await settles(
-        call('fs:rename', {
-          oldPath: note,
-          newPath: join(docFolder, 'archive', 'note.md'),
-          access: documentFolder(note)
-        })
-      )
-    ).toBe('denied')
-    expect(await readdir(join(docFolder, 'archive'))).toEqual([])
+    await call('fs:rename', { oldPath: note, newPath: moved, access: documentFolder(note) })
+    expect(await readdir(join(base, 'other'))).toEqual(['note.md'])
+
+    await call('fs:rename', { oldPath: moved, newPath: note, access: documentFolder(moved) })
+    expect(await readdir(join(base, 'other'))).toEqual([])
+    expect(await readdir(docFolder)).toEqual(['note.md'])
   })
 
-  it('refuses moving it into a project, where its Undo would be refused', async () => {
-    const project = join(docFolder, 'proj')
+  it('moves it into a project, and Undo brings it back out', async () => {
+    const project = join(base, 'proj')
     await mkdir(project)
     projectPaths = [project]
     invalidateAuthorizedRootsCache()
+    const moved = join(project, 'note.md')
 
-    expect(
-      await settles(
-        call('fs:rename', {
-          oldPath: note,
-          newPath: join(project, 'note.md'),
-          access: documentFolder(note)
-        })
-      )
-    ).toBe('denied')
+    await call('fs:rename', { oldPath: note, newPath: moved, access: documentFolder(note) })
+    expect(await readdir(project)).toEqual(['note.md'])
+
+    await call('fs:rename', { oldPath: moved, newPath: note, access: documentFolder(moved) })
     expect(await readdir(project)).toEqual([])
-
-    const renamed = join(docFolder, 'renamed.md')
-    await call('fs:rename', { oldPath: note, newPath: renamed, access: documentFolder(note) })
-    await call('fs:rename', { oldPath: renamed, newPath: note, access: documentFolder(renamed) })
-    expect((await readdir(docFolder)).sort()).toEqual(['note.md', 'proj'])
+    expect(await readdir(docFolder)).toEqual(['note.md'])
   })
 
-  it.skipIf(process.platform === 'win32')(
-    'refuses a new name through a linked subfolder that leads out',
-    async () => {
-      await mkdir(join(base, 'elsewhere'))
-      await symlink(join(base, 'elsewhere'), join(docFolder, 'linked'))
+  it('moves it into a subfolder, and Undo brings it back', async () => {
+    await mkdir(join(docFolder, 'archive'))
+    const moved = join(docFolder, 'archive', 'note.md')
 
-      expect(
-        await settles(
-          call('fs:rename', {
-            oldPath: note,
-            newPath: join(docFolder, 'linked', 'note.md'),
-            access: documentFolder(note)
-          })
-        )
-      ).toBe('denied')
-      expect(await readdir(join(base, 'elsewhere'))).toEqual([])
-    }
-  )
+    await call('fs:rename', { oldPath: note, newPath: moved, access: documentFolder(note) })
+    expect(await readdir(join(docFolder, 'archive'))).toEqual(['note.md'])
+
+    await call('fs:rename', { oldPath: moved, newPath: note, access: documentFolder(moved) })
+    expect(await readdir(join(docFolder, 'archive'))).toEqual([])
+    expect((await readdir(docFolder)).sort()).toEqual(['archive', 'note.md'])
+  })
 })
 
 describe('inserting an image into a document the user opened outside every project', () => {
@@ -279,5 +262,63 @@ describe('a project file opened by its full path', () => {
 
     expect(await readdir(join(project, 'archive'))).toEqual(['plan.md'])
     expect(await readdir(join(project, 'docs'))).toEqual([])
+  })
+
+  it('moves out of the project, and Undo brings it back in', async () => {
+    const project = join(base, 'project')
+    await mkdir(join(project, 'docs'), { recursive: true })
+    await writeFile(join(project, 'docs', 'plan.md'), '# plan\n')
+    projectPaths = [project]
+    invalidateAuthorizedRootsCache()
+    const plan = join(project, 'docs', 'plan.md')
+    const moved = join(docFolder, 'plan.md')
+
+    await call('fs:rename', { oldPath: plan, newPath: moved, access: documentFolder(plan) })
+    expect((await readdir(docFolder)).sort()).toEqual(['note.md', 'plan.md'])
+
+    await call('fs:rename', { oldPath: moved, newPath: plan, access: documentFolder(moved) })
+    expect(await readdir(join(project, 'docs'))).toEqual(['plan.md'])
+    expect(await readdir(docFolder)).toEqual(['note.md'])
+  })
+
+  it('never moves another project file out by naming the opened document', async () => {
+    const project = join(base, 'project')
+    await mkdir(project)
+    await writeFile(join(project, 'secret.md'), 'secret')
+    projectPaths = [project]
+    invalidateAuthorizedRootsCache()
+
+    expect(
+      await settles(
+        call('fs:rename', {
+          oldPath: join(project, 'secret.md'),
+          newPath: join(docFolder, 'secret.md'),
+          access: documentFolder(note)
+        })
+      )
+    ).toBe('denied')
+    expect(await readdir(project)).toEqual(['secret.md'])
+  })
+})
+
+describe('an SSH rename', () => {
+  it('goes to the remote host as before, whatever access it declares', async () => {
+    const renameNoClobber = vi.fn().mockResolvedValue(undefined)
+    registerSshFilesystemProvider('ssh-1', { renameNoClobber } as never)
+    try {
+      await call('fs:rename', {
+        oldPath: note,
+        newPath: join(base, 'note.md'),
+        access: documentFolder(note),
+        connectionId: 'ssh-1',
+        expectedSshTargetId: 'ssh-1',
+        expectedSshConnectionGeneration: 0
+      })
+    } finally {
+      unregisterSshFilesystemProvider('ssh-1')
+    }
+
+    expect(renameNoClobber).toHaveBeenCalledWith(note, join(base, 'note.md'))
+    expect(await readdir(docFolder)).toEqual(['note.md'])
   })
 })

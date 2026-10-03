@@ -22,8 +22,8 @@ export function chatImageAccess(): LocalFileAccess {
 }
 
 /**
- * For a write beside a document the user opened (renaming it, inserting an image next to it). Main
- * keeps it inside that document's own folder.
+ * For acting on a document the user opened: renaming it (to any path the user typed) or inserting
+ * an image next to it, which main keeps inside the document's own folder.
  */
 export function documentFolderAccess(documentPath: string): LocalFileAccess {
   return { kind: 'document-folder', documentPath }
@@ -72,8 +72,8 @@ export function editorTabFileAccess(
 }
 
 /**
- * The write access for acting on an open tab's file (rename, image insert): scoped to the file's own
- * folder when the tab is user-named, else none, so project tabs keep their project checks.
+ * The write access for acting on an open tab's file (rename, image insert) when the tab is
+ * user-named, else none, so project tabs keep their project checks.
  */
 export function editorTabDocumentFolderAccess(
   state: Pick<AppState, 'settings'>,

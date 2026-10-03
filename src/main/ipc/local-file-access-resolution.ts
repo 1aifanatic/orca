@@ -1,4 +1,4 @@
-import { basename, dirname, extname, isAbsolute, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, resolve } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import type { Store } from '../persistence'
 import type { LocalFileAccess } from '../../shared/local-file-access'
@@ -17,11 +17,11 @@ import {
 } from './automatic-load-path-text'
 import { NOT_A_REGULAR_FILE_MESSAGE } from './filesystem/local-regular-file-read'
 
-export const USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE =
+const USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE =
   'Access denied: a file opened by name needs an absolute path.'
 const USER_FILE_ACCESS: LocalFileAccess = { kind: 'user-file' }
 
-export const CHAT_IMAGE_TYPE_MESSAGE = 'Access denied: a chat can only show local image files.'
+const CHAT_IMAGE_TYPE_MESSAGE = 'Access denied: a chat can only show local image files.'
 
 /** Desktop IPC's root check: the project roots plus the app-owned floating-workspace folder. */
 export async function resolveDesktopAuthorizedPath(
@@ -36,7 +36,7 @@ export async function resolveDesktopAuthorizedPath(
 }
 
 /** A file the user named is used where it is; no root applies, and nothing is remembered. */
-export function resolveUserNamedLocalPath(targetPath: string): string {
+function resolveUserNamedLocalPath(targetPath: string): string {
   // Why isAbsolute on the raw input: resolve() would anchor `notes.txt` or `C:notes` to main's cwd.
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath)) {
     throw new Error(USER_FILE_NEEDS_ABSOLUTE_PATH_MESSAGE)
@@ -138,19 +138,13 @@ async function resolveChatImagePath(targetPath: string, store: Store): Promise<s
   return realTarget
 }
 
-function isSameFolder(left: string, right: string): boolean {
-  return isDescendantOrEqual(left, right) && isDescendantOrEqual(right, left)
-}
-
 /**
- * A write beside a document the user opened: the target must stay inside the document's own
- * folder, symlinks included. A rename acts on the named entry, not its target, and lands directly
- * in that folder, so its Undo (declared from the new name) is allowed too.
+ * Adding a file beside a document the user opened: the target must stay inside the document's own
+ * folder, symlinks included.
  */
 async function resolveDocumentFolderPath(
   targetPath: string,
-  documentPath: string,
-  { rename = false }: { rename?: boolean } = {}
+  documentPath: string
 ): Promise<string> {
   if (
     typeof targetPath !== 'string' ||
@@ -164,15 +158,11 @@ async function resolveDocumentFolderPath(
   const documentFolder = dirname(resolve(documentPath))
   if (
     isRefusedAutomaticLoadPath(resolvedTarget) ||
-    !isDescendantOrEqual(resolvedTarget, documentFolder) ||
-    // Why no real-path twin: a rename keeps its leaf, so its real parent is the folder's real path.
-    (rename && !isSameFolder(dirname(resolvedTarget), documentFolder))
+    !isDescendantOrEqual(resolvedTarget, documentFolder)
   ) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  const realTarget = rename
-    ? resolve(await realpath(dirname(resolvedTarget)), basename(resolvedTarget))
-    : resolve(await realpath(resolvedTarget))
+  const realTarget = resolve(await realpath(resolvedTarget))
   const realFolder = resolve(await realpath(documentFolder))
   if (isRefusedAutomaticLoadPath(realTarget) || !isDescendantOrEqual(realTarget, realFolder)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
@@ -180,15 +170,13 @@ async function resolveDocumentFolderPath(
   return realTarget
 }
 
-// Why only the document itself: a write beside it may rename that file, never a neighbour.
-async function resolveDocumentRenameSource(
-  targetPath: string,
-  documentPath: string
-): Promise<string> {
-  if (typeof targetPath !== 'string' || resolve(targetPath) !== resolve(documentPath)) {
-    throw new Error(PATH_ACCESS_DENIED_MESSAGE)
-  }
-  return resolveDocumentFolderPath(targetPath, documentPath, { rename: true })
+function isOpenedDocument(targetPath: unknown, documentPath: string): boolean {
+  return (
+    typeof targetPath === 'string' &&
+    isAbsolute(targetPath) &&
+    isAbsolute(documentPath) &&
+    resolve(targetPath) === resolve(documentPath)
+  )
 }
 
 // Why parse: IPC input is untyped, and an unrecognised access kind must fall back to roots only.
@@ -231,7 +219,8 @@ function declaredKindRule(
 ): KindRule | undefined {
   switch (fileAccess.kind) {
     case 'user-file':
-      return operation === 'read' || operation === 'write'
+      // Why renames: resolveLocalRenamePaths declares this only for the opened document itself.
+      return operation !== 'import-into'
         ? async (targetPath) => resolveUserNamedLocalPath(targetPath)
         : undefined
     case 'document-resource':
@@ -243,16 +232,9 @@ function declaredKindRule(
         ? (targetPath) => resolveChatImagePath(targetPath, store)
         : undefined
     case 'document-folder':
-      if (operation === 'rename-from') {
-        return (targetPath) => resolveDocumentRenameSource(targetPath, fileAccess.documentPath)
-      }
-      if (operation === 'rename-to' || operation === 'import-into') {
-        return (targetPath) =>
-          resolveDocumentFolderPath(targetPath, fileAccess.documentPath, {
-            rename: operation === 'rename-to'
-          })
-      }
-      return undefined
+      return operation === 'import-into'
+        ? (targetPath) => resolveDocumentFolderPath(targetPath, fileAccess.documentPath)
+        : undefined
   }
 }
 
@@ -266,44 +248,12 @@ export async function resolveLocalRequestPath(
   store: Store,
   operation: LocalRequestOperation
 ): Promise<string> {
-  return (await resolveLocalRequest(targetPath, access, store, operation)).path
-}
-
-/**
- * Both paths of a desktop rename. A source allowed only as the opened document (outside every
- * project) gets its new name directly in that document's folder, even inside a project, so the
- * Undo, declared from the new name, can move it back.
- */
-export async function resolveLocalRenamePaths(
-  oldPath: string,
-  newPath: string,
-  access: unknown,
-  store: Store
-): Promise<{ from: string; to: string }> {
-  const source = await resolveLocalRequest(oldPath, access, store, 'rename-from')
-  const fileAccess = parseLocalFileAccess(access)
-  const to =
-    source.byKindRule && fileAccess?.kind === 'document-folder'
-      ? await resolveDocumentFolderPath(newPath, fileAccess.documentPath, { rename: true })
-      : await resolveLocalRequestPath(newPath, access, store, 'rename-to')
-  return { from: source.path, to }
-}
-
-async function resolveLocalRequest(
-  targetPath: string,
-  access: unknown,
-  store: Store,
-  operation: LocalRequestOperation
-): Promise<{ path: string; byKindRule: boolean }> {
   // Why the leaf is kept: a rename acts on a link itself, never on what it points to.
   const options = { preserveSymlink: operation === 'rename-from' || operation === 'rename-to' }
   const fileAccess = parseLocalFileAccess(access)
   const kindRule = fileAccess && declaredKindRule(fileAccess, operation, store)
   if (!fileAccess || !kindRule) {
-    return {
-      path: await resolveDesktopAuthorizedPath(targetPath, store, options),
-      byKindRule: false
-    }
+    return resolveDesktopAuthorizedPath(targetPath, store, options)
   }
   if (typeof targetPath !== 'string') {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
@@ -318,12 +268,34 @@ async function resolveLocalRequest(
     () => undefined
   )
   if (insideRoots === undefined) {
-    return { path: await kindRule(targetPath), byKindRule: true }
+    return kindRule(targetPath)
   }
   if (automaticLoad && isRefusedAutomaticLoadPath(insideRoots)) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
-  return { path: insideRoots, byKindRule: false }
+  return insideRoots
+}
+
+/**
+ * Both paths of a desktop rename. Renaming the opened document (its document-folder access) follows
+ * the user-file rule: the user typed the new path, so it may go anywhere, and its Undo, declared
+ * from the moved file, may come back from there. Any other rename gets the default check only.
+ */
+export async function resolveLocalRenamePaths(
+  oldPath: string,
+  newPath: string,
+  access: unknown,
+  store: Store
+): Promise<{ from: string; to: string }> {
+  const fileAccess = parseLocalFileAccess(access)
+  const renameAccess =
+    fileAccess?.kind === 'document-folder' && isOpenedDocument(oldPath, fileAccess.documentPath)
+      ? USER_FILE_ACCESS
+      : undefined
+  return {
+    from: await resolveLocalRequestPath(oldPath, renameAccess, store, 'rename-from'),
+    to: await resolveLocalRequestPath(newPath, renameAccess, store, 'rename-to')
+  }
 }
 
 /** A desktop read/stat request; no declared access means roots only. */

@@ -117,7 +117,7 @@ export function registerFilesystemMutationHandlers(store: Store): void {
       // target file (potentially elsewhere in the worktree) and leave the
       // symlink dangling. newPath must also preserve its leaf so we don't
       // accidentally write into a symlinked destination name.
-      // Outside every project, a document the user opened may still be renamed in its own folder.
+      // Outside every project, a document the user opened may still be renamed, to any path.
       const { from, to } = await resolveLocalRenamePaths(
         args.oldPath,
         args.newPath,
