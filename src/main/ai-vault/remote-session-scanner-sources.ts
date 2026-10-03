@@ -1,3 +1,8 @@
+import {
+  ANTIGRAVITY_HISTORY_ROOTS,
+  type AntigravitySessionOrigin
+} from '../../shared/antigravity-session-origin'
+import { parseQoderSessionContent } from './session-scanner-qoder-parser'
 import { remoteSessionDocumentParsers } from './remote-session-document-parsers'
 import type { RemoteSessionContent } from './remote-session-content-lines'
 import type { AiVaultAgent, AiVaultSession } from '../../shared/ai-vault-types'
@@ -47,7 +52,8 @@ type RemoteContentParser<T = string> = (
 
 export function remoteSessionSources(
   remoteHome: string,
-  hostPlatform: RemoteHostPlatform
+  hostPlatform: RemoteHostPlatform,
+  includeAntigravityIdeSessions = false
 ): RemoteSessionSource[] {
   return [
     ...remoteCodexSources(remoteHome, hostPlatform),
@@ -77,7 +83,20 @@ export function remoteSessionSources(
       ),
       partitionSubagentTranscripts: partitionSubagentTranscriptPaths
     },
-    remoteAntigravitySource(remoteHome, hostPlatform),
+    {
+      ...jsonlSource(
+        'qoder',
+        remoteHome,
+        hostPlatform,
+        ['.qoder', 'projects'],
+        parseQoderSessionContent
+      ),
+      partitionSubagentTranscripts: partitionSubagentTranscriptPaths
+    },
+    ...(includeAntigravityIdeSessions
+      ? ANTIGRAVITY_HISTORY_ROOTS
+      : (['antigravity-cli'] as const)
+    ).map((origin) => remoteAntigravitySource(remoteHome, hostPlatform, origin)),
     source(
       'gemini',
       remoteHome,
@@ -157,9 +176,10 @@ export function remoteSessionSources(
 
 function remoteAntigravitySource(
   remoteHome: string,
-  hostPlatform: RemoteHostPlatform
+  hostPlatform: RemoteHostPlatform,
+  origin: AntigravitySessionOrigin
 ): RemoteSessionSource {
-  const cliRoot = joinRemotePath(hostPlatform, remoteHome, '.gemini', 'antigravity-cli')
+  const cliRoot = joinRemotePath(hostPlatform, remoteHome, '.gemini', origin)
   const historyPath = joinRemotePath(hostPlatform, cliRoot, 'history.jsonl')
   const parse = async (
     file: FileWithMtime,
@@ -181,6 +201,7 @@ function remoteAntigravitySource(
     extensions: ['.jsonl'],
     filePredicate: isAntigravityTranscriptPath,
     fixedChildFileSegments: ['.system_generated', 'logs', 'transcript.jsonl'],
+    additionalFixedChildFileSegments: [['.system_generated', 'logs', 'transcript_full.jsonl']],
     parse,
     parseLines: parse
   }

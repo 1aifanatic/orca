@@ -237,7 +237,7 @@ const USER_NAMED_TAB_OPENERS = [
   'components/terminal-pane/terminal-file-open-routing.ts',
   'hooks/useGlobalFileDrop.ts',
   'lib/floating-workspace-tab-creation.ts',
-  'lib/open-markdown-in-floating-workspace.ts',
+  'lib/open-document-in-floating-workspace.ts',
   'store/slices/editor/actions/markdown-link-action.ts'
 ]
 

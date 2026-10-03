@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import type { Nodes } from 'hast'
+import { describe, expect, it, vi } from 'vitest'
+import type { Nodes, RootContent } from 'hast'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import Markdown from 'react-markdown'
@@ -24,6 +24,27 @@ function elements(node: Nodes): Nodes[] {
 }
 
 describe('large Markdown preview documents', () => {
+  it('rejects atomic blocks before allocating a copy of their trees', () => {
+    const { tree } = parseMarkdownPreviewDocument(`\`\`\`text\n${'x'.repeat(32_769)}\n\`\`\``)
+    const broadBlock: RootContent = {
+      type: 'element',
+      tagName: 'div',
+      properties: {},
+      children: Array.from({ length: MARKDOWN_PREVIEW_BLOCK_MAX_NODES }, () => ({
+        type: 'text',
+        value: 'x'
+      }))
+    }
+    const clone = vi.spyOn(globalThis, 'structuredClone')
+    try {
+      expect(renderMarkdownPreviewBlock(tree.children[0], 0).oversized).toBe(true)
+      expect(renderMarkdownPreviewBlock(broadBlock, 1).oversized).toBe(true)
+      expect(clone).not.toHaveBeenCalled()
+    } finally {
+      clone.mockRestore()
+    }
+  })
+
   it('renders the same safe HTML as the ordinary preview pipeline', () => {
     const content =
       '# Repeat\n\n[Global][end] **bold** ~~deleted~~\n\n# Repeat\n\n' +
@@ -119,6 +140,17 @@ describe('large Markdown preview documents', () => {
         (node) => node.type === 'element' && node.properties.className?.toString().includes('katex')
       )
     ).toBe(false)
+  })
+
+  it('keeps code searchable when syntax expansion alone exceeds the node budget', async () => {
+    const engine = new MarkdownPreviewDocumentEngine()
+    engine.load(`\`\`\`javascript\n${'const needle = 42;\n'.repeat(900)}\`\`\``)
+    const block = engine.blocks([0])[0]
+    expect(block.oversized).toBe(false)
+    expect(countMarkdownPreviewNodes(block.tree, MARKDOWN_PREVIEW_BLOCK_MAX_NODES)).toBeLessThan(
+      MARKDOWN_PREVIEW_BLOCK_MAX_NODES
+    )
+    expect((await engine.search('const needle'))?.matches).toHaveLength(900)
   })
 
   it('rejects giant atomic blocks and excessive input without attempting a full DOM', () => {
