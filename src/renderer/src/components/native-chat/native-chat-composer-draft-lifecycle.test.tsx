@@ -214,6 +214,29 @@ describe('native-chat composer draft lifecycle', () => {
     expect(restored.api).toMatchObject({ draft: '', attachments: { imageAttachments: [] } })
   })
 
+  it('clears a saved sent draft when its send settles after the composer unmounted', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const first: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (first.api = next), held.transport),
+        {
+          scopeKey: 'tab-1:pane'
+        }
+      )
+    )
+    await act(async () => first.api?.setDraft('sent text'))
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'sent text' })
+    await act(async () => first.api?.send('sent text'))
+    await unmount()
+
+    await held.settle()
+
+    expect(storedDraft('tab-1:pane')).toBeNull()
+  })
+
   it('keeps what was typed in a replacement composer when the old composer’s send settles', async () => {
     const hooks = await loadHooks()
     const held = heldTransport()

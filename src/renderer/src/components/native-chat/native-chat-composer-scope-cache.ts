@@ -22,7 +22,7 @@ export function setBoundedScopeCacheEntry<T>(
     if (excess <= 0) {
       break
     }
-    if (inUse?.(key)) {
+    if (key === scopeKey || inUse?.(key)) {
       continue
     }
     cache.delete(key)
