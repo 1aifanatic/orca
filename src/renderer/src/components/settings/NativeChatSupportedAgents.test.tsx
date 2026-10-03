@@ -73,7 +73,10 @@ describe('NativeChatSupportedAgents', () => {
         expect(rendered).not.toContain(entry.id)
       }
     }
-    expect(rendered).not.toContain('cursor')
+    expect(rendered).toEqual(EXPECTED_SUPPORTED_AGENTS)
+    for (const agent of ['qoder-cn', 'qwen-code', 'jcode']) {
+      expect(rendered).not.toContain(agent)
+    }
   })
 
   it('keeps the label in the English catalog', () => {
