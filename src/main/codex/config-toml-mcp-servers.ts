@@ -43,12 +43,7 @@ export function readMcpServerTomlOwnership(config: string): McpServerTomlOwnersh
   return { names, ownsRoot }
 }
 
-/**
- * Whether an MCP server in Orca's managed home exists only there: neither in
- * ~/.codex nor copied from it by the last mirror (a copied name that ~/.codex
- * no longer has was removed there). One rule, so the mirror keeps exactly the
- * servers the Windows switch notice reports as left behind.
- */
+/** One rule, so the mirror keeps exactly the servers the Windows switch notice reports as left behind. */
 export function isRuntimeOnlyMcpServer(
   name: string,
   system: McpServerTomlOwnership,
