@@ -2,7 +2,11 @@ import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import type { AgentJournalStatusItem } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalStatusItem,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
@@ -55,6 +59,20 @@ function stillRunsStoppedTurn(
   }
   // Working with no turn open after the Stop's turn is a later send whose turn has not opened.
   return stoppedTurnId === null || ctx.journal.activeTurnId() === stoppedTurnId
+}
+
+/** Whether the child's end took back every send the Stop found in flight, none of them having run
+ *  (`withdrawCodexSendsNoTurnOpenedFor`). */
+function tookBackEverySend(
+  ctx: Pick<AgentSessionTurnContext, 'journal'>,
+  inFlight: readonly AgentJournalSubmission[]
+): boolean {
+  const rejected = new Set(
+    ctx.journal
+      .submissions()
+      .flatMap((entry) => (entry.dispatchState === 'rejected' ? [entry.clientMessageId] : []))
+  )
+  return inFlight.length > 0 && inFlight.every((entry) => rejected.has(entry.clientMessageId))
 }
 
 /** The row for a Stop the provider declined, in its words when it gave any. One that could not
@@ -198,6 +216,10 @@ async function cancelAndNote(
     stoppedTurnId ?? input.clientOperationId
   )
   const stoppedAt = Date.now()
+  // Read before the cancel: the sends a child end may take back.
+  const sentBeforeStop = ctx.journal
+    .submissions()
+    .filter((entry) => !isQueuedAgentJournalSubmission(entry) && entry.dispatchState === 'pending')
   // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
   let taken: boolean | undefined
   // The provider could not interrupt the turn, or its cancel threw: the turn may run on.
@@ -298,7 +320,13 @@ async function cancelAndNote(
     }
     if (ended) {
       cancelled = true
-      note = { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
+      // A child end that took back every send it found, with no turn running, ended a run that
+      // never started: its message is back in the composer, and a row would sit under the turn
+      // before as if that turn were stopped.
+      note =
+        stoppedTurnId === null && tookBackEverySend(ctx, sentBeforeStop)
+          ? null
+          : { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED }
     } else if (taken !== undefined) {
       // The turn was just read running, so a named Stop says it was refused rather than nothing.
       note = stopRefusedNote(ctx, refusal)
