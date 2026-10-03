@@ -17,28 +17,31 @@ function largeTable(): string {
 }
 
 async function expectSettledInViewport(target: Locator): Promise<void> {
+  let previousTop: number | undefined
+  let stableSince = 0
   await expect
     .poll(
-      () =>
-        target.evaluate(async (element) => {
-          const root = element.closest('.markdown-preview')!
-          let previousTop: number | undefined
-          for (let frame = 0; frame < 30; frame++) {
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-            const bounds = element.getBoundingClientRect()
-            const viewport = root.getBoundingClientRect()
-            if (
-              bounds.top >= viewport.bottom ||
-              bounds.bottom <= viewport.top ||
-              (previousTop !== undefined && Math.abs(bounds.top - previousTop) > 1)
-            ) {
-              return false
-            }
-            previousTop = bounds.top
+      async () => {
+        const geometry = await target.evaluate((element) => {
+          const viewport = element.closest('.markdown-preview')!.getBoundingClientRect()
+          const bounds = element.getBoundingClientRect()
+          return {
+            top: bounds.top,
+            visible: bounds.top < viewport.bottom && bounds.bottom > viewport.top
           }
-          return true
-        }),
-      { timeout: 25_000 }
+        })
+        const now = performance.now()
+        if (
+          !geometry.visible ||
+          previousTop === undefined ||
+          Math.abs(geometry.top - previousTop) > 1
+        ) {
+          stableSince = now
+        }
+        previousTop = geometry.top
+        return geometry.visible && now - stableSince >= 500
+      },
+      { intervals: [100], timeout: 25_000 }
     )
     .toBe(true)
 }
