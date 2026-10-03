@@ -187,9 +187,9 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     expect(projectStructuredAgentSessionMessages([TEXT], [], [card])).toEqual([])
   })
 
-  // Its Retry can't queue a message an agent already took; it is drawn as any rejection after a
-  // hand-over is, with its own words and no Retry.
-  it('is drawn with no Retry once an agent already took it', () => {
+  // Only an older host's rows: a current one never keeps a failed start's hand-over. Its Retry can't
+  // queue a message an agent already took; drawn with its own words and no Retry.
+  it("is drawn with no Retry once an agent already took it, in an older host's rows", () => {
     const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
     expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver])).toEqual([
       expect.objectContaining({ id: KEY, unsent: true })

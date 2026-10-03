@@ -3,8 +3,8 @@
 // that never reached its agent. The chat shows it from the journal as an unsent message.
 // One whose start failed for good, on a host that can queue it again, says why, and its Retry
 // queues that same message again. One rejected after it was handed over (or that the agent's own
-// history showed it never got) says why, with no Retry: the host cannot queue it again, and the
-// agent may hold it already, so only the person sends it anew.
+// history showed it never got) says why, with no Retry: the host re-arms only a message no agent
+// took, and a Retry that sent a copy from every device showing it could send it twice.
 
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'

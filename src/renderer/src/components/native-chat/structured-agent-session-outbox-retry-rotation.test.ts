@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
-// A Retry on this client's own message the agent never got sends it again under a new id. The new
-// copy is the message: the old row is never drawn beside it, whatever becomes of the copy, and a
-// reopen reads the same from the saved outbox.
+// A Retry on this client's own message the agent never got sends it again under a new id, at once,
+// even while the agent works with queued follow-ups on. The new copy is the message: the old row is
+// never drawn beside it, whatever becomes of the copy, and a reopen reads the same from the saved
+// outbox. Drawn as the chat draws it: the transcript leaves out sends shown as queued cards.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
@@ -18,7 +19,10 @@ import {
   reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { structuredAgentSessionEntryAttempt } from '../../../../shared/structured-agent-session-outbox-delivery'
+import { disposeStructuredAgentSessionSendResult } from '../../../../shared/structured-agent-session-send-disposition'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import {
   getStructuredAgentSessionOutbox,
@@ -27,6 +31,8 @@ import {
 } from './structured-agent-session-outbox-storage'
 
 const SESSION = 'session-1'
+// The agent is working and the host queues follow-ups, as the default setting has it.
+const QUEUEING = { capability: 'supported', enabled: true } as const
 const ORIGINAL = 'op-original'
 const COPY = 'op-copy'
 
@@ -73,7 +79,12 @@ function drawn(
   submissions: AgentJournalSubmission[]
 ) {
   return {
-    rows: projectStructuredAgentSessionMessages([ITEM], outbox, submissions).map(({ id }) => id),
+    rows: projectStructuredAgentSessionMessages(
+      [ITEM],
+      outboxOutsideQueuedCards(outbox, [], true, QUEUEING),
+      submissions,
+      { sentHere: outbox }
+    ).map(({ id }) => id),
     noticed: [
       ...structuredAgentSessionDeliveryNotices(
         outbox,
@@ -127,14 +138,52 @@ describe("a Retry on this client's own message the agent never got", () => {
     expect(drawn(readOutbox(SESSION), [UNDELIVERED])).toEqual({ rows: [copyKey], noticed: [] })
   })
 
-  it.each<[string, Partial<AgentJournalSubmission>]>([
-    ['recorded and waiting behind a turn', {}],
-    ['handed over', { handedOverAt: 10 }]
-  ])('never draws the old row beside the copy once it is %s', (_case, patch) => {
-    const submissions = [UNDELIVERED, copyRow(patch)]
-    const outbox = reconcileStructuredAgentSessionOutbox(afterRetry, submissions)
-    expect(drawn(outbox, submissions).noticed).toEqual([])
-    expect(drawn(outbox, submissions).rows).not.toContain(agentJournalSubmissionKey(ORIGINAL))
+  /** The drain's attempt at the copy while the agent works, and the host's answer to what it sent:
+   *  a queued card for a send that asks to be queued, else the copy steered into the turn. */
+  function sendWhileWorking(patch: Partial<AgentJournalSubmission>) {
+    const { stored, wire } = structuredAgentSessionEntryAttempt(afterRetry[0]!, QUEUEING)
+    const inFlight = [{ ...stored, state: 'dispatching' as const, lastAttemptAt: 9 }]
+    const row = copyRow(patch)
+    const { entries } = disposeStructuredAgentSessionSendResult({
+      entries: inFlight,
+      entry: inFlight[0]!,
+      result: {
+        ok: true,
+        replayed: false,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 9 },
+        value:
+          wire.sentDelivery === 'queue-if-active'
+            ? { clientMessageId: COPY, queued: { messageId: COPY, position: 1, state: 'waiting' } }
+            : { clientMessageId: COPY, submission: row }
+      },
+      createOperationId: () => 'unused'
+    })
+    return { entries, submissions: [UNDELIVERED, row] }
+  }
+
+  it('sends the copy at once while the agent works, so it is never a card beside the old row', () => {
+    expect(structuredAgentSessionEntryAttempt(afterRetry[0]!, QUEUEING).wire.sentDelivery).toBe(
+      null
+    )
+    const { entries, submissions } = sendWhileWorking({})
+    expect(drawn(entries, submissions)).toEqual({
+      rows: [agentJournalSubmissionKey(COPY)],
+      noticed: []
+    })
+  })
+
+  it('never draws the old row beside the copy once the copy is handed over', () => {
+    const { entries, submissions } = sendWhileWorking({ handedOverAt: 10 })
+    expect(drawn(entries, submissions).noticed).toEqual([])
+    expect(drawn(entries, submissions).rows).not.toContain(agentJournalSubmissionKey(ORIGINAL))
+  })
+
+  // The transcript leaves out a send it draws as a card; the whole outbox still names the row.
+  it('hides the old row while the transcript leaves its copy out', () => {
+    expect(
+      projectStructuredAgentSessionMessages([ITEM], [], [UNDELIVERED], { sentHere: afterRetry })
+    ).toEqual([])
   })
 
   it('never draws the old row beside a copy the host refused', () => {
