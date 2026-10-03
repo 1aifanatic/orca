@@ -158,7 +158,7 @@ function unquoteShellValue(value: string): { text: string; quoted: '"' | "'" | n
   return { text: trimmed, quoted: null }
 }
 
-function stripTrailingComment(value: string): string {
+export function stripTrailingComment(value: string): string {
   // Why: shells only treat `#` as a comment delimiter when it begins a word
   // (unquoted, preceded by whitespace). Walk the string so `#` inside quotes
   // and `path/with#hash` (no preceding whitespace) are preserved literally.

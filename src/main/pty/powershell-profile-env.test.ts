@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetPowerShellProfileEnvCache,
-  readPowerShellProfileEnvValues
+  readPowerShellProfileEnvValues,
+  UNEVALUABLE_PROFILE_VALUE
 } from './powershell-profile-env'
 
 const { registryDocumentsDir } = vi.hoisted(() => {
@@ -104,12 +105,12 @@ describe('readPowerShellProfileEnvValues', () => {
     )
     writeProfile(
       join(root, 'Documents', 'PowerShell', 'profile.ps1'),
-      '$env:CODEX_HOME = (Join-Path $HOME .codex-x)\n'
+      '$env:CODEX_HOME = (Join-Path $HOME .codex)\n'
     )
 
     expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([
       '$HOME\\literal # kept',
-      `(Join-Path ${root} .codex-x)`
+      UNEVALUABLE_PROFILE_VALUE
     ])
   })
 
@@ -133,13 +134,21 @@ describe('readPowerShellProfileEnvValues', () => {
   it.each([
     ["Set-Item -Path env:CODEX_HOME -Value 'C:\\set-item'", 'C:\\set-item'],
     ['Set-Item Env:\\CODEX_HOME "$HOME\\set-item"', 'HOME\\set-item'],
+    ["New-Item -Path Env:\\CODEX_HOME -Value 'C:\\new-item'", 'C:\\new-item'],
+    ['New-Item env:CODEX_HOME C:\\bare', 'C:\\bare'],
+    ["$env:CODEX_HOME = 'C:\\semicolon';", 'C:\\semicolon'],
     ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet')", 'C:\\dotnet'],
     [
       "[System.Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet') # note",
       'C:\\dotnet'
     ],
     ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\dotnet', 'User')", 'C:\\dotnet'],
-    ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\a,b', 'Process');", 'C:\\a,b']
+    ["[Environment]::SetEnvironmentVariable('CODEX_HOME', 'C:\\a,b', 'Process');", 'C:\\a,b'],
+    [
+      "[Environment]::SetEnvironmentVariable('CODEX_HOME', (Join-Path $HOME '.codex'), 'User')",
+      UNEVALUABLE_PROFILE_VALUE
+    ],
+    ['$env:CODEX_HOME = "$env:LOCALAPPDATA\\..\\.codex"', UNEVALUABLE_PROFILE_VALUE]
   ])('reads %s', (line, expected) => {
     writeProfile(join(root, 'Documents', 'PowerShell', 'profile.ps1'), `${line}\n`)
 
@@ -147,15 +156,28 @@ describe('readPowerShellProfileEnvValues', () => {
     expect(value?.replace(root, 'HOME')).toBe(expected)
   })
 
-  it('reads a .NET clear as clearing an earlier value', () => {
+  it.each([
+    '$env:CODEX_HOME = $null;',
+    "[Environment]::SetEnvironmentVariable('CODEX_HOME', $null)"
+  ])('reads %s as clearing an earlier value', (line) => {
     writeProfile(
       join(root, 'Documents', 'PowerShell', 'profile.ps1'),
-      [
-        "$env:CODEX_HOME = 'C:\\custom'",
-        "[Environment]::SetEnvironmentVariable('CODEX_HOME', $null)"
-      ].join('\n')
+      ["$env:CODEX_HOME = 'C:\\custom'", line].join('\n')
     )
 
     expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual([])
+  })
+
+  it.each([
+    "if ($env:CODEX_HOME -eq 'C:\\other') { }",
+    "$env:CODEX_HOME2 = 'C:\\other'",
+    "$env:CODEX_HOME == 'C:\\other'"
+  ])('does not read %s as an assignment', (line) => {
+    writeProfile(
+      join(root, 'Documents', 'PowerShell', 'profile.ps1'),
+      ["$env:CODEX_HOME = 'C:\\kept'", line].join('\n')
+    )
+
+    expect(readPowerShellProfileEnvValues('CODEX_HOME', root)).toEqual(['C:\\kept'])
   })
 })
