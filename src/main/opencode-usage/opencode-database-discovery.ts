@@ -31,6 +31,8 @@ export async function listOpenCodeDatabases(
   /** Lets a caller report the refusal; an empty list otherwise reads as
    *  "OpenCode not used" rather than "we could not look". */
   onRefusal?: (path: string, error: WslTranscriptFsError) => void,
+  /** Every other stat/readdir failure, including ENOENT; also read as an empty list. */
+  onFsError?: (path: string, error: unknown) => void,
   signal?: AbortSignal
 ): Promise<string[]> {
   const dataDirectory = resolveOpenCodeDataDirectory()
@@ -45,18 +47,19 @@ export async function listOpenCodeDatabases(
         : []
     } catch (error) {
       signal?.throwIfAborted()
-      reportRefusal(databaseOverride.path, error, onRefusal)
+      reportFailure(databaseOverride.path, error, onRefusal, onFsError)
       return []
     }
   }
 
-  return listOpenCodeDatabasesInDirectory(dataDirectory, onRefusal, signal)
+  return listOpenCodeDatabasesInDirectory(dataDirectory, onRefusal, signal, onFsError)
 }
 
 export async function listOpenCodeDatabasesInDirectory(
   dataDirectory: string,
   onRefusal?: (path: string, error: WslTranscriptFsError) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onFsError?: (path: string, error: unknown) => void
 ): Promise<string[]> {
   try {
     const entries = await wslGatedReaddir(dataDirectory, 'scan', signal)
@@ -66,18 +69,21 @@ export async function listOpenCodeDatabasesInDirectory(
       .sort()
   } catch (error) {
     signal?.throwIfAborted()
-    reportRefusal(dataDirectory, error, onRefusal)
+    reportFailure(dataDirectory, error, onRefusal, onFsError)
     return []
   }
 }
 
-function reportRefusal(
+function reportFailure(
   path: string,
   error: unknown,
-  onRefusal?: (path: string, error: WslTranscriptFsError) => void
+  onRefusal?: (path: string, error: WslTranscriptFsError) => void,
+  onFsError?: (path: string, error: unknown) => void
 ): void {
   if (error instanceof WslTranscriptFsError) {
     onRefusal?.(path, error)
+  } else {
+    onFsError?.(path, error)
   }
 }
 

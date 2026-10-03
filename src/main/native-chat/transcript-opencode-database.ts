@@ -55,7 +55,7 @@ export async function discoverOpenCodeTranscriptDatabase(
   }
   try {
     const primary = await waitForPromiseWithSignal(
-      listOpenCodeDatabases(onRefusal, boundedSignal),
+      listOpenCodeDatabases(onRefusal, undefined, boundedSignal),
       boundedSignal
     )
     // Unrelated WSL setup must not hold up a matching native database.

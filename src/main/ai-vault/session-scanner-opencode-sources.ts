@@ -66,7 +66,7 @@ async function opencodeDbPathsForSource(
     return listOpenCodeDatabasesInDirectory(dirname(storageDir), onRefusal, options.signal)
   }
   if (sourceIndex === 0) {
-    return listOpenCodeDatabases(onRefusal, options.signal)
+    return listOpenCodeDatabases(onRefusal, undefined, options.signal)
   }
   const wslHomeDir = wslHomeDirs[sourceIndex - 1]
   return wslHomeDir
