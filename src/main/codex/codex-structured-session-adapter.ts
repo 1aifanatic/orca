@@ -36,11 +36,10 @@ import {
 } from './codex-structured-provider-events'
 import {
   codexDispatchRejection,
-  settleCodexSendsInEndedTurn,
-  settleCodexSendsUnrecordedAtIdle,
-  type CodexTurnEndSettlement
+  settleCodexSendsInEndedTurn
 } from './codex-structured-turn-end-settlement'
 import { createCodexStructuredNotificationRetry } from './codex-structured-notification-retry'
+import { noteCodexPromptBlock } from './codex-structured-prompt-block'
 import { acquireCodexStructuredSession } from './codex-structured-session-acquire'
 import { changeCodexThreadGoal } from './codex-structured-thread-goal'
 import {
@@ -133,11 +132,11 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       return admission
     }
     if (event.type === 'notification') {
+      noteCodexPromptBlock(session, event.method, event.params)
       // Only an admitted turn end settles; a refused one settles on the retry that lands.
-      const settle = (settlement: CodexTurnEndSettlement) =>
+      settleCodexSendsInEndedTurn(session, event.method, event.params, (settlement) =>
         this.deps.onDispatchSettledLate?.({ sessionId: event.sessionId, ...settlement })
-      settleCodexSendsInEndedTurn(session, event.method, event.params, settle)
-      settleCodexSendsUnrecordedAtIdle(session, settle)
+      )
       // After the admission check, so a refused frame is observed by the child records
       // only on the retry that also reaches the journal.
       session.backgroundTasks.observe(event, session.prompts.takeAbandonedCommands())

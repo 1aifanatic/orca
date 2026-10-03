@@ -2772,6 +2772,8 @@
         "couldNotStart": "{{agent}} couldn't start.",
         "emptyMessage": "This message is empty, so it was not sent.",
         "historyTooLarge": "This conversation's history is too large to restore here.",
+        "hookBlocked": "A hook blocked this message.",
+        "hookBlockedQuoted": "A hook blocked this message: {{detail}}.",
         "hostFault": "Orca ran into a problem, so this didn't go through.",
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
         "hostRestarted": "Orca restarted before this message was sent.",

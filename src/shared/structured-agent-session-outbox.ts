@@ -12,7 +12,10 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  dispatchWasBlockedByHook
+} from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 import {
   parseStructuredAgentSessionOutboxRotation,
@@ -225,7 +228,8 @@ export function reconcileStructuredAgentSessionOutbox(
     }
     if (
       submission?.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).category === 'withdrawn'
+      (classifyDispatchRejection(submission).category === 'withdrawn' ||
+        dispatchWasBlockedByHook(submission))
     ) {
       return []
     }

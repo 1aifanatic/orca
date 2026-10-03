@@ -1,16 +1,18 @@
 import type { ProviderDiagnostic } from '../../shared/agent-session-failure'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type { CodexPromptBlock } from './codex-structured-prompt-block'
 
 /** Sends awaiting their echo. One bound to a turn that ended without taking it settles from that
- *  end; one Codex took and never echoed by the time its thread stops running settles then. */
+ *  end; any other whose echo never arrives is retired by the journal's recovery on exit. */
 export const MAX_CODEX_PENDING_DISPATCH_ECHOES = 256
 /** Turn ends kept for an answer read after the turn it names had already ended, and answered
  *  turns kept that Codex left unopened through a wait. */
 export const MAX_CODEX_RECORDED_TURN_ENDS = 64
 
-/** How a primary-thread turn ended, as Codex reported it. */
+/** How a primary-thread turn ended, as Codex reported it. `blocked`: a hook of the person's
+ *  blocked a prompt in that turn, which Codex then never recorded. */
 export type CodexTurnEnd =
-  | { status: 'completed' }
+  | { status: 'completed'; blocked?: CodexPromptBlock }
   | { status: 'interrupted' }
   | { status: 'failed'; detail?: ProviderDiagnostic }
 
@@ -34,17 +36,6 @@ export type CodexDispatchEchoes = {
   settle: (clientMessageId: string) => boolean
   /** Drops an armed send whose write never reached the provider. */
   disarm: (clientMessageId: string) => void
-  /** Codex answered this send and took it; until then its request may still be in flight. */
-  admit: (clientMessageId: string) => void
-  /** Codex reported the thread not running with no turn open. */
-  stoppedRunning: () => void
-  /**
-   * Once after `stoppedRunning`, the sends Codex took and never echoed, which are no longer armed.
-   * Codex echoes every input it records before the turn that took it completes, so one still
-   * unechoed then was never recorded: a hook blocked it, or the turn it was answered into never
-   * opened. A send whose request is still in flight is left armed.
-   */
-  takeUnrecorded: () => string[]
   /**
    * Binds a send to the turn Codex answered it into. Returns that turn's end when the answer is
    * read after it; a send that end settles is no longer armed.
@@ -55,10 +46,14 @@ export type CodexDispatchEchoes = {
   answeredUnopenedTurn: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
   /** Codex did not open this answered turn within a wait, so no later wait is spent on it. */
   leftUnopened: (threadId: string, turnId: string) => void
+  /** Codex reported a hook blocked a prompt in this turn; kept only until the turn ends. */
+  blockPrompt: (threadId: string, turnId: string, block: CodexPromptBlock) => void
+  /** The block reported in this turn, which its end takes; null when none was. */
+  takePromptBlock: (threadId: string, turnId: string) => CodexPromptBlock | null
   /**
    * Records a turn's end and returns the sends bound to it that it settles: all of them unless it
-   * completed, which echoes its pending input first, so one it never echoed waits for the thread
-   * to stop running (`takeUnrecorded`). An
+   * completed, which echoes its pending input first, so one it never echoed waits for recovery,
+   * unless a hook blocked a prompt in it: Codex records nothing it blocked. An
    * interrupt withdraws an un-echoed send, steered or the turn's own input: neither reached history.
    */
   endTurn: (threadId: string, turnId: string, end: CodexTurnEnd) => string[]
@@ -73,19 +68,15 @@ export type CodexDispatchEchoes = {
 export function createCodexDispatchEchoes(): CodexDispatchEchoes {
   const armed = new Map<
     string,
-    {
-      requestedAt: number | null
-      sequence: number
-      turn?: { threadId: string; turnId: string }
-      admitted?: true
-    }
+    { requestedAt: number | null; sequence: number; turn?: { threadId: string; turnId: string } }
   >()
-  let stopped = false
   const endedTurns = new Map<string, CodexTurnEnd>()
   const unopenedTurns = new Set<string>()
+  const blockedTurns = new Map<string, CodexPromptBlock>()
   let nextSequence = 0
   const turnKey = (threadId: string, turnId: string): string => JSON.stringify([threadId, turnId])
-  const settles = (end: CodexTurnEnd): boolean => end.status !== 'completed'
+  const settles = (end: CodexTurnEnd): boolean =>
+    end.status !== 'completed' || end.blocked !== undefined
   return {
     arm(clientMessageId, requestedAt) {
       const existing = armed.get(clientMessageId)
@@ -103,28 +94,6 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
     },
     settle: (clientMessageId) => armed.delete(clientMessageId),
     disarm: (clientMessageId) => void armed.delete(clientMessageId),
-    admit: (clientMessageId) => {
-      const entry = armed.get(clientMessageId)
-      if (entry) {
-        entry.admitted = true
-      }
-    },
-    stoppedRunning: () => {
-      stopped = true
-    },
-    takeUnrecorded: () => {
-      if (!stopped) {
-        return []
-      }
-      stopped = false
-      const unrecorded = [...armed].flatMap(([clientMessageId, entry]) =>
-        entry.admitted ? [clientMessageId] : []
-      )
-      for (const clientMessageId of unrecorded) {
-        armed.delete(clientMessageId)
-      }
-      return unrecorded
-    },
     bindTurn: (clientMessageId, threadId, turnId) => {
       const entry = armed.get(clientMessageId)
       if (!entry) {
@@ -156,6 +125,23 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
         }
         unopenedTurns.delete(oldest)
       }
+    },
+    blockPrompt: (threadId, turnId, block) => {
+      const turn = turnKey(threadId, turnId)
+      blockedTurns.delete(turn)
+      blockedTurns.set(turn, block)
+      for (const oldest of blockedTurns.keys()) {
+        if (blockedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
+          break
+        }
+        blockedTurns.delete(oldest)
+      }
+    },
+    takePromptBlock: (threadId, turnId) => {
+      const turn = turnKey(threadId, turnId)
+      const block = blockedTurns.get(turn) ?? null
+      blockedTurns.delete(turn)
+      return block
     },
     endTurn: (threadId, turnId, end) => {
       const turn = turnKey(threadId, turnId)
@@ -191,8 +177,8 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
       armed.clear()
       endedTurns.clear()
       unopenedTurns.clear()
+      blockedTurns.clear()
       nextSequence = 0
-      stopped = false
     },
     get size() {
       return armed.size

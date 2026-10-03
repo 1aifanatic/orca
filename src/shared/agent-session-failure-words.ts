@@ -232,6 +232,9 @@ const FAILURE_SENTENCES = {
   restartFailed: couldNot('couldNotRestart'),
   providerRejected: (_context, fact, _surface, say) =>
     quotingPersonDetail(say, 'providerRejected', 'providerRejectedQuoted', fact.detail),
+  // The hook's own reason, as the agent reported it; the hook blocks the same message again.
+  hookBlocked: (_context, fact, _surface, say) =>
+    quotingPersonDetail(say, 'hookBlocked', 'hookBlockedQuoted', fact.detail),
   attachmentInvalid: (context, fact, _surface, say) =>
     fact.attachment
       ? ATTACHMENT_SENTENCES[fact.attachment.reason](say, context, fact.attachment)

@@ -95,6 +95,7 @@ const KIND_CATEGORY = {
   managedAccountUnsupported: 'startFailed',
   restartFailed: 'startFailed',
   providerRejected: 'content',
+  hookBlocked: 'content',
   attachmentInvalid: 'content',
   attachmentUnreadable: 'content',
   emptyMessage: 'content',
@@ -121,6 +122,8 @@ const KIND_VERDICT = {
   managedAccountUnsupported: 'failure',
   restartFailed: 'failure',
   providerRejected: 'failure',
+  // The person's own hook decided it; nothing failed them.
+  hookBlocked: null,
   attachmentInvalid: 'failure',
   attachmentUnreadable: 'failure',
   emptyMessage: 'failure',
@@ -249,6 +252,17 @@ export function dispatchWasWithdrawn(
   return (
     submission?.dispatchState === 'rejected' &&
     classifyDispatchRejection(submission).category === 'withdrawn'
+  )
+}
+
+/** A hook of the person's own blocked it: the same words are blocked again, so no client keeps a
+ *  copy to retry, and its journal row is what shows it, on every device alike. */
+export function dispatchWasBlockedByHook(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>
+): boolean {
+  return (
+    submission.dispatchState === 'rejected' &&
+    classifyDispatchRejection(submission).kind === 'hookBlocked'
   )
 }
 

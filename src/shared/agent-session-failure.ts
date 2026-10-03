@@ -28,6 +28,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'providerExited',
   'restartFailed',
   'providerRejected',
+  /** A hook of the person's own blocked the message before the agent recorded it. */
+  'hookBlocked',
   'attachmentInvalid',
   'attachmentUnreadable',
   'emptyMessage',

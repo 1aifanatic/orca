@@ -21,7 +21,10 @@ import {
 } from './agent-session-write-failure'
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  dispatchWasBlockedByHook
+} from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -180,7 +183,7 @@ function rejectionFactParts(
 /** Kinds whose words need what the message's copy drops: the provider's detail, or the refusal. */
 const WORDED_FROM_WHOLE_FACT: ReadonlySet<AgentSessionFailureFact['kind']> = new Set<
   AgentSessionFailureFact['kind']
->(['providerRejected', 'startFailed', 'restartFailed'])
+>(['providerRejected', 'hookBlocked', 'startFailed', 'restartFailed'])
 
 /** What the Retry row says about why its message did not go through. */
 export function structuredAgentSessionAttemptFailureParts(
@@ -269,10 +272,11 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   // A Stop's withdrawal failed nothing, first reply or replay: the entry leaves as the reconcile
-  // drops it, with no notice.
+  // drops it, with no notice. One a hook blocked leaves too: its journal row shows it.
   if (
     submission.dispatchState === 'rejected' &&
-    classifyDispatchRejection(submission).category === 'withdrawn'
+    (classifyDispatchRejection(submission).category === 'withdrawn' ||
+      dispatchWasBlockedByHook(submission))
   ) {
     return {
       entries: dropEntry(input),
