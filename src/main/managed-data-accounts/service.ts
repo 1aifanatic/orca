@@ -126,10 +126,9 @@ export class ManagedDataAccountService {
   ): Promise<ManagedDataAccountsState> {
     return this.mutate(async () => {
       const state = this.list(provider)
-      if (accountId !== null) {
-        this.requireAccount(provider, accountId)
-      }
-      return this.persist(provider, { ...state, activeAccountId: accountId })
+      const activeAccountId =
+        accountId === null ? null : this.requireAccount(provider, accountId).id
+      return this.persist(provider, { ...state, activeAccountId })
     })
   }
 
@@ -222,7 +221,7 @@ export class ManagedDataAccountService {
     provider: ManagedDataAccountProvider,
     accountId: string
   ): Record<string, string> {
-    const directory = this.requireAccount(provider, accountId)
+    const { directory } = this.requireAccount(provider, accountId)
     return {
       XDG_DATA_HOME: join(directory, 'data'),
       XDG_STATE_HOME: join(directory, 'state'),
@@ -235,7 +234,10 @@ export class ManagedDataAccountService {
     return () => this.listeners.delete(listener)
   }
 
-  private requireAccount(provider: ManagedDataAccountProvider, id: string): string {
+  private requireAccount(
+    provider: ManagedDataAccountProvider,
+    id: string
+  ): { id: string; directory: string } {
     const account = this.list(provider).accounts.find(
       (registered) => registered.id.toLowerCase() === id.toLowerCase()
     )
@@ -244,7 +246,7 @@ export class ManagedDataAccountService {
     }
     const directory = join(this.root, provider, account.id.toLowerCase())
     this.assertOwned(directory)
-    return directory
+    return { id: account.id, directory }
   }
 
   private persist(

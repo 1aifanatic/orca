@@ -167,10 +167,29 @@ describe.each(['opencode', 'devin'] as const)('committed %s enrollment', (provid
     expect(
       service.transcriptEnvironments(provider).map((environment) => environment.XDG_DATA_HOME)
     ).toEqual([dataHome])
-    await service.select(provider, registered.id.toLowerCase())
+    expect((await service.select(provider, registered.id.toLowerCase())).activeAccountId).toBe(
+      registered.id
+    )
     expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBe(dataHome)
-    await service.select(provider, registered.id.toUpperCase())
+    expect((await service.select(provider, registered.id.toUpperCase())).activeAccountId).toBe(
+      registered.id
+    )
     expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBe(dataHome)
+  })
+
+  it('selects the registered UUID spelling and searches its transcript first', async () => {
+    const personal = (await service.add(provider, source, 'Personal')).accounts[0]
+    const work = (await service.add(provider, source, 'Work')).accounts[1]
+    const selected = await service.select(provider, work.id.toUpperCase())
+    expect(selected.activeAccountId).toBe(work.id)
+    expect(service.list(provider).activeAccountId).toBe(work.id)
+    expect(
+      service.transcriptEnvironments(provider).map((environment) => environment.XDG_DATA_HOME)
+    ).toEqual(
+      [work, personal].map((account) =>
+        join(root, 'managed', provider, account.id.toLowerCase(), 'data')
+      )
+    )
   })
 
   it('isolates a throwing listener after enrollment has committed', async () => {
