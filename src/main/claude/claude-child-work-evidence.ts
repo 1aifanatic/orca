@@ -110,15 +110,15 @@ export function claudeChildOperation(
   ]
 }
 
-/** The subagents whose card the journal holds pending with no answer underway: a card is the one
- *  record of an open request, so a waiting child always sits beside a pending card and its parent
- *  reads that card, never the child's wait. */
+/** The subagents whose card the journal holds pending for a request still open with no answer
+ *  underway: a card is the one record of an open request, so a waiting child always sits beside a
+ *  pending card and its parent reads that card, never the child's wait. */
 function claudeWaitingChildIds(
   session: Pick<ClaudeSession, 'prompts' | 'translator'>
 ): Set<string> {
   const waiting = new Set<string>()
   for (const card of session.translator?.journalPrompts.openCards() ?? []) {
-    if (!session.prompts.answering(card.promptKey)) {
+    if (session.prompts.awaitsAnswer(card.promptKey)) {
       waiting.add(card.asker)
     }
   }

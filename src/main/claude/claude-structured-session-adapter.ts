@@ -152,6 +152,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     } else if (event.type === 'message') {
       session?.childWork.observe(event.message)
       session?.backgroundTasks.observe(event.message, event.startsTurn === true)
+    } else if (event.type === 'prompt-cancelled') {
+      // A withdrawn request frees its child before its card closes: the journal may take that
+      // write, and publish it, as it is submitted.
+      this.publishChildWork(event.sessionId, session)
     }
     if (event.type === 'message' && session?.commands.observe(event.message)) {
       session.events?.publish()
@@ -160,18 +164,14 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     this.deps.onEvent?.(event)
     this.publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)
     // A subagent's card holds it waiting only once its row is written: its wait goes out after.
-    void claudePromptCardWritten(session, event)?.then(() => this.drainChildWork(event.sessionId))
+    void claudePromptCardWritten(session, event)?.then(() => this.publishChildWork(event.sessionId))
   }
-
-  /** The session's child work as it stands now, outside any frame. */
-  private drainChildWork = (sessionId: string): void =>
-    this.publishChildWork(sessionId, this.sessions.get(sessionId))
 
   /** After the journal handled the frame, which republished the parent's own row: the host never
    *  holds a child record ahead of the rows that frame wrote, and never before its parent. */
   private publishChildWork(
     sessionId: string,
-    session: ClaudeSession | null | undefined,
+    session: ClaudeSession | null | undefined = this.sessions.get(sessionId),
     message: Record<string, unknown> | null = null
   ): void {
     const evidence = drainClaudeChildWork(session, message, this.deps.now?.() ?? Date.now())
@@ -213,7 +213,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     request: R,
     settle: (request: R) => Promise<void>
   ): Promise<void> => {
-    const free = () => this.drainChildWork(request.sessionId)
+    const free = () => this.publishChildWork(request.sessionId)
     const commit = async (): Promise<void> => {
       free()
       await request.commit()

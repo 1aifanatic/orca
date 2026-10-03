@@ -105,10 +105,10 @@ export class ClaudePromptRegistry {
     return prompt
   }
 
-  /** An answer to the request is underway: it is about to close. */
-  answering(promptKey: string): boolean {
+  /** The request is still open and nobody is answering it yet. */
+  awaitsAnswer(promptKey: string): boolean {
     const prompt = this.prompts.get(promptKey)
-    return prompt !== undefined && this.claims.has(prompt)
+    return prompt !== undefined && !this.claims.has(prompt)
   }
 
   /** True only if the prompt was still pending; lets abort and answer settle once. */
