@@ -17,6 +17,33 @@ const RUN_VALUE_FLAGS = new Set([
   '--title'
 ])
 
+const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '-P'])
+const ENV_EMPTY_FLAGS = new Set(['-i', '--ignore-environment', '-'])
+
+function envCommandPosition(tokens: readonly string[], offset: number): number {
+  let index = offset
+  while (index < tokens.length) {
+    const token = tokens[index]
+    if (token === '--') {
+      index += 1
+      break
+    }
+    if (ENV_EMPTY_FLAGS.has(token)) {
+      index += 1
+    } else if (ENV_VALUE_FLAGS.has(token)) {
+      index += 2
+    } else if (/^(?:-[uCP].+|--(?:unset|chdir)=)/.test(token)) {
+      index += 1
+    } else if (token.startsWith('-')) {
+      // Split-string options need another parse before their executable is known.
+      return tokens.length
+    } else {
+      break
+    }
+  }
+  return tokens.length - extractLeadingEnvAssignments(tokens.slice(index)).rest.length
+}
+
 function openCodeCommandPosition(tokens: readonly string[], shell: AgentStartupShell): number {
   if (shell === 'powershell' && tokens[0] === '&') {
     return 1
@@ -26,11 +53,7 @@ function openCodeCommandPosition(tokens: readonly string[], shell: AgentStartupS
   }
   let index = tokens.length - extractLeadingEnvAssignments(tokens.slice()).rest.length
   if (getCommandTokenPathBasename(tokens[index] ?? '') === 'env') {
-    index += 1
-    if (tokens[index] === '--') {
-      index += 1
-    }
-    index = tokens.length - extractLeadingEnvAssignments(tokens.slice(index)).rest.length
+    index = envCommandPosition(tokens, index + 1)
   }
   return index
 }

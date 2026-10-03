@@ -48,6 +48,38 @@ describe('wrapped OpenCode run command position', () => {
     expect(isOpenCodeRunCommand(parsed.tokens, 'cmd')).toBe(false)
   })
 
+  it.each([
+    'env -u FOO opencode run',
+    'env -uFOO opencode run',
+    'env --unset FOO opencode run',
+    'env --unset=FOO opencode run',
+    'env -i PRIVATE_CONFIG=kept opencode run',
+    'env --ignore-environment PRIVATE_CONFIG=kept opencode run',
+    'env - PRIVATE_CONFIG=kept opencode run',
+    'env -C /workspace opencode run',
+    'env -C/workspace opencode run',
+    'env --chdir /workspace opencode run',
+    'env --chdir=/workspace opencode run',
+    'env -P /private/bin opencode run',
+    'env -P/private/bin opencode run',
+    'CONFIG=kept /usr/bin/env -i -u FOO -C /workspace -- OTHER=kept opencode run'
+  ])('recognizes an executable after env options: %s', (command) => {
+    expect(matches(command)).toBe(true)
+  })
+
+  it.each([
+    'env -u',
+    'env -C',
+    'env -u opencode run',
+    'env -C opencode run',
+    'env -u FOO echo opencode run',
+    'env --unset=FOO echo run',
+    'env -S "opencode run"',
+    'env --unknown opencode run'
+  ])('does not mistake env option arguments for the executable: %s', (command) => {
+    expect(matches(command)).toBe(false)
+  })
+
   it('does not find executable names inside other commands or prompt arguments', () => {
     expect(matches('env CUSTOM_CONFIG=private echo opencode run')).toBe(false)
     expect(matches('env CUSTOM_CONFIG=private echo run')).toBe(false)
