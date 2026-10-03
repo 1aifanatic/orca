@@ -1,0 +1,6 @@
+name: Outer producer control
+description: Exercise the same nested composite structure as real callers.
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/ci-store-producer-trial

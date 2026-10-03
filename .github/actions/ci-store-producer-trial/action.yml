@@ -1,0 +1,23 @@
+name: Nested producer control
+description: Tiny cold writer validating the production environment path pattern.
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      run: |
+        printf 'ORCA_PNPM_STORE_CACHE_PATH=%s\n' "$RUNNER_TEMP/nested-producer-marker" >> "$GITHUB_ENV"
+        printf 'key=ci-store-producer-nested-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+    - id: lookup
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.ORCA_PNPM_STORE_CACHE_PATH }}
+        key: ${{ steps.scope.outputs.key }}
+        lookup-only: true
+    - shell: bash
+      env:
+        CACHE_HIT: ${{ steps.lookup.outputs.cache-hit }}
+      run: |
+        test "$CACHE_HIT" != 'true'
+        mkdir -p "$ORCA_PNPM_STORE_CACHE_PATH"
+        printf 'nested producer payload\n' > "$ORCA_PNPM_STORE_CACHE_PATH/marker"
