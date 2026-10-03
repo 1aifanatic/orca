@@ -26,7 +26,6 @@ import {
   type StructuredLaunchCaller
 } from '@/lib/structured-agent-session-launch-callers'
 import * as launchDraft from './structured-agent-session-launch-draft'
-import { trackStructuredLaunchFailureToast } from './structured-agent-session-launch-failure-toast'
 import {
   deleteStructuredLaunchStateIfCurrent,
   getStructuredAgentSessionLaunchLifecycle,
@@ -147,7 +146,6 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
     wasVisibilityUnknown ? reconcileUnknownLaunch(state) : launchAndReconcile(state)
   )
   trackLaunchSettlement(state, state.promise)
-  trackStructuredLaunchFailureToast(state.intent.agent, state.promise)
   notifyStructuredLaunchListeners()
 }
 
@@ -230,7 +228,6 @@ function structuredAgentLaunchState(
   setStructuredLaunchState(state)
   notifyStructuredLaunchListeners()
   trackLaunchSettlement(state, state.promise)
-  trackStructuredLaunchFailureToast(state.intent.agent, state.promise)
   return {
     state,
     caller
