@@ -88,7 +88,8 @@ describe('desktop IPC and preload search boundary', () => {
       query: 'needle',
       limit: 20,
       supportedAgents: [...AI_VAULT_AGENTS],
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     expect(result).toMatchObject({
       hits: [{ executionHostId: 'ssh:ssh-host', source: { presence: 'present' } }]
@@ -110,7 +111,8 @@ describe('desktop IPC and preload search boundary', () => {
       query: 'needle',
       limit: 20,
       supportedAgents: [...AI_VAULT_AGENTS],
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     expect(result).toMatchObject({
       hits: [{ executionHostId: 'runtime:env-1', source: { presence: 'present' } }]

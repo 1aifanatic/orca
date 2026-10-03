@@ -70,7 +70,8 @@ export function createSessionSearchClient(
         raw = await call('aiVault.searchSessions', {
           ...hostRequest,
           supportedAgents: [...AI_VAULT_AGENTS],
-          supportsQoderHistory: true
+          supportsQoderHistory: true,
+          supportsJcodeHistory: true
         })
       } catch (error) {
         if (isUnknownSessionSearchMethod(error)) {

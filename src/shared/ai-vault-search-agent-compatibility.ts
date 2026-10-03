@@ -31,13 +31,17 @@ export function needsSearchAgentNegotiation(agents: readonly AiVaultAgent[]): bo
 
 export function compatibleSearchAgents(
   agents: readonly AiVaultAgent[],
-  status: Pick<AiVaultSearchStatus, 'supportedAgents' | 'supportsQoderHistory'>
+  status: Pick<
+    AiVaultSearchStatus,
+    'supportedAgents' | 'supportsQoderHistory' | 'supportsJcodeHistory'
+  >
 ): AiVaultAgent[] {
   // Qoder's shipped capability also proves the earlier CodeBuddy and ZCode enum additions.
   const supported = new Set(
     status.supportedAgents ?? [
       ...LEGACY_SEARCH_AGENTS,
-      ...(status.supportsQoderHistory === true ? ['codebuddy', 'zcode', 'qoder'] : [])
+      ...(status.supportsQoderHistory === true ? ['codebuddy', 'zcode', 'qoder'] : []),
+      ...(status.supportsJcodeHistory === true ? ['jcode'] : [])
     ]
   )
   return agents.filter((agent) => supported.has(agent))

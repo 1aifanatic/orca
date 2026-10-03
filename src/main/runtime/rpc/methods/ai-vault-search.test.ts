@@ -92,27 +92,30 @@ describe('session search runtime RPC', () => {
       )
     }
   )
-  it.each([undefined, 'runtime', 'mobile'] as const)(
-    'preserves explicitly supported Qoder filters for client kind %s',
-    async (clientKind) => {
-      const service = fakeSearchService()
-      setSessionSearchService(service)
-      expect(
-        await dispatcher().dispatch(
-          request({
-            query: 'needle',
-            supportsQoderHistory: true,
-            filters: { agents: ['qoder', 'codex'] }
-          }),
-          { clientKind }
+  describe.each(['qoder', 'jcode'] as const)('%s history capability', (agent) => {
+    const supportField = agent === 'qoder' ? 'supportsQoderHistory' : 'supportsJcodeHistory'
+    it.each([undefined, 'runtime', 'mobile'] as const)(
+      'preserves explicitly supported filters for client kind %s',
+      async (clientKind) => {
+        const service = fakeSearchService()
+        setSessionSearchService(service)
+        expect(
+          await dispatcher().dispatch(
+            request({
+              query: 'needle',
+              [supportField]: true,
+              filters: { agents: [agent, 'codex'] }
+            }),
+            { clientKind }
+          )
+        ).toMatchObject({ ok: true })
+        expect(service.search).toHaveBeenCalledExactlyOnceWith(
+          { query: 'needle', limit: 20, filters: { agents: [agent, 'codex'] } },
+          undefined
         )
-      ).toMatchObject({ ok: true })
-      expect(service.search).toHaveBeenCalledExactlyOnceWith(
-        { query: 'needle', limit: 20, filters: { agents: ['qoder', 'codex'] } },
-        undefined
-      )
-    }
-  )
+      }
+    )
+  })
   it('maps the old runtime dispatcher refusal and rejects malformed responses', async () => {
     const legacy = dispatcher(true)
     const client = createSessionSearchClient(async (method, params) => {

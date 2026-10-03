@@ -23,7 +23,8 @@ describe('web session search preload compatibility', () => {
       query: 'needle',
       limit: 20,
       supportedAgents: [...AI_VAULT_AGENTS],
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     expect(result).toMatchObject({ kind: 'results', hits: [{ source: { presence: 'present' } }] })
     expect(JSON.stringify(result)).not.toContain('resumeCommand')
