@@ -11,7 +11,11 @@
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import {
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -33,6 +37,7 @@ import {
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import { structuredAgentSessionStopCutNotice } from './structured-agent-session-stop-cut-notice'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 export type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-stop-event'
 import {
@@ -88,6 +93,15 @@ export async function abandonQueuedStructuredAgentSessionMessages(
         return false
       }
     )
+}
+
+/** Who the stop-cut notice names. */
+function stopCutFailureTextContext(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string
+): AgentSessionFailureWordsContext {
+  const record = context.deps.store.getRecord(sessionId)
+  return record ? { agentName: TUI_AGENT_DISPLAY_NAMES[record.provider] } : {}
 }
 
 /** The wind-down this host owes for the session's child. A live child always owes one, whatever a
@@ -184,6 +198,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       await recorded
       const fence =
         owed?.fence ?? structuredAgentSessionConversationFence(context.deps.store, sessionId)
+      const fallbackEndedAt = context.now()
       const settled = await settleStructuredAgentSessionDeadGeneration({
         journal: session.journal,
         sessionId,
@@ -192,8 +207,19 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         // Only a turn no adapter settled: one with no close, or whose settle threw. Whether it was
         // a person's Stop is its event's to say (`turnEndAfterStop`).
-        verdict: { state: 'interrupted', completedAt: context.now() },
-        showUnexpectedExitOutcome: false
+        verdict: { state: 'interrupted', completedAt: fallbackEndedAt },
+        showUnexpectedExitOutcome: false,
+        // In the same write as the fallback's turn end, or just after the adapter's. A host stop's
+        // row is the delivery loop's, and a person's Stop explains itself.
+        stopCutNotice:
+          (cause === 'evict' || cause === 'user-close') && owed
+            ? structuredAgentSessionStopCutNotice(sessionId, session.journal.snapshot().items, {
+                journal: session.journal,
+                fence: owed.fence,
+                fallbackEndedAt,
+                failureTextContext: stopCutFailureTextContext(context, sessionId)
+              })
+            : null
       })
       if (!settled.ok) {
         context.deps.logger.warn("settling a closed agent's work failed", {

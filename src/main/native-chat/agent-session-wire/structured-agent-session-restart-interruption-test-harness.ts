@@ -160,6 +160,14 @@ export async function interruptedRestart(
   return { ...hostTestState(), host, store, log, closeSession, marker, clock }
 }
 
+/** The one row the quit wrote for the turn it cut; a continuation that fails nothing adds none. */
+export const QUIT_CUT_NOTICE = [
+  {
+    text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
+    tone: 'error'
+  }
+]
+
 export async function statusNotes(host: StructuredAgentSessionHost) {
   return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
     item.body.kind === 'status' ? [{ text: item.body.text, tone: item.body.tone }] : []

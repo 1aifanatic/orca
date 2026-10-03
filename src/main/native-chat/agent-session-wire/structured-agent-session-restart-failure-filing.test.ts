@@ -8,6 +8,7 @@ import { StructuredAgentSessionResumeAdmission } from './structured-agent-sessio
 import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structured-agent-session-restart-resume-wiring'
 import {
   interruptedRestart,
+  QUIT_CUT_NOTICE,
   statusNotes
 } from './structured-agent-session-restart-interruption-test-harness'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
@@ -42,7 +43,7 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
   const capsule = new AgentSessionRecoveryCapsule(root)
   expect(await capsule.listFailed(NOW)).toEqual([])
   expect(await capsule.list(NOW)).toEqual([])
-  expect(await statusNotes(host)).toEqual([])
+  expect(await statusNotes(host)).toEqual(QUIT_CUT_NOTICE)
 })
 
 // The continuation is accepted and its agent then fails to start: the message is rejected with the
