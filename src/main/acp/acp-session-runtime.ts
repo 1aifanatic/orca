@@ -37,11 +37,7 @@ export type AcpSessionRuntimeOptions = {
   promptTimeoutMs?: number
   cancelTimeoutMs?: number
   onPermission?: AcpPermissionHandler
-  onRequest?: (
-    method: string,
-    params: unknown,
-    context: AcpRequestContext
-  ) => unknown | Promise<unknown>
+  onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
   onDiagnostic?: (message: string) => void
   onClose?: (error: Error) => void
 }
@@ -257,11 +253,7 @@ export class AcpSessionRuntime {
     return parsed.data
   }
 
-  private handleRequest(
-    method: string,
-    params: unknown,
-    context: AcpRequestContext
-  ): unknown | Promise<unknown> {
+  private handleRequest(method: string, params: unknown, context: AcpRequestContext): unknown {
     if (method !== 'session/request_permission') {
       return this.options.onRequest?.(method, params, context)
     }

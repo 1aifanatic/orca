@@ -28,11 +28,7 @@ const envelopeSchema = z.looseObject({
 export type AcpJsonRpcMessage = z.infer<typeof envelopeSchema>
 export type AcpRequestContext = { id: string | number | null; signal: AbortSignal }
 export type AcpPeerHandlers = {
-  onRequest?: (
-    method: string,
-    params: unknown,
-    context: AcpRequestContext
-  ) => unknown | Promise<unknown>
+  onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
   onNotification?: (method: string, params: unknown) => void
   onDiagnostic?: (message: string) => void
   onClose?: (error: Error) => void
