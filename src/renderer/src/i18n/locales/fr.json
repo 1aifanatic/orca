@@ -10197,7 +10197,7 @@
             "0534c76311": "Interrupteur principal des notifications de bureau d'Orca.",
             "4a210b2f72": "Activer les notifications",
             "machines": "Machines",
-            "machinesDescription": "Contrôlez les notifications de bureau de cet ordinateur, des machines SSH connectées directement et des serveurs associés, y compris le travail effectué par leur intermédiaire.",
+            "machinesDescription": "Choisissez les machines autorisées à afficher des notifications sur cet ordinateur, comme les machines SSH ou les serveurs associés.",
             "host": "hôte",
             "remote": "distant",
             "ssh": "ssh",
@@ -12179,7 +12179,7 @@
         "NotificationHostToggles": {
           "offCount": "{{count}} désactivées",
           "machines": "Machines",
-          "machinesDescription": "Affichez les notifications de chaque machine connectée. Le réglage d’un serveur associé couvre aussi le travail effectué par son intermédiaire."
+          "machinesDescription": "Choisissez les machines autorisées à afficher des notifications sur cet ordinateur. Le réglage d’un serveur associé couvre aussi le travail effectué par son intermédiaire."
         }
       },
       "right": {

@@ -21,7 +21,7 @@ export type NotificationSettings = {
     | 'custom'
   customSoundPath: string | null
   customSoundVolume: number
-  /** Opt-outs for this computer, direct SSH machines, and paired servers including work reached through them; new sources notify. */
+  /** Desktop opt-outs stored only on this client, per configured source and work reached through it; new sources notify. */
   mutedNotificationSourceIds: NotificationSourceId[]
 }
 

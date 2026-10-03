@@ -8869,7 +8869,7 @@
             "0534c76311": "Interruptor maestro para notificaciones de escritorio de Orca.",
             "4a210b2f72": "Habilitar notificaciones",
             "machines": "Máquinas",
-            "machinesDescription": "Controla las notificaciones de escritorio de este equipo, las máquinas SSH conectadas directamente y los servidores vinculados, incluido el trabajo al que se accede a través de ellos.",
+            "machinesDescription": "Elige qué máquinas pueden mostrar notificaciones en este equipo, como máquinas SSH o servidores vinculados.",
             "host": "host",
             "remote": "remoto",
             "ssh": "ssh",
@@ -10521,7 +10521,7 @@
         "NotificationHostToggles": {
           "offCount": "{{count}} desactivadas",
           "machines": "Máquinas",
-          "machinesDescription": "Muestra notificaciones de cada máquina conectada. El interruptor de un servidor vinculado también controla el trabajo al que se accede a través de él."
+          "machinesDescription": "Elige qué máquinas pueden mostrar notificaciones en este equipo. El interruptor de un servidor vinculado también controla el trabajo al que se accede a través de él."
         }
       },
       "right": {

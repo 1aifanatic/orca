@@ -37,7 +37,7 @@ export function NotificationHostToggles({
             <span className="block text-xs font-normal text-muted-foreground">
               {translate(
                 'auto.components.settings.NotificationHostToggles.machinesDescription',
-                'Show notifications from each connected machine. A paired server’s switch also covers work reached through it.'
+                'Choose which machines can show notifications on this computer. A paired server’s switch also covers work reached through it.'
               )}
             </span>
           </span>

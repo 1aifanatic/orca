@@ -10049,7 +10049,7 @@
             "0534c76311": "Orca 桌面通知的主开关。",
             "4a210b2f72": "启用通知",
             "machines": "机器",
-            "machinesDescription": "控制本机、直接连接的 SSH 机器和已配对服务器的桌面通知，包括通过它们开展的工作。",
+            "machinesDescription": "选择哪些机器可以在此电脑上显示通知，例如 SSH 机器或已配对的服务器。",
             "host": "主机",
             "remote": "远程",
             "ssh": "ssh",
@@ -12128,7 +12128,7 @@
         "NotificationHostToggles": {
           "offCount": "{{count}} 台已关闭",
           "machines": "机器",
-          "machinesDescription": "显示各台已连接机器的通知。已配对服务器的开关也控制通过该服务器开展的工作。"
+          "machinesDescription": "选择哪些机器可以在此电脑上显示通知。已配对服务器的开关也控制通过该服务器开展的工作。"
         }
       },
       "right": {
