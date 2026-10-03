@@ -18,6 +18,7 @@ import type { AgentSessionAttachParams } from './structured-agent-session-attach
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -28,7 +29,7 @@ export type StructuredAgentSessionCaller = { callerKey: string }
 export type StructuredAgentSessionReveal = {
   sessionId: string
   workspaceId: string
-  agent: 'claude' | 'codex'
+  agent: AgentSessionHandleProvider
   readable: boolean
 }
 

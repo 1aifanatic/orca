@@ -33,7 +33,7 @@ import type { AgentSessionHandleProvider } from '../../shared/agent-session-prov
 export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
-    agent: 'claude' | 'codex'
+    agent: AgentSessionHandleProvider
   ): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }> {
     const location = await this.resolveStructuredAgentSessionLocation(worktreeSelector)
     return resolveStructuredAgentSessionCreateSupport({
@@ -50,7 +50,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   /** The saved selection a new chat here starts with. createSupport reports it too, so a client's
    *  picker shows what create will run; one resolver keeps the two from drifting. */
   structuredAgentSessionLaunchSeedOptions(
-    agent: 'claude' | 'codex'
+    agent: AgentSessionHandleProvider
   ): Record<string, string> | undefined {
     return resolveStructuredLaunchSeedOptions(
       this.requireStore().getSettings().nativeChatSessionOptions,
@@ -98,7 +98,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   async resolveStructuredAgentSessionCreateIntent(input: {
     envelope: { sessionId: string; clientOperationId: string }
     worktree: string
-    agent: 'claude' | 'codex'
+    agent: AgentSessionHandleProvider
     callerKey?: string
     resumeFrom?: { providerSessionId: string }
   }): Promise<AgentSessionAttachParams> {
@@ -161,7 +161,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     input: {
       envelope: { sessionId: string; clientOperationId: string }
       worktree: string
-      agent: 'claude' | 'codex'
+      agent: AgentSessionHandleProvider
       callerKey?: string
       resumeFrom?: { providerSessionId: string }
     },
