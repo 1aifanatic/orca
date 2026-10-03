@@ -787,3 +787,57 @@ describe('backslash mode reaches every command the user can type (#11375)', () =
     expect(plan.ok && plan.plan.args).toContain('/my dir')
   })
 })
+
+describe('OpenCode format metadata respects option terminators', () => {
+  it.each(['opencode', 'opencode2'] as const)(
+    'ignores literal recipe format values for %s',
+    (agentId) => {
+      const result = planCommitMessageGeneration(
+        {
+          agentId,
+          model: 'opencode/gpt-5.4-mini',
+          agentArgs: '--format default -- --format json'
+        },
+        'PROMPT'
+      )
+      expect(result.ok).toBe(true)
+      if (!result.ok) {
+        throw new Error(result.error)
+      }
+      expect(result.plan.args).toContain('--')
+      expect(result.plan.outputFormat).toBeUndefined()
+    }
+  )
+
+  it('ignores literal equals-form flags after a command override terminator', () => {
+    const result = planCommitMessageGeneration(
+      {
+        agentId: 'opencode',
+        model: 'opencode/gpt-5.4-mini',
+        agentCommandOverride: 'opencode --format default -- --format=json'
+      },
+      'PROMPT'
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error(result.error)
+    }
+    expect(result.plan.outputFormat).toBeUndefined()
+  })
+
+  it('retains JSON metadata for the active option before a literal default value', () => {
+    const result = planCommitMessageGeneration(
+      {
+        agentId: 'opencode',
+        model: 'opencode/gpt-5.4-mini',
+        agentArgs: '--format=json -- --format default'
+      },
+      'PROMPT'
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error(result.error)
+    }
+    expect(result.plan.outputFormat).toBe('opencode-json')
+  })
+})

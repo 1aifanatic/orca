@@ -1,4 +1,5 @@
 import { mergeCommandEnvironment } from '../shared/command-environment'
+import { PromiseSettlementWaiters } from '../shared/promise-settlement-waiters'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
@@ -115,10 +116,6 @@ export class AgentExecHandler {
   // operation lanes let cancel target only the user-visible job that stopped.
   private inFlightByLane = new Map<string, InFlightExec>()
 
-  private laneKey(cwd: string, operation: unknown): string {
-    return laneKeyFor(cwd, operation)
-  }
-
   constructor(dispatcher: RelayDispatcher) {
     dispatcher.onRequest('agent.execNonInteractive', (p, context) =>
       this.exec(p as ExecParams, context)
@@ -128,7 +125,7 @@ export class AgentExecHandler {
 
   private async cancel(params: CancelParams): Promise<{ canceled: boolean }> {
     const cwd = typeof params.cwd === 'string' ? params.cwd : ''
-    const entry = this.inFlightByLane.get(this.laneKey(cwd, params.operation))
+    const entry = this.inFlightByLane.get(laneKeyFor(cwd, params.operation))
     if (!entry) {
       return { canceled: false }
     }
@@ -146,32 +143,51 @@ export class AgentExecHandler {
     const stdinPayload = typeof params.stdin === 'string' ? params.stdin : null
     const requestedTimeout =
       typeof params.timeoutMs === 'number' ? params.timeoutMs : DEFAULT_TIMEOUT_MS
-    const timeoutMs = Math.max(1_000, Math.min(MAX_TIMEOUT_MS, requestedTimeout))
+    const deadline = Date.now() + Math.max(1_000, Math.min(MAX_TIMEOUT_MS, requestedTimeout))
     const extraEnv =
       params.env && typeof params.env === 'object' && !Array.isArray(params.env)
         ? (params.env as Record<string, string>)
         : null
     let hostEnv = process.env
     if (params.shell === true) {
-      let canceled = false
-      const key = this.laneKey(cwd ?? '', params.operation)
-      const pending = {
-        cancel: (): void => {
-          canceled = true
-        }
-      }
+      const timeoutError = new Error('Profile resolution exceeded the request deadline')
+      const controller = new AbortController()
+      const key = laneKeyFor(cwd ?? '', params.operation)
+      const pending = { cancel: (): void => controller.abort() }
       this.inFlightByLane.get(key)?.cancel()
       this.inFlightByLane.set(key, pending)
+      context?.signal?.addEventListener('abort', pending.cancel, { once: true })
+      if (context?.signal?.aborted) {
+        pending.cancel()
+      }
       try {
-        hostEnv = await resolveLoginShellEnvironment({ env: process.env })
+        hostEnv = await new PromiseSettlementWaiters(
+          resolveLoginShellEnvironment({ env: process.env })
+        ).wait({
+          signal: controller.signal,
+          timeoutMs: Math.max(1, deadline - Date.now()),
+          createTimeoutError: () => timeoutError
+        })
+      } catch (error) {
+        if (error === timeoutError) {
+          return { stdout: '', stderr: '', exitCode: null, timedOut: true }
+        }
+        if (controller.signal.aborted) {
+          return { stdout: '', stderr: '', exitCode: null, timedOut: false, canceled: true }
+        }
+        throw error
       } finally {
+        context?.signal?.removeEventListener('abort', pending.cancel)
         if (this.inFlightByLane.get(key) === pending) {
           this.inFlightByLane.delete(key)
         }
       }
-      if (canceled || context?.signal?.aborted) {
+      if (controller.signal.aborted) {
         return { stdout: '', stderr: '', exitCode: null, timedOut: false, canceled: true }
       }
+    }
+    if (Date.now() >= deadline) {
+      return { stdout: '', stderr: '', exitCode: null, timedOut: true }
     }
     const baseEnv = mergeCommandEnvironment(hostEnv, extraEnv ? {} : undefined, process.platform)
     const overrides = mergeCommandEnvironment({}, extraEnv ?? undefined, process.platform)
@@ -215,7 +231,7 @@ export class AgentExecHandler {
       let timedOut = false
       let canceled = false
       let settled = false
-      const laneKey = typeof cwd === 'string' ? this.laneKey(cwd, params.operation) : ''
+      const laneKey = typeof cwd === 'string' ? laneKeyFor(cwd, params.operation) : ''
       let entry: InFlightExec | null = null
       let timer: ReturnType<typeof setTimeout> | null = null
       let detachChildListeners = (): void => {}
@@ -253,14 +269,17 @@ export class AgentExecHandler {
         this.inFlightByLane.set(laneKey, entry)
       }
 
-      timer = setTimeout(() => {
-        timedOut = true
-        // Why: tree-kill because some CLIs trap SIGTERM and continue streaming;
-        // also Windows wraps `.cmd` shims in cmd.exe, so the immediate child
-        // is not the real node.exe process.
-        terminateRelaySubprocessTree(child)
-        finish({ stdout, stderr, exitCode: null, timedOut, canceled })
-      }, timeoutMs)
+      timer = setTimeout(
+        () => {
+          timedOut = true
+          // Why: tree-kill because some CLIs trap SIGTERM and continue streaming;
+          // also Windows wraps `.cmd` shims in cmd.exe, so the immediate child
+          // is not the real node.exe process.
+          terminateRelaySubprocessTree(child)
+          finish({ stdout, stderr, exitCode: null, timedOut, canceled })
+        },
+        Math.max(1, deadline - Date.now())
+      )
 
       const onStdoutData = (chunk: Buffer): void => {
         stdoutBytes += chunk.byteLength

@@ -277,20 +277,24 @@ export function planCommitMessageGeneration(
     promptDelivery: spec.promptDelivery,
     prompt: argvPrompt
   })
+  const generationArgs = mergeOpenCodeGenerationArgs(
+    input.agentId,
+    command.binary,
+    merged.prefixArgs,
+    args
+  )
+  const formatOption =
+    input.agentId === 'opencode' || input.agentId === 'opencode2'
+      ? findOptionOccurrence(generationArgs, ['--format'], true)
+      : null
   return {
     ok: true,
     plan: {
       binary: command.binary,
-      args: mergeOpenCodeGenerationArgs(input.agentId, command.binary, merged.prefixArgs, args),
+      args: generationArgs,
       stdinPayload: spec.promptDelivery === 'stdin' ? prompt : null,
       label: spec.label,
-      ...((input.agentId === 'opencode' || input.agentId === 'opencode2') &&
-      [...merged.prefixArgs, ...args].some(
-        (value, index, values) =>
-          value === '--format=json' || (value === '--format' && values[index + 1] === 'json')
-      )
-        ? { outputFormat: 'opencode-json' as const }
-        : {}),
+      ...(formatOption?.value === 'json' ? { outputFormat: 'opencode-json' as const } : {}),
       ...(command.env ? { env: command.env } : {})
     }
   }
