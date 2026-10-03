@@ -3581,7 +3581,7 @@
             "compact": "Compact",
             "footerDetailAria": "Usage footer detail",
             "detailedTooltip": "Uso completo con barras, etiquetas y porcentajes",
-            "compactTooltip": "Uso condensado: sólo la ventana más estrecha"
+            "compactTooltip": "Uso condensado: un resumen por proveedor"
           },
           "RemoteServerUpdateStatusSegment": {
             "updating": "Updating {{value0}}/{{value1}}",
@@ -4708,6 +4708,7 @@
           "74522ee457": "falló el cambio de nombre",
           "02e19349f4": "Error al cambiar el nombre automáticamente: ver error",
           "691ccfd622": "Eliminando…",
+          "deleteFailed": "Error al eliminar",
           "35ccfe2475": "Proyecto {{value0}}",
           "1d66d84f0b": "cadena",
           "57eaa61b55": "Ocultar espacios de trabajo secundarios",
@@ -15548,7 +15549,13 @@
     "markdownPreview": {
       "tooLarge": "El archivo supera el límite de vista previa de {{limit}}. Abre el archivo para ver su código fuente.",
       "tooLargeInDiff": "El archivo supera el límite de vista previa de {{limit}}. Cambia al modo fuente para ver las diferencias.",
-      "renderAnyway": "Renderizar de todos modos"
+      "blockTooLarge": "Este bloque es demasiado grande para renderizarlo. Abre la vista de código fuente para leerlo.",
+      "largeNotice": "Vista previa grande. Usa la vista de código fuente para copiar el documento completo. La exportación a PDF no está disponible.",
+      "processingFailed": "Este documento supera los límites de la vista previa. Abre la vista de código fuente para leer el archivo completo.",
+      "preparing": "Preparando vista previa…",
+      "searching": "Buscando…",
+      "searchFailed": "La búsqueda no pudo finalizar. Inténtalo de nuevo.",
+      "refreshFailed": "No se pudo actualizar la vista previa. Se muestra la versión anterior; abre la vista de código para ver el contenido actual."
     }
   }
 }
