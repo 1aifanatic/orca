@@ -1,4 +1,5 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 
@@ -75,4 +76,40 @@ export function listPersistedSessionTabs(
     })
   }
   return [...tabs.values()]
+}
+
+type TabSessions = ReadonlyMap<string, { child?: unknown }>
+
+/** The host's chat-tab surface; reads `host.deps` per call, so it sees the host's wrapped deps. */
+export function createStructuredAgentSessionTabSurface(
+  host: Parameters<typeof setStructuredAgentSessionTabVisibility>[0] & {
+    deps: Parameters<typeof listPersistedSessionTabs>[0] & {
+      store: Pick<
+        AgentSessionRecordStore,
+        'getVisibleSessionTabIndex' | 'getSessionTabId' | 'showSessionTabs'
+      >
+    }
+  },
+  sessions: TabSessions,
+  forgetStatus: (sessionId: string) => void
+) {
+  return {
+    /** From the record store and the given tab ids; opens no conversation. */
+    listSessionTabs: (ids: readonly string[]) => listPersistedSessionTabs(host.deps, ids),
+    getPersistedVisibleSessionTabIndex: () => host.deps.store.getVisibleSessionTabIndex(),
+    getSessionTabId: (sessionId: string): string | null =>
+      host.deps.store.getSessionTabId(sessionId),
+    showSessionTabs: (sessionIds: readonly string[]) => host.deps.store.showSessionTabs(sessionIds),
+    setSessionTabVisibility: async (
+      sessionId: string,
+      visible: boolean,
+      tabId?: string
+    ): Promise<void> => {
+      await setStructuredAgentSessionTabVisibility(host, sessionId, visible, tabId)
+      // The tab edge of the row's lifetime; the handle close is the other.
+      if (!visible && !sessions.get(sessionId)?.child) {
+        forgetStatus(sessionId)
+      }
+    }
+  }
 }
