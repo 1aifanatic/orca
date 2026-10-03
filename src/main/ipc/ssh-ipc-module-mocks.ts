@@ -143,6 +143,11 @@ export function createSshIpcMocks(): SshIpcMocks {
       installSshPtySourceAckPublisher: vi.fn().mockReturnValue(() => {}),
       installSshPtySourceCancellationPublisher: vi.fn().mockReturnValue(() => {})
     },
+    // Null keeps today's relay path; the real decision is covered by its own tests.
+    hostServerConnect: {
+      decideHostServer: vi.fn(async () => null),
+      publishManagedServerConnect: vi.fn()
+    },
     sshConnectionStore: {
       isRuntimeOwnedSshTarget: (target: { owner?: unknown }) => target.owner !== undefined,
       isManagedOrcadSshTarget: (target: { orcadFence?: unknown; orcadProvisioning?: unknown }) =>

@@ -15,6 +15,7 @@ import {
 import { isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
 import { getSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshPlainSshMode } from '../ssh/ssh-plain-ssh-mode'
+import { getSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
@@ -51,13 +52,15 @@ function withSshRemotePlatform(targetId: string, state: SshConnectionState): Ssh
   const remotePlatform = activeSessions.get(targetId)?.getHostPlatform()?.os
   const authority = getSshProviderAuthority(targetId)
   const plainSsh = state.status === 'connected' ? getSshPlainSshMode(targetId) : undefined
+  const managedServer = state.managedServer ?? getSshHostServerStatus(targetId)
   return {
     ...state,
     targetId,
     providerEpoch: authority.providerEpoch,
     connectionGeneration: authority.connectionGeneration,
     ...(remotePlatform ? { remotePlatform } : {}),
-    ...(plainSsh ? { plainSsh } : {})
+    ...(plainSsh ? { plainSsh } : {}),
+    ...(managedServer ? { managedServer } : {})
   }
 }
 

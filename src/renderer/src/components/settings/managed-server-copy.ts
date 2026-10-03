@@ -1,6 +1,5 @@
 /** User-facing words for managed-server states; every string goes through the catalog. */
 import type {
-  OrcadManagedConversionPreview,
   OrcadManagedPendingMigrationRow,
   OrcadManagedRuntimeStatus
 } from '../../../../shared/orcad-managed-runtime'
@@ -105,44 +104,4 @@ export function conversionBlockerLabel(blocker: OrcadMigrationBlocker): string {
         { sources: blocker.sources.map(dependencyKindLabel).join(', ') }
       )
   }
-}
-
-export function conversionMovesSummary(moves: OrcadManagedConversionPreview['moves']): string[] {
-  const lines = [
-    translate(
-      'auto.components.settings.managedServers.moves.repositories',
-      'Repositories: {{count}}',
-      {
-        count: moves.repositories
-      }
-    ),
-    translate(
-      'auto.components.settings.managedServers.moves.folderWorkspaces',
-      'Folder workspaces: {{count}}',
-      { count: moves.folderWorkspaces }
-    ),
-    translate(
-      'auto.components.settings.managedServers.moves.projectGroups',
-      'Project groups: {{count}}',
-      {
-        count: moves.projectGroups
-      }
-    ),
-    translate(
-      'auto.components.settings.managedServers.moves.automations',
-      'Automations: {{count}}',
-      {
-        count: moves.automations
-      }
-    )
-  ]
-  if (moves.workspaceSession) {
-    lines.push(
-      translate(
-        'auto.components.settings.managedServers.moves.session',
-        'Closed tabs and saved layouts'
-      )
-    )
-  }
-  return lines
 }
