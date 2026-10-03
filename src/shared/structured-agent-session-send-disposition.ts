@@ -33,8 +33,15 @@ import {
 export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
-  error: string | null
+  error: AgentSessionWriteNoticePart[] | null
 }
+
+/** A message this client couldn't store to send; the composer's draft or the row's Retry still
+ *  has it. */
+export const STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED: readonly AgentSessionWriteNoticePart[] = [
+  'messageNotSaved',
+  'tryAgain'
+]
 
 type SendDispositionInput = {
   entries: readonly StructuredAgentSessionOutboxEntry[]
@@ -249,7 +256,7 @@ export function disposeStructuredAgentSessionSendResult(
   if (refusedRedelivery(input.entry, submission)) {
     return {
       entries: dropEntry(input),
-      error: 'Message delivery is unconfirmed and Orca will not send it again'
+      error: ['sendOutcomeLost']
     }
   }
   if (submission.dispatchState === 'accepted') {

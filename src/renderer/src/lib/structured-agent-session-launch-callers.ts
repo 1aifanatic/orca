@@ -4,6 +4,8 @@ import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-sess
 import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 
 export type StructuredAgentLaunchOptions = {
   prompt?: string
@@ -14,6 +16,10 @@ export type StructuredAgentLaunchOptions = {
   /** Adopt an existing provider conversation instead of starting a fresh one. Part of the launch's
    *  identity, not a preference — see `launchIdentity`. */
   resumeFrom?: StructuredAgentSessionResumeSource
+  /** The host the route decided on; read only by the caller that starts the launch. */
+  executionHostId?: ExecutionHostId
+  /** The saved selection a paired host reported it will seed; read only by the starting caller. */
+  hostSeedOptions?: Readonly<Record<string, string>>
 }
 
 /** Queues a launch's prompt on its chat's outbox, carrying any review reply onto its message. */
@@ -62,6 +68,7 @@ function trackPromptDelivery(
 export function addStructuredLaunchCaller(args: {
   group: StructuredLaunchCallerGroup
   launchResult: Promise<{ sessionId: string; fence: number }>
+  target: RuntimeClientTarget
   options: StructuredAgentLaunchOptions
   stagedEntry: StructuredAgentSessionOutboxEntry | null
 }): StructuredLaunchCaller {
@@ -69,6 +76,7 @@ export function addStructuredLaunchCaller(args: {
   args.group.entries.add(caller)
   const promptDeliveryResult = settleStructuredAgentLaunchPrompt({
     launchResult: args.launchResult,
+    target: args.target,
     options: args.options,
     stagedEntry: args.stagedEntry
   })
