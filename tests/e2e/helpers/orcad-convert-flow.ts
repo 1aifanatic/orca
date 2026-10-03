@@ -101,6 +101,11 @@ async function serverCall(
   return text
 }
 
+/** A path as it appears inside a JSON response: Windows backslashes arrive escaped. */
+function jsonText(value: string): string {
+  return JSON.stringify(value).slice(1, -1)
+}
+
 export type ConvertedHost = {
   targetId: string
   worktreeId: string
@@ -146,8 +151,10 @@ export async function convertThenRetire(
     (entry) => entry.orcadDeployment?.sshTargetId === host.targetId
   )
   expect(environment, 'a managed server registered for the host').toBeTruthy()
-  expect(await serverCall(page, environment!.id, 'repo.list')).toContain(host.repoPath)
-  expect(await serverCall(page, environment!.id, 'folderWorkspace.list')).toContain(host.folderPath)
+  expect(await serverCall(page, environment!.id, 'repo.list')).toContain(jsonText(host.repoPath))
+  expect(await serverCall(page, environment!.id, 'folderWorkspace.list')).toContain(
+    jsonText(host.folderPath)
+  )
   // Not asserted yet: the server lists no migrated editor tab (see the PR); logged for the fix.
   console.log(
     `[orcad-convert] server tabs ${await serverCall(page, environment!.id, 'session.tabs.list', {
@@ -181,5 +188,5 @@ export async function convertThenRetire(
     )
     .toBe(JSON.stringify({ repos: 0, folderWorkspaces: 0 }))
   expect(await managedServer(page, host.targetId)).toMatchObject({ kind: 'managed' })
-  expect(await serverCall(page, environment!.id, 'repo.list')).toContain(host.repoPath)
+  expect(await serverCall(page, environment!.id, 'repo.list')).toContain(jsonText(host.repoPath))
 }
