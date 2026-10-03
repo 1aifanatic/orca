@@ -35,14 +35,15 @@ export type MobileNativeChatSession = {
    *  wait for this to clear. */
   transcriptLoading: boolean
   error?: string
+  /** The read failed for good (damage, or a newer Orca's chat): the error says why, once, and
+   *  there is nothing to send into. */
+  readFailedFinally?: boolean
   /** True when an older page may exist (the last read filled the window). */
   hasMore: boolean
   /** Whether an older-history page is currently loading. */
   loadingEarlier: boolean
   /** Grow the window to page in older history. */
   loadEarlier: () => void
-  /** Why the host keeps this chat read-only, in words; absent on a chat that takes writes. */
-  readOnlyNotice?: string | null
 }
 
 // Small first page for a fast first paint; grows by a page as the user scrolls.

@@ -129,16 +129,6 @@ function deliveryNoticeText(
   )
 }
 
-function refusedAsWrittenByNewerOrca(
-  failure: StructuredAgentSessionOutboxEntry['lastFailure']
-): boolean {
-  return (
-    failure?.kind === 'refused' &&
-    failure.code === 'agent_session_journal_unreadable' &&
-    failure.details?.reason === 'journalWrittenByNewerOrca'
-  )
-}
-
 /** Keyed by the message id the transcript renders each entry under; `agentName` is the chat's
  *  agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
@@ -150,9 +140,7 @@ export function structuredAgentSessionDeliveryNotices(
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
-  failedHere: ReadonlySet<string>,
-  /** The host refuses every write: no Retry can land. */
-  readOnly = false
+  failedHere: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -170,18 +158,14 @@ export function structuredAgentSessionDeliveryNotices(
       entry.clientMessageId === held
     ) {
       // Its own Retry is the step, so the words leave out sending again.
-      const retryControl = !readOnly && (stalledFrom === -1 || index <= stalledFrom)
-      // The composer says why a newer Orca's chat refuses writes; every other failure keeps its words.
-      const text =
-        readOnly && refusedAsWrittenByNewerOrca(entry.lastFailure)
-          ? agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
-          : deliveryNoticeText(
-              entry,
-              { agentName, retryControl },
-              rejected.get(entry.clientMessageId),
-              startFailures,
-              failedHere
-            )
+      const retryControl = stalledFrom === -1 || index <= stalledFrom
+      const text = deliveryNoticeText(
+        entry,
+        { agentName, retryControl },
+        rejected.get(entry.clientMessageId),
+        startFailures,
+        failedHere
+      )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }

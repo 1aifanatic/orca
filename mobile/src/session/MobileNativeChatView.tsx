@@ -42,10 +42,9 @@ import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeCh
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
 
-/** Why the composer input is locked: the transport is disconnected, the
- *  terminal subscription has not acknowledged its input lease yet, or the host
- *  keeps the chat read-only. */
-export type MobileNativeChatInputLockReason = 'disconnected' | 'waiting' | 'read-only'
+/** Why the composer input is locked: the transport is disconnected, or the
+ *  terminal subscription has not acknowledged its input lease yet. */
+export type MobileNativeChatInputLockReason = 'disconnected' | 'waiting'
 
 type Props = MobileQueuedSlotProps & {
   /** Raw transcript, only for telling "still loading" from "loaded and empty". */
@@ -54,6 +53,8 @@ type Props = MobileQueuedSlotProps & {
   folded: NativeChatMessage[]
   status: MobileNativeChatStatus
   error?: string
+  /** The read failed for good: the error state says why, and no composer is offered under it. */
+  readFailedFinally?: boolean
   /** Resolved agent for this chat; names the empty-state copy (desktop parity). */
   agent?: string | null
   agentWorking?: boolean
@@ -110,8 +111,6 @@ type Props = MobileQueuedSlotProps & {
   sendErrorMessage?: string | null
   /** Clears `sendErrorMessage` once a later send is accepted. */
   onClearSendError?: () => void
-  /** Why the host keeps this chat read-only: the placeholder of a `read-only` lock. */
-  readOnlyNotice?: string | null
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
   /** Model/session-option pickers for the composer action row (desktop parity). */
@@ -148,6 +147,7 @@ export function MobileNativeChatView({
   folded,
   status,
   error,
+  readFailedFinally = false,
   agent,
   agentWorking,
   canStop = agentWorking,
@@ -181,7 +181,6 @@ export function MobileNativeChatView({
   inputLockReason,
   sendErrorMessage,
   onClearSendError,
-  readOnlyNotice = null,
   filePaths,
   onNeedFiles,
   sessionOptions,
@@ -310,9 +309,7 @@ export function MobileNativeChatView({
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
   const showLoading = status === 'loading' && messages.length === 0
 
-  // A read-only lock lasts, so it needs no settling; a transport lock outranks it.
-  const lockReason =
-    useSettledMobileNativeChatInputLock(inputLockReason) ?? (readOnlyNotice ? 'read-only' : null)
+  const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
@@ -394,7 +391,6 @@ export function MobileNativeChatView({
         onRespondPermission={onRespondPermission}
         question={question}
         onAnswerQuestion={onAnswerQuestion}
-        disabled={readOnlyNotice !== null}
       />
       <View style={styles.chromeRow}>
         <View style={styles.chromeLeft}>
@@ -434,38 +430,41 @@ export function MobileNativeChatView({
           <Text style={styles.sendErrorText}>{sendErrorMessage}</Text>
         </View>
       ) : null}
-      <MobileNativeChatComposer
-        structuredCommands={
-          structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined
-        }
-        value={composerText}
-        onChangeText={onComposerTextChange}
-        onSend={handleSend}
-        sendSurfaceId={sendSurfaceId}
-        {...{ getSendCompletionGeneration, getComposerEditGeneration, inputRef }}
-        agent={agent}
-        sessionOptions={sessionOptions}
-        onAttachImage={onAttachImage}
-        attachments={attachments}
-        onRemoveAttachment={onRemoveAttachment}
-        isAttaching={isAttaching}
-        onMicPress={onMicPress}
-        micActive={micActive}
-        dictationMode={dictationMode}
-        onMicPressIn={onMicPressIn}
-        onMicPressOut={onMicPressOut}
-        disabled={lockReason !== null}
-        readOnly={lockReason === 'read-only'}
-        placeholder={
-          lockReason === 'disconnected'
-            ? 'Reconnecting…'
-            : lockReason === 'waiting'
-              ? 'Waiting for terminal…'
-              : (readOnlyNotice ?? 'Message, @files, /commands')
-        }
-        filePaths={filePaths}
-        onNeedFiles={onNeedFiles}
-      />
+      {readFailedFinally ? null : (
+        <MobileNativeChatComposer
+          structuredCommands={
+            structuredActivityUi
+              ? (sessionOptions?.controller.conversationCommands ?? [])
+              : undefined
+          }
+          value={composerText}
+          onChangeText={onComposerTextChange}
+          onSend={handleSend}
+          sendSurfaceId={sendSurfaceId}
+          {...{ getSendCompletionGeneration, getComposerEditGeneration, inputRef }}
+          agent={agent}
+          sessionOptions={sessionOptions}
+          onAttachImage={onAttachImage}
+          attachments={attachments}
+          onRemoveAttachment={onRemoveAttachment}
+          isAttaching={isAttaching}
+          onMicPress={onMicPress}
+          micActive={micActive}
+          dictationMode={dictationMode}
+          onMicPressIn={onMicPressIn}
+          onMicPressOut={onMicPressOut}
+          disabled={lockReason !== null}
+          placeholder={
+            lockReason === 'disconnected'
+              ? 'Reconnecting…'
+              : lockReason === 'waiting'
+                ? 'Waiting for terminal…'
+                : 'Message, @files, /commands'
+          }
+          filePaths={filePaths}
+          onNeedFiles={onNeedFiles}
+        />
+      )}
     </View>
   )
 }

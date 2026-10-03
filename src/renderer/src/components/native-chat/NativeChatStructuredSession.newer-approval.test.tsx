@@ -61,7 +61,6 @@ it("hands the card a newer Orca's subject in a writable chat, and its cancel goe
     />
   )
   expect(mocks.approvalCardProps).toMatchObject({
-    disabled: false,
     approval: { subject: { kind: 'diff' } }
   })
   expect(mocks.approvalCardProps?.approval).not.toHaveProperty('detail')
@@ -107,8 +106,7 @@ it('keeps the composer open and writable beside a card this build cannot answer'
   mocks.promptItems = [NEWER_APPROVAL]
   renderSession()
   expect(mocks.composerProps).not.toBeNull()
-  expect(mocks.composerProps?.lockReason).toBeUndefined()
-  expect(mocks.approvalCardProps).toMatchObject({ disabled: false, shouldFocus: false })
+  expect(mocks.approvalCardProps).toMatchObject({ shouldFocus: false })
 })
 
 it('gives a card this build can answer the composer slot', () => {

@@ -114,7 +114,7 @@ describe("a Stop's event and a Resume", () => {
   // such an epoch as it stands.
   it('fold as history in an epoch an older build founded after deleting rows', () => {
     expect(fold(epochWith('unreconcilable_prefix', ['stop', 'resume']))).toMatchObject({
-      readOnly: false,
+      newer: null,
       damage: null,
       state: { lastSequence: 3 }
     })

@@ -78,32 +78,6 @@ describe('NativeChatApprovalCard', () => {
     })
   })
 
-  it('a disabled card shows the request with nothing to press, and Escape cancels nothing', () => {
-    const onChoose = vi.fn()
-    const onCancel = vi.fn()
-    render(
-      <NativeChatApprovalCard
-        approval={{
-          title: 'Allow command?',
-          detail: 'pnpm test',
-          options: [{ label: 'Allow', send: 'allow' }]
-        }}
-        onChoose={onChoose}
-        onCancel={onCancel}
-        disabled
-      />
-    )
-    expect(screen.getByText('pnpm test')).toBeTruthy()
-    for (const name of ['Allow', 'Cancel']) {
-      const button = screen.getByRole('button', { name })
-      expect(button.hasAttribute('disabled')).toBe(true)
-      fireEvent.click(button)
-    }
-    fireEvent.keyDown(screen.getByRole('group', { name: 'Allow command?' }), { key: 'Escape' })
-    expect(onChoose).not.toHaveBeenCalled()
-    expect(onCancel).not.toHaveBeenCalled()
-  })
-
   it('exposes cancellation while it owns the composer region', () => {
     const onCancel = vi.fn()
 

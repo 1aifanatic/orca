@@ -14,8 +14,6 @@ type Props = {
   question: MobileChatQuestion
   onAnswer: (text: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatQuestion['prompt']>) => Promise<boolean>
-  /** Shown but not answerable: the host refuses every answer. */
-  disabled?: boolean
 }
 
 /** Renders an agent's choice prompt as a tappable card. Single-select answers
@@ -25,13 +23,11 @@ type Props = {
 export function MobileNativeChatQuestion({
   question,
   onAnswer,
-  onCancel,
-  disabled = false
+  onCancel
 }: Props): React.JSX.Element {
   const [selectedOptionIndexes, setSelectedOptionIndexes] = useState<number[]>([])
   const [freeText, setFreeText] = useState('')
-  const [inFlight, setSending] = useState(false)
-  const sending = inFlight || disabled
+  const [sending, setSending] = useState(false)
   const sendingRef = useRef(false)
   const allowOther = question.allowOther !== false
 
@@ -137,11 +133,9 @@ export function MobileNativeChatQuestion({
                 style={({ pressed }) => [
                   styles.option,
                   isSelected && styles.optionSelected,
-                  pressed && styles.pressed,
-                  disabled && styles.disabled
+                  pressed && styles.pressed
                 ]}
                 onPress={() => (question.multiSelect ? toggle(optIndex) : answerSingle(optIndex))}
-                disabled={disabled}
               >
                 {question.multiSelect ? (
                   <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
@@ -189,7 +183,6 @@ export function MobileNativeChatQuestion({
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.accentBlue}
             onSubmitEditing={submitFreeText}
-            editable={!disabled}
             returnKeyType="send"
             multiline
           />
@@ -324,8 +317,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7
-  },
-  disabled: {
-    opacity: 0.5
   }
 })

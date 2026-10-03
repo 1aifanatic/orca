@@ -29,7 +29,6 @@ export type NativeChatComposerFieldProps = {
   disabled: boolean
   hasPty: boolean
   canSend: boolean
-  lockReason?: string
   autocomplete: ComposerAutocomplete
   activeSuggestion: number
   notice: string | null
@@ -59,7 +58,6 @@ export type NativeChatComposerFieldProps = {
   onStop?: () => void
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
-  sessionOptionsDisabled?: boolean
   contextUsage?: NativeChatContextUsageSummary | null
   sessionOptionsPickerRequest?: NativeChatOptionPickerRequest | null
   goalMode?: NativeChatComposerGoalMode
@@ -105,7 +103,6 @@ export function NativeChatComposerField({
   disabled,
   hasPty,
   canSend,
-  lockReason,
   autocomplete,
   activeSuggestion,
   notice,
@@ -135,7 +132,6 @@ export function NativeChatComposerField({
   onStop,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
-  sessionOptionsDisabled,
   contextUsage,
   sessionOptionsPickerRequest,
   goalMode
@@ -265,14 +261,13 @@ export function NativeChatComposerField({
                   ? `${pickerListboxId}-option-${Math.min(activeSuggestion, autocomplete.items.length - 1)}`
                   : undefined
               }
-              placeholderWhenDisabled={lockReason !== undefined}
               placeholder={
                 goalMode?.active
                   ? translate(
                       'components.native-chat.goal.placeholder',
                       'Describe your goal, define measurable outcomes for best results'
                     )
-                  : nativeChatComposerPlaceholder(hasPty, canSend, lockReason)
+                  : nativeChatComposerPlaceholder(hasPty, canSend)
               }
               // Why: coarse-pointer min-height follows the app's touch target convention.
               // Editable content grows naturally; the 8lh cap (plus
@@ -301,7 +296,6 @@ export function NativeChatComposerField({
                 onStop={onStop}
                 sessionOptionsSurface={sessionOptionsSurface}
                 sessionOptionsSnapshot={sessionOptionsSnapshot}
-                sessionOptionsDisabled={sessionOptionsDisabled}
                 contextUsage={contextUsage}
                 sessionOptionsPickerRequest={sessionOptionsPickerRequest}
                 onExitGoalMode={goalMode?.active ? goalMode.exit : undefined}

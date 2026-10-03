@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   composerIsComposing: null as (() => boolean) | null,
   attachmentIsComposing: null as (() => boolean) | null,
   flushPendingAttachments: vi.fn(),
-  voice: ((): { enabled: boolean; sttModel?: string } => ({ enabled: false }))(),
   fieldProps: null as {
     onSend?: () => void
     onStop?: () => void
@@ -58,7 +57,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../store', () => {
   const state = {
     dictationState: 'idle',
-    settings: { voice: mocks.voice, nativeChatSessionOptions: {} },
+    settings: { voice: { enabled: false }, nativeChatSessionOptions: {} },
     agentStatusByPaneKey: {},
     updateSettings: vi.fn(),
     clearNativeChatLaunchDraft: mocks.clearNativeChatLaunchDraft,
@@ -157,29 +156,6 @@ vi.mock('./use-native-chat-send-lifecycle', () => ({
 }))
 
 import { NativeChatComposer } from './NativeChatComposer'
-import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
-
-/** A structured transport whose parts a test does not inspect. */
-function structuredTransport(
-  overrides: Partial<NativeChatStructuredComposerTransport> = {}
-): NativeChatStructuredComposerTransport {
-  return {
-    send: vi.fn(() => true),
-    dispatchCommand: vi.fn(async () => ({ handled: false, accepted: false, error: null })),
-    optionsSurface: {
-      getSnapshot: () => [],
-      setOption: vi.fn(),
-      invokeAction: vi.fn(),
-      subscribe: () => () => {}
-    },
-    optionSnapshot: [],
-    onError: vi.fn(),
-    runtime: 'local',
-    sessionId: 'session-test',
-    runtimeEnvironmentId: null,
-    ...overrides
-  }
-}
 
 describe('NativeChatComposer', () => {
   beforeEach(() => {
@@ -288,20 +264,39 @@ describe('NativeChatComposer', () => {
   })
 
   it('routes structured sends and hydrated options through the existing composer', async () => {
+    const send = vi.fn(() => true)
+    const dispatchCommand = vi.fn(async () => ({
+      handled: false,
+      accepted: false,
+      error: null
+    }))
+    const optionsSurface = {
+      getSnapshot: () => [],
+      setOption: vi.fn(),
+      invokeAction: vi.fn(),
+      subscribe: () => () => {}
+    } satisfies SessionOptionsSurface
     const optionSnapshot = [{ id: 'model' }] as SessionOptionDescriptor[]
-    const transport = structuredTransport({ optionSnapshot })
-    const { send, dispatchCommand } = transport
     render(
       <NativeChatComposer
         terminalTabId="tab-1"
         paneKey="tab-1:structured"
         targetPtyId={null}
         agent="codex"
-        structuredTransport={transport}
+        structuredTransport={{
+          send,
+          dispatchCommand,
+          optionsSurface,
+          optionSnapshot,
+          onError: vi.fn(),
+          runtime: 'local',
+          sessionId: 'session-test',
+          runtimeEnvironmentId: null
+        }}
       />
     )
 
-    expect(mocks.fieldProps?.sessionOptionsSurface).toBe(transport.optionsSurface)
+    expect(mocks.fieldProps?.sessionOptionsSurface).toBe(optionsSurface)
     expect(mocks.fieldProps?.sessionOptionsSnapshot).toBe(optionSnapshot)
     expect(mocks.fieldProps?.attachDisabled).toBe(false)
     await act(async () => mocks.fieldProps?.onSend?.())
@@ -310,45 +305,6 @@ describe('NativeChatComposer', () => {
     expect(send).toHaveBeenCalledWith('hello', [])
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
     expect(mocks.setDraft).toHaveBeenCalledWith('')
-  })
-
-  it("locks a structured composer's options and dictation with it, never a terminal composer's options", () => {
-    mocks.voice.enabled = true
-    mocks.voice.sttModel = 'model'
-    const { unmount } = render(
-      <NativeChatComposer
-        terminalTabId="tab-1"
-        paneKey="tab-1:structured-locked"
-        targetPtyId={null}
-        agent="codex"
-        lockReason="Saved by a newer Orca."
-        structuredTransport={structuredTransport()}
-      />
-    )
-    expect(mocks.fieldProps).toMatchObject({
-      disabled: true,
-      canSend: false,
-      lockReason: 'Saved by a newer Orca.',
-      dictationDisabled: true,
-      sessionOptionsDisabled: true
-    })
-    unmount()
-    render(
-      <NativeChatComposer
-        terminalTabId="tab-1"
-        paneKey="tab-1:pty-locked"
-        targetPtyId="pty-1"
-        agent="codex"
-        canSend={false}
-      />
-    )
-    expect(mocks.fieldProps).toMatchObject({
-      disabled: true,
-      dictationDisabled: false,
-      sessionOptionsDisabled: false
-    })
-    mocks.voice.enabled = false
-    delete mocks.voice.sttModel
   })
 
   // The structured menu offers only what a pick can carry out: the host's own
@@ -366,7 +322,21 @@ describe('NativeChatComposer', () => {
         paneKey={`tab-1:structured-${agent}`}
         targetPtyId={null}
         agent={agent}
-        structuredTransport={structuredTransport()}
+        structuredTransport={{
+          send: vi.fn(() => true),
+          dispatchCommand: vi.fn(async () => ({ handled: false, accepted: false, error: null })),
+          optionsSurface: {
+            getSnapshot: () => [],
+            setOption: vi.fn(),
+            invokeAction: vi.fn(),
+            subscribe: () => () => {}
+          },
+          optionSnapshot: [],
+          onError: vi.fn(),
+          runtime: 'local',
+          sessionId: 'session-test',
+          runtimeEnvironmentId: null
+        }}
       />
     )
 
@@ -387,7 +357,26 @@ describe('NativeChatComposer', () => {
         paneKey="tab-1:structured"
         targetPtyId={null}
         agent="codex"
-        structuredTransport={structuredTransport({ send, worktreeId: 'wt-1' })}
+        structuredTransport={{
+          send,
+          dispatchCommand: vi.fn(async () => ({
+            handled: false,
+            accepted: false,
+            error: null
+          })),
+          optionsSurface: {
+            getSnapshot: () => [],
+            setOption: vi.fn(),
+            invokeAction: vi.fn(),
+            subscribe: () => () => {}
+          },
+          optionSnapshot: [],
+          worktreeId: 'wt-1',
+          onError: vi.fn(),
+          runtime: 'local',
+          sessionId: 'session-test',
+          runtimeEnvironmentId: null
+        }}
       />
     )
 

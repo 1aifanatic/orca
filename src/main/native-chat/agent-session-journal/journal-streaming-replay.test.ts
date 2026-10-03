@@ -117,13 +117,13 @@ describe('streaming journal replay', () => {
     expect(checkpoints.map((entry) => entry.busy)).toEqual([0, 0])
   })
 
-  it('reads past a gap to a future row, which latches read-only with no damage named', () => {
+  it('reads past a gap to a future row, which names the newer row and no damage', () => {
     put(anchor())
     put(revision(2))
     put(revision(4))
     put({ ...revision(5), v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1 })
     const loaded = replayJournal(opened.db, sessionId)!
-    expect(loaded).toMatchObject({ readOnly: true, damage: null })
+    expect(loaded).toMatchObject({ newer: { sequence: 5 }, damage: null })
     expect(loaded.state.items.get('message-1')?.revision).toBe(2)
     expect(loaded.state.lastSequence).toBe(2)
     const checkpoint = opened.db.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]
@@ -137,7 +137,7 @@ describe('streaming journal replay', () => {
     insertTestJournalRowJson(opened.db, sessionId, 5, '{')
     const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({
-      readOnly: false,
+      newer: null,
       damage: { sequence: 3, cause: 'sequence-gap' }
     })
     expect(loaded.state.lastSequence).toBe(2)
@@ -148,7 +148,7 @@ describe('streaming journal replay', () => {
     put(revision(3))
     const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({
-      readOnly: false,
+      newer: null,
       damage: { sequence: 1, cause: 'no-epoch-row' }
     })
     expect(loaded.state.items.size).toBe(0)

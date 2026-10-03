@@ -4,7 +4,8 @@
 // There is no snapshot to anchor to and no superseded-epoch rows to drop — a
 // roll deletes them in the same transaction that publishes the new epoch. A row
 // this build cannot parse, a gap, or a first row that is not the epoch's is
-// damage: the load names it and the open fails on it. Nothing is deleted.
+// damage, and a row a newer Orca wrote is one this build cannot place: the load
+// names either and the open fails on it. Nothing is deleted.
 
 import type Database from '../../sqlite/sync-database'
 import {
@@ -31,8 +32,9 @@ export type JournalDamage = {
 
 export type JournalLoad = {
   state: JournalReducerState
-  /** A row from a future schema, or of a kind this build does not know, was met: no writes. */
-  readOnly: boolean
+  /** The first row a newer Orca wrote: a future row version, or a row kind this build does not
+   *  know. Only an update opens the chat. */
+  newer: { sequence: number } | null
   /** Set when the history is damaged; a newer build's row wins over damage beside it. */
   damage: JournalDamage | null
 }
@@ -62,17 +64,17 @@ export function startJournalRowFold(input: { sessionId: string; epoch: string })
   let expectedSequence = FIRST_JOURNAL_SEQUENCE
   let damage: JournalDamage | null = null
   let anchored = false
-  let latched = false
+  let newer: { sequence: number } | null = null
   let empty = true
 
   const add = (entry: { seq: number; rowJson: string }): boolean => {
     empty = false
     const parsed = parseJournalRow(entry.rowJson)
     if (!parsed.ok && parsed.unreadable) {
-      latched = true
+      newer = { sequence: entry.seq }
       return false
     }
-    // Damage is read past, so a newer build's row further on still latches read-only.
+    // Damage is read past, so a newer build's row further on still says to update.
     if (!parsed.ok) {
       damage ??= { sequence: entry.seq, cause: 'unparseable-row' }
       return true
@@ -108,7 +110,7 @@ export function startJournalRowFold(input: { sessionId: string; epoch: string })
       (anchored || empty
         ? null
         : { sequence: FIRST_JOURNAL_SEQUENCE, cause: 'no-epoch-row' as const })
-    return { state, readOnly: latched, damage: latched ? null : found }
+    return { state, newer, damage: newer ? null : found }
   }
   return { add, finish }
 }

@@ -8,17 +8,10 @@ import {
   journalFileFormatRemnantDisclosure
 } from './journal-file-format-remnant'
 import type { JournalLoad } from './journal-open'
-import { failLoadOnJournalDamage } from './journal-open-failure'
+import { failLoadOnUnloadableJournal } from './journal-open-failure'
 import { staleSubagentRosterRevisions } from './journal-subagent-liveness'
 
 type JournalDisclosure = ReturnType<typeof journalFileFormatRemnantDisclosure>
-
-export function journalStoreLoadedFields(loaded: JournalLoad) {
-  return {
-    state: loaded.state,
-    readOnly: loaded.readOnly
-  }
-}
 
 export async function openJournalStoreState(input: {
   sessionId: string
@@ -33,17 +26,16 @@ export async function openJournalStoreState(input: {
   ) => Promise<unknown>
   agent: AgentType
   highestFence: () => number
-  readOnly: () => boolean
 }): Promise<void> {
   const loaded = input.replay()
   // An epoch named but holding no row (a crash inside an older build's repair) has nothing to
   // keep, so it is founded afresh like a chat with no journal; no row is deleted.
-  if (!loaded || (!loaded.readOnly && !loaded.damage && loaded.state.lastSequence === 0)) {
+  if (!loaded || (!loaded.newer && !loaded.damage && loaded.state.lastSequence === 0)) {
     input.start()
     await discloseFileFormatRemnant(input)
     return
   }
-  failLoadOnJournalDamage(input.sessionId, loaded)
+  failLoadOnUnloadableJournal(input.sessionId, loaded)
   input.adopt(loaded)
   await settleStaleSubagentRosters(input, loaded)
   // Founding the epoch and appending the row are two transactions, and a
@@ -68,11 +60,7 @@ async function discloseFileFormatRemnant(input: {
     fence: number
   ) => Promise<unknown>
   highestFence: () => number
-  readOnly: () => boolean
 }): Promise<void> {
-  if (input.readOnly()) {
-    return
-  }
   const transcriptPath = findJournalFileFormatRemnant(input.legacyDirectory)
   if (!transcriptPath) {
     return
@@ -90,13 +78,9 @@ async function settleStaleSubagentRosters(
       fence: number
     ) => Promise<unknown>
     highestFence: () => number
-    readOnly: () => boolean
   },
   loaded: JournalLoad
 ): Promise<void> {
-  if (input.readOnly()) {
-    return
-  }
   for (const revision of staleSubagentRosterRevisions(loaded.state.items.values())) {
     await input.appendItem(revision.identity, revision.body, input.highestFence())
   }

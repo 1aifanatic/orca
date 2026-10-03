@@ -40,8 +40,6 @@ export type NativeChatSessionOptionPickersProps = {
   surface: SessionOptionsSurface | null
   snapshot: SessionOptionDescriptor[]
   isWorking: boolean
-  /** The host refuses every change: the pickers stay shown, closed. */
-  disabled?: boolean
   pickerRequest?: NativeChatOptionPickerRequest | null
 }
 
@@ -238,7 +236,6 @@ function NativeChatSessionOptionPickersInner({
   surface,
   snapshot,
   isWorking,
-  disabled = false,
   pickerRequest
 }: NativeChatSessionOptionPickersProps): React.JSX.Element | null {
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -271,13 +268,12 @@ function NativeChatSessionOptionPickersInner({
     <div className="flex min-w-0 items-center gap-0.5">
       <DropdownMenu
         key={`model:${requestedModelSequence ?? 'idle'}`}
-        // Keyed by the request alone: a lock lifting must not remount, and so reopen, an old one.
-        defaultOpen={!disabled && requestedModelSequence !== null}
+        defaultOpen={requestedModelSequence !== null}
       >
         <PickerTrigger
           label={nativeChatModelPillLabel(model)}
           tooltipLabel={modelTooltip}
-          disabled={disabled || isWorking || pendingId !== null}
+          disabled={isWorking || pendingId !== null}
           disabledReason={modelReason}
           dispatched={sessionOptionDispatchUnconfirmed(model)}
         />
@@ -287,7 +283,7 @@ function NativeChatSessionOptionPickersInner({
           ) : null}
           <DescriptorMenuRows
             descriptor={model}
-            pending={disabled || pendingId !== null}
+            pending={pendingId !== null}
             setValue={(value) => setOption(model, value)}
             invokeAction={() => invokeAction(model)}
           />
@@ -296,12 +292,12 @@ function NativeChatSessionOptionPickersInner({
       {options.length > 0 ? (
         <DropdownMenu
           key={`options:${requestedOptionsSequence ?? 'idle'}`}
-          defaultOpen={!disabled && requestedOptionsSequence !== null}
+          defaultOpen={requestedOptionsSequence !== null}
         >
           <PickerTrigger
             label={nativeChatOptionsPillLabel(options)}
             tooltipLabel={optionsTooltip}
-            disabled={disabled || isWorking || pendingId !== null}
+            disabled={isWorking || pendingId !== null}
             disabledReason={optionsReason}
             dispatched={options.some(sessionOptionDispatchUnconfirmed)}
           />
@@ -321,7 +317,7 @@ function NativeChatSessionOptionPickersInner({
                   ) : null}
                   <DescriptorMenuRows
                     descriptor={descriptor}
-                    pending={disabled || pendingId !== null}
+                    pending={pendingId !== null}
                     setValue={(value) => setOption(descriptor, value)}
                     invokeAction={() => invokeAction(descriptor)}
                   />

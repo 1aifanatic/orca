@@ -33,8 +33,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   historyUnavailable: "Orca couldn't open this chat's history right now.",
   savedByNewerOrca: 'Chats were saved by a newer Orca.',
   updateOrcaToKeepUsing: 'Update Orca to keep using them.',
-  chatSavedByNewerOrca: 'Saved by a newer Orca.',
-  updateOrcaToContinueChat: 'Update Orca to continue this chat.',
+  chatSavedByNewerOrca: 'This chat was saved by a newer Orca.',
+  updateOrcaToOpenChat: 'Update Orca to open it.',
   unsupported: "The Orca running this chat doesn't support this. Update Orca, then try again.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't record it in this chat's history.",
@@ -85,7 +85,13 @@ export type AgentSessionWriteNoticePart =
 /** Causes that already say the history can't be read here, so no sentence after them says it
  *  again. */
 export const AGENT_SESSION_HISTORY_UNREAD_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> =
-  new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable', 'savedByNewerOrca'])
+  new Set([
+    'historyUnusable',
+    'historyUnavailable',
+    'historyUnreadable',
+    'savedByNewerOrca',
+    'chatSavedByNewerOrca'
+  ])
 
 /** Whether these words already say this chat's history didn't load, so a pane headed by them need
  *  only add that it keeps trying. "Chats were saved by a newer Orca" names no one chat for "it". */

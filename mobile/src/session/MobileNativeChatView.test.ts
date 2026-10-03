@@ -80,7 +80,6 @@ type Overrides = {
   sendErrorMessage?: string | null
   onClearSendError?: () => void
   inputLockReason?: 'disconnected' | 'waiting' | null
-  readOnlyNotice?: string | null
   onSend?: (text: string) => Promise<boolean>
   pending?: Parameters<typeof MobileNativeChatView>[0]['pending']
   structuredActivityUi?: boolean
@@ -94,6 +93,9 @@ type Overrides = {
   keyboardInset?: number
   hasMore?: boolean
   onLoadEarlier?: () => void
+  status?: Parameters<typeof MobileNativeChatView>[0]['status']
+  error?: string
+  readFailedFinally?: boolean
 }
 
 function assistantTurn(id: string, text: string): NativeChatMessage {
@@ -214,6 +216,16 @@ describe('MobileNativeChatView', () => {
       })
     })
   }
+
+  // A read that failed for good says why in the error state, once: there is nothing to send into.
+  it('offers no composer under a read that failed for good, and one under any other', async () => {
+    const composers = () => renderer!.root.findAll((node) => node.type === 'Composer')
+    await render({ status: 'error', error: 'Unable to load this chat.', readFailedFinally: true })
+    expect(composers()).toHaveLength(0)
+
+    await update({ status: 'error', error: "Orca couldn't open this chat's history right now." })
+    expect(composers()).toHaveLength(1)
+  })
 
   it('renders the route-reported failure verbatim', async () => {
     await render({ sendErrorMessage: 'Permission reply failed' })
@@ -677,18 +689,5 @@ describe('MobileNativeChatView', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-
-  it("locks a read-only chat's composer at once, with the reason as its placeholder", async () => {
-    const reason = 'Saved by a newer Orca. Update Orca to continue this chat.'
-    await render({
-      readOnlyNotice: reason,
-      structuredActivityUi: true,
-      permission: { title: 'Allow command?', options: [{ label: 'Allow', send: 'allow' }] }
-    })
-
-    expect(composer().props).toMatchObject({ disabled: true, readOnly: true, placeholder: reason })
-    const [card] = renderer!.root.findAll((node) => String(node.type) === 'ChatPermission')
-    expect(card?.props.disabled).toBe(true)
   })
 })

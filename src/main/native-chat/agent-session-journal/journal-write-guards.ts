@@ -19,8 +19,8 @@ export class AgentSessionJournalError extends Error {
   }
 }
 
-/** A journal written by a newer schema is readable but never writable: this
- *  host cannot represent rows it does not understand. */
+/** A newer Orca's database is never written: this host cannot represent rows it does not
+ *  understand. */
 export function assertJournalWritable(readOnly: boolean, sessionId: string): void {
   if (readOnly) {
     throw new AgentSessionJournalError(

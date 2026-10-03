@@ -53,8 +53,6 @@ export function MobileNativeChatOverlay({
   keyboardInset
 }: Props): React.JSX.Element | null {
   const session = controller.nativeChatSession
-  // The session's one read-only fact: every write control below reads it.
-  const readOnlyNotice = session.readOnlyNotice ?? null
   const folded = useMemo(() => foldMobileNativeChatMessages(session.messages), [session.messages])
   const streaming = useMobileNativeChatStreamingBubble(
     folded,
@@ -70,8 +68,7 @@ export function MobileNativeChatOverlay({
     onEdit: queued.edit,
     pause: queued.pause,
     onResume: queued.resume,
-    sessionKey: queued.sessionKey,
-    disabled: readOnlyNotice !== null
+    sessionKey: queued.sessionKey
   })
   if (!controller.showNativeChat) {
     return null
@@ -83,6 +80,7 @@ export function MobileNativeChatOverlay({
         folded={folded}
         status={session.status}
         error={session.error}
+        readFailedFinally={session.readFailedFinally === true}
         agent={controller.nativeChatAgent}
         agentWorking={controller.nativeChatAgentWorking}
         canStop={controller.nativeChatCanStop}
@@ -128,7 +126,6 @@ export function MobileNativeChatOverlay({
         inputLockReason={inputLockReason}
         sendErrorMessage={sendErrorMessage}
         onClearSendError={onClearSendError}
-        readOnlyNotice={readOnlyNotice}
         filePaths={controller.nativeChatFilePaths}
         onNeedFiles={controller.loadNativeChatFiles}
         sessionOptions={controller.nativeChatSessionOptions}

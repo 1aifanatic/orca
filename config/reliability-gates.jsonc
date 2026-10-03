@@ -648,8 +648,8 @@
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/native-chat/agent-session-journal/journal-open.ts"
       ],
-      "invariant": "Replay preserves latest revisions, original item order, fences, aliases, submissions, read-only schema latching over damage and cursor cleanup while retaining live items rather than all historical bodies; damage fails the load and deletes nothing.",
-      "oracle": "Replay 2,048 16 KiB revisions into one latest item with less than 8 MiB sampled live heap growth; latch future-schema rows read past a gap, name the first damage, fail a damaged load with every row kept, and hold no SQLite read snapshot across reduction (a mid-replay checkpoint is not busy). Existing journal and subscriber tests cover replayed content.",
+      "invariant": "Replay preserves latest revisions, original item order, fences, aliases, submissions, a newer schema winning over damage and cursor cleanup while retaining live items rather than all historical bodies; damage fails the load and deletes nothing.",
+      "oracle": "Replay 2,048 16 KiB revisions into one latest item with less than 8 MiB sampled live heap growth; name a future-schema row read past a gap, name the first damage, fail a damaged load with every row kept, and hold no SQLite read snapshot across reduction (a mid-replay checkpoint is not busy). Existing journal and subscriber tests cover replayed content.",
       "commands": [
         // As the 2026-09-11 evidence run ran it; the recovery test it names went with the read-time repair.
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/native-chat/agent-session-journal src/main/native-chat/agent-session-wire/agent-session-history-page.test.ts src/main/native-chat/agent-session-wire/agent-session-history-forward-read-budget.test.ts src/main/native-chat/agent-session-wire/structured-agent-session-subscribers.test.ts src/main/native-chat/agent-session-wire/agent-session-journal-recovery.test.ts",
@@ -666,7 +666,7 @@
           "assertions": [
             "releases superseded revision bodies while reducing a long journal",
             "holds no read snapshot while reducing, so a checkpoint can pass mid-replay",
-            "reads past a gap to a future row, which latches read-only with no damage named",
+            "reads past a gap to a future row, which names the newer row and no damage",
             "names the first damage when a later row is malformed too",
             "names a missing epoch row before a later gap"
           ]
@@ -675,7 +675,7 @@
           "file": "src/main/native-chat/agent-session-journal/journal-damage.test.ts",
           "assertions": [
             "fails to load and keeps every row: %s",
-            "reads past damage to a newer build's row, which keeps the chat read-only instead",
+            "reads past damage to a newer build's row, which fails the load as a newer Orca's instead",
             "is refused when it is written, and the chat still loads with every other row",
             "is founded afresh on open, with nothing deleted, and takes writes"
           ]

@@ -31,7 +31,6 @@ async function wiredSession() {
   let sequence = 0
   const journal = {
     cursor: () => ({ epoch: 'epoch-1', sequence: ++sequence }),
-    isReadOnly: false,
     lastActivityAt: () => 1,
     snapshot: () => ({
       items: [...run.journalItems.values()]

@@ -22,7 +22,8 @@ import {
   loadTestJournal,
   liveTestJournalRows,
   updateTestJournalRowJson,
-  deleteTestJournalRow
+  deleteTestJournalRow,
+  SAVED_BY_NEWER_ORCA
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -141,12 +142,12 @@ describe('a damaged chat', () => {
     withJournalDatabase((db) => deleteTestJournalRow(db, IDENTITY.sessionId, 4))
 
     expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({
-      readOnly: false,
+      newer: null,
       damage: { sequence: 4, cause: 'sequence-gap' }
     })
   })
 
-  it("reads past damage to a newer build's row, which keeps the chat read-only instead", async () => {
+  it("reads past damage to a newer build's row, which fails the load as a newer Orca's instead", async () => {
     await writeChat()
     withJournalDatabase((db) => {
       updateTestJournalRowJson(db, IDENTITY.sessionId, 3, '}{')
@@ -155,9 +156,7 @@ describe('a damaged chat', () => {
     })
     const before = storedRows()
 
-    const journal = await open()
-
-    expect(journal.isReadOnly).toBe(true)
+    await expect(open()).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
     expect(storedRows()).toEqual(before)
   })
 })
@@ -189,7 +188,6 @@ describe('a row the reader would reject', () => {
     await journal.close()
 
     const reopened = await open()
-    expect(reopened.isReadOnly).toBe(false)
     expect(reopened.snapshot().items.map((entry) => entry.body)).toEqual([
       body('before'),
       body('after')
@@ -229,7 +227,7 @@ describe('an epoch named with no rows at all', () => {
       }
     })
     expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({
-      readOnly: false,
+      newer: null,
       damage: null,
       state: { lastSequence: 0 }
     })

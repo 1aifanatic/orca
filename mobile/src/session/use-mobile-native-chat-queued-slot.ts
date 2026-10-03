@@ -31,7 +31,7 @@ export function useMobileNativeChatQueuedSlot(
   const { composerInputRef, editQueuedMessage } = useMobileNativeChatQueuedEditFocus(
     queuedMessages.onEdit
   )
-  const { cards, onSend, onDelete, pause, onResume, sessionKey, disabled } = queuedMessages
+  const { cards, onSend, onDelete, pause, onResume, sessionKey } = queuedMessages
   return useMemo(
     () => ({
       cards: createElement(MobileNativeChatQueuedMessages, {
@@ -41,21 +41,10 @@ export function useMobileNativeChatQueuedSlot(
         onDelete,
         onEdit: editQueuedMessage,
         pause,
-        onResume,
-        disabled
+        onResume
       }),
       composerInputRef
     }),
-    [
-      cards,
-      composerInputRef,
-      disabled,
-      editQueuedMessage,
-      onDelete,
-      onResume,
-      onSend,
-      pause,
-      sessionKey
-    ]
+    [cards, composerInputRef, editQueuedMessage, onDelete, onResume, onSend, pause, sessionKey]
   )
 }

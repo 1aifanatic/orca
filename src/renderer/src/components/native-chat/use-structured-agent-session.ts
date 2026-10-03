@@ -137,7 +137,6 @@ export function useStructuredAgentSession(args: {
   const threadGoal = useStructuredAgentSessionThreadGoal({
     journalItems: transportState.journalItems,
     support: threadGoalSupport,
-    writable: !transportState.readOnly,
     mutate
   })
   const contextUsage = useStructuredAgentSessionContextUsage(
@@ -158,11 +157,10 @@ export function useStructuredAgentSession(args: {
   const stopsConversation =
     useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
   const canStop =
-    !transportState.readOnly &&
-    (transportState.turnId !== null ||
-      (stopsConversation &&
-        (transportState.isWorking ||
-          hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions))))
+    transportState.turnId !== null ||
+    (stopsConversation &&
+      (transportState.isWorking ||
+        hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
@@ -180,7 +178,6 @@ export function useStructuredAgentSession(args: {
     queuePause: transportState.queuePause,
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
-    writable: !transportState.readOnly,
     composerScopeKey,
     mutate
   })
@@ -213,8 +210,6 @@ export function useStructuredAgentSession(args: {
     error: outboxController.error,
     /** The refusal the failed read met, while `status` is `error`. */
     readRefusal: transportEnabled ? state.readRefusal : undefined,
-    /** Why the host refuses every write here, in words; absent while it takes them. */
-    readOnly: transportState.readOnly,
     hasOlder: transportEnabled && state.hasOlder,
     railOutline: transportEnabled ? railOutline : null,
     loadingOlder: transportEnabled && loadingOlder,

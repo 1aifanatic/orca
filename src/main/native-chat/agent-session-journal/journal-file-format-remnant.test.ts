@@ -22,7 +22,8 @@ import {
   loadTestJournal,
   deleteTestJournalRow,
   insertTestJournalRowJson,
-  liveTestJournalRows
+  liveTestJournalRows,
+  SAVED_BY_NEWER_ORCA
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -174,9 +175,8 @@ describe('a chat whose history is still in the pre-SQLite format', () => {
     }
   })
 
-  // A journal latched by a newer row reaches the same branch — and an append into one throws,
-  // which would make the session unopenable rather than read-only.
-  it('writes nothing into a journal latched by a newer row', async () => {
+  // A newer row fails the load before the empty-epoch branch would write a notice.
+  it("writes nothing into a newer Orca's journal, whose open is refused", async () => {
     const founded = await open()
     const epoch = founded.epoch
     await founded.close()
@@ -198,10 +198,12 @@ describe('a chat whose history is still in the pre-SQLite format', () => {
     )
     await writeRemnant()
 
-    const latched = await open()
+    const before = liveTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId)
 
-    expect(latched.isReadOnly).toBe(true)
-    expect(disclosure(latched)).toBeNull()
+    await expect(open()).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
+    expect(liveTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId)).toEqual(
+      before
+    )
   })
 
   // A row nothing projects is a row nobody reads.

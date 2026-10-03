@@ -224,8 +224,7 @@ function createReadOwner(
     const transport = startStructuredAgentSessionReadTransport({
       applyEvent: (event) => apply({ type: 'event', event }),
       applyError: (message, refusal) => apply({ type: 'error', message, refusal }),
-      // A read-only chat asks for a whole page, the only frame that can say it takes writes again.
-      getCursor: () => (snapshot.state.readOnly ? null : snapshot.state.cursor),
+      getCursor: () => snapshot.state.cursor,
       onHistoryReadInvalidated: invalidateOlderPages,
       hydrate: snapshot.state.epoch === null ? hydrate : undefined,
       sessionId,

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -28,8 +28,12 @@ import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
-import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
+import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
+
+const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -110,18 +114,41 @@ export function NativeChatStructuredSession(
     }),
     [controller, props.agent, props.sessionId]
   )
-  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
-  // The session's one read-only fact, as its words (`controller.readOnly`) or as a flag here.
-  const readOnly = controller.readOnly !== undefined
-  const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
-    outbox: controller.outbox,
-    retry: controller.retry,
-    submissions: controller.submissions,
-    journalItems: controller.journalItems,
-    failedHere: controller.failedHere,
-    agentLabel,
-    readOnly
+  // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
+  const retryRef = useRef(controller.retry)
+  useEffect(() => {
+    retryRef.current = controller.retry
   })
+  const retryDelivery = useCallback((clientMessageId: string) => {
+    retryRef.current(clientMessageId)
+  }, [])
+  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
+  // Only a rejected message reads the journal's rows, so a new batch of them re-renders no row else.
+  const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
+  const rejectionRows = hasRejected ? controller.submissions : NO_SUBMISSIONS
+  const startFailures = useStructuredAgentSessionStartFailureFacts(
+    controller.journalItems,
+    hasRejected
+  )
+  const deliveryNotices = useMemo(
+    () =>
+      structuredAgentSessionDeliveryNotices(
+        controller.outbox,
+        agentLabel,
+        retryDelivery,
+        rejectionRows,
+        startFailures,
+        controller.failedHere
+      ),
+    [
+      controller.outbox,
+      agentLabel,
+      retryDelivery,
+      rejectionRows,
+      startFailures,
+      controller.failedHere
+    ]
+  )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =
     controller.status === 'error'
@@ -136,10 +163,9 @@ export function NativeChatStructuredSession(
   )
   const prompt = controller.prompts[0] ?? null
   // Prompts this build cannot answer leave the composer open: a send starts a turn, whose card
-  // cancel then works. A read-only chat shows its prompt unanswerable, above the composer that
-  // says why.
+  // cancel then works. A chat that cannot load says so once, in the pane, and offers no composer.
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
-  const composerShown = prompt === null || readOnly || promptsUnanswerable
+  const composerShown = (prompt === null || promptsUnanswerable) && !readFailure?.final
   const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
   const approval = approvalBody
     ? {
@@ -328,8 +354,7 @@ export function NativeChatStructuredSession(
           approval={approval}
           onChoose={(optionId) => void controller.respond(prompt, { kind: 'option', optionId })}
           onCancel={cancelPrompt}
-          disabled={readOnly}
-          shouldFocus={!readOnly && !promptsUnanswerable && props.isVisible && props.isFocusedGroup}
+          shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
           onLinkClick={onLinkClick}
           allowFileUriLinks={onLinkClick !== undefined}
         />
@@ -364,7 +389,6 @@ export function NativeChatStructuredSession(
             }
           }}
           onCancel={cancelPrompt}
-          disabled={readOnly}
         />
       ) : null}
       {composerShown ? (
@@ -374,7 +398,6 @@ export function NativeChatStructuredSession(
           paneKey={paneKey}
           targetPtyId={null}
           agent={props.agent}
-          lockReason={controller.readOnly}
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
           steerQueued={controller.queuedMessages.steerNewest}

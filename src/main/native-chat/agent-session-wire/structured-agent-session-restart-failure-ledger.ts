@@ -78,9 +78,6 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
   adapter: StructuredAgentSessionAdapter
   /** The predicate a retry applies to the failure's marker. */
   retryable: (marker: AgentSessionResumeMarker) => boolean
-  /** Whether the chat is a newer Orca's here (its whole database, or its open journal): its
-   *  failure is kept but not shown, since no retry can land until Orca is updated. */
-  readOnly: (sessionId: string) => boolean
   /** Makes the failed chats readable here, so `retryable` reads each one's journal. */
   reveal: (markers: readonly AgentSessionResumeMarker[]) => Promise<void>
   logger: StructuredAgentSessionLogger
@@ -104,11 +101,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     failure: AgentSessionResumeFailureRecord
   ): StructuredAgentSessionResumeFailure[] => {
     const record = deps.getRecord(failure.marker.sessionId)
-    if (
-      !record ||
-      !adapterSupportsRecord(deps.adapter, record) ||
-      deps.readOnly(failure.marker.sessionId)
-    ) {
+    if (!record || !adapterSupportsRecord(deps.adapter, record)) {
       return []
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)
@@ -160,21 +153,15 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     ])
     for (const outcome of outcomes) {
       const resumed = outcome.outcome === 'resumed'
-      // A newer Orca's refusal spends nothing: the rollback below reopens the offer for an updated
-      // Orca, and nothing is filed for a chat no retry here could continue.
-      if (
-        !resumed &&
-        outcome.reason === 'agent_session_journal_unreadable' &&
-        outcome.details?.reason === 'journalWrittenByNewerOrca'
-      ) {
-        continue
-      }
-      // Ineligible means the offer no longer applies (record gone, conversation forked), and
-      // superseded means the user's own message came first: nothing to retry, and the offer is spent.
+      // Ineligible means the offer no longer applies (record gone, conversation forked), superseded
+      // means the user's own message came first, and a newer Orca's chat is one nothing here can
+      // continue: nothing to retry, and the offer is spent without a failure.
       const failure = resumed
         ? action.failureAfterResume(outcome.sessionId)
         : outcome.reason === STRUCTURED_AGENT_SESSION_RESUME_NOT_ELIGIBLE ||
-            outcome.reason === RESTART_CONTINUATION_SUPERSEDED
+            outcome.reason === RESTART_CONTINUATION_SUPERSEDED ||
+            (outcome.reason === 'agent_session_journal_unreadable' &&
+              outcome.details?.reason === 'journalWrittenByNewerOrca')
           ? null
           : 'refused'
       if (failure === null) {

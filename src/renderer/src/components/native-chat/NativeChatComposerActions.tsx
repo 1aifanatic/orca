@@ -27,7 +27,6 @@ export type NativeChatComposerActionsProps = {
   onStop?: () => void
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
-  sessionOptionsDisabled?: boolean
   sessionOptionsPickerRequest?: NativeChatOptionPickerRequest | null
   /** Present while the composer is in goal mode; the chip calls it to leave. */
   onExitGoalMode?: () => void
@@ -50,7 +49,6 @@ export function NativeChatComposerActions({
   onStop,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
-  sessionOptionsDisabled,
   sessionOptionsPickerRequest,
   onExitGoalMode,
   contextUsage
@@ -100,7 +98,6 @@ export function NativeChatComposerActions({
           surface={sessionOptionsSurface}
           snapshot={sessionOptionsSnapshot}
           isWorking={isWorking}
-          disabled={sessionOptionsDisabled}
           pickerRequest={sessionOptionsPickerRequest}
         />
         {contextUsage ? <NativeChatContextUsageRing usage={contextUsage} /> : null}

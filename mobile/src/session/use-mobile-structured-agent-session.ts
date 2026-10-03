@@ -3,6 +3,7 @@ import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-c
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
+import { isFinalAgentSessionReadRefusal } from '../../../src/shared/structured-agent-session-read-refusal'
 import {
   activeStructuredAgentSessionTurnId,
   isStructuredAgentSessionThinking
@@ -30,7 +31,6 @@ import {
   requestMobileStructuredAgentSessionCancel
 } from './mobile-structured-agent-session-cancel'
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
-import { mobileReadOnlyNotice } from './mobile-structured-read-only-notice'
 import {
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
@@ -162,10 +162,7 @@ export function useMobileStructuredAgentSession(args: {
     () => projectStructuredAgentSessionMessages(state.items, [], state.submissions),
     [state.items, state.submissions]
   )
-  // The one fact every write control reads: why the host refuses writes here, or none.
-  const readOnlyNotice = mobileReadOnlyNotice(state.readOnly)
-  // A read-only host projects no turn (structured-agent-session-status-journal-projection.ts).
-  const turnId = readOnlyNotice ? null : activeStructuredAgentSessionTurnId(state.items)
+  const turnId = activeStructuredAgentSessionTurnId(state.items)
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
@@ -225,14 +222,12 @@ export function useMobileStructuredAgentSession(args: {
       status,
       transcriptLoading: status === 'loading',
       error: state.error,
+      readFailedFinally: status === 'error' && isFinalAgentSessionReadRefusal(state.readRefusal),
       hasMore: state.hasOlder,
       loadingEarlier: loadingOlder,
-      loadEarlier,
-      readOnlyNotice
+      loadEarlier
     },
-    isWorking:
-      !readOnlyNotice &&
-      isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+    isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
     turnId,
     turnIndicator,
     ...turnTiming,

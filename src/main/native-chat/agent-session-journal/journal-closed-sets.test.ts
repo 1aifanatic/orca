@@ -1,8 +1,9 @@
 // Every closed set a journal row is read against: a row kind, a lifecycle mutation kind, and each
-// enum, literal or discriminant in a body. A new row or mutation kind makes older builds go
-// read-only; a new value in a body's closed set is damage to them, and the chat fails to load
-// (a turn's context usage is dropped instead). This snapshot sits beside the row version so that
-// a change to either is deliberate.
+// enum, literal or discriminant in a body. A new row or mutation kind, or a bumped row version,
+// makes older builds refuse the chat as a newer Orca's ("Update Orca to open it"); a new value in a
+// body's closed set at the same version is damage to them ("Unable to load this chat"), where a
+// turn's context usage is dropped instead. This snapshot sits beside the row version so that a
+// change to either is deliberate.
 
 import { expect, it } from 'vitest'
 import { z } from 'zod'
@@ -102,8 +103,7 @@ const SNAPSHOT = {
 it('changes no closed set of a journal row without the row version', () => {
   expect(
     journalClosedSets(),
-    'A new closed-set value without a row-version bump makes older builds fail to load the ' +
-      'chat (a new row or batch-change kind makes them read-only instead). Bump v, then update ' +
-      'this snapshot.'
+    'A new closed-set value without a row-version bump makes older builds call the chat ' +
+      'damaged, where with the bump they say to update Orca. Bump v, then update this snapshot.'
   ).toEqual(SNAPSHOT)
 })

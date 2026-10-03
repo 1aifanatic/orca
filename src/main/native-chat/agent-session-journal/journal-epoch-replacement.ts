@@ -105,5 +105,5 @@ export function replaceJournalEpoch(input: {
   // live one. The caller adopts that immediately, or a later failure leaves the
   // live store writing into an epoch whose rows were just deleted.
   state.oldestSequence = 1
-  input.onPublished({ state, readOnly: false, damage: null })
+  input.onPublished({ state, newer: null, damage: null })
 }

@@ -104,28 +104,23 @@ export function createStructuredAgentSessionRestartResume(
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
-  // A newer Orca's chat: the whole database is a newer Orca's (so even a journal that fails to open
-  // is one), or the chat's journal, which listing and acting open first, is read-only here.
-  const readOnly = (sessionId: string) =>
-    deps.journalDatabase.readOnly || sessions.get(sessionId)?.journal.isReadOnly === true
-  const reader = (skipReadOnly: (sessionId: string) => boolean) =>
-    createStructuredAgentSessionRestartCandidateReader({
-      sessions,
-      getRecord: deps.store.getRecord,
-      adapter: deps.adapter,
-      movedOn: withdrawal.movedOn,
-      readOnly: skipReadOnly
-    })
-  const derive = reader(readOnly)
-  // The check made right before sending skips nothing for read-only: turning a chat away there
-  // would spend its offer. Its send is refused instead, and settling keeps the offer.
-  const deriveAtSend = reader(() => false)
+  // Chats the latest reveal found saved by a newer Orca. Each reveal re-derives its chat's entry,
+  // and the derive that reads one spends that chat's offer.
+  const newerOrcaChats = new Set<string>()
+  const savedByNewerOrca = (sessionId: string) =>
+    deps.journalDatabase.readOnly || newerOrcaChats.has(sessionId)
+  const derive = createStructuredAgentSessionRestartCandidateReader({
+    sessions,
+    getRecord: deps.store.getRecord,
+    adapter: deps.adapter,
+    movedOn: withdrawal.movedOn,
+    savedByNewerOrca
+  })
   const failures = createStructuredAgentSessionRestartFailureLedger({
     ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
     retryable: (marker) => derive([marker], 'may-be-held').candidates.length === 1,
-    readOnly,
     reveal: (markers) => revealMarkers(markers),
     logger: deps.logger,
     now: surfaces.now,
@@ -138,7 +133,12 @@ export function createStructuredAgentSessionRestartResume(
       readFailedMarkers: async () => (await failures.read()).map((failure) => failure.marker),
       hasSession: (sessionId) => sessions.has(sessionId),
       reveal: async (sessionId) => {
-        await surfaces.revealSession(sessionId).catch(() => null)
+        const revealed = await surfaces.revealSession(sessionId).catch(() => null)
+        if (revealed?.openRefusal?.details?.reason === 'journalWrittenByNewerOrca') {
+          newerOrcaChats.add(sessionId)
+        } else {
+          newerOrcaChats.delete(sessionId)
+        }
       },
       logger: deps.logger,
       now: surfaces.now,
@@ -163,7 +163,7 @@ export function createStructuredAgentSessionRestartResume(
       deps.store.getRecord(sessionId)
         ? structuredAgentSessionConversationFence(deps.store, sessionId)
         : null,
-    stillResumable: (marker) => deriveAtSend([marker], 'may-be-held').candidates.length === 1
+    stillResumable: (marker) => derive([marker], 'may-be-held').candidates.length === 1
   }
 
   /** One explicit action: reserve the offers, then continue each through `continueOne`, a few at
@@ -207,9 +207,7 @@ export function createStructuredAgentSessionRestartResume(
           admission,
           consumeMarker: async (sessionId) => {
             const marker = markersBySession.get(sessionId)
-            return (
-              marker !== undefined && deriveAtSend([marker], 'may-be-held').candidates.length === 1
-            )
+            return marker !== undefined && derive([marker], 'may-be-held').candidates.length === 1
           },
           resume: async (sessionId) => {
             const marker = markersBySession.get(sessionId)

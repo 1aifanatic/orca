@@ -11,11 +11,7 @@ export type NativeChatResolvedTarget = {
  *  pathological clipboard can't stall the round-trip. */
 export const NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES = 16 * 1024 * 1024
 
-export function nativeChatComposerPlaceholder(
-  hasPty: boolean,
-  canSend: boolean,
-  lockReason?: string
-): string {
+export function nativeChatComposerPlaceholder(hasPty: boolean, canSend: boolean): string {
   if (!hasPty) {
     return translate(
       'components.native-chat.composer.noPty',
@@ -23,10 +19,7 @@ export function nativeChatComposerPlaceholder(
     )
   }
   if (!canSend) {
-    return (
-      lockReason ??
-      translate('components.native-chat.composer.locked', 'Input is held by another device.')
-    )
+    return translate('components.native-chat.composer.locked', 'Input is held by another device.')
   }
   return translate('components.native-chat.composer.placeholder', 'Send a message…')
 }

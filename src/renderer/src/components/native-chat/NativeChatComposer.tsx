@@ -56,8 +56,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       paneKey,
       targetPtyId,
       agent,
-      canSend: leaseAllowsSend = true,
-      lockReason,
+      canSend = true,
       isWorking = false,
       onStop,
       onOptimisticSend,
@@ -76,7 +75,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     // images survive both TUI/GUI toggles and PTY replacement on reconnect.
     // Why: local, SSH, and runtime reconnects can replace or temporarily clear
     // the PTY id. Pane identity is the stable ownership key for unsent input.
-    const canSend = leaseAllowsSend && lockReason === undefined
     const imeEnterGesture = useImeEnterGestureOwnership()
     const { draft, setDraft, flushDraftAppends } = useNativeChatDraft(
       paneKey,
@@ -150,8 +148,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const [hasPty, disabled] = structuredTransport
       ? [true, !canSend]
       : [targetPtyId !== null, targetPtyId === null || !canSend]
-    // A structured composer is locked only when its host refuses writes: options and dictation too.
-    const writesLocked = structuredTransport !== undefined && disabled
 
     const syncCaret = useCallback((el: NativeChatComposerInput) => {
       setCaret(el.selectionStart ?? el.value.length)
@@ -370,7 +366,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         disabled={disabled}
         hasPty={hasPty}
         canSend={canSend}
-        lockReason={lockReason}
         autocomplete={autocomplete}
         activeSuggestion={activeSuggestion}
         notice={notice}
@@ -378,7 +373,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         sendButtonDisabled={sendButtonDisabled}
         isWorking={isWorking}
         attachDisabled={disabled}
-        dictationDisabled={dictationDisabled || writesLocked}
+        dictationDisabled={dictationDisabled}
         isDictating={isDictating}
         isDictationHoldMode={voiceSettings?.dictationMode === 'hold'}
         imeEnterGesture={imeEnterGesture}
@@ -421,7 +416,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         onStop={interrupt}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
-        sessionOptionsDisabled={writesLocked}
         contextUsage={contextUsageSummary}
         sessionOptionsPickerRequest={structuredTransport?.optionPickerRequest ?? null}
       />

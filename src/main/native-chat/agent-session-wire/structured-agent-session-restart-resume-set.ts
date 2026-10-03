@@ -79,8 +79,8 @@ export type StructuredAgentSessionResumeSetInput = {
   latestPrompt: (sessionId: string) => string
   /** Whether the chat moved on since the offer was taken; false when its journal is not open here. */
   movedOn: (marker: AgentSessionResumeMarker) => boolean
-  /** Whether the chat is a newer Orca's here: its whole database, or its open journal. */
-  readOnly: (sessionId: string) => boolean
+  /** Whether the chat was saved by a newer Orca: its whole database, or its journal's open. */
+  savedByNewerOrca: (sessionId: string) => boolean
   /**
    * Whether the lease must be free.
    *
@@ -117,13 +117,10 @@ export function structuredAgentSessionResumableSet(
       superseded.push(marker)
       continue
     }
-    if (input.movedOn(marker)) {
+    // Nothing here can continue a chat a newer Orca saved, so its offer is spent without a word:
+    // once Orca is updated, the user opens the chat and carries on by hand.
+    if (input.movedOn(marker) || input.savedByNewerOrca(marker.sessionId)) {
       superseded.push(marker)
-      continue
-    }
-    // Nothing can continue a chat this build cannot write. The offer is kept, not spent: an updated
-    // Orca can still act on it.
-    if (input.readOnly(marker.sessionId)) {
       continue
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)

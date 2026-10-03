@@ -80,23 +80,6 @@ export function readAgentSessionHistory(
   snapshot: AgentJournalSnapshot = journal.snapshot(),
   scope: AgentSessionHistoryScope = 'every-agent'
 ): AgentSessionHistoryResult {
-  const result = readHistory(journal, request, snapshot, scope)
-  return { ...result, page: { ...result.page, ...readOnlyField(journal) } }
-}
-
-/** Every read-only latch a journal has is a newer Orca's, so that is the reason it states. */
-function readOnlyField(journal: AgentSessionJournal): Pick<AgentSessionHistoryPage, 'readOnly'> {
-  return journal.isReadOnly ? { readOnly: 'written-by-newer-orca' } : {}
-}
-
-function readHistory(
-  journal: AgentSessionJournal,
-  request: AgentSessionHistoryRequest,
-  snapshot: AgentJournalSnapshot,
-  scope: AgentSessionHistoryScope
-): AgentSessionHistoryResult {
-  // A read-only journal serves backward pages from the snapshot its open folded, as its first page
-  // does; only a forward read of its rows resets (journal-cursor.ts).
   const limit = resolveHistoryLimit(request.limit)
   if (request.direction === 'after') {
     return readForward(journal, snapshot, request.cursor, limit)
@@ -159,7 +142,7 @@ export function readAgentSessionHydrationPage(
   journal: AgentSessionJournal,
   fence?: number
 ): AgentSessionHistoryPage {
-  return { ...buildHydrationPage(journal.snapshot(), fence), ...readOnlyField(journal) }
+  return buildHydrationPage(journal.snapshot(), fence)
 }
 
 function buildHydrationPage(

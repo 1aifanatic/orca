@@ -150,7 +150,6 @@ describe('draft rows', () => {
     db.exec('DROP TABLE queued_messages')
     db.close()
     const journal = await open()
-    expect(journal.isReadOnly).toBe(false)
     const row = await queueDraft(journal, 'draft-1')
     expect(row.position).toBe(1)
   })

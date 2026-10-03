@@ -15,17 +15,13 @@ import type { MobileChatPermission } from './mobile-native-chat-permission'
 function MobileNativeChatPermissionImpl({
   permission,
   onRespond,
-  onCancel,
-  disabled = false
+  onCancel
 }: {
   permission: MobileChatPermission
   onRespond: (send: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
-  /** Shown but not answerable: the host refuses every answer. */
-  disabled?: boolean
 }): React.JSX.Element {
-  const [inFlight, setSubmitting] = useState(false)
-  const submitting = inFlight || disabled
+  const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
   // A newer Orca's subject: its detail is shown, and only the card's cancel answers.
   const newerSubject = isNewerApprovalSubject(permission.subject)
@@ -130,7 +126,7 @@ function MobileNativeChatPermissionImpl({
                 styles.option,
                 isPrimary ? styles.optionPrimary : styles.optionSecondary,
                 pressed && !submitting && styles.optionPressed,
-                (disabled || newerSubject) && styles.disabled
+                newerSubject && styles.disabled
               ]}
               hitSlop={6}
               onPress={() => respond(option.send)}

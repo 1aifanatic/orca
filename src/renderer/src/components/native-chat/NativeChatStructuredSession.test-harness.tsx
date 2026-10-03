@@ -80,12 +80,9 @@ export function createStructuredSessionMocks() {
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
     readRefusal: absent<AgentSessionRefusalReference>(),
-    readOnly: absent<string>(),
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
-      canSend?: boolean
-      lockReason?: string
       launchSeed?: NativeChatLaunchSeed
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
@@ -171,7 +168,6 @@ export function createStructuredSessionMocks() {
             status: mocks.status,
             error: outbox.error,
             readRefusal: mocks.readRefusal,
-            readOnly: mocks.readOnly,
             hasOlder: mocks.hasOlder,
             loadingOlder: mocks.loadingOlder,
             olderHistoryGeneration: mocks.olderHistoryGeneration,
@@ -196,7 +192,6 @@ export function createStructuredSessionMocks() {
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
-              writable: mocks.readOnly === undefined,
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
@@ -309,7 +304,6 @@ export function createStructuredSessionMocks() {
     mocks.mode = 'static'
     mocks.status = 'ready'
     mocks.readRefusal = undefined
-    mocks.readOnly = undefined
     mocks.messages = null
     mocks.messageListProps = null
     mocks.composerProps = null

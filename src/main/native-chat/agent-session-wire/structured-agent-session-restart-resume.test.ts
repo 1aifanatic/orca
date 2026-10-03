@@ -288,7 +288,7 @@ describe('deriving what was working at teardown', () => {
         [
           SESSION,
           {
-            journal: journal([], false, [submission('msg-1', 'pending')]),
+            journal: journal([], [submission('msg-1', 'pending')]),
             child: { fence: 1 }
           }
         ]
@@ -311,9 +311,7 @@ describe('deriving what was working at teardown', () => {
         [
           SESSION,
           {
-            journal: journal([turnItem('turn-0', 'completed')], false, [
-              submission('msg-1', 'pending')
-            ]),
+            journal: journal([turnItem('turn-0', 'completed')], [submission('msg-1', 'pending')]),
             child: { fence: 1 }
           }
         ]
@@ -338,7 +336,7 @@ describe('deriving what was working at teardown', () => {
           [
             SESSION,
             {
-              journal: journal([turnItem('turn-0', 'completed')], false, [queued]),
+              journal: journal([turnItem('turn-0', 'completed')], [queued]),
               child: { fence: 1 }
             }
           ]
@@ -364,14 +362,14 @@ describe('deriving what was working at teardown', () => {
         [
           SESSION,
           {
-            journal: journal([turnItem('turn-0', 'completed')], false, [handedOver, queued]),
+            journal: journal([turnItem('turn-0', 'completed')], [handedOver, queued]),
             child: { fence: 1 }
           }
         ],
         [
           'session-running',
           {
-            journal: journal([turnItem('turn-1', 'running')], false, [queued]),
+            journal: journal([turnItem('turn-1', 'running')], [queued]),
             child: { fence: 1 }
           }
         ]
@@ -397,9 +395,7 @@ describe('deriving what was working at teardown', () => {
         [
           SESSION,
           {
-            journal: journal([turnItem('turn-1', 'running')], false, [
-              submission('msg-1', 'accepted')
-            ]),
+            journal: journal([turnItem('turn-1', 'running')], [submission('msg-1', 'accepted')]),
             child: { fence: 1 }
           }
         ]
@@ -456,7 +452,7 @@ describe('the resumable set', () => {
       supportsRecord: () => true,
       latestPrompt: () => '',
       movedOn: () => false,
-      readOnly: () => false
+      savedByNewerOrca: () => false
     })
 
     expect(candidates).toHaveLength(1)
@@ -472,27 +468,21 @@ describe('the resumable set', () => {
       supportsRecord: () => true,
       latestPrompt: () => '',
       movedOn: () => false,
-      readOnly: () => false
+      savedByNewerOrca: () => false
     })
 
     expect(set.candidates).toEqual([])
     expect(set.superseded).toEqual([forked])
   })
 
-  // A read-only chat cannot be continued here; its offer is kept for an updated Orca, not spent.
-  it('neither offers nor spends a read-only chat, and offers it once its journal is writable', () => {
+  // Nothing here can continue a chat a newer Orca saved: its offer is spent without a word.
+  it("spends a newer Orca's chat's offer without offering it", () => {
     const offer = marker()
-    expect(resumableSet({ markers: [offer], readOnly: [SESSION] })).toEqual({
+    expect(resumableSet({ markers: [offer], savedByNewerOrca: [SESSION] })).toEqual({
       candidates: [],
-      superseded: []
+      superseded: [offer]
     })
     expect(resumableSet({ markers: [offer] }).candidates).toHaveLength(1)
-  })
-
-  // Read-only does not keep a forked chat's offer alive: the fork still ends it.
-  it('still withdraws a forked read-only chat', () => {
-    const forked = marker({ providerHandleRoot: 'codex:"other-thread"' })
-    expect(resumableSet({ markers: [forked], readOnly: [SESSION] }).superseded).toEqual([forked])
   })
 
   // An offer has no expiry, however old it is.

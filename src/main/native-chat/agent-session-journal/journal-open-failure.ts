@@ -31,10 +31,18 @@ export class JournalDamageError extends Error {
   override readonly name = 'JournalDamageError'
 }
 
-/** The one way damage fails a chat's load, wherever its rows are read: refused as history that
- *  cannot be loaded, and every row is left where it is. A newer build's row wins, so a read-only
- *  load never fails here. */
-export function failLoadOnJournalDamage(sessionId: string, load: JournalLoad): void {
+/** The one way a chat's load fails on its rows, wherever they are read, and every row is left where
+ *  it is. A newer Orca's row is refused as one only an update opens, and wins over damage beside
+ *  it; damage is refused as history that cannot be loaded. */
+export function failLoadOnUnloadableJournal(sessionId: string, load: JournalLoad): void {
+  if (load.newer) {
+    throw journalOpenRefusalError(
+      new AgentSessionJournalError(
+        'journal_read_only',
+        `journal of ${sessionId} holds a newer Orca's row at sequence ${load.newer.sequence}`
+      )
+    )
+  }
   if (!load.damage) {
     return
   }

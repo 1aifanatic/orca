@@ -102,7 +102,6 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
         STATUS_SESSION,
         {
           journal: {
-            isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
             snapshot: () => ({ items: STATUS_ITEMS })

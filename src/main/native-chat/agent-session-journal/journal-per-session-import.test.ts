@@ -2,7 +2,10 @@
 // that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
 // reappears after a downgrade is set aside on disk, and the chat keeps this build's history.
 
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  AGENT_SESSION_JOURNAL_SCHEMA_VERSION
+} from '../../../shared/agent-session-journal-types'
 import type * as NodeFs from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -23,7 +26,8 @@ import {
   liveTestJournalRows,
   loadTestJournal,
   openTestJournalHostDatabase,
-  readTestJournalRows
+  readTestJournalRows,
+  SAVED_BY_NEWER_ORCA
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
@@ -423,7 +427,6 @@ describe('importing a per-chat journal', () => {
     ).resolves.toBeNull()
     const journal = await openChat()
 
-    expect(journal.isReadOnly).toBe(false)
     expect(journal.snapshot().items).toEqual([])
     expect(journal.cursor().sequence).toBe(1)
   })
@@ -454,6 +457,30 @@ describe('importing a per-chat journal', () => {
     expect(
       database.db.prepare('SELECT count(*) AS total FROM journal_imports').get()
     ).toMatchObject({ total: 0 })
+  })
+
+  it("keeps a newer Orca's file whole, copies none of it, and refuses the chat as a newer Orca's", async () => {
+    const { epoch, rows } = await historyRows()
+    const last = rows.at(-1)!
+    const newer = {
+      ...last,
+      rowJson: JSON.stringify({
+        ...JSON.parse(last.rowJson),
+        v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1
+      })
+    }
+    await writeLegacyJournal(epoch, [...rows.slice(0, -1), newer])
+    const database = openTestJournalHostDatabase(root)
+    const before = await readFile(legacyJournalDatabaseFile(legacyDir()))
+    const input = { database, identity: IDENTITY, legacyDirectory: legacyDir() }
+
+    await expect(previewPerSessionJournal(input)).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
+    await expect(importPerSessionJournal(input)).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
+    await expect(openChat()).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
+
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
+    expect(readJournalSessionEpoch(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(rowCount(database.db)).toBe(0)
   })
 
   // A copy that keeps every count but not every byte is no copy: the file is all there is.

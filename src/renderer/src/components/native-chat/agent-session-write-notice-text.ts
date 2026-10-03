@@ -5,10 +5,6 @@ import { translate } from '@/i18n/i18n'
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
 import {
-  agentSessionReadOnlyNoticeParts,
-  type AgentSessionReadOnlyReason
-} from '../../../../shared/agent-session-read-only'
-import {
   AGENT_SESSION_WRITE_NOTICE_COPY as COPY,
   type AgentSessionWriteNoticePart,
   type AgentSessionWriteNoticeSentence
@@ -60,11 +56,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     ),
   chatSavedByNewerOrca: () =>
     translate('components.native-chat.writeNotice.chatSavedByNewerOrca', COPY.chatSavedByNewerOrca),
-  updateOrcaToContinueChat: () =>
-    translate(
-      'components.native-chat.writeNotice.updateOrcaToContinueChat',
-      COPY.updateOrcaToContinueChat
-    ),
+  updateOrcaToOpenChat: () =>
+    translate('components.native-chat.writeNotice.updateOrcaToOpenChat', COPY.updateOrcaToOpenChat),
   unsupported: () => translate('components.native-chat.writeNotice.unsupported', COPY.unsupported),
   unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable),
   recordFailed: () =>
@@ -155,12 +148,4 @@ export function agentSessionWriteFailureText(
   write: AgentSessionWriteKind
 ): string {
   return agentSessionWriteNoticeText(agentSessionWriteNoticeParts(failure, write))
-}
-
-/** Why the host keeps a chat read-only, in words; none for a reason this client cannot word. */
-export function agentSessionReadOnlyText(
-  reason: AgentSessionReadOnlyReason | undefined
-): string | undefined {
-  const parts = agentSessionReadOnlyNoticeParts(reason)
-  return parts ? agentSessionWriteNoticeText(parts) : undefined
 }

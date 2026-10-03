@@ -58,7 +58,6 @@ function controller(
     pause,
     resume: vi.fn(async () => {}),
     resuming: false,
-    writable: true,
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
@@ -470,21 +469,5 @@ describe('NativeChatQueuedMessageList', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off queueing' }))
     expect(mocks.updateSettings).toHaveBeenCalledWith({ nativeChatQueueFollowUps: false })
-  })
-
-  it('a read-only chat keeps its cards shown, with nothing to press that the host would refuse', async () => {
-    const owner = {
-      ...controller([card({ messageId: 'draft-1', hold: 'queue-paused' })], { reason: 'stopped' }),
-      writable: false
-    }
-    renderList(owner)
-    for (const name of ['Steer', 'Delete', 'Resume']) {
-      expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
-    }
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
-    const edit = await screen.findByRole('menuitem', { name: 'Edit message' })
-    expect(edit.getAttribute('aria-disabled')).toBe('true')
-    fireEvent.click(edit)
-    expect(owner.edit).not.toHaveBeenCalled()
   })
 })

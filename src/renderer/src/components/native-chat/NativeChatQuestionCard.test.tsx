@@ -96,66 +96,6 @@ const tabsOrSpaces: AskPrompt = {
 }
 
 describe('NativeChatQuestionCard', () => {
-  it('a disabled card with several questions still steps through them, answering none', () => {
-    const onAnswer = vi.fn()
-    const twoQuestions: AskPrompt = {
-      questions: [
-        {
-          question: 'First question?',
-          header: 'One',
-          multiSelect: false,
-          options: [{ label: 'A' }]
-        },
-        {
-          question: 'Second question?',
-          header: 'Two',
-          multiSelect: false,
-          options: [{ label: 'C' }]
-        }
-      ]
-    }
-    act(() => {
-      root.render(
-        <NativeChatQuestionCard
-          prompt={twoQuestions}
-          onAnswer={onAnswer}
-          onCancel={() => {}}
-          disabled
-        />
-      )
-    })
-    click(
-      [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Two')),
-      'tab Two'
-    )
-    expect(container.textContent).toContain('Second question?')
-    clickOption('C')
-    expect(optionPressed('C')).toBe('false')
-    expect(onAnswer).not.toHaveBeenCalled()
-  })
-
-  it('a disabled card shows the question with nothing to press and no "Sending…"', () => {
-    const onAnswer = vi.fn()
-    act(() => {
-      root.render(
-        <NativeChatQuestionCard
-          prompt={tabsOrSpaces}
-          onAnswer={onAnswer}
-          onCancel={() => {}}
-          disabled
-        />
-      )
-    })
-    expect(container.textContent).toContain('Do you prefer tabs or spaces?')
-    expect(container.textContent).not.toContain('Sending')
-    const buttons = [...container.querySelectorAll('button')]
-    expect(buttons.length).toBeGreaterThan(0)
-    expect(buttons.every((button) => button.disabled)).toBe(true)
-    expect(container.querySelector('input')?.disabled).toBe(true)
-    clickOption('Spaces')
-    expect(optionPressed('Spaces')).toBe('false')
-  })
-
   it('delivers the SECOND option as index 1, not the default (STA-1860)', () => {
     const onAnswer = vi.fn()
     render(tabsOrSpaces, onAnswer)

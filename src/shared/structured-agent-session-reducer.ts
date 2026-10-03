@@ -13,7 +13,6 @@ import type {
   AgentSessionTurnActivity
 } from './agent-session-wire'
 import type { AgentSessionRefusalReference } from './agent-session-wire-refusals'
-import type { AgentSessionReadOnlyReason } from './agent-session-read-only'
 import { backgroundTaskStatesEqual } from './agent-session-background-task-state-equality'
 import { admitAgentSessionBackgroundTaskState } from './agent-session-background-task-state-admission'
 import {
@@ -75,9 +74,6 @@ export type StructuredAgentSessionState = {
   /** Bumped per live batch that leaves a turn row's newest revision outside the window
    *  (dropped or trimmed), so a whole-journal answer derived from turn rows is asked for again. */
   unloadedTurnRevisions?: number
-  /** Why the host keeps this chat read-only, from its latest whole page. Only a whole page clears
-   *  it, so a client holding it reconnects for one. */
-  readOnly?: AgentSessionReadOnlyReason
 }
 
 export type StructuredAgentSessionAction =
@@ -140,7 +136,6 @@ function replacePage(
     status: 'ready',
     subagentRoster: foldStructuredAgentSubagentRosterPage(undefined, page),
     activity: activity ?? null,
-    ...(page.readOnly !== undefined ? { readOnly: page.readOnly } : {}),
     ...(backgroundTasks !== undefined
       ? { backgroundTasks }
       : page.backgroundTasks !== undefined

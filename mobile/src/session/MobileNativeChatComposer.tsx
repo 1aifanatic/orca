@@ -68,9 +68,6 @@ type Props = {
   onMicPressIn?: () => void
   onMicPressOut?: () => void
   disabled?: boolean
-  /** A lasting lock (the host refuses writes): the field is not editable, so its placeholder
-   *  reason stays shown, and the option pickers stay shut. */
-  readOnly?: boolean
   placeholder?: string
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
@@ -97,7 +94,6 @@ export function MobileNativeChatComposer({
   onMicPressIn,
   onMicPressOut,
   disabled = false,
-  readOnly = false,
   placeholder = 'Message, @files, /commands',
   filePaths = NO_FILE_PATHS,
   onNeedFiles
@@ -271,10 +267,9 @@ export function MobileNativeChatComposer({
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.accentBlue}
             multiline
-            // Why: never revoke `editable` for a transient lock — iOS resigns first responder on
-            // a focused field, so it would yank the keyboard mid-typing (#10681). The lock gates
-            // sending; the draft survives and rides the next send. A read-only lock lasts.
-            editable={!readOnly}
+            // Why: never revoke `editable` — iOS resigns first responder on a focused
+            // field, so a transient lock would yank the keyboard mid-typing (#10681).
+            // The lock gates sending; the draft survives and rides the next send.
             textAlignVertical="top"
           />
           <View style={styles.actionRow} testID="native-chat-composer-actions">
@@ -296,7 +291,6 @@ export function MobileNativeChatComposer({
               <MobileNativeChatSessionOptionPickers
                 {...sessionOptions}
                 sendInFlight={sending || isAttaching}
-                locked={readOnly}
               />
             ) : null}
             <View style={styles.actionSpacer} />

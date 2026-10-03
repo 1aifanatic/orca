@@ -55,5 +55,5 @@ export function publishNewEpoch(input: {
   const state = createJournalReducerState(sessionId, input.epoch)
   applyJournalRow(state, row)
   state.oldestSequence = 1
-  input.onPublished({ state, readOnly: false, damage: null })
+  input.onPublished({ state, newer: null, damage: null })
 }

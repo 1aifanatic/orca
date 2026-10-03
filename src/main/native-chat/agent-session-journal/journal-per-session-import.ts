@@ -26,7 +26,7 @@ import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
 import { startJournalRowFold, type JournalLoad } from './journal-open'
 import {
-  failLoadOnJournalDamage,
+  failLoadOnUnloadableJournal,
   JournalImportMismatchError,
   journalOpenRefusalError
 } from './journal-open-failure'
@@ -173,9 +173,9 @@ export async function previewPerSessionJournal(
       return null
     }
     const loaded = await foldLegacyJournal(source, sessionId, legacy)
-    failLoadOnJournalDamage(sessionId, loaded)
+    failLoadOnUnloadableJournal(sessionId, loaded)
     // An empty one is copied now, so its open founds the chat's epoch in the host's database.
-    return loaded.readOnly || loaded.state.lastSequence === 0 ? null : loaded
+    return loaded.state.lastSequence === 0 ? null : loaded
   } finally {
     source.close()
   }
@@ -217,11 +217,11 @@ async function copyLegacyJournal(
     first = false
   }
   const copied = fold.finish()
-  if (copied.damage) {
+  if (copied.damage || copied.newer) {
     // Never published, so the copy goes; the file it came from stays.
     input.database.transaction((db) => deleteUnpublishedJournalRows(db, sessionId))
   }
-  failLoadOnJournalDamage(sessionId, copied)
+  failLoadOnUnloadableJournal(sessionId, copied)
   await verifyCopiedJournal(input, legacyRowBatches(source, sessionId, epoch, batchRows), epoch)
   input.database.transaction((db) => {
     publishJournalSessionEpoch(db, input.identity, epoch)
