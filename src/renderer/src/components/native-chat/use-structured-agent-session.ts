@@ -182,7 +182,7 @@ export function useStructuredAgentSession(args: {
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
-        agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
+        agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: Boolean(
           transportState.turnId ||

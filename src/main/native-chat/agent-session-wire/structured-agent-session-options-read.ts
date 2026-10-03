@@ -12,12 +12,10 @@ import {
   type AgentSessionOptionsResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { claudeFallbackModelOptions } from '../../claude/claude-structured-session-options'
 import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structured-agent-session-option-codec'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
-import { isClaudeStructuredOptionKey } from '../../claude/claude-structured-options'
-import { isCodexTurnOptionKey } from '../../codex/codex-structured-turn-start'
+import { structuredAgentDefinition } from './structured-agent-definition'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionOptionModels } from './structured-agent-session-option-models'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -25,13 +23,11 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 
 type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
 
-/** With no catalog for the account, the list a running child falls back to: Claude's built-in
- *  models. A Codex child has no such list, so none: the client fills the current model from its
- *  own unknown-model defaults, unchanged from before this list was shared. */
+/** With no catalog for the account, the list a running child of this agent falls back to. */
 function restingFallbackModels(
   provider: AgentSessionRecord['provider']
 ): AgentSessionModelOption[] | null {
-  return provider === 'claude' ? claudeFallbackModelOptions() : null
+  return structuredAgentDefinition(provider)?.restingOptions.fallbackModels() ?? null
 }
 
 async function readStructuredAgentSessionOptionsAtRest(
@@ -59,11 +55,10 @@ async function readStructuredAgentSessionOptionsAtRest(
     saved.model ??
     (catalog.origin === 'unknown' ? undefined : models.find((entry) => entry.isDefault)?.id) ??
     ''
-  // As a live child answers: the pick, else what Claude runs for this model when none is sent.
-  // A live Codex child answers only the effort its thread reported, never the model's default.
+  // As a live child answers: the pick, else the model's default where the agent reports that.
   const effort =
     saved.effort ??
-    (record.provider === 'claude'
+    (structuredAgentDefinition(record.provider)?.restingOptions.effortDefaultsToModel
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
   return {
@@ -87,9 +82,8 @@ export async function recordStructuredAgentSessionOptionIntent(
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const record = store.getRecord(ctx.sessionId)
   const accepted =
-    record?.provider === 'codex'
-      ? isCodexTurnOptionKey(input.key)
-      : record?.provider === 'claude' && isClaudeStructuredOptionKey(input.key)
+    record !== undefined &&
+    structuredAgentDefinition(record.provider)?.restingOptions.acceptsKey(input.key) === true
   if (!record || !accepted) {
     return {
       ok: false,
@@ -133,6 +127,7 @@ export async function readStructuredAgentSessionOptions(
   const session = await context.conversation(sessionId)
   const phase = store.getRecord(sessionId)?.rewind?.phase
   const agent = session.params.provider
+  const capabilities = adapter.capabilities?.(sessionId, agent)
   return {
     ...options,
     rewind:
@@ -142,11 +137,9 @@ export async function readStructuredAgentSessionOptions(
             supported: false,
             reason: 'unsupported'
           }),
-    conversationCommands: adapter.compact ? ['clear', 'compact'] : ['clear'],
-    ...(adapter.supportsThreadGoal?.(sessionId, agent)
-      ? { threadGoal: { current: session.journal.threadGoal() } }
-      : {}),
-    ...(adapter.recordsContextUsage?.(sessionId, agent)
+    conversationCommands: capabilities?.compact ? ['clear', 'compact'] : ['clear'],
+    ...(capabilities?.threadGoal ? { threadGoal: { current: session.journal.threadGoal() } } : {}),
+    ...(capabilities?.contextUsage
       ? { contextUsage: { current: session.journal.contextUsage() } }
       : {})
   }

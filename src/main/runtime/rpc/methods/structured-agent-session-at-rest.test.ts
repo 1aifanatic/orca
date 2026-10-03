@@ -32,6 +32,8 @@ import {
   openTestJournalHostDatabase,
   updateTestJournalRowJson
 } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import { CODEX_STRUCTURED_AGENT } from '../../../codex/codex-structured-agent-definition'
+import { CLAUDE_STRUCTURED_AGENT } from '../../../claude/claude-structured-agent-definition'
 
 const CLIENT = {
   clientId: 'device-1',
@@ -370,8 +372,10 @@ describe('options at rest', () => {
   it('answers the provider-level features of a chat at rest (P2-17)', async () => {
     await restingChat()
     Object.assign(rig.host.deps.adapter, {
-      supportsThreadGoal: (_id: string, agent?: string) => agent === 'codex',
-      recordsContextUsage: (_id: string, agent?: string) => agent === 'claude',
+      capabilities: (_id: string, agent?: string) =>
+        agent === 'codex'
+          ? CODEX_STRUCTURED_AGENT.capabilities
+          : CLAUDE_STRUCTURED_AGENT.capabilities,
       rewindSupport: (_id: string, agent?: string) =>
         agent === 'codex' ? { supported: true } : { supported: false, reason: 'unsupported' }
     })

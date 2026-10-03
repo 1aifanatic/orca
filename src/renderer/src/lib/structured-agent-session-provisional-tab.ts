@@ -11,13 +11,17 @@ import type {
   StructuredAgentLaunchHooks
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
+import {
+  isAgentSessionHandleProvider,
+  type AgentSessionHandleProvider
+} from '../../../shared/agent-session-provider-handle'
 
 export type StructuredAgentSessionProvisionalLaunch = StructuredAgentLaunchHandle & { tab: Tab }
 
 export function openStructuredAgentSessionProvisionalTab(args: {
   worktreeId: string
   sessionId: string
-  agent: 'claude' | 'codex'
+  agent: AgentSessionHandleProvider
   targetGroupId?: string
   activate?: boolean
 }): Tab {
@@ -67,7 +71,7 @@ export function beginStructuredAgentSessionProvisionalLaunch(args: {
     return null
   }
   const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
-  if (!worktreeId || (args.plan.agent !== 'claude' && args.plan.agent !== 'codex')) {
+  if (!worktreeId || !isAgentSessionHandleProvider(args.plan.agent)) {
     throw new Error('A provisional structured launch needs its workspace and provider.')
   }
   try {

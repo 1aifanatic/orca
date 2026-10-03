@@ -24,6 +24,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -65,7 +66,7 @@ beforeEach(async () => {
       answerPrompt: vi.fn(async () => undefined),
       setOption,
       changeThreadGoal,
-      supportsThreadGoal: () => true,
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities,
       stopBackgroundTasks
     },
     journalDatabase: openTestJournalHostDatabase(root),

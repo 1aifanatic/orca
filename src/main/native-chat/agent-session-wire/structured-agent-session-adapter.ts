@@ -47,6 +47,7 @@ import type { AgentSessionPromptResponse } from '../../../shared/agent-session-q
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
+import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
 
 export class AgentSessionAcquisitionRefusal extends Error {
   readonly code = 'agent_session_operation_invalid'
@@ -319,10 +320,9 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
      *  start a new goal rather than rewrite that one's objective in place. */
     replacesGoal: boolean
   }): Promise<{ ok: true } | { ok: false; rejected: string }>
-  /** Whether this session can change its goal; `agent` answers one at rest. */
-  supportsThreadGoal?(sessionId: string, agent?: string): boolean
-  /** Whether this session writes context facts to its turn rows; `agent` answers one at rest. */
-  recordsContextUsage?(sessionId: string, agent?: string): boolean
+  /** What this session's agent declares it can do; `agent` answers one at rest. Answered by the
+   *  router from the agent's registered definition, never by a single adapter. */
+  capabilities?(sessionId: string, agent?: string): AgentSessionCapabilities | undefined
   /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string

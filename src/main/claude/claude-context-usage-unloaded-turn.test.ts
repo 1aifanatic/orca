@@ -29,6 +29,7 @@ import {
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
+import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
 
 const SESSION = 'orca-session'
 const journals = createTrackedJournalOpener()
@@ -171,7 +172,9 @@ describe('context usage for a turn row outside the loaded page', () => {
     const state = attachTail(journal, 3)
     expect(state.hasOlder).toBe(true)
     expect(hasTurnRow(state)).toBe(false)
-    const options = await readOptions(journal, { recordsContextUsage: () => true })
+    const options = await readOptions(journal, {
+      capabilities: () => CLAUDE_STRUCTURED_AGENT.capabilities
+    })
 
     expect(options.contextUsage?.current).toEqual(
       latestStructuredAgentContextFacts(journal.snapshot().items)
@@ -213,7 +216,9 @@ describe('context usage for a turn row outside the loaded page', () => {
 
     expect(hasTurnRow(live)).toBe(false)
     expect(live.unloadedTurnRevisions).toBe(1)
-    const options = await readOptions(journal, { recordsContextUsage: () => true })
+    const options = await readOptions(journal, {
+      capabilities: () => CLAUDE_STRUCTURED_AGENT.capabilities
+    })
     expect(
       selectStructuredAgentContextUsage(live.items, options.contextUsage?.current)
     ).toMatchObject({ usedTokens: 250_000, windowTokens: 1_000_000 })
@@ -227,7 +232,8 @@ describe('context usage for a turn row outside the loaded page', () => {
     runTurn(translator, 'turn-b', 3_000, [])
     await settle()
     const hostAnswer = async () =>
-      (await readOptions(journal, { recordsContextUsage: () => true })).contextUsage?.current
+      (await readOptions(journal, { capabilities: () => CLAUDE_STRUCTURED_AGENT.capabilities }))
+        .contextUsage?.current
     // The client reads the host once per turn, and again whenever its window loses a turn row.
     let state = attachTail(journal, 200)
     let host = await hostAnswer()

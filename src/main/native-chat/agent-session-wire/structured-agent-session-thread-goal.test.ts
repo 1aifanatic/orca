@@ -18,6 +18,8 @@ import {
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
+import { CLAUDE_STRUCTURED_AGENT } from '../../claude/claude-structured-agent-definition'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -88,7 +90,10 @@ describe('performThreadGoalChange', () => {
     const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
 
     const result = await performThreadGoalChange(
-      context(journal, { changeThreadGoal, supportsThreadGoal: () => true }),
+      context(journal, {
+        changeThreadGoal,
+        capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
+      }),
       { clientOperationId: 'op-1', change: { kind: 'set', objective: 'Ship the parser' } }
     )
 
@@ -117,7 +122,7 @@ describe('performThreadGoalChange', () => {
     const journal = await openJournal()
     const ctx = context(journal, {
       changeThreadGoal: async () => ({ ok: false, rejected: 'goals feature is disabled' }),
-      supportsThreadGoal: () => true
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
     })
 
     const result = await performThreadGoalChange(ctx, {
@@ -142,7 +147,7 @@ describe('performThreadGoalChange', () => {
       changeThreadGoal: async () => {
         throw new Error('connection closed')
       },
-      supportsThreadGoal: () => true
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
     })
 
     await expect(
@@ -164,7 +169,7 @@ describe('performThreadGoalChange', () => {
     ]
     const ctx = context(journal, {
       changeThreadGoal: () => attempts.shift()!(),
-      supportsThreadGoal: () => true
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
     })
     const input = {
       clientOperationId: 'op-9',
@@ -192,7 +197,10 @@ describe('performThreadGoalChange', () => {
   it('journals nothing for a status change or clear', async () => {
     const journal = await openJournal()
     const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
-    const ctx = context(journal, { changeThreadGoal, supportsThreadGoal: () => true })
+    const ctx = context(journal, {
+      changeThreadGoal,
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
+    })
 
     await performThreadGoalChange(ctx, {
       clientOperationId: 'op-3',
@@ -209,7 +217,10 @@ describe('performThreadGoalChange', () => {
     const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
 
     const result = await performThreadGoalChange(
-      context(journal, { changeThreadGoal, supportsThreadGoal: () => false }),
+      context(journal, {
+        changeThreadGoal,
+        capabilities: () => CLAUDE_STRUCTURED_AGENT.capabilities
+      }),
       { clientOperationId: 'op-5', change: { kind: 'set', objective: 'Ship it' } }
     )
 
@@ -232,7 +243,10 @@ describe('performThreadGoalChange', () => {
     const journal = await openJournal()
     await appendGoalRow(journal, { status: 'complete' })
     const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
-    const ctx = context(journal, { changeThreadGoal, supportsThreadGoal: () => true })
+    const ctx = context(journal, {
+      changeThreadGoal,
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
+    })
 
     await performThreadGoalChange(ctx, {
       clientOperationId: 'op-6',
@@ -262,7 +276,10 @@ describe('performThreadGoalChange', () => {
   it('reads a goal the provider reported, still landing when the set arrives, as the one it replaces', async () => {
     const journal = await openJournal()
     const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
-    const ctx = context(journal, { changeThreadGoal, supportsThreadGoal: () => true })
+    const ctx = context(journal, {
+      changeThreadGoal,
+      capabilities: () => CODEX_STRUCTURED_AGENT.capabilities
+    })
 
     // Issued, not yet landed: the set's read takes its place behind it in the journal's queue.
     const landing = appendGoalRow(journal, { status: 'active' })

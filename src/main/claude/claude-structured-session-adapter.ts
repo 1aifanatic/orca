@@ -76,12 +76,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
 
   supportsLocation = supportsClaudeStructuredLocation
 
-  // Orca's marker-based rewind proof can never pass on the real binary; rewind returns via a fork.
-  rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = () => ({
-    supported: false,
-    reason: 'unsupported'
-  })
-
   acquire = (input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> => {
     this.settledExitErrors.delete(input.identity.sessionId)
     return acquireClaudeSession({
@@ -254,9 +248,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     )
   readOptions = (input: { sessionId: string; fence: number }) =>
     readClaudeStructuredSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)
-  // Provider-level: a session at rest still reports the usage its journal recorded.
-  recordsContextUsage = (): boolean => true
-
   readOptionRestoreFailures = (sessionId: string): readonly string[] => [
     ...(this.sessions.get(sessionId)?.restoreSkippedOptions ?? [])
   ]

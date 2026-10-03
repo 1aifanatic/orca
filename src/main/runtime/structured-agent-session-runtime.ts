@@ -27,6 +27,8 @@ import {
   type CodexStructuredSessionAdapterDeps
 } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
+import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
+import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -301,9 +303,15 @@ async function installOnJournal(
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
     modelCatalog: agentModelCatalogStore
   })
-  const adapter = new StructuredAgentSessionAdapterRouter({ codex, claude }, async () => {
-    await Promise.all([codex.closeAll(), claude.closeAll()])
-  })
+  const adapter = new StructuredAgentSessionAdapterRouter(
+    [
+      { definition: CODEX_STRUCTURED_AGENT, adapter: codex },
+      { definition: CLAUDE_STRUCTURED_AGENT, adapter: claude }
+    ],
+    async () => {
+      await Promise.all([codex.closeAll(), claude.closeAll()])
+    }
+  )
   host = new StructuredAgentSessionHost({
     store,
     adapter,
