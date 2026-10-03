@@ -218,7 +218,14 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
       folderPath: host.remoteFolderPath
     })
     // No relay ever ran here, so the terminal gate must prove `exited` from an empty lease set.
-    const upgraded = await session.launch()
+    // This launch bypasses the fixture's log relay; keep the SSH lines a failed move explains itself by.
+    const upgraded = await session.launch({
+      onStderr: (chunk) => {
+        if (chunk.includes('[ssh]')) {
+          process.stderr.write(chunk)
+        }
+      }
+    })
     app = upgraded.app
     await waitForSessionReady(upgraded.page)
     await convertThenRetire(upgraded.page, session.userDataDir, seeded, FLAGS_FILE)

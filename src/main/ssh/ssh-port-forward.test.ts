@@ -345,6 +345,19 @@ describe('SshPortForwardManager', () => {
     expect(socket.destroy).toHaveBeenCalled()
   })
 
+  it('drops a local connection instead of throwing when the ssh2 client already disconnected', async () => {
+    const conn = createMockConn()
+    conn.mockClient.forwardOut.mockImplementation(() => {
+      throw new Error('Not connected')
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock implements the getClient/usesSystemSshTransport surface the ssh2 provider reads.
+    await manager.addForward('conn-1', conn as never, 3000, 'localhost', 8080)
+    const socket = createFakeSocket()
+
+    expect(() => getLastMockServer()?._connectionHandler(socket)).not.toThrow()
+    expect(socket.destroy).toHaveBeenCalled()
+  })
+
   it('closes late ssh2 channels after the forward was removed', async () => {
     const mockChannel = {
       pipe: vi.fn().mockReturnThis(),

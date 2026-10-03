@@ -26,27 +26,32 @@ export class Ssh2PortForwardProvider implements SshPortForwardProvider {
       socket.on('close', () => activeSockets.delete(socket))
       socket.on('error', () => socket.destroy())
 
-      client.forwardOut(
-        options.localHost,
-        options.localPort,
-        options.remoteHost,
-        options.remotePort,
-        (err, channel) => {
-          if (err) {
-            socket.destroy()
-            return
+      // Why: a client whose SSH transport dropped throws synchronously; uncaught, that kills main.
+      try {
+        client.forwardOut(
+          options.localHost,
+          options.localPort,
+          options.remoteHost,
+          options.remotePort,
+          (err, channel) => {
+            if (err) {
+              socket.destroy()
+              return
+            }
+            if (closed || socket.destroyed) {
+              closeChannel(channel)
+              socket.destroy()
+              return
+            }
+            socket.pipe(channel).pipe(socket)
+            channel.on('close', () => socket.destroy())
+            channel.on('error', () => socket.destroy())
+            socket.on('close', () => channel.close())
           }
-          if (closed || socket.destroyed) {
-            closeChannel(channel)
-            socket.destroy()
-            return
-          }
-          socket.pipe(channel).pipe(socket)
-          channel.on('close', () => socket.destroy())
-          channel.on('error', () => socket.destroy())
-          socket.on('close', () => channel.close())
-        }
-      )
+        )
+      } catch {
+        socket.destroy()
+      }
     })
 
     await listen(server, options.localHost, options.localPort)
