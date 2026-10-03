@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from './execution-host'
+import type { OrcaWorkspaceLayout } from './orca-workspace-layout'
 import type { GitHubProjectSettings } from './github/project-types'
 import type { VoiceSettings } from './speech-types'
 import type { AiVaultSearchSettings } from './ai-vault-search-settings'
@@ -423,6 +424,12 @@ export type GlobalSettings = {
   agentYoloDefaultsMigrated?: boolean
   /** Why: disabling must persist so startup doesn't reinstall global agent hook entries the user just removed. */
   agentStatusHooksEnabled: boolean
+  /** A local agent-state-rules.json that replaces downloaded and bundled rules, for testing a rule
+   *  change. */
+  agentStateRulesPath?: string | null
+  /** Off: rules are never downloaded and a cached download is ignored, so the bundled rules (or a
+   *  local override) apply. Absent reads as on. */
+  agentStateRulesLiveUpdates?: boolean
   /** Pre-trust the worktree or folder Orca starts an agent in, so its "trust this folder?" prompt is skipped. Defaults on. */
   agentWorkspaceTrustEnabled: boolean
   /** Why: Codex's shared server runs every tab's hooks with the first tab's env; off opts new terminals back into it. Absent reads as on. */
@@ -534,11 +541,7 @@ export type GlobalSettings = {
   aiVaultSearch?: AiVaultSearchSettings
 }
 
-export type OrcaWorkspaceLayout = {
-  path: string
-  nestWorkspaces: boolean
-}
-
 // Re-exported so existing importers keep one entry point; the shape lives in its
 // own file because this one is at the max-lines ceiling.
 export type { GhosttyImportPreview } from './ghostty-import-preview'
+export type { OrcaWorkspaceLayout } from './orca-workspace-layout'

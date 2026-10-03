@@ -46,6 +46,40 @@ used 42 aggregate runner-minutes across 11 test jobs. The
 estimates 34.9 headless runner-hours, including 23.4 in cancelled runs. These are
 baseline observations; post-merge savings have not yet been measured.
 
+## October 2 headless detector compiler cache
+
+The deferred detector already avoids dependency setup for known build inputs.
+For changes that need import analysis, the collector marks package imports external;
+only esbuild and its platform binary are needed. A small compiler archive can replace
+root dependency setup for this analysis, while qualification jobs still install normally.
+
+The existing Linux x64 warmer packs these two packages after its frozen,
+script-free, policy-checked install. Only main publishes. Readers use an exact key
+covering Node/platform/architecture, manifests, install policy, patches and the cache
+implementation. The producer and reader use the same archive path. File hashes,
+identity and a compiler smoke are checked before availability is reported; missing,
+invalid or failed restores use the original full installer. Graph analysis retains
+its existing conservative full-qualification verdict on errors.
+
+A [three-pair hosted comparison](https://github.com/stablyai/orca/actions/runs/37071724200)
+passed on Ubuntu x64 with Node 24.21.0 and esbuild 0.28.2. Every pair produced the
+same 6,018 source inputs. Sample 2 ran the compiler-only treatment first; samples 1
+and 3 ran the existing installer first. Each used a fresh dependency tree, and the
+compiler treatment required a real cache hit and validated its bytes and smoke.
+
+| Sample | Full installer + graph | Compiler restore + graph | Paired saving |
+| ------ | ---------------------- | ------------------------ | ------------- |
+| 1      | 11.730s                | 2.805s                   | 8.925s        |
+| 2      | 14.702s                | 4.706s                   | 9.996s        |
+| 3      | 14.666s                | 3.750s                   | 10.916s       |
+
+The median paired saving is 9.996 seconds. Inter-step overhead, archive transfer,
+validation and the real graph are included. Checkout, initial Node setup, dependency
+resets, seed work, post-job cache saves, tests and queues are excluded. These are
+warm detector measurements, not whole-workflow or billing savings. The trial uses
+the same package layout and validation as the production helper; production also
+resolves its policy fingerprint. Cold or changed identities still install fully.
+
 ## SSH Windows slot reuse
 
 The SSH Windows host workflow uses the same server-slot preparation action as
@@ -75,6 +109,108 @@ probe. Repaired source or incomplete evidence requires a fresh build. SSH PRs
 request reuse only following an exact prepared native-cache hit; manual SSH and
 all release builders retain fresh compilation. Subsequent staging checks still
 run. Hosted validation and the reuse interval remain to be measured.
+
+## Windows root download stores: registry installs finish sooner
+
+Three paired samples on each Windows architecture compared the existing exact
+main download-store restore with a fresh registry install. Each treatment used a
+fresh dependency tree, store and pnpm metadata, with registry-first ordering in
+sample 2. Both restored the same policy-checked verification record before timing.
+All six pairs used Node 24.21.0 and pnpm 12.8.1; manifest digests and installed
+lockfile digests matched, and both retained frozen, script-free installation.
+
+| Runner        | Cached totals (seconds)     | Registry totals (seconds)   | Paired median saving |
+| ------------- | --------------------------- | --------------------------- | -------------------- |
+| Windows x64   | 26.820 / 28.885 / 27.751    | 13.644 / 14.126 / 12.908    | 14.759 seconds       |
+| Windows ARM64 | 216.540 / 288.492 / 189.342 | 119.856 / 238.562 / 115.611 | 73.731 seconds       |
+
+The x64 samples are the three successful Windows 2022 jobs in
+[run 37064549378](https://github.com/stablyai/orca/actions/runs/37064549378).
+Its ARM cleanup guard rejected pnpm's setup-owned store path before measurement;
+those incomplete ARM jobs are excluded. The corrected
+[ARM-only run](https://github.com/stablyai/orca/actions/runs/37065220916) passed all
+three samples. Earlier rejected measurements also stopped before installation
+because an optional config file was absent; none count toward these timings.
+
+Intervals include actual store lookup/restore, inter-step overhead and root
+installation. Checkout, toolchain setup, tree/store reset, verification-record
+restoration and native preparation are excluded. ARM variation is substantial;
+these samples do not measure whole-workflow, queue or billing savings.
+
+Root-only Windows x64/ARM64 PR installs now skip the download-store restore.
+The existing x64 mixed-install exception remains. An explicit store opt-out also
+lets Windows headless persistence and SSH jobs avoid the archive on main or
+manual runs. Frozen installs, verification records, native caches and every
+qualification check remain. Other lockfile sets and platforms keep their
+existing policy. Default non-PR writers, including the warmer, still seed stores
+for direct setup-node consumers and workflows that run package scripts.
+
+## October 2 Linux root store comparison
+
+A [six-job hosted comparison](https://github.com/stablyai/orca/actions/runs/37073978443)
+measured the actual main root-store archive against direct registry installation,
+with three fresh-runner pairs on each Linux architecture. All six jobs passed.
+The middle sample on each architecture reversed treatment order. Between treatments,
+the driver removed the dependency tree, store and pnpm metadata, then restored the
+same policy-checked verification record before timing. Frozen, script-free installs
+preserved policy files and produced identical installed lockfile digests in each pair.
+
+| Architecture/sample | Store restore + install | Direct registry install | Paired saving |
+| ------------------- | ----------------------- | ----------------------- | ------------- |
+| x64 / 1             | 6.516s                  | 5.372s                  | 1.144s        |
+| x64 / 2             | 6.743s                  | 3.950s                  | 2.793s        |
+| x64 / 3             | 6.600s                  | 3.985s                  | 2.615s        |
+| ARM64 / 1           | 7.632s                  | 3.346s                  | 4.286s        |
+| ARM64 / 2           | 5.504s                  | 3.575s                  | 1.929s        |
+| ARM64 / 3           | 5.450s                  | 3.364s                  | 2.086s        |
+
+Median paired savings are 2.615 seconds on x64 and 2.086 seconds on ARM64; means
+are 2.184 and 2.767 seconds. Both used Node 24.21.0 and pnpm 12.8.1. Actual store
+lookup/transfer/restore, inter-step overhead and installation are timed. Checkout,
+initial toolchain/dependency setup, preparing the existing process wrapper,
+dependency resets, verification-record restores, native work, tests, post-job cache
+saves and queues are excluded. Package services have already been used by initial
+setup. These are warm-policy setup measurements, not workflow or billing savings.
+
+The shared installer consequently skips root-only Linux x64/ARM64 store restores
+on PRs. It still installs and checks every package through pnpm. Mixed mobile and
+custom lockfile sets, other architectures, verification/native caches,
+main store writers and release installation policies keep their existing behavior.
+The measured Windows exceptions remain. Mac restores were retained at this stage;
+the following comparison supersedes that policy. No periodic job or cache is added.
+
+## October 2 macOS root store comparison
+
+A [six-job hosted comparison](https://github.com/stablyai/orca/actions/runs/37078232553)
+used the same paired method on macOS 15 Intel and Apple Silicon. All six jobs
+passed with actual main store cache hits. The middle sample reversed treatment
+order. Each treatment started with a reset dependency tree, store and pnpm
+metadata, followed by the same verification-record restore. Policy files and
+installed lockfile digests matched within every pair.
+
+| Architecture/sample | Store restore + install | Direct registry install | Paired saving |
+| ------------------- | ----------------------- | ----------------------- | ------------- |
+| x64 / 1             | 87.270s                 | 60.584s                 | 26.686s       |
+| x64 / 2             | 103.280s                | 52.640s                 | 50.640s       |
+| x64 / 3             | 61.564s                 | 40.768s                 | 20.796s       |
+| ARM64 / 1           | 26.024s                 | 14.375s                 | 11.649s       |
+| ARM64 / 2           | 37.000s                 | 19.726s                 | 17.274s       |
+| ARM64 / 3           | 34.616s                 | 14.888s                 | 19.728s       |
+
+Median paired savings are 26.686 seconds on x64 and 17.274 seconds on ARM64;
+means are 32.707 and 16.217 seconds. Node matched within each pair: 24.19.0 on
+Intel and 24.20.0 on Apple Silicon, as resolved by the existing installer. Both
+used pnpm 12.8.1. Timing includes actual cache lookup/transfer/restore, inter-step
+overhead and installation. Checkout, initial setup, process-wrapper preparation,
+resets, verification restores, native work, tests, cache saves and queues are
+excluded. Initial setup has already used package services. These measurements
+do not establish whole-workflow or billing savings.
+
+The existing root-only PR exception now also covers macOS x64/ARM64. Frozen,
+script-free installs and pnpm policy checks still run. Mixed/custom lockfile sets,
+other architectures, verification/native caches, main/manual store writers and
+release installation policies retain their existing behavior. No periodic job
+or cache is added.
 
 ## October 1 Windows and dependency cache follow-up
 
@@ -679,8 +815,8 @@ coverage, and release behavior:
   Shard 4 spent 535 worker-seconds importing and 357 executing tests; a uniform
   per-file import estimate misses that cost. See [timing refresh](../../config/scripts/ci-shard-timings.md).
 - Seed Node 24 native modules, the pinned Git compatibility binary, and TypeScript
-  state on the default branch, hourly
-  and when dependency/toolchain inputs change. One ten-minute-bounded hosted job
+  state on the default branch when dependency/toolchain inputs change, with
+  scheduled recovery (originally hourly; now every six hours). One ten-minute-bounded hosted job
   reuses existing cache keys and skips typechecking an already-cached commit.
   New PRs can restore default-branch caches, while caches saved by another PR
   are inaccessible. The audit found 80 entries totaling 10.67 GiB, including
@@ -1216,7 +1352,7 @@ These are single cold/warm observations, not paired medians or a measured
 whole-workflow saving. They demonstrate usable exact-key reuse after publication;
 future savings depend on cache availability and unchanged native inputs. The
 trial seeds belong to this PR's merge ref. Other PRs require a main-branch seed
-after merging this new namespace; the existing main push and hourly warming
+after merging this new namespace; the existing main-push and scheduled warming
 jobs provide that seed.
 
 ## Separate mobile install verification: retain the current policy
@@ -1269,7 +1405,7 @@ This measures the three-file oracle cohort. Whole-shard timings include other
 test bodies, imports and transforms, so a whole-suite saving needs separate
 measurement.
 
-## Cache warming: let hourly ticks wait for active work
+## Cache warming: let scheduled ticks wait for active work
 
 The hourly warmer previously cancelled an active warmer, even when both used
 the same source. On October 2, the [merge-triggered run](https://github.com/stablyai/orca/actions/runs/36965832780)
@@ -1288,6 +1424,27 @@ This avoids the observed discarded installation. It does not remove the next
 scheduled run or its repeated successful lanes, and pending replacement still
 applies regardless of the cancellation expression. The bounded 20-run sample
 contains this collision; it does not establish a recurring or whole-CI saving.
+
+## Cache warming: six-hour recovery interval
+
+Scheduled warming now runs at 00:41, 06:41, 12:41 and 18:41 UTC instead of hourly.
+Main pushes that change cache inputs still seed immediately, and manual dispatch
+remains available. All five jobs, probes, keys and publication rules remain.
+This removes 20 scheduled workflows and 100 scheduled job starts per day (83%).
+
+Four consecutive October 2 scheduled runs used the same source. The
+[18:50 UTC run](https://github.com/stablyai/orca/actions/runs/37050194510) used 474
+aggregate runner-seconds across five jobs, including 242 seconds on Windows ARM.
+That job restored exact package, verification and native caches; package-store
+restore alone took about 70 seconds. Repeating that observed duration twenty
+fewer times would avoid about 158 runner-minutes daily, but this one-run estimate
+is not a billing forecast or measured post-rollout saving.
+
+The longer interval can delay background repair after eviction or runner-image
+changes. Existing consumers retain cold-cache installation/build fallback, and
+normal cache reads update last access. Storage was near the repository limit
+when audited, so retention and unchanged hit rates are not guaranteed. Observe
+misses before reducing the recovery frequency further.
 
 ## Daemon shutdown fixture: remove build tools after compilation
 
@@ -1392,3 +1549,205 @@ one CI failure does not establish a failure-rate reduction.
 The bounded 50-head main sample ending at 8ff6296 contained no root package
 metadata changes. Removing app-version metadata from the Windows server cache
 key would not improve reuse in that sample, so the key remains unchanged.
+
+## Windows ARM SSH: prepare the inbox capability during independent builds
+
+The ARM inbox lane starts guarded Windows capability preparation after the pure
+provisioning self-test and waits for it before any private SSH server or host cell
+runs. Dependency installation and the unchanged native artifacts can run during
+that preparation. Preview and x64 lanes keep their existing serial provisioning;
+the registered background step completes without mutation in those lanes.
+
+The preparation and the foreground provider use the same installer and isolation
+guards. The receipt must match the source, run, attempt, runner, image and native
+architecture. The foreground provider still reads the installed capability and
+verifies every native binary and Microsoft signature. Account ownership, ACLs,
+DefaultShell, private service identity, host cells and cleanup remain independent
+checks. A background failure propagates through the unconditional native wait.
+
+Two full four-lane pairs used frozen source refs and the same dependency and
+native-install policy. The [first baseline](https://github.com/stablyai/orca/actions/runs/36986929163)
+ran before the [first candidate](https://github.com/stablyai/orca/actions/runs/36986970976);
+the [second candidate](https://github.com/stablyai/orca/actions/runs/36991232037)
+was dispatched before the [second baseline](https://github.com/stablyai/orca/actions/runs/36991234729).
+Runner image versions matched within each platform in both pairs.
+
+| Active job, seconds | First baseline | First candidate | Second baseline | Second candidate |
+| ------------------- | -------------: | --------------: | --------------: | ---------------: |
+| ARM inbox           |          2,403 |           1,644 |           2,353 |            1,667 |
+| ARM preview         |          1,002 |             935 |             886 |              872 |
+| x64 inbox           |            636 |             732 |             616 |              620 |
+| x64 preview         |            562 |             561 |             623 |              566 |
+
+The ARM inbox observations improved by 759 and 686 seconds. Baseline dependency
+installation and artifact builds consumed 501 and 498 seconds before capability
+installation could start. Candidate capability installation ran during that
+work, but also took about 261 and 232 seconds less than the baseline. Candidate
+dependency installation was slower, particularly in the second pair. These
+observations support overlap on ARM; they do not establish a guaranteed 11–13
+minute saving, a reduction in queue time, or the cause of installer variability.
+The x64 lane showed no repeatable gain, so it keeps serial preparation.
+
+All 16 actual Windows providers and 48 host-cell verdicts passed across the two
+pairs. Receipts verify native machine identity, private service absence, owned
+process exit, account removal and key removal. Loaded profile disposition remains
+separate from those required cleanup checks. Hosted execution also verified the
+native background/wait syntax; older actionlint versions do not recognize it.
+
+### Overlap the private profile observation budgets
+
+After service deletion and owned process exit, profile cleanup polls each owned
+SID with its own full 30-second monotonic budget. Independent budgets now run
+together. Every deletion follows a fresh targeted read; loaded profiles remain
+for disposable VM destruction. Service identity, PID ownership, process exit,
+account removal and key removal still fail the complete provider on error.
+
+The maintained diagnostics self-test executes the actual cleanup try/catch with
+scoped Windows API and clock controls. Eight positive cases cover full windows,
+late unload, reload, query overhead, mixed states and missing SIDs; ten specific
+failure cases cover foreign profiles and the required cleanup gates. Disposable
+shortened-deadline and stale-snapshot mutations fail those controls. A separate
+mocked real-clock observation took 30.179 seconds for three loaded profiles,
+compared with about 90 seconds for serial full budgets. This measures polling,
+not an actual Windows provider or the entire job.
+
+The third profile no longer gains incidental extra time while earlier profiles
+consume their budgets. A profile unloading at 45 seconds may therefore remain
+where serial cleanup removed it. This uses the existing disposable-VM fallback;
+it does not remove a loaded profile or relax mandatory account/key cleanup.
+Hosted qualification of the combined workflow remains pending.
+
+## Coordinator mail tests: advance observation windows without removing them
+
+Six cases advance their original six 1,500 ms and ten 100 ms observation windows
+with a scoped clock. Real filesystem, SQLite, journal, RPC and runtime work still
+finishes asynchronously. The original journal-read gate and all counter and
+operation assertions remain. Cancellation during delayed startup and the
+Date-only age case retain real timers. Teardown stops the host and closes the
+database before advancing the known 2,000 ms orphan repair, then asserts no fake
+timers remain and restores the clock in `finally`.
+
+Two opposite-order local pairs passed the same 23 cases and unchanged source
+hashes. Selected-case totals fell from 13.674 to 3.318 seconds and from 13.276 to
+6.323 seconds. Whole-file test totals fell from 24.845 to 10.829 seconds and from
+21.500 to 19.410 seconds. Process wall times were 41.488/37.810 seconds and
+42.140/78.450 seconds; the reverse candidate spent 56.31 seconds importing under
+unrelated local load. Local process-wall savings were inconclusive.
+
+The later [hosted x64 and ARM comparison](https://github.com/stablyai/orca/actions/runs/37001891871)
+passed the same 23 cases in `structured-chat-coordinator-mail.test.ts` in both
+orders on each architecture, with frozen case and policy hashes. Median full-file
+wall time was 33.506 → 23.149 seconds on x64 and 33.438 → 22.504 seconds on ARM.
+Median test-body totals were 19.329 → 9.343 and 19.695 → 9.103 seconds, respectively.
+These measurements qualify this file; they do not measure whole-PR time.
+
+Injected extra deliveries at 1,499 ms and 99 ms still fail the original assertions
+in both clock modes. The latter candidate fails the unchanged journal-read gate
+with the same extra provider start. A separate control confirms the orphan repair
+actually executes against the closed database and leaves no fake timers. The
+change retains all 121 original expectation sites and adds one teardown check;
+it does not shorten the runtime's observation interval or claim a whole-PR gain.
+
+## Stub child shutdown clocks: Codex and Claude
+
+[Merged Codex change #24893](https://github.com/stablyai/orca/pull/24893) scopes timeout
+clocks to two synthetic-child cases in `codex-app-server-connection.test.ts`.
+The full platform graceful deadline and 1,000 ms forced wait remain; the test
+waits for the actual stub SIGKILL before advancing the forced window. Streams,
+process-table reads, Date and immediate callbacks remain real. Fault controls
+still detect late exit, missing EPIPE, missing exit proof and unwanted notification.
+
+The [hosted ARM comparison](https://github.com/stablyai/orca/actions/runs/37074124526)
+passed the same 32 full-file cases in baseline/candidate and candidate/baseline
+order. File wall times were 13.671 / 13.674 seconds originally and 1.658 / 1.649
+seconds with scoped clocks. Installer time is excluded; generated caches remain
+across the disclosed order. Real-child coverage and production shutdown code remain.
+
+[Merged Claude change #24897](https://github.com/stablyai/orca/pull/24897) changes only
+two synthetic-child cases in `claude-agent-sdk-exit-proof.test.ts`. Both full
+33-case runs passed, including the unchanged five real-child cases. In one local
+macOS pair, the two bodies took 2,503 / 1,502 ms originally and 1.37 / 0.39 ms with
+scoped clocks. They cross a real immediate callback before advancing the complete
+1,500 ms graceful and 1,000 ms forced windows, restore timers in `finally`, and
+retain the original false exit verdicts. Fault controls detect either deadline
+shortened by one millisecond, an unproved true verdict and a leftover timer.
+[Normal PR CI](https://github.com/stablyai/orca/actions/runs/37075819218) passed;
+these local body measurements do not establish hosted or whole-PR time savings.
+
+## Sequential static analysis and typecheck: retain separate jobs
+
+A four-trial hosted screen kept the slim router unchanged and compared the two
+independent ARM jobs with one ARM job running their unchanged checks sequentially.
+The [compiler/planner census](https://github.com/stablyai/orca/actions/runs/37069472888)
+matched all compiler inputs and the full 10,477-file unit inventory in separate,
+shared root-only and shared mixed-install states. The [safety qualification](https://github.com/stablyai/orca/actions/runs/37075043747)
+verified native joins after compiler failure and a real late action-post failure;
+all four guarded downstream sentinels skipped and the audit passed.
+
+| Trial                                                          | Mode     | Active ARM seconds | Router finish to heavy finish, seconds |
+| -------------------------------------------------------------- | -------- | -----------------: | -------------------------------------: |
+| [1](https://github.com/stablyai/orca/actions/runs/37075574191) | Separate |                157 |                                    124 |
+| [2](https://github.com/stablyai/orca/actions/runs/37075887937) | Combined |                134 |                                    150 |
+| [3](https://github.com/stablyai/orca/actions/runs/37076222202) | Combined |                129 |                                    134 |
+| [4](https://github.com/stablyai/orca/actions/runs/37076786281) | Separate |                159 |                                    194 |
+
+Both pairs saved active ARM time: 23 and 30 seconds, or 14.6% and 18.9%, with one
+heavy admission instead of two. The active critical path was 15 and 8 seconds
+longer. Downstream eligibility changed by +26 and −60 seconds; observed ready-to-start
+delay differences of +11 and −68 seconds explain that reversal. Created-to-start
+delay is recorded separately and does not establish a quota or queue cause.
+
+Retain separate jobs for now. This screen shows a capacity saving, with a longer
+active critical path and no repeatable latency gain. All trials used frozen
+`cc73c8e1a72b0e9ee9c29e57458ce307f5f019c2` source, manual workflow dispatches,
+Node 24.21.0 and the same four exact primary cache hits. Main's later
+[Linux PR root-store policy change #24896](https://github.com/stablyai/orca/pull/24896)
+is outside this screen. The trial ran actual heavy checks and proved unit and both
+package eligibility, without launching those downstream matrices or measuring a
+whole-PR speedup.
+
+## Linux headless runtime build overlap
+
+The historical pinned Bun artifact now builds in a native background step while
+current native preparation and Node bundling run in the foreground. An
+unconditional join precedes the unchanged artifact and cross-runtime tests. Bun
+setup stays Linux-only; other platforms register and join a successful no-op.
+The producer publishes step outputs consumed only by those tests. The existing
+selector, native floors, template builders and cache policies remain.
+
+A [hosted alternating comparison](https://github.com/stablyai/orca/actions/runs/37072923774)
+ran four serial/overlap arms on each of two Linux VMs:
+
+| Architecture | Serial preparation, seconds | Overlapped preparation, seconds |
+| ------------ | --------------------------: | ------------------------------: |
+| x64          |             20.831 / 19.576 |                 11.149 / 10.914 |
+| ARM64        |             15.155 / 14.396 |                   8.566 / 8.553 |
+
+Every arm passed the same 961 cases across 92 files: 930 passed and 31 skipped.
+Both cross-runtime persistence cases passed. The two live daemon-handover cases
+kept their existing protocol-version skips. All four x64 arms passed actual Node
+18 loading and pinned-runtime handoff. Installed/source inputs and artifact
+inventories matched; each normal owned-process ledger was clean before cleanup.
+Common native compiler warmup preceded timing and retained its generated Python
+caches in the strict installed ledger. These are preparation savings of 5.8–9.7
+seconds, excluding setup, cold installs, runner start delays and whole-PR time.
+
+Actual [Bun failure](https://github.com/stablyai/orca/actions/runs/37078015921) and
+[Node failure](https://github.com/stablyai/orca/actions/runs/37078021568) controls
+qualified genuine compiler errors with fresh live opposite builders, native joins,
+skipped consumers, restored inputs and verified exits. A [normal cancellation
+control](https://github.com/stablyai/orca/actions/runs/37079655167) received SIGINT
+while the actual Bun builder was freshly live; both builders and the detached
+owned child had simultaneous earlier readiness. All three native joins had terminal dispositions of cancelled, success and
+cancelled, and every consumer skipped. The temporary observer retired its owned processes;
+the collector independently verified their absence and unchanged inputs. This
+proves signal delivery and observer-owned retirement, without establishing
+runner-only descendant cleanup at the join. The unchanged historical builder
+starts finite build/smoke work, and its children retain GitHub's normal orphan
+tracking marker.
+
+Earlier cancellation trials remain excluded from live-build qualification: one
+collector stopped its observer before signal routing, and the corrected trial
+received the signal after both builders finished. The qualifying trial requested
+normal cancellation earlier in the same preparation sequence to account for
+observed delivery delay; no workload, wait or proof predicate was shortened.
