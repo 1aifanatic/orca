@@ -52,17 +52,13 @@ export async function openCodexAppServerConnection(
   handlers: CodexAppServerConnectionHandlers = {},
   spawnImpl: typeof spawnProcess = spawnProcess
 ): Promise<CodexAppServerConnection> {
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...launch.env }
-  for (const key of launch.envToDelete ?? []) {
-    delete childEnv[key]
-  }
-  const spawnSpec = createProviderSpawnSpec(launch, childEnv, process.platform)
+  const spawnSpec = createProviderSpawnSpec(launch, process.env, process.platform)
   const child = spawnImpl(spawnSpec)
 
   function terminateProcessTree(): Promise<boolean> {
     // The supervisor and provider own separate POSIX groups so the supervisor can prove the
     // provider group empty before relaying its exit. Forced wrapper teardown uses descendant proof.
-    return terminateProviderProcessTree(child)
+    return terminateProviderProcessTree(child, { site: 'codex-app-server-teardown' })
   }
 
   let stderrTail = ''

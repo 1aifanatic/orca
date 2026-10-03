@@ -65,10 +65,29 @@ describe('structured provider supervision', () => {
     expect(createProviderSpawnSpec(launch, { PATH: '/bin' }, 'win32')).toEqual({
       program: '/opt/codex',
       args: ['app-server', '--flag'],
-      env: { PATH: '/bin' },
+      env: { PATH: '/bin', CODEX_HOME: '/tmp/codex' },
       cwd: '/work/repo',
       detached: false,
       supervised: false
     })
   })
+
+  it.each(['win32', 'darwin', 'linux'] as const)(
+    'applies launch environment overrides and deletions on %s',
+    (platform) => {
+      const baseEnv = { PATH: '/bin', AGENT_HOME: '/inherited', PARENT_AGENT: 'parent' }
+      const overlay = { AGENT_HOME: '/pinned', LAUNCH_ONLY: 'added', PARENT_AGENT: 'overlay' }
+      const spec = createProviderSpawnSpec(
+        { command: 'provider', args: [], env: overlay, envToDelete: ['PARENT_AGENT'] },
+        baseEnv,
+        platform
+      )
+
+      expect(spec.env).toMatchObject({ PATH: '/bin', AGENT_HOME: '/pinned', LAUNCH_ONLY: 'added' })
+      expect(spec.env).not.toHaveProperty('PARENT_AGENT')
+      expect(baseEnv.PARENT_AGENT).toBe('parent')
+      expect(baseEnv.AGENT_HOME).toBe('/inherited')
+      expect(overlay.PARENT_AGENT).toBe('overlay')
+    }
+  )
 })

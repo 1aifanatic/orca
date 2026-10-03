@@ -175,7 +175,7 @@ export function supervisedPosixLaunch(
 
 export function createProviderSpawnSpec(
   launch: ProviderProcessLaunch,
-  childEnv: NodeJS.ProcessEnv,
+  baseEnv: NodeJS.ProcessEnv,
   platform: NodeJS.Platform
 ): {
   program: string
@@ -186,6 +186,10 @@ export function createProviderSpawnSpec(
   /** The child is the supervisor, whose SIGTERM stops the provider and then itself. */
   supervised: boolean
 } {
+  const childEnv: NodeJS.ProcessEnv = { ...baseEnv, ...launch.env }
+  for (const key of launch.envToDelete ?? []) {
+    delete childEnv[key]
+  }
   const supervisor = platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv)
   return {
     program: supervisor?.command ?? launch.command,

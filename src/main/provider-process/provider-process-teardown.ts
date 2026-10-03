@@ -9,6 +9,7 @@ const activeTeardowns = new WeakMap<object, Promise<boolean>>()
 type TeardownChild = Pick<ChildProcessHandle, 'pid' | 'kill'>
 
 export type ProviderProcessTeardownDeps = {
+  site: string
   platform?: NodeJS.Platform
   dedicatedProcessGroup?: boolean
   captureDescendants?: (rootPid: number) => Promise<DescendantSnapshot | null>
@@ -30,7 +31,7 @@ function terminateDedicatedPosixGroup(rootPid: number, deps: ProviderProcessTear
   // Outside the try: that catch is the ESRCH contract, not a breadcrumb handler.
   recordSelfInitiatedTreeKill({
     pid: rootPid,
-    site: 'codex-app-server-teardown',
+    site: deps.site,
     scope: 'posix-process-group'
   })
   return true
@@ -72,7 +73,7 @@ async function terminatePosixTree(
       // already-gone contract, not a breadcrumb handler.
       recordSelfInitiatedTreeKill({
         pid: snapshot.rootPgid,
-        site: 'codex-app-server-teardown',
+        site: deps.site,
         scope: 'posix-process-group'
       })
     }
@@ -97,7 +98,7 @@ async function terminateOnce(
   }
   if ((deps.platform ?? process.platform) === 'win32') {
     const terminate = deps.terminateWindowsTree ?? terminateWindowsProcessTree
-    await terminate(rootPid, { site: 'codex-app-server-teardown' })
+    await terminate(rootPid, { site: deps.site })
     // taskkill owns the tree; this preserves the prior direct-child fallback when it fails.
     child.kill('SIGKILL')
     return true
@@ -110,7 +111,7 @@ async function terminateOnce(
 
 export function terminateProviderProcessTree(
   child: TeardownChild,
-  deps: ProviderProcessTeardownDeps = {}
+  deps: ProviderProcessTeardownDeps
 ): Promise<boolean> {
   const key = child
   const active = activeTeardowns.get(key)

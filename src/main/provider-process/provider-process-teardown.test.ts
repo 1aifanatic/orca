@@ -27,6 +27,7 @@ describe('terminateProviderProcessTree', () => {
     const terminateWindowsTree = vi.fn(() => release.promise)
 
     const teardown = terminateProviderProcessTree(target, {
+      site: 'codex-app-server-teardown',
       platform: 'win32',
       terminateWindowsTree
     })
@@ -38,12 +39,25 @@ describe('terminateProviderProcessTree', () => {
     expect(target.kill).toHaveBeenCalledWith('SIGKILL')
   })
 
+  it('passes a non-Codex diagnostic label to Windows teardown', async () => {
+    const terminateWindowsTree = vi.fn(async () => undefined)
+
+    await terminateProviderProcessTree(child(), {
+      site: 'provider-test-teardown',
+      platform: 'win32',
+      terminateWindowsTree
+    })
+
+    expect(terminateWindowsTree).toHaveBeenCalledWith(1234, { site: 'provider-test-teardown' })
+  })
+
   it('waits for an owned POSIX snapshot before killing the wrapper', async () => {
     const target = child()
     const snapshot = { rootPgid: 1234, descendants: [], capturedAtMs: 1 }
     const release = Promise.withResolvers<boolean>()
 
     const teardown = terminateProviderProcessTree(target, {
+      site: 'codex-app-server-teardown',
       platform: 'darwin',
       captureDescendants: async () => snapshot,
       terminateDescendants: () => release.promise
@@ -63,6 +77,7 @@ describe('terminateProviderProcessTree', () => {
 
     await expect(
       terminateProviderProcessTree(target, {
+        site: 'provider-test-teardown',
         platform: 'darwin',
         dedicatedProcessGroup: true,
         captureDescendants,
@@ -73,6 +88,9 @@ describe('terminateProviderProcessTree', () => {
     expect(signalProcessGroup).toHaveBeenCalledWith(1234, 'SIGKILL')
     expect(captureDescendants).not.toHaveBeenCalled()
     expect(target.kill).not.toHaveBeenCalled()
+    expect(findSelfInitiatedTreeKills(Date.now())).toEqual([
+      expect.objectContaining({ site: 'provider-test-teardown', scope: 'posix-process-group' })
+    ])
   })
 
   it('keeps the dedicated-group wrapper reachable when signalling is unproven', async () => {
@@ -80,6 +98,7 @@ describe('terminateProviderProcessTree', () => {
 
     await expect(
       terminateProviderProcessTree(target, {
+        site: 'codex-app-server-teardown',
         platform: 'linux',
         dedicatedProcessGroup: true,
         signalProcessGroup: () => {
@@ -103,6 +122,7 @@ describe('terminateProviderProcessTree', () => {
 
     await expect(
       terminateProviderProcessTree(target, {
+        site: 'codex-app-server-teardown',
         platform: 'darwin',
         captureDescendants: async () => ({
           rootPgid: UNREACHABLE_PGID,
@@ -123,6 +143,7 @@ describe('terminateProviderProcessTree', () => {
 
     await expect(
       terminateProviderProcessTree(target, {
+        site: 'codex-app-server-teardown',
         platform: 'darwin',
         captureDescendants: async () => ({ rootPgid: 1234, descendants: [], capturedAtMs: 1 }),
         terminateDescendants: async () => true,
@@ -152,6 +173,7 @@ describe('terminateProviderProcessTree', () => {
     const results = await Promise.all(
       targets.map((target) =>
         terminateProviderProcessTree(target, {
+          site: 'codex-app-server-teardown',
           platform: 'linux',
           dedicatedProcessGroup: true,
           captureDescendants,
