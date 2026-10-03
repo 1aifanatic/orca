@@ -448,7 +448,7 @@ describe('useStructuredAgentSessionRead stream failures', () => {
     expect(result.current.state.readRefusal).toBeUndefined()
   })
 
-  // An older host sends refusals without details; it still answered, so the chat is owed it.
+  // A refusal whose reason this build doesn't know is still the host's answer, so it is owed too.
   it.each([
     ['with its reason', { reason: 'journalUnavailable' }],
     ['without a reason', undefined]

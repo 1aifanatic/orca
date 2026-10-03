@@ -186,8 +186,8 @@ function createReadOwner(
     const transport = startStructuredAgentSessionReadTransport({
       applyEvent: (event) => apply({ type: 'event', event }),
       applyError: (message, refusal) => {
-        // Once loaded, a failure the host sent no refusal for is lost contact: the transport retries
-        // it and the chat stays as it is. A refusal is the host's answer, so it is always shown.
+        // Once loaded, a failure with no host refusal attached is treated as lost contact: the
+        // transport retries it and the chat stays as it is. A refusal is the host's answer: shown.
         if (snapshot.state.epoch !== null && refusal === undefined) {
           return
         }
