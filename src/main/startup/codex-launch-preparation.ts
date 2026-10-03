@@ -60,24 +60,23 @@ export async function prepareCodexRuntimeHomeForLaunch(
       ? { runtime: 'wsl' as const, wslDistro: target.wslDistro?.trim() || getDefaultWslDistro() }
       : target
   const hooksEnabled = isAgentStatusHooksEnabledForAgent(state.store?.getSettings(), 'codex')
-  if (
+  // Why: with hooks off, only this profile's own WSL account homes are stripped; the guest's ~/.codex is shared.
+  const homeOwner =
     !hooksEnabled &&
     hookTarget?.runtime === 'wsl' &&
     runtimeHomePath &&
     !runtimeHome.isProfileOwnedWslCodexHome(runtimeHomePath)
-  ) {
-    // Why: like the real ~/.codex above, a home other Orcas share keeps their
-    // entry; removing it is the explicit opt-out's job.
-    return runtimeHomePath
-  }
+      ? 'shared'
+      : 'profile'
   try {
     // Why: honor the persisted off switch so post-startup launches can't reinstall removed hooks.
     const status = await codexHookService.prepareRuntimeHomeForLaunch(
       runtimeHomePath,
       hookTarget,
-      hooksEnabled
+      hooksEnabled,
+      homeOwner
     )
-    if (status.state === 'error') {
+    if (status?.state === 'error') {
       console.warn(
         `[codex-hook-service] failed to ${hooksEnabled ? 'refresh' : 'refresh user'} runtime hooks before launch`,
         status.detail

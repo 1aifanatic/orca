@@ -103,9 +103,9 @@ describe('Codex WSL runtime hook install', () => {
     const independent = firstHome.replace('\\Alice\\', '\\Bob\\')
     const target = { runtime: 'wsl' as const, wslDistro: 'Ubuntu' }
 
-    const first = service.prepareRuntimeHomeForLaunch(firstHome, target, true)
-    const second = service.prepareRuntimeHomeForLaunch(alias, target, true)
-    const third = service.prepareRuntimeHomeForLaunch(independent, target, true)
+    const first = service.prepareRuntimeHomeForLaunch(firstHome, target, true, 'shared')
+    const second = service.prepareRuntimeHomeForLaunch(alias, target, true, 'shared')
+    const third = service.prepareRuntimeHomeForLaunch(independent, target, true, 'shared')
     await vi.waitFor(() => expect(started).toEqual([firstHome, independent]))
 
     releases.splice(0).forEach((release) => release())

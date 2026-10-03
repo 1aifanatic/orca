@@ -1,10 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as ChildProcess from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+const execFileSpy = vi.hoisted(() => vi.fn())
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChildProcess>()
+  return { ...actual, execFile: execFileSpy.mockImplementation(actual.execFile) }
+})
+
 import { readHookTrustEntries } from './config-toml-trust'
 import { _internals, type CodexWslRuntimeHookInstallPlan } from './hook-service'
-import { withdrawWslGuestCodexHooksForOptOut } from './codex-wsl-guest-hook-opt-out'
+import {
+  restoreCodexTrustSessionsForTests,
+  stubCodexTrustSessionsForTests
+} from './hook-service-test-harness'
+import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
+import {
+  createWslGuestCodexHookOptOutPlan,
+  withdrawWslGuestCodexHooksForOptOut
+} from './codex-wsl-guest-hook-opt-out'
 
 type HooksConfig = { hooks: Record<string, { hooks?: { command?: string }[] }[]> }
 
@@ -16,9 +33,12 @@ beforeEach(() => {
   const userData = mkdtempSync(join(tmpdir(), 'orca-codex-wsl-opt-out-userdata-'))
   tempRoots.push(userData)
   vi.stubEnv('ORCA_USER_DATA_PATH', userData)
+  // Why: on Windows the grant would otherwise run codex inside a real distro.
+  stubCodexTrustSessionsForTests()
 })
 
 afterEach(() => {
+  restoreCodexTrustSessionsForTests()
   vi.unstubAllEnvs()
   for (const root of tempRoots) {
     rmSync(root, { recursive: true, force: true })
@@ -93,6 +113,25 @@ describe("Codex hooks opt-out in a WSL guest's own ~/.codex", () => {
     expect(orcaTrustKeys(guest)).toEqual(installedTrust)
   })
 
+  it('lets a hooks-on install already queued on the guest config land, then removes it', async () => {
+    const guest = createGuestCodexHome()
+    writeUserHooks(guest)
+    let releaseLane!: () => void
+    const laneHeld = runExclusivelyForCodexTrustConfig(
+      guest.tomlPath,
+      () => new Promise<void>((resolve) => (releaseLane = resolve))
+    )
+    const install = _internals.installManagedHooksIntoWslRuntime(guest)
+
+    const withdrawal = withdrawWslGuestCodexHooksForOptOut(async () => [guest])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    releaseLane()
+    await Promise.all([laneHeld, install, withdrawal])
+
+    expect(commands(guest)).toEqual([USER_COMMAND])
+    expect(orcaTrustKeys(guest)).toEqual([])
+  })
+
   it('leaves a guest that holds no Orca entry exactly as it was', async () => {
     const withoutCodexConfig = createGuestCodexHome()
     const withUserHooksOnly = createGuestCodexHome()
@@ -105,5 +144,33 @@ describe("Codex hooks opt-out in a WSL guest's own ~/.codex", () => {
     expect(existsSync(withoutCodexConfig.tomlPath)).toBe(false)
     expect(readFileSync(withUserHooksOnly.configPath, 'utf-8')).toBe(before)
     expect(existsSync(withUserHooksOnly.tomlPath)).toBe(false)
+  })
+})
+
+describe('the opt-out plan for a running distro', () => {
+  it("targets the guest's own ~/.codex without probing WSL", () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+    // Why: off Windows the canonical-path probe is skipped anyway; on Windows it spawns wsl.exe.
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    execFileSpy.mockClear()
+    try {
+      const plan = createWslGuestCodexHookOptOutPlan({
+        distro: 'Ubuntu',
+        guestHome: '\\\\wsl.localhost\\Ubuntu\\home\\alice'
+      })
+
+      expect(plan).toMatchObject({
+        configPath: '\\\\wsl.localhost\\Ubuntu\\home\\alice\\.codex\\hooks.json',
+        tomlPath: '\\\\wsl.localhost\\Ubuntu\\home\\alice\\.codex\\config.toml',
+        trustConfigPath: '/home/alice/.codex/hooks.json',
+        wslDistro: 'Ubuntu',
+        linuxRuntimeHome: '/home/alice/.codex'
+      })
+      expect(execFileSpy).not.toHaveBeenCalled()
+    } finally {
+      if (originalPlatform) {
+        Object.defineProperty(process, 'platform', originalPlatform)
+      }
+    }
   })
 })

@@ -52,7 +52,8 @@ export function initializeMainProcessAccountServices(): void {
   )
   setRunningWslGuestLister(async () =>
     Promise.all(
-      (await listRunningWslDistrosAsync()).map(async (distro) => ({
+      // Why confirmed: a stale list could name a stopped distro, and touching its files boots it.
+      (await listRunningWslDistrosAsync({ requireConfirmed: true })).map(async (distro) => ({
         distro,
         guestHome: await getWslHomeAsync(distro)
       }))

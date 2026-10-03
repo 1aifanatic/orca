@@ -106,7 +106,8 @@ describe('the shared real-home Codex entry', () => {
     const status = await new CodexHookService().prepareRuntimeHomeForLaunch(
       accountHome,
       undefined,
-      true
+      true,
+      'profile'
     )
 
     expect(status.state).toBe('installed')
@@ -146,7 +147,8 @@ describe('the shared real-home Codex entry', () => {
     await new CodexHookService().prepareRuntimeHomeForLaunch(
       getOrcaManagedCodexHomePath(),
       undefined,
-      false
+      false,
+      'profile'
     )
 
     expect(snapshotRealCodexHome()).toEqual(before)

@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
     settings,
     prepareForCodexLaunchAsync: vi.fn(async (): Promise<string | null> => null),
     isProfileOwnedWslCodexHome: vi.fn((homePath: string) => homePath === ACCOUNT_HOME),
-    prepareRuntimeHomeForLaunch: vi.fn(async () => ({ state: 'installed' as const })),
+    prepareRuntimeHomeForLaunch: vi.fn(async () => null),
     ensureRealHomeCodexHookState: vi.fn(async () => 'removed' as const)
   }
 })
@@ -62,14 +62,19 @@ describe('WSL Codex launch prep and the shared guest ~/.codex', () => {
       name: 'Codex turned off per agent',
       settings: { agentStatusHooksEnabled: true, disabledTuiAgents: ['codex' as const] }
     }
-  ])("never touches the guest's own ~/.codex with $name", async ({ settings }) => {
+  ])("hands the guest's own ~/.codex over as shared with $name", async ({ settings }) => {
     mocks.settings = settings
     mocks.prepareForCodexLaunchAsync.mockResolvedValue(GUEST_HOME)
 
     await expect(prepareCodexRuntimeHomeForLaunch(WSL_TARGET)).resolves.toBe(GUEST_HOME)
 
     expect(mocks.isProfileOwnedWslCodexHome).toHaveBeenCalledWith(GUEST_HOME)
-    expect(mocks.prepareRuntimeHomeForLaunch).not.toHaveBeenCalled()
+    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledExactlyOnceWith(
+      GUEST_HOME,
+      WSL_TARGET,
+      false,
+      'shared'
+    )
   })
 
   it("restores the entry in the guest's own ~/.codex on a hooks-on launch", async () => {
@@ -78,7 +83,12 @@ describe('WSL Codex launch prep and the shared guest ~/.codex', () => {
 
     await prepareCodexRuntimeHomeForLaunch(WSL_TARGET)
 
-    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(GUEST_HOME, WSL_TARGET, true)
+    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(
+      GUEST_HOME,
+      WSL_TARGET,
+      true,
+      'profile'
+    )
   })
 
   it.each([
@@ -95,7 +105,8 @@ describe('WSL Codex launch prep and the shared guest ~/.codex', () => {
       expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(
         ACCOUNT_HOME,
         WSL_TARGET,
-        hooksEnabled
+        hooksEnabled,
+        'profile'
       )
     }
   )

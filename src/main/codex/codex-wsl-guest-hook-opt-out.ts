@@ -21,18 +21,26 @@ export function setRunningWslGuestLister(list: () => Promise<RunningWslGuest[]>)
   listRunningWslGuests = list
 }
 
+/**
+ * Pure: no canonical-path probe, since the withdrawal sweeps Orca's guest trust
+ * under any path, and probing would spawn wsl.exe once per running distro.
+ */
+export function createWslGuestCodexHookOptOutPlan({
+  distro,
+  guestHome
+}: RunningWslGuest): CodexWslRuntimeHookInstallPlan | null {
+  return createCodexWslRuntimeHookInstallPlan(
+    guestHome ? resolveWslGuestCodexHomePath(guestHome, distro) : null,
+    { runtime: 'wsl', wslDistro: distro },
+    (_distro, linuxPath) => linuxPath
+  )
+}
+
 async function listRunningGuestCodexHookPlans(): Promise<CodexWslRuntimeHookInstallPlan[]> {
-  const plans: CodexWslRuntimeHookInstallPlan[] = []
-  for (const { distro, guestHome } of await listRunningWslGuests()) {
-    const plan = createCodexWslRuntimeHookInstallPlan(
-      guestHome ? resolveWslGuestCodexHomePath(guestHome, distro) : null,
-      { runtime: 'wsl', wslDistro: distro }
-    )
-    if (plan) {
-      plans.push(plan)
-    }
-  }
-  return plans
+  return (await listRunningWslGuests()).flatMap((guest) => {
+    const plan = createWslGuestCodexHookOptOutPlan(guest)
+    return plan ? [plan] : []
+  })
 }
 
 function hasOrcaCodexHookEntry(configPath: string): boolean {
@@ -59,13 +67,11 @@ export async function withdrawWslGuestCodexHooksForOptOut(
 ): Promise<void> {
   for (const plan of await listPlans()) {
     try {
-      if (!hasOrcaCodexHookEntry(plan.configPath)) {
-        continue
-      }
+      // Why one lane: checked outside it, an in-flight hooks-on install could add the entry after the check.
       const status = await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
-        refreshWslRuntimeUserHooks(plan)
+        hasOrcaCodexHookEntry(plan.configPath) ? refreshWslRuntimeUserHooks(plan) : null
       )
-      if (status.state === 'error') {
+      if (status?.state === 'error') {
         console.warn('[codex-hook-service] failed to remove WSL Codex hooks:', status.detail)
       }
     } catch (error) {
