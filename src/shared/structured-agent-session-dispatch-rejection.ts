@@ -122,8 +122,8 @@ const KIND_VERDICT = {
   managedAccountUnsupported: 'failure',
   restartFailed: 'failure',
   providerRejected: 'failure',
-  // The person's own hook decided it; nothing failed them.
-  hookBlocked: null,
+  // A queued card it blocked is returned for the person to edit, never re-sent into the same hook.
+  hookBlocked: 'failure',
   attachmentInvalid: 'failure',
   attachmentUnreadable: 'failure',
   emptyMessage: 'failure',
