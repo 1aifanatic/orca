@@ -1,8 +1,5 @@
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
-import {
-  AGENT_SESSION_MESSAGE_DELIVERY_RUNTIME_CAPABILITIES,
-  AGENT_SESSION_SEND_ANSWER_RUNTIME_CAPABILITIES
-} from './agent-session-message-delivery-capabilities'
+import { AGENT_SESSION_MESSAGE_DELIVERY_RUNTIME_CAPABILITIES } from './agent-session-message-delivery-capabilities'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {

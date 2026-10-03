@@ -32,7 +32,6 @@ import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
  *  failure was written, ahead of what was queued since. Any other row for a settled message still
  *  changes nothing. */
 function requeueRejectedSubmission(
-  state: JournalReducerState,
   submission: AgentJournalSubmission | undefined,
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
@@ -58,7 +57,7 @@ export function applyJournalDispatchRow(
 ): void {
   const submission = state.submissions.get(row.clientMessageId)
   if (row.requeued === true) {
-    requeueRejectedSubmission(state, submission, row)
+    requeueRejectedSubmission(submission, row)
     return
   }
   // Shared with the queued-draft returned hook: a row ignored here must not alter a draft.
