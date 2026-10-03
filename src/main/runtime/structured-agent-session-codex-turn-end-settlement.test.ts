@@ -602,14 +602,15 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     return sent
   }
 
-  async function nextSendStartsANewChild(): Promise<void> {
+  async function nextSendStartsANewChild(): Promise<string> {
     turns = codexTurnLifecycleFake(
       THREAD,
       () => (method, params) => handlers?.onNotification?.(method, params)
     )
-    await send('try again')
+    const next = await send('try again')
     await vi.waitFor(() => expect(answers).toBe(2))
     expect(connections).toBe(2)
+    return next
   }
 
   it('withdraws the send whose turn never opened, and the next send starts a new child', async () => {
@@ -642,6 +643,36 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(childCloses).toBe(1)
     expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
+  })
+
+  // Codex drains a steer into the running turn, so it may hold one it never echoed.
+  it('leaves a send steered into the open turn in doubt when the child end follows', async () => {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    const steered = await send('and check the tests')
+    await vi.waitFor(() => expect(steers).toBe(1))
+    interruptsFail = true
+
+    await stop('turn-1')
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, steered)).toBe('unknown')
+  })
+
+  // Sent after the Stop, to a child that then dies before its turn opens: the Stop, still in force,
+  // was never this send's.
+  it('leaves a send made after the Stop in doubt when its child dies', async () => {
+    await stoppedBeforeItsTurnOpened()
+    const next = await nextSendStartsANewChild()
+
+    handlers?.onExit?.(new Error('codex app-server exited'))
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, next)).not.toBe('pending')
+    )
+    expect(verdictOf((await settled()).submissions, next)).toBe('unknown')
   })
 })
 
