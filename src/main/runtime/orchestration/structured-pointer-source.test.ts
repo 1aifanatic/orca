@@ -3,7 +3,11 @@ import { structuredPointerSource, type PointerBatchMessage } from './structured-
 
 const SESSION = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 
-function mail(id: string, from: string, overrides: Partial<PointerBatchMessage> = {}) {
+function mail(
+  id: string,
+  from: string,
+  overrides: Partial<PointerBatchMessage> = {}
+): PointerBatchMessage {
   return {
     id,
     type: 'status',
