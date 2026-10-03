@@ -28,12 +28,16 @@ export async function isUnregisteredRemovalLeftover(
   return (await unregisteredRemovalLeftoverVerdict(record)) === 'leftover'
 }
 
-async function unregisteredRemovalLeftoverVerdict(
+/** As isUnregisteredRemovalLeftover, telling a path that could not be read from a different one. */
+export async function unregisteredRemovalLeftoverVerdict(
   record: RemovalLeftoverRecord
-): Promise<'leftover' | 'different-folder' | 'different-checkout'> {
+): Promise<'leftover' | 'unreadable' | 'different-folder' | 'different-checkout'> {
   const match = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
   if (match === 'absent') {
     return 'leftover'
+  }
+  if (match === 'unreadable') {
+    return 'unreadable'
   }
   if (match !== 'same') {
     return 'different-folder'
@@ -41,7 +45,7 @@ async function unregisteredRemovalLeftoverVerdict(
   try {
     await lstat(join(record.worktreePath, '.git'))
   } catch (error) {
-    return getErrorCode(error) === 'ENOENT' ? 'leftover' : 'different-checkout'
+    return getErrorCode(error) === 'ENOENT' ? 'leftover' : 'unreadable'
   }
   return (await canSafelyRemoveOrphanedWorktreeDirectory(
     record.worktreePath,
@@ -63,6 +67,13 @@ export function differentCheckoutAtPathError(worktreePath: string): Error {
 export function differentFolderAtPathError(worktreePath: string): Error {
   return new Error(
     `The folder at ${worktreePath} is not the one Orca started deleting, so Orca left it in place.`
+  )
+}
+
+/** The refusal when the path could not be read, so nothing proves it holds the accepted folder. */
+export function unreadableFolderAtPathError(worktreePath: string): Error {
+  return new Error(
+    `Orca could not read the folder at ${worktreePath}, so Orca left it in place. Delete it again once it can be read.`
   )
 }
 
@@ -91,6 +102,9 @@ export async function assertUnregisteredRemovalLeftover(
   }
   assertWorktreeDoesNotContainRegisteredWorktree(worktreePath, worktrees)
   const verdict = await unregisteredRemovalLeftoverVerdict(record)
+  if (verdict === 'unreadable') {
+    throw unreadableFolderAtPathError(worktreePath)
+  }
   if (verdict === 'different-folder') {
     throw differentFolderAtPathError(worktreePath)
   }

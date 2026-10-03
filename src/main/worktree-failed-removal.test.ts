@@ -3,7 +3,8 @@
 // here so this runs on every platform; the real-Git version is in
 // runtime/runtime-failed-local-worktree-removal.test.ts.
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import type * as FsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,6 +32,10 @@ import { setUnfinishedWorktreeRemovalHost } from './worktree-removal-table'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>()
+  return { ...actual, lstat: vi.fn(actual.lstat) }
+})
 
 const GIT_ERROR = "error: failed to delete 'node_modules/a/LICENSE': Operation not permitted"
 let directory = ''
@@ -242,6 +247,20 @@ describe('a delete that fails after Git dropped the registration', () => {
 
     expect(await listRows()).toEqual([mainWorktree])
     expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+  })
+
+  it('keeps the row, and its workspace, while the leftover cannot be read', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    await failRemoval()
+    // A read error, like a briefly unreachable share: once to find it, once to identify it.
+    const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    vi.mocked(lstat).mockRejectedValueOnce(denied).mockRejectedValueOnce(denied)
+
+    expect(await listRows()).toEqual([mainWorktree, leftoverRow()])
+    expect(endWorkspace).not.toHaveBeenCalled()
+    expect(await listRows()).toEqual([mainWorktree, leftoverRow()])
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
   })
 
   it('keeps the row with the new error when the retry fails the same way', async () => {

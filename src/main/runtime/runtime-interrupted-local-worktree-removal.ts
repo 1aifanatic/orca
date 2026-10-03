@@ -22,7 +22,8 @@ import {
   assertUnregisteredRemovalLeftover,
   differentCheckoutAtPathError,
   differentFolderAtPathError,
-  isUnregisteredRemovalLeftover
+  isUnregisteredRemovalLeftover,
+  unreadableFolderAtPathError
 } from '../worktree-removal-leftover'
 import { matchCheckoutDirectory } from '../worktree-checkout-identity'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
@@ -151,6 +152,9 @@ async function finishInterruptedLocalWorktreeRemoval(
   }
   const gitLink = await readCheckoutGitLink(record.worktreePath)
   const directory = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
+  if (directory === 'unreadable') {
+    throw unreadableFolderAtPathError(record.worktreePath)
+  }
   // Why: the finish forces and nobody asked for it this run, so it may only take the directory the
   // removal accepted. A record without an identity (an older build's) is left to Git's own checks.
   if (
@@ -179,6 +183,9 @@ async function finishInterruptedLocalWorktreeRemoval(
   // An older build's record (`unrecorded`) reaches only Git's delete, which validates the checkout.
   const assertAcceptedDirectory = async (): Promise<void> => {
     const current = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
+    if (current === 'unreadable') {
+      throw unreadableFolderAtPathError(record.worktreePath)
+    }
     if (current === 'different' || (current === 'unrecorded' && !gitCanRemove)) {
       throw differentFolderAtPathError(record.worktreePath)
     }

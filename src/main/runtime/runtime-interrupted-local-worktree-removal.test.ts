@@ -2,7 +2,8 @@
 // come from Git and disk, whatever point the earlier run reached.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import type * as FsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -40,6 +41,10 @@ import {
 } from '../worktree-checkout-identity'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>()
+  return { ...actual, lstat: vi.fn(actual.lstat) }
+})
 vi.mock('../project-runtime-git-options', () => ({
   getLocalProjectWorktreeGitOptions: () => ({})
 }))
@@ -312,6 +317,31 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(restoreMissingWorktreeGitFile).not.toHaveBeenCalled()
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
+  })
+
+  it('leaves a checkout it cannot read, since nothing proves it is the one it accepted', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await unlink(join(worktreePath, 'seed.txt'))
+    const { lstat: readLstat } = await vi.importActual<typeof FsPromises>('node:fs/promises')
+    const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    vi.mocked(lstat).mockImplementation((path, options) =>
+      path === worktreePath && options?.bigint ? Promise.reject(denied) : readLstat(path, options)
+    )
+
+    try {
+      const { outcome, purged } = await finishAfterRestart()
+
+      expect(outcome).toMatchObject({
+        status: 'failed',
+        error: expect.stringMatching(/could not read the folder/)
+      })
+      expect(existsSync(join(worktreePath, '.git'))).toBe(true)
+      expect(await isRegistered(worktreePath)).toBe(true)
+      expect(removeHostTree).not.toHaveBeenCalled()
+      expect(purged).toEqual([])
+    } finally {
+      vi.mocked(lstat).mockReset()
+    }
   })
 
   it('leaves an unregistered folder an older build recorded without an identity', async () => {

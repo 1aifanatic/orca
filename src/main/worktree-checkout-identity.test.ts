@@ -60,6 +60,15 @@ describe('matching the checkout directory a removal accepted', () => {
     expect(await readCheckoutDirectoryIdentity(checkout)).toBeUndefined()
   })
 
+  it('reports a path it cannot read as unreadable, neither the same nor a different folder', async () => {
+    const identity = await acceptedIdentity()
+    const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    vi.mocked(lstat).mockRejectedValueOnce(denied).mockRejectedValueOnce(denied)
+
+    expect(await matchCheckoutDirectory(checkout, identity)).toBe('unreadable')
+    expect(await readCheckoutDirectoryIdentity(checkout)).toBeUndefined()
+  })
+
   it('reports a removal recorded without an identity as unrecorded', async () => {
     expect(await matchCheckoutDirectory(checkout, undefined)).toBe('unrecorded')
   })

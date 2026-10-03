@@ -1,7 +1,10 @@
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../shared/execution-host'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
-import { isCheckoutRegistered, isUnregisteredRemovalLeftover } from './worktree-removal-leftover'
+import {
+  isCheckoutRegistered,
+  unregisteredRemovalLeftoverVerdict
+} from './worktree-removal-leftover'
 import type { WorktreeRemovalRecord } from './worktree-removal-records'
 import {
   endUnfinishedWorktreeRemoval,
@@ -41,7 +44,7 @@ export async function withUnregisteredRemovalCheckouts(
     const failed = failedWorktreeRemovals.get(record.worktreeId) === record
     if (
       (await worktreeCheckoutExists(record.worktreePath)) &&
-      (!failed || (await isUnregisteredRemovalLeftover(record)))
+      (!failed || (await keepsFailedRow(record)))
     ) {
       leftovers.push({
         path: record.worktreePath,
@@ -77,10 +80,16 @@ export async function withUnregisteredRemovalCheckouts(
   return leftovers.length === 0 ? gitWorktrees : [...gitWorktrees, ...leftovers]
 }
 
+// Unreadable proves nothing either way: the row stays, and Delete refuses until it can be read.
+async function keepsFailedRow(record: WorktreeRemovalRecord): Promise<boolean> {
+  const verdict = await unregisteredRemovalLeftoverVerdict(record)
+  return verdict === 'leftover' || verdict === 'unreadable'
+}
+
 /**
  * What a failed delete left at its path: `leftover`, the accepted checkout Git no longer
  * registers; `unregistered`, nothing Git registers and no leftover (a different folder, or none);
- * `registered`, a checkout Git still registers; `unknown`, no answer.
+ * `registered`, a checkout Git still registers; `unknown`, Git or the disk gave no answer.
  */
 export async function checkoutLeftByFailedRemoval(
   record: WorktreeRemovalRecord
@@ -89,10 +98,11 @@ export async function checkoutLeftByFailedRemoval(
     if (await isCheckoutRegistered(record)) {
       return 'registered'
     }
-    return (await worktreeCheckoutExists(record.worktreePath)) &&
-      (await isUnregisteredRemovalLeftover(record))
-      ? 'leftover'
-      : 'unregistered'
+    if (!(await worktreeCheckoutExists(record.worktreePath))) {
+      return 'unregistered'
+    }
+    const verdict = await unregisteredRemovalLeftoverVerdict(record)
+    return verdict === 'leftover' ? verdict : verdict === 'unreadable' ? 'unknown' : 'unregistered'
   } catch (error) {
     console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
     return 'unknown'

@@ -17,10 +17,15 @@ export type CheckoutDirectoryIdentity = {
   birthtimeNs: string
 }
 
-/** `absent`: nothing at the path. `unrecorded`: no identity was recorded, so nothing is provable. */
-export type CheckoutDirectoryMatch = 'same' | 'different' | 'absent' | 'unrecorded'
+/**
+ * `absent`: nothing at the path. `unrecorded`: no identity was recorded, so nothing is provable.
+ * `unreadable`: the path could not be read just now, so it is neither the same nor different.
+ */
+export type CheckoutDirectoryMatch = 'same' | 'different' | 'absent' | 'unrecorded' | 'unreadable'
 
-async function statDirectory(path: string): Promise<CheckoutDirectoryIdentity | 'absent' | null> {
+async function statDirectory(
+  path: string
+): Promise<CheckoutDirectoryIdentity | 'absent' | 'unreadable' | null> {
   try {
     const stats = await lstat(path, { bigint: true })
     if (!stats.isDirectory()) {
@@ -29,8 +34,7 @@ async function statDirectory(path: string): Promise<CheckoutDirectoryIdentity | 
     return { ino: stats.ino.toString(), birthtimeNs: stats.birthtimeNs.toString() }
   } catch (error) {
     const code = getErrorCode(error)
-    // Unreadable proves nothing, so it never matches.
-    return code === 'ENOENT' || code === 'ENOTDIR' ? 'absent' : null
+    return code === 'ENOENT' || code === 'ENOTDIR' ? 'absent' : 'unreadable'
   }
 }
 
@@ -47,7 +51,7 @@ export async function readCheckoutDirectoryIdentity(
   path: string
 ): Promise<CheckoutDirectoryIdentity | undefined> {
   const current = await statDirectory(path)
-  return current && current !== 'absent' && hasCreationTime(current) ? current : undefined
+  return typeof current === 'object' && current && hasCreationTime(current) ? current : undefined
 }
 
 /** Whether `path` still holds the directory a removal accepted. */
@@ -61,6 +65,9 @@ export async function matchCheckoutDirectory(
   }
   if (!accepted) {
     return 'unrecorded'
+  }
+  if (current === 'unreadable') {
+    return 'unreadable'
   }
   if (!current || current.ino !== accepted.ino) {
     return 'different'
