@@ -3,7 +3,11 @@ import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 import { RpcDispatcher } from '../dispatcher'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { AI_VAULT_METHODS } from './ai-vault'
-import { fakeSearchService } from '../../../../shared/ai-vault-search-test-fixture'
+import {
+  fakeSearchService,
+  searchHit,
+  searchResults
+} from '../../../../shared/ai-vault-search-test-fixture'
 import { createSessionSearchClient } from '../../../../shared/ai-vault-search-client'
 import { setSessionSearchService } from '../../../ai-vault-search/session-search-service-registry'
 
@@ -56,7 +60,9 @@ describe('session search runtime RPC', () => {
         {
           query: 'needle',
           limit: 20,
-          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+          filters: {
+            agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder' && agent !== 'jcode')
+          }
         },
         undefined
       )
@@ -208,3 +214,42 @@ describe('session search consent over the runtime RPC', () => {
     expect(setSessionSearchEnabled).not.toHaveBeenCalled()
   })
 })
+
+it.each(['runtime', 'mobile'] as const)(
+  'negotiates current Jcode through the real RPC dispatcher for %s',
+  async (clientKind) => {
+    const service = fakeSearchService()
+    service.search.mockResolvedValue({
+      ...searchResults(),
+      hits: [{ ...searchHit(), agent: 'jcode' }]
+    })
+    setSessionSearchService(service)
+    const rpc = dispatcher()
+    const call = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      const response = await rpc.dispatch({ ...request(params), method }, { clientKind })
+      if (!response.ok) {
+        throw Object.assign(new Error(response.error.message), { code: response.error.code })
+      }
+      return response.result
+    })
+    const response = await createSessionSearchClient(call, 'relay').searchSessions({
+      query: 'needle',
+      filters: { agents: ['jcode'] }
+    })
+    expect(response).toMatchObject({ hits: [{ agent: 'jcode', source: { presence: 'present' } }] })
+    expect(JSON.stringify(response)).not.toContain('/host/transcript.jsonl')
+    expect(JSON.stringify(response)).not.toContain('resumeCommand')
+    expect(call.mock.calls.map(([method]) => method)).toEqual([
+      'aiVault.searchStatus',
+      'aiVault.searchSessions'
+    ])
+    expect(service.search).toHaveBeenCalledExactlyOnceWith(
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: ['jcode'] }
+      },
+      undefined
+    )
+  }
+)

@@ -50,17 +50,27 @@ export function createSessionSearchClient(
       let raw: unknown
       try {
         // IPC and its all-hosts merge are this build; each remote leg negotiates its own host.
-        if (transport !== 'ipc' && parsed.filters?.agents?.includes('qoder')) {
+        const requestedAgents = parsed.filters?.agents
+        if (
+          transport !== 'ipc' &&
+          requestedAgents?.some((agent) => agent === 'qoder' || agent === 'jcode')
+        ) {
           const status = AiVaultSearchStatusSchema.parse(await call('aiVault.searchStatus', {}))
-          if (status.supportsQoderHistory !== true) {
-            const agents = parsed.filters.agents.filter((agent) => agent !== 'qoder')
-            if (agents.length === 0) {
-              return { kind: 'unavailable', reason: 'unsupported-agent' }
-            }
-            hostRequest = { ...parsed, filters: { ...parsed.filters, agents } }
+          const agents = requestedAgents.filter(
+            (agent) =>
+              (agent !== 'qoder' || status.supportsQoderHistory === true) &&
+              (agent !== 'jcode' || status.supportsJcodeHistory === true)
+          )
+          if (agents.length === 0) {
+            return { kind: 'unavailable', reason: 'unsupported-agent' }
           }
+          hostRequest = { ...parsed, filters: { ...parsed.filters, agents } }
         }
-        raw = await call('aiVault.searchSessions', { ...hostRequest, supportsQoderHistory: true })
+        raw = await call('aiVault.searchSessions', {
+          ...hostRequest,
+          supportsQoderHistory: true,
+          supportsJcodeHistory: true
+        })
       } catch (error) {
         if (isUnknownSessionSearchMethod(error)) {
           return { kind: 'unavailable', reason: 'no-service' }

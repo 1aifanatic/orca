@@ -86,7 +86,8 @@ describe('desktop IPC and preload search boundary', () => {
     expect(sshSearch).toHaveBeenCalledWith('ssh-host', 'aiVault.searchSessions', {
       query: 'needle',
       limit: 20,
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     expect(result).toMatchObject({
       hits: [{ executionHostId: 'ssh:ssh-host', source: { presence: 'present' } }]
@@ -107,7 +108,8 @@ describe('desktop IPC and preload search boundary', () => {
     expect(runtimeSearch).toHaveBeenCalledWith('env-1', 'aiVault.searchSessions', {
       query: 'needle',
       limit: 20,
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     expect(result).toMatchObject({
       hits: [{ executionHostId: 'runtime:env-1', source: { presence: 'present' } }]
@@ -235,4 +237,87 @@ describe('desktop IPC and preload search boundary', () => {
     registerAiVaultSearchHandlers()
     await expect(aiVaultApi.setSearchEnabled('runtime:env-1', true)).rejects.toThrow('host-too-old')
   })
+})
+
+it('keeps current local Jcode separate from unsupported SSH and runtime hosts', async () => {
+  const local = fakeSearchService()
+  local.search.mockResolvedValue({
+    ...searchResults(),
+    hits: [{ ...searchHit(), agent: 'jcode' }]
+  })
+  setSessionSearchService(local)
+  expect(
+    await aiVaultApi.searchSessions(
+      {
+        query: 'needle',
+        filters: { agents: ['jcode'] }
+      },
+      'local'
+    )
+  ).toMatchObject({ hits: [{ agent: 'jcode', source: { filePath: '/host/transcript.jsonl' } }] })
+  local.search.mockClear()
+  sshSearch.mockResolvedValue(unavailableSessionSearchStatus())
+  runtimeSearch.mockResolvedValue(unavailableSessionSearchStatus())
+  for (const scope of ['ssh:old', 'runtime:old'] as const) {
+    expect(
+      await aiVaultApi.searchSessions(
+        {
+          query: 'needle',
+          filters: { agents: ['jcode'] }
+        },
+        scope
+      )
+    ).toEqual({ kind: 'unavailable', reason: 'unsupported-agent' })
+  }
+  expect(sshSearch).toHaveBeenCalledExactlyOnceWith('old', 'aiVault.searchStatus', {})
+  expect(runtimeSearch).toHaveBeenCalledExactlyOnceWith('old', 'aiVault.searchStatus', {})
+  expect(local.search).not.toHaveBeenCalled()
+})
+
+it('merges current local and SSH Jcode while the old SSH leg reports unsupported', async () => {
+  const local = fakeSearchService()
+  local.search.mockResolvedValue({
+    ...searchResults(),
+    hits: [{ ...searchHit(), agent: 'jcode' }]
+  })
+  setSessionSearchService(local)
+  sshHostInfos.mockReturnValue([{ targetId: 'current' }, { targetId: 'old' }])
+  sshSearch.mockImplementation(async (target: string, method: string) => {
+    if (method === 'aiVault.searchStatus') {
+      return { ...unavailableSessionSearchStatus(), supportsJcodeHistory: target === 'current' }
+    }
+    if (target !== 'current') {
+      throw new Error('An old host must not receive the Jcode request')
+    }
+    return { ...searchResults(), hits: [{ ...searchHit(), agent: 'jcode' }] }
+  })
+  const merged = await aiVaultApi.searchSessions(
+    {
+      query: 'needle',
+      filters: { agents: ['jcode'] }
+    },
+    'all'
+  )
+  expect(merged).toMatchObject({
+    kind: 'results',
+    hosts: [
+      { executionHostId: 'local', outcome: 'searched' },
+      { executionHostId: 'ssh:current', outcome: 'searched' },
+      { executionHostId: 'ssh:old', outcome: 'unsupported-agent' }
+    ]
+  })
+  if (merged.kind !== 'results') {
+    throw new Error('Expected merged Jcode results')
+  }
+  expect(merged.hits.map((hit) => [hit.executionHostId, hit.agent])).toEqual([
+    ['local', 'jcode'],
+    ['ssh:current', 'jcode']
+  ])
+  expect(
+    sshSearch.mock.calls.filter(([, method]) => method === 'aiVault.searchStatus')
+  ).toHaveLength(2)
+  expect(
+    sshSearch.mock.calls.filter(([, method]) => method === 'aiVault.searchSessions')
+  ).toHaveLength(1)
+  expect(local.search).toHaveBeenCalledTimes(1)
 })

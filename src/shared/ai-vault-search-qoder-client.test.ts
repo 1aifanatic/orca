@@ -87,7 +87,8 @@ describe('Qoder search negotiation', () => {
         query: 'q',
         limit: 20,
         filters: { agents: ['qoder'] },
-        supportsQoderHistory: true
+        supportsQoderHistory: true,
+        supportsJcodeHistory: true
       })
       expect(result).toMatchObject({ kind: 'results', hits: [{ agent: 'qoder' }] })
     }
@@ -103,7 +104,8 @@ describe('Qoder search negotiation', () => {
       query: 'q',
       limit: 20,
       filters: { agents: ['qoder'] },
-      supportsQoderHistory: true
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
   })
 

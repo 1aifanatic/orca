@@ -59,7 +59,7 @@ describe('session search service registry', () => {
       {
         query: 'needle',
         limit: 20,
-        filters: { agents: AI_VAULT_AGENTS.filter((a) => a !== 'qoder') }
+        filters: { agents: AI_VAULT_AGENTS.filter((a) => a !== 'qoder' && a !== 'jcode') }
       },
       undefined
     )

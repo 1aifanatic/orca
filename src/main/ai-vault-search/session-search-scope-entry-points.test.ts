@@ -1,3 +1,4 @@
+import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AiVaultHandler } from '../../relay/ai-vault-handler'
 import type { RelayDispatcher } from '../../relay/dispatcher'
@@ -90,7 +91,11 @@ describe('every search entry point carries the scope identity through', () => {
     setSessionSearchService(service)
     await relayHandler()({ query: 'needle', supportsQoderHistory: true, within: WITHIN })
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20 },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
       {
         kind: 'unknown'
       }

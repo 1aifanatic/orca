@@ -1,3 +1,4 @@
+import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AiVaultSearchRequestSchema } from '../../shared/ai-vault-search-contract'
 import { fakeSearchService } from '../../shared/ai-vault-search-test-fixture'
@@ -35,7 +36,11 @@ describe('scope identity at the search choke point', () => {
     )
     // Beside the request, not inside `filters.scopePaths`, which carries a wire cap.
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20 },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
       { kind: 'resolved', paths: ['/work/app'] }
     )
   })
@@ -54,7 +59,11 @@ describe('scope identity at the search choke point', () => {
     )
     // An exact match, so a leaked `within` would fail here as an extra key.
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20 },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
       { kind: 'resolved', paths: ['/work/app', '/home/me/orca/workspaces/app'] }
     )
   })
@@ -74,7 +83,11 @@ describe('scope identity at the search choke point', () => {
     // The service owns the answer, because it owns the consent and readiness
     // checks that have to come first.
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20 },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
       {
         kind: 'unknown'
       }
@@ -94,7 +107,11 @@ describe('scope identity at the search choke point', () => {
       'ipc'
     )
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20 },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
       {
         kind: 'unknown'
       }
@@ -134,7 +151,14 @@ describe('scope identity at the search choke point', () => {
     setSessionSearchService(service)
     installSessionSearchScopeCatalogSource(() => CATALOG)
     await searchSessionService({ query: 'needle', supportsQoderHistory: true }, 'ipc')
-    expect(service.search).toHaveBeenCalledWith({ query: 'needle', limit: 20 }, undefined)
+    expect(service.search).toHaveBeenCalledWith(
+      {
+        query: 'needle',
+        limit: 20,
+        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode') }
+      },
+      undefined
+    )
   })
 
   it('still honours an explicit path filter, which is what the CLI’s --path sends', async () => {
@@ -146,7 +170,14 @@ describe('scope identity at the search choke point', () => {
       'ipc'
     )
     expect(service.search).toHaveBeenCalledWith(
-      { query: 'needle', limit: 20, filters: { scopePaths: ['/other'] } },
+      {
+        query: 'needle',
+        limit: 20,
+        filters: {
+          scopePaths: ['/other'],
+          agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'jcode')
+        }
+      },
       undefined
     )
   })

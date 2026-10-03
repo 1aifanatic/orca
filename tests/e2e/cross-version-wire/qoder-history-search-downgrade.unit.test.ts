@@ -117,7 +117,9 @@ test.each(['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c'])(
       expect(call).toHaveBeenLastCalledWith(
         'aiVault.searchSessions',
         expect.objectContaining({
-          filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+          filters: {
+            agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder' && agent !== 'jcode')
+          }
         })
       )
     }

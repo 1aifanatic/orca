@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelayDispatcher } from './dispatcher'
 import { AiVaultHandler } from './ai-vault-handler'
 import { SshChannelMultiplexer } from '../main/ssh/ssh-channel-multiplexer'
 import { createSessionSearchClient } from '../shared/ai-vault-search-client'
 import { AI_VAULT_AGENTS } from '../shared/ai-vault-types'
-import { fakeSearchService } from '../shared/ai-vault-search-test-fixture'
+import { fakeSearchService, searchHit, searchResults } from '../shared/ai-vault-search-test-fixture'
 import { setSessionSearchService } from '../main/ai-vault-search/session-search-service-registry'
 
 const cleanups: (() => void)[] = []
@@ -57,7 +57,9 @@ describe('session search over real relay frames', () => {
       {
         query: 'needle',
         limit: 20,
-        filters: { agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder') }
+        filters: {
+          agents: AI_VAULT_AGENTS.filter((agent) => agent !== 'qoder' && agent !== 'jcode')
+        }
       },
       undefined
     )
@@ -92,4 +94,30 @@ describe('session search over real relay frames', () => {
     await expect(client.searchSessions({ query: 'needle' })).rejects.toThrow()
     expect(local.search).not.toHaveBeenCalled()
   })
+})
+
+it('negotiates current Jcode through the real SSH relay frames', async () => {
+  const service = fakeSearchService()
+  service.search.mockResolvedValue({
+    ...searchResults(),
+    hits: [{ ...searchHit(), agent: 'jcode' }]
+  })
+  setSessionSearchService(service)
+  const { client, mux } = wire(true)
+  const call = vi.spyOn(mux, 'request')
+  const result = await client.searchSessions({ query: 'needle', filters: { agents: ['jcode'] } })
+  expect(result).toMatchObject({ hits: [{ agent: 'jcode', source: { presence: 'present' } }] })
+  expect(JSON.stringify(result)).not.toContain('/host/transcript.jsonl')
+  expect(call.mock.calls.map(([method]) => method)).toEqual([
+    'aiVault.searchStatus',
+    'aiVault.searchSessions'
+  ])
+  expect(service.search).toHaveBeenCalledExactlyOnceWith(
+    {
+      query: 'needle',
+      limit: 20,
+      filters: { agents: ['jcode'] }
+    },
+    undefined
+  )
 })
