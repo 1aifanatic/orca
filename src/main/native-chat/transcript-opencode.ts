@@ -2,7 +2,6 @@ import {
   OPENCODE_CAPTURE_RECORD_LIMIT,
   OPENCODE_CAPTURE_TEXT_LIMIT
 } from '../ai-vault/opencode-transcript-capture-limits'
-import { basename } from 'node:path'
 import type { NativeChatMessage } from '../../shared/native-chat-types'
 import { errorMessage } from '../ai-vault/session-scanner-values'
 import type { ReadTranscriptResult } from './transcript-reader'
@@ -10,12 +9,13 @@ import {
   readOpenCodeTranscriptPageViaWorker,
   readOpenCodeTranscriptSignalViaWorker
 } from '../ai-vault/session-scanner-opencode-sqlite-worker-spawn'
-import { listOpenCodeDatabases } from '../opencode-usage/opencode-database-discovery'
+import { discoverOpenCodeTranscriptDatabase } from './transcript-opencode-database'
 import type {
   OpenCodeTranscriptPage,
   OpenCodeTranscriptSignal
 } from './transcript-opencode-sqlite-query'
 import { DESKTOP_READ_WINDOW } from './transcript-watch-contract'
+import { openCodeTranscriptPageLimit } from '../../shared/opencode-transcript-page-limit'
 
 // OpenCode SQLite reads use the same bounded worker as AI Vault.
 
@@ -37,35 +37,12 @@ export type OpenCodeTranscriptDeps = {
   ) => Promise<OpenCodeTranscriptPage | null>
 }
 
-async function defaultResolveDbPath(
-  sessionId?: string,
-  signal?: AbortSignal
-): Promise<string | null> {
-  const paths = (await listOpenCodeDatabases()).sort(
-    (a, b) => Number(basename(b) === 'opencode.db') - Number(basename(a) === 'opencode.db')
-  )
-  const deadline = Date.now() + 5000
-  for (const dbPath of paths.slice(0, 32)) {
-    signal?.throwIfAborted()
-    if (Date.now() > deadline) {
-      throw new Error('OpenCode transcript database discovery exceeded its time limit')
-    }
-    if (
-      !sessionId ||
-      (await readOpenCodeTranscriptSignalViaWorker({ dbPath, sessionId }, signal))
-    ) {
-      return dbPath
-    }
-  }
-  return null
-}
-
 export function resolveOpenCodeTranscriptDbPath(sessionId?: string): Promise<string | null> {
-  return defaultResolveDbPath(sessionId)
+  return discoverOpenCodeTranscriptDatabase(sessionId)
 }
 
 export const openCodeTranscriptDefaultDeps: Required<OpenCodeTranscriptDeps> = {
-  resolveDbPath: defaultResolveDbPath,
+  resolveDbPath: discoverOpenCodeTranscriptDatabase,
   readSignal: (dbPath, sessionId, signal) =>
     readOpenCodeTranscriptSignalViaWorker({ dbPath, sessionId }, signal),
   readPage: (args, signal) => readOpenCodeTranscriptPageViaWorker(args, signal)
@@ -80,7 +57,7 @@ export async function readOpenCodeNativeChatTranscriptTail(
   deps: OpenCodeTranscriptDeps = {},
   signal?: AbortSignal
 ): Promise<OpenCodeTailResult> {
-  const limit = args.limit > 0 ? Math.floor(args.limit) : DESKTOP_READ_WINDOW
+  const limit = openCodeTranscriptPageLimit(args.limit > 0 ? args.limit : DESKTOP_READ_WINDOW)
   try {
     const dbPath = await (deps.resolveDbPath ?? openCodeTranscriptDefaultDeps.resolveDbPath)(
       args.sessionId,

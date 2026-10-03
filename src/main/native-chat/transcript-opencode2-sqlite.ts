@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type SyncDatabase from '../sqlite/sync-database'
+import { openCodeTranscriptPageLimit } from '../../shared/opencode-transcript-page-limit'
 import { columnExists, tableExists } from '../opencode-usage/schema-helpers'
 import { asRecord, parseJsonObject } from '../ai-vault/session-scanner-values'
 import { opencodeMessageBlocks } from './transcript-opencode-part-blocks'
@@ -162,7 +163,7 @@ export function readOpenCode2TranscriptPage(
   if (!sessionExists(db, args.sessionId)) {
     return null
   }
-  const limit = Math.min(2400, Math.max(1, Math.floor(args.limit)))
+  const limit = openCodeTranscriptPageLimit(args.limit)
   const statement = db.prepare(`SELECT seq AS cursor, id, type, time_created, time_updated,
     CASE WHEN length(data) <= ${MAX_MESSAGE_BYTES} THEN data ELSE NULL END AS data
     FROM session_message WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?`)

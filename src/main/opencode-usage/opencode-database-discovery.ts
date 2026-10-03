@@ -30,7 +30,8 @@ function getOpenCodeDatabaseOverride(dataDirectory: string): OpenCodeDatabaseOve
 export async function listOpenCodeDatabases(
   /** Lets a caller report the refusal; an empty list otherwise reads as
    *  "OpenCode not used" rather than "we could not look". */
-  onRefusal?: (path: string, error: WslTranscriptFsError) => void
+  onRefusal?: (path: string, error: WslTranscriptFsError) => void,
+  signal?: AbortSignal
 ): Promise<string[]> {
   const dataDirectory = resolveOpenCodeDataDirectory()
   const databaseOverride = getOpenCodeDatabaseOverride(dataDirectory)
@@ -39,22 +40,32 @@ export async function listOpenCodeDatabases(
       return []
     }
     try {
-      return (await wslGatedStat(databaseOverride.path, 'scan')).isFile()
+      return (await wslGatedStat(databaseOverride.path, 'scan', signal)).isFile()
         ? [databaseOverride.path]
         : []
     } catch (error) {
+      signal?.throwIfAborted()
       reportRefusal(databaseOverride.path, error, onRefusal)
       return []
     }
   }
 
+  return listOpenCodeDatabasesInDirectory(dataDirectory, onRefusal, signal)
+}
+
+export async function listOpenCodeDatabasesInDirectory(
+  dataDirectory: string,
+  onRefusal?: (path: string, error: WslTranscriptFsError) => void,
+  signal?: AbortSignal
+): Promise<string[]> {
   try {
-    const entries = await wslGatedReaddir(dataDirectory, 'scan')
+    const entries = await wslGatedReaddir(dataDirectory, 'scan', signal)
     return entries
       .filter((entry) => entry.isFile() && /^opencode(?:-[A-Za-z0-9_.-]+)?\.db$/.test(entry.name))
       .map((entry) => join(dataDirectory, entry.name))
       .sort()
   } catch (error) {
+    signal?.throwIfAborted()
     reportRefusal(dataDirectory, error, onRefusal)
     return []
   }

@@ -7,11 +7,12 @@ import {
 } from './transcript-watch-contract'
 import type { OpenCodeTranscriptItem } from './transcript-opencode-sqlite-query'
 import { openCodeTranscriptDefaultDeps, type OpenCodeTranscriptDeps } from './transcript-opencode'
-// so each module stays under the repo's file-size cap.
+import {
+  openCodeTranscriptPageLimit,
+  OPENCODE_TRANSCRIPT_MAX_WINDOW
+} from '../../shared/opencode-transcript-page-limit'
 
 const OPENCODE_POLL_MS = 1_000
-const WATCH_DIFF_WINDOW = 100
-const WATCH_REPLACE_MAX_WINDOW = 2400
 
 function pruneOpenCodeFingerprintCache(fingerprints: Map<number, string>, cap: number): void {
   if (fingerprints.size <= cap) {
@@ -48,14 +49,17 @@ export function subscribeOpenCodeNativeChatTranscript(
   const readPage = (page: Parameters<NonNullable<OpenCodeTranscriptDeps['readPage']>>[0]) =>
     (deps.readPage ?? openCodeTranscriptDefaultDeps.readPage)(page, controller.signal)
   const pollMs = args.resolvePollIntervalMs ?? OPENCODE_POLL_MS
-  const initialLimit =
+  const initialLimit = openCodeTranscriptPageLimit(
     args.initialLimit && args.initialLimit > 0 ? args.initialLimit : DESKTOP_READ_WINDOW
+  )
 
   let closed = false
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let dbPath: string | null = null
   let lastSignal: string | null = null
   let lastEmittedRowId = 0
+  let lastCounts = { messages: 0, parts: 0 }
+  let windowLimit = initialLimit
   const fingerprints = new Map<number, string>()
   let gateErrorEmitted = false
   // Whether the subscriber already has a frame (or pending notice) to render.
@@ -140,7 +144,12 @@ export function subscribeOpenCodeNativeChatTranscript(
       const page = await readPage({
         dbPath,
         sessionId: args.sessionId,
-        limit: firstSnapshot ? initialLimit : WATCH_DIFF_WINDOW
+        limit: firstSnapshot
+          ? initialLimit
+          : Math.min(
+              OPENCODE_TRANSCRIPT_MAX_WINDOW,
+              windowLimit + Math.max(0, signal.messageCount - lastCounts.messages)
+            )
       })
       if (closed) {
         return
@@ -152,6 +161,7 @@ export function subscribeOpenCodeNativeChatTranscript(
       }
       if (firstSnapshot) {
         lastSignal = fingerprint
+        lastCounts = { messages: signal.messageCount, parts: signal.partCount }
         rememberItems(page.items)
         settled = true
         stopSettleTimer()
@@ -167,21 +177,28 @@ export function subscribeOpenCodeNativeChatTranscript(
       }
       const changed = page.items.some(
         (item) =>
-          item.rowid <= lastEmittedRowId &&
-          fingerprints.has(item.rowid) &&
-          fingerprints.get(item.rowid) !== item.fingerprint
+          item.rowid <= lastEmittedRowId && fingerprints.get(item.rowid) !== item.fingerprint
       )
-      if (changed) {
-        if (await replaceWithBridgedWindow(dbPath)) {
+      const shrinking =
+        signal.messageCount < lastCounts.messages || signal.partCount < lastCounts.parts
+      const present = new Set(page.items.map((item) => item.rowid))
+      const oldest = page.items[0]?.rowid ?? Number.POSITIVE_INFINITY
+      const removed = [...fingerprints.keys()].some(
+        (rowid) => (!page.hasMore || rowid >= oldest) && !present.has(rowid)
+      )
+      if (changed || shrinking || removed) {
+        if (await replaceWithBridgedWindow(dbPath, page, shrinking)) {
           lastSignal = fingerprint
+          lastCounts = { messages: signal.messageCount, parts: signal.partCount }
         }
         scheduleTick()
         return
       }
       const appended = page.items.filter((item) => item.rowid > lastEmittedRowId)
       if (appended.length > 0 && appended.length === page.items.length && page.hasMore) {
-        if (await replaceWithBridgedWindow(dbPath)) {
+        if (await replaceWithBridgedWindow(dbPath, page)) {
           lastSignal = fingerprint
+          lastCounts = { messages: signal.messageCount, parts: signal.partCount }
         }
         scheduleTick()
         return
@@ -192,6 +209,7 @@ export function subscribeOpenCodeNativeChatTranscript(
         emitSafely(() => args.onAppend(appendedMessages), 'append')
       }
       lastSignal = fingerprint
+      lastCounts = { messages: signal.messageCount, parts: signal.partCount }
       scheduleTick()
     } catch (err) {
       if (!closed && lastSignal === null && !gateErrorEmitted && args.onInitialSnapshot) {
@@ -213,7 +231,8 @@ export function subscribeOpenCodeNativeChatTranscript(
         lastEmittedRowId = item.rowid
       }
     }
-    pruneOpenCodeFingerprintCache(fingerprints, WATCH_REPLACE_MAX_WINDOW)
+    pruneOpenCodeFingerprintCache(fingerprints, OPENCODE_TRANSCRIPT_MAX_WINDOW)
+    windowLimit = Math.max(windowLimit, fingerprints.size)
   }
 
   // Bounded reads on the worker thread shared with the AI-Vault scanner.
@@ -221,14 +240,20 @@ export function subscribeOpenCodeNativeChatTranscript(
   // bigger than one window must bridge, not skip. Holds everything back (no
   // lastSignal/lastEmittedRowId advance) when even the capped window cannot
   // overlap, so the gap retries instead of dropping rows.
-  async function replaceWithBridgedWindow(db: string): Promise<boolean> {
-    let limit = initialLimit
+  async function replaceWithBridgedWindow(
+    db: string,
+    page: Awaited<ReturnType<typeof readPage>>,
+    shrinking = false
+  ): Promise<boolean> {
+    let limit = Math.max(windowLimit, page?.items.length ?? 0)
     for (;;) {
-      const replacement = await readPage({
-        dbPath: db,
-        sessionId: args.sessionId,
-        limit
-      })
+      const replacement =
+        page ??
+        (await readPage({
+          dbPath: db,
+          sessionId: args.sessionId,
+          limit
+        }))
       if (closed || !replacement) {
         return false
       }
@@ -238,10 +263,14 @@ export function subscribeOpenCodeNativeChatTranscript(
         // signal): nothing to bridge — settle like a normal replace.
         const hasMore = replacement.hasMore
         const before = replacement.beforeMessageRowId ?? 0
+        fingerprints.clear()
+        lastEmittedRowId = 0
         emitSafely(() => args.onReplace?.([], hasMore, before), 'replace')
         return true
       }
-      if (oldest <= lastEmittedRowId) {
+      if (shrinking || oldest <= lastEmittedRowId || !replacement.hasMore) {
+        fingerprints.clear()
+        lastEmittedRowId = 0
         rememberItems(replacement.items)
         const messages = replacement.items.map((item) => item.message)
         const hasMore = replacement.hasMore
@@ -249,10 +278,11 @@ export function subscribeOpenCodeNativeChatTranscript(
         emitSafely(() => args.onReplace?.(messages, hasMore, before), 'replace')
         return true
       }
-      if (limit >= WATCH_REPLACE_MAX_WINDOW) {
+      if (limit >= OPENCODE_TRANSCRIPT_MAX_WINDOW) {
         return false
       }
-      limit = Math.min(limit * 2, WATCH_REPLACE_MAX_WINDOW)
+      limit = Math.min(limit * 2, OPENCODE_TRANSCRIPT_MAX_WINDOW)
+      page = null
     }
   }
 

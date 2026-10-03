@@ -4,6 +4,7 @@ import {
   readOpenCode2TranscriptSignal
 } from './transcript-opencode2-sqlite'
 import type { NativeChatMessage } from '../../shared/native-chat-types'
+import { openCodeTranscriptPageLimit } from '../../shared/opencode-transcript-page-limit'
 import { extractString, parseJsonObject } from '../ai-vault/session-scanner-values'
 import type SyncDatabase from '../sqlite/sync-database'
 
@@ -116,7 +117,7 @@ export function readOpenCodeTranscriptPage(args: {
     if (!sessionExists(db, args.sessionId)) {
       return null
     }
-    const limit = Math.min(2400, Math.max(1, Math.floor(args.limit)))
+    const limit = openCodeTranscriptPageLimit(args.limit)
     // The upper bound is always bound: batching advances the cursor mid-page,
     // so the statement cannot vary with `beforeMessageRowId`'s presence.
     // MAX_SAFE_INTEGER is the "from the newest row" sentinel.
