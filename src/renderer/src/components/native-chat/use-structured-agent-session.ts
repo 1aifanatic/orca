@@ -39,6 +39,7 @@ import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
+import { agentStopDisplayStatus } from '../../../../shared/agent-stop-display-status'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -58,10 +59,13 @@ export function useStructuredAgentSession(args: {
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
+  /** The host says a person's Stop is still ending this session's work. */
+  hostStopping?: boolean
 }) {
   const {
     agent,
     composerScopeKey,
+    hostStopping = false,
     isVisible,
     launch,
     providerStarting = false,
@@ -116,13 +120,26 @@ export function useStructuredAgentSession(args: {
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
   )
+  const stopPress = useStructuredAgentSessionStopPress(sessionId)
+  // While a Stop ends the turn there is nothing to steer into: a send is queued to run after it,
+  // whatever the setting.
+  const stopping =
+    agentStopDisplayStatus({
+      working: transportState.isWorking,
+      hostStopping,
+      stopPressed: stopPress.pressed
+    }) === 'stopping'
+  const queueDelivery = useMemo(
+    () => ({ capability: queueCapability, enabled: queueFollowUps || stopping }),
+    [queueCapability, queueFollowUps, stopping]
+  )
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
     composerScopeKey,
-    queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
+    queueDelivery,
     queuedMessageIds
   })
 
@@ -143,7 +160,6 @@ export function useStructuredAgentSession(args: {
     enabled: providerVisible
   })
 
-  const stopPress = useStructuredAgentSessionStopPress(sessionId)
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const { outbox } = outboxController
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
@@ -158,12 +174,8 @@ export function useStructuredAgentSession(args: {
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
-    () =>
-      outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, {
-        capability: queueCapability,
-        enabled: queueFollowUps
-      }),
-    [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds]
+    () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery),
+    [isWorking, outbox, queueDelivery, queuedMessageIds]
   )
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,

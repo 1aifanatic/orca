@@ -56,6 +56,7 @@ export function NativeChatStructuredSession(
     ...props,
     composerScopeKey: paneKey,
     queueFollowUps,
+    hostStopping: hostExecution.stopping,
     providerStarting: hostExecution.phase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
