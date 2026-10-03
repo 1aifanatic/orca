@@ -17,6 +17,7 @@ import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import type * as CodexTurnOpenWait from '../codex/codex-structured-turn-open-wait'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalTurnItem } from '../../shared/agent-session-journal-types'
+import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
 import {
   HOST_TEST_SESSION as SESSION,
@@ -75,6 +76,7 @@ let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
 let interrupts: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
+let statuses: AgentSessionStatusSummary[]
 let operations = 0
 
 /** The durable ledger stamps its own clock and refuses an id far from it. */
@@ -132,7 +134,8 @@ function turnEndRows(): AgentJournalTurnItem[] {
   })
 }
 
-/** The Stop has answered with Codex's end still to come; then Codex ends the turn. */
+/** The Stop has answered with Codex's end still to come; then Codex ends the turn. Stopping
+ *  showed while the Stop settled, ended with the turn, and no status read the turn as failed. */
 async function expectInterruptedThroughout(): Promise<void> {
   expect(interrupts).toBe(1)
   expect(turnEndRows()).toEqual([
@@ -147,6 +150,15 @@ async function expectInterruptedThroughout(): Promise<void> {
   for (const end of ends) {
     expect(end).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   }
+  await vi.waitFor(() =>
+    expect(statuses.at(-1)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
+  )
+  expect(statuses.some((summary) => summary.stopping === true)).toBe(true)
+  expect(statuses.at(-1)).not.toHaveProperty('stopping')
+  const otherVerdicts = statuses.filter(
+    (summary) => summary.turnOutcome !== undefined && summary.turnOutcome !== 'cancellation'
+  )
+  expect(otherVerdicts).toEqual([])
 }
 
 async function owesWork(): Promise<boolean> {
@@ -215,6 +227,15 @@ beforeEach(async () => {
     throw new Error(JSON.stringify(attached.refusal))
   }
   fence = attached.value.fence
+  statuses = []
+  host.subscribeStatus({
+    id: 'interrupt-order',
+    emit: (event) => {
+      if (event.type === 'status' && event.session.sessionId === SESSION) {
+        statuses.push(event.session)
+      }
+    }
+  })
 })
 
 afterEach(async () => {
