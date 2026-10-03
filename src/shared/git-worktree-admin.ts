@@ -1,5 +1,5 @@
 import type { Dirent } from 'node:fs'
-import { readdir } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { waitForPromiseWithSignal } from './abort-signal-reason'
 import {
@@ -14,7 +14,12 @@ import { foldWslUncPathCaseInsensitiveParts } from './wsl-paths'
 import type { GitWorktreeInfo } from './worktree/types'
 
 const ADMIN_READ_CONCURRENCY = 8
-type WorktreeAdminDirectory = { gitDir: string; worktreePath?: string; isMain?: true }
+type WorktreeAdminDirectory = {
+  gitDir: string
+  gitFilePath?: string
+  worktreePath?: string
+  isMain?: true
+}
 
 function hostPathKey(value: string): string {
   const normalized = path.resolve(value)
@@ -26,7 +31,8 @@ function hostPathKey(value: string): string {
 
 async function readWorktreeAdminDirectories(
   repoPath: string,
-  options: GitAdminReadOptions
+  options: GitAdminReadOptions,
+  requireDirectDirectories = false
 ): Promise<WorktreeAdminDirectory[]> {
   const commonDir = await resolveGitCommonDirectory(repoPath, options)
   if (!commonDir) {
@@ -45,6 +51,9 @@ async function readWorktreeAdminDirectories(
     }
     throw error
   }
+  if (requireDirectDirectories && entries.some((entry) => entry.isSymbolicLink())) {
+    throw new Error('Cannot verify linked worktree administration.')
+  }
   const linked = await mapWithConcurrency(
     entries.filter((entry) => entry.isDirectory()),
     ADMIN_READ_CONCURRENCY,
@@ -52,10 +61,48 @@ async function readWorktreeAdminDirectories(
       const gitDir = path.join(adminDir, entry.name)
       const gitdir = await readGitAdminFile(path.join(gitDir, 'gitdir'), options.signal)
       const target = gitdir && resolveGitMetadataPath(gitDir, gitdir, options)
-      return { gitDir, ...(target ? { worktreePath: path.dirname(target) } : {}) }
+      return {
+        gitDir,
+        ...(target ? { gitFilePath: target, worktreePath: path.dirname(target) } : {})
+      }
     }
   )
   return [{ gitDir: commonDir, isMain: true }, ...linked]
+}
+
+/** A missing checkout still has a backlink in its owning repository's administration. */
+export async function findLinkedWorktreeGitDirectory(
+  repoPath: string,
+  worktreePath: string,
+  options: GitAdminReadOptions = {}
+): Promise<string | null> {
+  const hostPath = resolveWorktreeHostPath(worktreePath, options)
+  if (!hostPath) {
+    return null
+  }
+  const directories = await readWorktreeAdminDirectories(repoPath, options, true)
+  const targetKey = hostPathKey(hostPath)
+  const matches = directories.filter(
+    (entry) => entry.worktreePath && hostPathKey(entry.worktreePath) === targetKey
+  )
+  if (matches.length === 0) {
+    return null
+  }
+  const entry = matches[0]
+  if (matches.length !== 1 || !entry.gitFilePath || path.basename(entry.gitFilePath) !== '.git') {
+    throw new Error('Cannot verify linked worktree administration.')
+  }
+  const [commonDir, gitDir, backlink] = await Promise.all([
+    waitForPromiseWithSignal(realpath(directories[0].gitDir), options.signal),
+    waitForPromiseWithSignal(realpath(entry.gitDir), options.signal),
+    waitForPromiseWithSignal(lstat(path.join(entry.gitDir, 'gitdir')), options.signal)
+  ])
+  const relative = path.relative(commonDir, gitDir).split(path.sep)
+  if (relative.length !== 2 || relative[0] !== 'worktrees' || !relative[1] || !backlink.isFile()) {
+    throw new Error('Cannot verify linked worktree administration.')
+  }
+  options.signal?.throwIfAborted()
+  return entry.gitDir
 }
 
 /** Older porcelain omits locks; the marker remains the authoritative ownership proof. */

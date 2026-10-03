@@ -10,6 +10,7 @@ import {
   prepareWorktreeCreateCheckout
 } from './worktree-create-preparation'
 import { unlockWorktreePreparation } from './worktree-preparation-lock'
+import { readWorktreeList } from './worktree-list-reader'
 import {
   _resetPreparationPoolForTests,
   listPreparations,
@@ -122,8 +123,14 @@ it('has its exact ownership marker before the atomic add returns', async () => {
   expect(observed).toBe(minor >= 33)
 })
 
-it('cleans only its newly registered marker when cancellation follows atomic add', async () => {
+it('cleans only its newly registered marker when cancellation follows atomic add', async ({
+  skip
+}) => {
   const { repo, prepared } = await fixture()
+  const version = (await git(repo, ['--version'])).match(/git version (\d+)\.(\d+)/)
+  if (Number(version?.[1]) === 2 && Number(version?.[2]) < 33) {
+    skip()
+  }
   const reason = createWorktreePreparationLockReason('atomic-cancellation')
   const controller = new AbortController()
   const run = runner.gitExecFileAsync
@@ -198,8 +205,12 @@ it('preserves a competing marker and registration through preparation failure an
   await _resetPreparationPoolForTests()
   expect(await readFile(lock, 'utf8')).toBe('manual competing preparation\n')
   expect(await readFile(join(prepared, 'tracked.txt'), 'utf8')).toBe('original\n')
-  expect(await git(repo, ['worktree', 'list', '--porcelain'])).toContain(
-    'manual competing preparation'
+  expect(await readWorktreeList(repo)).toContainEqual(
+    expect.objectContaining({
+      path: prepared,
+      locked: true,
+      lockReason: 'manual competing preparation'
+    })
   )
 })
 

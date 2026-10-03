@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolveGitCommonDirectory } from './git-common-directory'
 import {
   annotateWorktreeLocksFromAdmin,
+  findLinkedWorktreeGitDirectory,
   isBranchReservedByWorktreeOperation
 } from './git-worktree-admin'
 import type { GitWorktreeInfo } from './worktree/types'
@@ -43,6 +44,67 @@ afterEach(async () => {
 })
 
 describe('owning-host worktree administrative reads', () => {
+  it('finds one exact linked registration after its checkout disappears', async () => {
+    await rm(linked, { recursive: true })
+    await expect(findLinkedWorktreeGitDirectory(repo, linked)).resolves.toBe(admin)
+    await expect(findLinkedWorktreeGitDirectory(repo, `${linked}-other`)).resolves.toBeNull()
+    await expect(findLinkedWorktreeGitDirectory(repo, repo)).resolves.toBeNull()
+    await writeFile(
+      path.join(admin, 'gitdir'),
+      `${path.relative(admin, path.join(linked, '.git'))}\n`
+    )
+    await expect(findLinkedWorktreeGitDirectory(repo, linked)).resolves.toBe(admin)
+  })
+
+  it('rejects duplicate registrations instead of choosing an owner marker', async () => {
+    const duplicate = path.join(common, 'worktrees', 'duplicate')
+    await mkdir(duplicate)
+    await writeFile(path.join(duplicate, 'gitdir'), `${path.join(linked, '.git')}\n`)
+    await expect(findLinkedWorktreeGitDirectory(repo, linked)).rejects.toThrow(
+      'Cannot verify linked worktree administration'
+    )
+  })
+
+  it('rejects a backlink to a file other than the checkout gitfile', async () => {
+    await writeFile(path.join(admin, 'gitdir'), `${path.join(linked, 'other')}\n`)
+    await expect(findLinkedWorktreeGitDirectory(repo, linked)).rejects.toThrow(
+      'Cannot verify linked worktree administration'
+    )
+  })
+
+  it.runIf(process.platform !== 'win32')(
+    'rejects administrative directories redirected outside the common directory',
+    async () => {
+      const outside = path.join(root, 'outside-administration')
+      const worktrees = path.join(common, 'worktrees')
+      await rename(worktrees, outside)
+      await symlink(outside, worktrees)
+      await expect(findLinkedWorktreeGitDirectory(repo, linked)).rejects.toThrow(
+        'Cannot verify linked worktree administration'
+      )
+    }
+  )
+
+  it.runIf(process.platform !== 'win32')('rejects symlinked backlink files', async () => {
+    const outside = path.join(root, 'outside-backlink')
+    await writeFile(outside, `${path.join(linked, '.git')}\n`)
+    await rm(path.join(admin, 'gitdir'))
+    await symlink(outside, path.join(admin, 'gitdir'))
+    await expect(findLinkedWorktreeGitDirectory(repo, linked)).rejects.toThrow(
+      'Cannot verify linked worktree administration'
+    )
+  })
+
+  it.runIf(process.platform !== 'win32')(
+    'rejects symlink administrative entries instead of overlooking duplicates',
+    async () => {
+      await symlink(admin, path.join(common, 'worktrees', 'duplicate-link'))
+      await expect(findLinkedWorktreeGitDirectory(repo, linked)).rejects.toThrow(
+        'Cannot verify linked worktree administration'
+      )
+    }
+  )
+
   it('resolves normal, linked, separate-git-dir and bare layouts without subprocesses', async () => {
     await expect(resolveGitCommonDirectory(repo)).resolves.toBe(common)
     await expect(resolveGitCommonDirectory(linked)).resolves.toBe(common)
@@ -172,5 +234,8 @@ describe('owning-host worktree administrative reads', () => {
     await expect(
       isBranchReservedByWorktreeOperation(repo, 'feature', rows(), { signal })
     ).rejects.toThrow('cancelled')
+    await expect(findLinkedWorktreeGitDirectory(repo, linked, { signal })).rejects.toThrow(
+      'cancelled'
+    )
   })
 })

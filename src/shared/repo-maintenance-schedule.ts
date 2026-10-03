@@ -44,6 +44,25 @@ export class RepoMaintenanceSchedule {
     this.refCooldownUntil.set(key, this.now() + cooldownMs)
   }
 
+  async probeOptOut(
+    target: RepoRefMaintenanceTarget,
+    signal: AbortSignal,
+    span: RefMaintenanceSpan
+  ): Promise<boolean | { error: unknown }> {
+    try {
+      if (!(await target.isOptedOut?.(signal)) || signal.aborted) {
+        return false
+      }
+      this.postponeIndex(target.key, REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
+      this.settleRefs(target.key, span, 'opted_out', REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
+      return true
+    } catch (error) {
+      span.setAttribute('repo.maintenance_error', String(error))
+      span.setAttribute('repo.maintenance_outcome', 'failed' satisfies RefMaintenanceOutcome)
+      return { error }
+    }
+  }
+
   async maintain(
     target: RepoRefMaintenanceTarget,
     signal: AbortSignal,

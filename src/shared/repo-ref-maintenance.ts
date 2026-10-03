@@ -195,7 +195,7 @@ export class RepoRefMaintenance {
    * `counted` spends the give-up budget. Waiting behind another repository's
    * pack, or yielding to work Orca asked us to yield to, does not: both end on
    * their own, so charging for them would let a busy machine starve a repo
-   * until its next fetch. Only "the app is busy" is charged.
+   * until its next fetch. Only app activity and failed probes are charged.
    */
   private defer(key: string, tracked: TrackedRepo, counted: boolean): void {
     // A fetch that landed while this attempt was probing already re-armed the
@@ -264,13 +264,15 @@ export class RepoRefMaintenance {
   ): Promise<void> {
     span.setAttribute('repo.maintenance_key', key)
     // Probes are cancellable; admitted index and ref writers finish before releasing the slot.
-    if (await tracked.target.isOptedOut?.(signal)) {
-      this.phases.postponeIndex(key, REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
-      this.phases.settleRefs(key, span, 'opted_out', REF_MAINTENANCE_CLEAN_COOLDOWN_MS)
-      return
-    }
+    const optedOut = await this.phases.probeOptOut(tracked.target, signal, span)
     if (signal.aborted) {
-      this.yieldTo(key, tracked, span, signal)
+      return this.yieldTo(key, tracked, span, signal)
+    }
+    if (typeof optedOut === 'object') {
+      this.defer(key, tracked, true)
+      throw optedOut.error
+    }
+    if (optedOut) {
       return
     }
     if (this.suspensions > 0 || this.isBusy(tracked)) {
@@ -286,8 +288,7 @@ export class RepoRefMaintenance {
       return
     }
     if (signal.aborted) {
-      this.yieldTo(key, tracked, span, signal)
-      return
+      return this.yieldTo(key, tracked, span, signal)
     }
     if (this.suspensions > 0 || this.isBusy(tracked)) {
       span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)
@@ -311,8 +312,7 @@ export class RepoRefMaintenance {
     const budget = this.looseRefThreshold + 1
     const before = await countLooseRefs(refsDirectory, budget, signal)
     if (signal.aborted) {
-      this.yieldTo(key, tracked, span, signal)
-      return
+      return this.yieldTo(key, tracked, span, signal)
     }
     span.setAttribute('git.loose_ref_count', before.count)
     span.setAttribute('git.loose_ref_threshold', this.looseRefThreshold)
@@ -345,8 +345,7 @@ export class RepoRefMaintenance {
     }
     span.setAttribute('git.pack_refs_ms', this.now() - startedAt)
     if (signal.aborted) {
-      this.yieldTo(key, tracked, span, signal)
-      return
+      return this.yieldTo(key, tracked, span, signal)
     }
     if (!canWrite()) {
       span.setAttribute('repo.maintenance_outcome', 'deferred' satisfies RefMaintenanceOutcome)

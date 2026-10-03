@@ -248,8 +248,11 @@ export function createLocalRepoRefMaintenanceTarget(
         )
         return isGitAutoMaintenanceDisabled(stdout)
       } catch (error) {
-        // An unset key is consent; unreadable or invalid config must fail closed.
-        return !isUnsetGitConfigError(error)
+        if (isUnsetGitConfigError(error)) {
+          return false
+        }
+        // A failed probe blocks writers and retries without claiming a user opt-out.
+        throw error
       }
     },
     async maintainPackIndex(signal, span, canWrite) {
