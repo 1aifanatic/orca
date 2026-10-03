@@ -78,7 +78,8 @@ function terminal(args: {
     getPrimaryLeaf: () => null,
     getTrackedPty: () => null,
     getTabTitle: () => null,
-    getForegroundProcess: readForeground
+    getForegroundProcess: readForeground,
+    getTitleDisplayClear: () => null
   })
   const controller: RuntimePtyController = {
     write: () => false,
@@ -96,7 +97,8 @@ function terminal(args: {
     getExplicitStatus: () =>
       args.explicit ? { status: args.explicit, updatedAt: Date.now() - 1000 } : null,
     getLifecycleStatus: () => null,
-    isRunning: (handle) => presence.isRunning(handle)
+    isRunning: (handle) => presence.isRunning(handle),
+    getTitleDisplayClear: () => null
   })
   vi.spyOn(query, 'getPtyId').mockReturnValue('pty-1')
   vi.spyOn(query, 'getSnapshot').mockReturnValue({

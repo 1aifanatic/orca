@@ -16,7 +16,12 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import { randomUUID } from 'node:crypto'
 import { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 
-import type * as SessionProtocol from './types'
+import type {
+  SessionState,
+  ShellReadyState,
+  TakePendingOutputResult,
+  TerminalSnapshot
+} from './types'
 import type { PtyChildProcessVerdict } from '../../shared/terminal-process-inspection'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 
@@ -27,7 +32,7 @@ export class Session {
   readonly launchAgent: TuiAgent | null
   readonly wslDistro: string | null
   readonly processNameIsSpawnFile: boolean
-  private _state: SessionProtocol.SessionState = 'running'
+  private _state: SessionState = 'running'
   private _exitCode: number | null = null
   private _disposed = false
   private subprocess: SubprocessHandle
@@ -54,8 +59,7 @@ export class Session {
       wslDistro: opts.wslDistro,
       historySeedChunks: opts.historySeedChunks,
       subprocess: this.subprocess,
-      isAlive: () => !this._disposed && this._state !== 'exited',
-      incarnationId: this.incarnationId
+      isAlive: () => !this._disposed && this._state !== 'exited'
     })
     this.output = pipeline.output
     this.recoveryBarrier = pipeline.recoveryBarrier
@@ -95,11 +99,11 @@ export class Session {
     this.subprocess.onExit((code, cause) => this.handleSubprocessExit(code, cause))
   }
 
-  get state(): SessionProtocol.SessionState {
+  get state(): SessionState {
     return this._state
   }
 
-  get shellState(): SessionProtocol.ShellReadyState {
+  get shellState(): ShellReadyState {
     return this.shellReady.state
   }
 
@@ -216,7 +220,7 @@ export class Session {
     this.producerPause.release({ resume: true })
   }
 
-  getSnapshot(opts: { scrollbackRows?: number } = {}): SessionProtocol.TerminalSnapshot | null {
+  getSnapshot(opts: { scrollbackRows?: number } = {}): TerminalSnapshot | null {
     this.startupIngress.snapshotBarrier()
     return this.output.getSnapshot(opts)
   }
@@ -232,7 +236,7 @@ export class Session {
   takePendingOutput(
     includeSnapshot: boolean,
     opts: { teardownSnapshot?: boolean } = {}
-  ): SessionProtocol.TakePendingOutputResult | null {
+  ): TakePendingOutputResult | null {
     if (this._disposed) {
       return null
     }

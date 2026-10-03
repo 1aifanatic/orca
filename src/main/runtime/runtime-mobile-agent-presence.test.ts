@@ -70,6 +70,7 @@ function projection(agentStatus?: AgentStatusEntry) {
     findPty: () => null,
     getRetainedStatus: () => null,
     getTrackedTitle: () => null,
+    getTitleDisplayClear: () => null,
     issuePtyHandle: () => 'terminal',
     recordPty: () => {
       throw new Error('unexpected pty')
