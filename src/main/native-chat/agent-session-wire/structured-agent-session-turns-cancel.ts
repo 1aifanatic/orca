@@ -168,7 +168,7 @@ type PerformCancelInput = {
   prompt?: { itemId: string; expectedRevision: number }
   /** Ends the provider child, for a running command the provider did not take the Stop on, or a
    *  turn whose interrupt failed. */
-  stopChild?: () => Promise<void>
+  stopChild?: (options?: { noTurnOpened?: true }) => Promise<void>
   /** A child end after a failed interrupt that threw. */
   onStopChildError?: (error: unknown) => void
   /** After that throw: whether the host let go of the child, its exit proven before a later
@@ -306,7 +306,7 @@ async function cancelAndNote(
     // The interrupt failed and the turn runs on: only the child's end stops it.
     let ended: boolean
     try {
-      await input.stopChild()
+      await input.stopChild(refusal?.turnMayOpen ? { noTurnOpened: true } : {})
       ended = true
     } catch (error) {
       input.onStopChildError?.(error)

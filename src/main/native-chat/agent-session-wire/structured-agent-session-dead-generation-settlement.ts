@@ -17,6 +17,7 @@ import { cancelledJournalPromptBody } from '../agent-session-journal/journal-pro
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   agentSessionFailureWords,
+  type AgentJournalDispatchRejection,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
@@ -116,6 +117,8 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   settlementId: string
   verdict: StructuredAgentSessionTurnVerdict
   pendingSubmissionReason: string
+  /** Settles the unacknowledged sends as this rejection instead of in doubt. */
+  withdrawPending?: AgentJournalDispatchRejection
   showUnexpectedExitOutcome?: boolean
   /** Why the provider stopped, as the adapter told it; the row's sentence is this fact's. */
   exitFailure?: SubmissionRejectionFact
@@ -138,8 +141,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
-    await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
+    const rejection = startupFailure ?? input.withdrawPending
+    await (rejection
+      ? input.journal.rejectPendingSubmissions(input.fence, rejection)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []

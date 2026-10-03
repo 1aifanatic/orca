@@ -45,6 +45,9 @@ export type StructuredAgentSessionOwedWindDown = StructuredAgentSessionProviderC
   readonly requestedAt: AgentJournalCursor
   /** Where it stood once the newest pass failed: a message accepted by then waited through a retry. */
   readonly failedAt?: AgentJournalCursor
+  /** A person's Stop the provider answered with no turn of this child open: a retry withdraws
+   *  the unanswered sends as that Stop would have. */
+  readonly noTurnOpened?: true
 }
 
 /** The provider process behind a conversation. Written only in

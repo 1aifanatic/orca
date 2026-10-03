@@ -78,6 +78,9 @@ let answers: number
 let steers: number
 let interrupts: number
 let childCloses: number
+let connections: number
+/** Closes that fail before one goes through, as a kill that times out. */
+let failingCloses: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -176,6 +179,8 @@ beforeEach(async () => {
   steers = 0
   interrupts = 0
   childCloses = 0
+  connections = 0
+  failingCloses = 0
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -185,6 +190,7 @@ beforeEach(async () => {
     connectionHandlers = {}
   ) => {
     handlers = connectionHandlers
+    connections += 1
     const connection: CodexAppServerConnection = {
       pid: 4321,
       closed: false,
@@ -213,6 +219,10 @@ beforeEach(async () => {
       respond: () => {},
       respondWithError: () => {},
       close: async () => {
+        if (failingCloses > 0) {
+          failingCloses -= 1
+          throw new Error('the kill timed out')
+        }
         childCloses += 1
         return true
       }
@@ -565,6 +575,47 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     expect(childCloses).toBe(1)
     expect((await settled()).owesWork).toBe(false)
     expect(turnRow((await host.journalSnapshot(SESSION)).items)).toBeUndefined()
+  })
+
+  // Codex records a prompt only once its turn starts, so a send whose turn never opened never ran:
+  // the Stop takes it back, and no send in doubt holds the client's queue.
+  async function stoppedBeforeItsTurnOpened(): Promise<string> {
+    const release = turns.holdNextAnswer()
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const stopping = stop()
+    release()
+    expect(await settledWithin(stopping, CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+    return sent
+  }
+
+  async function nextSendStartsANewChild(): Promise<void> {
+    turns = codexTurnLifecycleFake(
+      THREAD,
+      () => (method, params) => handlers?.onNotification?.(method, params)
+    )
+    await send('try again')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(connections).toBe(2)
+  }
+
+  it('withdraws the send whose turn never opened, and the next send starts a new child', async () => {
+    const sent = await stoppedBeforeItsTurnOpened()
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    await nextSendStartsANewChild()
+  })
+
+  it('withdraws it too when the child end fails and a later retry lands it', async () => {
+    failingCloses = 1
+    const sent = await stoppedBeforeItsTurnOpened()
+    expect(childCloses).toBe(0)
+
+    await nextSendStartsANewChild()
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
   })
 })
 
