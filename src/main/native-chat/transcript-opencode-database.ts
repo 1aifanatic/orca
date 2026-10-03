@@ -2,7 +2,10 @@ import { join } from 'node:path'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { getAiVaultWslHomeDirs } from '../ai-vault/cached-session-list'
 import { prepareOpenCodeWslReaders } from '../ai-vault/opencode-wsl-runtime-preparation'
-import { configureOpenCodeWslReaders } from '../ai-vault/session-scanner-opencode-wsl-client'
+import {
+  configureOpenCodeWslReaders,
+  openCodeWslPath
+} from '../ai-vault/session-scanner-opencode-wsl-client'
 import { readOpenCodeTranscriptSignalViaWorker } from '../ai-vault/session-scanner-opencode-sqlite-worker-spawn'
 import {
   compareOpenCodeClaimPriority,
@@ -27,34 +30,17 @@ export async function discoverOpenCodeTranscriptDatabase(
   const onRefusal = (_path: string, error: Error): void => {
     refusals.push(error)
   }
-  try {
-    const homes = await waitForPromiseWithSignal(getAiVaultWslHomeDirs(), boundedSignal)
-    const sources = await waitForPromiseWithSignal(
-      Promise.all([
-        listOpenCodeDatabases(onRefusal, boundedSignal),
-        ...homes
-          .slice(0, 32)
-          .map((home) =>
-            listOpenCodeDatabasesInDirectory(
-              join(home, '.local', 'share', 'opencode'),
-              onRefusal,
-              boundedSignal
-            )
-          )
-      ]),
-      boundedSignal
-    )
-    if (homes.length > 0) {
-      const readers = await waitForPromiseWithSignal(
-        prepareOpenCodeWslReaders(homes),
-        boundedSignal
-      )
+  const probed = new Set<string>()
+  async function findSession(paths: readonly string[]): Promise<string | null> {
+    for (const dbPath of [...new Set(paths)].sort(compareOpenCodeClaimPriority)) {
+      if (probed.size >= 32) {
+        break
+      }
+      if (probed.has(dbPath)) {
+        continue
+      }
       boundedSignal.throwIfAborted()
-      configureOpenCodeWslReaders(readers)
-    }
-    const paths = [...new Set(sources.flat())].sort(compareOpenCodeClaimPriority)
-    for (const dbPath of paths.slice(0, 32)) {
-      boundedSignal.throwIfAborted()
+      probed.add(dbPath)
       if (
         !sessionId ||
         (await waitForPromiseWithSignal(
@@ -64,6 +50,47 @@ export async function discoverOpenCodeTranscriptDatabase(
       ) {
         return dbPath
       }
+    }
+    return null
+  }
+  try {
+    const primary = await waitForPromiseWithSignal(
+      listOpenCodeDatabases(onRefusal, boundedSignal),
+      boundedSignal
+    )
+    // Unrelated WSL setup must not hold up a matching native database.
+    const native = await findSession(primary.filter((path) => !openCodeWslPath(path)))
+    if (native) {
+      return native
+    }
+    const homes = await waitForPromiseWithSignal(getAiVaultWslHomeDirs(), boundedSignal)
+    const sources = await waitForPromiseWithSignal(
+      Promise.all(
+        homes
+          .slice(0, 32)
+          .map((home) =>
+            listOpenCodeDatabasesInDirectory(
+              join(home, '.local', 'share', 'opencode'),
+              onRefusal,
+              boundedSignal
+            )
+          )
+      ),
+      boundedSignal
+    )
+    const primaryWsl = primary.filter((path) => openCodeWslPath(path))
+    const readerRoots = [...new Set([...homes, ...primaryWsl])]
+    if (readerRoots.length > 0) {
+      const readers = await waitForPromiseWithSignal(
+        prepareOpenCodeWslReaders(readerRoots),
+        boundedSignal
+      )
+      boundedSignal.throwIfAborted()
+      configureOpenCodeWslReaders(readers)
+    }
+    const wsl = await findSession([...primaryWsl, ...sources.flat()])
+    if (wsl) {
+      return wsl
     }
     if (refusals[0]) {
       throw refusals[0]

@@ -182,10 +182,8 @@ export function subscribeOpenCodeNativeChatTranscript(
       const shrinking =
         signal.messageCount < lastCounts.messages || signal.partCount < lastCounts.parts
       const present = new Set(page.items.map((item) => item.rowid))
-      const oldest = page.items[0]?.rowid ?? Number.POSITIVE_INFINITY
-      const removed = [...fingerprints.keys()].some(
-        (rowid) => (!page.hasMore || rowid >= oldest) && !present.has(rowid)
-      )
+      // A balanced delete and append can move a removed row before the new tail.
+      const removed = [...fingerprints.keys()].some((rowid) => !present.has(rowid))
       if (changed || shrinking || removed) {
         if (await replaceWithBridgedWindow(dbPath, page, shrinking)) {
           lastSignal = fingerprint

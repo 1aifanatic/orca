@@ -20,7 +20,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function watchFixture(version: 'v1' | 'v2', hiddenFirst = false) {
+function watchFixture(version: 'v1' | 'v2', hiddenFirst = false, messageCount = 300) {
   vi.useFakeTimers()
   const root = mkdtempSync(join(tmpdir(), 'orca-opencode-watch-'))
   const path = join(root, 'opencode.db')
@@ -77,7 +77,7 @@ function watchFixture(version: 'v1' | 'v2', hiddenFirst = false) {
       db.prepare('DELETE FROM session_message WHERE id = ?').run(String(index))
     }
   }
-  for (let index = 1; index <= 300; index++) {
+  for (let index = 1; index <= messageCount; index++) {
     insert(index, hiddenFirst && index === 1 ? '' : undefined)
   }
   let displayed: NativeChatMessage[] = []
@@ -113,6 +113,20 @@ function watchFixture(version: 'v1' | 'v2', hiddenFirst = false) {
 }
 
 describe.each(['v1', 'v2'] as const)('OpenCode %s watch reconciliation', (version) => {
+  it('removes the oldest displayed row when an append keeps the database count unchanged', async () => {
+    const f = watchFixture(version, false, 1000)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.displayed()).toHaveLength(300)
+    f.remove(701)
+    f.insert(1001)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.displayed()).toHaveLength(300)
+    expect(f.displayed()[0]?.blocks).toEqual([{ type: 'text', text: 'message 702' }])
+    expect(f.displayed().at(-1)?.blocks).toEqual([{ type: 'text', text: 'message 1001' }])
+    expect(f.onReplace).toHaveBeenCalledOnce()
+    expect(f.readPage.mock.calls.every(([args]) => args.limit <= 2400)).toBe(true)
+  })
+
   it('replaces an edit older than the newest 100 displayed messages', async () => {
     const f = watchFixture(version)
     await vi.advanceTimersByTimeAsync(0)
