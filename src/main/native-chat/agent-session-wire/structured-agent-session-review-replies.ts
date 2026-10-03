@@ -3,7 +3,11 @@
 // receipt for it. The receipt is an item in the chat under the message's own id: a status line when
 // a write failed, a tombstone (nothing shown) when all went through.
 
-import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
+import {
+  AGENT_SESSION_REVIEW_REPLY_WINDOW_MS,
+  agentSessionReviewReplyReceiptMessageId,
+  type AgentSessionReviewReply
+} from '../../../shared/agent-session-review-reply'
 import { agentSessionFailureFact, providerDiagnostic } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
@@ -13,12 +17,13 @@ import type { StructuredAgentSessionHostDeps } from './structured-agent-session-
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { runStructuredAgentSessionReviewReply } from './structured-agent-session-review-reply-runner'
 
-/** A message accepted longer ago than this is never re-derived: a crash's leftover must not post
- *  days later on some reopen. Measured from acceptance, so a late Retry still posts. */
-export const REVIEW_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
+export const REVIEW_REPLY_WINDOW_MS = AGENT_SESSION_REVIEW_REPLY_WINDOW_MS
 
 export function reviewReplyReceiptIdentity(clientMessageId: string): AgentJournalItemIdentity {
-  return { provider: 'orca', clientMessageId: `${clientMessageId}#review-reply` }
+  return {
+    provider: 'orca',
+    clientMessageId: agentSessionReviewReplyReceiptMessageId(clientMessageId)
+  }
 }
 
 /** The receipt: the failure said once on its own line, or a tombstone that shows nothing. */

@@ -55,12 +55,27 @@ type RunSourceControlAgentActionStartArgs = {
   /** Fires when a launch that already reported onLaunchAccepted failed to deliver its prompt. */
   onLaunchAborted?: () => void
   /** `reviewReplyCarried`: a structured chat's message carries the review reply, which its host
-   *  writes once the agent takes it, so the caller writes nothing to the review itself. */
-  onLaunched?: (launch: { reviewReplyCarried: boolean }) => void
+   *  writes once the agent takes it, so the caller writes nothing to the review itself.
+   *  `sessionId` names that chat, when known, so the caller can refresh once its host wrote. */
+  onLaunched?: (launch: SourceControlAgentLaunched) => void
   /** Planned at start: what a structured chat's host writes on the review once its agent takes
    *  the prompt. A terminal agent has no message to carry it. */
   reviewReply?: () => AgentSessionReviewReply | undefined
   onClose: () => void
+}
+
+export type SourceControlAgentLaunched = { reviewReplyCarried: boolean; sessionId?: string }
+
+/** The chat a structured launch opened: this client's own from its surface, a paired host's from
+ *  the settlement that learned it. */
+async function structuredChatSessionId(
+  result: NonNullable<ReturnType<typeof launchAgentInNewTab>>
+): Promise<string | undefined> {
+  if (result.surface.kind === 'local-agent-session') {
+    return result.surface.sessionId
+  }
+  const settled = await result.structuredSettlement?.catch(() => undefined)
+  return settled?.kind === 'structured' ? settled.sessionId : undefined
 }
 
 export async function runSourceControlAgentActionStart({
@@ -89,6 +104,7 @@ export async function runSourceControlAgentActionStart({
 }: RunSourceControlAgentActionStartArgs): Promise<boolean> {
   let launched = false
   let reviewReplyCarried = false
+  let reviewReplySessionId: string | undefined
   let launchFailureNotified = false
   let launchAcceptedNotified = false
   // Why: `undefined` is what makes the launch fall back to the global Agents arguments;
@@ -142,6 +158,9 @@ export async function runSourceControlAgentActionStart({
         // Read off what took the prompt: a paired host that declined the chat opens a terminal,
         // which carries no review reply, so the panel writes after its paste.
         reviewReplyCarried = deliveryResult.reviewReplyCarried === true
+        if (reviewReplyCarried) {
+          reviewReplySessionId = await structuredChatSessionId(result)
+        }
         // A chat that holds its review reply sends it again itself; offering Start again here
         // would launch a second chat, and post the replies twice.
         launched =
@@ -193,7 +212,10 @@ export async function runSourceControlAgentActionStart({
       console.error('onSaveAgentDefault failed', error)
     }
   }
-  onLaunched?.({ reviewReplyCarried })
+  onLaunched?.({
+    reviewReplyCarried,
+    ...(reviewReplySessionId ? { sessionId: reviewReplySessionId } : {})
+  })
   onClose()
   return true
 }

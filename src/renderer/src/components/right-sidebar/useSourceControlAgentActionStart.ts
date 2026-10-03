@@ -1,3 +1,4 @@
+import type { SourceControlAgentLaunched } from './runSourceControlAgentActionStart'
 import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import { useCallback, useRef, useState } from 'react'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
@@ -51,7 +52,7 @@ type UseSourceControlAgentActionStartArgs = {
   ) => void | Promise<void>
   onLaunchAccepted?: () => void
   onLaunchAborted?: () => void
-  onLaunched?: (launch: { reviewReplyCarried: boolean }) => void
+  onLaunched?: (launch: SourceControlAgentLaunched) => void
   reviewReply?: () => AgentSessionReviewReply | undefined
   onClose: () => void
 }

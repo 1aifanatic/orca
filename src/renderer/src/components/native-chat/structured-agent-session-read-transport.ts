@@ -1,3 +1,4 @@
+import { noticeStructuredReviewReplyReceipt } from '@/lib/structured-agent-session-review-reply-settled'
 import type { AgentJournalCursor } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../../shared/agent-session-wire'
 import { createStructuredAgentSessionEventCoalescer } from '../../../../shared/structured-agent-session-coalescer'
@@ -103,6 +104,7 @@ export function startStructuredAgentSessionReadTransport(args: {
   const coalescer = createStructuredAgentSessionEventCoalescer((event) => {
     if (!shouldStopCoalescedEvent()) {
       args.applyEvent(event)
+      noticeStructuredReviewReplyReceipt(args.sessionId, event)
     }
   })
   const reconnectScheduler = createReconnectScheduler({

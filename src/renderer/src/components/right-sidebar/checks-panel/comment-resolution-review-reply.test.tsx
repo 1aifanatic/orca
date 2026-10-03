@@ -29,6 +29,9 @@ import {
 } from '../pr-comments-ai-launch-ack'
 import { runSourceControlAgentActionStart } from '../runSourceControlAgentActionStart'
 import { useChecksPanelAiAcknowledgement } from './use-checks-panel-ai-acknowledgement'
+import { agentJournalItemKey } from '../../../../../shared/agent-session-journal-item-key'
+import { agentSessionReviewReplyReceiptMessageId } from '../../../../../shared/agent-session-review-reply'
+import { noticeStructuredReviewReplyReceipt } from '@/lib/structured-agent-session-review-reply-settled'
 
 const REVIEW_KEY = 'repo-1::42::sha-1'
 
@@ -171,6 +174,56 @@ describe('Resolve comments with AI', () => {
     expect(mocks.toastSuccess).not.toHaveBeenCalled()
     expect(model.setCommentsSelectionClearRequest).toHaveBeenCalledOnce()
     expect(model.pendingCommentResolutionRef.current).toBeNull()
+  })
+
+  /** The chat's live stream bringing its review-reply receipt (a tombstone: all went through). */
+  function receiptArrives(sessionId: string): void {
+    noticeStructuredReviewReplyReceipt(sessionId, {
+      type: 'batch',
+      sessionId,
+      batch: {
+        cursor: { epoch: 'e', sequence: 9 },
+        items: [],
+        removedItemIds: [
+          agentJournalItemKey({
+            provider: 'orca',
+            clientMessageId: agentSessionReviewReplyReceiptMessageId('message-1')
+          })
+        ],
+        submissions: []
+      }
+    })
+  }
+
+  it('refetches the PR once the chat says its host wrote, on this host or a paired one', async () => {
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'host-published' },
+      promptDeliveryResult: CARRIED,
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'paired-session' })
+    })
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+    expect(model.fetchComments).not.toHaveBeenCalled()
+
+    receiptArrives('paired-session')
+    receiptArrives('paired-session')
+
+    expect(model.fetchComments).toHaveBeenCalledExactlyOnceWith({ force: true })
+  })
+
+  it('stops waiting for the receipt when the panel goes away', async () => {
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
+      promptDeliveryResult: CARRIED,
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' })
+    })
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+
+    hook.unmount()
+    receiptArrives('session-1')
+
+    expect(model.fetchComments).not.toHaveBeenCalled()
   })
 
   it('hands the comments to a chat that still holds its unrecorded prompt, and offers no second Start', async () => {

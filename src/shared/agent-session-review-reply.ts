@@ -3,6 +3,26 @@
 // cannot (GitHub only). It rides the message, so whichever host records the message runs it.
 
 import { z } from 'zod'
+import { parseAgentJournalItemKey } from './agent-session-journal-item-key'
+
+/** A message accepted longer ago than this owes no review reply: a crash's leftover must not post
+ *  days later on some reopen. Measured from acceptance, so a late Retry still posts. */
+export const AGENT_SESSION_REVIEW_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/** The receipt's item rides the message's own id with this suffix: a line, or a tombstone. */
+const REVIEW_REPLY_RECEIPT_SUFFIX = '#review-reply'
+
+export function agentSessionReviewReplyReceiptMessageId(clientMessageId: string): string {
+  return `${clientMessageId}${REVIEW_REPLY_RECEIPT_SUFFIX}`
+}
+
+/** Whether a journal item id is a review reply's receipt, written or tombstoned. */
+export function isAgentSessionReviewReplyReceiptKey(itemId: string): boolean {
+  const identity = parseAgentJournalItemKey(itemId)
+  return (
+    identity?.provider === 'orca' && identity.clientMessageId.endsWith(REVIEW_REPLY_RECEIPT_SUFFIX)
+  )
+}
 
 /** Bounds a spec so a message cannot carry an unbounded side effect. */
 export const MAX_REVIEW_REPLY_TARGETS = 500

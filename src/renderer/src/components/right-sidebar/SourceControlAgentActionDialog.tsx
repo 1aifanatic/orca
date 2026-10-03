@@ -1,3 +1,4 @@
+import type { SourceControlAgentLaunched } from './runSourceControlAgentActionStart'
 import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import React from 'react'
 import {
@@ -49,7 +50,7 @@ export type SourceControlAgentActionDialogProps = {
   onLaunchAborted?: () => void
   /** `reviewReplyCarried`: a structured chat's message carries `reviewReply`, which its host writes
    *  once the agent takes the message; the caller writes nothing to the review itself. */
-  onLaunched?: (launch: { reviewReplyCarried: boolean }) => void
+  onLaunched?: (launch: SourceControlAgentLaunched) => void
   /** Planned at start, for a structured chat's launch prompt to carry. */
   reviewReply?: () => AgentSessionReviewReply | undefined
   startLabel?: string

@@ -13,6 +13,8 @@ import {
   takePendingPRCommentAiAck
 } from '../pr-comments-ai-launch-ack'
 import { buildPRCommentReviewReply } from '../pr-comment-review-reply-spec'
+import type { SourceControlAgentLaunched } from '../runSourceControlAgentActionStart'
+import { watchStructuredReviewReplySettled } from '@/lib/structured-agent-session-review-reply-settled'
 import type { AgentSessionReviewReply } from '../../../../../shared/agent-session-review-reply'
 import type { ChecksPanelControllerState } from './use-checks-panel-controller-state'
 import type { ChecksPanelReviewDataState } from './use-checks-panel-review-data'
@@ -307,6 +309,18 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
     commentResolutionLaunchAcceptedRef
   ])
 
+  // Each hand-off's refetch watch; they die with the panel.
+  const settledWatches = useRef(new Set<() => void>())
+  useEffect(() => {
+    const watches = settledWatches.current
+    return () => {
+      for (const dispose of watches) {
+        dispose()
+      }
+      watches.clear()
+    }
+  }, [])
+
   /** What a structured chat's launch prompt carries for its host to write once the agent takes it. */
   const buildLaunchReviewReply = useCallback((): AgentSessionReviewReply | undefined => {
     const pending = peekPendingPRCommentAiAck() ?? pendingCommentResolutionRef.current
@@ -316,7 +330,7 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
   /** Prompt reached the agent: only now may Orca write to the host. A structured chat's message
    *  carries the writes for its host instead, so here they are only handed off. */
   const consumeClaimedCommentResolutionAfterDelivery = useCallback(
-    (launch?: { reviewReplyCarried: boolean }): void => {
+    (launch?: SourceControlAgentLaunched): void => {
       const resolution =
         claimedCommentResolutionRef.current ??
         takePendingPRCommentAiAck() ??
@@ -331,6 +345,16 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
       if (launch?.reviewReplyCarried) {
         clearSentCommentSelection(resolution.reviewContextKey)
         setCommentResolutionAckBusyNow(false)
+        // The chat's host may be a paired server, whose own mutation notice never reaches this
+        // client: refetch once the chat says its host wrote.
+        if (launch.sessionId) {
+          const provider = resolution.provider
+          const dispose = watchStructuredReviewReplySettled(launch.sessionId, () => {
+            settledWatches.current.delete(dispose)
+            void refreshCommentsAfterBulkResolve(provider)
+          })
+          settledWatches.current.add(dispose)
+        }
         // The one write the chat's host can't make: without the PR's repository it can't reply.
         if (
           resolution.provider === 'github' &&
@@ -356,6 +380,7 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
     },
     [
       clearSentCommentSelection,
+      refreshCommentsAfterBulkResolve,
       resolveSelectedThreadsAfterLaunch,
       setCommentResolutionAckBusyNow,
       claimedCommentResolutionRef,
