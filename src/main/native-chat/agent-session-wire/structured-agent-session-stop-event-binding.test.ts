@@ -322,7 +322,7 @@ describe('a press that writes no Stop event of its own', () => {
 })
 
 describe("a Stop's settle that ends the turn its interrupt took", () => {
-  it("ends a turn still running once the stream drains, as the Stop's, once", async () => {
+  it("ends a turn still running at the Stop's settle, as the Stop's, once", async () => {
     rig = await createQueuedMessageTestRig()
     const stopped = await rig.workingSend()
     await rig.settleAccepted(stopped, 'stopped')
