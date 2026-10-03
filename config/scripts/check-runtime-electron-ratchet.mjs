@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 /**
- * Ratchet gate for Electron imports reachable from the Orca runtime.
+ * Ratchet gate for Electron imports reachable from the Orca runtime and structured chat.
  *
- * The runtime is meant to become host-agnostic so it can also run on plain Node
- * (see docs/design/node-only-runtime-backend.html). Nothing enforces that today:
- * `orca-runtime.ts` reaches ~50 modules that import `electron`, and the number
- * silently grows whenever someone adds an import several hops away, because no
- * single reviewer sees the transitive edge.
+ * The runtime boots on plain Node, where Electron is unavailable. Keep desktop
+ * dependencies out of its graph, including structured chat not yet wired into it.
  *
  * This bundles the runtime with esbuild, reads the metafile for every module that
  * imports `electron`, and compares that set to a checked-in baseline. A NEW module
@@ -19,7 +16,7 @@
  * Usage: node config/scripts/check-runtime-electron-ratchet.mjs [--write]
  */
 import { build } from 'esbuild'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import process from 'node:process'
@@ -40,6 +37,51 @@ const ENTRY_POINTS = [
   // two numbers drift — the gate would read zero while the shipped artifact regressed.
   path.join(ROOT, 'src', 'main', 'orcad', 'main.ts')
 ]
+
+export function collectStructuredChatEntryPoints(root = ROOT) {
+  const lanes = [
+    ['native-chat', []],
+    ['acp', []],
+    ['provider-process', []],
+    ['claude', ['claude-structured-', 'claude-agent-sdk-']],
+    ['codex', ['codex-structured-', 'codex-app-server-']],
+    ['runtime', ['structured-agent-session-', 'agent-session-']]
+  ]
+  const testOnly = /(?:\.(?:test|spec)\.|[.-]test-(?:support|harness|fixtures?)\.|-fixtures?\.)/
+
+  function collect(directory, prefixes) {
+    let entries
+    try {
+      entries = readdirSync(directory, { withFileTypes: true })
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return []
+      }
+      throw error
+    }
+    return entries.flatMap((entry) => {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) {
+        return prefixes.length === 0 &&
+          !/^(?:__)?(?:tests?|fixtures?|test-support|test-harness)(?:__)?$/.test(entry.name)
+          ? collect(file, prefixes)
+          : []
+      }
+      return entry.isFile() &&
+        /\.[cm]?[jt]sx?$/.test(entry.name) &&
+        !testOnly.test(entry.name) &&
+        (prefixes.length === 0 || prefixes.some((prefix) => entry.name.startsWith(prefix)))
+        ? [file]
+        : []
+    })
+  }
+
+  return lanes
+    .flatMap(([directory, prefixes]) =>
+      collect(path.join(root, 'src', 'main', directory), prefixes)
+    )
+    .sort()
+}
 
 // Native addons and electron cannot be bundled; externalising them is what the
 // relay build already does (config/scripts/build-relay.mjs).
@@ -66,7 +108,10 @@ const externalNativeAddons = {
   }
 }
 
-export async function collectElectronImporters(entryPoints = ENTRY_POINTS) {
+// Structured chat must run in headless orcad, even before every lane file reaches a runtime entry.
+export async function collectElectronImporters(
+  entryPoints = [...ENTRY_POINTS, ...collectStructuredChatEntryPoints()]
+) {
   const result = await build({
     entryPoints,
     bundle: true,
@@ -139,11 +184,11 @@ async function main() {
 
   if (added.length > 0) {
     console.error(
-      `[runtime-electron-ratchet] ${added.length} new module(s) reachable from the Orca runtime now import electron:
+      `[runtime-electron-ratchet] ${added.length} new module(s) reachable from the Orca runtime or structured chat now import electron:
 ${added.map((file) => `  + ${file}`).join('\n')}
 
 The runtime must stay bootable on plain Node. Put the Electron facility behind a port in
-src/main/host/ and depend on the port, or move the code out of the runtime's import graph.
+src/main/host/ and depend on the port, or move the code out of the runtime and structured-chat import graphs.
 See docs/design/node-only-runtime-backend.html.`
     )
     process.exitCode = 1
