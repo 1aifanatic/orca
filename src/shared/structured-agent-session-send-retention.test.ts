@@ -10,27 +10,7 @@ import {
   structuredAgentSessionSendIntentKey,
   structuredAgentSessionSendOperationKey
 } from './structured-agent-session-send-retention'
-
-// The shape a real host answers `agentSession.send` with: its `dispatchState` is the only
-// thing that says whether the message landed.
-function structuredSendResultFixture(
-  dispatchState: AgentJournalDispatchState,
-  reason: string | null = null
-): AgentSessionSendResult {
-  return {
-    clientMessageId: 'msg-1',
-    submission: {
-      clientMessageId: 'msg-1',
-      fence: 3,
-      payloadFingerprint: 'fingerprint',
-      dispatchState,
-      providerItemId: null,
-      reason,
-      submittedAt: 10,
-      resolvedAt: dispatchState === 'pending' ? null : 10
-    }
-  }
-}
+import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 
 function accepted(
   dispatchState: AgentJournalDispatchState,
@@ -283,14 +263,18 @@ describe('structuredAgentSessionSendIntentKey', () => {
     { path: '/tmp/b.png', previewUri: 'file:///b.png' }
   ]
 
+  // Rebuilt from the domains alone, so renaming any of them fails the pin below.
   function savedKey(fields: Record<string, unknown>): string {
-    return structuredAgentSessionSendOperationKey({
-      sessionKey,
-      intentFingerprint: structuredAgentSessionDomainFingerprint({
-        domain: 'mobile.agentSession.send.intent',
-        sessionId: sessionKey,
-        fields
-      })
+    return structuredAgentSessionDomainFingerprint({
+      domain: 'mobile.agentSession.send.operation',
+      sessionId: sessionKey,
+      fields: {
+        intentFingerprint: structuredAgentSessionDomainFingerprint({
+          domain: 'mobile.agentSession.send.intent',
+          sessionId: sessionKey,
+          fields
+        })
+      }
     })
   }
 
