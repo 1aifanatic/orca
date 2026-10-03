@@ -74,7 +74,10 @@ describe('what a review reply may already have posted', () => {
   })
 
   it('throws when GitHub refuses either read, instead of reading as nothing posted', async () => {
-    answer({ data: null, errors: [{ message: 'Could not resolve to a node' }] })
+    answer({
+      data: { viewer: { login: 'me' } },
+      errors: [{ message: 'Could not resolve to a node' }]
+    })
     await expect(read()).rejects.toThrow('GitHub refused the thread read')
 
     mocks.gh.mockRejectedValue(new Error('HTTP 502'))
