@@ -25,6 +25,7 @@ it.each(['pty', 'leaf', 'unknown', 'disconnected'] as const)(
       findPty: () => pty,
       getRetainedStatus: () => null,
       getTrackedTitle: () => null,
+      getTitleDisplayClear: () => null,
       issuePtyHandle: vi.fn(() => 'handle'),
       recordPty: vi.fn(() => pty),
       buildPtyStatus: () => ({}),
