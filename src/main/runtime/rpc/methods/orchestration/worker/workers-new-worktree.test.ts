@@ -189,6 +189,36 @@ describe('orchestration new-worktree workers', () => {
     })
   })
 
+  it('probes the creation repo before accepting an OpenCode model', async () => {
+    mockCreatedWorktree()
+    const probe = vi
+      .spyOn(runtime, 'probeOrchestrationOpenCodeModelLaunchSupport')
+      .mockResolvedValue(true)
+    await expect(
+      startWorker({ agent: 'opencode', model: 'opencode/fledge-alpha-free' })
+    ).resolves.toMatchObject({
+      result: {
+        launch: {
+          effective: { agent: 'opencode', model: 'opencode/fledge-alpha-free', effort: null }
+        }
+      }
+    })
+    expect(probe).toHaveBeenCalledWith({ repo: 'repo', model: 'opencode/fledge-alpha-free' })
+    expect(runtime.createManagedWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ startupLaunchPreferences: { model: 'opencode/fledge-alpha-free' } })
+    )
+  })
+
+  it('rejects an unsupported OpenCode model before creating a worker', async () => {
+    const create = vi.spyOn(runtime, 'createManagedWorktree')
+    vi.spyOn(runtime, 'probeOrchestrationOpenCodeModelLaunchSupport').mockResolvedValue(false)
+    await expect(
+      startWorker({ agent: 'opencode', model: 'opencode/fledge-alpha-free' })
+    ).rejects.toMatchObject({ code: 'capability_unsupported' })
+    expect(create).not.toHaveBeenCalled()
+    expect(runtime.createTerminal).not.toHaveBeenCalled()
+  })
+
   it('rejects a new worktree for a folder project before creating effects', async () => {
     vi.mocked(runtime.showRepo).mockResolvedValue({
       id: 'repo',

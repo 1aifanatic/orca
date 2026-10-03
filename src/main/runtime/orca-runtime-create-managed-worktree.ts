@@ -13,6 +13,7 @@ import { prepareRuntimeLocalWorktreeSetup } from './runtime-local-worktree-setup
 import { invalidateAuthorizedRootsCacheForRepo } from '../ipc/filesystem-auth'
 import { startRuntimeLocalWorktreeTerminals } from './runtime-local-worktree-terminal-startup'
 import { trackRuntimeWorkspaceCreate } from '../workspace-create-telemetry'
+import { assertOpenCodeModelWorktreeCreateSupported } from '../opencode/opencode-model-startup-plan'
 import type { RuntimeWorkspaceCreateEvents } from '../workspace-create-telemetry'
 
 export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWorktreeTerminalProvisioningHost {
@@ -40,6 +41,11 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
     if (!this.store) {
       throw new Error('runtime_unavailable')
     }
+
+    assertOpenCodeModelWorktreeCreateSupported(
+      args.startupAgent ?? args.createdWithAgent,
+      args.startupLaunchPreferences
+    )
 
     const repo = await this.resolveRepoSelector(args.repoSelector)
     const createSettings = this.store.getSettings()
