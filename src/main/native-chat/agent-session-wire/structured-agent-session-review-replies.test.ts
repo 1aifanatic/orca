@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 import type { PRComment } from '../../../shared/github/comment-types'
@@ -381,6 +384,13 @@ describe('a launch prompt with a review reply', () => {
     review.addRepoPRReviewCommentReply.mockResolvedValueOnce({ ok: false, error: 'HTTP 401' })
     const id = await launchPrompt()
     await handedOver(id)
+    // The agent's turn is running when the writes fail, as it is once the agent took the message.
+    const journal = host.collaboratorsForTests().sessions.get(SESSION)?.journal
+    await journal?.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 999 },
+      { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 1 },
+      { fence: fence(), turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
     await accept(id)
 
     const { line } = await settledReceipt(id)
