@@ -26,7 +26,9 @@ import {
   reconcileStructuredAgentSessionOutbox
 } from '../../shared/structured-agent-session-outbox'
 import { admitStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox-admission'
-import { structuredAgentSessionDeliveryNotices } from '../../renderer/src/components/native-chat/structured-agent-session-delivery-notices'
+import { readWholeAgentSessionFailureFact } from '../../shared/agent-session-failure'
+import { agentSessionFailureSentence } from '../../shared/agent-session-failure-words'
+import { undeliveredSentElsewhere } from '../../shared/structured-agent-session-failed-start-elsewhere'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -291,20 +293,17 @@ describe('a Codex send Codex took and never recorded', () => {
     const journal = await snapshot()
     const key = agentJournalSubmissionKey(followUp)
 
-    // Another device, with no copy of it: drawn from the row, unsent, with no Retry.
+    // Another device, with no copy of it: drawn from the row, unsent, in the words of its fact
+    // with no Retry beside them.
     expect(
       projectStructuredAgentSessionMessages(journal.items, [], journal.submissions)
     ).toContainEqual(expect.objectContaining({ id: key, unsent: true }))
-    expect(
-      structuredAgentSessionDeliveryNotices(
-        [],
-        'Codex',
-        vi.fn(),
-        journal.submissions,
-        [],
-        new Set()
-      ).get(key)
-    ).toEqual({ text: NOT_DELIVERED })
+    const [row] = undeliveredSentElsewhere(journal.submissions, [])
+    const fact = readWholeAgentSessionFailureFact(row?.rejection)
+    expect(row?.clientMessageId).toBe(followUp)
+    expect(fact && agentSessionFailureSentence(fact, 'rejection', { retryControl: false })).toBe(
+      NOT_DELIVERED
+    )
 
     // The sending desktop: its copy settles as not sent, and what it queued behind it goes out.
     const queued = (clientMessageId: string, text: string) =>
