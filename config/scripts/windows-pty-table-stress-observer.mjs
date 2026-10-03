@@ -149,7 +149,7 @@ export function createStressObserver(report) {
       // Observe the existing callback without changing its receiver, arguments, or result.
       agent._$onProcessExit = function (...args) {
         emit('native-exit-callback', { ...snapshot(), exitCode: args[0] })
-        return Reflect.apply(original, this, args)
+        return original.call(this, ...args)
       }
     }
   }
