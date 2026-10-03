@@ -132,7 +132,8 @@ Two rules the ingest must keep:
   is the durable truth for a structured session. Each chat's status is stored
   there beside its journal (`journal_session_state`), written in the same
   transaction as the journal rows it describes, so it is always current. A
-  chat last written before that table existed has no row at first: a listed
+  chat last written before that table existed, or whose row was derived by
+  other rules, has no row at first: a listed
   chat gets one at startup, before the tab listing answers, computed from its
   journal rows without opening it, so the republish and the settle below cover
   it too; any other chat gets one when it is opened, which also settles it. A

@@ -37,6 +37,7 @@ import {
   latestRestTestStatus,
   restTestOpens
 } from './structured-agent-session-rest-test-observations'
+import { moveRestTestChatToPerChatFile } from './structured-agent-session-rest-test-per-chat-file'
 
 const rigs: RestTestRig[] = []
 
@@ -456,6 +457,59 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
   })
 
+  it('is stopped for an unlisted chat whose lease a command checks once the settle is running', async () => {
+    const rig = await newRig()
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-listed', 'session-closed'])
+    const listed = listedIds(rig)
+    const failed = new Error('disk I/O error')
+    const reconcile = vi
+      .spyOn(rig.store, 'reconcileOnRestart')
+      .mockRejectedValueOnce(failed)
+      .mockRejectedValueOnce(failed)
+    await rig.host.reconcileRestartLeases()
+    await rig.host.catchUpMissingStatuses(listed)
+    await rig.host.restoreListedFromPerChatFiles(listed)
+    rig.host.seedStoredStatuses(listed)
+
+    const settling = rig.host.settleOwedSessions(listed)
+    // The settle has waited on its recoveries and read its records; an attach the gate let through
+    // now checks the leases, and what it answers after that does not matter here.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(rig.store.getRecord('session-closed')!.lease.unreconciled).toBe(true)
+    await restTestChat(rig, 'session-listed').catch(() => undefined)
+    await settling
+
+    expect(reconcile).toHaveBeenCalledTimes(3)
+    expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
+    expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
+  })
+
+  it('is stopped for a listed chat still in its per-chat file whose lease a command checks after the lease check failed', async () => {
+    const rig = await newRig()
+    const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-file', 'session-other'], {
+      live: 'session-file',
+      beforeBoot: () => moveRestTestChatToPerChatFile(rig, 'session-file')
+    })
+    const listed = listedIds(rig)
+    expect(listed).toEqual(['session-file'])
+    const failed = new Error('disk I/O error')
+    vi.spyOn(rig.store, 'reconcileOnRestart')
+      .mockRejectedValueOnce(failed)
+      .mockRejectedValueOnce(failed)
+    await rig.host.reconcileRestartLeases()
+    // An attach let through before the listing checks the leases; its own answer does not matter.
+    await restTestChat(rig, 'session-other', { listed: false }).catch(() => undefined)
+    expect(rig.store.getRecord('session-file')!.lease.handoffStage).toBe('recovering')
+
+    await rig.host.catchUpMissingStatuses(listed)
+    await rig.host.restoreListedFromPerChatFiles(listed)
+
+    // Opened before the listing from its file, after its recovery: the turn reads as interrupted.
+    expect(rig.host.hasSession('session-file')).toBe(true)
+    expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({ turnOutcome: 'interruption' })
+    expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
+  })
+
   it('leaves every lease to the next attach or send when the lease check fails twice', async () => {
     const rig = await newRig()
     const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-open', 'session-closed'])
@@ -480,12 +534,14 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
 })
 
 /**
- * Chats whose turn was running when Orca died. The first is listed, the rest have no tab; the last
- * one's provider process is still up until a stop ends it.
+ * Chats whose turn was running when Orca died. The first is listed, the rest have no tab; the `live`
+ * one's provider process (the last, unless named) is still up until a stop ends it. `beforeBoot`
+ * runs between the crash and the next launch.
  */
 async function crashWithLiveOwner(
   rig: RestTestRig,
-  ids: readonly string[]
+  ids: readonly string[],
+  options: { live?: string; beforeBoot?: () => Promise<void> } = {}
 ): Promise<ReturnType<typeof vi.fn>> {
   const leases: AgentSessionRecord['lease'][] = []
   for (const [index, sessionId] of ids.entries()) {
@@ -506,12 +562,13 @@ async function crashWithLiveOwner(
   for (const lease of leases) {
     await writeOlderBuildLease(rig.root, lease.sessionId, { ...lease })
   }
+  await options.beforeBoot?.()
   let alive = true
   const stopOwnerProcess = vi.fn(() => {
     alive = false
   })
   rig.probeOwner.mockImplementation(async (record) =>
-    alive && record.sessionId === ids.at(-1)
+    alive && record.sessionId === (options.live ?? ids.at(-1))
       ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
       : { outcome: 'pid-absent' }
   )

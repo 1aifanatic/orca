@@ -17,7 +17,8 @@ const RECOVERY_CONCURRENCY = 4
 const RECOVERY_BUDGET_MS = 15_000
 
 export type StructuredAgentSessionStartupLeasePhase = {
-  /** Starts the phase once and answers whether its check settled every lease. Never rejects. */
+  /** Starts the phase's check once; answers, from the records, whether every lease is settled now.
+   *  Never rejects. */
   reconciled: () => Promise<boolean>
   /** After the check, every lease `recovering` at this call has its recovery started; ends once
    *  each has ended or outlasted its budget. Never rejects. */
@@ -41,9 +42,14 @@ export function createStructuredAgentSessionStartupLeasePhase(deps: {
   const recoveries = new Map<string, Promise<boolean>>()
   let checking: Promise<boolean> | null = null
   // A failed check is usually a store write that failed once, so it runs once more; past that, the
-  // next attach or send checks again before it acts.
-  const reconciled = () =>
-    (checking ??= deps.reconcile('startup').then((settled) => settled || deps.reconcile('startup')))
+  // leases stay unchecked until an attach or send checks them. The answer is read from the records,
+  // never kept, so a check a command completes later counts here too.
+  const reconciled = async () => {
+    await (checking ??= deps
+      .reconcile('startup')
+      .then((settled) => settled || deps.reconcile('startup')))
+    return !deps.store.listRecords().some((record) => record.lease.unreconciled)
+  }
   const recovering = (sessionId: string) =>
     deps.store.getRecord(sessionId)?.lease.handoffStage === 'recovering'
   const recoverOnce = (sessionId: string): Promise<boolean> => {
