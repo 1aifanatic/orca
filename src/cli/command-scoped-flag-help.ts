@@ -4,6 +4,11 @@ const FILE_OPEN_FOCUS_HELP =
 
 /** Per-command flag help, kept out of the shared help chain it would crowd. */
 const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
+  'worktree create': {
+    pr: '--pr <number>          Linked GitHub pull request number',
+    'gitlab-issue': '--gitlab-issue <number|url> Linked GitLab issue in the source project',
+    'gitlab-mr': '--gitlab-mr <number|url> Linked GitLab merge request in the source project'
+  },
   'skills get': {
     full: '--full                 Print the full guide with bundled references',
     reference: '--reference <name>     Print one bundled reference by name',
@@ -24,6 +29,10 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
   'terminal split': {
     ratio:
       '--ratio <fraction>     Initial flex share for the existing first pane, greater than 0 and less than 1 (live native local PTY with owning desktop renderer)'
+  },
+  'worktree set': {
+    unread: '--unread               Mark the workspace unread in the sidebar',
+    read: '--read                 Mark the workspace read, clearing the unread dot'
   },
   search: {
     query: '--query <text>         Search text; also accepted as the positional argument',

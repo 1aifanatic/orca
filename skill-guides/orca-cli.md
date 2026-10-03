@@ -73,6 +73,7 @@ Common commands:
 ORCA repo list --json
 ORCA repo show --repo id:<repoId> --json
 ORCA repo add --path /abs/repo --json
+ORCA repo set --repo id:<repoId> --external-worktree-visibility show --json
 ORCA repo set-base-ref --repo id:<repoId> --ref origin/main --json
 ORCA repo search-refs --repo id:<repoId> --query main --limit 10 --json
 ORCA worktree list --repo id:<repoId> --json
@@ -87,8 +88,16 @@ ORCA worktree create --name independent-task --no-parent --json
 ORCA worktree set --worktree id:<repoId>::<worktreePath> --display-name "My Task" --json
 ORCA worktree set --worktree active --comment "reproduced bug; testing fix" --json
 ORCA worktree set --worktree active --workspace-status in-review --json
+ORCA worktree set --worktree active --unread --json
+ORCA worktree create --repo id:<repoId> --name review-task --pr 123 --json
+ORCA worktree set --worktree active --gitlab-issue '#42' --gitlab-mr '!77' --json
+ORCA worktree set --worktree active --pr null --gitlab-mr null --json
 ORCA worktree rm --worktree id:<repoId>::<worktreePath> --force --json
 ```
+
+Use `repo set --external-worktree-visibility show` to show a repo's non-Orca worktrees.
+`hide` hides them; `inherit` clears the repo override and follows the global default.
+Per-worktree visibility rules still apply.
 
 Selectors:
 
@@ -135,7 +144,17 @@ ORCA worktree set --worktree active --comment "fix implemented; running integrat
 
 Update after a repro, fix, validation, handoff, or blocker. Keep it short and current. A failed comment update is not an error to surface unless the user asked for Orca state.
 
-Card status uses `--workspace-status <id>`; defaults are `todo`, `in-progress`, `in-review`, `completed`.
+Card status uses `--workspace-status <id>`; defaults are `todo`, `in-progress`, `in-review`, `completed`. `--unread` puts the workspace's unread dot in the sidebar to ask for a person's attention; `--read` clears it.
+
+Issue/review links: `--pr` writes the GitHub pull request number; `--gitlab-issue` and
+`--gitlab-mr` write separate GitLab numbers and accept `#42` / `!77` respectively.
+All numbers must be positive safe integers. The GitLab flags also accept HTTP(S) URLs
+whose host/project match the workspace's stored GitLab source context or the repo's
+stored remote. They never select a foreign project or fetch a review branch. Absent
+flags leave links unchanged; literal `null` clears only the named link on `set` and
+is refused on `create`. Folder-based repos can store numeric links, but missing
+source/remote identity prevents URL validation and may leave provider links unavailable.
+Old runtimes that predate these existing fields may ignore them; verify with `worktree show --json`.
 
 ## Terminals
 
@@ -185,7 +204,7 @@ Terminal rules:
 - `--direction horizontal` splits left/right. `--direction vertical` splits top/bottom.
 - `terminal split --ratio <fraction>` sets the existing first pane's initial share of available split flex; `0.85` means 85%. Require a finite value greater than 0 and less than 1.
 - A supplied ratio requires an eligible live native local PTY in a Git worktree, registered non-Git folder repo or standalone folder workspace with a recorded folder-group root, with its available owning desktop renderer. Older runtimes, paired transport or ownership, headless/reloading desktops, WSL, SSH/runtime hosts and missing or ambiguous source ownership refuse before splitting.
-- Omit `--ratio` to retain existing routes and defaults without a status preflight. Supplying it adds one status preflight. Saved ratios round to three decimals and omit values within 0.005 of one half; dividers and minimum pane sizes can change the visible pixel share. Later resizing and ratio readback remain separate work.
+- Omit `--ratio` to retain existing routes and defaults without a status preflight. Supplying it adds one status preflight. Saved ratios usually round to three decimals, preserve fractions that would round to zero or one, and omit values within 0.005 of one half; dividers and minimum pane sizes can change the visible pixel share. Later resizing and ratio readback remain separate work.
 
 ## Artifacts
 
