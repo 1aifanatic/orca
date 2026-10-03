@@ -98,7 +98,17 @@ export class ManagedDataAccountService {
           activeAccountId: id
         })
       } catch (error) {
-        rmSync(directory, { recursive: true, force: true })
+        let registered = true
+        try {
+          registered = this.list(provider).accounts.some(
+            (account) => account.id.toLowerCase() === id.toLowerCase()
+          )
+        } catch {
+          // Unreadable metadata cannot prove that this profile is unregistered.
+        }
+        if (!registered) {
+          rmSync(directory, { recursive: true, force: true })
+        }
         throw error
       }
     })
@@ -254,7 +264,11 @@ export class ManagedDataAccountService {
 
   private notifyChanged(): void {
     for (const listener of this.listeners) {
-      listener()
+      try {
+        listener()
+      } catch {
+        console.warn('[managed-data-accounts] Account change listener failed.')
+      }
     }
   }
 
