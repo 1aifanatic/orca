@@ -4,7 +4,7 @@
  * 1. Without an orcad template the connect keeps the relay, so the host gains relay-era state: a
  *    repository, a folder workspace, an editor tab, and a relay terminal that has exited.
  * 2. With the template in place and no relay terminal running, the next connect converts it, and
- *    the new server lists that repository, folder and editor tab.
+ *    the new server lists that repository and folder (the editor tab is logged, not yet asserted).
  * 3. The source rows stay retained (downgrade safety) until `orcad-source-retirement` is on; the
  *    connect after that retires them while the server keeps serving the host.
  *
@@ -83,21 +83,6 @@ function sourceRows(
 function targetLeases(userData: string, targetId: string): { state?: unknown }[] {
   const leases = readPersistedProfileState(userData).sshRemotePtyLeases
   return (Array.isArray(leases) ? leases : []).filter((lease) => lease?.targetId === targetId)
-}
-
-/** The terminal state the conversion census reads, printed so a refused move names its blocker. */
-function logConversionInputs(userData: string, targetId: string): void {
-  const state = readPersistedProfileState(userData)
-  const forTarget = (rows: unknown): unknown[] =>
-    (Array.isArray(rows) ? rows : []).filter((row) => row?.targetId === targetId)
-  console.log(
-    `[orcad-convert] census inputs ${JSON.stringify({
-      leases: forTarget(state.sshRemotePtyLeases),
-      consumerRecoveries: forTarget(state.sshPtyConsumerRecoveries),
-      unsupportedPtyEntries: state.migrationUnsupportedPtyEntries,
-      legacyPaneKeyAliases: state.legacyPaneKeyAliasEntries
-    })}`
-  )
 }
 
 async function serverCall(
@@ -245,22 +230,6 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
         )
       })
     ).toBe(JSON.stringify({ sessions: [], leases: [] }))
-    logConversionInputs(userData, remote.targetId)
-    console.log(
-      `[orcad-convert] sessions ${await page.evaluate(
-        async ({ hostId, worktreeId }) => {
-          const host = await window.api.session.get(hostId)
-          const local = await window.api.session.get()
-          const ownedLocal = Object.fromEntries(
-            Object.entries(local).flatMap(([field, value]) =>
-              JSON.stringify(value ?? null).includes(worktreeId) ? [[field, value]] : []
-            )
-          )
-          return JSON.stringify({ host, ownedLocal })
-        },
-        { hostId: toSshExecutionHostId(remote.targetId), worktreeId: remote.worktreeId }
-      )}`
-    )
     const connected = await reconnect(page, remote.targetId)
     // Polls the whole state so a timeout reports why the host stayed on the relay.
     await expect
@@ -315,16 +284,14 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
     // Retirement drops the source rows, then compacts the journal away once the server matches it.
     await expect
       .poll(
-        () =>
-          JSON.stringify({
+        () => {
+          const phase = findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase
+          return JSON.stringify({
             // `source-retired` is retirement before compaction; either way the move is finished.
-            journal: [undefined, 'source-retired'].includes(
-              findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase
-            )
-              ? undefined
-              : findOrcadMigrationSourceCutoverForTarget(userData, remote.targetId)?.phase,
+            ...(phase && phase !== 'source-retired' ? { journal: phase } : {}),
             ...sourceRows(userData, remote.targetId)
-          }),
+          })
+        },
         { timeout: 120_000 }
       )
       .toBe(JSON.stringify({ repos: 0, folderWorkspaces: 0 }))
