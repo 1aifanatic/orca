@@ -11,6 +11,8 @@ import {
 } from '../ssh/ssh-provider-authority'
 import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
+import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { decideHostServer, publishManagedServerConnect } from './ssh-host-server-connect'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
   assertSshConnectsNotFenced,
@@ -103,11 +105,6 @@ async function doConnect(
   if (!target) {
     throw new Error(`SSH target "${targetId}" not found`)
   }
-  if (!allowsDirectSshRelay(target)) {
-    throw new Error(
-      'This SSH host serves a managed Orca server; it is reached through that server.'
-    )
-  }
 
   const existingSession = activeSessions.get(targetId)
   const existingState = connectionManager!.getState(targetId)
@@ -127,6 +124,28 @@ async function doConnect(
     // Why: BrowserWindow reactivation re-fires ssh:connect for already-live targets; treat as a refresh instead of tearing down the relay and its forwards.
     broadcastSshState(getCurrentMainWindow, targetId, existingState)
     return getPublicSshState(targetId)!
+  }
+
+  const pending = decideHostServer(target)
+  // Why the check: test doubles answer synchronously so the relay path's ordering stays pinned.
+  const server = pending instanceof Promise ? await pending : pending
+  if (server?.route === 'managed') {
+    return publishManagedServerConnect(targetId, server.environmentId)
+  }
+  if (server) {
+    setSshHostServerStatus(targetId, {
+      kind: 'relay',
+      reason: server.reason,
+      ...(server.detail ? { detail: server.detail } : {}),
+      ...(server.terminals !== undefined ? { terminals: server.terminals } : {})
+    })
+  }
+  // Re-read: a conversion attempt may have fenced the host since the lookup above.
+  const relayTarget = getSshTargetRegistryStore()!.getTarget(targetId) ?? target
+  if (!allowsDirectSshRelay(relayTarget)) {
+    throw new Error(
+      'This SSH host serves a managed Orca server; it is reached through that server.'
+    )
   }
 
   const authority = rotateSshProviderAuthority(targetId)

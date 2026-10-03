@@ -42,15 +42,24 @@ function omitRendererSshTargetGeneration<
     generation?: unknown
     orcadProvisioning?: unknown
     orcadFence?: unknown
+    managedServerUnavailable?: unknown
     remoteRuntimeResolution?: unknown
   }
 >(
   value: T
-): Omit<T, 'generation' | 'orcadProvisioning' | 'orcadFence' | 'remoteRuntimeResolution'> {
+): Omit<
+  T,
+  | 'generation'
+  | 'orcadProvisioning'
+  | 'orcadFence'
+  | 'managedServerUnavailable'
+  | 'remoteRuntimeResolution'
+> {
   const {
     generation: _generation,
     orcadProvisioning: _orcadProvisioning,
     orcadFence: _orcadFence,
+    managedServerUnavailable: _managedServerUnavailable,
     remoteRuntimeResolution: _remoteRuntimeResolution,
     ...rest
   } = value

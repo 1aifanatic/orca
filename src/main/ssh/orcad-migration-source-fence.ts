@@ -172,6 +172,28 @@ export async function releaseUnstagedFence(
   removeOrcadMigrationSourceCutover(args.userDataPath, cutover.migrationId)
 }
 
+/**
+ * Releases a migration fence whose destination server was never registered: no deploy finished,
+ * so nothing could have been staged there. A registered destination must answer an abort instead.
+ */
+export async function releaseUndeployedMigrationFence(args: {
+  userDataPath: string
+  claims: SshTargetOrcadClaims
+  targetId: string
+  isDestinationRegistered: (environmentId: string) => boolean
+  signal?: AbortSignal
+}): Promise<'released' | 'none'> {
+  const cutover = findOrcadMigrationSourceCutoverForTarget(args.userDataPath, args.targetId)
+  if (!cutover) {
+    return 'none'
+  }
+  if (args.isDestinationRegistered(cutover.destinationEnvironmentId)) {
+    throw new Error('orcad_migration_destination_registered')
+  }
+  await releaseUnstagedFence(args, cutover)
+  return 'released'
+}
+
 function fenceStateReason(state: OrcadMigrationFenceState): string {
   switch (state.state) {
     case 'owned-by-deploy':
