@@ -14,7 +14,6 @@ import type {
   openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
-import type * as CodexTurnOpenWait from '../codex/codex-structured-turn-open-wait'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalTurnItem } from '../../shared/agent-session-journal-types'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
@@ -37,28 +36,6 @@ import {
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
 
-// The turns a Stop is waiting on to open, so a test knows the wait began.
-const openWaits = vi.hoisted(() => {
-  const turnIds: string[] = []
-  return { turnIds }
-})
-vi.mock('../codex/codex-structured-turn-open-wait', async (importOriginal) => {
-  const actual = await importOriginal<typeof CodexTurnOpenWait>()
-  return {
-    ...actual,
-    createCodexTurnOpenWaits: () => {
-      const waits = actual.createCodexTurnOpenWaits()
-      return {
-        ...waits,
-        wait: (turnId: string, withinMs: number) => {
-          openWaits.turnIds.push(turnId)
-          return waits.wait(turnId, withinMs)
-        }
-      }
-    }
-  }
-})
-
 const CALLER = { callerKey: 'codex-interrupt-order-test' }
 const MODEL = {
   model: 'gpt-test',
@@ -77,6 +54,7 @@ let answers: number
 let interrupts: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let statuses: AgentSessionStatusSummary[]
+let opened: Set<string>
 let operations = 0
 
 /** The durable ledger stamps its own clock and refuses an id far from it. */
@@ -168,13 +146,15 @@ async function owesWork(): Promise<boolean> {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-interrupt-order-'))
-  openWaits.turnIds.length = 0
   answers = 0
   interrupts = 0
-  turns = codexTurnLifecycleFake(
-    THREAD,
-    () => (method, params) => handlers?.onNotification?.(method, params)
-  )
+  opened = new Set()
+  turns = codexTurnLifecycleFake(THREAD, () => (method, params) => {
+    if (method === 'turn/started') {
+      opened.add(turns.turnId ?? '')
+    }
+    handlers?.onNotification?.(method, params)
+  })
   const openConnection: typeof openCodexAppServerConnection = async (
     _launch,
     connectionHandlers = {}
@@ -195,8 +175,12 @@ beforeEach(async () => {
           return turns.routes['turn/start']()
         }
         if (method === 'turn/interrupt') {
-          // Taken: answered now; the test sends the turn's end once the Stop has answered.
+          // Taken: answered now; the test sends the turn's end once the Stop has answered. A turn
+          // Codex runs but whose turn/started was not yet read gets that frame ahead of the answer.
           interrupts += 1
+          if (turns.turnId !== null && !opened.has(turns.turnId)) {
+            turns.start()
+          }
           return {}
         }
         return {}
@@ -260,15 +244,14 @@ describe("a Codex Stop answered before Codex's turn/completed (interrupted)", ()
     }
   )
 
-  // No turn showed when the person pressed Stop: the turn that opens is bound by the Stop's settle.
+  // No turn showed when the person pressed Stop, which interrupts the answered turn at once: the
+  // turn that opens is bound by the Stop's settle.
   it('reads the turn that opens behind an in-flight turn/start as interrupted, never failed', async () => {
     const release = turns.holdNextAnswer()
     await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     const stopping = stop()
     release()
-    await vi.waitFor(() => expect(openWaits.turnIds).toContain('turn-1'))
-    turns.start()
     await stopping
 
     await expectInterruptedThroughout()

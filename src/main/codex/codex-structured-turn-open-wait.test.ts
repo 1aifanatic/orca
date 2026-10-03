@@ -1,7 +1,8 @@
 // A Codex Stop that names no turn, sent after Codex answered a cold send and before it opened that
-// turn, waits for the turn to open, or provably not to, and never the send itself. The fake keeps
-// Codex 0.157's turn bookkeeping: it answers before it opens the turn, and refuses an interrupt
-// until then.
+// turn, interrupts that turn at once. Refused as finding no turn while the turn has yet to run, it
+// waits for the turn to open, or provably not to, and interrupts once more; it never waits for the
+// send itself. The fake keeps Codex 0.157's turn bookkeeping: it answers before it opens the turn,
+// and refuses an interrupt with no turn active until the thread runs.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -27,12 +28,14 @@ async function answeredColdSend(rig: Rig): Promise<void> {
   expect(await settledWithin(sending)).toEqual(ADMITTED)
 }
 
-/** A Stop sent in the window, which Codex would refuse if it reached Codex now. */
+const interruptedTurns = (rig: Rig) => rig.interrupts().map((call) => call.params?.turnId)
+
+/** A Stop sent in the window before Codex's thread runs the turn: Codex refused its interrupt. */
 async function waitingStop(rig: Rig) {
   await answeredColdSend(rig)
   const stopping = stop(rig)
   expect(await settledWithin(stopping)).toBe('held')
-  expect(rig.interrupts()).toEqual([])
+  expect(interruptedTurns(rig)).toEqual(['turn-1'])
   // Wrapped: an async function returning the promise itself would wait for it.
   return { stopping }
 }
@@ -52,14 +55,24 @@ describe('a Codex send answered before its turn opens', () => {
 })
 
 describe("a no-turn Stop in the window between Codex's answer and its turn opening", () => {
-  it('waits for the turn to open, then stops it', async () => {
+  it("is taken at once once Codex's thread runs the turn", async () => {
+    const rig = await codexTurnLifecycleRig()
+    await answeredColdSend(rig)
+    rig.turns.run()
+
+    expect(await settledWithin(stop(rig))).toEqual({ cancelled: true, turnId: 'turn-1' })
+    expect(interruptedTurns(rig)).toEqual(['turn-1'])
+    await vi.waitFor(() => expect(rig.turns.turnId).toBeNull())
+  })
+
+  it('refused before the thread runs, waits for the turn to open and interrupts once more', async () => {
     const rig = await codexTurnLifecycleRig()
     const { stopping } = await waitingStop(rig)
 
     rig.turns.start()
 
     expect(await settledWithin(stopping)).toEqual({ cancelled: true, turnId: 'turn-1' })
-    expect(rig.interrupts().map((call) => call.params?.turnId)).toEqual(['turn-1'])
+    expect(interruptedTurns(rig)).toEqual(['turn-1', 'turn-1'])
     // Codex answers the interrupt, then ends the turn.
     await vi.waitFor(() => expect(rig.turns.turnId).toBeNull())
   })
@@ -93,7 +106,21 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     rig.turns.end('interrupted')
 
     expect(await settledWithin(stopping)).toEqual(REFUSED)
-    expect(rig.interrupts()).toEqual([])
+    expect(interruptedTurns(rig)).toEqual(['turn-1'])
+  })
+
+  // Codex ended the turn as the interrupt reached it: it refuses the turn as its last ended one.
+  it('stops nothing, and waits for nothing, when Codex already ended the turn', async () => {
+    const rig = await codexTurnLifecycleRig()
+    await answeredColdSend(rig)
+    const interrupt = rig.codex.routes['turn/interrupt']!
+    rig.codex.routes['turn/interrupt'] = (params) => {
+      rig.turns.end('completed')
+      return interrupt(params)
+    }
+
+    expect(await settledWithin(stop(rig))).toEqual(REFUSED)
+    expect(interruptedTurns(rig)).toEqual(['turn-1'])
   })
 
   // The turn neither opened nor ended, and its send is still owed: no press calls that nothing.
@@ -106,8 +133,9 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
       rig.notify('thread/status/changed', { threadId: CODEX_TEST_THREAD_ID, status: { type } })
 
       expect(await settledWithin(stopping)).toEqual(MAY_OPEN)
-      expect(await settledWithin(stop(rig), 0)).toEqual(MAY_OPEN)
-      expect(rig.interrupts()).toEqual([])
+      // The second press's interrupt is refused too, and spends no wait on that turn.
+      expect(await settledWithin(stop(rig))).toEqual(MAY_OPEN)
+      expect(interruptedTurns(rig)).toEqual(['turn-1', 'turn-1'])
     }
   )
 
@@ -129,7 +157,7 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     rig.codex.connections[0]!.handlers.onExit?.(new Error('codex app-server exited'))
 
     expect(await settledWithin(stopping)).toEqual(REFUSED)
-    expect(rig.interrupts()).toEqual([])
+    expect(interruptedTurns(rig)).toEqual(['turn-1'])
   })
 
   // The turn may still open and run: the host ends the child (`performCancel`).
@@ -146,13 +174,15 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     expect(outcome).toBe('held')
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(outcome).toEqual({ cancelled: false, refusal: { turnMayOpen: true } })
-    expect(rig.interrupts()).toEqual([])
+    expect(outcome).toEqual(MAY_OPEN)
+    expect(interruptedTurns(rig)).toEqual(['turn-1'])
     // A second Stop spends no wait on that turn, and still finds it able to open.
-    expect(await settledWithin(stop(rig), 0)).toEqual({
-      cancelled: false,
-      refusal: { turnMayOpen: true }
+    let second: unknown = 'held'
+    void stop(rig).then((value) => {
+      second = value
     })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(second).toEqual(MAY_OPEN)
   })
 })
 
