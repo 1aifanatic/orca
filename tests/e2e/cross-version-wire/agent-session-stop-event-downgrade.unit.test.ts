@@ -231,11 +231,11 @@ test("an older schema's build reads this build's journal read-only, writes nothi
 }, 120_000)
 
 // Why a Stop's event cannot have a row kind of its own yet: this build keeps a kind it does not know
-// and goes read-only, but a build from before that deletes the journal from it. So a Stop kind ships
-// its reader first and is written once no supported build lacks that reader, or is written at a
-// bumped `v`. Move the baseline to the first release with this rule, and the older build keeps the
-// row too.
-test("this build keeps a newer build's row kind and goes read-only; a build before it deletes it", async () => {
+// and goes read-only, but a build from before that deletes the journal from it when it can write it.
+// So a Stop kind ships its reader first and is written once no supported build lacks that reader, or
+// is written at a bumped `v`. The pinned older build is at the schema before 5, which opens this
+// build's database read-only, so it keeps the row too; a released build at version 5 has this rule.
+test("this build keeps a newer build's row kind and goes read-only; an older schema's build keeps it too", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-newer-kind-downgrade-'))
   const journals = createTrackedJournalOpener()
   const newerKinds = () => storedRows(directory).filter((row) => row.includes('"future-mark"'))
@@ -273,18 +273,20 @@ test("this build keeps a newer build's row kind and goes read-only; a build befo
     expect(storedRows(directory)).toEqual(rowsBefore)
     expect(newerKinds()).toEqual([newer])
 
-    const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
+    const checkout = await materializeReleaseCheckout(OLDER_SCHEMA_BASELINE_REF)
     const support = await importReleaseCheckoutModule(
       checkout,
       `${JOURNAL}/journal-host-database-test-support.ts`
     )
     const older = releaseExport<() => OlderOpener>(support, 'createTrackedJournalOpener')()
     try {
-      await older.open({ identity: IDENTITY, stateDirectory: directory })
+      const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
+      expect(downgraded.isReadOnly).toBe(true)
     } finally {
       await older.closeAll()
     }
-    expect(newerKinds()).toEqual([])
+    expect(newerKinds()).toEqual([newer])
+    expect(storedRows(directory)).toEqual(rowsBefore)
   } finally {
     await journals.closeAll()
     rmSync(directory, { recursive: true, force: true })
