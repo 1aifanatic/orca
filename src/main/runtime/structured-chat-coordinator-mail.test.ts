@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
-import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
 import {
   AgentSessionAcquisitionRefusal,
   AgentSessionPreSpawnError
@@ -26,15 +25,15 @@ import { OrchestrationDb } from './orchestration/db'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
 import { formatMessagePointer } from './orchestration/formatter'
 import { currentRunCoordinatorOrcaSessionId } from './orchestration/db/runs/run-coordinator-orca-session'
-import type { RpcRequest } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
-import { idOf, isRecord, resultOf } from './rpc/orchestration-session-caller-test-fixture'
+import { idOf, isRecord } from './rpc/orchestration-session-caller-test-fixture'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
 import { createCoordinatorMailObservationClock } from './structured-chat-coordinator-observation-clock.test-fixture'
+import { createCoordinatorRpcCaller } from './structured-chat-coordinator-rpc.test-fixture'
 import {
   attachParams,
   fakeCodex,
@@ -57,39 +56,9 @@ let runtime: OrcaRuntimeService
 let db: OrchestrationDb
 let host: StructuredAgentSessionHost
 let dispatcher: RpcDispatcher
-let requests = 0
 const observationClock = createCoordinatorMailObservationClock(() => host, COORDINATOR)
 
-function request(
-  method: string,
-  params: Record<string, unknown>,
-  options: { sessionId?: string } = {}
-): RpcRequest {
-  requests += 1
-  return {
-    id: `rpc-${requests}`,
-    authToken: 'test',
-    method,
-    params,
-    orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
-    orchestrationRequestId: `req-${requests}`,
-    ...(options.sessionId
-      ? { orchestrationCompatibilityEvidence: { agentSessionId: options.sessionId } }
-      : {})
-  }
-}
-
-async function call(
-  method: string,
-  params: Record<string, unknown>,
-  options?: { sessionId?: string }
-): Promise<Record<string, unknown>> {
-  const response = await dispatcher.dispatch(request(method, params, options))
-  if (!response.ok) {
-    throw new Error(`${method} failed: ${JSON.stringify(response)}`)
-  }
-  return resultOf(response)
-}
+const { request, call } = createCoordinatorRpcCaller(() => dispatcher)
 
 async function openChat(sessionId: string): Promise<FakeConnection> {
   const opened = await attachForTests(host, { callerKey: 'test-surface' }, attachParams(sessionId))
