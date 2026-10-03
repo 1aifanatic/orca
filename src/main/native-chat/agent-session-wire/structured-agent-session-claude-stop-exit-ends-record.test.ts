@@ -290,6 +290,20 @@ it('joins the close a Stop could not prove before the next message, then sends i
   })
 })
 
+it('has a second Stop join the close the first could not prove, retrying its kill', async () => {
+  const connection = await stopWithUnprovenClose(1)
+
+  // Nothing was queued, so it withdrew nothing and records no event of its own.
+  await expect(stop()).resolves.toMatchObject({ ok: true, value: { cancelled: false } })
+  expect(connection.closeCount).toBe(2)
+  expect(child()).toBeNull()
+  expect(host['sessions'].get(SESSION)?.lastEndedChild).toMatchObject({
+    cause: 'user-stop',
+    rootGone: true
+  })
+  expect(connection.calls.filter((call) => call.subtype === 'interrupt')).toHaveLength(1)
+})
+
 it('has a send made while the close still runs wait for that close, not start another', async () => {
   const connection = claude.connections[0]!
   await openTurn(connection)
