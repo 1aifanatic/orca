@@ -360,6 +360,20 @@ describe('runtime Delete after the user replaced a failed delete’s leftover', 
     expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
   })
 
+  it('leaves a folder made at the path after a restart found the leftover gone', async () => {
+    await rm(leftover, { recursive: true, force: true })
+    _resetPendingWorktreeRemovalsForTests()
+    await loadWorktreeRemovalRecords(directory)
+    await mkdir(leftover)
+    await writeFile(join(leftover, 'notes.txt'), 'mine\n')
+    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
+
+    await deleteById(runtime)
+
+    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
+    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
+  })
+
   it('keeps the workspace when Git registers a checkout at the path again after the scan', async () => {
     vi.mocked(listWorktreesStrict).mockResolvedValue([
       {

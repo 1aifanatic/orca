@@ -15,8 +15,7 @@ import {
   finishedWorktreeRemovals,
   pendingWorktreeRemovals,
   persistWorktreeRemovalRecords,
-  setWorktreeRemovalRecordsDirectory,
-  worktreeCheckoutExists
+  setWorktreeRemovalRecordsDirectory
 } from './worktree-removal-table'
 
 export type BackgroundWorktreeRemovalJob = {
@@ -52,7 +51,8 @@ export async function loadWorktreeRemovalRecords(
   for (const record of await readWorktreeRemovalRecords(directory)) {
     if (record.failure) {
       // Why the repo: only its listing shows the row, so nothing else could end a removed repo's.
-      if (hasRepo(record.repoId) && (await worktreeCheckoutExists(record.worktreePath))) {
+      // Kept with its checkout gone too: that listing also ends the workspace, which loading can't.
+      if (hasRepo(record.repoId)) {
         failedWorktreeRemovals.set(record.worktreeId, record)
       } else {
         droppedFailure = true

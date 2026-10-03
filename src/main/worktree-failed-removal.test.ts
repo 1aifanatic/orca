@@ -299,14 +299,21 @@ describe('a delete that fails after Git dropped the registration', () => {
     )
   })
 
-  it('ends at startup once the checkout is deleted outside Orca', async () => {
+  it('ends with its workspace at the first listing after a restart, once the checkout is deleted outside Orca', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
     await failRemoval()
     _resetPendingWorktreeRemovalsForTests()
     await rm(checkout, { recursive: true })
 
     await loadWorktreeRemovalRecords(join(directory, 'profile'))
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
 
-    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    expect(await listRows()).toEqual([mainWorktree])
+    expect(endWorkspace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ worktreeId }))
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
   })
 
   it('ends at startup once its repo is removed from Orca, leaving the files', async () => {
