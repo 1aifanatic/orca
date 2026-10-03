@@ -175,6 +175,14 @@ async function finishInterruptedLocalWorktreeRemoval(
     assertWorktreeUnlockedForRemoval(deletable)
     gitCanRemove = await restoreMissingWorktreeGitFile(repo.path, deletable.path, localOptions)
   }
+  // Why recheck in the slot: the wait can outlast large deletes, and the path may change meanwhile.
+  // An older build's record (`unrecorded`) reaches only Git's delete, which validates the checkout.
+  const assertAcceptedDirectory = async (): Promise<void> => {
+    const current = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
+    if (current === 'different' || (current === 'unrecorded' && !gitCanRemove)) {
+      throw differentFolderAtPathError(record.worktreePath)
+    }
+  }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
   if (args.stopPtys) {
     try {
@@ -185,7 +193,12 @@ async function finishInterruptedLocalWorktreeRemoval(
     }
   }
   if (deletable && gitCanRemove) {
-    return finishRuntimeLocalWorktreeRemoval(finishArgs, deletable, gate, args.stopSignal)
+    return finishRuntimeLocalWorktreeRemoval(
+      { ...finishArgs, assertCheckoutBeforeDelete: assertAcceptedDirectory },
+      deletable,
+      gate,
+      args.stopSignal
+    )
   }
   // Unregistered, or no admin entry claims the checkout so Git cannot validate it: the leftover is
   // deleted in this process as a last resort, then pruned.
@@ -196,17 +209,8 @@ async function finishInterruptedLocalWorktreeRemoval(
       repo.path,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null,
-      // Why recheck in the slot: the wait can outlast large deletes, and the path may change meanwhile.
       deletable
-        ? async () => {
-            const current = await matchCheckoutDirectory(
-              record.worktreePath,
-              record.checkoutIdentity
-            )
-            if (current !== 'same' && current !== 'absent') {
-              throw differentFolderAtPathError(record.worktreePath)
-            }
-          }
+        ? assertAcceptedDirectory
         : () => assertUnregisteredRemovalLeftover(leftoverRecord, localOptions),
       localOptions
     )

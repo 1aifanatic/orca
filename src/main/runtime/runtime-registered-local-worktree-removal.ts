@@ -202,7 +202,11 @@ export type RuntimeLocalWorktreeRemovalFinishArgs = Pick<
   | 'closeWatchers'
   | 'preserveBranchHead'
   | 'finishRemoval'
-> & { target: { id: string } }
+> & {
+  target: { id: string }
+  /** For a finish nobody asked for this run: refuses in the delete slot if the checkout changed. */
+  assertCheckoutBeforeDelete?: () => Promise<void>
+}
 
 /** Git's delete and everything after it; the refusals and teardown before it already ran. */
 export async function finishRuntimeLocalWorktreeRemoval(
@@ -215,6 +219,8 @@ export async function finishRuntimeLocalWorktreeRemoval(
   const canonicalPath = refreshed.path
   let removalResult: RemoveWorktreeResult | undefined
   let completed = false
+  const { assertCheckoutBeforeDelete } = args
+  let refusal: unknown
   try {
     try {
       removalResult = args.preserveBranchHead(
@@ -222,11 +228,24 @@ export async function finishRuntimeLocalWorktreeRemoval(
           ...(!args.deleteBranch ? { deleteBranch: args.deleteBranch } : {}),
           knownRemovedWorktree: refreshed,
           ...localOptions,
-          ...(checkoutDeleteSignal ? { checkoutDeleteSignal } : {})
+          ...(checkoutDeleteSignal ? { checkoutDeleteSignal } : {}),
+          ...(assertCheckoutBeforeDelete
+            ? {
+                assertCheckoutBeforeDelete: () =>
+                  assertCheckoutBeforeDelete().catch((error: unknown) => {
+                    refusal = error
+                    throw error
+                  })
+              }
+            : {})
         }),
         refreshed.head
       )
     } catch (error) {
+      // Why: Git deleted nothing, so no recovery below may delete the path in its place.
+      if (error === refusal) {
+        throw error
+      }
       const recovered = await recoverLocalWindowsWorktreeRemoval({
         error,
         force: args.force,

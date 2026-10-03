@@ -4,7 +4,7 @@
 // the file's owner; worktree-failed-removal.test.ts covers the same rules with Git mocked.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -441,6 +441,35 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(String(await settled)).toMatch(/is not the one Orca started deleting/)
     await _settlePendingWorktreeRemovalsForTests()
     expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+  })
+
+  it('at startup, checks the folder is still the recorded checkout inside the delete slot before Git deletes it', async () => {
+    await setImmutable(false)
+    const gitFile = await readFile(join(worktreePath, '.git'), 'utf8')
+    let releaseSlots = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      releaseSlots = resolve
+    })
+    const holders = [
+      runUnderWorktreeDeleteLimit(() => held),
+      runUnderWorktreeDeleteLimit(() => held)
+    ]
+    const finished = finishAtStartup([])
+    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
+    // While it waits, the user restores the folder from a backup, `.git` file and all, which Git
+    // accepts as the checkout.
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
+    await writeFile(join(worktreePath, '.git'), gitFile)
+    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
+    releaseSlots()
+    await Promise.all(holders)
+
+    // The refusal itself, not a failed Git delete a recovery could finish by deleting the path.
+    expect(String(await finished)).toMatch(/^Error: The folder at .* is not the one Orca started/)
+    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
+    expect(await isRegistered(worktreePath)).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
   })
 
