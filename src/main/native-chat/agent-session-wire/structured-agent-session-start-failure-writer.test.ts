@@ -233,6 +233,21 @@ async function startRows(): Promise<string[]> {
   )
 }
 
+/** Every Stop event the journal holds, oldest first. */
+function stopEvents(): unknown[] {
+  const journal = host.collaboratorsForTests().sessions.get(SESSION)?.journal
+  if (!journal) {
+    throw new Error('expected the conversation open')
+  }
+  const since = journal.readSince({ epoch: journal.epoch, sequence: 0 })
+  if (!since.ok) {
+    throw new Error(`expected rows, got reset ${since.reset}`)
+  }
+  return since.rows.flatMap((row) =>
+    row.kind === 'tombstone' && row.stopEvent ? [row.stopEvent] : []
+  )
+}
+
 /** Every failed start a subscriber was told for one message, in order. */
 function framedStartFailures(clientMessageId: string): unknown[] {
   return frames.flatMap((frame) =>
@@ -683,6 +698,8 @@ describe('a start whose child took one message and cannot take the next', () => 
     expect(dispatch).toHaveBeenCalledTimes(2)
     expect(closeSession).toHaveBeenCalled()
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
+    // The failure is said once, on the messages: ending that child is no Stop.
+    expect(stopEvents()).toEqual([])
     for (const id of [first, second]) {
       expect(await submission(id)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
       expect((await submission(id))?.startRetry).toBeUndefined()
@@ -714,6 +731,7 @@ describe('a start whose child took one message and cannot take the next', () => 
     await host.flushStreamedEvents(SESSION)
     expect((await submission(queued))?.startRetry).toBeUndefined()
     expect(framedStartFailures(queued)).toEqual([])
+    expect(stopEvents()).toEqual([])
     expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
     expect(dispatch).toHaveBeenCalledOnce()
     // generation-1 at setup, then this message's one start.

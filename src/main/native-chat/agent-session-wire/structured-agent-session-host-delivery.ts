@@ -72,7 +72,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       ensureStructuredAgentSessionAgent(input.attachContext(), sessionId, startedFor),
     endFailedStart: (sessionId) =>
       stopStructuredAgentSessionAgentUnderSerialize(input.attachContext(), sessionId, {
-        cause: 'host-stop'
+        cause: 'host-stop',
+        startFailed: true
       }),
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
