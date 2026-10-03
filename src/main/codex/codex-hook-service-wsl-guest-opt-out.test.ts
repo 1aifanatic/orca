@@ -44,7 +44,10 @@ vi.mock('./codex-wsl-hook-install-plan', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
-import { setRunningWslGuestLister } from './codex-wsl-guest-hook-opt-out'
+import {
+  setWslGuestCodexHookOptOutSources,
+  type RunningWslGuest
+} from './codex-wsl-guest-hook-opt-out'
 import { readHookTrustEntries } from './config-toml-trust'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 
@@ -55,6 +58,8 @@ const GUEST_CODEX_HOME = `${GUEST_HOME}\\.codex`
 const WSL_TARGET = { runtime: 'wsl' as const, wslDistro: 'Ubuntu' }
 const MOVED_CODEX_HOME = '/mnt/wsl/alice/.codex'
 const USER_COMMAND = '/bin/sh /home/alice/user-hook.sh'
+const RUNNING_GUEST: RunningWslGuest = { distro: 'Ubuntu', guestHome: GUEST_HOME }
+let codexHooksEnabled = false
 
 setupCodexHookHomes(homedirMock, getPathMock)
 
@@ -68,13 +73,28 @@ beforeEach(() => {
     })}\n`,
     'utf-8'
   )
-  setRunningWslGuestLister(async () => [{ distro: 'Ubuntu', guestHome: GUEST_HOME }])
+  codexHooksEnabled = false
+  useRunningGuests(async () => [RUNNING_GUEST])
 })
 
 afterEach(() => {
-  setRunningWslGuestLister(async () => [])
+  setWslGuestCodexHookOptOutSources({
+    listRunningGuests: async () => [],
+    isCodexHooksEnabled: () => false
+  })
   rmSync(guest.root, { recursive: true, force: true })
 })
+
+function useRunningGuests(listRunningGuests: () => Promise<RunningWslGuest[]>): void {
+  setWslGuestCodexHookOptOutSources({
+    listRunningGuests,
+    isCodexHooksEnabled: () => codexHooksEnabled
+  })
+}
+
+function hasOrcaEntry(): boolean {
+  return guestCommands().some((command) => command.includes('codex-hook.sh'))
+}
 
 function guestCommands(): string[] {
   const config: HooksConfig = JSON.parse(readFileSync(join(guest.root, 'hooks.json'), 'utf-8'))
@@ -104,7 +124,7 @@ async function installAsHooksOnLaunch(service: CodexHookService): Promise<void> 
     'shared'
   )
   expect(status?.state).toBe('installed')
-  expect(guestCommands().some((command) => command.includes('codex-hook.sh'))).toBe(true)
+  expect(hasOrcaEntry()).toBe(true)
   expect(guestTrustSources()).toContain('/home/alice/.codex/hooks.json')
   expect(guest.pendingSettles).toHaveLength(1)
 }
@@ -125,6 +145,7 @@ describe("Codex hooks opt-out reaching a running distro's own ~/.codex", () => {
     await installAsHooksOnLaunch(service)
 
     await service.remove()
+    await service.whenWslGuestOptOutSettled()
 
     expect(guestCommands()).toEqual([USER_COMMAND])
     expect(guestTrustSources()).toEqual([])
@@ -143,6 +164,7 @@ describe("Codex hooks opt-out reaching a running distro's own ~/.codex", () => {
     const service = new CodexHookService()
     await installAsHooksOnLaunch(service)
     await service.remove()
+    await service.whenWslGuestOptOutSettled()
 
     await settleCanonicalPath(MOVED_CODEX_HOME)
 
@@ -163,5 +185,80 @@ describe("Codex hooks opt-out reaching a running distro's own ~/.codex", () => {
     await settleCanonicalPath(MOVED_CODEX_HOME)
 
     expect(snapshotGuest()).toEqual(before)
+  })
+
+  it('resolves the toggle before a slow WSL is reached, then withdraws', async () => {
+    const service = new CodexHookService()
+    await installAsHooksOnLaunch(service)
+    let releaseGuests!: () => void
+    useRunningGuests(
+      () => new Promise((resolve) => (releaseGuests = () => resolve([RUNNING_GUEST])))
+    )
+
+    const removed = await Promise.race([
+      service.remove(),
+      new Promise((resolve) => setTimeout(() => resolve('still waiting on WSL'), 5000))
+    ])
+
+    expect(removed).toMatchObject({ agent: 'codex' })
+    expect(hasOrcaEntry()).toBe(true)
+    releaseGuests()
+    await service.whenWslGuestOptOutSettled()
+    expect(guestCommands()).toEqual([USER_COMMAND])
+    expect(guestTrustSources()).toEqual([])
+  })
+
+  it('keeps the entry when hooks are turned back on before the withdrawal reaches the guest', async () => {
+    const service = new CodexHookService()
+    await installAsHooksOnLaunch(service)
+    const before = snapshotGuest()
+    let releaseLane!: () => void
+    const laneHeld = runExclusivelyForCodexTrustConfig(
+      join(guest.root, 'config.toml'),
+      () => new Promise<void>((resolve) => (releaseLane = resolve))
+    )
+
+    await service.remove()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    codexHooksEnabled = true
+    releaseLane()
+    await laneHeld
+    await service.whenWslGuestOptOutSettled()
+
+    expect(snapshotGuest()).toEqual(before)
+  })
+
+  it('warns and still resolves with the host status when WSL cannot be listed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const unreachable = new Error('WSL running-distro discovery is unavailable.')
+    useRunningGuests(async () => {
+      throw unreachable
+    })
+    const service = new CodexHookService()
+
+    await expect(service.remove()).resolves.toMatchObject({ agent: 'codex' })
+    await expect(service.whenWslGuestOptOutSettled()).resolves.toBeUndefined()
+
+    expect(warn).toHaveBeenCalledWith(
+      '[codex-hook-service] failed to remove WSL Codex hooks:',
+      unreachable
+    )
+    warn.mockRestore()
+  })
+
+  it('runs a second opt-out after the first instead of beside it', async () => {
+    const service = new CodexHookService()
+    const releases: (() => void)[] = []
+    useRunningGuests(() => new Promise((resolve) => releases.push(() => resolve([]))))
+
+    await service.remove()
+    await service.remove()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(releases).toHaveLength(1)
+
+    releases[0]()
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    releases[1]()
+    await service.whenWslGuestOptOutSettled()
   })
 })

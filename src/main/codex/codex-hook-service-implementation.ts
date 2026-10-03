@@ -45,6 +45,7 @@ export class CodexHookService {
   private readonly wslReconciliationGeneration = new Map<string, number>()
   private readonly wslInstallsInFlight = new Map<string, Promise<AgentHookInstallStatus | null>>()
   private readonly launchPrepInFlight = new Map<string, Promise<AgentHookInstallStatus>>()
+  private wslGuestOptOut: Promise<void> | null = null
 
   private supersedeAllWslReconciliations(): void {
     for (const [key, generation] of this.wslReconciliationGeneration) {
@@ -288,12 +289,28 @@ export class CodexHookService {
       getOrcaManagedCodexHomePath(),
       () => this.removeExclusively()
     )
-    try {
-      await withdrawWslGuestCodexHooksForOptOut()
-    } catch (error) {
-      console.warn('[codex-hook-service] failed to remove WSL Codex hooks:', error)
-    }
+    // Why not awaited: a wedged WSL must not hold the Settings toggle; failures only warn.
+    this.startWslGuestOptOut()
     return status
+  }
+
+  /** Settles once every WSL guest opt-out started so far has finished; never rejects. */
+  whenWslGuestOptOutSettled(): Promise<void> {
+    return this.wslGuestOptOut ?? Promise.resolve()
+  }
+
+  private startWslGuestOptOut(): void {
+    const run = this.whenWslGuestOptOutSettled()
+      .then(() => withdrawWslGuestCodexHooksForOptOut())
+      .catch((error: unknown) => {
+        console.warn('[codex-hook-service] failed to remove WSL Codex hooks:', error)
+      })
+      .finally(() => {
+        if (this.wslGuestOptOut === run) {
+          this.wslGuestOptOut = null
+        }
+      })
+    this.wslGuestOptOut = run
   }
 
   private removeExclusively(): Promise<AgentHookInstallStatus> {

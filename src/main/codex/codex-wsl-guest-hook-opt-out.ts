@@ -14,11 +14,19 @@ import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation
 
 export type RunningWslGuest = { distro: string; guestHome: string | null }
 
-// Why injected: this module is in the CLI build, which must not load the WSL probes.
-let listRunningWslGuests: () => Promise<RunningWslGuest[]> = async () => []
+export type WslGuestCodexHookOptOutSources = {
+  listRunningGuests: () => Promise<RunningWslGuest[]>
+  isCodexHooksEnabled: () => boolean
+}
 
-export function setRunningWslGuestLister(list: () => Promise<RunningWslGuest[]>): void {
-  listRunningWslGuests = list
+// Why injected: this module is in the CLI build, which must not load the WSL probes or settings.
+let sources: WslGuestCodexHookOptOutSources = {
+  listRunningGuests: async () => [],
+  isCodexHooksEnabled: () => false
+}
+
+export function setWslGuestCodexHookOptOutSources(next: WslGuestCodexHookOptOutSources): void {
+  sources = next
 }
 
 /**
@@ -37,7 +45,7 @@ export function createWslGuestCodexHookOptOutPlan({
 }
 
 async function listRunningGuestCodexHookPlans(): Promise<CodexWslRuntimeHookInstallPlan[]> {
-  return (await listRunningWslGuests()).flatMap((guest) => {
+  return (await sources.listRunningGuests()).flatMap((guest) => {
     const plan = createWslGuestCodexHookOptOutPlan(guest)
     return plan ? [plan] : []
   })
@@ -68,8 +76,11 @@ export async function withdrawWslGuestCodexHooksForOptOut(
   for (const plan of await listPlans()) {
     try {
       // Why one lane: checked outside it, an in-flight hooks-on install could add the entry after the check.
+      // Hooks turned back on since the opt-out began means this profile wants the entry again.
       const status = await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
-        hasOrcaCodexHookEntry(plan.configPath) ? refreshWslRuntimeUserHooks(plan) : null
+        !sources.isCodexHooksEnabled() && hasOrcaCodexHookEntry(plan.configPath)
+          ? refreshWslRuntimeUserHooks(plan)
+          : null
       )
       if (status?.state === 'error') {
         console.warn('[codex-hook-service] failed to remove WSL Codex hooks:', status.detail)
