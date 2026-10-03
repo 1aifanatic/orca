@@ -2,6 +2,7 @@ import { isAgentTurnOutcome, type AgentTurnOutcome } from './agent-turn-outcome'
 import type { AgentStatusState } from './agent-status-types'
 import type { AgentMainAgentStatus } from './main-agent-status'
 import {
+  agentAttentionStartedAt,
   isAgentTurnAcknowledged,
   type AgentTurnAcknowledgement
 } from './agent-turn-acknowledgement'
@@ -9,7 +10,7 @@ import {
 export type AgentMainAgentVerdictSource = {
   state: AgentStatusState
   interrupted?: boolean
-  mainAgent?: { state: AgentStatusState; outcome?: AgentTurnOutcome }
+  mainAgent?: { state: AgentStatusState; outcome?: AgentTurnOutcome; stateStartedAt?: number }
 }
 
 /** The fields that carry the verdict. History entries, sleep records and `worktree ps` rows copy
@@ -68,7 +69,12 @@ export function agentVerdictDisplayMark(
     case 'failure':
       return 'failed'
     case 'interruption':
-      return isAgentTurnAcknowledged(row) ? null : 'failed'
+      return isAgentTurnAcknowledged({
+        stateStartedAt: agentAttentionStartedAt(row),
+        acknowledgedAt: row.acknowledgedAt
+      })
+        ? null
+        : 'failed'
     case 'cancellation':
     case 'superseded':
       return row.state === 'done' ? 'interrupted' : null

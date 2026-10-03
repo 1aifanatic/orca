@@ -77,6 +77,21 @@ describe('agentMainAgentVerdict', () => {
     }
   )
 
+  // A subagent holds the row working since 1_000; the main agent was cut at 3_000. An
+  // acknowledgement between the two saw the work, not the cut.
+  it('reads a cut seen only before it happened as failed while subagents hold the row open', () => {
+    const held = (outcome: 'interruption' | 'failure', acknowledgedAt: number) =>
+      agentVerdictDisplayMark({
+        state: 'working',
+        stateStartedAt: 1_000,
+        mainAgent: { state: 'done', outcome, stateStartedAt: 3_000 },
+        acknowledgedAt
+      })
+    expect(held('interruption', 2_000)).toBe('failed')
+    expect(held('interruption', 3_000)).toBeNull()
+    expect(held('failure', 3_000)).toBe('failed')
+  })
+
   it('keeps a success or a stop with live subagent work reading working', () => {
     for (const outcome of ['success', 'cancellation'] as const) {
       const row = { state: 'working' as const, mainAgent: { state: 'done' as const, outcome } }

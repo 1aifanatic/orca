@@ -49,8 +49,13 @@ export function usableTimestamp(value: unknown): number {
 export function latestAgentTurnTimestamp(entry: {
   stateStartedAt?: number
   stateHistory?: { startedAt?: number }[]
+  mainAgent?: { stateStartedAt?: number }
 }): number {
-  let latest = usableTimestamp(entry.stateStartedAt)
+  // Why the main agent's clock too: a cut it ended can postdate the row's, and the failed mark reads it.
+  let latest = Math.max(
+    usableTimestamp(entry.stateStartedAt),
+    usableTimestamp(entry.mainAgent?.stateStartedAt)
+  )
   // Why history too: Activity renders one event per stateHistory entry, each with its own unread check.
   for (const history of entry.stateHistory ?? []) {
     latest = Math.max(latest, usableTimestamp(history.startedAt))
