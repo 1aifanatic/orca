@@ -4,6 +4,7 @@ import { AiVaultSearchResponseSchema } from '../../shared/ai-vault-search-contra
 import type { AiVaultSearchResponse, AiVaultSearchStatus } from '../../shared/ai-vault-search-types'
 import { REPEATED_FLAG_SEPARATOR } from '../args'
 import { RuntimeClientError } from '../runtime/types'
+import { AI_VAULT_AGENTS } from '../../shared/ai-vault-types'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -105,6 +106,7 @@ describe('orca search over the runtime RPC', () => {
     expect(call).toHaveBeenCalledWith('aiVault.searchSessions', {
       query: 'resize race',
       limit: 20,
+      supportedAgents: [...AI_VAULT_AGENTS],
       supportsQoderHistory: true
     })
   })
@@ -163,6 +165,7 @@ describe('orca search over the runtime RPC', () => {
 
     expect(call).toHaveBeenCalledWith('aiVault.searchSessions', {
       ...params,
+      supportedAgents: [...AI_VAULT_AGENTS],
       supportsQoderHistory: true
     })
   })

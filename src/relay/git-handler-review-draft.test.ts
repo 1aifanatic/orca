@@ -2,6 +2,7 @@ import { readFile, unlink, writeFile } from 'node:fs/promises'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as processRunner from '../shared/child-process/run-process'
+import { GitAdmissionScheduler } from '../shared/git-admission-scheduler'
 import { GIT_READ_TIMEOUT_MS } from '../shared/git-command-timeout'
 import type { GitHandler } from './git-handler'
 import type { GitHandlerOperationHost } from './git-handler-operation-context'
@@ -11,6 +12,7 @@ import {
   removeGitTempDir
 } from './git-handler-test-harness'
 import { gitCommit, gitInit, type MockDispatcher } from './git-handler-test-setup'
+import { _resetRelayGitAdmissionForTests } from './git-handler-command-termination'
 
 const BASE_OID = 'a'.repeat(40)
 const commandResult = { stdout: 'M\tfile.txt\n', stderr: '' }
@@ -30,12 +32,15 @@ function checkedCommandResult(result: unknown): { stdout: string; stderr: string
   return { stdout: result.stdout, stderr: result.stderr }
 }
 
-describe('relay review draft diff', () => {
+describe.each([2, 4])('relay review draft diff with %i Git slots', (generalCap) => {
   let dispatcher: MockDispatcher
   let handler: GitHandler
   let repo: string
+  let scheduler: GitAdmissionScheduler
 
   beforeEach(() => {
+    scheduler = new GitAdmissionScheduler({ generalCap, generalHeadroom: 0 })
+    _resetRelayGitAdmissionForTests(scheduler)
     repo = createGitTempDir()
     ;({ dispatcher, handler } = createGitHandlerRelay())
   })
@@ -43,7 +48,17 @@ describe('relay review draft diff', () => {
   afterEach(async () => {
     handler.dispose()
     vi.restoreAllMocks()
-    await removeGitTempDir(repo)
+    try {
+      await removeGitTempDir(repo)
+      expect(scheduler.snapshot().queued).toBe(0)
+      expect(
+        Object.values(scheduler.snapshot().budgets).every(
+          (budget) => budget.baseUsed === 0 && budget.headroomUsed === 0
+        )
+      ).toBe(true)
+    } finally {
+      _resetRelayGitAdmissionForTests()
+    }
   })
 
   function reviewDiff(overrides: Record<string, unknown> = {}, signal?: AbortSignal) {
@@ -134,7 +149,10 @@ describe('relay review draft diff', () => {
   })
 
   it('passes the existing read timeout and cancellation signal to the process runner', async () => {
-    const runProcess = vi.spyOn(processRunner, 'runProcess').mockResolvedValue(processResult)
+    const runProcess = vi.spyOn(processRunner, 'runProcess').mockImplementation(async (spec) => {
+      spec.onChildTerminated?.()
+      return processResult
+    })
     const controller = new AbortController()
 
     await expect(reviewDiff({ timeout: 0 }, controller.signal)).resolves.toEqual(commandResult)
@@ -150,9 +168,30 @@ describe('relay review draft diff', () => {
   })
 
   it('rejects a read that crossed its timeout instead of returning a partial diff', async () => {
-    vi.spyOn(processRunner, 'runProcess').mockResolvedValue({ ...processResult, timedOut: true })
+    vi.spyOn(processRunner, 'runProcess').mockImplementation(async (spec) => {
+      spec.onChildTerminated?.()
+      return { ...processResult, timedOut: true }
+    })
 
     await expect(reviewDiff()).rejects.toMatchObject({ timedOut: true })
+  })
+
+  it('holds a timed-out read grant until the child termination is reported', async () => {
+    let reportTermination: (() => void) | undefined
+    vi.spyOn(processRunner, 'runProcess').mockImplementation(async (spec) => {
+      reportTermination = spec.onChildTerminated
+      expect(spec.terminationBarrier).toBe(true)
+      return { ...processResult, timedOut: true }
+    })
+
+    try {
+      await expect(reviewDiff()).rejects.toMatchObject({ timedOut: true })
+      expect(reportTermination).toBeTypeOf('function')
+      expect(scheduler.snapshot().budgets.general?.baseUsed).toBe(1)
+    } finally {
+      reportTermination?.()
+    }
+    expect(scheduler.snapshot().budgets.general?.baseUsed).toBe(0)
   })
 
   it('rejects cancellation before spawning any Git process', async () => {
@@ -169,6 +208,7 @@ describe('relay review draft diff', () => {
     vi.spyOn(processRunner, 'runProcess').mockImplementation(async (spec) => {
       expect(spec.signal).toBe(controller.signal)
       controller.abort()
+      spec.onChildTerminated?.()
       return processResult
     })
 
