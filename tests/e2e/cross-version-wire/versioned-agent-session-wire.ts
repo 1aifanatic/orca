@@ -1,3 +1,5 @@
+import type { sendPlan } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-mutation-plans'
+import type { computeAgentSessionPayloadFingerprint } from '../../../src/shared/agent-session-mutation-envelope'
 import {
   importReleaseCheckoutModule,
   materializeReleaseCheckout,
@@ -17,6 +19,9 @@ export const WORKING_TREE = 'working-tree' as const
  *  in current source is invisible to a release checkout's dispatcher. */
 const STRUCTURED_HOST_REGISTRY =
   '/src/main/native-chat/agent-session-wire/structured-agent-session-registry.ts'
+const MUTATION_PLANS =
+  '/src/main/native-chat/agent-session-wire/structured-agent-session-mutation-plans.ts'
+const MUTATION_ENVELOPE = '/src/shared/agent-session-mutation-envelope.ts'
 
 export type RpcReply = {
   id: string
@@ -60,6 +65,9 @@ export type AgentSessionWireBuild = {
    *  the surface stays loadable, and throws rather than no-opping so a build with
    *  no slot cannot read as a surface that answered. */
   installStructuredHost: (host: unknown) => Promise<void>
+  /** The fingerprint this build's host admission re-derives for the `agentSession.send` params
+   *  its host was handed; a declared fingerprint that differs is refused as a conflict. */
+  hostSendFingerprint: (sent: SentMessage) => Promise<string>
 }
 
 type DispatcherModule = {
@@ -84,6 +92,25 @@ function applyStructuredHost(module: Record<string, unknown>, label: string, hos
     throw new Error(`Build ${label} publishes no structured agent-session host registry`)
   }
   ;(install as (next: unknown) => void)(host)
+}
+
+/** The `agentSession.send` params a host is handed. */
+export type SentMessage = Parameters<typeof sendPlan>[0]
+
+type SendFingerprintModules = {
+  sendPlan: typeof sendPlan
+  computeAgentSessionPayloadFingerprint: typeof computeAgentSessionPayloadFingerprint
+}
+
+/** Mirrors `admitAndRunAgentSessionMutation`: the send plan's method and fields, keyed by the
+ *  envelope's session, through the build's own plan and digest. */
+function hostSendFingerprint(build: SendFingerprintModules, sent: SentMessage): string {
+  const plan = build.sendPlan(sent)
+  return build.computeAgentSessionPayloadFingerprint({
+    method: plan.method,
+    sessionId: sent.envelope.sessionId,
+    fields: plan.fields
+  })
 }
 
 function capabilityStrings(module: Record<string, unknown>): readonly string[] {
@@ -117,6 +144,20 @@ async function loadWorkingTreeBuild(): Promise<AgentSessionWireBuild> {
       const registry =
         await import('../../../src/main/native-chat/agent-session-wire/structured-agent-session-registry')
       applyStructuredHost(registry as unknown as Record<string, unknown>, WORKING_TREE, host)
+    },
+    hostSendFingerprint: async (sent) => {
+      const [plans, mutationEnvelope] = await Promise.all([
+        import('../../../src/main/native-chat/agent-session-wire/structured-agent-session-mutation-plans'),
+        import('../../../src/shared/agent-session-mutation-envelope')
+      ])
+      return hostSendFingerprint(
+        {
+          sendPlan: plans.sendPlan,
+          computeAgentSessionPayloadFingerprint:
+            mutationEnvelope.computeAgentSessionPayloadFingerprint
+        },
+        sent
+      )
     }
   }
 }
@@ -146,6 +187,15 @@ async function loadReleaseBuild(checkout: ReleaseCheckout): Promise<AgentSession
         checkout.ref,
         host
       )
+    },
+    hostSendFingerprint: async (sent) => {
+      const [plans, mutationEnvelope] = await Promise.all([
+        importReleaseCheckoutModule(checkout, MUTATION_PLANS),
+        importReleaseCheckoutModule(checkout, MUTATION_ENVELOPE)
+      ])
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the release's own send plan and digest; a drifted shape fails the fingerprint comparison this feeds.
+      const modules = { ...plans, ...mutationEnvelope } as unknown as SendFingerprintModules
+      return hostSendFingerprint(modules, sent)
     }
   }
 }

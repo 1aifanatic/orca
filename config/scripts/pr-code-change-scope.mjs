@@ -165,10 +165,11 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/shared/rpc-contract/agent-launch-params',
   'src/shared/agent-session-wire',
   'src/shared/agent-session-mutation-envelope',
-  // The send payload and fingerprint a client builds and the host's ledger and journal re-derive.
-  'src/shared/structured-agent-session-mutation',
-  'src/shared/structured-agent-session-send-mutation',
-  'src/shared/structured-agent-session-outbox',
+  // The send a client builds (the agent-session suite sends it to the release host) and the
+  // fingerprint the host's ledger and journal re-derive.
+  'src/shared/structured-agent-session-mutation.ts',
+  'src/shared/structured-agent-session-send-mutation.ts',
+  'src/shared/structured-agent-session-outbox.ts',
   'src/shared/agent-session-record',
   'src/shared/agent-session-journal-',
   'src/main/ai-vault/structured-session-ownership.ts',
@@ -178,9 +179,15 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/runtime/agent-session-recovery-capsule',
   'src/shared/agent-session-resume-marker',
   'src/main/runtime/rpc/dispatcher',
+  // Run on every request the suites dispatch, whatever its method.
+  'src/main/runtime/rpc/core.ts',
+  'src/main/runtime/rpc/rpc-streaming-dispatcher.ts',
+  'src/main/runtime/rpc/orchestration-contract-fence.ts',
+  'src/main/runtime/rpc/orchestration-session-caller.ts',
+  'src/main/runtime/rpc/orchestration-legacy-compatibility.ts',
+  'src/main/runtime/rpc/orchestration-mutation-executor.ts',
+  'src/shared/orchestration-rpc-contract.ts',
   'src/main/runtime/rpc/methods/agent-launch',
-  // Registered in each build's dispatcher the agent-session suite reads; drives host.send.
-  'src/main/runtime/rpc/methods/orchestration',
   'src/main/runtime/rpc/methods/ai-vault.ts',
   'src/main/runtime/rpc/methods/browser-tab-create-schema',
   'src/main/runtime/rpc/methods/session-tabs.ts',
@@ -198,9 +205,10 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/shared/structured-agent-session-agent-status',
   'src/shared/structured-agent-session-projection',
   'src/shared/workspace-session-sleeping-agents',
-  // An older app opening a newer orchestration database (orchestration-delivery-downgrade), the
-  // caller identity the dispatcher resolves on every request, and agent-to-agent sends via host.send.
-  'src/main/runtime/orchestration/'
+  // An older app opening a newer orchestration database (orchestration-delivery-downgrade).
+  'src/main/runtime/orchestration/db.ts',
+  'src/main/runtime/orchestration/db/',
+  'src/main/runtime/orchestration/orchestration-schema-version-skew'
 ]
 
 const MANAGED_HOOK_PREFIXES = [
