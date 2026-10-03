@@ -1,11 +1,15 @@
 // The review writes a message's review reply asks for, through the runtime's repo-scoped GitHub and
 // GitLab methods: the ones the review RPCs call. Resolves are idempotent; a reply is not, so a run
-// that may repeat one already posted (`reread`) first reads the PR and skips what this account
-// already posted there.
+// that may repeat one already posted (`reread`) first reads the reply threads, newest first, and the
+// conversation since, and skips what this account already posted there.
 
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
-import type { PRComment } from '../../../shared/github/comment-types'
+import type {
+  ReviewReplyPost,
+  ReviewReplyPosts
+} from '../../github/client/fetch/review-reply-posts'
 import type { RuntimeReviewCommandSurface } from '../../runtime/runtime-review-command-surface'
+import type { RuntimeGitHubReviewQueryCommands } from '../../runtime/runtime-github-review-query-commands'
 
 export type StructuredAgentSessionReviewRuntime = Pick<
   RuntimeReviewCommandSurface,
@@ -13,11 +17,12 @@ export type StructuredAgentSessionReviewRuntime = Pick<
   | 'resolveGitLabRepoMRDiscussion'
   | 'addRepoPRReviewCommentReply'
   | 'addRepoIssueComment'
-  | 'getRepoPRComments'
-> & {
-  /** The GitHub login the repo's writes run as; null when it cannot be told. */
-  getRepoViewerLogin: (repoSelector: string) => Promise<string | null>
-}
+> &
+  Pick<RuntimeGitHubReviewQueryCommands, 'getRepoReviewReplyPosts'>
+
+/** How far before acceptance a post still counts as this message's: the host's clock and
+ *  GitHub's can disagree by seconds. */
+export const REVIEW_REPLY_CLOCK_MARGIN_MS = 60_000
 
 /** The checks panel's ceiling: the shared GitHub client keeps four calls in flight. */
 const REVIEW_REPLY_CONCURRENCY = 4
@@ -33,8 +38,6 @@ export async function runStructuredAgentSessionReviewReply(
     acceptedAt: number
     /** A run that may follow an earlier one cut off before its receipt. */
     reread: boolean
-    /** Who the repo's writes post as, asked only for a reread; null matches the text alone. */
-    viewerLogin: (repoSelector: string) => Promise<string | null>
     log: (message: string, error?: unknown) => void
   }
 ): Promise<string | null> {
@@ -62,21 +65,18 @@ async function gitHubWrites(
   options: {
     acceptedAt: number
     reread: boolean
-    viewerLogin: (repoSelector: string) => Promise<string | null>
     log: (message: string, error?: unknown) => void
   }
 ): Promise<ReviewWrite[]> {
-  const posted = options.reread ? await postedSince(runtime, repo, spec, options) : []
-  const alreadyPosted = (body: string, at: { threadId?: string; path?: string } | null) =>
-    posted.some(
-      (comment) =>
-        comment.body.trim() === body.trim() &&
-        (at === null
-          ? !comment.threadId && !comment.path
-          : at.threadId
-            ? comment.threadId === at.threadId
-            : comment.path === at.path)
-    )
+  const posted = options.reread ? await postedSince(runtime, repo, spec, options) : null
+  // A reply with no thread to read, or no read at all, is posted: at worst once more, reported.
+  const alreadyPosted = (body: string, at: { threadId?: string } | null): boolean => {
+    if (!posted) {
+      return false
+    }
+    const comments = at === null ? posted.conversation : at.threadId && posted.threads[at.threadId]
+    return (comments || []).some((comment) => comment.body.trim() === body.trim())
+  }
   const prRepo = spec.prRepo ?? null
   const conversationReply = spec.conversationReply
   return [
@@ -116,39 +116,45 @@ async function gitHubWrites(
   ]
 }
 
-/** The PR's comments this account wrote since the agent took the message. A failed read answers
- *  none, which can post one reply twice; an unknown account matches any author. Both are reported,
- *  never blocking the rest. */
+/** What this account posted since shortly before the agent took the message, read from GitHub. A
+ *  failed read answers null; an unknown account matches any author. Both are reported. */
 async function postedSince(
   runtime: StructuredAgentSessionReviewRuntime,
   repo: string,
   spec: Extract<AgentSessionReviewReply, { provider: 'github' }>,
-  options: {
-    acceptedAt: number
-    viewerLogin: (repoSelector: string) => Promise<string | null>
-    log: (message: string, error?: unknown) => void
-  }
-): Promise<PRComment[]> {
+  options: { acceptedAt: number; log: (message: string, error?: unknown) => void }
+): Promise<ReviewReplyPosts | null> {
   if (spec.replies.length === 0 && !spec.conversationReply) {
-    return []
+    return null
   }
+  const since = options.acceptedAt - REVIEW_REPLY_CLOCK_MARGIN_MS
+  let read: ReviewReplyPosts
   try {
-    const comments = await runtime.getRepoPRComments(repo, spec.prNumber, spec.prRepo ?? null, {
-      noCache: true
+    read = await runtime.getRepoReviewReplyPosts(repo, {
+      prNumber: spec.prNumber,
+      prRepo: spec.prRepo ?? null,
+      threadIds: spec.replies.flatMap((reply) => (reply.threadId ? [reply.threadId] : [])),
+      since: new Date(since).toISOString()
     })
-    const login = await options.viewerLogin(repo)
-    if (login === null) {
-      options.log('review reply: the account is unknown, so a reply is matched by its text', null)
-    }
-    // GitHub stamps whole seconds.
-    const since = Math.floor(options.acceptedAt / 1000) * 1000
-    return comments.filter(
+  } catch (error) {
+    options.log('review reply: could not read the PR before replying; a reply may repeat', error)
+    return null
+  }
+  const login = read.viewerLogin
+  if (login === null) {
+    options.log('review reply: the account is unknown, so a reply is matched by its text', null)
+  }
+  const mine = (comments: readonly ReviewReplyPost[]) =>
+    comments.filter(
       (comment) =>
         Date.parse(comment.createdAt) >= since && (login === null || comment.author === login)
     )
-  } catch (error) {
-    options.log('review reply: could not read the PR before replying; a reply may repeat', error)
-    return []
+  return {
+    viewerLogin: login,
+    threads: Object.fromEntries(
+      Object.entries(read.threads).map(([threadId, comments]) => [threadId, mine(comments)])
+    ),
+    conversation: mine(read.conversation)
   }
 }
 

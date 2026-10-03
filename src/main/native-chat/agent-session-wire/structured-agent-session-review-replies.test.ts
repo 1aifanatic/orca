@@ -11,6 +11,7 @@ import type { AgentJournalSubmission } from '../../../shared/agent-session-journ
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionReviewReply } from '../../../shared/agent-session-review-reply'
 import type { PRComment } from '../../../shared/github/comment-types'
+import type { ReviewReplyPosts } from '../../github/client/fetch/review-reply-posts'
 import {
   AGENT_SESSION_REVIEW_REPLY_RUNTIME_CAPABILITY,
   RUNTIME_CAPABILITIES
@@ -22,7 +23,6 @@ import {
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -38,7 +38,10 @@ import {
   REVIEW_REPLY_WINDOW_MS,
   reviewReplyReceiptIdentity
 } from './structured-agent-session-review-replies'
-import type { StructuredAgentSessionReviewRuntime } from './structured-agent-session-review-reply-runner'
+import {
+  REVIEW_REPLY_CLOCK_MARGIN_MS,
+  type StructuredAgentSessionReviewRuntime
+} from './structured-agent-session-review-reply-runner'
 
 const CALLER = { callerKey: 'client-1' }
 const FIXING = 'Fixing. Will be in the next commit'
@@ -62,7 +65,8 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let beforeSpawn = vi.fn<() => Promise<void>>()
 let dispatch = vi.fn<StructuredAgentSessionAdapter['dispatch']>()
-let onPRComments: PRComment[] = []
+let warnings: string[] = []
+let onPR: ReviewReplyPosts = { viewerLogin: 'me', threads: {}, conversation: [] }
 let review: {
   [Method in keyof StructuredAgentSessionReviewRuntime]: ReturnType<
     typeof vi.fn<StructuredAgentSessionReviewRuntime[Method]>
@@ -83,11 +87,8 @@ function reviewRuntime() {
     addRepoIssueComment: vi.fn<StructuredAgentSessionReviewRuntime['addRepoIssueComment']>(
       async () => ({ ok: true as const, comment: postedComment('summary') })
     ),
-    getRepoPRComments: vi.fn<StructuredAgentSessionReviewRuntime['getRepoPRComments']>(
-      async () => onPRComments
-    ),
-    getRepoViewerLogin: vi.fn<StructuredAgentSessionReviewRuntime['getRepoViewerLogin']>(
-      async () => 'me'
+    getRepoReviewReplyPosts: vi.fn<StructuredAgentSessionReviewRuntime['getRepoReviewReplyPosts']>(
+      async () => onPR
     )
   }
 }
@@ -106,7 +107,7 @@ function postedComment(body: string, extra: Partial<PRComment> = {}): PRComment 
 
 function startHost(): void {
   host = new StructuredAgentSessionHost({
-    logger: createStructuredAgentSessionLogger(),
+    logger: { warn: (message) => warnings.push(message), error: vi.fn() },
     store,
     adapter: {
       acquire: vi.fn(async ({ fence, spawnToken }) => {
@@ -148,7 +149,8 @@ function startHost(): void {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-review-replies-'))
   resetHostTestOperationIds()
-  onPRComments = []
+  onPR = { viewerLogin: 'me', threads: {}, conversation: [] }
+  warnings = []
   review = reviewRuntime()
   beforeSpawn = vi.fn(async () => undefined)
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
@@ -309,7 +311,7 @@ describe('a launch prompt with a review reply', () => {
       GITHUB.prRepo
     )
     // A live accept needs no read of the PR, and all going through shows nothing in the chat.
-    expect(review.getRepoPRComments).not.toHaveBeenCalled()
+    expect(review.getRepoReviewReplyPosts).not.toHaveBeenCalled()
     expect((await receipt(id)).line).toBeUndefined()
 
     // Later commits re-derive nothing.
@@ -434,12 +436,15 @@ describe("a review reply's receipt", () => {
 
 describe('a review reply cut off by a restart', () => {
   /** Accepted, with Orca dying while the writes run: no receipt reaches the chat. */
+  let acceptedAt = 0
+
   async function acceptedThenCrashed(): Promise<string> {
     review.addRepoIssueComment.mockImplementationOnce(() => new Promise(() => {}))
     const id = await launchPrompt()
     await handedOver(id)
     await accept(id)
     await eventually(() => expect(review.addRepoIssueComment).toHaveBeenCalled())
+    acceptedAt = (await submission(id))?.resolvedAt ?? 0
     await host.flushAllStreamedEvents()
     startHost()
     review.resolveRepoReviewThread.mockClear()
@@ -448,38 +453,53 @@ describe('a review reply cut off by a restart', () => {
     return id
   }
 
+  /** A post on thread-7 by `author`, `secondsAfter` the agent took the message. */
+  function onThread(author: string, secondsAfter: number): ReviewReplyPosts['threads'] {
+    const at = new Date(acceptedAt + secondsAfter * 1000).toISOString()
+    return { 'thread-7': [{ author, body: FIXING, createdAt: at }] }
+  }
+
   it('posts only what the PR does not show yet, once the chat opens again', async () => {
     const id = await acceptedThenCrashed()
-    onPRComments = [postedComment(FIXING, { threadId: 'thread-7', path: 'src/a.ts' })]
+    onPR = { viewerLogin: 'me', threads: onThread('me', 1), conversation: [] }
 
     await host.journalSnapshot(SESSION)
 
     await settledReceipt(id)
-    expect(review.getRepoPRComments).toHaveBeenCalledOnce()
+    expect(review.getRepoReviewReplyPosts).toHaveBeenCalledExactlyOnceWith('id:repo-1', {
+      prNumber: 42,
+      prRepo: GITHUB.prRepo,
+      threadIds: ['thread-7'],
+      since: new Date(acceptedAt - REVIEW_REPLY_CLOCK_MARGIN_MS).toISOString()
+    })
     expect(review.addRepoPRReviewCommentReply).not.toHaveBeenCalled()
     expect(review.addRepoIssueComment).toHaveBeenCalledOnce()
     expect(review.resolveRepoReviewThread).toHaveBeenCalledOnce()
   })
 
-  it('replies where only another account posted the same words since', async () => {
+  it("counts this account's post from a host clock running ahead of GitHub's", async () => {
     const id = await acceptedThenCrashed()
-    onPRComments = [
-      postedComment(FIXING, { author: 'teammate', threadId: 'thread-7', path: 'src/a.ts' })
-    ]
+    onPR = { viewerLogin: 'me', threads: onThread('me', -30), conversation: [] }
 
     await host.journalSnapshot(SESSION)
 
     await settledReceipt(id)
-    expect(review.getRepoViewerLogin).toHaveBeenCalledWith('id:repo-1')
+    expect(review.addRepoPRReviewCommentReply).not.toHaveBeenCalled()
+  })
+
+  it('replies where only another account posted the same words since', async () => {
+    const id = await acceptedThenCrashed()
+    onPR = { viewerLogin: 'me', threads: onThread('teammate', 1), conversation: [] }
+
+    await host.journalSnapshot(SESSION)
+
+    await settledReceipt(id)
     expect(review.addRepoPRReviewCommentReply).toHaveBeenCalledOnce()
   })
 
-  it("matches the words alone when this repo's account can't be told", async () => {
-    review.getRepoViewerLogin.mockRejectedValue(new Error('gh is not signed in'))
+  it("matches the words alone when GitHub doesn't say which account it is", async () => {
     const id = await acceptedThenCrashed()
-    onPRComments = [
-      postedComment(FIXING, { author: 'teammate', threadId: 'thread-7', path: 'src/a.ts' })
-    ]
+    onPR = { viewerLogin: null, threads: onThread('teammate', 1), conversation: [] }
 
     await host.journalSnapshot(SESSION)
 
@@ -488,28 +508,18 @@ describe('a review reply cut off by a restart', () => {
     expect(review.addRepoIssueComment).toHaveBeenCalledOnce()
   })
 
-  it('asks which account writes for a repo once for the host', async () => {
-    review.addRepoIssueComment.mockImplementation(() => new Promise(() => {}))
-    const first = await launchPrompt()
-    await handedOver(first)
-    await accept(first)
-    const second = await launchPrompt()
-    await handedOver(second)
-    await host.settleLateDispatch({
-      sessionId: SESSION,
-      clientMessageId: second,
-      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 1 }
-    })
-    await eventually(() => expect(review.addRepoIssueComment).toHaveBeenCalledTimes(2))
-    await host.flushAllStreamedEvents()
-    startHost()
-    review.addRepoIssueComment.mockResolvedValue({ ok: true, comment: postedComment('summary') })
+  it('posts everything once more when the read fails, and says so', async () => {
+    const id = await acceptedThenCrashed()
+    review.getRepoReviewReplyPosts.mockRejectedValueOnce(new Error('HTTP 502'))
 
     await host.journalSnapshot(SESSION)
 
-    await settledReceipt(first)
-    await settledReceipt(second)
-    expect(review.getRepoViewerLogin).toHaveBeenCalledOnce()
+    await settledReceipt(id)
+    expect(review.addRepoPRReviewCommentReply).toHaveBeenCalledOnce()
+    expect(review.addRepoIssueComment).toHaveBeenCalledOnce()
+    expect(warnings).toContain(
+      'review reply: could not read the PR before replying; a reply may repeat'
+    )
   })
 
   it('posts nothing once the window since the agent took it has passed', async () => {
