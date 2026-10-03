@@ -35,6 +35,7 @@ import {
 } from './orcad-managed-runtime-context'
 import { readRemoteOrcadBuildHash } from './orcad-remote-build-hash'
 import { deployOrcad } from './orcad-remote-deploy'
+import { pruneManagedOrcadVersions } from './orcad-managed-version-gc'
 import { rollbackOrcad } from './orcad-remote-rollback'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
 import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
@@ -86,8 +87,9 @@ export function updateManagedOrcadEnvironment(
       const localOrcadDir = await materializeOrcadArtifact(context.serverTarget, {
         signal: args.signal
       })
+      const slot = managedOrcadSlot(context, deployment.remotePort, args.signal)
       const result = await deployOrcad({
-        ...managedOrcadSlot(context, deployment.remotePort, args.signal),
+        ...slot,
         localOrcadDir,
         target: context.serverTarget,
         census,
@@ -111,6 +113,12 @@ export function updateManagedOrcadEnvironment(
         result.fullVersion,
         args.signal
       )
+      await pruneManagedOrcadVersions({
+        slot,
+        serverTarget: context.serverTarget,
+        activeVersion: result.fullVersion,
+        readiness
+      })
       const updated = refreshPairing(userDataPath, environment, readiness, deployment.localPort)
       return {
         outcome: result.outcome === 'already-active' ? 'already-current' : 'updated',
