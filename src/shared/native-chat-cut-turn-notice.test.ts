@@ -98,8 +98,12 @@ const exitWords = (): AgentJournalItemBody => ({
 const exitRow = (clientMessageId: string, scope: AgentJournalTurnScope | null) =>
   hostRow(clientMessageId, exitWords(), scope)
 /** A note the restart continuation leaves about its outcome, about the conversation. */
-const restartNote = (text: string) =>
-  hostRow(`restart-continuation:s:${text.length}`, { kind: 'status', text, tone: 'error' }, THREAD)
+const restartNote = (text: string, tone?: 'error' | 'warning') =>
+  hostRow(
+    `restart-continuation:s:${text.length}`,
+    { kind: 'status', text, ...(tone ? { tone } : {}) },
+    THREAD
+  )
 
 function notices(items: readonly AgentJournalRenderItem[]) {
   return withNativeChatCutTurnNotices(items, { agentName: 'Codex' }).flatMap((entry, index) =>
@@ -232,13 +236,22 @@ describe('withNativeChatCutTurnNotices', () => {
   // A quit, then a resume that did not carry the chat on: the note says the cut was not continued,
   // which is what the notice would say, so it stands alone.
   it.each([
-    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-    AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE,
-    AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
-  ])('takes the restart note "%s" as the one explanation of the cut it follows', (text) => {
-    const items = [user('u1'), turn('t1', 'u1', CUT), reply('a1', inTurn('t1')), restartNote(text)]
-    expect(withNativeChatCutTurnNotices(items)).toBe(items)
-  })
+    [AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE, 'error'],
+    [AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE, 'error'],
+    [AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE, 'warning']
+  ] as const)(
+    'takes the restart note "%s" as the one explanation of the cut it follows',
+    (text, tone) => {
+      const items = [
+        user('u1'),
+        turn('t1', 'u1', CUT),
+        reply('a1', inTurn('t1')),
+        user('continuation'),
+        restartNote(text, tone)
+      ]
+      expect(withNativeChatCutTurnNotices(items)).toBe(items)
+    }
+  )
 
   // The note of a continuation that went on lands after its own message and turn. The cut keeps its
   // notice before and after it, so nothing flashes away under an automatic resume.
@@ -250,6 +263,21 @@ describe('withNativeChatCutTurnNotices', () => {
     for (const items of [cut, continuing, continued]) {
       expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
     }
+    // Its note carries no tone, so even with no turn recorded before it, it does not stand in.
+    const noteOnly = [...cut, user('u2'), restartNote(AGENT_SESSION_RESTART_CONTINUATION_NOTE)]
+    expect(notices(noteOnly)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
+  })
+
+  // A send after the cut, whose new agent died before its turn opened: that exit is about the send.
+  it('lets no exit row about the conversation explain a cut a message was sent after', () => {
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      reply('a1', inTurn('t1')),
+      user('u2'),
+      exitRow('provider-exit:s:6:gen', THREAD)
+    ]
+    expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
   })
 
   // A row about the conversation speaks for the cut it follows, never across a turn that finished.

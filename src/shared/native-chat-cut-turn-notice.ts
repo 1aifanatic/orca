@@ -15,11 +15,6 @@ import type { AgentJournalRenderItem } from './agent-session-journal-types'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
 import { agentTurnVerdict } from './agent-turn-outcome'
 import {
-  AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-  AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE,
-  AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE
-} from './agent-session-restart-continuation'
-import {
   PROVIDER_EXIT_ROW_PREFIX,
   RESTART_CONTINUATION_ROW_PREFIX,
   STALE_SESSION_ROW_PREFIX
@@ -29,15 +24,6 @@ import { hostStatesTurnScopes } from './native-chat-turn-membership'
 
 /** Host rows that already say why a turn stopped: a provider exit, and a dead owner found on reopen. */
 const STOP_EXPLAINING_ROWS = [PROVIDER_EXIT_ROW_PREFIX, STALE_SESSION_ROW_PREFIX]
-
-/** The restart continuation's notes that say the cut was not carried on, which is what the notice
- *  would say. A continuation that went on writes its note after its own message, so the cut keeps
- *  its notice, as it would beside any stored exit row. */
-const RESTART_NOT_CONTINUED_NOTES: readonly string[] = [
-  AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-  AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE,
-  AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
-]
 
 const CUT_TURN_NOTICE_ROW = 'cut-turn-notice:'
 
@@ -57,48 +43,67 @@ function isCutRootTurn(item: AgentJournalRenderItem): boolean {
   return rootTurnVerdict(item) === 'interruption'
 }
 
-/** Matched by what the row states or who wrote it, never its tone: an agent's own error row in the
- *  turn (a denied permission, a refusal) says nothing about the stop. A failed start's row says why
- *  a start failed, not why an earlier turn stopped. */
-function explainsAStop(item: AgentJournalRenderItem): boolean {
+/** What a row says about a stop, matched by what it states or who wrote it, never its tone alone:
+ *  an agent's own error row in the turn (a denied permission, a refusal) says nothing about the stop.
+ *  `exit`: the agent stopped. `not-continued`: a resume after a restart did not carry the chat on,
+ *  which the restart note marks with a tone ('error' refused or not connected, 'warning' unconfirmed);
+ *  a continuation that went on writes its note with none. A failed start's row is about a start. */
+function stopExplanation(item: AgentJournalRenderItem): 'exit' | 'not-continued' | null {
   if (
     item.body.kind !== 'status' ||
     readAgentJournalTurn(item.body) ||
     isStructuredAgentSessionStartFailureRow(item.itemId)
   ) {
-    return false
+    return null
   }
   if (readAgentSessionFailureFact(item.body.failure)?.kind === 'providerExited') {
-    return true
+    return 'exit'
   }
   const identity = parseAgentJournalItemKey(item.itemId)
   if (identity?.provider !== 'orca') {
-    return false
+    return null
   }
   const { clientMessageId } = identity
-  return (
-    STOP_EXPLAINING_ROWS.some((prefix) => clientMessageId.startsWith(prefix)) ||
-    (clientMessageId.startsWith(RESTART_CONTINUATION_ROW_PREFIX) &&
-      RESTART_NOT_CONTINUED_NOTES.includes(item.body.text))
-  )
+  if (STOP_EXPLAINING_ROWS.some((prefix) => clientMessageId.startsWith(prefix))) {
+    return 'exit'
+  }
+  const { tone } = item.body
+  return clientMessageId.startsWith(RESTART_CONTINUATION_ROW_PREFIX) &&
+    (tone === 'error' || tone === 'warning')
+    ? 'not-continued'
+    : null
 }
 
-/** The cut turns some row already explains: one scoped to the turn, or one about the conversation
- *  (or from a host that states no scope) that follows the cut turn with no other root turn between. */
+/**
+ * The cut turns some row already explains: one scoped to the turn, or one about the conversation
+ * (or from a host that states no scope) that follows the cut turn closely enough to be about it.
+ * An exit row is about the cut only with no message sent since, which a later start would be
+ * answering; a restart note follows the continuation's own message, so only a turn between counts.
+ */
 function explainedCutTurns(items: readonly AgentJournalRenderItem[]): Set<string> {
   const explained = new Set<string>()
-  let precedingCutTurn: string | null = null
+  let cutBeforeExit: string | null = null
+  let cutBeforeRestartNote: string | null = null
   for (const item of items) {
     const verdict = rootTurnVerdict(item)
     if (verdict !== 'none') {
-      precedingCutTurn = verdict === 'interruption' ? item.itemId : null
-    } else if (explainsAStop(item)) {
-      const scope = item.turnScope
-      if (scope?.kind === 'turn') {
-        explained.add(scope.turnItemId)
-      } else if (precedingCutTurn !== null) {
-        explained.add(precedingCutTurn)
-      }
+      cutBeforeExit = cutBeforeRestartNote = verdict === 'interruption' ? item.itemId : null
+      continue
+    }
+    if (item.body.kind === 'message' && item.body.role === 'user' && isRootAgentJournalItem(item)) {
+      cutBeforeExit = null
+      continue
+    }
+    const explanation = stopExplanation(item)
+    if (explanation === null) {
+      continue
+    }
+    const scope = item.turnScope
+    const preceding = explanation === 'exit' ? cutBeforeExit : cutBeforeRestartNote
+    if (scope?.kind === 'turn') {
+      explained.add(scope.turnItemId)
+    } else if (preceding !== null) {
+      explained.add(preceding)
     }
   }
   return explained
