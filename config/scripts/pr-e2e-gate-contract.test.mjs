@@ -220,7 +220,7 @@ describe('PR E2E gate contract', () => {
       const installStep = e2eWorkflow.jobs[jobName].steps.find((step) =>
         step.name.startsWith('Install native build')
       )
-      expect(linuxInstallPackageList(installStep, jobName), jobName).toMatch(/\bzsh\b/)
+      expect(linuxInstallPackageList(installStep, jobName).split(/\s+/), jobName).toContain('zsh')
     }
   })
 
@@ -310,7 +310,9 @@ describe('PR E2E gate contract', () => {
     const changedInstall = e2eWorkflow.jobs['changed-e2e'].steps.find((step) =>
       step.name.startsWith('Install native build')
     )
-    expect(linuxInstallPackageList(changedInstall, 'changed-e2e')).toMatch(/\bopenssh-client\b/)
+    expect(linuxInstallPackageList(changedInstall, 'changed-e2e').split(/\s+/)).toContain(
+      'openssh-client'
+    )
   })
 
   it('routes direct-SSH workspace and tab restore from its unnamed source seams', () => {
