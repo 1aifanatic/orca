@@ -126,7 +126,13 @@ async function settledTurn() {
   // Every row that says why the turn stopped, and which turn it says it of.
   const notices = items.flatMap((item) =>
     item.body.kind === 'status' && item.body.tone === 'error'
-      ? [{ text: item.body.text, ofCutTurn: item.turnScope?.turnItemId === cutTurnItemId }]
+      ? [
+          {
+            text: item.body.text,
+            ofCutTurn:
+              item.turnScope?.kind === 'turn' && item.turnScope.turnItemId === cutTurnItemId
+          }
+        ]
       : []
   )
   const label = settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled }).key
