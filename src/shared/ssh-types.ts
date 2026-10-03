@@ -97,6 +97,8 @@ export type SshTarget = {
    */
   /** Main-owned: managed orcad can't run on this host; retried once this app version changes. */
   managedServerUnavailable?: { reason: string; appVersion: string }
+  /** Main-owned: the one-time "move now" offer was shown under this app version. */
+  managedServerMoveOffered?: { appVersion: string }
   orcadFence?: {
     environmentId: string
     /** An older build changed the retained source rows: the host stays on the relay until moved again. */
@@ -107,7 +109,12 @@ export type SshTarget = {
 /** Renderer-authored target fields; registration generations are allocated and owned by main. */
 export type SshTargetCreateInput = Omit<
   SshTarget,
-  'id' | 'generation' | 'orcadProvisioning' | 'orcadFence' | 'managedServerUnavailable'
+  | 'id'
+  | 'generation'
+  | 'orcadProvisioning'
+  | 'orcadFence'
+  | 'managedServerUnavailable'
+  | 'managedServerMoveOffered'
 >
 export type SshTargetUpdateInput = Partial<SshTargetCreateInput>
 
@@ -274,6 +281,8 @@ export type SshManagedServerStatus =
       detail?: string
       /** Relay terminals still running, when that is what keeps the host on the relay. */
       terminals?: number
+      /** Show the one-time offer to move now, restarting those terminals. */
+      offerMove?: boolean
     }
 
 /** Plain SSH terminals and SFTP browsing only; `reason` is the ladder's classified cause. */

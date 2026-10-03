@@ -2,7 +2,12 @@
 import type { SshConnectionState, SshTarget } from '../../../../shared/ssh-types'
 import { translate } from '@/i18n/i18n'
 
-export type SshHostServerStatusLine = { text: string; tone: 'muted' | 'warning' | 'destructive' }
+export type SshHostServerStatusLine = {
+  text: string
+  tone: 'muted' | 'warning' | 'destructive'
+  /** Offers "Move to managed server", which restarts the live relay terminals. */
+  action?: 'move'
+}
 
 export function sshHostServerStatusLine(
   target: Pick<SshTarget, 'orcadFence' | 'managedServerUnavailable'>,
@@ -93,7 +98,8 @@ function relayLine(
           'auto.components.settings.sshHostServer.terminalsLive',
           'Runs the relay until its {{count}} open terminals are closed, then moves to a managed server.',
           { count: status.terminals ?? 0 }
-        )
+        ),
+        action: 'move'
       }
     case 'relay_terminals_unverifiable':
       return {

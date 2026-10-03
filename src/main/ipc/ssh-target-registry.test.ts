@@ -53,6 +53,7 @@ describe('SSH IPC handlers', () => {
     expect(channels).toContain('ssh:connect')
     expect(channels).toContain('ssh:disconnect')
     expect(channels).toContain('ssh:terminateSessions')
+    expect(channels).toContain('ssh:moveToManagedServer')
     expect(channels).toContain('ssh:resetRelay')
     expect(channels).toContain('ssh:getState')
     expect(channels).toContain('ssh:testConnection')

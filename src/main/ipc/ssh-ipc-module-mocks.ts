@@ -146,7 +146,8 @@ export function createSshIpcMocks(): SshIpcMocks {
     // Null keeps today's relay path; the real decision is covered by its own tests.
     hostServerConnect: {
       decideHostServer: vi.fn(async () => null),
-      publishManagedServerConnect: vi.fn()
+      publishManagedServerConnect: vi.fn(),
+      recordRelayDecision: vi.fn()
     },
     sshConnectionStore: {
       isRuntimeOwnedSshTarget: (target: { owner?: unknown }) => target.owner !== undefined,
