@@ -121,6 +121,38 @@ describe('Claude child operation output retention', () => {
     }
   })
 
+  it('keeps canonical result admission and metadata ownership on explicit expected IDs', () => {
+    const cases: { part: unknown; expectedId: string | null }[] = [
+      { part: null, expectedId: null },
+      { part: [], expectedId: null },
+      { part: { type: 'tool_result' }, expectedId: null },
+      { part: { type: 'tool_result', tool_use_id: '' }, expectedId: null },
+      { part: { type: 'tool_result', tool_use_id: 4 }, expectedId: null },
+      { part: { type: 'text', tool_use_id: 'child' }, expectedId: null },
+      { part: { type: 'tool_result', tool_use_id: 'parent' }, expectedId: 'parent' },
+      { part: { type: 'tool_result', tool_use_id: 'child' }, expectedId: 'child' },
+      { part: { type: 'tool_result', tool_use_id: ' ' }, expectedId: ' ' },
+      { part: { type: 'tool_result', tool_use_id: '\ud800' }, expectedId: '\ud800' }
+    ]
+    for (const { part, expectedId } of cases) {
+      const message = frame([part], 'parent')
+      const envelope = readClaudeMessageEnvelope(message)
+      if (!envelope) {
+        throw new Error('Fixture did not produce a provider envelope')
+      }
+      expect(claudeToolResults(envelope).map((result) => result.toolUseId)).toEqual(
+        expectedId === null ? [] : [expectedId]
+      )
+      expect(
+        claudeChildOperation(message, () => ({ agentId: 'child', openTool: null }), 1_000)
+      ).toEqual(
+        expectedId === null || expectedId === 'parent'
+          ? []
+          : [{ type: 'operation', observedAt: 1_000, childId: 'child', operation: null }]
+      )
+    }
+  })
+
   it('preserves operation ownership and traffic decisions for mixed provider envelopes', () => {
     const parts: unknown[] = [
       null,

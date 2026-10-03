@@ -13,7 +13,7 @@ import type { ClaudeSession } from './claude-structured-session-state'
 import { deriveToolInputPreview } from '../../shared/agent-hook-listener/tool-input-preview'
 import {
   claudeRecord,
-  claudeText,
+  claudeToolResultId,
   claudeToolUses,
   readClaudeMessageEnvelope,
   type ClaudeToolUse
@@ -94,8 +94,8 @@ export function claudeChildOperation(
     claudeToolUses(envelope).length > 0 ||
     envelope.content.some((value) => {
       const part = claudeRecord(value)
-      const toolUseId = claudeText(part?.tool_use_id)
-      return part?.type === 'tool_result' && toolUseId !== null && toolUseId !== parentRef
+      const toolUseId = claudeToolResultId(part)
+      return toolUseId !== null && toolUseId !== parentRef
     })
   if (!toolTraffic) {
     return []
