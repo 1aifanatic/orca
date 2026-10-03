@@ -71,12 +71,30 @@ describe('Git network SSH policy', () => {
       '"C:/Program Files/Git/usr/bin/ssh.exe" -o BatchMode=yes -i "C:/Users/test/key file" -oBatchMode=no'
     )
   })
+
+  it('preserves a bare UNC executable path', () => {
+    const executable = String.raw`\\server\share\ssh.exe`
+    expect(buildGitSshPolicyEnv({}, `${executable} -i key`).env.GIT_SSH_COMMAND).toBe(
+      `${quotePosixShell(executable)} -o BatchMode=yes -i key`
+    )
+  })
 })
 
 describe.skipIf(process.platform === 'win32')('SSH policy with a real POSIX shell', () => {
   it.each([
     [String.raw` -i C:\keys\work`, ['-i', String.raw`C:\keys\work`]],
     [String.raw` -iC:\keys\work`, [String.raw`-iC:\keys\work`]],
+    [String.raw` -i \\server\share\work`, ['-i', String.raw`\\server\share\work`]],
+    [String.raw` -i \\\\server\share\work`, ['-i', String.raw`\\server\share\work`]],
+    [String.raw` -i\\server\share\work`, [String.raw`-i\\server\share\work`]],
+    [
+      String.raw` -oIdentityFile=\\server\share\work`,
+      [String.raw`-oIdentityFile=\\server\share\work`]
+    ],
+    [
+      String.raw` -o IdentityFile=\\server\share\work`,
+      ['-o', String.raw`IdentityFile=\\server\share\work`]
+    ],
     [String.raw` -FC:\ssh\config`, [String.raw`-FC:\ssh\config`]],
     [String.raw` -oIdentityFile=C:\keys\work`, [String.raw`-oIdentityFile=C:\keys\work`]],
     [String.raw` -o IdentityFile=C:\keys\work`, ['-o', String.raw`IdentityFile=C:\keys\work`]],

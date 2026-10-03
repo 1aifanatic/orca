@@ -91,16 +91,23 @@ function quoteBareWindowsPathWords(command: string): string {
     /'[^']*'|"(?:\\.|[^"\\])*"|(?:\\.|[^ \t'"\\])+/g,
     (word: string, offset: number) => {
       const end = offset + word.length
+      const windowsPath = /(?:^|=|^-[A-Za-z])([A-Za-z]:\\|\\\\)/.exec(word)
       if (
         word.startsWith("'") ||
         word.startsWith('"') ||
         (offset > 0 && !/[ \t]/.test(command[offset - 1])) ||
         (end < command.length && !/[ \t]/.test(command[end])) ||
-        !/(?:^|=|^-[A-Za-z])(?:[A-Za-z]:\\|\\\\)/.test(word)
+        !windowsPath
       ) {
         return word
       }
-      return quotePosixShell(word.replace(/\\([ \t'"\\])/g, '$1'))
+      const uncPrefixOffset =
+        windowsPath[1] === '\\\\' ? windowsPath.index + windowsPath[0].length - 2 : -1
+      return quotePosixShell(
+        word.replace(/\\([ \t'"\\])/g, (match, escaped: string, offset: number) =>
+          offset === uncPrefixOffset && word[offset + 2] !== '\\' ? match : escaped
+        )
+      )
     }
   )
 }
