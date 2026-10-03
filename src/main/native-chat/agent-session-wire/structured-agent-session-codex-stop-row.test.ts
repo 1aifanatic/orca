@@ -515,7 +515,8 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed end
       recovered: true
     })
 
-    // The desktop's outbox as it held them: the follow-up on its way, the next message queued.
+    // The desktop's outbox as it held them: the follow-up on its way, the next message queued. The
+    // follow-up's entry goes, as its journal row draws it.
     const queued = (clientMessageId: string, text: string) =>
       createStructuredAgentSessionOutboxEntry({
         clientMessageId,
@@ -524,16 +525,14 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed end
         attachments: [],
         queuedAt: NOW
       })
+    const next = queued(hostTestOperationId(), 'carry on')
     const outbox = reconcileStructuredAgentSessionOutbox(
-      [
-        { ...queued(followUpId, 'and also this'), state: 'dispatching', lastAttemptAt: NOW },
-        queued(hostTestOperationId(), 'carry on')
-      ],
+      [{ ...queued(followUpId, 'and also this'), state: 'dispatching', lastAttemptAt: NOW }, next],
       submissions
     )
-    expect(outbox[0]?.state).toBe('unconfirmed')
-    const admission = admitStructuredAgentSessionOutboxEntry(outbox, submissions)
-    expect(admission).toEqual({ state: 'dispatch', entry: outbox[1] })
+    expect(outbox).toEqual([next])
+    const admission = admitStructuredAgentSessionOutboxEntry(outbox)
+    expect(admission).toEqual({ state: 'dispatch', entry: next })
     if (admission.state !== 'dispatch') {
       return
     }

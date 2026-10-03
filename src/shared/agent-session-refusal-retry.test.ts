@@ -75,7 +75,7 @@ describe("the owner's verdict decides a retry's operation id only as a floor", (
     })
     expect(disposition.entries[0]).toMatchObject({ clientMessageId: 'message-2', state: 'queued' })
     expect(structuredAgentSessionEntryHeldForRetry(disposition.entries[0]!)).toBe(true)
-    expect(admitStructuredAgentSessionOutboxEntry(disposition.entries, [])).toMatchObject({
+    expect(admitStructuredAgentSessionOutboxEntry(disposition.entries)).toMatchObject({
       state: 'dispatch',
       entry: { clientMessageId: 'message-3' }
     })

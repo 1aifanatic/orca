@@ -112,11 +112,10 @@ export function outboxOutsideQueuedCards(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   heldIds: readonly string[],
   isWorking: boolean,
-  host: StructuredAgentSessionQueueDelivery,
-  submissions: readonly AgentJournalSubmission[]
+  host: StructuredAgentSessionQueueDelivery
 ): readonly StructuredAgentSessionOutboxEntry[] {
   const held = new Set(heldIds)
-  const admission = admitStructuredAgentSessionOutboxEntry(outbox, submissions)
+  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
   const next = outbox.filter((entry, index) => {
     const onItsWay =

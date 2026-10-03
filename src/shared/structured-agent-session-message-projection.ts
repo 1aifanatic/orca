@@ -8,7 +8,10 @@ import type { NativeChatMessage } from './native-chat-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
-import { failedStartsSentElsewhere } from './structured-agent-session-failed-start-elsewhere'
+import {
+  failedStartsSentElsewhere,
+  undeliveredSentElsewhere
+} from './structured-agent-session-failed-start-elsewhere'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
 
 export function projectStructuredAgentSessionMessages(
@@ -31,14 +34,13 @@ export function projectStructuredAgentSessionMessages(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
-  // Sent from elsewhere and refused for good by a failed start: shown as unsent, as this client's
-  // own would be, in the conversation where the journal recorded it.
+  // Sent from elsewhere and refused for good by a failed start, or shown by the agent's history never
+  // to have reached it: shown as unsent, as this client's own would be, where the journal put it.
   const unsentElsewhere = new Set(
-    showsFailedStartsSentElsewhere
-      ? failedStartsSentElsewhere(submissions, outbox).map((submission) =>
-          agentJournalSubmissionKey(submission.clientMessageId)
-        )
-      : []
+    [
+      ...(showsFailedStartsSentElsewhere ? failedStartsSentElsewhere(submissions, outbox) : []),
+      ...undeliveredSentElsewhere(submissions, outbox)
+    ].map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()

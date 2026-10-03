@@ -246,18 +246,14 @@ export function reconcileStructuredAgentSessionOutbox(
         }
       ]
     }
+    // Recorded, but whether the agent got it is unknown: its journal row draws it in place and the
+    // host never sends it again, so the entry goes. Only a Retry the user asked of this very
+    // submission stays, for its answer.
     if (
       submission?.dispatchState === 'unknown' &&
-      entry.retryAfterUnknownSubmittedAt !== -1 &&
       entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
     ) {
-      // In doubt now, not failed. The host has it, so it holds nothing up (admission).
-      if (entry.state === 'unconfirmed' && !entry.lastFailure) {
-        // Kept as is, so a streamed batch neither rewrites the saved outbox nor redraws it.
-        return [entry]
-      }
-      const { lastFailure: _superseded, ...inDoubt } = entry
-      return [{ ...inDoubt, state: 'unconfirmed' as const }]
+      return []
     }
     return [entry]
   })

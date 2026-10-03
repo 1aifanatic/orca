@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
-// A message the journal holds in doubt (its child ended before answering it) never held anything
-// up. A queue an earlier build saved stuck behind one is freed once the chat opens again, read from
-// the journal alone: the held message is never sent again and says nothing.
+// A message the journal records in doubt (its child ended before answering it) leaves the outbox,
+// so nothing waits on it, now or after a reopen whose loaded rows no longer reach it. A queue an
+// earlier build saved stuck behind one is freed once the chat opens again, and the held message is
+// never sent again.
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,7 +24,6 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
-import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const SESSION = 'session-1'
 const LOCAL_TARGET = { kind: 'local' } as const
@@ -99,8 +99,19 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     vi.clearAllMocks()
     localStorage.clear()
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY])
+    // The host answers a replay of the recorded follow-up with its doubt, and takes anything else.
     mocks.call.mockImplementation((_target, _method, params: SendRequest) =>
-      Promise.resolve(accepted(requestId(params)))
+      Promise.resolve(
+        requestId(params) === IN_DOUBT.clientMessageId
+          ? {
+              ok: true,
+              replayed: true,
+              fence: 1,
+              cursor: { epoch: 'epoch-1', sequence: 4 },
+              value: { clientMessageId: IN_DOUBT.clientMessageId, submission: IN_DOUBT }
+            }
+          : accepted(requestId(params))
+      )
     )
   })
 
@@ -125,21 +136,61 @@ describe('a queue saved behind a message the host holds in doubt', () => {
       // Past the unconfirmed probe's first delay: the held message is never sent again.
       await act(() => new Promise<void>((resolve) => setTimeout(resolve, 1_200)))
       expect(sentIds()).toEqual(['op-next'])
-      expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['op-follow-up'])
-      expect(
-        structuredAgentSessionDeliveryNotices(
-          result.current.outbox,
-          'Codex',
-          result.current.retry,
-          [IN_DOUBT],
-          [],
-          result.current.failedHere
-        ).size
-      ).toBe(0)
+      expect(result.current.outbox).toEqual([])
     }
   )
 
-  // The probe skips the one the host holds and resends the one it may not have.
+  // Its rows can age out of what a reopen loads; the entry left with the first reconcile.
+  it('never holds a send after a reopen whose loaded rows no longer reach it', async () => {
+    writeOutbox(SESSION, [saved('op-follow-up', { state: 'dispatching', lastAttemptAt: 2 })])
+    const before = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: SESSION,
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: [IN_DOUBT]
+      })
+    )
+    await waitFor(() => expect(before.result.current.outbox).toEqual([]))
+    before.unmount()
+
+    const after = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: SESSION,
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: []
+      })
+    )
+    act(() => expect(after.result.current.send('next')).toBe(true))
+    await waitFor(() => expect(after.result.current.outbox).toEqual([]))
+    expect(sentIds()).toHaveLength(1)
+    expect(sentIds()).not.toContain(IN_DOUBT.clientMessageId)
+  })
+
+  // A client that never loaded the row: the probe's replay is the host's answer that it has it.
+  it('frees a queue whose message in doubt was recorded out of sight, by the replay', async () => {
+    writeOutbox(SESSION, [
+      saved('op-follow-up', { state: 'unconfirmed', lastAttemptAt: 2 }),
+      saved('op-next')
+    ])
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: SESSION,
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: []
+      })
+    )
+
+    await waitFor(() => expect(sentIds()).toEqual(['op-follow-up', 'op-next']), {
+      timeout: 5_000
+    })
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(result.current.error).toBeNull()
+  })
+
+  // The one the host holds leaves; the probe resends the one it may not have.
   it('probes a message the host may never have received, saved behind one it holds', async () => {
     writeOutbox(SESSION, [
       saved('op-follow-up', { state: 'unconfirmed', lastAttemptAt: 2 }),

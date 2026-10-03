@@ -230,3 +230,62 @@ describe('a message whose start failed for good, queued again by its Retry', () 
     ])
   })
 })
+
+// Handed over, then the agent's history showed it never got it. No outbox entry shows it — this
+// client let go once the host recorded it in doubt, or another device sent it — so the journal does.
+describe('a message handed over and then shown never delivered', () => {
+  const undelivered = (): AgentJournalSubmission => ({
+    ...rejected({ kind: 'notDelivered' }),
+    handedOverAt: 5,
+    recovered: true
+  })
+
+  it('shows as unsent with no Retry, on any host', () => {
+    const submissions = [undelivered()]
+    for (const showsFailedStartsSentElsewhere of [true, false]) {
+      expect(
+        projectStructuredAgentSessionMessages([TEXT], [], submissions, {
+          showsFailedStartsSentElsewhere
+        })
+      ).toEqual([expect.objectContaining({ id: KEY, unsent: true })])
+    }
+    // The host cannot queue a message it handed over again, so the person sends it anew.
+    expect(
+      structuredAgentSessionDeliveryNotices([], 'Claude', vi.fn(), submissions, [], new Set()).get(
+        KEY
+      )
+    ).toEqual({ text: 'Message was not sent.' })
+  })
+
+  it('is drawn once by the entry of the client that still holds it', () => {
+    const own = reconcileStructuredAgentSessionOutbox(
+      [
+        {
+          ...createStructuredAgentSessionOutboxEntry({
+            clientMessageId: ID,
+            sessionId: 'session-1',
+            text: 'Continue where you left off',
+            attachments: [],
+            queuedAt: 4
+          }),
+          state: 'dispatching'
+        }
+      ],
+      [undelivered()]
+    )
+    expect(
+      projectStructuredAgentSessionMessages([TEXT], own, [undelivered()]).map(({ id }) => id)
+    ).toEqual([KEY])
+  })
+
+  it('stays hidden once the same words went through since', () => {
+    const copy: AgentJournalSubmission = {
+      ...undelivered(),
+      clientMessageId: 'copy',
+      dispatchState: 'accepted',
+      submittedAt: 9,
+      resolvedAt: 9
+    }
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [undelivered(), copy])).toEqual([])
+  })
+})

@@ -113,7 +113,7 @@ describe('outbox queue delivery', () => {
       ['probed', 'queued', true]
     ])
     // The drain never admits the marked one it would otherwise send.
-    expect(admitStructuredAgentSessionOutboxEntry(next.slice(2), [])).toEqual({
+    expect(admitStructuredAgentSessionOutboxEntry(next.slice(2))).toEqual({
       state: 'blocked',
       entry: next[2]
     })

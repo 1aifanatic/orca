@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import { failedStartsSentElsewhere } from '../../../../shared/structured-agent-session-failed-start-elsewhere'
+import {
+  failedStartsSentElsewhere,
+  undeliveredSentElsewhere
+} from '../../../../shared/structured-agent-session-failed-start-elsewhere'
 import { isRetryingStructuredAgentSessionStart } from '../../../../shared/structured-agent-session-start-retry'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { useStructuredAgentSession } from './use-structured-agent-session'
@@ -25,14 +28,14 @@ export function useStructuredAgentSessionDeliveryNotices(
     (clientMessageId: string) => retryRef.current(clientMessageId),
     []
   )
-  // Only a rejected message, one in doubt, or one waiting out a refused start reads the journal's
-  // rows, so a new batch of them re-renders no row else.
+  // Only a rejected message, one waiting out a refused start, or one shown from the journal as unsent
+  // reads the journal's rows, so a new batch of them re-renders no row else.
   const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
-  const journalRows =
+  const rejectionRows =
     hasRejected ||
-    controller.outbox.some((entry) => entry.state === 'unconfirmed') ||
     controller.submissions.some(isRetryingStructuredAgentSessionStart) ||
-    failedStartsSentElsewhere(controller.submissions, controller.outbox).length > 0
+    failedStartsSentElsewhere(controller.submissions, controller.outbox).length > 0 ||
+    undeliveredSentElsewhere(controller.submissions, controller.outbox).length > 0
       ? controller.submissions
       : NO_SUBMISSIONS
   const startFailures = useStructuredAgentSessionStartFailureFacts(
@@ -45,7 +48,7 @@ export function useStructuredAgentSessionDeliveryNotices(
         controller.outbox,
         agentLabel,
         retryDelivery,
-        journalRows,
+        rejectionRows,
         startFailures,
         controller.failedHere,
         controller.retryWaitsForHost
@@ -54,7 +57,7 @@ export function useStructuredAgentSessionDeliveryNotices(
       controller.outbox,
       agentLabel,
       retryDelivery,
-      journalRows,
+      rejectionRows,
       startFailures,
       controller.failedHere,
       controller.retryWaitsForHost

@@ -215,8 +215,7 @@ export function useStructuredAgentSessionOutbox(args: {
       void launchDispatch.then(drainAgain, drainAgain)
       return
     }
-    // `submissions` is a dependency: the journal recording a send in doubt frees what waits behind it.
-    const admission = admitStructuredAgentSessionOutboxEntry(current, submissions)
+    const admission = admitStructuredAgentSessionOutboxEntry(current)
     if (admission.state !== 'dispatch' || fence === null || inFlightIdRef.current !== null) {
       return
     }
@@ -252,7 +251,6 @@ export function useStructuredAgentSessionOutbox(args: {
     queueCapability,
     queueEnabled,
     sessionId,
-    submissions,
     target
   ])
 

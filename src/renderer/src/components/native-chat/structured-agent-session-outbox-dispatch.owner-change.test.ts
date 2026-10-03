@@ -33,8 +33,8 @@ describe('requeue after an owner change', () => {
       [dispatching('stopped', { outlivedStop: true })],
       1
     )
-    expect(admitStructuredAgentSessionOutboxEntry([stopped], []).state).toBe('blocked')
+    expect(admitStructuredAgentSessionOutboxEntry([stopped]).state).toBe('blocked')
     const [plain] = requeueInterruptedStructuredAgentSessionDispatches([dispatching('plain')], 1)
-    expect(admitStructuredAgentSessionOutboxEntry([plain], []).state).toBe('dispatch')
+    expect(admitStructuredAgentSessionOutboxEntry([plain]).state).toBe('dispatch')
   })
 })
