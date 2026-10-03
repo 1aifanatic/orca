@@ -112,7 +112,8 @@ export class StructuredAgentSessionReviewReplies {
       this.deps.log('review reply: the run failed', error)
       failure = error instanceof Error ? error.message : String(error)
     }
-    // A receipt the chat refuses (closed, read-only) is re-derived on its next open in the window.
+    // A receipt the chat refuses (closed, read-only) is logged. This process keeps its claim, so the
+    // reply is derived again only after Orca restarts, inside the window, re-reading the PR first.
     await this.deps
       .writeReceipt(sessionId, clientMessageId, failure)
       .catch((error: unknown) => this.deps.log('review reply: the receipt was not written', error))

@@ -78,7 +78,8 @@ async function gitHubWrites(
   }
 ): Promise<ReviewWrite[]> {
   const posted = options.reread ? await postedSince(runtime, repo, spec, options) : null
-  // A reply with no thread to read, or no read at all, is posted: at worst once more, reported.
+  // A reply with no thread to read, or with no read at all, is posted: at worst once more. Only a
+  // failed read is logged; a reply with no thread id is rare (path-only review comments).
   const alreadyPosted = (body: string, at: { threadId?: string } | null): boolean => {
     if (!posted) {
       return false
