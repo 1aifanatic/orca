@@ -191,7 +191,7 @@ function formatOpenChangedResult(result: FileOpenChangedResult): string {
   return lines.join('\n')
 }
 
-// Why: older hosts decline binaries with opened:false; a single-file command must not exit 0 on that.
+// Why: opened:false (older hosts decline binaries) must fail a single-file command, not exit 0.
 function requireOpened(result: RuntimeFileOpenResult, target: string): void {
   if (!result.opened) {
     throw new RuntimeClientError(
@@ -234,7 +234,7 @@ export const FILE_HANDLERS: Record<string, CommandHandler> = {
       staged,
       navigation: getFileOpenNavigation(ctx.flags)
     })
-    requireOpened(result.result, `diff for ${result.result.relativePath}`)
+    requireOpened(result.result, `diff for ${relativePath}`)
     printResult(result, ctx.json, formatFileDiff)
   },
   'file open-changed': async (ctx) => {
