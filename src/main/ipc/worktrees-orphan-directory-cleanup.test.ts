@@ -10,7 +10,6 @@ import {
 import { readCheckoutDirectoryIdentity } from '../worktree-checkout-identity'
 import { writeWorktreeRemovalRecords } from '../worktree-removal-records'
 import { setUnfinishedWorktreeRemovalHost } from '../worktree-removal-table'
-import { removeWorktreeMetadataAndTransientState } from './worktrees/removal/worktree-removal-ownership'
 import {
   removeWorktreeMock,
   getEffectiveHooksMock,
@@ -408,7 +407,7 @@ describe('registerWorktreeHandlers', () => {
     })
     // Stands in for the runtime, which registers the bookkeeping that ends such a workspace.
     setUnfinishedWorktreeRemovalHost((record) =>
-      removeWorktreeMetadataAndTransientState(store as never, record.worktreeId, 'local')
+      store.removeWorktreeMeta(record.worktreeId, 'local')
     )
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     // The user deletes the leftover by hand and makes a folder of their own at the path.
