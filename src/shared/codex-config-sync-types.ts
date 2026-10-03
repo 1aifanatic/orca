@@ -20,8 +20,3 @@ export type CodexConfigSyncStatus =
       /** Optional for compatibility with status producers that cannot resolve the managed path. */
       managedStatePath?: string
     }
-
-/** Names only: the MCP tables themselves may hold secrets and never leave main. */
-export type CodexSharedSettingsNotice = {
-  mcpServerNames: string[]
-}
