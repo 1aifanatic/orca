@@ -127,6 +127,8 @@ describe('StructuredAgentSessionStatusFeed', () => {
     if (firstStatus?.type !== 'status') {
       throw new Error('status publication missing')
     }
+    // Which provider child is starting is not on the wire: nothing reads it.
+    expect(firstStatus.session).not.toHaveProperty('hostExecutionChild')
     const journalTime = firstStatus.session.updatedAt
     sessions.get(SESSION)!.child = null
     feed.publish(SESSION, journal)
