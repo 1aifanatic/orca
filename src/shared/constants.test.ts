@@ -134,7 +134,10 @@ describe('getDefaultSettings', () => {
     const settings = getDefaultSettings('/tmp')
 
     expect(settings.agentPermissionMode).toBe('bypass')
-    expect(settings.agentDefaultArgs).toEqual({})
+    // Spelled out so an older build, which reads a missing entry as the flag, launches Manual.
+    expect(settings.agentDefaultArgs).toMatchObject({ claude: '', codex: '', devin: '' })
+    expect(settings.agentDefaultArgs).not.toHaveProperty('opencode')
+    expect(settings.agentDefaultEnv).toEqual({ goose: {} })
     expect(composeTuiAgentLaunchArgsRecord(settings)).toMatchObject({
       claude: '--dangerously-skip-permissions',
       codex: '--dangerously-bypass-approvals-and-sandbox',

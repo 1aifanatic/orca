@@ -3,8 +3,8 @@ import { normalizeAgentPermissionSettingsUpdate } from '../../../shared/tui-agen
 import { normalizeDisabledTuiAgents } from '../../../shared/tui-agent-selection'
 import { resolveNestedWorkerMaxDepth } from '../../../shared/nested-worker-depth'
 import {
-  normalizeTuiAgentArgsRecord,
-  normalizeTuiAgentEnvRecord
+  normalizeStoredAgentLaunchArgs,
+  normalizeStoredAgentLaunchEnv
 } from '../../../shared/tui-agent-launch-defaults'
 import { normalizeTerminalQuickCommands } from '../../../shared/terminal-quick-commands'
 import { normalizeTerminalCustomThemes } from '../../../shared/terminal-custom-themes'
@@ -98,11 +98,11 @@ export function updateSettings(
     }
   }
   if ('agentDefaultArgs' in updates) {
-    sanitizedUpdates.agentDefaultArgs = normalizeTuiAgentArgsRecord(updates.agentDefaultArgs)
+    sanitizedUpdates.agentDefaultArgs = normalizeStoredAgentLaunchArgs(updates.agentDefaultArgs)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
   if ('agentDefaultEnv' in updates) {
-    sanitizedUpdates.agentDefaultEnv = normalizeTuiAgentEnvRecord(updates.agentDefaultEnv)
+    sanitizedUpdates.agentDefaultEnv = normalizeStoredAgentLaunchEnv(updates.agentDefaultEnv)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
   delete sanitizedUpdates.agentPermissionMode

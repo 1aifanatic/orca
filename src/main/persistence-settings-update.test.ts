@@ -3,6 +3,11 @@ import {
   composeTuiAgentLaunchEnvRecord
 } from '../shared/tui-agent-launch-defaults'
 import {
+  PERMISSION_AGENT_IDS,
+  YOLO_TUI_AGENT_ARGS,
+  YOLO_TUI_AGENT_ENV
+} from '../shared/tui-agent-permissions'
+import {
   closeTestStores,
   testState,
   createStore,
@@ -64,6 +69,25 @@ vi.mock('./telemetry/client', () => ({
 vi.mock('./telemetry/cohort-classifier', () => ({
   getCohortAtEmit: getCohortAtEmitMock
 }))
+
+/** Agents an older build (main's read rule: a missing entry means the bypass default) launches in bypass. */
+function launchesReadByOlderBuild(settings: Partial<GlobalSettings>): { bypassing: string[] } {
+  const bypassing: string[] = []
+  for (const agent of PERMISSION_AGENT_IDS) {
+    const args = settings.agentDefaultArgs ?? {}
+    const env = settings.agentDefaultEnv ?? {}
+    const launchArgs =
+      Object.hasOwn(args, agent) && typeof args[agent] === 'string'
+        ? args[agent]
+        : YOLO_TUI_AGENT_ARGS[agent]
+    const launchEnv = Object.hasOwn(env, agent) ? env[agent] : YOLO_TUI_AGENT_ENV[agent]
+    const flag = YOLO_TUI_AGENT_ARGS[agent]
+    if ((flag && launchArgs?.includes(flag)) || launchEnv?.GOOSE_MODE === 'auto') {
+      bypassing.push(agent)
+    }
+  }
+  return { bypassing }
+}
 
 describe('Store', () => {
   beforeEach(() => {
@@ -453,6 +477,26 @@ describe('Store', () => {
 
     expect(store.getSettings().disabledTuiAgents).toEqual([])
     expect(store.getSettings().claudeAgentTeamsDefaultDisabledMigrated).toBe(true)
+  })
+
+  // An older build reads a missing agent entry as "launch with the bypass flag", so a profile saved
+  // here with Manual must spell out every agent's empty text or a downgrade escalates to Yolo.
+  it('saves explicit empty launch text so an older build launches a fresh Manual profile in Manual', async () => {
+    const store = await createStore()
+    store.updateSettings({ agentPermissionMode: 'ask' })
+    store.flush()
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: readDataFile returns the JSON the store just wrote in this shape.
+    const persisted = (readDataFile() as PersistedState).settings
+    expect(launchesReadByOlderBuild(persisted)).toEqual({ bypassing: [] })
+
+    // A write that names only some agents keeps the others spelled out.
+    store.updateSettings({ agentDefaultArgs: { claude: '--model opus' } })
+    store.flush()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: readDataFile returns the JSON the store just wrote in this shape.
+    const rewritten = (readDataFile() as PersistedState).settings
+    expect(launchesReadByOlderBuild(rewritten)).toEqual({ bypassing: [] })
+    expect(rewritten.agentDefaultArgs?.claude).toBe('--model opus')
   })
 
   it('migrates yolo default args onto untouched agent launch settings', async () => {

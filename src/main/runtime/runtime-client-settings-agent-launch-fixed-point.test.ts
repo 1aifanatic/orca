@@ -101,7 +101,11 @@ describe('agent launch settings: one lift for load and write', () => {
 
     expect(store.getSettings().agentDefaultArgs?.devin).toBe('--permission-mode bypass')
     expect(controller.get().agentDefaultArgs?.devin).toBe('--permission-mode bypass')
-    expect(migrateAgentLaunchProfile(store.getSettings()).migrated).toBe(false)
+    const loaded = migrateAgentLaunchProfile(store.getSettings()).profile
+    expect(loaded.agentDefaultArgs?.devin).toBe('--permission-mode bypass')
+    expect(loaded.agentPermissionModeOverrides).toEqual(
+      store.getSettings().agentPermissionModeOverrides
+    )
   })
 
   it('keeps a stored mode a newer build wrote when a write names other agents', async () => {

@@ -3,6 +3,8 @@ import { isTuiAgent } from './tui-agent-config'
 import {
   composeTuiAgentLaunchArgsRecord,
   composeTuiAgentLaunchEnvRecord,
+  normalizeStoredAgentLaunchArgs,
+  normalizeStoredAgentLaunchEnv,
   normalizeTuiAgentArgsRecord,
   normalizeTuiAgentEnvRecord,
   resolveComposedTuiAgentLaunchArgs,
@@ -94,13 +96,18 @@ export function liftAgentBypassFromTypedProfile(
   >
   changed: boolean
 } {
-  const agentDefaultArgs = normalizeTuiAgentArgsRecord(settings.agentDefaultArgs)
-  const agentDefaultEnv = normalizeTuiAgentEnvRecord(settings.agentDefaultEnv)
+  const storedArgs = normalizeTuiAgentArgsRecord(settings.agentDefaultArgs)
+  const storedEnv = normalizeTuiAgentEnvRecord(settings.agentDefaultEnv)
+  const agentDefaultArgs = normalizeStoredAgentLaunchArgs(storedArgs)
+  const agentDefaultEnv = normalizeStoredAgentLaunchEnv(storedEnv)
   const agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
     settings.agentPermissionModeOverrides
   )
   const defaultMode = resolveDefaultAgentPermissionMode(settings)
-  let changed = false
+  // Entries an older build needs spelled out get saved once, so a downgrade launches Manual.
+  let changed =
+    Object.keys(agentDefaultArgs).length !== Object.keys(storedArgs).length ||
+    Object.keys(agentDefaultEnv).length !== Object.keys(storedEnv).length
   for (const agent of PERMISSION_AGENT_IDS) {
     const args = agentDefaultArgs[agent]
     const liftedArgs = args ? liftTuiAgentBypassArgs(agent, args) : null
@@ -127,8 +134,9 @@ export function liftAgentBypassFromTypedProfile(
 }
 
 /**
- * Applies a paired client's launch-ready args/env write. Only agents the write names change; an
- * older client that doesn't know an agent leaves that agent's mode and text alone.
+ * Applies a paired client's launch-ready args/env write. Only agents whose written value differs
+ * from what settings.get publishes change, and their mode moves only when their Arguments and env
+ * don't set permissions themselves; agents the write leaves out or repeats keep mode and text.
  */
 export function applyComposedAgentLaunchUpdate(
   current: Partial<

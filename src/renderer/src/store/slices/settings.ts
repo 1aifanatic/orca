@@ -18,8 +18,8 @@ import { createSettingsSearchState, type SettingsSearchState } from './settings-
 import { isRuntimeCatalogListingStale } from './runtime-status-hydration'
 import { normalizeDisabledTuiAgents } from '../../../../shared/tui-agent-selection'
 import {
-  normalizeTuiAgentArgsRecord,
-  normalizeTuiAgentEnvRecord
+  normalizeStoredAgentLaunchArgs,
+  normalizeStoredAgentLaunchEnv
 } from '../../../../shared/tui-agent-launch-defaults'
 import { bumpProviderRuntimeSessionGeneration } from '@/lib/provider-runtime-context'
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
@@ -99,11 +99,11 @@ function normalizeSettingsUpdates(
     sanitizedUpdates.disabledTuiAgents = normalizeDisabledTuiAgents(updates.disabledTuiAgents)
   }
   if ('agentDefaultArgs' in updates) {
-    sanitizedUpdates.agentDefaultArgs = normalizeTuiAgentArgsRecord(updates.agentDefaultArgs)
+    sanitizedUpdates.agentDefaultArgs = normalizeStoredAgentLaunchArgs(updates.agentDefaultArgs)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
   if ('agentDefaultEnv' in updates) {
-    sanitizedUpdates.agentDefaultEnv = normalizeTuiAgentEnvRecord(updates.agentDefaultEnv)
+    sanitizedUpdates.agentDefaultEnv = normalizeStoredAgentLaunchEnv(updates.agentDefaultEnv)
     sanitizedUpdates.agentYoloDefaultsMigrated = true
   }
   delete sanitizedUpdates.agentPermissionMode

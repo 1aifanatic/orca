@@ -1,6 +1,7 @@
 import type { GlobalSettings } from './global-settings-types'
 import { isTuiAgent, TUI_AGENT_CONFIG } from './tui-agent-config'
 import {
+  PERMISSION_AGENT_IDS,
   resolveAgentPermissionMode,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
@@ -76,6 +77,33 @@ export function normalizeTuiAgentEnvRecord(
       nextEnv[key] = raw
     }
     normalized[agent] = nextEnv
+  }
+  return normalized
+}
+
+/**
+ * A stored profile's extra text, with an explicit entry for every agent that has a bypass flag.
+ * Older builds read a missing entry as "launch with the bypass flag", so `''` keeps a downgrade Manual.
+ */
+export function normalizeStoredAgentLaunchArgs(value: unknown): Partial<Record<TuiAgent, string>> {
+  const normalized = normalizeTuiAgentArgsRecord(value)
+  for (const agent of PERMISSION_AGENT_IDS) {
+    if (agent in YOLO_TUI_AGENT_ARGS && !Object.hasOwn(normalized, agent)) {
+      normalized[agent] = ''
+    }
+  }
+  return normalized
+}
+
+/** Environment counterpart of normalizeStoredAgentLaunchArgs, for env-driven bypass agents. */
+export function normalizeStoredAgentLaunchEnv(
+  value: unknown
+): Partial<Record<TuiAgent, Record<string, string>>> {
+  const normalized = normalizeTuiAgentEnvRecord(value)
+  for (const agent of PERMISSION_AGENT_IDS) {
+    if (agent in YOLO_TUI_AGENT_ENV && !Object.hasOwn(normalized, agent)) {
+      normalized[agent] = {}
+    }
   }
   return normalized
 }

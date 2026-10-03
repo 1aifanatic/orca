@@ -9,6 +9,10 @@ import { DEFAULT_APP_ICON_ID } from './app-icon'
 import { DEFAULT_OPEN_IN_APPLICATIONS } from './open-in-applications'
 import { DEFAULT_DISABLED_TUI_AGENTS } from './tui-agent-selection'
 import { DEFAULT_AGENT_PERMISSION_MODE } from './tui-agent-permissions'
+import {
+  normalizeStoredAgentLaunchArgs,
+  normalizeStoredAgentLaunchEnv
+} from './tui-agent-launch-defaults'
 import { UI_LANGUAGE_SYSTEM } from './ui-language'
 import {
   DEFAULT_LEFT_SIDEBAR_TINT_COLOR,
@@ -217,8 +221,8 @@ export function buildDefaultSettings(args: {
     minimaxEndpoint: 'overseas',
     geminiCliOAuthEnabled: false,
     agentCmdOverrides: {},
-    agentDefaultArgs: {},
-    agentDefaultEnv: {},
+    agentDefaultArgs: normalizeStoredAgentLaunchArgs({}),
+    agentDefaultEnv: normalizeStoredAgentLaunchEnv({}),
     agentYoloDefaultsMigrated: true,
     agentPermissionMode: DEFAULT_AGENT_PERMISSION_MODE,
     agentPermissionModeOverrides: {},

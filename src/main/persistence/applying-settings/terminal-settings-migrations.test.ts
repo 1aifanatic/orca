@@ -171,17 +171,32 @@ describe('migrateAgentLaunchProfile', () => {
   // Why: the yolo-defaults pass reads the flag inline, so re-running it on typed extras would put
   // the Devin flag back into the free text.
   it('does not re-run the yolo-defaults pass on a typed profile', () => {
-    const { profile, migrated } = migrateAgentLaunchProfile(
-      legacy({
-        agentYoloDefaultsMigrated: true,
-        agentPermissionMode: 'ask',
-        agentDefaultArgs: { devin: '--permission-mode bypass' }
-      })
-    )
+    const typed = legacy({
+      agentYoloDefaultsMigrated: true,
+      agentPermissionMode: 'ask',
+      agentDefaultArgs: { devin: '--permission-mode bypass' }
+    })
+    const { profile } = migrateAgentLaunchProfile(typed)
 
-    expect(migrated).toBe(false)
     expect(profile.agentDefaultArgs?.devin).toBe('--permission-mode bypass')
-    expect(profile.agentDefaultArgs?.droid).toBeUndefined()
+    expect(profile.agentDefaultArgs?.droid).toBe('')
+    expect(migrateAgentLaunchProfile(legacy({ ...typed, ...profile })).migrated).toBe(false)
+  })
+
+  // An older build reads a missing entry as "launch with the bypass flag".
+  it('spells out every agent entry once, so a downgrade launches Manual', () => {
+    const typed = legacy({ agentPermissionMode: 'ask', agentDefaultArgs: {}, agentDefaultEnv: {} })
+
+    const first = migrateAgentLaunchProfile(typed)
+
+    expect(first.migrated).toBe(true)
+    for (const agent of PERMISSION_AGENT_IDS) {
+      if (YOLO_TUI_AGENT_ARGS[agent] !== undefined) {
+        expect(first.profile.agentDefaultArgs?.[agent]).toBe('')
+      }
+    }
+    expect(first.profile.agentDefaultEnv).toEqual({ goose: {} })
+    expect(migrateAgentLaunchProfile(legacy({ ...typed, ...first.profile })).migrated).toBe(false)
   })
 
   // An agent in Yolo through an alias launches Yolo, so it must not read as a Manual exception.
@@ -278,12 +293,12 @@ describe('migrateAgentLaunchProfile', () => {
       })
     )
 
-    const { profile, migrated } = migrateAgentLaunchProfile(stored)
+    const { profile } = migrateAgentLaunchProfile(stored)
 
-    expect(migrated).toBe(false)
     expect(profile.agentPermissionMode).toBe('accept-edits')
     expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass', gemini: 'plan' })
-    expect(profile.agentDefaultArgs).toEqual({ claude: '--model opus' })
+    expect(profile.agentDefaultArgs).toMatchObject({ claude: '--model opus', codex: '' })
+    expect(migrateAgentLaunchProfile({ ...stored, ...profile }).migrated).toBe(false)
     const loaded = { ...stored, ...profile }
     expect(loaded.agentPermissionMode).toBe('accept-edits')
     expect(resolveAgentPermissionMode('claude', loaded)).toBe('ask')

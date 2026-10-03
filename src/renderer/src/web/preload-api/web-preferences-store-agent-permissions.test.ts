@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SETTINGS_STORAGE_KEY } from './web-storage'
+import {
+  PERMISSION_AGENT_IDS,
+  YOLO_TUI_AGENT_ARGS,
+  YOLO_TUI_AGENT_ENV
+} from '../../../../shared/tui-agent-permissions'
 
 const runtimeMock = vi.hoisted(() => {
   const state: { reply: Record<string, unknown>; environment: { id: string } | null } = {
@@ -113,13 +118,38 @@ describe('web stored settings agent permissions', () => {
     expect(saved.agentPermissionMode).toBe('accept-edits')
   })
 
+  // The host serves the web bundle, so a host downgrade hands this blob to an older bundle, which
+  // reads a missing agent entry as "launch with the bypass flag".
+  it('saves explicit empty launch text so an older bundle launches a fresh Manual client in Manual', async () => {
+    const { createWebSettingsApi } = await import('./web-settings-api')
+    const api = createWebSettingsApi().settings
+
+    await api?.set({ agentPermissionMode: 'ask' })
+    // A write that names only some agents keeps the others spelled out.
+    await api?.set({ agentDefaultArgs: { claude: '--model opus' } })
+
+    const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
+    expect(saved.agentPermissionMode).toBe('ask')
+    expect(saved.agentDefaultArgs.claude).toBe('--model opus')
+    const bypassing = PERMISSION_AGENT_IDS.filter((agent) => {
+      const args = saved.agentDefaultArgs ?? {}
+      const env = saved.agentDefaultEnv ?? {}
+      const launchArgs = Object.hasOwn(args, agent) ? args[agent] : YOLO_TUI_AGENT_ARGS[agent]
+      const launchEnv = Object.hasOwn(env, agent) ? env[agent] : YOLO_TUI_AGENT_ENV[agent]
+      const flag = YOLO_TUI_AGENT_ARGS[agent]
+      return (flag && launchArgs?.includes(flag)) || launchEnv?.GOOSE_MODE === 'auto'
+    })
+    expect(bypassing).toEqual([])
+  })
+
   it('gives a fresh client the Yolo default', async () => {
     const { getStoredSettings } = await import('./web-preferences-store')
 
     const settings = getStoredSettings()
 
     expect(settings.agentPermissionMode).toBe('bypass')
-    expect(settings.agentDefaultArgs).toEqual({})
+    expect(settings.agentDefaultArgs).toMatchObject({ claude: '', codex: '' })
+    expect(settings.agentDefaultEnv).toEqual({ goose: {} })
   })
 
   // The host replies to settings.update with its own launch-ready args (flag inline).

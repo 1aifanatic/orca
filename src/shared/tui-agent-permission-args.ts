@@ -297,7 +297,7 @@ export function resolveAgentPermissionPosture(
   platform: NodeJS.Platform
 ): AgentPermissionPosture {
   const mode = resolveAgentPermissionMode(agent, settings)
-  // Why the local launch shell: quoted text or operands after `--` must not authorize a session.
+  // Why the local launch shell: it decides which words the agent receives from the typed text.
   const shell = resolveStartupShell(
     platform,
     resolveLocalWindowsAgentStartupShell({
