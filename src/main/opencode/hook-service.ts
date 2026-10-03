@@ -2,6 +2,7 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { join } from 'node:path'
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { mirrorEntry, safeRemoveOverlay } from '../pty/overlay-mirror'
+import { isSafeDescendCandidate, mirrorEntry, safeRemoveOverlay } from '../pty/overlay-mirror'
 import {
   getOpenCode2PluginSource,
   getOpenCodeFamilyPluginSource,
@@ -125,7 +126,13 @@ export class OpenCodeHookService {
     }
     const overlayDir = this.getSourceOverlayDir(existingConfigDir)
     try {
-      mkdirSync(overlayDir, { recursive: true })
+      // Owned directories must stay real; a replaced parent redirects both cleanup and writes.
+      for (const directory of [this.getOverlayRoot(), overlayDir, join(overlayDir, 'plugins')]) {
+        mkdirSync(directory, { recursive: true })
+        if (!isSafeDescendCandidate(lstatSync(directory))) {
+          return { OPENCODE_CONFIG_DIR: existingConfigDir }
+        }
+      }
       if (existsSync(existingConfigDir)) {
         this.mirrorUserConfig(existingConfigDir, overlayDir)
       }
