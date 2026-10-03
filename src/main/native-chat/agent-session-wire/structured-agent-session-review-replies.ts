@@ -11,7 +11,10 @@ import {
 import { agentSessionFailureFact, providerDiagnostic } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemIdentity
+} from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -46,9 +49,12 @@ export async function writeStructuredAgentSessionReviewReplyReceipt(
       ...agentSessionFailureWords(
         agentSessionFailureFact('reviewReplyFailed', detail ? { detail } : {}),
         { surface: 'row' }
-      )
+      ),
+      tone: 'error'
     },
-    { fence, turnScope: journal.liveTurnScope() }
+    // About the review, not the agent's turn: a turn's rows fold once it ends, and the agent's
+    // answer would fold this line with them.
+    { fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
 }
 

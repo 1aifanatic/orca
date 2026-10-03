@@ -245,6 +245,11 @@ async function receipt(clientMessageId: string) {
   return { written: journal?.itemWritten(itemId) ?? false, line: line?.body }
 }
 
+async function receiptItem(clientMessageId: string) {
+  const itemId = agentJournalItemKey(reviewReplyReceiptIdentity(clientMessageId))
+  return (await host.journalSnapshot(SESSION)).items.find((item) => item.itemId === itemId)
+}
+
 async function settledReceipt(clientMessageId: string) {
   await eventually(async () => expect((await receipt(clientMessageId)).written).toBe(true))
   return receipt(clientMessageId)
@@ -382,8 +387,11 @@ describe('a launch prompt with a review reply', () => {
     expect(line).toMatchObject({
       kind: 'status',
       text: "Orca couldn't mark the review comments sent with this message as being fixed. Resolve or reply to them yourself.",
-      failure: { kind: 'reviewReplyFailed', detail: { text: 'HTTP 401', audience: 'log' } }
+      failure: { kind: 'reviewReplyFailed', detail: { text: 'HTTP 401', audience: 'log' } },
+      // Shown as a failure, and outside the agent's turn, so the turn folding never hides it.
+      tone: 'error'
     })
+    expect((await receiptItem(id))?.turnScope).toEqual({ kind: 'thread' })
     // The rest still went through.
     expect(writes()).toBe(3)
 
