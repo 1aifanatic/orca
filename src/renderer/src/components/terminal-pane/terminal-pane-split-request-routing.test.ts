@@ -83,19 +83,17 @@ describe('parked terminal split request routing', () => {
       mounted = true
       return null
     })
-    const cleanup = installTerminalPaneMountEvents({
-      manager,
-      ptyDeps,
-      deps: {
-        tabId: 'tab-parked',
-        worktreeId: 'repo::/workspace',
-        isActive: false,
-        managerRef: { current: manager },
-        persistLayoutSnapshot: vi.fn(),
-        syncCanExpandState: vi.fn(),
-        queueResizeAll: vi.fn()
-      }
-    })
+    const mountDeps = {
+      tabId: 'tab-parked',
+      worktreeId: 'repo::/workspace',
+      isActive: false,
+      managerRef: { current: manager },
+      setPaneTitle: vi.fn(),
+      persistLayoutSnapshot: vi.fn(),
+      syncCanExpandState: vi.fn(),
+      queueResizeAll: vi.fn()
+    }
+    const cleanup = installTerminalPaneMountEvents({ manager, ptyDeps, deps: mountDeps })
     const request = {
       ...splitRequest('tab-parked'),
       worktreeId: 'repo::/workspace',
@@ -112,6 +110,7 @@ describe('parked terminal split request routing', () => {
       ptyId: 'pty-new'
     })
     expect(ptyDeps.startup).toBeNull()
+    expect(mountDeps.setPaneTitle).not.toHaveBeenCalled()
     cleanup()
     manager.destroy()
   })
