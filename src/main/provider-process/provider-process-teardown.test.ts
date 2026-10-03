@@ -4,7 +4,7 @@ import {
   findSelfInitiatedTreeKills,
   resetSelfInitiatedTreeKillLogForTest
 } from '../crash-reporting/self-initiated-tree-kill-log'
-import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
+import { terminateProviderProcessTree } from './provider-process-teardown'
 
 /** Above pid_max on every supported POSIX host, so the group signal is a real ESRCH. */
 const UNREACHABLE_PGID = 2_147_483_647
@@ -16,7 +16,7 @@ function child() {
   }
 }
 
-describe('terminateCodexAppServerProcessTree', () => {
+describe('terminateProviderProcessTree', () => {
   beforeEach(() => {
     resetSelfInitiatedTreeKillLogForTest()
   })
@@ -26,7 +26,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const release = Promise.withResolvers<void>()
     const terminateWindowsTree = vi.fn(() => release.promise)
 
-    const teardown = terminateCodexAppServerProcessTree(target, {
+    const teardown = terminateProviderProcessTree(target, {
       platform: 'win32',
       terminateWindowsTree
     })
@@ -43,7 +43,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const snapshot = { rootPgid: 1234, descendants: [], capturedAtMs: 1 }
     const release = Promise.withResolvers<boolean>()
 
-    const teardown = terminateCodexAppServerProcessTree(target, {
+    const teardown = terminateProviderProcessTree(target, {
       platform: 'darwin',
       captureDescendants: async () => snapshot,
       terminateDescendants: () => release.promise
@@ -62,7 +62,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const signalProcessGroup = vi.fn()
 
     await expect(
-      terminateCodexAppServerProcessTree(target, {
+      terminateProviderProcessTree(target, {
         platform: 'darwin',
         dedicatedProcessGroup: true,
         captureDescendants,
@@ -79,7 +79,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const target = child()
 
     await expect(
-      terminateCodexAppServerProcessTree(target, {
+      terminateProviderProcessTree(target, {
         platform: 'linux',
         dedicatedProcessGroup: true,
         signalProcessGroup: () => {
@@ -102,7 +102,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const target = { pid: UNREACHABLE_PGID, kill: vi.fn(() => true) as ChildProcess['kill'] }
 
     await expect(
-      terminateCodexAppServerProcessTree(target, {
+      terminateProviderProcessTree(target, {
         platform: 'darwin',
         captureDescendants: async () => ({
           rootPgid: UNREACHABLE_PGID,
@@ -122,7 +122,7 @@ describe('terminateCodexAppServerProcessTree', () => {
     const signalProcessGroup = vi.fn()
 
     await expect(
-      terminateCodexAppServerProcessTree(target, {
+      terminateProviderProcessTree(target, {
         platform: 'darwin',
         captureDescendants: async () => ({ rootPgid: 1234, descendants: [], capturedAtMs: 1 }),
         terminateDescendants: async () => true,
@@ -151,7 +151,7 @@ describe('terminateCodexAppServerProcessTree', () => {
 
     const results = await Promise.all(
       targets.map((target) =>
-        terminateCodexAppServerProcessTree(target, {
+        terminateProviderProcessTree(target, {
           platform: 'linux',
           dedicatedProcessGroup: true,
           captureDescendants,

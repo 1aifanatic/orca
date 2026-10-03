@@ -8,7 +8,7 @@ const activeTeardowns = new WeakMap<object, Promise<boolean>>()
 
 type TeardownChild = Pick<ChildProcessHandle, 'pid' | 'kill'>
 
-export type CodexAppServerProcessTeardownDeps = {
+export type ProviderProcessTeardownDeps = {
   platform?: NodeJS.Platform
   dedicatedProcessGroup?: boolean
   captureDescendants?: (rootPid: number) => Promise<DescendantSnapshot | null>
@@ -17,10 +17,7 @@ export type CodexAppServerProcessTeardownDeps = {
   signalProcessGroup?: (pgid: number, signal: NodeJS.Signals) => void
 }
 
-function terminateDedicatedPosixGroup(
-  rootPid: number,
-  deps: CodexAppServerProcessTeardownDeps
-): boolean {
+function terminateDedicatedPosixGroup(rootPid: number, deps: ProviderProcessTeardownDeps): boolean {
   const signalGroup =
     deps.signalProcessGroup ??
     ((pgid: number, signal: NodeJS.Signals) => process.kill(-pgid, signal))
@@ -41,7 +38,7 @@ function terminateDedicatedPosixGroup(
 async function terminatePosixTree(
   child: TeardownChild,
   rootPid: number,
-  deps: CodexAppServerProcessTeardownDeps
+  deps: ProviderProcessTeardownDeps
 ): Promise<boolean> {
   child.kill('SIGSTOP')
   const capture = deps.captureDescendants ?? captureDescendantSnapshot
@@ -87,10 +84,10 @@ async function terminatePosixTree(
   return true
 }
 
-/** Stops every process owned by one app-server launch before releasing its wrapper. */
+/** Stops every process owned by one provider launch before releasing its wrapper. */
 async function terminateOnce(
   child: TeardownChild,
-  deps: CodexAppServerProcessTeardownDeps
+  deps: ProviderProcessTeardownDeps
 ): Promise<boolean> {
   const rootPid = child.pid
   if (!rootPid) {
@@ -110,9 +107,9 @@ async function terminateOnce(
   return terminatePosixTree(child, rootPid, deps)
 }
 
-export function terminateCodexAppServerProcessTree(
+export function terminateProviderProcessTree(
   child: TeardownChild,
-  deps: CodexAppServerProcessTeardownDeps = {}
+  deps: ProviderProcessTeardownDeps = {}
 ): Promise<boolean> {
   const key = child as object
   const active = activeTeardowns.get(key)
