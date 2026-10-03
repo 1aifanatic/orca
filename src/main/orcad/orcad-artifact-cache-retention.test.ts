@@ -47,17 +47,19 @@ describe('orcad artifact cache retention', () => {
     }
   })
 
-  it('never evicts an in-use version, a repair copy of it, or a staging directory', async () => {
+  it('keeps an in-use version (even a repair copy) plus the two most recent others', async () => {
     const root = cacheRoot()
-    for (const age of [1, 2, 3]) {
-      slot(root, 'linux-x64-glibc', `v${age}`, age)
-    }
+    const recent = [1, 2].map((age) => slot(root, 'linux-x64-glibc', `v${age}`, age))
+    const third = slot(root, 'linux-x64-glibc', 'v3', 3)
     const inUse = slot(root, 'linux-x64-glibc', 'v-old.repair-1', 50)
     const staging = slot(root, 'linux-x64-glibc', '.staging-1-abc', 60)
 
-    expect(await pruneOrcadArtifactCache(root, { inUseVersions: new Set(['v-old']) })).toEqual([])
-    expect(existsSync(inUse)).toBe(true)
-    expect(existsSync(staging)).toBe(true)
+    expect(await pruneOrcadArtifactCache(root, { inUseVersions: new Set(['v-old']) })).toEqual([
+      third
+    ])
+    for (const path of [...recent, inUse, staging]) {
+      expect(existsSync(path)).toBe(true)
+    }
   })
 
   it('leaves the runtime archive cache and a missing root alone', async () => {

@@ -12,7 +12,7 @@ import { NODE_RUNTIME_ASSETS } from '../../shared/node-runtime-pin'
 import { ORCAD_LOCK_FILE_NAME, readOrcadInstanceLockRecord } from './orcad-instance-lock'
 import { materializedOrcadArtifactVersions } from '../ssh/orcad-artifact-materializer'
 
-/** The current slot plus the two most recent others. */
+/** The in-use slot plus the two most recent others (the newest three when none is in use). */
 export const ORCAD_ARTIFACT_CACHE_KEEP = 3
 
 const REPAIR_SUFFIX = /\.repair-\d+$/u
@@ -43,11 +43,17 @@ export async function pruneOrcadArtifactCache(
         .filter((name) => !name.startsWith('.'))
         .map(async (name) => ({ name, mtimeMs: await mtimeOf(join(targetRoot, name)) }))
     )
-    const byRecency = slots
-      .filter((slot): slot is { name: string; mtimeMs: number } => slot.mtimeMs !== null)
+    const present = slots.filter(
+      (slot): slot is { name: string; mtimeMs: number } => slot.mtimeMs !== null
+    )
+    const isInUse = (name: string): boolean => inUse.has(name.replace(REPAIR_SUFFIX, ''))
+    // The in-use version counts toward `keep`; with none in use, the newest stands in for it.
+    const othersToKeep = present.some((slot) => isInUse(slot.name)) ? keep - 1 : keep
+    const others = present
+      .filter((slot) => !isInUse(slot.name))
       .sort((left, right) => right.mtimeMs - left.mtimeMs)
-    for (const [index, slot] of byRecency.entries()) {
-      if (index < keep || inUse.has(slot.name.replace(REPAIR_SUFFIX, ''))) {
+    for (const [index, slot] of others.entries()) {
+      if (index < othersToKeep) {
         continue
       }
       const path = join(targetRoot, slot.name)
