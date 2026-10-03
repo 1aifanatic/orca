@@ -30,8 +30,9 @@ export function setWslGuestCodexHookOptOutSources(next: WslGuestCodexHookOptOutS
 }
 
 /**
- * Pure: no canonical-path probe, since the withdrawal sweeps Orca's guest trust
- * under any path, and probing would spawn wsl.exe once per running distro.
+ * Pure: no canonical-path probe (one wsl.exe spawn per running distro). The
+ * withdrawal's sweep removes Orca's guest trust under any Linux path whose hash
+ * Orca computes itself or the home's grant ledger recorded from Codex.
  */
 export function createWslGuestCodexHookOptOutPlan({
   distro,
