@@ -12,10 +12,14 @@ export type NativeChatResolvedTarget = {
  *  pathological clipboard can't stall the round-trip. */
 export const NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES = 16 * 1024 * 1024
 
+/** How a message sent while the chat reads Stopping goes out: as a queued card, or sent for the
+ *  host to hold until the stop lands. */
+export type NativeChatAfterStopSend = 'queue' | 'send'
+
 export function nativeChatComposerPlaceholder(
   hasPty: boolean,
   canSend: boolean,
-  queuesAfterStop = false
+  afterStop?: NativeChatAfterStopSend
 ): string {
   if (!hasPty) {
     return translate(
@@ -26,10 +30,16 @@ export function nativeChatComposerPlaceholder(
   if (!canSend) {
     return translate('components.native-chat.composer.locked', 'Input is held by another device.')
   }
-  if (queuesAfterStop) {
+  if (afterStop === 'queue') {
     return translate(
       'components.native-chat.status.queueAfterStop',
       NATIVE_CHAT_TURN_STATUS_COPY.queueAfterStop
+    )
+  }
+  if (afterStop === 'send') {
+    return translate(
+      'components.native-chat.status.sendAfterStop',
+      NATIVE_CHAT_TURN_STATUS_COPY.sendAfterStop
     )
   }
   return translate('components.native-chat.composer.placeholder', 'Send a message…')

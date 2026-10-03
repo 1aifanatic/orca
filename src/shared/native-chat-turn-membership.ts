@@ -223,16 +223,21 @@ function anchoringUserItems(recordKeys: ReadonlyMap<string, string | null>): Rea
 /**
  * The rows accepted but not yet handed over while a conversation command's turn runs, as a message
  * sent during `/compact` is: the host hands nothing over until the command ends, so they draw after
- * that turn's live activity. Any other running turn takes a send within moments, so it stays put.
+ * that turn's live activity. Any other running turn takes a send within moments, so it stays put,
+ * unless a person's Stop is ending it (`stopping`): the host holds every send until it ends, so
+ * those, and sends it has not answered yet, draw after the live activity too.
  */
 export function nativeChatMessagesWaitingBehindLiveTurn(
-  messages: readonly { id: string; queued?: true }[],
-  items: readonly AgentJournalRenderItem[] | null | undefined
+  messages: readonly { id: string; queued?: true; outgoing?: true }[],
+  items: readonly AgentJournalRenderItem[] | null | undefined,
+  stopping = false
 ): ReadonlySet<string> {
-  const queued = messages.filter((message) => message.queued === true)
+  const waits = (message: (typeof messages)[number]): boolean =>
+    message.queued === true || (stopping && message.outgoing === true)
+  const waiting = messages.filter(waits)
   return new Set(
-    queued.length > 0 && items && commandTurnRunning(items)
-      ? queued.map((message) => message.id)
+    waiting.length > 0 && items && (stopping || commandTurnRunning(items))
+      ? waiting.map((message) => message.id)
       : []
   )
 }

@@ -5,7 +5,8 @@ import type { MobileNativeChatInputLockReason } from './MobileNativeChatView'
  *  Stop the chat reads as stopping, else the usual prompt. */
 export function mobileNativeChatComposerPlaceholder(
   lockReason: MobileNativeChatInputLockReason | null,
-  stopping: boolean
+  /** While stopping: whether a message sent now is queued, or sent for the host to hold. */
+  afterStop: 'queue' | 'send' | undefined
 ): string {
   if (lockReason === 'disconnected') {
     return 'Reconnecting…'
@@ -13,5 +14,10 @@ export function mobileNativeChatComposerPlaceholder(
   if (lockReason === 'waiting') {
     return 'Waiting for terminal…'
   }
-  return stopping ? NATIVE_CHAT_TURN_STATUS_COPY.queueAfterStop : 'Message, @files, /commands'
+  if (afterStop) {
+    return afterStop === 'queue'
+      ? NATIVE_CHAT_TURN_STATUS_COPY.queueAfterStop
+      : NATIVE_CHAT_TURN_STATUS_COPY.sendAfterStop
+  }
+  return 'Message, @files, /commands'
 }

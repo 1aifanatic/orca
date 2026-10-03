@@ -88,7 +88,7 @@ export function createStructuredSessionMocks() {
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
       isStopping?: boolean
-      queuesAfterStop?: boolean
+      afterStop?: 'queue' | 'send'
       steerQueued?: () => boolean
       onStop?: () => void
     }>(),
@@ -109,6 +109,7 @@ export function createStructuredSessionMocks() {
     // Unset: Stop follows the turn, as against an older host.
     canStop: nullable<boolean>(),
     stopPressed: false,
+    queueCapable: false,
     supportsBackgroundTaskStop: false,
     supportsBackgroundTaskStopAll: true,
     backgroundTasks: [] as AgentSessionBackgroundTask[],
@@ -195,6 +196,7 @@ export function createStructuredSessionMocks() {
             turnId: mocks.turnId,
             canStop: mocks.canStop ?? mocks.turnId !== null,
             stopPressed: mocks.stopPressed,
+            queueCapable: mocks.queueCapable,
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
@@ -329,6 +331,7 @@ export function createStructuredSessionMocks() {
     mocks.turnId = null
     mocks.canStop = null
     mocks.stopPressed = false
+    mocks.queueCapable = false
     mocks.supportsBackgroundTaskStop = false
     mocks.supportsBackgroundTaskStopAll = true
     mocks.stopBackgroundTask.mockReset()

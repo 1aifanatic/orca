@@ -10,8 +10,10 @@ export const NATIVE_CHAT_TURN_STATUS_COPY = {
   thinking: 'Thinking',
   working: 'Working…',
   stopping: 'Stopping…',
-  /** The composer's placeholder while the chat reads Stopping. */
+  /** The composer's placeholder while the chat reads Stopping, where the host queues sends. */
   queueAfterStop: 'Queue a message to run after the stop',
+  /** The same where it does not: the host holds the send until the stop lands. */
+  sendAfterStop: 'Send a message to run after the stop',
   workingFor: 'Working for {{value0}}',
   workedFor: 'Worked for {{value0}}',
   interruptedAfter: 'Interrupted after {{value0}}',
@@ -82,6 +84,9 @@ export type NativeChatLiveTurnIndicator = {
   stopping?: boolean
   /** This client's own Stop request is in flight: only then does its Stop control hold. */
   stopRequestInFlight?: boolean
+  /** While stopping: a message sent now is queued as a card where the host queues sends, else sent
+   *  for the host to hold until the stop lands. */
+  afterStop?: 'queue' | 'send'
 }
 
 export type NativeChatActiveTurnLabel =

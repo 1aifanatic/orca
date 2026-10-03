@@ -282,6 +282,7 @@ export function MobileNativeChatView({
     turnJournal,
     thinking: turnIndicator?.thinking === true,
     activityText: turnIndicator?.activityText ?? null,
+    stopping,
     scopeKey: sendSurfaceId
   })
   const hasPendingStructuredInteraction =
@@ -457,7 +458,7 @@ export function MobileNativeChatView({
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
         disabled={lockReason !== null}
-        placeholder={mobileNativeChatComposerPlaceholder(lockReason, stopping)}
+        placeholder={mobileNativeChatComposerPlaceholder(lockReason, turnIndicator?.afterStop)}
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}
       />

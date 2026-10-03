@@ -185,8 +185,14 @@ export function useMobileStructuredAgentSession(args: {
     }) === 'stopping'
   const stopRequestInFlight = isWorking && stopPress.pressed
   const turnIndicator = useMemo(
-    () => ({ thinking, activityText, stopping, stopRequestInFlight }),
-    [thinking, activityText, stopping, stopRequestInFlight]
+    () => ({
+      thinking,
+      activityText,
+      stopping,
+      stopRequestInFlight,
+      ...(stopping ? { afterStop: queueCapable ? ('queue' as const) : ('send' as const) } : {})
+    }),
+    [thinking, activityText, stopping, stopRequestInFlight, queueCapable]
   )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(

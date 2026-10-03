@@ -179,7 +179,12 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
     expect(hook?.turnIndicator.stopping).toBe(false)
 
     act(() => hook?.cancel())
-    expect(hook?.turnIndicator).toMatchObject({ stopping: true, stopRequestInFlight: true })
+    // This host does not queue sends: a message sent now is held by the host until the stop lands.
+    expect(hook?.turnIndicator).toMatchObject({
+      stopping: true,
+      stopRequestInFlight: true,
+      afterStop: 'send'
+    })
 
     await act(async () => {
       const cancelled = { ok: true, value: { cancelled: true } }

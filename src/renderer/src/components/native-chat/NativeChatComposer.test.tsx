@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
     attachDisabled?: boolean
     sendButtonDisabled?: boolean
     isStopping?: boolean
-    queuesAfterStop?: boolean
+    afterStop?: 'queue' | 'send'
     autocomplete?: { mode: string; items?: { kind: string; name: string }[] }
   } | null,
   modelSwitchOutcome: 'applied' as 'applied' | 'rejected' | 'unknown',
@@ -264,8 +264,8 @@ describe('NativeChatComposer', () => {
 
     expect(mocks.fieldProps).toMatchObject({ sendButtonDisabled: true, isStopping: true })
     // Answered: Stop is back, and the placeholder says a message sent now runs after the stop.
-    rerender(<NativeChatComposer {...props} queuesAfterStop />)
-    expect(mocks.fieldProps).toMatchObject({ sendButtonDisabled: false, queuesAfterStop: true })
+    rerender(<NativeChatComposer {...props} afterStop="send" />)
+    expect(mocks.fieldProps).toMatchObject({ sendButtonDisabled: false, afterStop: 'send' })
   })
 
   it('associates a delayed submit with its optimistic cache entry', () => {

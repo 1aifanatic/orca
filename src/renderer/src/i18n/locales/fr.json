@@ -17662,6 +17662,7 @@
         "working": "Fonctionnement…",
         "stopping": "Arrêt en cours…",
         "queueAfterStop": "Mettez un message en file d'attente pour l'exécuter après l'arrêt",
+        "sendAfterStop": "Envoyez un message pour l'exécuter après l'arrêt",
         "thinking": "Réflexion",
         "workingFor": "En cours depuis {{value0}}",
         "workedFor": "A travaillé pendant {{value0}}",

@@ -66,3 +66,45 @@ describe("the turn bar while a person's Stop ends the turn", () => {
     expect(screen.getAllByText(/Stopping/)).toHaveLength(1)
   })
 })
+
+// Where the host does not queue sends, one made while Stopping is held until the turn ends: it is
+// drawn after the Stopping line, not inside the turn being stopped.
+describe('a message sent while Stopping, before the host has handed it over', () => {
+  const pending = {
+    id: 'pending-send',
+    role: 'user' as const,
+    outgoing: true as const,
+    blocks: [{ type: 'text' as const, text: 'Run this after the stop' }],
+    timestamp: Date.now(),
+    source: 'transcript' as const
+  }
+
+  function renderList(stopping: boolean): void {
+    render(
+      <NativeChatMessageList
+        session={{ ...session, messages: [...session.messages, pending] }}
+        journalItems={[journalItem(1, turnItem)]}
+        isWorking
+        stopping={stopping}
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+  }
+
+  it('draws after the Stopping line', () => {
+    renderList(true)
+
+    const stopping = screen.getByText('Stopping…')
+    const sent = screen.getByText('Run this after the stop')
+    expect(stopping.compareDocumentPosition(sent)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it('stays in the turn while nothing is stopping', () => {
+    renderList(false)
+
+    const sent = screen.getByText('Run this after the stop')
+    const working = screen.getByText('Working…')
+    expect(sent.compareDocumentPosition(working)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+})

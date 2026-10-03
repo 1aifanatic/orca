@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
-// A message sent while the chat reads Stopping, through the chat's own send and its real outbox:
-// the request asks the host to queue it, whatever the queueing setting, and the transcript draws
-// no bubble of it inside the turn the Stop is ending.
+// A message sent while the chat reads Stopping, through the chat's own send and its real outbox.
+// Where the host queues sends, the request asks it to, whatever the queueing setting, and the
+// transcript draws no bubble of it. Where it does not, the send goes out plain, for the host to hold
+// until the stop lands, and is drawn as this client's outgoing message, after the Stopping line.
 
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -68,8 +69,8 @@ afterEach(() => {
   mocks.call.mockReset()
 })
 
-it('asks the host to queue a send made while the host reads Stopping, and draws no bubble', async () => {
-  const { result } = renderHook(() =>
+function renderStopping() {
+  return renderHook(() =>
     useStructuredAgentSession({
       sessionId: 'session-1',
       agent: 'codex',
@@ -80,10 +81,29 @@ it('asks the host to queue a send made while the host reads Stopping, and draws 
       hostStopping: true
     })
   )
+}
+
+it('asks the host to queue a send made while the host reads Stopping, and draws no bubble', async () => {
+  const { result } = renderStopping()
 
   expect(result.current.send('run this after the stop')).toBe(true)
 
   await waitFor(() => expect(sends()).toHaveLength(1))
   expect(sends()[0]?.delivery).toBe('queue-if-active')
   expect(JSON.stringify(result.current.messages)).not.toContain('run this after the stop')
+})
+
+it('sends plain where the host does not queue sends, drawn as an outgoing message', async () => {
+  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
+  const { result } = renderStopping()
+
+  expect(result.current.send('run this after the stop')).toBe(true)
+
+  await waitFor(() => expect(sends()).toHaveLength(1))
+  expect(sends()[0]).not.toHaveProperty('delivery')
+  expect(
+    result.current.messages.find((message) =>
+      JSON.stringify(message.blocks).includes('run this after the stop')
+    )
+  ).toMatchObject({ role: 'user', outgoing: true })
 })

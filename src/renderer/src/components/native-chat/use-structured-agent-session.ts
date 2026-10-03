@@ -259,6 +259,8 @@ export function useStructuredAgentSession(args: {
         : Promise.resolve(null)
     },
     queuedMessages: queuedController,
+    /** The host holds a send made while the agent works as a queued card. */
+    queueCapable,
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
       // older hosts reject the strict prompt field.

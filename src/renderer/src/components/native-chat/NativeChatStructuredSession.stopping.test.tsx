@@ -85,11 +85,23 @@ describe("the chat pane while a person's Stop ends the turn", () => {
 
     // A Stop the provider took and never answered (a Codex command) ends only at a second Stop.
     await waitFor(() => expect(mocks.messageListProps).toMatchObject({ stopping: true }))
-    expect(mocks.composerProps).toMatchObject({ isStopping: false, queuesAfterStop: true })
+    // The queue is dark here: the message is sent, and the host holds it until the stop lands.
+    expect(mocks.composerProps).toMatchObject({ isStopping: false, afterStop: 'send' })
     // Nothing steers into a turn a Stop is ending.
     expect(mocks.composerProps?.steerQueued).toBeUndefined()
     mocks.composerProps?.onStop?.()
     expect(mocks.stop).toHaveBeenCalledOnce()
+  })
+
+  it('says a message is queued to run after the stop only where the host queues sends', async () => {
+    mocks.turnId = 'turn-1'
+    mocks.queueCapable = true
+    renderPane()
+    await waitFor(() => expect(hostStatus.emit).not.toBeNull())
+
+    hostSays(true)
+
+    await waitFor(() => expect(mocks.composerProps).toMatchObject({ afterStop: 'queue' }))
   })
 
   it("holds a queued card's Steer while the host says Stopping", async () => {
@@ -123,7 +135,8 @@ describe("the chat pane while a person's Stop ends the turn", () => {
     mocks.turnId = 'turn-1'
     renderPane()
 
-    expect(mocks.composerProps).toMatchObject({ isStopping: false, queuesAfterStop: false })
+    expect(mocks.composerProps).toMatchObject({ isStopping: false })
+    expect(mocks.composerProps?.afterStop).toBeUndefined()
     expect(mocks.composerProps?.steerQueued).toBe(mocks.queuedSteerNewest)
     mocks.composerProps?.onStop?.()
     expect(mocks.stop).toHaveBeenCalledOnce()

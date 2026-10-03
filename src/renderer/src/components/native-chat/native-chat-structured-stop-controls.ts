@@ -1,9 +1,10 @@
 import { agentStopDisplayStatus } from '../../../../shared/agent-stop-display-status'
 import type { useStructuredAgentSession } from './use-structured-agent-session'
+import type { NativeChatAfterStopSend } from './native-chat-composer-target'
 
 type StopController = Pick<
   ReturnType<typeof useStructuredAgentSession>,
-  'canStop' | 'stopPressed' | 'stop' | 'queuedMessages'
+  'canStop' | 'stopPressed' | 'stop' | 'queuedMessages' | 'queueCapable'
 >
 
 /**
@@ -21,7 +22,7 @@ export function nativeChatStructuredStopControls(
     isStopping: boolean
     onStop: () => void
     steerQueued: (() => boolean) | undefined
-    queuesAfterStop: boolean
+    afterStop: NativeChatAfterStopSend | undefined
   }
 } {
   const stopping =
@@ -37,7 +38,7 @@ export function nativeChatStructuredStopControls(
       isStopping: stopInFlight,
       onStop: () => void (stopInFlight || controller.stop()),
       steerQueued: stopping ? undefined : controller.queuedMessages.steerNewest,
-      queuesAfterStop: stopping
+      afterStop: stopping ? (controller.queueCapable ? 'queue' : 'send') : undefined
     }
   }
 }

@@ -59,7 +59,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       canSend = true,
       isWorking = false,
       isStopping = false,
-      queuesAfterStop = false,
+      afterStop,
       onStop,
       onOptimisticSend,
       optimisticSendOutcome,
@@ -375,7 +375,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         sendButtonDisabled={sendButtonDisabled}
         isWorking={isWorking}
         isStopping={isStopping}
-        queuesAfterStop={queuesAfterStop}
+        afterStop={afterStop}
         attachDisabled={disabled}
         dictationDisabled={dictationDisabled}
         isDictating={isDictating}
