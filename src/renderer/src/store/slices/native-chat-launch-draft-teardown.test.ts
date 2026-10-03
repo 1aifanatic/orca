@@ -163,6 +163,19 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
     expect(patch.nativeChatLaunchDraftByTabId[TAB2]).toBeDefined()
   })
 
+  it('removing a worktree drops the unsent composer drafts of its tabs only', async () => {
+    const store = createTestStore()
+    seedDrafts(store)
+    updateNativeChatComposerDraft(`${TAB1}:leaf-a`, { text: 'unsent' }, 'immediate')
+    updateNativeChatComposerDraft(`${TAB2}:leaf-a`, { text: 'kept' }, 'immediate')
+
+    const result = await store.getState().removeWorktree({ id: WT1, executionHostId: null })
+
+    expect(result).toEqual({ ok: true })
+    expect(readNativeChatComposerDraft(`${TAB1}:leaf-a`).text).toBe('')
+    expect(readNativeChatComposerDraft(`${TAB2}:leaf-a`).text).toBe('kept')
+  })
+
   it('a user tab close drops the unsent composer drafts of that tab’s panes only', () => {
     const store = createTestStore()
     seedDrafts(store)

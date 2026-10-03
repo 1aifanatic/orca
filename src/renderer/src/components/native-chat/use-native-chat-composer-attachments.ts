@@ -55,12 +55,6 @@ export function useNativeChatComposerAttachments({
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
     () => readNativeChatAttachmentCache(attachmentScopeKey)
   )
-  // Reused for another pane: show that pane's chips, so a later change never saves these over them.
-  const [shownScopeKey, setShownScopeKey] = useState(attachmentScopeKey)
-  if (shownScopeKey !== attachmentScopeKey) {
-    setShownScopeKey(attachmentScopeKey)
-    setImageAttachments(readNativeChatAttachmentCache(attachmentScopeKey))
-  }
   // The chips shown, so each change is computed and saved where it happens, not in a state updater.
   const imageAttachmentsRef = useRef(imageAttachments)
   useLayoutEffect(() => {
@@ -81,12 +75,15 @@ export function useNativeChatComposerAttachments({
     (
       updater: (
         previous: NativeChatComposerImageAttachment[]
-      ) => NativeChatComposerImageAttachment[]
+      ) => NativeChatComposerImageAttachment[],
+      save = true
     ) => {
       const next = updater(imageAttachmentsRef.current)
       imageAttachmentsRef.current = next
       setImageAttachments(next)
-      writeNativeChatAttachmentCache(attachmentScopeKey, next)
+      if (save) {
+        writeNativeChatAttachmentCache(attachmentScopeKey, next)
+      }
     },
     [attachmentScopeKey]
   )
@@ -193,7 +190,9 @@ export function useNativeChatComposerAttachments({
 
   const dropPendingImageAttachment = useCallback(
     (id: string) => {
-      updateImageAttachments((prev) => removeAttachmentById(prev, id))
+      // Why no save: a pending chip was never saved, and a late drop from an unmounted composer
+      // would write its stale chips over what a newer composer sent.
+      updateImageAttachments((prev) => removeAttachmentById(prev, id), false)
     },
     [updateImageAttachments]
   )

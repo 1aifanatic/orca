@@ -182,31 +182,55 @@ describe('native-chat composer draft lifecycle', () => {
     expect(storedDraft('tab-1:pane')).toBeNull()
   })
 
-  it('shows the next pane’s saved chips when reused for it, and adds to them', async () => {
-    localStorage.setItem(
-      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-2:pane')}`,
-      JSON.stringify({ text: 'b caption', images: [{ id: 'b1', path: '/repo/b.png' }], savedAt: 1 })
-    )
+  it('does not bring back a sent image when a paste from a replaced composer is dropped late', async () => {
     const hooks = await loadHooks()
-    const seen: { api?: ComposerApi } = {}
-    const Composer = composer(hooks, (next) => {
-      seen.api = next
-    })
-    await mount(createElement(Composer, { scopeKey: 'tab-1:pane' }))
+    const first: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => {
+          first.api = next
+        }),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    await act(async () => first.api?.attachments.attachResolvedPaths(['/repo/x.png']))
+    const pending: { id?: string | null } = {}
     await act(async () => {
-      seen.api?.attachments.attachResolvedPaths(['/repo/a.png'])
+      pending.id = first.api?.attachments.beginPendingImageAttachment('data:image/png;base64,AA')
     })
-    await act(async () => root?.render(createElement(Composer, { scopeKey: 'tab-2:pane' })))
-    expect(seen.api).toMatchObject({ attachments: { imageAttachments: [{ id: 'b1' }] } })
+    expect(pending.id).toBeTruthy()
+    const stale = first.api
+    // The composer is replaced while the paste is still being saved.
+    await unmount()
+    const second: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => {
+          second.api = next
+        }),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    expect(second.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
+      '/repo/x.png'
+    ])
+    await act(async () => second.api?.attachments.clearImageAttachments())
+    await unmount()
 
-    await act(async () => {
-      seen.api?.attachments.attachResolvedPaths(['/repo/c.png'])
-    })
-    expect(storedDraft('tab-2:pane')).toMatchObject({
-      text: 'b caption',
-      images: [{ id: 'b1', path: '/repo/b.png' }, { path: '/repo/c.png' }]
-    })
-    expect(storedDraft('tab-1:pane')).toMatchObject({ images: [{ path: '/repo/a.png' }] })
+    // The paste's save fails late in the replaced composer, which drops its placeholder.
+    stale?.attachments.dropPendingImageAttachment(pending.id ?? '')
+
+    expect(storedDraft('tab-1:pane')).toBeNull()
+    const third: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => {
+          third.api = next
+        }),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    expect(third.api?.attachments.imageAttachments).toEqual([])
   })
 
   it('does not bring back an untouched launch link after a reload, when no seed is left to replace it', async () => {

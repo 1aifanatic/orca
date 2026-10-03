@@ -5,6 +5,7 @@
 
 import type { JSONContent } from '@tiptap/react'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
   clearStoredNativeChatComposerDraftsForTests,
   enforceStoredNativeChatComposerDraftBounds,
@@ -69,16 +70,26 @@ function nextSavedAt(): number {
   return lastSavedAt
 }
 
-function writeRecord(storage: Storage, scopeKey: string, record: DraftRecord): void {
+/** What storage keeps: not an unsaved launch-seed copy, and not a pasted image, whose temp file
+ *  and read grant need not outlive this run. Null when nothing is left. */
+function savedForm(record: DraftRecord): StoredNativeChatComposerDraft | null {
   const { unsavedText, ...saved } = record
-  if (saved.text === unsavedText && saved.images.length === 0) {
+  const images = saved.images.filter((image) => !isNativeChatPastedImagePath(image.path))
+  const text = saved.text === unsavedText ? '' : saved.text
+  if (text === '' && images.length === 0) {
+    return null
+  }
+  return text === saved.text ? { ...saved, images } : { text, images, savedAt: saved.savedAt }
+}
+
+function writeRecord(storage: Storage, scopeKey: string, record: DraftRecord): void {
+  const saved = savedForm(record)
+  if (!saved) {
     removeStoredNativeChatComposerDraft(storage, nativeChatComposerDraftStorageKey(scopeKey))
     dirtyScopes.delete(scopeKey)
     return
   }
-  const stored =
-    saved.text === unsavedText ? { text: '', images: saved.images, savedAt: saved.savedAt } : saved
-  if (writeStoredNativeChatComposerDraft(storage, scopeKey, stored)) {
+  if (writeStoredNativeChatComposerDraft(storage, scopeKey, saved)) {
     dirtyScopes.delete(scopeKey)
   }
 }

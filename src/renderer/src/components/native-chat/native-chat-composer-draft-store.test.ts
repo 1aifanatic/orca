@@ -81,7 +81,7 @@ function storedDraft(scopeKey: string): Record<string, unknown> | null {
 
 const IMAGES = [
   { id: 'a-1', path: '/repo/shot.png' },
-  { id: 'a-2', path: '/tmp/orca-paste-1.png', connectionId: 'ssh-1' }
+  { id: 'a-2', path: '/remote/repo/diagram.png', connectionId: 'ssh-1' }
 ]
 
 const SKILL_DOCUMENT = {
@@ -143,6 +143,29 @@ describe('native-chat composer draft store', () => {
     const reloaded = await reload()
     expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe('withdrawn by Stop')
     expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual(IMAGES)
+  })
+
+  it('keeps a pasted image for this run only, and still saves the files the user attached', async () => {
+    const pasted = { id: 'p-1', path: '/var/folders/T/orca-paste-1-0f.png' }
+    modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', [pasted, IMAGES[0]])
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'caption')
+    modules.store.flushNativeChatComposerDrafts()
+
+    expect(modules.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      pasted,
+      IMAGES[0]
+    ])
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'caption', images: [IMAGES[0]] })
+    const reloaded = await reload()
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([IMAGES[0]])
+  })
+
+  it('stores nothing for a draft that holds only a pasted image', () => {
+    modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', [
+      { id: 'p-1', path: '/tmp/orca-paste-1-0f.png', connectionId: 'ssh-1' }
+    ])
+
+    expect(storedDraftKeys()).toEqual([])
   })
 
   it('appends a given-back message after a draft restored from a reload', async () => {
