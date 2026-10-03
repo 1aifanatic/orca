@@ -7,9 +7,11 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+type ReadHold = { sessionId: string; target: unknown; released: boolean }
+
 const mocks = vi.hoisted(() => ({
   hostRunsReviewReplies: vi.fn(async () => true),
-  readHolds: [] as { sessionId: string; target: unknown; released: boolean }[],
+  readHolds: new Array<ReadHold>(),
   launchAgentInNewTab: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn()
