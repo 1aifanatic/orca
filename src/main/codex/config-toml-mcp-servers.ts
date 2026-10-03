@@ -6,7 +6,7 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 
-export type McpServerTomlOwnership = {
+type McpServerTomlOwnership = {
   names: ReadonlySet<string>
   ownsRoot: boolean
 }
