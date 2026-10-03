@@ -223,6 +223,13 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   foldedJournalPosition?: AgentJournalPosition
 }
 
+/** Split reasoning and its answer share the provider's row identity. */
+export function nativeChatSemanticRowId(message: NativeChatMessage): string {
+  return message.role === 'reasoning' && message.id.endsWith(':reasoning')
+    ? message.id.slice(0, -':reasoning'.length)
+    : message.id
+}
+
 export const NATIVE_CHAT_TURN_LIFECYCLE_STATES = ['working', 'completed', 'interrupted'] as const
 export type NativeChatTurnLifecycleState = (typeof NATIVE_CHAT_TURN_LIFECYCLE_STATES)[number]
 
