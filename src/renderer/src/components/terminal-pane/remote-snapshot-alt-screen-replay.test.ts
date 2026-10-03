@@ -82,6 +82,8 @@ const AGENT_FRAME = '\x1b[H\x1b[2;1HNo\x1b[1Cnotice\x1b[1Ctoday'
 // Remote image shapes: the normal buffer folded in, then the image enters alt itself.
 // Pushes carry only the screen; requested snapshots also carry history.
 const PUSHED_IMAGE = `SETUP-OUTPUT-9\r\n$ claude\x1b[0m\x1b[?1049h${AGENT_FRAME}`
+// What the multiplexer hands the pane for a recovery push (its own screen clear first).
+const RECOVERY_PAYLOAD = `\x1b[?2026l\x1b[2J\x1b[H${PUSHED_IMAGE}`
 const REQUESTED_IMAGE = `${SETUP_HISTORY}\r\n$ claude\x1b[0m\x1b[?1049h${AGENT_FRAME}`
 
 function bufferLines(term: Terminal, which: 'normal' | 'alternate'): string[] {
@@ -149,7 +151,7 @@ describe('remote snapshot replay onto a live alt screen', () => {
   // is on the agent's alt screen. Cleared in place, the image's normal screen (old setup
   // output) painted into the agent's screen, under its next paints.
   it('repaints a pushed image exactly and keeps the history the TUI covers', async () => {
-    const writes = await drainOntoLiveAltScreen(PUSHED_IMAGE, { carriesNormalBuffer: true })
+    const writes = await drainOntoLiveAltScreen(RECOVERY_PAYLOAD, { carriesNormalBuffer: true })
     const client = await render([LIVE_PANE, ...writes])
     const fresh = await render([PUSHED_IMAGE])
     try {
