@@ -6,7 +6,11 @@ import {
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
 } from './tui-agent-permissions'
-import { bypassFlagBeside, classifyTypedAgentPermissions } from './tui-agent-permission-args'
+import {
+  agentLaunchesInBypass,
+  bypassFlagBeside,
+  classifyTypedAgentPermissions
+} from './tui-agent-permission-args'
 import type { TuiAgent } from './tui-agent'
 
 const UNSUPPORTED_TUI_AGENT_ARGS: Partial<Record<TuiAgent, readonly string[]>> = {
@@ -111,6 +115,8 @@ export function normalizeStoredAgentLaunchEnv(
 /**
  * The one place a permission mode becomes a CLI flag: the mode's flag, then the extra text.
  * Extra text that sets permissions itself decides alone — a repeated or conflicting flag stops clap CLIs.
+ * Per-launch text replaces the configured text but not the agent's effective mode: one whose
+ * configured Arguments ask (Codex `-a on-request`) gets no flag, one that bypasses by alias does.
  */
 export function resolveTuiAgentLaunchArgs(
   agent: TuiAgent,
@@ -123,7 +129,7 @@ export function resolveTuiAgentLaunchArgs(
   ).trim()
   if (
     !YOLO_TUI_AGENT_ARGS[agent] ||
-    resolveAgentPermissionMode(agent, settings) !== 'bypass' ||
+    !agentLaunchesInBypass(agent, settings) ||
     classifyTypedAgentPermissions(agent, { args: extra }).kind !== 'none'
   ) {
     return extra

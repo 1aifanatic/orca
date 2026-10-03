@@ -181,10 +181,3 @@ export function resolveAgentPermissionMode(
     ? resolveDefaultAgentPermissionMode(settings)
     : readStoredMode(override)
 }
-
-/** The Settings switch: one mode for every agent, replacing any per-agent choice. */
-export function applyAgentPermissionModeToAll(
-  mode: AgentPermissionMode
-): Required<AgentPermissionSettingsFields> {
-  return { agentPermissionMode: mode, agentPermissionModeOverrides: {} }
-}

@@ -9,10 +9,7 @@ import type { EventProps } from '../../../../shared/telemetry-events'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { OnboardingState } from '../../../../shared/onboarding-state-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import {
-  applyAgentPermissionModeToAll,
-  resolveDefaultAgentPermissionMode
-} from '../../../../shared/tui-agent-permissions'
+import { resolveDefaultAgentPermissionMode } from '../../../../shared/tui-agent-permissions'
 import type { StepId, StepNumber } from './use-onboarding-flow-types'
 
 export async function persistStep(
@@ -172,9 +169,9 @@ export function usePersistCurrentStep({
         const permissionMode = yoloPermissions ? 'bypass' : 'ask'
         await updateSettings({
           defaultTuiAgent,
-          // Why: an unchanged answer must not wipe per-agent choices made in Settings.
+          // Only the shared default, like the Settings switch; per-agent choices stay.
           ...(permissionMode !== resolveDefaultAgentPermissionMode(settings)
-            ? applyAgentPermissionModeToAll(permissionMode)
+            ? { agentPermissionMode: permissionMode }
             : {})
         })
         const choseAgent = defaultTuiAgent !== 'blank'

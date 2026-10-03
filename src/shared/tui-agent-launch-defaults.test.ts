@@ -111,6 +111,35 @@ describe('resolveTuiAgentLaunchArgs', () => {
     )
   })
 
+  // Per-launch text (Source Control, fix-checks) replaces the configured text, not the effective
+  // mode the agent's card shows.
+  it.each([
+    ['codex', '-a on-request', 'bypass', false],
+    ['claude', '--permission-mode acceptEdits', 'bypass', false],
+    ['gemini', '-y', 'bypass', true],
+    ['gemini', '-y', 'ask', true],
+    ['claude', '--model opus', 'bypass', true],
+    ['claude', '--model opus', 'ask', false]
+  ] as const)(
+    'gives per-launch text for %s configured %j under %s the flag: %s',
+    (agent, configured, mode, flagged) => {
+      const settings = { agentPermissionMode: mode, agentDefaultArgs: { [agent]: configured } }
+      const launch = resolveTuiAgentLaunchArgs(agent, settings, '--model per-launch')
+      expect(launch !== '--model per-launch').toBe(flagged)
+      expect(launch.endsWith('--model per-launch')).toBe(true)
+    }
+  )
+
+  it('adds no flag beside per-launch text that sets permissions itself', () => {
+    expect(
+      resolveTuiAgentLaunchArgs(
+        'gemini',
+        { agentDefaultArgs: { gemini: '-y' } },
+        '--approval-mode default'
+      )
+    ).toBe('--approval-mode default')
+  })
+
   // `--search` is a long option, not `-s` with a value attached.
   it('keeps Yolo beside Codex --search', () => {
     expect(resolveTuiAgentLaunchArgs('codex', { agentDefaultArgs: { codex: '--search' } })).toBe(

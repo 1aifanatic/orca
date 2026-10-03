@@ -6637,7 +6637,7 @@
           "retryDetection": "Retry",
           "storedDefaultUndetected": "기본값으로 저장되었지만 지금은 감지되지 않습니다.",
           "noAgentsDetected": "감지된 에이전트가 없습니다. 프로브가 설치된 경우 프로브 시간이 초과되었을 수 있습니다.",
-          "agentPermissionsAppliesToAll": "모든 에이전트에 적용됩니다. 에이전트별로 다르게 설정하려면 아래 목록에서 해당 에이전트를 펼치세요.",
+          "agentPermissionsAppliesToAll": "개별 설정이 없는 모든 에이전트에 적용됩니다. 에이전트별로 다르게 설정하려면 아래 목록에서 해당 에이전트를 펼치세요.",
           "agentPermissionsExceptions": "개별 설정: {{value0}}.",
           "agentPermissionOverride": "권한",
           "agentPermissionOverrideAria": "{{value0}} 권한",

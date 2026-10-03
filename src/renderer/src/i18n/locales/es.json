@@ -5684,7 +5684,7 @@
           "25a41a9aad": "Re-detect agents installed on the active server",
           "remoteDetectionFailed": "Couldn’t detect installed agents. Check the host connection and try again.",
           "retryDetection": "Retry",
-          "agentPermissionsAppliesToAll": "Se aplica a todos los agentes. Para configurar un agente de otra forma, despliégalo en la lista de abajo.",
+          "agentPermissionsAppliesToAll": "Se aplica a todos los agentes sin un ajuste propio. Para configurar un agente de otra forma, despliégalo en la lista de abajo.",
           "agentPermissionsExceptions": "Configurados por separado: {{value0}}.",
           "agentPermissionOverride": "Permisos",
           "agentPermissionOverrideAria": "Permisos de {{value0}}",

@@ -6637,7 +6637,7 @@
           "retryDetection": "再試行",
           "storedDefaultUndetected": "デフォルトとして保存されていますが、現在は検出されません",
           "noAgentsDetected": "Agent が検出されませんでした。プローブがインストールされている場合、プローブがタイムアウトした可能性があります。",
-          "agentPermissionsAppliesToAll": "すべての Agent に適用されます。個別に設定するには、下の一覧で Agent を展開してください。",
+          "agentPermissionsAppliesToAll": "個別の設定がないすべての Agent に適用されます。個別に設定するには、下の一覧で Agent を展開してください。",
           "agentPermissionsExceptions": "個別設定: {{value0}}。",
           "agentPermissionOverride": "権限",
           "agentPermissionOverrideAria": "{{value0}} の権限",

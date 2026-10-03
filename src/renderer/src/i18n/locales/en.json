@@ -6826,7 +6826,7 @@
           "codexSessionSourceTooltip": "Orca runs Codex in an isolated home. Point this at your existing Codex home to import that session history. Empty uses ~/.codex.",
           "storedDefaultUndetected": "Saved as your default, but not detected right now",
           "noAgentsDetected": "No agents detected. If one is installed, the probe may have timed out.",
-          "agentPermissionsAppliesToAll": "Applies to every agent. To set one agent differently, expand it in the list below.",
+          "agentPermissionsAppliesToAll": "Applies to every agent without a setting of its own. To set one agent differently, expand it in the list below.",
           "agentPermissionsExceptions": "Set separately: {{value0}}.",
           "agentPermissionOverride": "Permissions",
           "agentPermissionOverrideAria": "{{value0}} permissions",

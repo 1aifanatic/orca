@@ -306,17 +306,42 @@ export function resolveAgentPermissionPosture(
       terminalWindowsShell: settings?.terminalWindowsShell
     })
   )
-  const typed = classifyTypedAgentPermissions(
+  const typed = classifyConfiguredPermissions(agent, settings, shell)
+  return {
+    mode,
+    effectiveBypass: launchesInBypass(agent, mode, typed.kind),
+    typedPermissionOptions: typed.options
+  }
+}
+
+function classifyConfiguredPermissions(
+  agent: TuiAgent,
+  settings: AgentLaunchProfileSettings | null | undefined,
+  shell?: AgentStartupShell
+): TypedAgentPermissions {
+  return classifyTypedAgentPermissions(
     agent,
     { args: settings?.agentDefaultArgs?.[agent], env: settings?.agentDefaultEnv?.[agent] },
     shell
   )
-  return {
-    mode,
-    effectiveBypass:
-      typed.kind === 'none'
-        ? mode === 'bypass' && agentHasPermissionMode(agent)
-        : typed.kind === 'bypass',
-    typedPermissionOptions: typed.options
-  }
+}
+
+function launchesInBypass(
+  agent: TuiAgent,
+  mode: AgentPermissionMode,
+  typed: TypedAgentPermissionKind
+): boolean {
+  return typed === 'none' ? mode === 'bypass' && agentHasPermissionMode(agent) : typed === 'bypass'
+}
+
+/**
+ * Whether the agent's configured Arguments, env and mode add up to bypass: what its Settings card
+ * shows. A launch that replaces the Arguments still follows this, so it never escalates past it.
+ */
+export function agentLaunchesInBypass(
+  agent: TuiAgent,
+  settings: AgentLaunchProfileSettings | null | undefined
+): boolean {
+  const typed = classifyConfiguredPermissions(agent, settings).kind
+  return launchesInBypass(agent, resolveAgentPermissionMode(agent, settings), typed)
 }

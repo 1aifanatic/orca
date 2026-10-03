@@ -6637,7 +6637,7 @@
           "retryDetection": "Retry",
           "storedDefaultUndetected": "已保存为默认值，但目前未检测到",
           "noAgentsDetected": "未检测到代理。如果安装了探测器，探测器可能会超时。",
-          "agentPermissionsAppliesToAll": "适用于所有智能体。如需单独设置某个智能体，请在下方列表中展开它。",
+          "agentPermissionsAppliesToAll": "适用于所有没有单独设置的智能体。如需单独设置某个智能体，请在下方列表中展开它。",
           "agentPermissionsExceptions": "单独设置：{{value0}}。",
           "agentPermissionOverride": "权限",
           "agentPermissionOverrideAria": "{{value0}} 权限",

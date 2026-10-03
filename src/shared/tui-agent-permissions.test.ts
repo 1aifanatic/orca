@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentHasPermissionMode,
-  applyAgentPermissionModeToAll,
   normalizeAgentPermissionModeOverrides,
   resolveAgentPermissionMode,
   resolveDefaultAgentPermissionMode,
@@ -21,13 +20,6 @@ describe('tui agent permissions', () => {
     }
     expect(resolveAgentPermissionMode('codex', settings)).toBe('bypass')
     expect(resolveAgentPermissionMode('claude', settings)).toBe('ask')
-  })
-
-  it('applies one mode to every agent and clears per-agent choices', () => {
-    expect(applyAgentPermissionModeToAll('ask')).toEqual({
-      agentPermissionMode: 'ask',
-      agentPermissionModeOverrides: {}
-    })
   })
 
   // A mode a newer build wrote stays stored for it.

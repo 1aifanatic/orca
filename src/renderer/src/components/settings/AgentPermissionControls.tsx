@@ -45,7 +45,7 @@ export function AgentPermissionsSetting({
               <TooltipContent side="top" sideOffset={6}>
                 {translate(
                   'auto.components.settings.AgentsPane.agentPermissionsAppliesToAll',
-                  'Applies to every agent. To set one agent differently, expand it in the list below.'
+                  'Applies to every agent without a setting of its own. To set one agent differently, expand it in the list below.'
                 )}
               </TooltipContent>
             </Tooltip>

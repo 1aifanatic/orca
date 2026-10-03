@@ -120,6 +120,37 @@ describe('agent launch caller arguments and permission bypass', () => {
     }
   )
 
+  // Source Control and fix-checks bring their own arguments; they follow the agent's effective
+  // mode (what its card shows), so Arguments that ask keep asking and an alias Yolo stays Yolo.
+  it.each(
+    cases
+      .filter(([id]) => id === 'source-control-action' || id === 'fix-checks')
+      .flatMap(([id, profile]) =>
+        (
+          [
+            ['codex', '-a on-request', CODEX_BYPASS, false],
+            ['claude', '--permission-mode acceptEdits', '--dangerously-skip-permissions', false],
+            ['gemini', '-y', '--yolo', true]
+          ] as const
+        ).map(
+          ([agent, configured, flag, flagged]) =>
+            [id, agent, configured, flag, flagged, profile] as const
+        )
+      )
+  )(
+    '%s launches %s configured %j under Yolo with its effective mode',
+    async (_id, agent, configured, flag, flagged, profile) => {
+      store.settings = { ...store.settings, agentDefaultArgs: { [agent]: configured } }
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+      launchAgentInNewTab({ ...profile.args, agent })
+
+      const command = queuedStartupCommand(store) ?? ''
+      expect(command.includes(`'${flag}'`) || command.includes(` ${flag}`)).toBe(flagged)
+      expect(command).toContain('gpt-5.5')
+    }
+  )
+
   it.each(BYPASS_BY_AGENT)(
     'ships %s (%s) with its permission-bypass flag when no call site names arguments',
     async (agent, _mode, bypassFlag) => {

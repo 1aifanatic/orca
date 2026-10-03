@@ -26,7 +26,6 @@ import {
 import { resolveAgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
 import {
   agentHasPermissionMode,
-  applyAgentPermissionModeToAll,
   resolveDefaultAgentPermissionMode,
   YOLO_TUI_AGENT_ENV,
   type AgentPermissionMode
@@ -250,9 +249,12 @@ export function AgentsPane({
       <AgentPermissionsSetting
         mode={defaultPermissionMode}
         exceptions={permissionExceptions}
-        onChange={(mode: AgentPermissionMode) =>
-          updateSettings(applyAgentPermissionModeToAll(mode))
-        }
+        onChange={(mode: AgentPermissionMode) => {
+          // Only the shared default; each agent's own choice stays until its card says Default.
+          if (mode !== defaultPermissionMode) {
+            updateSettings({ agentPermissionMode: mode })
+          }
+        }}
       />
       <AgentDetectionCatalog
         detectedAgents={detectedAgents}
