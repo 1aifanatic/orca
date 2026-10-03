@@ -40,7 +40,14 @@ export type QueuedMessageTestRig = Awaited<ReturnType<typeof createQueuedMessage
 /** `restartable`: a child started for a chat whose chain already names a thread resumes it, so a
  *  chat whose child closed or died can start another. `starting`: every child stays starting. */
 export async function createQueuedMessageTestRig(
-  options: { restartable?: true; starting?: true } = {}
+  options: {
+    restartable?: true
+    starting?: true
+    /** Lets a test sweep idle chats on its own `tick`. */
+    idleSweep?: { idleMs: number; intervalMs: number }
+    /** The provider's Stop ends its child, as Claude's does. */
+    stopEndsSession?: true
+  } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
@@ -99,13 +106,15 @@ export async function createQueuedMessageTestRig(
         releaseAcquisition: vi.fn(async () => true),
         compact,
         cancelTurn,
+        ...(options.stopEndsSession ? { stopEndsSession: () => true } : {}),
         answerPrompt: vi.fn(async () => undefined),
         setOption: vi.fn(async () => undefined)
       },
       journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-1',
-      now: () => NOW
+      now: () => NOW,
+      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {})
     })
   let host = makeHost()
   expect(await attachForTests(host, QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
@@ -261,8 +270,18 @@ export async function createQueuedMessageTestRig(
     )
   }
 
+  /** The event sink the provider writes through. */
+  function providerEvents(): StructuredAgentSessionEventSink {
+    if (!events) {
+      throw new Error('no provider bound')
+    }
+    return events
+  }
+
   /** A host-process restart, as the queue sees it: the conversation closes, and
-   *  opens afresh under a new instance id while its rows survive. */
+   *  opens afresh under a new instance id while its rows survive. The close is an eviction, whose
+   *  Stop event ends a person's Stop pause if work runs; a quit writes none, so a test of that
+   *  pause across a restart uses `crashRestartHostProcess`. */
   async function restartHostProcess(): Promise<void> {
     await host.close(SESSION, 'evict')
     rotateStructuredAgentSessionHostInstanceForTests()
@@ -306,6 +325,7 @@ export async function createQueuedMessageTestRig(
     awaitStarted,
     compact,
     finishCompact,
+    providerEvents,
     envelope,
     send,
     stop,

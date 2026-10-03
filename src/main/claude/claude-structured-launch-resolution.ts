@@ -178,7 +178,8 @@ export async function resolveClaudeStructuredInvocation(
   // use, so an explicit override is refused rather than silently beating the pin.
   if (auth.stripAuthEnv && hasClaudeAuthEnvConflict(overlay)) {
     throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE), {
-      reason: 'managedAccountEnvOverride'
+      reason: 'managedAccountEnvOverride',
+      needsUser: true
     })
   }
   // Why the overlay merges onto the inherited env rather than replacing it: the child
@@ -261,7 +262,9 @@ export function createClaudeStructuredLaunchResolver(
       // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
         'structured Claude is not offered under the active managed Claude account',
-        gate && hasWslBoundClaudeAccount(gate) ? { reason: 'managedAccountUnsupported' } : {}
+        gate && hasWslBoundClaudeAccount(gate)
+          ? { reason: 'managedAccountUnsupported', needsUser: true }
+          : {}
       )
     }
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
@@ -332,7 +335,7 @@ export async function openClaudeStructuredChild(
   if (isCliCommandMissing('claude', launch.pathToClaudeCodeExecutable, launch.env ?? process.env)) {
     throw new AgentSessionPreSpawnError(
       new Error('claude is not on PATH or in the usual install directories'),
-      { reason: 'providerMissing' }
+      { reason: 'providerMissing', needsUser: true }
     )
   }
   return openClaudeStreamJsonConnection(launch, ...rest)

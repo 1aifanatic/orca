@@ -1,4 +1,3 @@
-import type { TypedStartRefusal } from '../../../shared/agent-session-start-resumability'
 import type {
   AgentSessionRewindReason,
   AgentSessionRewindSupport
@@ -34,7 +33,6 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
-import type { StructuredAgentSessionStopCause } from './structured-agent-session-stop-cause'
 import type {
   AgentSessionCancelOutcome,
   StructuredAgentSessionAdapterStop
@@ -129,21 +127,39 @@ export type AgentSessionAcquisition = {
 /** A refusal before spawn that a person can act on; the site that refused names it. */
 export type AgentSessionPreSpawnReason = Extract<
   AgentSessionRefusalReason<'agent_session_operation_invalid'>,
-  TypedStartRefusal
+  | 'managedAccountEnvOverride'
+  | 'accountSwitchInProgress'
+  | 'managedAccountUnsupported'
+  | 'providerMissing'
 >
+
+/** Those only the person can clear: a start refused for one is not tried again on its own. */
+type AgentSessionPreSpawnReasonNeedingUser = Extract<
+  AgentSessionPreSpawnReason,
+  'providerMissing' | 'managedAccountEnvOverride' | 'managedAccountUnsupported'
+>
+
+type AgentSessionPreSpawnErrorOptions = { message?: string } & (
+  | { reason: AgentSessionPreSpawnReasonNeedingUser; needsUser: true }
+  | {
+      reason?: Exclude<AgentSessionPreSpawnReason, AgentSessionPreSpawnReasonNeedingUser>
+      needsUser?: never
+    }
+)
 
 /** Acquisition failed with first-hand proof that no provider process existed. */
 export class AgentSessionPreSpawnError extends Error {
   /** Absent: Orca's own reason, which only the log reads. A wrapped pre-spawn error keeps its. */
   readonly reason: AgentSessionPreSpawnReason | undefined
+  /** The site that refused said only the person can clear it, so Orca does not try it again. */
+  readonly needsUser: boolean
 
-  constructor(
-    cause: unknown,
-    options: { reason?: AgentSessionPreSpawnReason; message?: string } = {}
-  ) {
+  constructor(cause: unknown, options: AgentSessionPreSpawnErrorOptions = {}) {
     super(options.message ?? (cause instanceof Error ? cause.message : String(cause)), { cause })
     this.name = 'AgentSessionPreSpawnError'
-    this.reason = options.reason ?? (isAgentSessionPreSpawnError(cause) ? cause.reason : undefined)
+    const wrapped = isAgentSessionPreSpawnError(cause) ? cause : undefined
+    this.reason = options.reason ?? wrapped?.reason
+    this.needsUser = options.needsUser ?? wrapped?.needsUser ?? false
   }
 }
 
@@ -192,8 +208,6 @@ export type StructuredAgentSessionEndedEvent = {
    *  Orca fault. Absent reads as a provider exit with nothing to add. */
   failure?: SubmissionRejectionFact
   cause: 'unexpected-exit' | 'requested-close'
-  /** With `requested-close`: who asked for it. Absent when the host named no cause. */
-  stopCause?: StructuredAgentSessionStopCause
   fence: number
   acquisitionGeneration: string
   /** Host receipt of the child exit: the end time of a turn it interrupted. */
@@ -382,11 +396,11 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** Gracefully stops the structured owner after its event stream is drained. */
   /** Returns true only after the provider child exit is proven. A root-exit or processless verdict
    *  is thrown only once the session is finalized; read it through `stopAgentSessionProviderRoot`. */
-  closeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
+  closeSession?(sessionId: string): Promise<boolean>
   /** Stops a provider after a sink failure; the resulting exit is recovered as unexpected. */
   forceCloseSession?(sessionId: string): Promise<boolean>
   /** Stops a provider child for teardown without requiring a future-resume cursor. */
-  disposeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
+  disposeSession?(sessionId: string): Promise<boolean>
   /** Host acknowledgement that the proven-dead child, lease and journal owner are released. */
   acknowledgeSessionRelease?(sessionId: string): void
 }

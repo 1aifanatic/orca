@@ -7,7 +7,7 @@ import {
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
 } from '../../../shared/agent-session-restart-continuation'
-import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
+import { AgentSessionPreSpawnError } from './structured-agent-session-adapter'
 import { StructuredAgentSessionResumeAdmission } from './structured-agent-session-restart-resume-runner'
 import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structured-agent-session-restart-resume-wiring'
 import {
@@ -26,9 +26,9 @@ import {
 afterEach(() => vi.restoreAllMocks())
 
 /** A start refused before it ran, which Orca tries again. */
-const ACCOUNT_SWITCHING = new AgentSessionAcquisitionRefusal(
-  'a Claude account switch is in progress',
-  'accountSwitchInProgress'
+const ACCOUNT_SWITCHING = new AgentSessionPreSpawnError(
+  new Error('a Claude account switch is in progress'),
+  { reason: 'accountSwitchInProgress' }
 )
 
 // Nothing was owed once the user's own message came first: the offer is spent and nothing is filed.

@@ -33,7 +33,7 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 export type NativeChatDeliveryNotice = {
   text: string
   onRetry?: () => void
-  /** The Retry was pressed and waits on the host's answer: shown, but takes no press. */
+  /** The host has not said yet how it takes this Retry: shown, but takes no press. */
   retryPending?: true
   onDismiss?: () => void
 }

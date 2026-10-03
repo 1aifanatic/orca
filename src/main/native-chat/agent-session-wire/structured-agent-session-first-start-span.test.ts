@@ -74,7 +74,7 @@ it('wraps the first start, and its retry after a failure, but no start once an a
   expect(span).toHaveBeenCalledTimes(2)
 
   // Put to rest and started again, as the next message after the idle sweep does.
-  await host.collaboratorsForTests().lifetime.stopAgent(SESSION, 'evict')
+  await host.collaboratorsForTests().lifetime.stopAgent(SESSION, { cause: 'evict', resting: true })
   expect(await startAgentForTests(host, SESSION)).toMatchObject({ ok: true })
   expect(acquire).toHaveBeenCalledTimes(3)
   expect(span).toHaveBeenCalledTimes(2)

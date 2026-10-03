@@ -64,17 +64,19 @@ function startFailureWordsContext(
 }
 
 /**
- * A start the loop's own start step was refused before it ran, for `startedFor`: the message waits
- * for its next try, or, a refusal only the person can clear, out of tries, or a conversation
- * command, is rejected. A command never waits: like a goal, a rewind or /clear, its failure is the
- * person's to Retry at once. The one place a try is booked.
+ * A start the loop's own start step was refused, for `startedFor`. Refused before any provider
+ * process, the message waits for its next try; otherwise — the start ran, the site that refused
+ * said only the person can clear it, it is out of tries, or it is a conversation command — it is
+ * rejected. A command never waits: like a goal, a rewind or /clear, its failure is the person's to
+ * Retry at once. The one place a try is booked.
  */
 export function recordStructuredAgentSessionStartRefusal(
   ctx: StartFailureWriter,
   cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>,
   startedFor: string
 ): Promise<void> {
-  return recordStartFailure(ctx, cause, [startedFor], true)
+  const retriesOnItsOwn = cause.beforeSpawn !== undefined && !cause.beforeSpawn.needsUser
+  return recordStartFailure(ctx, cause, [startedFor], retriesOnItsOwn)
 }
 
 /**
@@ -94,7 +96,7 @@ async function recordStartFailure(
   ctx: StartFailureWriter,
   cause: StructuredAgentSessionStartFailureCause,
   clientMessageIds: readonly string[],
-  refusedBeforeItRan: boolean
+  retriesOnItsOwn: boolean
 ): Promise<void> {
   for (const clientMessageId of new Set(clientMessageIds)) {
     const submission = ctx.journal
@@ -106,12 +108,8 @@ async function recordStartFailure(
     const context = startFailureWordsContext(ctx.journal, ctx.record, clientMessageId)
     const words = structuredAgentSessionStartFailure(cause, context)
     const nextAttemptAt =
-      refusedBeforeItRan && context.command === undefined
-        ? structuredAgentSessionStartRetryAt(
-            words.rejection,
-            (submission.startRetry?.attempts ?? 0) + 1,
-            ctx.now()
-          )
+      retriesOnItsOwn && context.command === undefined
+        ? structuredAgentSessionStartRetryAt((submission.startRetry?.attempts ?? 0) + 1, ctx.now())
         : null
     await ctx.journal.resolveDispatch(
       nextAttemptAt === null
@@ -163,7 +161,7 @@ export function leftoverRejection(
 }
 
 /** The oldest queued message that may go now: not waiting out a refused start, or due again. Later
- *  messages overtake one that is waiting. */
+ *  messages overtake one that is waiting; one the person's Retry queued again goes first. */
 export function nextDeliverableSubmission(
   journal: Pick<AgentSessionJournal, 'submissions'>,
   now: number
@@ -173,12 +171,19 @@ export function nextDeliverableSubmission(
     if (
       isQueuedAgentJournalSubmission(submission) &&
       (submission.startRetry === undefined || submission.startRetry.nextAttemptAt <= now) &&
-      (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))
+      (oldest === undefined || deliversBefore(submission, oldest))
     ) {
       oldest = submission
     }
   }
   return oldest
+}
+
+function deliversBefore(a: AgentJournalSubmission, b: AgentJournalSubmission): boolean {
+  if (a.retriedInPlace !== b.retriedInPlace) {
+    return a.retriedInPlace === true
+  }
+  return (a.acceptedSequence ?? 0) < (b.acceptedSequence ?? 0)
 }
 
 /** When the earliest message waiting out a refused start comes due after `now`; null when none

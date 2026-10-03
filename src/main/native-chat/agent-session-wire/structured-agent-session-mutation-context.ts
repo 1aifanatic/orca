@@ -14,6 +14,7 @@ import {
 } from './structured-agent-session-mutation-admission'
 import { structuredAgentSessionOperationStartOutcome } from './structured-agent-session-agent-start'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
+import type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-lifetime'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -24,7 +25,6 @@ export type StructuredAgentSessionMutationContext = {
   deps: StructuredAgentSessionHostDeps
   sessions: Map<string, StructuredAgentSessionHostSession>
   publish: (sessionId: string, journal: StructuredAgentSessionHostSession['journal']) => void
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   /** The host's accessor, for a caller outside the session's serialize. */
   conversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession>
   /** The session's child records, as the strip reads them; what command admission decides on. */
@@ -39,8 +39,9 @@ export type StructuredAgentSessionMutationContext = {
   finishOwedStop: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
   /** A message was accepted: the session's delivery loop hands it over. */
   wakeDelivery: (sessionId: string) => void
-  /** Stops the session's provider child, keeping its conversation; inside the caller's serialize. */
-  stopAgent: (sessionId: string) => Promise<void>
+  /** Stops the session's provider child, keeping its conversation; inside the caller's serialize.
+   *  Each caller names why (`ending`). */
+  stopAgent: (sessionId: string, ending: StructuredAgentSessionStopEnding) => Promise<void>
   /** Only for gate inputs living in the RECORD store, which can settle with no
    *  journal commit (a conversation command). Draft-table changes need no call:
    *  the draft store notifies through the journal's own commit listener. */
@@ -128,7 +129,6 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(sessionId)?.journal,
       ...(prepareSession ? { prepareSession: prepare(prepareSession) } : {}),
       publish: (journal) => context.publish(sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       providerChildPhase: () => context.sessions.get(sessionId)?.child?.phase,
       now: () => context.now()
     })

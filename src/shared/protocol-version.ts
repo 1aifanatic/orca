@@ -1,4 +1,5 @@
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
+import { AGENT_SESSION_MESSAGE_DELIVERY_RUNTIME_CAPABILITIES } from './agent-session-message-delivery-capabilities'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
@@ -130,6 +131,7 @@ export const WORKTREE_ARCHIVE_FAILURE_BLOCKING_RUNTIME_CAPABILITY =
   'worktree.archive-failure-blocking.v1' as const
 export const CODEX_RESET_CREDIT_RUNTIME_CAPABILITY = 'accounts.codex-reset-credit.v1' as const
 export const ACCOUNT_IMPORT_RUNTIME_CAPABILITY = 'accounts.import-host-credentials.v1' as const
+export const ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY = 'accounts.antigravity-native.v1' as const
 // Why: older hosts cannot reconcile terminal.create's mutation after losing the reply, so clients may only retry unknown outcomes when advertised.
 export const TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
   'terminal.create-idempotency.v2' as const
@@ -154,6 +156,7 @@ export const AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY =
   'agent-session.session-boundary.v1' as const
 export { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 export * from './agent-session-stop-capabilities'
+export * from './agent-session-message-delivery-capabilities'
 export const AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY =
   'agent-session.host-authority.v1' as const
 // Older launch schemas reject unknown fields; advertise before clients send keyboard support.
@@ -164,16 +167,13 @@ export const AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY =
 // receive their journal or drive their lifecycle. Mobile may receive a metadata-only placeholder;
 // the host still refuses agentSession.* methods and destructive tab mutations without capability.
 export const STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY = 'agent-session.structured.v1' as const
-// Why: older structured clients render durable pending replies as uncertain delivery. Capable
-// clients skip the host's bounded best-effort settlement observation.
-export const AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY =
-  'agent-session.pending-send-result.v1' as const
-// Why: a send is now answered once the host accepts it, before any agent has it. A client without
-// this cannot show a message rejected after that answer, so the host holds its reply until the
-// message is handed over or rejected. Transitional: drop the hold once no supported desktop or
-// mobile client lacks the capability; mobile must first show a rejected message in place.
-export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
-  'agent-session.accepted-send.v1' as const
+// Why: hosts before this gated `agentSession.*` on their own chat setting while still advertising
+// agent-session.structured.v1, so that capability alone cannot tell a client its chat will be
+// admitted. A host advertising this admits by client capability alone; a client advertising it
+// picks each launch's mode itself. A client without it asks `agentSession.createSupport` to pick
+// for it (released phones), so the host keeps answering that with its own setting.
+export const STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY =
+  'agent-session.structured.client-launch-mode.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
 // capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
 // PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
@@ -185,11 +185,6 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 // gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
-// Why: `agentSession.retryMessage` queues a message no agent took again under its own id; an older
-// host has no such method, so a client must learn it during negotiation and otherwise keep Retry
-// as a new message.
-export const AGENT_SESSION_RETRY_MESSAGE_RUNTIME_CAPABILITY =
-  'agent-session.retry-message.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -328,20 +323,6 @@ export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   AGENT_LAUNCH_RUNTIME_CAPABILITY
 ] as const
 
-// Electron clients can decode client-hosted page placement; becoming a page
-// host still requires the separate authenticated browser-client lease.
-export const ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
-  ...NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
-  AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
-  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
-  BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
-  BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
-  // Why: only the renderer runs the retirement-proof ledger; CLI and mobile must keep full lists.
-  SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY,
-  // Only the renderer shows Deleting for a `removing` row; CLI and mobile get those rows omitted.
-  WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY
-] as const
-
 export const ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY =
   'git.antigravity-configured-model.v1' as const
 
@@ -352,7 +333,6 @@ export const AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY =
 
 export const RUNTIME_CAPABILITIES = [
   ...AGENT_SESSION_STOP_RUNTIME_CAPABILITIES,
-  AGENT_SESSION_RETRY_MESSAGE_RUNTIME_CAPABILITY,
   AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY,
   ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY,
   'files.pathsExist',
@@ -407,10 +387,8 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_OMP_RESUME_PATH_RUNTIME_CAPABILITY,
   AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
-  // The host side: it accepts a send before any agent has it, and a Stop with no writer before a
-  // turn starts, so a client may gate on either.
-  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  ...AGENT_SESSION_MESSAGE_DELIVERY_RUNTIME_CAPABILITIES,
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
@@ -436,6 +414,7 @@ export const RUNTIME_CAPABILITIES = [
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
+  ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY,
   SKILL_INSTALL_CAPABILITY,
   SKILL_BUNDLE_INSTALL_CAPABILITY,

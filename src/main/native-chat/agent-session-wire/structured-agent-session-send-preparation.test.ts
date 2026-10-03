@@ -489,23 +489,48 @@ describe('a send with no live owner', () => {
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
   })
 
-  it('rejects the message at once when the CLI was found missing before any spawn', async () => {
+  // Where it was refused before spawn decides: only these three say the person must act.
+  it.each(['providerMissing', 'managedAccountEnvOverride', 'managedAccountUnsupported'] as const)(
+    'rejects the message at once, with no try booked, when refused before spawn for %s',
+    async (reason) => {
+      await loseOwner()
+      acquire.mockRejectedValueOnce(
+        new AgentSessionPreSpawnError(new Error(reason), { reason, needsUser: true })
+      )
+
+      const id = await accept(sendParams('before the person acts'))
+
+      expect(await settled(id)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: { kind: reason }
+      })
+      expect((await submission(id))?.startRetry).toBeUndefined()
+      expect(acquire).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('says to install the CLI found missing before any spawn, beside its Retry', async () => {
     await loseOwner()
     acquire.mockRejectedValueOnce(
       new AgentSessionPreSpawnError(new Error('codex is not on PATH'), {
-        reason: 'providerMissing'
+        reason: 'providerMissing',
+        needsUser: true
       })
     )
 
-    const id = await accept(sendParams('before installing it'))
-
-    // Installing it is the person's step, so no later try is booked.
-    expect(await settled(id)).toMatchObject({
-      dispatchState: 'rejected',
-      reason: "Codex isn't installed. Install it, then send your message again.",
-      rejection: { kind: 'providerMissing' }
+    expect(await settled(await accept(sendParams('before installing it')))).toMatchObject({
+      reason: "Codex isn't installed. Install it, then send your message again."
     })
-    expect(acquire).toHaveBeenCalledOnce()
+  })
+
+  it("tries again at 15 s a start refused before spawn for Orca's own reason", async () => {
+    await loseOwner()
+    acquire.mockRejectedValueOnce(new AgentSessionPreSpawnError(new Error('state unreadable')))
+
+    const id = await accept(sendParams('while Orca cannot read the account'))
+
+    expect(await settled(id)).toMatchObject({ dispatchState: 'retrying' })
+    expect((await submission(id))?.startRetry?.nextAttemptAt).toBe(NOW + 15_000)
   })
 
   it('rejects the message at once for a spawn that failed after the CLI was found', async () => {
@@ -561,7 +586,8 @@ describe('a send with no live owner', () => {
       refusal: {
         code: 'execution_owner_reconciling',
         message: 'Another runtime is still adjudicating this lease.'
-      }
+      },
+      beforeSpawn: { needsUser: false }
     })
 
     const id = await accept(sendParams('owner being settled'))

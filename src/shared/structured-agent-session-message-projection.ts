@@ -15,7 +15,14 @@ export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  projectItems = projectStructuredItemsToNativeChat
+  {
+    projectItems = projectStructuredItemsToNativeChat,
+    showsFailedStartsSentElsewhere = true
+  }: {
+    projectItems?: typeof projectStructuredItemsToNativeChat
+    /** Whether the host can queue one again: an older host's are left hidden, as before. */
+    showsFailedStartsSentElsewhere?: boolean
+  } = {}
 ): NativeChatMessage[] {
   const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
   // Refused sends are ledger evidence, not conversation history; local drafts remain in the outbox.
@@ -27,9 +34,11 @@ export function projectStructuredAgentSessionMessages(
   // Sent from elsewhere and refused for good by a failed start: shown as unsent, as this client's
   // own would be, in the conversation where the journal recorded it.
   const unsentElsewhere = new Set(
-    failedStartsSentElsewhere(submissions, outbox).map((submission) =>
-      agentJournalSubmissionKey(submission.clientMessageId)
-    )
+    showsFailedStartsSentElsewhere
+      ? failedStartsSentElsewhere(submissions, outbox).map((submission) =>
+          agentJournalSubmissionKey(submission.clientMessageId)
+        )
+      : []
   )
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()

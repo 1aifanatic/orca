@@ -55,6 +55,7 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   const undelivered = Promise.withResolvers<string>()
   const delivery = await deliverWorkerDispatchPreamble({
     runtime,
+    db,
     structuredSession,
     terminalHandle,
     dispatchId: args.dispatchId,

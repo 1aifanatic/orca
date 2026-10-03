@@ -218,7 +218,7 @@ describe('structured session options and close', () => {
 
     await host.close(SESSION, 'evict')
 
-    expect(closeNativeSession).toHaveBeenCalledWith(SESSION, 'evict')
+    expect(closeNativeSession).toHaveBeenCalledWith(SESSION)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       ownerProcess: null,

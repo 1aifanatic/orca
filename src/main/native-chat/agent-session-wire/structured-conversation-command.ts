@@ -12,7 +12,6 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 import { serializeAwaitingAgentStart } from './structured-agent-session-mutation-context'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
-import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   committedClearOfCaller,
   conversationCommandBlocked
@@ -87,7 +86,6 @@ async function answerFromCommittedClear(
  */
 export function runStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,
-  host: Pick<StructuredAgentSessionHost, 'flushStreamedEvents'>,
   caller: StructuredAgentSessionCaller,
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
@@ -115,7 +113,6 @@ export function runStructuredConversationCommand(
       prepareSession: prepare(sendPreparation(context, envelope)),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
@@ -134,7 +131,6 @@ export function runStructuredConversationCommand(
         // The commit is the only write, so a clear with no committed answer changed nothing.
         rerunWhenReplayMissing: () => true,
         run: async (ctx) => {
-          await host.flushStreamedEvents(sessionId)
           const record = store.getRecord(sessionId)!
           const blocked = conversationCommandBlocked(
             ctx,
@@ -147,7 +143,8 @@ export function runStructuredConversationCommand(
           }
           // Stopped before the marker, so nothing the old agent does can land after the clear. The
           // stop releases the lease, which moves its fence: the marker is written at the new one.
-          await context.stopAgent(sessionId)
+          // A /clear replaces this chat: the user closing it.
+          await context.stopAgent(sessionId, { cause: 'user-close' })
           const fence = store.getRecord(sessionId)!.lease.runtimeFence
           const completed = {
             command,

@@ -140,12 +140,10 @@ export class StructuredAgentSessionTurnCompletionFeed {
     // Owed work waits, so sends refused one commit at a time announce once, when the last is
     // answered. A pending prompt does not wait (structured chat has no other attention producer):
     // the event says so itself, and answering it keeps the same identity.
-    // A withdrawn send leaves the older request latest.
-    // A send waiting for its next start has no verdict yet, so the mark stays where it was.
+    // A withdrawn send leaves the older request latest, as does one waiting for its next start.
     if (
       state.owesWork ||
       !request ||
-      request.waiting ||
       (baseline.settled?.kind === request.kind && baseline.settled.id === request.id)
     ) {
       return

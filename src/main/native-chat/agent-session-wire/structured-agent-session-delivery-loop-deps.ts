@@ -35,7 +35,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   now: () => number
   /** Runs `run` after `delayMs`; answers how to cancel it. */
   setTimer?: (delayMs: number, run: () => void) => () => void

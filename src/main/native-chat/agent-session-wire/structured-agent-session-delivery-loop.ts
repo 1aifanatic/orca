@@ -108,13 +108,14 @@ export class StructuredAgentSessionDeliveryLoop {
           continue
         }
         if (!prepared.ok) {
-          const { refusal, diagnostic, startedFor } = prepared
+          const { refusal, diagnostic, beforeSpawn, startedFor } = prepared
           // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
           const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
           const cause = {
             refusal,
             ...(diagnostic ? { diagnostic } : {}),
-            ...(newSession ? { newSession: true as const } : {})
+            ...(newSession ? { newSession: true as const } : {}),
+            ...(beforeSpawn ? { beforeSpawn } : {})
           }
           await this.deps.serialize(sessionId, () => this.refused(sessionId, cause, startedFor))
           continue
@@ -271,7 +272,6 @@ export class StructuredAgentSessionDeliveryLoop {
         failureTextContext: this.deps.failureTextContext(sessionId),
         record: () => this.deps.record(sessionId),
         childWork: () => this.deps.readChildWork(sessionId),
-        flushStreamedEvents: () => this.deps.flushStreamedEvents(sessionId),
         now: this.deps.now
       },
       next
@@ -281,6 +281,7 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     // The child had not proven its start, so it took nothing it was handed, this message included:
     // it is ended, and each takes the start's failure.
+    markProviderChildStartFailed(session, awaitedChild)
     await this.deps.endFailedStart(sessionId)
     return this.fail(
       sessionId,

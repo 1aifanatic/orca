@@ -299,7 +299,11 @@ describe('a Codex CLI the host cannot find', () => {
 
       await expect(
         open({ PATH: join(root, 'bin'), HOME: join(root, 'home') }).opened
-      ).rejects.toMatchObject({ name: 'AgentSessionPreSpawnError', reason: 'providerMissing' })
+      ).rejects.toMatchObject({
+        name: 'AgentSessionPreSpawnError',
+        reason: 'providerMissing',
+        needsUser: true
+      })
     }
   )
 

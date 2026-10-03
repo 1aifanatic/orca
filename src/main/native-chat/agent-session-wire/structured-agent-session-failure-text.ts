@@ -5,6 +5,7 @@ import {
   agentSessionFailureFact,
   providerDiagnosticOf,
   type SubmissionRejectionFact,
+  type AgentSessionFailureKind,
   type ProviderDiagnostic
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-refusal-details'
@@ -14,17 +15,26 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import {
-  isTypedStartRefusal,
-  type TypedStartRefusal
-} from '../../../shared/agent-session-start-resumability'
-import {
   agentSessionRefusalReference,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 
-function typedStartRefusal(reason: string | undefined): TypedStartRefusal | undefined {
-  return isTypedStartRefusal(reason) ? reason : undefined
+/** Start refusals whose situation is itself what the person reads, with its own next step. */
+const TYPED_START_REFUSALS = [
+  'notSignedIn',
+  'providerMissing',
+  'historyTooLarge',
+  'managedAccountEnvOverride',
+  'accountSwitchInProgress',
+  'managedAccountUnsupported'
+] as const satisfies readonly (AgentSessionFailureKind &
+  AgentSessionRefusalReason<'agent_session_operation_invalid'>)[]
+
+function typedStartRefusal(
+  reason: string | undefined
+): (typeof TYPED_START_REFUSALS)[number] | undefined {
+  return TYPED_START_REFUSALS.find((typed) => typed === reason)
 }
 
 /** The refusal reason an operation answers with when the start it needed failed: the typed
@@ -109,8 +119,14 @@ function refusedStartFailureFact(
 /** Why a start the chat needed did not land, as the place that saw it knows it. */
 export type StructuredAgentSessionStartFailureCause =
   /** The session could not be made ready; the provider's words, if any, are kept host-side, off
-   *  the refusal. `newSession`: one that never ran, so it failed to start rather than restart. */
-  | { refusal: AgentSessionWireRefusal; diagnostic?: ProviderDiagnostic; newSession?: true }
+   *  the refusal. `newSession`: one that never ran, so it failed to start rather than restart.
+   *  `beforeSpawn`: refused before any provider process, as where it failed said. */
+  | {
+      refusal: AgentSessionWireRefusal
+      diagnostic?: ProviderDiagnostic
+      newSession?: true
+      beforeSpawn?: { needsUser: boolean }
+    }
   /** A start that threw, or an adapter's own startup failure; any diagnostic it carries. */
   | { error: unknown }
   /** The child ended before it proved its start, as its ended event told it. */

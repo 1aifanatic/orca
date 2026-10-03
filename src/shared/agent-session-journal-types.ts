@@ -4,8 +4,9 @@
 // so no class instances, Maps, or Dates.
 //
 // Rows are append-only. `schemaVersion` is upcast at read time and never
-// rewritten in place, so a host that cannot read a row refuses to write the
-// journal rather than skipping or compacting past it.
+// rewritten in place, so a host that cannot read a row (a newer version, or a
+// newer kind) refuses to write the journal rather than skipping or compacting
+// past it.
 
 import type { UnreadAgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureRowWords } from './agent-session-failure-words'
@@ -434,6 +435,8 @@ export type AgentJournalSubmission = {
    *  its own — the chat closing or Orca restarting. `rejection` stays the start failure it was
    *  waiting out; this says its end was the person's doing, not news. */
   rejectionCause?: AgentJournalRejectionCause
+  /** Host-only: the person's Retry queued it again, to be sent now, ahead of the queue. */
+  retriedInPlace?: true
   /** On a queued message only: the agent start it was for failed and another is booked. A start
    *  that runs out of tries ends the message `rejected` instead. Absent on older hosts. */
   startRetry?: AgentJournalStartRetry
