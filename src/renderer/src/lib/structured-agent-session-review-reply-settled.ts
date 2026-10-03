@@ -1,5 +1,5 @@
 // Tells a source that handed a chat its review reply when that chat's host has written it: the
-// receipt (a failure line or a tombstone) reaching this client in a live batch. The checks panel
+// receipt (a failure line or a tombstone) reaching this client in the chat's live read. The checks panel
 // refetches the PR then, which matters where the chat's host is a paired server whose own
 // mutation notice never reaches this client.
 
@@ -22,16 +22,18 @@ function forget(sessionId: string, watcher: Watcher): void {
 }
 
 /**
- * Runs `onSettled` once, the first time a receipt reaches this chat's live stream. The watch dies
- * on its run, on the returned dispose, when the chat closes, or after the window in which the host
- * still owes the reply.
+ * Runs `onSettled` once, the first time a receipt reaches this chat's live stream. `holdRead` keeps
+ * that stream open while the watch is armed, as owed work does, so a hidden chat still hears it.
+ * The watch, and its hold, die on its run, on the returned dispose, when the chat closes, or after
+ * the window in which the host still owes the reply.
  */
 export function watchStructuredReviewReplySettled(
   sessionId: string,
   onSettled: () => void,
-  lifetimeMs: number = AGENT_SESSION_REVIEW_REPLY_WINDOW_MS
+  options: { holdRead?: () => () => void; lifetimeMs?: number } = {}
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined
+  let releaseRead: (() => void) | undefined
   const watcher: Watcher = {
     run: () => {
       watcher.dispose()
@@ -39,13 +41,16 @@ export function watchStructuredReviewReplySettled(
     },
     dispose: () => {
       clearTimeout(timer)
+      releaseRead?.()
+      releaseRead = undefined
       forget(sessionId, watcher)
     }
   }
-  timer = setTimeout(watcher.dispose, lifetimeMs)
+  timer = setTimeout(watcher.dispose, options.lifetimeMs ?? AGENT_SESSION_REVIEW_REPLY_WINDOW_MS)
   const set = watchers.get(sessionId) ?? new Set()
   set.add(watcher)
   watchers.set(sessionId, set)
+  releaseRead = options.holdRead?.()
   return watcher.dispose
 }
 

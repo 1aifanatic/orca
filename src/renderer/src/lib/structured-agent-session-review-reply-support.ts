@@ -7,14 +7,24 @@ import {
   resolveStructuredAgentSessionOwner,
   structuredAgentSessionTargetForHost
 } from '@/runtime/structured-agent-session-owner'
-import { runtimeEnvironmentSupportsCapability } from '@/runtime/runtime-rpc-client'
+import {
+  runtimeEnvironmentSupportsCapability,
+  type RuntimeClientTarget
+} from '@/runtime/runtime-rpc-client'
+
+/** The host a structured chat in this workspace runs on; this client's own when none is named. */
+export function structuredChatTargetForWorktree(worktreeId: string): RuntimeClientTarget {
+  return (
+    structuredAgentSessionTargetForHost(
+      resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)
+    ) ?? { kind: 'local' }
+  )
+}
 
 /** This client's own host always can; a paired one only once it says so. */
 export async function structuredChatHostRunsReviewReplies(worktreeId: string): Promise<boolean> {
-  const target = structuredAgentSessionTargetForHost(
-    resolveStructuredAgentSessionOwner(useAppStore.getState(), worktreeId)
-  )
-  if (target?.kind !== 'environment') {
+  const target = structuredChatTargetForWorktree(worktreeId)
+  if (target.kind !== 'environment') {
     return true
   }
   return runtimeEnvironmentSupportsCapability(

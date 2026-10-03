@@ -41,6 +41,29 @@ afterEach(() => {
 })
 
 describe("a source's watch for its chat's review-reply receipt", () => {
+  it("holds the chat's read open while armed, and lets go however it ends", () => {
+    vi.useFakeTimers()
+    const holds = [vi.fn(), vi.fn(), vi.fn(), vi.fn()]
+    const hold = (index: number) => () => holds[index]!
+    watchStructuredReviewReplySettled('session-1', vi.fn(), { holdRead: hold(0) })
+    const dispose = watchStructuredReviewReplySettled('session-2', vi.fn(), { holdRead: hold(1) })
+    watchStructuredReviewReplySettled('session-3', vi.fn(), { holdRead: hold(2) })
+    watchStructuredReviewReplySettled('session-4', vi.fn(), {
+      holdRead: hold(3),
+      lifetimeMs: 1000
+    })
+    expect(holds.some((release) => release.mock.calls.length > 0)).toBe(false)
+
+    noticeStructuredReviewReplyReceipt('session-1', batch({ removed: [RECEIPT] }))
+    dispose()
+    dropStructuredReviewReplyWatchers('session-3')
+    vi.advanceTimersByTime(1001)
+
+    for (const release of holds) {
+      expect(release).toHaveBeenCalledOnce()
+    }
+  })
+
   it('runs once, on a written line or a tombstone in a live batch, and only for that chat', () => {
     const settled = vi.fn()
     watchStructuredReviewReplySettled('session-1', settled)
@@ -67,7 +90,7 @@ describe("a source's watch for its chat's review-reply receipt", () => {
     watchStructuredReviewReplySettled('session-1', disposed)()
     watchStructuredReviewReplySettled('session-1', closed)
     dropStructuredReviewReplyWatchers('session-1')
-    watchStructuredReviewReplySettled('session-1', expired, 1000)
+    watchStructuredReviewReplySettled('session-1', expired, { lifetimeMs: 1000 })
     vi.advanceTimersByTime(1001)
 
     noticeStructuredReviewReplyReceipt('session-1', batch({ removed: [RECEIPT] }))

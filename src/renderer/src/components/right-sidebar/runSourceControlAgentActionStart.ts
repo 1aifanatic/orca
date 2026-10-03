@@ -1,7 +1,11 @@
 import type { AgentSessionReviewReply } from '../../../../shared/agent-session-review-reply'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
-import { structuredChatHostRunsReviewReplies } from '@/lib/structured-agent-session-review-reply-support'
+import {
+  structuredChatHostRunsReviewReplies,
+  structuredChatTargetForWorktree
+} from '@/lib/structured-agent-session-review-reply-support'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -56,7 +60,7 @@ type RunSourceControlAgentActionStartArgs = {
   onLaunchAborted?: () => void
   /** `reviewReplyCarried`: a structured chat's message carries the review reply, which its host
    *  writes once the agent takes it, so the caller writes nothing to the review itself.
-   *  `sessionId` names that chat, when known, so the caller can refresh once its host wrote. */
+   *  `chat` names that chat and its host, when known, so the caller can refresh once it wrote. */
   onLaunched?: (launch: SourceControlAgentLaunched) => void
   /** Planned at start: what a structured chat's host writes on the review once its agent takes
    *  the prompt. A terminal agent has no message to carry it. */
@@ -64,18 +68,24 @@ type RunSourceControlAgentActionStartArgs = {
   onClose: () => void
 }
 
-export type SourceControlAgentLaunched = { reviewReplyCarried: boolean; sessionId?: string }
+export type SourceControlAgentLaunched = {
+  reviewReplyCarried: boolean
+  chat?: { sessionId: string; target: RuntimeClientTarget }
+}
 
 /** The chat a structured launch opened: this client's own from its surface, a paired host's from
  *  the settlement that learned it. */
-async function structuredChatSessionId(
-  result: NonNullable<ReturnType<typeof launchAgentInNewTab>>
-): Promise<string | undefined> {
+async function structuredChat(
+  result: NonNullable<ReturnType<typeof launchAgentInNewTab>>,
+  worktreeId: string
+): Promise<SourceControlAgentLaunched['chat']> {
   if (result.surface.kind === 'local-agent-session') {
-    return result.surface.sessionId
+    return { sessionId: result.surface.sessionId, target: { kind: 'local' } }
   }
   const settled = await result.structuredSettlement?.catch(() => undefined)
-  return settled?.kind === 'structured' ? settled.sessionId : undefined
+  return settled?.kind === 'structured'
+    ? { sessionId: settled.sessionId, target: structuredChatTargetForWorktree(worktreeId) }
+    : undefined
 }
 
 export async function runSourceControlAgentActionStart({
@@ -104,7 +114,7 @@ export async function runSourceControlAgentActionStart({
 }: RunSourceControlAgentActionStartArgs): Promise<boolean> {
   let launched = false
   let reviewReplyCarried = false
-  let reviewReplySessionId: string | undefined
+  let reviewReplyChat: SourceControlAgentLaunched['chat']
   let launchFailureNotified = false
   let launchAcceptedNotified = false
   // Why: `undefined` is what makes the launch fall back to the global Agents arguments;
@@ -159,7 +169,7 @@ export async function runSourceControlAgentActionStart({
         // which carries no review reply, so the panel writes after its paste.
         reviewReplyCarried = deliveryResult.reviewReplyCarried === true
         if (reviewReplyCarried) {
-          reviewReplySessionId = await structuredChatSessionId(result)
+          reviewReplyChat = await structuredChat(result, worktreeId)
         }
         // A chat that holds its review reply sends it again itself; offering Start again here
         // would launch a second chat, and post the replies twice.
@@ -214,7 +224,7 @@ export async function runSourceControlAgentActionStart({
   }
   onLaunched?.({
     reviewReplyCarried,
-    ...(reviewReplySessionId ? { sessionId: reviewReplySessionId } : {})
+    ...(reviewReplyChat ? { chat: reviewReplyChat } : {})
   })
   onClose()
   return true

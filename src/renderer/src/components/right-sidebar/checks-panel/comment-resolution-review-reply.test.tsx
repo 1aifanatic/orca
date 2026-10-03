@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   hostRunsReviewReplies: vi.fn(async () => true),
+  readHolds: [] as { sessionId: string; target: unknown; released: boolean }[],
   launchAgentInNewTab: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn()
@@ -17,7 +18,19 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: mocks.launchAgentInNewTab }))
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
 vi.mock('@/lib/structured-agent-session-review-reply-support', () => ({
-  structuredChatHostRunsReviewReplies: mocks.hostRunsReviewReplies
+  structuredChatHostRunsReviewReplies: mocks.hostRunsReviewReplies,
+  structuredChatTargetForWorktree: () => ({ kind: 'environment', environmentId: 'paired-1' })
+}))
+vi.mock('@/components/native-chat/structured-agent-session-read-owner', () => ({
+  getStructuredAgentSessionReadOwner: (sessionId: string, target: unknown) => ({
+    activate: () => {
+      const hold = { sessionId, target, released: false }
+      mocks.readHolds.push(hold)
+      return () => {
+        hold.released = true
+      }
+    }
+  })
 }))
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: mocks.toastSuccess } }))
 
@@ -196,6 +209,7 @@ describe('Resolve comments with AI', () => {
   }
 
   it('refetches the PR once the chat says its host wrote, on this host or a paired one', async () => {
+    mocks.readHolds.length = 0
     const { model, hook } = acknowledgement()
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'host-published' },
@@ -205,10 +219,48 @@ describe('Resolve comments with AI', () => {
     await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
     expect(model.fetchComments).not.toHaveBeenCalled()
 
+    // While it waits, the chat's read stays open on its host, shown or not.
+    expect(mocks.readHolds).toEqual([
+      {
+        sessionId: 'paired-session',
+        target: { kind: 'environment', environmentId: 'paired-1' },
+        released: false
+      }
+    ])
+
     receiptArrives('paired-session')
     receiptArrives('paired-session')
 
     expect(model.fetchComments).toHaveBeenCalledExactlyOnceWith({ force: true })
+    expect(mocks.readHolds[0]?.released).toBe(true)
+  })
+
+  it("refetches with the panel's latest fetch after the agent pushed, and not at all on another PR", async () => {
+    const { model, hook } = acknowledgement()
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
+      promptDeliveryResult: CARRIED,
+      structuredSettlement: Promise.resolve({ kind: 'structured', sessionId: 'session-1' })
+    })
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+    // The agent pushed: same PR, new head, and the panel's fetch was rebuilt for it.
+    const fetchAtNewHead = vi.fn(async () => {})
+    model.asyncResultKeyRef.current = 'repo-1::42::sha-2'
+    model.fetchComments = fetchAtNewHead
+    hook.rerender()
+
+    receiptArrives('session-1')
+
+    expect(fetchAtNewHead).toHaveBeenCalledExactlyOnceWith({ force: true })
+
+    const again = acknowledgement()
+    await expect(resolveCommentsWithAi(again.hook)).resolves.toBe(true)
+    again.model.asyncResultKeyRef.current = 'repo-1::77::sha-9'
+    again.hook.rerender()
+
+    receiptArrives('session-1')
+
+    expect(again.model.fetchComments).not.toHaveBeenCalled()
   })
 
   it('stops waiting for the receipt when the panel goes away', async () => {
