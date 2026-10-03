@@ -73,6 +73,7 @@ Common commands:
 ORCA repo list --json
 ORCA repo show --repo id:<repoId> --json
 ORCA repo add --path /abs/repo --json
+ORCA repo set --repo id:<repoId> --external-worktree-visibility show --json
 ORCA repo set-base-ref --repo id:<repoId> --ref origin/main --json
 ORCA repo search-refs --repo id:<repoId> --query main --limit 10 --json
 ORCA worktree list --repo id:<repoId> --json
@@ -93,6 +94,10 @@ ORCA worktree set --worktree active --gitlab-issue '#42' --gitlab-mr '!77' --jso
 ORCA worktree set --worktree active --pr null --gitlab-mr null --json
 ORCA worktree rm --worktree id:<repoId>::<worktreePath> --force --json
 ```
+
+Use `repo set --external-worktree-visibility show` to show a repo's non-Orca worktrees.
+`hide` hides them; `inherit` clears the repo override and follows the global default.
+Per-worktree visibility rules still apply.
 
 Selectors:
 
