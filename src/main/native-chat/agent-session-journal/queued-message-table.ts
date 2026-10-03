@@ -14,10 +14,10 @@ import type {
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import {
-  readQueuedMessageSource,
-  serializeQueuedMessageSource,
-  type QueuedMessageSource
-} from '../../../shared/queued-message-source'
+  readAgentSessionMessageSource,
+  serializeAgentSessionMessageSource,
+  type AgentSessionMessageSource
+} from '../../../shared/agent-session-message-source'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
@@ -64,8 +64,8 @@ export type QueuedMessageRow = {
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
   queuedAt: AgentJournalCursor | null
-  /** Who queued it; only a person's card waits out a restart (`queued-message-pause.ts`). */
-  source: QueuedMessageSource
+  /** Who queued it; only a person's card waits out a pause (`queued-message-pause.ts`). */
+  source: AgentSessionMessageSource
 }
 
 const COLUMNS =
@@ -81,7 +81,7 @@ export function insertQueuedMessage(
     hostInstance: string
     carriedFrom?: string
     queuedAt: AgentJournalCursor
-    source: QueuedMessageSource
+    source: AgentSessionMessageSource
     now: number
   }
 ): QueuedMessageRow {
@@ -104,7 +104,7 @@ export function insertQueuedMessage(
     input.carriedFrom ?? null,
     input.queuedAt.epoch,
     input.queuedAt.sequence,
-    serializeQueuedMessageSource(input.source)
+    serializeAgentSessionMessageSource(input.source)
   )
   return {
     sessionId: input.sessionId,
@@ -349,14 +349,14 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
   }
 }
 
-function storedSource(json: string | null): QueuedMessageSource {
+function storedSource(json: string | null): AgentSessionMessageSource {
   let stored: unknown = null
   try {
     stored = json === null ? null : JSON.parse(json)
   } catch {
     // An unreadable value is read as no value; the source reader decides what that means.
   }
-  return readQueuedMessageSource(stored)
+  return readAgentSessionMessageSource(stored)
 }
 
 function storedRejection(json: string | null): UnreadAgentSessionFailureFact | null {

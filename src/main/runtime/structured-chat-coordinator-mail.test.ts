@@ -40,37 +40,9 @@ import {
   ptyPointer,
   queuedCardTexts,
   turnText,
-  restartRuntime
+  restartRuntime,
+  clearChat
 } from './structured-chat-coordinator-mail-rig.test-fixture'
-
-/** `/clear` as the chat surface runs it: the conversation continues in a new session. */
-async function clearChat(sessionId: string): Promise<string> {
-  const command = 'clear' as const
-  const cleared = await host.conversationCommand(
-    { callerKey: 'test-surface' },
-    {
-      command,
-      envelope: {
-        sessionId,
-        clientOperationId: operationId(),
-        expectedRuntimeFence: host.deps.store.getRecord(sessionId)!.lease.runtimeFence,
-        payloadFingerprint: computeAgentSessionPayloadFingerprint({
-          method: 'agentSession.conversationCommand',
-          sessionId,
-          fields: { command }
-        })
-      }
-    }
-  )
-  const successor = cleared.ok ? cleared.value.replacementSessionId : undefined
-  if (!successor) {
-    throw new Error(`clear failed: ${JSON.stringify(cleared)}`)
-  }
-  // The surface swaps the tab over to the session that continues the chat.
-  await host.setSessionTabVisibility(sessionId, false)
-  await host.setSessionTabVisibility(successor, true)
-  return successor
-}
 
 /** A cleared chat's successor runs once the user writes to it; only then can its agent act. */
 async function startSuccessor(successor: string): Promise<void> {

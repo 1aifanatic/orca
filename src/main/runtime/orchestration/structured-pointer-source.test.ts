@@ -34,7 +34,6 @@ describe('who a mail notice speaks for', () => {
     })
     expect(source).toEqual({
       kind: 'agent',
-      message: 'mail-notice',
       senders: [
         {
           party: {
@@ -42,8 +41,7 @@ describe('who a mail notice speaks for', () => {
             terminalHandle: 'term_a',
             paneKey: 'tab_a:leaf',
             orcaSessionId: null
-          },
-          hostId: 'local'
+          }
         },
         {
           party: {
@@ -51,11 +49,11 @@ describe('who a mail notice speaks for', () => {
             terminalHandle: null,
             paneKey: null,
             orcaSessionId: SESSION
-          },
-          hostId: 'local'
+          }
         }
       ],
       orchestration: {
+        message: 'mail-notice',
         mailbox: 'run:r1',
         dispatchId: null,
         runIds: ['r1', 'r2'],

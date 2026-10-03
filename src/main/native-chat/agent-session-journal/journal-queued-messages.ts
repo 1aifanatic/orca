@@ -27,14 +27,19 @@ import {
   consumeQueuedMessageInTransaction,
   getQueuedMessage,
   insertQueuedMessage,
+  isUnsettledQueuedMessage,
   listQueuedMessages,
   queuedMessagesSettledByOp,
   withdrawQueuedMessages,
   type QueuedMessageHoldReason,
   type QueuedMessageRow
 } from './queued-message-table'
-import type { QueuedMessageSource } from '../../../shared/queued-message-source'
+import {
+  agentMessageKey,
+  type AgentSessionMessageSource
+} from '../../../shared/agent-session-message-source'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
+import { restateQueuedMessageInTransaction } from './queued-message-restatement'
 import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
@@ -102,23 +107,25 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused. */
+  /** `carriedFrom`: a /clear's carry. A person's carried card is its own 'cleared' pause. */
   insert(input: {
     messageId: string
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
     carriedFrom?: string
-    source: QueuedMessageSource
+    source: AgentSessionMessageSource
   }): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
     let inserted = false
     return this.transact(
       (db) => {
-        const existing = getQueuedMessage(db, sessionId, input.messageId)
+        const existing =
+          getQueuedMessage(db, sessionId, input.messageId) ?? sameAgentMessage(db, sessionId, input)
         if (existing) {
           // One id, one draft: admission replays a recorded operation before it
-          // gets here, so an existing row is the same accept landing twice.
+          // gets here, so an existing row is the same accept landing twice. And
+          // one unsettled card per agent message: a second is the same notice.
           return existing
         }
         inserted = true
@@ -187,10 +194,11 @@ export class JournalQueuedMessages {
   }
 
   /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,
-   *  kept only so a replay of the settling operation answers "spent". */
+   *  kept only so a replay of the settling operation answers "spent"; null
+   *  when the host itself withdrew them. */
   withdraw(input: {
     messageIds: readonly string[]
-    settledByOp: string
+    settledByOp: string | null
   }): Promise<QueuedMessageRow[]> {
     if (input.messageIds.length === 0) {
       // Delete races and empty carries land here; neither may cost a write transaction.
@@ -257,11 +265,21 @@ export class JournalQueuedMessages {
         throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
       }
     }
-    const consumed = consumeQueuedMessageInTransaction(db, {
-      ...input,
-      sessionId: this.deps.sessionId,
-      now: this.deps.now()
-    })
+    const restated =
+      !input.restated ||
+      restateQueuedMessageInTransaction(db, {
+        sessionId: this.deps.sessionId,
+        messageId: input.messageId,
+        expect: input.expect,
+        restated: input.restated
+      })
+    const consumed =
+      restated &&
+      consumeQueuedMessageInTransaction(db, {
+        ...input,
+        sessionId: this.deps.sessionId,
+        now: this.deps.now()
+      })
     if (!consumed) {
       throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
     }
@@ -331,6 +349,19 @@ export class JournalQueuedMessages {
       (changed) => changed > 0
     ).then(() => undefined)
   }
+}
+
+function sameAgentMessage(
+  db: Database.Database,
+  sessionId: string,
+  input: { source: AgentSessionMessageSource }
+): QueuedMessageRow | undefined {
+  const key = agentMessageKey(input.source)
+  return key === null
+    ? undefined
+    : listQueuedMessages(db, sessionId).find(
+        (row) => isUnsettledQueuedMessage(row) && agentMessageKey(row.source) === key
+      )
 }
 
 /** The per-append hook converting one draft inside the append's own transaction. */

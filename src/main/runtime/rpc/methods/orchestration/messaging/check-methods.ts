@@ -1,4 +1,4 @@
-import { defineMethod, type RpcContext } from '../../../core'
+import { defineMethod } from '../../../core'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { CheckParams } from '../schemas'
 import { parseMessageTypes } from '../routing'
@@ -18,118 +18,99 @@ export const ORCHESTRATION_CHECK_METHODS = [
   defineMethod({
     name: 'orchestration.check',
     params: CheckParams,
-    handler: afterMailRead(
-      async (
-        params,
-        {
-          orchestrationCompatibilityEvidence,
-          orchestrationCaller,
+    handler: async (
+      params,
+      {
+        orchestrationCompatibilityEvidence,
+        orchestrationCaller,
+        runtime,
+        signal,
+        legacyCoordinatorRunId,
+        revalidateLegacyCoordinator,
+        recordMutationReceipt
+      }
+    ) => {
+      const db = runtime.getOrchestrationDb()
+      const handle = params.terminal ?? 'unknown'
+      const typeFilter = parseMessageTypes(params.types)
+
+      const caller = orchestrationCallerIdentity(runtime, {
+        handle,
+        session: orchestrationCaller,
+        // Why: a live runtime handle is authoritative; pane metadata is only the restart fallback.
+        paneKey: runtime.getTerminalPaneKey(handle) ?? params.terminalPaneKey
+      })
+      const paneKey = caller.paneKey ?? undefined
+      const boundRun = hasRunBindingKey(caller) ? db.getCurrentRunForCoordinator(caller) : undefined
+      if (params.run || boundRun) {
+        return checkRunMailbox({
+          params,
           runtime,
+          db,
+          handle,
+          paneKey,
+          callerSession: orchestrationCaller,
+          typeFilter,
           signal,
           legacyCoordinatorRunId,
           revalidateLegacyCoordinator,
+          orchestrationCompatibilityEvidence,
           recordMutationReceipt
-        }
-      ) => {
-        const db = runtime.getOrchestrationDb()
-        const handle = params.terminal ?? 'unknown'
-        const typeFilter = parseMessageTypes(params.types)
-
-        const caller = orchestrationCallerIdentity(runtime, {
-          handle,
-          session: orchestrationCaller,
-          // Why: a live runtime handle is authoritative; pane metadata is only the restart fallback.
-          paneKey: runtime.getTerminalPaneKey(handle) ?? params.terminalPaneKey
         })
-        const paneKey = caller.paneKey ?? undefined
-        const boundRun = hasRunBindingKey(caller)
-          ? db.getCurrentRunForCoordinator(caller)
-          : undefined
-        if (params.run || boundRun) {
-          return checkRunMailbox({
-            params,
-            runtime,
-            db,
-            handle,
-            paneKey,
-            callerSession: orchestrationCaller,
-            typeFilter,
-            signal,
-            legacyCoordinatorRunId,
-            revalidateLegacyCoordinator,
-            orchestrationCompatibilityEvidence,
-            recordMutationReceipt
-          })
-        }
-
-        const activeDispatch = db.getActiveDispatchForIdentity(handle, paneKey)
-        // Why: reading another pane's Dispatch mail is wrong in every mode, so peek is fenced too.
-        if (activeDispatch && !callerHoldsDispatchPane(activeDispatch, paneKey)) {
-          throw dispatchFenced()
-        }
-        const remoteAttachment =
-          !activeDispatch && paneKey ? db.findActiveRemoteAttachmentForPane(paneKey) : undefined
-        if (
-          remoteAttachment &&
-          !db.isRemoteAttachmentProcessCurrent({
-            dispatchId: remoteAttachment.dispatch_id,
-            paneKey: paneKey ?? null,
-            processIncarnation: runtime.getTerminalProcessIncarnation(handle)
-          })
-        ) {
-          throw new OrchestrationError(
-            'dispatch_inactive',
-            `Dispatch ${remoteAttachment.dispatch_id} is no longer attached to this worker process.`
-          )
-        }
-        if (activeDispatch || remoteAttachment) {
-          return checkWorkerMailbox({
-            params,
-            runtime,
-            db,
-            handle,
-            paneKey,
-            typeFilter,
-            signal,
-            activeDispatch,
-            remoteAttachment,
-            recordMutationReceipt
-          })
-        }
-        const consumingCheck =
-          params.peek !== true && params.all !== true && params.unread !== false
-        // Why: an empty consuming check is the worker contract's "checkpoint, not a failure", so a
-        // caller whose Attempt moved on has to be told rather than handed an empty direct mailbox.
-        // This outranks the pane guard: a paneless loser cannot run-use anyway, it has to stop.
-        const settledDispatch = consumingCheck ? db.getLatestDispatchForTerminal(handle) : undefined
-        if (settledDispatch && isSupersededDispatch(settledDispatch)) {
-          throw dispatchFenced()
-        }
-        // Why: a consuming check on a handle with no live pane and no Dispatch can never see
-        // Run mail, so an empty inbox would read as "nothing yet" instead of a stale caller.
-        if (!hasRunBindingKey(caller) && consumingCheck) {
-          throw new OrchestrationError(
-            'stable_pane_required',
-            `Terminal ${handle} has no live pane bound to a Run, so this inbox can never receive Run mail. Rebind this terminal with orchestration run-use, or read the Run mailbox with --run <run_id>.`,
-            orchestrationSkillRecoveryData()
-          )
-        }
-        return checkDirectMailbox({ params, runtime, db, handle, typeFilter, signal })
       }
-    )
+
+      const activeDispatch = db.getActiveDispatchForIdentity(handle, paneKey)
+      // Why: reading another pane's Dispatch mail is wrong in every mode, so peek is fenced too.
+      if (activeDispatch && !callerHoldsDispatchPane(activeDispatch, paneKey)) {
+        throw dispatchFenced()
+      }
+      const remoteAttachment =
+        !activeDispatch && paneKey ? db.findActiveRemoteAttachmentForPane(paneKey) : undefined
+      if (
+        remoteAttachment &&
+        !db.isRemoteAttachmentProcessCurrent({
+          dispatchId: remoteAttachment.dispatch_id,
+          paneKey: paneKey ?? null,
+          processIncarnation: runtime.getTerminalProcessIncarnation(handle)
+        })
+      ) {
+        throw new OrchestrationError(
+          'dispatch_inactive',
+          `Dispatch ${remoteAttachment.dispatch_id} is no longer attached to this worker process.`
+        )
+      }
+      if (activeDispatch || remoteAttachment) {
+        return checkWorkerMailbox({
+          params,
+          runtime,
+          db,
+          handle,
+          paneKey,
+          typeFilter,
+          signal,
+          activeDispatch,
+          remoteAttachment,
+          recordMutationReceipt
+        })
+      }
+      const consumingCheck = params.peek !== true && params.all !== true && params.unread !== false
+      // Why: an empty consuming check is the worker contract's "checkpoint, not a failure", so a
+      // caller whose Attempt moved on has to be told rather than handed an empty direct mailbox.
+      // This outranks the pane guard: a paneless loser cannot run-use anyway, it has to stop.
+      const settledDispatch = consumingCheck ? db.getLatestDispatchForTerminal(handle) : undefined
+      if (settledDispatch && isSupersededDispatch(settledDispatch)) {
+        throw dispatchFenced()
+      }
+      // Why: a consuming check on a handle with no live pane and no Dispatch can never see
+      // Run mail, so an empty inbox would read as "nothing yet" instead of a stale caller.
+      if (!hasRunBindingKey(caller) && consumingCheck) {
+        throw new OrchestrationError(
+          'stable_pane_required',
+          `Terminal ${handle} has no live pane bound to a Run, so this inbox can never receive Run mail. Rebind this terminal with orchestration run-use, or read the Run mailbox with --run <run_id>.`,
+          orchestrationSkillRecoveryData()
+        )
+      }
+      return checkDirectMailbox({ params, runtime, db, handle, typeFilter, signal })
+    }
   })
 ]
-
-/** A pointer still queued in a chat for mail a check read is withdrawn before the reader sees the
- *  mail, so before its turn can end and the queue send it. Never fails the check. */
-function afterMailRead<TParams, TResult>(
-  check: (params: TParams, context: RpcContext) => Promise<TResult>
-): (params: TParams, context: RpcContext) => Promise<TResult> {
-  return async (params, context) => {
-    try {
-      return await check(params, context)
-    } finally {
-      await context.runtime.notifyOrchestrationMailRead()
-    }
-  }
-}

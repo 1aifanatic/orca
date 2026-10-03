@@ -18,15 +18,6 @@ export function getStructuredPointerOperation(
     .get(mailboxHandle) as StructuredPointerOperationRow | undefined
 }
 
-/** Every mailbox with a pointer still unresolved: what a read of mail may have made stale. */
-export function listStructuredPointerOperations(
-  this: OrchestrationDb
-): StructuredPointerOperationRow[] {
-  const statement = this.db.prepare('SELECT * FROM structured_pointer_operations')
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every column of this table is a StructuredPointerOperationRow field; better-sqlite3 types rows as unknown.
-  return statement.all() as StructuredPointerOperationRow[]
-}
-
 export function putStructuredPointerOperation(
   this: OrchestrationDb,
   row: StructuredPointerOperationRow
@@ -58,18 +49,26 @@ export function deleteStructuredPointerOperation(
     .run(mailboxHandle)
 }
 
+/** The rows of a session nothing will reconcile again (its worker settled). */
+export function deleteStructuredPointerOperationsForSession(
+  this: OrchestrationDb,
+  sessionId: string
+): void {
+  this.db.prepare('DELETE FROM structured_pointer_operations WHERE session_id = ?').run(sessionId)
+}
+
 export type StructuredPointerOperationStoreMethods = {
   getStructuredPointerOperation: typeof getStructuredPointerOperation
-  listStructuredPointerOperations: typeof listStructuredPointerOperations
   putStructuredPointerOperation: typeof putStructuredPointerOperation
   deleteStructuredPointerOperation: typeof deleteStructuredPointerOperation
+  deleteStructuredPointerOperationsForSession: typeof deleteStructuredPointerOperationsForSession
 }
 
 export function attachStructuredPointerOperationStore(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
     getStructuredPointerOperation,
-    listStructuredPointerOperations,
     putStructuredPointerOperation,
-    deleteStructuredPointerOperation
+    deleteStructuredPointerOperation,
+    deleteStructuredPointerOperationsForSession
   })
 }

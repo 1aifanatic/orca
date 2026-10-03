@@ -2,23 +2,19 @@
  * The structured-session half of the structured pointer lane.
  *
  * Keeps every `getStructuredAgentSessionHost()` call in one place so the delivery policy above it
- * stays pure and testable. Nothing here decides whether to deliver; it only performs the read, the
- * send and the withdrawal, and reports what the host said.
+ * stays pure and testable. Nothing here decides whether to deliver; it only performs the read and
+ * the send, and reports what the host said.
  */
 
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { StructuredMailboxPointerHost } from './structured-mailbox-pointer-delivery'
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
-import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import {
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
-import {
-  mintAgentSessionOperationId,
-  type StructuredPointerFacts
-} from './structured-pointer-operation-id'
+import type { StructuredPointerFacts } from './structured-pointer-notice-cards'
 import { sendAgentTurn } from './send-agent-turn'
 
 /** Per-dispatch so one worker's nudges cannot exhaust the shared runtime operation-ledger budget. */
@@ -56,15 +52,28 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
   return readSession(sessionId, (host) => host.journalSnapshot(sessionId))
 }
 
-/** What each recorded send settled as, and every draft card, so the lane can find its own. */
+/** What each recorded send settled as, and every draft card, so the lane can find its own. Cards
+ *  first: a card read as handed off then always finds its hand-off, committed with it. */
 function readPointerFacts(sessionId: string): Promise<StructuredPointerFacts | null> {
-  return readSession(sessionId, async (host) => ({
-    submissions: (await host.journalSnapshot(sessionId)).submissions,
-    cards: (await host.queuedMessageRows(sessionId)).map(({ messageId, state }) => ({
-      messageId,
-      state
-    }))
-  }))
+  return readSession(sessionId, async (host) => {
+    const rows = await host.queuedMessageRows(sessionId)
+    return {
+      submissions: (await host.journalSnapshot(sessionId)).submissions,
+      cards: rows.map(({ messageId, state, source, settledByOp }) => ({
+        messageId,
+        state,
+        notice:
+          source.kind === 'agent' && source.orchestration.message === 'mail-notice'
+            ? {
+                mailbox: source.orchestration.mailbox,
+                messageIds: source.orchestration.messageIds
+              }
+            : null,
+        // Only an operation someone asked for stamps the card; the host's own withdrawals do not.
+        withdrawnByRequest: state === 'withdrawn' && settledByOp !== null
+      }))
+    }
+  })
 }
 
 async function readSession<T>(
@@ -141,32 +150,6 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           }
         }
       }
-    },
-
-    // The same Delete a person's click sends; a card already sent or gone answers without a change.
-    async withdraw({ sessionId, messageId }) {
-      const host = getStructuredAgentSessionHost()
-      const fence = currentFence(sessionId)
-      if (!host || fence === null) {
-        return false
-      }
-      const result = await host.queuedMessageDelete(
-        { callerKey: structuredSessionPointerCallerKey(sessionId) },
-        {
-          envelope: {
-            sessionId,
-            clientOperationId: mintAgentSessionOperationId(Date.now()),
-            expectedRuntimeFence: fence,
-            payloadFingerprint: structuredAgentSessionPayloadFingerprint({
-              method: 'agentSession.queuedMessageDelete',
-              sessionId,
-              fields: { messageId }
-            })
-          },
-          messageId
-        }
-      )
-      return result.ok
     }
   }
 }

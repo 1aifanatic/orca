@@ -601,15 +601,62 @@ describe('which cards the pauses in force hold', () => {
     expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
   })
 
-  it("a restart holds only a person's card: an agent's from the dead process sends, and alone pauses nothing", () => {
-    const agent = card('agent', 1, { hostInstance: DEAD, source: { kind: 'agent' } })
+  const AGENT_SOURCE = {
+    kind: 'agent' as const,
+    senders: [],
+    orchestration: {
+      message: 'mail-notice' as const,
+      mailbox: 'run:r1',
+      dispatchId: null,
+      runIds: ['r1'],
+      messageIds: ['m1']
+    }
+  }
+
+  it("no pause holds an agent's card, and one alone pauses nothing", () => {
+    const agent = card('agent', 1, {
+      hostInstance: DEAD,
+      carriedFrom: 'source-session',
+      source: AGENT_SOURCE
+    })
     expect(pausesOver([agent], 0)).toEqual([])
-    const both = [agent, card('person', 2, { hostInstance: DEAD })]
-    expect(holding(both, 0)).toEqual([
-      ['agent', null],
-      ['person', 'restarted']
-    ])
-    expect(nextSendableQueuedCard(pausesOver(both, 0), both)?.messageId).toBe('agent')
+    expect(holding([agent])).toEqual([['agent', null]])
+    expect(nextSendableQueuedCard(pausesOver([agent]), [agent])).toBe(agent)
+    expect(resumableQueuePause(pausesOver([agent]), [agent])).toBeNull()
+  })
+
+  it.each([
+    ['restarted', { hostInstance: DEAD }, 0],
+    ['stopped', {}, 5],
+    ['cleared', { carriedFrom: 'source-session' }, 0]
+  ] as const)(
+    "an agent's card behind a person's card held by '%s' sends; the header still names that pause",
+    (reason, held, stopped) => {
+      const cards = [
+        card('person', 1, held),
+        card('agent', 2, { source: AGENT_SOURCE }),
+        card('person-later', 6)
+      ]
+      expect(holding(cards, stopped).slice(0, 2)).toEqual([
+        ['person', reason],
+        ['agent', null]
+      ])
+      expect(nextSendableQueuedCard(pausesOver(cards, stopped), cards)?.messageId).toBe('agent')
+      expect(resumableQueuePause(pausesOver(cards, stopped), cards)?.reason).toBe(reason)
+      // Sent: the person's later card still never overtakes their held one.
+      const rest = cards.map((each) =>
+        each.messageId === 'agent' ? { ...each, state: 'dispatched' } : each
+      )
+      expect(nextSendableQueuedCard(pausesOver(rest, stopped), rest)).toBeNull()
+    }
+  )
+
+  it("an agent's card behind a card returned to the person sends", () => {
+    const cards = [
+      card('returned', 1, { state: 'returned' }),
+      card('agent', 2, { source: AGENT_SOURCE })
+    ]
+    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('agent')
   })
 
   it("a /clear's pause that holds nothing never hides a restart's", () => {

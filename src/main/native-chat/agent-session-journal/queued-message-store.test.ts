@@ -22,7 +22,7 @@ import {
   QueuedMessageNotConsumableError
 } from './journal-queued-messages'
 import type { AgentSessionJournal } from './journal-store'
-import type { QueuedMessageSource } from '../../../shared/queued-message-source'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import {
   closeTestJournalHostDatabases,
   createTrackedJournalOpener
@@ -177,9 +177,8 @@ describe('draft rows', () => {
   })
 
   it("keeps who queued a card across reopen; a card with no readable sender is the person's", async () => {
-    const agent: QueuedMessageSource = {
+    const agent: AgentSessionMessageSource = {
       kind: 'agent',
-      message: 'mail-notice',
       senders: [
         {
           party: {
@@ -187,11 +186,16 @@ describe('draft rows', () => {
             terminalHandle: 'structworker_1',
             paneKey: 'tab:leaf',
             orcaSessionId: null
-          },
-          hostId: 'local'
+          }
         }
       ],
-      orchestration: { mailbox: 'run:r1', dispatchId: 'd1', runIds: ['r1'], messageIds: ['m1'] }
+      orchestration: {
+        message: 'mail-notice',
+        mailbox: 'run:r1',
+        dispatchId: 'd1',
+        runIds: ['r1'],
+        messageIds: ['m1']
+      }
     }
     const first = await open()
     await first.queuedMessages.insert({

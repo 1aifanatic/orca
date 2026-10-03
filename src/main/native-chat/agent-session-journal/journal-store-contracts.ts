@@ -13,6 +13,7 @@ import type {
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
 import type { JournalRow } from './journal-row-schema'
+import type { QueuedMessageRestatement } from './queued-message-restatement'
 
 export type AgentSessionJournalOptions = {
   identity: AgentSessionJournalIdentity
@@ -97,6 +98,8 @@ export type JournalSubmissionConsume = {
   /** The queue's own send: refused in the consume's transaction while the queue's pause, as
    *  this host instance derives it, holds the card. Send-now omits it. */
   yieldsToPause?: { hostInstance: string }
+  /** Written onto the card with the hand-off, so the card records what was sent. */
+  restated?: QueuedMessageRestatement
 }
 
 export type JournalItemAppendInput = {

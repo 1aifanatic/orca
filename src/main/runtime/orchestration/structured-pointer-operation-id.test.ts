@@ -7,7 +7,6 @@ import {
   decideStructuredPointerAttempt,
   mintAgentSessionOperationId,
   resolveStructuredPointerOperation,
-  structuredPointerBatchFingerprint,
   type StructuredPointerSubmission
 } from './structured-pointer-operation-id'
 
@@ -17,14 +16,14 @@ const OPERATION_ID_PATTERN = /^\d{13}-[0-9a-f]{32}$/
 function resolveId(
   args: Omit<
     Parameters<typeof resolveStructuredPointerOperation>[0],
-    'facts' | 'sentByThisProcess'
+    'submissions' | 'sentByThisProcess'
   > & { submissions?: StructuredPointerSubmission[] }
 ): {
   operationId: string
 } {
   const resolved = resolveStructuredPointerOperation({
     ...args,
-    facts: { submissions: args.submissions ?? [], cards: [] },
+    submissions: args.submissions ?? [],
     sentByThisProcess: args.db.getStructuredPointerOperation(args.mailboxHandle)?.operation_id
   })
   if (resolved.kind !== 'send') {
@@ -177,14 +176,14 @@ describe('what a pointer attempt does with its operation row', () => {
     mailbox_handle: 'run:r1',
     session_id: 's1',
     operation_id: 'op1',
-    batch_fingerprint: structuredPointerBatchFingerprint('s1', ['m1']),
+    batch_fingerprint: 'batch-1',
     minted_at_ms: 2_000
   }
 
   function decide(
     submissions: StructuredPointerSubmission[],
     overrides: {
-      messageIds?: string[]
+      batchFingerprint?: string
       sessionId?: string
       mintedByThisProcess?: boolean
       now?: number
@@ -193,8 +192,8 @@ describe('what a pointer attempt does with its operation row', () => {
     return decideStructuredPointerAttempt({
       row,
       sessionId: overrides.sessionId ?? 's1',
-      messageIds: overrides.messageIds ?? ['m1'],
-      facts: { submissions, cards: [] },
+      batchFingerprint: overrides.batchFingerprint ?? 'batch-1',
+      submissions,
       mintedByThisProcess: overrides.mintedByThisProcess ?? true,
       now: overrides.now ?? 3_000
     })
@@ -212,14 +211,14 @@ describe('what a pointer attempt does with its operation row', () => {
   })
 
   it('mints for a new batch, a new session, or no row at all', () => {
-    expect(decide([], { messageIds: ['m2'] })).toBe('mint')
+    expect(decide([], { batchFingerprint: 'batch-2' })).toBe('mint')
     expect(decide([], { sessionId: 's2' })).toBe('mint')
     expect(
       decideStructuredPointerAttempt({
         row: undefined,
         sessionId: 's1',
-        messageIds: ['m1'],
-        facts: { submissions: [], cards: [] },
+        batchFingerprint: 'batch-1',
+        submissions: [],
         mintedByThisProcess: false,
         now: 0
       })

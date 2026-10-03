@@ -4,15 +4,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, vi, type Mock } from 'vitest'
+import { expect, vi } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -28,9 +27,11 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { createQueuedRigProviderMocks } from './structured-agent-session-queued-rig-provider.test-fixture'
+import type { QueuedAgentCardJudge } from './structured-agent-session-queued-agent-card'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
-type RigSendOptions = { internal?: true; source?: QueuedMessageAgentSource }
+type RigSendOptions = { internal?: true; source?: AgentMessageSource }
 
 export function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -48,29 +49,14 @@ export async function createQueuedMessageTestRig(
     idleSweep?: { idleMs: number; intervalMs: number }
     /** The provider's Stop ends its child, as Claude's does. */
     stopEndsSession?: true
+    /** What the host's owner answers for an agent's card about to send. */
+    judgeQueuedAgentCard?: QueuedAgentCardJudge
   } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
-  // Admitted: the message is written and unanswered, so the session owes work
-  // until the test settles it.
-  const dispatch: Mock<StructuredAgentSessionAdapter['dispatch']> = vi.fn(async () => ({
-    state: 'admitted' as const
-  }))
-  const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
-    async () => undefined
-  )
-  // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
-  const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
-    state: 'accepted' as const,
-    providerIdentity: null
-  }))
-  const cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']> = vi.fn(async () => ({
-    cancelled: true
-  }))
-  const closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>> = vi.fn(
-    async () => true
-  )
+  const { dispatch, awaitStarted, compact, cancelTurn, closeSession } =
+    createQueuedRigProviderMocks()
   let events: StructuredAgentSessionEventSink | undefined
   const store = await openTestAgentSessionRecordStore(root)
   const makeHost = () =>
@@ -115,7 +101,10 @@ export async function createQueuedMessageTestRig(
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-1',
       now: () => NOW,
-      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {})
+      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {}),
+      ...(options.judgeQueuedAgentCard
+        ? { judgeQueuedAgentCard: options.judgeQueuedAgentCard }
+        : {})
     })
   let host = makeHost()
   expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({

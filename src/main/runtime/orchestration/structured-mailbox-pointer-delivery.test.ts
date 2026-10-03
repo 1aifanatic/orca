@@ -5,11 +5,11 @@ import {
   type StructuredPointerSendOutcome
 } from './structured-mailbox-pointer-delivery'
 import type { StructuredPointerOperationRow } from './db/messages/structured-pointer-operation-store'
-import {
-  structuredPointerBatchFingerprint,
-  type StructuredPointerCard,
-  type StructuredPointerSubmission
-} from './structured-pointer-operation-id'
+import { structuredPointerBatchFingerprint } from './structured-pointer-operation-id'
+import type {
+  StructuredPointerCard,
+  StructuredPointerFacts
+} from './structured-pointer-notice-cards'
 import type { StructuredWorkerIdentity } from '../structured-worker-identity'
 import type { PointerBatchMessage } from './structured-pointer-source'
 
@@ -29,6 +29,22 @@ function mail(id: string, sequence: number, from = 'term_peer'): Unread {
   return { id, type: 'status', sequence, from_handle: from, sender_pane_key: null, run_id: 'run_1' }
 }
 
+type Submission = StructuredPointerFacts['submissions'][number]
+
+/** A mail notice for `dispatch:d1` in the chat's queue, as the host reports it. */
+function noticeCard(
+  messageId: string,
+  state: StructuredPointerCard['state'],
+  options: { messageIds?: string[]; withdrawnByRequest?: boolean; mailbox?: string } = {}
+): StructuredPointerCard {
+  return {
+    messageId,
+    state,
+    notice: { mailbox: options.mailbox ?? 'dispatch:d1', messageIds: options.messageIds ?? ['m1'] },
+    withdrawnByRequest: options.withdrawnByRequest ?? false
+  }
+}
+
 function harness(options: {
   /** False: the host cannot read the session (not attached on this runtime). */
   attached?: boolean
@@ -46,8 +62,9 @@ function harness(options: {
   const dispatchId = options.dispatchId === undefined ? 'd1' : options.dispatchId
   let attached = options.attached ?? true
   let unread: Unread[] = [mail('m1', 3)]
+  let targetSession = IDENTITY.sessionId
   // The session's recorded sends and queue cards, as its journal reports them.
-  let submissions: StructuredPointerSubmission[] = []
+  let submissions: Submission[] = []
   let cards: StructuredPointerCard[] = []
   const markAsDelivered = vi.fn()
   const send = vi.fn(
@@ -56,18 +73,19 @@ function harness(options: {
     ): Promise<StructuredPointerSendOutcome> => {
       if (options.busy) {
         // What the host does with a `queue` send to a busy chat: a card under the send's own id.
-        cards = [...cards, { messageId: input.operationId, state: 'waiting' }]
+        const { mailbox: queuedFor, messageIds } = input.source.orchestration
+        cards = [
+          ...cards,
+          noticeCard(input.operationId, 'waiting', {
+            mailbox: queuedFor,
+            messageIds: [...messageIds]
+          })
+        ]
         return { kind: 'queued', state: 'waiting' }
       }
       return { kind: 'sent', state: options.dispatchState ?? 'accepted' }
     }
   )
-  const withdraw = vi.fn(async ({ messageId }: { sessionId: string; messageId: string }) => {
-    cards = cards.map((card) =>
-      card.messageId === messageId ? { ...card, state: 'withdrawn' as const } : card
-    )
-    return true
-  })
   const onRetain = vi.fn()
   const stored = new Map<string, StructuredPointerOperationRow>()
   const db = {
@@ -78,22 +96,27 @@ function harness(options: {
     getUndeliveredUnreadMessages: () => unread,
     markAsDelivered,
     getStructuredPointerOperation: (key: string) => stored.get(key),
-    listStructuredPointerOperations: () => [...stored.values()],
     putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
       stored.set(row.mailbox_handle, row),
-    deleteStructuredPointerOperation: (key: string) => stored.delete(key)
+    deleteStructuredPointerOperation: (key: string) => stored.delete(key),
+    deleteStructuredPointerOperationsForSession: (sessionId: string) => {
+      for (const [key, row] of stored) {
+        if (row.session_id === sessionId) {
+          stored.delete(key)
+        }
+      }
+    }
   }
   const host: StructuredMailboxPointerHost = {
     readFacts: async () => (attached ? { submissions, cards } : null),
     currentFence: () => 4,
-    send,
-    withdraw
+    send
   }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
     getDb: () => db as never,
     getMessageWaiters: () => undefined,
     resolveStructuredTarget: (mailboxHandle) =>
-      mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
+      mailboxHandle === mailbox ? { sessionId: targetSession, dispatchId } : null,
     getCliCommand: () => 'orca-dev',
     host,
     onRetain
@@ -102,16 +125,19 @@ function harness(options: {
     delivery,
     markAsDelivered,
     send,
-    withdraw,
     onRetain,
     stored,
+    /** A /clear: the mailbox now reaches the conversation's successor. */
+    moveTarget: (sessionId: string) => {
+      targetSession = sessionId
+    },
     attach: () => {
       attached = true
     },
     setUnread: (next: Unread[]) => {
       unread = next
     },
-    setSubmissions: (next: StructuredPointerSubmission[]) => {
+    setSubmissions: (next: Submission[]) => {
       submissions = next
     },
     setCards: (next: StructuredPointerCard[]) => {
@@ -384,51 +410,98 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     return h.send.mock.calls[0]![0].operationId
   }
 
+  function handedOff(card: string, dispatchState: Submission['dispatchState']): Submission {
+    return {
+      clientMessageId: 'queue-hand-off',
+      queuedMessageId: card,
+      dispatchState,
+      submittedAt: Date.now() + 1
+    }
+  }
+
   it('is sent once, by the queue, and consumes mail only when that hand-off is accepted', async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
     expect(h.onRetain).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'queued' }))
     expect(h.markAsDelivered).not.toHaveBeenCalled()
+    // The card carries the send from here: no row keeps a second record of it.
+    expect(h.stored.size).toBe(0)
     h.delivery.onJournalActivity('session-1')
     await flush()
     expect(h.send).toHaveBeenCalledTimes(1)
     // The queue sends it when the turn ends, under a fresh id that names the card.
-    h.setCards([{ messageId: card, state: 'dispatched' }])
-    h.setSubmissions([
-      {
-        clientMessageId: 'queue-hand-off',
-        queuedMessageId: card,
-        dispatchState: 'accepted',
-        submittedAt: Date.now() + 1
-      }
-    ])
+    h.setCards([noticeCard(card, 'dispatched')])
+    h.setSubmissions([handedOff(card, 'pending')])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.markAsDelivered).not.toHaveBeenCalled()
+    h.setSubmissions([handedOff(card, 'accepted')])
     h.delivery.onJournalActivity('session-1')
     await flush()
     expect(h.send).toHaveBeenCalledTimes(1)
     expect(h.markAsDelivered).toHaveBeenCalledWith(['m1'])
-    expect(h.stored.size).toBe(0)
   })
 
-  it('queues no second card while one from before a restart still waits', async () => {
+  it('stamps the mail the card counted when it was sent, as the queue restated it', async () => {
     const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setUnread([mail('m1', 3), SECOND])
+    h.setCards([noticeCard(card, 'dispatched', { messageIds: ['m1', 'm2'] })])
+    h.setSubmissions([handedOff(card, 'accepted')])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.markAsDelivered).toHaveBeenCalledWith(['m1', 'm2'])
+    expect(h.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps its one card when more mail arrives: the queue restates it as it sends', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setUnread([mail('m1', 3), SECOND])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    expect(h.cards()).toEqual([noticeCard(card, 'waiting')])
+    expect(h.onRetain).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'queued' }))
+  })
+
+  it('finds a card no row names, by what it is: queued by an earlier process, or carried by /clear', async () => {
+    const h = harness({ busy: true })
+    // The row still names the conversation /clear replaced; the card moved under the same id.
     h.stored.set('dispatch:d1', {
       mailbox_handle: 'dispatch:d1',
-      session_id: 'session-1',
-      operation_id: 'earlier-process-card',
-      batch_fingerprint: structuredPointerBatchFingerprint('session-1', ['m1']),
+      session_id: 'session-0',
+      operation_id: 'carried-card',
+      batch_fingerprint: structuredPointerBatchFingerprint('session-0', ['m1']),
       minted_at_ms: 0
     })
-    h.setCards([{ messageId: 'earlier-process-card', state: 'waiting' }])
+    h.setCards([noticeCard('carried-card', 'waiting')])
     h.delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(h.send).not.toHaveBeenCalled()
+    expect(h.stored.size).toBe(0)
     expect(h.onRetain).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'queued' }))
+    // Its hand-off in the new conversation is what stamps the mail.
+    h.setCards([noticeCard('carried-card', 'dispatched')])
+    h.setSubmissions([handedOff('carried-card', 'accepted')])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.markAsDelivered).toHaveBeenCalledWith(['m1'])
+    expect(h.send).not.toHaveBeenCalled()
+  })
+
+  it("ignores another mailbox's card", async () => {
+    const h = harness({ busy: true })
+    h.setCards([noticeCard('other-card', 'waiting', { mailbox: 'run:run_1' })])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
   })
 
   it('counts a card the person deleted as handled: that mail is not pointed again, newer mail is', async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
-    h.setCards([{ messageId: card, state: 'withdrawn' }])
+    h.setCards([noticeCard(card, 'withdrawn', { withdrawnByRequest: true })])
     // The person talked to the agent since, which alone would otherwise re-point the batch.
     h.setSubmissions([
       { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 1 }
@@ -443,68 +516,110 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     expect(h.send).toHaveBeenCalledTimes(2)
   })
 
-  it('withdraws its waiting card as soon as the mail is read, before the queue can send it', async () => {
+  it('reads a card the host withdrew (its mail was gone, or /clear moved it) as no decline', async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
-    h.setUnread([])
-    await h.delivery.onMailRead()
-    expect(h.withdraw).toHaveBeenCalledWith({ sessionId: 'session-1', messageId: card })
-    expect(h.cards()).toEqual([{ messageId: card, state: 'withdrawn' }])
-    expect(h.stored.size).toBe(0)
-    expect(h.markAsDelivered).not.toHaveBeenCalled()
-    // Its own withdrawal is not a person's decline: newer mail gets a fresh pointer.
-    h.setUnread([SECOND])
-    h.delivery.deliverForHandle('dispatch:d1')
+    h.setCards([noticeCard(card, 'withdrawn')])
+    h.delivery.onJournalActivity('session-1')
     await flush()
+    expect(h.markAsDelivered).not.toHaveBeenCalled()
+    // The mail is still owed, so it is pointed again.
     expect(h.send).toHaveBeenCalledTimes(2)
   })
 
-  it('replaces its card when more mail arrives, so the chat never holds two pointers', async () => {
+  it('waits on a hand-off of unknown fate until a later turn shows it did not land', async () => {
     const h = harness({ busy: true })
-    const first = await queuedCard(h)
-    h.setUnread([mail('m1', 3), SECOND])
-    h.delivery.deliverForHandle('dispatch:d1')
+    const card = await queuedCard(h)
+    h.setCards([noticeCard(card, 'dispatched')])
+    h.setSubmissions([handedOff(card, 'unknown')])
+    h.delivery.onJournalActivity('session-1')
     await flush()
-    expect(h.withdraw).toHaveBeenCalledWith({ sessionId: 'session-1', messageId: first })
+    expect(h.send).toHaveBeenCalledTimes(1)
+    expect(h.onRetain).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reason: 'dispatch-unknown' })
+    )
+    h.setSubmissions([
+      handedOff(card, 'unknown'),
+      { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 5 }
+    ])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
     expect(h.send).toHaveBeenCalledTimes(2)
-    const second = h.send.mock.calls[1]![0]
-    expect(second.body.blocks[0]).toMatchObject({
-      text: expect.stringContaining('You have 2 orchestration messages')
+  })
+})
+
+describe('the queue judges a notice again as it sends', () => {
+  const SOURCE = {
+    kind: 'agent' as const,
+    senders: [],
+    orchestration: {
+      message: 'mail-notice' as const,
+      mailbox: 'dispatch:d1',
+      dispatchId: 'd1',
+      runIds: ['run_1'],
+      messageIds: ['m1']
+    }
+  }
+
+  it('sends a notice that still counts exactly the mail owed', () => {
+    const h = harness({})
+    expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'send'
     })
-    // The card names every distinct sender of the batch it counts, and the records it stands for.
-    expect(second.source).toEqual({
-      kind: 'agent',
-      message: 'mail-notice',
-      senders: [
-        {
-          party: {
-            address: 'term_peer',
-            terminalHandle: 'term_peer',
-            paneKey: null,
-            orcaSessionId: null
-          },
-          hostId: 'local'
-        },
-        {
-          party: {
-            address: 'term_other',
-            terminalHandle: 'term_other',
-            paneKey: null,
-            orcaSessionId: null
-          },
-          hostId: 'local'
+  })
+
+  it('withdraws a notice whose mail was read, or that a consumer or waiter now holds', () => {
+    const h = harness({})
+    h.setUnread([])
+    expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'withdraw'
+    })
+    const held = harness({ outstandingOwnDelivery: true })
+    expect(held.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'withdraw'
+    })
+  })
+
+  it('restates the count and the senders from the mail owed now', () => {
+    const h = harness({})
+    h.setUnread([mail('m2', 4, 'term_other'), mail('m3', 5, 'term_other')])
+    const verdict = h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })
+    expect(verdict).toMatchObject({
+      kind: 'restate',
+      body: {
+        blocks: [
+          { type: 'text', text: expect.stringContaining('You have 2 orchestration messages') }
+        ]
+      },
+      source: {
+        kind: 'agent',
+        senders: [
+          {
+            party: {
+              address: 'term_other',
+              terminalHandle: 'term_other',
+              paneKey: null,
+              orcaSessionId: null
+            }
+          }
+        ],
+        orchestration: {
+          message: 'mail-notice',
+          mailbox: 'dispatch:d1',
+          dispatchId: 'd1',
+          runIds: ['run_1'],
+          messageIds: ['m2', 'm3']
         }
-      ],
-      orchestration: {
-        mailbox: 'dispatch:d1',
-        dispatchId: 'd1',
-        runIds: ['run_1'],
-        messageIds: ['m1', 'm2']
       }
     })
-    expect(h.cards().filter((card) => card.state === 'waiting')).toEqual([
-      { messageId: second.operationId, state: 'waiting' }
-    ])
+  })
+
+  it('withdraws a notice in a session the mailbox no longer reaches', () => {
+    const h = harness({})
+    h.moveTarget('session-2')
+    expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'withdraw'
+    })
   })
 })
 
@@ -527,9 +642,9 @@ describe('forgetting one settled worker', () => {
       getUndeliveredUnreadMessages: () => [mail('m1', 3)],
       markAsDelivered: vi.fn(),
       getStructuredPointerOperation: () => undefined,
-      listStructuredPointerOperations: () => [],
       putStructuredPointerOperation: () => {},
-      deleteStructuredPointerOperation: () => {}
+      deleteStructuredPointerOperation: () => {},
+      deleteStructuredPointerOperationsForSession: () => {}
     }
     const delivery = new OrchestrationStructuredMailboxPointerDelivery({
       getDb: () => db as never,
@@ -544,8 +659,7 @@ describe('forgetting one settled worker', () => {
       host: {
         readFacts: async () => (attached ? { submissions: [], cards: [] } : null),
         currentFence: () => 4,
-        send,
-        withdraw: async () => true
+        send
       }
     })
     return {
@@ -599,5 +713,14 @@ describe('forgetting one settled worker', () => {
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it("deletes the settled worker's pointer rows, which nothing reconciles again", async () => {
+    const h = harness({ dispatchState: 'unknown' })
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.stored.size).toBe(1)
+    h.delivery.forgetSession('session-1')
+    expect(h.stored.size).toBe(0)
   })
 })

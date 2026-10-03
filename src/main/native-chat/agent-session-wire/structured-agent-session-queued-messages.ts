@@ -9,9 +9,9 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
-  USER_QUEUED_MESSAGE_SOURCE,
-  type QueuedMessageAgentSource
-} from '../../../shared/queued-message-source'
+  USER_MESSAGE_SOURCE,
+  type AgentMessageSource
+} from '../../../shared/agent-session-message-source'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionSendResult,
@@ -36,6 +36,10 @@ import {
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import {
+  drainableQueuedCard,
+  type QueuedAgentCardJudge
+} from './structured-agent-session-queued-agent-card'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -201,7 +205,7 @@ export async function maybeQueueStructuredAgentSessionSend(
     /** A person's send at a chat surface; it outranks any `source`. */
     userSend?: true
     /** Who Orca is queueing for, on a host-side send. */
-    source?: QueuedMessageAgentSource
+    source?: AgentMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -245,9 +249,7 @@ export async function maybeQueueStructuredAgentSessionSend(
     fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
     hostInstance: structuredAgentSessionHostInstance(),
     // A host-side send that names no sender holds after a restart, as every card did before.
-    source: params.userSend
-      ? USER_QUEUED_MESSAGE_SOURCE
-      : (params.source ?? USER_QUEUED_MESSAGE_SOURCE)
+    source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE)
   })
   return {
     ok: true,
@@ -265,6 +267,7 @@ export type QueuedMessageDrainDeps = {
   conversationFence: (sessionId: string) => number
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
+  judgeAgentCard: QueuedAgentCardJudge
   logger: StructuredAgentSessionLogger
 }
 
@@ -350,6 +353,17 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
+    const card = drainableQueuedCard({
+      sessionId,
+      row: next,
+      judge: this.deps.judgeAgentCard,
+      logger: this.deps.logger
+    })
+    if (!card) {
+      // The host's withdrawal, never read as a person's decline; its commit re-derives this step.
+      await journal.queuedMessages.withdraw({ messageIds: [next.messageId], settledByOp: null })
+      return
+    }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
     const submissionId = createStructuredAgentSessionOperationId(randomUUID)
     try {
@@ -358,8 +372,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
           clientMessageId: submissionId,
           // The queue's own automatic send: it never ends a pause.
           origin: 'host',
-          payloadFingerprint: next.fingerprint,
-          body: next.body,
+          payloadFingerprint: card.fingerprint,
+          body: card.body,
           fence,
           handoverRecorded: true
         },
@@ -368,7 +382,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
           expect: 'waiting',
           settledByOp: null,
           hostInstance: structuredAgentSessionHostInstance(),
-          yieldsToPause: { hostInstance: structuredAgentSessionHostInstance() }
+          yieldsToPause: { hostInstance: structuredAgentSessionHostInstance() },
+          ...(card.restated ? { restated: card.restated } : {})
         }
       )
     } catch (error) {

@@ -37,7 +37,7 @@ import {
   setOptionPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
@@ -63,7 +63,7 @@ export function sendStructuredAgentSessionTurn(
     userSend?: true
     /** Host-local, never on the wire: who a host-side `queue-if-active` send queues for, recorded
      *  on its card. A client's send is always its person's (`userSend`). */
-    source?: QueuedMessageAgentSource
+    source?: AgentMessageSource
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {

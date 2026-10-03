@@ -7,6 +7,8 @@ import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { structuredWorkerIdentities } from './structured-worker-identity'
 import type { StructuredPointerTarget } from './orchestration/structured-mailbox-pointer-delivery'
+import type { AgentMessageSource } from '../../shared/agent-session-message-source'
+import type { QueuedAgentCardVerdict } from '../native-chat/agent-session-wire/structured-agent-session-queued-agent-card'
 import {
   handleLessCoordinatorSessionId,
   structuredSessionAddressTarget,
@@ -194,9 +196,12 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     this.orchestrationStructuredMailboxPointerDelivery.onJournalActivity(sessionId)
   }
 
-  /** An agent read its mail: a pointer still queued in a chat for that mail goes, unsent. */
-  notifyOrchestrationMailRead(): Promise<void> {
-    return this.orchestrationStructuredMailboxPointerDelivery.onMailRead()
+  /** The structured host's judge of an agent's queued card as it is about to send. */
+  judgeQueuedAgentCard(input: {
+    sessionId: string
+    source: AgentMessageSource
+  }): QueuedAgentCardVerdict {
+    return this.orchestrationStructuredMailboxPointerDelivery.judgeQueuedCard(input)
   }
 
   /**

@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -22,9 +22,8 @@ import {
 
 let rig: QueuedMessageTestRig
 
-const MAIL_SOURCE: QueuedMessageAgentSource = {
+const MAIL_SOURCE: AgentMessageSource = {
   kind: 'agent',
-  message: 'mail-notice',
   senders: [
     {
       party: {
@@ -32,11 +31,16 @@ const MAIL_SOURCE: QueuedMessageAgentSource = {
         terminalHandle: 'term_peer',
         paneKey: null,
         orcaSessionId: null
-      },
-      hostId: 'local'
+      }
     }
   ],
-  orchestration: { mailbox: 'dispatch:d1', dispatchId: 'd1', runIds: ['r1'], messageIds: ['m1'] }
+  orchestration: {
+    message: 'mail-notice',
+    mailbox: 'dispatch:d1',
+    dispatchId: 'd1',
+    runIds: ['r1'],
+    messageIds: ['m1']
+  }
 }
 
 beforeEach(async () => {

@@ -170,6 +170,35 @@ export async function queuedCardTexts(sessionId: string): Promise<string[]> {
   )
 }
 
+/** `/clear` as the chat surface runs it: the conversation continues in a new session. */
+export async function clearChat(sessionId: string): Promise<string> {
+  const command = 'clear' as const
+  const cleared = await host.conversationCommand(
+    { callerKey: 'test-surface' },
+    {
+      command,
+      envelope: {
+        sessionId,
+        clientOperationId: operationId(),
+        expectedRuntimeFence: host.deps.store.getRecord(sessionId)!.lease.runtimeFence,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.conversationCommand',
+          sessionId,
+          fields: { command }
+        })
+      }
+    }
+  )
+  const successor = cleared.ok ? cleared.value.replacementSessionId : undefined
+  if (!successor) {
+    throw new Error(`clear failed: ${JSON.stringify(cleared)}`)
+  }
+  // The surface swaps the tab over to the session that continues the chat.
+  await host.setSessionTabVisibility(sessionId, false)
+  await host.setSessionTabVisibility(successor, true)
+  return successor
+}
+
 /** A supervised terminal worker under the coordinator's Run, and its worker_done. */
 export async function finishWorker(
   taskId: string,
@@ -235,8 +264,9 @@ beforeEach(async () => {
     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
     openCodexConnection: codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
-    // The same call the runtime's own host install makes on every status change.
-    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary)
+    // The same calls the runtime's own host install makes.
+    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
+    judgeQueuedAgentCard: (input) => runtime.judgeQueuedAgentCard(input)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })

@@ -13,8 +13,6 @@ const {
   structuredPointerCallerKey,
   structuredSessionPointerCallerKey
 } = await import('./structured-mailbox-pointer-host')
-const { structuredAgentSessionPayloadFingerprint } =
-  await import('../../../shared/structured-agent-session-mutation')
 
 function runningTurn(): AgentJournalRenderItem {
   return {
@@ -54,15 +52,35 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it("reads what the session's sends settled as, and every card in its queue", async () => {
+  it("reads what the session's sends settled as, every card in its queue, and who withdrew it", async () => {
     const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
+    const notice = {
+      kind: 'agent',
+      senders: [],
+      orchestration: {
+        message: 'mail-notice',
+        mailbox: 'run:r1',
+        dispatchId: null,
+        runIds: ['r1'],
+        messageIds: ['m1']
+      }
+    }
     hostRef.current = {
       journalSnapshot: () => ({ items: [], submissions }),
-      queuedMessageRows: () => [{ messageId: 'op2', state: 'withdrawn', body: {} }]
+      queuedMessageRows: () => [
+        { messageId: 'op2', state: 'withdrawn', settledByOp: 'person:op', source: notice },
+        { messageId: 'op3', state: 'withdrawn', settledByOp: null, source: notice },
+        { messageId: 'op4', state: 'waiting', settledByOp: null, source: { kind: 'user' } }
+      ]
     }
+    const pointsAt = { mailbox: 'run:r1', messageIds: ['m1'] }
     expect(await createStructuredMailboxPointerHost().readFacts('s1')).toEqual({
       submissions,
-      cards: [{ messageId: 'op2', state: 'withdrawn' }]
+      cards: [
+        { messageId: 'op2', state: 'withdrawn', notice: pointsAt, withdrawnByRequest: true },
+        { messageId: 'op3', state: 'withdrawn', notice: pointsAt, withdrawnByRequest: false },
+        { messageId: 'op4', state: 'waiting', notice: null, withdrawnByRequest: false }
+      ]
     })
   })
 
@@ -138,36 +156,6 @@ describe('structured mailbox pointer host', () => {
       } as never)
     ).resolves.toEqual({ kind: 'queued', state: 'waiting' })
     expect(send.mock.calls[0]![1].delivery).toBe('queue-if-active')
-  })
-
-  it("withdraws its card through the same Delete a person's click sends", async () => {
-    const queuedMessageDelete = vi.fn(async () => ({ ok: true }))
-    hostRef.current = {
-      queuedMessageDelete,
-      deps: { store: { getRecord: () => ({ lease: { runtimeFence: 9 } }) } }
-    }
-    await expect(
-      createStructuredMailboxPointerHost().withdraw({ sessionId: 's1', messageId: 'op1' })
-    ).resolves.toBe(true)
-    expect(queuedMessageDelete).toHaveBeenCalledWith(
-      { callerKey: structuredSessionPointerCallerKey('s1') },
-      {
-        envelope: expect.objectContaining({
-          sessionId: 's1',
-          expectedRuntimeFence: 9,
-          payloadFingerprint: structuredAgentSessionPayloadFingerprint({
-            method: 'agentSession.queuedMessageDelete',
-            sessionId: 's1',
-            fields: { messageId: 'op1' }
-          })
-        }),
-        messageId: 'op1'
-      }
-    )
-    hostRef.current = null
-    await expect(
-      createStructuredMailboxPointerHost().withdraw({ sessionId: 's1', messageId: 'op1' })
-    ).resolves.toBe(false)
   })
 
   it('consumes mail once an accepted nudge is delivered while the worker starts (W10)', async () => {

@@ -18,6 +18,7 @@ import type { AgentSessionAttachParams } from './structured-agent-session-attach
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { QueuedAgentCardJudge } from './structured-agent-session-queued-agent-card'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -127,6 +128,8 @@ export type StructuredAgentSessionHostDeps = {
   idleSweep?: { intervalMs?: number; idleMs?: number }
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
+  /** Judges an agent's queued card as it is about to send; absent sends it as written. */
+  judgeQueuedAgentCard?: QueuedAgentCardJudge
   /** Where every failure the host carries on past is reported. Required: a host without one would
    *  drop exactly the failures nobody sees in the UI. */
   logger: StructuredAgentSessionLogger

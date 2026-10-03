@@ -353,9 +353,14 @@ describe("a restart's pause", () => {
       internal: true,
       source: {
         kind: 'agent',
-        message: 'mail-notice',
         senders: [],
-        orchestration: { mailbox: 'run:r1', dispatchId: null, runIds: ['r1'], messageIds: ['m1'] }
+        orchestration: {
+          message: 'mail-notice',
+          mailbox: 'run:r1',
+          dispatchId: null,
+          runIds: ['r1'],
+          messageIds: ['m1']
+        }
       }
     })
     const personCard = await queuedDraft('typed by the person')

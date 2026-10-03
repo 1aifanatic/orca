@@ -17,7 +17,7 @@ import {
   type AgentSessionQueuedSendReceipt
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire-refusals'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { structuredAgentSessionMessageSendMutation } from '../../../shared/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-host'
@@ -43,7 +43,7 @@ export type StructuredSessionTurn = {
 } & (
   | { delivery: 'now' }
   /** A queued card records who it speaks for, so the person sees whose message waits. */
-  | { delivery: 'queue'; source: QueuedMessageAgentSource }
+  | { delivery: 'queue'; source: AgentMessageSource }
 )
 
 export type StructuredSessionTurnSend = {

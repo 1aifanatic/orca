@@ -6,8 +6,8 @@
  * branch inside it: batch selection is literally shared (`selectOrchestrationPointerBatch`), and
  * everything below it is different — the nudge is a session turn, a busy chat holds it as a card in
  * its own queue (the one a person's message waits in), and only an `accepted` dispatch may consume
- * mail. The card is a projection of the mailbox: the lane withdraws it once its mail is read, and
- * re-derives it from orchestration's database after a restart.
+ * mail. The card is a projection of the mailbox: the queue asks this lane about it again as it
+ * sends (`judgeQueuedCard`), so it goes out counting the mail owed then, or not at all.
  *
  * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
  * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
@@ -22,15 +22,15 @@ import {
   selectOrchestrationPointerBatch,
   type OrchestrationMessageWaiter
 } from './mailbox-pointer-eligibility'
+import { resolveStructuredPointerOperation } from './structured-pointer-operation-id'
 import {
-  resolveStructuredPointerOperation,
-  structuredPointerRowCovers,
-  structuredPointerSendState,
+  readMailboxNoticeCards,
   type StructuredPointerCard,
   type StructuredPointerFacts
-} from './structured-pointer-operation-id'
+} from './structured-pointer-notice-cards'
 import { structuredPointerSource, type PointerBatchMessage } from './structured-pointer-source'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
+import type { QueuedAgentCardVerdict } from '../../native-chat/agent-session-wire/structured-agent-session-queued-agent-card'
 import {
   retainReasonForDispatch,
   structuredDispatchDelivered,
@@ -69,10 +69,8 @@ export type StructuredMailboxPointerHost = {
     expectedRuntimeFence: number
     body: AgentJournalMessageItem
     /** Who the notice speaks for, kept on the card a busy chat queues it as. */
-    source: QueuedMessageAgentSource
+    source: AgentMessageSource
   }) => Promise<StructuredPointerSendOutcome>
-  /** Withdraws the lane's own card; false when the host could not be asked. */
-  withdraw: (input: { sessionId: string; messageId: string }) => Promise<boolean>
   /** Current lease fence; `null` when no record backs the session any more. */
   currentFence: (sessionId: string) => number | null
 }
@@ -151,22 +149,46 @@ export class OrchestrationStructuredMailboxPointerDelivery<
   }
 
   /**
-   * Mail was read. A card still queued for it would reach the agent after it already has the mail,
-   * so every mailbox holding a pointer is re-derived now, and resolves once a card owed nothing is
-   * withdrawn: before the reader sees its mail, so before its turn can end and the queue send it.
-   * Retire-only, so it never waits on a send; replacing a card is the next edge's job.
+   * An agent's mail notice is about to leave a chat's queue, in the drain's serialized step: send it
+   * if it still counts the mail owed, restate it if the owed mail changed, withdraw it if none is
+   * owed or the mailbox now reaches another session (whose own notice this lane sends). One
+   * synchronous read of orchestration's database, by the same selection the lane points from.
    */
-  async onMailRead(): Promise<void> {
-    const rows = this.deps.getDb()?.listStructuredPointerOperations?.() ?? []
-    await Promise.all(
-      rows.map(({ mailbox_handle: mailboxHandle }) =>
-        this.deliver(
-          mailboxHandle,
-          null,
-          this.parkedUntilJournalEdge.get(mailboxHandle)?.reservedTypes
-        ).catch(() => undefined)
-      )
-    )
+  judgeQueuedCard(input: {
+    sessionId: string
+    source: AgentMessageSource
+  }): QueuedAgentCardVerdict {
+    const db = this.deps.getDb()
+    const notice = input.source.orchestration
+    if (!db) {
+      // Nothing to judge by; bookkeeping never holds the queue.
+      return { kind: 'send' }
+    }
+    switch (notice.message) {
+      case 'mail-notice': {
+        if (this.deps.resolveStructuredTarget(notice.mailbox)?.sessionId !== input.sessionId) {
+          return { kind: 'withdraw' }
+        }
+        const owed = this.owedBatch(db, notice.mailbox, undefined)
+        if (owed.length === 0) {
+          return { kind: 'withdraw' }
+        }
+        const owedIds = owed.map((message) => message.id)
+        if (owedIds.join('\n') === notice.messageIds.join('\n')) {
+          return { kind: 'send' }
+        }
+        return {
+          kind: 'restate',
+          body: this.pointerBody(notice.mailbox, owed.length),
+          source: structuredPointerSource({
+            db,
+            mailboxHandle: notice.mailbox,
+            dispatchId: notice.dispatchId,
+            batch: owed
+          })
+        }
+      }
+    }
   }
 
   /**
@@ -182,12 +204,13 @@ export class OrchestrationStructuredMailboxPointerDelivery<
         this.parkedUntilJournalEdge.delete(mailboxHandle)
       }
     }
+    // Nothing will reconcile its rows again; a send of its still in flight has no session left.
+    this.deps.getDb()?.deleteStructuredPointerOperationsForSession(sessionId)
   }
 
-  /** `target` null: the mailbox has no session to point right now, but its stale card can go. */
   private async deliver(
     mailboxHandle: string,
-    target: StructuredPointerTarget | null,
+    target: StructuredPointerTarget,
     reservedTypes?: ReadonlySet<string>
   ): Promise<void> {
     const db = this.deps.getDb()
@@ -200,27 +223,34 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
     this.inFlight.add(mailboxHandle)
     try {
-      await this.reconcile(db, mailboxHandle, target, reservedTypes)
+      const unread = this.owedBatch(db, mailboxHandle, reservedTypes)
+      await (unread.length === 0
+        ? this.retire(db, mailboxHandle)
+        : this.attempt(db, mailboxHandle, target, unread, reservedTypes))
     } finally {
       this.inFlight.delete(mailboxHandle)
     }
-    if (this.askedInFlight.delete(mailboxHandle)) {
-      const current = this.deps.resolveStructuredTarget(mailboxHandle)
+    const current = this.askedInFlight.delete(mailboxHandle)
+      ? this.deps.resolveStructuredTarget(mailboxHandle)
+      : null
+    if (current) {
       void this.deliver(mailboxHandle, current, reservedTypes).catch(() => undefined)
     }
   }
 
-  private async reconcile(
+  /**
+   * The rows a pointer may count right now. A consumer still holding an unacknowledged batch is owed
+   * none: the lookup is keyed on the exact handle being nudged, so a coordinator's own `run:`
+   * delivery is invisible to a worker's `dispatch:` gate and cannot suppress the nudges a
+   * coordinator sends its workers. Worth more here than in the PTY lane: a structured nudge costs a
+   * whole provider turn.
+   */
+  private owedBatch(
     db: OrchestrationDb,
     mailboxHandle: string,
-    target: StructuredPointerTarget | null,
     reservedTypes: ReadonlySet<string> | undefined
-  ): Promise<void> {
-    // A consumer still holding an unacknowledged batch is owed no pointer. The lookup is keyed on
-    // the exact handle being nudged, so a coordinator's own `run:` delivery is invisible to a
-    // worker's `dispatch:` gate and cannot suppress the nudges a coordinator sends its workers.
-    // Worth more here than in the PTY lane: a structured nudge costs a whole provider turn.
-    const unread = db.hasOutstandingMailboxDelivery?.(mailboxHandle)
+  ): PointerBatch {
+    return db.hasOutstandingMailboxDelivery?.(mailboxHandle)
       ? []
       : selectOrchestrationPointerBatch({
           db,
@@ -228,34 +258,23 @@ export class OrchestrationStructuredMailboxPointerDelivery<
           waiters: this.deps.getMessageWaiters(mailboxHandle),
           reservedTypes
         })
-    if (unread.length === 0) {
-      await this.retire(db, mailboxHandle)
-      return
-    }
-    if (target) {
-      await this.attempt(db, mailboxHandle, target, unread, reservedTypes)
-    }
   }
 
   /**
    * The mailbox owes no pointer: its mail was read, or a consumer or waiter holds it. A card still
-   * queued for it is withdrawn, never sent stale, and the row goes. A send still in flight keeps
-   * its row, so a batch that comes back replays it rather than sending twice.
+   * queued for it is the drain's to withdraw. The row goes unless its send is still in flight, so a
+   * batch that comes back replays it rather than sending twice.
    */
   private async retire(db: OrchestrationDb, mailboxHandle: string): Promise<void> {
     const row = db.getStructuredPointerOperation(mailboxHandle)
-    const facts = row ? await this.deps.host.readFacts(row.session_id) : null
-    if (!row || !facts) {
+    if (!row) {
       return
     }
-    const state = structuredPointerSendState(row.operation_id, facts)
-    if (state === 'pending') {
-      return
+    const facts = await this.deps.host.readFacts(row.session_id)
+    const sent = facts?.submissions.find((entry) => entry.clientMessageId === row.operation_id)
+    if (sent?.dispatchState !== 'pending') {
+      this.forgetOperation(db, mailboxHandle)
     }
-    if (state === 'queued' && !(await this.withdrawCard(row.session_id, row.operation_id))) {
-      return
-    }
-    this.forgetOperation(db, mailboxHandle)
   }
 
   // A session whose agent is not running needs nothing first: an accepted send starts it.
@@ -273,34 +292,48 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
       return
     }
-    const staged = unread.map((message) => message.id)
-    if (!(await this.withdrawSupersededCard(db, mailboxHandle, sessionId, staged, facts))) {
-      this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
+    const cards = readMailboxNoticeCards(
+      mailboxHandle,
+      facts,
+      unread.map((message) => message.id)
+    )
+    // Mail a notice already pointed at counts as pointed, so only newer mail points again.
+    const pointed = unread.filter((message) => cards.pointed.has(message.id))
+    if (pointed.length > 0) {
+      db.markAsDelivered(pointed.map((message) => message.id))
+    }
+    const row = db.getStructuredPointerOperation(mailboxHandle)
+    if (row && cards.ids.has(row.operation_id)) {
+      // The send became a card, which carries it from here.
+      this.forgetOperation(db, mailboxHandle)
+    }
+    // One card per mailbox: the drain restates it with whatever arrives meanwhile.
+    const waitFor = cards.waiting ? 'queued' : cards.unsettled
+    if (waitFor) {
+      this.retain(mailboxHandle, sessionId, waitFor, reservedTypes)
       return
     }
+    const owed = unread.filter((message) => !cards.pointed.has(message.id))
+    if (owed.length === 0) {
+      return
+    }
+    const staged = owed.map((message) => message.id)
     const operation = resolveStructuredPointerOperation({
       db,
       mailboxHandle,
       sessionId,
       messageIds: staged,
-      facts,
+      submissions: facts.submissions,
       sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
     })
-    switch (operation.kind) {
-      // A send this lane gave up waiting on ran after all, or the queue sent its card; or the person
-      // deleted the card, so this batch counts as pointed and only newer mail points again.
-      case 'stamp':
-      case 'declined':
-        this.stamp(db, mailboxHandle, staged)
-        return
-      case 'park':
-        this.retain(mailboxHandle, sessionId, 'send-unsettled', reservedTypes)
-        return
-      case 'queued':
-        this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
-        return
-      case 'send':
-        break
+    if (operation.kind === 'stamp') {
+      // A send this lane gave up waiting on ran after all.
+      this.stamp(db, mailboxHandle, staged)
+      return
+    }
+    if (operation.kind === 'park') {
+      this.retain(mailboxHandle, sessionId, 'send-unsettled', reservedTypes)
+      return
     }
     this.sentOperationIds.set(mailboxHandle, operation.operationId)
     const outcome = await this.deps.host.send({
@@ -308,12 +341,12 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       dispatchId: target.dispatchId,
       operationId: operation.operationId,
       expectedRuntimeFence: fence,
-      body: this.pointerBody(mailboxHandle, unread.length),
+      body: this.pointerBody(mailboxHandle, owed.length),
       source: structuredPointerSource({
         db,
         mailboxHandle,
         dispatchId: target.dispatchId,
-        batch: unread
+        batch: owed
       })
     })
     switch (outcome.kind) {
@@ -321,12 +354,9 @@ export class OrchestrationStructuredMailboxPointerDelivery<
         this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
         return
       case 'queued':
-        // Withdrawn only on a replay of a card the person deleted since.
-        if (outcome.state === 'withdrawn') {
-          this.stamp(db, mailboxHandle, staged)
-        } else {
-          this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
-        }
+        // The card carries the send from here; its hand-off is the next edge.
+        this.forgetOperation(db, mailboxHandle)
+        this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
         return
       case 'sent':
         if (structuredDispatchDelivered(outcome.state)) {
@@ -345,40 +375,13 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
   }
 
-  /**
-   * A card queued for an older batch, or in another session, is about to be replaced: withdraw it
-   * first, so the chat never holds two pointers or one naming mail already read. False when it is
-   * still queued and the host could not be asked.
-   */
-  private async withdrawSupersededCard(
-    db: OrchestrationDb,
-    mailboxHandle: string,
-    sessionId: string,
-    staged: readonly string[],
-    facts: StructuredPointerFacts
-  ): Promise<boolean> {
-    const row = db.getStructuredPointerOperation(mailboxHandle)
-    if (!row || structuredPointerRowCovers(row, sessionId, staged)) {
-      return true
-    }
-    const rowFacts =
-      row.session_id === sessionId ? facts : await this.deps.host.readFacts(row.session_id)
-    if (!rowFacts || structuredPointerSendState(row.operation_id, rowFacts) !== 'queued') {
-      return true
-    }
-    return this.withdrawCard(row.session_id, row.operation_id)
-  }
-
-  private withdrawCard(sessionId: string, messageId: string): Promise<boolean> {
-    return this.deps.host.withdraw({ sessionId, messageId }).catch(() => false)
-  }
-
   private pointerBody(mailboxHandle: string, count: number): AgentJournalMessageItem {
     const text = formatMessagePointer(count, mailboxHandle, this.deps.getCliCommand()).trim()
     return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
   }
 
-  /** No `markAsUndelivered` is ever owed: rows are marked delivered only here. */
+  /** No `markAsUndelivered` is ever owed: mail is marked delivered only once a pointer to it was
+   *  accepted or declined. */
   private stamp(db: OrchestrationDb, mailboxHandle: string, staged: readonly string[]): void {
     db.markAsDelivered([...staged])
     this.forgetOperation(db, mailboxHandle)

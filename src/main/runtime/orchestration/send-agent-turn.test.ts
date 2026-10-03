@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
-import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { dispatchPreambleSendOptions } from './preamble'
 import {
@@ -53,11 +53,16 @@ function structuredHost(answer: HostSendAnswer, settled?: AgentJournalSubmission
   return { host, send, waitForSendSettlement }
 }
 
-const MAIL_SOURCE: QueuedMessageAgentSource = {
+const MAIL_SOURCE: AgentMessageSource = {
   kind: 'agent',
-  message: 'mail-notice',
   senders: [],
-  orchestration: { mailbox: 'dispatch:d1', dispatchId: 'd1', runIds: [], messageIds: ['m1'] }
+  orchestration: {
+    message: 'mail-notice',
+    mailbox: 'dispatch:d1',
+    dispatchId: 'd1',
+    runIds: [],
+    messageIds: ['m1']
+  }
 }
 
 const turn: StructuredSessionTurn = {
