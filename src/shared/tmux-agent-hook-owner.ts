@@ -15,6 +15,7 @@ import {
   type TmuxHookPane
 } from './tmux-client-attachment'
 import { probeTmuxHostAttachments } from './tmux-host-attachment-probe'
+export { isTmuxInnerSubject } from './tmux-selected-status'
 
 export type TmuxManagedPty = {
   pid: number
@@ -29,12 +30,6 @@ type OuterPane = {
   selection?: string
   publication?: string
 }
-const INNER_PREFIX = 'tmux-inner:'
-
-export function isTmuxInnerSubject(subject: { kind: string; paneKey?: string }): boolean {
-  return subject.kind === 'pty' && subject.paneKey?.startsWith(INNER_PREFIX) === true
-}
-
 /** Inner observations live in the hook owner's canonical store; this index holds attachments only. */
 export class TmuxAgentHookOwner {
   private readonly outers = new Map<string, OuterPane>()
@@ -218,6 +213,9 @@ export class TmuxAgentHookOwner {
               continue
             }
             const current = await this.options.getRoot(outer.paneKey).catch(() => null)
+            if (this.stopped || this.outers.get(outer.paneKey) !== outer) {
+              continue
+            }
             if (this.options.isRetired?.(outer.paneKey)) {
               this.clearPane(outer.paneKey)
               continue

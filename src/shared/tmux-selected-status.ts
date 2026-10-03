@@ -134,6 +134,10 @@ export function readTmuxUnavailable(
   }
 }
 
+export function isTmuxInnerSubject(subject: { kind: string; paneKey?: string }): boolean {
+  return subject.kind === 'pty' && subject.paneKey?.startsWith('tmux-inner:') === true
+}
+
 export function tmuxInnerSubject(
   scope: AgentStatusExecutionScope,
   outerPaneKey: string,
