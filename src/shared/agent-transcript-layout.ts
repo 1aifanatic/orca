@@ -46,19 +46,24 @@ export function codexRolloutThreadMatch(
 }
 
 /**
- * True for `<...>/.claude/projects/<encoded cwd>/<sessionId>.jsonl`. Anchored on `.claude`
- * because Claude-derived CLIs (Qoder, CodeBuddy) write the same `projects/` shape under their own
- * config dir; subagent transcripts nest one level deeper and so never match.
+ * True for `<...>/.claude/projects/<encoded cwd>/<sessionId>.jsonl`, or the same tree under an
+ * Orca-managed account (`<...>/claude-profiles/<id>/home/projects/...`, Claude reports the unresolved
+ * path). Anchored on those config dirs because Claude-derived CLIs (Qoder, CodeBuddy) write the same
+ * `projects/` shape under their own; subagent transcripts nest one level deeper and so never match.
  */
 export function claimsClaudeProjectTranscript(transcriptPath: string, sessionId: string): boolean {
   const segments = toForwardSlashes(transcriptPath.trim()).split('/')
   const count = segments.length
+  const fromEnd = (offset: number): string => segments[count - offset]?.toLowerCase() ?? ''
+  const configDir =
+    fromEnd(4) === '.claude' ||
+    (fromEnd(4) === 'home' && fromEnd(5) !== '' && fromEnd(6) === 'claude-profiles')
   return (
     count >= 4 &&
-    segments[count - 1].toLowerCase() === `${sessionId.toLowerCase()}.jsonl` &&
+    fromEnd(1) === `${sessionId.toLowerCase()}.jsonl` &&
     segments[count - 2] !== '' &&
-    segments[count - 3].toLowerCase() === 'projects' &&
-    segments[count - 4].toLowerCase() === '.claude'
+    fromEnd(3) === 'projects' &&
+    configDir
   )
 }
 

@@ -4,6 +4,7 @@ import { codexRolloutThreadMatch, transcriptLayoutAgent } from './agent-transcri
 const ID = 'b8dd2df2-0b3f-4dc0-ba10-9d8a4ac4f1a9'
 const ROLLOUT = `rollout-2026-09-30T00-00-00-${ID}.jsonl`
 const ENCODED_CWD = '-Users-example-repo'
+const PROFILE = '3f6c2a1e-8d4b-4c7a-9e2f-1a2b3c4d5e6f'
 
 describe('transcriptLayoutAgent', () => {
   it.each([
@@ -27,7 +28,19 @@ describe('transcriptLayoutAgent', () => {
     ['macOS', `/Users/example/.claude/projects/${ENCODED_CWD}/${ID}.jsonl`],
     ['Linux / SSH remote / WSL guest', `/home/example/.claude/projects/${ENCODED_CWD}/${ID}.jsonl`],
     ['Windows drive path', `C:\\Users\\example\\.claude\\projects\\C--repo\\${ID}.jsonl`],
-    ['WSL UNC path', `\\\\wsl$\\Ubuntu\\home\\example\\.claude\\projects\\-home-repo\\${ID}.jsonl`]
+    ['WSL UNC path', `\\\\wsl$\\Ubuntu\\home\\example\\.claude\\projects\\-home-repo\\${ID}.jsonl`],
+    [
+      'an Orca-managed account on macOS',
+      `/Users/example/Library/Application Support/orca/claude-profiles/${PROFILE}/home/projects/${ENCODED_CWD}/${ID}.jsonl`
+    ],
+    [
+      'an Orca-managed account on Windows',
+      `C:\\Users\\example\\AppData\\Roaming\\orca\\claude-profiles\\${PROFILE}\\home\\projects\\C--repo\\${ID}.jsonl`
+    ],
+    [
+      'an Orca-managed account in a WSL guest',
+      `/home/example/.local/share/orca/claude-profiles/${PROFILE}/home/projects/-home-repo/${ID}.jsonl`
+    ]
   ])('reads a Claude project transcript on %s', (_name, transcriptPath) => {
     expect(transcriptLayoutAgent({ id: ID, transcriptPath })).toBe('claude')
   })
@@ -62,6 +75,18 @@ describe('transcriptLayoutAgent', () => {
     ],
     ['a Qoder default home', `/Users/example/.qoder/projects/${ENCODED_CWD}/${ID}.jsonl`],
     ['a CodeBuddy default home', `/Users/example/.codebuddy/projects/${ENCODED_CWD}/${ID}.jsonl`],
+    [
+      'an Orca-managed account subagent transcript',
+      `/d/claude-profiles/${PROFILE}/home/projects/${ENCODED_CWD}/parent/subagents/agent-${ID}.jsonl`
+    ],
+    [
+      'a profile home with no account id',
+      `/d/claude-profiles//home/projects/${ENCODED_CWD}/${ID}.jsonl`
+    ],
+    [
+      'a home dir outside claude-profiles',
+      `/d/accounts/${PROFILE}/home/projects/${ENCODED_CWD}/${ID}.jsonl`
+    ],
     [
       'a Claude transcript under a relocated config dir',
       `/opt/claude-home/projects/${ENCODED_CWD}/${ID}.jsonl`
