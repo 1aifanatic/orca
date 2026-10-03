@@ -2,17 +2,22 @@
 // continuation, one another device sent, or one this client let go once the host recorded it —
 // that never reached its agent. The chat shows it from the journal as an unsent message.
 // One whose start failed for good, on a host that can queue it again, says why, and its Retry
-// queues that same message again. One the agent's own history later showed it never got says
-// only that it was not sent, with no Retry: the host cannot queue it again.
+// queues that same message again. One rejected after it was handed over (or that the agent's own
+// history showed it never got) says why, with no Retry: the host cannot queue it again, and the
+// agent may hold it already, so only the person sends it anew.
 
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import {
   classifyDispatchRejection,
+  dispatchWasWithdrawn,
   failedBeforeHandover
 } from './structured-agent-session-dispatch-rejection'
 
-type SentHere = readonly Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>[]
+type SentHere = readonly Pick<
+  StructuredAgentSessionOutboxEntry,
+  'clientMessageId' | 'rotatedFrom'
+>[]
 
 export function failedStartsSentElsewhere(
   submissions: readonly AgentJournalSubmission[],
@@ -30,7 +35,9 @@ export function undeliveredSentElsewhere(
     outbox,
     (submission) =>
       submission.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).kind === 'notDelivered'
+      !dispatchWasWithdrawn(submission) &&
+      (submission.handedOverAt !== undefined ||
+        classifyDispatchRejection(submission).kind === 'notDelivered')
   )
 }
 
@@ -39,7 +46,10 @@ function unsentElsewhere(
   outbox: SentHere,
   unsent: (submission: AgentJournalSubmission) => boolean
 ): AgentJournalSubmission[] {
-  const sentHere = new Set(outbox.map((entry) => entry.clientMessageId))
+  // A message sent again here under a new id is still this client's: its old rows are not drawn.
+  const sentHere = new Set(
+    outbox.flatMap((entry) => [entry.clientMessageId, ...(entry.rotatedFrom ?? [])])
+  )
   return submissions.filter(
     (submission) =>
       !sentHere.has(submission.clientMessageId) &&

@@ -2,7 +2,10 @@
 // orchestration worker's first — whose start failed for good still shows in the chat, saying why.
 
 import { describe, expect, it, vi } from 'vitest'
-import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import {
+  agentSessionFailureSentence,
+  agentSessionFailureWords
+} from '../../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalMessageItem,
@@ -184,9 +187,20 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     expect(projectStructuredAgentSessionMessages([TEXT], [], [card])).toEqual([])
   })
 
-  it('is never drawn for one an agent already took', () => {
+  // Its Retry can't queue a message an agent already took; it is drawn as any rejection after a
+  // hand-over is, with its own words and no Retry.
+  it('is drawn with no Retry once an agent already took it', () => {
     const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver])).toEqual([])
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver])).toEqual([
+      expect.objectContaining({ id: KEY, unsent: true })
+    ])
+    expect(
+      structuredAgentSessionDeliveryNotices([], 'Codex', vi.fn(), [handedOver], [], new Set()).get(
+        KEY
+      )
+    ).toEqual({
+      text: 'Codex stopped before it finished starting. Send your message to try again.'
+    })
   })
 })
 
@@ -231,16 +245,28 @@ describe('a message whose start failed for good, queued again by its Retry', () 
   })
 })
 
-// Handed over, then the agent's history showed it never got it. No outbox entry shows it — this
-// client let go once the host recorded it in doubt, or another device sent it — so the journal does.
-describe('a message handed over and then shown never delivered', () => {
+// Rejected after it was handed over, or shown by the agent's history never to have reached it. No
+// outbox entry shows it — this client let go once the host recorded it in doubt, or another device
+// sent it — so the journal does, with its own words and no Retry.
+describe('a message rejected after it was handed over', () => {
   const undelivered = (): AgentJournalSubmission => ({
     ...rejected({ kind: 'notDelivered' }),
     handedOverAt: 5,
     recovered: true
   })
 
-  it('shows as unsent with no Retry, on any host', () => {
+  function noticeOf(submissions: AgentJournalSubmission[]) {
+    return structuredAgentSessionDeliveryNotices(
+      [],
+      'Claude',
+      vi.fn(),
+      submissions,
+      [],
+      new Set()
+    ).get(KEY)
+  }
+
+  it('shows as unsent with no Retry, on any desktop host', () => {
     const submissions = [undelivered()]
     for (const showsFailedStartsSentElsewhere of [true, false]) {
       expect(
@@ -250,13 +276,57 @@ describe('a message handed over and then shown never delivered', () => {
       ).toEqual([expect.objectContaining({ id: KEY, unsent: true })])
     }
     // The host cannot queue a message it handed over again, so the person sends it anew.
-    expect(
-      structuredAgentSessionDeliveryNotices([], 'Claude', vi.fn(), submissions, [], new Set()).get(
-        KEY
-      )
-    ).toEqual({ text: 'Message was not sent.' })
+    expect(noticeOf(submissions)).toEqual({
+      text: 'This message was not delivered. Send it again to continue.'
+    })
   })
 
+  // The phone does not mark a message as unsent yet: drawn there, it would look delivered.
+  it('stays hidden on a surface that cannot mark it unsent', () => {
+    expect(
+      projectStructuredAgentSessionMessages([TEXT], [], [undelivered()], {
+        showsUndeliveredSentElsewhere: false
+      })
+    ).toEqual([])
+  })
+
+  // A doubt the host settled later, after this client let its entry go: the agent refused it, or a
+  // Stop withdrew it.
+  it('says why when the agent refused it after its doubt, and stays hidden when withdrawn', () => {
+    const dispatching = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: ID,
+        sessionId: 'session-1',
+        text: 'Continue where you left off',
+        attachments: [],
+        queuedAt: 4
+      }),
+      state: 'dispatching' as const
+    }
+    const inDoubt: AgentJournalSubmission = {
+      ...undelivered(),
+      dispatchState: 'unknown',
+      reason: 'provider_write_outcome_unknown: EPIPE',
+      rejection: undefined
+    }
+    expect(reconcileStructuredAgentSessionOutbox([dispatching], [inDoubt])).toEqual([])
+
+    const refused = { ...undelivered(), ...rejected({ kind: 'providerRejected' }), handedOverAt: 5 }
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [refused])).toEqual([
+      expect.objectContaining({ id: KEY, unsent: true })
+    ])
+    expect(noticeOf([refused])?.text).toBe(
+      agentSessionFailureSentence({ kind: 'providerRejected' }, 'rejection', {
+        agentName: 'Claude',
+        retryControl: false
+      })
+    )
+    expect(noticeOf([refused])?.onRetry).toBeUndefined()
+
+    const withdrawn = { ...undelivered(), ...rejected({ kind: 'cancelled' }), handedOverAt: 5 }
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [withdrawn])).toEqual([])
+    expect(noticeOf([withdrawn])).toBeUndefined()
+  })
   it('is drawn once by the entry of the client that still holds it', () => {
     const own = reconcileStructuredAgentSessionOutbox(
       [

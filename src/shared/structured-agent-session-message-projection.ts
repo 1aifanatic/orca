@@ -20,11 +20,14 @@ export function projectStructuredAgentSessionMessages(
   submissions: readonly AgentJournalSubmission[],
   {
     projectItems = projectStructuredItemsToNativeChat,
-    showsFailedStartsSentElsewhere = true
+    showsFailedStartsSentElsewhere = true,
+    showsUndeliveredSentElsewhere = true
   }: {
     projectItems?: typeof projectStructuredItemsToNativeChat
     /** Whether the host can queue one again: an older host's are left hidden, as before. */
     showsFailedStartsSentElsewhere?: boolean
+    /** Whether the surface marks a message as unsent; one that can't leaves these hidden. */
+    showsUndeliveredSentElsewhere?: boolean
   } = {}
 ): NativeChatMessage[] {
   const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
@@ -34,12 +37,12 @@ export function projectStructuredAgentSessionMessages(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
-  // Sent from elsewhere and refused for good by a failed start, or shown by the agent's history never
-  // to have reached it: shown as unsent, as this client's own would be, where the journal put it.
+  // Sent from elsewhere and refused for good by a failed start, or rejected after it was handed
+  // over: shown as unsent, as this client's own would be, where the journal put it.
   const unsentElsewhere = new Set(
     [
       ...(showsFailedStartsSentElsewhere ? failedStartsSentElsewhere(submissions, outbox) : []),
-      ...undeliveredSentElsewhere(submissions, outbox)
+      ...(showsUndeliveredSentElsewhere ? undeliveredSentElsewhere(submissions, outbox) : [])
     ].map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []

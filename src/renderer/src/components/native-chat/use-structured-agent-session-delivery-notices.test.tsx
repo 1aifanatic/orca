@@ -13,7 +13,7 @@ import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent
 
 afterEach(cleanup)
 
-it('says a message the agent never got was not sent, with no Retry, on a client with no entry', () => {
+it('says a message the agent never got was not delivered, with no Retry, on a client with no entry', () => {
   const undelivered: AgentJournalSubmission = {
     clientMessageId: 'op-undelivered',
     fence: 1,
@@ -42,6 +42,6 @@ it('says a message the agent never got was not sent, with no Retry, on a client 
   )
 
   expect(result.current.get(agentJournalSubmissionKey('op-undelivered'))).toEqual({
-    text: 'Message was not sent.'
+    text: 'This message was not delivered. Send it again to continue.'
   })
 })

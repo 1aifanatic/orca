@@ -11,8 +11,8 @@
 // the message keeps only a smaller copy, read when its submission is not loaded. A message whose
 // start was refused before it ran and that waits for its next try says why and that Orca tries
 // again, whoever sent it. A rejection that is a failed start's, the fact a loaded start row from an older host
-// states, says only that it was not sent: the row already says why. One the agent's history showed
-// it never got says only that it was not sent, whoever sent it.
+// states, says only that it was not sent: the row already says why. One rejected after it was
+// handed over says why, whoever sent it.
 
 import {
   readAgentSessionFailureFact,
@@ -28,6 +28,7 @@ import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionEntryIdExpired,
+  structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import {
@@ -143,13 +144,6 @@ function rejectionStatedByItsStartRow(
   )
 }
 
-function notSentText(): string {
-  return translate(
-    'auto.components.native.chat.NativeChatStructuredSession.93ef441197',
-    'Message was not sent.'
-  )
-}
-
 function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
@@ -167,7 +161,10 @@ function deliveryNoticeText(
     )
   }
   if (!entry.lastFailure) {
-    return notSentText()
+    return translate(
+      'auto.components.native.chat.NativeChatStructuredSession.93ef441197',
+      'Message was not sent.'
+    )
   }
   // An earlier attempt under the id the host forgot may already be in the chat.
   if (structuredAgentSessionEntryIdExpired(entry)) {
@@ -265,9 +262,17 @@ export function structuredAgentSessionDeliveryNotices(
       ...retryControlFor(clientMessageId)
     })
   }
-  // The host cannot queue it again, so there is no Retry: the person sends it anew.
-  for (const { clientMessageId } of undeliveredSentElsewhere(submissions, outbox)) {
-    notices.set(agentJournalSubmissionKey(clientMessageId), { text: notSentText() })
+  // Worded as this client's own copy would be, with no Retry: the host cannot queue it again.
+  for (const submission of undeliveredSentElsewhere(submissions, outbox)) {
+    notices.set(agentJournalSubmissionKey(submission.clientMessageId), {
+      text: agentSessionWriteNoticeText(
+        structuredAgentSessionAttemptFailureParts(
+          structuredAgentSessionRejectedFailure(submission),
+          { agentName, retryControl: false },
+          readWholeAgentSessionFailureFact(submission.rejection)
+        )
+      )
+    })
   }
   return notices
 }

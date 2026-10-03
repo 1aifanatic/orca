@@ -3,6 +3,7 @@
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
+  rotateStructuredAgentSessionOutboxEntryId,
   structuredAgentSessionEntryIdExpired,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
@@ -40,8 +41,10 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
     const rotated = outbox.map((entry) =>
       entry.clientMessageId === clientMessageId
         ? {
-            ...retriedByUser(entry),
-            clientMessageId: args.createOperationId(),
+            ...rotateStructuredAgentSessionOutboxEntryId(
+              retriedByUser(entry),
+              args.createOperationId()
+            ),
             state: 'queued' as const,
             lastAttemptAt: null,
             retryAfterUnknownSubmittedAt: null

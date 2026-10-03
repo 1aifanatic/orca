@@ -45,6 +45,9 @@ export type StructuredAgentSessionOutboxEntry = {
    *  is sent again or delivered, instead of outliving it as a separate error. On a `queued` entry
    *  it is also the hold (structured-agent-session-outbox-admission). */
   lastFailure?: StructuredAgentSessionAttemptFailure
+  /** The ids this message went out under before a new one replaced them, oldest first: the
+   *  journal's rows under them are this message's, so the chat never draws them beside it. */
+  rotatedFrom?: string[]
 }
 
 /** A host's rejection fact as a message keeps it: never its provider detail, whose log text is not
@@ -175,6 +178,18 @@ export function structuredAgentSessionEntryIdExpired(
   )
 }
 
+/** The message under a new id, remembering the one it replaces. */
+export function rotateStructuredAgentSessionOutboxEntryId(
+  entry: StructuredAgentSessionOutboxEntry,
+  clientMessageId: string
+): StructuredAgentSessionOutboxEntry {
+  return {
+    ...entry,
+    clientMessageId,
+    rotatedFrom: [...(entry.rotatedFrom ?? []), entry.clientMessageId]
+  }
+}
+
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
   refusal: AgentSessionWriteRefusal,
@@ -199,8 +214,7 @@ export function requeueStructuredAgentSessionSendRefusal(
   // doubt, may have landed, so those keep it. Only a settled refusal proves the message never
   // landed.
   return {
-    ...entry,
-    clientMessageId: createOperationId(),
+    ...rotateStructuredAgentSessionOutboxEntryId(entry, createOperationId()),
     state: refusalSettled ? 'rejected' : 'queued',
     lastAttemptAt: null,
     retryAfterUnknownSubmittedAt: null
@@ -297,6 +311,9 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
+    ...(Array.isArray(entry.rotatedFrom) && entry.rotatedFrom.every((id) => typeof id === 'string')
+      ? { rotatedFrom: entry.rotatedFrom }
+      : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }
