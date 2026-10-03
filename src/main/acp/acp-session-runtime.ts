@@ -217,16 +217,12 @@ export class AcpSessionRuntime {
     configId: SetSessionConfigOptionRequest['configId'],
     value: SetSessionConfigOptionRequest['value']
   ): Promise<SetSessionConfigOptionResponse> {
-    return this.call(
-      'session/set_config_option',
-      {
-        configId,
-        value,
-        sessionId: this.sessionId(),
-        ...(typeof value === 'boolean' ? { type: 'boolean' as const } : {})
-      } satisfies SetSessionConfigOptionRequest,
-      SetSessionConfigOptionResponseSchema
-    )
+    const sessionId = this.sessionId()
+    const request =
+      typeof value === 'boolean'
+        ? ({ configId, value, sessionId, type: 'boolean' } satisfies SetSessionConfigOptionRequest)
+        : ({ configId, value, sessionId } satisfies SetSessionConfigOptionRequest)
+    return this.call('session/set_config_option', request, SetSessionConfigOptionResponseSchema)
   }
 
   close(error?: Error): void {

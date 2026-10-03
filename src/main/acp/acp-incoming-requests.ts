@@ -1,5 +1,5 @@
 import { AcpRpcError } from './acp-errors'
-import type { AcpPeerHandlers } from './acp-json-rpc-peer'
+import type { AcpJsonRpcMessage, AcpPeerHandlers } from './acp-json-rpc-peer'
 
 type OpenRequest = { controller: AbortController; abandon: () => void }
 
@@ -8,7 +8,7 @@ export class AcpIncomingRequests {
 
   constructor(
     private readonly handler: AcpPeerHandlers['onRequest'],
-    private readonly send: (message: object) => Promise<void>,
+    private readonly send: (message: AcpJsonRpcMessage) => Promise<void>,
     private readonly onFailure: (error: Error) => void,
     private readonly capacity: number,
     private readonly timeoutMs: number
