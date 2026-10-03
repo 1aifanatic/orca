@@ -112,6 +112,7 @@ export const RPC_SUBSCRIPTION_SITES: readonly RpcSubscriptionSite[] = [
   {
     file: 'src/session/mobile-structured-session-status-feed.ts',
     method: 'agentSession.subscribeStatus',
+    release: 'params',
     coverage: { kind: 'unwritten-scenario' }
   },
   // The session tab snapshot. Mountable behind the reconciliation controller the hook already
