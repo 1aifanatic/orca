@@ -23,7 +23,7 @@ describe('mobile verification command ownership', () => {
     }
   })
 
-  it('finishes installation before parallel checks and waits before tests', () => {
+  it('finishes installation and joins production types before checking test types', () => {
     const installIndex = steps.findIndex((step) => step.name === 'Install dependencies')
     const productionIndex = steps.findIndex((step) => step.name === 'Typecheck')
     const ratchetIndex = steps.findIndex((step) => step.name === 'Typecheck tests (ratchet)')
@@ -35,7 +35,8 @@ describe('mobile verification command ownership', () => {
     expect(installIndex).toBeLessThan(productionIndex)
     expect(steps[productionIndex].background).toBe(true)
     expect(productionIndex).toBeLessThan(ratchetIndex)
-    expect(ratchetIndex).toBeLessThan(waitIndex)
-    expect(waitIndex).toBeLessThan(testIndex)
+    expect(waitIndex).toBeGreaterThan(productionIndex)
+    expect(waitIndex).toBeLessThan(ratchetIndex)
+    expect(ratchetIndex).toBeLessThan(testIndex)
   })
 })
