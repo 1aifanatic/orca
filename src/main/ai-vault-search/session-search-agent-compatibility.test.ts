@@ -24,7 +24,9 @@ test.each(['runtime', 'relay'] as const)(
   async (transport) => {
     expect(await sessionSearchServiceStatus({}, transport)).toMatchObject({
       enabled: false,
-      supportedAgents: [...AI_VAULT_AGENTS]
+      supportedAgents: [...AI_VAULT_AGENTS],
+      supportsQoderHistory: true,
+      supportsJcodeHistory: true
     })
     const service = fakeSearchService()
     setSessionSearchService(service)
@@ -32,6 +34,52 @@ test.each(['runtime', 'relay'] as const)(
       AI_VAULT_AGENTS
     )
     expect(service.status.mock.lastCall).toEqual([])
+  }
+)
+
+test.each(['runtime', 'relay'] as const)(
+  'keeps an empty decoder catalog authoritative over both history flags on %s',
+  async (transport) => {
+    const service = fakeSearchService()
+    setSessionSearchService(service)
+    expect(
+      await searchSessionService(
+        {
+          query: 'proof',
+          supportedAgents: [],
+          supportsQoderHistory: true,
+          supportsJcodeHistory: true,
+          freshness: 'wait-until-current'
+        },
+        transport
+      )
+    ).toEqual({ kind: 'unavailable', reason: 'unsupported-agent' })
+    expect(service.search).not.toHaveBeenCalled()
+    expect(service.reconcile).not.toHaveBeenCalled()
+  }
+)
+
+test.each(['qoder', 'jcode'] as const)(
+  'projects the independent %s history capability before retrieval',
+  async (agent) => {
+    const service = fakeSearchService()
+    setSessionSearchService(service)
+    const supportField = agent === 'qoder' ? 'supportsQoderHistory' : 'supportsJcodeHistory'
+    await searchSessionService({ query: 'proof', [supportField]: true }, 'relay')
+    expect(service.search).toHaveBeenCalledExactlyOnceWith(
+      {
+        query: 'proof',
+        limit: 20,
+        filters: {
+          agents: AI_VAULT_AGENTS.filter((candidate) =>
+            agent === 'qoder'
+              ? candidate !== 'jcode'
+              : !['codebuddy', 'zcode', 'qoder'].includes(candidate)
+          )
+        }
+      },
+      undefined
+    )
   }
 )
 
