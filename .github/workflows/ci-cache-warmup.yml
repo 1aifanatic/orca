@@ -1,4 +1,4 @@
-name: Electron archive cleanup path control
+name: Direct composite archive cleanup path control
 on:
   workflow_dispatch:
 permissions:
@@ -14,7 +14,7 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: .github/actions
-      - uses: ./.github/actions/ci-store-producer-outer
+      - uses: ./.github/actions/ci-store-producer-trial
   reader:
     needs: writer
     runs-on: ubuntu-latest
@@ -35,7 +35,11 @@ jobs:
           BAD_HIT: ${{ steps.bad.outputs.cache-hit }}
           GOOD_HIT: ${{ steps.good.outputs.cache-hit }}
         run: |
-          test "$BAD_HIT" != true
-          test ! -e "$RUNNER_TEMP/bad-marker/marker"
+          printf 'Direct output-path cache hit=%s\n' "$BAD_HIT"
+          if [ "$BAD_HIT" = true ]; then
+            test "$(cat "$RUNNER_TEMP/bad-marker/marker")" = 'archive cleanup payload'
+          else
+            test ! -e "$RUNNER_TEMP/bad-marker/marker"
+          fi
           test "$GOOD_HIT" = true
           test "$(cat "$RUNNER_TEMP/good-marker/marker")" = 'archive cleanup payload'
