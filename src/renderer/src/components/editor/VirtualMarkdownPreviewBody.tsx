@@ -171,6 +171,7 @@ export function VirtualMarkdownPreviewBody({
     query,
     activeMatch,
     blocks: rendered?.client === client ? rendered.blocks : null,
+    components,
     viewportReady,
     rootRef,
     bodyRef,

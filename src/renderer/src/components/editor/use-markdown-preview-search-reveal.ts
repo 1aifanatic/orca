@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import type { Components } from 'react-markdown'
 import type { Virtualizer } from '@tanstack/react-virtual'
 import { listenMarkdownPreviewScrollInput } from './markdown-preview-scroll-input'
 import type { ProgrammaticScrollMarks } from '@/hooks/programmatic-scroll-marks'
@@ -31,6 +32,7 @@ export function useMarkdownPreviewSearchReveal({
   query,
   activeMatch,
   blocks,
+  components,
   viewportReady,
   rootRef,
   bodyRef,
@@ -42,6 +44,7 @@ export function useMarkdownPreviewSearchReveal({
   query: string
   activeMatch: MarkdownPreviewDocumentMatch | undefined
   blocks: MarkdownPreviewRenderedBlock[] | null
+  components: Components
   viewportReady: boolean
   rootRef: RefObject<HTMLDivElement | null>
   bodyRef: RefObject<HTMLDivElement | null>
@@ -141,6 +144,7 @@ export function useMarkdownPreviewSearchReveal({
     blocks,
     bodyRef,
     client,
+    components,
     query,
     rootRef,
     searchInstance,
