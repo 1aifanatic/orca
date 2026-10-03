@@ -522,6 +522,8 @@ describe('listed chats with no stored status after the upgrade', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
     let sent: Promise<unknown> | null = null
     let ahead = { parts: -1, commits: -1 }
+    // The catch-up's progress when the send was answered.
+    let answeredAt = { folded: -1, commits: -1 }
     work.afterFold = async (sessionId) => {
       if (sessionId !== ids[0]) {
         return
@@ -534,7 +536,12 @@ describe('listed chats with no stored status after the upgrade', () => {
       sent = new Promise((resolve) => {
         setImmediate(() => {
           ahead = { parts: work.parts - before.parts, commits: work.commits - before.commits }
-          resolve(sendRestTestMessage(rig, 'session-send', 'during the catch-up'))
+          resolve(
+            sendRestTestMessage(rig, 'session-send', 'during the catch-up').then((answer) => {
+              answeredAt = { folded: work.folded.length, commits: work.commits }
+              return answer
+            })
+          )
         })
       })
     }
@@ -545,6 +552,10 @@ describe('listed chats with no stored status after the upgrade', () => {
     expect(ahead.parts).toBeGreaterThanOrEqual(0)
     expect(ahead.parts).toBeLessThanOrEqual(1)
     expect(ahead.commits).toBeLessThanOrEqual(1)
+    // Answered while the catch-up still ran: before its last fold and its last commit.
+    expect(answeredAt.folded).toBeGreaterThan(0)
+    expect(answeredAt.folded).toBeLessThan(ids.length)
+    expect(answeredAt.commits).toBeLessThan(work.commits)
     expect(ids.every((sessionId) => readTestJournalSessionStatus(rig.root, sessionId))).toBe(true)
   }, 120_000)
 })
