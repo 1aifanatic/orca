@@ -30,6 +30,15 @@ async function answeredColdSend(rig: Rig): Promise<void> {
 
 const interruptedTurns = (rig: Rig) => rig.interrupts().map((call) => call.params?.turnId)
 
+/** A Stop under fake timers, read without awaiting it. */
+function pressed(rig: Rig): () => unknown {
+  let outcome: unknown = 'held'
+  void stop(rig).then((value) => {
+    outcome = value
+  })
+  return () => outcome
+}
+
 /** A Stop sent in the window before Codex's thread runs the turn: Codex refused its interrupt. */
 async function waitingStop(rig: Rig) {
   await answeredColdSend(rig)
@@ -133,8 +142,13 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
       rig.notify('thread/status/changed', { threadId: CODEX_TEST_THREAD_ID, status: { type } })
 
       expect(await settledWithin(stopping)).toEqual(MAY_OPEN)
-      // The second press's interrupt is refused too, and spends no wait on that turn.
-      expect(await settledWithin(stop(rig))).toEqual(MAY_OPEN)
+      // The second press's interrupt is refused too; it waits its own bound, then agrees.
+      vi.useFakeTimers()
+      const second = pressed(rig)
+      await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS - 1)
+      expect(second()).toBe('held')
+      await vi.advanceTimersByTimeAsync(1)
+      expect(second()).toEqual(MAY_OPEN)
       expect(interruptedTurns(rig)).toEqual(['turn-1', 'turn-1'])
     }
   )
@@ -165,24 +179,33 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
     const rig = await codexTurnLifecycleRig()
     await answeredColdSend(rig)
     vi.useFakeTimers()
-    let outcome: unknown = 'held'
-    void stop(rig).then((value) => {
-      outcome = value
-    })
+    const first = pressed(rig)
 
     await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS - 1)
-    expect(outcome).toBe('held')
+    expect(first()).toBe('held')
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(outcome).toEqual(MAY_OPEN)
+    expect(first()).toEqual(MAY_OPEN)
     expect(interruptedTurns(rig)).toEqual(['turn-1'])
-    // A second Stop spends no wait on that turn, and still finds it able to open.
-    let second: unknown = 'held'
-    void stop(rig).then((value) => {
-      second = value
-    })
+  })
+
+  // A press after an earlier wait gave up waits again, so a turn that opens then is still stopped.
+  it('waits again on a second press, and stops the turn if it opens then', async () => {
+    const rig = await codexTurnLifecycleRig()
+    await answeredColdSend(rig)
+    vi.useFakeTimers()
+    const first = pressed(rig)
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS)
+    expect(first()).toEqual(MAY_OPEN)
+
+    const second = pressed(rig)
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS - 1)
+    expect(second()).toBe('held')
+    rig.turns.start()
     await vi.advanceTimersByTimeAsync(0)
-    expect(second).toEqual(MAY_OPEN)
+
+    expect(second()).toEqual({ cancelled: true, turnId: 'turn-1' })
+    expect(interruptedTurns(rig)).toEqual(['turn-1', 'turn-1', 'turn-1'])
   })
 })
 

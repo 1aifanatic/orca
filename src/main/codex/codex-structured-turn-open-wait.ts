@@ -96,11 +96,11 @@ export function codexStopTarget(session: CodexOpeningTurnSession): CodexStopTarg
 const CODEX_NO_ACTIVE_TURN_TO_INTERRUPT = 'no active turn to interrupt'
 
 /**
- * A Stop of a turn Codex answered a send into that has not opened. Codex takes the interrupt once
- * its thread runs, so it goes out at once. Refused as finding no turn while that turn has yet to
- * start, the Stop waits for it to open, bounded, and sends it once more. A turn that ended
- * meanwhile was nothing to stop. One that never opened, or that an earlier wait already gave up on,
- * fails the Stop (`turnMayOpen`): it may still open and run, so the host ends the child.
+ * A Stop of a turn Codex answered a send into that has not opened. Codex takes an interrupt as
+ * soon as the turn starts, which can be before its `turn/started` is read, so it goes out at once.
+ * Refused as finding no turn while that turn has yet to start, the Stop waits for it to open,
+ * bounded, and sends it once more. A turn that ended meanwhile was nothing to stop. One that never
+ * opens fails the Stop (`turnMayOpen`): it may still open and run, so the host ends the child.
  */
 export async function interruptOpeningCodexTurn(
   session: CodexOpeningTurnSession,
@@ -110,8 +110,6 @@ export async function interruptOpeningCodexTurn(
   stillCurrent: () => boolean
 ): Promise<AgentSessionCancelOutcome> {
   const open = (): ReadonlySet<string> => session.activeTurnIds ?? new Set<string>()
-  const waitedBefore =
-    session.dispatchEchoes.answeredTurnLeftUnopened(session.threadId, open()) === turnId
   const first = await interrupt()
   if (first.cancelled || first.refusal?.detail?.text !== CODEX_NO_ACTIVE_TURN_TO_INTERRUPT) {
     return first
@@ -121,7 +119,7 @@ export async function interruptOpeningCodexTurn(
     const target = codexStopTarget(session)
     return target !== null && 'opening' in target && target.opening === turnId
   }
-  if (!opened() && stillOpening() && !waitedBefore) {
+  if (!opened() && stillOpening()) {
     await session.turnOpenWaits.wait(turnId, CODEX_TURN_OPEN_WAIT_MS)
     if (!stillCurrent()) {
       return { cancelled: false }
@@ -134,7 +132,6 @@ export async function interruptOpeningCodexTurn(
     // It ended: the Stop found no turn running.
     return { cancelled: false }
   }
-  session.dispatchEchoes.leftUnopened(session.threadId, turnId)
   return { cancelled: false, refusal: { turnMayOpen: true } }
 }
 
