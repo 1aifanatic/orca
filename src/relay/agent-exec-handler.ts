@@ -207,6 +207,10 @@ export class AgentExecHandler {
       let child
       try {
         const { spawnCmd, spawnArgs } = getWindowsSafeSpawn(binary, args, spawnEnv)
+        if (Date.now() >= deadline) {
+          resolve({ stdout: '', stderr: '', exitCode: null, timedOut: true })
+          return
+        }
         child = spawn(spawnCmd, spawnArgs, {
           cwd,
           env: spawnEnv,
@@ -262,24 +266,9 @@ export class AgentExecHandler {
         // that process until timeout because future cancelExec calls reach only
         // the newest map entry.
         this.inFlightByLane.get(laneKey)?.cancel()
-        entry = {
-          child,
-          cancel: cancelCurrent
-        }
+        entry = { child, cancel: cancelCurrent }
         this.inFlightByLane.set(laneKey, entry)
       }
-
-      timer = setTimeout(
-        () => {
-          timedOut = true
-          // Why: tree-kill because some CLIs trap SIGTERM and continue streaming;
-          // also Windows wraps `.cmd` shims in cmd.exe, so the immediate child
-          // is not the real node.exe process.
-          terminateRelaySubprocessTree(child)
-          finish({ stdout, stderr, exitCode: null, timedOut, canceled })
-        },
-        Math.max(1, deadline - Date.now())
-      )
 
       const onStdoutData = (chunk: Buffer): void => {
         stdoutBytes += chunk.byteLength
@@ -297,18 +286,10 @@ export class AgentExecHandler {
         }
         stderr += chunk.toString('utf-8')
       }
-      const onError = (error: Error): void => {
-        finish({
-          stdout,
-          stderr,
-          exitCode: null,
-          timedOut,
-          spawnError: error.message
-        })
-      }
-      const onClose = (code: number | null): void => {
+      const onError = (error: Error): void =>
+        finish({ stdout, stderr, exitCode: null, timedOut, spawnError: error.message })
+      const onClose = (code: number | null): void =>
         finish({ stdout, stderr, exitCode: code, timedOut, canceled })
-      }
       child.stdout?.on('data', onStdoutData)
       child.stderr?.on('data', onStderrData)
       child.on('error', onError)
@@ -319,6 +300,19 @@ export class AgentExecHandler {
         child.off('error', onError)
         child.off('close', onClose)
       }
+
+      const expireCurrent = (): void => {
+        timedOut = true
+        // Why: wrappers and signal-trapping CLIs require terminating the whole tree.
+        terminateRelaySubprocessTree(child)
+        finish({ stdout, stderr, exitCode: null, timedOut, canceled })
+      }
+      const remainingTimeoutMs = deadline - Date.now()
+      if (remainingTimeoutMs <= 0) {
+        expireCurrent()
+        return
+      }
+      timer = setTimeout(expireCurrent, remainingTimeoutMs)
 
       if (context?.signal) {
         if (context.signal.aborted) {

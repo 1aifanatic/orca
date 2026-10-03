@@ -1,4 +1,6 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import type * as FileSystem from 'node:fs'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveLoginShellEnvironment } from '../main/startup/login-shell-environment'
@@ -6,11 +8,17 @@ import { createFakeChild, createHandlers, requestContext } from './agent-exec-ha
 
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof ChildProcess>()),
-  spawn: vi.fn()
+  spawn: vi.fn(),
+  execFile: vi.fn()
 }))
 vi.mock('../main/startup/login-shell-environment', () => ({
   resolveLoginShellEnvironment: vi.fn()
 }))
+
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof FileSystem>()
+  return { ...original, existsSync: vi.fn(original.existsSync) }
+})
 
 describe('relay headless generation shell environment', () => {
   afterEach(() => {
@@ -260,5 +268,89 @@ describe('relay deadline boundaries and profile failures', () => {
         requestContext()
       )
     ).resolves.toEqual({ canceled: false })
+  })
+})
+
+describe('relay deadline covers synchronous command startup', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.mocked(existsSync).mockReset()
+    vi.clearAllMocks()
+  })
+
+  it('does not spawn after a Windows PATH lookup exhausts the request budget', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+    vi.mocked(resolveLoginShellEnvironment).mockImplementation(() => {
+      vi.setSystemTime(999)
+      return Promise.resolve({ PATH: 'C:\\slow-network-bin' })
+    })
+    vi.mocked(existsSync).mockImplementation(() => {
+      vi.setSystemTime(1_001)
+      return false
+    })
+    const child = createFakeChild()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing fake supplies the relay streams and lifecycle.
+    vi.mocked(spawn).mockReturnValue(child as never)
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    try {
+      const pending = createHandlers().get('agent.execNonInteractive')?.(
+        { binary: 'opencode', args: ['run'], cwd: 'C:\\repo', shell: true, timeoutMs: 1_000 },
+        requestContext()
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      try {
+        expect(existsSync).toHaveBeenCalled()
+        expect(spawn).not.toHaveBeenCalled()
+        await expect(pending).resolves.toMatchObject({ timedOut: true, exitCode: null })
+      } finally {
+        child.emit('close', 0)
+        await pending
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
+    }
+  })
+
+  it('times out immediately when spawning consumes the remaining request budget', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+    vi.mocked(existsSync).mockReturnValue(false)
+    const child = createFakeChild()
+    vi.mocked(spawn).mockImplementation(() => {
+      vi.setSystemTime(1_001)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The existing fake supplies the relay streams and lifecycle.
+      return child as never
+    })
+    const handlers = createHandlers()
+    const pending = handlers.get('agent.execNonInteractive')?.(
+      { binary: 'opencode', args: ['run'], cwd: '/repo', timeoutMs: 1_000 },
+      requestContext()
+    )
+    let result: unknown
+    void pending?.then((value) => {
+      result = value
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    try {
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ timedOut: true, exitCode: null })
+      if (process.platform === 'win32') {
+        expect(execFile).toHaveBeenCalledWith(
+          'taskkill',
+          ['/pid', String(child.pid), '/T', '/F'],
+          expect.any(Function)
+        )
+      } else {
+        expect(child.kill).toHaveBeenCalled()
+      }
+      await expect(
+        handlers.get('agent.cancelExec')?.({ cwd: '/repo' }, requestContext())
+      ).resolves.toEqual({ canceled: false })
+    } finally {
+      child.emit('close', 0)
+      await pending
+    }
   })
 })
