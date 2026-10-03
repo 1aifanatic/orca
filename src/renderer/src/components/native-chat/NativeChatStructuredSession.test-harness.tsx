@@ -150,7 +150,7 @@ export function createStructuredSessionMocks() {
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
-                ? projectStructuredAgentSessionMessages([], outbox.outbox, [])
+                ? projectStructuredAgentSessionMessages([], outbox.outbox, [], true)
                 : [
                     {
                       id: 'message-1',
