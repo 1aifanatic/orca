@@ -119,10 +119,12 @@ export class StructuredAgentSessionReviewReplies {
   }
 }
 
-/** The host's review replies: writes through its runtime, receipts at the chat's current fence. */
+/** The host's review replies: writes through its runtime; each receipt in the chat's own lane, at
+ *  the fence it holds then, so no start or close moves the fence under the append. */
 export function createStructuredAgentSessionHostReviewReplies(host: {
   deps: () => Pick<StructuredAgentSessionHostDeps, 'reviewRuntime' | 'store' | 'logger'>
   journal: (sessionId: string) => AgentSessionJournal | undefined
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
 }): { observe: (sessionId: string) => void } {
   const log = (message: string, error: unknown): void =>
     host.deps().logger.warn(message, { scope: 'review-reply', error })
@@ -134,14 +136,22 @@ export function createStructuredAgentSessionHostReviewReplies(host: {
       }
       return runStructuredAgentSessionReviewReply(runtime, spec, { ...options, log })
     },
-    writeReceipt: async (sessionId, clientMessageId, failure) => {
-      const journal = host.journal(sessionId)
-      if (!journal) {
-        throw new Error(`chat ${sessionId} is closed`)
-      }
-      const fence = structuredAgentSessionConversationFence(host.deps().store, sessionId)
-      await writeStructuredAgentSessionReviewReplyReceipt(journal, fence, clientMessageId, failure)
-    },
+    // Queued behind the lane's work, never awaited from inside it: the run was started off a
+    // publish, so a task in the lane never waits on this.
+    writeReceipt: (sessionId, clientMessageId, failure) =>
+      host.serialize(sessionId, async () => {
+        const journal = host.journal(sessionId)
+        if (!journal) {
+          throw new Error(`chat ${sessionId} is closed`)
+        }
+        const fence = structuredAgentSessionConversationFence(host.deps().store, sessionId)
+        await writeStructuredAgentSessionReviewReplyReceipt(
+          journal,
+          fence,
+          clientMessageId,
+          failure
+        )
+      }),
     log
   })
   return {

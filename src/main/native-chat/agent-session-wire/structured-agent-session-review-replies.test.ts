@@ -401,6 +401,30 @@ describe('a launch prompt with a review reply', () => {
   })
 })
 
+describe("a review reply's receipt", () => {
+  it("is written in the chat's own lane, after the work already in it", async () => {
+    const writesDone = Promise.withResolvers<void>()
+    review.addRepoIssueComment.mockImplementationOnce(async () => {
+      await writesDone.promise
+      return { ok: true, comment: postedComment('summary') }
+    })
+    const id = await launchPrompt()
+    await handedOver(id)
+    await accept(id)
+    await eventually(() => expect(review.addRepoIssueComment).toHaveBeenCalled())
+    const lane = Promise.withResolvers<void>()
+    const occupied = host.collaboratorsForTests().serialize(SESSION, () => lane.promise)
+
+    writesDone.resolve()
+    await settled()
+    expect((await receipt(id)).written).toBe(false)
+
+    lane.resolve()
+    await occupied
+    await settledReceipt(id)
+  })
+})
+
 describe('a review reply cut off by a restart', () => {
   /** Accepted, with Orca dying while the writes run: no receipt reaches the chat. */
   async function acceptedThenCrashed(): Promise<string> {

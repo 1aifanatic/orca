@@ -34,6 +34,8 @@ export class StructuredAgentSessionClientDelivery {
     private readonly sessions: Map<string, StructuredAgentSessionHostSession>,
     now: () => number,
     private readonly deps: () => StructuredAgentSessionHostDeps,
+    /** The host's per-session lane, which a review reply's receipt is written in. */
+    serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>,
     private readonly onJournalActivity?: (sessionId: string) => void,
     onAgentStarted?: (sessionId: string) => void,
     /** A session's child records changed; the chat strip republishes from them. */
@@ -57,7 +59,8 @@ export class StructuredAgentSessionClientDelivery {
     this.waitForSendSettlement = this.sendSettlement.wait
     this.reviewReplies = createStructuredAgentSessionHostReviewReplies({
       deps,
-      journal: (sessionId) => sessions.get(sessionId)?.journal
+      journal: (sessionId) => sessions.get(sessionId)?.journal,
+      serialize
     })
     this.subscribers = new AgentSessionSubscribers({
       readCommands: (sessionId) => this.readCommands(sessionId),
