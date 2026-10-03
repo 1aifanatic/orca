@@ -73,7 +73,7 @@ describe('a message sent while Stopping, before the host has handed it over', ()
   const pending = {
     id: 'pending-send',
     role: 'user' as const,
-    outgoing: true as const,
+    sentWhileStopping: true as const,
     blocks: [{ type: 'text' as const, text: 'Run this after the stop' }],
     timestamp: Date.now(),
     source: 'transcript' as const
@@ -106,5 +106,24 @@ describe('a message sent while Stopping, before the host has handed it over', ()
     const sent = screen.getByText('Run this after the stop')
     const working = screen.getByText('Working…')
     expect(sent.compareDocumentPosition(working)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  // Sent just before the Stop, the host steers it into the turn: it stays there, never jumping.
+  it('keeps a send made before the Stop in the turn', () => {
+    const { sentWhileStopping: _made, ...beforeStop } = pending
+    render(
+      <NativeChatMessageList
+        session={{ ...session, messages: [...session.messages, beforeStop] }}
+        journalItems={[journalItem(1, turnItem)]}
+        isWorking
+        stopping
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+
+    const sent = screen.getByText('Run this after the stop')
+    const stopping = screen.getByText('Stopping…')
+    expect(sent.compareDocumentPosition(stopping)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 })

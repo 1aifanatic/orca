@@ -3,7 +3,7 @@
 // A message sent while the chat reads Stopping, through the chat's own send and its real outbox.
 // Where the host queues sends, the request asks it to, whatever the queueing setting, and the
 // transcript draws no bubble of it. Where it does not, the send goes out plain, for the host to hold
-// until the stop lands, and is drawn as this client's outgoing message, after the Stopping line.
+// until the stop lands, and is marked as sent while stopping, so it draws after the Stopping line.
 
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -93,7 +93,7 @@ it('asks the host to queue a send made while the host reads Stopping, and draws 
   expect(JSON.stringify(result.current.messages)).not.toContain('run this after the stop')
 })
 
-it('sends plain where the host does not queue sends, drawn as an outgoing message', async () => {
+it('sends plain where the host does not queue sends, marked as sent while stopping', async () => {
   setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   const { result } = renderStopping()
 
@@ -105,5 +105,33 @@ it('sends plain where the host does not queue sends, drawn as an outgoing messag
     result.current.messages.find((message) =>
       JSON.stringify(message.blocks).includes('run this after the stop')
     )
-  ).toMatchObject({ role: 'user', outgoing: true })
+  ).toMatchObject({ role: 'user', sentWhileStopping: true })
+})
+
+// Sent before the Stop, the host steers it into the turn: it is not one held behind the Stop.
+it('does not mark a send made before the chat read Stopping', async () => {
+  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
+  const { result, rerender } = renderHook(
+    ({ hostStopping }: { hostStopping: boolean }) =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        agent: 'codex',
+        target: { kind: 'local' },
+        isVisible: true,
+        composerScopeKey: 'scope-1',
+        queueFollowUps: false,
+        hostStopping
+      }),
+    { initialProps: { hostStopping: false } }
+  )
+  expect(result.current.send('sent before the stop')).toBe(true)
+
+  rerender({ hostStopping: true })
+
+  await waitFor(() => expect(sends()).toHaveLength(1))
+  const sent = result.current.messages.find((message) =>
+    JSON.stringify(message.blocks).includes('sent before the stop')
+  )
+  expect(sent).toBeDefined()
+  expect(sent).not.toHaveProperty('sentWhileStopping')
 })

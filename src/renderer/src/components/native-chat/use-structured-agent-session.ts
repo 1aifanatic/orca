@@ -140,7 +140,8 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     composerScopeKey,
     queueDelivery,
-    queuedMessageIds
+    queuedMessageIds,
+    stopping
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
