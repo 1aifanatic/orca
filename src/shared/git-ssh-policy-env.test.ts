@@ -124,7 +124,9 @@ describe.skipIf(process.platform === 'win32')('SSH policy with a real POSIX shel
     expect(result.stdout.split('\0').slice(0, -1)).toEqual(['-o', 'BatchMode=yes', ...expected])
   })
 
-  it('keeps the enforced first value even when a later option disables BatchMode', async () => {
+  it('keeps the enforced first value even when a later option disables BatchMode', async ({
+    skip
+  }) => {
     const result = await runProcess({
       program: 'ssh',
       args: [
@@ -137,6 +139,11 @@ describe.skipIf(process.platform === 'win32')('SSH policy with a real POSIX shel
         'BatchMode=no',
         'example.invalid'
       ]
+    }).catch((error: unknown) => {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        skip('OpenSSH is not installed')
+      }
+      throw error
     })
     expect(result.code).toBe(0)
     expect(result.stdout).toMatch(/^batchmode yes$/m)
