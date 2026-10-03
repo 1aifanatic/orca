@@ -405,6 +405,11 @@ describe('a queued send while Stopping, behind a card the Stop paused', () => {
 
     const during = await sendQueued('sent while stopping')
     const runsNext = 'queued' in during ? during.queued.messageId : ''
+    // The pause names the one card it holds; the card queued after the Stop is not one.
+    expect((await queuePage()).cards.map((card) => [card.messageId, card.heldByPause])).toEqual([
+      [paused, true],
+      [runsNext, undefined]
+    ])
     answer.resolve()
     await stopping
     turns.end('interrupted')
@@ -417,7 +422,7 @@ describe('a queued send while Stopping, behind a card the Stop paused', () => {
     )
     expect(handOffs).toEqual([runsNext])
     expect(await queuePage()).toEqual({
-      cards: [expect.objectContaining({ messageId: paused, state: 'waiting' })],
+      cards: [expect.objectContaining({ messageId: paused, state: 'waiting', heldByPause: true })],
       pause: expect.objectContaining({ reason: 'stopped' })
     })
   })
