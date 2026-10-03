@@ -8,10 +8,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  CodexAppServerConnection,
-  CodexAppServerConnectionHandlers,
-  openCodexAppServerConnection
+import {
+  CodexAppServerRequestError,
+  type CodexAppServerConnection,
+  type CodexAppServerConnectionHandlers,
+  type openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
@@ -55,6 +56,10 @@ let interrupts: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let statuses: AgentSessionStatusSummary[]
 let opened: Set<string>
+let steers: number
+let aborted: Set<string>
+/** When set, Codex answers the interrupt only once it resolves. */
+let interruptAnswer: Promise<void> | null
 let operations = 0
 
 /** The durable ledger stamps its own clock and refuses an id far from it. */
@@ -149,6 +154,9 @@ beforeEach(async () => {
   answers = 0
   interrupts = 0
   opened = new Set()
+  steers = 0
+  aborted = new Set()
+  interruptAnswer = null
   turns = codexTurnLifecycleFake(THREAD, () => (method, params) => {
     if (method === 'turn/started') {
       opened.add(turns.turnId ?? '')
@@ -163,7 +171,7 @@ beforeEach(async () => {
     const connection: CodexAppServerConnection = {
       pid: 4321,
       closed: false,
-      request: async (method) => {
+      request: async (method, params) => {
         if (method === 'thread/start' || method === 'thread/resume') {
           return { thread: { id: THREAD } }
         }
@@ -174,6 +182,19 @@ beforeEach(async () => {
           answers += 1
           return turns.routes['turn/start']()
         }
+        if (method === 'turn/steer') {
+          steers += 1
+          // A turn Codex answered an interrupt for has aborted: Codex refuses to steer it.
+          if (turns.turnId === null || aborted.has(turns.turnId)) {
+            throw new CodexAppServerRequestError(
+              'turn/steer',
+              -32600,
+              'codex app-server turn/steer failed: no active turn to steer',
+              'no active turn to steer'
+            )
+          }
+          return turns.routes['turn/steer'](params)
+        }
         if (method === 'turn/interrupt') {
           // Taken: answered now; the test sends the turn's end once the Stop has answered. A turn
           // Codex runs but whose turn/started was not yet read gets that frame ahead of the answer.
@@ -181,6 +202,8 @@ beforeEach(async () => {
           if (turns.turnId !== null && !opened.has(turns.turnId)) {
             turns.start()
           }
+          await interruptAnswer
+          aborted.add(turns.turnId ?? '')
           return {}
         }
         return {}
@@ -255,5 +278,33 @@ describe("a Codex Stop answered before Codex's turn/completed (interrupted)", ()
     await stopping
 
     await expectInterruptedThroughout()
+  })
+})
+
+// A message sent while the Stop ends the turn goes out once that turn has ended. Codex answered the
+// interrupt, so the turn has aborted even while its turn/completed is still on the wire: the
+// message opens its own turn, never a steer Codex would refuse.
+describe('a send behind a Codex Stop answered before its turn ends', () => {
+  it('opens its own turn with turn/start, never turn/steer', async () => {
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    const answer = Promise.withResolvers<void>()
+    interruptAnswer = answer.promise
+    const stopping = stop()
+    await vi.waitFor(() => expect(interrupts).toBe(1))
+
+    // Accepted behind the Stop on the session's lane, so it reaches Codex only once the Stop has
+    // answered and the turn reads ended, while Codex's turn/completed is still to come.
+    const sent = send('run this after the stop')
+    await vi.waitFor(() => expect(statuses.some((summary) => summary.stopping === true)).toBe(true))
+    expect(answers).toBe(1)
+    answer.resolve()
+    await stopping
+    await sent
+
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(steers).toBe(0)
+    turns.end('interrupted')
   })
 })
