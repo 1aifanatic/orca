@@ -147,6 +147,51 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
+  // The host never sends it again, so a Retry has nothing to do, and nothing waits behind it.
+  it('says nothing on a message in doubt the host holds, nor on any message after it', () => {
+    const retry = vi.fn()
+    const outbox = [
+      entry('doubt', { state: 'unconfirmed', lastAttemptAt: 2 }),
+      entry('sent', { state: 'dispatching', lastAttemptAt: 3 }),
+      entry('next')
+    ]
+    const recorded: AgentJournalSubmission = {
+      clientMessageId: 'doubt',
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'unknown',
+      providerItemId: null,
+      reason: 'provider_closed_before_acknowledgement',
+      submittedAt: 2,
+      resolvedAt: 4,
+      recovered: true
+    }
+    expect(
+      structuredAgentSessionDeliveryNotices(
+        outbox,
+        'Codex',
+        retry,
+        [recorded],
+        [],
+        NOT_FAILED_HERE
+      ).size
+    ).toBe(0)
+    // One the host may never have received still says so, with its Retry.
+    const unrecorded = structuredAgentSessionDeliveryNotices(
+      outbox,
+      'Codex',
+      retry,
+      [],
+      [],
+      NOT_FAILED_HERE
+    )
+    expect([...unrecorded.keys()]).toEqual([agentJournalSubmissionKey('doubt')])
+    expect(unrecorded.get(agentJournalSubmissionKey('doubt'))?.text).toBe(
+      'Message delivery is unconfirmed.'
+    )
+    expect(unrecorded.get(agentJournalSubmissionKey('doubt'))?.onRetry).toBeDefined()
+  })
+
   it('never says a send attempted before a Stop was not sent: the host may hold it', () => {
     const interrupted = entry('stopped', { state: 'queued', lastAttemptAt: 5, outlivedStop: true })
     expect(texts([interrupted])).toEqual({

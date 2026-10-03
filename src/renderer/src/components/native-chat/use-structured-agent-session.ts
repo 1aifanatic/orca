@@ -17,6 +17,7 @@ import {
   useStructuredAgentSessionHostQueuesMessagesState,
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
+import { structuredAgentSessionEntryInDoubtAtHost } from '../../../../shared/structured-agent-session-outbox-admission'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import { isRetryingStructuredAgentSessionStart } from '../../../../shared/structured-agent-session-start-retry'
 import {
@@ -168,11 +169,14 @@ export function useStructuredAgentSession(args: {
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
     () =>
-      outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, {
-        capability: queueCapability,
-        enabled: queueFollowUps
-      }),
-    [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds]
+      outboxOutsideQueuedCards(
+        outbox,
+        queuedMessageIds,
+        isWorking,
+        { capability: queueCapability, enabled: queueFollowUps },
+        submissions
+      ),
+    [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds, submissions]
   )
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
@@ -200,7 +204,8 @@ export function useStructuredAgentSession(args: {
           transportState.turnId ||
           prompts.length ||
           transportState.backgroundTasks.isMonitoring ||
-          outbox.length
+          // One in doubt the host holds has nothing left to send, and no Retry to clear it.
+          outbox.some((entry) => !structuredAgentSessionEntryInDoubtAtHost(entry, submissions))
         ),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
         send: (command) =>

@@ -8,6 +8,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import {
+  createStructuredAgentSessionOutboxEntry,
+  reconcileStructuredAgentSessionOutbox,
+  structuredAgentSessionSendMutation
+} from '../../../shared/structured-agent-session-outbox'
+import { admitStructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox-admission'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-connection'
 import { CodexAppServerTimeoutError } from '../../codex/codex-app-server-session'
 import {
@@ -477,5 +483,72 @@ describe('a message after a Codex Stop whose exit was unproven', () => {
       )
     ).toBe(false)
     expect(host['sessions'].get(SESSION)?.owesProviderChildWindDown).toBeUndefined()
+  })
+})
+
+// The follow-up may already be with Codex, so the host keeps it in doubt; it never holds the
+// desktop's next message, which goes to a fresh Codex.
+describe('a follow-up Codex never echoed, when a Stop whose interrupt failed ends the child', () => {
+  it('stays in doubt, and the message queued behind it goes out', async () => {
+    await runningTurn()
+    codex.routes['turn/steer'] = turns.routes['turn/steer']
+    const followUp = await send('and also this')
+    if (!followUp.ok) {
+      throw new Error(JSON.stringify(followUp.refusal))
+    }
+    const followUpId = followUp.value.clientMessageId
+    await vi.waitFor(() =>
+      expect(codex.connections.at(-1)!.calls.some((call) => call.method === 'turn/steer')).toBe(
+        true
+      )
+    )
+    codex.routes['turn/interrupt'] = () => {
+      throw interruptFailure('internal error')
+    }
+
+    await stop()
+    await host.flushStreamedEvents(SESSION)
+    expect(childEndedByStop()).toBe(true)
+    const { submissions } = await host.journalSnapshot(SESSION)
+    expect(submissions.find((row) => row.clientMessageId === followUpId)).toMatchObject({
+      dispatchState: 'unknown',
+      recovered: true
+    })
+
+    // The desktop's outbox as it held them: the follow-up on its way, the next message queued.
+    const queued = (clientMessageId: string, text: string) =>
+      createStructuredAgentSessionOutboxEntry({
+        clientMessageId,
+        sessionId: SESSION,
+        text,
+        attachments: [],
+        queuedAt: NOW
+      })
+    const outbox = reconcileStructuredAgentSessionOutbox(
+      [
+        { ...queued(followUpId, 'and also this'), state: 'dispatching', lastAttemptAt: NOW },
+        queued(hostTestOperationId(), 'carry on')
+      ],
+      submissions
+    )
+    expect(outbox[0]?.state).toBe('unconfirmed')
+    const admission = admitStructuredAgentSessionOutboxEntry(outbox, submissions)
+    expect(admission).toEqual({ state: 'dispatch', entry: outbox[1] })
+    if (admission.state !== 'dispatch') {
+      return
+    }
+
+    launch.resumeThreadId = THREAD
+    expect(
+      await host.send(CALLER, structuredAgentSessionSendMutation(admission.entry, 1))
+    ).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(codex.connections).toHaveLength(2))
+    await vi.waitFor(() =>
+      expect(
+        codex.connections[1]!.calls.some(
+          (call) => call.method === 'turn/start' && JSON.stringify(call.params).includes('carry on')
+        )
+      ).toBe(true)
+    )
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { structuredAgentSessionEntryInDoubtAtHost } from '../../../../shared/structured-agent-session-outbox-admission'
 import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
@@ -29,12 +30,15 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
   // moves it out of `unconfirmed`, so one wedges the whole FIFO queue. Re-issuing
   // the same envelope without `retryUnknown` is idempotent: the operation ledger
   // replays a recorded outcome, or the host performs a genuine first delivery.
-  // A host-confirmed unknown stays parked until the user explicitly asks Retry
-  // to replay the same operation.
-  // The first `unconfirmed` entry is the one holding the queue, at whatever index it sits: an
-  // unconfirmed tail behind an admitted head would otherwise wedge until the head cleared,
-  // which is the wedge this probe exists to prevent.
-  const blocker = outbox.find((entry) => entry.state === 'unconfirmed')
+  // One the journal holds is never probed: the host never sends it again, and it
+  // holds nothing up.
+  // The first unconfirmed entry the host may not have is the one holding the queue, at whatever
+  // index it sits: an unconfirmed tail behind an admitted head would otherwise wedge until the
+  // head cleared, which is the wedge this probe exists to prevent.
+  const blocker = outbox.find(
+    (entry) =>
+      entry.state === 'unconfirmed' && !structuredAgentSessionEntryInDoubtAtHost(entry, submissions)
+  )
   // Depend on primitives: `submissions` is rebuilt on every streaming batch, so an
   // array-identity dep would reset the backoff forever while the agent is working.
   // A non-null `retryAfterUnknownSubmittedAt` means the user already retried, so
@@ -47,10 +51,8 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
     blocker.outlivedStop !== true
       ? blocker.clientMessageId
       : null
-  const probeSettled =
-    probeId !== null && submissions.some((submission) => submission.clientMessageId === probeId)
   useEffect(() => {
-    if (probeId === null || probeSettled || !owner.attached) {
+    if (probeId === null || !owner.attached) {
       return
     }
     const attempts = probeAttemptsRef.current.id === probeId ? probeAttemptsRef.current.attempts : 0
@@ -70,5 +72,5 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
       Math.min(UNCONFIRMED_PROBE_BASE_DELAY_MS * 2 ** attempts, UNCONFIRMED_PROBE_MAX_DELAY_MS)
     )
     return () => clearTimeout(timer)
-  }, [owner.attached, owner.ownerChange, owner.targetKey, probeId, probeSettled, sessionId])
+  }, [owner.attached, owner.ownerChange, owner.targetKey, probeId, sessionId])
 }

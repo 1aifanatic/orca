@@ -1,5 +1,6 @@
 // Which outbox entry goes out next, and which ones wait for the user.
 
+import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 
 /** A send the user was told did not go through, with a Retry: only that Retry sends it again. Read
@@ -8,6 +9,18 @@ export function structuredAgentSessionEntryHeldForRetry(
   entry: StructuredAgentSessionOutboxEntry
 ): boolean {
   return entry.state === 'queued' && entry.lastFailure !== undefined
+}
+
+/** A send in doubt that the journal holds: the host fixed its place and never sends it again, so
+ *  only whether the agent got it is unknown. */
+export function structuredAgentSessionEntryInDoubtAtHost(
+  entry: StructuredAgentSessionOutboxEntry,
+  submissions: readonly AgentJournalSubmission[]
+): boolean {
+  return (
+    entry.state === 'unconfirmed' &&
+    submissions.some((submission) => submission.clientMessageId === entry.clientMessageId)
+  )
 }
 
 export type StructuredAgentSessionOutboxAdmission =
@@ -23,15 +36,22 @@ export type StructuredAgentSessionOutboxAdmission =
  * per-session serialize chain before dispatching, so it keeps its place, and waiting for its echo
  * costs delivery of everything queued behind it. One whose start was refused before it ran is the
  * exception the host makes: it waits for its next try while the messages behind it go first. An
- * `unconfirmed` entry is a barrier — sending past it would reorder around a message that may yet
- * land. One the user was told did not go through is not: it lands only by its own Retry, so what
- * the user sends after it goes out as they send it.
+ * `unconfirmed` entry the host may never have received is a barrier — sending past it would
+ * reorder around a message that may yet land. Once the journal holds it, it is not: its place is
+ * fixed and the host never sends it again. Read from the journal on every call, so a relaunch frees
+ * a queue an earlier build held. One the user was told did not go through is not either: it lands
+ * only by its own Retry, so what the user sends after it goes out as they send it.
  */
 export function admitStructuredAgentSessionOutboxEntry(
-  entries: readonly StructuredAgentSessionOutboxEntry[]
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionOutboxAdmission {
   for (const entry of entries) {
-    if (entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry)) {
+    if (
+      entry.state === 'rejected' ||
+      structuredAgentSessionEntryHeldForRetry(entry) ||
+      structuredAgentSessionEntryInDoubtAtHost(entry, submissions)
+    ) {
       continue
     }
     if (entry.state === 'unconfirmed') {

@@ -454,23 +454,23 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(mocks.call).toHaveBeenCalledOnce()
   })
 
-  it('drains a head the host refuses to redeliver so the queue behind it advances', async () => {
-    // The guard refuses a retry it cannot prove is a first delivery. That must
-    // not leave a Retry that does nothing in front of a wedged queue: the entry
-    // leaves the outbox, the user is told Orca will not send it again, and the
-    // message queued behind it goes out.
-    // The second send never settles, so the refusal's error is still on screen
-    // when the queue behind it advances.
+  it('sends past a head the host holds in doubt, and drops that head when a Retry only replays it', async () => {
+    // The host never sends a message it recorded again, so the one behind it goes out at once. A
+    // Retry on the head (one an earlier build saved) is refused as a redelivery: the entry leaves
+    // the outbox and the user is told Orca will not send it again.
     mocks.call.mockImplementation(async (_target, _method, params) => {
       const request = params as {
         envelope: { clientOperationId: string }
         body: { blocks: { text?: string }[] }
       }
-      if (request.body.blocks[0]?.text === 'second') {
-        return new Promise(() => {})
-      }
-      return unknownResultFor(request.envelope.clientOperationId, 10)
+      return request.body.blocks[0]?.text === 'second'
+        ? pendingResultFor(request.envelope.clientOperationId, 20)
+        : unknownResultFor(request.envelope.clientOperationId, 10)
     })
+    const sentTexts = () =>
+      mocks.call.mock.calls.map(
+        (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
+      )
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
@@ -488,20 +488,13 @@ describe('useStructuredAgentSessionOutbox', () => {
     rerender({ submissions: [unknownResultFor(firstId, 10).value.submission] })
 
     act(() => expect(result.current.send('second')).toBe(true))
-    expect(result.current.outbox).toHaveLength(2)
+    await waitFor(() => expect(sentTexts()).toEqual(['first', 'second']))
 
     act(() => result.current.retry(firstId))
     await waitFor(() =>
       expect(result.current.outbox.some((entry) => entry.clientMessageId === firstId)).toBe(false)
     )
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200))
-    })
-
-    const sent = mocks.call.mock.calls.map(
-      (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
-    )
-    expect(sent).toContain('second')
+    expect(sentTexts()).toEqual(['first', 'second', 'first'])
     expect(result.current.error).toBe(
       'Message delivery is unconfirmed and Orca will not send it again'
     )

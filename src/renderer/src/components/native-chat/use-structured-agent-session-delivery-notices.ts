@@ -25,11 +25,12 @@ export function useStructuredAgentSessionDeliveryNotices(
     (clientMessageId: string) => retryRef.current(clientMessageId),
     []
   )
-  // Only a rejected message, or one waiting out a refused start, reads the journal's rows, so a new
-  // batch of them re-renders no row else.
+  // Only a rejected message, one in doubt, or one waiting out a refused start reads the journal's
+  // rows, so a new batch of them re-renders no row else.
   const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
-  const rejectionRows =
+  const journalRows =
     hasRejected ||
+    controller.outbox.some((entry) => entry.state === 'unconfirmed') ||
     controller.submissions.some(isRetryingStructuredAgentSessionStart) ||
     failedStartsSentElsewhere(controller.submissions, controller.outbox).length > 0
       ? controller.submissions
@@ -44,7 +45,7 @@ export function useStructuredAgentSessionDeliveryNotices(
         controller.outbox,
         agentLabel,
         retryDelivery,
-        rejectionRows,
+        journalRows,
         startFailures,
         controller.failedHere,
         controller.retryWaitsForHost
@@ -53,7 +54,7 @@ export function useStructuredAgentSessionDeliveryNotices(
       controller.outbox,
       agentLabel,
       retryDelivery,
-      rejectionRows,
+      journalRows,
       startFailures,
       controller.failedHere,
       controller.retryWaitsForHost

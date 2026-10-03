@@ -5,7 +5,8 @@
 // the queue is stopped, the message it stopped on and any failed one ahead of it have a Retry, as
 // each would go out at once; one behind it would wait unseen. One waiting behind says nothing; a
 // rejected or refused message holds nothing up, so it keeps its words and gets its Retry once the
-// queue moves.
+// queue moves. A message in doubt that the journal holds says nothing: the host never sends it
+// again, so it holds nothing up and a Retry has nothing to do.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A message whose
@@ -187,8 +188,9 @@ export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   agentName: string,
   retry: (clientMessageId: string) => void,
-  /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps, and
-   *  whose queued ones may be waiting out a refused start. */
+  /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps,
+   *  whose queued ones may be waiting out a refused start, and which say whether a message in doubt
+   *  reached the host. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly StatedStartFailure[],
@@ -203,7 +205,7 @@ export function structuredAgentSessionDeliveryNotices(
     onRetry: () => retry(clientMessageId),
     ...(retryWaitsForHost.has(clientMessageId) ? { retryPending: true as const } : {})
   })
-  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
+  const admission = admitStructuredAgentSessionOutboxEntry(outbox, submissions)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
   const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
   const rejected = new Map(

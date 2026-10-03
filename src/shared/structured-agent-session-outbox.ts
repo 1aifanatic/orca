@@ -251,7 +251,11 @@ export function reconcileStructuredAgentSessionOutbox(
       entry.retryAfterUnknownSubmittedAt !== -1 &&
       entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
     ) {
-      // In doubt now, not failed: the probe's resend decides it, as for any unconfirmed send.
+      // In doubt now, not failed. The host has it, so it holds nothing up (admission).
+      if (entry.state === 'unconfirmed' && !entry.lastFailure) {
+        // Kept as is, so a streamed batch neither rewrites the saved outbox nor redraws it.
+        return [entry]
+      }
       const { lastFailure: _superseded, ...inDoubt } = entry
       return [{ ...inDoubt, state: 'unconfirmed' as const }]
     }
