@@ -450,7 +450,8 @@ describe('StructuredAgentSessionAttentionBridge', () => {
       throw new Error('snapshot did not publish a chat tab')
     }
     expect(tab.contentType).toBe('agent-session')
-    expect(tab.executionHostId).toBeUndefined()
+    // The snapshot stamps each mirrored chat with its host, so a later id collision cannot reassign it.
+    expect(tab.executionHostId).toBe('runtime:env-1')
     render(<StructuredAgentSessionAttentionBridge />)
     await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
     expect(mocks.subscribeCompletions.mock.calls[0]?.[0]).toEqual({
@@ -470,7 +471,10 @@ describe('StructuredAgentSessionAttentionBridge', () => {
         }
       })
     )
-    expect(resolveNotificationTabOwner(store.getState(), tab)).toBeNull()
+    expect(resolveNotificationTabOwner(store.getState(), tab)).toEqual({
+      executionHostId: 'runtime:env-1',
+      runtimeEnvironmentId: 'env-1'
+    })
     expect(mocks.unsubscribe).not.toHaveBeenCalled()
     expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
 
