@@ -6,7 +6,6 @@ import type { AgentSessionRefusalReason } from '../../../shared/agent-session-re
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
 import {
   AgentSessionRefusalError,
-  agentSessionRefusalError,
   isAgentSessionRefusalError,
   refuse,
   type AgentSessionWireRefusal
@@ -122,13 +121,17 @@ export function journalOpenRefusal(error: unknown): AgentSessionWireRefusal {
   return refuse('agent_session_journal_unreadable', { reason }, message)
 }
 
-/** The same refusal, thrown: for a host that could not open the journal at all. */
+/** The same refusal, thrown: for a host that could not open the journal at all. It keeps what
+ *  failed as its cause, for the log. */
 export function journalOpenRefusalError(error: unknown): AgentSessionRefusalError {
   if (isAgentSessionRefusalError(error)) {
     return error
   }
   const { reason, message } = journalOpenFailureWords(error)
-  return agentSessionRefusalError('agent_session_journal_unreadable', { reason }, message)
+  return new AgentSessionRefusalError(
+    refuse('agent_session_journal_unreadable', { reason }, message),
+    { cause: error }
+  )
 }
 
 /**
@@ -172,7 +175,7 @@ export function createJournalOpenReadRefusals(logger: StructuredAgentSessionLogg
         const cause = error.cause instanceof Error ? error.cause.message : String(error.cause)
         if (
           refusal.code === 'agent_session_journal_unreadable' &&
-          firstSeen(sessionId, `${refusal.code}:${cause}`)
+          firstSeen(sessionId, `${refusal.details?.reason}:${cause}`)
         ) {
           logOpenForReadFailure(logger, sessionId, error)
         }
