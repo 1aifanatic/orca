@@ -445,10 +445,15 @@ describe('StructuredAgentSessionAttentionBridge', () => {
         100
       )
     )
-    const tab = store.getState().unifiedTabsByWorktree[WORKSPACE][0]
-    if (!tab) {
+    const publishedTab = store.getState().unifiedTabsByWorktree[WORKSPACE][0]
+    if (!publishedTab) {
       throw new Error('snapshot did not publish a chat tab')
     }
+    expect(publishedTab.executionHostId).toBe('runtime:env-1')
+    const tab = makeUnifiedTab(publishedTab)
+    // Older snapshots can omit the optional host stamp.
+    delete tab.executionHostId
+    store.setState({ unifiedTabsByWorktree: { [WORKSPACE]: [tab] } })
     expect(tab.contentType).toBe('agent-session')
     expect(tab.executionHostId).toBeUndefined()
     render(<StructuredAgentSessionAttentionBridge />)
