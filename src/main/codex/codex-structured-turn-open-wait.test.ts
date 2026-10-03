@@ -60,7 +60,8 @@ describe("a no-turn Stop in the window between Codex's answer and its turn openi
 
     expect(await settledWithin(stopping)).toEqual({ cancelled: true, turnId: 'turn-1' })
     expect(rig.interrupts().map((call) => call.params?.turnId)).toEqual(['turn-1'])
-    expect(rig.turns.turnId).toBeNull()
+    // Codex answers the interrupt, then ends the turn.
+    await vi.waitFor(() => expect(rig.turns.turnId).toBeNull())
   })
 
   it('does not wait when Codex opened the turn before its answer was read', async () => {
