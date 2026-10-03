@@ -236,10 +236,13 @@ export class ManagedDataAccountService {
   }
 
   private requireAccount(provider: ManagedDataAccountProvider, id: string): string {
-    if (!this.list(provider).accounts.some((account) => account.id === id)) {
+    const account = this.list(provider).accounts.find(
+      (registered) => registered.id.toLowerCase() === id.toLowerCase()
+    )
+    if (!account) {
       throw new Error('Managed account not found.')
     }
-    const directory = join(this.root, provider, id)
+    const directory = join(this.root, provider, account.id.toLowerCase())
     this.assertOwned(directory)
     return directory
   }

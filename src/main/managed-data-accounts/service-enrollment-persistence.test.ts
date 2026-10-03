@@ -142,13 +142,11 @@ describe.each(['opencode', 'devin'] as const)('committed %s enrollment', (provid
   it('preserves a profile registered with another UUID case', async () => {
     const metadata = join(root, 'managed', provider, 'accounts.json')
     const write = secureFile.writeSecureFile
-    let published = ''
-    vi.spyOn(secureFile, 'writeSecureFile').mockImplementation((...args) => {
+    const writer = vi.spyOn(secureFile, 'writeSecureFile').mockImplementation((...args) => {
       const result = write(...args)
       if (args[0] !== metadata) {
         return result
       }
-      published = readFileSync(metadata, 'utf8')
       const state = service.list(provider)
       writeFileSync(
         metadata,
@@ -161,10 +159,18 @@ describe.each(['opencode', 'devin'] as const)('committed %s enrollment', (provid
       throw new Error('post-publication UUID case change')
     })
     await expect(service.add(provider, source, 'Work')).rejects.toThrow('UUID case change')
+    writer.mockRestore()
     const registered = service.list(provider).accounts[0]
-    expect(existsSync(join(root, 'managed', provider, registered.id.toLowerCase()))).toBe(true)
-    writeFileSync(metadata, published)
-    expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBeTruthy()
+    const dataHome = join(root, 'managed', provider, registered.id.toLowerCase(), 'data')
+    expect(existsSync(dataHome)).toBe(true)
+    expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBe(dataHome)
+    expect(
+      service.transcriptEnvironments(provider).map((environment) => environment.XDG_DATA_HOME)
+    ).toEqual([dataHome])
+    await service.select(provider, registered.id.toLowerCase())
+    expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBe(dataHome)
+    await service.select(provider, registered.id.toUpperCase())
+    expect(service.launchEnvironment(provider).XDG_DATA_HOME).toBe(dataHome)
   })
 
   it('isolates a throwing listener after enrollment has committed', async () => {
