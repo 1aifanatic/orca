@@ -31,7 +31,8 @@ function startDeleting(): void {
       repoPath: '/repo',
       worktree: { path: '/repo-feature', branch: 'refs/heads/feature/test', head: 'abc' },
       deleteBranch: true,
-      force: false
+      force: false,
+      checkoutIdentity: undefined
     },
     run: () => new Promise(() => {}),
     publish: () => {}

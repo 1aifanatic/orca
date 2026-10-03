@@ -93,6 +93,8 @@ beforeEach(async () => {
   await git(['worktree', 'add', '-q', worktreePath, '-b', 'feature'])
   // The directory as the interrupted removal accepted it, before any test's partial delete.
   acceptedIdentity = await readCheckoutDirectoryIdentity(worktreePath)
+  // Without one, the refusals below would pass as unrecorded records, not as different folders.
+  expect(acceptedIdentity).toBeDefined()
   repo = { id: 'repo-1', path: repoPath, displayName: 'repo', badgeColor: '', addedAt: 0 }
 })
 
@@ -213,6 +215,8 @@ describe('finishing an interrupted worktree removal after a restart', () => {
       ctx.skip()
     }
     acceptedIdentity = await readCheckoutDirectoryIdentity(worktreePath)
+    // Without one, the refusals below would pass as unrecorded records rather than as different folders.
+    expect(acceptedIdentity).toBeDefined()
     await unlink(join(worktreePath, '.git'))
     await unlink(join(worktreePath, 'seed.txt'))
 

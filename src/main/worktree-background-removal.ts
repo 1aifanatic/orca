@@ -6,6 +6,7 @@ import { acquireWatcherRemovalGate, type WatcherRemovalGate } from './ipc/watche
 import { runWorktreeChangeInvalidators } from './ipc/worktree-change-invalidators'
 import { parseWslPath } from './wsl'
 import { readWorktreeRemovalRecords, type WorktreeRemovalRecord } from './worktree-removal-records'
+import type { CheckoutDirectoryIdentity } from './worktree-checkout-identity'
 import {
   differentCheckoutAtPathError,
   isCheckoutRegistered,
@@ -141,8 +142,12 @@ export function startBackgroundWorktreeRemoval(
   args: {
     removal: Pick<
       WorktreeRemovalRecord,
-      'worktreeId' | 'repoId' | 'repoPath' | 'deleteBranch' | 'force' | 'checkoutIdentity'
-    > & { worktree: Pick<GitWorktreeInfo, 'path' | 'branch' | 'head'> }
+      'worktreeId' | 'repoId' | 'repoPath' | 'deleteBranch' | 'force'
+    > & {
+      worktree: Pick<GitWorktreeInfo, 'path' | 'branch' | 'head'>
+      // Required even when undefined: a record without it is never retried or resumed.
+      checkoutIdentity: CheckoutDirectoryIdentity | undefined
+    }
   } & BackgroundWorktreeRemovalJob
 ): Promise<RemoveWorktreeResult> {
   const { worktree, checkoutIdentity, ...accepted } = args.removal

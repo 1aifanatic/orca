@@ -267,7 +267,8 @@ describe('worktrees:remove in the background', () => {
         repoPath: '/workspace/repo',
         worktree: feature,
         deleteBranch: true,
-        force: false
+        force: false,
+        checkoutIdentity: undefined
       },
       run: () =>
         new Promise((resolve) => {

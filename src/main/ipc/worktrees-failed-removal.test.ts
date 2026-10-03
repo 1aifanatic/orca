@@ -142,7 +142,8 @@ async function failAfterGitDroppedIt(): Promise<void> {
       repoPath: '/workspace/repo',
       worktree: feature,
       deleteBranch: true,
-      force: false
+      force: false,
+      checkoutIdentity: undefined
     },
     run: async () => {
       listWorktreesMock.mockResolvedValue([main])
