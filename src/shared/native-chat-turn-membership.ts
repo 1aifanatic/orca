@@ -103,6 +103,7 @@ export function structuredAgentTurnAnchors(
     if (!turn || !isRootAgentJournalItem(item)) {
       continue
     }
+    // Times, not journal order: a client sees when a send was taken back, never that row's place.
     const stoppedOpener =
       stoppedSinceLastTurn !== null &&
       turn.startedAt !== undefined &&
