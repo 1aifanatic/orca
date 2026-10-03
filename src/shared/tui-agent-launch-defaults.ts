@@ -5,7 +5,7 @@ import {
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
 } from './tui-agent-permissions'
-import { tuiAgentArgsSetPermissions } from './tui-agent-permission-args'
+import { classifyTypedAgentPermissions } from './tui-agent-permission-args'
 import type { TuiAgent } from './tui-agent'
 
 const UNSUPPORTED_TUI_AGENT_ARGS: Partial<Record<TuiAgent, readonly string[]>> = {
@@ -97,7 +97,7 @@ export function resolveTuiAgentLaunchArgs(
   if (
     !bypassArg ||
     resolveAgentPermissionMode(agent, settings) !== 'bypass' ||
-    tuiAgentArgsSetPermissions(agent, extra)
+    classifyTypedAgentPermissions(agent, { args: extra }).kind !== 'none'
   ) {
     return extra
   }

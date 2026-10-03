@@ -133,17 +133,6 @@ export function AgentCatalogRow({
                 {translate('auto.components.settings.AgentsPane.8dc0192e48', 'Disabled')}
               </SettingsBadge>
             )}
-            {permission &&
-              permission.posture.effectiveBypass !== (permission.defaultMode === 'bypass') && (
-                <SettingsBadge tone="muted">
-                  {permission.posture.effectiveBypass
-                    ? translate('auto.components.settings.AgentsPane.agentPermissionsYolo', 'Yolo')
-                    : translate(
-                        'auto.components.settings.AgentsPane.agentPermissionsManual',
-                        'Manual'
-                      )}
-                </SettingsBadge>
-              )}
           </div>
           <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
             {cmdOverride ? (

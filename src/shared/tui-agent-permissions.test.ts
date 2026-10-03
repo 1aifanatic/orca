@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentHasPermissionMode,
-  agentPermissionOptionNames,
   applyAgentPermissionModeToAll,
   normalizeAgentPermissionModeOverrides,
   resolveAgentPermissionMode,
-  resolveDefaultAgentPermissionMode
+  resolveDefaultAgentPermissionMode,
+  type AgentPermissionSettingsFields
 } from './tui-agent-permissions'
 
 describe('tui agent permissions', () => {
@@ -43,13 +43,18 @@ describe('tui agent permissions', () => {
     expect(agentHasPermissionMode('opencode')).toBe(false)
   })
 
-  it('names the options that change an agent permission posture', () => {
-    expect(agentPermissionOptionNames('claude')).toEqual([
-      '--dangerously-skip-permissions',
-      '--permission-mode',
-      '--allow-dangerously-skip-permissions'
-    ])
-    expect(agentPermissionOptionNames('grok')).toEqual(['--permission-mode'])
-    expect(agentPermissionOptionNames('goose')).toEqual([])
+  // A newer build may store a mode this one doesn't know; it fails toward more prompts.
+  it('reads a stored mode it does not know as ask', () => {
+    const settings: AgentPermissionSettingsFields = JSON.parse(
+      '{"agentPermissionMode":"accept-edits"}'
+    )
+    expect(resolveDefaultAgentPermissionMode(settings)).toBe('ask')
+    expect(resolveAgentPermissionMode('claude', settings)).toBe('ask')
+    expect(
+      resolveAgentPermissionMode('codex', {
+        ...settings,
+        agentPermissionModeOverrides: { codex: 'bypass' }
+      })
+    ).toBe('bypass')
   })
 })

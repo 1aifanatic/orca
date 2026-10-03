@@ -4,9 +4,14 @@ import { migrateAgentLaunchProfile } from './terminal-settings-migrations'
 import {
   composeTuiAgentLaunchArgsRecord,
   composeTuiAgentLaunchEnvRecord,
-  resolveComposedTuiAgentLaunchArgs
+  resolveComposedTuiAgentLaunchArgs,
+  resolveTuiAgentLaunchArgs
 } from '../../../shared/tui-agent-launch-defaults'
-import { PERMISSION_AGENT_IDS, YOLO_TUI_AGENT_ARGS } from '../../../shared/tui-agent-permissions'
+import {
+  PERMISSION_AGENT_IDS,
+  resolveAgentPermissionMode,
+  YOLO_TUI_AGENT_ARGS
+} from '../../../shared/tui-agent-permissions'
 import type { TuiAgent } from '../../../shared/tui-agent'
 
 const CLAUDE_BYPASS = '--dangerously-skip-permissions'
@@ -177,5 +182,109 @@ describe('migrateAgentLaunchProfile', () => {
     expect(migrated).toBe(false)
     expect(profile.agentDefaultArgs?.devin).toBe('--permission-mode bypass')
     expect(profile.agentDefaultArgs?.droid).toBeUndefined()
+  })
+
+  // An agent in Yolo through an alias launches Yolo, so it must not read as a Manual exception.
+  it('reads a bypass alias as Yolo and keeps its text inline', () => {
+    const aliases: [TuiAgent, string][] = [
+      ['gemini', '-y'],
+      ['claude', '--permission-mode bypassPermissions --model x'],
+      ['devin', '--permission-mode bypass --model x'],
+      ['codex', '-a never -s danger-full-access'],
+      ['grok', '--permission-mode=bypassPermissions'],
+      ['cline', '--auto-approve=true']
+    ]
+    const { profile } = migrateAgentLaunchProfile(
+      legacy({
+        agentYoloDefaultsMigrated: true,
+        agentDefaultArgs: { ...allYoloArgs(), ...Object.fromEntries(aliases) },
+        agentDefaultEnv: YOLO_ENV
+      })
+    )
+
+    expect(profile.agentPermissionMode).toBe('bypass')
+    expect(profile.agentPermissionModeOverrides).toEqual({})
+    for (const [agent, args] of aliases) {
+      expect(profile.agentDefaultArgs?.[agent]).toBe(args)
+      expect(resolveTuiAgentLaunchArgs(agent, profile)).toBe(args)
+    }
+  })
+
+  // On main the quoted flag was the prompt's value, so Claude launched without bypass.
+  it('keeps a quoted flag value as text', () => {
+    const claude = `--append-system-prompt "${CLAUDE_BYPASS}"`
+    const { profile } = migrateAgentLaunchProfile(
+      legacy({
+        agentYoloDefaultsMigrated: true,
+        agentDefaultArgs: { ...allYoloArgs(), claude },
+        agentDefaultEnv: YOLO_ENV
+      })
+    )
+
+    expect(profile.agentDefaultArgs?.claude).toBe(claude)
+    expect(profile.agentPermissionModeOverrides).toEqual({ claude: 'ask' })
+    expect(resolveTuiAgentLaunchArgs('claude', profile)).toBe(claude)
+  })
+
+  // After a downgrade, the older build's Yolo switch writes the flag back into every agent's text.
+  it('lifts a flag an older build wrote back into a typed profile, on every load', () => {
+    const typed = legacy({
+      agentYoloDefaultsMigrated: true,
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { claude: 'ask', codex: 'ask' },
+      agentDefaultArgs: {
+        claude: '--model opus',
+        codex: `${CODEX_BYPASS} -m o3`,
+        gemini: '--yolo'
+      },
+      agentDefaultEnv: YOLO_ENV
+    })
+
+    const { profile, migrated } = migrateAgentLaunchProfile(typed)
+
+    expect(migrated).toBe(true)
+    expect(profile.agentPermissionMode).toBe('bypass')
+    expect(profile.agentPermissionModeOverrides).toEqual({ claude: 'ask' })
+    expect(profile.agentDefaultArgs).toMatchObject({ claude: '--model opus', codex: '-m o3' })
+    expect(profile.agentDefaultArgs?.gemini).toBe('')
+    expect(profile.agentDefaultEnv?.goose).toEqual({})
+    const again = migrateAgentLaunchProfile(legacy({ ...typed, ...profile }))
+    expect(again.migrated).toBe(false)
+    expect(again.profile).toEqual(profile)
+  })
+
+  it('records a lifted flag as a Yolo override under a Manual default', () => {
+    const { profile } = migrateAgentLaunchProfile(
+      legacy({
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { codex: CODEX_BYPASS, claude: '--permission-mode plan' }
+      })
+    )
+
+    expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })
+    expect(profile.agentDefaultArgs).toMatchObject({ codex: '', claude: '--permission-mode plan' })
+  })
+
+  // A newer build's mode stays for it; this build reads it as Manual and never re-migrates.
+  it('keeps a stored mode it does not know', () => {
+    const stored: GlobalSettings = JSON.parse(
+      JSON.stringify({
+        agentYoloDefaultsMigrated: true,
+        agentPermissionMode: 'accept-edits',
+        agentPermissionModeOverrides: { codex: 'bypass' },
+        agentDefaultArgs: { claude: '--model opus' }
+      })
+    )
+
+    const { profile, migrated } = migrateAgentLaunchProfile(stored)
+
+    expect(migrated).toBe(false)
+    expect(Object.hasOwn(profile, 'agentPermissionMode')).toBe(false)
+    expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })
+    expect(profile.agentDefaultArgs).toEqual({ claude: '--model opus' })
+    const loaded = { ...stored, ...profile }
+    expect(loaded.agentPermissionMode).toBe('accept-edits')
+    expect(resolveAgentPermissionMode('claude', loaded)).toBe('ask')
+    expect(resolveTuiAgentLaunchArgs('claude', loaded)).toBe('--model opus')
   })
 })

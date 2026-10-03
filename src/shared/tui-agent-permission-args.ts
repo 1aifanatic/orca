@@ -1,11 +1,13 @@
 import type { GlobalSettings } from './global-settings-types'
 import {
+  AGENT_PERMISSION_ARG_SPECS,
   agentHasPermissionMode,
-  agentPermissionOptionNames,
   resolveAgentPermissionMode,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV,
-  type AgentPermissionMode
+  type AgentPermissionArgSpec,
+  type AgentPermissionMode,
+  type AgentPermissionOption
 } from './tui-agent-permissions'
 import {
   resolveStartupShell,
@@ -20,20 +22,8 @@ import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 
 // Reads permission settings typed into an agent's free-text Arguments and env.
 
-/** Other spellings of an agent's bypass that users type into Arguments. */
-const BYPASS_ARG_ALIASES: Partial<Record<TuiAgent, readonly string[]>> = {
-  claude: ['--permission-mode bypassPermissions', '--permission-mode=bypassPermissions'],
-  'claude-agent-teams': [
-    '--permission-mode bypassPermissions',
-    '--permission-mode=bypassPermissions'
-  ],
-  openclaude: ['--permission-mode bypassPermissions', '--permission-mode=bypassPermissions'],
-  codex: ['--yolo'],
-  gemini: ['-y', '--approval-mode yolo', '--approval-mode=yolo'],
-  'qwen-code': ['--yolo', '-y', '--approval-mode=yolo']
-}
-
-function optionTokens(value: string, shell: AgentStartupShell): StartupCommandTokens {
+/** Tokens of free-text arguments under one grammar, up to any `--`. */
+export function optionTokens(value: string, shell: AgentStartupShell): StartupCommandTokens {
   const tokenized = tokenizeStartupCommand(value, shell)
   if (!tokenized.ok) {
     return tokenized
@@ -49,144 +39,208 @@ function optionTokens(value: string, shell: AgentStartupShell): StartupCommandTo
       }
 }
 
-/** Index where `sequence` starts in `tokens`, or -1. */
-function findTokenSequence(tokens: readonly string[], sequence: readonly string[]): number {
-  return tokens.findIndex(
-    (_, index) =>
-      index + sequence.length <= tokens.length &&
-      sequence.every((token, offset) => tokens[index + offset] === token)
-  )
+/** A quoted word is a value the user wrote literally, never an option. */
+export function isQuotedToken(text: string, span: CommandTokenSpan): boolean {
+  return text[span.start] === '"' || text[span.start] === "'"
 }
 
-function tokenizeFlag(flag: string): string[] {
-  const tokenized = tokenizeStartupCommand(flag, 'posix')
-  return tokenized.ok ? tokenized.tokens : []
+function tokenizeFlag(flag: string | undefined): string[] {
+  const tokenized = flag ? tokenizeStartupCommand(flag, 'posix') : null
+  return tokenized?.ok ? tokenized.tokens : []
 }
 
-/** Every spelling that puts this agent in bypass, canonical first. */
-const bypassTokenSequenceCache = new Map<TuiAgent, string[][]>()
+const bypassFlagCache = new Map<TuiAgent, string[]>()
 
-function bypassTokenSequences(agent: TuiAgent): string[][] {
-  let sequences = bypassTokenSequenceCache.get(agent)
-  if (!sequences) {
-    sequences = [YOLO_TUI_AGENT_ARGS[agent], ...(BYPASS_ARG_ALIASES[agent] ?? [])]
-      .filter((flag): flag is string => flag !== undefined)
-      .map(tokenizeFlag)
-      .filter((tokens) => tokens.length > 0)
-    bypassTokenSequenceCache.set(agent, sequences)
+/** The agent's bypass flag as tokens; empty for an agent with none. */
+export function bypassFlagTokens(agent: TuiAgent): string[] {
+  let tokens = bypassFlagCache.get(agent)
+  if (!tokens) {
+    tokens = tokenizeFlag(YOLO_TUI_AGENT_ARGS[agent])
+    bypassFlagCache.set(agent, tokens)
   }
-  return sequences
+  return tokens
+}
+
+/** The permission options an agent's bypass flag sets, for agents with no wider table entry. */
+function specFromBypassFlag(flag: readonly string[]): AgentPermissionArgSpec {
+  const options: AgentPermissionOption[] = []
+  const bypass: Record<string, string | true> = {}
+  for (let index = 0; index < flag.length; index += 1) {
+    const value = flag[index + 1]
+    const takesValue = value !== undefined && !value.startsWith('-')
+    options.push({ names: [flag[index]], takesValue })
+    bypass[flag[index]] = takesValue ? value : true
+    if (takesValue) {
+      index += 1
+    }
+  }
+  return { options, bypass: options.length > 0 ? [bypass] : [] }
+}
+
+const argSpecCache = new Map<TuiAgent, AgentPermissionArgSpec>()
+
+function agentPermissionArgSpec(agent: TuiAgent): AgentPermissionArgSpec {
+  let spec = argSpecCache.get(agent)
+  if (!spec) {
+    spec = AGENT_PERMISSION_ARG_SPECS[agent] ?? specFromBypassFlag(bypassFlagTokens(agent))
+    argSpecCache.set(agent, spec)
+  }
+  return spec
+}
+
+/** The value this token gives `option`, `{}` when the value is the next token, or null if it is another word. */
+function readOptionToken(
+  option: AgentPermissionOption,
+  token: string
+): { value?: string | true } | null {
+  for (const name of option.names) {
+    if (token === name) {
+      return option.takesValue ? {} : { value: true }
+    }
+    if (token.startsWith(`${name}=`)) {
+      return { value: token.slice(name.length + 1) }
+    }
+    // Short options also take their value attached (`-anever`).
+    if (/^-[a-zA-Z]$/.test(name) && token.startsWith(name)) {
+      return { value: token.slice(name.length) }
+    }
+  }
+  return null
+}
+
+type TypedPermissionSetting = { option: string; value: string | true; text: string }
+
+function readTypedSettings(
+  spec: AgentPermissionArgSpec,
+  text: string,
+  tokens: { tokens: string[]; spans: CommandTokenSpan[] }
+): TypedPermissionSetting[] {
+  const settings: TypedPermissionSetting[] = []
+  for (let index = 0; index < tokens.tokens.length; index += 1) {
+    if (isQuotedToken(text, tokens.spans[index])) {
+      continue
+    }
+    const token = tokens.tokens[index]
+    for (const option of spec.options) {
+      const read = readOptionToken(option, token)
+      if (!read) {
+        continue
+      }
+      const next = read.value === undefined ? tokens.tokens[index + 1] : undefined
+      settings.push({
+        option: option.names[0],
+        value: read.value ?? next ?? '',
+        text: next === undefined ? token : `${token} ${next}`
+      })
+      if (next !== undefined) {
+        index += 1
+      }
+      break
+    }
+  }
+  return settings
+}
+
+export type TypedAgentPermissionKind = 'none' | 'bypass' | 'other'
+
+function readKind(
+  spec: AgentPermissionArgSpec,
+  settings: readonly TypedPermissionSetting[]
+): TypedAgentPermissionKind {
+  if (settings.length === 0) {
+    return 'none'
+  }
+  const typedBypasses = spec.bypass.filter((bypass) =>
+    Object.entries(bypass).every(([option, value]) =>
+      settings.some((setting) => setting.option === option && setting.value === value)
+    )
+  )
+  // Bypass only when every typed setting belongs to a bypass typed in full (`-a never` alone asks).
+  return typedBypasses.length > 0 &&
+    settings.every((setting) =>
+      typedBypasses.some((bypass) => bypass[setting.option] === setting.value)
+    )
+    ? 'bypass'
+    : 'other'
 }
 
 // Why every grammar: one settings string reaches POSIX, PowerShell and cmd hosts, so text any of
 // them would read as a permission option counts — adding a second flag beside it can stop the CLI.
 const LAUNCH_GRAMMARS: readonly AgentStartupShell[] = ['posix', 'powershell', 'cmd']
 
-function isPermissionOption(token: string, name: string): boolean {
-  // Short options also take their value attached (`-anever`).
-  const short = /^-[a-zA-Z]$/.test(name)
-  return token === name || token.startsWith(`${name}=`) || (short && token.startsWith(name))
+export type TypedAgentPermissions = {
+  kind: TypedAgentPermissionKind
+  /** The typed settings as written, in order, for Settings to name. */
+  options: string[]
 }
 
-/** Permission-changing options in these arguments, under any launch grammar, in order. */
-const optionNameCache = new Map<TuiAgent, readonly string[]>()
-
-function argumentPermissionOptions(agent: TuiAgent, args: string): string[] {
-  let names = optionNameCache.get(agent)
-  if (!names) {
-    names = agentPermissionOptionNames(agent)
-    optionNameCache.set(agent, names)
-  }
-  if (!args.trim()) {
-    return []
-  }
-  const found: string[] = []
-  for (const shell of LAUNCH_GRAMMARS) {
-    const tokens = optionTokens(args, shell)
-    for (const token of tokens.ok ? tokens.tokens : []) {
-      if (!found.includes(token) && names.some((name) => isPermissionOption(token, name))) {
-        found.push(token)
-      }
-    }
-  }
-  return found
-}
-
-/** Whether these arguments set this agent's permissions themselves, so its mode adds nothing. */
-export function tuiAgentArgsSetPermissions(
+function classifyArgs(
   agent: TuiAgent,
-  args: string | null | undefined
-): boolean {
-  return argumentPermissionOptions(agent, args ?? '').length > 0
+  args: string,
+  shell: AgentStartupShell | undefined
+): TypedAgentPermissions {
+  const spec = agentPermissionArgSpec(agent)
+  const options: string[] = []
+  const kinds = new Map<AgentStartupShell, TypedAgentPermissionKind>()
+  for (const grammar of args.trim() && spec.options.length > 0 ? LAUNCH_GRAMMARS : []) {
+    const tokens = optionTokens(args, grammar)
+    if (!tokens.ok) {
+      continue
+    }
+    const settings = readTypedSettings(spec, args, tokens)
+    kinds.set(grammar, readKind(spec, settings))
+    options.push(
+      ...settings.map((setting) => setting.text).filter((text) => !options.includes(text))
+    )
+  }
+  if (options.length === 0) {
+    return { kind: 'none', options }
+  }
+  // Read as the launch shell parses it; without one, every grammar that sees a setting must agree.
+  const verdicts = shell
+    ? [kinds.get(shell) ?? 'none']
+    : [...kinds.values()].filter((kind) => kind !== 'none')
+  return {
+    kind: verdicts.length > 0 && verdicts.every((kind) => kind === 'bypass') ? 'bypass' : 'other',
+    options
+  }
+}
+
+function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedAgentPermissions {
+  // Extra env overrides the mode's env (see resolveTuiAgentLaunchEnv), so a typed key decides.
+  const typed = Object.keys(YOLO_TUI_AGENT_ENV[agent] ?? {}).filter((name) =>
+    Object.hasOwn(env, name)
+  )
+  if (typed.length === 0) {
+    return { kind: 'none', options: [] }
+  }
+  return {
+    kind: Object.entries(YOLO_TUI_AGENT_ENV[agent] ?? {}).every(
+      ([name, value]) => env[name] === value
+    )
+      ? 'bypass'
+      : 'other',
+    options: typed.map((name) => `${name}=${env[name]}`)
+  }
 }
 
 /**
- * Finds the flag under POSIX, else PowerShell grammar (Windows paths like `C:\dir\` mis-split
- * under POSIX); cmd only when neither parses, since cmd would read inside single quotes.
+ * What permission settings typed into an agent's Arguments and env do: nothing (its mode decides),
+ * bypass, or something else. Launch, Settings, structured sessions and the migration all read this.
  */
-function findBypassFlag(
-  text: string,
-  flag: readonly string[]
-): { tokens: { tokens: string[]; spans: CommandTokenSpan[] }; at: number } | null {
-  let parsed = false
-  for (const shell of ['posix', 'powershell'] as const) {
-    const tokens = optionTokens(text, shell)
-    if (tokens.ok) {
-      parsed = true
-      const at = findTokenSequence(tokens.tokens, flag)
-      if (at !== -1) {
-        return { tokens, at }
-      }
-    }
-  }
-  const cmd = parsed ? null : optionTokens(text, 'cmd')
-  const at = cmd?.ok ? findTokenSequence(cmd.tokens, flag) : -1
-  return cmd?.ok && at !== -1 ? { tokens: cmd, at } : null
-}
-
-/**
- * Splits the bypass flag out of arguments saved before the mode was typed, keeping the rest's quoting.
- * Text that still sets permissions keeps the flag: a launch adds none beside it, so lifting would drop it.
- */
-export function liftTuiAgentBypassArgs(
+export function classifyTypedAgentPermissions(
   agent: TuiAgent,
-  args: string | null | undefined
-): { bypass: boolean; extraArgs: string } {
-  const original = args?.trim() ?? ''
-  const flag = YOLO_TUI_AGENT_ARGS[agent] ? (bypassTokenSequences(agent)[0] ?? []) : []
-  let text = original
-  let bypass = false
-  while (flag.length > 0 && text) {
-    const found = findBypassFlag(text, flag)
-    if (!found) {
-      break
-    }
-    const { tokens, at } = found
-    bypass = true
-    const before = text.slice(0, tokens.spans[at].start).trimEnd()
-    const after = text.slice(tokens.spans[at + flag.length - 1].end).trimStart()
-    text = before && after ? `${before} ${after}` : before || after
+  typed: { args?: string | null; env?: Record<string, string> | null },
+  shell?: AgentStartupShell
+): TypedAgentPermissions {
+  const args = classifyArgs(agent, typed.args ?? '', shell)
+  const env = classifyEnv(agent, typed.env ?? {})
+  const kinds = [args.kind, env.kind].filter((kind) => kind !== 'none')
+  return {
+    kind:
+      kinds.length === 0 ? 'none' : kinds.every((kind) => kind === 'bypass') ? 'bypass' : 'other',
+    options: [...args.options, ...env.options]
   }
-  if (bypass && tuiAgentArgsSetPermissions(agent, text)) {
-    return { bypass, extraArgs: original }
-  }
-  return { bypass, extraArgs: text }
-}
-
-/** Splits this agent's env-driven permission bypass out of an environment record. */
-export function liftTuiAgentBypassEnv(
-  agent: TuiAgent,
-  env: Record<string, string> | null | undefined
-): { bypass: boolean; extraEnv: Record<string, string> } {
-  const extraEnv = { ...env }
-  const bypassEnv = YOLO_TUI_AGENT_ENV[agent]
-  if (!bypassEnv || !Object.entries(bypassEnv).every(([name, value]) => extraEnv[name] === value)) {
-    return { bypass: false, extraEnv }
-  }
-  for (const name of Object.keys(bypassEnv)) {
-    delete extraEnv[name]
-  }
-  return { bypass: true, extraEnv }
 }
 
 export type AgentPermissionPosture = {
@@ -208,21 +262,6 @@ export function resolveAgentPermissionPosture(
   platform: NodeJS.Platform
 ): AgentPermissionPosture {
   const mode = resolveAgentPermissionMode(agent, settings)
-  const extra = settings?.agentDefaultArgs?.[agent] ?? ''
-  const env = settings?.agentDefaultEnv?.[agent] ?? {}
-  const argOptions = argumentPermissionOptions(agent, extra)
-  // Extra env overrides the mode's env (see resolveTuiAgentLaunchEnv), so a typed key decides.
-  const envOptions = Object.keys(YOLO_TUI_AGENT_ENV[agent] ?? {})
-    .filter((name) => Object.hasOwn(env, name))
-    .map((name) => `${name}=${env[name]}`)
-  const typedPermissionOptions = [...argOptions, ...envOptions]
-  if (typedPermissionOptions.length === 0) {
-    return {
-      mode,
-      effectiveBypass: mode === 'bypass' && agentHasPermissionMode(agent),
-      typedPermissionOptions
-    }
-  }
   // Why the local launch shell: quoted text or operands after `--` must not authorize a session.
   const shell = resolveStartupShell(
     platform,
@@ -232,12 +271,17 @@ export function resolveAgentPermissionPosture(
       terminalWindowsShell: settings?.terminalWindowsShell
     })
   )
-  const tokens = optionTokens(extra, shell)
-  const argsBypass =
-    tokens.ok &&
-    bypassTokenSequences(agent).some(
-      (sequence) => findTokenSequence(tokens.tokens, sequence) !== -1
-    )
-  const envBypass = envOptions.length > 0 && liftTuiAgentBypassEnv(agent, env).bypass
-  return { mode, effectiveBypass: argsBypass || envBypass, typedPermissionOptions }
+  const typed = classifyTypedAgentPermissions(
+    agent,
+    { args: settings?.agentDefaultArgs?.[agent], env: settings?.agentDefaultEnv?.[agent] },
+    shell
+  )
+  return {
+    mode,
+    effectiveBypass:
+      typed.kind === 'none'
+        ? mode === 'bypass' && agentHasPermissionMode(agent)
+        : typed.kind === 'bypass',
+    typedPermissionOptions: typed.options
+  }
 }

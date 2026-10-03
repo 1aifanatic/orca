@@ -8,12 +8,10 @@ import {
   resolveComposedTuiAgentLaunchArgs,
   resolveComposedTuiAgentLaunchEnv
 } from './tui-agent-launch-defaults'
+import { classifyTypedAgentPermissions } from './tui-agent-permission-args'
+import { liftTuiAgentBypassArgs, liftTuiAgentBypassEnv } from './tui-agent-bypass-lift'
 import {
-  liftTuiAgentBypassArgs,
-  liftTuiAgentBypassEnv,
-  tuiAgentArgsSetPermissions
-} from './tui-agent-permission-args'
-import {
+  normalizeAgentPermissionModeOverrides,
   PERMISSION_AGENT_IDS,
   resolveAgentPermissionMode,
   resolveDefaultAgentPermissionMode,
@@ -80,6 +78,59 @@ export function liftComposedAgentLaunchProfile(
 }
 
 /**
+ * Moves a bypass flag or env found in a typed profile's text into that agent's mode. An older build
+ * writes the flag back into the text, so every load re-reads it instead of trusting the stored mode.
+ */
+export function liftAgentBypassFromTypedProfile(
+  settings: Partial<
+    Pick<
+      GlobalSettings,
+      | 'agentDefaultArgs'
+      | 'agentDefaultEnv'
+      | 'agentPermissionMode'
+      | 'agentPermissionModeOverrides'
+    >
+  >
+): {
+  profile: Pick<
+    AgentLaunchProfile,
+    'agentDefaultArgs' | 'agentDefaultEnv' | 'agentPermissionModeOverrides'
+  >
+  changed: boolean
+} {
+  const agentDefaultArgs = normalizeTuiAgentArgsRecord(settings.agentDefaultArgs)
+  const agentDefaultEnv = normalizeTuiAgentEnvRecord(settings.agentDefaultEnv)
+  const agentPermissionModeOverrides = normalizeAgentPermissionModeOverrides(
+    settings.agentPermissionModeOverrides
+  )
+  const defaultMode = resolveDefaultAgentPermissionMode(settings)
+  let changed = false
+  for (const agent of PERMISSION_AGENT_IDS) {
+    const args = agentDefaultArgs[agent]
+    const liftedArgs = args ? liftTuiAgentBypassArgs(agent, args) : null
+    const liftedEnv = liftTuiAgentBypassEnv(agent, agentDefaultEnv[agent])
+    // Only a flag that comes out whole; text that still sets permissions keeps deciding.
+    const argsLifted = liftedArgs !== null && liftedArgs.extraArgs !== args
+    if (!argsLifted && !liftedEnv.bypass) {
+      continue
+    }
+    if (argsLifted) {
+      agentDefaultArgs[agent] = liftedArgs.extraArgs
+    }
+    if (liftedEnv.bypass) {
+      agentDefaultEnv[agent] = liftedEnv.extraEnv
+    }
+    if (defaultMode === 'bypass') {
+      delete agentPermissionModeOverrides[agent]
+    } else {
+      agentPermissionModeOverrides[agent] = 'bypass'
+    }
+    changed = true
+  }
+  return { profile: { agentDefaultArgs, agentDefaultEnv, agentPermissionModeOverrides }, changed }
+}
+
+/**
  * Applies a paired client's launch-ready args/env write. Only agents the write names change; an
  * older client that doesn't know an agent leaves that agent's mode and text alone.
  */
@@ -107,9 +158,13 @@ export function applyComposedAgentLaunchUpdate(
   const agentPermissionModeOverrides: Partial<Record<TuiAgent, AgentPermissionMode>> = {}
   for (const agent of PERMISSION_AGENT_IDS) {
     const named = agent in writtenArgs || agent in writtenEnv
-    // Text that sets permissions itself decides the launch, so it says nothing about the mode.
+    // Arguments or env that set permissions decide the launch, so they say nothing about the mode.
+    const typed = classifyTypedAgentPermissions(agent, {
+      args: lifted.agentDefaultArgs[agent],
+      env: lifted.agentDefaultEnv[agent]
+    })
     const mode =
-      named && !tuiAgentArgsSetPermissions(agent, lifted.agentDefaultArgs[agent])
+      named && typed.kind === 'none'
         ? resolveAgentPermissionMode(agent, lifted)
         : resolveAgentPermissionMode(agent, current)
     if (mode !== defaultMode) {

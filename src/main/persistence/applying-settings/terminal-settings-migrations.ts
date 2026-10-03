@@ -10,13 +10,15 @@ import {
 } from '../../../shared/tui-agent-launch-defaults'
 import {
   isAgentPermissionMode,
-  normalizeAgentPermissionModeOverrides,
   PERMISSION_AGENT_IDS,
   YOLO_TUI_AGENT_ARGS,
   YOLO_TUI_AGENT_ENV
 } from '../../../shared/tui-agent-permissions'
 import type { TuiAgent } from '../../../shared/tui-agent'
-import { liftComposedAgentLaunchProfile } from '../../../shared/agent-launch-profile-lift'
+import {
+  liftAgentBypassFromTypedProfile,
+  liftComposedAgentLaunchProfile
+} from '../../../shared/agent-launch-profile-lift'
 
 export function buildWorkspaceDirHistoryForUpdate(
   current: GlobalSettings,
@@ -168,25 +170,25 @@ export type MigratedAgentLaunchProfile = Pick<
 >
 
 /**
- * Loads the agent launch profile as a typed mode plus extra text. A stored mode means already
- * migrated; older profiles get the yolo-defaults pass first, then the flag lifted into the mode.
+ * Loads the agent launch profile as a typed mode plus extra text. Any stored mode means already
+ * migrated (one a newer build wrote is kept as is); older profiles get the yolo-defaults pass
+ * first, then the flag lifted into the mode.
  */
 export function migrateAgentLaunchProfile(settings: GlobalSettings | undefined): {
   profile: MigratedAgentLaunchProfile
   migrated: boolean
 } {
-  if (settings && isAgentPermissionMode(settings.agentPermissionMode)) {
+  if (settings && settings.agentPermissionMode !== undefined) {
+    const { profile, changed } = liftAgentBypassFromTypedProfile(settings)
     return {
       profile: {
-        agentDefaultArgs: normalizeTuiAgentArgsRecord(settings.agentDefaultArgs),
-        agentDefaultEnv: normalizeTuiAgentEnvRecord(settings.agentDefaultEnv),
+        ...profile,
         agentYoloDefaultsMigrated: true,
-        agentPermissionMode: settings.agentPermissionMode,
-        agentPermissionModeOverrides: normalizeAgentPermissionModeOverrides(
-          settings.agentPermissionModeOverrides
-        )
+        ...(isAgentPermissionMode(settings.agentPermissionMode)
+          ? { agentPermissionMode: settings.agentPermissionMode }
+          : {})
       },
-      migrated: false
+      migrated: changed
     }
   }
   return {

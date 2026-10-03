@@ -49,23 +49,74 @@ export const PERMISSION_AGENT_IDS: readonly TuiAgent[] = Object.keys(TUI_AGENT_C
   (agent): agent is TuiAgent => agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
 )
 
+/** One option that sets an agent's permissions, under every spelling (long first). */
+export type AgentPermissionOption = {
+  names: readonly string[]
+  /** Takes a value: `--opt v`, `--opt=v`, or attached to a short name (`-av`). */
+  takesValue?: boolean
+}
+
+/** An agent's permission options, and each complete setting of them that bypasses permissions. */
+export type AgentPermissionArgSpec = {
+  options: readonly AgentPermissionOption[]
+  /** Each entry bypasses on its own: option (by first name) to its value, `true` for a flag. */
+  bypass: readonly Readonly<Record<string, string | true>>[]
+}
+
+// `--allow-dangerously-skip-permissions` only permits a later switch into bypass; it sets nothing.
+const CLAUDE_PERMISSION_ARGS: AgentPermissionArgSpec = {
+  options: [
+    { names: ['--dangerously-skip-permissions'] },
+    { names: ['--permission-mode'], takesValue: true }
+  ],
+  bypass: [{ '--dangerously-skip-permissions': true }, { '--permission-mode': 'bypassPermissions' }]
+}
+
+const GEMINI_PERMISSION_ARGS: AgentPermissionArgSpec = {
+  options: [{ names: ['--yolo', '-y'] }, { names: ['--approval-mode'], takesValue: true }],
+  bypass: [{ '--yolo': true }, { '--approval-mode': 'yolo' }]
+}
+
 /**
- * Option names that change an agent's permission posture, beyond the first word of its bypass
- * flag. Used only to warn in Settings when free-text Arguments carry one.
+ * Permission options for agents whose Arguments can set permissions beyond their bypass flag;
+ * every other agent's are read from its YOLO_TUI_AGENT_ARGS flag alone.
  */
-const EXTRA_PERMISSION_OPTION_NAMES: Partial<Record<TuiAgent, readonly string[]>> = {
-  claude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
-  'claude-agent-teams': ['--permission-mode', '--allow-dangerously-skip-permissions'],
-  openclaude: ['--permission-mode', '--allow-dangerously-skip-permissions'],
-  codex: ['--yolo', '--ask-for-approval', '-a', '--sandbox', '-s', '--full-auto'],
-  gemini: ['--approval-mode', '-y'],
-  'qwen-code': ['--yolo', '-y']
+export const AGENT_PERMISSION_ARG_SPECS: Partial<Record<TuiAgent, AgentPermissionArgSpec>> = {
+  claude: CLAUDE_PERMISSION_ARGS,
+  'claude-agent-teams': CLAUDE_PERMISSION_ARGS,
+  openclaude: CLAUDE_PERMISSION_ARGS,
+  codex: {
+    options: [
+      { names: ['--dangerously-bypass-approvals-and-sandbox', '--yolo'] },
+      { names: ['--ask-for-approval', '-a'], takesValue: true },
+      { names: ['--sandbox', '-s'], takesValue: true },
+      { names: ['--full-auto'] }
+    ],
+    bypass: [
+      { '--dangerously-bypass-approvals-and-sandbox': true },
+      { '--ask-for-approval': 'never', '--sandbox': 'danger-full-access' }
+    ]
+  },
+  gemini: GEMINI_PERMISSION_ARGS,
+  'qwen-code': GEMINI_PERMISSION_ARGS,
+  devin: {
+    options: [
+      { names: ['--permission-mode'], takesValue: true },
+      { names: ['--respect-workspace-trust'], takesValue: true }
+    ],
+    // An older build shipped the shorter second spelling; it meant the same thing.
+    bypass: [
+      { '--permission-mode': 'bypass', '--respect-workspace-trust': 'false' },
+      { '--permission-mode': 'bypass' }
+    ]
+  }
 }
 
 /** The persisted permission settings; part of GlobalSettings. */
 export type AgentPermissionSettingsFields = {
   /** Mode every agent launches with unless it has its own override. Absent only on profiles saved
-   *  before the mode was typed, which is what the load-time migration keys on. */
+   *  before the mode was typed, which is what the load-time migration keys on; a value this build
+   *  doesn't know is kept and read as 'ask'. */
   agentPermissionMode?: AgentPermissionMode
   /** Agents whose permission mode differs from `agentPermissionMode`. */
   agentPermissionModeOverrides?: Partial<Record<TuiAgent, AgentPermissionMode>>
@@ -114,9 +165,12 @@ export function normalizeAgentPermissionSettingsUpdate(
 export function resolveDefaultAgentPermissionMode(
   settings: AgentPermissionSettingsFields | null | undefined
 ): AgentPermissionMode {
-  return isAgentPermissionMode(settings?.agentPermissionMode)
-    ? settings.agentPermissionMode
-    : DEFAULT_AGENT_PERMISSION_MODE
+  const mode = settings?.agentPermissionMode
+  if (mode === undefined) {
+    return DEFAULT_AGENT_PERMISSION_MODE
+  }
+  // A mode a newer build stored asks here, and stays stored for that build.
+  return isAgentPermissionMode(mode) ? mode : 'ask'
 }
 
 /** The agent's own choice if it has one, else the default every agent shares. */
@@ -133,13 +187,4 @@ export function applyAgentPermissionModeToAll(
   mode: AgentPermissionMode
 ): Required<AgentPermissionSettingsFields> {
   return { agentPermissionMode: mode, agentPermissionModeOverrides: {} }
-}
-
-/** Option names in this agent's arguments that change its permission posture, in order. */
-export function agentPermissionOptionNames(agent: TuiAgent): readonly string[] {
-  // Every option the bypass flag sets (Devin's sets two), then the agent's other permission options.
-  const bypassNames = (YOLO_TUI_AGENT_ARGS[agent] ?? '')
-    .split(/\s+/)
-    .filter((token) => token.startsWith('-'))
-  return [...new Set([...bypassNames, ...(EXTRA_PERMISSION_OPTION_NAMES[agent] ?? [])])]
 }

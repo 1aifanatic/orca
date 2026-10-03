@@ -495,6 +495,19 @@ describe('AgentsPane', () => {
     expect(markup).toContain('Set separately: Claude (Manual).')
   })
 
+  // The summary line and the agent's own control already say it; no badge repeats it.
+  it('shows no permission badge on an agent that is set separately', () => {
+    detectedAgentsMock.detectedIds = ['claude']
+    const markup = renderPane({
+      ...getDefaultSettings('/tmp'),
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { claude: 'ask' }
+    })
+
+    expect(markup).toContain('aria-label="Claude permissions"')
+    expect(markup).not.toMatch(/rounded-full[^>]*>Manual</)
+  })
+
   it('counts a permission option typed into Arguments as the agent posture', () => {
     detectedAgentsMock.detectedIds = ['claude', 'codex']
     const markup = renderPane({

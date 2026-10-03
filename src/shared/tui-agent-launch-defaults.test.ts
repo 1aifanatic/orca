@@ -6,10 +6,12 @@ import {
   resolveTuiAgentLaunchEnv
 } from './tui-agent-launch-defaults'
 import {
-  liftTuiAgentBypassArgs,
-  liftTuiAgentBypassEnv,
+  classifyTypedAgentPermissions,
   resolveAgentPermissionPosture
 } from './tui-agent-permission-args'
+import { liftTuiAgentBypassArgs, liftTuiAgentBypassEnv } from './tui-agent-bypass-lift'
+import { PERMISSION_AGENT_IDS, YOLO_TUI_AGENT_ARGS } from './tui-agent-permissions'
+import type { TuiAgent } from './tui-agent'
 
 const CLAUDE_BYPASS = '--dangerously-skip-permissions'
 const CODEX_BYPASS = '--dangerously-bypass-approvals-and-sandbox'
@@ -81,6 +83,15 @@ describe('resolveTuiAgentLaunchArgs', () => {
     ['devin', '--respect-workspace-trust true']
   ] as const)('adds no flag beside %s permission text %j', (agent, args) => {
     expect(resolveTuiAgentLaunchArgs(agent, { agentDefaultArgs: { [agent]: args } })).toBe(args)
+  })
+
+  // #23853's symptom: this option only permits bypass, so Yolo must still add the flag.
+  it('adds the flag beside Claude --allow-dangerously-skip-permissions in Yolo', () => {
+    expect(
+      resolveTuiAgentLaunchArgs('claude', {
+        agentDefaultArgs: { claude: '--allow-dangerously-skip-permissions' }
+      })
+    ).toBe(`${CLAUDE_BYPASS} --allow-dangerously-skip-permissions`)
   })
 
   // `--search` is a long option, not `-s` with a value attached.
@@ -195,6 +206,27 @@ describe('liftTuiAgentBypassArgs', () => {
     })
   })
 
+  // The flag as a quoted option value is prompt text; lifting it would drop the value and add Yolo.
+  it('leaves a quoted flag value in place', () => {
+    expect(liftTuiAgentBypassArgs('claude', `--append-system-prompt "${CLAUDE_BYPASS}"`)).toEqual({
+      bypass: false,
+      extraArgs: `--append-system-prompt "${CLAUDE_BYPASS}"`
+    })
+    expect(
+      liftTuiAgentBypassArgs('claude', `--append-system-prompt "${CLAUDE_BYPASS}" ${CLAUDE_BYPASS}`)
+    ).toEqual({ bypass: true, extraArgs: `--append-system-prompt "${CLAUDE_BYPASS}"` })
+  })
+
+  // Lossless: an alias stays in the text, but the agent reads as Yolo, which is how it launches.
+  it.each([
+    ['gemini', '-y'],
+    ['claude', '--permission-mode bypassPermissions --model x'],
+    ['devin', '--permission-mode bypass --model x'],
+    ['codex', '-a never -s danger-full-access']
+  ] as const)('keeps the %s bypass alias %j inline as bypass', (agent, args) => {
+    expect(liftTuiAgentBypassArgs(agent, args)).toEqual({ bypass: true, extraArgs: args })
+  })
+
   it('leaves untokenizable text alone', () => {
     expect(liftTuiAgentBypassArgs('codex', `"${CODEX_BYPASS}`)).toEqual({
       bypass: false,
@@ -213,6 +245,79 @@ describe('liftTuiAgentBypassEnv', () => {
       bypass: false,
       extraEnv: { GOOSE_MODE: 'approve' }
     })
+  })
+})
+
+// Launch, Settings, structured sessions and the migration read Arguments through one classifier,
+// so what Settings shows can't disagree with what the agent launches with.
+describe('classifyTypedAgentPermissions', () => {
+  it.each([
+    ['claude', '--permission-mode bypassPermissions', 'bypass'],
+    ['claude', '--permission-mode=bypassPermissions', 'bypass'],
+    ['claude', `${CLAUDE_BYPASS} --permission-mode bypassPermissions`, 'bypass'],
+    ['claude', '--permission-mode acceptEdits', 'other'],
+    ['openclaude', '--permission-mode bypassPermissions --model x', 'bypass'],
+    ['devin', '--permission-mode bypass --model swe-1.5', 'bypass'],
+    ['devin', '--respect-workspace-trust false', 'other'],
+    ['grok', '--permission-mode=bypassPermissions', 'bypass'],
+    ['grok', '--permission-mode plan', 'other'],
+    ['cline', '--auto-approve=true', 'bypass'],
+    ['cline', '--auto-approve false', 'other'],
+    ['codex', '--yolo', 'bypass'],
+    ['codex', '-a never -s danger-full-access', 'bypass'],
+    ['codex', '-s danger-full-access -a never', 'bypass'],
+    ['codex', '--sandbox danger-full-access --ask-for-approval never', 'bypass'],
+    ['codex', '--ask-for-approval=never --sandbox=danger-full-access', 'bypass'],
+    ['codex', '-anever -sdanger-full-access', 'bypass'],
+    ['codex', '-a never', 'other'],
+    ['codex', '-a never -s workspace-write', 'other'],
+    ['codex', '--full-auto', 'other'],
+    ['gemini', '-y', 'bypass'],
+    ['gemini', '--approval-mode yolo', 'bypass'],
+    ['gemini', '--approval-mode=yolo', 'bypass'],
+    ['gemini', '--approval-mode auto_edit', 'other'],
+    ['qwen-code', '-y', 'bypass'],
+    ['qwen-code', '--yolo', 'bypass'],
+    ['continue', '--allow "*"', 'bypass'],
+    ['continue', '--allow Read', 'other'],
+    // Only allows a later switch into bypass, so the mode still decides.
+    ['claude', '--allow-dangerously-skip-permissions --model opus', 'none'],
+    // A quoted word is a value (here the prompt), never an option.
+    ['claude', `--append-system-prompt "${CLAUDE_BYPASS}"`, 'none'],
+    ['claude', `-- ${CLAUDE_BYPASS}`, 'none'],
+    ['claude', '--model opus', 'none']
+  ] as const)('reads %s %j as %s, and launch and Settings agree', (agent, args, kind) => {
+    expect(classifyTypedAgentPermissions(agent, { args }).kind).toBe(kind)
+    for (const mode of ['bypass', 'ask'] as const) {
+      const settings = { agentPermissionMode: mode, agentDefaultArgs: { [agent]: args } }
+      const launch = resolveTuiAgentLaunchArgs(agent, settings)
+      const flagAdded = launch !== args
+      expect(flagAdded).toBe(kind === 'none' && mode === 'bypass')
+      expect(resolveAgentPermissionPosture(agent, settings, 'darwin').effectiveBypass).toBe(
+        kind === 'none' ? mode === 'bypass' : kind === 'bypass'
+      )
+    }
+  })
+
+  it("reads every agent's own bypass flag as bypass", () => {
+    for (const agent of PERMISSION_AGENT_IDS.filter(
+      (id): id is TuiAgent => YOLO_TUI_AGENT_ARGS[id] !== undefined
+    )) {
+      expect(classifyTypedAgentPermissions(agent, { args: YOLO_TUI_AGENT_ARGS[agent] }).kind).toBe(
+        'bypass'
+      )
+    }
+  })
+
+  it('reads a typed Goose mode env', () => {
+    expect(classifyTypedAgentPermissions('goose', { env: { GOOSE_MODE: 'auto' } })).toEqual({
+      kind: 'bypass',
+      options: ['GOOSE_MODE=auto']
+    })
+    expect(classifyTypedAgentPermissions('goose', { env: { GOOSE_MODE: 'approve' } }).kind).toBe(
+      'other'
+    )
+    expect(classifyTypedAgentPermissions('goose', { env: { A: '1' } }).kind).toBe('none')
   })
 })
 
@@ -260,25 +365,7 @@ describe('resolveAgentPermissionPosture', () => {
         { agentPermissionMode: 'ask', agentDefaultArgs: { codex: '-a never -s workspace-write' } },
         'darwin'
       ).typedPermissionOptions
-    ).toEqual(['-a', '-s'])
-  })
-
-  it.each([
-    ['codex', '--yolo'],
-    ['claude', '--permission-mode bypassPermissions'],
-    ['claude', '--permission-mode=bypassPermissions'],
-    ['gemini', '-y'],
-    ['gemini', '--approval-mode yolo'],
-    ['qwen-code', '-y'],
-    ['qwen-code', '--yolo']
-  ] as const)('reads the %s bypass alias %j as bypass', (agent, args) => {
-    expect(
-      resolveAgentPermissionPosture(
-        agent,
-        { agentPermissionMode: 'ask', agentDefaultArgs: { [agent]: args } },
-        'darwin'
-      ).effectiveBypass
-    ).toBe(true)
+    ).toEqual(['-a never', '-s workspace-write'])
   })
 
   // A typed env key overrides the mode's env at launch (see resolveTuiAgentLaunchEnv).
@@ -310,7 +397,7 @@ describe('resolveAgentPermissionPosture', () => {
         { agentPermissionMode: 'bypass', agentDefaultArgs: { codex: '-a on-request' } },
         'darwin'
       )
-    ).toEqual({ mode: 'bypass', effectiveBypass: false, typedPermissionOptions: ['-a'] })
+    ).toEqual({ mode: 'bypass', effectiveBypass: false, typedPermissionOptions: ['-a on-request'] })
   })
 
   it.each([

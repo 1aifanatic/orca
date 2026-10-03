@@ -105,6 +105,22 @@ describe('RuntimeClientSettingsController agent launch projection', () => {
     expect(controller.get().agentDefaultArgs?.claude).toBe('--permission-mode plan')
   })
 
+  it('keeps the mode of an agent whose written env sets permissions itself', async () => {
+    const { controller, store } = controllerFor(
+      hostSettings({
+        agentPermissionMode: 'bypass',
+        agentPermissionModeOverrides: {},
+        agentDefaultArgs: {},
+        agentDefaultEnv: { goose: { GOOSE_MODE: 'approve' } }
+      })
+    )
+
+    await controller.update({ agentDefaultEnv: controller.get().agentDefaultEnv })
+
+    expect(store.getSettings().agentPermissionModeOverrides?.goose).toBeUndefined()
+    expect(controller.get().agentDefaultEnv?.goose).toEqual({ GOOSE_MODE: 'approve' })
+  })
+
   it('passes other updates through untouched', async () => {
     const { controller, store } = controllerFor(hostSettings({}))
 

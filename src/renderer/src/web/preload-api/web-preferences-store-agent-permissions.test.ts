@@ -80,6 +80,39 @@ describe('web stored settings agent permissions', () => {
     expect(settings.agentDefaultArgs?.devin).toBe('')
   })
 
+  // After a downgrade the older client writes the flag back; the stored mode must not latch over it.
+  it('lifts a flag written back into a typed blob, and saves it', async () => {
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        agentPermissionMode: 'ask',
+        agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -m o3' }
+      })
+    )
+    const { getStoredSettings } = await import('./web-preferences-store')
+
+    const settings = getStoredSettings()
+
+    expect(settings.agentPermissionModeOverrides).toEqual({ codex: 'bypass' })
+    expect(settings.agentDefaultArgs?.codex).toBe('-m o3')
+    const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
+    expect(saved.agentDefaultArgs.codex).toBe('-m o3')
+  })
+
+  it('keeps a stored mode it does not know instead of re-migrating', async () => {
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ agentPermissionMode: 'accept-edits', agentDefaultArgs: { claude: '' } })
+    )
+    const { getStoredSettings } = await import('./web-preferences-store')
+
+    const settings = getStoredSettings()
+
+    expect(settings.agentPermissionModeOverrides).toEqual({})
+    const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
+    expect(saved.agentPermissionMode).toBe('accept-edits')
+  })
+
   it('gives a fresh client the Yolo default', async () => {
     const { getStoredSettings } = await import('./web-preferences-store')
 
