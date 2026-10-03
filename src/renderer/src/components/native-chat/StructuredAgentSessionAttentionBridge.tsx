@@ -1,9 +1,11 @@
 import { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { useAppStore } from '@/store'
-import { getActiveRuntimeTarget, type RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
-import { structuredAgentSessionTargetForHost } from '@/runtime/structured-agent-session-owner'
+import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
+import {
+  structuredAgentSessionOwnerForTab,
+  structuredAgentSessionTargetForHost
+} from '@/runtime/structured-agent-session-owner'
 import { getStructuredAgentSessionTurnCompletionFeed } from '@/runtime/structured-agent-session-turn-completion-feed'
 import { dispatchStructuredTurnCompletionAttention } from './structured-attention-dispatch'
 import { getStructuredAgentSessionTabs, type StructuredTab } from './structured-agent-session-tabs'
@@ -21,18 +23,9 @@ function StructuredAgentSessionAttention({
 }: {
   tab: StructuredTab
 }): React.JSX.Element | null {
-  // The host stamped on the tab, never its workspace id, which two hosts can share. Only a tab from
-  // before that stamp existed resolves from its workspace.
-  const environmentId = useAppStore((state) =>
-    tab.executionHostId ? null : getRuntimeEnvironmentIdForWorktree(state, tab.worktreeId)
-  )
-  const target = useMemo(
-    () =>
-      tab.executionHostId
-        ? structuredAgentSessionTargetForHost(tab.executionHostId)
-        : getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId }),
-    [tab.executionHostId, environmentId]
-  )
+  // The same owner the chat pane and status bridge read, so all of them follow one host.
+  const owner = useAppStore((state) => structuredAgentSessionOwnerForTab(state, tab))
+  const target = useMemo(() => structuredAgentSessionTargetForHost(owner), [owner])
   return target ? <StructuredAgentSessionOwnedAttention tab={tab} target={target} /> : null
 }
 

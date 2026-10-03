@@ -530,7 +530,9 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
   })
 
-  it('keeps a local subscription and delivers without a source when tab ownership is unresolved', async () => {
+  // An unrecorded tab follows the chat pane's rule: an id two hosts share names no owner until
+  // the tab's first snapshot records its host.
+  it('pauses an unrecorded chat while its workspace id names two hosts, until its host is recorded', async () => {
     render(<StructuredAgentSessionAttentionBridge />)
     await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
     expect(mocks.subscribeCompletions.mock.calls[0]?.[0]).toEqual({ kind: 'local' })
@@ -544,10 +546,17 @@ describe('StructuredAgentSessionAttentionBridge', () => {
         }
       })
     )
-    expect(mocks.unsubscribe).not.toHaveBeenCalled()
-    expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
-    act(() => hostStream()(completionFrame()))
-    expect(onlyDispatch().notificationSourceId).toBeUndefined()
+    expect(mocks.unsubscribe).toHaveBeenCalledOnce()
+
+    await act(async () =>
+      mocks.store?.setState({
+        unifiedTabsByWorktree: { [WORKSPACE]: [chatTab({ executionHostId: 'local' })] }
+      })
+    )
+    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledTimes(2))
+    expect(mocks.subscribeCompletions.mock.calls[1]?.[0]).toEqual({ kind: 'local' })
+    act(() => hostStream(1)(completionFrame()))
+    expect(onlyDispatch().notificationSourceId).toBe('local')
     expect(indicators().paneDot).toBe('agent-completion')
   })
 
