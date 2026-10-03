@@ -65,6 +65,16 @@ describe('ACP JSON-RPC peer', () => {
     })
   })
 
+  it('allows the agent to reuse a request id after receiving its response', async () => {
+    const { agent } = fixture({ onRequest: () => ({ answer: true }) })
+    expect(await agent.request('reused', '_question', {})).toMatchObject({
+      result: { answer: true }
+    })
+    expect(await agent.request('reused', '_question', {})).toMatchObject({
+      result: { answer: true }
+    })
+  })
+
   it('ignores malformed and oversized lines then resumes at the next newline', async () => {
     const diagnostics: string[] = []
     const notified: unknown[] = []

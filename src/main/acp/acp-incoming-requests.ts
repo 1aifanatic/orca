@@ -41,6 +41,12 @@ export class AcpIncomingRequests {
       )
     })
     this.open.set(id, { controller, abandon })
+    const retire = (): void => {
+      clearTimeout(timer)
+      if (this.open.get(id)?.controller === controller) {
+        this.open.delete(id)
+      }
+    }
     void Promise.race([
       deadline,
       Promise.resolve().then(() => {
@@ -57,12 +63,15 @@ export class AcpIncomingRequests {
         if (result === undefined) {
           throw new AcpRpcError(-32601, `Unknown ACP client method: ${method}`)
         }
+        // The agent may reuse the id as soon as it reads the response.
+        retire()
         await this.send({ jsonrpc: '2.0', id, result })
       })
       .catch(async (error) => {
         if (controller.signal.aborted) {
           return
         }
+        retire()
         await this.sendError(
           id,
           error instanceof AcpRpcError
@@ -71,8 +80,7 @@ export class AcpIncomingRequests {
         )
       })
       .finally(() => {
-        clearTimeout(timer)
-        this.open.delete(id)
+        retire()
         controller.abort()
       })
   }
