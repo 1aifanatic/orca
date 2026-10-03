@@ -69,8 +69,7 @@ function resolution(): PendingPRCommentAiAck {
 
 type AcknowledgementInput = Parameters<typeof useChecksPanelAiAcknowledgement>[0]
 
-function acknowledgement() {
-  const pending = resolution()
+function acknowledgement(pending: PendingPRCommentAiAck = resolution()) {
   setPendingPRCommentAiAck(pending)
   const model = {
     addPRConversationComment: vi.fn<AcknowledgementInput['addPRConversationComment']>(async () => ({
@@ -206,6 +205,28 @@ describe('Resolve comments with AI', () => {
     expect(model.pendingCommentResolutionRef.current).toMatchObject({
       reviewContextKey: REVIEW_KEY
     })
+  })
+
+  it("says once, at launch, that it can't reply without the PR's repository", async () => {
+    const { githubTarget: _missing, ...withoutReplyTarget } = resolution()
+    const { model, hook } = acknowledgement(withoutReplyTarget)
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'session-1' },
+      promptDeliveryResult: DELIVERED,
+      structuredSettlement: Promise.resolve({ kind: 'launched' })
+    })
+
+    await expect(resolveCommentsWithAi(hook)).resolves.toBe(true)
+
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewReply: expect.objectContaining({ replies: [], resolve: ['T1'] })
+      })
+    )
+    expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(
+      'Could not resolve the GitHub PR to reply on.'
+    )
+    expect(model.resolveReviewThread).not.toHaveBeenCalled()
   })
 
   it('writes once from the panel when the chat runs on a host that cannot carry the reply', async () => {

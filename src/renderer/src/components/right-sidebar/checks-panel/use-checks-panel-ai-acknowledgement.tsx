@@ -44,6 +44,12 @@ type ChecksPanelAiAcknowledgementInput = Pick<
   Pick<ChecksPanelReviewDataState, 'fetchComments'> &
   Pick<ChecksPanelPollingState, 'fetchGitLabDetails'>
 
+const cannotReplyOnPR = (): string =>
+  translate(
+    'auto.components.right.sidebar.ChecksPanel.7e4b2a19c0',
+    'Could not resolve the GitHub PR to reply on.'
+  )
+
 export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgementInput) {
   const {
     addPRConversationComment,
@@ -102,10 +108,7 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
         resolution.provider === 'github' &&
         githubTarget == null &&
         hasPRCommentGroupNeedingReply(resolution.selectedGroups)
-          ? translate(
-              'auto.components.right.sidebar.ChecksPanel.7e4b2a19c0',
-              'Could not resolve the GitHub PR to reply on.'
-            )
+          ? cannotReplyOnPR()
           : undefined
       const resolveSnapshottedThread = buildSnapshottedThreadResolver({
         provider: resolution.provider,
@@ -328,6 +331,14 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
       if (launch?.reviewReplyCarried) {
         clearSentCommentSelection(resolution.reviewContextKey)
         setCommentResolutionAckBusyNow(false)
+        // The one write the chat's host can't make: without the PR's repository it can't reply.
+        if (
+          resolution.provider === 'github' &&
+          !resolution.githubTarget &&
+          hasPRCommentGroupNeedingReply(resolution.selectedGroups)
+        ) {
+          toast.error(cannotReplyOnPR())
+        }
         return
       }
       setCommentResolutionAckBusyNow(true)
