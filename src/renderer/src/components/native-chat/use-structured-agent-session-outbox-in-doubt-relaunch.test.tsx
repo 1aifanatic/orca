@@ -123,9 +123,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
       // Past the unconfirmed probe's first delay: the held message is never sent again.
       await act(() => new Promise<void>((resolve) => setTimeout(resolve, 1_200)))
       expect(sentIds()).toEqual(['op-next'])
-      expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual([
-        'op-follow-up'
-      ])
+      expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['op-follow-up'])
       expect(
         structuredAgentSessionDeliveryNotices(
           result.current.outbox,

@@ -167,14 +167,8 @@ describe('the notice on each message that did not go through', () => {
       recovered: true
     }
     expect(
-      structuredAgentSessionDeliveryNotices(
-        outbox,
-        'Codex',
-        retry,
-        [recorded],
-        [],
-        NOT_FAILED_HERE
-      ).size
+      structuredAgentSessionDeliveryNotices(outbox, 'Codex', retry, [recorded], [], NOT_FAILED_HERE)
+        .size
     ).toBe(0)
     // One the host may never have received still says so, with its Retry.
     const unrecorded = structuredAgentSessionDeliveryNotices(

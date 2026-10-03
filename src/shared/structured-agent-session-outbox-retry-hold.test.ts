@@ -44,17 +44,19 @@ describe('a message held for its Retry', () => {
 
   it('is passed over by the drain, which still stops on a message in doubt', () => {
     const held = entry('held', { lastFailure: REFUSED })
-    expect(admitStructuredAgentSessionOutboxEntry([held], [])).toEqual({ state: 'idle', entry: null })
+    expect(admitStructuredAgentSessionOutboxEntry([held], [])).toEqual({
+      state: 'idle',
+      entry: null
+    })
     expect(admitStructuredAgentSessionOutboxEntry([held, entry('next')], [])).toMatchObject({
       state: 'dispatch',
       entry: { clientMessageId: 'next' }
     })
     expect(
-      admitStructuredAgentSessionOutboxEntry([
-        held,
-        entry('doubt', { state: 'unconfirmed' }),
-        entry('next')
-      ], [])
+      admitStructuredAgentSessionOutboxEntry(
+        [held, entry('doubt', { state: 'unconfirmed' }), entry('next')],
+        []
+      )
     ).toMatchObject({ state: 'blocked', entry: { clientMessageId: 'doubt' } })
   })
 
