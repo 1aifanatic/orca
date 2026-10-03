@@ -53,7 +53,7 @@ type Props = MobileQueuedSlotProps & {
   folded: NativeChatMessage[]
   status: MobileNativeChatStatus
   error?: string
-  /** The read failed for good: the error state says why, and no composer is offered under it. */
+  /** The read failed for good (damage, a newer Orca's chat): its error takes the whole pane. */
   readFailedFinally?: boolean
   /** Resolved agent for this chat; names the empty-state copy (desktop parity). */
   agent?: string | null
@@ -310,6 +310,18 @@ export function MobileNativeChatView({
   const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
+  const emptyStateView = emptyState ? (
+    <View style={styles.center}>
+      <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+      <Text style={styles.emptySubtitle}>{emptyState.subtitle}</Text>
+    </View>
+  ) : null
+
+  // Whatever was already on screen: nothing here can act on a chat that cannot load, and its words
+  // say why once, as a fresh open's do.
+  if (readFailedFinally && emptyStateView) {
+    return <View style={[styles.root, { paddingBottom: bottomPad }]}>{emptyStateView}</View>
+  }
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
@@ -357,14 +369,7 @@ export function MobileNativeChatView({
                 turns.waitingRows,
                 renderItem
               )}
-              ListEmptyComponent={
-                emptyState ? (
-                  <View style={styles.center}>
-                    <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-                    <Text style={styles.emptySubtitle}>{emptyState.subtitle}</Text>
-                  </View>
-                ) : null
-              }
+              ListEmptyComponent={emptyStateView}
             />
           </GestureDetector>
           {/* Jump-to-latest control. */}
@@ -430,41 +435,37 @@ export function MobileNativeChatView({
           <Text style={styles.sendErrorText}>{sendErrorMessage}</Text>
         </View>
       ) : null}
-      {readFailedFinally ? null : (
-        <MobileNativeChatComposer
-          structuredCommands={
-            structuredActivityUi
-              ? (sessionOptions?.controller.conversationCommands ?? [])
-              : undefined
-          }
-          value={composerText}
-          onChangeText={onComposerTextChange}
-          onSend={handleSend}
-          sendSurfaceId={sendSurfaceId}
-          {...{ getSendCompletionGeneration, getComposerEditGeneration, inputRef }}
-          agent={agent}
-          sessionOptions={sessionOptions}
-          onAttachImage={onAttachImage}
-          attachments={attachments}
-          onRemoveAttachment={onRemoveAttachment}
-          isAttaching={isAttaching}
-          onMicPress={onMicPress}
-          micActive={micActive}
-          dictationMode={dictationMode}
-          onMicPressIn={onMicPressIn}
-          onMicPressOut={onMicPressOut}
-          disabled={lockReason !== null}
-          placeholder={
-            lockReason === 'disconnected'
-              ? 'Reconnecting…'
-              : lockReason === 'waiting'
-                ? 'Waiting for terminal…'
-                : 'Message, @files, /commands'
-          }
-          filePaths={filePaths}
-          onNeedFiles={onNeedFiles}
-        />
-      )}
+      <MobileNativeChatComposer
+        structuredCommands={
+          structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined
+        }
+        value={composerText}
+        onChangeText={onComposerTextChange}
+        onSend={handleSend}
+        sendSurfaceId={sendSurfaceId}
+        {...{ getSendCompletionGeneration, getComposerEditGeneration, inputRef }}
+        agent={agent}
+        sessionOptions={sessionOptions}
+        onAttachImage={onAttachImage}
+        attachments={attachments}
+        onRemoveAttachment={onRemoveAttachment}
+        isAttaching={isAttaching}
+        onMicPress={onMicPress}
+        micActive={micActive}
+        dictationMode={dictationMode}
+        onMicPressIn={onMicPressIn}
+        onMicPressOut={onMicPressOut}
+        disabled={lockReason !== null}
+        placeholder={
+          lockReason === 'disconnected'
+            ? 'Reconnecting…'
+            : lockReason === 'waiting'
+              ? 'Waiting for terminal…'
+              : 'Message, @files, /commands'
+        }
+        filePaths={filePaths}
+        onNeedFiles={onNeedFiles}
+      />
     </View>
   )
 }

@@ -217,13 +217,32 @@ describe('MobileNativeChatView', () => {
     })
   }
 
-  // A read that failed for good says why in the error state, once: there is nothing to send into.
-  it('offers no composer under a read that failed for good, and one under any other', async () => {
+  // A read no retry gets past takes the whole pane, even over a transcript already on screen: its
+  // words alone, and nothing that could only be refused again.
+  it('leaves only the words of a read that failed for good, over a loaded transcript', async () => {
+    const loaded = [assistantTurn('m1', 'earlier reply')]
+    const words = 'This chat was saved by a newer Orca. Update Orca to open it.'
+    const shown = (text: string) =>
+      renderer!.root.findAll((node) => node.type === 'Text' && node.props.children === text)
     const composers = () => renderer!.root.findAll((node) => node.type === 'Composer')
-    await render({ status: 'error', error: 'Unable to load this chat.', readFailedFinally: true })
+    const lists = () => renderer!.root.findAll((node) => node.type === 'FlatList')
+    const failure = {
+      messages: loaded,
+      folded: loaded,
+      status: 'error' as const,
+      error: words,
+      canStop: true,
+      permission: { title: 'Approve?', options: [{ label: 'Allow', send: '1' }] }
+    }
+    await render({ ...failure, readFailedFinally: true })
+    expect(shown(words)).toHaveLength(1)
     expect(composers()).toHaveLength(0)
+    expect(lists()).toHaveLength(0)
+    expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Stop the agent' })).toHaveLength(0)
 
-    await update({ status: 'error', error: "Orca couldn't open this chat's history right now." })
+    // A failure that can clear keeps the transcript and the composer.
+    await update({ ...failure, error: "Orca couldn't open this chat's history right now." })
+    expect(listIds()).toEqual(['m1'])
     expect(composers()).toHaveLength(1)
   })
 
