@@ -1,11 +1,13 @@
 import { getOpenCode2TuiSource } from './status-plugin-tui-source'
 import { openCodeTuiPluginDirName } from '../../shared/opencode-tui-plugin-install'
+import { getLegacyOpenCodeTuiSource } from '../opencode/status-plugin-legacy-tui-source'
 
 /** The OpenCode 2 entry points (server setup and TUI reporter) plus the constants they share. */
 export function getOpenCode2ModuleSource(pluginID: string, expectedAgent: string): string[] {
   return [
     `const ORCA_TUI_PLUGIN_ENTRY = new URL("./${openCodeTuiPluginDirName(`${pluginID}.js`)}/tui.js", import.meta.url);`,
     `const ORCA_STATUS_AGENT = "${expectedAgent}";`,
+    ...getLegacyOpenCodeTuiSource(),
     ...getOpenCode2SetupSource()
   ]
 }

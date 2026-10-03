@@ -23,6 +23,7 @@ export function getStatusPluginRuntimeStateSource(): string[] {
     'let stateArrivalRevision = 0;',
     '// Why: only OpenCode 2 calls setup(); its posts tell the host to keep its OpenCode 1 binder off them.',
     'let reportingOpenCodeMajor = 0;',
+    'let reportingOpenCodeTui = false;',
     '// Why: OpenCode can create directory-scoped factories and concurrent root',
     '// sessions in one pane; module ownership lets waiting/busy aggregate safely.',
     'let nextFactoryID = 0;',

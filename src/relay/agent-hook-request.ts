@@ -11,6 +11,7 @@ import type { AgentHookEventPayload } from '../shared/agent-hook-listener/listen
 import type { AgentHookSource } from '../shared/agent-hook-relay'
 import type { AgentHookResultRetryScheduler } from './agent-hook-result-retry-scheduler'
 import { hookBodyEnv, hookBodyVersion } from './agent-hook-envelope-build'
+import { bindOpenCodeTuiSession } from '../shared/agent-hook-listener/opencode-session-registry'
 
 export async function handleRelayHookRequest(
   req: IncomingMessage,
@@ -19,6 +20,7 @@ export async function handleRelayHookRequest(
     token: string
     env: string
     state: HookListenerState
+    isPaneSurfaceRetired: (paneKey: string) => boolean
     applyEvent: (
       event: AgentHookEventPayload,
       source: AgentHookSource,
@@ -62,7 +64,8 @@ export async function handleRelayHookRequest(
       return
     }
     const event = normalizeHookPayload(options.state, source, hookBody, options.env, {
-      deferCompactOwnershipToClient: true
+      deferCompactOwnershipToClient: true,
+      admitOpenCodeTui: ({ paneKey }) => !options.isPaneSurfaceRetired(paneKey)
     })
     if (event) {
       // TODO: once normalizeHookPayload returns validated env/version, drop bodyEnv/bodyVersion and source them from the listener result.
@@ -70,6 +73,7 @@ export async function handleRelayHookRequest(
       const version = hookBodyVersion(hookBody)
       const stored = options.applyEvent(event, source, env, version)
       if (stored) {
+        bindOpenCodeTuiSession(options.state, source, hookBody, event.providerSession?.id)
         options.retryScheduler.scheduleAssistantMessageRetry(source, hookBody, stored, env, version)
         options.retryScheduler.scheduleTranscriptPoll(source, hookBody, stored, env, version)
       }
