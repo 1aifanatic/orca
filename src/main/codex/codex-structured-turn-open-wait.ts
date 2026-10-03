@@ -1,6 +1,7 @@
 // A Stop's or a send's wait for the turn Codex answered a send into to open, or provably not
 // to: it ended, the thread stopped running, or the child is gone. Held in memory only.
 
+import type { AgentSessionCancelOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import {
   codexThreadStoppedRunning,
@@ -61,18 +62,12 @@ export function createCodexTurnOpenWaits(): CodexTurnOpenWaits {
   }
 }
 
-/** What a Stop or a send finds to act on: a turn running, or one Codex answered a send into that
- *  has not opened and has not ended, so may still open while its send is owed; null when neither. */
+/** What a send finds to steer, or a Stop to interrupt: a turn running, or one Codex answered a send
+ *  into that has not opened and has not ended, so may still open while its send is owed; null when
+ *  neither. */
 export type CodexStopTarget = { turnId: string } | { opening: string } | null
 
-/**
- * The turn a Stop or a send names: the latest Codex reported started and not ended, or else the
- * one Codex answered a send into, once it opens. `opening` when it has not opened by the end of
- * the wait, however the wait ended (it ran out, or the thread stopped running), while it has not
- * ended and its send is still owed: nothing to stop holds only when nothing is owed. Null when
- * none is running and none is owed. Each such turn is waited for once.
- */
-export async function codexStopTarget(session: {
+type CodexOpeningTurnSession = {
   threadId: string
   activeTurnIds?: ReadonlySet<string>
   dispatchEchoes: Pick<
@@ -80,43 +75,95 @@ export async function codexStopTarget(session: {
     'answeredUnopenedTurn' | 'leftUnopened' | 'answeredTurnLeftUnopened'
   >
   turnOpenWaits: Pick<CodexTurnOpenWaits, 'wait'>
-}): Promise<CodexStopTarget> {
+}
+
+/** The latest turn Codex reported started and not ended, or else the one it answered a send into
+ *  that has neither opened nor ended, whether or not a wait already gave up on it. */
+export function codexStopTarget(session: CodexOpeningTurnSession): CodexStopTarget {
   const running = [...(session.activeTurnIds ?? [])].at(-1)
   if (running) {
     return { turnId: running }
+  }
+  const open = session.activeTurnIds ?? new Set<string>()
+  const opening =
+    session.dispatchEchoes.answeredUnopenedTurn(session.threadId, open) ??
+    session.dispatchEchoes.answeredTurnLeftUnopened(session.threadId, open)
+  return opening ? { opening } : null
+}
+
+/** Codex's -32600 for an interrupt that finds no turn: before the turn has started running, or
+ *  once it has ended. */
+const CODEX_NO_ACTIVE_TURN_TO_INTERRUPT = 'no active turn to interrupt'
+
+/**
+ * A Stop of a turn Codex answered a send into that has not opened. Codex takes the interrupt once
+ * its thread runs, so it goes out at once. Refused as finding no turn while that turn has yet to
+ * start, the Stop waits for it to open, bounded, and sends it once more. A turn that ended
+ * meanwhile was nothing to stop. One that never opened, or that an earlier wait already gave up on,
+ * fails the Stop (`turnMayOpen`): it may still open and run, so the host ends the child.
+ */
+export async function interruptOpeningCodexTurn(
+  session: CodexOpeningTurnSession,
+  turnId: string,
+  interrupt: () => Promise<AgentSessionCancelOutcome>,
+  /** Whether the session the Stop began on still runs it, read after the wait. */
+  stillCurrent: () => boolean
+): Promise<AgentSessionCancelOutcome> {
+  const open = (): ReadonlySet<string> => session.activeTurnIds ?? new Set<string>()
+  const waitedBefore =
+    session.dispatchEchoes.answeredTurnLeftUnopened(session.threadId, open()) === turnId
+  const first = await interrupt()
+  if (first.cancelled || first.refusal?.detail?.text !== CODEX_NO_ACTIVE_TURN_TO_INTERRUPT) {
+    return first
+  }
+  const opened = (): boolean => open().has(turnId)
+  const stillOpening = (): boolean => {
+    const target = codexStopTarget(session)
+    return target !== null && 'opening' in target && target.opening === turnId
+  }
+  if (!opened() && stillOpening() && !waitedBefore) {
+    await session.turnOpenWaits.wait(turnId, CODEX_TURN_OPEN_WAIT_MS)
+    if (!stillCurrent()) {
+      return { cancelled: false }
+    }
+  }
+  if (opened()) {
+    return interrupt()
+  }
+  if (!stillOpening()) {
+    // It ended: the Stop found no turn running.
+    return { cancelled: false }
+  }
+  session.dispatchEchoes.leftUnopened(session.threadId, turnId)
+  return { cancelled: false, refusal: { turnMayOpen: true } }
+}
+
+/**
+ * The turn a send steers into: the running one, or else the one Codex answered a send into, once
+ * it opens. Before 0.148 Codex refuses a steer until it opens the turn, so the send waits for that,
+ * once per turn: a turn a wait left unopened is not waited for again. Null when no turn is running
+ * by then.
+ */
+export async function codexRunningOrOpeningTurn(
+  session: CodexOpeningTurnSession
+): Promise<string | null> {
+  const running = [...(session.activeTurnIds ?? [])].at(-1)
+  if (running) {
+    return running
   }
   const answered = session.dispatchEchoes.answeredUnopenedTurn(
     session.threadId,
     session.activeTurnIds ?? new Set<string>()
   )
   if (!answered) {
-    // An earlier wait left it unopened, yet its send is still owed: it may still open.
-    return leftUnopenedTarget(session)
+    return null
   }
-  // Codex refuses an interrupt, and before 0.148 a steer, until it opens the turn.
   await session.turnOpenWaits.wait(answered, CODEX_TURN_OPEN_WAIT_MS)
   if (session.activeTurnIds?.has(answered)) {
-    return { turnId: answered }
+    return answered
   }
   // Before 0.148 a turn that fails before it starts reports no end; one that opens later is still
   // found running.
   session.dispatchEchoes.leftUnopened(session.threadId, answered)
-  return leftUnopenedTarget(session)
-}
-
-/** The answered turn a wait left unopened, while it has not ended and its send is still owed. */
-function leftUnopenedTarget(session: Parameters<typeof codexStopTarget>[0]): CodexStopTarget {
-  const left = session.dispatchEchoes.answeredTurnLeftUnopened(
-    session.threadId,
-    session.activeTurnIds ?? new Set<string>()
-  )
-  return left ? { opening: left } : null
-}
-
-/** `codexStopTarget`'s running or opened turn, for a send. */
-export async function codexRunningOrOpeningTurn(
-  session: Parameters<typeof codexStopTarget>[0]
-): Promise<string | null> {
-  const target = await codexStopTarget(session)
-  return target !== null && 'turnId' in target ? target.turnId : null
+  return null
 }

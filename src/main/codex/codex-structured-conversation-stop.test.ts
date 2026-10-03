@@ -1,5 +1,6 @@
 // A Codex Stop that names no turn. The fake keeps Codex 0.157's turn bookkeeping: it answers
-// `turn/start` before it opens the turn, and refuses an interrupt until then.
+// `turn/start` before it opens the turn, and refuses an interrupt with no turn active until the
+// thread runs.
 
 import { describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionCommandTurn } from '../native-chat/agent-session-wire/structured-agent-session-command-turn'

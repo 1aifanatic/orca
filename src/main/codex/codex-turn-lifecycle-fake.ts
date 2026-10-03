@@ -2,9 +2,8 @@
 // it, for tests. From app-server `turn_processor.rs`: `turn/start` picks the turn before it
 // answers, a send while a turn is open is steered into it under the same id with no
 // second `turn/started`, `turn/steer` refuses with -32600 unless its `expectedTurnId` is
-// the running turn. This fake refuses `turn/interrupt` with -32600 until the turn has
-// started; with no turn active, `turn_interrupt_inner` refuses only an idle thread or a turn
-// that already ended.
+// the running turn, and `turn_interrupt_inner`, with no turn active, refuses with -32600 "no
+// active turn to interrupt" until the thread runs (`run`, or `start`) and once the turn has ended.
 // An interrupt Codex takes is answered before its turn ends: on `TurnAborted`,
 // `bespoke_event_handling.rs` answers pending interrupts, then sends `turn/completed`
 // (interrupted) on the same channel; here that end comes on a later read. The `turn/start`
@@ -27,6 +26,9 @@ export type CodexTurnLifecycleFake = {
   holdNextAnswer: () => () => void
   /** Codex emits `turn/started` for the turn it picked last. */
   start: () => void
+  /** The thread runs the picked turn, whose `turn/started` has yet to be read: an interrupt of it
+   *  is taken, and that `turn/started` comes ahead of the answer. */
+  run: () => void
   /** Codex ends the picked or running turn on its own. */
   end: (status: 'completed' | 'interrupted' | 'failed', errorMessage?: string) => void
   /** Codex fails the picked turn before starting it, which reports an `error` and no turn end. */
@@ -56,13 +58,23 @@ export function codexTurnLifecycleFake(
   let active: string | null = null
   let lastTurn: string | null = null
   let held: Promise<void> | null = null
+  let pickedRuns = false
   const finish = (turnId: string, status: string, errorMessage?: string): void => {
     picked = null
     active = null
+    pickedRuns = false
     notify()('turn/completed', {
       threadId,
       turn: { id: turnId, status, ...(errorMessage ? { error: { message: errorMessage } } : {}) }
     })
+  }
+  const open = (): void => {
+    if (!picked) {
+      throw new Error('no picked turn to start')
+    }
+    active = picked
+    pickedRuns = false
+    notify()('turn/started', { threadId, turn: { id: active, status: 'inProgress' } })
   }
   return {
     routes: {
@@ -93,6 +105,9 @@ export function codexTurnLifecycleFake(
       },
       'turn/interrupt': (params) => {
         const turnId = params?.turnId
+        if (!active && pickedRuns && picked === turnId) {
+          open()
+        }
         if (!active) {
           throw refusal('turn/interrupt', 'no active turn to interrupt')
         }
@@ -119,12 +134,12 @@ export function codexTurnLifecycleFake(
       })
       return () => release()
     },
-    start: () => {
-      if (!picked) {
-        throw new Error('no picked turn to start')
+    start: () => open(),
+    run: () => {
+      if (!picked || active) {
+        throw new Error('no picked turn to run')
       }
-      active = picked
-      notify()('turn/started', { threadId, turn: { id: active, status: 'inProgress' } })
+      pickedRuns = true
     },
     end: (status, errorMessage) => {
       const turnId = active ?? picked

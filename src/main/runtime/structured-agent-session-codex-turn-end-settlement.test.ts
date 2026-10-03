@@ -1,7 +1,8 @@
 // A Codex send the turn it went into never took: the Stop that interrupts that turn
 // withdraws it, and nothing reads as working after. A send made while that turn runs, a
-// queued card's Send-now included, goes in as `turn/steer` naming it. A Stop or a send made
-// before Codex opens that turn waits for it to open: Orca interrupts only a turn that has opened.
+// queued card's Send-now included, goes in as `turn/steer` naming it. A Stop made before Codex
+// opens that turn interrupts it at once; refused before Codex's thread runs it, the Stop waits
+// for it to open and interrupts once more. A send made then waits for it to open.
 // Driven through the shipped host, journal and Codex adapter; only the Codex child is fake,
 // keeping Codex 0.157's turn bookkeeping.
 
@@ -451,18 +452,17 @@ describe('a second send made after Codex answered the first, before it opened th
 })
 
 describe('a Stop sent after Codex answered a cold send, before it opened the turn', () => {
-  it('waits for the turn to open, then stops it and withdraws the send', async () => {
+  it('refused before the thread runs it, waits for the turn to open, then stops it and withdraws the send', async () => {
     const sent = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
 
     const stopping = stop()
-    // Without the wait, it would reach Codex now, which would refuse it, and be done.
     expect(await settledWithin(stopping, 1_000)).toBe('held')
-    expect(interrupts).toBe(0)
+    expect(interrupts).toBe(1)
     turns.start()
     await stopping
 
-    expect(interrupts).toBe(1)
+    expect(interrupts).toBe(2)
     await vi.waitFor(() => expect(turns.turnId).toBeNull())
     await vi.waitFor(async () =>
       expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
@@ -492,7 +492,8 @@ describe('a Stop in that window that the turn never opens for', () => {
     turns.end('interrupted')
     await stopping
 
-    expect(interrupts).toBe(0)
+    expect(interrupts).toBe(1)
+    expect(childCloses).toBe(0)
     expect(await statusRows()).toContain('Codex had no turn running to stop.')
   })
 
@@ -506,7 +507,7 @@ describe('a Stop in that window that the turn never opens for', () => {
     ).not.toBe('held')
     expect(await settledWithin(stopping, 0)).not.toBe('held')
     expect(childCloses).toBe(1)
-    expect(interrupts).toBe(0)
+    expect(interrupts).toBe(1)
     // Its wait ran out with the turn still able to open, so the Stop ended the child.
     expect(await statusRows()).toContain('Cancellation requested.')
   })
@@ -541,7 +542,8 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     turns.start()
     await stopping
 
-    expect(interrupts).toBe(1)
+    // Refused before the thread ran the turn, then taken once it opened.
+    expect(interrupts).toBe(2)
     expect(turnRow((await host.journalSnapshot(SESSION)).items)).toMatchObject({
       state: 'interrupted',
       outcome: 'cancellation'
@@ -550,7 +552,7 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     await vi.waitFor(async () => expect((await settled()).owesWork).toBe(false))
   })
 
-  it('ends the child when the turn has not opened by the end of its wait', async () => {
+  it('ends the child when its interrupt was refused and the turn has not opened by the end of its wait', async () => {
     const release = turns.holdNextAnswer()
     await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
@@ -559,7 +561,7 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(await settledWithin(stopping, CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
 
-    expect(interrupts).toBe(0)
+    expect(interrupts).toBe(1)
     expect(childCloses).toBe(1)
     expect((await settled()).owesWork).toBe(false)
     expect(turnRow((await host.journalSnapshot(SESSION)).items)).toBeUndefined()
