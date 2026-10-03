@@ -61,6 +61,8 @@ describe('shouldStepNativeChatAskAnswer', () => {
     // Codex 0.145's request_user_input card ignores typed labels and commits on
     // the highlighted row, so pasted answers misdeliver like STA-1860.
     expect(shouldStepNativeChatAskAnswer('codex')).toBe(true)
+    expect(shouldStepNativeChatAskAnswer('opencode')).toBe(true)
+    expect(shouldStepNativeChatAskAnswer('opencode2')).toBe(true)
   })
 
   it('does not step other or unknown agents', () => {
